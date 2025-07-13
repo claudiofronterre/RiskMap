@@ -1239,3 +1239,67 @@ plot_mda <- function(object, n_sim = 10000, x_max = 10, conf_level = 0.95,
     coord_cartesian(ylim = c(lower_f, upper_f)) +
     theme_minimal()
 }
+
+#' @title Get EPSG code for appropriate UTM zone
+#'
+#' @description
+#' Calculates the UTM zone and corresponding EPSG code for a spatial object
+#' with WGS84 coordinates. This is useful for reprojecting spatial data into
+#' a projected coordinate system suitable for distance-based geostatistical analyses.
+#'
+#' @param sf_object An `sf` object with a WGS84 CRS (EPSG:4326).
+#'
+#' @return An integer indicating the EPSG code for the appropriate UTM zone
+#' (e.g., 32629 for UTM Zone 29N).
+#'
+#' @details
+#' The function computes the centroid of the spatial object, uses its longitude to
+#' identify the UTM zone, and then assigns the corresponding EPSG code.
+#' EPSG codes from 32601 to 32660 correspond to UTM zones in the Northern Hemisphere,
+#' while 32701 to 32760 are used for the Southern Hemisphere.
+#'
+#' @examples
+#' \dontrun{
+#'   library(RiskMap)
+#'   data("liberia")
+#'   liberia_sf <- st_as_sf(liberia,
+#'                          coords = c("long", "lat"),
+#'                          crs = 4326)
+#'   get_epsg_utm(liberia_sf)
+#' }
+#'
+#' @export
+get_epsg_utm <- function(sf_object) {
+  # Ensure the input is an sf object
+  if (!inherits(sf_object, "sf")) {
+    stop("Input must be an sf object.")
+  }
+
+  # Check if the CRS is WGS 84 (EPSG:4326)
+  crs <- sf::st_crs(sf_object)
+  if (is.null(crs) || crs$epsg != 4326) {
+    stop("Input sf object must have a CRS of WGS84 (EPSG: 4326).")
+  }
+
+  # Get the coordinates of the centroid of the sf object
+  centroid <- sf::st_centroid(sf::st_union(sf_object))
+  coords <- sf::st_coordinates(centroid)
+
+  # Function to calculate UTM zone based on longitude
+  get_utm_zone <- function(lon) {
+    return((floor((lon + 180) / 6) %% 60) + 1)
+  }
+
+  # Calculate UTM zone from longitude
+  utm_zone <- get_utm_zone(coords[1])
+
+  # Determine the EPSG code based on the latitude (north/south)
+  epsg_code <- if (coords[2] >= 0) {
+    32600 + utm_zone   # Northern Hemisphere
+  } else {
+    32700 + utm_zone   # Southern Hemisphere
+  }
+
+  # Return the calculated EPSG code
+  return(epsg_code)
+}
