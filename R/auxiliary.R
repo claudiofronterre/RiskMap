@@ -386,10 +386,15 @@ coef.RiskMap <- function(object,...) {
     re_names <- names(object$re)
   }
 
-  p <- ncol(object$D)
+  p <- ncol(as.matrix(object$D))
   ind_beta <- 1:p
 
-  names(object$estimate)[ind_beta] <- colnames(object$D)
+  if(p==1) {
+    object$D <- as.matrix(object$D)
+    names(object$estimate)[ind_beta] <- "Intercept"
+  } else {
+    names(object$estimate)[ind_beta] <- colnames(object$D)
+  }
   ind_sigma2 <- p+1
   names(object$estimate)[ind_sigma2] <- "sigma2"
   ind_phi <- p+2
@@ -443,12 +448,13 @@ coef.RiskMap <- function(object,...) {
     }
   }
 
+
   res <- list()
   res$beta <- object$estimate[ind_beta]
   res$sigma2 <- as.numeric(object$estimate[ind_sigma2])
   res$phi <- as.numeric(object$estimate[ind_phi])
   if(object$family=="gaussian") {
-    if(!is.null(ind_sigma2_me)) res$sigma2_me <- as.numeric(object$estimate[ind_sigma2_me])
+    if(!is.null(ind_sigma2_me)) res$sigma2_me <- as.numeric(exp(object$estimate[ind_sigma2_me]))
   }
   if(!is.null(ind_tau2)) res$tau2 <- object$estimate[ind_tau2]
   if(n_re>0) res$sigma2_re <- as.numeric(object$estimate[ind_sigma2_re])
@@ -472,6 +478,10 @@ coef.RiskMap <- function(object,...) {
     }
     if(is.null(object$fix_alpha)) res$alpha <- as.numeric(1/(1+exp(-object$estimate[ind_alpha])))
     res$gamma <- as.numeric(exp(object$estimate[ind_gamma]))
+  }
+  if(object$sst) {
+    ind_psi <- length(object$estimate)
+    res$psi <- as.numeric(exp(object$estimate[ind_psi]))
   }
   return(res)
 }
@@ -500,48 +510,76 @@ coef.RiskMap <- function(object,...) {
 ##' @seealso \code{\link{glgpm}}, \code{\link{coef.RiskMap}}
 ##' @method summary RiskMap
 ##' @export
-
-
 summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
+
+  # --- Link reporting ----------------------------------------------------------
+  link_name <- NULL
+  inv_expr  <- NULL
+  if (!is.null(object$linkf) && is.list(object$linkf) && is.function(object$linkf$inv)) {
+    link_name <- object$linkf$name %||% "custom"
+    inv_expr  <- tryCatch(
+      paste0("Inverse link function = ", paste(deparse(body(object$linkf$inv), width.cutoff = 500L), collapse = " ")),
+      error = function(e) "Inverse link function = <user-supplied function>"
+    )
+  } else {
+    # Fallback: canonical links by family
+    if (identical(object$family, "poisson")) {
+      link_name <- "canonical (log)"
+      inv_expr  <- "Inverse link function = exp(x)"
+    } else if (identical(object$family, "binomial")) {
+      link_name <- "canonical (logit)"
+      inv_expr  <- "Inverse link function = 1 / (1 + exp(-x))"
+    } else if (identical(object$family, "gaussian")) {
+      link_name <- "identity"
+      inv_expr  <- "Inverse link function = x"
+    }
+  }
+
+  # --- existing code -----------------------------------------------------------
   n_re <- length(object$re)
-  if(n_re > 0) {
+  if (n_re > 0) {
     re_names <- names(object$re)
   }
-  alpha <- 1-conf_level
+  alpha <- 1 - conf_level
 
   p <- ncol(object$D)
   ind_beta <- 1:p
 
   names(object$estimate)[ind_beta] <- colnames(object$D)
-  ind_sigma2 <- p+1
+  ind_sigma2 <- p + 1
   names(object$estimate)[ind_sigma2] <- "Spatial process var."
-  ind_phi <- p+2
+  ind_phi <- p + 2
   names(object$estimate)[ind_phi] <- "Spatial corr. scale"
   dast_model <- !is.null(object$power_val)
+  sst <- object$sst
 
-  if(is.null(object$fix_tau2)) {
-    ind_tau2 <- p+3
+  if (sst) {
+    ind_psi <- length(object$estimate)
+  }
+  if (is.null(object$fix_tau2)) {
+    ind_tau2 <- p + 3
     names(object$estimate)[ind_tau2] <- "Variance of the nugget"
-    object$estimate[ind_tau2] <- object$estimate[ind_tau2]+object$estimate[ind_sigma2]
-    if(object$family=="gaussian") {
-      if(is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p+4
+    object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
+    if (object$family == "gaussian") {
+      if (is.null(object$fix_var_me)) {
+        ind_sigma2_me <- p + 4
       } else {
         ind_sigma2_me <- NULL
       }
-      if(n_re>0) {
-        ind_sigma2_re <- (p+5):(p+4+n_re)
+      if (n_re > 0) {
+        ind_sigma2_re <- (p + 5):(p + 4 + n_re)
       }
     } else {
-      ind_sigma2_re <- (p+4):(p+3+n_re)
+      ind_sigma2_re <- (p + 4):(p + 3 + n_re)
     }
-    if(dast_model) {
-      if(is.null(object$fix_alpha)) {
-        ind_alpha <- p+n_re+4
-        ind_gamma <- p+n_re+5
+    if (dast_model) {
+      if (is.null(object$fix_alpha)) {
+        ind_alpha <- p + n_re + 4
+        ind_gamma <- p + n_re + 5
       } else {
-        ind_gamma <- p+n_re+4
+        ind_gamma <- p + n_re + 4
       }
 
     } else {
@@ -550,31 +588,32 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     }
   } else {
     ind_tau2 <- NULL
-    if(object$family=="gaussian") {
-      if(is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p+3
+    if (object$family == "gaussian") {
+      if (is.null(object$fix_var_me)) {
+        ind_sigma2_me <- p + 3
         names(object$estimate)[ind_sigma2_me] <- "Measuremment error var."
+        object$estimate[ind_sigma2_me] <- exp(object$estimate[ind_sigma2_me])
       } else {
         ind_sigma2_me <- NULL
       }
-      if(n_re>0) {
-        ind_sigma2_re <- (p+4):(p+3+n_re)
+      if (n_re > 0) {
+        ind_sigma2_re <- (p + 4):(p + 3 + n_re)
       }
     } else {
-      ind_sigma2_re <- (p+3):(p+2+n_re)
+      ind_sigma2_re <- (p + 3):(p + 2 + n_re)
     }
-    if(is.null(object$fix_alpha)) {
-      ind_alpha <- p+n_re+3
-      ind_gamma <- p+n_re+4
+    if (is.null(object$fix_alpha)) {
+      ind_alpha <- p + n_re + 3
+      ind_gamma <- p + n_re + 4
     } else {
       ind_alpha <- NULL
-      ind_gamma <- p+n_re+3
+      ind_gamma <- p + n_re + 3
     }
   }
   ind_sp <- c(ind_sigma2, ind_phi, ind_tau2)
 
-  if(dast_model) {
-    if(!is.null(object$fix_alpha)){
+  if (dast_model) {
+    if (!is.null(object$fix_alpha)) {
       names(object$estimate)[ind_gamma] <- "Scale of the decay (gamma)"
     } else {
       names(object$estimate)[ind_alpha] <- "Drop (alpha)"
@@ -582,94 +621,120 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     }
   }
   n_p <- length(object$estimate)
-  object$estimate[-c(ind_beta,ind_alpha, ind_gamma)] <-
-      exp(object$estimate[-c(ind_beta,ind_alpha, ind_gamma)])
+  object$estimate[-c(ind_beta, ind_alpha, ind_gamma)] <-
+    exp(object$estimate[-c(ind_beta, ind_alpha, ind_gamma)])
 
-
-  if(n_re > 0) {
-    for(i in 1:n_re) {
-      names(object$estimate)[ind_sigma2_re[i]] <- paste(re_names[i]," (random eff. var.)",sep="")
+  if (n_re > 0) {
+    for (i in 1:n_re) {
+      names(object$estimate)[ind_sigma2_re[i]] <- paste(re_names[i], " (random eff. var.)", sep = "")
     }
   }
 
   J <- diag(1:n_p)
-  if(length(ind_tau2)>0) J[ind_tau2,ind_sigma2] <- 1
+  if (length(ind_tau2) > 0) J[ind_tau2, ind_sigma2] <- 1
 
   H <- solve(-object$covariance)
-  H_new <- t(J)%*%H%*%J
+  H_new <- t(J) %*% H %*% J
 
   covariance_new <- solve(-H_new)
 
   se_par <- sqrt(diag(covariance_new))
   res <- list()
-  # Reg. coefficeints
-  zval <- object$estimate[ind_beta]/se_par[ind_beta]
-  res$reg_coef <- cbind(Estimate = object$estimate[ind_beta],
-                        'Lower limit' = object$estimate[ind_beta]-se_par[ind_beta]*qnorm(1-alpha/2),
-                        'Upper limit' = object$estimate[ind_beta]+se_par[ind_beta]*qnorm(1-alpha/2),
-                        StdErr = se_par[ind_beta],
-                        z.value = zval, p.value = 2 * pnorm(-abs(zval)))
+
+  # Regression coefficients
+  zval <- object$estimate[ind_beta] / se_par[ind_beta]
+  res$reg_coef <- cbind(
+    Estimate     = object$estimate[ind_beta],
+    "Lower limit" = object$estimate[ind_beta] - se_par[ind_beta] * qnorm(1 - alpha / 2),
+    "Upper limit" = object$estimate[ind_beta] + se_par[ind_beta] * qnorm(1 - alpha / 2),
+    StdErr       = se_par[ind_beta],
+    z.value      = zval,
+    p.value      = 2 * pnorm(-abs(zval))
+  )
 
   # Measurement error variance (linear model)
-  if(object$family=="gaussian") {
-    if(is.null(object$fix_var_me)) {
-      res$me <- cbind(Estimate = object$estimate[ind_sigma2_me],
-                      'Lower limit' = exp(log(object$estimate[ind_sigma2_me])-qnorm(1-alpha/2)*se_par[ind_sigma2_me]),
-                      'Upper limit' = exp(log(object$estimate[ind_sigma2_me])+qnorm(1-alpha/2)*se_par[ind_sigma2_me]))
+  if (object$family == "gaussian") {
+    if (is.null(object$fix_var_me)) {
+      res$me <- cbind(
+        Estimate     = object$estimate[ind_sigma2_me],
+        "Lower limit" = exp(log(object$estimate[ind_sigma2_me]) - qnorm(1 - alpha / 2) * se_par[ind_sigma2_me]),
+        "Upper limit" = exp(log(object$estimate[ind_sigma2_me]) + qnorm(1 - alpha / 2) * se_par[ind_sigma2_me])
+      )
     } else {
       res$me <- object$fix_var_me
     }
   }
 
   # Spatial process
-  res$sp <- cbind(Estimate = object$estimate[ind_sp],
-                  'Lower limit' = exp(log(object$estimate[ind_sp])-qnorm(1-alpha/2)*se_par[ind_sp]),
-                  'Upper limit' = exp(log(object$estimate[ind_sp])+qnorm(1-alpha/2)*se_par[ind_sp]))
+  res$sp <- cbind(
+    Estimate     = object$estimate[ind_sp],
+    "Lower limit" = exp(log(object$estimate[ind_sp]) - qnorm(1 - alpha / 2) * se_par[ind_sp]),
+    "Upper limit" = exp(log(object$estimate[ind_sp]) + qnorm(1 - alpha / 2) * se_par[ind_sp])
+  )
 
-  if(!is.null(object$fix_tau2)) res$tau2 <- object$fix_tau2
+  if (!is.null(object$fix_tau2)) res$tau2 <- object$fix_tau2
 
   # Random effects
-  if(n_re>0) {
-    res$ranef <- cbind(Estimate = object$estimate[ind_sigma2_re],
-                       'Lower limit' = exp(log(object$estimate[ind_sigma2_re])-qnorm(1-alpha/2)*se_par[ind_sigma2_re]),
-                       'Upper limit' = exp(log(object$estimate[ind_sigma2_re])+qnorm(1-alpha/2)*se_par[ind_sigma2_re]))
+  if (n_re > 0) {
+    res$ranef <- cbind(
+      Estimate     = object$estimate[ind_sigma2_re],
+      "Lower limit" = exp(log(object$estimate[ind_sigma2_re]) - qnorm(1 - alpha / 2) * se_par[ind_sigma2_re]),
+      "Upper limit" = exp(log(object$estimate[ind_sigma2_re]) + qnorm(1 - alpha / 2) * se_par[ind_sigma2_re])
+    )
   }
 
-  if(dast_model) {
-    anti_logit <- function(x) 1/(1+exp(-x))
+  if (dast_model) {
+    anti_logit <- function(x) 1 / (1 + exp(-x))
 
-    if(is.null(object$fix_alpha)) {
-      est_alpha <- anti_logit(object$estimate[ind_alpha])
-      lower_alpha <- anti_logit(object$estimate[ind_alpha]-qnorm(1-alpha/2)*se_par[ind_alpha])
-      upper_alpha <- anti_logit(object$estimate[ind_alpha]+qnorm(1-alpha/2)*se_par[ind_alpha])
-
+    if (is.null(object$fix_alpha)) {
+      est_alpha   <- anti_logit(object$estimate[ind_alpha])
+      lower_alpha <- anti_logit(object$estimate[ind_alpha] - qnorm(1 - alpha / 2) * se_par[ind_alpha])
+      upper_alpha <- anti_logit(object$estimate[ind_alpha] + qnorm(1 - alpha / 2) * se_par[ind_alpha])
     } else {
-      est_alpha <- NULL
-      lower_alpha <- NULL
-      upper_alpha <- NULL
+      est_alpha <- lower_alpha <- upper_alpha <- NULL
       res$alpha <- object$fix_alpha
     }
-    est_gamma <- exp(object$estimate[ind_gamma])
-    lower_gamma <- exp(object$estimate[ind_gamma]-qnorm(1-alpha/2)*se_par[ind_gamma])
-    upper_gamma <- exp(object$estimate[ind_gamma]+qnorm(1-alpha/2)*se_par[ind_gamma])
+    est_gamma   <- exp(object$estimate[ind_gamma])
+    lower_gamma <- exp(object$estimate[ind_gamma] - qnorm(1 - alpha / 2) * se_par[ind_gamma])
+    upper_gamma <- exp(object$estimate[ind_gamma] + qnorm(1 - alpha / 2) * se_par[ind_gamma])
 
-    res$dast_par <- cbind(Estimate = c(est_alpha, est_gamma),
-                    'Lower limit' = c(lower_alpha, lower_gamma),
-                    'Upper limit' = c(upper_alpha, upper_gamma))
+    res$dast_par <- cbind(
+      Estimate     = c(est_alpha, est_gamma),
+      "Lower limit" = c(lower_alpha, lower_gamma),
+      "Upper limit" = c(upper_alpha, upper_gamma)
+    )
     res$power_val <- object$power_val
   }
 
-  res$conf_level <- conf_level
-  res$family <- object$family
-  res$dast <- dast_model
-  res$kappa <- object$kappa
-  res$log.lik <- object$log.lik
-  res$cov_offset_used <- !is.null(object$cov_offset)
-  if(object$family=="gaussian") res$aic <- 2*length(res$estimate)-2*res$log.lik
+  if (sst) {
+    est_psi   <- exp(object$estimate[ind_psi])
+    lower_psi <- exp(object$estimate[ind_psi] - qnorm(1 - alpha / 2) * se_par[ind_psi])
+    upper_psi <- exp(object$estimate[ind_psi] + qnorm(1 - alpha / 2) * se_par[ind_psi])
+    res$sp <- rbind(res$sp, c(est_psi, lower_psi, upper_psi))
+    rownames(res$sp)[3] <- "Temporal corr. scale"
+  }
+
+  res$conf_level      <- conf_level
+  res$sst             <- sst
+  res$family          <- object$family
+  res$dast            <- dast_model
+  res$kappa           <- object$kappa
+  res$log.lik         <- object$log.lik
+  res$cov_offset_used <- !(is.null(object$cov_offset) || all(object$cov_offset==0))
+  if (object$family == "gaussian") {
+    # fix bug: use length(object$estimate), not res$estimate
+    res$aic <- 2 * length(object$estimate) - 2 * res$log.lik
+  }
+
+  # New: include call and link info for printing
+  res$call      <- object$call %||% NULL
+  res$link_name <- link_name
+  res$invlink_expression <- inv_expr
 
   class(res) <- "summary.RiskMap"
   return(res)
 }
+
 
 ##' @title Print Summary of RiskMap Model
 ##' @description Provides a \code{print} method for the summary of "RiskMap" objects, detailing the model type, parameter estimates, and other relevant statistics.
@@ -693,60 +758,77 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 ##' @method print summary.RiskMap
 ##' @export
 print.summary.RiskMap <- function(x, ...) {
-  if(x$family=="gaussian") {
-    cat("Linear geostatsitical model \n")
-  } else if(x$family=="binomial") {
-    if(x$dast) {
-      cat("Decay-adjusted spatio-temporal model \n")
-    } else {
-      cat("Binomial geostatistical linear model \n")
-    }
 
-  } else if(x$family=="poisson") {
-    cat("Poisson geostatistical linear model \n")
+  # First line: the call
+  if (!is.null(x$call)) {
+    cat("Call:\n")
+    cat(paste(deparse(x$call), collapse = "\n"), "\n\n", sep = "")
+  }
+
+  # Model type
+  if (x$family == "gaussian") {
+    cat("Linear geostatistical model\n")
+  } else if (x$family == "binomial") {
+    if (x$dast) {
+      cat("Decay adjusted spatio temporal model\n")
+    } else {
+      cat("Binomial geostatistical linear model\n")
+    }
+  } else if (x$family == "poisson") {
+    cat("Poisson geostatistical linear model\n")
+  }
+
+  # Link report
+  if (!is.null(x$link_name) || !is.null(x$invlink_expression)) {
+    if (!is.null(x$link_name)) cat("Link:", x$link_name, "\n")
+    if (!is.null(x$invlink_expression)) cat(x$invlink_expression, "\n \n")
   }
 
   cat("'Lower limit' and 'Upper limit' are the limits of the ",
-      x$conf_level*100,
-      "% confidence level intervals \n", sep="")
+      x$conf_level * 100, "% confidence level intervals\n", sep = "")
 
+  cat("\nRegression coefficients\n")
+  printCoefmat(x$reg_coef, P.values = TRUE, has.Pvalue = TRUE)
+  if (x$cov_offset_used) cat("Offset included into the linear predictor\n")
 
-  cat("\n Regression coefficients \n")
-  printCoefmat(x$reg_coef,P.values=TRUE,has.Pvalue=TRUE)
-  if(x$cov_offset_used) cat("Offset included into the linear predictor \n")
-
-  if(x$family=="gaussian") {
-    if(length(x$me)>1) {
-      cat("\n ")
+  if (x$family == "gaussian") {
+    if (length(x$me) > 1) {
+      cat("\n")
       printCoefmat(x$me, Pvalues = FALSE)
     } else {
-      cat("\n Measurement error var. fixed at", x$me,"\n")
+      cat("\nMeasurement error var. fixed at ", x$me, "\n", sep = "")
     }
   }
 
-  cat("\n Spatial Guassian process \n")
-  cat("Matern covariance parameters (kappa=",x$kappa,") \n",sep="")
+  if (!x$sst) {
+    cat("\nSpatial Gaussian process\n")
+    cat("Matern covariance parameters (kappa=", x$kappa, ")\n", sep = "")
+  } else {
+    cat("\nSpatio temporal Gaussian process\n")
+    cat("Separable spatio temporal correlation function:\n")
+    cat("Spatial Matern covariance parameters (kappa=", x$kappa, ")  x  Exponential time correlation function\n", sep = "")
+  }
   printCoefmat(x$sp, Pvalues = FALSE)
-  if(!is.null(x$tau2)) cat("Variance of the nugget effect fixed at",x$tau2,"\n")
+  if (!is.null(x$tau2)) cat("Variance of the nugget effect fixed at ", x$tau2, "\n", sep = "")
 
-  if(x$dast) {
-    cat("\n MDA impact function \n")
-    cat("f(v) = alpha * exp(-(v/gamma)^delta) \n",sep="")
-    cat("The parameter delta is fixed to ",x$power_val,"\n",sep="")
-    if(!is.null(x$alpha)) {
-      cat("The drop (alpha) parameter of the MDA impact function is fixed at",x$alpha,"\n")
+  if (!is.null(x$dast) && isTRUE(x$dast)) {
+    cat("\nMDA impact function\n")
+    cat("f(v) = alpha * exp(-(v/gamma)^delta)\n")
+    cat("The parameter delta is fixed to ", x$power_val, "\n", sep = "")
+    if (!is.null(x$alpha)) {
+      cat("The drop (alpha) parameter of the MDA impact function is fixed at ", x$alpha, "\n", sep = "")
     }
     printCoefmat(x$dast_par, Pvalues = FALSE)
   }
 
-  if(!is.null(x$ranef)) {
-    cat("\n Unstructured random effects \n")
+  if (!is.null(x$ranef)) {
+    cat("\nUnstructured random effects\n")
     printCoefmat(x$ranef, Pvalues = FALSE)
   }
-  cat("\n Log-likelihood: ",x$log.lik,"\n",sep="")
-  if(x$family=="gaussian") cat("\n AIC: ",x$aic,"\n \n",sep="")
-
+  cat("\nLog-likelihood: ", x$log.lik, "\n", sep = "")
+  if (x$family == "gaussian" && !is.null(x$aic)) cat("AIC: ", x$aic, "\n", sep = "")
 }
+
 
 
 ##' @title Generate LaTeX Tables from RiskMap Model Fits and Validation
@@ -972,136 +1054,160 @@ print.summary.RiskMap.spatial.cv <- function(x, ...) {
 }
 
 
-
-
-##' @title Plot AnPIT Results from Model Validation
+##' @title Plot Calibration Curves (AnPIT / PIT) from Spatial Cross-Validation
 ##'
-##' @description This function plots AnPIT results from a `RiskMap.spatial.cv` object obtained using the `assess_pp` function.
+##' @description
+##' Produce calibration plots from a \code{RiskMap.spatial.cv} object returned by
+##' \code{\link{assess_pp}}.
+##' * For Binomial or Poisson models the function visualises the
+##'   \emph{Aggregated normalised Probability Integral Transform} (AnPIT)
+##'   curves stored in \code{$AnPIT}.
+##' * For Gaussian models it detects the list \code{$PIT} and instead plots
+##'   the empirical \emph{Probability Integral Transform} curve
+##'   (ECDF of PIT values) on the same \eqn{u}-grid.
 ##'
-##' @param object A `RiskMap.spatial.cv` object containing validation results.
-##' @param mode Character string specifying the mode of plotting: `"average"` (average AnPIT across test sets),
-##' `"single"` (AnPIT for a specific test set), or `"all"` (all test sets).
-##' @param test_set Integer specifying the test set to plot when `mode = "single"`.
-##' @param model_name Character string specifying the name of the model to plot. If `NULL`, all models are plotted.
-##' @param combine_panels Logical specifying whether to combine all models into a single plot when `mode = "average"`. Defaults to `FALSE`.
+##' A 45° dashed red line indicates perfect calibration.
 ##'
-##' @return A ggplot2 plot or a grid of plots.
+##' @param object       A \code{RiskMap.spatial.cv} object.
+##' @param mode         One of \code{"average"} (average curve across test sets),
+##'                     \code{"single"} (a specific test set),
+##'                     or \code{"all"} (every test set separately).
+##' @param test_set     Integer; required when \code{mode = "single"}.
+##' @param model_name   Optional character string; if supplied,
+##'                     only that model is plotted.
+##' @param combine_panels Logical; when \code{mode = "average"}, draw
+##'                       all models in a single panel (\code{TRUE})
+##'                       or one panel per model (\code{FALSE}, default).
+##'
+##' @return A \pkg{ggplot2} object (single plot) or a \pkg{ggpubr} grid.
+##'
 ##' @importFrom ggplot2 ggplot aes geom_line geom_abline labs theme_minimal guides guide_legend
-##' @importFrom ggpubr ggarrange
-##' @importFrom dplyr filter group_by summarize %>%
+##' @importFrom ggpubr  ggarrange
+##' @importFrom dplyr   filter group_by summarize %>%
+##' @importFrom stats    ecdf
 ##' @export
-plot_AnPIT <- function(object, mode = "average", test_set = NULL, model_name = NULL, combine_panels = FALSE) {
-  # Initailize global variables
-  model <- NULL
-  u_val <- NULL
-  AnPIT <- NULL
+plot_AnPIT <- function(object,
+                       mode = "average",
+                       test_set = NULL,
+                       model_name = NULL,
+                       combine_panels = FALSE) {
 
-  if (!inherits(object, "RiskMap.spatial.cv")) {
-    stop("`object` must be a 'Riskmap.spatial.cv' object obtained as an output from the function 'assess_pp'")
-  }
+  if (!inherits(object, "RiskMap.spatial.cv"))
+    stop("`object` must be a 'RiskMap.spatial.cv' produced by assess_pp().")
 
-  if (is.null(object$model[[1]]$AnPIT)) {
-    stop("The AnPIT was not computed when running the 'assess_pp' function")
-  }
+  all_models <- names(object$model)
 
-  # Ensure model_name matches an existing model
   if (!is.null(model_name)) {
-    if (!model_name %in% names(object$model)) {
-      stop(paste("Model name", model_name, "not found in the provided object."))
+    if (!model_name %in% all_models)
+      stop("Model name '", model_name, "' not found in `object$model`.")
+    all_models <- model_name
+  }
+
+  make_df <- function(mname) {
+    m <- object$model[[mname]]
+    if (!is.null(m$AnPIT)) {
+      lapply(seq_along(m$AnPIT), function(j) {
+        curve_vals <- m$AnPIT[[j]]
+        if (length(curve_vals) == 0) return(NULL)
+        data.frame(
+          u_val   = seq(0, 1, length.out = length(curve_vals)),
+          value   = curve_vals,
+          test_set = j,
+          model    = mname,
+          type     = "AnPIT"
+        )
+      })
+    } else if (!is.null(m$PIT)) {
+      u_grid <- seq(0, 1, length.out = 1000)
+      lapply(seq_along(m$PIT), function(j) {
+        pit_vec <- m$PIT[[j]]
+        if (length(pit_vec) == 0) return(NULL)
+        data.frame(
+          u_val   = u_grid,
+          value   = ecdf(pit_vec)(u_grid),
+          test_set = j,
+          model    = mname,
+          type     = "PIT"
+        )
+      })
+    } else {
+      NULL
     }
-    object <- list(model_name = object$model[[model_name]])
-    names(object) <- model_name
   }
 
-  # Create a data frame for plotting
-  plot_data <- do.call(rbind, lapply(seq_along(object)[-length(object)], function(i) {
-    AnPIT_list <- object$model[[i]]$AnPIT
-    model_name <- names(object$model)[i]
-    do.call(rbind, lapply(seq_along(AnPIT_list), function(j) {
-      test_set_data <- AnPIT_list[[j]]
-      if (length(test_set_data) == 0) return(NULL)
-      data.frame(
-        u_val = seq(0, 1, length.out = length(test_set_data)),
-        AnPIT = test_set_data,
-        test_set = j,
-        model = model_name
-      )
-    }))
-  }))
+  plot_data <- do.call(rbind, unlist(lapply(all_models, make_df), recursive = FALSE))
 
-  # Ensure plot_data is valid
-  if (is.null(plot_data) || nrow(plot_data) == 0) {
-    stop("No valid AnPIT data available for plotting.")
-  }
+  if (is.null(plot_data) || nrow(plot_data) == 0)
+    stop("No AnPIT or PIT data available for plotting.")
 
-  id_line <- geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red")
+  y_label <- unique(plot_data$type)
+  if (length(y_label) > 1) y_label <- "Calibration curve"
+
+  id_line <- geom_abline(intercept = 0, slope = 1,
+                         linetype = "dashed", colour = "red")
 
   if (mode == "average" && combine_panels) {
-    # Combine all models into a single plot
-    avg_data <- plot_data %>%
-      group_by(model, u_val) %>%
-      summarize(AnPIT = mean(AnPIT, na.rm = TRUE), .groups = 'drop')
+    avg <- plot_data %>%
+      dplyr::group_by(model, u_val) %>%
+      dplyr::summarize(value = mean(value), .groups = "drop")
 
-    p <- ggplot(avg_data, aes(x = u_val, y = AnPIT, color = model)) +
-      geom_line() +
-      labs(title = "Average AnPIT Across Models", x = "", y = "AnPIT") +
-      theme_minimal() +
-      guides(color = guide_legend(title = "Model")) +
-      id_line
-    return(p)
-  }
-
-  # Handle other modes or non-combined "average"
-  plots <- list()
-  for (model_id in unique(plot_data$model)) {
-    model_data <- plot_data %>% filter(model == model_id)
-
-    if (mode == "average") {
-      avg_data <- model_data %>%
-        group_by(u_val) %>%
-        summarize(AnPIT = mean(AnPIT, na.rm = TRUE), .groups = 'drop')
-      p <- ggplot(avg_data, aes(x = u_val, y = AnPIT)) +
-        geom_line() +
-        labs(title = paste("Model", model_id, "- Average AnPIT"), x = "", y = "AnPIT") +
-        theme_minimal()
-
-    } else if (mode == "single") {
-      if (is.null(test_set)) {
-        stop("`test_set` must be provided when `mode` is 'single'")
-      }
-      model_data <- model_data %>% filter(test_set == !!test_set)
-
-      if (nrow(model_data) == 0) {
-        stop(paste("No data available for test_set:", test_set, "in model", model_id))
-      }
-
-      p <- ggplot(model_data, aes(x = u_val, y = AnPIT)) +
-        geom_line(color = "blue") +
-        labs(title = paste("Model", model_id, "- Test Set:", test_set), x = "", y = "AnPIT") +
-        theme_minimal()
-
-    } else if (mode == "all") {
-      p <- ggplot(model_data, aes(x = u_val, y = AnPIT, color = as.factor(test_set))) +
-        geom_line() +
-        labs(title = paste("Model", model_id, "- All Test Sets"), x = "", y = "AnPIT") +
+    return(
+      ggplot(avg, aes(u_val, value, colour = model)) +
+        geom_line() + id_line +
+        labs(title = "Average calibration curves",
+             x = "", y = y_label) +
         theme_minimal() +
-        guides(color = guide_legend(title = "Test Set"))
-
-    } else {
-      stop("Invalid `mode`. Use 'average', 'single', or 'all'.")
-    }
-
-    p <- p + id_line
-    plots[[model_id]] <- p
+        guides(colour = guide_legend(title = "Model"))
+    )
   }
 
-  n_plots <- length(plots)
-  ncol <- ifelse(n_plots == 1, 1, 2)
-  nrow <- ceiling(n_plots / ncol)
-  grid_plot <- ggpubr::ggarrange(plotlist = plots, ncol = ncol, nrow = nrow)
+  build_plot <- function(df, title_suffix = "") {
+    ggplot(df, aes(u_val, value,
+                   colour = if (mode == "all") as.factor(test_set) else NULL)) +
+      geom_line() + id_line +
+      labs(title = title_suffix, x = "", y = unique(df$type)) +
+      theme_minimal() +
+      guides(colour = guide_legend(title = "Test set"))
+  }
 
-  return(grid_plot)
+  plots <- list()
+  for (mname in all_models) {
+    df_model <- dplyr::filter(plot_data, model == mname)
+
+    p <- switch(mode,
+                average = {
+                  avg <- df_model %>%
+                    dplyr::group_by(u_val) %>%
+                    dplyr::summarize(value = mean(value), .groups = "drop")
+                  avg$type <- unique(df_model$type)
+                  build_plot(avg, paste("Model", mname, ": average"))
+                },
+                single  = {
+                  if (is.null(test_set))
+                    stop("Provide `test_set` when mode = 'single'.")
+                  df_ts <- dplyr::filter(df_model, test_set == test_set)
+                  if (nrow(df_ts) == 0)
+                    stop("No data for test_set ", test_set, " in model ", mname)
+                  build_plot(df_ts,
+                             paste("Model", mname, "- test set", test_set))
+                },
+                all     = build_plot(df_model,
+                                     paste("Model", mname, "- all test sets")),
+                stop("Invalid `mode`. Use 'average', 'single' or 'all'.")
+    )
+
+    plots[[mname]] <- p
+  }
+
+  if (length(plots) == 1) {
+    plots[[1]]
+  } else {
+    ncol <- ifelse(length(plots) == 2, 2, 2)
+    nrow <- ceiling(length(plots) / ncol)
+    ggpubr::ggarrange(plotlist = plots, ncol = ncol, nrow = nrow)
+  }
 }
+
 
 ##' @title Plot Spatial Scores for a Specific Model and Metric
 ##'
@@ -1130,7 +1236,7 @@ plot_score <- function(object, which_score, which_model, ...) {
   n_test <- length(test_sets)
 
   # Combine the data and add the score variable
-  data_full <- test_sets[[1]]
+  data_full <- st_as_sf(test_sets[[1]])
   data_full$score <- object$model[[which_model]]$score[[which_score]][[1]]
 
   if (n_test > 1) {
@@ -1142,8 +1248,12 @@ plot_score <- function(object, which_score, which_model, ...) {
 
   # Check for duplicate locations and average the score
   data_full <- data_full %>%
-    group_by(geometry) %>%
-    summarize(score = mean(score, na.rm = TRUE), .groups = "drop")
+    mutate(geom_id = st_as_text(geometry)) %>%
+    group_by(geom_id) %>%
+    summarize(score = mean(score, na.rm = TRUE),
+              geometry = first(geometry), .groups = "drop") %>%
+    st_as_sf()
+
 
   # Create the base plot
   out <- ggplot(data = data_full) +
@@ -1162,6 +1272,7 @@ plot_score <- function(object, which_score, which_model, ...) {
 ##'
 ##' @param object A fitted DAST model object, obtained as an output from the function \code{\link{dast}}.
 ##' @param n_sim Number of posterior samples to simulate (default: 10000).
+##' @param x_min Minimum value for the x-axis (default: 1 year).
 ##' @param x_max Maximum value for the x-axis (default: 10 years).
 ##' @param conf_level Confidence level for the uncertainty interval (default: 0.95).
 ##' @param lower_f Optional lower bound for the y-axis.
@@ -1172,7 +1283,7 @@ plot_score <- function(object, which_score, which_model, ...) {
 ##'
 ##' @importFrom ggplot2 coord_cartesian geom_ribbon geom_line
 ##' @export
-plot_mda <- function(object, n_sim = 10000, x_max = 10, conf_level = 0.95,
+plot_mda <- function(object, n_sim = 10000, x_min = 1, x_max = 10, conf_level = 0.95,
                      lower_f = NULL, upper_f = NULL, ...) {
 
   .data <- NULL
@@ -1201,8 +1312,8 @@ plot_mda <- function(object, n_sim = 10000, x_max = 10, conf_level = 0.95,
     alpha * exp(-(x / gamma)^kappa)
   }
 
-  # Generate x-axis values
-  x_vals <- seq(0, x_max, length.out = 100)
+  # Generate x-axis values using x_min and x_max
+  x_vals <- seq(x_min, x_max, length.out = 100)
 
   # Compute median and confidence intervals
   f_vals <- apply(par_hat_sim, 1, function(params) {
@@ -1236,7 +1347,7 @@ plot_mda <- function(object, n_sim = 10000, x_max = 10, conf_level = 0.95,
     geom_ribbon(aes(ymin = .data$lower, ymax = .data$upper), fill = "grey70", alpha = 0.3) +
     geom_line(aes(y = median), color = "black", linewidth = 1) +
     labs(x = "Years since MDA", y = "Prevalence Relative Reduction", title = "MDA Impact Function") +
-    coord_cartesian(ylim = c(lower_f, upper_f)) +
+    coord_cartesian(xlim = c(x_min, x_max), ylim = c(lower_f, upper_f)) +
     theme_minimal()
 }
 
