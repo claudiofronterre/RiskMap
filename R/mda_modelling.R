@@ -237,7 +237,9 @@ dast <- function(formula,
                                    psi = NULL,
                                    sigma2_re = NULL,
                                    gamma = NULL,
-                                   alpha = NULL)) {
+                                   alpha = NULL),
+                 alpha_start = 0.5,
+                 gamma_start = 2.5) {
 
   nong <- TRUE
 
@@ -543,8 +545,8 @@ dast <- function(formula,
                   par0 = par0, cov_offset = cov_offset,
                   power_val = power_val,
                   start_beta = start_pars$beta,
-                  start_alpha = 0.5,
-                  start_gamma = 2.5,
+                  alpha_start = alpha_start,
+                  gamma_start = gamma_start,
                   start_cov_pars = c(start_pars$sigma2,
                                      start_pars$phi,
                                      start_pars$tau2,
