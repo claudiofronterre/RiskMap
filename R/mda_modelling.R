@@ -473,9 +473,9 @@ dast <- function(formula,
                                  mda_times, power_val = power_val)
     start_pars$beta <- dast_i$beta
     if(is.null(drop)) {
-      start_pars$alpha <- dast_i$alpha
+      start_pars$alpha <- alpha_start
     }
-    start_pars$gamma <- dast_i$gamma
+    start_pars$gamma <- gamma_start
   } else {
     if(length(start_pars$beta)!=ncol(D)) stop("number of starting values provided
                                               for 'beta' do not match the number of
@@ -545,8 +545,8 @@ dast <- function(formula,
                   par0 = par0, cov_offset = cov_offset,
                   power_val = power_val,
                   start_beta = start_pars$beta,
-                  alpha_start = alpha_start,
-                  gamma_start = gamma_start,
+                  start_alpha = start_pars$alpha,
+                  start_gamma = start_pars$gamma,
                   start_cov_pars = c(start_pars$sigma2,
                                      start_pars$phi,
                                      start_pars$tau2,
