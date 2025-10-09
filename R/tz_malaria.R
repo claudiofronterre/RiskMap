@@ -31,5 +31,9 @@
 ##' @usage data(tz_malaria)
 ##' @keywords datasets
 ##'
-##' @source \href{https://dhsprogram.com}{Tanzania Demographic Health Surveys 2015}, Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ. 2021 Model building and assessment of the impact of covariates for disease prevalence mapping in low-resource settings: to explain and to predict. J. R. Soc. Interface 18: 20210104. \href{https://doi.org/10.1098/rsif.2021.0104}{https://doi.org/10.1098/rsif.2021.0104}
+##' @source \href{https://dhsprogram.com}{Tanzania Demographic Health Surveys 2015},
+##' Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ. (2021)
+##' Model building and assessment of the impact of covariates for disease prevalence
+##' mapping in low-resource settings: to explain and to predict.
+##' J. R. Soc. Interface 18: 20210104. \doi{10.1098/rsif.2021.0104}
 NULL
