@@ -21,7 +21,8 @@ pred_target_shp(
   include_re = FALSE,
   f_target = NULL,
   pd_summary = NULL,
-  messages = TRUE
+  messages = TRUE,
+  return_target_samples = FALSE
 )
 }
 \arguments{
@@ -52,10 +53,17 @@ pred_target_shp(
 \item{f_target}{List of target functions to apply to the linear predictor samples.}
 
 \item{pd_summary}{List of summary functions (e.g., mean, sd) to summarize target samples.}
+
+\item{return_target_samples}{Logical indicating whether to return raw samples of the predictive targets for each region (default is FALSE).}
 }
 \value{
-An object of class 'RiskMap_pred_target_shp' containing computed targets,
-summaries, and associated spatial data.
+An object of class 'RiskMap_pred_target_shp' containing:
+\itemize{
+  \item \code{target} – summaries of predictive targets by region.
+  \item \code{target_samples} – raw samples of predictive targets (if \code{return_target_samples=TRUE}).
+  \item \code{shp} – spatial object with appended summary statistics.
+  \item \code{f_target}, \code{pd_summary}, \code{grid_pred}.
+}
 }
 \description{
 Computes predictions over a shapefile using outputs from the
