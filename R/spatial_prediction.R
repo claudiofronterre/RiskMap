@@ -1389,7 +1389,8 @@ update_predictors <- function(object, predictors) {
     stop("The object passed to 'object' must be an output of the function 'glgpm'")
   }
 
-  list_mode <- is.list(object$grid_pred)
+  list_mode <- is.list(object$grid_pred) && !is.null(object$grid_pred) &
+    !any(class(object$grid_pred)=="sf" | class(object$grid_pred)=="sfc")
   par_hat <- object$par_hat
   p <- length(par_hat$beta)
 
