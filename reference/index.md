@@ -1,0 +1,114 @@
+# Package index
+
+## All functions
+
+- [`Laplace_sampling_MCMC()`](https://claudiofronterre.github.io/RiskMap/reference/Laplace_sampling_MCMC.md)
+  : Laplace Sampling Markov Chain Monte Carlo (MCMC) for Generalized
+  Linear Gaussian Process Models
+- [`abund_sma`](https://claudiofronterre.github.io/RiskMap/reference/abund_sma.md)
+  : Female Culex pipiens abundance (collections) in the Sacramento
+  Metropolitan Area
+- [`anopheles`](https://claudiofronterre.github.io/RiskMap/reference/anopheles.md)
+  : Anopheles mosquitoes in Southern Cameroon
+- [`assess_pp()`](https://claudiofronterre.github.io/RiskMap/reference/assess_pp.md)
+  : Assess Predictive Performance via Spatial Cross-Validation
+- [`assess_sim()`](https://claudiofronterre.github.io/RiskMap/reference/assess_sim.md)
+  : Assess Simulations
+- [`check_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/check_mcmc.md)
+  : Check MCMC Convergence for Spatial Random Effects
+- [`coef(`*`<RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md)
+  : Extract Parameter Estimates from a "RiskMap" Model Fit
+- [`compute_ID_coords()`](https://claudiofronterre.github.io/RiskMap/reference/compute_ID_coords.md)
+  : Compute Unique Coordinate Identifiers
+- [`convex_hull_sf()`](https://claudiofronterre.github.io/RiskMap/reference/convex_hull_sf.md)
+  : Convex Hull of an sf Object
+- [`create_grid()`](https://claudiofronterre.github.io/RiskMap/reference/create_grid.md)
+  : Create Grid of Points Within Shapefile
+- [`dast()`](https://claudiofronterre.github.io/RiskMap/reference/dast.md)
+  : Fitting of decay-adjusted spatio-temporal (DAST) model
+- [`dist_summaries()`](https://claudiofronterre.github.io/RiskMap/reference/dist_summaries.md)
+  : Summaries of the distances
+- [`galicia`](https://claudiofronterre.github.io/RiskMap/reference/galicia.md)
+  : Heavy metal biomonitoring in Galicia
+- [`get_epsg_utm()`](https://claudiofronterre.github.io/RiskMap/reference/get_epsg_utm.md)
+  : Get EPSG code for appropriate UTM zone
+- [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+  : Estimation of Generalized Linear Gaussian Process Models
+- [`glgpm_sim()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm_sim.md)
+  : Simulation from Generalized Linear Gaussian Process Models
+- [`gp()`](https://claudiofronterre.github.io/RiskMap/reference/gp.md) :
+  Gaussian Process Model Specification
+- [`infect_sma`](https://claudiofronterre.github.io/RiskMap/reference/infect_sma.md)
+  : West Nile virus pool tests for female \*Culex pipiens\* in the
+  Sacramento Metropolitan Area
+- [`italy_sim`](https://claudiofronterre.github.io/RiskMap/reference/italy_sim.md)
+  : Simulated data-set on the Italian peninsula
+- [`liberia`](https://claudiofronterre.github.io/RiskMap/reference/liberia.md)
+  : River-blindness in Liberia
+- [`loaloa`](https://claudiofronterre.github.io/RiskMap/reference/loaloa.md)
+  : Loa loa prevalence data from 197 village surveys
+- [`malkenya`](https://claudiofronterre.github.io/RiskMap/reference/malkenya.md)
+  : Malaria Transmission in the Western Kenyan Highlands
+- [`malnutrition`](https://claudiofronterre.github.io/RiskMap/reference/malnutrition.md)
+  : Malnutrition in Ghana
+- [`matern.grad.phi()`](https://claudiofronterre.github.io/RiskMap/reference/matern.grad.phi.md)
+  : First Derivative with Respect to \\\phi\\
+- [`matern.hessian.phi()`](https://claudiofronterre.github.io/RiskMap/reference/matern.hessian.phi.md)
+  : Second Derivative with Respect to \\\phi\\
+- [`matern_cor()`](https://claudiofronterre.github.io/RiskMap/reference/matern_cor.md)
+  : Matern Correlation Function
+- [`maxim.integrand()`](https://claudiofronterre.github.io/RiskMap/reference/maxim.integrand.md)
+  : Maximization of the Integrand for Generalized Linear Gaussian
+  Process Models
+- [`plot(`*`<RiskMap_pred_target_grid>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_pred_target_grid.md)
+  : Plot Method for RiskMap_pred_target_grid Objects
+- [`plot(`*`<RiskMap_pred_target_shp>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_pred_target_shp.md)
+  : Plot Method for RiskMap_pred_target_shp Objects
+- [`plot_AnPIT()`](https://claudiofronterre.github.io/RiskMap/reference/plot_AnPIT.md)
+  : Plot Calibration Curves (AnPIT / PIT) from Spatial Cross-Validation
+- [`plot_mda()`](https://claudiofronterre.github.io/RiskMap/reference/plot_mda.md)
+  : Plot the estimated MDA impact function
+- [`plot_s_variogram()`](https://claudiofronterre.github.io/RiskMap/reference/plot_s_variogram.md)
+  : Plotting the empirical variogram
+- [`plot_score()`](https://claudiofronterre.github.io/RiskMap/reference/plot_score.md)
+  : Plot Spatial Scores for a Specific Model and Metric
+- [`plot_sim_surf()`](https://claudiofronterre.github.io/RiskMap/reference/plot_sim_surf.md)
+  : Plot simulated surface data for a given simulation
+- [`pred_over_grid()`](https://claudiofronterre.github.io/RiskMap/reference/pred_over_grid.md)
+  : Prediction of the random effects components and covariates effects
+  over a spatial grid using a fitted generalized linear Gaussian process
+  model
+- [`pred_target_grid()`](https://claudiofronterre.github.io/RiskMap/reference/pred_target_grid.md)
+  : Predictive Target Over a Regular Spatial Grid
+- [`pred_target_shp()`](https://claudiofronterre.github.io/RiskMap/reference/pred_target_shp.md)
+  : Predictive Target over a Shapefile
+- [`print(`*`<summary.RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap.md)
+  : Print Summary of RiskMap Model
+- [`print(`*`<summary.RiskMap.sim.res>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap.sim.res.md)
+  : Print Simulation Results
+- [`print(`*`<summary.RiskMap.spatial.cv>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap.spatial.cv.md)
+  : Print Summary of RiskMap Spatial Cross-Validation Scores
+- [`propose_utm()`](https://claudiofronterre.github.io/RiskMap/reference/propose_utm.md)
+  : EPSG of the UTM Zone
+- [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md) :
+  Random Effect Model Specification
+- [`s_variogram()`](https://claudiofronterre.github.io/RiskMap/reference/s_variogram.md)
+  : Empirical variogram
+- [`set_control_sim()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_sim.md)
+  : Set Control Parameters for Simulation
+- [`summary(`*`<RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
+  : Summarize Model Fits
+- [`summary(`*`<RiskMap.sim.res>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.sim.res.md)
+  : Summarize Simulation Results
+- [`summary(`*`<RiskMap.spatial.cv>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.spatial.cv.md)
+  : Summarize Cross-Validation Scores for Spatial RiskMap Models
+- [`surf_sim()`](https://claudiofronterre.github.io/RiskMap/reference/surf_sim.md)
+  : Simulate surface data based on a spatial model
+- [`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
+  : Generate LaTeX Tables from RiskMap Model Fits and Validation
+- [`tz_covariates`](https://claudiofronterre.github.io/RiskMap/reference/tz_covariates.md)
+  : Covariates Dataset for Malaria Prediction in Tanzania
+- [`tz_malaria`](https://claudiofronterre.github.io/RiskMap/reference/tz_malaria.md)
+  : Malaria Dataset from Tanzania Demographic Health Surveys 2015
+- [`update_predictors()`](https://claudiofronterre.github.io/RiskMap/reference/update_predictors.md)
+  : Update Predictors for a RiskMap Prediction Object
