@@ -237,9 +237,7 @@ dast <- function(formula,
                                    psi = NULL,
                                    sigma2_re = NULL,
                                    gamma = NULL,
-                                   alpha = NULL),
-                 alpha_start = 0.5,
-                 gamma_start = 2.5) {
+                                   alpha = NULL)) {
 
   nong <- TRUE
 
@@ -473,9 +471,9 @@ dast <- function(formula,
                                  mda_times, power_val = power_val)
     start_pars$beta <- dast_i$beta
     if(is.null(drop)) {
-      start_pars$alpha <- alpha_start
+      start_pars$alpha <- dast_i$alpha
     }
-    start_pars$gamma <- gamma_start
+    start_pars$gamma <- dast_i$gamma
   } else {
     if(length(start_pars$beta)!=ncol(D)) stop("number of starting values provided
                                               for 'beta' do not match the number of
