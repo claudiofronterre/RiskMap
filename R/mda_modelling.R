@@ -606,6 +606,387 @@ dast <- function(formula,
 }
 
 
+##' Simulation from Decay-adjusted Spatio-temporal (DAST) models
+##'
+##' Simulates data from a fitted DAST model object (output from \\code{dast})
+##' or from user-specified DAST parameters.
+##'
+##' @param n_sim Number of simulations.
+##' @param model_fit Optional fitted DAST model object of class \\code{RiskMap}.
+##' If supplied, it overrides model specification arguments.
+##' @param formula Model formula including a \\code{gp()} term.
+##' @param data Data frame or \\code{sf} object used for simulation.
+##' @param den Binomial denominator variable. If missing, it is assumed to be 1.
+##' @param time Survey-time information. For simulations from scratch this can be a
+##' column in \\code{data} (unquoted name or character string) or a numeric vector
+##' of length \\code{nrow(data)}.
+##' @param mda_times Vector of MDA times.
+##' @param int_mat Intervention matrix (n x length(mda_times)) with coverage values.
+##' @param power_val Power value for the MDA impact function.
+##' @param cov_offset Optional offset for the linear predictor.
+##' @param crs Coordinate reference system (CRS) code.
+##' @param convert_to_crs Optional CRS to transform coordinates to before simulation.
+##' @param scale_to_km Logical; if TRUE distances are computed in kilometers.
+##' @param sim_pars List of simulation parameters. Used only when \\code{model_fit}
+##' is \\code{NULL}. Includes \\code{beta}, \\code{sigma2}, \\code{tau2}, \\code{phi},
+##' \\code{psi}, \\code{sigma2_re}, \\code{alpha}, and \\code{gamma}.
+##' @param messages Logical; if TRUE print progress messages.
+##'
+##' @return A list with simulated responses added to \\code{data_sim}, simulated
+##' latent components and parameter values used for simulation.
+##' @export
+dast_sim <- function(n_sim,
+                     model_fit = NULL,
+                     formula = NULL,
+                     data = NULL,
+                     den = NULL,
+                     time = NULL,
+                     mda_times = NULL,
+                     int_mat = NULL,
+                     power_val = NULL,
+                     cov_offset = NULL,
+                     crs = NULL,
+                     convert_to_crs = NULL,
+                     scale_to_km = TRUE,
+                     sim_pars = list(beta = NULL,
+                                     sigma2 = NULL,
+                                     tau2 = NULL,
+                                     phi = NULL,
+                                     psi = NULL,
+                                     sigma2_re = NULL,
+                                     alpha = NULL,
+                                     gamma = NULL),
+                     messages = TRUE) {
+
+  if (!is.null(model_fit)) {
+    if (!inherits(model_fit, what = "RiskMap", which = FALSE)) {
+      stop("'model_fit' must be of class 'RiskMap'")
+    }
+    if (is.null(model_fit$power_val)) {
+      stop("'model_fit' does not look like an output from 'dast'")
+    }
+    formula <- as.formula(model_fit$formula)
+    data <- model_fit$data_sf
+    crs <- model_fit$crs
+    convert_to_crs <- model_fit$convert_to_crs
+    scale_to_km <- model_fit$scale_to_km
+    power_val <- model_fit$power_val
+    mda_times <- model_fit$mda_times
+    int_mat <- model_fit$int_mat
+    time <- model_fit$survey_times_data
+  }
+
+  if (!inherits(formula, what = "formula", which = FALSE)) {
+    stop("'formula' must be a 'formula'\n         object indicating the variables of the\n         model to be fitted")
+  }
+
+  inter_f <- interpret.formula(formula)
+  gp_terms <- inter_f$gp.spec$term
+  gp_dim <- inter_f$gp.spec$dim
+
+  # Survey time and optional GP time index
+  sst <- FALSE
+  gp_time_obs <- NULL
+
+  if (is.null(model_fit)) {
+    time_name <- deparse(substitute(time))
+    if (time_name != "NULL" && time_name %in% names(data)) {
+      survey_times_data <- data[[time_name]]
+    } else if (is.character(time) && length(time) == 1 && time %in% names(data)) {
+      survey_times_data <- data[[time]]
+    } else if (length(time) == nrow(data)) {
+      survey_times_data <- as.numeric(time)
+    } else {
+      stop("You must supply survey times through `time` as a column in 'data' or as a numeric vector of length nrow(data).")
+    }
+  } else {
+    survey_times_data <- as.numeric(time)
+  }
+
+  if (length(gp_terms) == 1 && gp_terms[1] == "sf") {
+    sst <- FALSE
+  } else if (gp_dim == 3) {
+    sst <- TRUE
+    gp_time_obs <- data[[gp_terms[3]]]
+  } else if (gp_dim == 2) {
+    sst <- FALSE
+  } else {
+    stop("Specify gp(x, y), gp(x, y, t), or gp(sf).")
+  }
+
+  if(length(crs)>0) {
+    if(!is.numeric(crs) |
+       (is.numeric(crs) &
+          (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
+  }
+  if(class(data)[1]=="data.frame") {
+    if(is.null(crs)) {
+      warning("'crs' is set to 4326 (long/lat)")
+      crs <- 4326
+    }
+    if(length(gp_terms)>1 && gp_terms[1] != "sf") {
+      new_x <- paste(gp_terms[1],"_sf",sep="")
+      new_y <- paste(gp_terms[2],"_sf",sep="")
+      data[[new_x]] <-  data[[gp_terms[1]]]
+      data[[new_y]] <-  data[[gp_terms[2]]]
+      data <- sf::st_as_sf(data,
+                           coords = c(new_x, new_y),
+                           crs = crs)
+    }
+  }
+
+  if(length(gp_terms) == 1 & gp_terms[1]=="sf" &
+     class(data)[1]!="sf") stop("'data' must be an object of class 'sf'")
+
+  if(class(data)[1]=="sf") {
+    if(is.na(sf::st_crs(data)) & is.null(crs)) {
+      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
+    } else if(is.na(sf::st_crs(data))) {
+      data <- sf::st_as_sf(data, crs = crs)
+    }
+  }
+
+  kappa <- inter_f$gp.spec$kappa
+  if(kappa < 0) stop("kappa must be positive.")
+
+  mf <- model.frame(inter_f$pf,data=data, na.action = na.fail)
+  D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
+  n <- nrow(D)
+
+  if (is.null(cov_offset)) {
+    if (is.null(inter_f$offset)) {
+      cov_offset <- rep(0, n)
+    } else {
+      cov_offset <- data[[inter_f$offset]]
+    }
+  }
+
+  # denominator
+  if(!is.null(den)) {
+    do_name <- deparse(substitute(den))
+    if (do_name != "NULL") {
+      units_m <- data[[do_name]]
+    } else {
+      units_m <- den
+    }
+  } else if (!is.null(model_fit)) {
+    units_m <- model_fit$units_m
+  } else {
+    units_m <- rep(1, n)
+    warning("'den' is assumed to be 1 for all observations")
+  }
+  if(is.integer(units_m)) units_m <- as.numeric(units_m)
+  if(!is.numeric(units_m)) stop("the variable passed to `den` must be numeric")
+
+  if (length(survey_times_data) != n) {
+    stop("'time' must have length equal to the number of observations")
+  }
+  if (is.null(mda_times) || length(mda_times) < 1) {
+    stop("'mda_times' must be provided")
+  }
+  if (is.null(int_mat)) {
+    stop("'int_mat' must be provided")
+  }
+  int_mat <- as.matrix(int_mat)
+  if (nrow(int_mat) != n || ncol(int_mat) != length(mda_times)) {
+    stop("'int_mat' must have dimensions nrow(data) x length(mda_times)")
+  }
+  if (is.null(power_val)) stop("'power_val' must be provided")
+
+  if(length(inter_f$re.spec) > 0) {
+    hr_re <- inter_f$re.spec$term
+  } else {
+    hr_re <- NULL
+  }
+
+  if(!is.null(hr_re)) {
+    re_mf <- sf::st_drop_geometry(data[hr_re])
+    re_mf_n <- re_mf
+
+    if(any(is.na(re_mf))) stop("Missing values in the variable(s) of the random effects specified through re()")
+    names_re <- colnames(re_mf)
+    n_re <- ncol(re_mf)
+
+    ID_re <- matrix(NA, nrow = n, ncol = n_re)
+    re_unique <- list()
+    re_unique_f <- list()
+    for(i in 1:n_re) {
+      if(is.factor(re_mf[,i])) {
+        re_mf_n[,i] <- as.numeric(re_mf[,i])
+        re_unique[[names_re[i]]] <- 1:length(levels(re_mf[,i]))
+        ID_re[, i] <- sapply(1:n,
+                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
+        re_unique_f[[names_re[i]]] <-levels(re_mf[,i])
+      } else if(is.numeric(re_mf[,i])) {
+        re_unique[[names_re[i]]] <- unique(re_mf[,i])
+        ID_re[, i] <- sapply(1:n,
+                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
+        re_unique_f[[names_re[i]]] <- re_unique[[names_re[i]]]
+      }
+    }
+    ID_re <- data.frame(ID_re)
+    colnames(ID_re) <- names_re
+  } else {
+    n_re <- 0
+    re_unique <- NULL
+    ID_re <- NULL
+  }
+
+  if(!is.null(convert_to_crs)) {
+    if(!is.numeric(convert_to_crs)) stop("'convert_to_crs' must be a numeric object")
+    data <- sf::st_transform(data, crs = convert_to_crs)
+    crs <- convert_to_crs
+  }
+
+  if(messages) message("The CRS used is ", as.list(sf::st_crs(data))$input, "\n")
+
+  coords_o <- sf::st_coordinates(data)
+  if(sst) {
+    coords_time <- unique(cbind(coords_o, gp_time_obs))
+    coords <- coords_time[,1:2, drop = FALSE]
+    time_gp <- coords_time[,3]
+  } else {
+    coords <- unique(coords_o)
+    time_gp <- NULL
+  }
+
+  m <- nrow(coords_o)
+  if(sst) {
+    ID_coords <- sapply(1:m, function(i)
+      which(coords_o[i,1]==coords[,1] &
+              coords_o[i,2]==coords[,2] &
+              gp_time_obs[i]==time_gp))
+  } else {
+    ID_coords <- sapply(1:m, function(i)
+      which(coords_o[i,1]==coords[,1] &
+              coords_o[i,2]==coords[,2]))
+  }
+
+  if(scale_to_km) {
+    coords <- coords/1000
+    if(messages) message("Distances between locations are computed in kilometers \n")
+  } else {
+    if(messages) message("Distances between locations are computed in meters \n")
+  }
+
+  if (!is.null(model_fit)) {
+    par_hat <- coef(model_fit)
+    beta <- par_hat$beta
+    sigma2 <- par_hat$sigma2
+    phi <- par_hat$phi
+    if (is.null(model_fit$fix_tau2)) {
+      tau2 <- par_hat$tau2
+    } else {
+      tau2 <- model_fit$fix_tau2
+    }
+    if (is.null(model_fit$fix_alpha)) {
+      alpha <- par_hat$alpha
+    } else {
+      alpha <- model_fit$fix_alpha
+    }
+    gamma <- par_hat$gamma
+    if (sst) psi <- par_hat$psi
+    if(n_re > 0) sigma2_re <- par_hat$sigma2_re
+  } else {
+    beta <- sim_pars$beta
+    sigma2 <- sim_pars$sigma2
+    tau2 <- sim_pars$tau2
+    phi <- sim_pars$phi
+    alpha <- sim_pars$alpha
+    gamma <- sim_pars$gamma
+    psi <- sim_pars$psi
+    sigma2_re <- sim_pars$sigma2_re
+  }
+
+  if(is.null(beta)) stop("'beta' is missing")
+  if(length(beta)!=ncol(D)) stop("the number of values provided for 'beta' does not match the number of covariates")
+  if(is.null(sigma2)) stop("'sigma2' is missing")
+  if(is.null(phi)) stop("'phi' is missing")
+  if(is.null(tau2)) stop("'tau2' is missing")
+  if(is.null(alpha)) stop("'alpha' is missing")
+  if(is.null(gamma)) stop("'gamma' is missing")
+  if(sst && is.null(psi)) stop("'psi' is missing for spatio-temporal DAST simulations")
+  if(n_re>0) {
+    if(is.null(sigma2_re)) stop("'sigma2_re' is missing")
+    if(length(sigma2_re)!=n_re) stop("the values passed to 'sigma2_re' do not match the number of random effects")
+  }
+
+  if(sst) {
+    Sigma <- sigma2*matern_cor(dist(coords), phi = phi, kappa = kappa,
+                                                return_sym_matrix = TRUE) *
+      matern_cor(dist(time_gp), phi = psi, kappa = 0.5,
+                 return_sym_matrix = TRUE)
+  } else {
+    Sigma <- sigma2*matern_cor(dist(coords), phi = phi, kappa = kappa,
+                               return_sym_matrix = TRUE)
+  }
+  diag(Sigma) <- diag(Sigma) + tau2
+
+  Sigma_sroot <- t(chol(Sigma))
+  S_sim <- t(sapply(1:n_sim, function(i) Sigma_sroot %*% rnorm(nrow(coords))))
+
+  if(n_re > 0) {
+    re_names <- if(!is.null(model_fit)) names(model_fit$re) else inter_f$re.spec$term
+    dim_re <- sapply(1:n_re, function(j) length(re_unique[[j]]))
+    re_sim <- vector("list", n_sim)
+    for(i in 1:n_sim) {
+      re_sim[[i]] <- list()
+      for(j in 1:n_re) {
+        re_sim[[i]][[paste(re_names[j])]] <- rnorm(dim_re[j]) * sqrt(sigma2_re[j])
+      }
+    }
+  }
+
+  eta_sim <- t(sapply(1:n_sim, function(i) as.numeric(D %*% beta + cov_offset + S_sim[i,][ID_coords])))
+
+  if(n_re > 0) {
+    for(i in 1:n_sim) {
+      for(j in 1:n_re) {
+        eta_sim[i,] <- eta_sim[i,] + re_sim[[i]][[paste(re_names[j])]][ID_re[,j]]
+      }
+    }
+  }
+
+  mda_effect <- compute_mda_effect(survey_times_data = survey_times_data,
+                                   mda_times = mda_times,
+                                   int_mat = int_mat,
+                                   alpha = alpha,
+                                   gamma = gamma,
+                                   kappa = power_val)
+
+  y_sim <- matrix(NA, nrow = n_sim, ncol = n)
+  for(i in 1:n_sim) {
+    prob_i <- stats::plogis(eta_sim[i,]) * mda_effect
+    prob_i <- pmax(0, pmin(prob_i, 1))
+    y_sim[i,] <- stats::rbinom(n = n, size = units_m, prob = prob_i)
+  }
+
+  data_sim <- if(!is.null(model_fit)) model_fit$data_sf else data
+  for(i in 1:n_sim) {
+    data_sim[[paste(inter_f$response, "_sim", i, sep = "")]] <- y_sim[i,]
+  }
+
+  out <- list(data_sim = data_sim,
+              S_sim = S_sim,
+              lin_pred_sim = eta_sim,
+              mda_effect = mda_effect,
+              beta = beta,
+              sigma2 = sigma2,
+              tau2 = tau2,
+              phi = phi,
+              alpha = alpha,
+              gamma = gamma,
+              power_val = power_val,
+              units_m = units_m)
+  if (sst) out$psi <- psi
+  if (n_re > 0) {
+    out$sigma2_re <- sigma2_re
+    out$re_sim <- re_sim
+  }
+  return(out)
+}
+
+
 
 dast_fit <-
   function(y, D, coords, time, units_m, kappa, penalty,
@@ -1729,5 +2110,4 @@ Laplace_sampling_MCMC_dast <- function(y, units_m, mu, mda_effect, Sigma, ID_coo
 
   return(out_sim)
 }
-
 
