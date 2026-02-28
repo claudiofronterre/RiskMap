@@ -715,6 +715,17 @@ dast_sim <- function(n_sim,
   }
 
   if(length(crs)>0) {
+    if (is.character(crs) && length(crs) == 1) {
+      crs_chr <- trimws(crs)
+      if (grepl("^EPSG:[0-9]+$", crs_chr, ignore.case = TRUE)) {
+        crs_chr <- sub("^EPSG:", "", crs_chr, ignore.case = TRUE)
+      }
+      if (grepl("^[0-9]+$", crs_chr)) {
+        crs <- as.numeric(crs_chr)
+      } else {
+        stop("'crs' must be a positive integer number or a string like 'EPSG:<code>'")
+      }
+    }
     if(!is.numeric(crs) |
        (is.numeric(crs) &
           (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
@@ -949,7 +960,7 @@ dast_sim <- function(n_sim,
 
   mda_effect <- compute_mda_effect(survey_times_data = survey_times_data,
                                    mda_times = mda_times,
-                                   int_mat = int_mat,
+                                   intervention = int_mat,
                                    alpha = alpha,
                                    gamma = gamma,
                                    kappa = power_val)
@@ -2110,4 +2121,3 @@ Laplace_sampling_MCMC_dast <- function(y, units_m, mu, mda_effect, Sigma, ID_coo
 
   return(out_sim)
 }
-
