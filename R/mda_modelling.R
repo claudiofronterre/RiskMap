@@ -632,8 +632,9 @@ dast <- function(formula,
 ##' \\code{psi}, \\code{sigma2_re}, \\code{alpha}, and \\code{gamma}.
 ##' @param messages Logical; if TRUE print progress messages.
 ##'
-##' @return A list with simulated responses added to \\code{data_sim}, simulated
-##' latent components and parameter values used for simulation.
+##' @return A list with simulated outcomes in \\code{data_sim} as an
+##' \\code{n x n_sim} matrix (rows are observations, columns are simulations),
+##' simulated latent components and parameter values used for simulation.
 ##' @export
 dast_sim <- function(n_sim,
                      model_fit = NULL,
@@ -972,10 +973,13 @@ dast_sim <- function(n_sim,
     y_sim[i,] <- stats::rbinom(n = n, size = units_m, prob = prob_i)
   }
 
-  data_sim <- if(!is.null(model_fit)) model_fit$data_sf else data
-  for(i in 1:n_sim) {
-    data_sim[[paste(inter_f$response, "_sim", i, sep = "")]] <- y_sim[i,]
+  data_sim <- t(y_sim)
+  response_name <- if (!is.null(inter_f$response) && nzchar(inter_f$response)) {
+    inter_f$response
+  } else {
+    "y"
   }
+  colnames(data_sim) <- paste(response_name, "_sim", 1:n_sim, sep = "")
 
   out <- list(data_sim = data_sim,
               S_sim = S_sim,

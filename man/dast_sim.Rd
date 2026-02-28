@@ -55,7 +55,7 @@ dast_sim(
 \item{messages}{Logical; if TRUE print progress messages.}
 }
 \value{
-A list with simulated responses added to \code{data_sim}, simulated latent components and parameter values used for simulation.
+A list with simulated outcomes in \code{data_sim} as an \code{n x n_sim} matrix (rows are observations, columns are simulations), simulated latent components and parameter values used for simulation.
 }
 \description{
 Simulates data from a fitted DAST model object (output from \code{dast}) or from user-specified DAST parameters.
