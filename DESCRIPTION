@@ -36,7 +36,6 @@ Imports:
     numDeriv,
     dplyr,
     ggplot2,
-    ggpubr,
     gridExtra,
     rlang,
     sf,
