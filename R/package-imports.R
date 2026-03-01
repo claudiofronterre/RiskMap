@@ -10,8 +10,11 @@
 ##' @importFrom ggplot2 scale_x_continuous scale_color_manual scale_fill_manual scale_linetype_manual
 ##' @importFrom ggplot2 scale_y_continuous
 ##' @importFrom ggplot2 theme_bw
+##' @importFrom rlang sym
 ##' @importFrom gridExtra grid.arrange
 ##' @importFrom stats plogis
 ##' @importFrom dplyr mutate first
 ##' @importFrom sf st_as_text
 NULL
+
+utils::globalVariables(c("lo", "hi", "series", "obs", "n_obs"))

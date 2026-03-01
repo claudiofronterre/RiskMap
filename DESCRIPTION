@@ -38,6 +38,9 @@ Imports:
     ggplot2,
     ggpubr,
     gridExtra,
+    rlang,
     sf,
     sns,
     stars
+Suggests:
+    bayesplot

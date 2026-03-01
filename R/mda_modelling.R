@@ -608,18 +608,18 @@ dast <- function(formula,
 
 ##' Simulation from Decay-adjusted Spatio-temporal (DAST) models
 ##'
-##' Simulates data from a fitted DAST model object (output from \\code{dast})
+##' Simulates data from a fitted DAST model object (output from \code{dast})
 ##' or from user-specified DAST parameters.
 ##'
 ##' @param n_sim Number of simulations.
-##' @param model_fit Optional fitted DAST model object of class \\code{RiskMap}.
+##' @param model_fit Optional fitted DAST model object of class \code{RiskMap}.
 ##' If supplied, it overrides model specification arguments.
-##' @param formula Model formula including a \\code{gp()} term.
-##' @param data Data frame or \\code{sf} object used for simulation.
+##' @param formula Model formula including a \code{gp()} term.
+##' @param data Data frame or \code{sf} object used for simulation.
 ##' @param den Binomial denominator variable. If missing, it is assumed to be 1.
 ##' @param time Survey-time information. For simulations from scratch this can be a
-##' column in \\code{data} (unquoted name or character string) or a numeric vector
-##' of length \\code{nrow(data)}.
+##' column in \code{data} (unquoted name or character string) or a numeric vector
+##' of length \code{nrow(data)}.
 ##' @param mda_times Vector of MDA times.
 ##' @param int_mat Intervention matrix (n x length(mda_times)) with coverage values.
 ##' @param power_val Power value for the MDA impact function.
@@ -627,13 +627,13 @@ dast <- function(formula,
 ##' @param crs Coordinate reference system (CRS) code.
 ##' @param convert_to_crs Optional CRS to transform coordinates to before simulation.
 ##' @param scale_to_km Logical; if TRUE distances are computed in kilometers.
-##' @param sim_pars List of simulation parameters. Used only when \\code{model_fit}
-##' is \\code{NULL}. Includes \\code{beta}, \\code{sigma2}, \\code{tau2}, \\code{phi},
-##' \\code{psi}, \\code{sigma2_re}, \\code{alpha}, and \\code{gamma}.
+##' @param sim_pars List of simulation parameters. Used only when \code{model_fit}
+##' is \code{NULL}. Includes \code{beta}, \code{sigma2}, \code{tau2}, \code{phi},
+##' \code{psi}, \code{sigma2_re}, \code{alpha}, and \code{gamma}.
 ##' @param messages Logical; if TRUE print progress messages.
 ##'
-##' @return A list with simulated outcomes in \\code{data_sim} as an
-##' \\code{n x n_sim} matrix (rows are observations, columns are simulations),
+##' @return A list with simulated outcomes in \code{data_sim} as an
+##' \code{n x n_sim} matrix (rows are observations, columns are simulations),
 ##' simulated latent components and parameter values used for simulation.
 ##' @export
 dast_sim <- function(n_sim,
