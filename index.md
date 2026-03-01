@@ -2,25 +2,64 @@
 
 ## Overview
 
-`RiskMap` provides functions for geo-statistical analysis of both
-continuous and count data using maximum likelihood methods. The models
-implemented in the package use stationary Gaussian processes with Matern
-correlation function to carry out spatial prediction in a geographical
-area of interest. The underpinning theory of the methods implemented in
-the package are found in [Diggle and Giorgi
-(2019)](https://www.routledge.com/Model-based-Geostatistics-for-Global-Public-Health-Methods-and-Applications/Diggle-Giorgi/p/book/9781032093642).
+`RiskMap` provides tools for model-based geostatistical analysis of
+continuous, binomial and Poisson outcomes.
+
+- Fit spatial and spatio-temporal Gaussian process models.
+- Generate predictive surfaces and target summaries.
+- Run simulation-based diagnostics and validation workflows.
+
+The methodology is described in *Model-based Geostatistics for Global
+Public Health* by Diggle and Giorgi.
+
+## Start Here: MBG-R Book
+
+For a full applied guide to using `RiskMap` in real public health
+workflows, see the online book by **Emanuele Giorgi and Claudio
+Fronterre**:
+
+**Model-based geostatistics for global public health using R**
+<https://www.mbgr.org/>
 
 ## Installation
 
-To install the stable version, use:
+Install the stable version from CRAN:
 
 ``` r
 install.packages("RiskMap")
 ```
 
-The development version can be installed using **devtools**:
+Install the development version from GitHub:
 
 ``` r
-# install.packages("devtools") # if not already installed
+# install.packages("devtools")
 devtools::install_github("claudiofronterre/RiskMap")
 ```
+
+## Quickstart
+
+A minimal linear Gaussian geostatistical model of the form
+$Y(x) = \beta_{0} + S(x)$, where $S(x)$ is a spatial Gaussian process
+can be fitted with:
+
+``` r
+library(RiskMap)
+
+data(italy_sim)
+
+fit <- glgpm(
+  formula = y ~ gp(x1, x2),
+  data = italy_sim,
+  family = "gaussian",
+  crs = 32634,
+  messages = FALSE
+)
+
+summary(fit)
+```
+
+## Learn More
+
+- MBG-R book: <https://www.mbgr.org/>
+- Package website: <https://claudiofronterre.github.io/RiskMap/>
+- Issue tracker: <https://github.com/claudiofronterre/RiskMap/issues>
