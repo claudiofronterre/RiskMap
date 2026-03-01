@@ -104,8 +104,8 @@ variables: The CRS of the UTM coordinates is 32736.
 ## Source
 
 [Tanzania Demographic Health Surveys 2015](https://dhsprogram.com),
-Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ. 2021
-Model building and assessment of the impact of covariates for disease
-prevalence mapping in low-resource settings: to explain and to predict.
-J. R. Soc. Interface 18: 20210104.
-<https://doi.org/10.1098/rsif.2021.0104>
+Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ.
+(2021) Model building and assessment of the impact of covariates for
+disease prevalence mapping in low-resource settings: to explain and to
+predict. J. R. Soc. Interface 18: 20210104.
+[doi:10.1098/rsif.2021.0104](https://doi.org/10.1098/rsif.2021.0104)

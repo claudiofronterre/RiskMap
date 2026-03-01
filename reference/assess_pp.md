@@ -143,7 +143,6 @@ proper scoring rules. \*Statistical Science\*, 38(1), 140–159.
 
 ## See also
 
-`spatial_clustering_cv`, `subsample.distance`,
 [`plot_AnPIT`](https://claudiofronterre.github.io/RiskMap/reference/plot_AnPIT.md)
 
 ## Author

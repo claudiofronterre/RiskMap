@@ -65,6 +65,11 @@ maxim.integrand(
 
   Logical; if TRUE, compute the gradient vector.
 
+- invlink:
+
+  A function that defines the inverse of the link function for the
+  distribution of the data given the random effects.
+
 ## Value
 
 A list containing the mode estimate, and optionally, the Hessian matrix

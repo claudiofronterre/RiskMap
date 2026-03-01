@@ -10,14 +10,14 @@
 
 ## Citation
 
-Giorgi E (2025). *RiskMap: Geo-Statistical Modeling of Spatially
+Giorgi E (2026). *RiskMap: Geostatistical Modeling of Spatially
 Referenced Data*. R package version 1.0.0,
 <https://claudiofronterre.github.io/RiskMap/>.
 
     @Manual{,
-      title = {RiskMap: Geo-Statistical Modeling of Spatially Referenced Data},
+      title = {RiskMap: Geostatistical Modeling of Spatially Referenced Data},
       author = {Emanuele Giorgi},
-      year = {2025},
+      year = {2026},
       note = {R package version 1.0.0},
       url = {https://claudiofronterre.github.io/RiskMap/},
     }

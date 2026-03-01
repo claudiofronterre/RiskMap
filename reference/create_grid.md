@@ -77,4 +77,5 @@ grid <- create_grid(nc, spat_res = 10)
 plot(st_geometry(nc))
 
 plot(grid, add = TRUE, col = 'red')
+#> NULL
 ```

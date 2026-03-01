@@ -30,8 +30,7 @@ devtools::install_github("claudiofronterre/RiskMap")
 ## All functions
 
 - [`Laplace_sampling_MCMC()`](https://claudiofronterre.github.io/RiskMap/reference/Laplace_sampling_MCMC.md)
-  : Laplace Sampling Markov Chain Monte Carlo (MCMC) for Generalized
-  Linear Gaussian Process Models
+  : Laplace-sampling MCMC for Generalized Linear Gaussian Process Models
 - [`abund_sma`](https://claudiofronterre.github.io/RiskMap/reference/abund_sma.md)
   : Female Culex pipiens abundance (collections) in the Sacramento
   Metropolitan Area
@@ -53,12 +52,12 @@ devtools::install_github("claudiofronterre/RiskMap")
   : Create Grid of Points Within Shapefile
 - [`dast()`](https://claudiofronterre.github.io/RiskMap/reference/dast.md)
   : Fitting of decay-adjusted spatio-temporal (DAST) model
+- [`dast_sim()`](https://claudiofronterre.github.io/RiskMap/reference/dast_sim.md)
+  : Simulation from Decay-adjusted Spatio-temporal (DAST) models
 - [`dist_summaries()`](https://claudiofronterre.github.io/RiskMap/reference/dist_summaries.md)
   : Summaries of the distances
 - [`galicia`](https://claudiofronterre.github.io/RiskMap/reference/galicia.md)
   : Heavy metal biomonitoring in Galicia
-- [`get_epsg_utm()`](https://claudiofronterre.github.io/RiskMap/reference/get_epsg_utm.md)
-  : Get EPSG code for appropriate UTM zone
 - [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
   : Estimation of Generalized Linear Gaussian Process Models
 - [`glgpm_sim()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm_sim.md)
@@ -108,7 +107,7 @@ devtools::install_github("claudiofronterre/RiskMap")
 - [`pred_target_grid()`](https://claudiofronterre.github.io/RiskMap/reference/pred_target_grid.md)
   : Predictive Target Over a Regular Spatial Grid
 - [`pred_target_shp()`](https://claudiofronterre.github.io/RiskMap/reference/pred_target_shp.md)
-  : Predictive Target over a Shapefile
+  : Predictive Targets over a Shapefile (grid-aggregated)
 - [`print(`*`<summary.RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap.md)
   : Print Summary of RiskMap Model
 - [`print(`*`<summary.RiskMap.sim.res>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap.sim.res.md)
