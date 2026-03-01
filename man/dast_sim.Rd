@@ -26,15 +26,18 @@ dast_sim(
 \arguments{
 \item{n_sim}{Number of simulations.}
 
-\item{model_fit}{Optional fitted DAST model object of class \code{RiskMap}. If supplied, it overrides model specification arguments.}
+\item{model_fit}{Optional fitted DAST model object of class \\code{RiskMap}.
+If supplied, it overrides model specification arguments.}
 
-\item{formula}{Model formula including a \code{gp()} term.}
+\item{formula}{Model formula including a \\code{gp()} term.}
 
-\item{data}{Data frame or \code{sf} object used for simulation.}
+\item{data}{Data frame or \\code{sf} object used for simulation.}
 
 \item{den}{Binomial denominator variable. If missing, it is assumed to be 1.}
 
-\item{time}{Survey-time information. For simulations from scratch this can be a column in \code{data} (unquoted name or character string) or a numeric vector of length \code{nrow(data)}.}
+\item{time}{Survey-time information. For simulations from scratch this can be a
+column in \\code{data} (unquoted name or character string) or a numeric vector
+of length \\code{nrow(data)}.}
 
 \item{mda_times}{Vector of MDA times.}
 
@@ -50,13 +53,18 @@ dast_sim(
 
 \item{scale_to_km}{Logical; if TRUE distances are computed in kilometers.}
 
-\item{sim_pars}{List of simulation parameters. Used only when \code{model_fit} is \code{NULL}. Includes \code{beta}, \code{sigma2}, \code{tau2}, \code{phi}, \code{psi}, \code{sigma2_re}, \code{alpha}, and \code{gamma}.}
+\item{sim_pars}{List of simulation parameters. Used only when \\code{model_fit}
+is \\code{NULL}. Includes \\code{beta}, \\code{sigma2}, \\code{tau2}, \\code{phi},
+\\code{psi}, \\code{sigma2_re}, \\code{alpha}, and \\code{gamma}.}
 
 \item{messages}{Logical; if TRUE print progress messages.}
 }
 \value{
-A list with simulated outcomes in \code{data_sim} as an \code{n x n_sim} matrix (rows are observations, columns are simulations), simulated latent components and parameter values used for simulation.
+A list with simulated outcomes in \\code{data_sim} as an
+\\code{n x n_sim} matrix (rows are observations, columns are simulations),
+simulated latent components and parameter values used for simulation.
 }
 \description{
-Simulates data from a fitted DAST model object (output from \code{dast}) or from user-specified DAST parameters.
+Simulates data from a fitted DAST model object (output from \\code{dast})
+or from user-specified DAST parameters.
 }
