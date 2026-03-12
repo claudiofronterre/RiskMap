@@ -1,150 +1,157 @@
-functions {
-  // Compute prevalence from mean worm burden
-  real compute_prevalence(real mu_W, real k, real rho) {
-    real term = k / (k + mu_W * (1.0 - exp( -rho )));
-    real pr = 1.0 - pow(term, k);
-
-    // Clamp prevalence
-    if (pr < 1e-10) pr = 1e-10;
-    if (pr > 1.0 - 1e-10) pr = 1.0 - 1e-10;
-
-    return pr;
-  }
-
-  // Compute conditional mean intensity
-  real compute_mu_C(real mu_W, real pr, real rho) {
-    return (rho * mu_W) / pr;
-  }
-
-  // Compute conditional variance
-  real compute_sigma2_C(real mu_W, real pr, real k, real rho) {
-    real var1 = (rho * mu_W * (1.0+ rho)) / pr;
-    real var2 = (square(rho) * square(mu_W) / pr) * (1.0/k + 1.0 - 1.0/pr);
-    real result = var1 + var2;
-
-    // Safeguard against numerical issues
-    if (result < 1e-10) result = 1e-10;
-
-    return result;
-  }
-
-  // Compute shifted Gamma parameters
-  // CRITICAL FIX: Returns [shape, RATE] not [shape, scale]
-  vector compute_gamma_params(real mu_W, real pr, real k, real rho) {
-    vector[2] params;
-    real mu_C = compute_mu_C(mu_W, pr, rho);
-    real sigma2_C = compute_sigma2_C(mu_W, pr, k, rho);
-
-    // Ensure mu_C > 1 and sigma2_C > 0
-    if (mu_C <= 1.0) mu_C = 1.0 + 1e-10;
-    if (sigma2_C < 1e-10) sigma2_C = 1e-10;
-
-    // kappa = (mu_C - 1)^2 / sigma2_C (shape)
-    // lambda = (mu_C - 1) / sigma2_C (RATE, not scale!)
-    // Note: STAN's gamma_lpdf uses (shape, rate) parameterization
-    params[1] = square(mu_C - 1.0) / sigma2_C;  // kappa (shape)
-    params[2] = (mu_C - 1.0) / sigma2_C;         // lambda (rate = 1/theta)
-
-    return params;
-  }
-}
+// =============================================================================
+// dsgm_spatial.stan
+//
+// Stan sampler for the doubly stochastic geostatistical model for joint
+// prevalence-intensity modelling of soil-transmitted helminths (STH).
+// Used to draw MCMC samples of the spatial process S(x) at fixed parameter
+// values theta_0, which are then passed to the TMB MCML engine (dsgm_tmb.cpp).
+//
+// Model:
+//   W_j(x_i) | S(x_i) ~ NegBin(mu(x_i), k)
+//     log mu(x_i) = eta_fixed[i] + S[ID_coords[i]]
+//     mu(x_i)     = exp(eta_fixed[i] + S[ID_coords[i]]) * mda_impact[i]
+//
+//   Y_ij | W_j(x_i) ~ Poisson(rho * W_j(x_i))
+//
+// Marginal likelihoods used:
+//   Zero observations:
+//     P(Y = 0) = 1 - P(Y > 0)  where
+//     P(Y > 0) = 1 - [k / (k + mu*(1-exp(-rho)))]^k
+//
+//   Positive observations (Y > 0):
+//     P(Y > 0) as above, plus
+//     Gamma approximation for Y | Y > 0:
+//       Y - 1 ~ Gamma(kappa_C, theta_C)
+//       mu_C    = rho * mu / P(Y>0)
+//       sigma2_C = rho*mu*(1+rho)/P(Y>0) + rho^2*mu^2/P(Y>0) * (1/k + 1 - 1/P(Y>0))
+//       kappa_C  = (mu_C - 1)^2 / sigma2_C
+//       theta_C  = sigma2_C / (mu_C - 1)
+//
+// Spatial process:
+//   S = sqrt(sigma2) * L * S_raw,   S_raw ~ N(0, I)
+//   R[i,j] = exp(-D_mat[i,j] / phi),  L = cholesky(R)
+//   L is computed once in transformed_data since phi is fixed.
+//
+// All model parameters (k, rho, sigma2, phi) are FIXED at their theta_0
+// values and passed as data.  Only S_raw is sampled.
+//
+// NOTE: parameter names follow R convention (k, rho) not C++ convention
+// (omega, alpha); both Stan and TMB use their own internal names.
+// =============================================================================
 
 data {
-  int<lower=1> n;              // Number of observations
-  int<lower=1> n_loc;          // Number of unique locations
-  int<lower=0> n_pos;          // Number of positive observations
-  int<lower=1> p;              // Number of covariates
 
-  // Response data
-  array[n] int<lower=0, upper=1> y;  // Binary infection indicator
-  vector<lower=1>[n_pos] C_pos; // Egg counts for positives
-  array[n_pos] int<lower=1, upper=n> pos_idx; // Indices of positives
+  int<lower=1> n;        // Total number of observations
+  int<lower=1> n_loc;    // Number of unique spatial locations
+  int<lower=1> n_pos;    // Number of egg-positive observations
+  int<lower=1> p;        // Number of fixed-effect covariates (unused here; eta pre-computed)
 
-  // Location mapping
+  // Binary response
+  array[n] int<lower=0, upper=1> y;  // 1 = egg-positive, 0 = negative
+
+  // EPG for positive observations
+  vector<lower=1>[n_pos] C_pos;      // Egg counts for positives (>= 1)
+
+  // Indices of positive observations (1-indexed, matching y)
+  array[n_pos] int<lower=1, upper=n> pos_idx;
+
+  // Location mapping (1-indexed)
   array[n] int<lower=1, upper=n_loc> ID_coords;
 
-  // Distance matrix
+  // Pairwise distance matrix between unique locations
   matrix[n_loc, n_loc] D_mat;
 
-  // Fixed effects
-  vector[n] eta_fixed;         // D * beta (without spatial effect)
-  vector<lower=0, upper=1>[n] mda_impact; // MDA impact function
+  // Pre-computed fixed-effects linear predictor: D * beta + offset
+  vector[n] eta_fixed;
 
-  // Fixed parameters
-  real<lower=0> k;             // Aggregation parameter
-  real<lower=0> rho;           // Detection rate
-  real<lower=0> sigma2;        // Spatial variance
-  real<lower=0> phi;           // Spatial range
+  // Pre-computed MDA decay factor per observation (1.0 = no MDA)
+  vector<lower=0>[n] mda_impact;
+
+  // Fixed parameters at theta_0
+  real<lower=0> k;       // NB aggregation parameter
+  real<lower=0> rho;     // Per-worm egg detection rate
+  real<lower=0> sigma2;  // GP variance
+  real<lower=0> phi;     // GP range
+
 }
 
 transformed data {
-  // PERFORMANCE FIX: Compute correlation matrix ONCE (not every iteration!)
-  // Since phi is fixed (data), R and L are constants
+
+  // Correlation matrix and Cholesky factor, computed once at fixed phi.
   matrix[n_loc, n_loc] R;
   matrix[n_loc, n_loc] L;
+  real c_rho;            // 1 - exp(-rho), used repeatedly
 
-  // Build correlation matrix using exponential kernel
+  c_rho = 1.0 - exp(-rho);
+
   for (i in 1:n_loc) {
     R[i, i] = 1.0;
-    for (j in (i+1):n_loc) {
+    for (j in (i + 1):n_loc) {
       R[i, j] = exp(-D_mat[i, j] / phi);
       R[j, i] = R[i, j];
     }
   }
 
-  // Cholesky decomposition
   L = cholesky_decompose(R);
+
 }
 
 parameters {
-  vector[n_loc] S_raw;         // Standardized spatial process
+
+  // Standardised spatial random effects.
+  // S = sqrt(sigma2) * L * S_raw ~ N(0, sigma2 * R)
+  vector[n_loc] S_raw;
+
 }
 
 transformed parameters {
+
   vector[n_loc] S;
-  vector[n] mu_W_star;
-  vector[n] mu_W;
-  vector[n] pr0;
+  vector[n]     mu_W;    // Expected worm burden per observation
+  vector[n]     pr_pos;  // P(Y > 0) per observation
 
-  // Spatial process: S ~ N(0, sigma2 * R)
-  // Using pre-computed L from transformed data
-  S = sqrt(sigma2) * L * S_raw;
+  S = sqrt(sigma2) * (L * S_raw);
 
-  // Mean worm burden
   for (i in 1:n) {
-    mu_W_star[i] = exp(eta_fixed[i] + S[ID_coords[i]]);
-    mu_W[i] = mu_W_star[i] * mda_impact[i];
-    pr0[i] = compute_prevalence(mu_W[i], k, rho);
+    mu_W[i]   = exp(eta_fixed[i] + S[ID_coords[i]]) * mda_impact[i];
+    real ratio = k / (k + mu_W[i] * c_rho);
+    pr_pos[i]  = fmax(fmin(1.0 - pow(ratio, k), 1.0 - 1e-10), 1e-10);
   }
+
 }
 
 model {
-  // Prior on standardized spatial process
-  S_raw ~ normal(0, 1);
 
-  // Likelihood for zeros
+  // Prior on standardised spatial process
+  S_raw ~ std_normal();
+
+  // ----- Prevalence likelihood -----
   for (i in 1:n) {
-    if (y[i] == 0) {
-      target += log(1.0 - pr0[i]);
+    if (y[i] == 1) {
+      target += log(pr_pos[i]);
+    } else {
+      target += log1m(pr_pos[i]);
     }
   }
 
-  // Likelihood for positives
-  for (i in 1:n_pos) {
-    int idx = pos_idx[i];
-    real mu_W_i = mu_W[idx];
-    real pr0_i = pr0[idx];
-    vector[2] gamma_params;
+  // ----- Intensity likelihood (positives only, Gamma approximation) -----
+  for (idx in 1:n_pos) {
+    int i = pos_idx[idx];
 
-    // Prevalence contribution
-    target += log(pr0_i);
+    // Conditional moments of Y | Y > 0
+    real mu_C    = (rho * mu_W[i]) / pr_pos[i];
+    real sigma2_C = (rho * mu_W[i] * (1.0 + rho)) / pr_pos[i]
+                  + (rho^2 * mu_W[i]^2 / pr_pos[i])
+                    * (1.0/k + 1.0 - 1.0/pr_pos[i]);
+    sigma2_C = fmax(sigma2_C, 1e-10);
 
-    // Intensity contribution (shifted Gamma)
-    gamma_params = compute_gamma_params(mu_W_i, pr0_i, k, rho);
+    // Gamma parameters for Y - 1
+    real mu_C1  = fmax(mu_C - 1.0, 1e-6);
+    real kappa_C = fmax(mu_C1^2 / sigma2_C, 1e-10);
+    real theta_C = fmax(sigma2_C / mu_C1, 1e-10);
 
-    // C - 1 ~ Gamma(kappa, lambda) where lambda is RATE
-    if (gamma_params[1] > 0 && gamma_params[2] > 0) {
-      target += gamma_lpdf(C_pos[i] - 1.0 | gamma_params[1], gamma_params[2]);
-    }
+    // log p(C_pos - 1 | Gamma(kappa_C, theta_C))
+    target += gamma_lpdf(fmax(C_pos[idx] - 1.0, 0.0) | kappa_C, 1.0 / theta_C);
   }
+
 }

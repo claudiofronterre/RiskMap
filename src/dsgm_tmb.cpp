@@ -1,15 +1,38 @@
 #include <TMB.hpp>
 
-// Helper function to get distance from compressed vector
+// =============================================================================
+// dsgm_tmb.cpp
+//
+// TMB template for the doubly stochastic geostatistical model for joint
+// prevalence-intensity modelling of soil-transmitted helminths (STH).
+//
+// Hierarchical model:
+//   W_j(x_i) | S(x_i) ~ NegBin(mu(x_i), k)
+//     log mu*(x_i) = D_i * beta + S(x_i)
+//     mu(x_i)      = mu*(x_i) * MDA_effect(x_i, t)
+//
+//   Y_ij | W_j(x_i) ~ Poisson(rho * W_j(x_i))
+//
+// Marginal over W:
+//   P(Y > 0)  = 1 - [k / (k + mu*(1-exp(-rho)))]^k
+//   Y | Y > 0 ~ Gamma approximation (shifted: Y-1 ~ Gamma(kappa_C, theta_C))
+//
+// MDA effect (exponential decay):
+//   MDA_effect(i) = prod_{m: t_i > u_m} [1 - alpha_W * cov_m * exp(-(t_i-u_m)/gamma_W)]
+//
+// Inference: MCML with importance sampling.
+//   Step 1: compute_denominator_only = 1  -> report log_f_vals at theta_0
+//   Step 2: compute_denominator_only = 0  -> MCML objective
+//
+// Parameter naming (R-side k/rho convention preserved):
+//   log_k   = log(NB aggregation parameter)
+//   log_rho = log(per-worm egg detection rate)
+// =============================================================================
+
 template<class Type>
-Type get_distance(int i, int j, const vector<Type>& dist_vec, int n_loc) {
-  if(i == j) return Type(0);
-  if(i > j) {
-    int temp = i;
-    i = j;
-    j = temp;
-  }
-  // Convert (i,j) to index in upper triangle stored as vector
+Type get_distance_sth(int i, int j, const vector<Type>& dist_vec, int n_loc) {
+  if (i == j) return Type(0);
+  if (i > j)  { int tmp = i; i = j; j = tmp; }
   int idx = i * n_loc - (i * (i + 1)) / 2 + (j - i - 1);
   return dist_vec(idx);
 }
@@ -17,294 +40,251 @@ Type get_distance(int i, int j, const vector<Type>& dist_vec, int n_loc) {
 template<class Type>
 Type objective_function<Type>::operator() ()
 {
-
-  // =============================================================================
+  // ===========================================================================
   // DATA
-  // =============================================================================
+  // ===========================================================================
 
-  DATA_VECTOR(y_prev);
-  DATA_VECTOR(intensity_data);
-  DATA_IVECTOR(pos_idx);
-  DATA_MATRIX(D);
-  DATA_VECTOR(cov_offset);
-  DATA_MATRIX(S_samples);
-  DATA_IVECTOR(ID_coords);
+  DATA_VECTOR(y_prev);          // Binary infection status (0/1), length n
+  DATA_VECTOR(intensity_data);  // EPG for egg-positive individuals, length n_pos
+  DATA_IVECTOR(pos_idx);        // 0-indexed positions of positives in y_prev, length n_pos
 
-  // OPTIMIZATION 2: Compressed distance matrix
-  DATA_VECTOR(dist_vec);
-  DATA_INTEGER(n_loc);
+  DATA_MATRIX(D);               // Covariate matrix, n x p
+  DATA_VECTOR(cov_offset);      // Linear predictor offset, length n
 
-  DATA_VECTOR(survey_times);
-  DATA_VECTOR(mda_times);
+  DATA_MATRIX(S_samples);       // Stan MCMC samples of S, n_samples x n_loc
+  DATA_IVECTOR(ID_coords);      // 0-indexed location ID per obs, length n
 
-  // OPTIMIZATION 1: Sparse MDA representation
-  DATA_IVECTOR(mda_i);          // Row indices (0-indexed)
-  DATA_IVECTOR(mda_j);          // Column indices (0-indexed)
-  DATA_VECTOR(mda_coverage);    // Coverage values
+  DATA_VECTOR(dist_vec);        // Compressed upper-triangle distance vector
+  DATA_INTEGER(n_loc);          // Number of unique spatial locations
+
+  // MDA block
+  DATA_VECTOR(survey_times);    // Survey time per obs, length n
+  DATA_VECTOR(mda_times);       // MDA round times, length n_mda
+  DATA_IVECTOR(mda_i);          // Row indices (0-indexed) of non-zero int_mat entries
+  DATA_IVECTOR(mda_j);          // Col indices (0-indexed) of non-zero int_mat entries
+  DATA_VECTOR(mda_coverage);    // Coverage values for non-zero entries
   DATA_INTEGER(n_mda_pairs);    // Number of non-zero entries
 
-  // Penalty configuration
+  // Penalties on MDA parameters
   DATA_INTEGER(use_alpha_penalty);
-  DATA_INTEGER(alpha_penalty_type);
+  DATA_INTEGER(alpha_penalty_type);  // 1 = Beta(a,b) on alpha_W; 2 = Normal on logit
   DATA_SCALAR(alpha_param1);
   DATA_SCALAR(alpha_param2);
 
   DATA_INTEGER(use_gamma_penalty);
-  DATA_INTEGER(gamma_penalty_type);
+  DATA_INTEGER(gamma_penalty_type);  // 1 = Gamma(shape,rate) on gamma_W; 2 = Normal
   DATA_SCALAR(gamma_param1);
   DATA_SCALAR(gamma_param2);
 
-  // OPTION to compute denominator only (for importance sampling)
+  // Importance sampling
   DATA_INTEGER(compute_denominator_only);
-  DATA_VECTOR(log_denominator_vals);
+  DATA_VECTOR(log_denominator_vals);  // length n_samples
 
-  // =============================================================================
-  // PARAMETERS (θ - current parameters being optimized)
-  // =============================================================================
+  // ===========================================================================
+  // PARAMETERS
+  // ===========================================================================
 
-  PARAMETER_VECTOR(beta);
-  PARAMETER(log_k);
-  PARAMETER(log_rho);
-  PARAMETER(logit_alpha);
-  PARAMETER(log_gamma);
-  PARAMETER(log_sigma2);
-  PARAMETER(log_phi);
+  PARAMETER_VECTOR(beta);       // Fixed-effect coefficients
+  PARAMETER(log_k);             // log NB aggregation parameter
+  PARAMETER(log_rho);           // log per-worm egg detection rate
+  PARAMETER(logit_alpha);       // logit immediate worm burden reduction in (0,1)
+  PARAMETER(log_gamma);         // log worm burden recovery rate
+  PARAMETER(log_sigma2);        // log GP variance
+  PARAMETER(log_phi);           // log GP range
 
-  // Transform to natural scale
-  const Type k = exp(log_k);
-  const Type rho = exp(log_rho);
-  const Type alpha_W = invlogit(logit_alpha);
+  // Natural-scale transforms
+  const Type k       = exp(log_k);
+  const Type rho     = exp(log_rho);
+  const Type alpha_W = Type(1.0) / (Type(1.0) + exp(-logit_alpha));
   const Type gamma_W = exp(log_gamma);
-  const Type sigma2 = exp(log_sigma2);
-  const Type phi = exp(log_phi);
+  const Type sigma2  = exp(log_sigma2);
+  const Type phi     = exp(log_phi);
 
-  // Dimensions
-  int n = y_prev.size();
+  int n         = y_prev.size();
+  int n_pos     = intensity_data.size();
   int n_samples = S_samples.rows();
-  int n_pos = pos_idx.size();
 
-  // =============================================================================
-  // OPTIMIZATION 1: EFFICIENT MDA EFFECT COMPUTATION
-  // =============================================================================
+  // ===========================================================================
+  // MDA EFFECT
+  // ===========================================================================
 
   vector<Type> mda_effect(n);
   mda_effect.setOnes();
 
-  // Only loop over non-zero entries in int_mat
-  for(int idx = 0; idx < n_mda_pairs; idx++) {
-    int i = mda_i(idx);
-    int m = mda_j(idx);
+  for (int idx = 0; idx < n_mda_pairs; idx++) {
+    int  i        = mda_i(idx);
+    int  m        = mda_j(idx);
     Type coverage = mda_coverage(idx);
-
-    Type time_since = survey_times(i) - mda_times(m);
-    if(time_since > Type(0)) {
-      Type decay = exp(-time_since / gamma_W);
-      mda_effect(i) *= (Type(1.0) - alpha_W * coverage * decay);
-    }
+    Type dt       = survey_times(i) - mda_times(m);
+    if (dt > Type(0))
+      mda_effect(i) *= (Type(1.0) - alpha_W * coverage * exp(-dt / gamma_W));
   }
 
-  // =============================================================================
-  // OPTIMIZATION 2: BUILD CORRELATION MATRIX FROM COMPRESSED DISTANCES
-  // =============================================================================
+  // ===========================================================================
+  // CORRELATION MATRIX AND CHOLESKY (outside MC loop)
+  // ===========================================================================
 
   matrix<Type> R(n_loc, n_loc);
-  for(int i = 0; i < n_loc; i++) {
+  for (int i = 0; i < n_loc; i++) {
     R(i, i) = Type(1.0);
-    for(int j = i + 1; j < n_loc; j++) {
-      Type dist_ij = get_distance(i, j, dist_vec, n_loc);
-      R(i, j) = exp(-dist_ij / phi);
-      R(j, i) = R(i, j);
+    for (int j = i + 1; j < n_loc; j++) {
+      Type r  = exp(-get_distance_sth(i, j, dist_vec, n_loc) / phi);
+      R(i, j) = r;
+      R(j, i) = r;
     }
   }
 
-  // Cholesky decomposition: R = L * L'
   Eigen::LLT<Eigen::Matrix<Type, Eigen::Dynamic, Eigen::Dynamic>> llt(R);
   matrix<Type> L = llt.matrixL();
 
-  // Log-determinant via Cholesky
   Type log_det_R = Type(0.0);
-  for(int i = 0; i < n_loc; i++) {
-    log_det_R += log(L(i, i));
-  }
+  for (int i = 0; i < n_loc; i++) log_det_R += log(L(i, i));
   log_det_R *= Type(2.0);
 
-  // =============================================================================
-  // MONTE CARLO INTEGRATION WITH IMPORTANCE SAMPLING
-  // =============================================================================
+  // ===========================================================================
+  // FIXED-EFFECTS LINEAR PREDICTOR (outside MC loop)
+  // ===========================================================================
+
+  vector<Type> mu_fixed = D * beta + cov_offset;
+  const Type   c_rho    = Type(1.0) - exp(-rho);   // 1 - exp(-rho)
+
+  // ===========================================================================
+  // MONTE CARLO LOOP
+  // ===========================================================================
 
   vector<Type> log_f_vals(n_samples);
 
-  vector<Type> mu = D * beta + cov_offset;
-  Type k_term = Type(1.0) - exp(-rho);
+  for (int s = 0; s < n_samples; s++) {
 
-  for(int s = 0; s < n_samples; s++) {
-    vector<Type> S = S_samples.row(s);
+    vector<Type> S_s = S_samples.row(s);
 
-    // =========================================================================
-    // COMPUTE NUMERATOR: log f(y | S, θ) + log f(S | θ)
-    // =========================================================================
+    // Mean worm burden with MDA
+    vector<Type> mu_W(n);
+    for (int i = 0; i < n; i++)
+      mu_W(i) = exp(mu_fixed(i) + S_s(ID_coords(i))) * mda_effect(i);
 
-    vector<Type> eta(n);
-    for(int i = 0; i < n; i++) {
-      eta(i) = mu(i) + S(ID_coords(i));
-    }
-    vector<Type> mu_W_star = exp(eta);
-    vector<Type> mu_W = mu_W_star * mda_effect;
+    // ----- Prevalence likelihood -----
+    Type ll = Type(0.0);
 
-    // Prevalence via PGF
-    vector<Type> denom = k + mu_W * k_term;
-    vector<Type> ratio = k / denom;
-    vector<Type> pr = Type(1.0) - pow(ratio, k);
+    for (int i = 0; i < n; i++) {
+      Type ratio = k / (k + mu_W(i) * c_rho);
+      Type pr    = Type(1.0) - pow(ratio, k);   // P(Y > 0)
+      pr = CppAD::CondExpLt(pr, Type(1e-10),          Type(1e-10),          pr);
+      pr = CppAD::CondExpGt(pr, Type(1.0) - Type(1e-10), Type(1.0) - Type(1e-10), pr);
 
-    // Clamp prevalence
-    for(int i = 0; i < n; i++) {
-      pr(i) = CppAD::CondExpLt(pr(i), Type(1e-10), Type(1e-10), pr(i));
-      pr(i) = CppAD::CondExpGt(pr(i), Type(1.0 - 1e-10), Type(1.0 - 1e-10), pr(i));
-    }
-
-    Type ll_theta = Type(0.0);
-
-    // Zeros contribution
-    for(int i = 0; i < n; i++) {
-      if(y_prev(i) == 0) {
-        ll_theta += log(Type(1.0) - pr(i));
+      if (y_prev(i) > Type(0.5)) {
+        ll += log(pr);
+      } else {
+        ll += log(Type(1.0) - pr);
       }
     }
 
-    // Positives prevalence contribution
-    for(int j = 0; j < n_pos; j++) {
-      int i = pos_idx(j);
-      ll_theta += log(pr(i));
+    // ----- Intensity likelihood (positives only, Gamma approximation) -----
+    for (int idx = 0; idx < n_pos; idx++) {
+      int  i      = pos_idx(idx);
+      Type mu_i   = mu_W(i);
+      Type ratio  = k / (k + mu_i * c_rho);
+      Type pr_i   = Type(1.0) - pow(ratio, k);
+      pr_i = CppAD::CondExpLt(pr_i, Type(1e-10), Type(1e-10), pr_i);
+
+      // Conditional mean and variance of Y | Y > 0
+      Type mu_C    = (rho * mu_i) / pr_i;
+      Type sigma2_C = (rho * mu_i * (Type(1.0) + rho)) / pr_i
+                    + (rho * rho * mu_i * mu_i / pr_i)
+                      * (Type(1.0)/k + Type(1.0) - Type(1.0)/pr_i);
+      sigma2_C = CppAD::CondExpLt(sigma2_C, Type(1e-10), Type(1e-10), sigma2_C);
+
+      // Gamma parameters for Y - 1
+      Type mu_C1   = mu_C - Type(1.0);
+      mu_C1 = CppAD::CondExpLt(mu_C1, Type(1e-6), Type(1e-6), mu_C1);
+
+      Type kappa_C = (mu_C1 * mu_C1) / sigma2_C;
+      Type theta_C = sigma2_C / mu_C1;
+      kappa_C = CppAD::CondExpLt(kappa_C, Type(1e-10), Type(1e-10), kappa_C);
+      theta_C = CppAD::CondExpLt(theta_C, Type(1e-10), Type(1e-10), theta_C);
+
+      // log Gamma density for (Y - 1)
+      Type y_shift = intensity_data(idx) - Type(1.0);
+      y_shift = CppAD::CondExpLt(y_shift, Type(0.0), Type(0.0), y_shift);
+
+      ll += (kappa_C - Type(1.0)) * log(y_shift + Type(1e-10))
+          - y_shift / theta_C
+          - kappa_C * log(theta_C)
+          - lgamma(kappa_C);
     }
 
-    // =======================================================================
-    // OPTIMIZATION 3: VECTORIZED POSITIVE INTENSITY COMPUTATION
-    // =======================================================================
-
-    // Pre-compute vectors for all positives
-    vector<Type> mu_C_vec(n_pos);
-    vector<Type> sigma2_C_vec(n_pos);
-    vector<Type> kappa_C_vec(n_pos);
-    vector<Type> theta_C_vec(n_pos);
-
-    for(int j = 0; j < n_pos; j++) {
-      int i = pos_idx(j);
-      Type mu_W_i = mu_W(i);
-      Type pr_i = pr(i);
-
-      // Conditional mean
-      mu_C_vec(j) = (rho * mu_W_i) / pr_i;
-
-      // Conditional variance
-      Type term1 = (rho * mu_W_i * (Type(1.0) + rho)) / pr_i;
-      Type rho_sq_mu_sq = rho * rho * mu_W_i * mu_W_i;
-      Type term2 = (rho_sq_mu_sq / pr_i) * (Type(1.0)/k + Type(1.0) - Type(1.0)/pr_i);
-      sigma2_C_vec(j) = term1 + term2;
-
-      // Clamp variance
-      sigma2_C_vec(j) = CppAD::CondExpLt(sigma2_C_vec(j), Type(1e-10),
-                   Type(1e-10), sigma2_C_vec(j));
-
-      // Gamma parameters
-      Type mu_C_minus_1 = mu_C_vec(j) - Type(1.0);
-      kappa_C_vec(j) = mu_C_minus_1 * mu_C_minus_1 / sigma2_C_vec(j);
-      theta_C_vec(j) = sigma2_C_vec(j) / mu_C_minus_1;
-
-      // Clamp Gamma parameters
-      kappa_C_vec(j) = CppAD::CondExpLt(kappa_C_vec(j), Type(1e-10),
-                  Type(1e-10), kappa_C_vec(j));
-      theta_C_vec(j) = CppAD::CondExpLt(theta_C_vec(j), Type(1e-10),
-                  Type(1e-10), theta_C_vec(j));
-    }
-
-    // Add intensity contributions
-    for(int j = 0; j < n_pos; j++) {
-      Type C_minus_1 = intensity_data(j) - Type(1.0);
-      ll_theta += dgamma(C_minus_1, kappa_C_vec(j), theta_C_vec(j), true);
-    }
-
-    // Spatial prior using Cholesky solve
-    Eigen::Matrix<Type, Eigen::Dynamic, 1> S_eig = S;
-    Eigen::Matrix<Type, Eigen::Dynamic, 1> y_eig =
+    // ----- GP prior -----
+    Eigen::Matrix<Type, Eigen::Dynamic, 1> S_eig = S_s;
+    Eigen::Matrix<Type, Eigen::Dynamic, 1> z =
       L.template triangularView<Eigen::Lower>().solve(S_eig);
+    vector<Type> z_v = z;
+    Type quad = (z_v * z_v).sum();
 
-    vector<Type> y = y_eig;
-    Type quad_form = (y * y).sum();
+    Type log_prior = -Type(0.5) * (Type(n_loc) * log(sigma2) + log_det_R +
+                                   quad / sigma2);
 
-    Type log_prior_theta = -Type(0.5) * (Type(n_loc) * log(sigma2) + log_det_R +
-      quad_form / sigma2);
-
-    Type log_numerator = ll_theta + log_prior_theta;
-
-    // =========================================================================
-    // STORE RESULT
-    // =========================================================================
-
-    if(compute_denominator_only) {
-      log_f_vals(s) = log_numerator;
-    } else {
-      log_f_vals(s) = log_numerator - log_denominator_vals(s);
-    }
+    Type log_num = ll + log_prior;
+    log_f_vals(s) = compute_denominator_only ?
+                    log_num : log_num - log_denominator_vals(s);
   }
 
+  // ===========================================================================
+  // DENOMINATOR PASS
+  // ===========================================================================
 
-  // =========================================================================
-  // IF COMPUTING DENOMINATOR ONLY, REPORT AND EXIT
-  // =========================================================================
-
-  if(compute_denominator_only) {
+  if (compute_denominator_only) {
     REPORT(log_f_vals);
     return Type(0);
   }
 
-  // =============================================================================
-  // MC LOG-LIKELIHOOD WITH IMPORTANCE SAMPLING
-  // =============================================================================
+  // ===========================================================================
+  // MC LOG-LIKELIHOOD (log-sum-exp stable)
+  // ===========================================================================
 
-  Type max_log_f = log_f_vals.maxCoeff();
-  vector<Type> exp_vals = exp(log_f_vals - max_log_f);
-  Type mean_exp = exp_vals.mean();
-  Type mc_log_lik = log(mean_exp) + max_log_f;
+  Type max_lf    = log_f_vals.maxCoeff();
+  vector<Type> ef = exp(log_f_vals - max_lf);
+  Type mc_loglik  = log(ef.mean()) + max_lf;
 
-  // =============================================================================
-  // FLEXIBLE PENALTIES
-  // =============================================================================
+  // ===========================================================================
+  // MDA PENALTIES
+  // ===========================================================================
 
   Type penalty = Type(0.0);
 
-  // Alpha penalty
-  if(use_alpha_penalty) {
-    if(alpha_penalty_type == 1) {
-      // Beta(shape1, shape2) prior
+  if (use_alpha_penalty == 1) {
+    if (alpha_penalty_type == 1) {
+      // Beta(a, b) on alpha_W
       penalty -= (alpha_param1 - Type(1.0)) * log(alpha_W);
       penalty -= (alpha_param2 - Type(1.0)) * log(Type(1.0) - alpha_W);
+    } else if (alpha_penalty_type == 2) {
+      // Normal(mean, sd) on logit(alpha_W)
+      Type d = logit_alpha - alpha_param1;
+      penalty += Type(0.5) * d * d / (alpha_param2 * alpha_param2);
     }
   }
 
-  // Gamma penalty
-  if(use_gamma_penalty) {
-    if(gamma_penalty_type == 1) {
-      // Gamma(shape, rate) prior
-      Type shape = gamma_param1;
-      Type rate = gamma_param2;
-      penalty -= (shape - Type(1.0)) * log(gamma_W);
-      penalty += rate * gamma_W;
-    } else if(gamma_penalty_type == 2) {
-      // Normal(mean, sd) prior
-      Type mean = gamma_param1;
-      Type sd = gamma_param2;
-      Type diff = gamma_W - mean;
-      penalty += Type(0.5) * diff * diff / (sd * sd);
+  if (use_gamma_penalty == 1) {
+    if (gamma_penalty_type == 1) {
+      // Gamma(shape, rate) on gamma_W
+      penalty -= (gamma_param1 - Type(1.0)) * log(gamma_W);
+      penalty += gamma_param2 * gamma_W;
+    } else if (gamma_penalty_type == 2) {
+      // Normal(mean, sd) on gamma_W
+      Type d = gamma_W - gamma_param1;
+      penalty += Type(0.5) * d * d / (gamma_param2 * gamma_param2);
     }
   }
 
-  Type nll = -(mc_log_lik - penalty);
+  Type nll = -(mc_loglik - penalty);
 
-  // Report parameters on natural scale
-  ADREPORT(alpha_W);
-  ADREPORT(gamma_W);
+  // ===========================================================================
+  // REPORT ON NATURAL SCALE
+  // ===========================================================================
+
   ADREPORT(k);
   ADREPORT(rho);
+  ADREPORT(alpha_W);
+  ADREPORT(gamma_W);
   ADREPORT(sigma2);
   ADREPORT(phi);
 

@@ -1,130 +1,194 @@
 ##' @title Detect working Stan backend
-##' @description Tests rstan first, falls back to cmdstanr if rstan is broken
+##' @description Tests rstan first, falls back to cmdstanr if rstan is broken.
 ##' @keywords internal
 detect_stan_backend <- function(messages = TRUE) {
-  # Try rstan first (preferred for compatibility)
   if (requireNamespace("rstan", quietly = TRUE)) {
-    # Test if rstan's stanc compiler works WITH vector syntax
-    # (the DSGM model uses vector[2] which triggers the HPC bug)
     test_code <- "
     functions {
       vector test_func() {
         vector[2] result;
-        result[1] = 1.0;
-        result[2] = 2.0;
+        result[1] = 1.0; result[2] = 2.0;
         return result;
       }
     }
-    data {
-      int N;
-    }
-    parameters {
-      real mu;
-    }
-    model {
-    }
+    data { int N; }
+    parameters { real mu; }
+    model { }
     "
-
     tryCatch({
-      suppressMessages(
-        suppressWarnings(
-          test_model <- rstan::stan_model(
-            model_code = test_code,
-            model_name = "test_backend",
-            verbose = FALSE
-          )
-        )
-      )
+      suppressMessages(suppressWarnings(
+        rstan::stan_model(model_code = test_code,
+                          model_name = "test_backend",
+                          verbose    = FALSE)
+      ))
       if (messages) message("Using rstan backend (tested successfully)")
       return("rstan")
     }, error = function(e) {
       if (messages) {
-        message("rstan compilation failed (stanc error detected)")
-        message("Falling back to cmdstanr...")
+        message("rstan compilation failed; falling back to cmdstanr...")
       }
     })
   }
-
-  # Fall back to cmdstanr
   if (requireNamespace("cmdstanr", quietly = TRUE)) {
     if (messages) message("Using cmdstanr backend")
     return("cmdstanr")
   }
-
   stop("Neither rstan nor cmdstanr is available or working")
 }
 
+
+##' @title Compile and cache a Stan model
+##' @description Returns a compiled Stan model for either the STH or LF model.
+##'   Uses separate cache slots so both models can coexist in a session.
+##'
+##'   For \code{cmdstanr}, the compiled executable is written to a persistent
+##'   user cache directory (\code{tools::R_user_dir("RiskMap", "cache")}) so
+##'   that recompilation is avoided across R sessions.  For \code{rstan},
+##'   \code{auto_write = TRUE} achieves the same effect by saving a serialised
+##'   model object next to the \code{.stan} file.
+##'
+##' @param model \code{"sth"} uses \code{inst/stan/dsgm_spatial.stan};
+##'   \code{"lf"} uses \code{inst/stan/dsgm_mdiag.stan}.
+##' @param backend \code{"rstan"}, \code{"cmdstanr"}, or \code{NULL}
+##'   (auto-detect).
 ##' @keywords internal
-get_stan_model <- function(backend = NULL, messages = TRUE) {
-  # Auto-detect backend if not specified
+get_stan_model <- function(model = c("sth", "lf"), backend = NULL,
+                           messages = TRUE) {
+  model <- match.arg(model)
+
+  cache_model   <- paste0("stan_model_",   model)
+  cache_backend <- paste0("stan_backend_", model)
+
+  # ------------------------------------------------------------------
+  # 1. In-session cache: resolve backend FIRST so the key always matches
+  #    what was stored. Passing backend=NULL from pred_over_grid would
+  #    otherwise always miss the cache (NULL != "rstan").
+  # ------------------------------------------------------------------
   if (is.null(backend)) {
-    backend <- detect_stan_backend(messages = messages)
+    # If the model is already cached, re-use the backend it was compiled with
+    # (avoids running detect_stan_backend() unnecessarily)
+    if (!is.null(.dsgm_cache[[cache_backend]])) {
+      backend <- .dsgm_cache[[cache_backend]]
+    } else {
+      backend <- detect_stan_backend(messages = messages)
+    }
   }
 
-  # Return cached model if available and same backend
-  if (!is.null(.dsgm_cache$stan_model) &&
-      !is.null(.dsgm_cache$backend) &&
-      .dsgm_cache$backend == backend) {
-    if(messages) message("Using cached STAN model")
-    return(list(model = .dsgm_cache$stan_model, backend = backend))
+  if (!is.null(.dsgm_cache[[cache_model]]) &&
+      identical(.dsgm_cache[[cache_backend]], backend)) {
+    if (messages) message("Using cached Stan model (", model, ")")
+    return(list(model = .dsgm_cache[[cache_model]], backend = backend))
   }
 
-  if(messages) message("Compiling STAN model (first use in this session)...")
+  stan_file <- switch(model,
+                      sth = system.file("stan/dsgm_spatial.stan", package = "RiskMap"),
+                      lf  = system.file("stan/dsgm_mdiag.stan",   package = "RiskMap")
+  )
+  if (!file.exists(stan_file))
+    stop("Stan model file not found: ", basename(stan_file))
 
-  stan_file <- system.file("stan/dsgm_spatial.stan", package = "RiskMap")
-  if (!file.exists(stan_file)) {
-    stop("STAN model file not found in package")
-  }
+  # ------------------------------------------------------------------
+  # 2. Persistent on-disk cache directory (user-writable, survives sessions)
+  # ------------------------------------------------------------------
+  cache_dir <- tools::R_user_dir("RiskMap", "cache")
+  if (!dir.exists(cache_dir)) dir.create(cache_dir, recursive = TRUE)
 
   if (backend == "rstan") {
-    if(!requireNamespace("rstan", quietly = TRUE)) {
-      stop("Package 'rstan' is required but not available")
+    # rstan stan_model objects contain a live reference to a compiled DSO
+    # (shared library). saveRDS/readRDS does NOT work across sessions because
+    # the DSO is no longer loaded when the RDS is read back in a new session,
+    # causing "NULL value passed for DllInfo".
+    #
+    # The correct approach is to let rstan manage its own caching via
+    # auto_write = TRUE, which saves a .rds alongside the .stan file and
+    # reloads the DSO correctly. The package library is read-only, so we copy
+    # the .stan file into our writable cache dir once and always work from
+    # there. rstan then reads/writes its .rds cache next to that copy.
+    cached_stan <- file.path(cache_dir, basename(stan_file))
+
+    # Copy .stan to cache dir if missing or source is newer
+    if (!file.exists(cached_stan) ||
+        file.mtime(stan_file) > file.mtime(cached_stan)) {
+      file.copy(stan_file, cached_stan, overwrite = TRUE)
     }
 
-    .dsgm_cache$stan_model <- rstan::stan_model(
-      file = stan_file,
-      model_name = "dsgm_spatial",
-      verbose = FALSE,
-      auto_write = TRUE
-    )
-  } else if (backend == "cmdstanr") {
-    if(!requireNamespace("cmdstanr", quietly = TRUE)) {
-      stop("Package 'cmdstanr' is required but not available")
+    # stan_model with auto_write = TRUE: compiles once, reloads DSO on
+    # subsequent calls without recompiling the C++ code
+    rds_path <- sub("\\.stan$", ".rds", cached_stan)
+
+    if (file.exists(rds_path)) {
+      if (messages) message("Loading pre-compiled rstan model (", model, ")")
+      # readRDS gives us the R-side object; we then need to ensure the DSO is
+      # loaded. rstan::stan_model() with auto_write=TRUE does this correctly
+      # (it reloads the .so without recompiling the C++). Calling it with the
+      # cached .stan copy is safe and much faster than a full recompile.
+      compiled <- rstan::stan_model(
+        file       = cached_stan,
+        model_name = paste0("dsgm_", model),
+        verbose    = FALSE,
+        auto_write = TRUE
+      )
+    } else {
+      if (messages) message("Compiling Stan model '", basename(stan_file), "'...")
+      compiled <- rstan::stan_model(
+        file       = cached_stan,
+        model_name = paste0("dsgm_", model),
+        verbose    = FALSE,
+        auto_write = TRUE
+      )
+      if (messages) message("  Saved to: ", rds_path)
     }
 
-    .dsgm_cache$stan_model <- cmdstanr::cmdstan_model(
-      stan_file = stan_file,
-      compile = TRUE
-    )
   } else {
-    stop("Invalid backend: must be 'rstan' or 'cmdstanr'")
+    # cmdstanr: we manage staleness ourselves rather than relying on
+    # cmdstan_model(compile = TRUE), because installed package files often have
+    # their mtimes reset (e.g. on HPC systems), making the .stan file appear
+    # newer than the cached exe even when nothing has changed.
+    exe_path <- file.path(cache_dir,
+                          paste0("dsgm_", model,
+                                 if (.Platform$OS.type == "windows") ".exe" else ""))
+
+    exe_is_fresh <- file.exists(exe_path) &&
+      file.mtime(exe_path) >= file.mtime(stan_file)
+
+    if (exe_is_fresh) {
+      if (messages) message("Loading pre-compiled cmdstanr model (", model, ")")
+      # Load without recompiling: pass the existing exe directly
+      compiled <- cmdstanr::cmdstan_model(
+        stan_file = stan_file,
+        exe_file  = exe_path,
+        compile   = FALSE
+      )
+    } else {
+      if (messages) message("Compiling Stan model '", basename(stan_file), "'...")
+      compiled <- cmdstanr::cmdstan_model(
+        stan_file = stan_file,
+        exe_file  = exe_path,
+        compile   = TRUE
+      )
+      if (messages) message("  Saved to: ", exe_path)
+    }
   }
 
-  .dsgm_cache$backend <- backend
+  # Store in in-session cache
+  .dsgm_cache[[cache_model]]   <- compiled
+  .dsgm_cache[[cache_backend]] <- backend
 
-  if(messages) message("STAN model compiled and cached")
-  return(list(model = .dsgm_cache$stan_model, backend = backend))
+  if (messages) message("Stan model ready (", model, ")")
+  return(list(model = compiled, backend = backend))
 }
 
-##' @title Sample spatial process using STAN
-##' @description Uses STAN to sample S(x) from posterior given fixed parameters
-##' @param y_prev Binary infection indicators
-##' @param intensity_data Egg counts for positives only
-##' @param D Design matrix
-##' @param coords Unique spatial coordinates (n_loc x 2)
-##' @param ID_coords Location indices for each observation
-##' @param int_mat Intervention matrix
-##' @param survey_times_data Survey times
-##' @param mda_times MDA times
-##' @param par Parameters list with beta, k, rho, alpha_W, gamma_W, sigma2, phi
-##' @param n_samples Number of MCMC samples to draw
-##' @param n_warmup Number of warmup iterations
-##' @param n_chains Number of MCMC chains
-##' @param n_cores Number of cores for parallel chains
-##' @param adapt_delta Target acceptance rate (default 0.8)
-##' @param max_treedepth Maximum tree depth (default 10)
-##' @param messages Print STAN messages
-##' @return Matrix of S samples (n_samples x n_loc)
+
+# =============================================================================
+# Stan samplers
+# =============================================================================
+
+##' @title Sample spatial process for the STH model
+##' @description Samples S(x) from its posterior at fixed theta_0 using
+##'   \code{inst/stan/dsgm_spatial.stan}.
+##' @param par Named list with fields: \code{beta}, \code{k}, \code{rho},
+##'   \code{alpha_W}, \code{gamma_W}, \code{sigma2}, \code{phi}.
+##' @return An object of class \code{dsgm_spatial_samples}.
 ##' @keywords internal
 sample_spatial_process_stan <- function(y_prev,
                                         intensity_data,
@@ -135,1609 +199,930 @@ sample_spatial_process_stan <- function(y_prev,
                                         survey_times_data,
                                         mda_times,
                                         par,
-                                        n_samples = 1000,
-                                        n_warmup = 1000,
-                                        n_chains = 4,
-                                        n_cores = 4,
-                                        adapt_delta = 0.8,
+                                        n_samples     = 1000,
+                                        n_warmup      = 1000,
+                                        n_chains      = 4,
+                                        n_cores       = 4,
+                                        adapt_delta   = 0.8,
                                         max_treedepth = 10,
-                                        backend = NULL,
-                                        messages = TRUE) {
+                                        backend       = NULL,
+                                        messages      = TRUE) {
 
-  # [ALL DATA PREPARATION CODE STAYS THE SAME]
-  n <- length(y_prev)
-  n_loc <- nrow(coords)
-  p <- ncol(D)
-  dist_mat <- as.matrix(dist(coords))
+  n       <- length(y_prev)
+  n_loc   <- nrow(coords)
+  p       <- ncol(D)
+  pos_idx <- which(y_prev == 1)
+  n_pos   <- length(pos_idx)
+
   mda_impact <- compute_mda_effect(survey_times_data, mda_times, int_mat,
                                    par$alpha_W, par$gamma_W, kappa = 1)
-  eta_fixed <- as.numeric(D %*% par$beta)
-  pos_idx <- which(y_prev == 1)
-  n_pos <- length(pos_idx)
 
   stan_data <- list(
-    n = n,
-    n_loc = n_loc,
-    n_pos = n_pos,
-    p = p,
-    y = y_prev,
-    C_pos = intensity_data,
-    pos_idx = pos_idx,
+    n         = n,
+    n_loc     = n_loc,
+    n_pos     = n_pos,
+    p         = p,
+    y         = y_prev,
+    C_pos     = intensity_data,
+    pos_idx   = pos_idx,
     ID_coords = ID_coords,
-    D_mat = dist_mat,
-    eta_fixed = eta_fixed,
+    D_mat     = as.matrix(dist(coords)),
+    eta_fixed = as.numeric(D %*% par$beta),
     mda_impact = mda_impact,
-    k = par$k,
-    rho = par$rho,
-    sigma2 = par$sigma2,
-    phi = par$phi
+    k          = par$k,
+    rho        = par$rho,
+    sigma2     = par$sigma2,
+    phi        = par$phi
   )
 
-  if(messages) {
-    message("Loading pre-compiled STAN model...")
-  }
+  mod <- get_stan_model(model = "sth", backend = backend, messages = messages)
+  backend <- mod$backend
 
-  # Get model and backend
-  model_obj <- get_stan_model(backend = backend, messages = FALSE)
-  stan_model <- model_obj$model
-  backend <- model_obj$backend
-
-  if(messages) {
-    message(sprintf("Sampling %d iterations (%d warmup) across %d chains...",
+  if (messages)
+    message(sprintf("Sampling %d iter (%d warmup), %d chain(s) [sth]...",
                     n_samples + n_warmup, n_warmup, n_chains))
-  }
 
-  # =============================================================================
-  # SAMPLE - BACKEND-SPECIFIC
-  # =============================================================================
+  fit <- .run_stan(mod$model, backend, stan_data,
+                   n_samples, n_warmup, n_chains, n_cores,
+                   adapt_delta, max_treedepth, messages)
+  S_samples <- .extract_S(fit, backend, messages)
+
+  result <- list(S_samples = S_samples, stan_fit = fit,
+                 n_samples = nrow(S_samples), n_loc = n_loc,
+                 coords = coords, par = par, backend = backend)
+  class(result) <- "dsgm_spatial_samples"
+  result
+}
+
+
+##' @title Sample spatial process for the LF multi-diagnostic model
+##' @description Samples S(x) from its posterior at fixed theta_0 using
+##'   \code{inst/stan/dsgm_mdiag.stan}. All model parameters are fixed and
+##'   passed as Stan data; only S_raw is sampled.
+##'
+##'   \strong{Parameter name translation:} internally the package uses
+##'   \code{k}/\code{rho} for the NB aggregation and detection-rate parameters.
+##'   The Stan file (\code{dsgm_mdiag.stan}) and the TMB template
+##'   (\code{dsgm_mdiag.cpp}) use \code{omega}/\code{alpha} for the same
+##'   quantities.  The translation is done here at the R/Stan boundary.
+##'
+##' @param par Named list: \code{beta}, \code{k}, \code{rho},
+##'   \code{gamma_sens}, \code{sigma2}, \code{phi}, \code{tau2}.
+##' @param mda_impact Pre-computed MDA decay vector (length n).
+##'   Pass \code{rep(1, n)} when there is no MDA.
+##' @return An object of class \code{dsgm_spatial_samples}.
+##' @keywords internal
+sample_spatial_process_stan_lf <- function(y_counts,
+                                           units_m,
+                                           is_mf,
+                                           D,
+                                           coords,
+                                           ID_coords,
+                                           par,
+                                           mda_impact    = NULL,
+                                           n_samples     = 1000,
+                                           n_warmup      = 1000,
+                                           n_chains      = 4,
+                                           n_cores       = 4,
+                                           adapt_delta   = 0.8,
+                                           max_treedepth = 10,
+                                           backend       = NULL,
+                                           messages      = TRUE) {
+
+  n     <- length(y_counts)
+  n_loc <- nrow(coords)
+  p     <- ncol(D)
+
+  if (is.null(mda_impact)) mda_impact <- rep(1.0, n)
+  use_mda_flag <- as.integer(!all(mda_impact == 1.0))
+
+  # Translate R naming (k/rho) -> Stan naming (omega/alpha)
+  stan_data <- list(
+    n          = n,
+    n_loc      = n_loc,
+    p          = p,
+    y          = as.integer(y_counts),
+    units_m    = as.integer(units_m),
+    is_mf      = as.integer(is_mf),
+    ID_coords  = as.integer(ID_coords),
+    D_mat      = as.matrix(dist(coords)),
+    eta_fixed  = as.numeric(D %*% par$beta),
+    mda_impact = as.numeric(mda_impact),
+    use_mda    = use_mda_flag,
+    # Fixed parameters (R k/rho -> Stan omega/alpha)
+    omega      = par$k,
+    alpha      = par$rho,
+    gamma_sens = par$gamma_sens,
+    sigma2     = par$sigma2,
+    phi        = par$phi
+    # NOTE: tau2 (nugget) is NOT passed to Stan; it is a TMB-only parameter
+  )
+
+  mod <- get_stan_model(model = "lf", backend = backend, messages = messages)
+  backend <- mod$backend
+
+  if (messages)
+    message(sprintf("Sampling %d iter (%d warmup), %d chain(s) [lf_mdiag]...",
+                    n_samples + n_warmup, n_warmup, n_chains))
+
+  fit <- .run_stan(mod$model, backend, stan_data,
+                   n_samples, n_warmup, n_chains, n_cores,
+                   adapt_delta, max_treedepth, messages)
+  S_samples <- .extract_S(fit, backend, messages)
+
+  result <- list(S_samples = S_samples, stan_fit = fit,
+                 n_samples = nrow(S_samples), n_loc = n_loc,
+                 coords = coords, par = par, backend = backend)
+  class(result) <- "dsgm_spatial_samples"
+  result
+}
+
+
+# Internal helpers to avoid duplicating backend dispatch logic
+.run_stan <- function(stan_model, backend, stan_data,
+                      n_samples, n_warmup, n_chains, n_cores,
+                      adapt_delta, max_treedepth, messages) {
   if (backend == "rstan") {
-    fit <- rstan::sampling(
+    rstan::sampling(
       stan_model,
-      data = stan_data,
-      iter = n_samples + n_warmup,
-      warmup = n_warmup,
-      chains = n_chains,
-      cores = n_cores,
-      control = list(
-        adapt_delta = adapt_delta,
-        max_treedepth = max_treedepth
-      ),
+      data    = stan_data,
+      iter    = n_samples + n_warmup,
+      warmup  = n_warmup,
+      chains  = n_chains,
+      cores   = n_cores,
+      control = list(adapt_delta = adapt_delta,
+                     max_treedepth = max_treedepth),
       refresh = ifelse(messages, max(1, (n_samples + n_warmup) %/% 10), 0),
       show_messages = messages,
-      verbose = messages
+      verbose       = messages
     )
-
-    # Extract samples - rstan version
-    S_samples <- rstan::extract(fit, pars = "S")$S
-
-    if(messages) {
-      message(sprintf("Extracted %d samples of spatial process (%d locations)",
-                      nrow(S_samples), ncol(S_samples)))
-
-      summary_S <- rstan::summary(fit, pars = "S")$summary
-      n_divergent <- sum(rstan::get_num_divergent(fit))
-      n_max_treedepth <- sum(rstan::get_num_max_treedepth(fit))
-
-      message(sprintf("Divergent transitions: %d", n_divergent))
-      message(sprintf("Max treedepth hits: %d", n_max_treedepth))
-
-      if(n_divergent > 0) {
-        warning("Divergent transitions detected. Consider increasing adapt_delta.")
-      }
-    }
-
-  } else if (backend == "cmdstanr") {
-    fit <- stan_model$sample(
-      data = stan_data,
-      iter_warmup = n_warmup,
-      iter_sampling = n_samples,
-      chains = n_chains,
+  } else {
+    stan_model$sample(
+      data            = stan_data,
+      iter_warmup     = n_warmup,
+      iter_sampling   = n_samples,
+      chains          = n_chains,
       parallel_chains = n_cores,
-      adapt_delta = adapt_delta,
-      max_treedepth = max_treedepth,
+      adapt_delta     = adapt_delta,
+      max_treedepth   = max_treedepth,
       refresh = ifelse(messages, max(1, (n_samples + n_warmup) %/% 10), 0),
-      show_messages = messages,
+      show_messages   = messages,
       show_exceptions = messages
     )
+  }
+}
 
-    # Extract samples - cmdstanr version
-    S_samples <- fit$draws("S", format = "matrix")
-
-    if(messages) {
-      message(sprintf("Extracted %d samples of spatial process (%d locations)",
-                      nrow(S_samples), ncol(S_samples)))
-
-      diagnostics <- fit$diagnostic_summary()
-      n_divergent <- sum(diagnostics$num_divergent)
-      n_max_treedepth <- sum(diagnostics$num_max_treedepth)
-
-      message(sprintf("Divergent transitions: %d", n_divergent))
-      message(sprintf("Max treedepth hits: %d", n_max_treedepth))
-
-      if(n_divergent > 0) {
-        warning("Divergent transitions detected. Consider increasing adapt_delta.")
-      }
+.extract_S <- function(fit, backend, messages) {
+  if (backend == "rstan") {
+    S <- rstan::extract(fit, pars = "S")$S
+    if (messages) {
+      n_div <- sum(rstan::get_num_divergent(fit))
+      n_mtr <- sum(rstan::get_num_max_treedepth(fit))
+      message(sprintf("Extracted %d samples (%d locations) | divergent: %d | max-treedepth: %d",
+                      nrow(S), ncol(S), n_div, n_mtr))
+      if (n_div > 0) warning("Divergent transitions detected. Consider increasing adapt_delta.")
+    }
+  } else {
+    S <- fit$draws("S", format = "matrix")
+    if (messages) {
+      diag  <- fit$diagnostic_summary()
+      n_div <- sum(diag$num_divergent)
+      n_mtr <- sum(diag$num_max_treedepth)
+      message(sprintf("Extracted %d samples (%d locations) | divergent: %d | max-treedepth: %d",
+                      nrow(S), ncol(S), n_div, n_mtr))
+      if (n_div > 0) warning("Divergent transitions detected. Consider increasing adapt_delta.")
     }
   }
-
-  # =============================================================================
-  # RETURN RESULTS (same for both backends)
-  # =============================================================================
-  result <- list(
-    S_samples = S_samples,
-    stan_fit = fit,
-    n_samples = nrow(S_samples),
-    n_loc = n_loc,
-    coords = coords,
-    par = par,
-    backend = backend  # Store which backend was used
-  )
-
-  class(result) <- "dsgm_spatial_samples"
-  return(result)
+  S
 }
+
+
+# =============================================================================
+# Utility functions for spatial samples
+# =============================================================================
 
 ##' @title Thin spatial process samples
-##' @description Thin MCMC samples to reduce autocorrelation
-##' @param spatial_samples Output from sample_spatial_process_stan
-##' @param thin Thinning interval
-##' @return Thinned samples
+##' @description Reduces autocorrelation by keeping every \code{thin}-th row.
+##' @param spatial_samples Output from \code{sample_spatial_process_stan} or
+##'   \code{sample_spatial_process_stan_lf}.
+##' @param thin Thinning interval (default 10).
+##' @return A thinned \code{dsgm_spatial_samples} object.
 ##' @keywords internal
 thin_spatial_samples <- function(spatial_samples, thin = 10) {
-
-  n_total <- nrow(spatial_samples$S_samples)
-  keep_idx <- seq(1, n_total, by = thin)
-
-  spatial_samples$S_samples <- spatial_samples$S_samples[keep_idx, , drop = FALSE]
-  spatial_samples$n_samples <- nrow(spatial_samples$S_samples)
-
-  return(spatial_samples)
+  keep <- seq(1, nrow(spatial_samples$S_samples), by = thin)
+  spatial_samples$S_samples <- spatial_samples$S_samples[keep, , drop = FALSE]
+  spatial_samples$n_samples  <- nrow(spatial_samples$S_samples)
+  spatial_samples
 }
 
 
-##' @title Compute effective sample size for spatial process
-##' @description Calculate ESS for each spatial location
-##' @param spatial_samples Output from sample_spatial_process_stan
-##' @return Vector of ESS values for each location
+##' @title Effective sample size for spatial process
+##' @description Computes ESS for each spatial location using the \pkg{coda}
+##'   package.
+##' @param spatial_samples Output from a Stan sampler.
+##' @return Numeric vector of ESS values, one per location.
 ##' @keywords internal
 compute_spatial_ess <- function(spatial_samples) {
-
-  if(!requireNamespace("coda", quietly = TRUE)) {
+  if (!requireNamespace("coda", quietly = TRUE))
     stop("Package 'coda' is required for ESS calculation")
-  }
-
-  n_loc <- spatial_samples$n_loc
-  ess_vec <- numeric(n_loc)
-
-  for(i in 1:n_loc) {
-    mcmc_obj <- coda::as.mcmc(spatial_samples$S_samples[, i])
-    ess_vec[i] <- coda::effectiveSize(mcmc_obj)
-  }
-
-  return(ess_vec)
+  sapply(seq_len(spatial_samples$n_loc), function(i)
+    coda::effectiveSize(coda::as.mcmc(spatial_samples$S_samples[, i])))
 }
 
 
-##' @title Print method for spatial samples
+##' @title Print method for dsgm_spatial_samples
 ##' @export
 print.dsgm_spatial_samples <- function(x, ...) {
   cat("DSGM Spatial Process Samples\n")
-  cat(sprintf("  Number of samples: %d\n", x$n_samples))
-  cat(sprintf("  Number of locations: %d\n", x$n_loc))
-  cat(sprintf("  Sample matrix dimensions: %d x %d\n",
-              nrow(x$S_samples), ncol(x$S_samples)))
-
-  if(requireNamespace("coda", quietly = TRUE)) {
+  cat(sprintf("  Samples   : %d\n", x$n_samples))
+  cat(sprintf("  Locations : %d\n", x$n_loc))
+  cat(sprintf("  Matrix    : %d x %d\n", nrow(x$S_samples), ncol(x$S_samples)))
+  if (requireNamespace("coda", quietly = TRUE)) {
     ess <- compute_spatial_ess(x)
-    cat(sprintf("  Effective sample size: %.0f - %.0f (median: %.0f)\n",
+    cat(sprintf("  ESS       : %.0f - %.0f  (median %.0f)\n",
                 min(ess), max(ess), median(ess)))
   }
-
   invisible(x)
 }
 
-##' @title Initial values for DSGM model
-##' @description Computes starting values for joint prevalence-intensity model
-##'   by fitting simplified model without spatial random effects
-##' @keywords internal
-##' @title Initial values for DSGM model
-##' @description Computes starting values for joint prevalence-intensity model
-##'   by fitting simplified model without spatial random effects
-##' @keywords internal
-##' @title Initial values for DSGM model
-##' @description Computes starting values for joint prevalence-intensity model
-##'   by fitting simplified model without spatial random effects
-##' @keywords internal
-##' @title Compute initial parameter values for DSGM
-##' @description Fits simplified model without spatial effects to get starting values
+
+# =============================================================================
+# Initial value functions
+# =============================================================================
+
+##' @title Compute initial parameter values for the STH model
+##' @description Fits a simplified non-spatial model (no S(x)) to obtain
+##'   starting values for \code{beta}, \code{k}, \code{rho}, \code{alpha_W},
+##'   \code{gamma_W}, \code{sigma2}, and \code{phi}.
 ##' @keywords internal
 dsgm_initial_value <- function(y_prev, intensity_data, D, coords, ID_coords,
                                int_mat, survey_times_data, mda_times,
-                               penalty, fix_alpha_W, fix_gamma_W, start_pars,
-                               messages) {
+                               penalty, fix_alpha_W, fix_gamma_W,
+                               start_pars, messages) {
 
   n <- length(y_prev)
   p <- ncol(D)
-  n_loc <- nrow(coords)
 
-  # =============================================================================
-  # HELPER FUNCTION: COMPUTE PENALTY VALUE
-  # =============================================================================
-
-  compute_penalty <- function(penalty, alpha_W = NULL, gamma_W = NULL,
-                              fix_alpha_W = NULL, fix_gamma_W = NULL) {
+  # Penalty helper
+  .pen <- function(alpha_W, gamma_W) {
     pen <- 0
-
-    if(!is.null(penalty)) {
-      # Alpha penalty (if not fixed)
-      if(is.null(fix_alpha_W) && !is.null(alpha_W)) {
-        # Check if we have function-based penalty (old format)
-        if(!is.null(penalty$alpha) && is.function(penalty$alpha)) {
+    if (!is.null(penalty)) {
+      if (is.null(fix_alpha_W)) {
+        if (is.function(penalty$alpha))
           pen <- pen + penalty$alpha(alpha_W)
-        }
-        # Or parameter-based penalty (new format)
-        else if(!is.null(penalty$alpha_param1) && !is.null(penalty$alpha_param2)) {
-          # Beta(a, b) penalty: -(a-1)*log(x) - (b-1)*log(1-x)
-          a <- penalty$alpha_param1
-          b <- penalty$alpha_param2
-          pen <- pen - (a - 1) * log(alpha_W) - (b - 1) * log(1 - alpha_W)
-        }
+        else if (!is.null(penalty$alpha_param1))
+          pen <- pen - (penalty$alpha_param1-1)*log(alpha_W) -
+            (penalty$alpha_param2-1)*log(1-alpha_W)
       }
-
-      # Gamma penalty (if not fixed)
-      if(is.null(fix_gamma_W) && !is.null(gamma_W)) {
-        # Check if we have function-based penalty (old format)
-        if(!is.null(penalty$gamma) && is.function(penalty$gamma)) {
+      if (is.null(fix_gamma_W)) {
+        if (is.function(penalty$gamma))
           pen <- pen + penalty$gamma(gamma_W)
-        }
-        # Or parameter-based penalty (new format)
-        else if(!is.null(penalty$gamma_type)) {
-          if(penalty$gamma_type == "gamma") {
-            # Gamma(shape, rate) penalty: -(shape-1)*log(x) + rate*x
-            shape <- penalty$gamma_shape
-            rate <- penalty$gamma_rate
-            pen <- pen - (shape - 1) * log(gamma_W) + rate * gamma_W
-          } else if(penalty$gamma_type == "normal") {
-            # Normal(mean, sd) penalty: (x-mean)^2/(2*sd^2)
-            mean <- penalty$gamma_mean
-            sd <- penalty$gamma_sd
-            diff <- gamma_W - mean
-            pen <- pen + 0.5 * diff^2 / sd^2
+        else if (!is.null(penalty$gamma_type)) {
+          if (penalty$gamma_type == "gamma")
+            pen <- pen - (penalty$gamma_shape-1)*log(gamma_W) + penalty$gamma_rate*gamma_W
+          else {
+            d <- gamma_W - penalty$gamma_mean
+            pen <- pen + 0.5*d^2/penalty$gamma_sd^2
           }
-        }
-        # Or legacy parameter names
-        else if(!is.null(penalty$gamma_shape) && !is.null(penalty$gamma_rate)) {
-          # Gamma distribution (assume if shape and rate are present)
-          shape <- penalty$gamma_shape
-          rate <- penalty$gamma_rate
-          pen <- pen - (shape - 1) * log(gamma_W) + rate * gamma_W
-        } else if(!is.null(penalty$gamma_mean) && !is.null(penalty$gamma_sd)) {
-          # Normal distribution
-          mean <- penalty$gamma_mean
-          sd <- penalty$gamma_sd
-          diff <- gamma_W - mean
-          pen <- pen + 0.5 * diff^2 / sd^2
+        } else if (!is.null(penalty$gamma_shape)) {
+          pen <- pen - (penalty$gamma_shape-1)*log(gamma_W) + penalty$gamma_rate*gamma_W
+        } else if (!is.null(penalty$gamma_mean)) {
+          d <- gamma_W - penalty$gamma_mean
+          pen <- pen + 0.5*d^2/penalty$gamma_sd^2
         }
       }
     }
-
-    return(pen)
+    pen
   }
 
-  # =============================================================================
-  # NEGATIVE LOG-LIKELIHOOD FOR SIMPLIFIED MODEL (NO SPATIAL EFFECTS)
-  # =============================================================================
+  nll <- function(par) {
+    beta    <- par[1:p]
+    k       <- exp(par[p+1])
+    rho     <- exp(par[p+2])
+    idx     <- p+3
+    alpha_W <- if (is.null(fix_alpha_W)) { v <- plogis(par[idx]); idx <<- idx+1; v } else fix_alpha_W
+    gamma_W <- if (is.null(fix_gamma_W))   exp(par[idx])                          else fix_gamma_W
 
-  nll_simplified <- function(par) {
+    mu_W <- exp(D %*% beta) *
+      compute_mda_effect(survey_times_data, mda_times, int_mat,
+                         alpha_W, gamma_W, kappa = 1)
 
-    # Extract parameters
-    beta <- par[1:p]
-    k_log <- par[p + 1]
-    rho_log <- par[p + 2]
+    pr <- pmax(pmin(1 - (k/(k + mu_W*(1-exp(-rho))))^k, 1-1e-10), 1e-10)
+    ll <- sum(log(1-pr[y_prev==0])) + sum(log(pr[y_prev==1]))
 
-    k <- exp(k_log)
-    rho <- exp(rho_log)
+    pos   <- which(y_prev == 1)
+    mupos <- mu_W[pos];  prpos <- pr[pos]
+    mu_C  <- rho*mupos / prpos
+    s2_C  <- pmax((rho*mupos*(1+rho))/prpos +
+                    (rho^2*mupos^2/prpos)*(1/k + 1 - 1/prpos), 1e-10)
+    kC    <- pmax((mu_C-1)^2/s2_C, 1e-10)
+    tC    <- pmax(s2_C/(mu_C-1), 1e-10)
+    li    <- dgamma(intensity_data-1, shape=kC, scale=tC, log=TRUE)
+    li[!is.finite(li)] <- -1e10
+    ll <- ll + sum(li)
 
-    # MDA parameters
-    idx <- p + 3
-    if(is.null(fix_alpha_W)) {
-      alpha_W_logit <- par[idx]
-      alpha_W <- plogis(alpha_W_logit)
-      idx <- idx + 1
-    } else {
-      alpha_W <- fix_alpha_W
-    }
-
-    if(is.null(fix_gamma_W)) {
-      gamma_W_log <- par[idx]
-      gamma_W <- exp(gamma_W_log)
-      idx <- idx + 1
-    } else {
-      gamma_W <- fix_gamma_W
-    }
-
-    # Counterfactual mean worm burden (without MDA)
-    mu_W_star <- exp(D %*% beta)
-
-    # MDA impact function
-    mda_imp <- compute_mda_effect(survey_times_data, mda_times, int_mat,
-                                  alpha_W, gamma_W, kappa = 1)
-
-    # Adjusted mean worm burden
-    mu_W <- mu_W_star * mda_imp
-
-    # Compute prevalence using PGF
-    term <- k / (k + mu_W * (1 - exp(-rho)))
-    pr0 <- 1 - term^k
-
-    # Clamp probabilities
-    pr0 <- pmax(pmin(pr0, 1 - 1e-10), 1e-10)
-
-    # Initialize log-likelihood
-    ll <- 0
-
-    # Contribution from zeros
-    zeros_idx <- which(y_prev == 0)
-    if(length(zeros_idx) > 0) {
-      ll <- ll + sum(log(1 - pr0[zeros_idx]))
-    }
-
-    # Contribution from positives
-    positives_idx <- which(y_prev == 1)
-    if(length(positives_idx) > 0) {
-      # Prevalence contribution
-      ll <- ll + sum(log(pr0[positives_idx]))
-
-      # Extract for positives
-      mu_W_pos <- mu_W[positives_idx]
-      pr0_pos <- pr0[positives_idx]
-
-      # Conditional mean and variance
-      mu_C <- (rho * mu_W_pos) / pr0_pos
-      sigma2_C <- (rho * mu_W_pos * (1 + rho)) / pr0_pos +
-        (rho^2 * mu_W_pos^2 / pr0_pos) * (1/k + 1 - 1/pr0_pos)
-
-      # Ensure positive variance
-      sigma2_C <- pmax(sigma2_C, 1e-10)
-
-      # Gamma parameters
-      kappa_C <- ((mu_C - 1)^2) / sigma2_C
-      theta_C <- sigma2_C / (mu_C - 1)
-
-      # Ensure valid parameters
-      kappa_C <- pmax(kappa_C, 1e-10)
-      theta_C <- pmax(theta_C, 1e-10)
-
-      # Extract observed intensities
-      C_obs <- intensity_data
-
-      # Gamma density for C - 1
-      ll_intensity <- dgamma(C_obs - 1, shape = kappa_C, scale = theta_C, log = TRUE)
-
-      # Check for valid log-likelihood values
-      ll_intensity[!is.finite(ll_intensity)] <- -1e10
-
-      ll <- ll + sum(ll_intensity)
-    }
-
-    # Add penalties using helper function
-    pen <- compute_penalty(penalty, alpha_W = alpha_W, gamma_W = gamma_W,
-                           fix_alpha_W = fix_alpha_W, fix_gamma_W = fix_gamma_W)
-    ll <- ll - pen
-
-    # Return negative log-likelihood
-    nll <- -ll
-
-    # Check for numerical issues
-    if(!is.finite(nll) || nll > 1e10) {
-      return(1e10)
-    }
-
-    return(nll)
+    nll <- -(ll - .pen(alpha_W, gamma_W))
+    if (!is.finite(nll) || nll > 1e10) 1e10 else nll
   }
 
-  # =============================================================================
-  # SET UP STARTING VALUES
-  # =============================================================================
+  # Starting values
+  mc1 <- mean(intensity_data-1, na.rm=TRUE)
+  vc1 <- var(intensity_data-1,  na.rm=TRUE)
+  k0  <- if (!is.null(start_pars$k)) start_pars$k else
+    if (!is.na(vc1) && vc1>0 && mc1>0) max(mc1^2/vc1, 0.1) else 0.5
+  rho0 <- if (!is.null(start_pars$rho)) start_pars$rho else 1
+  aW0  <- if (!is.null(start_pars$alpha_W)) start_pars$alpha_W else 0.5
+  gW0  <- if (!is.null(start_pars$gamma_W)) start_pars$gamma_W else 2.0
+  b0   <- if (!is.null(start_pars$beta)) start_pars$beta else {
+    b <- rep(0, p)
+    b[1] <- log(max(mean(y_prev)*mean(intensity_data, na.rm=TRUE), 1)); b }
 
-  # Observed statistics
-  obs_prev <- mean(y_prev)
-  obs_mean_epg <- mean(intensity_data, na.rm = TRUE)
-  obs_var_epg <- var(intensity_data, na.rm = TRUE)
-  if(is.na(obs_mean_epg)) obs_mean_epg <- 100
-  if(is.na(obs_var_epg)) obs_var_epg <- obs_mean_epg^2
+  par0 <- c(b0, log(k0), log(rho0))
+  if (is.null(fix_alpha_W)) par0 <- c(par0, qlogis(aW0))
+  if (is.null(fix_gamma_W)) par0 <- c(par0, log(gW0))
 
-  # Starting values for beta
-  if(is.null(start_pars$beta)) {
-    rho_approx <- 1
-    k_approx <- 1
-    mu_W_approx <- obs_prev * obs_mean_epg / rho_approx
-
-    beta_init <- rep(0, p)
-    beta_init[1] <- log(max(mu_W_approx, 1))
-  } else {
-    beta_init <- start_pars$beta
-  }
-
-  # Starting value for k
-  if(is.null(start_pars$k)) {
-    mean_C_minus_1 <- mean(intensity_data - 1, na.rm = TRUE)
-    var_C_minus_1 <- var(intensity_data - 1, na.rm = TRUE)
-
-    if(var_C_minus_1 > 0 && mean_C_minus_1 > 0) {
-      CV_sq <- var_C_minus_1 / (mean_C_minus_1^2)
-      k_init <- max(1 / CV_sq, 0.1)
-    } else {
-      k_init <- 0.5
-    }
-  } else {
-    k_init <- start_pars$k
-  }
-
-  # Starting value for rho
-  if(is.null(start_pars$rho)) {
-    rho_init <- 1
-  } else {
-    rho_init <- start_pars$rho
-  }
-
-  # Starting values for MDA parameters
-  if(is.null(fix_alpha_W)) {
-    if(is.null(start_pars$alpha_W)) {
-      alpha_W_init <- 0.5
-    } else {
-      alpha_W_init <- start_pars$alpha_W
-    }
-  }
-
-  if(is.null(fix_gamma_W)) {
-    if(is.null(start_pars$gamma_W)) {
-      gamma_W_init <- 2.0
-    } else {
-      gamma_W_init <- start_pars$gamma_W
-    }
-  }
-
-  # =============================================================================
-  # ASSEMBLE INITIAL PARAMETER VECTOR
-  # =============================================================================
-
-  par_init <- c(
-    beta_init,
-    log(k_init),
-    log(rho_init)
-  )
-
-  if(is.null(fix_alpha_W)) {
-    par_init <- c(par_init, qlogis(alpha_W_init))
-  }
-  if(is.null(fix_gamma_W)) {
-    par_init <- c(par_init, log(gamma_W_init))
-  }
-
-  # =============================================================================
-  # OPTIMIZE
-  # =============================================================================
-
-  if(messages) {
-    message("Optimizing simplified model for initial values...")
-  }
-
-  fit <- nlminb(
-    start = par_init,
-    objective = nll_simplified,
-    control = list(eval.max = 2000, iter.max = 1000, trace = ifelse(messages, 1, 0))
-  )
-
-  if(fit$convergence != 0) {
-    warning("Initial value optimization did not converge (code = ",
+  if (messages) message("Optimising simplified model for initial values (STH)...")
+  fit <- nlminb(par0, nll,
+                control=list(eval.max=2000, iter.max=1000,
+                             trace=ifelse(messages,1,0)))
+  pe <- if (fit$convergence != 0) {
+    warning("STH initial value optimisation did not converge (code=",
             fit$convergence, "). Using starting values.")
-    par_est <- par_init
+    par0
   } else {
-    par_est <- fit$par
-    if(messages) {
-      message(sprintf("  Converged: nll = %.2f", fit$objective))
-    }
+    if (messages) message(sprintf("  Converged: nll = %.2f", fit$objective))
+    fit$par
   }
 
-  # =============================================================================
-  # EXTRACT ESTIMATED PARAMETERS
-  # =============================================================================
+  beta_e <- pe[1:p]; k_e <- exp(pe[p+1]); rho_e <- exp(pe[p+2])
+  idx <- p+3
+  aW_e <- if (is.null(fix_alpha_W)) { v <- plogis(pe[idx]); idx <- idx+1; v } else fix_alpha_W
+  gW_e <- if (is.null(fix_gamma_W))   exp(pe[idx])                          else fix_gamma_W
 
-  beta_est <- par_est[1:p]
-  k_est <- exp(par_est[p + 1])
-  rho_est <- exp(par_est[p + 2])
+  s2_0  <- if (!is.null(start_pars$sigma2)) start_pars$sigma2 else 1.0
+  phi_0 <- if (!is.null(start_pars$phi)) start_pars$phi else {
+    d <- as.matrix(dist(coords)); median(d[upper.tri(d)])/3 }
 
-  idx <- p + 3
-  if(is.null(fix_alpha_W)) {
-    alpha_W_est <- plogis(par_est[idx])
-    idx <- idx + 1
-  } else {
-    alpha_W_est <- fix_alpha_W
-  }
+  if (messages)
+    message(sprintf("  k=%.3f  rho=%.3f  alpha_W=%.3f  gamma_W=%.3f  sigma2=%.3f  phi=%.3f",
+                    k_e, rho_e, aW_e, gW_e, s2_0, phi_0))
 
-  if(is.null(fix_gamma_W)) {
-    gamma_W_est <- exp(par_est[idx])
-  } else {
-    gamma_W_est <- fix_gamma_W
-  }
-
-  # =============================================================================
-  # INITIALIZE SPATIAL PARAMETERS
-  # =============================================================================
-
-  # Compute residuals
-  mu_W_star_est <- exp(D %*% beta_est)
-  mda_imp_est <- compute_mda_effect(survey_times_data, mda_times, int_mat,
-                                    alpha_W_est, gamma_W_est, kappa = 1)
-  mu_W_est <- mu_W_star_est * mda_imp_est
-
-  # Deviance residuals
-  term_est <- k_est / (k_est + mu_W_est * (1 - exp(-rho_est)))
-  pr0_est <- 1 - term_est^k_est
-  pr0_est <- pmax(pmin(pr0_est, 1 - 1e-10), 1e-10)
-
-  # Log-likelihood residuals
-  resid <- numeric(n)
-  resid[y_prev == 0] <- log(1 - pr0_est[y_prev == 0])
-  resid[y_prev == 1] <- log(pr0_est[y_prev == 1])
-
-  # Aggregate by location
-  resid_by_loc <- tapply(resid, ID_coords, mean, na.rm = TRUE)
-
-  # Initialize spatial variance
-  if(is.null(start_pars$sigma2)) {
-    sigma2_init <- 1
-  } else {
-    sigma2_init <- start_pars$sigma2
-  }
-
-  # Initialize spatial range
-  if(is.null(start_pars$phi)) {
-    dist_mat <- as.matrix(dist(coords))
-    median_dist <- median(dist_mat[upper.tri(dist_mat)])
-    phi_init <- median_dist / 3
-  } else {
-    phi_init <- start_pars$phi
-  }
-
-  # =============================================================================
-  # RETURN INITIAL PARAMETER LIST
-  # =============================================================================
-
-  par0 <- list(
-    beta = beta_est,
-    k = k_est,
-    rho = rho_est,
-    alpha_W = alpha_W_est,
-    gamma_W = gamma_W_est,
-    sigma2 = sigma2_init,
-    phi = phi_init
-  )
-
-  if(messages) {
-    message("Initial parameter estimates:")
-    message(sprintf("  alpha_W: %.3f", alpha_W_est))
-    message(sprintf("  gamma_W: %.3f", gamma_W_est))
-    message(sprintf("  k: %.3f", k_est))
-    message(sprintf("  rho: %.3f", rho_est))
-    message(sprintf("  sigma2: %.3f", sigma2_init))
-    message(sprintf("  phi: %.3f", phi_init))
-  }
-
-  return(par0)
+  list(beta=beta_e, k=k_e, rho=rho_e, alpha_W=aW_e, gamma_W=gW_e,
+       sigma2=s2_0, phi=phi_0)
 }
 
-##' @title Monte Carlo Maximum Likelihood fitting for DSGM
-##' @description Implements MCML estimation using STAN-sampled spatial process
-##' @keywords internal
-##' @title Monte Carlo Maximum Likelihood fitting for DSGM
-##' @description Implements MCML estimation using STAN-sampled spatial process
-##' @keywords internal
-##' @title Monte Carlo Maximum Likelihood fitting for DSGM
-##' @description Implements MCML estimation using STAN-sampled spatial process
-##' @keywords internal
-dsgm_fit <- function(y_prev, intensity_data, D, coords, ID_coords,
-                     int_mat, survey_times_data, mda_times,
-                     par0, cov_offset, fix_alpha_W, fix_gamma_W,
-                     penalty, S_samples_obj, messages = TRUE) {
 
-  # Extract dimensions
-  n <- length(y_prev)
+##' @title Compute initial parameter values for the LF multi-diagnostic model
+##' @description Fits a simplified non-spatial binomial model using both MF
+##'   (parasitological) and CFA/ICT (serological) rows to obtain starting
+##'   values for \code{beta}, \code{k}, \code{rho}, \code{sigma2}, \code{phi},
+##'   \code{tau2}, and optionally \code{alpha_W}/\code{gamma_W}.
+##' @keywords internal
+dsgm_initial_value_lf <- function(y_counts, units_m, is_mf, D, coords,
+                                  int_mat, survey_times_data, mda_times,
+                                  gamma_sens, penalty,
+                                  fix_k, fix_alpha_W, fix_gamma_W,
+                                  use_mda, start_pars, messages) {
+
+  n <- length(y_counts)
   p <- ncol(D)
-  n_loc <- nrow(coords)
-  n_samples <- nrow(S_samples_obj$S_samples)
 
-  # Extract spatial samples
-  S_samples <- S_samples_obj$S_samples  # n_samples x n_loc matrix
+  nll <- function(par) {
+    beta <- par[1:p]
+    k    <- if (!is.null(fix_k)) fix_k else exp(par[p+1])
+    rho  <- exp(par[p+2])
+    idx  <- p+3
 
-  # Distance matrix for correlation
-  u_dist <- as.matrix(dist(coords))
+    alpha_W <- if (use_mda && is.null(fix_alpha_W)) { v <- plogis(par[idx]); idx <<- idx+1; v } else fix_alpha_W
+    gamma_W <- if (use_mda && is.null(fix_gamma_W))   exp(par[idx])                          else fix_gamma_W
 
-  # Positive indices
-  pos_idx <- which(y_prev == 1)
-  n_pos <- length(pos_idx)
+    mu <- exp(D %*% beta)
+    if (use_mda)
+      mu <- mu * compute_mda_effect(survey_times_data, mda_times, int_mat,
+                                    alpha_W, gamma_W, kappa=1)
 
-  # =============================================================================
-  # PARAMETER INDEXING
-  # =============================================================================
+    prob <- numeric(n)
+    mf  <- is_mf == 1
+    cfa <- is_mf == 0
+    prob[mf]  <- pmax(pmin(1 - (k/(k + mu[mf] *(1-exp(-rho))))^k, 1-1e-10), 1e-10)
+    prob[cfa] <- pmax(pmin(gamma_sens*(1-(k/(k + mu[cfa]))^k),     1-1e-10), 1e-10)
 
-  ind_beta <- 1:p
-  ind_k <- p + 1
-  ind_rho <- p + 2
+    ll <- sum(y_counts*log(prob) + (units_m-y_counts)*log(1-prob))
+    if (!is.finite(ll)) 1e10 else -ll
+  }
 
-  idx <- p + 3
-  if(is.null(fix_alpha_W)) {
-    ind_alpha <- idx
-    idx <- idx + 1
+  # Starting values
+  obs_prev <- mean(y_counts / pmax(units_m, 1))
+  b0  <- if (!is.null(start_pars$beta)) start_pars$beta else {
+    b <- rep(0, p); b[1] <- log(max(obs_prev, 0.01)); b }
+  k0  <- if (!is.null(fix_k)) fix_k else
+    if (!is.null(start_pars$k)) start_pars$k else 0.5
+  rho0 <- if (!is.null(start_pars$rho)) start_pars$rho else 0.5
+  aW0  <- if (!is.null(fix_alpha_W)) fix_alpha_W else
+    if (!is.null(start_pars$alpha_W)) start_pars$alpha_W else 0.5
+  gW0  <- if (!is.null(fix_gamma_W)) fix_gamma_W else
+    if (!is.null(start_pars$gamma_W)) start_pars$gamma_W else 2.0
+
+  par0 <- c(b0, log(k0), log(rho0))
+  if (use_mda) {
+    if (is.null(fix_alpha_W)) par0 <- c(par0, qlogis(aW0))
+    if (is.null(fix_gamma_W)) par0 <- c(par0, log(gW0))
+  }
+
+  if (messages) message("Optimising simplified model for initial values (LF)...")
+  fit <- nlminb(par0, nll,
+                control=list(eval.max=2000, iter.max=1000,
+                             trace=ifelse(messages,1,0)))
+  pe <- if (fit$convergence != 0) {
+    warning("LF initial value optimisation did not converge (code=",
+            fit$convergence, "). Using starting values.")
+    par0
   } else {
-    ind_alpha <- NULL
+    if (messages) message(sprintf("  Converged: nll = %.2f", fit$objective))
+    fit$par
   }
 
-  if(is.null(fix_gamma_W)) {
-    ind_gamma <- idx
-    idx <- idx + 1
-  } else {
-    ind_gamma <- NULL
-  }
-
-  ind_sigma2 <- idx
-  ind_phi <- idx + 1
-
-  n_par <- idx + 1
-
-  # =============================================================================
-  # LIKELIHOOD FUNCTION FOR SINGLE S SAMPLE
-  # =============================================================================
-
-  log.integrand <- function(S, val) {
-    # Linear predictor with spatial effect
-    eta <- val$mu + S[ID_coords]
-    mu_W_star <- exp(eta)
-    mu_W <- mu_W_star * val$mda_effect
-
-    # Prevalence via PGF
-    term <- val$k / (val$k + mu_W * (1 - exp(-val$rho)))
-    pr <- 1 - term^val$k
-    pr <- pmax(pmin(pr, 1 - 1e-10), 1e-10)  # Clamp
-
-    # Log-likelihood for zeros
-    ll_zeros <- sum(log(1 - pr[y_prev == 0]))
-
-    # Log-likelihood for positives (prevalence part)
-    ll_pos_prev <- sum(log(pr[pos_idx]))
-
-    # Conditional mean and variance for positives
-    mu_W_pos <- mu_W[pos_idx]
-    pr_pos <- pr[pos_idx]
-    mu_C <- (val$rho * mu_W_pos) / pr_pos
-    sigma2_C <- (val$rho * mu_W_pos * (1 + val$rho)) / pr_pos +
-      (val$rho^2 * mu_W_pos^2 / pr_pos) * (1/val$k + 1 - 1/pr_pos)
-    sigma2_C <- pmax(sigma2_C, 1e-10)
-
-    # Gamma parameters
-    kappa_C <- ((mu_C - 1)^2) / sigma2_C
-    theta_C <- sigma2_C / (mu_C - 1)
-    kappa_C <- pmax(kappa_C, 1e-10)
-    theta_C <- pmax(theta_C, 1e-10)
-
-    # Log-likelihood for intensity
-    ll_intensity <- sum(dgamma(intensity_data - 1, shape = kappa_C,
-                               scale = theta_C, log = TRUE))
-
-    # Spatial prior
-    q.f_S <- n_loc * log(val$sigma2) + val$ldetR +
-      t(S) %*% val$R.inv %*% S / val$sigma2
-
-    # Total log-likelihood
-    out <- -0.5 * q.f_S + ll_zeros + ll_pos_prev + ll_intensity -
-      val$pen_alpha - val$pen_gamma
-
-    return(as.numeric(out))
-  }
-
-  # =============================================================================
-  # MONTE CARLO LOG-LIKELIHOOD
-  # =============================================================================
-
-  compute.log.f <- function(par, ldetR = NA, R.inv = NA) {
-    # Unpack parameters
-    beta <- par[ind_beta]
-    k <- exp(par[ind_k])
-    rho <- exp(par[ind_rho])
-
-    if(is.null(fix_alpha_W)) {
-      alpha_W <- plogis(par[ind_alpha])
-    } else {
-      alpha_W <- fix_alpha_W
-    }
-
-    if(is.null(fix_gamma_W)) {
-      gamma_W <- exp(par[ind_gamma])
-    } else {
-      gamma_W <- fix_gamma_W
-    }
-
-    sigma2 <- exp(par[ind_sigma2])
-    phi <- exp(par[ind_phi])
-
-    # Compute derived quantities
-    val <- list()
-    val$k <- k
-    val$rho <- rho
-    val$sigma2 <- sigma2
-    val$mu <- as.numeric(D %*% beta) + cov_offset
-    val$mda_effect <- compute_mda_effect(survey_times_data, mda_times, int_mat,
-                                         alpha_W, gamma_W, kappa = 1)
-
-    # Penalties
-    val$pen_alpha <- if(!is.null(penalty) && !is.null(penalty$alpha)) {
-      penalty$alpha(alpha_W)
-    } else {
-      0
-    }
-
-    val$pen_gamma <- if(!is.null(penalty) && !is.null(penalty$gamma)) {
-      penalty$gamma(gamma_W)
-    } else {
-      0
-    }
-
-    # Correlation matrix
-    if(is.na(ldetR) || is.na(as.numeric(R.inv)[1])) {
-      R <- exp(-u_dist / phi)
-      val$ldetR <- determinant(R)$modulus
-      val$R.inv <- solve(R)
-    } else {
-      val$ldetR <- ldetR
-      val$R.inv <- R.inv
-    }
-
-    # Compute log-likelihood for all samples
-    log_f_vals <- sapply(1:n_samples, function(i) {
-      log.integrand(S_samples[i, ], val)
-    })
-
-    return(log_f_vals)
-  }
-
-  # =============================================================================
-  # INITIAL PARAMETER VECTOR AND REFERENCE LOG-LIKELIHOOD
-  # =============================================================================
-
-  par0_vec <- c(par0$beta, log(par0$k), log(par0$rho))
-
-  if(is.null(fix_alpha_W)) {
-    par0_vec <- c(par0_vec, qlogis(par0$alpha_W))
-  }
-  if(is.null(fix_gamma_W)) {
-    par0_vec <- c(par0_vec, log(par0$gamma_W))
-  }
-
-  par0_vec <- c(par0_vec, log(par0$sigma2), log(par0$phi))
-
-  # COMPUTE REFERENCE LOG-LIKELIHOOD (FIXED THROUGHOUT OPTIMIZATION)
-  log.f.tilde <- compute.log.f(par0_vec)  # Vector of length n_samples
-
-  # =============================================================================
-  # MONTE CARLO LOG-LIKELIHOOD FUNCTION
-  # =============================================================================
-
-  MC.log.lik <- function(par) {
-    log.f.vals <- compute.log.f(par)
-    log(mean(exp(log.f.vals - log.f.tilde)))  # log.f.tilde is FIXED vector
-  }
-
-  # =============================================================================
-  # GRADIENT OF MONTE CARLO LOG-LIKELIHOOD
-  # =============================================================================
-
-  grad.MC.log.lik <- function(par) {
-
-    # Unpack parameters
-    beta <- par[ind_beta]
-    k <- exp(par[ind_k])
-    rho <- exp(par[ind_rho])
-
-    if(is.null(fix_alpha_W)) {
-      alpha_W <- plogis(par[ind_alpha])
-    } else {
-      alpha_W <- fix_alpha_W
-    }
-
-    if(is.null(fix_gamma_W)) {
-      gamma_W <- exp(par[ind_gamma])
-    } else {
-      gamma_W <- fix_gamma_W
-    }
-
-    sigma2 <- exp(par[ind_sigma2])
-    phi <- exp(par[ind_phi])
-
-    mu <- as.numeric(D %*% beta) + cov_offset
-
-    # Build correlation matrix and derivatives
-    R <- exp(-u_dist / phi)
-    R.inv <- solve(R)
-    ldetR <- determinant(R)$modulus
-
-    # Compute importance weights using FIXED log.f.tilde
-    exp.fact <- exp(compute.log.f(par, ldetR, R.inv) - log.f.tilde)
-    L.m <- sum(exp.fact)
-    exp.fact <- exp.fact / L.m
-
-    # First derivative of R w.r.t. phi
-    R1.phi <- (u_dist / phi^2) * R
-    m1.phi <- R.inv %*% R1.phi
-    t1.phi <- -0.5 * sum(diag(m1.phi))
-    m2.phi <- m1.phi %*% R.inv
-
-    # MDA effect and derivatives
-    mda_all <- compute_mda_effect_derivatives(survey_times_data, mda_times, int_mat,
-                                              alpha_W, gamma_W, kappa = 1)
-    mda_effect <- mda_all$effect
-    mda_der_alpha <- mda_all$d_alpha
-    mda_der_gamma <- mda_all$d_gamma
-
-    # Gradient for each sample (LIKELIHOOD + SPATIAL PRIOR only, NO PENALTIES)
-    gradient.S <- function(S) {
-      eta <- mu + S[ID_coords]
-      mu_W_star <- exp(eta)
-      mu_W <- mu_W_star * mda_effect
-
-      # Prevalence and derivatives
-      k_term <- 1 - exp(-rho)
-      denom <- k + mu_W * k_term
-      ratio <- k / denom
-      pr <- 1 - ratio^k
-      pr <- pmax(pmin(pr, 1 - 1e-10), 1e-10)
-
-      # CORRECTED FIRST DERIVATIVES OF PREVALENCE
-      dpr_dmuW <- k * ratio^(k-1) * k * k_term / (denom * denom)  # k^2 * ratio^(k-1) * k_term / denom^2
-
-      dpr_dk <- -ratio^k * log(ratio) -
-        k * ratio^(k-1) * (1/k - mu_W * k_term / denom) / denom
-
-      dpr_drho <- k * ratio^(k-1) * k * mu_W * exp(-rho) / (denom * denom)
-
-      # Rest remains the same...
-      # Prevalence contribution to gradient
-      grad_prev_muW <- numeric(n)
-      grad_prev_muW[y_prev == 0] <- -dpr_dmuW[y_prev == 0] / (1 - pr[y_prev == 0])
-      grad_prev_muW[pos_idx] <- dpr_dmuW[pos_idx] / pr[pos_idx]
-
-      grad_prev_k <- sum((y_prev == 0) * (-dpr_dk / (1 - pr))) +
-        sum(dpr_dk[pos_idx] / pr[pos_idx])
-
-      grad_prev_rho <- sum((y_prev == 0) * (-dpr_drho / (1 - pr))) +
-        sum(dpr_drho[pos_idx] / pr[pos_idx])
-
-      # Intensity calculations
-      mu_W_pos <- mu_W[pos_idx]
-      pr_pos <- pr[pos_idx]
-
-      mu_C <- (rho * mu_W_pos) / pr_pos
-      sigma2_C <- (rho * mu_W_pos * (1 + rho)) / pr_pos +
-        (rho^2 * mu_W_pos^2 / pr_pos) * (1/k + 1 - 1/pr_pos)
-      sigma2_C <- pmax(sigma2_C, 1e-10)
-
-      kappa_C <- ((mu_C - 1)^2) / sigma2_C
-      theta_C <- sigma2_C / (mu_C - 1)
-
-      C_obs <- intensity_data
-
-      # Derivatives of Gamma log-likelihood
-      dlogGamma_dkappa <- digamma(kappa_C) - log(theta_C)
-      dlogGamma_dtheta <- -kappa_C/theta_C + (C_obs - 1)/theta_C
-
-      # Derivatives of mu_C and sigma2_C
-      dmuC_dmuW <- rho/pr_pos - rho*mu_W_pos/pr_pos^2 * dpr_dmuW[pos_idx]
-
-      dsigma2C_dmuW <- (rho*(1+rho))/pr_pos -
-        (rho*mu_W_pos*(1+rho))/pr_pos^2 * dpr_dmuW[pos_idx] +
-        (2*rho^2*mu_W_pos)/pr_pos * (1/k + 1 - 1/pr_pos) +
-        (rho^2*mu_W_pos^2)/pr_pos^2 * dpr_dmuW[pos_idx] / pr_pos
-
-      dmuC_dk <- -rho*mu_W_pos/pr_pos^2 * dpr_dk[pos_idx]
-
-      dsigma2C_dk <- -(rho*mu_W_pos*(1+rho))/pr_pos^2 * dpr_dk[pos_idx] -
-        (rho^2 * mu_W_pos^2 / pr_pos) / k^2 +
-        (rho^2*mu_W_pos^2)/pr_pos^2 * dpr_dk[pos_idx] / pr_pos
-
-      dmuC_drho <- mu_W_pos/pr_pos + rho*mu_W_pos/pr_pos -
-        rho*mu_W_pos/pr_pos^2 * dpr_drho[pos_idx]
-
-      dsigma2C_drho <- (mu_W_pos*(1+2*rho))/pr_pos -
-        (rho*mu_W_pos*(1+rho))/pr_pos^2 * dpr_drho[pos_idx] +
-        (2*rho*mu_W_pos^2)/pr_pos * (1/k + 1 - 1/pr_pos) +
-        (rho^2*mu_W_pos^2)/pr_pos^2 * dpr_drho[pos_idx] / pr_pos
-
-      # Derivatives of kappa_C and theta_C
-      dkappa_dmuC <- 2*(mu_C - 1)/sigma2_C
-      dkappa_dsigma2C <- -(mu_C - 1)^2 / sigma2_C^2
-      dtheta_dmuC <- -sigma2_C / (mu_C - 1)^2
-      dtheta_dsigma2C <- 1/(mu_C - 1)
-
-      # Chain rule: intensity contribution
-      dlogGamma_dmuW <- dlogGamma_dkappa * (dkappa_dmuC * dmuC_dmuW + dkappa_dsigma2C * dsigma2C_dmuW) +
-        dlogGamma_dtheta * (dtheta_dmuC * dmuC_dmuW + dtheta_dsigma2C * dsigma2C_dmuW)
-
-      grad_int_muW <- numeric(n)
-      grad_int_muW[pos_idx] <- dlogGamma_dmuW
-
-      dlogGamma_dk <- dlogGamma_dkappa * (dkappa_dmuC * dmuC_dk + dkappa_dsigma2C * dsigma2C_dk) +
-        dlogGamma_dtheta * (dtheta_dmuC * dmuC_dk + dtheta_dsigma2C * dsigma2C_dk)
-
-      grad_int_k <- sum(dlogGamma_dk)
-
-      dlogGamma_drho <- dlogGamma_dkappa * (dkappa_dmuC * dmuC_drho + dkappa_dsigma2C * dsigma2C_drho) +
-        dlogGamma_dtheta * (dtheta_dmuC * dmuC_drho + dtheta_dsigma2C * dsigma2C_drho)
-
-      grad_int_rho <- sum(dlogGamma_drho)
-
-      # Assemble gradients for each parameter
-      grad.beta <- as.numeric(t(D) %*% ((grad_prev_muW + grad_int_muW) * mu_W))
-      grad.log.k <- k * (grad_prev_k + grad_int_k)
-      grad.log.rho <- rho * (grad_prev_rho + grad_int_rho)
-
-      # Alpha gradient (WITHOUT penalty)
-      if(is.null(fix_alpha_W)) {
-        der_alpha <- exp(par[ind_alpha]) / (1 + exp(par[ind_alpha]))^2
-
-        grad_prev_alpha <- sum(grad_prev_muW * mu_W_star * mda_der_alpha)
-        grad_int_alpha <- sum(grad_int_muW * mu_W_star * mda_der_alpha)
-
-        grad.alpha.t <- der_alpha * (grad_prev_alpha + grad_int_alpha)  # NO PENALTY HERE
-      }
-
-      # Gamma gradient (WITHOUT penalty)
-      if(is.null(fix_gamma_W)) {
-        grad_prev_gamma <- sum(grad_prev_muW * mu_W_star * mda_der_gamma)
-        grad_int_gamma <- sum(grad_int_muW * mu_W_star * mda_der_gamma)
-
-        grad.log.gamma <- gamma_W * (grad_prev_gamma + grad_int_gamma)  # NO PENALTY HERE
-      }
-
-      # Spatial parameter gradients
-      qSS <- as.numeric(t(S) %*% R.inv %*% S)
-      grad.log.sigma2 <- (-n_loc/(2*sigma2) + 0.5*qSS/sigma2^2) * sigma2
-      grad.log.phi <- (t1.phi + 0.5*as.numeric(t(S) %*% m2.phi %*% S)/sigma2) * phi
-
-      # Assemble gradient vector
-      out <- c(grad.beta, grad.log.k, grad.log.rho)
-      if(is.null(fix_alpha_W)) out <- c(out, grad.alpha.t)
-      if(is.null(fix_gamma_W)) out <- c(out, grad.log.gamma)
-      out <- c(out, grad.log.sigma2, grad.log.phi)
-
-      return(out)
-    }
-
-    # Monte Carlo averaging: weighted sum
-    out <- rep(0, n_par)
-    for(i in 1:n_samples) {
-      out <- out + exp.fact[i] * gradient.S(S_samples[i, ])
-    }
-
-    # ADD PENALTY GRADIENTS ONCE AT THE END (they don't depend on S)
-    if(!is.null(ind_alpha)) {
-      pen_alpha_grad <- if(!is.null(penalty) && !is.null(penalty$alpha_grad)) {
-        penalty$alpha_grad(alpha_W)
-      } else {
-        0
-      }
-
-      der_alpha <- exp(par[ind_alpha]) / (1 + exp(par[ind_alpha]))^2
-      out[ind_alpha] <- out[ind_alpha] - der_alpha * pen_alpha_grad
-    }
-
-    if(!is.null(ind_gamma)) {
-      pen_gamma_grad <- if(!is.null(penalty) && !is.null(penalty$gamma_grad)) {
-        penalty$gamma_grad(gamma_W)
-      } else {
-        0
-      }
-
-      out[ind_gamma] <- out[ind_gamma] - gamma_W * pen_gamma_grad
-    }
-
-    return(out)
-  }
-  # =============================================================================
-  # HESSIAN OF MONTE CARLO LOG-LIKELIHOOD
-  # =============================================================================
-
-  hess.MC.log.lik <- function(par) {
-    # Compute log-likelihoods
-    log.f.vals <- compute.log.f(par)
-
-    # Compute importance weights using FIXED log.f.tilde
-    exp.fact <- exp(compute.log.f(par, ldetR, R.inv) - log.f.tilde)
-    L.m <- sum(exp.fact)
-    exp.fact <- exp.fact / L.m
-
-    # [Rest of hessian computation remains the same, just using w computed with FIXED log.f.tilde]
-    # ... [Include full hessian code here - same as before but with corrected weights]
-
-    # For brevity, I'll show the key difference:
-    # The weights w are now computed using the FIXED log.f.tilde vector
-    # rather than max(log.f.vals) at each call
-
-    # [Full hessian.S function and accumulation as before]
-
-    return(H_acc)  # Placeholder - use full code from previous version
-  }
-
-  # =============================================================================
-  # OPTIMIZATION
-  # =============================================================================
-
-  compareDerivatives(MC.log.lik,
-                     grad.MC.log.lik,
-                     t0 = par0_vec)
-
-  if(messages) {
-    message("Optimizing Monte Carlo log-likelihood...")
-    message(sprintf("Reference log-likelihood computed at initial values"))
-  }
-
-  opt <- nlminb(
-    start = par0_vec,
-    objective = function(par) -MC.log.lik(par),
-    gradient = function(par) -grad.MC.log.lik(par),
-    hessian = function(par) -hess.MC.log.lik(par),
-    control = list(eval.max = 1000, iter.max = 500, trace = ifelse(messages, 1, 0))
-  )
-
-  # =============================================================================
-  # EXTRACT RESULTS
-  # =============================================================================
-
-  par_est <- opt$par
-  beta_est <- par_est[ind_beta]
-  k_est <- exp(par_est[ind_k])
-  rho_est <- exp(par_est[ind_rho])
-
-  if(is.null(fix_alpha_W)) {
-    alpha_W_est <- plogis(par_est[ind_alpha])
-  } else {
-    alpha_W_est <- fix_alpha_W
-  }
-
-  if(is.null(fix_gamma_W)) {
-    gamma_W_est <- exp(par_est[ind_gamma])
-  } else {
-    gamma_W_est <- fix_gamma_W
-  }
-
-  sigma2_est <- exp(par_est[ind_sigma2])
-  phi_est <- exp(par_est[ind_phi])
-
-  result <- list(
-    params = list(
-      beta = beta_est,
-      k = k_est,
-      rho = rho_est,
-      alpha_W = alpha_W_est,
-      gamma_W = gamma_W_est,
-      sigma2 = sigma2_est,
-      phi = phi_est
-    ),
-    convergence = opt$convergence,
-    log_likelihood = -opt$objective,
-    message = opt$message,
-    iterations = opt$iterations,
-    evaluations = opt$evaluations,
-    posterior_samples = S_samples_obj,
-    log.f.tilde = log.f.tilde  # Store for diagnostics
-  )
-
-  if(messages) {
-    if(opt$convergence == 0) {
-      message("Optimization converged successfully")
-      message(sprintf("  Iterations: %d", opt$iterations))
-      message(sprintf("  Function evaluations: %d", opt$evaluations[1]))
-    } else {
-      warning(sprintf("Optimization did not converge (code %d): %s",
-                      opt$convergence, opt$message))
-    }
-  }
-
-  return(result)
+  beta_e <- pe[1:p]
+  k_e    <- if (!is.null(fix_k)) fix_k else exp(pe[p+1])
+  rho_e  <- exp(pe[p+2])
+  idx    <- p+3
+  aW_e <- if (use_mda && is.null(fix_alpha_W)) { v <- plogis(pe[idx]); idx <- idx+1; v } else aW0
+  gW_e <- if (use_mda && is.null(fix_gamma_W))   exp(pe[idx])                          else gW0
+
+  s2_0   <- if (!is.null(start_pars$sigma2)) start_pars$sigma2 else 1.0
+  tau2_0 <- if (!is.null(start_pars$tau2))   start_pars$tau2   else 0.1
+  phi_0  <- if (!is.null(start_pars$phi)) start_pars$phi else {
+    d <- as.matrix(dist(coords)); median(d[upper.tri(d)])/3 }
+
+  if (messages)
+    message(sprintf("  k=%.3f  rho=%.3f  sigma2=%.3f  phi=%.3f  tau2=%.3f",
+                    k_e, rho_e, s2_0, phi_0, tau2_0))
+
+  list(beta=beta_e, k=k_e, rho=rho_e, gamma_sens=gamma_sens,
+       sigma2=s2_0, phi=phi_0, tau2=tau2_0, alpha_W=aW_e, gamma_W=gW_e)
 }
 
-##' @title Fitting of Doubly Stochastic Geostatistical Model (DSGM) for joint analysis of prevalence
-##' and intensity of infection
+
+# =============================================================================
+# Main user-facing function
+# =============================================================================
+
+##' @title Fit a Doubly Stochastic Geostatistical Model (DSGM)
 ##'
 ##' @description
-##' The function fits a joint prevalence-intensity model for STH using Monte Carlo maximum likelihood.
-##' The model incorporates a mechanistic worm burden framework where MDA effects decay over time,
-##' affecting both prevalence and intensity through their impact on mean worm burden.
-##' Uses STAN for sampling the spatial process conditional on fixed parameters.
+##' Fits a doubly stochastic geostatistical model using Monte Carlo Maximum
+##' Likelihood (MCML).  Two model families are supported via \code{model}:
 ##'
-##' Spatial structure:
-##' \itemize{
-##'   \item \code{gp(x, y)} fits a spatial Gaussian process S(x).
-##'   \item The spatial process affects mean worm burden: log(mu_W*) = D*beta + S(x)
+##' \describe{
+##'   \item{\code{"sth"}}{Joint prevalence-intensity model for
+##'     soil-transmitted helminths or intestinal schistosomiasis.  The response
+##'     variable is an egg count (EPG); zeros indicate uninfected individuals.
+##'     Latent worm burden \eqn{W \sim \mathrm{NegBin}(\mu(x),\,k)} drives
+##'     EPG via \eqn{Y \mid W \sim \mathrm{Poisson}(\rho W)}.}
+##'   \item{\code{"lf_mdiag"}}{Joint model for two diagnostic outcomes for
+##'     lymphatic filariasis.  A parasitological count diagnostic (MF) and a
+##'     binary serological diagnostic (CFA/ICT) are modelled simultaneously
+##'     through the same NB latent worm burden.}
 ##' }
 ##'
-##' @param formula A model formula with egg counts (EPG) as response and covariates for mean worm burden.
-##'   Example: \code{epg ~ elevation + rainfall + gp(x, y)} where epg is the egg count variable.
-##'   Zero values indicate uninfected individuals.
-##' @param data A \code{data.frame} or \code{sf} object containing the dataset.
-##' @param time A variable in \code{data} giving the survey times of observations (required).
-##' @param mda_times A vector specifying the mass drug administration (MDA) times.
-##' @param int_mat Intervention matrix specifying MDA timing and coverage; dimension \code{n * n_mda}.
-##' @param penalty Optional list specifying penalty functions for regularization of MDA parameters.
-##' @param drop_W Optional fixed value for the immediate worm burden reduction parameter (alpha_W).
-##' @param decay_W Optional fixed value for the worm burden decay parameter (gamma_W).
-##' @param crs Optional coordinate reference system (CRS) for spatial data.
-##' @param convert_to_crs CRS to which spatial data should be converted.
-##' @param scale_to_km Logical; whether to scale distances to kilometers (default: \code{TRUE}).
-##' @param par0 Optional list of initial parameter values.
-##' @param n_samples Number of MCMC samples to draw from spatial process (default: 1000).
-##' @param n_warmup Number of warmup/burnin iterations for STAN (default: 1000).
-##' @param n_chains Number of MCMC chains for STAN (default: 1).
-##' @param adapt_delta Target acceptance rate for STAN sampler (default: 0.8).
-##' @param max_treedepth Maximum tree depth for STAN sampler (default: 10).
-##' @param return_samples Logical; whether to return spatial process samples (default: \code{TRUE}).
-##' @param messages Logical; whether to print messages (default: \code{TRUE}).
-##' @param start_pars List of starting values for parameters including:
-##'   \itemize{
-##'     \item beta: Covariate effects on log mean worm burden
-##'     \item k: Negative binomial aggregation parameter
-##'     \item rho: Egg detection rate per worm
-##'     \item sigma2: Variance of the spatial process
-##'     \item phi: Scale parameter of the spatial correlation
-##'     \item alpha_W: Immediate worm burden reduction
-##'     \item gamma_W: Worm burden decay rate
-##'   }
+##' Both models use Stan (\code{dsgm_spatial.stan} for STH,
+##' \code{dsgm_mdiag.stan} for LF) to sample S(x) at fixed theta_0, then
+##' TMB to optimise the MCML objective.
 ##'
-##' @return A list containing:
-##' \itemize{
-##'   \item \code{prevalence_data}: Binary infection indicators (C > 0).
-##'   \item \code{intensity_data}: Egg counts among positive individuals.
-##'   \item \code{n_positive}: Number of egg-positive individuals per location.
-##'   \item \code{D}: Covariate matrix.
-##'   \item \code{coords}: Unique spatial coordinates.
-##'   \item \code{mda_times}: MDA time points.
-##'   \item \code{survey_times_data}: Survey times.
-##'   \item \code{int_mat}: Intervention matrix.
-##'   \item \code{ID_coords}: Spatial location indices.
-##'   \item \code{fix_alpha_W}, \code{fix_gamma_W}: Fixed MDA parameters if specified.
-##'   \item \code{formula}: Model formula.
-##'   \item \code{model_params}: Estimated parameters for worm burden, detection, and spatial processes.
-##'   \item \code{spatial_samples}: STAN spatial process samples if \code{return_samples = TRUE}.
-##'   \item \code{family}: "zero_inflated_gamma" indicating joint model structure.
+##' @param formula Model formula.  For \code{"sth"}, the response is the egg
+##'   count (0 = uninfected).  For \code{"lf_mdiag"}, the response is ignored;
+##'   supply diagnostic data via the formula response and \code{is_mf}.  Both
+##'   \code{is_mf}.  Both models require a spatial GP term: \code{gp(x,y)} or
+##'   \code{gp(sf)}.
+##' @param data A \code{data.frame} or \code{sf} object.
+##' @param model \code{"sth"} (default) or \code{"lf_mdiag"}.
+##'
+##' @section STH-specific arguments:
+##' \describe{
+##'   \item{time}{Column in \code{data} giving survey time per observation.
+##'     Required for \code{"sth"}.}
+##'   \item{mda_times}{Numeric vector of MDA round times.}
+##'   \item{int_mat}{Coverage matrix (n \eqn{\times} n_mda).}
 ##' }
+##'
+##' @param den Name of a column in \code{data} containing the binomial
+##'   denominator (number of individuals examined) for each observation.
+##'   For \code{model = "lf_mdiag"} this is the number tested per row.
+##'   If not supplied, defaults to 1 for every observation (individual-level
+##'   data, e.g. standard STH surveys).
+##'
+##' @section LF-specific arguments:
+##' \describe{
+##'   \item{is_mf}{Integer 0/1 vector: 1 = parasitological, 0 = serological.}
+##'   \item{gamma_sens}{Fixed serological sensitivity in (0,1]; default 0.97.}
+##'   \item{fix_k}{Fix the NB aggregation parameter k; \code{NULL} to estimate.}
+##'   \item{use_mda}{Logical; include MDA decay for LF (default \code{FALSE}).
+##'     When \code{TRUE} also supply \code{time}, \code{mda_times}, \code{int_mat}.}
+##' }
+##'
+##' @param penalty Optional list of penalty functions for MDA parameters.
+##' @param drop_W Fixed value for the immediate worm reduction alpha_W
+##'   (\code{NULL} to estimate).
+##' @param decay_W Fixed value for the worm recovery rate gamma_W
+##'   (\code{NULL} to estimate).
+##' @param crs Optional CRS for spatial data.
+##' @param convert_to_crs CRS to project data to before fitting.
+##' @param scale_to_km Scale coordinates to km (default \code{TRUE}).
+##' @param par0 Optional named list of initial parameter values.  If
+##'   \code{NULL}, computed automatically.
+##' @param n_samples Number of Stan MCMC samples (default 1000).
+##' @param n_warmup Number of Stan warmup iterations (default 1000).
+##' @param n_chains Number of Stan chains (default 1).
+##' @param adapt_delta Target Stan acceptance rate (default 0.8).
+##' @param max_treedepth Stan tree depth limit (default 10).
+##' @param return_samples Include spatial samples in result (default \code{TRUE}).
+##' @param backend Stan backend: \code{"rstan"}, \code{"cmdstanr"}, or
+##'   \code{NULL} (auto-detect).
+##' @param messages Print progress messages (default \code{TRUE}).
+##' @param start_pars Named list of starting values for auto-initialisation
+##'   (\code{beta}, \code{k}, \code{rho}, \code{sigma2}, \code{phi},
+##'   \code{tau2}, \code{alpha_W}, \code{gamma_W}).
+##'
+##' @return An object of class \code{"RiskMap"} with fields \code{family}
+##'   (\code{"intprev"} or \code{"lf_mdiag"}), \code{model_params},
+##'   \code{params_se}, \code{tmb_sdr}, and optionally
+##'   \code{spatial_samples}.
 ##'
 ##' @seealso \code{\link{dast}}
-##' @author [Your name]
 ##' @export
 dsgm <- function(formula,
                  data,
-                 time,
-                 mda_times,
-                 int_mat,
-                 penalty = NULL,
-                 drop_W = NULL,
-                 decay_W = NULL,
-                 crs = NULL,
+                 model          = c("sth", "lf_mdiag"),
+                 # STH / shared MDA
+                 time           = NULL,
+                 mda_times      = NULL,
+                 int_mat        = NULL,
+                 # LF-specific
+                 den            = NULL,
+                 is_mf          = NULL,
+                 gamma_sens     = 0.97,
+                 fix_k          = NULL,
+                 use_mda        = NULL,
+                 # Shared
+                 penalty        = NULL,
+                 drop_W         = NULL,
+                 decay_W        = NULL,
+                 crs            = NULL,
                  convert_to_crs = NULL,
-                 scale_to_km = TRUE,
-                 par0 = NULL,
-                 n_samples = 1000,
-                 n_warmup = 1000,
-                 n_chains = 1,
-                 adapt_delta = 0.8,
-                 max_treedepth = 10,
+                 scale_to_km    = TRUE,
+                 par0           = NULL,
+                 n_samples      = 1000,
+                 n_warmup       = 1000,
+                 n_chains       = 1,
+                 adapt_delta    = 0.8,
+                 max_treedepth  = 10,
                  return_samples = TRUE,
-                 backend = NULL,
-                 messages = TRUE,
-                 start_pars = list(beta = NULL,
-                                   k = NULL,
-                                   rho = NULL,
-                                   sigma2 = NULL,
-                                   phi = NULL,
-                                   alpha_W = NULL,
-                                   gamma_W = NULL)) {
+                 backend        = NULL,
+                 messages       = TRUE,
+                 start_pars     = list(beta    = NULL,
+                                       k       = NULL,
+                                       rho     = NULL,
+                                       sigma2  = NULL,
+                                       phi     = NULL,
+                                       tau2    = NULL,
+                                       alpha_W = NULL,
+                                       gamma_W = NULL)) {
 
-  # =============================================================================
-  # ARGUMENT VALIDATION
-  # =============================================================================
+  model <- match.arg(model)
 
-  # Check formula
-  if(!inherits(formula, what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula' object with egg count as response and covariates for mean worm burden")
-  }
-
-  # Check data
-  if(!inherits(data, c("data.frame", "sf"))) {
+  # ---------------------------------------------------------------------------
+  # Common validation
+  # ---------------------------------------------------------------------------
+  if (!inherits(formula, "formula"))
+    stop("'formula' must be a formula object")
+  if (!inherits(data, c("data.frame", "sf")))
     stop("'data' must be a data.frame or sf object")
-  }
-
-  # Check STAN parameters
-  if(n_samples <= 0 || n_warmup < 0) {
-    stop("'n_samples' must be positive and 'n_warmup' must be non-negative")
-  }
-  if(n_chains < 1) {
+  if (n_samples <= 0 || n_warmup < 0)
+    stop("'n_samples' must be positive and 'n_warmup' non-negative")
+  if (n_chains < 1)
     stop("'n_chains' must be at least 1")
-  }
-  if(adapt_delta <= 0 || adapt_delta >= 1) {
+  if (adapt_delta <= 0 || adapt_delta >= 1)
     stop("'adapt_delta' must be in (0, 1)")
-  }
 
-  # =============================================================================
-  # EXTRACT AND VALIDATE TIME VARIABLE
-  # =============================================================================
+  # Default use_mda: enable only when mda_times have been supplied
+  if (is.null(use_mda)) use_mda <- !is.null(mda_times)
 
-  time_name <- deparse(substitute(time))
-  if (time_name == "NULL") {
-    stop("You must supply a time column via the 'time' argument")
-  }
-  if (!time_name %in% names(data)) {
-    stop("'time' column not found in 'data'")
-  }
-  survey_times_data <- data[[time_name]]
+  fix_alpha_W <- drop_W
+  fix_gamma_W <- decay_W
+  no_penalty  <- is.null(penalty)
+  n           <- nrow(data)
 
-  if(any(is.na(survey_times_data))) {
-    stop("Missing values detected in 'time' variable")
-  }
-
-  # =============================================================================
-  # PROCESS FORMULA AND EXTRACT RESPONSE (EGG COUNT) AND COVARIATES
-  # =============================================================================
-
-  inter_f <- interpret.formula(formula)
-
-  # Extract GP specification
+  # ---------------------------------------------------------------------------
+  # Formula / design matrix
+  # ---------------------------------------------------------------------------
+  inter_f  <- interpret.formula(formula)
   gp_terms <- inter_f$gp.spec$term
   gp_dim   <- inter_f$gp.spec$dim
 
-  # Currently only support spatial GP (no spatio-temporal for joint model)
-  if(length(gp_terms) == 1 && gp_terms[1] == "sf") {
-    # Using sf geometry
-  } else if(gp_dim == 2) {
-    # Using gp(x, y)
+  if (!(length(gp_terms) == 1 && gp_terms[1] == "sf") && gp_dim != 2)
+    stop("Specify a 2-D spatial GP: gp(x, y) or gp(sf)")
+
+  # ---------------------------------------------------------------------------
+  # tau2 (nugget) policy driven by the gp() specification:
+  #   gp(...)               nugget = 0   (default) -> fix tau2 = 0, not estimated
+  #   gp(..., nugget = v)   nugget = v > 0          -> fix tau2 = v, not estimated
+  #   gp(..., nugget = NULL) nugget = NULL           -> tau2 is estimated freely
+  # ---------------------------------------------------------------------------
+  gp_nugget <- inter_f$gp.spec$nugget
+  fix_tau2  <- if (is.null(gp_nugget)) NULL else as.numeric(gp_nugget)
+
+  mf         <- model.frame(inter_f$pf, data = data, na.action = na.fail)
+  D          <- as.matrix(model.matrix(attr(mf, "terms"), data = data))
+  p          <- ncol(D)
+  cov_offset <- if (is.null(inter_f$offset)) rep(0, n) else data[[inter_f$offset]]
+
+  # ---------------------------------------------------------------------------
+  # Denominator (number examined per observation)
+  # ---------------------------------------------------------------------------
+  den_name <- deparse(substitute(den))
+  if (den_name == "NULL") {
+    den_vals <- rep(1L, n)
   } else {
-    stop("For joint model, specify gp(x, y) or gp(sf). Spatio-temporal GP not yet supported for dsgm")
+    if (!den_name %in% names(data))
+      stop(sprintf("'den' column '%s' not found in 'data'", den_name))
+    den_vals <- as.integer(data[[den_name]])
+    if (any(den_vals < 1, na.rm = TRUE))
+      stop("'den' values must all be >= 1")
+    if (any(is.na(den_vals)))
+      stop("Missing values detected in 'den' column")
   }
 
-  # Extract model frame
-  mf <- model.frame(inter_f$pf, data = data, na.action = na.fail)
-
-  # Extract response variable (egg counts)
-  egg_counts <- as.numeric(model.response(mf))
-  n <- length(egg_counts)
-
-  # Validate egg counts
-  if(!is.numeric(egg_counts)) {
-    stop("Response variable (egg count) must be numeric")
-  }
-  if(any(egg_counts < 0, na.rm = TRUE)) {
-    stop("Response variable (egg count) cannot contain negative values")
-  }
-  if(any(is.na(egg_counts))) {
-    stop("Missing values detected in response variable (egg count)")
-  }
-
-  # Get response variable name for messages
-  egg_count_name <- as.character(formula[[2]])
-
-  # Create binary infection indicator
-  y_prev <- as.integer(egg_counts > 0)
-
-  # Extract intensity data (only positive counts)
-  intensity_data <- egg_counts[egg_counts > 0]
-  n_positive_total <- sum(y_prev)
-
-  if(n_positive_total == 0) {
-    stop("No positive egg counts detected; model cannot be fitted")
-  }
-
-  if(messages) {
-    message(sprintf("Response variable: %s", egg_count_name))
-    message(sprintf("Data summary: %d observations, %d (%.1f%%) egg-positive",
-                    length(egg_counts), n_positive_total,
-                    100 * n_positive_total / length(egg_counts)))
-  }
-
-  # Extract covariate matrix (for mean worm burden)
-  D <- as.matrix(model.matrix(attr(mf, "terms"), data = data))
-  p <- ncol(D)
-
-  # Handle offset
-  if(is.null(inter_f$offset)) {
-    cov_offset <- rep(0, n)
-  } else {
-    cov_offset <- data[[inter_f$offset]]
-  }
-
-  # =============================================================================
-  # VALIDATE MDA DATA
-  # =============================================================================
-
-  if(missing(mda_times)) {
-    stop("'mda_times' must be specified")
-  }
-  if(missing(int_mat)) {
-    stop("'int_mat' (intervention matrix) must be specified")
-  }
-
-  if(!is.numeric(mda_times)) {
-    stop("'mda_times' must be numeric")
-  }
-
-  if(!is.matrix(int_mat) && !is.data.frame(int_mat)) {
-    stop("'int_mat' must be a matrix or data.frame")
-  }
-
-  int_mat <- as.matrix(int_mat)
-
-  if(nrow(int_mat) != nrow(data)) {
-    stop(sprintf("'int_mat' must have %d rows to match 'data'", nrow(data)))
-  }
-  if(ncol(int_mat) != length(mda_times)) {
-    stop(sprintf("'int_mat' must have %d columns to match length of 'mda_times'",
-                 length(mda_times)))
-  }
-
-  if(any(int_mat < 0 | int_mat > 1, na.rm = TRUE)) {
-    warning("'int_mat' values outside [0,1] detected; these will be treated as coverage proportions")
-  }
-
-  # =============================================================================
-  # PROCESS SPATIAL COORDINATES
-  # =============================================================================
-
-  if(inherits(data, "sf")) {
-    # Convert to specified CRS if needed
-    if(!is.null(convert_to_crs)) {
-      data <- sf::st_transform(data, convert_to_crs)
-      crs <- convert_to_crs
+  # ---------------------------------------------------------------------------
+  # Coordinates
+  # ---------------------------------------------------------------------------
+  if (inherits(data, "sf")) {
+    if (!is.null(convert_to_crs)) {
+      data <- sf::st_transform(data, convert_to_crs); crs <- convert_to_crs
     } else {
       crs <- sf::st_crs(data)$input
     }
-
     coords_all <- sf::st_coordinates(data)
   } else {
-    # Extract coordinates from gp() specification
-    if(gp_terms[1] != "sf") {
-      coord_names <- gp_terms[1:2]
-      if(!all(coord_names %in% names(data))) {
-        stop("Coordinate columns specified in gp() not found in 'data'")
-      }
-      coords_all <- as.matrix(data[, coord_names])
-    } else {
-      stop("If using gp(sf), data must be an sf object")
-    }
+    cn <- gp_terms[1:2]
+    if (!all(cn %in% names(data)))
+      stop("Coordinate columns specified in gp() not found in 'data'")
+    coords_all <- as.matrix(data[, cn])
   }
-
-  # Scale to kilometers if requested
-  if(scale_to_km) {
+  if (scale_to_km) {
     coords_all <- coords_all / 1000
-    if(messages) {
-      message("Coordinates scaled to kilometers")
-    }
+    if (messages) message("Coordinates scaled to kilometres")
   }
+  coords_u  <- unique(coords_all)
+  n_loc     <- nrow(coords_u)
+  ID_coords <- apply(coords_all, 1, function(x)
+    which(apply(coords_u, 1, function(y) all(abs(x-y) < 1e-10)))[1])
+  if (messages) message(sprintf("Identified %d unique spatial locations", n_loc))
 
-  # Get unique spatial locations
-  coords_unique <- unique(coords_all)
-  n_loc <- nrow(coords_unique)
-
-  # Create location indices
-  ID_coords <- apply(coords_all, 1, function(x) {
-    which(apply(coords_unique, 1, function(y) all(abs(x - y) < 1e-10)))[1]
-  })
-
-  if(messages) {
-    message(sprintf("Identified %d unique spatial locations", n_loc))
-  }
-
-  # =============================================================================
-  # HANDLE FIXED PARAMETERS
-  # =============================================================================
-
-  fix_alpha_W <- NULL
-  fix_gamma_W <- NULL
-
-  if(!is.null(drop_W)) {
-    if(drop_W < 0 || drop_W > 1) {
-      stop("'drop_W' must be in [0, 1]")
-    }
-    fix_alpha_W <- drop_W
-    if(messages) {
-      message(sprintf("MDA worm burden reduction (alpha_W) fixed at %.3f", fix_alpha_W))
-    }
-  }
-
-  if(!is.null(decay_W)) {
-    if(decay_W <= 0) {
-      stop("'decay_W' must be positive")
-    }
-    fix_gamma_W <- decay_W
-    if(messages) {
-      message(sprintf("MDA decay rate (gamma_W) fixed at %.3f years", fix_gamma_W))
-    }
-  }
-
-  # =============================================================================
-  # HANDLE PENALTY FUNCTIONS
-  # =============================================================================
-
-  no_penalty <- TRUE
-  if(!is.null(penalty)) {
-    if(!is.list(penalty)) {
-      stop("'penalty' must be a list")
-    }
-    no_penalty <- FALSE
-  }
-
-  # =============================================================================
-  # SET UP INITIAL PARAMETERS
-  # =============================================================================
-
-  if(is.null(par0)) {
-    if(messages) {
-      message("\n=== Computing initial parameter values ===")
-    }
-
-    par0 <- dsgm_initial_value(
-      y_prev = y_prev,
-      intensity_data = intensity_data,
-      D = D,
-      coords = coords_unique,
-      ID_coords = ID_coords,
-      int_mat = int_mat,
-      survey_times_data = survey_times_data,
-      mda_times = mda_times,
-      penalty = penalty,
-      fix_alpha_W = fix_alpha_W,
-      fix_gamma_W = fix_gamma_W,
-      start_pars = start_pars,
-      messages = messages
-    )
-
-    if(messages) {
-      message("\nInitial parameter values computed successfully")
-    }
-  }
-
-  # Validate par0 structure
-  required_pars <- c("beta", "k", "rho", "sigma2", "phi")
-  if(is.null(fix_alpha_W)) required_pars <- c(required_pars, "alpha_W")
-  if(is.null(fix_gamma_W)) required_pars <- c(required_pars, "gamma_W")
-
-  missing_pars <- setdiff(required_pars, names(par0))
-  if(length(missing_pars) > 0) {
-    stop(sprintf("Missing initial parameters: %s", paste(missing_pars, collapse = ", ")))
-  }
-
-  # =============================================================================
-  # SAMPLE SPATIAL PROCESS USING STAN
-  # =============================================================================
-
-  if(messages) {
-    message("\n=== Sampling spatial process using STAN ===")
-    message(sprintf("STAN settings:"))
-    message(sprintf("  - Samples: %d", n_samples))
-    message(sprintf("  - Warmup: %d", n_warmup))
-    message(sprintf("  - Chains: %d", n_chains))
-    message(sprintf("  - adapt_delta: %.2f", adapt_delta))
-    message(sprintf("  - max_treedepth: %d", max_treedepth))
-  }
-
-  spatial_samples <- sample_spatial_process_stan(
-    y_prev = y_prev,
-    intensity_data = intensity_data,
-    D = D,
-    coords = coords_unique,
-    ID_coords = ID_coords,
-    int_mat = int_mat,
-    survey_times_data = survey_times_data,
-    mda_times = mda_times,
-    par = par0,
-    n_samples = n_samples,
-    n_warmup = n_warmup,
-    n_chains = n_chains,
-    n_cores = 1,
-    adapt_delta = adapt_delta,
-    max_treedepth = max_treedepth,
-    backend = backend,  # ADD THIS
-    messages = messages
-  )
-
-
-  if(messages) {
-    message("\n=== Fitting via TMB-MCML ===")
-  }
-
-  fit_result <- dsgm_fit_tmb(
-    y_prev = y_prev,
-    intensity_data = intensity_data,
-    D = D,
-    coords = coords_unique,
-    ID_coords = ID_coords,
-    int_mat = int_mat,
-    survey_times_data = survey_times_data,
-    mda_times = mda_times,
-    par0 = par0,
-    cov_offset = cov_offset,
-    fix_alpha_W = fix_alpha_W,
-    fix_gamma_W = fix_gamma_W,
-    penalty = penalty,
-    S_samples_obj = spatial_samples,
-    use_hessian_refinement = TRUE,
-    messages = messages
-  )
-
-  if(messages) {
-    message("\nSpatial process sampling complete")
-    message(sprintf("Obtained %d samples for %d locations",
-                    spatial_samples$n_samples, spatial_samples$n_loc))
-  }
-
-  # =============================================================================
-  # PREPARE RETURN OBJECT
-  # =============================================================================
-
-  res <- list()
-  res$kappa <- 0.5
-  res$fixed_
-  res$prevalence_data <- y_prev
-  res$intensity_data <- intensity_data
-  res$egg_counts <- egg_counts
-  res$n_positive <- sum(y_prev)
-  res$D <- D
-  res$coords <- coords_unique
-  res$mda_times <- mda_times
-  res$survey_times_data <- survey_times_data
-  res$int_mat <- int_mat
-  res$ID_coords <- ID_coords
-  res$fix_alpha_W <- fix_alpha_W
-  res$fix_gamma_W <- fix_gamma_W
-  res$formula <- formula
-  res$crs <- crs
-  res$scale_to_km <- scale_to_km
-  res$data_sf <- data
-  res$family <- "intprev"
-  res$cov_offset <- cov_offset
-  res$call <- match.call()
-
-  if(!no_penalty) {
-    res$penalty <- penalty
+  # ---------------------------------------------------------------------------
+  # MDA / time setup
+  # ---------------------------------------------------------------------------
+  if (use_mda) {
+    time_name <- deparse(substitute(time))
+    if (time_name == "NULL" || !time_name %in% names(data))
+      stop("'time' column not found in 'data' (required when use_mda = TRUE)")
+    survey_times_data <- data[[time_name]]
+    if (any(is.na(survey_times_data))) stop("Missing values in 'time' variable")
+    if (is.null(mda_times)) stop("'mda_times' required when use_mda = TRUE")
+    if (is.null(int_mat))   stop("'int_mat' required when use_mda = TRUE")
+    int_mat <- as.matrix(int_mat)
+    if (nrow(int_mat) != n)
+      stop(sprintf("'int_mat' must have %d rows", n))
+    if (ncol(int_mat) != length(mda_times))
+      stop(sprintf("'int_mat' must have %d columns", length(mda_times)))
   } else {
-    res$penalty <- NULL
+    survey_times_data <- rep(0, n)
+    mda_times         <- 0
+    int_mat           <- matrix(0, nrow=n, ncol=1)
   }
 
-  # Add fitted results
-  res$model_params <- fit_result$params
-  res$params_se <- fit_result$params_se
-  res$tmb_sdr <- fit_result$tmb_sdr
-  res$tmb_obj <- fit_result$tmb_obj
-  res$convergence <- fit_result$convergence
-  res$log_likelihood <- fit_result$log_likelihood
+  # ===========================================================================
+  # STH branch
+  # ===========================================================================
+  if (model == "sth") {
 
-  # Add spatial samples
-  if(return_samples) {
-    res$spatial_samples <- spatial_samples
+    egg_counts <- as.numeric(model.response(mf))
+    if (any(egg_counts < 0, na.rm=TRUE)) stop("Egg counts cannot be negative")
+    if (any(is.na(egg_counts))) stop("Missing values in egg count response")
+
+    y_prev         <- as.integer(egg_counts > 0)
+    intensity_data <- egg_counts[egg_counts > 0]
+    n_pos          <- sum(y_prev)
+    if (n_pos == 0) stop("No positive egg counts; model cannot be fitted")
+
+    if (messages)
+      message(sprintf("STH data: %d observations, %d (%.1f%%) egg-positive",
+                      n, n_pos, 100*n_pos/n))
+
+    if (is.null(par0)) {
+      if (messages) message("\n=== Computing initial parameter values (STH) ===")
+      par0 <- dsgm_initial_value(
+        y_prev=y_prev, intensity_data=intensity_data, D=D,
+        coords=coords_u, ID_coords=ID_coords,
+        int_mat=int_mat, survey_times_data=survey_times_data,
+        mda_times=mda_times, penalty=penalty,
+        fix_alpha_W=fix_alpha_W, fix_gamma_W=fix_gamma_W,
+        start_pars=start_pars, messages=messages)
+    }
+    req  <- c("beta","k","rho","sigma2","phi")
+    if (is.null(fix_alpha_W)) req <- c(req, "alpha_W")
+    if (is.null(fix_gamma_W)) req <- c(req, "gamma_W")
+    miss <- setdiff(req, names(par0))
+    if (length(miss) > 0)
+      stop("Missing initial parameters: ", paste(miss, collapse=", "))
+
+    if (messages) {
+      message("\n=== Sampling spatial process (STH, Stan) ===")
+      message(sprintf("  n_samples=%d  n_warmup=%d  n_chains=%d  adapt_delta=%.2f",
+                      n_samples, n_warmup, n_chains, adapt_delta))
+    }
+    sp <- sample_spatial_process_stan(
+      y_prev=y_prev, intensity_data=intensity_data, D=D,
+      coords=coords_u, ID_coords=ID_coords,
+      int_mat=int_mat, survey_times_data=survey_times_data,
+      mda_times=mda_times, par=par0,
+      n_samples=n_samples, n_warmup=n_warmup,
+      n_chains=n_chains, n_cores=1,
+      adapt_delta=adapt_delta, max_treedepth=max_treedepth,
+      backend=backend, messages=messages)
+
+    if (messages) message("\n=== Fitting via TMB-MCML (STH) ===")
+    fit <- dsgm_fit_tmb(
+      model="sth",
+      y_prev=y_prev, intensity_data=intensity_data, D=D,
+      coords=coords_u, ID_coords=ID_coords,
+      int_mat=int_mat, survey_times_data=survey_times_data,
+      mda_times=mda_times, par0=par0, cov_offset=cov_offset,
+      fix_alpha_W=fix_alpha_W, fix_gamma_W=fix_gamma_W,
+      fix_tau2=fix_tau2, use_mda=use_mda,
+      penalty=penalty, S_samples_obj=sp,
+      use_hessian_refinement=TRUE, messages=messages)
+
+    res <- list(
+      family            = "intprev",
+      prevalence_data   = y_prev,
+      intensity_data    = intensity_data,
+      egg_counts        = egg_counts,
+      n_positive        = n_pos,
+      D                 = D,
+      coords            = coords_u,
+      mda_times         = mda_times,
+      survey_times_data = survey_times_data,
+      int_mat           = int_mat,
+      ID_coords         = ID_coords,
+      fix_alpha_W       = fix_alpha_W,
+      fix_gamma_W       = fix_gamma_W,
+      use_mda           = use_mda,
+      formula           = formula,
+      crs               = crs,
+      scale_to_km       = scale_to_km,
+      data_sf           = data,
+      kappa             = 0.5,
+      cov_offset        = cov_offset,
+      penalty           = if (!no_penalty) penalty else NULL,
+      model_params      = fit$params,
+      params_se         = fit$params_se,
+      tmb_sdr           = fit$tmb_sdr,
+      tmb_obj           = fit$tmb_obj,
+      convergence       = fit$convergence,
+      log_likelihood    = fit$log_likelihood,
+      n_locations       = n_loc,
+      n_observations    = n,
+      n_covariates      = p,
+      n_mda_rounds      = if (use_mda) length(mda_times) else 0L,
+      stan_settings     = list(n_samples=n_samples, n_warmup=n_warmup,
+                               n_chains=n_chains, adapt_delta=adapt_delta,
+                               max_treedepth=max_treedepth),
+      call              = match.call()
+    )
+    if (return_samples) res$spatial_samples <- sp
+    class(res) <- "RiskMap"
+    return(res)
   }
 
-  # Add model structure info
-  res$n_locations <- n_loc
-  res$n_observations <- n
-  res$n_covariates <- p
-  res$n_mda_rounds <- length(mda_times)
+  # ===========================================================================
+  # LF multi-diagnostic branch
+  # ===========================================================================
+  if (model == "lf_mdiag") {
 
-  # Add STAN settings
-  res$stan_settings <- list(
-    n_samples = n_samples,
-    n_warmup = n_warmup,
-    n_chains = n_chains,
-    adapt_delta = adapt_delta,
-    max_treedepth = max_treedepth
-  )
+    if (is.null(is_mf))    stop("'is_mf'    required for model = 'lf_mdiag'")
+    if (length(is_mf) != n)
+      stop("'is_mf' must have length nrow(data)")
+    if (!all(is_mf %in% c(0L, 1L)))
+      stop("'is_mf' must contain only 0 or 1")
+    if (gamma_sens <= 0 || gamma_sens > 1)
+      stop("'gamma_sens' must be in (0, 1]")
 
-  class(res) <- "RiskMap"
+    # Extract positive counts from formula response
+    y_counts <- as.integer(model.response(mf))
+    if (any(y_counts < 0, na.rm = TRUE)) stop("Response (positive counts) cannot be negative")
+    if (any(is.na(y_counts)))            stop("Missing values in response variable")
 
-  return(res)
+    # Denominator: number examined per row (from 'den', or 1 if not supplied)
+    units_m <- den_vals
+
+    if (messages)
+      message(sprintf("LF data: %d observations (%d MF, %d serological)",
+                      n, sum(is_mf==1), sum(is_mf==0)))
+
+    if (is.null(par0)) {
+      if (messages) message("\n=== Computing initial parameter values (LF) ===")
+      par0 <- dsgm_initial_value_lf(
+        y_counts=y_counts, units_m=units_m, is_mf=is_mf, D=D,
+        coords=coords_u,
+        int_mat=int_mat, survey_times_data=survey_times_data,
+        mda_times=mda_times, gamma_sens=gamma_sens, penalty=penalty,
+        fix_k=fix_k, fix_alpha_W=fix_alpha_W, fix_gamma_W=fix_gamma_W,
+        use_mda=use_mda, start_pars=start_pars, messages=messages)
+    }
+    # Ensure gamma_sens is set; tau2 follows gp() nugget specification
+    par0$gamma_sens <- gamma_sens
+    if (!is.null(fix_tau2)) {
+      # nugget fixed (default is 0): override whatever initial value gave us
+      par0$tau2 <- fix_tau2
+    } else if (is.null(par0$tau2)) {
+      # nugget estimated: use start_pars or a small default
+      par0$tau2 <- if (!is.null(start_pars$tau2)) start_pars$tau2 else 0.1
+    }
+
+    # Pre-compute MDA impact at theta_0 for Stan
+    mda_impact <- if (use_mda)
+      compute_mda_effect(survey_times_data, mda_times, int_mat,
+                         par0$alpha_W, par0$gamma_W, kappa=1)
+    else
+      rep(1.0, n)
+
+    if (messages) {
+      message("\n=== Sampling spatial process (LF, Stan) ===")
+      message(sprintf("  n_samples=%d  n_warmup=%d  n_chains=%d  adapt_delta=%.2f",
+                      n_samples, n_warmup, n_chains, adapt_delta))
+    }
+    sp <- sample_spatial_process_stan_lf(
+      y_counts=y_counts, units_m=units_m, is_mf=is_mf, D=D,
+      coords=coords_u, ID_coords=ID_coords, par=par0,
+      mda_impact=mda_impact,
+      n_samples=n_samples, n_warmup=n_warmup,
+      n_chains=n_chains, n_cores=1,
+      adapt_delta=adapt_delta, max_treedepth=max_treedepth,
+      backend=backend, messages=messages)
+
+    if (messages) message("\n=== Fitting via TMB-MCML (LF) ===")
+    fit <- dsgm_fit_tmb(
+      model="lf_mdiag",
+      y_counts=y_counts, units_m=units_m, is_mf=is_mf, D=D,
+      coords=coords_u, ID_coords=ID_coords,
+      int_mat=int_mat, survey_times_data=survey_times_data,
+      mda_times=mda_times, par0=par0, cov_offset=cov_offset,
+      gamma_sens=gamma_sens, fix_k=fix_k, use_mda=use_mda,
+      fix_alpha_W=fix_alpha_W, fix_gamma_W=fix_gamma_W,
+      fix_tau2=fix_tau2,
+      penalty=penalty, S_samples_obj=sp,
+      use_hessian_refinement=TRUE, messages=messages)
+
+    res <- list(
+      family            = "lf_mdiag",
+      y_counts          = y_counts,
+      units_m           = units_m,
+      is_mf             = is_mf,
+      D                 = D,
+      coords            = coords_u,
+      mda_times         = mda_times,
+      survey_times_data = survey_times_data,
+      int_mat           = int_mat,
+      ID_coords         = ID_coords,
+      fix_alpha_W       = fix_alpha_W,
+      fix_gamma_W       = fix_gamma_W,
+      fix_k             = fix_k,
+      gamma_sens        = gamma_sens,
+      use_mda           = use_mda,
+      formula           = formula,
+      crs               = crs,
+      scale_to_km       = scale_to_km,
+      data_sf           = data,
+      kappa             = 0.5,
+      cov_offset        = cov_offset,
+      penalty           = if (!no_penalty) penalty else NULL,
+      model_params      = fit$params,
+      params_se         = fit$params_se,
+      tmb_sdr           = fit$tmb_sdr,
+      tmb_obj           = fit$tmb_obj,
+      convergence       = fit$convergence,
+      log_likelihood    = fit$log_likelihood,
+      n_locations       = n_loc,
+      n_observations    = n,
+      n_covariates      = p,
+      n_mda_rounds      = length(mda_times),
+      stan_settings     = list(n_samples=n_samples, n_warmup=n_warmup,
+                               n_chains=n_chains, adapt_delta=adapt_delta,
+                               max_treedepth=max_treedepth),
+      call              = match.call()
+    )
+    if (return_samples) res$spatial_samples <- sp
+    class(res) <- "RiskMap"
+    return(res)
+  }
 }
