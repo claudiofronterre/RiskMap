@@ -372,16 +372,24 @@ interpret.formula <- function(formula) {
 ##' \item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
 ##' \item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
 ##' \item{sigma2_re}{A vector of variance estimates for the random effects, if applicable.}
-##' For DSGM models (joint prevalence-intensity):
-##' \item{beta}{A vector of coefficient estimates for mean worm burden.}
-##' \item{k}{The negative binomial overdispersion parameter.}
-##' \item{rho}{The egg detection rate (fecundity).}
-##' \item{alpha_W}{The immediate worm burden reduction (if estimated).}
-##' \item{gamma_W}{The decay rate of MDA effect (if estimated).}
-##' \item{sigma2}{The spatial process variance.}
-##' \item{phi}{The spatial correlation scale parameter.}
-##' @details The function processes the \code{RiskMap} object to extract and name the estimated parameters appropriately, transforming them if necessary.
-##' @note This function handles both Gaussian and non-Gaussian families, and accounts for fixed and random effects in the model.
+##' For STH DSGM models (\code{family = "intprev"}):
+##' \item{beta}{Coefficient estimates for log mean worm burden.}
+##' \item{k}{Negative binomial overdispersion parameter.}
+##' \item{rho}{Egg detection rate (fecundity).}
+##' \item{alpha_W}{Immediate worm burden reduction from MDA (if estimated or fixed).}
+##' \item{gamma_W}{Decay rate of MDA effect (if estimated or fixed).}
+##' \item{sigma2}{Spatial process variance.}
+##' \item{phi}{Spatial correlation scale.}
+##' For LF DSGM models (\code{family = "lf_mdiag"}):
+##' \item{beta}{Coefficient estimates for log mean worm burden.}
+##' \item{k}{Negative binomial overdispersion parameter.}
+##' \item{rho}{Per-worm MF detection rate.}
+##' \item{gamma_sens}{Serological test sensitivity (fixed by user).}
+##' \item{tau2}{Nugget variance (if estimated).}
+##' \item{alpha_W}{Immediate worm burden reduction from MDA (if used).}
+##' \item{gamma_W}{Decay rate of MDA effect (if used).}
+##' \item{sigma2}{Spatial process variance.}
+##' \item{phi}{Spatial correlation scale.}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
 ##' @seealso \code{\link{glgpm}}, \code{\link{dsgm}}
@@ -390,167 +398,155 @@ interpret.formula <- function(formula) {
 ##'
 coef.RiskMap <- function(object, ...) {
 
-  # =============================================================================
-  # CHECK IF THIS IS A DSGM MODEL (joint prevalence-intensity)
-  # =============================================================================
+  # ===========================================================================
+  # DSGM MODELS: intprev (STH) and lf_mdiag (LF)
+  # Both store estimates in $model_params rather than $estimate
+  # ===========================================================================
+  is_dsgm <- !is.null(object$family) &&
+    object$family %in% c("intprev", "lf_mdiag")
 
-  is_dsgm <- !is.null(object$family) && object$family == "intprev"
+  if (is_dsgm) {
 
-  if(is_dsgm) {
-    # =========================================================================
-    # DSGM MODEL: Extract from model_params
-    # =========================================================================
-
-    if(is.null(object$model_params)) {
+    if (is.null(object$model_params))
       stop("DSGM model object does not contain 'model_params'")
-    }
 
     params <- object$model_params
 
-    # Get coefficient names
+    # Named beta vector
     beta_est <- params$beta
-    if(!is.null(object$D) && !is.null(colnames(object$D))) {
+    if (!is.null(object$D) && !is.null(colnames(object$D))) {
       names(beta_est) <- colnames(object$D)
-    } else if(length(beta_est) == 1) {
+    } else if (length(beta_est) == 1) {
       names(beta_est) <- "Intercept"
     } else {
       names(beta_est) <- paste0("beta", seq_along(beta_est))
     }
 
-    # Build result list
-    res <- list()
-    res$beta <- beta_est
-    res$k <- as.numeric(params$k)
-    res$rho <- as.numeric(params$rho)
+    res        <- list()
+    res$beta   <- beta_est
+    res$k      <- as.numeric(params$k)
+    res$rho    <- as.numeric(params$rho)
 
-    # MDA parameters (may be fixed or estimated)
-    if(!is.null(params$alpha_W)) {
+    # LF-specific: gamma_sens (fixed by user, stored on object) and tau2
+    if (object$family == "lf_mdiag") {
+      res$gamma_sens <- object$gamma_sens
+      if (!is.null(params$tau2) && params$tau2 > 0)
+        res$tau2 <- as.numeric(params$tau2)
+    }
+
+    # MDA parameters — estimated or fixed
+    if (!is.null(params$alpha_W)) {
       res$alpha_W <- as.numeric(params$alpha_W)
-    } else if(!is.null(object$fix_alpha_W)) {
+    } else if (!is.null(object$fix_alpha_W)) {
       res$alpha_W <- object$fix_alpha_W
       attr(res$alpha_W, "fixed") <- TRUE
     }
 
-    if(!is.null(params$gamma_W)) {
+    if (!is.null(params$gamma_W)) {
       res$gamma_W <- as.numeric(params$gamma_W)
-    } else if(!is.null(object$fix_gamma_W)) {
+    } else if (!is.null(object$fix_gamma_W)) {
       res$gamma_W <- object$fix_gamma_W
       attr(res$gamma_W, "fixed") <- TRUE
     }
 
-    # Spatial parameters
     res$sigma2 <- as.numeric(params$sigma2)
-    res$phi <- as.numeric(params$phi)
+    res$phi    <- as.numeric(params$phi)
 
     return(res)
   }
 
-  # =============================================================================
-  # STANDARD RISKMAP MODEL (existing code)
-  # =============================================================================
+  # ===========================================================================
+  # STANDARD RISKMAP MODEL (glgpm / dast)
+  # ===========================================================================
 
   n_re <- length(object$re)
-  if(n_re > 0) {
-    re_names <- names(object$re)
-  }
+  if (n_re > 0) re_names <- names(object$re)
 
-  p <- ncol(as.matrix(object$D))
+  p        <- ncol(as.matrix(object$D))
   ind_beta <- 1:p
 
-  if(p==1) {
+  if (p == 1) {
     object$D <- as.matrix(object$D)
     names(object$estimate)[ind_beta] <- "Intercept"
   } else {
     names(object$estimate)[ind_beta] <- colnames(object$D)
   }
-  ind_sigma2 <- p+1
+  ind_sigma2 <- p + 1
   names(object$estimate)[ind_sigma2] <- "sigma2"
-  ind_phi <- p+2
+  ind_phi <- p + 2
   names(object$estimate)[ind_phi] <- "phi"
 
-  if(is.null(object$fix_tau2)) {
-    ind_tau2 <- p+3
+  if (is.null(object$fix_tau2)) {
+    ind_tau2 <- p + 3
     names(object$estimate)[ind_tau2] <- "tau2"
-    object$estimate[ind_tau2] <- object$estimate[ind_tau2]+object$estimate[ind_sigma2]
-    if(object$family=="gaussian") {
-      if(is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p+4
-        if(n_re>0) ind_sigma2_re <- (p+5):(p+4+n_re)
+    object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
+    if (object$family == "gaussian") {
+      if (is.null(object$fix_var_me)) {
+        ind_sigma2_me <- p + 4
+        if (n_re > 0) ind_sigma2_re <- (p + 5):(p + 4 + n_re)
       } else {
         ind_sigma2_me <- NULL
-        if(n_re>0) ind_sigma2_re <- (p+4):(p+3+n_re)
+        if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
       }
     } else {
       ind_sigma2_me <- NULL
-      if(n_re>0) ind_sigma2_re <- (p+4):(p+3+n_re)
+      if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
     }
   } else {
     ind_tau2 <- NULL
-    if(object$family=="gaussian") {
-      if(is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p+3
+    if (object$family == "gaussian") {
+      if (is.null(object$fix_var_me)) {
+        ind_sigma2_me <- p + 3
         names(object$estimate)[ind_sigma2_me] <- "sigma2_me"
-        if(n_re>0) {
-          ind_sigma2_re <- (p+4):(p+3+n_re)
-        }
+        if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
       } else {
         ind_sigma2_me <- NULL
-        if(n_re>0) {
-          ind_sigma2_re <- (p+3):(p+2+n_re)
-        }
+        if (n_re > 0) ind_sigma2_re <- (p + 3):(p + 2 + n_re)
       }
     } else {
-      if(n_re>0) {
-        ind_sigma2_re <- (p+3):(p+2+n_re)
-      }
+      if (n_re > 0) ind_sigma2_re <- (p + 3):(p + 2 + n_re)
     }
   }
+
   ind_sp <- c(ind_sigma2, ind_phi, ind_tau2)
   object$estimate[ind_sp] <- exp(object$estimate[ind_sp])
 
-  n_p <- length(object$estimate)
-
-  if(n_re > 0) {
-    for(i in 1:n_re) {
-      names(object$estimate)[ind_sigma2_re[i]] <- paste(re_names[i],"_sigma2_re",sep="")
-    }
+  if (n_re > 0) {
+    for (i in seq_len(n_re))
+      names(object$estimate)[ind_sigma2_re[i]] <-
+        paste0(re_names[i], "_sigma2_re")
   }
 
-
-  res <- list()
-  res$beta <- object$estimate[ind_beta]
+  res        <- list()
+  res$beta   <- object$estimate[ind_beta]
   res$sigma2 <- as.numeric(object$estimate[ind_sigma2])
-  res$phi <- as.numeric(object$estimate[ind_phi])
-  if(object$family=="gaussian") {
-    if(!is.null(ind_sigma2_me)) res$sigma2_me <- as.numeric(exp(object$estimate[ind_sigma2_me]))
-  }
-  if(!is.null(ind_tau2)) res$tau2 <- object$estimate[ind_tau2]
-  if(n_re>0) res$sigma2_re <- as.numeric(object$estimate[ind_sigma2_re])
-  dast_model <- !is.null(object$power_val)
+  res$phi    <- as.numeric(object$estimate[ind_phi])
+  if (object$family == "gaussian" && !is.null(ind_sigma2_me))
+    res$sigma2_me <- as.numeric(exp(object$estimate[ind_sigma2_me]))
+  if (!is.null(ind_tau2))
+    res$tau2 <- object$estimate[ind_tau2]
+  if (n_re > 0)
+    res$sigma2_re <- as.numeric(object$estimate[ind_sigma2_re])
 
-  if(dast_model) {
-    if(!is.null(ind_tau2)) {
-      if(is.null(object$fix_alpha)) {
-        ind_alpha <- p+n_re+4
-        ind_gamma <- p+n_re+5
-      } else {
-        ind_gamma <- p+n_re+4
-      }
+  dast_model <- !is.null(object$power_val)
+  if (dast_model) {
+    if (!is.null(ind_tau2)) {
+      if (is.null(object$fix_alpha)) { ind_alpha <- p + n_re + 4; ind_gamma <- p + n_re + 5 }
+      else                           { ind_gamma <- p + n_re + 4 }
     } else {
-      if(is.null(object$fix_alpha)) {
-        ind_alpha <- p+n_re+3
-        ind_gamma <- p+n_re+4
-      } else {
-        ind_gamma <- p+n_re+3
-      }
+      if (is.null(object$fix_alpha)) { ind_alpha <- p + n_re + 3; ind_gamma <- p + n_re + 4 }
+      else                           { ind_gamma <- p + n_re + 3 }
     }
-    if(is.null(object$fix_alpha)) res$alpha <- as.numeric(1/(1+exp(-object$estimate[ind_alpha])))
+    if (is.null(object$fix_alpha))
+      res$alpha <- as.numeric(1 / (1 + exp(-object$estimate[ind_alpha])))
     res$gamma <- as.numeric(exp(object$estimate[ind_gamma]))
   }
-  if(object$sst) {
+
+  if (object$sst) {
     ind_psi <- length(object$estimate)
-    res$psi <- as.numeric(exp(object$estimate[ind_psi]))
+    res$psi  <- as.numeric(exp(object$estimate[ind_psi]))
   }
+
   return(res)
 }
 

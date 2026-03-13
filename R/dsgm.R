@@ -1,39 +1,24 @@
-##' @title Detect working Stan backend
-##' @description Tests rstan first, falls back to cmdstanr if rstan is broken.
+##' @title Detect available Stan backend
+##' @description Prefers cmdstanr because its compiled executable persists
+##'   across R sessions without DSO issues. Falls back to rstan only when
+##'   cmdstanr is unavailable. With rstan the model is recompiled every new
+##'   R session (the DSO is process-local and cannot be cached on disk).
 ##' @keywords internal
 detect_stan_backend <- function(messages = TRUE) {
-  if (requireNamespace("rstan", quietly = TRUE)) {
-    test_code <- "
-    functions {
-      vector test_func() {
-        vector[2] result;
-        result[1] = 1.0; result[2] = 2.0;
-        return result;
-      }
-    }
-    data { int N; }
-    parameters { real mu; }
-    model { }
-    "
-    tryCatch({
-      suppressMessages(suppressWarnings(
-        rstan::stan_model(model_code = test_code,
-                          model_name = "test_backend",
-                          verbose    = FALSE)
-      ))
-      if (messages) message("Using rstan backend (tested successfully)")
-      return("rstan")
-    }, error = function(e) {
-      if (messages) {
-        message("rstan compilation failed; falling back to cmdstanr...")
-      }
-    })
-  }
+  # Try cmdstanr first — executable survives across R sessions
   if (requireNamespace("cmdstanr", quietly = TRUE)) {
-    if (messages) message("Using cmdstanr backend")
-    return("cmdstanr")
+    ok <- tryCatch({ cmdstanr::cmdstan_version(); TRUE }, error = function(e) FALSE)
+    if (ok) {
+      if (messages) message("Using cmdstanr backend")
+      return("cmdstanr")
+    }
   }
-  stop("Neither rstan nor cmdstanr is available or working")
+  # Fall back to rstan
+  if (requireNamespace("rstan", quietly = TRUE)) {
+    if (messages) message("Using rstan backend (cmdstanr unavailable)")
+    return("rstan")
+  }
+  stop("Neither rstan nor cmdstanr is available. Install cmdstanr for persistent caching across sessions.")
 }
 
 
@@ -41,11 +26,11 @@ detect_stan_backend <- function(messages = TRUE) {
 ##' @description Returns a compiled Stan model for either the STH or LF model.
 ##'   Uses separate cache slots so both models can coexist in a session.
 ##'
-##'   For \code{cmdstanr}, the compiled executable is written to a persistent
-##'   user cache directory (\code{tools::R_user_dir("RiskMap", "cache")}) so
-##'   that recompilation is avoided across R sessions.  For \code{rstan},
-##'   \code{auto_write = TRUE} achieves the same effect by saving a serialised
-##'   model object next to the \code{.stan} file.
+##'   For \code{cmdstanr} (recommended), the compiled executable is written to
+##'   a persistent user cache directory (\code{tools::R_user_dir("RiskMap", "cache")})
+##'   and reused across R sessions without recompilation. For \code{rstan},
+##'   the model DSO is process-local and must be relinked every new R session;
+##'   use cmdstanr to avoid this.
 ##'
 ##' @param model \code{"sth"} uses \code{inst/stan/dsgm_spatial.stan};
 ##'   \code{"lf"} uses \code{inst/stan/dsgm_mdiag.stan}.
@@ -274,7 +259,7 @@ sample_spatial_process_stan <- function(y_prev,
 ##' @keywords internal
 sample_spatial_process_stan_lf <- function(y_counts,
                                            units_m,
-                                           is_mf,
+                                           which_diag,
                                            D,
                                            coords,
                                            ID_coords,
@@ -303,7 +288,7 @@ sample_spatial_process_stan_lf <- function(y_counts,
     p          = p,
     y          = as.integer(y_counts),
     units_m    = as.integer(units_m),
-    is_mf      = as.integer(is_mf),
+    is_mf      = as.integer(which_diag),
     ID_coords  = as.integer(ID_coords),
     D_mat      = as.matrix(dist(coords)),
     eta_fixed  = as.numeric(D %*% par$beta),
@@ -578,7 +563,7 @@ dsgm_initial_value <- function(y_prev, intensity_data, D, coords, ID_coords,
 ##'   values for \code{beta}, \code{k}, \code{rho}, \code{sigma2}, \code{phi},
 ##'   \code{tau2}, and optionally \code{alpha_W}/\code{gamma_W}.
 ##' @keywords internal
-dsgm_initial_value_lf <- function(y_counts, units_m, is_mf, D, coords,
+dsgm_initial_value_lf <- function(y_counts, units_m, which_diag, D, coords,
                                   int_mat, survey_times_data, mda_times,
                                   gamma_sens, penalty,
                                   fix_k, fix_alpha_W, fix_gamma_W,
@@ -602,8 +587,8 @@ dsgm_initial_value_lf <- function(y_counts, units_m, is_mf, D, coords,
                                     alpha_W, gamma_W, kappa=1)
 
     prob <- numeric(n)
-    mf  <- is_mf == 1
-    cfa <- is_mf == 0
+    mf  <- which_diag == 1
+    cfa <- which_diag == 0
     prob[mf]  <- pmax(pmin(1 - (k/(k + mu[mf] *(1-exp(-rho))))^k, 1-1e-10), 1e-10)
     prob[cfa] <- pmax(pmin(gamma_sens*(1-(k/(k + mu[cfa]))^k),     1-1e-10), 1e-10)
 
@@ -691,8 +676,8 @@ dsgm_initial_value_lf <- function(y_counts, units_m, is_mf, D, coords,
 ##'
 ##' @param formula Model formula.  For \code{"sth"}, the response is the egg
 ##'   count (0 = uninfected).  For \code{"lf_mdiag"}, the response is ignored;
-##'   supply diagnostic data via the formula response and \code{is_mf}.  Both
-##'   \code{is_mf}.  Both models require a spatial GP term: \code{gp(x,y)} or
+##'   supply diagnostic data via the formula response and \code{diagnostic} column.  Both
+##'   the \code{diagnostic} column.  Both models require a spatial GP term: \code{gp(x,y)} or
 ##'   \code{gp(sf)}.
 ##' @param data A \code{data.frame} or \code{sf} object.
 ##' @param model \code{"sth"} (default) or \code{"lf_mdiag"}.
@@ -713,7 +698,7 @@ dsgm_initial_value_lf <- function(y_counts, units_m, is_mf, D, coords,
 ##'
 ##' @section LF-specific arguments:
 ##' \describe{
-##'   \item{is_mf}{Integer 0/1 vector: 1 = parasitological, 0 = serological.}
+##'   \item{which_diag}{Integer 0/1 vector derived from the \code{diagnostic} column: 1 = parasitological (\code{"par"}), 0 = serological (\code{"ser"}).}
 ##'   \item{gamma_sens}{Fixed serological sensitivity in (0,1]; default 0.97.}
 ##'   \item{fix_k}{Fix the NB aggregation parameter k; \code{NULL} to estimate.}
 ##'   \item{use_mda}{Logical; include MDA decay for LF (default \code{FALSE}).
@@ -759,7 +744,6 @@ dsgm <- function(formula,
                  int_mat        = NULL,
                  # LF-specific
                  den            = NULL,
-                 is_mf          = NULL,
                  gamma_sens     = 0.97,
                  fix_k          = NULL,
                  use_mda        = NULL,
@@ -1009,11 +993,19 @@ dsgm <- function(formula,
   # ===========================================================================
   if (model == "lf_mdiag") {
 
-    if (is.null(is_mf))    stop("'is_mf'    required for model = 'lf_mdiag'")
-    if (length(is_mf) != n)
-      stop("'is_mf' must have length nrow(data)")
-    if (!all(is_mf %in% c(0L, 1L)))
-      stop("'is_mf' must contain only 0 or 1")
+    # Derive which_diag from the 'diagnostic' column in data.
+    # If the column is absent, assume all observations are parasitological
+    # (single-diagnostic MF model).
+    if ("diagnostic" %in% names(data)) {
+      diag_raw <- data[["diagnostic"]]
+      if (!all(diag_raw %in% c("par", "ser")))
+        stop("Column 'diagnostic' must contain only 'par' (parasitological) or 'ser' (serological).")
+      which_diag <- ifelse(diag_raw == "par", 1L, 0L)
+    } else {
+      if (messages)
+        message("No 'diagnostic' column found: assuming all observations are parasitological (MF).")
+      which_diag <- rep(1L, n)
+    }
     if (gamma_sens <= 0 || gamma_sens > 1)
       stop("'gamma_sens' must be in (0, 1]")
 
@@ -1027,12 +1019,12 @@ dsgm <- function(formula,
 
     if (messages)
       message(sprintf("LF data: %d observations (%d MF, %d serological)",
-                      n, sum(is_mf==1), sum(is_mf==0)))
+                      n, sum(which_diag==1), sum(which_diag==0)))
 
     if (is.null(par0)) {
       if (messages) message("\n=== Computing initial parameter values (LF) ===")
       par0 <- dsgm_initial_value_lf(
-        y_counts=y_counts, units_m=units_m, is_mf=is_mf, D=D,
+        y_counts=y_counts, units_m=units_m, which_diag=which_diag, D=D,
         coords=coords_u,
         int_mat=int_mat, survey_times_data=survey_times_data,
         mda_times=mda_times, gamma_sens=gamma_sens, penalty=penalty,
@@ -1062,7 +1054,7 @@ dsgm <- function(formula,
                       n_samples, n_warmup, n_chains, adapt_delta))
     }
     sp <- sample_spatial_process_stan_lf(
-      y_counts=y_counts, units_m=units_m, is_mf=is_mf, D=D,
+      y_counts=y_counts, units_m=units_m, which_diag=which_diag, D=D,
       coords=coords_u, ID_coords=ID_coords, par=par0,
       mda_impact=mda_impact,
       n_samples=n_samples, n_warmup=n_warmup,
@@ -1073,7 +1065,7 @@ dsgm <- function(formula,
     if (messages) message("\n=== Fitting via TMB-MCML (LF) ===")
     fit <- dsgm_fit_tmb(
       model="lf_mdiag",
-      y_counts=y_counts, units_m=units_m, is_mf=is_mf, D=D,
+      y_counts=y_counts, units_m=units_m, which_diag=which_diag, D=D,
       coords=coords_u, ID_coords=ID_coords,
       int_mat=int_mat, survey_times_data=survey_times_data,
       mda_times=mda_times, par0=par0, cov_offset=cov_offset,
@@ -1087,7 +1079,7 @@ dsgm <- function(formula,
       family            = "lf_mdiag",
       y_counts          = y_counts,
       units_m           = units_m,
-      is_mf             = is_mf,
+      which_diag        = which_diag,
       D                 = D,
       coords            = coords_u,
       mda_times         = mda_times,
