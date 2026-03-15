@@ -14,6 +14,7 @@
 ##' @importFrom gridExtra grid.arrange
 ##' @importFrom stats plogis
 ##' @importFrom dplyr mutate first
+##' @importFrom tibble as_tibble
 ##' @importFrom sf st_as_text
 NULL
 

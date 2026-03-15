@@ -35,6 +35,7 @@ Imports:
     Deriv,
     numDeriv,
     dplyr,
+    tibble,
     ggplot2,
     gridExtra,
     rlang,
