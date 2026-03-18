@@ -323,7 +323,7 @@ pred_over_grid <- function(object,
         S_obj <- sample_spatial_process_stan_lf(
           y_counts   = object$y_counts,
           units_m    = object$units_m,
-          is_mf      = object$is_mf,
+          which_diag = object$which_diag,
           D          = object$D,
           coords     = object$coords,
           ID_coords  = object$ID_coords,
@@ -525,6 +525,9 @@ pred_over_grid <- function(object,
   if (obs_loc) out$ID_coords <- object$ID_coords
   out$inter_f  <- inter_f
   out$family   <- object$family
+  # Forward gamma_sens for lf_mdiag so pred_target_grid can read it
+  if (is_dsgm && !is.null(object$gamma_sens))
+    out$gamma_sens <- object$gamma_sens
   out$par_hat  <- par_hat
   out$cov_offset <- pred_cov_offset
   out$type     <- type
@@ -630,7 +633,9 @@ pred_target_grid <- function(object,
   # ---------------------------------------------------------------------------
   # MDA checks: only required when the model was fitted with MDA
   # ---------------------------------------------------------------------------
-  use_mda_obj <- isTRUE(object$use_mda)
+  use_mda_obj <- isTRUE(object$use_mda) ||
+    (sth_model && !is.null(object$mda_times) &&
+       length(object$mda_times) > 0 && is.null(object$use_mda))
 
   needs_mda <- (dsgm_model || dast_model) && include_mda_effect && use_mda_obj
 
@@ -803,6 +808,9 @@ pred_target_grid <- function(object,
       sapply(seq_len(n_samples), function(i)
         mu_target + cov_offset + object$S_samples[ID_coords, i])
     }
+    # sapply drops dimensions when n_pred == 1; restore matrix shape
+    if (!is.matrix(lp_samples))
+      lp_samples <- matrix(lp_samples, nrow = length(ID_coords))
   }
 
   # ---------------------------------------------------------------------------
@@ -902,6 +910,8 @@ pred_target_grid <- function(object,
   } else {
     for (fi in seq_len(n_f)) {
       target_mat <- f_target[[fi]](lp_samples)
+      if (!is.matrix(target_mat))
+        target_mat <- matrix(target_mat, nrow = nrow(lp_samples))
 
       # DAST: MDA applied multiplicatively after transformation
       if (dast_model && needs_mda) {
@@ -944,6 +954,7 @@ pred_target_grid <- function(object,
   class(out) <- "RiskMap_pred_target_grid"
   return(out)
 }
+
 
 
 ##' Plot Method for RiskMap_pred_target_grid Objects
