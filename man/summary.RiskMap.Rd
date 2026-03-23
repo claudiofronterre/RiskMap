@@ -7,15 +7,20 @@
 \method{summary}{RiskMap}(object, ..., conf_level = 0.95)
 }
 \arguments{
-\item{object}{An object of class "RiskMap" obtained as a result of a call to \code{\link{glgpm}} or \code{\link{dsgm}}.}
+\item{object}{An object of class "RiskMap" from \code{\link{glgpm}} or
+\code{\link{dsgm}}.}
 
 \item{...}{other parameters.}
 
-\item{conf_level}{The confidence level for the intervals (default is 0.95).}
+\item{conf_level}{Confidence level for intervals (default 0.95).}
 }
 \value{
-A list containing parameter estimates, standard errors, and confidence intervals.
+A list of class \code{"summary.RiskMap"} with parameter estimates,
+  standard errors, and confidence intervals.
 }
 \description{
-Provides a \code{summary} method for the "RiskMap" class that computes the standard errors and p-values for likelihood-based model fits.
+Provides a \code{summary} method for the "RiskMap" class that
+  computes standard errors and confidence intervals for likelihood-based
+  model fits, including DSGM models (STH joint prevalence-intensity and
+  LF multi-diagnostic).
 }

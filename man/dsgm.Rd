@@ -2,15 +2,20 @@
 % Please edit documentation in R/dsgm.R
 \name{dsgm}
 \alias{dsgm}
-\title{Fitting of Doubly Stochastic Geostatistical Model (DSGM) for joint analysis of prevalence
-and intensity of infection}
+\title{Fit a Doubly Stochastic Geostatistical Model (DSGM)}
 \usage{
 dsgm(
   formula,
   data,
-  time,
-  mda_times,
-  int_mat,
+  model = c("sth", "lf_mdiag"),
+  intensity_family = c("gamma", "negbin"),
+  time = NULL,
+  mda_times = NULL,
+  int_mat = NULL,
+  den = NULL,
+  gamma_sens = 0.97,
+  fix_k = NULL,
+  use_mda = NULL,
   penalty = NULL,
   drop_W = NULL,
   decay_W = NULL,
@@ -24,97 +29,85 @@ dsgm(
   adapt_delta = 0.8,
   max_treedepth = 10,
   return_samples = TRUE,
+  backend = NULL,
   messages = TRUE,
-  start_pars = list(beta = NULL, k = NULL, rho = NULL, sigma2 = NULL, phi = NULL, alpha_W
-    = NULL, gamma_W = NULL)
+  start_pars = list(beta = NULL, k = NULL, rho = NULL, sigma2 = NULL, phi = NULL, tau2 =
+    NULL, alpha_W = NULL, gamma_W = NULL)
 )
 }
 \arguments{
-\item{formula}{A model formula with egg counts (EPG) as response and covariates for mean worm burden.
-Example: \code{epg ~ elevation + rainfall + gp(x, y)} where epg is the egg count variable.
-Zero values indicate uninfected individuals.}
+\item{formula}{Model formula. Requires a spatial GP term: \code{gp(x,y)} or \code{gp(sf)}.}
 
-\item{data}{A \code{data.frame} or \code{sf} object containing the dataset.}
+\item{data}{A \code{data.frame} or \code{sf} object.}
 
-\item{time}{A variable in \code{data} giving the survey times of observations (required).}
+\item{model}{\code{"sth"} (default) or \code{"lf_mdiag"}.}
 
-\item{mda_times}{A vector specifying the mass drug administration (MDA) times.}
+\item{intensity_family}{Distribution for C | C > 0 (STH model only).
+\code{"gamma"} (default) uses a shifted Gamma; \code{"negbin"} uses a
+zero-truncated negative binomial. Both are moment-matched to
+the conditional mean and variance derived from the NegBin-Poisson hierarchy.}
 
-\item{int_mat}{Intervention matrix specifying MDA timing and coverage; dimension \code{n * n_mda}.}
+\item{time}{Column in \code{data} giving survey time per observation (required for STH).}
 
-\item{penalty}{Optional list specifying penalty functions for regularization of MDA parameters.}
+\item{mda_times}{Numeric vector of MDA round times.}
 
-\item{drop_W}{Optional fixed value for the immediate worm burden reduction parameter (alpha_W).}
+\item{int_mat}{Coverage matrix (n x n_mda).}
 
-\item{decay_W}{Optional fixed value for the worm burden decay parameter (gamma_W).}
+\item{den}{Column in \code{data} with binomial denominator (LF only).}
 
-\item{crs}{Optional coordinate reference system (CRS) for spatial data.}
+\item{gamma_sens}{Fixed serological sensitivity in (0,1]; default 0.97 (LF only).}
 
-\item{convert_to_crs}{CRS to which spatial data should be converted.}
+\item{fix_k}{Fix the NB aggregation parameter k; \code{NULL} to estimate (LF only).}
 
-\item{scale_to_km}{Logical; whether to scale distances to kilometers (default: \code{TRUE}).}
+\item{use_mda}{Logical; include MDA decay. Defaults to \code{TRUE} when \code{mda_times} supplied.}
 
-\item{par0}{Optional list of initial parameter values.}
+\item{penalty}{Optional list of penalty functions for MDA parameters.}
 
-\item{n_samples}{Number of MCMC samples to draw from spatial process (default: 1000).}
+\item{drop_W}{Fixed value for the immediate worm reduction alpha_W (\code{NULL} to estimate).}
 
-\item{n_warmup}{Number of warmup/burnin iterations for STAN (default: 1000).}
+\item{decay_W}{Fixed value for the worm recovery rate gamma_W (\code{NULL} to estimate).}
 
-\item{n_chains}{Number of MCMC chains for STAN (default: 1).}
+\item{crs}{Optional CRS for spatial data.}
 
-\item{adapt_delta}{Target acceptance rate for STAN sampler (default: 0.8).}
+\item{convert_to_crs}{CRS to project data to before fitting.}
 
-\item{max_treedepth}{Maximum tree depth for STAN sampler (default: 10).}
+\item{scale_to_km}{Scale coordinates to km (default \code{TRUE}).}
 
-\item{return_samples}{Logical; whether to return spatial process samples (default: \code{TRUE}).}
+\item{par0}{Optional named list of initial parameter values.}
 
-\item{messages}{Logical; whether to print messages (default: \code{TRUE}).}
+\item{n_samples}{Number of Stan MCMC samples (default 1000).}
 
-\item{start_pars}{List of starting values for parameters including:
-\itemize{
-  \item beta: Covariate effects on log mean worm burden
-  \item k: Negative binomial aggregation parameter
-  \item rho: Egg detection rate per worm
-  \item sigma2: Variance of the spatial process
-  \item phi: Scale parameter of the spatial correlation
-  \item alpha_W: Immediate worm burden reduction
-  \item gamma_W: Worm burden decay rate
-}}
+\item{n_warmup}{Number of Stan warmup iterations (default 1000).}
+
+\item{n_chains}{Number of Stan chains (default 1).}
+
+\item{adapt_delta}{Target Stan acceptance rate (default 0.8).}
+
+\item{max_treedepth}{Stan tree depth limit (default 10).}
+
+\item{return_samples}{Include spatial samples in result (default \code{TRUE}).}
+
+\item{backend}{Stan backend: \code{"rstan"}, \code{"cmdstanr"}, or \code{NULL} (auto-detect).}
+
+\item{messages}{Print progress messages (default \code{TRUE}).}
+
+\item{start_pars}{Named list of starting values for auto-initialisation.}
 }
 \value{
-A list containing:
-\itemize{
-  \item \code{prevalence_data}: Binary infection indicators (C > 0).
-  \item \code{intensity_data}: Egg counts among positive individuals.
-  \item \code{n_positive}: Number of egg-positive individuals per location.
-  \item \code{D}: Covariate matrix.
-  \item \code{coords}: Unique spatial coordinates.
-  \item \code{mda_times}: MDA time points.
-  \item \code{survey_times_data}: Survey times.
-  \item \code{int_mat}: Intervention matrix.
-  \item \code{ID_coords}: Spatial location indices.
-  \item \code{fix_alpha_W}, \code{fix_gamma_W}: Fixed MDA parameters if specified.
-  \item \code{formula}: Model formula.
-  \item \code{model_params}: Estimated parameters for worm burden, detection, and spatial processes.
-  \item \code{spatial_samples}: STAN spatial process samples if \code{return_samples = TRUE}.
-  \item \code{family}: "zero_inflated_gamma" indicating joint model structure.
-}
+An object of class \code{"RiskMap"}.
 }
 \description{
-The function fits a joint prevalence-intensity model for STH using Monte Carlo maximum likelihood.
-The model incorporates a mechanistic worm burden framework where MDA effects decay over time,
-affecting both prevalence and intensity through their impact on mean worm burden.
-Uses STAN for sampling the spatial process conditional on fixed parameters.
+Fits a doubly stochastic geostatistical model using Monte Carlo Maximum
+Likelihood (MCML). Two model families are supported via \code{model}:
 
-Spatial structure:
-\itemize{
-  \item \code{gp(x, y)} fits a spatial Gaussian process S(x).
-  \item The spatial process affects mean worm burden: log(mu_W*) = D*beta + S(x)
+\describe{
+  \item{\code{"sth"}}{Joint prevalence-intensity model for
+    soil-transmitted helminths. The response is an egg count (EPG);
+    zeros indicate uninfected individuals.}
+  \item{\code{"lf_mdiag"}}{Joint model for two diagnostic outcomes for
+    lymphatic filariasis.}
 }
 }
 \seealso{
 \code{\link{dast}}
-}
-\author{
-[Your name]
 }

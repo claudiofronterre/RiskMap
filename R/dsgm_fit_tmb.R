@@ -27,104 +27,101 @@
 ##' @keywords internal
 convert_penalty_to_tmb <- function(penalty) {
 
-  # Default values (no penalty)
   tmb_penalty <- list(
-    use_alpha_penalty = 0,
+    use_alpha_penalty  = 0,
     alpha_penalty_type = 1,
-    alpha_param1 = 2,
-    alpha_param2 = 2,
-    use_gamma_penalty = 0,
+    alpha_param1       = 2,
+    alpha_param2       = 2,
+    use_gamma_penalty  = 0,
     gamma_penalty_type = 1,
-    gamma_param1 = 2,
-    gamma_param2 = 1
+    gamma_param1       = 2,
+    gamma_param2       = 1
   )
 
-  if(!is.null(penalty)) {
+  if (is.null(penalty)) return(tmb_penalty)
 
-    # =========================================================================
-    # ALPHA PENALTY DETECTION
-    # =========================================================================
+  # ===========================================================================
+  # ALPHA PENALTY
+  # ===========================================================================
+  if (!is.null(penalty$alpha_param1) && !is.null(penalty$alpha_param2)) {
+    # Beta(a, b) on alpha_W — preferred format
+    tmb_penalty$use_alpha_penalty  <- 1
+    tmb_penalty$alpha_penalty_type <- 1
+    tmb_penalty$alpha_param1       <- penalty$alpha_param1
+    tmb_penalty$alpha_param2       <- penalty$alpha_param2
 
-    # Check for parameter-based penalty (NEW FORMAT)
-    if(!is.null(penalty$alpha_param1) && !is.null(penalty$alpha_param2)) {
-      tmb_penalty$use_alpha_penalty <- 1
-      tmb_penalty$alpha_penalty_type <- 1  # Beta distribution
-      tmb_penalty$alpha_param1 <- penalty$alpha_param1
-      tmb_penalty$alpha_param2 <- penalty$alpha_param2
+  } else if (!is.null(penalty$alpha) && is.function(penalty$alpha)) {
+    # Legacy function-based format — try to infer Beta parameters
+    tmb_penalty$use_alpha_penalty  <- 1
+    tmb_penalty$alpha_penalty_type <- 1
+    if (!is.null(penalty$alpha_grad)) {
+      grad_val <- penalty$alpha_grad(0.5)
+      a_minus_1 <- -grad_val / 2
+      tmb_penalty$alpha_param1 <- a_minus_1 + 1
+      tmb_penalty$alpha_param2 <- a_minus_1 + 1
+    } else {
+      warning("Could not infer Beta parameters from alpha function. Using Beta(2,2).")
+      tmb_penalty$alpha_param1 <- 2
+      tmb_penalty$alpha_param2 <- 2
     }
-    # Check for function-based penalty (OLD FORMAT)
-    else if(!is.null(penalty$alpha) && is.function(penalty$alpha)) {
-      tmb_penalty$use_alpha_penalty <- 1
-      tmb_penalty$alpha_penalty_type <- 1
+  }
 
-      # Try to infer Beta parameters from function
-      # For Beta(a, b): -(a-1)*log(x) - (b-1)*log(1-x)
-      test_val <- 0.5
-      pen_val <- penalty$alpha(test_val)
+  # ===========================================================================
+  # GAMMA_W PENALTY
+  # ===========================================================================
+  if (!is.null(penalty$gamma_type)) {
 
-      # If we have gradient function, use it to infer parameters
-      if(!is.null(penalty$alpha_grad)) {
-        grad_val <- penalty$alpha_grad(test_val)
-        # At x=0.5: grad = -(a-1)/0.5 + (b-1)/0.5
-        # If symmetric: a = b
-        a_minus_1 <- -grad_val / 2
-        tmb_penalty$alpha_param1 <- a_minus_1 + 1
-        tmb_penalty$alpha_param2 <- a_minus_1 + 1
-      } else {
-        # Default to Beta(2,2)
-        warning("Could not infer Beta parameters from alpha function. Using Beta(2,2).")
-        tmb_penalty$alpha_param1 <- 2
-        tmb_penalty$alpha_param2 <- 2
-      }
-    }
+    tmb_penalty$use_gamma_penalty <- 1
 
-    # =========================================================================
-    # GAMMA_W PENALTY DETECTION
-    # =========================================================================
-
-    # Check for Gamma distribution (NEW FORMAT)
-    if(!is.null(penalty$gamma_type) && penalty$gamma_type == "gamma") {
-      tmb_penalty$use_gamma_penalty <- 1
-      tmb_penalty$gamma_penalty_type <- 1  # Gamma distribution
-      tmb_penalty$gamma_param1 <- penalty$gamma_shape
-      tmb_penalty$gamma_param2 <- penalty$gamma_rate
-    }
-    # Check for Normal distribution (NEW FORMAT)
-    else if(!is.null(penalty$gamma_type) && penalty$gamma_type == "normal") {
-      tmb_penalty$use_gamma_penalty <- 1
-      tmb_penalty$gamma_penalty_type <- 2  # Normal distribution
-      tmb_penalty$gamma_param1 <- penalty$gamma_mean
-      tmb_penalty$gamma_param2 <- penalty$gamma_sd
-    }
-    # Check for direct Gamma parameters (ALTERNATIVE NEW FORMAT)
-    else if(!is.null(penalty$gamma_shape) && !is.null(penalty$gamma_rate)) {
-      tmb_penalty$use_gamma_penalty <- 1
-      tmb_penalty$gamma_penalty_type <- 1  # Gamma distribution
-      tmb_penalty$gamma_param1 <- penalty$gamma_shape
-      tmb_penalty$gamma_param2 <- penalty$gamma_rate
-    }
-    # Check for direct Normal parameters (ALTERNATIVE NEW FORMAT)
-    else if(!is.null(penalty$gamma_mean) && !is.null(penalty$gamma_sd)) {
-      tmb_penalty$use_gamma_penalty <- 1
-      tmb_penalty$gamma_penalty_type <- 2  # Normal distribution
-      tmb_penalty$gamma_param1 <- penalty$gamma_mean
-      tmb_penalty$gamma_param2 <- penalty$gamma_sd
-    }
-    # Check for function-based penalty (OLD FORMAT)
-    else if(!is.null(penalty$gamma) && is.function(penalty$gamma)) {
-      tmb_penalty$use_gamma_penalty <- 1
-
-      # Default to Gamma(2,1) if can't infer
-      warning("Using function-based gamma penalty. Defaulting to Gamma(2,1).")
+    if (penalty$gamma_type == "gamma") {
+      # Gamma(shape, rate) on gamma_W
       tmb_penalty$gamma_penalty_type <- 1
-      tmb_penalty$gamma_param1 <- 2
-      tmb_penalty$gamma_param2 <- 1
+      tmb_penalty$gamma_param1       <- penalty$gamma_shape
+      tmb_penalty$gamma_param2       <- penalty$gamma_rate
+
+    } else if (penalty$gamma_type == "normal") {
+      # Normal(mean, sd) on gamma_W directly (natural scale)
+      tmb_penalty$gamma_penalty_type <- 2
+      tmb_penalty$gamma_param1       <- penalty$gamma_mean
+      tmb_penalty$gamma_param2       <- penalty$gamma_sd
+
+    } else if (penalty$gamma_type == "lognormal") {
+      # Log-Normal: Normal(mean, sd) on log(gamma_W)
+      # gradient at theta_0 is O(1) vs O(gamma_W) for Gamma prior
+      tmb_penalty$gamma_penalty_type <- 3
+      tmb_penalty$gamma_param1       <- penalty$gamma_mean  # mu on log scale
+      tmb_penalty$gamma_param2       <- penalty$gamma_sd    # sd on log scale
+
+    } else {
+      warning(sprintf("Unknown gamma_type '%s'. No gamma penalty applied.", penalty$gamma_type))
+      tmb_penalty$use_gamma_penalty <- 0
     }
+
+  } else if (!is.null(penalty$gamma_shape) && !is.null(penalty$gamma_rate)) {
+    # Alternative format: direct Gamma parameters
+    tmb_penalty$use_gamma_penalty  <- 1
+    tmb_penalty$gamma_penalty_type <- 1
+    tmb_penalty$gamma_param1       <- penalty$gamma_shape
+    tmb_penalty$gamma_param2       <- penalty$gamma_rate
+
+  } else if (!is.null(penalty$gamma_mean) && !is.null(penalty$gamma_sd)) {
+    # Alternative format: direct Normal parameters (natural scale)
+    tmb_penalty$use_gamma_penalty  <- 1
+    tmb_penalty$gamma_penalty_type <- 2
+    tmb_penalty$gamma_param1       <- penalty$gamma_mean
+    tmb_penalty$gamma_param2       <- penalty$gamma_sd
+
+  } else if (!is.null(penalty$gamma) && is.function(penalty$gamma)) {
+    # Legacy function-based format — default to Gamma(2,1)
+    warning("Using function-based gamma penalty. Defaulting to Gamma(2,1).")
+    tmb_penalty$use_gamma_penalty  <- 1
+    tmb_penalty$gamma_penalty_type <- 1
+    tmb_penalty$gamma_param1       <- 2
+    tmb_penalty$gamma_param2       <- 1
   }
 
   return(tmb_penalty)
 }
-
 ##' @title Fit DSGM using TMB
 ##' @description MCML estimation using TMB for automatic differentiation
 ##' @keywords internal

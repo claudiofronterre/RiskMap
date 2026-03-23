@@ -5,35 +5,27 @@
 \title{Print Summary of RiskMap Model}
 \usage{
 \method{print}{summary.RiskMap}(x, ...)
+
+\method{print}{summary.RiskMap}(x, ...)
+
+\method{print}{summary.RiskMap}(x, ...)
 }
 \arguments{
-\item{x}{An object of class "summary.RiskMap".}
+\item{x}{An object of class \code{"summary.RiskMap"}.}
 
 \item{...}{other parameters.}
 }
 \value{
-This function is used for its side effect of printing to the console. It does not return a value.
+Invisibly returns \code{x}.
+
+Invisibly returns \code{x}.
+
+Invisibly returns \code{x}.
 }
 \description{
-Provides a \code{print} method for the summary of "RiskMap" objects, detailing the model type, parameter estimates, and other relevant statistics.
-}
-\details{
-This function prints a detailed summary of a fitted "RiskMap" model, including:
-\itemize{
-  \item The type of geostatistical model (e.g., Gaussian, Binomial, Poisson, Joint Prevalence-Intensity).
-  \item Confidence intervals for parameter estimates.
-  \item Regression coefficients with their standard errors and p-values.
-  \item Measurement error variance, if applicable.
-  \item Spatial process parameters, including the Matern covariance parameters.
-  \item Variance of the nugget effect, if applicable.
-  \item Unstructured random effects variances, if applicable.
-  \item For DSGM: overdispersion parameter, fecundity rate, and MDA impact parameters.
-  \item Log-likelihood of the model.
-  \item Akaike Information Criterion (AIC) for Gaussian models and DSGM.
-}
-}
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
+Print method for objects of class \code{"summary.RiskMap"}.
 
-Claudio Fronterre \email{c.fronterr@lancaster.ac.uk}
+Print method for objects of class \code{"summary.RiskMap"}.
+
+Print method for objects of class \code{"summary.RiskMap"}.
 }

@@ -3,7 +3,6 @@
 S3method(coef,RiskMap)
 S3method(plot,RiskMap_pred_target_grid)
 S3method(plot,RiskMap_pred_target_shp)
-S3method(print,dsgm_spatial_samples)
 S3method(print,summary.RiskMap)
 S3method(print,summary.RiskMap.sim.res)
 S3method(print,summary.RiskMap.spatial.cv)

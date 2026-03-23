@@ -19,24 +19,28 @@ A list containing the maximum likelihood estimates. For standard models:
 \item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
 \item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
 \item{sigma2_re}{A vector of variance estimates for the random effects, if applicable.}
-For DSGM models (joint prevalence-intensity):
-\item{beta}{A vector of coefficient estimates for mean worm burden.}
-\item{k}{The negative binomial aggregation parameter.}
-\item{rho}{The egg detection rate (fecundity).}
-\item{alpha_W}{The immediate worm burden reduction (if estimated).}
-\item{gamma_W}{The decay rate of MDA effect (if estimated).}
-\item{sigma2}{The spatial process variance.}
-\item{phi}{The spatial correlation scale parameter.}
+For STH DSGM models (\code{family = "intprev"}):
+\item{beta}{Coefficient estimates for log mean worm burden.}
+\item{k}{Negative binomial overdispersion parameter.}
+\item{rho}{Egg detection rate (fecundity).}
+\item{alpha_W}{Immediate worm burden reduction from MDA (if estimated or fixed).}
+\item{gamma_W}{Decay rate of MDA effect (if estimated or fixed).}
+\item{sigma2}{Spatial process variance.}
+\item{phi}{Spatial correlation scale.}
+For LF DSGM models (\code{family = "lf_mdiag"}):
+\item{beta}{Coefficient estimates for log mean worm burden.}
+\item{k}{Negative binomial overdispersion parameter.}
+\item{rho}{Per-worm MF detection rate.}
+\item{gamma_sens}{Serological test sensitivity (fixed by user).}
+\item{tau2}{Nugget variance (if estimated).}
+\item{alpha_W}{Immediate worm burden reduction from MDA (if used).}
+\item{gamma_W}{Decay rate of MDA effect (if used).}
+\item{sigma2}{Spatial process variance.}
+\item{phi}{Spatial correlation scale.}
 }
 \description{
 This \code{coef} method for the "RiskMap" class extracts the
 maximum likelihood estimates from model fits obtained from the \code{\link{glgpm}} or \code{\link{dsgm}} functions.
-}
-\details{
-The function processes the \code{RiskMap} object to extract and name the estimated parameters appropriately, transforming them if necessary.
-}
-\note{
-This function handles both Gaussian and non-Gaussian families, and accounts for fixed and random effects in the model.
 }
 \seealso{
 \code{\link{glgpm}}, \code{\link{dsgm}}

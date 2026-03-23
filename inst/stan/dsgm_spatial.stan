@@ -13,19 +13,9 @@
 //
 //   Y_ij | W_j(x_i) ~ Poisson(rho * W_j(x_i))
 //
-// Marginal likelihoods used:
-//   Zero observations:
-//     P(Y = 0) = 1 - P(Y > 0)  where
-//     P(Y > 0) = 1 - [k / (k + mu*(1-exp(-rho)))]^k
-//
-//   Positive observations (Y > 0):
-//     P(Y > 0) as above, plus
-//     Gamma approximation for Y | Y > 0:
-//       Y - 1 ~ Gamma(kappa_C, theta_C)
-//       mu_C    = rho * mu / P(Y>0)
-//       sigma2_C = rho*mu*(1+rho)/P(Y>0) + rho^2*mu^2/P(Y>0) * (1/k + 1 - 1/P(Y>0))
-//       kappa_C  = (mu_C - 1)^2 / sigma2_C
-//       theta_C  = sigma2_C / (mu_C - 1)
+// Intensity likelihood for C | C > 0 (controlled by intensity_family):
+//   0 = Shifted Gamma:           C - 1 ~ Gamma(kappa_C, rate_C)
+//   1 = Zero-truncated NegBin:   C | C > 0 ~ NegBin2(mu_C, phi_C) / (1 - p0)
 //
 // Spatial process:
 //   S = sqrt(sigma2) * L * S_raw,   S_raw ~ N(0, I)
@@ -33,24 +23,22 @@
 //   L is computed once in transformed_data since phi is fixed.
 //
 // All model parameters (k, rho, sigma2, phi) are FIXED at their theta_0
-// values and passed as data.  Only S_raw is sampled.
-//
-// NOTE: parameter names follow R convention (k, rho) not C++ convention
-// (omega, alpha); both Stan and TMB use their own internal names.
+// values and passed as data. Only S_raw is sampled.
 // =============================================================================
 
 data {
 
   int<lower=1> n;        // Total number of observations
   int<lower=1> n_loc;    // Number of unique spatial locations
-  int<lower=1> n_pos;    // Number of egg-positive observations
-  int<lower=1> p;        // Number of fixed-effect covariates (unused here; eta pre-computed)
+  int<lower=0> n_pos;    // Number of egg-positive observations
+  int<lower=1> p;        // Number of fixed-effect covariates (unused; eta pre-computed)
 
   // Binary response
-  array[n] int<lower=0, upper=1> y;  // 1 = egg-positive, 0 = negative
+  array[n] int<lower=0, upper=1> y;
 
   // EPG for positive observations
-  vector<lower=1>[n_pos] C_pos;      // Egg counts for positives (>= 1)
+  vector<lower=1>[n_pos]          C_pos;      // real, used by Gamma branch
+  array[n_pos] int<lower=1>       C_pos_int;  // integer, used by NegBin branch
 
   // Indices of positive observations (1-indexed, matching y)
   array[n_pos] int<lower=1, upper=n> pos_idx;
@@ -73,16 +61,16 @@ data {
   real<lower=0> sigma2;  // GP variance
   real<lower=0> phi;     // GP range
 
+  // Intensity likelihood family: 0 = shifted Gamma, 1 = zero-truncated NegBin
+  int<lower=0, upper=1> intensity_family;
+
 }
 
 transformed data {
 
-  // Correlation matrix and Cholesky factor, computed once at fixed phi.
   matrix[n_loc, n_loc] R;
   matrix[n_loc, n_loc] L;
-  real c_rho;            // 1 - exp(-rho), used repeatedly
-
-  c_rho = 1.0 - exp(-rho);
+  real c_rho = 1.0 - exp(-rho);
 
   for (i in 1:n_loc) {
     R[i, i] = 1.0;
@@ -91,15 +79,12 @@ transformed data {
       R[j, i] = R[i, j];
     }
   }
-
   L = cholesky_decompose(R);
 
 }
 
 parameters {
 
-  // Standardised spatial random effects.
-  // S = sqrt(sigma2) * L * S_raw ~ N(0, sigma2 * R)
   vector[n_loc] S_raw;
 
 }
@@ -107,13 +92,13 @@ parameters {
 transformed parameters {
 
   vector[n_loc] S;
-  vector[n]     mu_W;    // Expected worm burden per observation
-  vector[n]     pr_pos;  // P(Y > 0) per observation
+  vector[n]     mu_W;
+  vector[n]     pr_pos;
 
   S = sqrt(sigma2) * (L * S_raw);
 
   for (i in 1:n) {
-    mu_W[i]   = exp(eta_fixed[i] + S[ID_coords[i]]) * mda_impact[i];
+    mu_W[i]    = exp(eta_fixed[i] + S[ID_coords[i]]) * mda_impact[i];
     real ratio = k / (k + mu_W[i] * c_rho);
     pr_pos[i]  = fmax(fmin(1.0 - pow(ratio, k), 1.0 - 1e-10), 1e-10);
   }
@@ -127,31 +112,49 @@ model {
 
   // ----- Prevalence likelihood -----
   for (i in 1:n) {
-    if (y[i] == 1) {
+    if (y[i] == 1)
       target += log(pr_pos[i]);
-    } else {
+    else
       target += log1m(pr_pos[i]);
-    }
   }
 
-  // ----- Intensity likelihood (positives only, Gamma approximation) -----
+  // ----- Intensity likelihood (positives only) -----
   for (idx in 1:n_pos) {
     int i = pos_idx[idx];
 
-    // Conditional moments of Y | Y > 0
-    real mu_C    = (rho * mu_W[i]) / pr_pos[i];
-    real sigma2_C = (rho * mu_W[i] * (1.0 + rho)) / pr_pos[i]
-                  + (rho^2 * mu_W[i]^2 / pr_pos[i])
-                    * (1.0/k + 1.0 - 1.0/pr_pos[i]);
-    sigma2_C = fmax(sigma2_C, 1e-10);
+    // Conditional moments of C | C > 0
+    real mu_C     = (rho * mu_W[i]) / pr_pos[i];
+    real sigma2_C = fmax(
+      (rho * mu_W[i] * (1.0 + rho)) / pr_pos[i]
+      + (rho^2 * mu_W[i]^2 / pr_pos[i]) * (1.0/k + 1.0 - 1.0/pr_pos[i]),
+      1e-6);
 
-    // Gamma parameters for Y - 1
-    real mu_C1  = fmax(mu_C - 1.0, 1e-6);
-    real kappa_C = fmax(mu_C1^2 / sigma2_C, 1e-10);
-    real theta_C = fmax(sigma2_C / mu_C1, 1e-10);
+    if (intensity_family == 0) {
 
-    // log p(C_pos - 1 | Gamma(kappa_C, theta_C))
-    target += gamma_lpdf(fmax(C_pos[idx] - 1.0, 0.0) | kappa_C, 1.0 / theta_C);
+      // ------------------------------------------------------------------
+      // Shifted Gamma: C - 1 ~ Gamma(kappa_C, rate_C)
+      // mu_C1 floored at 0.1 to prevent shape/rate collapsing to zero
+      // when mu_C -> 1 at low worm burden
+      // ------------------------------------------------------------------
+      real mu_C1   = fmax(mu_C - 1.0, 0.1);
+      real kappa_C = fmax(square(mu_C1) / sigma2_C, 1e-6);
+      real rate_C  = fmax(mu_C1 / sigma2_C,          1e-6);
+      target += gamma_lpdf(C_pos[idx] - 1.0 | kappa_C, rate_C);
+
+    } else {
+
+      // ------------------------------------------------------------------
+      // Zero-truncated NegBin2: C | C > 0 ~ NegBin2(mu_C, phi_C) / (1 - p0)
+      // phi_C = mu_C^2 / (sigma2_C - mu_C)
+      // p0    = P(C = 0) under untruncated NegBin2
+      // ------------------------------------------------------------------
+      real denom_nb = fmax(sigma2_C - mu_C, 1e-6);
+      real phi_C    = fmax(square(mu_C) / denom_nb, 1e-4);
+      real log_p0   = neg_binomial_2_lpmf(0 | mu_C, phi_C);
+      target += neg_binomial_2_lpmf(C_pos_int[idx] | mu_C, phi_C)
+              - log1m_exp(log_p0);
+
+    }
   }
 
 }

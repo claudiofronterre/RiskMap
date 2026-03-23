@@ -2,7 +2,7 @@
 % Please edit documentation in R/dsgm.R
 \name{sample_spatial_process_stan}
 \alias{sample_spatial_process_stan}
-\title{Sample spatial process using STAN}
+\title{Sample spatial process for the STH model}
 \usage{
 sample_spatial_process_stan(
   y_prev,
@@ -20,46 +20,22 @@ sample_spatial_process_stan(
   n_cores = 4,
   adapt_delta = 0.8,
   max_treedepth = 10,
+  intensity_family = 0L,
+  backend = NULL,
   messages = TRUE
 )
 }
 \arguments{
-\item{y_prev}{Binary infection indicators}
+\item{par}{Named list with fields: \code{beta}, \code{k}, \code{rho},
+\code{alpha_W}, \code{gamma_W}, \code{sigma2}, \code{phi}.}
 
-\item{intensity_data}{Egg counts for positives only}
-
-\item{D}{Design matrix}
-
-\item{coords}{Unique spatial coordinates (n_loc x 2)}
-
-\item{ID_coords}{Location indices for each observation}
-
-\item{int_mat}{Intervention matrix}
-
-\item{survey_times_data}{Survey times}
-
-\item{mda_times}{MDA times}
-
-\item{par}{Parameters list with beta, k, rho, alpha_W, gamma_W, sigma2, phi}
-
-\item{n_samples}{Number of MCMC samples to draw}
-
-\item{n_warmup}{Number of warmup iterations}
-
-\item{n_chains}{Number of MCMC chains}
-
-\item{n_cores}{Number of cores for parallel chains}
-
-\item{adapt_delta}{Target acceptance rate (default 0.8)}
-
-\item{max_treedepth}{Maximum tree depth (default 10)}
-
-\item{messages}{Print STAN messages}
+\item{intensity_family}{Integer; 0 = shifted Gamma (default), 1 = zero-truncated NegBin.}
 }
 \value{
-Matrix of S samples (n_samples x n_loc)
+An object of class \code{dsgm_spatial_samples}.
 }
 \description{
-Uses STAN to sample S(x) from posterior given fixed parameters
+Samples S(x) from its posterior at fixed theta_0 using
+  \code{inst/stan/dsgm_spatial.stan}.
 }
 \keyword{internal}

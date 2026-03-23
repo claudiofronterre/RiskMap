@@ -2,7 +2,7 @@
 % Please edit documentation in R/spatial_prediction.R
 \name{pred_over_grid}
 \alias{pred_over_grid}
-\title{Prediction of the random effects components and covariates effects over a spatial grid using a fitted generalized linear Gaussian process model}
+\title{Prediction of the random effects components and covariates effects over a spatial grid}
 \usage{
 pred_over_grid(
   object,
@@ -16,34 +16,28 @@ pred_over_grid(
 )
 }
 \arguments{
-\item{object}{A RiskMap object obtained from the `glgpm` function.}
+\item{object}{A RiskMap object.}
 
-\item{grid_pred}{An object of class 'sfc', representing the spatial grid over which predictions
-are to be made. Must be in the same coordinate reference system (CRS) as the
-object passed to 'object'.}
+\item{grid_pred}{An \code{sfc} or \code{sf} of POINT geometries, or a list thereof for joint predictions.}
 
-\item{predictors}{Optional. A data frame containing predictor variables used for prediction.}
+\item{predictors}{Optional data frame of predictor variables at prediction locations.}
 
-\item{re_predictors}{Optional. A data frame containing predictors for unstructured random effects,
-if applicable.}
+\item{re_predictors}{Optional data frame of random effect predictors.}
 
-\item{pred_cov_offset}{Optional. A numeric vector specifying covariate offsets at prediction locations.}
+\item{pred_cov_offset}{Optional numeric vector of covariate offsets at prediction locations.}
 
-\item{control_sim}{Control parameters for MCMC sampling. Must be an object of class "mcmc.RiskMap" as returned by \code{\link{set_control_sim}}.}
+\item{control_sim}{Control parameters from \code{\link{set_control_sim}}.}
 
-\item{type}{Type of prediction. "marginal" for marginal predictions, "joint" for joint predictions.}
+\item{type}{\code{"marginal"} or \code{"joint"}.}
 
-\item{messages}{Logical. If TRUE, display progress messages. Default is TRUE.}
+\item{messages}{Logical; display progress messages. Default \code{TRUE}.}
 }
 \value{
-An object of class 'RiskMap.pred.re' containing predicted values, uncertainty estimates,
-        and additional information.
+An object of class \code{"RiskMap.pred.re"}.
 }
 \description{
-This function computes predictions over a spatial grid using a fitted model
-obtained from the \code{\link{glgpm}} function. It provides point predictions and uncertainty
-estimates for the specified locations for each component of the model separately: the spatial random effects;
-the unstructured random effects (if included); and the covariates effects.
+Computes predictions over a spatial grid using a fitted model from
+  \code{\link{glgpm}} or \code{\link{dsgm}}.
 }
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}

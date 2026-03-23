@@ -11,56 +11,85 @@ set_control_sim(
   h = NULL,
   c1.h = 0.01,
   c2.h = 1e-04,
-  linear_model = FALSE
+  linear_model = FALSE,
+  sampler = c("mcmc", "stan"),
+  n_chains = 1,
+  n_cores = 1,
+  adapt_delta = 0.8,
+  max_treedepth = 10
 )
 }
 \arguments{
 \item{n_sim}{Integer. The total number of simulations to run. Default is 12000.}
 
-\item{burnin}{Integer. The number of initial simulations to discard (burn-in period, used for the MCMC algorithm). Default is 2000.}
+\item{burnin}{Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.}
 
-\item{thin}{Integer. The interval at which simulations are recorded (thinning interval, used for the MCMC algorithm). Default is 10.}
+\item{thin}{Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.}
 
-\item{h}{Numeric. An optional parameter. Must be non-negative if specified.}
+\item{h}{Numeric. An optional parameter for Langevin MCMC. Must be non-negative if specified.}
 
-\item{c1.h}{Numeric. A control parameter for the simulation. Must be positive. Default is 0.01.}
+\item{c1.h}{Numeric. A control parameter for Langevin MCMC. Must be positive. Default is 0.01.}
 
-\item{c2.h}{Numeric. Another control parameter for the simulation. Must be between 0 and 1. Default is 1e-04.}
+\item{c2.h}{Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.}
 
-\item{linear_model}{Logical. If TRUE, the function sets up parameters for a linear model and
-only returns \code{n_sim}. Default is FALSE.}
+\item{linear_model}{Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.}
+
+\item{sampler}{Character. Type of sampler: "mcmc" for Langevin MCMC (default) or "stan" for STAN sampling.}
+
+\item{n_chains}{Integer. Number of MCMC chains (STAN only). Default is 1.}
+
+\item{n_cores}{Integer. Number of cores for parallel chains (STAN only). Default is 1.}
+
+\item{adapt_delta}{Numeric. Target acceptance rate for STAN (between 0 and 1). Default is 0.8.}
+
+\item{max_treedepth}{Integer. Maximum tree depth for STAN's NUTS sampler. Default is 10.}
 }
 \value{
-A list of control parameters for the simulation with class attribute "mcmc.RiskMap".
+A list of control parameters with class "mcmc.RiskMap". Contents depend on \code{sampler}:
+\itemize{
+  \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model, sampler
+  \item For "stan": n_sim, burnin (as n_warmup), n_chains, n_cores, adapt_delta,
+        max_treedepth, linear_model, sampler
+}
 }
 \description{
-This function sets control parameters for running simulations, particularly for MCMC methods.
-It allows users to specify the number of simulations, burn-in period, thinning interval, and various
-other parameters necessary for the simulation.
+This function sets control parameters for running simulations, supporting both MCMC methods
+(for glgpm, dast models) and STAN sampling (for dsgm models).
 }
 \details{
-The function validates the input parameters and ensures they are appropriate for the simulation that is used
-in the \code{\link{glgpm}} fitting function.
-For non-linear models, it checks that \code{n_sim} is greater than \code{burnin}, that \code{thin} is positive
-and a divisor of \code{(n_sim - burnin)}, and that \code{h}, \code{c1.h}, and \code{c2.h} are within their
-respective valid ranges.
+The function validates input parameters and ensures they are appropriate for the specified sampler.
 
-If \code{linear_model} is TRUE, only \code{n_sim} and \code{linear_model} are required, and the function
-returns a list containing these parameters.
+For \code{sampler = "mcmc"} (Langevin MCMC used in glgpm, dast):
+- Validates \code{n_sim}, \code{burnin}, \code{thin}, \code{h}, \code{c1.h}, \code{c2.h}
+- Returns parameters for Langevin-based MCMC sampling
 
-If \code{linear_model} is FALSE, the function returns a list containing \code{n_sim}, \code{burnin}, \code{thin},
-\code{h}, \code{c1.h}, \code{c2.h}, and \code{linear_model}.
+For \code{sampler = "stan"} (STAN sampling used in dsgm):
+- Validates \code{n_sim} (n_samples), \code{burnin} (n_warmup), \code{n_chains}, \code{n_cores}
+- Validates \code{adapt_delta} and \code{max_treedepth}
+- Ignores \code{thin}, \code{h}, \code{c1.h}, \code{c2.h} (not used by STAN)
+
+If \code{linear_model = TRUE}, only \code{n_sim} is required regardless of sampler.
 }
 \examples{
-# Example with default parameters
-control_params <- set_control_sim()
+# Default parameters (MCMC)
+control_mcmc <- set_control_sim()
 
-# Example with custom parameters
-control_params <- set_control_sim(n_sim = 15000, burnin = 3000, thin = 20)
+# Custom MCMC parameters
+control_mcmc <- set_control_sim(n_sim = 15000, burnin = 3000, thin = 20)
+
+# STAN parameters for DSGM
+control_stan <- set_control_sim(
+  sampler = "stan",
+  n_sim = 1000,
+  burnin = 1000,
+  n_chains = 4,
+  n_cores = 4,
+  adapt_delta = 0.85
+)
 
 }
 \seealso{
-\code{\link[Matrix]{Matrix}}, \code{\link[Matrix]{forceSymmetric}}
+\code{\link{glgpm}}, \code{\link{dast}}, \code{\link{dsgm}}
 }
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
