@@ -917,8 +917,9 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   res$log.lik         <- object$log.lik
   res$cov_offset_used <- !(is.null(object$cov_offset) ||
                              all(object$cov_offset == 0))
-  if (object$family == "gaussian" && !is.null(x$aic))
+  if (object$family == "gaussian") {
     res$aic <- 2 * length(object$estimate) - 2 * res$log.lik
+  }
 
   res$call               <- object$call %||% NULL
   res$link_name          <- link_name
