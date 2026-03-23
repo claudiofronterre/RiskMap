@@ -308,6 +308,7 @@ pred_over_grid <- function(object,
           n_warmup          = n_warmup_stan,
           n_chains          = n_chains_stan,
           n_cores           = n_cores_stan,
+          intensity_family  = if (identical(object$intensity_family, "negbin")) 1L else 0L,
           messages          = messages
         )
 

@@ -567,15 +567,15 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
   `%||%` <- function(a, b) if (!is.null(a)) a else b
 
-  alpha <- 1 - conf_level
+  alpha  <- 1 - conf_level
   z_crit <- qnorm(1 - alpha / 2)
-  res <- list()
+  res    <- list()
 
   # ---------------------------------------------------------------------------
   # Helper: log-normal CI (for positive parameters)
   # ---------------------------------------------------------------------------
   lnCI <- function(est, se)
-    c(Estimate    = est,
+    c(Estimate      = est,
       "Lower limit" = exp(log(est) - z_crit * se / est),
       "Upper limit" = exp(log(est) + z_crit * se / est))
 
@@ -595,11 +595,11 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     if (!is.null(object$params_se)) {
       params_se <- object$params_se
     } else if (!is.null(object$tmb_sdr)) {
-      sdr         <- object$tmb_sdr
-      fix_s       <- summary(sdr, "fixed")
-      rep_s       <- summary(sdr, "report")
-      b_idx       <- grep("^beta", rownames(fix_s))
-      params_se   <- list(
+      sdr       <- object$tmb_sdr
+      fix_s     <- summary(sdr, "fixed")
+      rep_s     <- summary(sdr, "report")
+      b_idx     <- grep("^beta", rownames(fix_s))
+      params_se <- list(
         beta   = as.numeric(fix_s[b_idx, "Std. Error"]),
         k      = as.numeric(rep_s["k",      "Std. Error"]),
         rho    = as.numeric(rep_s["rho",    "Std. Error"]),
@@ -618,11 +618,12 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
     if (length(params_se$beta) != p)
       stop(sprintf(
-        "params$beta length %d != params_se$beta length %d", p, length(params_se$beta)))
+        "params$beta length %d != params_se$beta length %d",
+        p, length(params_se$beta)))
 
     # ---- 1. Regression coefficients -----------------------------------------
-    b_est <- as.numeric(params$beta)
-    b_se  <- as.numeric(params_se$beta)
+    b_est   <- as.numeric(params$beta)
+    b_se    <- as.numeric(params_se$beta)
     b_names <- if (!is.null(colnames(object$D))) colnames(object$D) else
       paste0("beta", seq_len(p))
     zval <- b_est / b_se
@@ -642,19 +643,17 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
       "Spatial process var." = lnCI(params$sigma2, params_se$sigma2),
       "Spatial corr. scale"  = lnCI(params$phi,    params_se$phi)
     )
-    # tau2: show only when estimated (nugget = NULL in gp()) or fixed > 0
     if (!is.null(params$tau2) && params$tau2 > 0) {
       if (!is.null(params_se$tau2) && !is.na(params_se$tau2)) {
         sp_rows <- rbind(sp_rows,
                          "Nugget variance" = lnCI(params$tau2, params_se$tau2))
       } else {
-        # fixed at a positive value
         sp_rows <- rbind(sp_rows,
-                         "Nugget variance (fixed)" = c(Estimate = params$tau2,
-                                                       "Lower limit" = NA, "Upper limit" = NA))
+                         "Nugget variance (fixed)" = c(Estimate      = params$tau2,
+                                                       "Lower limit" = NA,
+                                                       "Upper limit" = NA))
       }
     }
-
     res$sp <- sp_rows
 
     # ---- 3. NB worm burden parameters (k and rho) ---------------------------
@@ -672,7 +671,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     )
     rownames(res$fecundity) <- rho_label
 
-    # ---- 4. LF-specific extras: gamma_sens, fix_k ---------------------------
+    # ---- 4. LF-specific extras ----------------------------------------------
     if (object$family == "lf_mdiag") {
       res$gamma_sens <- object$gamma_sens
       if (!is.null(object$fix_k))
@@ -680,8 +679,6 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     }
 
     # ---- 5. MDA parameters --------------------------------------------------
-    # use_mda may be stored on the object (intprev/lf_mdiag); fall back to
-    # checking whether MDA parameters were actually estimated
     use_mda_flag <- isTRUE(object$use_mda) ||
       (is.null(object$use_mda) &&
          (!is.null(params$alpha_W) || !is.null(object$fix_alpha_W)))
@@ -693,7 +690,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
       mda_rows <- NULL
 
       if (is.null(object$fix_alpha_W) && !is.null(alpha_W_est)) {
-        a_se  <- as.numeric(params_se$alpha_W)
+        a_se     <- as.numeric(params_se$alpha_W)
         mda_rows <- rbind(mda_rows,
                           "Worm burden reduction (alpha_W)" = c(
                             Estimate      = alpha_W_est,
@@ -704,7 +701,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
       }
 
       if (is.null(object$fix_gamma_W) && !is.null(gamma_W_est)) {
-        g_se  <- as.numeric(params_se$gamma_W)
+        g_se     <- as.numeric(params_se$gamma_W)
         mda_rows <- rbind(mda_rows,
                           "Decay rate (gamma_W)" = lnCI(gamma_W_est, g_se))
       } else if (!is.null(object$fix_gamma_W)) {
@@ -713,6 +710,9 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
       if (!is.null(mda_rows)) res$mda_par <- mda_rows
     }
+
+    # ---- 6. Intensity family (STH only) -------------------------------------
+    res$intensity_family <- object$intensity_family %||% "gamma"
 
     # ---- metadata -----------------------------------------------------------
     res$conf_level      <- conf_level
@@ -834,9 +834,9 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
   J <- diag(n_p)
   if (length(ind_tau2) > 0) J[ind_tau2, ind_sigma2] <- 1
-  H_new       <- t(J) %*% solve(-object$covariance) %*% J
+  H_new          <- t(J) %*% solve(-object$covariance) %*% J
   covariance_new <- solve(-H_new)
-  se_par      <- sqrt(diag(covariance_new))
+  se_par         <- sqrt(diag(covariance_new))
 
   zval <- object$estimate[ind_beta] / se_par[ind_beta]
   res$reg_coef <- cbind(
@@ -917,13 +917,13 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   res$log.lik         <- object$log.lik
   res$cov_offset_used <- !(is.null(object$cov_offset) ||
                              all(object$cov_offset == 0))
-  if (object$family == "gaussian")
+  if (object$family == "gaussian" && !is.null(x$aic))
     res$aic <- 2 * length(object$estimate) - 2 * res$log.lik
 
-  res$call      <- object$call %||% NULL
-  res$link_name <- link_name
+  res$call               <- object$call %||% NULL
+  res$link_name          <- link_name
   res$invlink_expression <- inv_expr
-  res$is_dsgm   <- FALSE
+  res$is_dsgm            <- FALSE
 
   class(res) <- "summary.RiskMap"
   return(res)
@@ -950,13 +950,18 @@ print.summary.RiskMap <- function(x, ...) {
 
   if (isTRUE(x$is_dsgm)) {
 
-    # Model title
     if (identical(x$family, "lf_mdiag")) {
       cat("Doubly stochastic geostatistical model: multiple diagnostics (LF)\n")
       cat("Latent worm burden: Negative Binomial\n\n")
     } else {
       cat("Doubly stochastic geostatistical model: joint prevalence-intensity (STH)\n")
-      cat("Latent worm burden: Negative Binomial\n\n")
+      cat("Latent worm burden: Negative Binomial\n")
+      # Show intensity likelihood family
+      fam_label <- if (identical(x$intensity_family, "negbin"))
+        "zero-truncated Negative Binomial (moment-matched)"
+      else
+        "shifted Gamma (moment-matched)"
+      cat(sprintf("Intensity likelihood C | C > 0: %s\n\n", fam_label))
     }
 
     cat("'Lower limit' and 'Upper limit' refer to ",
@@ -989,7 +994,7 @@ print.summary.RiskMap <- function(x, ...) {
         cat(sprintf("Aggregation parameter k fixed at %.4f\n", x$k_fixed))
     }
 
-    # ---- MDA parameters (only when MDA was used) ----------------------------
+    # ---- MDA parameters -----------------------------------------------------
     has_mda_output <- !is.null(x$mda_par) ||
       !is.null(x$alpha_W_fixed) ||
       !is.null(x$gamma_W_fixed)
@@ -1004,9 +1009,7 @@ print.summary.RiskMap <- function(x, ...) {
         cat(sprintf("gamma_W fixed at %.4f\n", x$gamma_W_fixed))
     }
 
-    # ---- Model fit ----------------------------------------------------------
     cat(sprintf("\nLog-likelihood: %.3f\n", x$log.lik))
-
     return(invisible(x))
   }
 
@@ -1023,7 +1026,7 @@ print.summary.RiskMap <- function(x, ...) {
     cat("Poisson geostatistical model\n")
   }
 
-  if (!is.null(x$link_name))        cat("Link:", x$link_name, "\n")
+  if (!is.null(x$link_name))          cat("Link:", x$link_name, "\n")
   if (!is.null(x$invlink_expression)) cat(x$invlink_expression, "\n\n")
 
   cat("'Lower limit' and 'Upper limit' refer to ",
