@@ -1,4 +1,3 @@
-
 compute_mda_effect <- function(survey_times_data, mda_times, intervention,
                                alpha, gamma, kappa) {
   n <- length(survey_times_data)
@@ -130,7 +129,9 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
     prob_star <- 1/(1+exp(-eta))
     prob <- fact*prob_star
 
-    out <- -(sum(y*log(prob/(1-prob)) + units_m*log(1-prob))-penalty[[1]](alpha))
+    # Apply penalty for both alpha and gamma (penalty[[4]] is the gamma penalty)
+    out <- -(sum(y*log(prob/(1-prob)) + units_m*log(1-prob)) -
+               penalty[[1]](alpha) - penalty[[4]](gamma))
     return(out)
   }
 
@@ -170,7 +171,12 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##' @param mda_times A vector specifying the mass drug administration (MDA) times.
 ##' @param int_mat Intervention matrix specifying the timing and coverage of MDA; the dimension of the matrix
 ##' must be \code{n * n_mda}, where \code{n} is the number of rows of \code{data} and \code{n_mda} is the length of \code{mda_times}.
-##' @param penalty Optional list specifying penalty functions for regularization, used in the estimation of the "drop" parameter \code{alpha}.
+##' @param penalty Optional list of length 6 specifying penalty functions for regularization.
+##'   Elements \code{[[1]]}, \code{[[2]]}, \code{[[3]]} are the penalty, its first and second
+##'   derivative with respect to \code{alpha}. Elements \code{[[4]]}, \code{[[5]]}, \code{[[6]]}
+##'   are the penalty, its first and second derivative with respect to \code{gamma}.
+##'   Any of these six elements may be set to \code{function(x) 0} to suppress penalisation
+##'   for that parameter.
 ##' @param drop Optional value used for fixing the "drop" parameter of the MDA impact function.
 ##' @param power_val Value expressing the power of the MDA impact function.
 ##' @param crs Optional coordinate reference system (CRS) for spatial data.
@@ -306,13 +312,22 @@ dast <- function(formula,
     }
   }
 
+  # Build default no-penalty list.
+  # [[1]]-[[3]]: alpha penalty and its first/second derivatives.
+  # [[4]]-[[6]]: gamma penalty and its first/second derivatives.
   if(is.null(penalty)) {
     no_penalty <- TRUE
-    penalty <- list(pn = function(x) return(0),
-                    pn_d1 = function(x) return(0),
-                    pn_d2 = function(x) return(0))
+    penalty <- list(pn        = function(x) return(0),
+                    pn_d1     = function(x) return(0),
+                    pn_d2     = function(x) return(0),
+                    pn_gamma    = function(x) return(0),
+                    pn_gamma_d1 = function(x) return(0),
+                    pn_gamma_d2 = function(x) return(0))
   } else {
     no_penalty <- FALSE
+    if(length(penalty) != 6)
+      stop("'penalty' must be a list of length 6: penalty/d1/d2 for alpha (elements 1-3) ",
+           "and penalty/d1/d2 for gamma (elements 4-6).")
   }
 
   kappa <- inter_f$gp.spec$kappa
@@ -1814,8 +1829,8 @@ dast_fit <-
       psi0 <- par0$psi
       Sigma0 <- sigma2_0*matern_cor(u = u, phi = phi0, kappa = kappa,
                                     return_sym_matrix = TRUE) *
-                         matern_cor(u = v, phi = psi0, kappa = 0.5,
-                                    return_sym_matrix = TRUE)
+        matern_cor(u = v, phi = psi0, kappa = 0.5,
+                   return_sym_matrix = TRUE)
     } else {
       Sigma0 <- sigma2_0*matern_cor(u = u, phi = phi0, kappa = kappa,
                                     return_sym_matrix = TRUE)
@@ -1831,26 +1846,26 @@ dast_fit <-
     gamma0 <- par0$gamma
 
     mda_effect0 <- compute_mda_effect(survey_times_data, mda_times, int_mat,
-                       alpha0, gamma0, kappa = power_val)
+                                      alpha0, gamma0, kappa = power_val)
     if(messages) message("\n - Obtaining covariance matrix and mean for the proposal distribution of the MCMC \n")
     out_maxim <-
       maxim.integrand.dast(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
-                      mda_effect = mda_effect0,
-                      ID_coords = ID_coords, ID_re = ID_re,
-                      sigma2_re = sigma2_re_0,
-                      hessian = FALSE, gradient = TRUE)
+                           mda_effect = mda_effect0,
+                           ID_coords = ID_coords, ID_re = ID_re,
+                           sigma2_re = sigma2_re_0,
+                           hessian = FALSE, gradient = TRUE)
 
     Sigma_pd <- out_maxim$Sigma.tilde
     mean_pd <- out_maxim$mode
 
     simulation <-
       Laplace_sampling_MCMC_dast(y = y, units_m = units_m, mu = mu0,
-                            mda_effect = mda_effect0, Sigma = Sigma0,
-                            sigma2_re = sigma2_re_0,
-                            ID_coords = ID_coords, ID_re = ID_re,
-                            control_mcmc = control_mcmc,
-                            Sigma_pd = Sigma_pd, mean_pd = mean_pd,
-                            messages = messages)
+                                 mda_effect = mda_effect0, Sigma = Sigma0,
+                                 sigma2_re = sigma2_re_0,
+                                 ID_coords = ID_coords, ID_re = ID_re,
+                                 control_mcmc = control_mcmc,
+                                 Sigma_pd = Sigma_pd, mean_pd = mean_pd,
+                                 messages = messages)
 
     S_tot_samples <- simulation$samples$S
 
@@ -1944,7 +1959,8 @@ dast_fit <-
       llik <- sum(y*log(prob)+(units_m-y)*log(1-prob))
 
       q.f_S <- n_loc*log(val$sigma2)+val$ldetR+t(S)%*%val$R.inv%*%S/val$sigma2
-      out <- -0.5*(q.f_S+q.f_re)+llik - val$pen_alpha
+      # Subtract both alpha and gamma penalties
+      out <- -0.5*(q.f_S+q.f_re)+llik - val$pen_alpha - val$pen_gamma
       return(out)
     }
 
@@ -1975,14 +1991,16 @@ dast_fit <-
       val$mda_effect <- compute_mda_effect(survey_times_data, mda_times,
                                            intervention = int_mat,
                                            alpha, gamma, kappa = power_val)
+      # Alpha penalty (penalty[[1]]) and gamma penalty (penalty[[4]])
       val$pen_alpha <- penalty[[1]](alpha)
+      val$pen_gamma <- penalty[[4]](gamma)
       if(n_re > 0) {
         val$sigma2_re <- exp(par[ind_sigma2_re])
       }
       if(is.na(ldetR) & is.na(as.numeric(R.inv)[1])) {
         if(sst) {
           R <- matern_cor(u, phi = phi, kappa=kappa,return_sym_matrix = TRUE)*
-               matern_cor(v, phi = psi, kappa=kappa,return_sym_matrix = TRUE)
+            matern_cor(v, phi = psi, kappa=kappa,return_sym_matrix = TRUE)
         } else {
           R <- matern_cor(u, phi = phi, kappa=kappa,return_sym_matrix = TRUE)
         }
@@ -2129,7 +2147,13 @@ dast_fit <-
           )
         }
 
-        grad.log.gamma <- gamma * sum((y / mda_effect - (units_m - y) * prob_star / (1 - prob)) * mda_der_gamma)
+        # Gradient wrt log(gamma): chain rule gives factor gamma.
+        # Also subtract the derivative of the gamma penalty wrt log(gamma),
+        # which is gamma * penalty[[5]](gamma) by the chain rule.
+        grad.log.gamma <- gamma * (
+          sum((y / mda_effect - (units_m - y) * prob_star / (1 - prob)) * mda_der_gamma) -
+            penalty[[5]](gamma)
+        )
 
         out <- c(grad.beta, grad.log.sigma2, grad.log.phi)
 
@@ -2318,8 +2342,13 @@ dast_fit <-
           g_vec <- c(g_vec, grad_alpha)
         }
 
-        grad_lgamma <- gamma * sum((y/mda_eff - (units_m-y)*prob_star/(1-prob))*mda_der_gamma)
-        g_vec       <- c(g_vec, grad_lgamma)
+        # Gradient wrt log(gamma), including gamma penalty derivative.
+        # d/d(log gamma) = gamma * d/d(gamma), so subtract gamma * penalty[[5]](gamma).
+        grad_lgamma <- gamma * (
+          sum((y/mda_eff - (units_m-y)*prob_star/(1-prob))*mda_der_gamma) -
+            penalty[[5]](gamma)
+        )
+        g_vec <- c(g_vec, grad_lgamma)
 
         if (n_re > 0) {
           grad_ls2re <- sapply(seq_len(n_re), function(i)
@@ -2371,13 +2400,17 @@ dast_fit <-
           H_loc[ind_gamma, ind_alpha] <- H_loc[ind_alpha, ind_gamma]
         }
 
-        # gamma-gamma
+        # gamma-gamma.
+        # The Hessian of the penalized log-likelihood wrt log(gamma) is:
+        #   H_lik[gamma,gamma]
+        #   - gamma^2 * penalty[[6]](gamma)   [from d/d(log g) of gamma * pen'(g)]
+        #   - gamma   * penalty[[5]](gamma)   [the grad_lgamma term itself]
         H_loc[ind_gamma, ind_gamma] <- gamma*sum(
           (y/mda_eff - (units_m-y)*prob_star/(1-prob))*mda_der_gamma
         ) + gamma^2*sum(
           (y/mda_eff - (units_m-y)*prob_star/(1-prob))*mda_der2_gamma +
             (-y/mda_eff^2 - (units_m-y)*(prob_star^2)/(1-prob)^2)*mda_der_gamma^2
-        )
+        ) - gamma^2 * penalty[[6]](gamma) - gamma * penalty[[5]](gamma)
 
         # sigma2-sigma2
         H_loc[ind_sigma2, ind_sigma2] <-
@@ -2456,13 +2489,13 @@ dast_fit <-
     if(return_samples) out$S_samples <- S_tot_samples
     class(out) <- "RiskMap"
     return(out)
-}
+  }
 
 
 maxim.integrand.dast <- function(y,units_m,mu,Sigma,ID_coords, ID_re = NULL,
                                  mda_effect,
-                            sigma2_re = NULL,
-                            hessian=FALSE, gradient=FALSE) {
+                                 sigma2_re = NULL,
+                                 hessian=FALSE, gradient=FALSE) {
   # Sigma <- Sigma0
   # mda_effect <- mda_effect0
   # mu <- mu0
@@ -2617,7 +2650,7 @@ maxim.integrand.dast <- function(y,units_m,mu,Sigma,ID_coords, ID_re = NULL,
 
     # Compute derivative of log-likelihood with respect to eta
     d2_S <- (-y/prob^2 - (units_m-y)/((1-prob)^2))*(mda_effect*prob_star/(1+exp(eta)))^2+
-            (y/prob - (units_m-y)/(1-prob))*mda_effect*exp(eta)*(1-exp(2*eta))/((1+exp(eta))^4)
+      (y/prob - (units_m-y)/(1-prob))*mda_effect*exp(eta)*(1-exp(2*eta))/((1+exp(eta))^4)
     d2_S <- as.numeric(d2_S)
     out <- matrix(0,nrow = n_tot, ncol = n_tot)
 

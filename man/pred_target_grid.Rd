@@ -18,35 +18,69 @@ pred_target_grid(
 )
 }
 \arguments{
-\item{object}{Output from `pred_over_grid`, a RiskMap.pred.re object.}
+\item{object}{Output from \code{\link{pred_over_grid}}, a
+\code{RiskMap.pred.re} object.}
 
-\item{include_covariates}{Logical. Include covariates in the predictive target.}
+\item{include_covariates}{Logical. Include covariate effects in the linear
+predictor. Default \code{TRUE}.}
 
-\item{include_nugget}{Logical. Include the nugget effect in the predictive target.}
+\item{include_nugget}{Logical. Add a nugget draw to each spatial sample.
+Default \code{FALSE}.}
 
-\item{include_cov_offset}{Logical. Include the covariate offset in the predictive target.}
+\item{include_cov_offset}{Logical. Include the covariate offset.
+Default \code{FALSE}.}
 
-\item{include_mda_effect}{Logical. Include the MDA effect in the predictive target using a DAST model; see \code{\link{dast}}.}
+\item{include_mda_effect}{Logical. Apply the MDA decay to the linear
+predictor. Default \code{TRUE}.}
 
-\item{mda_grid}{Optional. Grid of MDA coverage values required for predictions using a DAST model; see \code{\link{dast}}.}
+\item{mda_grid}{Optional. Matrix (or list of matrices for list-mode) of MDA
+coverage values at each prediction location and MDA round
+(\code{n_pred x n_mda_rounds}). Required when \code{include_mda_effect =
+TRUE} and the model was fitted with MDA.}
 
-\item{time_pred}{Optional. Time point for prediction required for predictions using a DAST model; see \code{\link{dast}}.}
+\item{time_pred}{Optional. Scalar or vector giving the prediction time(s).
+Required when the model includes MDA.}
 
-\item{include_re}{Logical. Include unstructured random effects in the predictive target.}
+\item{include_re}{Logical. Include unstructured random effects.
+Default \code{FALSE}.}
 
-\item{f_target}{Optional. List of functions to apply on the linear predictor samples.}
+\item{f_target}{Optional named list of functions to apply on the linear
+predictor samples. Each function receives a matrix
+(\code{n_pred x n_samples}) and returns a matrix of the same dimensions.
+Overrides the model-specific defaults described above.}
 
-\item{pd_summary}{Optional. List of summary functions to apply on the predicted values.}
+\item{pd_summary}{Optional named list of summary functions applied
+row-wise to each target matrix (default: mean, median, sd, 2.5\% and
+97.5\% quantiles).}
 }
 \value{
-An object of class 'RiskMap_pred_target_grid' containing predicted values
-        and summaries over the regular spatial grid.
+An object of class \code{"RiskMap_pred_target_grid"}.
 }
 \description{
-Computes predictions over a regular spatial grid using outputs from the
-\code{\link{pred_over_grid}} function.
-This function allows for incorporating covariates, offsets, MDA effects, and optional
-unstructured random effects into the predictive target.
+Computes predictions over a regular spatial grid using outputs from
+\code{\link{pred_over_grid}}.
+
+For \strong{STH models} (\code{family = "intprev"}) the default predictive
+targets are:
+\describe{
+  \item{\code{prevalence}}{Probability of observing at least one egg,
+    \eqn{P(Y>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
+  \item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
+  \item{\code{intensity}}{Mean egg count \eqn{\rho\,\mu_W} (unconditional).}
+}
+
+For \strong{LF models} (\code{family = "lf_mdiag"}) the default predictive
+targets are:
+\describe{
+  \item{\code{mf_prevalence}}{Microfilarial (parasitological) prevalence,
+    \eqn{P(\text{MF}>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
+  \item{\code{antigen_prevalence}}{Circulating filarial antigen (serological)
+    prevalence, \eqn{\gamma_s(1 - [k/(k+\mu_W)]^k)}, where \eqn{\gamma_s}
+    is the serological test sensitivity.}
+  \item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
+}
+
+Custom targets can always be supplied via \code{f_target}.
 }
 \seealso{
 \code{\link{pred_over_grid}}
