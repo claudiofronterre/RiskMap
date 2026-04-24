@@ -43,4 +43,6 @@ Imports:
     sns,
     stars
 Suggests:
-    bayesplot
+    bayesplot,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
