@@ -520,6 +520,13 @@ pred_over_grid <- function(object,
     out$mda_times <- object$mda_times
     if (is.null(par_hat$alpha)) out$fix_alpha <- object$fix_alpha
     out$power_val <- object$power_val
+    out$use_mda   <- if (dast_model) {
+      !is.null(object$mda_times) && length(object$mda_times) > 0
+    } else {
+      isTRUE(object$use_mda) ||
+        (object$family == "intprev" &&
+           !is.null(object$mda_times) && length(object$mda_times) > 0)
+    }
   }
 
   out$obs_loc  <- obs_loc
