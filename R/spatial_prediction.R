@@ -891,6 +891,8 @@ pred_target_grid <- function(object,
 
       for (fi in seq_len(n_f)) {
         target_mat <- f_target[[fi]](lp_samples[[i]])
+        if (!is.matrix(target_mat))
+          target_mat <- matrix(target_mat, nrow = n_pred[i])
 
         # DAST: MDA applied multiplicatively after transformation
         if (dast_model && needs_mda) {
@@ -2800,4 +2802,3 @@ print.summary.RiskMap.sim.res <- function(x, ...) {
 
   invisible(x)
 }
-
