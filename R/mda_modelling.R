@@ -132,6 +132,7 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
     # Apply penalty for both alpha and gamma (penalty[[4]] is the gamma penalty)
     out <- -(sum(y*log(prob/(1-prob)) + units_m*log(1-prob)) -
                penalty[[1]](alpha) - penalty[[4]](gamma))
+
     return(out)
   }
 
