@@ -1744,6 +1744,18 @@ assess_pp <- function(object,
   object1 <- object[[1]]
   data_sf <- object1$data_sf
   n_obs   <- nrow(data_sf)
+  data_geom <- sf::st_as_text(sf::st_geometry(data_sf))
+
+  for (h in seq_along(object)) {
+    fit_data <- object[[h]]$data_sf
+    if (nrow(fit_data) != n_obs) {
+      stop("All models supplied to `assess_pp()` must have the same number of observations.")
+    }
+    fit_geom <- sf::st_as_text(sf::st_geometry(fit_data))
+    if (!identical(fit_geom, data_geom)) {
+      stop("All models supplied to `assess_pp()` must have data in the same row order and geometry.")
+    }
+  }
 
   make_splits_from_user <- function(usr, n_iter_expected) {
     spl <- vector("list", n_iter_expected)
@@ -1871,6 +1883,7 @@ assess_pp <- function(object,
   for (h in seq_len(n_models)) {
 
     fit0      <- object[[h]]
+    fit_data_sf <- fit0$data_sf
     par_hat   <- coef(fit0)
     den_name  <- as.character(fit0$call$den)
     fam       <- fit0$family
@@ -1911,7 +1924,7 @@ assess_pp <- function(object,
           refit_i <- eval(bquote(
             glgpm(.(
               formula      = fit0$formula,
-              data         = data_sf[in_id, ],
+              data         = fit_data_sf[in_id, ],
               cov_offset   = .(fit0$cov_offset),
               family       = .(fam),
               crs          = .(fit0$crs),
@@ -1929,7 +1942,7 @@ assess_pp <- function(object,
           refit_i <- eval(bquote(
             dast(
               formula       = .(fit0$formula),
-              data          = data_sf[in_id, ],
+              data          = fit_data_sf[in_id, ],
               den           = .(as.name(den_name)),
               time          = .(time_sym),
               mda_times     = .(fit0$mda_times),
@@ -1968,13 +1981,15 @@ assess_pp <- function(object,
       }
 
       ## ----- held-out set and offsets -----
-      data_test_i <- data_sf[out_id, ]
-      data_test_i <- data_test_i[complete.cases(sf::st_drop_geometry(data_test_i)), ]
-      out$test_set[[i]] <- data_test_i
+      data_test_i <- fit_data_sf[out_id, ]
+      keep_test <- complete.cases(sf::st_drop_geometry(data_test_i))
+      data_test_i <- data_test_i[keep_test, ]
+      out_id_i <- out_id[keep_test]
+      if (h == 1) out$test_set[[i]] <- data_test_i
 
-      pred_coff_i <- if (is.null(fit0$cov_offset)) rep(0, nrow(data_test_i)) else fit0$cov_offset[out_id]
+      pred_coff_i <- if (is.null(fit0$cov_offset)) rep(0, nrow(data_test_i)) else fit0$cov_offset[out_id_i]
 
-      message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
+      if (messages) message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
 
       ## ----- prediction over test set -----
       pred_S <- pred_over_grid(
@@ -1992,7 +2007,7 @@ assess_pp <- function(object,
         grid_pred_list <- list(
           geometry            = sf::st_as_sfc(data_test_i),
           survey_times_data   = data_test_i[[time_col]],
-          int_mat             = fit0$int_mat[out_id, , drop = FALSE],
+          int_mat             = fit0$int_mat[out_id_i, , drop = FALSE],
           mda_times           = fit0$mda_times
         )
 
@@ -2039,8 +2054,8 @@ assess_pp <- function(object,
         }
       }
 
-      units_m_i <- fit0$units_m[out_id]
-      y_i       <- fit0$y      [out_id]
+      units_m_i <- fit0$units_m[out_id_i]
+      y_i       <- fit0$y      [out_id_i]
 
       for (j in seq_len(n_pred)) {
         if (fam == "gaussian") {
