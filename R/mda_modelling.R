@@ -343,6 +343,13 @@ dast <- function(formula,
   y <- as.numeric(model.response(mf))
   n <- length(y)
 
+  if(is.null(int_mat)) stop("'int_mat' must be provided")
+  int_mat <- as.matrix(int_mat)
+  if(nrow(int_mat) != n)
+    stop(sprintf("'int_mat' must have %d rows", n))
+  if(ncol(int_mat) != length(mda_times))
+    stop(sprintf("'int_mat' must have %d columns", length(mda_times)))
+
   # Extract covariates matrix
   D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
 
