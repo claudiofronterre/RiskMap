@@ -1614,13 +1614,22 @@ update_predictors <- function(object, predictors) {
 
 
 
+.anpit_area <- function(curve, u = seq(0, 1, length.out = length(curve))) {
+  if (length(curve) != length(u)) stop("'curve' and 'u' must have the same length")
+  if (length(curve) < 2) return(NA_real_)
+
+  dx <- diff(u)
+  y <- abs(curve - u)
+  sum(dx * (utils::head(y, -1) + utils::tail(y, -1)) / 2)
+}
+
 ##' @title Assess Predictive Performance via Spatial Cross-Validation
 ##'
 ##' @description
 ##' This function evaluates the predictive performance of spatial models fitted to `RiskMap` objects using cross-validation. It supports two classes of diagnostic tools:
 ##'
 ##' - **Scoring rules**, including the Continuous Ranked Probability Score (CRPS) and its scaled version (SCRPS), which quantify the sharpness and calibration of probabilistic forecasts;
-##' - **Calibration diagnostics**, based on the Probability Integral Transform (PIT) for Gaussian outcomes and Aggregated nonparametric PIT (AnPIT) curves for discrete outcomes (e.g., Poisson or Binomial).
+##' - **Calibration diagnostics**, based on the Probability Integral Transform (PIT) for Gaussian outcomes, Aggregated nonparametric PIT (AnPIT) curves for discrete outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve and the reference line.
 ##'
 ##' Cross-validation can be performed using either spatial clustering or regularized subsampling with a minimum inter-point distance. For each fold or subset, models can be refitted or evaluated with fixed parameters, offering flexibility in model validation. The function also provides visualizations of the spatial distribution of test folds.
 ##'
@@ -1637,7 +1646,7 @@ update_predictors <- function(object, predictors) {
 ##' @param min_dist Optional; minimum distance for regularized subsampling (required if `method = "regularized"`).
 ##' @param plot_fold Logical; if `TRUE`, plots each fold's test set.
 ##' @param messages Logical; if `TRUE`, displays progress messages.
-##' @param which_metric Character vector; one or more of `"CRPS"`, `"SCRPS"`, or `"AnPIT"`, to specify the predictive performance metrics to compute.
+##' @param which_metric Character vector; one or more of `"CRPS"`, `"SCRPS"`, or `"AnPIT"`, to specify the predictive performance metrics to compute. When `"AnPIT"` is requested, the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation between the PIT/AnPIT curve and the reference line.
 ##' @param user_split A user-defined cross-validation split. Either:
 ##'   * a matrix with \code{nrow = n} (number of observations) and
 ##'     \code{ncol = iter} (number of iterations), where entries of \code{1}
@@ -1655,7 +1664,7 @@ update_predictors <- function(object, predictors) {
 ##'   \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
 ##'   \item{model}{A named list, one per model, each containing:
 ##'     \describe{
-##'       \item{score}{A list with CRPS and/or SCRPS scores for each fold if requested.}
+##'       \item{score}{A list with CRPS, SCRPS, and/or AnPIT area scores for each fold if requested.}
 ##'       \item{PIT}{(if `family = "gaussian"` and `which_metric` includes `"AnPIT"`) A list of PIT values for test data.}
 ##'       \item{AnPIT}{(if `family` is discrete and `which_metric` includes `"AnPIT"`) A list of AnPIT curves for test data.}
 ##'     }
@@ -1710,6 +1719,7 @@ assess_pp <- function(object,
     k <- seq_along(pk) - 1
     sum(pk * vapply(k, crps_discrete, numeric(1), Fk = Fk))
   }
+  u_val <- seq(0, 1, length.out = 1000)
 
   if(!is.null(user_split)) {
     iter <- ncol(user_split)
@@ -1900,6 +1910,7 @@ assess_pp <- function(object,
     if (get_CRPS)   CRPS  <- vector("list", n_iter)
     if (get_SCRPS) { y_CRPS <- vector("list", n_iter); SCRPS <- vector("list", n_iter) }
     if (get_AnPIT) {
+      AnPIT_area <- vector("list", n_iter)
       if (fam == "gaussian") PIT <- vector("list", n_iter) else AnPIT <- vector("list", n_iter)
     }
 
@@ -2043,7 +2054,6 @@ assess_pp <- function(object,
         if (fam == "gaussian") {
           PIT_i <- numeric(n_pred)
         } else {
-          u_val   <- seq(0, 1, length.out = 1000)
           AnPIT_i <- matrix(NA_real_, nrow = length(u_val), ncol = n_pred)
           npit_fun <- function(y, u, Fk) {
             F_y1 <- if (y == 0) 0 else Fk[y]
@@ -2090,7 +2100,13 @@ assess_pp <- function(object,
       }
 
       if (get_AnPIT) {
-        if (fam == "gaussian") PIT[[i]] <- PIT_i else AnPIT[[i]] <- rowMeans(AnPIT_i)
+        if (fam == "gaussian") {
+          PIT[[i]] <- PIT_i
+          AnPIT_area[[i]] <- .anpit_area(stats::ecdf(PIT_i)(u_val), u_val)
+        } else {
+          AnPIT[[i]] <- rowMeans(AnPIT_i)
+          AnPIT_area[[i]] <- .anpit_area(AnPIT[[i]], u_val)
+        }
       }
 
     } # end i loop
@@ -2100,6 +2116,7 @@ assess_pp <- function(object,
     if (get_CRPS)  out$model[[model_names[h]]]$score$CRPS  <- CRPS
     if (get_SCRPS) out$model[[model_names[h]]]$score$SCRPS <- SCRPS
     if (get_AnPIT) {
+      out$model[[model_names[h]]]$score$AnPIT_area <- AnPIT_area
       if (fam == "gaussian") out$model[[model_names[h]]]$PIT <- PIT else out$model[[model_names[h]]]$AnPIT <- AnPIT
     }
 
