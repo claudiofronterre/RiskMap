@@ -33,4 +33,9 @@ test_that("summary labels spatio-temporal nugget and temporal scale correctly", 
   expect_equal(out$sp["Spatial corr. scale", "Estimate"], 3)
   expect_equal(out$sp["Variance of the nugget", "Estimate"], 0.5)
   expect_equal(out$sp["Temporal corr. scale", "Estimate"], 6)
+  expect_equal(
+    unname(out$sp["Temporal corr. scale", c("Lower limit", "Upper limit")]),
+    exp(log(6) + c(-1, 1) * stats::qnorm(0.975) * 0.1),
+    tolerance = 1e-8
+  )
 })

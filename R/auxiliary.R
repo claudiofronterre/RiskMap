@@ -952,8 +952,8 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     est_psi <- object$estimate[ind_psi]
     psi_row <- c(
       Estimate      = est_psi,
-      "Lower limit" = exp(log(est_psi) - z_crit * se_par[ind_psi] / est_psi),
-      "Upper limit" = exp(log(est_psi) + z_crit * se_par[ind_psi] / est_psi)
+      "Lower limit" = exp(log(est_psi) - z_crit * se_par[ind_psi]),
+      "Upper limit" = exp(log(est_psi) + z_crit * se_par[ind_psi])
     )
     res$sp <- rbind(res$sp, "Temporal corr. scale" = psi_row)
   }
