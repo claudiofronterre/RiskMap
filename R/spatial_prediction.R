@@ -801,9 +801,16 @@ pred_target_grid <- function(object,
 
     lp_samples <- vector("list", length(object$grid_pred))
     for (i in seq_along(object$grid_pred)) {
-      mu_i <- if (is.matrix(mu_target[[i]])) mu_target[[i]] else mu_target[[i]]
-      lp_samples[[i]] <- sapply(seq_len(n_samples), function(j)
-        mu_i + cov_offset[[i]] + object$S_samples[[i]][, j])
+      lp_i <- vapply(seq_len(n_samples), function(j) {
+        mu_i <- if (is.matrix(mu_target[[i]])) mu_target[[i]][, j] else mu_target[[i]]
+        mu_i + cov_offset[[i]] + object$S_samples[[i]][, j]
+      }, numeric(n_pred[i]))
+      lp_samples[[i]] <- .as_sample_matrix(
+        lp_i,
+        nrow_expected = n_pred[i],
+        ncol_expected = n_samples,
+        context = sprintf("list-mode linear predictor samples for group %d", i)
+      )
     }
 
   } else {
@@ -891,8 +898,12 @@ pred_target_grid <- function(object,
 
       for (fi in seq_len(n_f)) {
         target_mat <- f_target[[fi]](lp_samples[[i]])
-        if (!is.matrix(target_mat))
-          target_mat <- matrix(target_mat, nrow = n_pred[i])
+        target_mat <- .as_sample_matrix(
+          target_mat,
+          nrow_expected = n_pred[i],
+          ncol_expected = n_samples,
+          context = sprintf("list-mode target matrix for group %d", i)
+        )
 
         # DAST: MDA applied multiplicatively after transformation
         if (dast_model && needs_mda) {
@@ -1208,7 +1219,7 @@ pred_target_shp <- function(object, shp, shp_target = mean,
     n_samples <- ncol(object$S_samples)
   }
 
-  if(!list_mode & (length(object$mu_pred) == 1 && object$mu_pred == 0 && include_covariates)) {
+  if(!list_mode && (length(object$mu_pred) == 1 && object$mu_pred == 0 && include_covariates)) {
     stop("Covariates have not been provided; re-run pred_over_grid
          and provide the covariates through the argument 'predictors'")
   }
@@ -1225,7 +1236,7 @@ pred_target_shp <- function(object, shp, shp_target = mean,
 
   if(!include_cov_offset) {
     if(list_mode) {
-      cov_offset <- sapply(unlist(n_pred), function(i) rep(0, i))
+      cov_offset <- lapply(n_pred, function(i) rep(0, i))
     } else {
       cov_offset <- 0
     }
@@ -1239,9 +1250,17 @@ pred_target_shp <- function(object, shp, shp_target = mean,
   }
 
   if(include_nugget) {
-    Z_sim <- matrix(rnorm(n_samples * n_pred, sd = sqrt(object$par_hat$tau2)),
-                    ncol = n_samples)
-    object$S_samples <- object$S_samples + Z_sim
+    if (list_mode) {
+      object$S_samples <- lapply(seq_along(object$S_samples), function(i) {
+        object$S_samples[[i]] +
+          matrix(rnorm(n_samples * n_pred[i], sd = sqrt(object$par_hat$tau2)),
+                 nrow = n_pred[i], ncol = n_samples)
+      })
+    } else {
+      Z_sim <- matrix(rnorm(n_samples * n_pred, sd = sqrt(object$par_hat$tau2)),
+                      ncol = n_samples)
+      object$S_samples <- object$S_samples + Z_sim
+    }
   }
 
   out <- list()
@@ -1257,17 +1276,33 @@ pred_target_shp <- function(object, shp, shp_target = mean,
     })
 
     if(is.matrix(mu_target[[1]])) {
-      out$lp_samples <- sapply(1:length(object$grid_pred), function(j)
-        sapply(1:n_samples,
-               function(i)
-                 mu_target[[j]][, i] + cov_offset[[j]] +
-                 object$S_samples[[j]][, i]))
+      out$lp_samples <- lapply(seq_along(object$grid_pred), function(j) {
+        lp_j <- vapply(seq_len(n_samples),
+                       function(i)
+                         mu_target[[j]][, i] + cov_offset[[j]] +
+                         object$S_samples[[j]][, i],
+                       numeric(n_pred[j]))
+        .as_sample_matrix(
+          lp_j,
+          nrow_expected = n_pred[j],
+          ncol_expected = n_samples,
+          context = sprintf("list-mode linear predictor samples for group %d", j)
+        )
+      })
     } else {
-      out$lp_samples <- sapply(1:length(object$grid_pred), function(j)
-        sapply(1:n_samples,
-               function(i)
-                 mu_target[[j]] + cov_offset[[j]] +
-                 object$S_samples[[j]][, i]))
+      out$lp_samples <- lapply(seq_along(object$grid_pred), function(j) {
+        lp_j <- vapply(seq_len(n_samples),
+                       function(i)
+                         mu_target[[j]] + cov_offset[[j]] +
+                         object$S_samples[[j]][, i],
+                       numeric(n_pred[j]))
+        .as_sample_matrix(
+          lp_j,
+          nrow_expected = n_pred[j],
+          ncol_expected = n_samples,
+          context = sprintf("list-mode linear predictor samples for group %d", j)
+        )
+      })
     }
   } else {
     if(is.matrix(mu_target)) {
@@ -1283,9 +1318,18 @@ pred_target_shp <- function(object, shp, shp_target = mean,
     n_dim_re <- sapply(1:n_re, function(i) length(object$re$samples[[i]]))
     for(i in 1:n_re) {
       for(j in 1:n_dim_re[i]) {
-        for(h in 1:n_samples) {
-          out$lp_samples[, h] <- out$lp_samples[, h] +
-            object$re$D_pred[[i]][, j] * object$re$samples[[i]][[j]][h]
+        if (list_mode) {
+          for(g in seq_along(out$lp_samples)) {
+            D_re_g <- object$re$D_pred[[i]]
+            if (is.list(D_re_g)) D_re_g <- D_re_g[[g]]
+            out$lp_samples[[g]] <- out$lp_samples[[g]] +
+              outer(D_re_g[, j], object$re$samples[[i]][[j]])
+          }
+        } else {
+          for(h in 1:n_samples) {
+            out$lp_samples[, h] <- out$lp_samples[, h] +
+              object$re$D_pred[[i]][, j] * object$re$samples[[i]][[j]][h]
+          }
         }
       }
     }
@@ -1340,7 +1384,21 @@ pred_target_shp <- function(object, shp, shp_target = mean,
         weights_h <- weights[[h]]
       }
       for(i in 1:n_f) {
-        target_grid_samples_i <- as.matrix(f_target[[i]](out$lp_samples[[h]]))
+        target_grid_samples_i <- .as_sample_matrix(
+          f_target[[i]](out$lp_samples[[h]]),
+          nrow_expected = n_pred[h],
+          ncol_expected = n_samples,
+          context = sprintf(
+            "list-mode target aggregation for group %d",
+            h
+          )
+        )
+        if (nrow(target_grid_samples_i) != length(weights_h)) {
+          stop(sprintf(
+            "Dimension mismatch in list-mode target aggregation for group %d: nrow(target_grid_samples_i) = %d, length(weights_h) = %d",
+            h, nrow(target_grid_samples_i), length(weights_h)
+          ))
+        }
         if(dast_model && include_mda_effect) {
           alpha <- object$par_hat$alpha
           if(is.null(alpha)) alpha <- object$fix_alpha
@@ -1621,6 +1679,27 @@ update_predictors <- function(object, predictors) {
   dx <- diff(u)
   y <- abs(curve - u)
   sum(dx * (utils::head(y, -1) + utils::tail(y, -1)) / 2)
+}
+
+.as_sample_matrix <- function(x, nrow_expected, ncol_expected, context) {
+  if (!is.matrix(x)) {
+    if (length(x) != nrow_expected * ncol_expected) {
+      stop(sprintf(
+        "%s: expected %d values, got %d",
+        context, nrow_expected * ncol_expected, length(x)
+      ))
+    }
+    x <- matrix(x, nrow = nrow_expected, ncol = ncol_expected)
+  }
+
+  if (nrow(x) != nrow_expected || ncol(x) != ncol_expected) {
+    stop(sprintf(
+      "%s: expected a %d x %d matrix, got %d x %d",
+      context, nrow_expected, ncol_expected, nrow(x), ncol(x)
+    ))
+  }
+
+  x
 }
 
 ##' @title Assess Predictive Performance via Spatial Cross-Validation
