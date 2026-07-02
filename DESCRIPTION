@@ -24,23 +24,24 @@ URL: https://claudiofronterre.github.io/RiskMap/
 Depends:
     R (>= 3.5.0)
 Imports:
-    stats,
-    methods,
-    Matrix,
-    terra,
-    xtable,
-    graphics,
-    spatialEco,
-    spatialsample,
     Deriv,
-    numDeriv,
     dplyr,
-    tibble,
     ggplot2,
+    graphics,
     gridExtra,
+    Matrix,
+    methods,
+    numDeriv,
     rlang,
     sf,
     sns,
+    spatialEco,
+    spatialsample,
     stars
+    stats,
+    terra,
+    TMB,
+    tibble,
+    xtable
 Suggests:
     bayesplot
