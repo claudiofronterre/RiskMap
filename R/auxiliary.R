@@ -47,6 +47,53 @@ convex_hull_sf <- function(sf_object) {
   return(st_sf(geometry = convex_hull))
 }
 
+##' @title Empirical Logit Transformation for Binomial Data
+##' @description Computes the empirical logit transformation for binomial counts.
+##' @param y A numeric vector of observed positives.
+##' @param m A numeric vector of denominators, i.e. the numbers tested.
+##' @return A numeric vector containing the empirical logit transformation
+##' \eqn{\log((y + 0.5) / (m - y + 0.5))}.
+##' @details The empirical logit is often used as a finite transformation for
+##' binomial data, including cases where \eqn{y = 0} or \eqn{y = m}.
+##' @author Claudio Fronterre \email{c.fronterre@@bham.ac.uk}
+##' @author Emanuele Giorgi \email{e.giorgi@@bham.ac.uk}
+##' @examples
+##' y <- c(0, 3, 7, 10)
+##' m <- c(10, 10, 10, 10)
+##' elogit(y, m)
+##' @export
+elogit <- function(y, m) {
+  if (!is.numeric(y) || !is.numeric(m)) {
+    stop("'y' and 'm' must be numeric")
+  }
+  if (anyNA(y) || anyNA(m)) {
+    stop("'y' and 'm' cannot contain missing values")
+  }
+  sizes <- c(length(y), length(m))
+  max_size <- max(sizes)
+  if (max_size == 0) {
+    return(numeric(0))
+  }
+  incompatible <- sizes != 1 & max_size %% sizes != 0
+  if (any(incompatible)) {
+    stop("'y' and 'm' must have compatible lengths")
+  }
+  y <- rep_len(y, max_size)
+  m <- rep_len(m, max_size)
+
+  if (any(m <= 0)) {
+    stop("'m' must contain only positive values")
+  }
+  if (any(y < 0)) {
+    stop("'y' must contain only non-negative values")
+  }
+  if (any(y > m)) {
+    stop("'y' must be less than or equal to 'm'")
+  }
+
+  log((y + 0.5) / (m - y + 0.5))
+}
+
 
 ##' @title EPSG of the UTM Zone
 ##' @description Suggests the EPSG code for the UTM zone where the majority of the data falls.
@@ -902,11 +949,13 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   }
 
   if (sst) {
-    est_psi   <- exp(object$estimate[ind_psi])
-    lower_psi <- exp(object$estimate[ind_psi] - z_crit * se_par[ind_psi])
-    upper_psi <- exp(object$estimate[ind_psi] + z_crit * se_par[ind_psi])
-    res$sp    <- rbind(res$sp, c(est_psi, lower_psi, upper_psi))
-    rownames(res$sp)[3] <- "Temporal corr. scale"
+    est_psi <- object$estimate[ind_psi]
+    psi_row <- c(
+      Estimate      = est_psi,
+      "Lower limit" = exp(log(est_psi) - z_crit * se_par[ind_psi]),
+      "Upper limit" = exp(log(est_psi) + z_crit * se_par[ind_psi])
+    )
+    res$sp <- rbind(res$sp, "Temporal corr. scale" = psi_row)
   }
 
   res$conf_level      <- conf_level

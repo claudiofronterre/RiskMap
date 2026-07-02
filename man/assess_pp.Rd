@@ -44,7 +44,7 @@ subset of locations.}
 
 \item{messages}{Logical; if `TRUE`, displays progress messages.}
 
-\item{which_metric}{Character vector; one or more of `"CRPS"`, `"SCRPS"`, or `"AnPIT"`, to specify the predictive performance metrics to compute.}
+\item{which_metric}{Character vector; one or more of `"CRPS"`, `"SCRPS"`, or `"AnPIT"`, to specify the predictive performance metrics to compute. When `"AnPIT"` is requested, the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation between the PIT/AnPIT curve and the reference line.}
 
 \item{user_split}{A user-defined cross-validation split. Either:
 * a matrix with \code{nrow = n} (number of observations) and
@@ -65,7 +65,7 @@ A list of class `RiskMap.spatial.cv`, containing:
   \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
   \item{model}{A named list, one per model, each containing:
     \describe{
-      \item{score}{A list with CRPS and/or SCRPS scores for each fold if requested.}
+      \item{score}{A list with CRPS, SCRPS, and/or AnPIT area scores for each fold if requested.}
       \item{PIT}{(if `family = "gaussian"` and `which_metric` includes `"AnPIT"`) A list of PIT values for test data.}
       \item{AnPIT}{(if `family` is discrete and `which_metric` includes `"AnPIT"`) A list of AnPIT curves for test data.}
     }
@@ -76,7 +76,7 @@ A list of class `RiskMap.spatial.cv`, containing:
 This function evaluates the predictive performance of spatial models fitted to `RiskMap` objects using cross-validation. It supports two classes of diagnostic tools:
 
 - **Scoring rules**, including the Continuous Ranked Probability Score (CRPS) and its scaled version (SCRPS), which quantify the sharpness and calibration of probabilistic forecasts;
-- **Calibration diagnostics**, based on the Probability Integral Transform (PIT) for Gaussian outcomes and Aggregated nonparametric PIT (AnPIT) curves for discrete outcomes (e.g., Poisson or Binomial).
+- **Calibration diagnostics**, based on the Probability Integral Transform (PIT) for Gaussian outcomes, Aggregated nonparametric PIT (AnPIT) curves for discrete outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve and the reference line.
 
 Cross-validation can be performed using either spatial clustering or regularized subsampling with a minimum inter-point distance. For each fold or subset, models can be refitted or evaluated with fixed parameters, offering flexibility in model validation. The function also provides visualizations of the spatial distribution of test folds.
 }
