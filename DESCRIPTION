@@ -45,5 +45,8 @@ Imports:
     xtable
 Suggests:
     bayesplot,
+    cmdstanr,
+    coda,
+    rstan,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
