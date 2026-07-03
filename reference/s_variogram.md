@@ -1,6 +1,7 @@
 # Empirical variogram
 
-Computes the empirical variogram using lag-distance breakpoints.
+Computes the empirical variogram using “bins” of distance provided by
+the user.
 
 ## Usage
 
@@ -8,9 +9,7 @@ Computes the empirical variogram using lag-distance breakpoints.
 s_variogram(
   data,
   variable,
-  breaks = NULL,
-  n_bins = 14L,
-  max_dist = NULL,
+  bins = NULL,
   n_permutation = 0,
   convert_to_utm = TRUE,
   scale_to_km = FALSE
@@ -29,23 +28,12 @@ s_variogram(
   a character indicating the name of variable for which the variogram is
   to be computed.
 
-- breaks:
+- bins:
 
-  an optional numeric vector of lag-distance breakpoints. If supplied,
-  these breakpoints are used directly to define the distance classes.
-
-- n_bins:
-
-  the number of lag-distance classes to generate when `breaks = NULL`.
-  By default `n_bins = 14`.
-
-- max_dist:
-
-  an optional maximum lag distance. When `breaks = NULL`, the
-  breakpoints are generated as
-  `seq(0, max_dist, length.out = n_bins + 1)`. By default
-  `max_dist = NULL` and the upper lag distance is set to `d_max/3`,
-  where `d_max` is the maximum observed distance in the data.
+  a vector indicating the \`bins\` to be used to define the classes of
+  distance used in the computation of the variogram. By default
+  `bins=NULL` and bins are then computed as `seq(0, d_max/2, length=15)`
+  where `d_max` is the maximum distance observed in the data.
 
 - n_permutation:
 
@@ -76,7 +64,7 @@ an object of class 'variogram' which is a list containing the following
 components
 
 `variogram` a data-frame containing the following columns: `mid_points`,
-the middle points of the classes of distance provided by `breaks`;
+the middle points of the classes of distance provided by `bins`;
 `obs_vari` the values of the observed variogram; `obs_vari` the number
 of pairs. If `n_permutation > 0`, the data-frame also contains
 `lower_bound` and `upper_bound` corresponding to the lower and upper

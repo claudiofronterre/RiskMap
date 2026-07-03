@@ -48,5 +48,4 @@ plot_AnPIT(
 
 ## Value
 
-A ggplot2 object (single plot) or a grid object from gridExtra (multiple
-panels).
+A ggplot2 object (single plot) or a ggpubr grid.
