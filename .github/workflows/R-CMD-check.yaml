@@ -46,6 +46,32 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      - name: Install cmdstanr
+        run: |
+          install.packages("cmdstanr", repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
+        shell: Rscript {0}
+
+      - name: Cache CmdStan
+        id: cache-cmdstan
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.CMDSTAN_PATH }}
+          key: ${{ runner.os }}-cmdstan-${{ hashFiles('.github/cmdstan-version') }}
+
+      - name: Install CmdStan
+        if: steps.cache-cmdstan.outputs.cache-hit != 'true'
+        run: |
+          cmdstanr::install_cmdstan(dir = Sys.getenv("CMDSTAN_PATH"), cores = 2)
+        shell: Rscript {0}
+
+      - name: Set CmdStan path
+        run: |
+          cmdstanr::set_cmdstan_path(cmdstanr::cmdstan_path())
+        shell: Rscript {0}
+
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
