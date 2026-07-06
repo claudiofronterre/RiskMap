@@ -106,7 +106,7 @@ elogit <- function(y, m) {
 ##' @importFrom sf st_transform st_coordinates
 ##' @export
 propose_utm <- function (data) {
-  if (class(data)[1] != "sf")
+  if (!inherits(data, "sf"))
     stop("'data' must be an object of class sf")
   if (is.na(st_crs(data)))
     stop("the CRS of the data is missing and must be specified; see ?st_crs")

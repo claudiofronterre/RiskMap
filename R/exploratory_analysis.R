@@ -22,7 +22,7 @@ dist_summaries <- function(data,
                         convert_to_utm = TRUE,
                         scale_to_km = FALSE) {
 
-  if(class(data)[1]!="sf") stop("'data' must be an object of class 'sf'")
+  if(!inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
 
   if(!convert_to_utm) message("The distances of the variogram are computed assuming
                           that the CRS of the data gives distances in meters or kilometers")
@@ -91,7 +91,7 @@ s_variogram <- function(data, variable, breaks = NULL,
                       convert_to_utm = TRUE,
                       scale_to_km = FALSE) {
 
-  if(class(data)[1]!="sf") stop("'data' must be an object of class 'sf'")
+  if(!inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
   if(!is.null(breaks) && !missing(n_bins)) stop("'breaks' and 'n_bins' cannot both be supplied")
   if(!is.null(breaks) && !missing(max_dist)) stop("'breaks' and 'max_dist' cannot both be supplied")
   if(length(n_bins) != 1 || !is.numeric(n_bins) || n_bins < 1 || n_bins != round(n_bins)) {

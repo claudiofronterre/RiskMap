@@ -88,7 +88,7 @@ glgpm <- function(formula,
        (is.numeric(crs) &
         (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
   }
-  if(class(data)[1]=="data.frame") {
+  if(inherits(data, "data.frame")) {
     if(is.null(crs)) {
       warning("'crs' is set to 4326 (long/lat)")
       crs <- 4326
@@ -105,10 +105,10 @@ glgpm <- function(formula,
   }
 
   if(length(inter_f$gp.spec$term) == 1 & inter_f$gp.spec$term[1]=="sf" &
-     class(data)[1]!="sf") stop("'data' must be an object of class 'sf'")
+     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
 
 
-  if(class(data)[1]=="sf") {
+  if(inherits(data, "sf")) {
     if(is.na(st_crs(data)) & is.null(crs)) {
       stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
     } else if(is.na(st_crs(data))) {
@@ -169,7 +169,6 @@ glgpm <- function(formula,
   } else {
     hr_re <- NULL
   }
-
 
   if(!is.null(hr_re)) {
     # Define indices of random effects
@@ -1319,7 +1318,7 @@ glgpm_sim <- function(n_sim,
        (is.numeric(crs) &
         (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
   }
-  if(class(data)[1]=="data.frame") {
+  if(inherits(data, "data.frame")) {
     if(is.null(crs)) {
       warning("'crs' is set to 4326 (long/lat)")
       crs <- 4326
@@ -1336,10 +1335,10 @@ glgpm_sim <- function(n_sim,
   }
 
   if(length(inter_f$gp.spec$term) == 1 & inter_f$gp.spec$term[1]=="sf" &
-     class(data)[1]!="sf") stop("'data' must be an object of class 'sf'")
+     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
 
 
-  if(class(data)[1]=="sf") {
+  if(inherits(data, "sf")) {
     if(is.na(st_crs(data)) & is.null(crs)) {
       stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
     } else if(is.na(st_crs(data))) {

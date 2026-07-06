@@ -288,7 +288,7 @@ dast <- function(formula,
        (is.numeric(crs) &
         (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
   }
-  if(class(data)[1]=="data.frame") {
+  if(inherits(data, "data.frame")) {
     if(is.null(crs)) {
       warning("'crs' is set to 4326 (long/lat)")
       crs <- 4326
@@ -305,9 +305,9 @@ dast <- function(formula,
   }
 
   if(length(gp_terms) == 1 & gp_terms[1]=="sf" &
-     class(data)[1]!="sf") stop("'data' must be an object of class 'sf'")
+     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
 
-  if(class(data)[1]=="sf") {
+  if(inherits(data, "sf")) {
     if(is.na(sf::st_crs(data)) & is.null(crs)) {
       stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
     } else if(is.na(sf::st_crs(data))) {
@@ -756,7 +756,7 @@ dast_sim <- function(n_sim,
        (is.numeric(crs) &
           (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
   }
-  if(class(data)[1]=="data.frame") {
+  if(inherits(data, "data.frame")) {
     if(is.null(crs)) {
       warning("'crs' is set to 4326 (long/lat)")
       crs <- 4326
@@ -773,9 +773,9 @@ dast_sim <- function(n_sim,
   }
 
   if(length(gp_terms) == 1 & gp_terms[1]=="sf" &
-     class(data)[1]!="sf") stop("'data' must be an object of class 'sf'")
+     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
 
-  if(class(data)[1]=="sf") {
+  if(inherits(data, "sf")) {
     if(is.na(sf::st_crs(data)) & is.null(crs)) {
       stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
     } else if(is.na(sf::st_crs(data))) {
