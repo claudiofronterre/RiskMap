@@ -223,7 +223,7 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##'
 ##' @seealso \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 dast <- function(formula,
                  data,

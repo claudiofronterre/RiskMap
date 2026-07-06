@@ -49,7 +49,7 @@
 ##' \item{call}{Matched call.}
 ##' @seealso \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom sf st_crs st_as_sf st_drop_geometry
 ##' @export
 glgpm <- function(formula,
@@ -1275,7 +1275,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##'
 ##' @return A list containing simulated data, simulated spatial random effects (if applicable), and other simulation parameters.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 glgpm_sim <- function(n_sim,
                       model_fit = NULL,
@@ -1609,7 +1609,7 @@ glgpm_sim <- function(n_sim,
 ##' @return A list containing the mode estimate, and optionally, the Hessian matrix and gradient vector.
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 maxim.integrand <- function(
     y, units_m, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
@@ -2279,7 +2279,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 ##'
 ##' @seealso \code{\link{glgpm}}, \code{\link{dast}}, \code{\link{dsgm}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
 set_control_sim <- function(n_sim = 12000,

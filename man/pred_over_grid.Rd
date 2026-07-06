@@ -42,5 +42,5 @@ Computes predictions over a spatial grid using a fitted model from
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
 
-Claudio Fronterre \email{c.fronterr@lancaster.ac.uk}
+Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
 }

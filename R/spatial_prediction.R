@@ -14,7 +14,7 @@
 ##' @param messages Logical; display progress messages. Default \code{TRUE}.
 ##' @return An object of class \code{"RiskMap.pred.re"}.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix solve
 ##' @export
 pred_over_grid <- function(object,
@@ -599,7 +599,7 @@ pred_over_grid <- function(object,
 ##' @return An object of class \code{"RiskMap_pred_target_grid"}.
 ##' @seealso \code{\link{pred_over_grid}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix solve
 ##' @export
 pred_target_grid <- function(object,
@@ -1000,7 +1000,7 @@ pred_target_grid <- function(object,
 ##'
 ##'
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
   t_data.frame <-
     terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
@@ -1523,7 +1523,7 @@ pred_target_shp <- function(object, shp, shp_target = mean,
 ##' @method plot RiskMap_pred_target_shp
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 plot.RiskMap_pred_target_shp <- function(x, which_target = "linear_target",
                                          which_summary = "mean", ...) {
   col_shp_name <- paste(which_target,"_",which_summary,sep="")
@@ -1553,7 +1553,7 @@ plot.RiskMap_pred_target_shp <- function(x, which_target = "linear_target",
 ##'
 ##' @return The updated `RiskMap.pred.re` object.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 update_predictors <- function(object, predictors) {
   if (!inherits(object, what = "RiskMap.pred.re", which = FALSE)) {

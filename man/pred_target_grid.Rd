@@ -88,5 +88,5 @@ Custom targets can always be supplied via \code{f_target}.
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
 
-Claudio Fronterre \email{c.fronterr@lancaster.ac.uk}
+Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
 }

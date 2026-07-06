@@ -62,5 +62,5 @@ Additionally, GLGPMs can incorporate unstructured random effects specified throu
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
 
-Claudio Fronterre \email{c.fronterr@lancaster.ac.uk}
+Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
 }

@@ -102,7 +102,7 @@ elogit <- function(y, m) {
 ##' @return An integer indicating the EPSG code of the UTM zone.
 ##' @author
 ##' Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom sf st_transform st_coordinates
 ##' @export
 propose_utm <- function (data) {
@@ -155,7 +155,7 @@ propose_utm <- function (data) {
 ##' @param return_sym_matrix A logical value indicating whether to return a symmetric correlation matrix. Defaults to \code{FALSE}.
 ##' @details The Matern correlation function is defined as
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
@@ -193,7 +193,7 @@ matern_cor <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the first derivative of the Matern function with respect to \eqn{\phi} for the given distances.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 matern.grad.phi <- function(U, phi, kappa) {
   der.phi <- function(u, phi, kappa) {
@@ -227,7 +227,7 @@ matern.grad.phi <- function(U, phi, kappa) {
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the second derivative of the Matern function with respect to \eqn{\phi} for the given distances.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 matern.hessian.phi <- function(U, phi, kappa) {
   der2.phi <- function(u, phi, kappa) {
@@ -271,7 +271,7 @@ matern.hessian.phi <- function(U, phi, kappa) {
 ##' \item{label}{A character string representing the full call for the GP model.}
 ##' @note The nugget effect must be a positive real number if specified.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 gp <- function (..., kappa = 0.5, nugget = 0) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -316,7 +316,7 @@ gp <- function (..., kappa = 0.5, nugget = 0) {
 ##' \item{label}{A character string representing the full call for the random effect model.}
 ##' @note At least one variable must be provided as input.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 re <- function (...) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -438,7 +438,7 @@ interpret.formula <- function(formula) {
 ##' \item{sigma2}{Spatial process variance.}
 ##' \item{phi}{Spatial correlation scale.}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @seealso \code{\link{glgpm}}, \code{\link{dsgm}}
 ##' @method coef RiskMap
 ##' @export
@@ -1442,7 +1442,7 @@ print.summary.RiskMap <- function(x, ...) {
 ##' @export
 ##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap.spatial.cv}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 to_table <- function(object, ...) {
   summary_out <- summary(object)
   if(inherits(summary_out,

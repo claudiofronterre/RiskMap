@@ -77,7 +77,7 @@ dist_summaries <- function(data,
 ##' @return \code{scale_to_km} the value passed to \code{scale_to_km}
 ##' @return \code{n_permutation} the number of permutations
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterr@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##'
 ##' @importFrom sf st_transform st_coordinates
 ##' @importFrom stats dist quantile

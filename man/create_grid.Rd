@@ -42,5 +42,5 @@ plot(grid, add = TRUE, col = 'red')
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
 
-Claudio Fronterre \email{c.fronterr@lancaster.ac.uk}
+Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
 }

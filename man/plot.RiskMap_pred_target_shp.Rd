@@ -33,5 +33,5 @@ It requires the 'ggplot2' package for plotting and 'sf' objects for spatial data
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
 
-Claudio Fronterre \email{c.fronterr@lancaster.ac.uk}
+Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
 }

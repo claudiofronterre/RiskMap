@@ -18,6 +18,11 @@ Useful links:
 \author{
 \strong{Maintainer}: Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
 
+Authors:
+\itemize{
+  \item Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
+}
+
 Other contributors:
 \itemize{
   \item Claudio Fronterre \email{c.fronterre@bham.ac.uk} (\href{https://orcid.org/0000-0001-6723-9727}{ORCID}) [contributor]

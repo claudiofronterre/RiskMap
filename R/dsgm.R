@@ -322,6 +322,7 @@ compute_spatial_ess <- function(spatial_samples) {
 
 ##' @title Print method for dsgm_spatial_samples
 ##' @keywords internal
+##' @export
 print.dsgm_spatial_samples <- function(x, ...) {
   cat("DSGM Spatial Process Samples\n")
   cat(sprintf("  Samples   : %d\n", x$n_samples))
