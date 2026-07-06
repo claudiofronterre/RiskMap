@@ -1616,8 +1616,6 @@ maxim.integrand <- function(
   stopifnot(family %in% c("poisson", "binomial"))
 
   # ---------- utilities ----------
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
-
   check_vec_fun <- function(f, n, name) {
     if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
     x <- rep(0, n)
@@ -1963,8 +1961,6 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
   stopifnot(family %in% c("poisson", "binomial"))
 
   # ---------- utilities ----------
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
-
   check_vec_fun <- function(f, n, name) {
     if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
     x <- rep(0, n)
@@ -2439,8 +2435,6 @@ glgpm_nong <-
     stopifnot(family %in% c("poisson", "binomial"))
 
     # --- helpers for inverse link handling (vector-in, vector-out) ---
-    `%||%` <- function(a, b) if (!is.null(a)) a else b
-
     check_vec_fun <- function(f, n, name) {
       if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
       x <- rep(0, n)

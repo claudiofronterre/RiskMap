@@ -26,8 +26,6 @@ pred_over_grid <- function(object,
                            type = "marginal",
                            messages = TRUE) {
 
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
-
   # ---------------------------------------------------------------------------
   # FIX 1: resolve par_hat
   # dsgm objects store parameters in $model_params; glgpm objects use coef()

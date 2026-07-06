@@ -1,3 +1,5 @@
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
 #' @importFrom stats as.formula binomial coef complete.cases
 #' @importFrom stats glm median model.frame model.matrix
 #' @importFrom stats model.response na.fail na.omit nlminb pnorm
@@ -611,8 +613,6 @@ coef.RiskMap <- function(object, ...) {
 ##' @method summary RiskMap
 ##' @export
 summary.RiskMap <- function(object, ..., conf_level = 0.95) {
-
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
 
   alpha  <- 1 - conf_level
   z_crit <- qnorm(1 - alpha / 2)

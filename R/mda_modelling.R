@@ -2721,8 +2721,6 @@ Laplace_sampling_MCMC_dast <- function(y, units_m, mu, mda_effect, Sigma, ID_coo
                                        sigma2_re = NULL, control_mcmc,
                                        Sigma_pd = NULL, mean_pd = NULL, messages = TRUE) {
 
-  `%||%` <- function(a, b) if (!is.null(a)) a else b
-
   # Precompute values that will not change
   Sigma.inv <- solve(Sigma)
   n_loc <- nrow(Sigma)
