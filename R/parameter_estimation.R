@@ -183,16 +183,16 @@ glgpm <- function(formula,
     re_unique <- list()
     re_unique_f <- list()
     for(i in 1:n_re) {
-      if(is.factor(re_mf[,i])) {
-        re_mf_n[,i] <- as.numeric(re_mf[,i])
-        re_unique[[names_re[i]]] <- 1:length(levels(re_mf[,i]))
+      if(is.factor(re_mf[[i]])) {
+        re_mf_n[[i]] <- as.numeric(re_mf[[i]])
+        re_unique[[names_re[i]]] <- 1:length(levels(re_mf[[i]]))
         ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
+                             function(j) which(re_mf_n[[i]][j]==re_unique[[names_re[i]]]))
         re_unique_f[[names_re[i]]] <-levels(re_mf[,i])
-      } else if(is.numeric(re_mf[,i])) {
+      } else if(is.numeric(re_mf[[i]])) {
         re_unique[[names_re[i]]] <- unique(re_mf[,i])
         ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
+                             function(j) which(re_mf_n[[i]][j]==re_unique[[names_re[i]]]))
         re_unique_f[[names_re[i]]] <- re_unique[[names_re[i]]]
       }
     }
