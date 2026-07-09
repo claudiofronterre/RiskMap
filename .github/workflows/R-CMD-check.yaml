@@ -33,6 +33,12 @@ jobs:
           r-version: ${{ matrix.config.r }}
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
+
+      - name: Install cmdstanr
+        run: |
+          install.packages("cmdstanr", repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
+        shell: Rscript {0}
+
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: any::rcmdcheck
@@ -44,11 +50,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libeigen3-dev
           sudo apt-get install -y build-essential
-
-      - name: Install cmdstanr
-        run: |
-          install.packages("cmdstanr", repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
-        shell: Rscript {0}
 
       - name: Set CMDSTAN_PATH
         run: echo "CMDSTAN_PATH=${{ runner.temp }}/.cmdstan" >> $GITHUB_ENV
