@@ -48,6 +48,7 @@ Suggests:
     coda,
     rstan,
     testthat (>= 3.0.0)
+LinkingTo: TMB, RcppEigen
 Config/testthat/edition: 3
 Additional_repositories: https://stan-dev.r-universe.dev
 Config/roxygen2/version: 8.0.0
