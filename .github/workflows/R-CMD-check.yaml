@@ -51,6 +51,10 @@ jobs:
           sudo apt-get install -y libeigen3-dev
           sudo apt-get install -y build-essential
 
+      - name: Set CMDSTAN_PATH
+        run: echo "CMDSTAN_PATH=${{ runner.temp }}/.cmdstan" >> $GITHUB_ENV
+        shell: bash
+
       - name: Create CmdStan directory
         run: mkdir -p "${{ env.CMDSTAN_PATH }}"
         shell: bash
