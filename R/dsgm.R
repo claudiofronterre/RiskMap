@@ -1090,8 +1090,6 @@ dsgm <- function(formula,
   intensity_family <- match.arg(intensity_family)
   intensity_family_int <- if (intensity_family == "gamma") 0L else 1L
 
-  if (!inherits(formula, "formula"))
-    stop("'formula' must be a formula object")
   if (!inherits(data, c("data.frame", "sf")))
     stop("'data' must be a data.frame or sf object")
   if (n_samples <= 0 || n_warmup < 0)
@@ -1099,6 +1097,8 @@ dsgm <- function(formula,
   if (n_chains < 1) stop("'n_chains' must be at least 1")
   if (adapt_delta <= 0 || adapt_delta >= 1)
     stop("'adapt_delta' must be in (0, 1)")
+
+  check_formula(formula, data)
 
   if (is.null(use_mda)) use_mda <- !is.null(mda_times)
 

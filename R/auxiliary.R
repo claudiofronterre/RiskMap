@@ -408,6 +408,37 @@ interpret.formula <- function(formula) {
   ret
 }
 
+##' @title Check that formula is valid
+##' @description Checks that the formula object is of class formula and that all
+##' the terms in the formula are present in the data
+##' @param formula The formula to check
+##' @param data The data to look for variables in
+##' @return TRUE if the formula is valid or raise an error if not
+##' @noRd
+check_formula <- function(formula, data){
+
+  if(!inherits(formula, "formula")) {
+    stop("'formula' must be a 'formula'
+         object indicating the variables of the
+         model to be fitted", call. = FALSE)
+  }
+
+  formula_terms <- all.vars(formula)
+  column_names <- names(data)
+
+  missing_columns <- setdiff(formula_terms, column_names)
+  n_missing <- length(missing_columns)
+  if (n_missing > 0){
+
+    stop(paste0("The formula term",
+          ifelse(n_missing > 1, "s '", " '"),
+          paste(missing_columns, collapse = "', '"),
+          ifelse(n_missing > 1, "' are", "' is"),
+         " not present in the data"), call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
 
 ##' @title Extract Parameter Estimates from a "RiskMap" Model Fit
 ##' @description This \code{coef} method for the "RiskMap" class extracts the

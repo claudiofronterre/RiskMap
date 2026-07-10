@@ -73,13 +73,7 @@ glgpm <- function(formula,
 
   nong <- family=="binomial" | family=="poisson"
 
-
-  if(!inherits(formula,
-               what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula'
-         object indicating the variables of the
-         model to be fitted")
-  }
+  check_formula(formula, data)
 
   inter_f <- interpret.formula(formula)
 
@@ -1303,15 +1297,9 @@ glgpm_sim <- function(n_sim,
     convert_to_crs <- model_fit$convert_to_crs
     scale_to_km <- model_fit$scale_to_km
   }
+
+  check_formula(formula, data)
   inter_f <- interpret.formula(formula)
-
-  if(!inherits(formula,
-               what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula'
-                                     object indicating the variables of the
-                                     model to be fitted")
-  }
-
 
   if(length(crs)>0) {
     if(!is.numeric(crs) |
