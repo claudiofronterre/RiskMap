@@ -42,6 +42,12 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 - Functions should be as short as possible so that they are easy to comprehend and easier to test.
 - Where functions are over 100 lines long, they should be split into smaller functions.
 
+## Deprecating parameters and functions
+
+- If functions are renamed or removed, they should initially be left either as aliases to the updated function with a `warning()` message or if no updated function exists, a `stop()` message.
+- Similarly, if function parameters are renamed or removed, they should be left with a default `NULL` parameter and if a user uses the parameter they should be informed that it is deprecated.
+- One year after a version containing the deprecated versions has been released on CRAN, the functions and parameters can be removed entirely.
+
 ## Documentation
 
 - We use [roxygen2](https://cran.r-project.org/package=roxygen2), with [Markdown syntax](https://cran.r-project.org/web/packages/roxygen2/vignettes/rd-formatting.html), for documentation. Make sure that you document the package prior to submitting a PR to update documentation.
