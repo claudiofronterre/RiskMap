@@ -12,7 +12,6 @@ set_control_sim(
   c1.h = 0.01,
   c2.h = 1e-04,
   linear_model = FALSE,
-  sampler = c("mcmc", "stan"),
   n_chains = 1,
   n_cores = 1,
   adapt_delta = 0.8,
@@ -34,8 +33,6 @@ set_control_sim(
 
 \item{linear_model}{Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.}
 
-\item{sampler}{Character. Type of sampler: "mcmc" for Langevin MCMC (default) or "stan" for STAN sampling.}
-
 \item{n_chains}{Integer. Number of MCMC chains (STAN only). Default is 1.}
 
 \item{n_cores}{Integer. Number of cores for parallel chains (STAN only). Default is 1.}
@@ -53,21 +50,10 @@ A list of control parameters with class "mcmc.RiskMap". Contents depend on \code
 }
 }
 \description{
-This function sets control parameters for running simulations, supporting both MCMC methods
-(for glgpm, dast models) and STAN sampling (for dsgm models).
+This function sets control parameters for running simulations, supporting MCMC methods
+for glgpm, dast models.
 }
 \details{
-The function validates input parameters and ensures they are appropriate for the specified sampler.
-
-For \code{sampler = "mcmc"} (Langevin MCMC used in glgpm, dast):
-- Validates \code{n_sim}, \code{burnin}, \code{thin}, \code{h}, \code{c1.h}, \code{c2.h}
-- Returns parameters for Langevin-based MCMC sampling
-
-For \code{sampler = "stan"} (STAN sampling used in dsgm):
-- Validates \code{n_sim} (n_samples), \code{burnin} (n_warmup), \code{n_chains}, \code{n_cores}
-- Validates \code{adapt_delta} and \code{max_treedepth}
-- Ignores \code{thin}, \code{h}, \code{c1.h}, \code{c2.h} (not used by STAN)
-
 If \code{linear_model = TRUE}, only \code{n_sim} is required regardless of sampler.
 }
 \examples{
@@ -77,19 +63,9 @@ control_mcmc <- set_control_sim()
 # Custom MCMC parameters
 control_mcmc <- set_control_sim(n_sim = 15000, burnin = 3000, thin = 20)
 
-# STAN parameters for DSGM
-control_stan <- set_control_sim(
-  sampler = "stan",
-  n_sim = 1000,
-  burnin = 1000,
-  n_chains = 4,
-  n_cores = 4,
-  adapt_delta = 0.85
-)
-
 }
 \seealso{
-\code{\link{glgpm}}, \code{\link{dast}}, \code{\link{dsgm}}
+\code{\link{glgpm}}, \code{\link{dast}}
 }
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
