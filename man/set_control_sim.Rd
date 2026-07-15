@@ -11,11 +11,7 @@ set_control_sim(
   h = NULL,
   c1.h = 0.01,
   c2.h = 1e-04,
-  linear_model = FALSE,
-  n_chains = 1,
-  n_cores = 1,
-  adapt_delta = 0.8,
-  max_treedepth = 10
+  linear_model = FALSE
 )
 }
 \arguments{
@@ -32,21 +28,11 @@ set_control_sim(
 \item{c2.h}{Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.}
 
 \item{linear_model}{Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.}
-
-\item{n_chains}{Integer. Number of MCMC chains (STAN only). Default is 1.}
-
-\item{n_cores}{Integer. Number of cores for parallel chains (STAN only). Default is 1.}
-
-\item{adapt_delta}{Numeric. Target acceptance rate for STAN (between 0 and 1). Default is 0.8.}
-
-\item{max_treedepth}{Integer. Maximum tree depth for STAN's NUTS sampler. Default is 10.}
 }
 \value{
 A list of control parameters with class "mcmc.RiskMap". Contents depend on \code{sampler}:
 \itemize{
-  \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model, sampler
-  \item For "stan": n_sim, burnin (as n_warmup), n_chains, n_cores, adapt_delta,
-        max_treedepth, linear_model, sampler
+  \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
 }
 }
 \description{
@@ -54,7 +40,7 @@ This function sets control parameters for running simulations, supporting MCMC m
 for glgpm, dast models.
 }
 \details{
-If \code{linear_model = TRUE}, only \code{n_sim} is required regardless of sampler.
+If \code{linear_model = TRUE}, only \code{n_sim} is required
 }
 \examples{
 # Default parameters (MCMC)

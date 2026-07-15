@@ -2228,19 +2228,13 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 ##' @param c1.h Numeric. A control parameter for Langevin MCMC. Must be positive. Default is 0.01.
 ##' @param c2.h Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.
 ##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
-##' @param n_chains Integer. Number of MCMC chains (STAN only). Default is 1.
-##' @param n_cores Integer. Number of cores for parallel chains (STAN only). Default is 1.
-##' @param adapt_delta Numeric. Target acceptance rate for STAN (between 0 and 1). Default is 0.8.
-##' @param max_treedepth Integer. Maximum tree depth for STAN's NUTS sampler. Default is 10.
 ##'
 ##' @details
-##' If \code{linear_model = TRUE}, only \code{n_sim} is required regardless of sampler.
+##' If \code{linear_model = TRUE}, only \code{n_sim} is required
 ##'
 ##' @return A list of control parameters with class "mcmc.RiskMap". Contents depend on \code{sampler}:
 ##' \itemize{
-##'   \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model, sampler
-##'   \item For "stan": n_sim, burnin (as n_warmup), n_chains, n_cores, adapt_delta,
-##'         max_treedepth, linear_model, sampler
+##'   \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
 ##' }
 ##'
 ##' @examples
@@ -2261,11 +2255,7 @@ set_control_sim <- function(n_sim = 12000,
                             h = NULL,
                             c1.h = 0.01,
                             c2.h = 1e-04,
-                            linear_model = FALSE,
-                            n_chains = 1,
-                            n_cores = 1,
-                            adapt_delta = 0.8,
-                            max_treedepth = 10) {
+                            linear_model = FALSE){
 
   # =============================================================================
   # LINEAR MODEL (simple case for both samplers)
@@ -2274,8 +2264,7 @@ set_control_sim <- function(n_sim = 12000,
   if (linear_model) {
     res <- list(
       n_sim = n_sim,
-      linear_model = linear_model,
-      sampler = sampler
+      linear_model = linear_model
     )
     class(res) <- "mcmc.RiskMap"
     return(res)
@@ -2285,45 +2274,40 @@ set_control_sim <- function(n_sim = 12000,
   # MCMC SAMPLER (Langevin for glgpm, dast)
   # =============================================================================
 
-  if (sampler == "mcmc") {
-
-    # Validate MCMC parameters
-    if (n_sim < burnin) {
-      stop("n_sim cannot be smaller than burnin.")
-    }
-
-    if (thin <= 0) {
-      stop("thin must be positive")
-    }
-
-    if ((n_sim - burnin) %% thin != 0) {
-      stop("thin must be a divisor of (n_sim - burnin)")
-    }
-
-    if (!is.null(h) && h < 0) {
-      stop("h must be non-negative.")
-    }
-
-    if (c1.h <= 0) {
-      stop("c1.h must be positive.")
-    }
-
-    if (c2.h < 0 | c2.h > 1) {
-      stop("c2.h must be between 0 and 1.")
-    }
-
-    res <- list(
-      n_sim = n_sim,
-      burnin = burnin,
-      thin = thin,
-      h = h,
-      c1.h = c1.h,
-      c2.h = c2.h,
-      linear_model = FALSE,
-      sampler = "mcmc"
-    )
-
+  # Validate MCMC parameters
+  if (n_sim < burnin) {
+    stop("n_sim cannot be smaller than burnin.")
   }
+
+  if (thin <= 0) {
+    stop("thin must be positive")
+  }
+
+  if ((n_sim - burnin) %% thin != 0) {
+    stop("thin must be a divisor of (n_sim - burnin)")
+  }
+
+  if (!is.null(h) && h < 0) {
+    stop("h must be non-negative.")
+  }
+
+  if (c1.h <= 0) {
+    stop("c1.h must be positive.")
+  }
+
+  if (c2.h < 0 | c2.h > 1) {
+    stop("c2.h must be between 0 and 1.")
+  }
+
+  res <- list(
+    n_sim = n_sim,
+    burnin = burnin,
+    thin = thin,
+    h = h,
+    c1.h = c1.h,
+    c2.h = c2.h,
+    linear_model = FALSE
+  )
 
   class(res) <- "mcmc.RiskMap"
   return(res)

@@ -523,6 +523,8 @@ pred_target_grid <- function(object,
   if (!inherits(object, "RiskMap.pred.re"))
     stop("'object' must be an output of pred_over_grid()")
 
+  dast_model <- !is.null(object$par_hat$gamma)
+
   # ---------------------------------------------------------------------------
   # list-mode detection
   # ---------------------------------------------------------------------------
@@ -540,9 +542,7 @@ pred_target_grid <- function(object,
   # ---------------------------------------------------------------------------
   # MDA checks: only required when the model was fitted with MDA
   # ---------------------------------------------------------------------------
-  use_mda_obj <- isTRUE(object$use_mda) ||
-    (sth_model && !is.null(object$mda_times) &&
-       length(object$mda_times) > 0 && is.null(object$use_mda))
+  use_mda_obj <- isTRUE(object$use_mda)
 
   needs_mda <- include_mda_effect && use_mda_obj
 
@@ -574,56 +574,8 @@ pred_target_grid <- function(object,
   # ---------------------------------------------------------------------------
   if (is.null(f_target)) {
 
-    if (sth_model) {
-      k_val   <- object$par_hat$k
-      rho_val <- object$par_hat$rho
-      c_rho   <- 1 - exp(-rho_val)
-
-      f_target <- list(
-        prevalence = function(lp) {
-          # P(at least one egg) = 1 - [k/(k + mu_W*(1-exp(-rho)))]^k
-          mu_W <- exp(lp)
-          pr   <- 1 - (k_val / (k_val + mu_W * c_rho))^k_val
-          pmin(pmax(pr, 1e-10), 1 - 1e-10)
-        },
-        worm_burden = function(lp) {
-          exp(lp)
-        },
-        intensity = function(lp) {
-          # Unconditional mean egg count = rho * mu_W
-          rho_val * exp(lp)
-        }
-      )
-
-    } else if (lf_model) {
-      k_val        <- object$par_hat$k
-      rho_val      <- object$par_hat$rho        # per-worm MF detection rate
-      gamma_s      <- object$gamma_sens          # serological test sensitivity
-      c_rho        <- 1 - exp(-rho_val)
-
-      f_target <- list(
-        mf_prevalence = function(lp) {
-          # P(detect >= 1 MF) via NB PGF evaluated at exp(-rho)
-          # = 1 - [k/(k + mu_W*(1-exp(-rho)))]^k
-          mu_W <- exp(lp)
-          pr   <- 1 - (k_val / (k_val + mu_W * c_rho))^k_val
-          pmin(pmax(pr, 1e-10), 1 - 1e-10)
-        },
-        antigen_prevalence = function(lp) {
-          # gamma_sens * P(W > 0)  =  gamma_sens * (1 - [k/(k+mu_W)]^k)
-          mu_W <- exp(lp)
-          pr   <- gamma_s * (1 - (k_val / (k_val + mu_W))^k_val)
-          pmin(pmax(pr, 1e-10), 1 - 1e-10)
-        },
-        worm_burden = function(lp) {
-          exp(lp)
-        }
-      )
-
-    } else {
-      # glgpm / DAST: identity on linear predictor
-      f_target <- list(linear_target = function(x) x)
-    }
+    # glgpm / DAST: identity on linear predictor
+    f_target <- list(linear_target = function(x) x)
   }
 
   # ---------------------------------------------------------------------------
