@@ -2044,8 +2044,8 @@ plot_mda <- function(object,
 #' @noRd
 #'
 check_data <- function(data){
-  stopifnot("'data' must be of class 'sf'", inherits(data, "sf"))
+  stopifnot("'data' must be of class 'sf'" = inherits(data, "sf"))
   all_points <- all(sf::st_geometry_type(data) == "POINT")
-  stopifnot("'data' can only contain point geometry", all_points)
+  stopifnot("'data' can only contain point geometry" = all_points)
   invisible(TRUE)
 }

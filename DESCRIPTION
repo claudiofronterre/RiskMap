@@ -12,7 +12,7 @@ Authors@R:
            family = "Fronterre",
            role = "ctb",
            email = "c.fronterre@bham.ac.uk",
-           comment = c(ORCID = "0000-0001-6723-9727"))),
+           comment = c(ORCID = "0000-0001-6723-9727")),
     person(given = "Simon",
            family = "Smart",
            role = "ctb",
