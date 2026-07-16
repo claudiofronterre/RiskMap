@@ -1,0 +1,76 @@
+---
+title: "An introduction to RiskMap"
+vignette: >
+  %\VignetteIndexEntry{An introduction to RiskMap}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+---
+
+**RiskMap** contains functions for model based geostatistics (MBG).
+MBG takes point based observations and generate predictions across the entire area of interest.
+A comprehensive guide to using the package and MBG in general is available at [https://www.mbgr.org/] but this vignette provides a basic overview of the package's functionality.
+
+## Installation and loading
+
+Install **RiskMap** using:
+
+```r
+install.packages('RiskMap')
+```
+
+or from GitHub using:
+  
+```r
+remotes::install_github("claudiofronterre/RiskMap")
+```
+
+Once installation is complete, load the package with:
+
+```r
+library(RiskMap)
+```
+
+## Datasets
+
+The package contains 11 example datasets. 
+They can be loaded using `data(<dataset>)` e.g. `data(anopheles)`.
+For more information on the datasets use `help(<dataset>)`
+
+- `abund_sma` - Abundance of *Culex pipiens* mosquitos in the Sacramento Metropolitan Area
+- `anopheles` - *Anopheles* mosquitoes in Southern Cameroon
+- `galicia` -  Heavy metal biomonitoring in Galicia
+- `infect_sma` - PCR-tested mosquito pools in the Sacramento Metropolitan Area
+- `italy_sim` - Simulated dataset on the Italian peninsula
+- `liberia` - Counts of riverblindness in Liberia
+- `loaloa` - Prevalence of Loa loa (eyeworm) in West Africa
+- `malkenya` - Surveys of malaria in Kenya
+- `malnutrition` - Malnutrition in Ghana
+- `tz_covariates` - Covariates for prediction of malaria in Tanzania
+<!-- Why have this when tz_malaria contains covariates already? -->
+- `tz_malaria` - Malaria in Tanzania
+
+## Loading data
+
+Datasets need transforming into a simple features (sf) object prior to analysis using `st_as_sf()` from the sf package, supplying the names of the columns containing the spatial coordinates and the coordinate reference system for the coordinates:
+
+```{r}
+data(abund_sma)
+sf_data <- sf::st_as_sf(abund_sma, coords = c("lat", "lon"), crs = sf::st_crs(4326))
+```
+
+## Exploratory data analysis
+
+```{r}
+
+dist_summaries(sf_data)#, scale_to_km = TRUE)
+
+s_variogram(sf_data, "total_females", n_bins = 14)
+
+debug(propose_utm)
+
+propose_utm(sf_data)
+```
+
+
+
+
