@@ -7,8 +7,7 @@
 \method{summary}{RiskMap}(object, ..., conf_level = 0.95)
 }
 \arguments{
-\item{object}{An object of class "RiskMap" from \code{\link{glgpm}} or
-\code{\link{dsgm}}.}
+\item{object}{An object of class "RiskMap" from \code{\link{glgpm}}}
 
 \item{...}{other parameters.}
 
@@ -21,6 +20,5 @@ A list of class \code{"summary.RiskMap"} with parameter estimates,
 \description{
 Provides a \code{summary} method for the "RiskMap" class that
   computes standard errors and confidence intervals for likelihood-based
-  model fits, including DSGM models (STH joint prevalence-intensity and
-  LF multi-diagnostic).
+  model fits
 }

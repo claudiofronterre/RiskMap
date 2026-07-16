@@ -62,15 +62,4 @@ penalty_to_dast <- function(p) {
 
   list(pn, pn_d1, pn_d2, pn_g, pn_g_d1, pn_g_d2)
 }
-##' @title Convert unified penalty to DSGM/TMB format (named scalar list)
-##' @export
-penalty_to_dsgm <- function(p) {
-  out <- list(gamma_type = p$gamma_type,
-              gamma_mean = p$gamma_mean,
-              gamma_sd   = p$gamma_sd)
-  if (!is.null(p$alpha_a)) {
-    out$alpha_param1 <- p$alpha_a
-    out$alpha_param2 <- p$alpha_b
-  }
-  out
-}
+
