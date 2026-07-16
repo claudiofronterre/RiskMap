@@ -3,7 +3,7 @@
 
 ##' @title Prediction of the random effects components and covariates effects over a spatial grid
 ##' @description Computes predictions over a spatial grid using a fitted model from
-##'   \code{\link{glgpm}} or \code{\link{dsgm}}.
+##'   \code{\link{glgpm}}.
 ##' @param object A RiskMap object.
 ##' @param grid_pred An \code{sfc} or \code{sf} of POINT geometries, or a list thereof for joint predictions.
 ##' @param predictors Optional data frame of predictor variables at prediction locations.
@@ -26,14 +26,7 @@ pred_over_grid <- function(object,
                            type = "marginal",
                            messages = TRUE) {
 
-  # ---------------------------------------------------------------------------
-  # FIX 1: resolve par_hat
-  # dsgm objects store parameters in $model_params; glgpm objects use coef()
-  # ---------------------------------------------------------------------------
-  is_dsgm <- !is.null(object$family) &&
-    object$family %in% c("intprev", "lf_mdiag")
-
-  par_hat <- if (is_dsgm) object$model_params else coef(object)
+  par_hat <- coef(object)
 
   # ---------------------------------------------------------------------------
   # grid_pred validation
@@ -236,21 +229,13 @@ pred_over_grid <- function(object,
   # LF:  tau2 may be estimated -> use it
   # glgpm: existing behaviour
   # ---------------------------------------------------------------------------
-  if (is_dsgm) {
-    tau2_val <- par_hat$tau2 %||% 0
-    nu2 <- if (object$family == "intprev" || tau2_val == 0) 1e-10
-    else tau2_val / par_hat$sigma2
-  } else {
     nu2 <- if (!is.null(object$fix_tau2)) object$fix_tau2 / par_hat$sigma2
     else par_hat$tau2 / par_hat$sigma2
     if (nu2 == 0) nu2 <- 1e-10
-  }
   diag(R) <- diag(R) + nu2
 
-  # diff.y only needed for non-dsgm non-Gaussian and Gaussian paths
-  diff.y <- if (!is_dsgm && object$family != "gaussian") NULL
-  else if (!is_dsgm) object$y - mu
-  else NULL
+  diff.y <- if (object$family == "gaussian") object$y - mu
+            else NULL
 
   dast_model <- !is.null(object$power_val)
 
@@ -270,80 +255,7 @@ pred_over_grid <- function(object,
     # -------------------------------------------------------------------------
     # FIX 3, 4, 5: DSGM spatial sampling (STH and LF)
     # -------------------------------------------------------------------------
-    if (is_dsgm) {
-
-      if (messages)
-        message(sprintf("Sampling spatial process for DSGM (%s) using Stan...",
-                        object$family))
-
-      n_samples_stan <- control_sim$n_sim
-      n_warmup_stan  <- control_sim$burnin
-      n_chains_stan  <- control_sim$n_chains %||% 1
-      n_cores_stan   <- control_sim$n_cores  %||% 1
-
-      use_mda <- isTRUE(object$use_mda) ||
-        (object$family == "intprev" &&
-           !is.null(object$mda_times) && length(object$mda_times) > 0)
-
-      if (object$family == "intprev") {
-        par_stan <- list(beta = par_hat$beta, k = par_hat$k, rho = par_hat$rho,
-                         sigma2 = par_hat$sigma2, phi = par_hat$phi)
-        if (use_mda) {
-          par_stan$alpha_W <- par_hat$alpha_W %||% object$fix_alpha_W
-          par_stan$gamma_W <- par_hat$gamma_W %||% object$fix_gamma_W
-        }
-        S_obj <- sample_spatial_process_stan(
-          y_prev            = object$prevalence_data,
-          intensity_data    = object$intensity_data,
-          D                 = object$D,
-          coords            = object$coords,
-          ID_coords         = object$ID_coords,
-          int_mat           = object$int_mat,
-          survey_times_data = object$survey_times_data,
-          mda_times         = object$mda_times,
-          par               = par_stan,
-          n_samples         = n_samples_stan,
-          n_warmup          = n_warmup_stan,
-          n_chains          = n_chains_stan,
-          n_cores           = n_cores_stan,
-          intensity_family  = if (identical(object$intensity_family, "negbin")) 1L else 0L,
-          messages          = messages
-        )
-
-      } else {
-        # lf_mdiag
-        mda_impact <- if (use_mda)
-          compute_mda_effect(object$survey_times_data, object$mda_times, object$int_mat,
-                             par_hat$alpha_W %||% object$fix_alpha_W,
-                             par_hat$gamma_W %||% object$fix_gamma_W, kappa = 1)
-        else
-          rep(1.0, nrow(object$D))
-
-        S_obj <- sample_spatial_process_stan_lf(
-          y_counts   = object$y_counts,
-          units_m    = object$units_m,
-          which_diag = object$which_diag,
-          D          = object$D,
-          coords     = object$coords,
-          ID_coords  = object$ID_coords,
-          par        = list(beta = par_hat$beta, k = par_hat$k, rho = par_hat$rho,
-                            gamma_sens = object$gamma_sens,
-                            sigma2 = par_hat$sigma2, phi = par_hat$phi),
-          mda_impact = mda_impact,
-          n_samples  = n_samples_stan,
-          n_warmup   = n_warmup_stan,
-          n_chains   = n_chains_stan,
-          n_cores    = n_cores_stan,
-          messages   = messages
-        )
-      }
-
-      simulation           <- list()
-      simulation$samples   <- list()
-      simulation$samples$S <- S_obj$S_samples
-      n_samples            <- nrow(S_obj$S_samples)
-
-    } else if (dast_model) {
+    if (dast_model) {
       alpha      <- par_hat$alpha %||% object$fix_alpha
       mda_effect <- compute_mda_effect(object$survey_times_data, object$mda_times,
                                        object$int_mat, alpha, par_hat$gamma,
@@ -531,9 +443,6 @@ pred_over_grid <- function(object,
   if (obs_loc) out$ID_coords <- object$ID_coords
   out$inter_f  <- inter_f
   out$family   <- object$family
-  # Forward gamma_sens for lf_mdiag so pred_target_grid can read it
-  if (is_dsgm && !is.null(object$gamma_sens))
-    out$gamma_sens <- object$gamma_sens
   out$par_hat  <- par_hat
   out$cov_offset <- pred_cov_offset
   out$type     <- type
@@ -614,13 +523,7 @@ pred_target_grid <- function(object,
   if (!inherits(object, "RiskMap.pred.re"))
     stop("'object' must be an output of pred_over_grid()")
 
-  # ---------------------------------------------------------------------------
-  # Model-type flags
-  # ---------------------------------------------------------------------------
-  sth_model  <- isTRUE(object$family == "intprev")
-  lf_model   <- isTRUE(object$family == "lf_mdiag")
-  dsgm_model <- sth_model || lf_model          # any DSGM variant
-  dast_model <- !dsgm_model && !is.null(object$par_hat$gamma)
+  dast_model <- !is.null(object$par_hat$gamma)
 
   # ---------------------------------------------------------------------------
   # list-mode detection
@@ -639,11 +542,9 @@ pred_target_grid <- function(object,
   # ---------------------------------------------------------------------------
   # MDA checks: only required when the model was fitted with MDA
   # ---------------------------------------------------------------------------
-  use_mda_obj <- isTRUE(object$use_mda) ||
-    (sth_model && !is.null(object$mda_times) &&
-       length(object$mda_times) > 0 && is.null(object$use_mda))
+  use_mda_obj <- isTRUE(object$use_mda)
 
-  needs_mda <- (dsgm_model || dast_model) && include_mda_effect && use_mda_obj
+  needs_mda <- include_mda_effect && use_mda_obj
 
   if (needs_mda) {
     if (is.null(mda_grid))
@@ -673,56 +574,8 @@ pred_target_grid <- function(object,
   # ---------------------------------------------------------------------------
   if (is.null(f_target)) {
 
-    if (sth_model) {
-      k_val   <- object$par_hat$k
-      rho_val <- object$par_hat$rho
-      c_rho   <- 1 - exp(-rho_val)
-
-      f_target <- list(
-        prevalence = function(lp) {
-          # P(at least one egg) = 1 - [k/(k + mu_W*(1-exp(-rho)))]^k
-          mu_W <- exp(lp)
-          pr   <- 1 - (k_val / (k_val + mu_W * c_rho))^k_val
-          pmin(pmax(pr, 1e-10), 1 - 1e-10)
-        },
-        worm_burden = function(lp) {
-          exp(lp)
-        },
-        intensity = function(lp) {
-          # Unconditional mean egg count = rho * mu_W
-          rho_val * exp(lp)
-        }
-      )
-
-    } else if (lf_model) {
-      k_val        <- object$par_hat$k
-      rho_val      <- object$par_hat$rho        # per-worm MF detection rate
-      gamma_s      <- object$gamma_sens          # serological test sensitivity
-      c_rho        <- 1 - exp(-rho_val)
-
-      f_target <- list(
-        mf_prevalence = function(lp) {
-          # P(detect >= 1 MF) via NB PGF evaluated at exp(-rho)
-          # = 1 - [k/(k + mu_W*(1-exp(-rho)))]^k
-          mu_W <- exp(lp)
-          pr   <- 1 - (k_val / (k_val + mu_W * c_rho))^k_val
-          pmin(pmax(pr, 1e-10), 1 - 1e-10)
-        },
-        antigen_prevalence = function(lp) {
-          # gamma_sens * P(W > 0)  =  gamma_sens * (1 - [k/(k+mu_W)]^k)
-          mu_W <- exp(lp)
-          pr   <- gamma_s * (1 - (k_val / (k_val + mu_W))^k_val)
-          pmin(pmax(pr, 1e-10), 1 - 1e-10)
-        },
-        worm_burden = function(lp) {
-          exp(lp)
-        }
-      )
-
-    } else {
-      # glgpm / DAST: identity on linear predictor
-      f_target <- list(linear_target = function(x) x)
-    }
+    # glgpm / DAST: identity on linear predictor
+    f_target <- list(linear_target = function(x) x)
   }
 
   # ---------------------------------------------------------------------------
@@ -847,44 +700,10 @@ pred_target_grid <- function(object,
   }
 
   # ---------------------------------------------------------------------------
-  # MDA decay applied on the log scale (DSGM: affects mu_W directly)
-  # DAST: applied *after* transformation — handled in the summary loop below
-  # ---------------------------------------------------------------------------
-  if (dsgm_model && needs_mda) {
-    alpha_mda <- object$par_hat$alpha_W %||% object$fix_alpha_W
-    gamma_mda <- object$par_hat$gamma_W %||% object$fix_gamma_W
-
-    if (list_mode) {
-      for (i in seq_along(lp_samples)) {
-        mda_vals <- compute_mda_effect(
-          rep(time_pred, n_pred[i]),
-          mda_times    = object$mda_times,
-          intervention = mda_grid[[i]],
-          alpha        = alpha_mda,
-          gamma        = gamma_mda,
-          kappa        = 1
-        )
-        lp_samples[[i]] <- lp_samples[[i]] + log(mda_vals)
-      }
-    } else {
-      mda_vals <- compute_mda_effect(
-        rep(time_pred, n_pred),
-        mda_times    = object$mda_times,
-        intervention = mda_grid,
-        alpha        = alpha_mda,
-        gamma        = gamma_mda,
-        kappa        = 1
-      )
-      lp_samples <- lp_samples + log(mda_vals[ID_coords])
-    }
-  }
-
-  # ---------------------------------------------------------------------------
   # Apply f_target transformations + summaries
   # ---------------------------------------------------------------------------
   out <- list()
   out$target  <- list()
-  if (dsgm_model) out$samples <- list()
 
   if (list_mode) {
     group_names <- names(object$grid_pred) %||%
@@ -892,7 +711,6 @@ pred_target_grid <- function(object,
 
     for (i in seq_along(object$grid_pred)) {
       out$target[[group_names[i]]] <- list()
-      if (dsgm_model) out$samples[[group_names[i]]] <- list()
 
       for (fi in seq_len(n_f)) {
         target_mat <- f_target[[fi]](lp_samples[[i]])
@@ -920,10 +738,7 @@ pred_target_grid <- function(object,
         for (si in seq_len(n_summaries))
           out$target[[group_names[i]]][[names_f[fi]]][[names_s[si]]] <-
           apply(target_mat, 1, pd_summary[[si]])
-
-        if (dsgm_model)
-          out$samples[[group_names[i]]][[names_f[fi]]] <- target_mat
-      }
+        }
     }
 
   } else {
@@ -949,9 +764,6 @@ pred_target_grid <- function(object,
       for (si in seq_len(n_summaries))
         out$target[[names_f[fi]]][[names_s[si]]] <-
         apply(target_mat, 1, pd_summary[[si]])
-
-      if (dsgm_model)
-        out$samples[[names_f[fi]]] <- target_mat
     }
   }
 
@@ -963,12 +775,6 @@ pred_target_grid <- function(object,
   out$pd_summary <- names_s
   out$family     <- object$family
   out$lp_samples <- lp_samples
-
-  if (dsgm_model || dast_model) {
-    out$mda_effect_applied <- needs_mda
-    out$time_pred          <- time_pred
-    if (needs_mda) out$mda_grid <- mda_grid
-  }
 
   class(out) <- "RiskMap_pred_target_grid"
   return(out)
