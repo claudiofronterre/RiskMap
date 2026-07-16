@@ -2034,3 +2034,18 @@ plot_mda <- function(object,
 
   return(p)
 }
+
+#' @title check_data
+#' @description
+#'
+#' Check that the data is an sf object only containing points
+#' @param data the data to check
+#' @return TRUE if the data is valid. Raise an error if not.
+#' @noRd
+#'
+check_data <- function(data){
+  stopifnot("'data' must be of class 'sf'", inherits(data, "sf"))
+  all_points <- all(sf::st_geometry_type(data) == "POINT")
+  stopifnot("'data' can only contain point geometry", all_points)
+  invisible(TRUE)
+}
