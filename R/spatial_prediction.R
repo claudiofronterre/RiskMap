@@ -1,6 +1,3 @@
-##' @importFrom stats setNames
-##' @importFrom utils head
-
 ##' @title Prediction of the random effects components and covariates effects over a spatial grid
 ##' @description Computes predictions over a spatial grid using a fitted model from
 ##'   \code{\link{glgpm}}.
@@ -876,7 +873,6 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##' @seealso \code{\link{pred_over_grid}}, \code{\link{pred_target_grid}}
 ##'
 ##' @importFrom terra rast as.data.frame
-##' @importFrom stats plogis
 ##' @export
 pred_target_shp <- function(object, shp, shp_target = mean,
                             weights = NULL, standardize_weights = FALSE,
@@ -1562,7 +1558,6 @@ update_predictors <- function(object, predictors) {
 ##' @importFrom terra match
 ##' @importFrom ggplot2 ggplot geom_sf theme_minimal ggtitle
 ##' @importFrom gridExtra grid.arrange
-##' @importFrom stats ecdf integrate rbinom rpois
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
 ##' @importFrom sf st_as_sfc

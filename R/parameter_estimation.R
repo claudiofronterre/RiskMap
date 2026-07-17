@@ -2843,7 +2843,6 @@ glgpm_nong <-
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @importFrom sns ess
 ##' @importFrom graphics par
-##' @importFrom stats acf
 ##' @export
 check_mcmc <- function(object, check_mean = TRUE,
                        component = NULL, ...) {

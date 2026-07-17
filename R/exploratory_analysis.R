@@ -80,7 +80,6 @@ dist_summaries <- function(data,
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##'
 ##' @importFrom sf st_transform st_coordinates
-##' @importFrom stats dist quantile
 ##' @export
 ##'
 

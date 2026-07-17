@@ -1,11 +1,5 @@
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
-#' @importFrom stats as.formula binomial coef complete.cases
-#' @importFrom stats glm median model.frame model.matrix
-#' @importFrom stats model.response na.fail na.omit nlminb pnorm
-#' @importFrom stats poisson printCoefmat qnorm reformulate rnorm
-#' @importFrom stats runif sd step terms terms.formula update
-
 ##' @title Convex Hull of an sf Object
 ##'
 ##' @description Computes the convex hull of an `sf` object, returning the boundaries of the smallest polygon that can enclose all geometries in the input.
@@ -1088,7 +1082,6 @@ print.summary.RiskMap.spatial.cv <- function(x, ...) {
 ##'
 ##' @importFrom ggplot2 ggplot aes geom_line geom_abline labs theme_minimal guides guide_legend
 ##' @importFrom dplyr   filter group_by summarize %>%
-##' @importFrom stats    ecdf
 ##' @export
 plot_AnPIT <- function(object,
                        mode = "average",

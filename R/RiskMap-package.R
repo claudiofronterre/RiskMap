@@ -3,6 +3,7 @@
 "_PACKAGE"
 
 ##' @keywords internal
+##' @import stats
 ##' @importFrom utils flush.console
 ##' @importFrom graphics points
 ##' @importFrom sf st_nearest_feature
@@ -16,7 +17,6 @@
 ##' @importFrom ggplot2 theme_bw
 ##' @importFrom rlang sym
 ##' @importFrom gridExtra grid.arrange
-##' @importFrom stats plogis
 ##' @importFrom dplyr mutate first
 ##' @importFrom tibble as_tibble
 ##' @importFrom sf st_as_text
