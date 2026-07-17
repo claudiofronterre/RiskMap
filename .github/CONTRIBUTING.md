@@ -19,6 +19,7 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 - Use `snake_case` for function and variable names. Do not use `dot.notation`
 - Where it may not be comprehensible from the code, add comments to explain what is happening, but try to make code self-explanatory through sensible function and variable names.
 - Simple data manipulation should use base R, but for more complex manipulations use dplyr.
+- If using variables present in the data in dplyr, append `.data$` in front of them to avoid generating warnings about undefined variables. See [Programming with dplyr](https://dplyr.tidyverse.org/articles/programming.html) for more details.
 - Outputs should be assigned classes with `class()` and if necessary, assign multiple classes e.g. to model families.
 - The classes should be used in other functions to determine what code to run rather than inspecting objects to see what the contain and inferring from that.
 
