@@ -1,7 +1,9 @@
 Package: RiskMap
-Type: Package
+Version: 1.1.0
 Title: Geostatistical Modeling of Spatially Referenced Data
-Version: 1.0.0
+Description: Geostatistical analysis of continuous and count data.
+  Implements stationary Gaussian processes with Matérn correlation for spatial prediction,
+  as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7).
 Authors@R: 
   c(person(given = "Emanuele",
            family = "Giorgi",
@@ -12,24 +14,19 @@ Authors@R:
            family = "Fronterre",
            role = "ctb",
            email = "c.fronterre@bham.ac.uk",
-           comment = c(ORCID = "0000-0001-6723-9727")))
-Description: Geostatistical analysis of continuous and count data.
-  Implements stationary Gaussian processes with Matérn correlation for spatial prediction,
-  as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7).
-License: MIT + file LICENSE
-Encoding: UTF-8
-LazyData: true
-URL: https://claudiofronterre.github.io/RiskMap/
+           comment = c(ORCID = "0000-0001-6723-9727")),
+    person(given = "Simon",
+           family = "Smart",
+           role = "ctb",
+           comment = c(ORCID = "0000-0002-3624-8951")))
 Depends:
     R (>= 3.5.0)
 Imports:
     Deriv,
     dplyr,
     ggplot2,
-    graphics,
     gridExtra,
     Matrix,
-    methods,
     numDeriv,
     rlang,
     sf,
@@ -37,18 +34,17 @@ Imports:
     spatialEco,
     spatialsample,
     stars,
-    stats,
     terra,
-    TMB,
     tibble,
     xtable
 Suggests:
     bayesplot,
-    cmdstanr,
-    coda,
-    rstan,
     testthat (>= 3.0.0)
-LinkingTo: TMB, RcppEigen
+License: MIT
+Encoding: UTF-8
+LazyData: true
+URL: https://claudiofronterre.github.io/RiskMap/
+BugReports: https://github.com/claudiofronterre/RiskMap/issues
 Config/testthat/edition: 3
-Additional_repositories: https://stan-dev.r-universe.dev
 Config/roxygen2/version: 8.0.0
+Config/roxygen2/markdown: TRUE
