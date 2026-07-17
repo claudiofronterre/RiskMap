@@ -25,7 +25,6 @@
 ##' # Plot the result
 ##' plot(sf_points, col = 'blue', pch = 19)
 ##' plot(convex_hull_result, add = TRUE, border = 'red')
-##' @importFrom sf st_geometry st_convex_hull st_sf st_union
 ##' @export
 convex_hull_sf <- function(sf_object) {
   # Check if the input is an sf object
@@ -99,7 +98,6 @@ elogit <- function(y, m) {
 ##' @author
 ##' Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-##' @importFrom sf st_transform st_coordinates
 ##' @export
 propose_utm <- function (data) {
   if (!inherits(data, "sf"))
@@ -155,7 +153,6 @@ propose_utm <- function (data) {
 ##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
-##' @importFrom sf st_transform st_coordinates
 ##' @export
 matern_cor <- function(u, phi, kappa, return_sym_matrix = FALSE) {
   if (is.vector(u))
@@ -899,7 +896,6 @@ to_table <- function(object, ...) {
 ##' coordinates. It then assigns each row in the input data an identifier corresponding
 ##' to the unique coordinate it matches.
 ##'
-##' @importFrom sf st_coordinates
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##'
@@ -1080,8 +1076,7 @@ print.summary.RiskMap.spatial.cv <- function(x, ...) {
 ##' @return A \pkg{ggplot2} object (single plot) or a \pkg{grid} object
 ##'   from \pkg{gridExtra} (multiple panels).
 ##'
-##' @importFrom ggplot2 ggplot aes geom_line geom_abline labs theme_minimal guides guide_legend
-##' @importFrom dplyr   filter group_by summarize %>%
+##' @importFrom dplyr   group_by summarize %>%
 ##' @export
 plot_AnPIT <- function(object,
                        mode = "average",
@@ -1302,7 +1297,6 @@ plot_score <- function(object, which_score, which_model, ...) {
 ##' A \code{ggplot2} object showing the median estimated MDA impact function
 ##' and the pointwise uncertainty band at the chosen confidence level.
 ##'
-##' @importFrom ggplot2 coord_cartesian geom_ribbon geom_line
 ##' @export
 plot_mda <- function(object,
                      mda_history  = NULL,   # numeric event times (integers, starting at 0) OR 0/1 vector on yearly grid

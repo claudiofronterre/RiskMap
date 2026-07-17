@@ -1319,7 +1319,6 @@ pred_target_shp <- function(object, shp, shp_target = mean,
 ##' \code{\link{pred_target_shp}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
 ##' \code{\link[ggplot2]{aes}}, \code{\link[ggplot2]{scale_fill_distiller}}
 ##'
-##' @importFrom ggplot2 ggplot geom_sf aes scale_fill_distiller
 ##' @method plot RiskMap_pred_target_shp
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
@@ -1556,11 +1555,9 @@ update_predictors <- function(object, predictors) {
 ##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of proper scoring rules. *Statistical Science*, 38(1), 140–159. \doi{10.1214/22-STS864}.
 ##'
 ##' @importFrom terra match
-##' @importFrom ggplot2 ggplot geom_sf theme_minimal ggtitle
 ##' @importFrom gridExtra grid.arrange
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
-##' @importFrom sf st_as_sfc
 ##' @export
 ##' @author Emanuele Giorgi
 assess_pp <- function(object,

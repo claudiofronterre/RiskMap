@@ -50,7 +50,6 @@
 ##' @seealso \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-##' @importFrom sf st_crs st_as_sf st_drop_geometry
 ##' @export
 glgpm <- function(formula,
                  data,
