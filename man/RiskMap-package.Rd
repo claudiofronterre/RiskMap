@@ -12,6 +12,7 @@ Geostatistical analysis of continuous and count data. Implements stationary Gaus
 Useful links:
 \itemize{
   \item \url{https://claudiofronterre.github.io/RiskMap/}
+  \item Report bugs at \url{https://github.com/claudiofronterre/RiskMap/issues}
 }
 
 }

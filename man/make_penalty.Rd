@@ -25,6 +25,12 @@ make_penalty(
 \item{gamma_mean}{description}
 
 \item{gamma_sd}{description}
+
+\item{rho_type}{description}
+
+\item{rho_mean}{description}
+
+\item{rho_sd}{description}
 }
 \description{
 Construct a unified MDA penalty specification
