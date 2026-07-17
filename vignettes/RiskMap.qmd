@@ -55,20 +55,21 @@ Datasets need transforming into a simple features (sf) object prior to analysis 
 
 ```{r}
 data(abund_sma)
-sf_data <- sf::st_as_sf(abund_sma, coords = c("lat", "lon"), crs = sf::st_crs(4326))
+sf_data <- sf::st_as_sf(abund_sma, coords = c("lon", "lat"), crs = sf::st_crs(4326))
+
+plot(sf_data["total_females"])
+
 ```
 
 ## Exploratory data analysis
 
 ```{r}
 
-dist_summaries(sf_data)#, scale_to_km = TRUE)
+dist_summaries(sf_data)
 
-s_variogram(sf_data, "total_females", n_bins = 14)
+plot_s_variogram(s_variogram(sf_data, "total_females", n_bins = 14, n_permutation = 1000))
 
-debug(propose_utm)
 
-propose_utm(sf_data)
 ```
 
 
