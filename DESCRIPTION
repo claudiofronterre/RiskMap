@@ -1,7 +1,9 @@
 Package: RiskMap
-Type: Package
-Title: Geostatistical Modeling of Spatially Referenced Data
 Version: 1.1.0
+Title: Geostatistical Modeling of Spatially Referenced Data
+Description: Geostatistical analysis of continuous and count data.
+  Implements stationary Gaussian processes with Matérn correlation for spatial prediction,
+  as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7).
 Authors@R: 
   c(person(given = "Emanuele",
            family = "Giorgi",
@@ -17,13 +19,6 @@ Authors@R:
            family = "Smart",
            role = "ctb",
            comment = c(ORCID = "0000-0002-3624-8951")))
-Description: Geostatistical analysis of continuous and count data.
-  Implements stationary Gaussian processes with Matérn correlation for spatial prediction,
-  as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7).
-License: MIT + file LICENSE
-Encoding: UTF-8
-LazyData: true
-URL: https://claudiofronterre.github.io/RiskMap/
 Depends:
     R (>= 3.5.0)
 Imports:
@@ -47,8 +42,11 @@ Imports:
     xtable
 Suggests:
     bayesplot,
-    coda,
     testthat (>= 3.0.0)
+License: MIT
+Encoding: UTF-8
+LazyData: true
+URL: https://claudiofronterre.github.io/RiskMap/
+BugReports: https://github.com/claudiofronterre/RiskMap/issues
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.0.0
-RoxygenNote: 7.3.3
