@@ -25,10 +25,8 @@ Imports:
     Deriv,
     dplyr,
     ggplot2,
-    graphics,
     gridExtra,
     Matrix,
-    methods,
     numDeriv,
     rlang,
     sf,
@@ -36,7 +34,6 @@ Imports:
     spatialEco,
     spatialsample,
     stars,
-    stats,
     terra,
     tibble,
     xtable
