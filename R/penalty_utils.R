@@ -1,4 +1,9 @@
 ##' @title Construct a unified MDA penalty specification
+##' @param alpha_a description
+##' @param alpha_b description
+##' @param gamma_type description
+##' @param gamma_mean description
+##' @param gamma_sd description
 ##' @export
 make_penalty <- function(alpha_a    = NULL,
                          alpha_b    = NULL,
@@ -31,6 +36,7 @@ make_penalty <- function(alpha_a    = NULL,
 }
 
 ##' @title Convert unified penalty to DAST format (list of 6 functions)
+##' @param p description
 ##' @export
 penalty_to_dast <- function(p) {
 
