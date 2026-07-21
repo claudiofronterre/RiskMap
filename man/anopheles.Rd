@@ -19,13 +19,13 @@ data(anopheles)
 These data contain 116 georeferenced locations on the counts of Anopheles gambiae and
 Anopheles coluzzii in Southern Cameroon.
 \itemize{
- \item web_x x-coordinate of the spatial locations.
- \item web_y y-coordinate of the spatial locations.
- \item Locality: name of the place of the sampled location.
- \item An.coluzzii: counts of Anopheles coluzzii.
- \item An.gambiae: counts of Anopheles gambiae.
- \item Total: total counts of Anopheles coluzzii and Anopheles gambiae.
- \item elevation: elevation in meters of the sampled location.
+\item web_x x-coordinate of the spatial locations.
+\item web_y y-coordinate of the spatial locations.
+\item Locality: name of the place of the sampled location.
+\item An.coluzzii: counts of Anopheles coluzzii.
+\item An.gambiae: counts of Anopheles gambiae.
+\item Total: total counts of Anopheles coluzzii and Anopheles gambiae.
+\item elevation: elevation in meters of the sampled location.
 }
 The coordinate reference system is 3857.
 }

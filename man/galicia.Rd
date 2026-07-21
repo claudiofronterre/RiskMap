@@ -20,9 +20,9 @@ This data-set relates to two studies on lead concentration
 in moss samples, in micrograms per gram dry weight, collected in Galicia, norther Spain. The data are from two surveys, one conducted in July 2000.
 The variables are as follows:
 \itemize{
- \item x x-coordinate of the spatial locations.
- \item y y-coordinate of the spatial locations.
- \item lead number of tested people for the presence nodules.
+\item x x-coordinate of the spatial locations.
+\item y y-coordinate of the spatial locations.
+\item lead number of tested people for the presence nodules.
 }
 The coordinate reference system of the data is 32629.
 }

@@ -15,18 +15,18 @@ This data-set relates to a study of the prevalence of Loa loa (eyeworm) in a ser
 The variables are as follows:
 
 \itemize{
-  \item ROW row id: 1 to 197.
-  \item VILLCODE village id.
-  \item LONGITUDE Longitude in degrees.
-  \item LATITUDE Latitude in degrees.
-  \item NO_EXAM Number of people tested.
-  \item NO_INF Number of positive test results.
-  \item ELEVATION Height above sea-level in metres.
-  \item MEAN9901 Mean of all NDVI values recorded at village location, 1999-2001
-  \item MAX9901 Maximum of all NDVI values recorded at village location, 1999-2001
-  \item MIN9901 Minimum of all NDVI values recorded at village location, 1999-2001
-  \item MIN9901 Minimum of all NDVI values recorded at village location, 1999-2001
-  \item STDEV9901 standard deviation of all NDVI values recorded at village location, 1999-2001
+\item ROW row id: 1 to 197.
+\item VILLCODE village id.
+\item LONGITUDE Longitude in degrees.
+\item LATITUDE Latitude in degrees.
+\item NO_EXAM Number of people tested.
+\item NO_INF Number of positive test results.
+\item ELEVATION Height above sea-level in metres.
+\item MEAN9901 Mean of all NDVI values recorded at village location, 1999-2001
+\item MAX9901 Maximum of all NDVI values recorded at village location, 1999-2001
+\item MIN9901 Minimum of all NDVI values recorded at village location, 1999-2001
+\item MIN9901 Minimum of all NDVI values recorded at village location, 1999-2001
+\item STDEV9901 standard deviation of all NDVI values recorded at village location, 1999-2001
 }
 }
 \references{

@@ -32,7 +32,7 @@ the breakpoints are generated as \code{seq(0, max_dist, length.out = n_bins + 1)
 By default \code{max_dist = NULL} and the upper lag distance is set to \code{d_max/3},
 where \code{d_max} is the maximum observed distance in the data.}
 
-\item{n_permutation}{a non-negative integer indicating the number of permutation used to compute the 95% confidence
+\item{n_permutation}{a non-negative integer indicating the number of permutation used to compute the 95\% confidence
 level envelope under the assumption of spatial independence. By default \code{n_permutation=0}, and no envelope is generated.}
 
 \item{convert_to_utm}{a logical value, indicating if the conversion to UTM shuold be performed (\code{convert_to_utm = TRUE}) or
@@ -51,7 +51,7 @@ an object of class 'variogram' which is a list containing the following componen
 the middle points of the classes of distance provided by \code{breaks};
 \code{obs_vari} the values of the observed variogram; \code{obs_vari} the number of pairs.
 If \code{n_permutation > 0}, the data-frame also contains \code{lower_bound} and \code{upper_bound}
-corresponding to the lower and upper bounds of the 95% confidence intervals
+corresponding to the lower and upper bounds of the 95\% confidence intervals
 used to assess the departure of the observed variogram from the assumption of spatial independence.
 
 \code{scale_to_km} the value passed to \code{scale_to_km}

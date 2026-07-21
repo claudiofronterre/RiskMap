@@ -30,17 +30,19 @@ or one panel per model (\code{FALSE}, default).}
 }
 \value{
 A \pkg{ggplot2} object (single plot) or a \pkg{grid} object
-  from \pkg{gridExtra} (multiple panels).
+from \pkg{gridExtra} (multiple panels).
 }
 \description{
 Produce calibration plots from a \code{RiskMap.spatial.cv} object returned by
 \code{\link{assess_pp}}.
-* For Binomial or Poisson models the function visualises the
-  \emph{Aggregated normalised Probability Integral Transform} (AnPIT)
-  curves stored in \code{$AnPIT}.
-* For Gaussian models it detects the list \code{$PIT} and instead plots
-  the empirical \emph{Probability Integral Transform} curve
-  (ECDF of PIT values) on the same \eqn{u}-grid.
+\itemize{
+\item For Binomial or Poisson models the function visualises the
+\emph{Aggregated normalised Probability Integral Transform} (AnPIT)
+curves stored in \code{$AnPIT}.
+\item For Gaussian models it detects the list \code{$PIT} and instead plots
+the empirical \emph{Probability Integral Transform} curve
+(ECDF of PIT values) on the same \eqn{u}-grid.
+}
 
 A 45° dashed red line indicates perfect calibration.
 }

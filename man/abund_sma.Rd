@@ -7,12 +7,12 @@
 \format{
 A data frame with one row per collection event (for a total of 1552 collection events) and 6 variables:
 \describe{
-  \item{lon}{Numeric. Longitude in decimal degrees (WGS84).}
-  \item{lat}{Numeric. Latitude in decimal degrees (WGS84).}
-  \item{total_females}{Integer. Total number of female Cx. pipiens captured in the event.}
-  \item{date}{Date. Exact collection date (local).}
-  \item{trap_nights}{Integer. Number of trap-nights for the event.}
-  \item{trap_type}{Character. Acronym for trap type used to collect mosquitoes. These include: \code{"NJLT"} (New Jersey Light Trap), \code{"GRVD"} (Gravid Trap), and \code{"MMT"} (Mosquito Magnet Trap).}
+\item{lon}{Numeric. Longitude in decimal degrees (WGS84).}
+\item{lat}{Numeric. Latitude in decimal degrees (WGS84).}
+\item{total_females}{Integer. Total number of female Cx. pipiens captured in the event.}
+\item{date}{Date. Exact collection date (local).}
+\item{trap_nights}{Integer. Number of trap-nights for the event.}
+\item{trap_type}{Character. Acronym for trap type used to collect mosquitoes. These include: \code{"NJLT"} (New Jersey Light Trap), \code{"GRVD"} (Gravid Trap), and \code{"MMT"} (Mosquito Magnet Trap).}
 }
 }
 \source{

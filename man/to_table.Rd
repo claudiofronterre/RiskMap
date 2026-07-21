@@ -22,16 +22,16 @@ This function creates a summary table from a fitted "RiskMap" model or cross-val
 
 When the input is a "RiskMap" model object, the table includes:
 \itemize{
-  \item Regression coefficients with their estimates, confidence intervals, and p-values.
-  \item Parameters for the spatial process.
-  \item Random effect variances.
-  \item Measurement error variance, if applicable.
+\item Regression coefficients with their estimates, confidence intervals, and p-values.
+\item Parameters for the spatial process.
+\item Random effect variances.
+\item Measurement error variance, if applicable.
 }
 
 When the input is a cross-validation summary object ("summary.RiskMap.spatial.cv"), the table includes:
 \itemize{
-  \item A row for each model being compared.
-  \item Performance metrics such as CRPS and SCRPS for each model.
+\item A row for each model being compared.
+\item Performance metrics such as CRPS and SCRPS for each model.
 }
 
 The resulting \code{xtable} object can be further customized with additional formatting options and printed as a LaTeX or HTML table for reports or publications.
