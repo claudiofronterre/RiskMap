@@ -130,6 +130,8 @@ glgpm <- function(formula,
   y <- as.numeric(model.response(mf))
   n <- length(y)
 
+  if (family == "binomial") check_binomial(y)
+
   # Extract covariates matrix
   D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
 
