@@ -1352,7 +1352,7 @@ plot_mda <- function(object,
   Sigma_par_sroot <- t(chol(Sigma_par))
   par_hat_sim <- t(vapply(
     X   = seq_len(n_sim),
-    FUN = function(i) par_dast + Sigma_par_sroot %*% stats::rnorm(length(ind_dast)),
+    FUN = function(i) par_dast + Sigma_par_sroot %*% rnorm(length(ind_dast)),
     FUN.VALUE = numeric(length(ind_dast))
   ))
 
@@ -1400,9 +1400,9 @@ plot_mda <- function(object,
 
   # --- Summaries ---
   alpha_q <- (1 - conf_level) / 2
-  med   <- apply(effects_mat, 1, stats::median,   na.rm = TRUE)
-  lower <- apply(effects_mat, 1, stats::quantile, probs = alpha_q, na.rm = TRUE)
-  upper <- apply(effects_mat, 1, stats::quantile, probs = 1 - alpha_q, na.rm = TRUE)
+  med   <- apply(effects_mat, 1, median,   na.rm = TRUE)
+  lower <- apply(effects_mat, 1, quantile, probs = alpha_q, na.rm = TRUE)
+  upper <- apply(effects_mat, 1, quantile, probs = 1 - alpha_q, na.rm = TRUE)
 
   in_view <- survey_times >= x_min & survey_times <= x_max
   if (!any(in_view)) in_view <- rep(TRUE, length(survey_times))
@@ -1417,22 +1417,22 @@ plot_mda <- function(object,
     upper  = upper
   )
 
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = time)) +
-    ggplot2::geom_ribbon(ggplot2::aes(ymin = lower, ymax = upper),
+  p <- ggplot(plot_data, aes(x = time)) +
+    geom_ribbon(aes(ymin = lower, ymax = upper),
                          fill = "grey70", alpha = 0.3) +
-    ggplot2::geom_line(ggplot2::aes(y = median),
+    geom_line(aes(y = median),
                        color = "black", linewidth = 1) +
-    ggplot2::labs(
+    labs(
       x = "Years since baseline",
       y = "Relative reduction from baseline prevalence",
       title = "MDA Impact Over Time"
     ) +
-    ggplot2::coord_cartesian(xlim = c(x_min, x_max), ylim = c(lower_f, upper_f)) +
-    ggplot2::theme_minimal()
+    coord_cartesian(xlim = c(x_min, x_max), ylim = c(lower_f, upper_f)) +
+    theme_minimal()
 
   # --- Add vertical dashed lines for MDA times ---
   if (length(mda_times) > 0) {
-    p <- p + ggplot2::geom_vline(xintercept = mda_times,
+    p <- p + geom_vline(xintercept = mda_times,
                                  linetype = "dashed", color = "red", alpha = 0.7)
   }
 
