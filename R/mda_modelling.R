@@ -168,7 +168,7 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##' in modelling MDA impact. These survey times may differ from the GP temporal index.
 ##'
 ##' @param formula A model formula specifying the response variable, predictors, and the GP structure through \code{gp()}.
-##' @param data A \code{data.frame} or \code{sf} object containing the dataset.
+##' @param data An \code{sf} object containing the dataset.
 ##' @param den The denominator for binomial models.
 ##' @param time A variable in \code{data} giving the survey times of observations (required).
 ##' @param mda_times A vector specifying the mass drug administration (MDA) times.
@@ -182,8 +182,6 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##'   for that parameter.
 ##' @param drop Optional value used for fixing the "drop" parameter of the MDA impact function.
 ##' @param power_val Value expressing the power of the MDA impact function.
-##' @param crs Optional coordinate reference system (CRS) for spatial data.
-##' @param convert_to_crs CRS to which spatial data should be converted.
 ##' @param scale_to_km Logical; whether to scale distances to kilometers (default: \code{TRUE}).
 ##' @param control_mcmc A list of MCMC control parameters, typically from \code{set_control_sim()}.
 ##' @param par0 Optional list of initial parameter values.
@@ -250,6 +248,8 @@ dast <- function(formula,
 
   nong <- TRUE
 
+  check_data(data)
+
   if(!inherits(formula,
                what = "formula", which = FALSE)) {
     stop("'formula' must be a 'formula'
@@ -283,37 +283,7 @@ dast <- function(formula,
     stop("Specify gp(x, y), gp(x, y, t), or gp(sf).")
   }
 
-  if(length(crs)>0) {
-    if(!is.numeric(crs) |
-       (is.numeric(crs) &
-        (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
-  }
-  if(inherits(data, "data.frame")) {
-    if(is.null(crs)) {
-      warning("'crs' is set to 4326 (long/lat)")
-      crs <- 4326
-    }
-    if(length(gp_terms)>1 && gp_terms[1] != "sf") {
-      new_x <- paste(gp_terms[1],"_sf",sep="")
-      new_y <- paste(gp_terms[2],"_sf",sep="")
-      data[[new_x]] <-  data[[gp_terms[1]]]
-      data[[new_y]] <-  data[[gp_terms[2]]]
-      data <- sf::st_as_sf(data,
-                           coords = c(new_x, new_y),
-                           crs = crs)
-    }
-  }
 
-  if(length(gp_terms) == 1 & gp_terms[1]=="sf" &
-     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
-
-  if(inherits(data, "sf")) {
-    if(is.na(sf::st_crs(data)) & is.null(crs)) {
-      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(sf::st_crs(data))) {
-      data <- sf::st_as_sf(data, crs = crs)
-    }
-  }
 
   # Build default no-penalty list.
   # [[1]]-[[3]]: alpha penalty and its first/second derivatives.
@@ -640,7 +610,7 @@ dast <- function(formula,
 ##' @param model_fit Optional fitted DAST model object of class \code{RiskMap}.
 ##' If supplied, it overrides model specification arguments.
 ##' @param formula Model formula including a \code{gp()} term.
-##' @param data Data frame or \code{sf} object used for simulation.
+##' @param \code{sf} object used for simulation.
 ##' @param den Binomial denominator variable. If missing, it is assumed to be 1.
 ##' @param time Survey-time information. For simulations from scratch this can be a
 ##' column in \code{data} (unquoted name or character string) or a numeric vector
@@ -649,8 +619,6 @@ dast <- function(formula,
 ##' @param int_mat Intervention matrix (n x length(mda_times)) with coverage values.
 ##' @param power_val Power value for the MDA impact function.
 ##' @param cov_offset Optional offset for the linear predictor.
-##' @param crs Coordinate reference system (CRS) code.
-##' @param convert_to_crs Optional CRS to transform coordinates to before simulation.
 ##' @param scale_to_km Logical; if TRUE distances are computed in kilometers.
 ##' @param sim_pars List of simulation parameters. Used only when \code{model_fit}
 ##' is \code{NULL}. Includes \code{beta}, \code{sigma2}, \code{tau2}, \code{phi},
@@ -671,8 +639,6 @@ dast_sim <- function(n_sim,
                      int_mat = NULL,
                      power_val = NULL,
                      cov_offset = NULL,
-                     crs = NULL,
-                     convert_to_crs = NULL,
                      scale_to_km = TRUE,
                      sim_pars = list(beta = NULL,
                                      sigma2 = NULL,
@@ -693,13 +659,14 @@ dast_sim <- function(n_sim,
     }
     formula <- as.formula(model_fit$formula)
     data <- model_fit$data_sf
-    crs <- model_fit$crs
     convert_to_crs <- model_fit$convert_to_crs
     scale_to_km <- model_fit$scale_to_km
     power_val <- model_fit$power_val
     mda_times <- model_fit$mda_times
     int_mat <- model_fit$int_mat
     time <- model_fit$survey_times_data
+  } else {
+    check_data(data)
   }
 
   if (!inherits(formula, what = "formula", which = FALSE)) {

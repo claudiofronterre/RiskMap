@@ -1,11 +1,10 @@
 ##' @title Estimation of Generalized Linear Gaussian Process Models
 ##' @description Fits generalized linear Gaussian process models to spatial data, incorporating spatial Gaussian processes with a Matern correlation function. Supports Gaussian, binomial, and Poisson response families.
 ##' @param formula A formula object specifying the model to be fitted. The formula should include fixed effects, random effects (specified using \code{re()}), and spatial effects (specified using \code{gp()}).
-##' @param data A data frame or sf object containing the variables in the model.
+##' @param data An sf object containing the variables in the model.
 ##' @param family A character string specifying the distribution of the response variable. Must be one of "gaussian", "binomial", or "poisson".
 ##' @param invlink A function that defines the inverse of the link function for the distribution of the data given the random effects.
 ##' @param den Optional offset for binomial or Poisson distributions. If not provided, defaults to 1 for binomial.
-##' @param crs Optional integer specifying the Coordinate Reference System (CRS) if data is not an sf object. Defaults to 4326 (long/lat).
 ##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates.
 ##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to TRUE.
 ##' @param control_mcmc Control parameters for MCMC sampling. Must be an object of class "mcmc.RiskMap" as returned by \code{\link{set_control_sim}}.
@@ -72,7 +71,6 @@ glgpm <- function(formula,
 
   nong <- family=="binomial" | family=="poisson"
 
-
   if(!inherits(formula,
                what = "formula", which = FALSE)) {
     stop("'formula' must be a 'formula'
@@ -82,39 +80,7 @@ glgpm <- function(formula,
 
   inter_f <- interpret.formula(formula)
 
-  if(length(crs)>0) {
-    if(!is.numeric(crs) |
-       (is.numeric(crs) &
-        (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
-  }
-  if(inherits(data, "data.frame")) {
-    if(is.null(crs)) {
-      warning("'crs' is set to 4326 (long/lat)")
-      crs <- 4326
-    }
-    if(length(inter_f$gp.spec$term)==2) {
-      new_x <- paste(inter_f$gp.spec$term[1],"_sf",sep="")
-      new_y <- paste(inter_f$gp.spec$term[2],"_sf",sep="")
-      data[[new_x]] <-  data[[inter_f$gp.spec$term[1]]]
-      data[[new_y]] <-  data[[inter_f$gp.spec$term[2]]]
-      data <- st_as_sf(data,
-                       coords = c(new_x, new_y),
-                       crs = crs)
-    }
-  }
-
-  if(length(inter_f$gp.spec$term) == 1 & inter_f$gp.spec$term[1]=="sf" &
-     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
-
-
-  if(inherits(data, "sf")) {
-    if(is.na(st_crs(data)) & is.null(crs)) {
-      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(st_crs(data))) {
-      data <- st_as_sf(data, crs = crs)
-    }
-  }
-
+  check_data(data)
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
@@ -1253,7 +1219,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' @param n_sim Number of simulations to perform.
 ##' @param model_fit Fitted GLGPM model object of class 'RiskMap'. If provided, overrides 'formula', 'data', 'family', 'crs', 'convert_to_crs', 'scale_to_km', and 'control_mcmc' arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
-##' @param data Data frame or 'sf' object containing the variables in the model formula.
+##' @param data 'sf' object containing the variables in the model formula.
 ##' @param family Distribution family for the response variable. Must be one of 'gaussian', 'binomial', or 'poisson'.
 ##' @param den Required for 'binomial' to denote the denominator (i.e. number of trials) of the Binomial distribution.
 ##' For the 'poisson' family, the argument is optional and is used a multiplicative term to express the mean counts.
@@ -1311,39 +1277,7 @@ glgpm_sim <- function(n_sim,
                                      model to be fitted")
   }
 
-
-  if(length(crs)>0) {
-    if(!is.numeric(crs) |
-       (is.numeric(crs) &
-        (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
-  }
-  if(inherits(data, "data.frame")) {
-    if(is.null(crs)) {
-      warning("'crs' is set to 4326 (long/lat)")
-      crs <- 4326
-    }
-    if(length(inter_f$gp.spec$term)==2) {
-      new_x <- paste(inter_f$gp.spec$term[1],"_sf",sep="")
-      new_y <- paste(inter_f$gp.spec$term[2],"_sf",sep="")
-      data[[new_x]] <-  data[[inter_f$gp.spec$term[1]]]
-      data[[new_y]] <-  data[[inter_f$gp.spec$term[2]]]
-      data <- st_as_sf(data,
-                       coords = c(new_x, new_y),
-                       crs = crs)
-    }
-  }
-
-  if(length(inter_f$gp.spec$term) == 1 & inter_f$gp.spec$term[1]=="sf" &
-     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
-
-
-  if(inherits(data, "sf")) {
-    if(is.na(st_crs(data)) & is.null(crs)) {
-      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(st_crs(data))) {
-      data <- st_as_sf(data, crs = crs)
-    }
-  }
+  check_data(data)
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")

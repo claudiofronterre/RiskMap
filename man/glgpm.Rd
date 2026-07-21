@@ -26,15 +26,13 @@ glgpm(
 \arguments{
 \item{formula}{A formula object specifying the model to be fitted. The formula should include fixed effects, random effects (specified using \code{re()}), and spatial effects (specified using \code{gp()}).}
 
-\item{data}{A data frame or sf object containing the variables in the model.}
+\item{data}{An sf object containing the variables in the model.}
 
 \item{family}{A character string specifying the distribution of the response variable. Must be one of "gaussian", "binomial", or "poisson".}
 
 \item{invlink}{A function that defines the inverse of the link function for the distribution of the data given the random effects.}
 
 \item{den}{Optional offset for binomial or Poisson distributions. If not provided, defaults to 1 for binomial.}
-
-\item{crs}{Optional integer specifying the Coordinate Reference System (CRS) if data is not an sf object. Defaults to 4326 (long/lat).}
 
 \item{convert_to_crs}{Optional integer specifying a CRS to convert the spatial coordinates.}
 
