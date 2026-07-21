@@ -497,8 +497,8 @@ pred_over_grid <- function(object,
 ##'   (\code{n_pred x n_samples}) and returns a matrix of the same dimensions.
 ##'   Overrides the model-specific defaults described above.
 ##' @param pd_summary Optional named list of summary functions applied
-##'   row-wise to each target matrix (default: mean, median, sd, 2.5\% and
-##'   97.5\% quantiles).
+##'   row-wise to each target matrix (default: mean, median, sd, 2.5% and
+##'   97.5% quantiles).
 ##'
 ##' @return An object of class \code{"RiskMap_pred_target_grid"}.
 ##' @seealso \code{\link{pred_over_grid}}
@@ -2398,7 +2398,7 @@ assess_sim <- function(obj_sim,
 
     # Correctly generate breaks and labels
     breaks <- categories  # Use categories directly as breaks
-    categories_class <- factor(paste0("(", head(categories, -1), ",",
+    categories_class <- factor(paste0("(", utils::head(categories, -1), ",",
                                       categories[-1], "]"))  # Labels to match intervals
 
 

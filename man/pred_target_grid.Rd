@@ -50,8 +50,8 @@ predictor samples. Each function receives a matrix
 Overrides the model-specific defaults described above.}
 
 \item{pd_summary}{Optional named list of summary functions applied
-row-wise to each target matrix (default: mean, median, sd, 2.5\\% and
-97.5\\% quantiles).}
+row-wise to each target matrix (default: mean, median, sd, 2.5\% and
+97.5\% quantiles).}
 }
 \value{
 An object of class \code{"RiskMap_pred_target_grid"}.
