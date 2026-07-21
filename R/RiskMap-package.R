@@ -1,4 +1,20 @@
 #' @keywords internal
-#' @useDynLib RiskMap
-#' @importFrom methods as
 "_PACKAGE"
+
+##' @keywords internal
+##' @import stats
+##' @import sf
+##' @import ggplot2
+##' @importFrom utils flush.console
+##' @importFrom graphics points
+##' @importFrom Deriv Deriv
+##' @importFrom numDeriv grad hessian
+##' @importFrom rlang sym
+##' @importFrom gridExtra grid.arrange
+##' @importFrom dplyr mutate first
+##' @importFrom tibble as_tibble
+NULL
+
+utils::globalVariables(c(
+  "model", "u_val", "value", "geom_id", "time", "sigma2_re",
+  "lo", "hi", "series", "obs", "n_obs"))

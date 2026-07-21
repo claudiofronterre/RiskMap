@@ -23,9 +23,9 @@ plot_mda(
 
 \item{mda_history}{Specification of the MDA schedule. This can be either:
 \itemize{
-  \item A numeric vector of event times (integers starting at 0, e.g. \code{c(0,1,2,6)}),
-  \item OR a 0/1 indicator vector on the yearly grid (e.g. \code{c(1,1,1,0,0,0,1)}),
-  where position \code{i} corresponds to year \code{i-1}.
+\item A numeric vector of event times (integers starting at 0, e.g. \code{c(0,1,2,6)}),
+\item OR a 0/1 indicator vector on the yearly grid (e.g. \code{c(1,1,1,0,0,0,1)}),
+where position \code{i} corresponds to year \code{i-1}.
 }
 If omitted, the default is a single MDA at time 0.}
 

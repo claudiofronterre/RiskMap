@@ -7,16 +7,16 @@
 convex_hull_sf(sf_object)
 }
 \arguments{
-\item{sf_object}{An `sf` data frame object containing geometries.}
+\item{sf_object}{An \code{sf} data frame object containing geometries.}
 }
 \value{
-An `sf` object representing the convex hull of the input geometries.
+An \code{sf} object representing the convex hull of the input geometries.
 }
 \description{
-Computes the convex hull of an `sf` object, returning the boundaries of the smallest polygon that can enclose all geometries in the input.
+Computes the convex hull of an \code{sf} object, returning the boundaries of the smallest polygon that can enclose all geometries in the input.
 }
 \details{
-The convex hull is the smallest convex polygon that encloses all points in the input `sf` object. This function computes the convex hull by first uniting all geometries in the input using `st_union()`, and then applying `st_convex_hull()` to obtain the polygonal boundary. The result is returned as an `sf` object containing the convex hull geometry.
+The convex hull is the smallest convex polygon that encloses all points in the input \code{sf} object. This function computes the convex hull by first uniting all geometries in the input using \code{st_union()}, and then applying \code{st_convex_hull()} to obtain the polygonal boundary. The result is returned as an \code{sf} object containing the convex hull geometry.
 }
 \examples{
 library(sf)

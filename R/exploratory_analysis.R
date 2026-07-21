@@ -79,8 +79,6 @@ dist_summaries <- function(data,
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##'
-##' @importFrom sf st_transform st_coordinates
-##' @importFrom stats dist quantile
 ##' @export
 ##'
 
@@ -183,14 +181,12 @@ s_variogram <- function(data, variable, breaks = NULL,
 ##' @param color If \code{plot_envelope = TRUE}, it sets the colour of the envelope; run \code{vignette("ggplot2-specs")} for more details on this argument.
 ##' @return A \code{ggplot} object representing the empirical variogram plot, optionally including the envelope of spatial independence.
 ##' @details This function plots the empirical variogram, which shows the spatial dependence structure of the data. If \code{plot_envelope} is set to \code{TRUE}, the plot will also include an envelope indicating the range of values under spatial independence, based on a permutation test.
-##' @importFrom methods is
-##' @importFrom ggplot2 ggplot aes aes_string geom_point geom_ribbon geom_line labs
 ##' @seealso \code{\link{s_variogram}}
 ##' @export
 plot_s_variogram <- function(variog_output,
                                    plot_envelope = FALSE,
                                    color = "royalblue1") {
-  if(!is(variog_output, "RiskMap_variogram")) stop("variogram must be an object of class 'RiskMap_variogram'")
+  if(!inherits(variog_output, "RiskMap_variogram")) stop("variogram must be an object of class 'RiskMap_variogram'")
 
   basic_plot <- ggplot(data = variog_output$variogram,
          aes_string(x = "mid_points", y = "obs_vari")) +
