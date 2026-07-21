@@ -1567,7 +1567,7 @@ ppc_dast_dgp <- function(
       obs_v <- pdat$value[pdat$variable == "y"][1]
       rep_v <- pdat$value[pdat$variable != "y"]
       ppp_v <- global_pvals$ppp_two_sided[match(md$pval_stat, global_pvals$stat)]
-      p_stat <- ggplot(data.frame(value = rep_v), aes(x = value)) +
+      p_stat <- ggplot(data.frame(value = rep_v), aes(x = .data$value)) +
         geom_histogram(bins = 30, fill = "#BFD7EA", color = "white") +
         geom_vline(xintercept = obs_v, linewidth = 1.1, color = "#08306B") +
         theme_bw() +
@@ -1588,9 +1588,9 @@ ppc_dast_dgp <- function(
       )
       interval_lab <- sprintf("Simulated %.0f%% interval", 100 * prob)
       p <- ggplot(df, aes(x = !!rlang::sym(xvar))) +
-        geom_ribbon(aes(ymin = lo, ymax = hi, fill = interval_lab), alpha = 0.2) +
-        geom_line(data = df_lines, aes(y = value, color = series, linetype = series), linewidth = 0.8) +
-        geom_point(data = df_lines[df_lines$series == "Observed", , drop = FALSE], aes(y = value, color = series), size = point_size) +
+        geom_ribbon(aes(ymin = .data$lo, ymax = .data$hi, fill = interval_lab), alpha = 0.2) +
+        geom_line(data = df_lines, aes(y = .data$value, color = .data$series, linetype = .data$series), linewidth = 0.8) +
+        geom_point(data = df_lines[df_lines$series == "Observed", , drop = FALSE], aes(y = .data$value, color = .data$series), size = point_size) +
         scale_color_manual(values = c("Observed" = "black", "Simulated median" = "#1f78b4"), name = NULL) +
         scale_linetype_manual(values = c("Observed" = "solid", "Simulated median" = "dashed"), name = NULL) +
         scale_fill_manual(values = stats::setNames("#4F93D2", interval_lab), name = NULL) +
@@ -1608,9 +1608,9 @@ ppc_dast_dgp <- function(
     make_iu_forest_plot <- function(df, title_str, facet = FALSE, facet_var = "estimand") {
       interval_lab <- sprintf("Simulated %.0f%% interval", 100 * prob)
       p <- ggplot(df, aes(y = rank)) +
-        ggplot2::geom_linerange(aes(xmin = lo, xmax = hi, color = interval_lab), linewidth = 0.65) +
-        geom_point(aes(x = md, color = "Simulated median"), shape = 124, size = 3.2) +
-        geom_point(aes(x = obs, fill = n_obs, color = "Observed"), shape = 21, size = 2.2, stroke = 0.25, alpha = 0.72) +
+        ggplot2::geom_linerange(aes(xmin = .data$lo, xmax = .data$hi, color = interval_lab), linewidth = 0.65) +
+        geom_point(aes(x = .data$md, color = "Simulated median"), shape = 124, size = 3.2) +
+        geom_point(aes(x = .data$obs, fill = .data$n_obs, color = "Observed"), shape = 21, size = 2.2, stroke = 0.25, alpha = 0.72) +
         scale_color_manual(
           values = c("Observed" = "black", "Simulated median" = "black", stats::setNames("grey20", interval_lab)),
           breaks = c(interval_lab, "Observed", "Simulated median"),
@@ -2363,7 +2363,7 @@ dast_fit <-
         g_vec <- c(g_vec, grad_lgamma)
 
         if (n_re > 0) {
-          grad_ls2re <- sapply(seq_len(n_re), function(i)
+          grad_ls2re <- sapply(seq_len(n_re), function(i, sigma2_re)
             (-n_dim_re[i]/(2*sigma2_re[i]) + 0.5*sum(S_re_list[[i]]^2)/sigma2_re[i]^2)*sigma2_re[i]
           )
           g_vec <- c(g_vec, grad_ls2re)

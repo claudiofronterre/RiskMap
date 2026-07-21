@@ -1140,11 +1140,11 @@ plot_AnPIT <- function(object,
 
   if (mode == "average" && combine_panels) {
     avg <- plot_data %>%
-      dplyr::group_by(model, u_val) %>%
-      dplyr::summarize(value = mean(value), .groups = "drop")
+      dplyr::group_by(.data$model, .data$u_val) %>%
+      dplyr::summarize(value = mean(.data$value), .groups = "drop")
 
     return(
-      ggplot(avg, aes(u_val, value, colour = model)) +
+      ggplot(avg, aes(.data$u_val, .data$value, colour = .data$model)) +
         geom_line() + id_line +
         labs(title = "Average calibration curves",
              x = "", y = y_label) +
@@ -1154,7 +1154,7 @@ plot_AnPIT <- function(object,
   }
 
   build_plot <- function(df, title_suffix = "") {
-    ggplot(df, aes(u_val, value,
+    ggplot(df, aes(.data$u_val, .data$value,
                    colour = if (mode == "all") as.factor(test_set) else NULL)) +
       geom_line() + id_line +
       labs(title = title_suffix, x = "", y = unique(df$type)) +
@@ -1164,13 +1164,13 @@ plot_AnPIT <- function(object,
 
   plots <- list()
   for (mname in all_models) {
-    df_model <- dplyr::filter(plot_data, model == mname)
+    df_model <- dplyr::filter(plot_data, .data$model == mname)
 
     p <- switch(mode,
                 average = {
                   avg <- df_model %>%
-                    dplyr::group_by(u_val) %>%
-                    dplyr::summarize(value = mean(value), .groups = "drop")
+                    dplyr::group_by(.data$u_val) %>%
+                    dplyr::summarize(value = mean(.data$value), .groups = "drop")
                   avg$type <- unique(df_model$type)
                   build_plot(avg, paste("Model", mname, ": average"))
                 },
@@ -1215,8 +1215,6 @@ plot_AnPIT <- function(object,
 ##' @return A ggplot object visualizing the spatial distribution of the specified score.
 ##' @export
 plot_score <- function(object, which_score, which_model, ...) {
-  geometry <- NULL
-  score <- NULL
 
   # Check if "which_score" exists
   if (!which_score %in% names(object$model[[which_model]]$score)) {
@@ -1240,16 +1238,16 @@ plot_score <- function(object, which_score, which_model, ...) {
 
   # Check for duplicate locations and average the score
   data_full <- data_full %>%
-    mutate(geom_id = st_as_text(geometry)) %>%
-    group_by(geom_id) %>%
-    summarize(score = mean(score, na.rm = TRUE),
-              geometry = first(geometry), .groups = "drop") %>%
+    mutate(geom_id = st_as_text(.data$geometry)) %>%
+    group_by(.data$geom_id) %>%
+    summarize(score = mean(.data$score, na.rm = TRUE),
+              geometry = first(.data$geometry), .groups = "drop") %>%
     st_as_sf()
 
 
   # Create the base plot
   out <- ggplot(data = data_full) +
-    geom_sf(aes(color = score), size = 2) +
+    geom_sf(aes(color = .data$score), size = 2) +
     ggtitle(paste("Visualizing", which_score, "for model", which_model)) +
     theme_minimal()
 
