@@ -494,11 +494,11 @@ coef.RiskMap <- function(object, ...) {
   res$sigma2 <- as.numeric(object$estimate[ind_sigma2])
   res$phi    <- as.numeric(object$estimate[ind_phi])
   if (object$family == "gaussian" && !is.null(ind_sigma2_me))
-    res$sigma2_me <- as.numeric(exp(object$estimate[ind_sigma2_me]))
+    res$sigma2_me <- exp(as.numeric(object$estimate[ind_sigma2_me]))
   if (!is.null(ind_tau2))
     res$tau2 <- object$estimate[ind_tau2]
   if (n_re > 0)
-    res$sigma2_re <- as.numeric(object$estimate[ind_sigma2_re])
+    res$sigma2_re <- exp(as.numeric(object$estimate[ind_sigma2_re]))
 
   dast_model <- !is.null(object$power_val)
   if (dast_model) {
