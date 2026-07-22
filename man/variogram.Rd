@@ -47,15 +47,15 @@ to kilometers (\code{scale_to_km = TRUE}) or left in meters (\code{scale_to_km =
 By default \code{scale_to_km = FALSE}}
 }
 \value{
-an object of class 'RiskMap_variogram' which is a list containing the following components:
+an object of class \code{RiskMap_variogram} which is a list containing the following components:
 \item{variogram}{a data-frame containing the following columns: \code{mid_points},
 the middle points of the classes of distance provided by \code{breaks};
 \code{obs_vari} the values of the observed variogram; \code{obs_vari} the number of pairs.
 If \code{n_permutations > 0}, the data-frame also contains \code{lower_bound} and \code{upper_bound}
 corresponding to the lower and upper bounds of the 95\% confidence intervals
 used to assess the departure of the observed variogram from the assumption of spatial independence.}
-\item {scale_to_km}{the value passed to \code{scale_to_km}}
-\item {n_permutations}{the number of permutations}
+\item{scale_to_km}{the value passed to \code{scale_to_km}}
+\item{n_permutations}{the number of permutations}
 }
 \description{
 Computes the empirical variogram using lag-distance breakpoints.
