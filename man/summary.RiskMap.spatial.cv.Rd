@@ -7,17 +7,17 @@
 \method{summary}{RiskMap.spatial.cv}(object, view_all = TRUE, ...)
 }
 \arguments{
-\item{object}{A `RiskMap.spatial.cv` object containing cross-validation scores for each
+\item{object}{A \code{RiskMap.spatial.cv} object containing cross-validation scores for each
 model, as obtained from \code{\link{assess_pp}}.}
 
-\item{view_all}{Logical. If `TRUE`, stores the average scores across test sets for each
-model alongside the overall average across all models. Defaults to `TRUE`.}
+\item{view_all}{Logical. If \code{TRUE}, stores the average scores across test sets for each
+model alongside the overall average across all models. Defaults to \code{TRUE}.}
 
 \item{...}{Additional arguments passed to or from other methods.}
 }
 \value{
 A matrix of summary scores with models as rows and metrics as columns, with class
-`"summary.RiskMap.spatial.cv"`.
+\code{"summary.RiskMap.spatial.cv"}.
 }
 \description{
 This function summarizes cross-validation scores for different spatial models obtained
@@ -28,9 +28,9 @@ The function computes and returns a matrix where rows correspond to models and c
 correspond to performance metrics (e.g., CRPS, SCRPS). Scores are weighted by subset sizes
 to compute averages. Attributes of the returned object include:
 \itemize{
-  \item `test_set_means`: A list of average scores for each test set and model.
-  \item `overall_averages`: Overall averages for each metric across all models.
-  \item `view_all`: Indicates whether averages across test sets are available for visualization.
+\item \code{test_set_means}: A list of average scores for each test set and model.
+\item \code{overall_averages}: Overall averages for each metric across all models.
+\item \code{view_all}: Indicates whether averages across test sets are available for visualization.
 }
 }
 \seealso{

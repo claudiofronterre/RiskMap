@@ -15,6 +15,23 @@ make_penalty(
   rho_sd = NULL
 )
 }
+\arguments{
+\item{alpha_a}{description}
+
+\item{alpha_b}{description}
+
+\item{gamma_type}{description}
+
+\item{gamma_mean}{description}
+
+\item{gamma_sd}{description}
+
+\item{rho_type}{description}
+
+\item{rho_mean}{description}
+
+\item{rho_sd}{description}
+}
 \description{
 Construct a unified MDA penalty specification
 }

@@ -298,7 +298,7 @@ dast <- function(formula,
       new_y <- paste(gp_terms[2],"_sf",sep="")
       data[[new_x]] <-  data[[gp_terms[1]]]
       data[[new_y]] <-  data[[gp_terms[2]]]
-      data <- sf::st_as_sf(data,
+      data <- st_as_sf(data,
                            coords = c(new_x, new_y),
                            crs = crs)
     }
@@ -308,10 +308,10 @@ dast <- function(formula,
      !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
 
   if(inherits(data, "sf")) {
-    if(is.na(sf::st_crs(data)) & is.null(crs)) {
+    if(is.na(st_crs(data)) & is.null(crs)) {
       stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(sf::st_crs(data))) {
-      data <- sf::st_as_sf(data, crs = crs)
+    } else if(is.na(st_crs(data))) {
+      data <- st_as_sf(data, crs = crs)
     }
   }
 
@@ -400,7 +400,7 @@ dast <- function(formula,
 
   if(!is.null(hr_re)) {
     # Define indices of random effects
-    re_mf <- sf::st_drop_geometry(data[hr_re])
+    re_mf <- st_drop_geometry(data[hr_re])
     re_mf_n <- re_mf
 
     if(any(is.na(re_mf))) stop("Missing values in the variable(s) of the random effects specified through re() ")
@@ -436,13 +436,13 @@ dast <- function(formula,
   # Extract coordinates
   if(!is.null(convert_to_crs)) {
     if(!is.numeric(convert_to_crs)) stop("'convert_to_utm' must be a numeric object")
-    data <- sf::st_transform(data, crs = convert_to_crs)
+    data <- st_transform(data, crs = convert_to_crs)
     crs <- convert_to_crs
   }
 
-  if(messages) message("The CRS used is ", as.list(sf::st_crs(data))$input, "\n")
+  if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
-  coords_o <- sf::st_coordinates(data)
+  coords_o <- st_coordinates(data)
   if(sst) {
     coords_time <- unique(cbind(coords_o, gp_time_obs))
     coords <- coords_time[,1:2, drop = FALSE]
@@ -487,7 +487,7 @@ dast <- function(formula,
     if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
     glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
                       data = aux_data, family = binomial)
-    start_pars$beta <- stats::coef(glm_fitted)
+    start_pars$beta <- coef(glm_fitted)
   }
 
   if(is.null(start_pars$gamma) | (is.null(drop) & is.null(start_pars$alpha)) ) {
@@ -513,7 +513,7 @@ dast <- function(formula,
   }
 
   if(is.null(start_pars$phi)) {
-    start_pars$phi <- stats::quantile(stats::dist(coords),0.1)
+    start_pars$phi <- quantile(dist(coords),0.1)
   } else {
     if(start_pars$phi<0) stop("the starting value for phi must be positive")
   }
@@ -530,7 +530,7 @@ dast <- function(formula,
       # base distances from GP time index (not survey time)
       psi_base <- as.numeric(unique(gp_time_obs))
       if (length(psi_base) > 1) {
-        start_pars$psi <- stats::quantile(stats::dist(psi_base), 0.1)
+        start_pars$psi <- quantile(dist(psi_base), 0.1)
       } else {
         start_pars$psi <- 1
       }
@@ -601,7 +601,7 @@ dast <- function(formula,
   if(!is.null(convert_to_crs)) {
     crs <- convert_to_crs
   } else {
-    crs <- sf::st_crs(data)$input
+    crs <- st_crs(data)$input
   }
   if(no_penalty) {
     res$penalty <- NULL
@@ -620,7 +620,7 @@ dast <- function(formula,
 
   invlink <- NULL
   if (is.null(invlink)) {
-    inv <- function(eta) stats::plogis(eta)
+    inv <- function(eta) plogis(eta)
     d1  <- function(eta) { p <- inv(eta); p * (1 - p) }
     d2  <- function(eta) { p <- inv(eta); d <- p * (1 - 2 * p) }
     invlink <- list(inv = inv, d1 = d1, d2 = d2, name = "canonical")
@@ -766,7 +766,7 @@ dast_sim <- function(n_sim,
       new_y <- paste(gp_terms[2],"_sf",sep="")
       data[[new_x]] <-  data[[gp_terms[1]]]
       data[[new_y]] <-  data[[gp_terms[2]]]
-      data <- sf::st_as_sf(data,
+      data <- st_as_sf(data,
                            coords = c(new_x, new_y),
                            crs = crs)
     }
@@ -776,10 +776,10 @@ dast_sim <- function(n_sim,
      !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
 
   if(inherits(data, "sf")) {
-    if(is.na(sf::st_crs(data)) & is.null(crs)) {
+    if(is.na(st_crs(data)) & is.null(crs)) {
       stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(sf::st_crs(data))) {
-      data <- sf::st_as_sf(data, crs = crs)
+    } else if(is.na(st_crs(data))) {
+      data <- st_as_sf(data, crs = crs)
     }
   }
 
@@ -837,7 +837,7 @@ dast_sim <- function(n_sim,
   }
 
   if(!is.null(hr_re)) {
-    re_mf <- sf::st_drop_geometry(data[hr_re])
+    re_mf <- st_drop_geometry(data[hr_re])
     re_mf_n <- re_mf
 
     if(any(is.na(re_mf))) stop("Missing values in the variable(s) of the random effects specified through re()")
@@ -871,13 +871,13 @@ dast_sim <- function(n_sim,
 
   if(!is.null(convert_to_crs)) {
     if(!is.numeric(convert_to_crs)) stop("'convert_to_crs' must be a numeric object")
-    data <- sf::st_transform(data, crs = convert_to_crs)
+    data <- st_transform(data, crs = convert_to_crs)
     crs <- convert_to_crs
   }
 
-  if(messages) message("The CRS used is ", as.list(sf::st_crs(data))$input, "\n")
+  if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
-  coords_o <- sf::st_coordinates(data)
+  coords_o <- st_coordinates(data)
   if(sst) {
     coords_time <- unique(cbind(coords_o, gp_time_obs))
     coords <- coords_time[,1:2, drop = FALSE]
@@ -993,9 +993,9 @@ dast_sim <- function(n_sim,
 
   y_sim <- matrix(NA, nrow = n_sim, ncol = n)
   for(i in 1:n_sim) {
-    prob_i <- stats::plogis(eta_sim[i,]) * mda_effect
+    prob_i <- plogis(eta_sim[i,]) * mda_effect
     prob_i <- pmax(0, pmin(prob_i, 1))
-    y_sim[i,] <- stats::rbinom(n = n, size = units_m, prob = prob_i)
+    y_sim[i,] <- rbinom(n = n, size = units_m, prob = prob_i)
   }
 
   data_sim <- t(y_sim)
@@ -1190,7 +1190,7 @@ ppc_dast_dgp <- function(
 
   safe_var <- function(x) {
     if (length(x) <= 1) return(0)
-    stats::var(x)
+    var(x)
   }
   assert_all_finite <- function(x, label) {
     if (any(!is.finite(x))) {
@@ -1202,7 +1202,7 @@ ppc_dast_dgp <- function(
   ppp_two_sided <- function(T_rep, T_obs) {
     T_rep <- T_rep[is.finite(T_rep)]
     if (length(T_rep) == 0 || !is.finite(T_obs)) return(NA_real_)
-    med <- stats::median(T_rep)
+    med <- median(T_rep)
     mean(abs(T_rep - med) >= abs(T_obs - med))
   }
 
@@ -1248,8 +1248,8 @@ ppc_dast_dgp <- function(
   T_maxabsz_rep <- apply(yrep, 1, function(yr) max(abs((yr - mu_i) / sqrt(v_i))))
 
   alpha <- 1 - prob
-  q_lo <- apply(yrep, 2, stats::quantile, probs = alpha / 2, type = 8)
-  q_hi <- apply(yrep, 2, stats::quantile, probs = 1 - alpha / 2, type = 8)
+  q_lo <- apply(yrep, 2, quantile, probs = alpha / 2, type = 8)
+  q_hi <- apply(yrep, 2, quantile, probs = 1 - alpha / 2, type = 8)
   T_cov_obs <- mean(y_obs >= q_lo & y_obs <= q_hi)
   T_cov_rep <- apply(yrep, 1, function(yr) mean(yr >= q_lo & yr <= q_hi))
 
@@ -1267,7 +1267,7 @@ ppc_dast_dgp <- function(
   rand_pit_i <- function(y_i, sims_i) {
     Fy <- mean(sims_i <= y_i)
     Fym <- if (y_i <= 0) 0 else mean(sims_i <= (y_i - 1))
-    Fym + stats::runif(1) * (Fy - Fym)
+    Fym + runif(1) * (Fy - Fym)
   }
   pit <- vapply(seq_len(n), function(i) rand_pit_i(y_obs[i], y_sim[i, ]), numeric(1))
 
@@ -1302,9 +1302,9 @@ ppc_dast_dgp <- function(
     rep_traj_est <- t(apply(yrep_ord, 1, function(yr) prevalence_by_stratum(yr, m_ord, year_ord, yrs, est)))
     if (is.null(dim(rep_traj_est))) rep_traj_est <- matrix(rep_traj_est, nrow = nsim)
 
-    rep_lo_est <- apply(rep_traj_est, 2, stats::quantile, probs = alpha / 2, type = 8, na.rm = TRUE)
-    rep_md_est <- apply(rep_traj_est, 2, stats::quantile, probs = 0.5, type = 8, na.rm = TRUE)
-    rep_hi_est <- apply(rep_traj_est, 2, stats::quantile, probs = 1 - alpha / 2, type = 8, na.rm = TRUE)
+    rep_lo_est <- apply(rep_traj_est, 2, quantile, probs = alpha / 2, type = 8, na.rm = TRUE)
+    rep_md_est <- apply(rep_traj_est, 2, quantile, probs = 0.5, type = 8, na.rm = TRUE)
+    rep_hi_est <- apply(rep_traj_est, 2, quantile, probs = 1 - alpha / 2, type = 8, na.rm = TRUE)
 
     T_year_sse_obs_est <- sum((obs_traj_est - rep_md_est)^2, na.rm = TRUE)
     T_year_sse_rep_est <- apply(rep_traj_est, 1, function(tr) sum((tr - rep_md_est)^2, na.rm = TRUE))
@@ -1312,7 +1312,7 @@ ppc_dast_dgp <- function(
     d_obs_est <- diff(obs_traj_est)
     d_rep_est <- t(apply(rep_traj_est, 1, diff))
     if (is.null(dim(d_rep_est))) d_rep_est <- matrix(d_rep_est, nrow = nsim)
-    d_md_est <- apply(d_rep_est, 2, stats::quantile, probs = 0.5, type = 8, na.rm = TRUE)
+    d_md_est <- apply(d_rep_est, 2, quantile, probs = 0.5, type = 8, na.rm = TRUE)
 
     T_year_diff_sse_obs_est <- sum((d_obs_est - d_md_est)^2, na.rm = TRUE)
     T_year_diff_sse_rep_est <- apply(d_rep_est, 1, function(dr) sum((dr - d_md_est)^2, na.rm = TRUE))
@@ -1392,9 +1392,9 @@ ppc_dast_dgp <- function(
       if (is.null(dim(rep_iu_mean_est))) rep_iu_mean_est <- matrix(rep_iu_mean_est, nrow = nsim)
       assert_all_finite(obs_iu_mean_est, paste0("IU observed mean prevalence (", est, ")"))
       assert_all_finite(rep_iu_mean_est, paste0("IU replicated mean prevalence (", est, ")"))
-      iu_lo_est <- apply(rep_iu_mean_est, 2, stats::quantile, probs = alpha / 2, type = 8)
-      iu_md_est <- apply(rep_iu_mean_est, 2, stats::quantile, probs = 0.5, type = 8)
-      iu_hi_est <- apply(rep_iu_mean_est, 2, stats::quantile, probs = 1 - alpha / 2, type = 8)
+      iu_lo_est <- apply(rep_iu_mean_est, 2, quantile, probs = alpha / 2, type = 8)
+      iu_md_est <- apply(rep_iu_mean_est, 2, quantile, probs = 0.5, type = 8)
+      iu_hi_est <- apply(rep_iu_mean_est, 2, quantile, probs = 1 - alpha / 2, type = 8)
       assert_all_finite(iu_lo_est, paste0("IU replicated lower quantile (", est, ")"))
       assert_all_finite(iu_md_est, paste0("IU replicated median (", est, ")"))
       assert_all_finite(iu_hi_est, paste0("IU replicated upper quantile (", est, ")"))
@@ -1444,7 +1444,7 @@ ppc_dast_dgp <- function(
       if (is.null(dim(rep_cell_est))) rep_cell_est <- matrix(rep_cell_est, nrow = nsim)
       assert_all_finite(obs_cell_est, paste0("IU-year observed prevalence (", est, ")"))
       assert_all_finite(rep_cell_est, paste0("IU-year replicated prevalence (", est, ")"))
-      cell_md_est <- apply(rep_cell_est, 2, stats::quantile, probs = 0.5, type = 8)
+      cell_md_est <- apply(rep_cell_est, 2, quantile, probs = 0.5, type = 8)
       assert_all_finite(cell_md_est, paste0("IU-year replicated median (", est, ")"))
       T_cell_sse_obs_est <- sum((obs_cell_est - cell_md_est)^2)
       T_cell_sse_rep_est <- apply(rep_cell_est, 1, function(v) sum((v - cell_md_est)^2))
@@ -1475,7 +1475,7 @@ ppc_dast_dgp <- function(
 
   iu_module <- list(
     iu_keep = iu_keep,
-    iu_tot_m = stats::setNames(iu_support$total_m, iu_support$iu_id)[iu_keep],
+    iu_tot_m = setNames(iu_support$total_m, iu_support$iu_id)[iu_keep],
     cell_keep = cell_keep,
     iu_support = iu_support,
     diagnostics = iu_diagnostics,
@@ -1546,7 +1546,7 @@ ppc_dast_dgp <- function(
       list(key = "unweighted_mean_prev", label = "Unweighted mean prevalence", pval_stat = "unweighted_mean_prev", pct = TRUE,
            fun = function(z) mean(z / m)),
       list(key = "var_prev", label = "Variance of prevalence", pval_stat = "var_prev", pct = TRUE,
-           fun = function(z) stats::var(z / m)),
+           fun = function(z) var(z / m)),
       list(key = "zero_fraction_counts", label = "Zero fraction (counts)", pval_stat = "zero_fraction_counts", pct = TRUE,
            fun = function(z) mean(z == 0)),
       list(key = "zeroish_prev_le_0_01", label = "Zeroish prevalence <= 0.01", pval_stat = "zeroish_prev<=0.01", pct = TRUE,
@@ -1567,7 +1567,7 @@ ppc_dast_dgp <- function(
       obs_v <- pdat$value[pdat$variable == "y"][1]
       rep_v <- pdat$value[pdat$variable != "y"]
       ppp_v <- global_pvals$ppp_two_sided[match(md$pval_stat, global_pvals$stat)]
-      p_stat <- ggplot(data.frame(value = rep_v), aes(x = value)) +
+      p_stat <- ggplot(data.frame(value = rep_v), aes(x = .data$value)) +
         geom_histogram(bins = 30, fill = "#BFD7EA", color = "white") +
         geom_vline(xintercept = obs_v, linewidth = 1.1, color = "#08306B") +
         theme_bw() +
@@ -1588,12 +1588,12 @@ ppc_dast_dgp <- function(
       )
       interval_lab <- sprintf("Simulated %.0f%% interval", 100 * prob)
       p <- ggplot(df, aes(x = !!rlang::sym(xvar))) +
-        geom_ribbon(aes(ymin = lo, ymax = hi, fill = interval_lab), alpha = 0.2) +
-        geom_line(data = df_lines, aes(y = value, color = series, linetype = series), linewidth = 0.8) +
-        geom_point(data = df_lines[df_lines$series == "Observed", , drop = FALSE], aes(y = value, color = series), size = point_size) +
+        geom_ribbon(aes(ymin = .data$lo, ymax = .data$hi, fill = interval_lab), alpha = 0.2) +
+        geom_line(data = df_lines, aes(y = .data$value, color = .data$series, linetype = .data$series), linewidth = 0.8) +
+        geom_point(data = df_lines[df_lines$series == "Observed", , drop = FALSE], aes(y = .data$value, color = .data$series), size = point_size) +
         scale_color_manual(values = c("Observed" = "black", "Simulated median" = "#1f78b4"), name = NULL) +
         scale_linetype_manual(values = c("Observed" = "solid", "Simulated median" = "dashed"), name = NULL) +
-        scale_fill_manual(values = stats::setNames("#4F93D2", interval_lab), name = NULL) +
+        scale_fill_manual(values = setNames("#4F93D2", interval_lab), name = NULL) +
         guides(fill = guide_legend(order = 1), color = guide_legend(order = 2), linetype = guide_legend(order = 2)) +
         scale_y_continuous(labels = pct_lab) +
         labs(x = xlabel, y = ylabel, title = title_str) +
@@ -1608,15 +1608,15 @@ ppc_dast_dgp <- function(
     make_iu_forest_plot <- function(df, title_str, facet = FALSE, facet_var = "estimand") {
       interval_lab <- sprintf("Simulated %.0f%% interval", 100 * prob)
       p <- ggplot(df, aes(y = rank)) +
-        ggplot2::geom_linerange(aes(xmin = lo, xmax = hi, color = interval_lab), linewidth = 0.65) +
-        geom_point(aes(x = md, color = "Simulated median"), shape = 124, size = 3.2) +
-        geom_point(aes(x = obs, fill = n_obs, color = "Observed"), shape = 21, size = 2.2, stroke = 0.25, alpha = 0.72) +
+        geom_linerange(aes(xmin = .data$lo, xmax = .data$hi, color = interval_lab), linewidth = 0.65) +
+        geom_point(aes(x = .data$md, color = "Simulated median"), shape = 124, size = 3.2) +
+        geom_point(aes(x = .data$obs, fill = .data$n_obs, color = "Observed"), shape = 21, size = 2.2, stroke = 0.25, alpha = 0.72) +
         scale_color_manual(
-          values = c("Observed" = "black", "Simulated median" = "black", stats::setNames("grey20", interval_lab)),
+          values = c("Observed" = "black", "Simulated median" = "black", setNames("grey20", interval_lab)),
           breaks = c(interval_lab, "Observed", "Simulated median"),
           name = NULL
         ) +
-        ggplot2::scale_fill_gradient(name = "Number of surveys (n)", low = "#DCEAF7", high = "#0B4F8A") +
+        scale_fill_gradient(name = "Number of surveys (n)", low = "#DCEAF7", high = "#0B4F8A") +
         scale_x_continuous(labels = pct_lab) +
         labs(
           x = "Prevalence (%)",
@@ -1624,8 +1624,8 @@ ppc_dast_dgp <- function(
           title = title_str
         ) +
         theme_bw() +
-        theme(panel.grid.major.y = ggplot2::element_line(color = "grey90"),
-              panel.grid.minor.y = ggplot2::element_blank())
+        theme(panel.grid.major.y = element_line(color = "grey90"),
+              panel.grid.minor.y = element_blank())
       if (isTRUE(facet)) {
         p <- p + facet_wrap(as.formula(paste("~", facet_var)),
                             labeller = as_labeller(c(pooled = "Pooled", unweighted = "Unweighted")))
@@ -1647,9 +1647,9 @@ ppc_dast_dgp <- function(
       diff_f <- do.call(rbind, lapply(c("pooled", "unweighted"), function(est) {
         tm <- temporal_summaries[[est]]
         dy <- tm$years[-1]
-        lo_d <- apply(tm$d_rep, 2, stats::quantile, probs = alpha / 2, type = 8, na.rm = TRUE)
-        md_d <- apply(tm$d_rep, 2, stats::quantile, probs = 0.5, type = 8, na.rm = TRUE)
-        hi_d <- apply(tm$d_rep, 2, stats::quantile, probs = 1 - alpha / 2, type = 8, na.rm = TRUE)
+        lo_d <- apply(tm$d_rep, 2, quantile, probs = alpha / 2, type = 8, na.rm = TRUE)
+        md_d <- apply(tm$d_rep, 2, quantile, probs = 0.5, type = 8, na.rm = TRUE)
+        hi_d <- apply(tm$d_rep, 2, quantile, probs = 1 - alpha / 2, type = 8, na.rm = TRUE)
         data.frame(estimand = est, year = dy, obs = tm$d_obs, lo = lo_d, md = md_d, hi = hi_d)
       }))
       plots_temporal$year_diffs <- make_line_ribbon_plot(
@@ -1689,9 +1689,9 @@ ppc_dast_dgp <- function(
       )
 
       dy <- tm$years[-1]
-      lo_d <- apply(tm$d_rep, 2, stats::quantile, probs = alpha / 2, type = 8, na.rm = TRUE)
-      md_d <- apply(tm$d_rep, 2, stats::quantile, probs = 0.5, type = 8, na.rm = TRUE)
-      hi_d <- apply(tm$d_rep, 2, stats::quantile, probs = 1 - alpha / 2, type = 8, na.rm = TRUE)
+      lo_d <- apply(tm$d_rep, 2, quantile, probs = alpha / 2, type = 8, na.rm = TRUE)
+      md_d <- apply(tm$d_rep, 2, quantile, probs = 0.5, type = 8, na.rm = TRUE)
+      hi_d <- apply(tm$d_rep, 2, quantile, probs = 1 - alpha / 2, type = 8, na.rm = TRUE)
       df_diff <- data.frame(estimand = est, year = dy, obs = tm$d_obs, lo = lo_d, md = md_d, hi = hi_d)
       plots_temporal$year_diffs <- make_line_ribbon_plot(
         df_diff, "year", "Year", paste0("Delta ", est_label),
@@ -1741,7 +1741,7 @@ ppc_dast_dgp <- function(
       global = list(
         pvals = global_pvals,
         pit_summary = c(mean = mean(pit), var = safe_var(pit)),
-        z_summary = stats::quantile(z_obs, probs = c(0.01, 0.05, 0.5, 0.95, 0.99), na.rm = TRUE)
+        z_summary = quantile(z_obs, probs = c(0.01, 0.05, 0.5, 0.95, 0.99), na.rm = TRUE)
       ),
       temporal = list(
         pvals = temporal_pvals,
@@ -2363,7 +2363,7 @@ dast_fit <-
         g_vec <- c(g_vec, grad_lgamma)
 
         if (n_re > 0) {
-          grad_ls2re <- sapply(seq_len(n_re), function(i)
+          grad_ls2re <- sapply(seq_len(n_re), function(i, sigma2_re)
             (-n_dim_re[i]/(2*sigma2_re[i]) + 0.5*sum(S_re_list[[i]]^2)/sigma2_re[i]^2)*sigma2_re[i]
           )
           g_vec <- c(g_vec, grad_ls2re)
@@ -2820,7 +2820,7 @@ Laplace_sampling_MCMC_dast <- function(y, units_m, mu, mda_effect, Sigma, ID_coo
       }
     }
 
-    prob_star <- stats::plogis(eta)             # in (0,1)
+    prob_star <- plogis(eta)             # in (0,1)
     prob <- mda_effect * prob_star              # expected in (0,1)
     eps <- .Machine$double.eps
     prob <- pmin(pmax(prob, eps), 1 - eps)      # clamp for numerical stability
@@ -2841,7 +2841,7 @@ Laplace_sampling_MCMC_dast <- function(y, units_m, mu, mda_effect, Sigma, ID_coo
       }
     }
 
-    prob_star <- stats::plogis(eta)
+    prob_star <- plogis(eta)
     prob <- mda_effect * prob_star
     eps <- .Machine$double.eps
     prob <- pmin(pmax(prob, eps), 1 - eps)

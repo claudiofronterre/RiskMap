@@ -19,6 +19,9 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 - Use `snake_case` for function and variable names. Do not use `dot.notation`
 - Where it may not be comprehensible from the code, add comments to explain what is happening, but try to make code self-explanatory through sensible function and variable names.
 - Simple data manipulation should use base R, but for more complex manipulations use dplyr.
+- If using variables present in the data in dplyr, append `.data$` in front of them to avoid generating warnings about undefined variables. See [Programming with dplyr](https://dplyr.tidyverse.org/articles/programming.html) for more details.
+- Outputs should be assigned classes with `class()` and if necessary, assign multiple classes e.g. to model families.
+- The classes should be used in other functions to determine what code to run rather than inspecting objects to see what the contain and inferring from that.
 
 ## Defensive programming
 
@@ -35,7 +38,8 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 ## Importing functions
 
 - Generally when functions from other packages are called, they should be scoped using `::` e.g. `dplyr::filter` in which case it is not necessary to use `@importFrom dplyr filter` in the documentation.
-- If many functions from one package are used, consider using `@import <package>` instead and then scoping is not required. Example packages where this approach may be sensible are `stats`, `dplyr`, `ggplot2` and `sf` 
+- If many functions from one package are used, consider adding `@import <package>` to `R/RiskMap-Package.R` and then scoping is not required. 
+- Currently `ggplot2`, `sf` and `stats` are imported.
 
 ## Function length
 
@@ -50,7 +54,8 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 
 ## Documentation
 
-- We use [roxygen2](https://cran.r-project.org/package=roxygen2), with [Markdown syntax](https://cran.r-project.org/web/packages/roxygen2/vignettes/rd-formatting.html), for documentation. Make sure that you document the package prior to submitting a PR to update documentation.
+- We use [roxygen2](https://cran.r-project.org/package=roxygen2), with [Markdown syntax](https://cran.r-project.org/web/packages/roxygen2/vignettes/rd-formatting.html), for documentation. This means you can use `` `code` `` to describe variables, `` [function] `` to link to functions and `` - `` to create bulleted lists.
+- Make sure that you document the package prior to submitting a PR to update documentation.
 - Exported functions should contain at least one example which should run quickly.
 - Unexported functions should still be documented but add `@NoRd` to prevent them being included in the manual.
 

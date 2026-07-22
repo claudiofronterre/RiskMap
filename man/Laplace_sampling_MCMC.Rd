@@ -50,11 +50,11 @@ or \code{"poisson"}.}
 
 \item{control_mcmc}{List of control parameters:
 \describe{
-  \item{n_sim}{Total number of MCMC iterations (including burn-in).}
-  \item{burnin}{Number of initial iterations to discard.}
-  \item{thin}{Thinning interval for saving samples.}
-  \item{h}{Initial step size for the Gaussian proposal. Defaults to \eqn{1.65 / n_\mathrm{tot}^{1/6}} if not supplied.}
-  \item{c1.h, c2.h}{Positive tuning constants for adaptive step-size updates.}
+\item{n_sim}{Total number of MCMC iterations (including burn-in).}
+\item{burnin}{Number of initial iterations to discard.}
+\item{thin}{Thinning interval for saving samples.}
+\item{h}{Initial step size for the Gaussian proposal. Defaults to \eqn{1.65 / n_\mathrm{tot}^{1/6}} if not supplied.}
+\item{c1.h, c2.h}{Positive tuning constants for adaptive step-size updates.}
 }}
 
 \item{invlink}{Optional inverse-link function. If \code{NULL}, defaults are used:
@@ -71,11 +71,11 @@ If \code{NULL}, it is obtained internally as the mode of the integrand.}
 \value{
 An object of class \code{"mcmc.RiskMap"} with components:
 \describe{
-  \item{samples}{A list containing posterior draws. Always includes
-                \code{$S} (latent spatial field). If \code{ID_re} is supplied,
-                each unstructured RE is returned under \code{$<re_name>}.}
-  \item{tuning_par}{Numeric vector of step sizes (\code{h}) used over iterations.}
-  \item{acceptance_prob}{Numeric vector of Metropolis–Hastings acceptance probabilities.}
+\item{samples}{A list containing posterior draws. Always includes
+\code{$S} (latent spatial field). If \code{ID_re} is supplied,
+each unstructured RE is returned under \code{$<re_name>}.}
+\item{tuning_par}{Numeric vector of step sizes (\code{h}) used over iterations.}
+\item{acceptance_prob}{Numeric vector of Metropolis–Hastings acceptance probabilities.}
 }
 }
 \description{
@@ -88,12 +88,12 @@ Metropolis–Hastings updates with adaptive step-size tuning.
 \details{
 The algorithm alternates between:
 \enumerate{
-  \item Locating the mode of the joint integrand for the latent variables
-        (via \code{maxim.integrand}) when \code{Sigma_pd} and \code{mean_pd}
-        are not provided, yielding a Gaussian approximation.
-  \item Metropolis–Hastings updates using a Gaussian proposal centered at
-        the current approximate mean with proposal variance governed by \code{h}.
-        The step size is adapted based on empirical acceptance probability.
+\item Locating the mode of the joint integrand for the latent variables
+(via \code{maxim.integrand}) when \code{Sigma_pd} and \code{mean_pd}
+are not provided, yielding a Gaussian approximation.
+\item Metropolis–Hastings updates using a Gaussian proposal centered at
+the current approximate mean with proposal variance governed by \code{h}.
+The step size is adapted based on empirical acceptance probability.
 }
 
 Dimensions must be consistent:

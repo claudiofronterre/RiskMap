@@ -33,7 +33,7 @@ By default \code{max_dist = NULL} and the upper lag distance is set to \code{d_m
 where \code{d_max} is the maximum observed distance in the data.}
 
 \item{n_permutations}{a positive integer indicating the number of permutations
-used to compute the 95% confidence level envelope under the assumption of spatial
+used to compute the 95\% confidence level envelope under the assumption of spatial
 independence. By default \code{n_permutations=1000} but if set to zero then no
 envelope is generated. Values between 2 and 100 will raise a warning.}
 
@@ -48,14 +48,14 @@ By default \code{scale_to_km = FALSE}}
 }
 \value{
 an object of class 'RiskMap_variogram' which is a list containing the following components:
-  \item{variogram}{a data-frame containing the following columns: \code{mid_points},
+\item{variogram}{a data-frame containing the following columns: \code{mid_points},
 the middle points of the classes of distance provided by \code{breaks};
 \code{obs_vari} the values of the observed variogram; \code{obs_vari} the number of pairs.
 If \code{n_permutations > 0}, the data-frame also contains \code{lower_bound} and \code{upper_bound}
-corresponding to the lower and upper bounds of the 95% confidence intervals
+corresponding to the lower and upper bounds of the 95\% confidence intervals
 used to assess the departure of the observed variogram from the assumption of spatial independence.}
-  \item {scale_to_km}{the value passed to \code{scale_to_km}}
-  \item {n_permutations}{the number of permutations}
+\item {scale_to_km}{the value passed to \code{scale_to_km}}
+\item {n_permutations}{the number of permutations}
 }
 \description{
 Computes the empirical variogram using lag-distance breakpoints.

@@ -50,7 +50,6 @@
 ##' @seealso \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-##' @importFrom sf st_crs st_as_sf st_drop_geometry
 ##' @export
 glgpm <- function(formula,
                  data,
@@ -247,13 +246,13 @@ glgpm <- function(formula,
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
       glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
                         data = aux_data, family = binomial)
-      start_pars$beta <- stats::coef(glm_fitted)
+      start_pars$beta <- coef(glm_fitted)
     } else if(family=="poisson") {
-      pf_aux <- stats::update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
+      pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
       data_aux <- data
       data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
       glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
-      start_pars$beta <- stats::coef(glm_fitted)
+      start_pars$beta <- coef(glm_fitted)
     }
   } else {
     if(length(start_pars$beta)!=ncol(D)) stop("number of starting values provided
@@ -358,7 +357,7 @@ glgpm <- function(formula,
   if(!is.null(convert_to_crs)) {
     crs <- convert_to_crs
   } else {
-    crs <- sf::st_crs(data)$input
+    crs <- st_crs(data)$input
   }
   res$crs <- crs
   res$scale_to_km <- scale_to_km
@@ -1638,7 +1637,7 @@ maxim.integrand <- function(
   cross_sum <- function(v, grp1, n1, grp2, n2) {
     f1 <- factor(grp1, levels = seq_len(n1))
     f2 <- factor(grp2, levels = seq_len(n2))
-    as.matrix(stats::xtabs(v ~ f1 + f2))  # n1 x n2, zeros where empty
+    as.matrix(xtabs(v ~ f1 + f2))  # n1 x n2, zeros where empty
   }
 
   # ---------- dimensions ----------
@@ -1678,7 +1677,7 @@ maxim.integrand <- function(
         d1  <- function(x) exp(x)
         d2  <- function(x) exp(x)
       } else {
-        inv <- function(x) stats::plogis(x)
+        inv <- function(x) plogis(x)
         d1  <- function(x) { p <- inv(x); p * (1 - p) }
         d2  <- function(x) { p <- inv(x); d <- p * (1 - p); d * (1 - 2 * p) }
       }
@@ -2016,7 +2015,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
         inv <- function(x) exp(x)
         d1  <- function(x) exp(x)
       } else {
-        inv <- function(x) stats::plogis(x)
+        inv <- function(x) plogis(x)
         d1  <- function(x) { p <- inv(x); p * (1 - p) }
       }
       check_vec_fun(inv, ncheck, "canonical invlink")
@@ -2218,8 +2217,8 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 }
 ##' Set Control Parameters for Simulation
 ##'
-##' This function sets control parameters for running simulations, supporting both MCMC methods
-##' (for glgpm, dast models) and STAN sampling (for dsgm models).
+##' This function sets control parameters for running simulations, supporting MCMC methods
+##' for glgpm, dast models.
 ##'
 ##' @param n_sim Integer. The total number of simulations to run. Default is 12000.
 ##' @param burnin Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.
@@ -2228,31 +2227,13 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 ##' @param c1.h Numeric. A control parameter for Langevin MCMC. Must be positive. Default is 0.01.
 ##' @param c2.h Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.
 ##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
-##' @param sampler Character. Type of sampler: "mcmc" for Langevin MCMC (default) or "stan" for STAN sampling.
-##' @param n_chains Integer. Number of MCMC chains (STAN only). Default is 1.
-##' @param n_cores Integer. Number of cores for parallel chains (STAN only). Default is 1.
-##' @param adapt_delta Numeric. Target acceptance rate for STAN (between 0 and 1). Default is 0.8.
-##' @param max_treedepth Integer. Maximum tree depth for STAN's NUTS sampler. Default is 10.
 ##'
 ##' @details
-##' The function validates input parameters and ensures they are appropriate for the specified sampler.
-##'
-##' For \code{sampler = "mcmc"} (Langevin MCMC used in glgpm, dast):
-##' - Validates \code{n_sim}, \code{burnin}, \code{thin}, \code{h}, \code{c1.h}, \code{c2.h}
-##' - Returns parameters for Langevin-based MCMC sampling
-##'
-##' For \code{sampler = "stan"} (STAN sampling used in dsgm):
-##' - Validates \code{n_sim} (n_samples), \code{burnin} (n_warmup), \code{n_chains}, \code{n_cores}
-##' - Validates \code{adapt_delta} and \code{max_treedepth}
-##' - Ignores \code{thin}, \code{h}, \code{c1.h}, \code{c2.h} (not used by STAN)
-##'
-##' If \code{linear_model = TRUE}, only \code{n_sim} is required regardless of sampler.
+##' If \code{linear_model = TRUE}, only \code{n_sim} is required
 ##'
 ##' @return A list of control parameters with class "mcmc.RiskMap". Contents depend on \code{sampler}:
 ##' \itemize{
-##'   \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model, sampler
-##'   \item For "stan": n_sim, burnin (as n_warmup), n_chains, n_cores, adapt_delta,
-##'         max_treedepth, linear_model, sampler
+##'   \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
 ##' }
 ##'
 ##' @examples
@@ -2262,17 +2243,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 ##' # Custom MCMC parameters
 ##' control_mcmc <- set_control_sim(n_sim = 15000, burnin = 3000, thin = 20)
 ##'
-##' # STAN parameters for DSGM
-##' control_stan <- set_control_sim(
-##'   sampler = "stan",
-##'   n_sim = 1000,
-##'   burnin = 1000,
-##'   n_chains = 4,
-##'   n_cores = 4,
-##'   adapt_delta = 0.85
-##' )
-##'
-##' @seealso \code{\link{glgpm}}, \code{\link{dast}}, \code{\link{dsgm}}
+##' @seealso \code{\link{glgpm}}, \code{\link{dast}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
@@ -2283,15 +2254,7 @@ set_control_sim <- function(n_sim = 12000,
                             h = NULL,
                             c1.h = 0.01,
                             c2.h = 1e-04,
-                            linear_model = FALSE,
-                            sampler = c("mcmc", "stan"),
-                            n_chains = 1,
-                            n_cores = 1,
-                            adapt_delta = 0.8,
-                            max_treedepth = 10) {
-
-  # Match sampler argument
-  sampler <- match.arg(sampler)
+                            linear_model = FALSE){
 
   # =============================================================================
   # LINEAR MODEL (simple case for both samplers)
@@ -2300,8 +2263,7 @@ set_control_sim <- function(n_sim = 12000,
   if (linear_model) {
     res <- list(
       n_sim = n_sim,
-      linear_model = linear_model,
-      sampler = sampler
+      linear_model = linear_model
     )
     class(res) <- "mcmc.RiskMap"
     return(res)
@@ -2311,110 +2273,40 @@ set_control_sim <- function(n_sim = 12000,
   # MCMC SAMPLER (Langevin for glgpm, dast)
   # =============================================================================
 
-  if (sampler == "mcmc") {
-
-    # Validate MCMC parameters
-    if (n_sim < burnin) {
-      stop("n_sim cannot be smaller than burnin.")
-    }
-
-    if (thin <= 0) {
-      stop("thin must be positive")
-    }
-
-    if ((n_sim - burnin) %% thin != 0) {
-      stop("thin must be a divisor of (n_sim - burnin)")
-    }
-
-    if (!is.null(h) && h < 0) {
-      stop("h must be non-negative.")
-    }
-
-    if (c1.h <= 0) {
-      stop("c1.h must be positive.")
-    }
-
-    if (c2.h < 0 | c2.h > 1) {
-      stop("c2.h must be between 0 and 1.")
-    }
-
-    res <- list(
-      n_sim = n_sim,
-      burnin = burnin,
-      thin = thin,
-      h = h,
-      c1.h = c1.h,
-      c2.h = c2.h,
-      linear_model = FALSE,
-      sampler = "mcmc"
-    )
-
+  # Validate MCMC parameters
+  if (n_sim < burnin) {
+    stop("n_sim cannot be smaller than burnin.")
   }
 
-  # =============================================================================
-  # STAN SAMPLER (for DSGM)
-  # =============================================================================
-
-  if (sampler == "stan") {
-
-    # Validate STAN parameters
-    if (n_sim <= 0) {
-      stop("n_sim (number of samples) must be positive.")
-    }
-
-    if (burnin < 0) {
-      stop("burnin (warmup) must be non-negative.")
-    }
-
-    if (n_chains <= 0) {
-      stop("n_chains must be positive.")
-    }
-
-    if (n_cores <= 0) {
-      stop("n_cores must be positive.")
-    }
-
-    if (n_cores > n_chains) {
-      warning("n_cores is greater than n_chains. Setting n_cores = n_chains.")
-      n_cores <- n_chains
-    }
-
-    if (adapt_delta <= 0 | adapt_delta >= 1) {
-      stop("adapt_delta must be between 0 and 1.")
-    }
-
-    if (max_treedepth <= 0 | max_treedepth != round(max_treedepth)) {
-      stop("max_treedepth must be a positive integer.")
-    }
-
-    # STAN doesn't use thin, h, c1.h, c2.h
-    if (!missing(thin) && thin != 10) {
-      warning("'thin' parameter is ignored for STAN sampler.")
-    }
-
-    if (!is.null(h)) {
-      warning("'h' parameter is ignored for STAN sampler.")
-    }
-
-    if (c1.h != 0.01) {
-      warning("'c1.h' parameter is ignored for STAN sampler.")
-    }
-
-    if (c2.h != 1e-04) {
-      warning("'c2.h' parameter is ignored for STAN sampler.")
-    }
-
-    res <- list(
-      n_sim = n_sim,           # Number of post-warmup samples per chain
-      burnin = burnin,         # Warmup samples (equivalent to n_warmup)
-      n_chains = n_chains,     # Number of chains
-      n_cores = n_cores,       # Number of cores for parallel sampling
-      adapt_delta = adapt_delta,      # Target acceptance rate
-      max_treedepth = max_treedepth,  # Maximum tree depth
-      linear_model = FALSE,
-      sampler = "stan"
-    )
+  if (thin <= 0) {
+    stop("thin must be positive")
   }
+
+  if ((n_sim - burnin) %% thin != 0) {
+    stop("thin must be a divisor of (n_sim - burnin)")
+  }
+
+  if (!is.null(h) && h < 0) {
+    stop("h must be non-negative.")
+  }
+
+  if (c1.h <= 0) {
+    stop("c1.h must be positive.")
+  }
+
+  if (c2.h < 0 | c2.h > 1) {
+    stop("c2.h must be between 0 and 1.")
+  }
+
+  res <- list(
+    n_sim = n_sim,
+    burnin = burnin,
+    thin = thin,
+    h = h,
+    c1.h = c1.h,
+    c2.h = c2.h,
+    linear_model = FALSE
+  )
 
   class(res) <- "mcmc.RiskMap"
   return(res)
@@ -2456,7 +2348,7 @@ glgpm_nong <-
           d1  <- function(x) exp(x)
           d2  <- function(x) exp(x)
         } else {
-          inv <- function(x) stats::plogis(x)
+          inv <- function(x) plogis(x)
           d1  <- function(x) { p <- inv(x); p*(1-p) }
           d2  <- function(x) { p <- inv(x); d <- p*(1-p); d*(1-2*p) }
         }
@@ -2950,7 +2842,6 @@ glgpm_nong <-
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @importFrom sns ess
 ##' @importFrom graphics par
-##' @importFrom stats acf
 ##' @export
 check_mcmc <- function(object, check_mean = TRUE,
                        component = NULL, ...) {
