@@ -7,23 +7,23 @@
 compute_ID_coords(data_sf)
 }
 \arguments{
-\item{data_sf}{An `sf` object containing geometrical data from which coordinates are extracted.}
+\item{data_sf}{An \code{sf} object containing geometrical data from which coordinates are extracted.}
 }
 \value{
 A list with the following elements:
 \describe{
-  \item{ID_coords}{An integer vector where each element corresponds to a row in the input,
-  indicating the index of the unique coordinate in the full set of unique coordinates.}
-  \item{s_unique}{An integer vector containing the unique identifiers of all distinct coordinates.}
+\item{ID_coords}{An integer vector where each element corresponds to a row in the input,
+indicating the index of the unique coordinate in the full set of unique coordinates.}
+\item{s_unique}{An integer vector containing the unique identifiers of all distinct coordinates.}
 }
 }
 \description{
-This function identifies unique coordinates from a `sf` (simple feature) object
+This function identifies unique coordinates from a \code{sf} (simple feature) object
 and assigns an identifier to each coordinate occurrence. It returns a list
 containing the identifiers for each row and a vector of unique identifiers.
 }
 \details{
-The function extracts the coordinate pairs from the `sf` object and determines the unique
+The function extracts the coordinate pairs from the \code{sf} object and determines the unique
 coordinates. It then assigns each row in the input data an identifier corresponding
 to the unique coordinate it matches.
 }

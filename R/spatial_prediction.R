@@ -37,17 +37,17 @@ pred_over_grid <- function(object,
     if (length(grid_pred) == 0L)
       stop("'grid_pred' is a list but has length 0.")
     grid_pred <- lapply(grid_pred, function(g) {
-      if (inherits(g, "sf")) sf::st_geometry(g) else g
+      if (inherits(g, "sf")) st_geometry(g) else g
     })
     ok_geom <- vapply(grid_pred, function(g) {
-      inherits(g, "sfc") && all(sf::st_geometry_type(g) == "POINT")
+      inherits(g, "sfc") && all(st_geometry_type(g) == "POINT")
     }, logical(1))
     if (!all(ok_geom))
       stop("Each element of 'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries.")
 
   } else if (!is.null(grid_pred)) {
-    if (inherits(grid_pred, "sf")) grid_pred <- sf::st_geometry(grid_pred)
-    if (!inherits(grid_pred, "sfc") || !all(sf::st_geometry_type(grid_pred) == "POINT"))
+    if (inherits(grid_pred, "sf")) grid_pred <- st_geometry(grid_pred)
+    if (!inherits(grid_pred, "sfc") || !all(st_geometry_type(grid_pred) == "POINT"))
       stop("'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries.")
   }
 
@@ -57,22 +57,22 @@ pred_over_grid <- function(object,
     stop("the argument passed to 'control_sim' must be an output from set_control_sim")
 
   if (obs_loc) {
-    predictors <- as.data.frame(sf::st_drop_geometry(object$data_sf))
-    grid_pred  <- sf::st_as_sfc(object$data_sf)
+    predictors <- as.data.frame(st_drop_geometry(object$data_sf))
+    grid_pred  <- st_as_sfc(object$data_sf)
     list_mode  <- FALSE
   } else {
     if (list_mode) {
-      grid_pred <- lapply(grid_pred, sf::st_transform, crs = object$crs)
+      grid_pred <- lapply(grid_pred, st_transform, crs = object$crs)
     } else {
-      grid_pred <- sf::st_transform(grid_pred, crs = object$crs)
+      grid_pred <- st_transform(grid_pred, crs = object$crs)
     }
   }
 
   if (list_mode) {
-    grp    <- lapply(grid_pred, sf::st_coordinates)
+    grp    <- lapply(grid_pred, st_coordinates)
     n_pred <- vapply(grp, nrow, integer(1))
   } else {
-    grp    <- sf::st_coordinates(grid_pred)
+    grp    <- st_coordinates(grid_pred)
     n_pred <- nrow(grp)
   }
 
@@ -151,7 +151,7 @@ pred_over_grid <- function(object,
         ind_c       <- complete.cases(re_predictors)
         re_predictors <- re_predictors[ind_c, , drop = FALSE]
         grid_pred   <- if (list_mode) lapply(grid_pred, `[`, ind_c) else grid_pred[ind_c]
-        grp         <- if (list_mode) lapply(grid_pred, sf::st_coordinates) else sf::st_coordinates(grid_pred)
+        grp         <- if (list_mode) lapply(grid_pred, st_coordinates) else st_coordinates(grid_pred)
         n_pred      <- if (list_mode) vapply(grp, nrow, integer(1)) else nrow(grp)
       }
       if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
@@ -497,8 +497,8 @@ pred_over_grid <- function(object,
 ##'   (\code{n_pred x n_samples}) and returns a matrix of the same dimensions.
 ##'   Overrides the model-specific defaults described above.
 ##' @param pd_summary Optional named list of summary functions applied
-##'   row-wise to each target matrix (default: mean, median, sd, 2.5\% and
-##'   97.5\% quantiles).
+##'   row-wise to each target matrix (default: mean, median, sd, 2.5% and
+##'   97.5% quantiles).
 ##'
 ##' @return An object of class \code{"RiskMap_pred_target_grid"}.
 ##' @seealso \code{\link{pred_over_grid}}
@@ -531,7 +531,7 @@ pred_target_grid <- function(object,
 
   if (list_mode) {
     n_pred <- vapply(object$grid_pred,
-                     function(g) nrow(sf::st_coordinates(g)), integer(1))
+                     function(g) nrow(st_coordinates(g)), integer(1))
   } else {
     n_pred <- nrow(object$S_samples)
   }
@@ -928,7 +928,7 @@ pred_target_shp <- function(object,
       stop("When 'object$grid_pred' is a list, each element must be an 'sf' or 'sfc' object.")
     }
 
-    n_pred <- vapply(object$grid_pred, function(g) nrow(sf::st_coordinates(g)), integer(1))
+    n_pred <- vapply(object$grid_pred, function(g) nrow(st_coordinates(g)), integer(1))
 
     if (!is.null(weights)) {
       if (!is.list(weights)) {
@@ -1586,7 +1586,7 @@ assess_pp <- function(object,
   crps_gaussian <- function(y, mu, sigma) {
     if (sigma == 0) return(0)
     z <- (y - mu) / sigma
-    2 * stats::dnorm(z) + z * (2 * stats::pnorm(z) - 1) - 1 / sqrt(pi)
+    2 * dnorm(z) + z * (2 * pnorm(z) - 1) - 1 / sqrt(pi)
   }
   crps_discrete <- function(y, Fk) {
     k <- seq_along(Fk) - 1
@@ -1631,14 +1631,14 @@ assess_pp <- function(object,
   object1 <- object[[1]]
   data_sf <- object1$data_sf
   n_obs   <- nrow(data_sf)
-  data_geom <- sf::st_as_text(sf::st_geometry(data_sf))
+  data_geom <- st_as_text(st_geometry(data_sf))
 
   for (h in seq_along(object)) {
     fit_data <- object[[h]]$data_sf
     if (nrow(fit_data) != n_obs) {
       stop("All models supplied to `assess_pp()` must have the same number of observations.")
     }
-    fit_geom <- sf::st_as_text(sf::st_geometry(fit_data))
+    fit_geom <- st_as_text(st_geometry(fit_data))
     if (!identical(fit_geom, data_geom)) {
       stop("All models supplied to `assess_pp()` must have data in the same row order and geometry.")
     }
@@ -1691,17 +1691,17 @@ assess_pp <- function(object,
         warning("plot_fold = TRUE requires the 'ggplot2' package; skipping plots.", call. = FALSE)
       } else {
         if (n_iter == 1) {
-          p <- ggplot2::ggplot(data_split$splits[[1]]$data_test) +
-            ggplot2::geom_sf() +
-            ggplot2::theme_minimal() +
-            ggplot2::ggtitle("Test set")
+          p <- ggplot(data_split$splits[[1]]$data_test) +
+            geom_sf() +
+            theme_minimal() +
+            ggtitle("Test set")
           print(p)
         } else {
           plots <- lapply(seq_len(n_iter), function(i) {
-            ggplot2::ggplot(data_split$splits[[i]]$data_test) +
-              ggplot2::geom_sf() +
-              ggplot2::theme_minimal() +
-              ggplot2::ggtitle(paste("Test", i))
+            ggplot(data_split$splits[[i]]$data_test) +
+              geom_sf() +
+              theme_minimal() +
+              ggtitle(paste("Test", i))
           })
 
           if (requireNamespace("gridExtra", quietly = TRUE)) {
@@ -1728,11 +1728,11 @@ assess_pp <- function(object,
   } else { # regularized
     data_split <- list(splits = vector("list", iter))
     for (i in seq_len(iter)) {
-      locations_sf <- data_sf[!duplicated(sf::st_as_text(data_sf$geometry)), ]
+      locations_sf <- data_sf[!duplicated(st_as_text(data_sf$geometry)), ]
       data_split$splits[[i]] <- list()
       data_split$splits[[i]]$data_test <- subsample.distance(locations_sf, size = n_size, d = min_dist * 1000, ...)
-      test_geom <- sf::st_as_text(data_split$splits[[i]]$data_test$geometry)
-      in_test   <- sf::st_as_text(data_sf$geometry) %in% test_geom
+      test_geom <- st_as_text(data_split$splits[[i]]$data_test$geometry)
+      in_test   <- st_as_text(data_sf$geometry) %in% test_geom
       data_split$splits[[i]]$out_id <- which(in_test)
       data_split$splits[[i]]$in_id  <- which(!in_test)
       data_split$splits[[i]]$data   <- data_sf[!in_test, ]
@@ -1745,10 +1745,10 @@ assess_pp <- function(object,
         warning("plot_fold = TRUE with geom_sf() requires the 'sf' package; skipping plots.", call. = FALSE)
       } else {
         plots <- lapply(seq_len(n_iter), function(i) {
-          ggplot2::ggplot(data_split$splits[[i]]$data_test) +
-            ggplot2::geom_sf() +
-            ggplot2::theme_minimal() +
-            ggplot2::ggtitle(paste("Subset", i))
+          ggplot(data_split$splits[[i]]$data_test) +
+            geom_sf() +
+            theme_minimal() +
+            ggtitle(paste("Subset", i))
         })
 
         if (n_iter > 1 && requireNamespace("gridExtra", quietly = TRUE)) {
@@ -1870,7 +1870,7 @@ assess_pp <- function(object,
 
       ## ----- held-out set and offsets -----
       data_test_i <- fit_data_sf[out_id, ]
-      keep_test <- complete.cases(sf::st_drop_geometry(data_test_i))
+      keep_test <- complete.cases(st_drop_geometry(data_test_i))
       data_test_i <- data_test_i[keep_test, ]
       out_id_i <- out_id[keep_test]
       if (h == 1) out$test_set[[i]] <- data_test_i
@@ -1882,7 +1882,7 @@ assess_pp <- function(object,
       ## ----- prediction over test set -----
       pred_S <- pred_over_grid(
         object          = refit_i,
-        grid_pred       = sf::st_as_sfc(data_test_i),
+        grid_pred       = st_as_sfc(data_test_i),
         control_sim     = control_sim,
         predictors      = data_test_i,
         pred_cov_offset = pred_coff_i,
@@ -1893,7 +1893,7 @@ assess_pp <- function(object,
         ## Build the DAST prediction inputs
         time_col  <- deparse(fit0$call$time)
         grid_pred_list <- list(
-          geometry            = sf::st_as_sfc(data_test_i),
+          geometry            = st_as_sfc(data_test_i),
           survey_times_data   = data_test_i[[time_col]],
           int_mat             = fit0$int_mat[out_id_i, , drop = FALSE],
           mda_times           = fit0$mda_times
@@ -1917,7 +1917,7 @@ assess_pp <- function(object,
         eta_samp <- pred_lp$lp_samples
         if (fam == "gaussian") {
           sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
-          eta_samp <- eta_samp + sqrt(sigma2_me) * stats::rnorm(length(eta_samp))
+          eta_samp <- eta_samp + sqrt(sigma2_me) * rnorm(length(eta_samp))
         }
         mu_samp <- linkfun(eta_samp)
       }
@@ -1947,21 +1947,21 @@ assess_pp <- function(object,
       for (j in seq_len(n_pred)) {
         if (fam == "gaussian") {
           mu_j <- mean(mu_samp[j, ])
-          sd_j <- stats::sd(mu_samp[j, ])
+          sd_j <- sd(mu_samp[j, ])
           if (get_CRPS)  CRPS[[i]][j] <- sd_j * crps_gaussian(y_i[j], mu_j, sd_j)
           if (get_SCRPS) {
             y_CRPS[[i]][j] <- sd_j / sqrt(pi)
             SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
           }
-          if (get_AnPIT) PIT_i[j] <- stats::pnorm(y_i[j], mean = mu_j, sd = sd_j)
+          if (get_AnPIT) PIT_i[j] <- pnorm(y_i[j], mean = mu_j, sd = sd_j)
         } else {
           if (fam == "binomial") {
-            y_samp  <- stats::rbinom(n_draw, size = units_m_i[j], prob = mu_samp[j, ])
+            y_samp  <- rbinom(n_draw, size = units_m_i[j], prob = mu_samp[j, ])
             support <- 0:units_m_i[j]
           } else { # Poisson
             lambda  <- units_m_i[j] * mu_samp[j, ]
-            y_samp  <- stats::rpois(n_draw, lambda)
-            support <- 0:max(max(y_samp), y_i[j], stats::qpois(0.999, mean(lambda)))
+            y_samp  <- rpois(n_draw, lambda)
+            support <- 0:max(max(y_samp), y_i[j], qpois(0.999, mean(lambda)))
           }
           pk <- tabulate(y_samp + 1, nbins = length(support)) / n_draw
           Fk <- cumsum(pk)
@@ -1979,7 +1979,7 @@ assess_pp <- function(object,
       if (get_AnPIT) {
         if (fam == "gaussian") {
           PIT[[i]] <- PIT_i
-          AnPIT_area[[i]] <- .anpit_area(stats::ecdf(PIT_i)(u_val), u_val)
+          AnPIT_area[[i]] <- .anpit_area(ecdf(PIT_i)(u_val), u_val)
         } else {
           AnPIT[[i]] <- rowMeans(AnPIT_i)
           AnPIT_area[[i]] <- .anpit_area(AnPIT[[i]], u_val)
@@ -2399,7 +2399,7 @@ assess_sim <- function(obj_sim,
 
     # Correctly generate breaks and labels
     breaks <- categories  # Use categories directly as breaks
-    categories_class <- factor(paste0("(", head(categories, -1), ",",
+    categories_class <- factor(paste0("(", utils::head(categories, -1), ",",
                                       categories[-1], "]"))  # Labels to match intervals
 
 

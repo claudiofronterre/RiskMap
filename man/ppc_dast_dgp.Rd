@@ -56,11 +56,11 @@ dependencies are available.}
 \value{
 An object of class \code{"ppc_dast_dgp"} with components:
 \describe{
-  \item{inputs}{Input metadata and key settings.}
-  \item{summaries}{A nested list with \code{global}, \code{temporal}, and \code{iu}
-  summary outputs.}
-  \item{plots}{A nested list with \code{global}, \code{temporal}, and \code{iu}
-  diagnostic plots (possibly empty).}
+\item{inputs}{Input metadata and key settings.}
+\item{summaries}{A nested list with \code{global}, \code{temporal}, and \code{iu}
+summary outputs.}
+\item{plots}{A nested list with \code{global}, \code{temporal}, and \code{iu}
+diagnostic plots (possibly empty).}
 }
 
 Year-level and IU-level prevalence trajectories use the examined-weighted
@@ -80,20 +80,20 @@ and IU aggregation levels, and optionally returns diagnostic plots.
 \details{
 Interpretation guide:
 \itemize{
-  \item \code{summaries$global$pvals}: posterior predictive p-values (PPP) for global
-  discrepancy statistics. Values close to 0 or 1 indicate mismatch between
-  data and model-implied simulations for the corresponding summary.
-  \item \code{summaries$global$pit_summary}: PIT mean/variance; departures from roughly
-  Uniform(0,1) moments suggest calibration issues.
-  \item \code{summaries$global$z_summary}: quantiles of standardized residuals
-  \eqn{(y_i-\mu_i)/\sqrt{v_i}} based on simulation moments. Heavy tails or
-  skewness can indicate poor dispersion/shape fit.
-  \item \code{summaries$temporal$pvals}: year-level trajectory mismatch summaries.
-  \item \code{summaries$iu$pvals}: IU and IU-year support-aware mismatch summaries.
-  \item \code{summaries$iu$iu_support}: IU-level support table (number of surveys,
-  total examined, observed pooled/unweighted prevalence and inclusion flag).
-  \item \code{summaries$iu$diagnostics}: counts summarising IU inclusion and zero vs
-  non-zero observed records, including out-of-interval IU counts.
+\item \code{summaries$global$pvals}: posterior predictive p-values (PPP) for global
+discrepancy statistics. Values close to 0 or 1 indicate mismatch between
+data and model-implied simulations for the corresponding summary.
+\item \code{summaries$global$pit_summary}: PIT mean/variance; departures from roughly
+Uniform(0,1) moments suggest calibration issues.
+\item \code{summaries$global$z_summary}: quantiles of standardized residuals
+\eqn{(y_i-\mu_i)/\sqrt{v_i}} based on simulation moments. Heavy tails or
+skewness can indicate poor dispersion/shape fit.
+\item \code{summaries$temporal$pvals}: year-level trajectory mismatch summaries.
+\item \code{summaries$iu$pvals}: IU and IU-year support-aware mismatch summaries.
+\item \code{summaries$iu$iu_support}: IU-level support table (number of surveys,
+total examined, observed pooled/unweighted prevalence and inclusion flag).
+\item \code{summaries$iu$diagnostics}: counts summarising IU inclusion and zero vs
+non-zero observed records, including out-of-interval IU counts.
 }
 
 The two-sided PPP is computed as a median-centered tail area:

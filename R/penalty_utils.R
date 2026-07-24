@@ -55,9 +55,9 @@ penalty_to_dast <- function(p) {
     pn_d1 <- function(alpha) -logpi_d1(alpha)
     pn_d2 <- function(alpha) -logpi_d2(alpha)
   } else {
-    pn <- function(x) 0
-    pn_d1 <- function(x) 0
-    pn_d2 <- function(x) 0
+    pn <- function(alpha) 0
+    pn_d1 <- function(alpha) 0
+    pn_d2 <- function(alpha) 0
   }
 
   ## gamma: penalty = -log prior (lognormal)

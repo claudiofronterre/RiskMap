@@ -212,13 +212,13 @@ glgpm <- function(formula,
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
       glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
                         data = aux_data, family = binomial)
-      start_pars$beta <- stats::coef(glm_fitted)
+      start_pars$beta <- coef(glm_fitted)
     } else if(family=="poisson") {
-      pf_aux <- stats::update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
+      pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
       data_aux <- data
       data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
       glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
-      start_pars$beta <- stats::coef(glm_fitted)
+      start_pars$beta <- coef(glm_fitted)
     }
   } else {
     if(length(start_pars$beta)!=ncol(D)) stop("number of starting values provided
@@ -323,7 +323,7 @@ glgpm <- function(formula,
   if(!is.null(convert_to_crs)) {
     crs <- convert_to_crs
   } else {
-    crs <- sf::st_crs(data)$input
+    crs <- st_crs(data)$input
   }
   res$crs <- crs
   res$scale_to_km <- scale_to_km
@@ -1571,7 +1571,7 @@ maxim.integrand <- function(
   cross_sum <- function(v, grp1, n1, grp2, n2) {
     f1 <- factor(grp1, levels = seq_len(n1))
     f2 <- factor(grp2, levels = seq_len(n2))
-    as.matrix(stats::xtabs(v ~ f1 + f2))  # n1 x n2, zeros where empty
+    as.matrix(xtabs(v ~ f1 + f2))  # n1 x n2, zeros where empty
   }
 
   # ---------- dimensions ----------
@@ -1611,7 +1611,7 @@ maxim.integrand <- function(
         d1  <- function(x) exp(x)
         d2  <- function(x) exp(x)
       } else {
-        inv <- function(x) stats::plogis(x)
+        inv <- function(x) plogis(x)
         d1  <- function(x) { p <- inv(x); p * (1 - p) }
         d2  <- function(x) { p <- inv(x); d <- p * (1 - p); d * (1 - 2 * p) }
       }
@@ -1949,7 +1949,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
         inv <- function(x) exp(x)
         d1  <- function(x) exp(x)
       } else {
-        inv <- function(x) stats::plogis(x)
+        inv <- function(x) plogis(x)
         d1  <- function(x) { p <- inv(x); p * (1 - p) }
       }
       check_vec_fun(inv, ncheck, "canonical invlink")
@@ -2282,7 +2282,7 @@ glgpm_nong <-
           d1  <- function(x) exp(x)
           d2  <- function(x) exp(x)
         } else {
-          inv <- function(x) stats::plogis(x)
+          inv <- function(x) plogis(x)
           d1  <- function(x) { p <- inv(x); p*(1-p) }
           d2  <- function(x) { p <- inv(x); d <- p*(1-p); d*(1-2*p) }
         }

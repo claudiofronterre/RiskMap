@@ -40,7 +40,7 @@ Imports:
 Suggests:
     bayesplot,
     testthat (>= 3.0.0)
-License: MIT
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 URL: https://claudiofronterre.github.io/RiskMap/

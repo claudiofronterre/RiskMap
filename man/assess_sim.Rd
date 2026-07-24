@@ -19,31 +19,31 @@ assess_sim(
 )
 }
 \arguments{
-\item{obj_sim}{An object of class `RiskMap.sim`, obtained as an output from the `surf_sim` function.}
+\item{obj_sim}{An object of class \code{RiskMap.sim}, obtained as an output from the \code{surf_sim} function.}
 
 \item{models}{A named list of models to be evaluated.}
 
-\item{control_mcmc}{A control object for MCMC sampling, created with `set_control_sim()`. Default is `set_control_sim()`.}
+\item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_sim()}. Default is \code{set_control_sim()}.}
 
-\item{spatial_scale}{The scale at which predictions are assessed, either `"grid"` or `"area"`.}
+\item{spatial_scale}{The scale at which predictions are assessed, either \code{"grid"} or \code{"area"}.}
 
-\item{messages}{Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.}
+\item{messages}{Logical, if \code{TRUE} messages will be displayed during processing. Default is \code{TRUE}.}
 
 \item{f_grid_target}{A function for processing grid-level predictions.}
 
 \item{f_area_target}{A function for processing area-level predictions.}
 
-\item{shp}{A shapefile of class `sf` or `data.frame` for area-level analysis, required if `spatial_scale = "area"`.}
+\item{shp}{A shapefile of class \code{sf} or \code{data.frame} for area-level analysis, required if \code{spatial_scale = "area"}.}
 
-\item{col_names}{Column name in `shp` containing unique region names. If `NULL`, defaults to `"region"`.}
+\item{col_names}{Column name in \code{shp} containing unique region names. If \code{NULL}, defaults to \code{"region"}.}
 
-\item{pred_objective}{A character vector specifying objectives, either `"mse"`, `"classify"`, or both.}
+\item{pred_objective}{A character vector specifying objectives, either \code{"mse"}, \code{"classify"}, or both.}
 
-\item{categories}{A numeric vector of thresholds defining categories for classification. Required if `pred_objective = "classify"`.}
+\item{categories}{A numeric vector of thresholds defining categories for classification. Required if \code{pred_objective = "classify"}.}
 }
 \value{
-A list of class `RiskMap.sim.res` containing model evaluation results.
+A list of class \code{RiskMap.sim.res} containing model evaluation results.
 }
 \description{
-This function evaluates the performance of models based on simulation results from the `surf_sim` function.
+This function evaluates the performance of models based on simulation results from the \code{surf_sim} function.
 }
