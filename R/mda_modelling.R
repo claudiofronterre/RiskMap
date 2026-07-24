@@ -343,6 +343,8 @@ dast <- function(formula,
   y <- as.numeric(model.response(mf))
   n <- length(y)
 
+  if (family == "binomial") check_binomial(y)
+
   if(is.null(int_mat)) stop("'int_mat' must be provided")
   int_mat <- as.matrix(int_mat)
   if(nrow(int_mat) != n)
