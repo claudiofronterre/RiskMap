@@ -13,7 +13,6 @@
 ##' @return
 ##' An 'sf' object containing the generated grid points within the shapefile.
 ##'
-##' @importFrom sf st_make_grid st_intersects st_transform st_crs
 ##' @export
 ##'
 ##' @examples

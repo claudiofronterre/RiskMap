@@ -8,13 +8,13 @@ plot_score(object, which_score, which_model, ...)
 }
 \arguments{
 \item{object}{A list containing test sets and model scores. The structure should include
-`object$test_set` (list of sf objects) and `object$model[[which_model]]$score[[which_score]]`.}
+\code{object$test_set} (list of sf objects) and \code{object$model[[which_model]]$score[[which_score]]}.}
 
 \item{which_score}{A string specifying the score to visualize. Must match a score computed in the model.}
 
 \item{which_model}{A string specifying the model whose scores to visualize.}
 
-\item{...}{Additional arguments to customize ggplot, such as `scale_color_gradient` or `scale_color_manual`.}
+\item{...}{Additional arguments to customize ggplot, such as \code{scale_color_gradient} or \code{scale_color_manual}.}
 }
 \value{
 A ggplot object visualizing the spatial distribution of the specified score.

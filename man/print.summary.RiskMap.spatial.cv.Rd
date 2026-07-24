@@ -7,18 +7,18 @@
 \method{print}{summary.RiskMap.spatial.cv}(x, ...)
 }
 \arguments{
-\item{x}{An object of class `"summary.RiskMap.spatial.cv"`, typically the output of
-`summary.RiskMap.spatial.cv`.}
+\item{x}{An object of class \code{"summary.RiskMap.spatial.cv"}, typically the output of
+\code{summary.RiskMap.spatial.cv}.}
 
 \item{...}{Additional arguments passed to or from other methods.}
 }
 \value{
 This function is used for its side effect of printing to the console. It does not
-        return a value.
+return a value.
 }
 \description{
 This function prints the matrix of cross-validation scores produced by
-`summary.RiskMap.spatial.cv` in a readable format.
+\code{summary.RiskMap.spatial.cv} in a readable format.
 }
 \details{
 This method is primarily used to format and display the summary score matrix,

@@ -21,67 +21,70 @@ assess_pp(
 )
 }
 \arguments{
-\item{object}{A list of `RiskMap` objects, each representing a model fitted with `glgpm`.}
+\item{object}{A list of \code{RiskMap} objects, each representing a model fitted with \code{glgpm}.}
 
-\item{keep_par_fixed}{Logical; if `TRUE`, parameters are kept fixed across folds, otherwise the model is re-estimated for each fold.}
+\item{keep_par_fixed}{Logical; if \code{TRUE}, parameters are kept fixed across folds, otherwise the model is re-estimated for each fold.}
 
 \item{iter}{Integer; number of times to repeat the cross-validation.}
 
-\item{fold}{Integer; number of folds for cross-validation (required if `method = "cluster"`).}
+\item{fold}{Integer; number of folds for cross-validation (required if \code{method = "cluster"}).}
 
-\item{n_size}{Optional; the size of the test set, required if `method = "regularized"`.}
+\item{n_size}{Optional; the size of the test set, required if \code{method = "regularized"}.}
 
-\item{control_sim}{Control settings for simulation, an output from `set_control_sim`.}
+\item{control_sim}{Control settings for simulation, an output from \code{set_control_sim}.}
 
-\item{method}{Character; either `"cluster"` or `"regularized"` for the cross-validation method. The `"cluster"` method uses
-spatial clustering as implemented by the \code{spatial_clustering_cv} function from the `spatialEco` package, while the `"regularized"` method
-selects a subsample of the dataset by imposing a minimum distance, set by the `min_dist` argument, for a randomly selected
+\item{method}{Character; either \code{"cluster"} or \code{"regularized"} for the cross-validation method. The \code{"cluster"} method uses
+spatial clustering as implemented by the \code{spatial_clustering_cv} function from the \code{spatialEco} package, while the \code{"regularized"} method
+selects a subsample of the dataset by imposing a minimum distance, set by the \code{min_dist} argument, for a randomly selected
 subset of locations.}
 
-\item{min_dist}{Optional; minimum distance for regularized subsampling (required if `method = "regularized"`).}
+\item{min_dist}{Optional; minimum distance for regularized subsampling (required if \code{method = "regularized"}).}
 
-\item{plot_fold}{Logical; if `TRUE`, plots each fold's test set.}
+\item{plot_fold}{Logical; if \code{TRUE}, plots each fold's test set.}
 
-\item{messages}{Logical; if `TRUE`, displays progress messages.}
+\item{messages}{Logical; if \code{TRUE}, displays progress messages.}
 
-\item{which_metric}{Character vector; one or more of `"CRPS"`, `"SCRPS"`, or `"AnPIT"`, to specify the predictive performance metrics to compute. When `"AnPIT"` is requested, the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation between the PIT/AnPIT curve and the reference line.}
+\item{which_metric}{Character vector; one or more of \code{"CRPS"}, \code{"SCRPS"}, or \code{"AnPIT"}, to specify the predictive performance metrics to compute. When \code{"AnPIT"} is requested, the scalar score \code{"AnPIT_area"} is also computed as the integrated absolute deviation between the PIT/AnPIT curve and the reference line.}
 
 \item{user_split}{A user-defined cross-validation split. Either:
-* a matrix with \code{nrow = n} (number of observations) and
-  \code{ncol = iter} (number of iterations), where entries of \code{1}
-  indicate membership in the test set for that iteration and \code{0}
-  indicate training set; or
-* a list of length \code{iter}, where each element is either a vector of
-  test indices, or a list with components \code{in_id} (training indices)
-  and \code{out_id} (test indices).
+\itemize{
+\item a matrix with \code{nrow = n} (number of observations) and
+\code{ncol = iter} (number of iterations), where entries of \code{1}
+indicate membership in the test set for that iteration and \code{0}
+indicate training set; or
+\item a list of length \code{iter}, where each element is either a vector of
+test indices, or a list with components \code{in_id} (training indices)
+and \code{out_id} (test indices).
 When supplied, \code{user_split} overrides the automatic clustering or
-regularized distance splitting defined by \code{method}.}
+regularized distance splitting defined by \code{method}.
+}}
 
 \item{...}{Additional arguments passed to clustering or subsampling functions.}
 }
 \value{
-A list of class `RiskMap.spatial.cv`, containing:
+A list of class \code{RiskMap.spatial.cv}, containing:
 \describe{
-  \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
-  \item{model}{A named list, one per model, each containing:
-    \describe{
-      \item{score}{A list with CRPS, SCRPS, and/or AnPIT area scores for each fold if requested.}
-      \item{PIT}{(if `family = "gaussian"` and `which_metric` includes `"AnPIT"`) A list of PIT values for test data.}
-      \item{AnPIT}{(if `family` is discrete and `which_metric` includes `"AnPIT"`) A list of AnPIT curves for test data.}
-    }
-  }
+\item{test_set}{A list of test sets used for validation, each of class \code{'sf'}.}
+\item{model}{A named list, one per model, each containing:
+\describe{
+\item{score}{A list with CRPS, SCRPS, and/or AnPIT area scores for each fold if requested.}
+\item{PIT}{(if \code{family = "gaussian"} and \code{which_metric} includes \code{"AnPIT"}) A list of PIT values for test data.}
+\item{AnPIT}{(if \code{family} is discrete and \code{which_metric} includes \code{"AnPIT"}) A list of AnPIT curves for test data.}
+}
+}
 }
 }
 \description{
-This function evaluates the predictive performance of spatial models fitted to `RiskMap` objects using cross-validation. It supports two classes of diagnostic tools:
-
-- **Scoring rules**, including the Continuous Ranked Probability Score (CRPS) and its scaled version (SCRPS), which quantify the sharpness and calibration of probabilistic forecasts;
-- **Calibration diagnostics**, based on the Probability Integral Transform (PIT) for Gaussian outcomes, Aggregated nonparametric PIT (AnPIT) curves for discrete outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve and the reference line.
+This function evaluates the predictive performance of spatial models fitted to \code{RiskMap} objects using cross-validation. It supports two classes of diagnostic tools:
+\itemize{
+\item \strong{Scoring rules}, including the Continuous Ranked Probability Score (CRPS) and its scaled version (SCRPS), which quantify the sharpness and calibration of probabilistic forecasts;
+\item \strong{Calibration diagnostics}, based on the Probability Integral Transform (PIT) for Gaussian outcomes, Aggregated nonparametric PIT (AnPIT) curves for discrete outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve and the reference line.
+}
 
 Cross-validation can be performed using either spatial clustering or regularized subsampling with a minimum inter-point distance. For each fold or subset, models can be refitted or evaluated with fixed parameters, offering flexibility in model validation. The function also provides visualizations of the spatial distribution of test folds.
 }
 \references{
-Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of proper scoring rules. *Statistical Science*, 38(1), 140–159. \doi{10.1214/22-STS864}.
+Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of proper scoring rules. \emph{Statistical Science}, 38(1), 140–159. \doi{10.1214/22-STS864}.
 }
 \seealso{
 \code{\link{plot_AnPIT}}

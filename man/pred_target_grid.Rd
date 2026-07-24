@@ -63,21 +63,21 @@ Computes predictions over a regular spatial grid using outputs from
 For \strong{STH models} (\code{family = "intprev"}) the default predictive
 targets are:
 \describe{
-  \item{\code{prevalence}}{Probability of observing at least one egg,
-    \eqn{P(Y>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
-  \item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
-  \item{\code{intensity}}{Mean egg count \eqn{\rho\,\mu_W} (unconditional).}
+\item{\code{prevalence}}{Probability of observing at least one egg,
+\eqn{P(Y>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
+\item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
+\item{\code{intensity}}{Mean egg count \eqn{\rho\,\mu_W} (unconditional).}
 }
 
 For \strong{LF models} (\code{family = "lf_mdiag"}) the default predictive
 targets are:
 \describe{
-  \item{\code{mf_prevalence}}{Microfilarial (parasitological) prevalence,
-    \eqn{P(\text{MF}>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
-  \item{\code{antigen_prevalence}}{Circulating filarial antigen (serological)
-    prevalence, \eqn{\gamma_s(1 - [k/(k+\mu_W)]^k)}, where \eqn{\gamma_s}
-    is the serological test sensitivity.}
-  \item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
+\item{\code{mf_prevalence}}{Microfilarial (parasitological) prevalence,
+\eqn{P(\text{MF}>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
+\item{\code{antigen_prevalence}}{Circulating filarial antigen (serological)
+prevalence, \eqn{\gamma_s(1 - [k/(k+\mu_W)]^k)}, where \eqn{\gamma_s}
+is the serological test sensitivity.}
+\item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
 }
 
 Custom targets can always be supplied via \code{f_target}.
