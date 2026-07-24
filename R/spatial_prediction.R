@@ -822,8 +822,7 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##'
 ##' @param object Output from \code{\link{pred_over_grid}} (class \code{RiskMap.pred.re}),
 ##'   typically fitted with \code{type = "joint"} so that linear predictor samples are available.
-##' @param shp An \pkg{sf} polygon object (preferred) or a \code{data.frame} with an
-##'   attached geometry column, representing regions over which predictions are aggregated.
+##' @param shp An \pkg{sf} polygon object representing regions over which predictions are aggregated.
 ##' @param shp_target A function that aggregates grid-cell values within each polygon to a
 ##'   single regional value (default \code{mean}). Examples: \code{mean}, \code{sum},
 ##'   a custom weighted mean, etc.
@@ -874,8 +873,11 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##'
 ##' @importFrom terra rast as.data.frame
 ##' @export
-pred_target_shp <- function(object, shp, shp_target = mean,
-                            weights = NULL, standardize_weights = FALSE,
+pred_target_shp <- function(object,
+                            shp,
+                            shp_target = mean,
+                            weights = NULL,
+                            standardize_weights = FALSE,
                             col_names = NULL,
                             include_covariates = TRUE,
                             include_nugget = FALSE,
@@ -2008,14 +2010,14 @@ assess_pp <- function(object,
 ##' This function simulates surface data based on a user-defined formula and other parameters. It allows for simulation of spatial data with various model families (Gaussian, Binomial, or Poisson). The simulation involves creating spatially correlated random fields and generating outcomes for data points in a given prediction grid.
 ##'
 ##' @param n_sim The number of simulations to run.
-##' @param pred_grid A spatial object (either `sf` or `data.frame`) representing the prediction grid where the simulation will take place.
+##' @param pred_grid An `sf` object representing the prediction grid where the simulation will take place.
 ##' @param formula A formula object specifying the model to be fitted. It should include both fixed effects and random effects if applicable.
-##' @param sampling_f A function that returns a sampled dataset (of class `sf` or `data.frame`) to simulate data from.
+##' @param sampling_f A function that returns a sampled dataset (of class `sf`) to simulate data from.
 ##' @param family A character string specifying the family of the model. Must be one of "gaussian", "binomial", or "poisson".
 ##' @param scale_to_km A logical indicating whether the coordinates should be scaled to kilometers. Defaults to `TRUE`.
 ##' @param control_mcmc A list of control parameters for MCMC (not used in this implementation but can be expanded later).
 ##' @param par0 A list containing initial parameter values for the simulation, including `beta`, `sigma2`, `phi`, `tau2`, and `sigma2_me`.
-##' @param include_covariates A logical indicateing if the covariates (or the intercept if no covariates are used) should be included in the linear
+##' @param include_covariates A logical indicating if the covariates (or the intercept if no covariates are used) should be included in the linear
 ##' predictor. By default \code{include_covariates = TRUE}
 ##' @param nugget_over_grid A logical indicating whether to include a nugget effect over the entire prediction grid.
 ##' @param fix_var_me A parameter to fix the variance of the random effects for the measurement error. Defaults to `NULL`.
@@ -2029,8 +2031,10 @@ assess_pp <- function(object,
 ##'
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @export
-surf_sim <- function(n_sim, pred_grid,
-                     formula, sampling_f,
+surf_sim <- function(n_sim,
+                     pred_grid,
+                     formula,
+                     sampling_f,
                      family,
                      scale_to_km = TRUE,
                      control_mcmc = set_control_sim(),
@@ -2048,21 +2052,18 @@ surf_sim <- function(n_sim, pred_grid,
   }
   inter_f <- interpret.formula(formula)
   include_cov_offset <- !is.null(inter_f$offset)
-  if(!inherits(pred_grid,
-               what = c("sf", "data.frame"), which = FALSE)) {
+  if(!inherits(pred_grid, "sf")) {
     stop("'pred_grid' must be an 'sf'
           object indicating the variables of the
           model to be fitted")
   }
 
-  if(!inherits(sampling_f,
-               what = c("function"), which = FALSE)) {
+  if(!inherits(sampling_f, "function")){
     stop("'sampling_f' must be an object of class 'function'")
   }
 
   data_test <- sampling_f()
-  if(!inherits(data_test,
-               what = c("sf", "data.frame"), which = FALSE)) {
+  if(!inherits(data_test, "sf")) {
     stop("The object return by 'sampling_f' must be of an 'sf' object")
   }
 
@@ -2265,7 +2266,7 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
 ##' @param f_grid_target A function for processing grid-level predictions.
 ##' @param f_area_target A function for processing area-level predictions.
-##' @param shp A shapefile of class `sf` or `data.frame` for area-level analysis, required if `spatial_scale = "area"`.
+##' @param shp A shapefile of class `sf` for area-level analysis, required if `spatial_scale = "area"`.
 ##' @param col_names Column name in `shp` containing unique region names. If `NULL`, defaults to `"region"`.
 ##' @param pred_objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
 ##' @param categories A numeric vector of thresholds defining categories for classification. Required if `pred_objective = "classify"`.
@@ -2325,7 +2326,7 @@ assess_sim <- function(obj_sim,
     n_reg <- nrow(shp)
     if(is.null(shp)) stop("If spatial_scale='area', then 'shp' must be specified")
     if(!inherits(shp,
-                 what = c("sf","data.frame"), which = FALSE)) {
+                 what = c("sf"), which = FALSE)) {
       stop("The object passed to 'shp' must be an object of class 'sf'")
     }
 

@@ -610,7 +610,7 @@ dast <- function(formula,
 ##' @param model_fit Optional fitted DAST model object of class \code{RiskMap}.
 ##' If supplied, it overrides model specification arguments.
 ##' @param formula Model formula including a \code{gp()} term.
-##' @param \code{sf} object used for simulation.
+##' @param data \code{sf} object used for simulation.
 ##' @param den Binomial denominator variable. If missing, it is assumed to be 1.
 ##' @param time Survey-time information. For simulations from scratch this can be a
 ##' column in \code{data} (unquoted name or character string) or a numeric vector
@@ -705,38 +705,6 @@ dast_sim <- function(n_sim,
     sst <- FALSE
   } else {
     stop("Specify gp(x, y), gp(x, y, t), or gp(sf).")
-  }
-
-  if(length(crs)>0) {
-    if (is.character(crs) && length(crs) == 1) {
-      crs_chr <- trimws(crs)
-      if (grepl("^EPSG:[0-9]+$", crs_chr, ignore.case = TRUE)) {
-        crs_chr <- sub("^EPSG:", "", crs_chr, ignore.case = TRUE)
-      }
-      if (grepl("^[0-9]+$", crs_chr)) {
-        crs <- as.numeric(crs_chr)
-      } else {
-        stop("'crs' must be a positive integer number or a string like 'EPSG:<code>'")
-      }
-    }
-    if(!is.numeric(crs) |
-       (is.numeric(crs) &
-          (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
-  }
-  if(inherits(data, "data.frame")) {
-    if(is.null(crs)) {
-      warning("'crs' is set to 4326 (long/lat)")
-      crs <- 4326
-    }
-    if(length(gp_terms)>1 && gp_terms[1] != "sf") {
-      new_x <- paste(gp_terms[1],"_sf",sep="")
-      new_y <- paste(gp_terms[2],"_sf",sep="")
-      data[[new_x]] <-  data[[gp_terms[1]]]
-      data[[new_y]] <-  data[[gp_terms[2]]]
-      data <- sf::st_as_sf(data,
-                           coords = c(new_x, new_y),
-                           crs = crs)
-    }
   }
 
   if(length(gp_terms) == 1 & gp_terms[1]=="sf" &
