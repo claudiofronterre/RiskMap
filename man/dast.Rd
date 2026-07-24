@@ -29,7 +29,7 @@ dast(
 \arguments{
 \item{formula}{A model formula specifying the response variable, predictors, and the GP structure through \code{gp()}.}
 
-\item{data}{A \code{data.frame} or \code{sf} object containing the dataset.}
+\item{data}{An \code{sf} object containing the dataset.}
 
 \item{den}{The denominator for binomial models.}
 
@@ -50,10 +50,6 @@ for that parameter.}
 \item{drop}{Optional value used for fixing the "drop" parameter of the MDA impact function.}
 
 \item{power_val}{Value expressing the power of the MDA impact function.}
-
-\item{crs}{Optional coordinate reference system (CRS) for spatial data.}
-
-\item{convert_to_crs}{CRS to which spatial data should be converted.}
 
 \item{scale_to_km}{Logical; whether to scale distances to kilometers (default: \code{TRUE}).}
 
