@@ -29,8 +29,7 @@ pred_target_shp(
 \item{object}{Output from \code{\link{pred_over_grid}} (class \code{RiskMap.pred.re}),
 typically fitted with \code{type = "joint"} so that linear predictor samples are available.}
 
-\item{shp}{An \pkg{sf} polygon object (preferred) or a \code{data.frame} with an
-attached geometry column, representing regions over which predictions are aggregated.}
+\item{shp}{An \pkg{sf} polygon object representing regions over which predictions are aggregated.}
 
 \item{shp_target}{A function that aggregates grid-cell values within each polygon to a
 single regional value (default \code{mean}). Examples: \code{mean}, \code{sum},

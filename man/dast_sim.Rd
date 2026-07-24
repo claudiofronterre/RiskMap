@@ -29,6 +29,8 @@ If supplied, it overrides model specification arguments.}
 
 \item{formula}{Model formula including a \code{gp()} term.}
 
+\item{data}{\code{sf} object used for simulation.}
+
 \item{den}{Binomial denominator variable. If missing, it is assumed to be 1.}
 
 \item{time}{Survey-time information. For simulations from scratch this can be a
@@ -50,8 +52,6 @@ is \code{NULL}. Includes \code{beta}, \code{sigma2}, \code{tau2}, \code{phi},
 \code{psi}, \code{sigma2_re}, \code{alpha}, and \code{gamma}.}
 
 \item{messages}{Logical; if TRUE print progress messages.}
-
-\item{\code{sf}}{object used for simulation.}
 }
 \value{
 A list with simulated outcomes in \code{data_sim} as an
