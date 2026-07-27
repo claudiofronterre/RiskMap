@@ -2482,11 +2482,11 @@ glgpm_nong <-
 
       if (family == "poisson") {
         mu_vec <- inv_fn(eta)
-        if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) stop("invlink must return positive means (Poisson).")
+        if (any(!is.finite(mu_vec)) || any(mu_vec < 0)) stop("invlink must return positive means (Poisson).")
         llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
       } else {
         pvec <- inv_fn(eta)
-        if (any(!is.finite(pvec)) || any(pvec <= 0 | pvec >= 1)) stop("invlink must return values in (0,1) (Binomial).")
+        if (any(!is.finite(pvec)) || any(pvec < 0 | pvec > 1)) stop("invlink must return values in (0,1) (Binomial).")
         llik <- sum(y * log(pmax(pvec, .Machine$double.eps)) +
                       (units_m - y) * log(pmax(1 - pvec, .Machine$double.eps)))
       }
