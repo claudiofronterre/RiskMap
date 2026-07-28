@@ -386,11 +386,10 @@ dast <- function(formula,
 
   # survey_times_data already set from 'time' argument above
 
-  if(length(inter_f$re.spec) > 0) {
-    hr_re <- inter_f$re.spec$term
-    re_names <- inter_f$re.spec$term
+  hr_re <- if (length(inter_f$re.spec) > 0L) {
+    inter_f$re.spec$term
   } else {
-    hr_re <- NULL
+    NULL
   }
   if(!is.null(drop)) {
     fix_alpha <- drop
@@ -398,39 +397,15 @@ dast <- function(formula,
     fix_alpha <- NULL
   }
 
-  if(!is.null(hr_re)) {
-    # Define indices of random effects
-    re_mf <- st_drop_geometry(data[hr_re])
-    re_mf_n <- re_mf
-
-    if(any(is.na(re_mf))) stop("Missing values in the variable(s) of the random effects specified through re() ")
-    names_re <- colnames(re_mf)
-    n_re <- ncol(re_mf)
-
-    ID_re <- matrix(NA, nrow = n, ncol = n_re)
-    re_unique <- list()
-    re_unique_f <- list()
-    for(i in 1:n_re) {
-      if(is.factor(re_mf[,i])) {
-        re_mf_n[,i] <- as.numeric(re_mf[,i])
-        re_unique[[names_re[i]]] <- 1:length(levels(re_mf[,i]))
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <-levels(re_mf[,i])
-      } else if(is.numeric(re_mf[,i])) {
-        re_unique[[names_re[i]]] <- unique(re_mf[,i])
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <- re_unique[[names_re[i]]]
-      }
-    }
-    ID_re <- data.frame(ID_re)
-    colnames(ID_re) <- re_names
-  } else {
-    n_re <- 0
-    re_unique <- NULL
-    ID_re <- NULL
+  random_effects <- prepare_random_effects(data, hr_re)
+  n_re <- random_effects$n_re
+  names_re <- random_effects$names_re
+  ID_re <- random_effects$ID_re
+  if (!is.null(ID_re)) {
+    ID_re <- as.data.frame(ID_re)
   }
+  re_unique <- random_effects$re_unique
+  re_unique_f <- random_effects$re_unique_f
 
 
   # Extract coordinates
@@ -830,44 +805,15 @@ dast_sim <- function(n_sim,
   }
   if (is.null(power_val)) stop("'power_val' must be provided")
 
-  if(length(inter_f$re.spec) > 0) {
-    hr_re <- inter_f$re.spec$term
+  hr_re <- if (length(inter_f$re.spec) > 0L) {
+    inter_f$re.spec$term
   } else {
-    hr_re <- NULL
+    NULL
   }
-
-  if(!is.null(hr_re)) {
-    re_mf <- st_drop_geometry(data[hr_re])
-    re_mf_n <- re_mf
-
-    if(any(is.na(re_mf))) stop("Missing values in the variable(s) of the random effects specified through re()")
-    names_re <- colnames(re_mf)
-    n_re <- ncol(re_mf)
-
-    ID_re <- matrix(NA, nrow = n, ncol = n_re)
-    re_unique <- list()
-    re_unique_f <- list()
-    for(i in 1:n_re) {
-      if(is.factor(re_mf[,i])) {
-        re_mf_n[,i] <- as.numeric(re_mf[,i])
-        re_unique[[names_re[i]]] <- 1:length(levels(re_mf[,i]))
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <-levels(re_mf[,i])
-      } else if(is.numeric(re_mf[,i])) {
-        re_unique[[names_re[i]]] <- unique(re_mf[,i])
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <- re_unique[[names_re[i]]]
-      }
-    }
-    ID_re <- data.frame(ID_re)
-    colnames(ID_re) <- names_re
-  } else {
-    n_re <- 0
-    re_unique <- NULL
-    ID_re <- NULL
-  }
+  random_effects <- prepare_random_effects(data, hr_re)
+  n_re <- random_effects$n_re
+  ID_re <- random_effects$ID_re
+  re_unique <- random_effects$re_unique
 
   if(!is.null(convert_to_crs)) {
     if(!is.numeric(convert_to_crs)) stop("'convert_to_crs' must be a numeric object")
