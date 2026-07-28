@@ -1173,7 +1173,6 @@ pred_target_shp <- function(object, shp, shp_target = mean,
     }
   }
 
-  no_comp <- NULL
   for(h in 1:n_reg) {
 
     if(list_mode) {
@@ -2313,8 +2312,8 @@ assess_sim <- function(obj_sim,
     # Determine the binomial denominator column, if relevant to the family
   units_m <- NULL
   if (obj_sim$family == "binomial") {
-    stopifnot(!is.null(obj_sim$data_sim[[j]]$units_m))
-    units_m <- obj_sim$data_sim[[j]]$units_m
+    stopifnot(!is.null(obj_sim$data_sim[[1]]$units_m))
+    units_m <- obj_sim$data_sim[[1]]$units_m
   }
   if(any(pred_objective=="classify")) {
     if(is.null(categories)) stop("if pred_objective='class', a value for 'categories' must be specified")
@@ -2336,6 +2335,9 @@ assess_sim <- function(obj_sim,
 
   fits <- list()
   preds <- list()
+
+  no_comp <- NULL
+
   if(spatial_scale=="grid") {
     type <- "marginal"
   } else if(spatial_scale=="area") {
@@ -2451,9 +2453,9 @@ assess_sim <- function(obj_sim,
     for(i in 1:n_reg) {
       for(j in 1:n_sim) {
         if(length(inter[[i]])==0) {
-          warning(paste("No points on the grid fall within", shp[[col_names]][h],
+          warning(paste("No points on the grid fall within", shp[[col_names]][i],
                         "and no predictions are carried out for this area"))
-          no_comp <- c(no_comp, h)
+          no_comp <- c(no_comp, i)
         } else {
           true_target_sim[i,j] <- f_area_target(true_target_grid_sim[inter[[i]],j])
         }
