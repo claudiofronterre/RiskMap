@@ -156,46 +156,20 @@ glgpm <- function(formula,
 
   }
 
-  if(length(inter_f$re.spec) > 0) {
-    hr_re <- inter_f$re.spec$term
-    re_names <- inter_f$re.spec$term
+  hr_re <- if (length(inter_f$re.spec) > 0L) {
+    inter_f$re.spec$term
   } else {
-    hr_re <- NULL
+    NULL
   }
-
-  if(!is.null(hr_re)) {
-    # Define indices of random effects
-    re_mf <- st_drop_geometry(data[hr_re])
-    re_mf_n <- re_mf
-
-    if(any(is.na(re_mf))) stop("Missing values in the variable(s) of the random effects specified through re() ")
-    names_re <- colnames(re_mf)
-    n_re <- ncol(re_mf)
-
-    ID_re <- matrix(NA, nrow = n, ncol = n_re)
-    re_unique <- list()
-    re_unique_f <- list()
-    for(i in 1:n_re) {
-      if(is.factor(re_mf[,i])) {
-        re_mf_n[,i] <- as.numeric(re_mf[,i])
-        re_unique[[names_re[i]]] <- 1:length(levels(re_mf[,i]))
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <-levels(re_mf[,i])
-      } else if(is.numeric(re_mf[,i])) {
-        re_unique[[names_re[i]]] <- unique(re_mf[,i])
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <- re_unique[[names_re[i]]]
-      }
-    }
-    ID_re <- data.frame(ID_re)
-    colnames(ID_re) <- re_names
-  } else {
-    n_re <- 0
-    re_unique <- NULL
-    ID_re <- NULL
+  random_effects <- prepare_random_effects(data, hr_re)
+  n_re <- random_effects$n_re
+  names_re <- random_effects$names_re
+  ID_re <- random_effects$ID_re
+  if (!is.null(ID_re)) {
+    ID_re <- as.data.frame(ID_re)
   }
+  re_unique <- random_effects$re_unique
+  re_unique_f <- random_effects$re_unique_f
 
 
   # Extract coordinates
@@ -240,13 +214,13 @@ glgpm <- function(formula,
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
       glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
                         data = aux_data, family = binomial)
-      start_pars$beta <- stats::coef(glm_fitted)
+      start_pars$beta <- coef(glm_fitted)
     } else if(family=="poisson") {
-      pf_aux <- stats::update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
+      pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
       data_aux <- data
       data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
       glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
-      start_pars$beta <- stats::coef(glm_fitted)
+      start_pars$beta <- coef(glm_fitted)
     }
   } else {
     if(length(start_pars$beta)!=ncol(D)) stop("number of starting values provided
@@ -351,7 +325,7 @@ glgpm <- function(formula,
   if(!is.null(convert_to_crs)) {
     crs <- convert_to_crs
   } else {
-    crs <- sf::st_crs(data)$input
+    crs <- st_crs(data)$input
   }
   res$crs <- crs
   res$scale_to_km <- scale_to_km
@@ -1348,44 +1322,15 @@ glgpm_sim <- function(n_sim,
   D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
   n <- nrow(D)
 
-  if(length(inter_f$re.spec) > 0) {
-    hr_re <- inter_f$re.spec$term
+  hr_re <- if (length(inter_f$re.spec) > 0L) {
+    inter_f$re.spec$term
   } else {
-    hr_re <- NULL
+    NULL
   }
-
-
-  if(!is.null(hr_re)) {
-    # Define indices of random effects
-    re_mf <- st_drop_geometry(data[hr_re])
-    re_mf_n <- re_mf
-
-    if(any(is.na(re_mf))) stop("Missing values in the variable(s) of the random effects specified through re() ")
-    names_re <- colnames(re_mf)
-    n_re <- ncol(re_mf)
-
-    ID_re <- matrix(NA, nrow = n, ncol = n_re)
-    re_unique <- list()
-    re_unique_f <- list()
-    for(i in 1:n_re) {
-      if(is.factor(re_mf[,i])) {
-        re_mf_n[,i] <- as.numeric(re_mf[,i])
-        re_unique[[names_re[i]]] <- 1:length(levels(re_mf[,i]))
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <-levels(re_mf[,i])
-      } else if(is.numeric(re_mf[,i])) {
-        re_unique[[names_re[i]]] <- unique(re_mf[,i])
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <- re_unique[[names_re[i]]]
-      }
-    }
-  } else {
-    n_re <- 0
-    re_unique <- NULL
-    ID_re <- NULL
-  }
+  random_effects <- prepare_random_effects(data, hr_re)
+  n_re <- random_effects$n_re
+  ID_re <- random_effects$ID_re
+  re_unique <- random_effects$re_unique
 
   # Number of covariates
   p <- ncol(D)
@@ -1625,7 +1570,7 @@ maxim.integrand <- function(
   cross_sum <- function(v, grp1, n1, grp2, n2) {
     f1 <- factor(grp1, levels = seq_len(n1))
     f2 <- factor(grp2, levels = seq_len(n2))
-    as.matrix(stats::xtabs(v ~ f1 + f2))  # n1 x n2, zeros where empty
+    as.matrix(xtabs(v ~ f1 + f2))  # n1 x n2, zeros where empty
   }
 
   # ---------- dimensions ----------
@@ -1665,7 +1610,7 @@ maxim.integrand <- function(
         d1  <- function(x) exp(x)
         d2  <- function(x) exp(x)
       } else {
-        inv <- function(x) stats::plogis(x)
+        inv <- function(x) plogis(x)
         d1  <- function(x) { p <- inv(x); p * (1 - p) }
         d2  <- function(x) { p <- inv(x); d <- p * (1 - p); d * (1 - 2 * p) }
       }
@@ -2003,7 +1948,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
         inv <- function(x) exp(x)
         d1  <- function(x) exp(x)
       } else {
-        inv <- function(x) stats::plogis(x)
+        inv <- function(x) plogis(x)
         d1  <- function(x) { p <- inv(x); p * (1 - p) }
       }
       check_vec_fun(inv, ncheck, "canonical invlink")
@@ -2336,7 +2281,7 @@ glgpm_nong <-
           d1  <- function(x) exp(x)
           d2  <- function(x) exp(x)
         } else {
-          inv <- function(x) stats::plogis(x)
+          inv <- function(x) plogis(x)
           d1  <- function(x) { p <- inv(x); p*(1-p) }
           d2  <- function(x) { p <- inv(x); d <- p*(1-p); d*(1-2*p) }
         }
@@ -2470,11 +2415,11 @@ glgpm_nong <-
 
       if (family == "poisson") {
         mu_vec <- inv_fn(eta)
-        if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) stop("invlink must return positive means (Poisson).")
+        if (any(!is.finite(mu_vec)) || any(mu_vec < 0)) stop("invlink must return positive means (Poisson).")
         llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
       } else {
         pvec <- inv_fn(eta)
-        if (any(!is.finite(pvec)) || any(pvec <= 0 | pvec >= 1)) stop("invlink must return values in (0,1) (Binomial).")
+        if (any(!is.finite(pvec)) || any(pvec < 0 | pvec > 1)) stop("invlink must return values in (0,1) (Binomial).")
         llik <- sum(y * log(pmax(pvec, .Machine$double.eps)) +
                       (units_m - y) * log(pmax(1 - pvec, .Machine$double.eps)))
       }

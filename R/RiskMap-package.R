@@ -15,6 +15,4 @@
 ##' @importFrom tibble as_tibble
 NULL
 
-utils::globalVariables(c(
-  "model", "u_val", "value", "geom_id", "time", "sigma2_re",
-  "lo", "hi", "series", "obs", "n_obs"))
+

@@ -37,17 +37,17 @@ pred_over_grid <- function(object,
     if (length(grid_pred) == 0L)
       stop("'grid_pred' is a list but has length 0.")
     grid_pred <- lapply(grid_pred, function(g) {
-      if (inherits(g, "sf")) sf::st_geometry(g) else g
+      if (inherits(g, "sf")) st_geometry(g) else g
     })
     ok_geom <- vapply(grid_pred, function(g) {
-      inherits(g, "sfc") && all(sf::st_geometry_type(g) == "POINT")
+      inherits(g, "sfc") && all(st_geometry_type(g) == "POINT")
     }, logical(1))
     if (!all(ok_geom))
       stop("Each element of 'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries.")
 
   } else if (!is.null(grid_pred)) {
-    if (inherits(grid_pred, "sf")) grid_pred <- sf::st_geometry(grid_pred)
-    if (!inherits(grid_pred, "sfc") || !all(sf::st_geometry_type(grid_pred) == "POINT"))
+    if (inherits(grid_pred, "sf")) grid_pred <- st_geometry(grid_pred)
+    if (!inherits(grid_pred, "sfc") || !all(st_geometry_type(grid_pred) == "POINT"))
       stop("'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries.")
   }
 
@@ -57,22 +57,22 @@ pred_over_grid <- function(object,
     stop("the argument passed to 'control_sim' must be an output from set_control_sim")
 
   if (obs_loc) {
-    predictors <- as.data.frame(sf::st_drop_geometry(object$data_sf))
-    grid_pred  <- sf::st_as_sfc(object$data_sf)
+    predictors <- as.data.frame(st_drop_geometry(object$data_sf))
+    grid_pred  <- st_as_sfc(object$data_sf)
     list_mode  <- FALSE
   } else {
     if (list_mode) {
-      grid_pred <- lapply(grid_pred, sf::st_transform, crs = object$crs)
+      grid_pred <- lapply(grid_pred, st_transform, crs = object$crs)
     } else {
-      grid_pred <- sf::st_transform(grid_pred, crs = object$crs)
+      grid_pred <- st_transform(grid_pred, crs = object$crs)
     }
   }
 
   if (list_mode) {
-    grp    <- lapply(grid_pred, sf::st_coordinates)
+    grp    <- lapply(grid_pred, st_coordinates)
     n_pred <- vapply(grp, nrow, integer(1))
   } else {
-    grp    <- sf::st_coordinates(grid_pred)
+    grp    <- st_coordinates(grid_pred)
     n_pred <- nrow(grp)
   }
 
@@ -151,7 +151,7 @@ pred_over_grid <- function(object,
         ind_c       <- complete.cases(re_predictors)
         re_predictors <- re_predictors[ind_c, , drop = FALSE]
         grid_pred   <- if (list_mode) lapply(grid_pred, `[`, ind_c) else grid_pred[ind_c]
-        grp         <- if (list_mode) lapply(grid_pred, sf::st_coordinates) else sf::st_coordinates(grid_pred)
+        grp         <- if (list_mode) lapply(grid_pred, st_coordinates) else st_coordinates(grid_pred)
         n_pred      <- if (list_mode) vapply(grp, nrow, integer(1)) else nrow(grp)
       }
       if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
@@ -376,7 +376,7 @@ pred_over_grid <- function(object,
     out$re$samples  <- list()
     re_names        <- colnames(object$ID_re)
     if (object$family == "gaussian") {
-      Sigma_cond_inv <- solve(Sigma_cond)
+      Sigma_cond_inv <- solve(Sc)
       C_Z  <- C_g[, -(seq_len(n_dim_re_tot[1]))]
       add  <- 0
       for (i in seq_along(n_dim_re_tot[-1])) {
@@ -531,7 +531,7 @@ pred_target_grid <- function(object,
 
   if (list_mode) {
     n_pred <- vapply(object$grid_pred,
-                     function(g) nrow(sf::st_coordinates(g)), integer(1))
+                     function(g) nrow(st_coordinates(g)), integer(1))
   } else {
     n_pred <- nrow(object$S_samples)
   }
@@ -926,7 +926,7 @@ pred_target_shp <- function(object, shp, shp_target = mean,
       stop("When 'object$grid_pred' is a list, each element must be an 'sf' or 'sfc' object.")
     }
 
-    n_pred <- vapply(object$grid_pred, function(g) nrow(sf::st_coordinates(g)), integer(1))
+    n_pred <- vapply(object$grid_pred, function(g) nrow(st_coordinates(g)), integer(1))
 
     if (!is.null(weights)) {
       if (!is.list(weights)) {
@@ -1173,7 +1173,6 @@ pred_target_shp <- function(object, shp, shp_target = mean,
     }
   }
 
-  no_comp <- NULL
   for(h in 1:n_reg) {
 
     if(list_mode) {
@@ -1584,7 +1583,7 @@ assess_pp <- function(object,
   crps_gaussian <- function(y, mu, sigma) {
     if (sigma == 0) return(0)
     z <- (y - mu) / sigma
-    2 * stats::dnorm(z) + z * (2 * stats::pnorm(z) - 1) - 1 / sqrt(pi)
+    2 * dnorm(z) + z * (2 * pnorm(z) - 1) - 1 / sqrt(pi)
   }
   crps_discrete <- function(y, Fk) {
     k <- seq_along(Fk) - 1
@@ -1629,14 +1628,14 @@ assess_pp <- function(object,
   object1 <- object[[1]]
   data_sf <- object1$data_sf
   n_obs   <- nrow(data_sf)
-  data_geom <- sf::st_as_text(sf::st_geometry(data_sf))
+  data_geom <- st_as_text(st_geometry(data_sf))
 
   for (h in seq_along(object)) {
     fit_data <- object[[h]]$data_sf
     if (nrow(fit_data) != n_obs) {
       stop("All models supplied to `assess_pp()` must have the same number of observations.")
     }
-    fit_geom <- sf::st_as_text(sf::st_geometry(fit_data))
+    fit_geom <- st_as_text(st_geometry(fit_data))
     if (!identical(fit_geom, data_geom)) {
       stop("All models supplied to `assess_pp()` must have data in the same row order and geometry.")
     }
@@ -1689,17 +1688,17 @@ assess_pp <- function(object,
         warning("plot_fold = TRUE requires the 'ggplot2' package; skipping plots.", call. = FALSE)
       } else {
         if (n_iter == 1) {
-          p <- ggplot2::ggplot(data_split$splits[[1]]$data_test) +
-            ggplot2::geom_sf() +
-            ggplot2::theme_minimal() +
-            ggplot2::ggtitle("Test set")
+          p <- ggplot(data_split$splits[[1]]$data_test) +
+            geom_sf() +
+            theme_minimal() +
+            ggtitle("Test set")
           print(p)
         } else {
           plots <- lapply(seq_len(n_iter), function(i) {
-            ggplot2::ggplot(data_split$splits[[i]]$data_test) +
-              ggplot2::geom_sf() +
-              ggplot2::theme_minimal() +
-              ggplot2::ggtitle(paste("Test", i))
+            ggplot(data_split$splits[[i]]$data_test) +
+              geom_sf() +
+              theme_minimal() +
+              ggtitle(paste("Test", i))
           })
 
           if (requireNamespace("gridExtra", quietly = TRUE)) {
@@ -1726,11 +1725,11 @@ assess_pp <- function(object,
   } else { # regularized
     data_split <- list(splits = vector("list", iter))
     for (i in seq_len(iter)) {
-      locations_sf <- data_sf[!duplicated(sf::st_as_text(data_sf$geometry)), ]
+      locations_sf <- data_sf[!duplicated(st_as_text(data_sf$geometry)), ]
       data_split$splits[[i]] <- list()
       data_split$splits[[i]]$data_test <- subsample.distance(locations_sf, size = n_size, d = min_dist * 1000, ...)
-      test_geom <- sf::st_as_text(data_split$splits[[i]]$data_test$geometry)
-      in_test   <- sf::st_as_text(data_sf$geometry) %in% test_geom
+      test_geom <- st_as_text(data_split$splits[[i]]$data_test$geometry)
+      in_test   <- st_as_text(data_sf$geometry) %in% test_geom
       data_split$splits[[i]]$out_id <- which(in_test)
       data_split$splits[[i]]$in_id  <- which(!in_test)
       data_split$splits[[i]]$data   <- data_sf[!in_test, ]
@@ -1743,10 +1742,10 @@ assess_pp <- function(object,
         warning("plot_fold = TRUE with geom_sf() requires the 'sf' package; skipping plots.", call. = FALSE)
       } else {
         plots <- lapply(seq_len(n_iter), function(i) {
-          ggplot2::ggplot(data_split$splits[[i]]$data_test) +
-            ggplot2::geom_sf() +
-            ggplot2::theme_minimal() +
-            ggplot2::ggtitle(paste("Subset", i))
+          ggplot(data_split$splits[[i]]$data_test) +
+            geom_sf() +
+            theme_minimal() +
+            ggtitle(paste("Subset", i))
         })
 
         if (n_iter > 1 && requireNamespace("gridExtra", quietly = TRUE)) {
@@ -1868,7 +1867,7 @@ assess_pp <- function(object,
 
       ## ----- held-out set and offsets -----
       data_test_i <- fit_data_sf[out_id, ]
-      keep_test <- complete.cases(sf::st_drop_geometry(data_test_i))
+      keep_test <- complete.cases(st_drop_geometry(data_test_i))
       data_test_i <- data_test_i[keep_test, ]
       out_id_i <- out_id[keep_test]
       if (h == 1) out$test_set[[i]] <- data_test_i
@@ -1880,7 +1879,7 @@ assess_pp <- function(object,
       ## ----- prediction over test set -----
       pred_S <- pred_over_grid(
         object          = refit_i,
-        grid_pred       = sf::st_as_sfc(data_test_i),
+        grid_pred       = st_as_sfc(data_test_i),
         control_sim     = control_sim,
         predictors      = data_test_i,
         pred_cov_offset = pred_coff_i,
@@ -1891,7 +1890,7 @@ assess_pp <- function(object,
         ## Build the DAST prediction inputs
         time_col  <- deparse(fit0$call$time)
         grid_pred_list <- list(
-          geometry            = sf::st_as_sfc(data_test_i),
+          geometry            = st_as_sfc(data_test_i),
           survey_times_data   = data_test_i[[time_col]],
           int_mat             = fit0$int_mat[out_id_i, , drop = FALSE],
           mda_times           = fit0$mda_times
@@ -1915,7 +1914,7 @@ assess_pp <- function(object,
         eta_samp <- pred_lp$lp_samples
         if (fam == "gaussian") {
           sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
-          eta_samp <- eta_samp + sqrt(sigma2_me) * stats::rnorm(length(eta_samp))
+          eta_samp <- eta_samp + sqrt(sigma2_me) * rnorm(length(eta_samp))
         }
         mu_samp <- linkfun(eta_samp)
       }
@@ -1945,21 +1944,21 @@ assess_pp <- function(object,
       for (j in seq_len(n_pred)) {
         if (fam == "gaussian") {
           mu_j <- mean(mu_samp[j, ])
-          sd_j <- stats::sd(mu_samp[j, ])
+          sd_j <- sd(mu_samp[j, ])
           if (get_CRPS)  CRPS[[i]][j] <- sd_j * crps_gaussian(y_i[j], mu_j, sd_j)
           if (get_SCRPS) {
             y_CRPS[[i]][j] <- sd_j / sqrt(pi)
             SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
           }
-          if (get_AnPIT) PIT_i[j] <- stats::pnorm(y_i[j], mean = mu_j, sd = sd_j)
+          if (get_AnPIT) PIT_i[j] <- pnorm(y_i[j], mean = mu_j, sd = sd_j)
         } else {
           if (fam == "binomial") {
-            y_samp  <- stats::rbinom(n_draw, size = units_m_i[j], prob = mu_samp[j, ])
+            y_samp  <- rbinom(n_draw, size = units_m_i[j], prob = mu_samp[j, ])
             support <- 0:units_m_i[j]
           } else { # Poisson
             lambda  <- units_m_i[j] * mu_samp[j, ]
-            y_samp  <- stats::rpois(n_draw, lambda)
-            support <- 0:max(max(y_samp), y_i[j], stats::qpois(0.999, mean(lambda)))
+            y_samp  <- rpois(n_draw, lambda)
+            support <- 0:max(max(y_samp), y_i[j], qpois(0.999, mean(lambda)))
           }
           pk <- tabulate(y_samp + 1, nbins = length(support)) / n_draw
           Fk <- cumsum(pk)
@@ -1977,7 +1976,7 @@ assess_pp <- function(object,
       if (get_AnPIT) {
         if (fam == "gaussian") {
           PIT[[i]] <- PIT_i
-          AnPIT_area[[i]] <- .anpit_area(stats::ecdf(PIT_i)(u_val), u_val)
+          AnPIT_area[[i]] <- .anpit_area(ecdf(PIT_i)(u_val), u_val)
         } else {
           AnPIT[[i]] <- rowMeans(AnPIT_i)
           AnPIT_area[[i]] <- .anpit_area(AnPIT[[i]], u_val)
@@ -2055,6 +2054,11 @@ surf_sim <- function(n_sim, pred_grid,
           model to be fitted")
   }
 
+  sim_crs <- st_crs(pred_grid)$epsg
+  if (is.na(sim_crs)) {
+    stop("'pred_grid' must have a valid coordinate reference system (CRS) set.")
+  }
+
   if(!inherits(sampling_f,
                what = c("function"), which = FALSE)) {
     stop("'sampling_f' must be an object of class 'function'")
@@ -2079,6 +2083,13 @@ surf_sim <- function(n_sim, pred_grid,
     if(scale_to_km) coords_sim[[i]] <- coords_sim[[i]]/1000
     if (st_crs(data_sim[[i]]) != st_crs(pred_grid)) {
       pred_grid <- st_transform(pred_grid, st_crs(data_sim[[i]]))
+      if(i==1) {
+        sim_crs_data <- st_crs(data_sim[[i]])
+      }
+    } else {
+      if(i==1) {
+        sim_crs_data <- sim_crs
+      }
     }
 
     # Find nearest neighbor in 'pred_grid' for each feature in 'data'
@@ -2090,7 +2101,6 @@ surf_sim <- function(n_sim, pred_grid,
     # Bind the extracted variables to 'data'
     data_sim[[i]] <- cbind(data_sim[[i]], pred_grid_vars)
   }
-
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
@@ -2219,6 +2229,7 @@ surf_sim <- function(n_sim, pred_grid,
   }
 
   out$data_sim <- data_sim
+  out$crs <- sim_crs_data
   out$lp_grid_sim <- pred_grid
   out$include_covariates <- include_covariates
   out$nugget_over_grid <- nugget_over_grid
@@ -2297,7 +2308,13 @@ assess_sim <- function(obj_sim,
     stop("if spatial_scale='area' then a shape file of the area(s) must be passed to
          'shp'")
   }
+
+    # Determine the binomial denominator column, if relevant to the family
   units_m <- NULL
+  if (obj_sim$family == "binomial") {
+    stopifnot(!is.null(obj_sim$data_sim[[1]]$units_m))
+    units_m <- obj_sim$data_sim[[1]]$units_m
+  }
   if(any(pred_objective=="classify")) {
     if(is.null(categories)) stop("if pred_objective='class', a value for 'categories' must be specified")
     if (length(categories) < 3) {
@@ -2318,6 +2335,9 @@ assess_sim <- function(obj_sim,
 
   fits <- list()
   preds <- list()
+
+  no_comp <- NULL
+
   if(spatial_scale=="grid") {
     type <- "marginal"
   } else if(spatial_scale=="area") {
@@ -2363,6 +2383,7 @@ assess_sim <- function(obj_sim,
                                                   den = units_m,
                                                   family = obj_sim$family,
                                                   data = obj_sim$data_sim[[j]],
+                                                  crs = obj_sim$crs,
                                                   control_mcmc = control_mcmc,
                                                   messages = FALSE)
 
@@ -2432,9 +2453,9 @@ assess_sim <- function(obj_sim,
     for(i in 1:n_reg) {
       for(j in 1:n_sim) {
         if(length(inter[[i]])==0) {
-          warning(paste("No points on the grid fall within", shp[[col_names]][h],
+          warning(paste("No points on the grid fall within", shp[[col_names]][i],
                         "and no predictions are carried out for this area"))
-          no_comp <- c(no_comp, h)
+          no_comp <- c(no_comp, i)
         } else {
           true_target_sim[i,j] <- f_area_target(true_target_grid_sim[inter[[i]],j])
         }
