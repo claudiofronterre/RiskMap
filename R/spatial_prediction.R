@@ -376,7 +376,7 @@ pred_over_grid <- function(object,
     out$re$samples  <- list()
     re_names        <- colnames(object$ID_re)
     if (object$family == "gaussian") {
-      Sigma_cond_inv <- solve(Sigma_cond)
+      Sigma_cond_inv <- solve(Sc)
       C_Z  <- C_g[, -(seq_len(n_dim_re_tot[1]))]
       add  <- 0
       for (i in seq_along(n_dim_re_tot[-1])) {
@@ -1173,7 +1173,6 @@ pred_target_shp <- function(object, shp, shp_target = mean,
     }
   }
 
-  no_comp <- NULL
   for(h in 1:n_reg) {
 
     if(list_mode) {
@@ -2055,6 +2054,11 @@ surf_sim <- function(n_sim, pred_grid,
           model to be fitted")
   }
 
+  sim_crs <- st_crs(pred_grid)$epsg
+  if (is.na(sim_crs)) {
+    stop("'pred_grid' must have a valid coordinate reference system (CRS) set.")
+  }
+
   if(!inherits(sampling_f,
                what = c("function"), which = FALSE)) {
     stop("'sampling_f' must be an object of class 'function'")
@@ -2079,6 +2083,13 @@ surf_sim <- function(n_sim, pred_grid,
     if(scale_to_km) coords_sim[[i]] <- coords_sim[[i]]/1000
     if (st_crs(data_sim[[i]]) != st_crs(pred_grid)) {
       pred_grid <- st_transform(pred_grid, st_crs(data_sim[[i]]))
+      if(i==1) {
+        sim_crs_data <- st_crs(data_sim[[i]])
+      }
+    } else {
+      if(i==1) {
+        sim_crs_data <- sim_crs
+      }
     }
 
     # Find nearest neighbor in 'pred_grid' for each feature in 'data'
@@ -2090,7 +2101,6 @@ surf_sim <- function(n_sim, pred_grid,
     # Bind the extracted variables to 'data'
     data_sim[[i]] <- cbind(data_sim[[i]], pred_grid_vars)
   }
-
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
@@ -2219,6 +2229,7 @@ surf_sim <- function(n_sim, pred_grid,
   }
 
   out$data_sim <- data_sim
+  out$crs <- sim_crs_data
   out$lp_grid_sim <- pred_grid
   out$include_covariates <- include_covariates
   out$nugget_over_grid <- nugget_over_grid
@@ -2297,7 +2308,13 @@ assess_sim <- function(obj_sim,
     stop("if spatial_scale='area' then a shape file of the area(s) must be passed to
          'shp'")
   }
+
+    # Determine the binomial denominator column, if relevant to the family
   units_m <- NULL
+  if (obj_sim$family == "binomial") {
+    stopifnot(!is.null(obj_sim$data_sim[[1]]$units_m))
+    units_m <- obj_sim$data_sim[[1]]$units_m
+  }
   if(any(pred_objective=="classify")) {
     if(is.null(categories)) stop("if pred_objective='class', a value for 'categories' must be specified")
     if (length(categories) < 3) {
@@ -2318,6 +2335,9 @@ assess_sim <- function(obj_sim,
 
   fits <- list()
   preds <- list()
+
+  no_comp <- NULL
+
   if(spatial_scale=="grid") {
     type <- "marginal"
   } else if(spatial_scale=="area") {
@@ -2363,6 +2383,7 @@ assess_sim <- function(obj_sim,
                                                   den = units_m,
                                                   family = obj_sim$family,
                                                   data = obj_sim$data_sim[[j]],
+                                                  crs = obj_sim$crs,
                                                   control_mcmc = control_mcmc,
                                                   messages = FALSE)
 
@@ -2432,9 +2453,9 @@ assess_sim <- function(obj_sim,
     for(i in 1:n_reg) {
       for(j in 1:n_sim) {
         if(length(inter[[i]])==0) {
-          warning(paste("No points on the grid fall within", shp[[col_names]][h],
+          warning(paste("No points on the grid fall within", shp[[col_names]][i],
                         "and no predictions are carried out for this area"))
-          no_comp <- c(no_comp, h)
+          no_comp <- c(no_comp, i)
         } else {
           true_target_sim[i,j] <- f_area_target(true_target_grid_sim[inter[[i]],j])
         }
