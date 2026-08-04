@@ -1438,3 +1438,29 @@ plot_mda <- function(object,
 
   return(p)
 }
+
+#' @title check_data
+#' @description
+#'
+#' Check that the data is an sf object, with a CRS, only containing points and if
+#' CRS == 4326 that the coordinates are possible (i.e. not latitudes > 90)
+#' @param data the data to check
+#' @return TRUE if the data is valid. Raise an error if not.
+#' @noRd
+#'
+check_data <- function(data){
+  stopifnot("'data' must be of class 'sf'" = inherits(data, "sf"))
+  stopifnot("'data' must contain a coordinate reference system" = !is.na(sf::st_crs(data)))
+  all_points <- all(sf::st_geometry_type(data) == "POINT")
+  stopifnot("'data' can only contain point geometry" = all_points)
+  if (sf::st_crs(data) == sf::st_crs(4326)){
+    tryCatch(
+      sf::st_is_longlat(data$geometry),
+      warning = function(w) {
+        stop("'data' contains impossible latitude or longitude values -
+             check you have specified the columns correctly when converting the data")
+      }
+    )
+  }
+  invisible(TRUE)
+}
