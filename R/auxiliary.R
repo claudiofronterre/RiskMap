@@ -417,15 +417,21 @@ check_formula <- function(formula, data){
   formula_terms <- all.vars(formula)
   column_names <- names(data)
 
+  contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
+
+  if (!contains_gp){
+    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'")
+  }
+
   missing_columns <- setdiff(formula_terms, column_names)
   n_missing <- length(missing_columns)
   if (n_missing > 0){
 
-    stop(paste0("The formula term",
+    stop(paste0("The 'formula' term",
           ifelse(n_missing > 1, "s '", " '"),
           paste(missing_columns, collapse = "', '"),
           ifelse(n_missing > 1, "' are", "' is"),
-         " not present in the data"), call. = FALSE)
+         " not present in 'data'"), call. = FALSE)
   }
 
   invisible(TRUE)

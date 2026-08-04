@@ -1,17 +1,22 @@
 test_that("check_formula functions correctly", {
 
-  data <- data.frame(
+  df <- data.frame(
     y = c(1, 2, 3),
     x = c(0, 1, 2),
-    z = c(0, 1, 0)
+    z = c(0, 1, 0),
+    c = c(1, 2, 3),
+    gp = c(1, 2, 3)
   )
 
-  expect_no_error(check_formula(y ~ gp(x, z), data))
+  data <- sf::st_as_sf(df, coords = c("x", "z"), crs = 4326)
 
+  expect_no_error(check_formula(y ~ gp(), data))
   expect_error(check_formula("not formula", data), "'formula' must be a 'formula'")
-  expect_error(check_formula(y ~ gp(xx, z), data), "The formula term 'xx'")
-  expect_error(check_formula(y ~ gp(xx, zz), data), "The formula terms 'xx', 'zz'")
-  expect_error(check_formula(y ~ re(xx, zz), data), "The formula terms 'xx', 'zz'")
+  expect_error(check_formula(y ~ c, data), "The 'formula' must contain a Gaussian Process term")
+  expect_error(check_formula(y ~ gp, data), "The 'formula' must contain a Gaussian Process term")
+  expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
+  expect_error(check_formula(y ~ gp(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
+  expect_error(check_formula(y ~ gp(c) + re(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
 })
 
 test_that("check_data functions correctly", {
