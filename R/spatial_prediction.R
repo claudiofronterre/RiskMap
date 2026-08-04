@@ -2384,7 +2384,6 @@ assess_sim <- function(obj_sim,
                                                   den = units_m,
                                                   family = obj_sim$family,
                                                   data = obj_sim$data_sim[[j]],
-                                                  crs = obj_sim$crs,
                                                   control_mcmc = control_mcmc,
                                                   messages = FALSE)
 

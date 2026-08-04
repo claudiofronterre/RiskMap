@@ -17,7 +17,6 @@ test_that("dast validates intervention matrix dimensions", {
       time = time,
       mda_times = c(0.5, 1.5),
       int_mat = matrix(0, nrow = 2, ncol = 2),
-      crs = 4326,
       power_val = 1
     ),
     "'int_mat' must have 3 rows",
@@ -32,7 +31,6 @@ test_that("dast validates intervention matrix dimensions", {
       time = time,
       mda_times = c(0.5, 1.5),
       int_mat = matrix(0, nrow = 4, ncol = 2),
-      crs = 4326,
       power_val = 1
     ),
     "'int_mat' must have 3 rows",
@@ -47,7 +45,6 @@ test_that("dast validates intervention matrix dimensions", {
       time = time,
       mda_times = c(0.5, 1.5),
       int_mat = matrix(0, nrow = 3, ncol = 1),
-      crs = 4326,
       power_val = 1
     ),
     "'int_mat' must have 2 columns",

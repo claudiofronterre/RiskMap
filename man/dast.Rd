@@ -50,6 +50,8 @@ for that parameter.}
 
 \item{power_val}{Value expressing the power of the MDA impact function.}
 
+\item{convert_to_crs}{Optional CRS to transform coordinates to before simulation.}
+
 \item{scale_to_km}{Logical; whether to scale distances to kilometers (default: \code{TRUE}).}
 
 \item{control_mcmc}{A list of MCMC control parameters, typically from \code{set_control_sim()}.}
