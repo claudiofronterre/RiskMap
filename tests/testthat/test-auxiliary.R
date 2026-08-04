@@ -27,10 +27,15 @@ test_that("check_data functions correctly", {
   sf_polygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(polygon), crs = sf::st_crs(4326))
   sf_merged <- rbind(sf_data, sf_polygon)
 
+  expect_error(check_data(sf_data, "n"), "'type' must be either 'point' or 'polygon'")
+
   expect_no_error(check_data(sf_data))
   expect_error(check_data(data), "'data' must be of class 'sf'")
   expect_error(check_data(sf_no_crs), "'data' must contain a coordinate reference system")
   expect_error(check_data(sf_merged), "'data' can only contain point geometry")
   expect_error(check_data(sf_wrong_coord), "'data' contains impossible latitude or longitude values")
 
+  expect_no_error(check_data(sf_polygon, "polygon"))
+  expect_error(check_data(sf_data, "polygon"), "'data' can only contain polygon geometry")
+  expect_error(check_data(sf_merged, "polygon"), "'data' can only contain polygon geometry")
 })
