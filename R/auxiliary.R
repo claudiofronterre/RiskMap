@@ -1476,6 +1476,30 @@ plot_mda <- function(object,
   return(p)
 }
 
+##' @title Check for valid binomial values
+##'
+##' @description
+##' Checks that binomial data only consists of zero or positive integers and that if
+##' den is provided that all values of y are less than or equal to it.
+##' Some tolerance is provided for floating point errors
+##'
+##' @param y the data to check
+##' @param den the denominator
+##' @return TRUE if valid, raise an error if not
+##' @noRd
+check_binomial <- function(y, den){
+  tolerance <- sqrt(.Machine$double.eps)
+  valid <- all(y >= 0) & all(abs(y - round(y)) < tolerance)
+  stopifnot("'y' must only consist of zero or positive integers when 'family' is 'binomial'" = valid)
+
+  if (!is.null(den)){
+    valid <- all(den >= y)
+    stopifnot("Values of 'den' must be greater than or equal to values of 'y'"= valid)
+  }
+
+  invisible(TRUE)
+}
+
 #' @title check_data
 #' @description
 #'
