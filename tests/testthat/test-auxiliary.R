@@ -33,4 +33,7 @@ test_that("check_data functions correctly", {
   expect_error(check_data(sf_merged), "'data' can only contain point geometry")
   expect_error(check_data(sf_wrong_coord), "'data' contains impossible latitude or longitude values")
 
+  expect_no_error(check_data(sf_polygon, "polygon"))
+  expect_error(check_data(sf_data, "polygon"), "'data' can only contain polygon geometry")
+  expect_error(check_data(sf_merged, "polygon"), "'data' can only contain polygon geometry")
 })

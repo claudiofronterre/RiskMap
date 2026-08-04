@@ -1469,14 +1469,19 @@ check_binomial <- function(y, den){
 #' Check that the data is an sf object, with a CRS, only containing points and if
 #' CRS == 4326 that the coordinates are possible (i.e. not latitudes > 90)
 #' @param data the data to check
+#' @param type whether to check that the data contains 'point' (default) or
+#' 'polygon'
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_data <- function(data){
+check_data <- function(data, type = "point"){
+  stopifnot("'type' must be either 'point' or 'polygon'" = type %in% c("point", "polygon"))
   stopifnot("'data' must be of class 'sf'" = inherits(data, "sf"))
   stopifnot("'data' must contain a coordinate reference system" = !is.na(sf::st_crs(data)))
-  all_points <- all(sf::st_geometry_type(data) == "POINT")
-  stopifnot("'data' can only contain point geometry" = all_points)
+  all_valid_type <- all(sf::st_geometry_type(data) == toupper(type))
+  if (!all_valid_type){
+    stop(paste("'data' can only contain", type, "geometry"))
+  }
   if (sf::st_crs(data) == sf::st_crs(4326)){
     tryCatch(
       sf::st_is_longlat(data$geometry),
