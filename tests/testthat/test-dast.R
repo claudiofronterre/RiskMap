@@ -1,11 +1,13 @@
 test_that("dast validates intervention matrix dimensions", {
-  data <- data.frame(
+  df <- data.frame(
     y = c(1, 2, 3),
     m = c(10, 10, 10),
     time = c(1, 2, 3),
     x = c(0, 1, 2),
     z = c(0, 1, 0)
   )
+
+  data <- st_as_sf(df, coords = c("x", "z"), crs = 4326)
 
   expect_error(
     dast(

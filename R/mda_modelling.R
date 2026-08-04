@@ -230,7 +230,7 @@ dast <- function(formula,
                  mda_times, int_mat,
                  penalty = NULL,
                  drop = NULL, power_val,
-                 crs = NULL, convert_to_crs = NULL,
+                 convert_to_crs = NULL,
                  scale_to_km = TRUE,
                  control_mcmc = set_control_sim(),
                  par0=NULL,
@@ -592,6 +592,7 @@ dast <- function(formula,
 ##' @param int_mat Intervention matrix (n x length(mda_times)) with coverage values.
 ##' @param power_val Power value for the MDA impact function.
 ##' @param cov_offset Optional offset for the linear predictor.
+##' @param convert_to_crs Optional CRS to transform coordinates to before simulation.
 ##' @param scale_to_km Logical; if TRUE distances are computed in kilometers.
 ##' @param sim_pars List of simulation parameters. Used only when \code{model_fit}
 ##' is \code{NULL}. Includes \code{beta}, \code{sigma2}, \code{tau2}, \code{phi},
@@ -612,6 +613,7 @@ dast_sim <- function(n_sim,
                      int_mat = NULL,
                      power_val = NULL,
                      cov_offset = NULL,
+                     convert_to_crs = NULL,
                      scale_to_km = TRUE,
                      sim_pars = list(beta = NULL,
                                      sigma2 = NULL,
@@ -682,14 +684,6 @@ dast_sim <- function(n_sim,
 
   if(length(gp_terms) == 1 & gp_terms[1]=="sf" &
      !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
-
-  if(inherits(data, "sf")) {
-    if(is.na(st_crs(data)) & is.null(crs)) {
-      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(st_crs(data))) {
-      data <- st_as_sf(data, crs = crs)
-    }
-  }
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")

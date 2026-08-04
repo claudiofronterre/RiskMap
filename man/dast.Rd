@@ -14,7 +14,6 @@ dast(
   penalty = NULL,
   drop = NULL,
   power_val,
-  crs = NULL,
   convert_to_crs = NULL,
   scale_to_km = TRUE,
   control_mcmc = set_control_sim(),

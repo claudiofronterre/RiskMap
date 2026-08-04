@@ -15,6 +15,7 @@ dast_sim(
   int_mat = NULL,
   power_val = NULL,
   cov_offset = NULL,
+  convert_to_crs = NULL,
   scale_to_km = TRUE,
   sim_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, psi = NULL,
     sigma2_re = NULL, alpha = NULL, gamma = NULL),
@@ -44,6 +45,8 @@ of length \code{nrow(data)}.}
 \item{power_val}{Power value for the MDA impact function.}
 
 \item{cov_offset}{Optional offset for the linear predictor.}
+
+\item{convert_to_crs}{Optional CRS to transform coordinates to before simulation.}
 
 \item{scale_to_km}{Logical; if TRUE distances are computed in kilometers.}
 
