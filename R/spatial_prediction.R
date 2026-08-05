@@ -900,6 +900,8 @@ pred_target_shp <- function(object, shp, shp_target = mean,
          rerun 'pred_over_grid' and set type='joint'")
   }
 
+  check_data(shp, "polygon")
+
   dast_model <- !is.null(object$par_hat$gamma)
 
   if(dast_model) {
@@ -2308,6 +2310,8 @@ assess_sim <- function(obj_sim,
     stop("if spatial_scale='area' then a shape file of the area(s) must be passed to
          'shp'")
   }
+
+  check_data(shp, "polygon")
 
     # Determine the binomial denominator column, if relevant to the family
   units_m <- NULL
