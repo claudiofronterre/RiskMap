@@ -1476,18 +1476,29 @@ check_binomial <- function(y, den){
 #'
 check_data <- function(data, type = "point"){
   stopifnot("'type' must be either 'point' or 'polygon'" = type %in% c("point", "polygon"))
-  stopifnot("'data' must be of class 'sf'" = inherits(data, "sf"))
-  stopifnot("'data' must contain a coordinate reference system" = !is.na(sf::st_crs(data)))
+  data_type <- switch(type,
+                      point = "'data'",
+                      polygon = "'shp'")
+
+  if (!inherits(data, "sf")){
+    stop(paste(data_type, "must be of class 'sf'"))
+  }
+
+  if (is.na(sf::st_crs(data))){
+    stop(paste(data_type, "must contain a coordinate reference system"))
+  }
+
   all_valid_type <- all(sf::st_geometry_type(data) == toupper(type))
   if (!all_valid_type){
-    stop(paste("'data' can only contain", type, "geometry"))
+    stop(paste(data_type, "can only contain", type, "geometry"))
   }
+
   if (sf::st_crs(data) == sf::st_crs(4326)){
     tryCatch(
       sf::st_is_longlat(data$geometry),
       warning = function(w) {
-        stop("'data' contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data")
+        stop(paste(data_type, "contains impossible latitude or longitude values -
+             check you have specified the columns correctly when converting the data"))
       }
     )
   }
