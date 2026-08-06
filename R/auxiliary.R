@@ -1466,19 +1466,24 @@ check_binomial <- function(y, den){
 #' @title check_data
 #' @description
 #'
-#' Check that the data is an sf object, with a CRS, only containing points and if
-#' CRS == 4326 that the coordinates are possible (i.e. not latitudes > 90)
+#' Check that the data is an sf object, with a CRS, only containing points
+#' or either polygons or multipolygons. If CRS == 4326 it also checks that the #
+#' coordinates are possible (i.e. not latitudes > 90)
 #' @param data the data to check
-#' @param type whether to check that the data contains 'point' (default) or
-#' 'polygon'
+#' @param geometry whether to check that the data contains 'point' (default) or
+#' 'polygon' (covering both polygons and multipolygons)
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_data <- function(data, type = "point"){
-  stopifnot("'type' must be either 'point' or 'polygon'" = type %in% c("point", "polygon"))
-  data_type <- switch(type,
+check_data <- function(data, geometry = "point"){
+  stopifnot("'geometry' must be either 'point' or 'polygon'" = geometry %in% c("point", "polygon"))
+  data_type <- switch(geometry,
                       point = "'data'",
                       polygon = "'shp'")
+
+  geometry_type <- switch(geometry,
+                          point = "'POINT'",
+                          polygon = "'POLYGON' or 'MULTIPOLYGON'")
 
   if (!inherits(data, "sf")){
     stop(paste(data_type, "must be of class 'sf'"))
@@ -1488,9 +1493,9 @@ check_data <- function(data, type = "point"){
     stop(paste(data_type, "must contain a coordinate reference system"))
   }
 
-  all_valid_type <- all(sf::st_geometry_type(data) == toupper(type))
-  if (!all_valid_type){
-    stop(paste(data_type, "can only contain", type, "geometry"))
+  all_valid_geometry <- all(grepl(toupper(geometry), sf::st_geometry_type(data)))
+  if (!all_valid_geometry){
+    stop(paste(data_type, "can only contain", geometry_type, "geometry"))
   }
 
   if (sf::st_crs(data) == sf::st_crs(4326)){
