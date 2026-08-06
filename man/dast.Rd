@@ -50,7 +50,7 @@ for that parameter.}
 
 \item{power_val}{Value expressing the power of the MDA impact function.}
 
-\item{convert_to_crs}{Optional CRS to transform coordinates to before simulation.}
+\item{convert_to_crs}{CRS to which spatial data should be converted.}
 
 \item{scale_to_km}{Logical; whether to scale distances to kilometers (default: \code{TRUE}).}
 

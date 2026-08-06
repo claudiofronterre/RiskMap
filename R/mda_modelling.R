@@ -182,7 +182,7 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##'   for that parameter.
 ##' @param drop Optional value used for fixing the "drop" parameter of the MDA impact function.
 ##' @param power_val Value expressing the power of the MDA impact function.
-##' @param convert_to_crs Optional CRS to transform coordinates to before simulation.
+##' @param convert_to_crs CRS to which spatial data should be converted.
 ##' @param scale_to_km Logical; whether to scale distances to kilometers (default: \code{TRUE}).
 ##' @param control_mcmc A list of MCMC control parameters, typically from \code{set_control_sim()}.
 ##' @param par0 Optional list of initial parameter values.
