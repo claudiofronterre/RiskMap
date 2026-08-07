@@ -1173,6 +1173,8 @@ pred_target_shp <- function(object, shp, shp_target = mean,
     }
   }
 
+  no_comp <- NULL
+
   for(h in 1:n_reg) {
 
     if(list_mode) {
