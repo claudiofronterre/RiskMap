@@ -61,15 +61,15 @@ NULL
 NULL
 
 ##' @title Heavy metal biomonitoring in Galicia
-##' @description Lead concentration in moss samples, in micrograms per gram dry weight,
-##' collected in Galicia, northern Spain. The data are from two surveys, one conducted in July 2000.
+##' @description Lead concentration in moss samples,
+##' collected in Galicia, northern Spain. The data are from one survey conducted in July 2000.
 ##' @docType data
 ##' @keywords datasets
 ##' @name galicia
 ##' @usage data(galicia)
 ##' @format An sf object with 132 rows and 2 variables:
 ##' \describe{
-##'  \item{lead}{number of tested people for the presence nodules}
+##'  \item{lead}{lead concentration in micrograms per gram dry weight}
 ##'  \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
 ##' }
 ##' @details The coordinate reference system is 32629.
@@ -95,7 +95,7 @@ NULL
 ##'
 ##' @details
 ##' Derived from the \pkg{vectorsurvR} sample datasets by:
-##' \describe{
+##' \itemize{
 ##' \item Filtering to female \emph{Culex pipiens} pools with WNV testing within the SMA
 ##' using point-in-polygon against the union of Sacramento, Placer, and El Dorado counties.
 ##' \item Estimating pool size \code{est_pool_n} for each pool by:
@@ -284,11 +284,9 @@ NULL
 ##'
 ##' @description Malaria prevalence and associated variables from the 2015 Tanzania Demographic Health Surveys.
 ##' The data includes geographical, demographic, environmental, and health-related variables.
-##' @format A data frame with 387 rows and 20 columns, containing the following variables:
+##' @format A data frame with 387 rows and 18 columns, containing the following variables:
 ##' \describe{
 ##'   \item{cluster.number}{Cluster number, identifying the survey cluster.}
-##'   \item{Lat}{Latitude of the survey cluster.}
-##'   \item{Long}{Longitude of the survey cluster.}
 ##'   \item{MM}{Month of the survey (in two-digit format).}
 ##'   \item{YY}{Year of the survey.}
 ##'   \item{UpAge}{Upper age limit of the surveyed individuals in years.}

@@ -7,7 +7,7 @@
 \format{
 An sf object with 132 rows and 2 variables:
 \describe{
-\item{lead}{number of tested people for the presence nodules}
+\item{lead}{lead concentration in micrograms per gram dry weight}
 \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
 }
 }
@@ -20,8 +20,8 @@ Geostatistical analysis under preferential sampling (with Discussion).
 data(galicia)
 }
 \description{
-Lead concentration in moss samples, in micrograms per gram dry weight,
-collected in Galicia, northern Spain. The data are from two surveys, one conducted in July 2000.
+Lead concentration in moss samples,
+collected in Galicia, northern Spain. The data are from one survey conducted in July 2000.
 }
 \details{
 The coordinate reference system is 32629.

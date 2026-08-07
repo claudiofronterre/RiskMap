@@ -27,7 +27,7 @@ location and date, with an estimated pool size.
 }
 \details{
 Derived from the \pkg{vectorsurvR} sample datasets by:
-\describe{
+\itemize{
 \item Filtering to female \emph{Culex pipiens} pools with WNV testing within the SMA
 using point-in-polygon against the union of Sacramento, Placer, and El Dorado counties.
 \item Estimating pool size \code{est_pool_n} for each pool by:
