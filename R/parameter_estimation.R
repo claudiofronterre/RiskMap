@@ -1239,52 +1239,9 @@ glgpm_sim <- function(n_sim,
     scale_to_km <- model_fit$scale_to_km
   }
 
+  check_data(data)
   check_formula(formula, data)
   inter_f <- interpret.formula(formula)
-
-<<<<<<< HEAD
-  if(length(crs)>0) {
-    if(!is.numeric(crs) |
-       (is.numeric(crs) &
-        (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
-  }
-  if(inherits(data, "data.frame")) {
-    if(is.null(crs)) {
-      warning("'crs' is set to 4326 (long/lat)")
-      crs <- 4326
-    }
-    if(length(inter_f$gp.spec$term)==2) {
-      new_x <- paste(inter_f$gp.spec$term[1],"_sf",sep="")
-      new_y <- paste(inter_f$gp.spec$term[2],"_sf",sep="")
-      data[[new_x]] <-  data[[inter_f$gp.spec$term[1]]]
-      data[[new_y]] <-  data[[inter_f$gp.spec$term[2]]]
-      data <- st_as_sf(data,
-                       coords = c(new_x, new_y),
-                       crs = crs)
-    }
-  }
-
-  if(length(inter_f$gp.spec$term) == 1 & inter_f$gp.spec$term[1]=="sf" &
-     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
-
-
-  if(inherits(data, "sf")) {
-    if(is.na(st_crs(data)) & is.null(crs)) {
-      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(st_crs(data))) {
-      data <- st_as_sf(data, crs = crs)
-    }
-  }
-=======
-  if(!inherits(formula,
-               what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula'
-                                     object indicating the variables of the
-                                     model to be fitted")
-  }
-
-  check_data(data)
->>>>>>> dev
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
