@@ -33,7 +33,7 @@ assess_sim(
 
 \item{f_area_target}{A function for processing area-level predictions.}
 
-\item{shp}{A shapefile of class \code{sf} or \code{data.frame} for area-level analysis, required if \code{spatial_scale = "area"}.}
+\item{shp}{A shapefile of class \code{sf} for area-level analysis, required if \code{spatial_scale = "area"}.}
 
 \item{col_names}{Column name in \code{shp} containing unique region names. If \code{NULL}, defaults to \code{"region"}.}
 
