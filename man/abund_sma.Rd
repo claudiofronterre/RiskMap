@@ -3,16 +3,16 @@
 \docType{data}
 \name{abund_sma}
 \alias{abund_sma}
-\title{Female Culex pipiens abundance (collections) in the Sacramento Metropolitan Area}
+\title{Female \emph{Culex pipiens} abundance (collections) in the Sacramento Metropolitan Area}
 \format{
-A data frame with one row per collection event (for a total of 1552 collection events) and 6 variables:
+An sf object with one row per collection event (for a total of 1551 collection events) and 5 variables:
 \describe{
-\item{lon}{Numeric. Longitude in decimal degrees (WGS84).}
-\item{lat}{Numeric. Latitude in decimal degrees (WGS84).}
 \item{total_females}{Integer. Total number of female Cx. pipiens captured in the event.}
 \item{date}{Date. Exact collection date (local).}
 \item{trap_nights}{Integer. Number of trap-nights for the event.}
-\item{trap_type}{Character. Acronym for trap type used to collect mosquitoes. These include: \code{"NJLT"} (New Jersey Light Trap), \code{"GRVD"} (Gravid Trap), and \code{"MMT"} (Mosquito Magnet Trap).}
+\item{trap_type}{Character. Acronym for trap type used to collect mosquitoes. These include:
+\code{"NJLT"} (New Jersey Light Trap), \code{"GRVD"} (Gravid Trap), and \code{"MMT"} (Mosquito Magnet Trap).}
+\item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in degrees latitude and longitude}
 }
 }
 \source{
@@ -22,8 +22,8 @@ Constructed from \code{sample_collections} in the \code{vectorsurvR} R package.
 data(abund_sma)
 }
 \description{
-A dataset of mosquito collection events used to quantify abundance of female
-Culex pipiens in the Sacramento Metropolitan Area (Sacramento, Placer, El Dorado
+Mosquito collection events used to quantify abundance of female
+\emph{Culex pipiens} in the Sacramento Metropolitan Area (Sacramento, Placer, El Dorado
 counties, California, USA). Each row represents a single collection event at a
 specific location and date.
 }
@@ -34,7 +34,7 @@ Derived from the \pkg{vectorsurvR} sample datasets by:
 Metropolitan Area (SMA) using point-in-polygon against the union of Sacramento, Placer,
 and El Dorado county boundaries.
 \item Summing counts and trap-nights per unique \emph{location}–\emph{date}–\emph{trap type}.
-\item Coordinates are kept as WGS84 (EPSG:4326).
+\item The coordinate reference system is 4326.
 }
 
 This sample dataset is intended for examples, mapping, and vector-index workflows. It is
