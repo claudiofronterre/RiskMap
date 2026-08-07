@@ -22,11 +22,11 @@ surf_sim(
 \arguments{
 \item{n_sim}{The number of simulations to run.}
 
-\item{pred_grid}{A spatial object (either \code{sf} or \code{data.frame}) representing the prediction grid where the simulation will take place.}
+\item{pred_grid}{An \code{sf} object representing the prediction grid where the simulation will take place.}
 
 \item{formula}{A formula object specifying the model to be fitted. It should include both fixed effects and random effects if applicable.}
 
-\item{sampling_f}{A function that returns a sampled dataset (of class \code{sf} or \code{data.frame}) to simulate data from.}
+\item{sampling_f}{A function that returns a sampled dataset (of class \code{sf}) to simulate data from.}
 
 \item{family}{A character string specifying the family of the model. Must be one of "gaussian", "binomial", or "poisson".}
 
@@ -38,7 +38,7 @@ surf_sim(
 
 \item{nugget_over_grid}{A logical indicating whether to include a nugget effect over the entire prediction grid.}
 
-\item{include_covariates}{A logical indicateing if the covariates (or the intercept if no covariates are used) should be included in the linear
+\item{include_covariates}{A logical indicating if the covariates (or the intercept if no covariates are used) should be included in the linear
 predictor. By default \code{include_covariates = TRUE}}
 
 \item{fix_var_me}{A parameter to fix the variance of the random effects for the measurement error. Defaults to \code{NULL}.}

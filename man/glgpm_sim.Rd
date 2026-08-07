@@ -27,7 +27,7 @@ glgpm_sim(
 
 \item{formula}{Model formula indicating the variables of the model to be simulated.}
 
-\item{data}{Data frame or 'sf' object containing the variables in the model formula.}
+\item{data}{'sf' object containing the variables in the model formula.}
 
 \item{family}{Distribution family for the response variable. Must be one of 'gaussian', 'binomial', or 'poisson'.}
 
