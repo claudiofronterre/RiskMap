@@ -33,8 +33,10 @@ The function first checks that the input object is either of class \code{RiskMap
 Depending on the value of \code{check_mean}, it either calculates the mean of the spatial random effects
 across all locations for each iteration or uses the specified component.
 It then generates two plots:
-- A trace plot of the selected spatial random effect over iterations.
-- An autocorrelation plot (ACF) with the effective sample size (ESS) displayed in the title.
+\itemize{
+\item A trace plot of the selected spatial random effect over iterations.
+\item An autocorrelation plot (ACF) with the effective sample size (ESS) displayed in the title.
+}
 
 The ESS is computed using the \code{\link[sns]{ess}} function, which provides a measure of the effective number
 of independent samples in the MCMC chain.

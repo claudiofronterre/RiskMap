@@ -37,7 +37,7 @@ An object of class \code{"RiskMap.pred.re"}.
 }
 \description{
 Computes predictions over a spatial grid using a fitted model from
-  \code{\link{glgpm}}.
+\code{\link{glgpm}}.
 }
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}

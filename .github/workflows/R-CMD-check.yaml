@@ -24,7 +24,6 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      CMDSTAN_VERSION: '2.36.0'
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-pandoc@v2
@@ -34,57 +33,10 @@ jobs:
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
 
-      - name: Install cmdstanr
-        run: |
-          install.packages("cmdstanr", repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
-        shell: Rscript {0}
-
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: any::rcmdcheck
           needs: check
-
-      - name: Install Linux build tools
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libeigen3-dev
-          sudo apt-get install -y build-essential
-
-      - name: Set CMDSTAN_PATH
-        run: echo "CMDSTAN_PATH=${{ runner.temp }}/.cmdstan" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Create CmdStan directory
-        run: mkdir -p "${{ env.CMDSTAN_PATH }}"
-        shell: bash
-
-      - name: Cache CmdStan
-        id: cache-cmdstan
-        uses: actions/cache@v4
-        with:
-          path: ${{ env.CMDSTAN_PATH }}
-          key: ${{ runner.os }}-cmdstan-${{ env.CMDSTAN_VERSION }}
-
-      - name: Check CmdStan toolchain
-        run: cmdstanr::check_cmdstan_toolchain(fix = TRUE, quiet = TRUE)
-        shell: Rscript {0}
-
-      - name: Install CmdStan
-        if: steps.cache-cmdstan.outputs.cache-hit != 'true'
-        run: |
-          cmdstanr::install_cmdstan(
-            dir = Sys.getenv("CMDSTAN_PATH"),
-            version = Sys.getenv("CMDSTAN_VERSION"),
-            cores = 2,
-            overwrite = TRUE
-          )
-        shell: Rscript {0}
-
-      - name: Set CmdStan path
-        run: |
-          cmdstanr::set_cmdstan_path(file.path(Sys.getenv("CMDSTAN_PATH"), paste0("cmdstan-", Sys.getenv("CMDSTAN_VERSION"))))
-        shell: Rscript {0}
 
       - uses: r-lib/actions/check-r-package@v2
         with:

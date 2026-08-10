@@ -5,10 +5,6 @@
 \title{Print Summary of RiskMap Model}
 \usage{
 \method{print}{summary.RiskMap}(x, ...)
-
-\method{print}{summary.RiskMap}(x, ...)
-
-\method{print}{summary.RiskMap}(x, ...)
 }
 \arguments{
 \item{x}{An object of class \code{"summary.RiskMap"}.}
@@ -17,15 +13,7 @@
 }
 \value{
 Invisibly returns \code{x}.
-
-Invisibly returns \code{x}.
-
-Invisibly returns \code{x}.
 }
 \description{
-Print method for objects of class \code{"summary.RiskMap"}.
-
-Print method for objects of class \code{"summary.RiskMap"}.
-
 Print method for objects of class \code{"summary.RiskMap"}.
 }

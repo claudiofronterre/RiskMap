@@ -7,15 +7,15 @@
 plot_sim_surf(surf_obj, sim, ...)
 }
 \arguments{
-\item{surf_obj}{The output object from `surf_sim`, containing both simulated data (`data_sim`) and predicted grid simulations (`lp_grid_sim`).}
+\item{surf_obj}{The output object from \code{surf_sim}, containing both simulated data (\code{data_sim}) and predicted grid simulations (\code{lp_grid_sim}).}
 
 \item{sim}{The simulation index to plot.}
 
-\item{...}{Additional graphical parameters to be passed to the plotting function of the `terra` package.}
+\item{...}{Additional graphical parameters to be passed to the plotting function of the \code{terra} package.}
 }
 \value{
 A plot of the simulation results.
 }
 \description{
-This function plots the simulated surface data for a specific simulation from the result of `surf_sim`. It visualizes the linear predictor values on a raster grid along with the actual data points.
+This function plots the simulated surface data for a specific simulation from the result of \code{surf_sim}. It visualizes the linear predictor values on a raster grid along with the actual data points.
 }

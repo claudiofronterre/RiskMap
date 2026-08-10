@@ -32,7 +32,7 @@ set_control_sim(
 \value{
 A list of control parameters with class "mcmc.RiskMap". Contents depend on \code{sampler}:
 \itemize{
-  \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
+\item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
 }
 }
 \description{

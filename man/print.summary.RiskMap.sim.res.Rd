@@ -7,21 +7,20 @@
 \method{print}{summary.RiskMap.sim.res}(x, ...)
 }
 \arguments{
-\item{x}{An object of class `summary.RiskMap.sim.res`, as returned by `summary.RiskMap.sim.res`.}
+\item{x}{An object of class \code{summary.RiskMap.sim.res}, as returned by \code{summary.RiskMap.sim.res}.}
 
 \item{...}{Additional arguments (not used).}
 }
 \value{
-Invisibly returns `x`.
-
+Invisibly returns \code{x}.
 
 Print Simulation Results
 
-Prints a concise summary of simulation results from a `summary.RiskMap.sim.res` object,
+Prints a concise summary of simulation results from a \code{summary.RiskMap.sim.res} object,
 including average metrics by category and a summary of overall correct classification (CC).
 
-Invisibly returns `x`.
+Invisibly returns \code{x}.
 }
 \description{
-Prints a concise summary of simulation results from a `RiskMap.sim.res` object, including average metrics by category and a summary of overall correct classification (CC).
+Prints a concise summary of simulation results from a \code{RiskMap.sim.res} object, including average metrics by category and a summary of overall correct classification (CC).
 }

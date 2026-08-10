@@ -29,8 +29,7 @@ pred_target_shp(
 \item{object}{Output from \code{\link{pred_over_grid}} (class \code{RiskMap.pred.re}),
 typically fitted with \code{type = "joint"} so that linear predictor samples are available.}
 
-\item{shp}{An \pkg{sf} polygon object (preferred) or a \code{data.frame} with an
-attached geometry column, representing regions over which predictions are aggregated.}
+\item{shp}{An \pkg{sf} polygon object representing regions over which predictions are aggregated.}
 
 \item{shp_target}{A function that aggregates grid-cell values within each polygon to a
 single regional value (default \code{mean}). Examples: \code{mean}, \code{sum},
@@ -78,13 +77,13 @@ Names are used as column suffixes in the outputs.}
 \value{
 An object of class \code{RiskMap_pred_target_shp} with components:
 \itemize{
-  \item \code{target}: \code{data.frame} of region-level summaries (one row per region).
-  \item \code{target_samples}: (optional) \code{list} with one element per region; each contains
-        a \code{data.frame}/matrix of raw samples for each named target in \code{f_target},
-        if \code{return_target_samples = TRUE}.
-  \item \code{shp}: (optional) the input \code{sf} object with appended summary columns,
-        included if \code{return_shp = TRUE}.
-  \item \code{f_target}, \code{pd_summary}, \code{grid_pred}: inputs echoed for reproducibility.
+\item \code{target}: \code{data.frame} of region-level summaries (one row per region).
+\item \code{target_samples}: (optional) \code{list} with one element per region; each contains
+a \code{data.frame}/matrix of raw samples for each named target in \code{f_target},
+if \code{return_target_samples = TRUE}.
+\item \code{shp}: (optional) the input \code{sf} object with appended summary columns,
+included if \code{return_shp = TRUE}.
+\item \code{f_target}, \code{pd_summary}, \code{grid_pred}: inputs echoed for reproducibility.
 }
 }
 \description{

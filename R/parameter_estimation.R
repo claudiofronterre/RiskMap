@@ -1,11 +1,10 @@
 ##' @title Estimation of Generalized Linear Gaussian Process Models
 ##' @description Fits generalized linear Gaussian process models to spatial data, incorporating spatial Gaussian processes with a Matern correlation function. Supports Gaussian, binomial, and Poisson response families.
 ##' @param formula A formula object specifying the model to be fitted. The formula should include fixed effects, random effects (specified using \code{re()}), and spatial effects (specified using \code{gp()}).
-##' @param data A data frame or sf object containing the variables in the model.
+##' @param data An sf object containing the variables in the model.
 ##' @param family A character string specifying the distribution of the response variable. Must be one of "gaussian", "binomial", or "poisson".
 ##' @param invlink A function that defines the inverse of the link function for the distribution of the data given the random effects.
 ##' @param den Optional offset for binomial or Poisson distributions. If not provided, defaults to 1 for binomial.
-##' @param crs Optional integer specifying the Coordinate Reference System (CRS) if data is not an sf object. Defaults to 4326 (long/lat).
 ##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates.
 ##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to TRUE.
 ##' @param control_mcmc Control parameters for MCMC sampling. Must be an object of class "mcmc.RiskMap" as returned by \code{\link{set_control_sim}}.
@@ -50,13 +49,12 @@
 ##' @seealso \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-##' @importFrom sf st_crs st_as_sf st_drop_geometry
 ##' @export
 glgpm <- function(formula,
                  data,
                  family, invlink=NULL,
                  den = NULL,
-                 crs = NULL, convert_to_crs = NULL,
+                 convert_to_crs = NULL,
                  scale_to_km = TRUE,
                  control_mcmc = set_control_sim(),
                  par0=NULL,
@@ -73,7 +71,6 @@ glgpm <- function(formula,
 
   nong <- family=="binomial" | family=="poisson"
 
-
   if(!inherits(formula,
                what = "formula", which = FALSE)) {
     stop("'formula' must be a 'formula'
@@ -83,39 +80,7 @@ glgpm <- function(formula,
 
   inter_f <- interpret.formula(formula)
 
-  if(length(crs)>0) {
-    if(!is.numeric(crs) |
-       (is.numeric(crs) &
-        (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
-  }
-  if(inherits(data, "data.frame")) {
-    if(is.null(crs)) {
-      warning("'crs' is set to 4326 (long/lat)")
-      crs <- 4326
-    }
-    if(length(inter_f$gp.spec$term)==2) {
-      new_x <- paste(inter_f$gp.spec$term[1],"_sf",sep="")
-      new_y <- paste(inter_f$gp.spec$term[2],"_sf",sep="")
-      data[[new_x]] <-  data[[inter_f$gp.spec$term[1]]]
-      data[[new_y]] <-  data[[inter_f$gp.spec$term[2]]]
-      data <- st_as_sf(data,
-                       coords = c(new_x, new_y),
-                       crs = crs)
-    }
-  }
-
-  if(length(inter_f$gp.spec$term) == 1 & inter_f$gp.spec$term[1]=="sf" &
-     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
-
-
-  if(inherits(data, "sf")) {
-    if(is.na(st_crs(data)) & is.null(crs)) {
-      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(st_crs(data))) {
-      data <- st_as_sf(data, crs = crs)
-    }
-  }
-
+  check_data(data)
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
@@ -130,6 +95,8 @@ glgpm <- function(formula,
   # Extract outcome data
   y <- as.numeric(model.response(mf))
   n <- length(y)
+
+  if (family == "binomial") check_binomial(y, den)
 
   # Extract covariates matrix
   D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
@@ -163,46 +130,20 @@ glgpm <- function(formula,
 
   }
 
-  if(length(inter_f$re.spec) > 0) {
-    hr_re <- inter_f$re.spec$term
-    re_names <- inter_f$re.spec$term
+  hr_re <- if (length(inter_f$re.spec) > 0L) {
+    inter_f$re.spec$term
   } else {
-    hr_re <- NULL
+    NULL
   }
-
-  if(!is.null(hr_re)) {
-    # Define indices of random effects
-    re_mf <- st_drop_geometry(data[hr_re])
-    re_mf_n <- re_mf
-
-    if(any(is.na(re_mf))) stop("Missing values in the variable(s) of the random effects specified through re() ")
-    names_re <- colnames(re_mf)
-    n_re <- ncol(re_mf)
-
-    ID_re <- matrix(NA, nrow = n, ncol = n_re)
-    re_unique <- list()
-    re_unique_f <- list()
-    for(i in 1:n_re) {
-      if(is.factor(re_mf[,i])) {
-        re_mf_n[,i] <- as.numeric(re_mf[,i])
-        re_unique[[names_re[i]]] <- 1:length(levels(re_mf[,i]))
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <-levels(re_mf[,i])
-      } else if(is.numeric(re_mf[,i])) {
-        re_unique[[names_re[i]]] <- unique(re_mf[,i])
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <- re_unique[[names_re[i]]]
-      }
-    }
-    ID_re <- data.frame(ID_re)
-    colnames(ID_re) <- re_names
-  } else {
-    n_re <- 0
-    re_unique <- NULL
-    ID_re <- NULL
+  random_effects <- prepare_random_effects(data, hr_re)
+  n_re <- random_effects$n_re
+  names_re <- random_effects$names_re
+  ID_re <- random_effects$ID_re
+  if (!is.null(ID_re)) {
+    ID_re <- as.data.frame(ID_re)
   }
+  re_unique <- random_effects$re_unique
+  re_unique_f <- random_effects$re_unique_f
 
 
   # Extract coordinates
@@ -247,13 +188,13 @@ glgpm <- function(formula,
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
       glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
                         data = aux_data, family = binomial)
-      start_pars$beta <- stats::coef(glm_fitted)
+      start_pars$beta <- coef(glm_fitted)
     } else if(family=="poisson") {
-      pf_aux <- stats::update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
+      pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
       data_aux <- data
       data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
       glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
-      start_pars$beta <- stats::coef(glm_fitted)
+      start_pars$beta <- coef(glm_fitted)
     }
   } else {
     if(length(start_pars$beta)!=ncol(D)) stop("number of starting values provided
@@ -358,7 +299,7 @@ glgpm <- function(formula,
   if(!is.null(convert_to_crs)) {
     crs <- convert_to_crs
   } else {
-    crs <- sf::st_crs(data)$input
+    crs <- st_crs(data)$input
   }
   res$crs <- crs
   res$scale_to_km <- scale_to_km
@@ -1254,7 +1195,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' @param n_sim Number of simulations to perform.
 ##' @param model_fit Fitted GLGPM model object of class 'RiskMap'. If provided, overrides 'formula', 'data', 'family', 'crs', 'convert_to_crs', 'scale_to_km', and 'control_mcmc' arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
-##' @param data Data frame or 'sf' object containing the variables in the model formula.
+##' @param data 'sf' object containing the variables in the model formula.
 ##' @param family Distribution family for the response variable. Must be one of 'gaussian', 'binomial', or 'poisson'.
 ##' @param den Required for 'binomial' to denote the denominator (i.e. number of trials) of the Binomial distribution.
 ##' For the 'poisson' family, the argument is optional and is used a multiplicative term to express the mean counts.
@@ -1312,39 +1253,7 @@ glgpm_sim <- function(n_sim,
                                      model to be fitted")
   }
 
-
-  if(length(crs)>0) {
-    if(!is.numeric(crs) |
-       (is.numeric(crs) &
-        (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
-  }
-  if(inherits(data, "data.frame")) {
-    if(is.null(crs)) {
-      warning("'crs' is set to 4326 (long/lat)")
-      crs <- 4326
-    }
-    if(length(inter_f$gp.spec$term)==2) {
-      new_x <- paste(inter_f$gp.spec$term[1],"_sf",sep="")
-      new_y <- paste(inter_f$gp.spec$term[2],"_sf",sep="")
-      data[[new_x]] <-  data[[inter_f$gp.spec$term[1]]]
-      data[[new_y]] <-  data[[inter_f$gp.spec$term[2]]]
-      data <- st_as_sf(data,
-                       coords = c(new_x, new_y),
-                       crs = crs)
-    }
-  }
-
-  if(length(inter_f$gp.spec$term) == 1 & inter_f$gp.spec$term[1]=="sf" &
-     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
-
-
-  if(inherits(data, "sf")) {
-    if(is.na(st_crs(data)) & is.null(crs)) {
-      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(st_crs(data))) {
-      data <- st_as_sf(data, crs = crs)
-    }
-  }
+  check_data(data)
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
@@ -1361,44 +1270,15 @@ glgpm_sim <- function(n_sim,
   D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
   n <- nrow(D)
 
-  if(length(inter_f$re.spec) > 0) {
-    hr_re <- inter_f$re.spec$term
+  hr_re <- if (length(inter_f$re.spec) > 0L) {
+    inter_f$re.spec$term
   } else {
-    hr_re <- NULL
+    NULL
   }
-
-
-  if(!is.null(hr_re)) {
-    # Define indices of random effects
-    re_mf <- st_drop_geometry(data[hr_re])
-    re_mf_n <- re_mf
-
-    if(any(is.na(re_mf))) stop("Missing values in the variable(s) of the random effects specified through re() ")
-    names_re <- colnames(re_mf)
-    n_re <- ncol(re_mf)
-
-    ID_re <- matrix(NA, nrow = n, ncol = n_re)
-    re_unique <- list()
-    re_unique_f <- list()
-    for(i in 1:n_re) {
-      if(is.factor(re_mf[,i])) {
-        re_mf_n[,i] <- as.numeric(re_mf[,i])
-        re_unique[[names_re[i]]] <- 1:length(levels(re_mf[,i]))
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <-levels(re_mf[,i])
-      } else if(is.numeric(re_mf[,i])) {
-        re_unique[[names_re[i]]] <- unique(re_mf[,i])
-        ID_re[, i] <- sapply(1:n,
-                             function(j) which(re_mf_n[j,i]==re_unique[[names_re[i]]]))
-        re_unique_f[[names_re[i]]] <- re_unique[[names_re[i]]]
-      }
-    }
-  } else {
-    n_re <- 0
-    re_unique <- NULL
-    ID_re <- NULL
-  }
+  random_effects <- prepare_random_effects(data, hr_re)
+  n_re <- random_effects$n_re
+  ID_re <- random_effects$ID_re
+  re_unique <- random_effects$re_unique
 
   # Number of covariates
   p <- ncol(D)
@@ -1638,7 +1518,7 @@ maxim.integrand <- function(
   cross_sum <- function(v, grp1, n1, grp2, n2) {
     f1 <- factor(grp1, levels = seq_len(n1))
     f2 <- factor(grp2, levels = seq_len(n2))
-    as.matrix(stats::xtabs(v ~ f1 + f2))  # n1 x n2, zeros where empty
+    as.matrix(xtabs(v ~ f1 + f2))  # n1 x n2, zeros where empty
   }
 
   # ---------- dimensions ----------
@@ -1678,7 +1558,7 @@ maxim.integrand <- function(
         d1  <- function(x) exp(x)
         d2  <- function(x) exp(x)
       } else {
-        inv <- function(x) stats::plogis(x)
+        inv <- function(x) plogis(x)
         d1  <- function(x) { p <- inv(x); p * (1 - p) }
         d2  <- function(x) { p <- inv(x); d <- p * (1 - p); d * (1 - 2 * p) }
       }
@@ -2016,7 +1896,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
         inv <- function(x) exp(x)
         d1  <- function(x) exp(x)
       } else {
-        inv <- function(x) stats::plogis(x)
+        inv <- function(x) plogis(x)
         d1  <- function(x) { p <- inv(x); p * (1 - p) }
       }
       check_vec_fun(inv, ncheck, "canonical invlink")
@@ -2349,7 +2229,7 @@ glgpm_nong <-
           d1  <- function(x) exp(x)
           d2  <- function(x) exp(x)
         } else {
-          inv <- function(x) stats::plogis(x)
+          inv <- function(x) plogis(x)
           d1  <- function(x) { p <- inv(x); p*(1-p) }
           d2  <- function(x) { p <- inv(x); d <- p*(1-p); d*(1-2*p) }
         }
@@ -2483,11 +2363,11 @@ glgpm_nong <-
 
       if (family == "poisson") {
         mu_vec <- inv_fn(eta)
-        if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) stop("invlink must return positive means (Poisson).")
+        if (any(!is.finite(mu_vec)) || any(mu_vec < 0)) stop("invlink must return positive means (Poisson).")
         llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
       } else {
         pvec <- inv_fn(eta)
-        if (any(!is.finite(pvec)) || any(pvec <= 0 | pvec >= 1)) stop("invlink must return values in (0,1) (Binomial).")
+        if (any(!is.finite(pvec)) || any(pvec < 0 | pvec > 1)) stop("invlink must return values in (0,1) (Binomial).")
         llik <- sum(y * log(pmax(pvec, .Machine$double.eps)) +
                       (units_m - y) * log(pmax(1 - pvec, .Machine$double.eps)))
       }
@@ -2843,7 +2723,6 @@ glgpm_nong <-
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @importFrom sns ess
 ##' @importFrom graphics par
-##' @importFrom stats acf
 ##' @export
 check_mcmc <- function(object, check_mean = TRUE,
                        component = NULL, ...) {

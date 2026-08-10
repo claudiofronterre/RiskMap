@@ -12,15 +12,22 @@ Geostatistical analysis of continuous and count data. Implements stationary Gaus
 Useful links:
 \itemize{
   \item \url{https://claudiofronterre.github.io/RiskMap/}
+  \item Report bugs at \url{https://github.com/claudiofronterre/RiskMap/issues}
 }
 
 }
 \author{
 \strong{Maintainer}: Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
 
+Authors:
+\itemize{
+  \item Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
+}
+
 Other contributors:
 \itemize{
   \item Claudio Fronterre \email{c.fronterre@bham.ac.uk} (\href{https://orcid.org/0000-0001-6723-9727}{ORCID}) [contributor]
+  \item Simon Smart (\href{https://orcid.org/0000-0002-3624-8951}{ORCID}) [contributor]
 }
 
 }

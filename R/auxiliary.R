@@ -1,11 +1,5 @@
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
-#' @importFrom stats as.formula binomial coef complete.cases
-#' @importFrom stats glm median model.frame model.matrix
-#' @importFrom stats model.response na.fail na.omit nlminb pnorm
-#' @importFrom stats poisson printCoefmat qnorm reformulate rnorm
-#' @importFrom stats runif sd step terms terms.formula update
-
 ##' @title Convex Hull of an sf Object
 ##'
 ##' @description Computes the convex hull of an `sf` object, returning the boundaries of the smallest polygon that can enclose all geometries in the input.
@@ -31,7 +25,6 @@
 ##' # Plot the result
 ##' plot(sf_points, col = 'blue', pch = 19)
 ##' plot(convex_hull_result, add = TRUE, border = 'red')
-##' @importFrom sf st_geometry st_convex_hull st_sf st_union
 ##' @export
 convex_hull_sf <- function(sf_object) {
   # Check if the input is an sf object
@@ -105,7 +98,6 @@ elogit <- function(y, m) {
 ##' @author
 ##' Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-##' @importFrom sf st_transform st_coordinates
 ##' @export
 propose_utm <- function (data) {
   if (!inherits(data, "sf"))
@@ -161,7 +153,6 @@ propose_utm <- function (data) {
 ##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
-##' @importFrom sf st_transform st_coordinates
 ##' @export
 matern_cor <- function(u, phi, kappa, return_sym_matrix = FALSE) {
   if (is.vector(u))
@@ -905,7 +896,6 @@ to_table <- function(object, ...) {
 ##' coordinates. It then assigns each row in the input data an identifier corresponding
 ##' to the unique coordinate it matches.
 ##'
-##' @importFrom sf st_coordinates
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##'
@@ -1086,9 +1076,7 @@ print.summary.RiskMap.spatial.cv <- function(x, ...) {
 ##' @return A \pkg{ggplot2} object (single plot) or a \pkg{grid} object
 ##'   from \pkg{gridExtra} (multiple panels).
 ##'
-##' @importFrom ggplot2 ggplot aes geom_line geom_abline labs theme_minimal guides guide_legend
-##' @importFrom dplyr   filter group_by summarize %>%
-##' @importFrom stats    ecdf
+##' @importFrom dplyr   group_by summarize %>%
 ##' @export
 plot_AnPIT <- function(object,
                        mode = "average",
@@ -1152,11 +1140,11 @@ plot_AnPIT <- function(object,
 
   if (mode == "average" && combine_panels) {
     avg <- plot_data %>%
-      dplyr::group_by(model, u_val) %>%
-      dplyr::summarize(value = mean(value), .groups = "drop")
+      dplyr::group_by(.data$model, .data$u_val) %>%
+      dplyr::summarize(value = mean(.data$value), .groups = "drop")
 
     return(
-      ggplot(avg, aes(u_val, value, colour = model)) +
+      ggplot(avg, aes(.data$u_val, .data$value, colour = .data$model)) +
         geom_line() + id_line +
         labs(title = "Average calibration curves",
              x = "", y = y_label) +
@@ -1166,7 +1154,7 @@ plot_AnPIT <- function(object,
   }
 
   build_plot <- function(df, title_suffix = "") {
-    ggplot(df, aes(u_val, value,
+    ggplot(df, aes(.data$u_val, .data$value,
                    colour = if (mode == "all") as.factor(test_set) else NULL)) +
       geom_line() + id_line +
       labs(title = title_suffix, x = "", y = unique(df$type)) +
@@ -1176,13 +1164,13 @@ plot_AnPIT <- function(object,
 
   plots <- list()
   for (mname in all_models) {
-    df_model <- dplyr::filter(plot_data, model == mname)
+    df_model <- dplyr::filter(plot_data, .data$model == mname)
 
     p <- switch(mode,
                 average = {
                   avg <- df_model %>%
-                    dplyr::group_by(u_val) %>%
-                    dplyr::summarize(value = mean(value), .groups = "drop")
+                    dplyr::group_by(.data$u_val) %>%
+                    dplyr::summarize(value = mean(.data$value), .groups = "drop")
                   avg$type <- unique(df_model$type)
                   build_plot(avg, paste("Model", mname, ": average"))
                 },
@@ -1227,8 +1215,6 @@ plot_AnPIT <- function(object,
 ##' @return A ggplot object visualizing the spatial distribution of the specified score.
 ##' @export
 plot_score <- function(object, which_score, which_model, ...) {
-  geometry <- NULL
-  score <- NULL
 
   # Check if "which_score" exists
   if (!which_score %in% names(object$model[[which_model]]$score)) {
@@ -1252,16 +1238,16 @@ plot_score <- function(object, which_score, which_model, ...) {
 
   # Check for duplicate locations and average the score
   data_full <- data_full %>%
-    mutate(geom_id = st_as_text(geometry)) %>%
-    group_by(geom_id) %>%
-    summarize(score = mean(score, na.rm = TRUE),
-              geometry = first(geometry), .groups = "drop") %>%
+    mutate(geom_id = st_as_text(.data$geometry)) %>%
+    group_by(.data$geom_id) %>%
+    summarize(score = mean(.data$score, na.rm = TRUE),
+              geometry = first(.data$geometry), .groups = "drop") %>%
     st_as_sf()
 
 
   # Create the base plot
   out <- ggplot(data = data_full) +
-    geom_sf(aes(color = score), size = 2) +
+    geom_sf(aes(color = .data$score), size = 2) +
     ggtitle(paste("Visualizing", which_score, "for model", which_model)) +
     theme_minimal()
 
@@ -1309,7 +1295,6 @@ plot_score <- function(object, which_score, which_model, ...) {
 ##' A \code{ggplot2} object showing the median estimated MDA impact function
 ##' and the pointwise uncertainty band at the chosen confidence level.
 ##'
-##' @importFrom ggplot2 coord_cartesian geom_ribbon geom_line
 ##' @export
 plot_mda <- function(object,
                      mda_history  = NULL,   # numeric event times (integers, starting at 0) OR 0/1 vector on yearly grid
@@ -1367,7 +1352,7 @@ plot_mda <- function(object,
   Sigma_par_sroot <- t(chol(Sigma_par))
   par_hat_sim <- t(vapply(
     X   = seq_len(n_sim),
-    FUN = function(i) par_dast + Sigma_par_sroot %*% stats::rnorm(length(ind_dast)),
+    FUN = function(i) par_dast + Sigma_par_sroot %*% rnorm(length(ind_dast)),
     FUN.VALUE = numeric(length(ind_dast))
   ))
 
@@ -1415,9 +1400,9 @@ plot_mda <- function(object,
 
   # --- Summaries ---
   alpha_q <- (1 - conf_level) / 2
-  med   <- apply(effects_mat, 1, stats::median,   na.rm = TRUE)
-  lower <- apply(effects_mat, 1, stats::quantile, probs = alpha_q, na.rm = TRUE)
-  upper <- apply(effects_mat, 1, stats::quantile, probs = 1 - alpha_q, na.rm = TRUE)
+  med   <- apply(effects_mat, 1, median,   na.rm = TRUE)
+  lower <- apply(effects_mat, 1, quantile, probs = alpha_q, na.rm = TRUE)
+  upper <- apply(effects_mat, 1, quantile, probs = 1 - alpha_q, na.rm = TRUE)
 
   in_view <- survey_times >= x_min & survey_times <= x_max
   if (!any(in_view)) in_view <- rep(TRUE, length(survey_times))
@@ -1432,24 +1417,74 @@ plot_mda <- function(object,
     upper  = upper
   )
 
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = time)) +
-    ggplot2::geom_ribbon(ggplot2::aes(ymin = lower, ymax = upper),
+  p <- ggplot(plot_data, aes(x = time)) +
+    geom_ribbon(aes(ymin = lower, ymax = upper),
                          fill = "grey70", alpha = 0.3) +
-    ggplot2::geom_line(ggplot2::aes(y = median),
+    geom_line(aes(y = median),
                        color = "black", linewidth = 1) +
-    ggplot2::labs(
+    labs(
       x = "Years since baseline",
       y = "Relative reduction from baseline prevalence",
       title = "MDA Impact Over Time"
     ) +
-    ggplot2::coord_cartesian(xlim = c(x_min, x_max), ylim = c(lower_f, upper_f)) +
-    ggplot2::theme_minimal()
+    coord_cartesian(xlim = c(x_min, x_max), ylim = c(lower_f, upper_f)) +
+    theme_minimal()
 
   # --- Add vertical dashed lines for MDA times ---
   if (length(mda_times) > 0) {
-    p <- p + ggplot2::geom_vline(xintercept = mda_times,
+    p <- p + geom_vline(xintercept = mda_times,
                                  linetype = "dashed", color = "red", alpha = 0.7)
   }
 
   return(p)
+}
+
+##' @title Check for valid binomial values
+##'
+##' @description
+##' Checks that binomial data only consists of zero or positive integers and that if
+##' den is provided that all values of y are less than or equal to it.
+##' Some tolerance is provided for floating point errors
+##'
+##' @param y the data to check
+##' @param den the denominator
+##' @return TRUE if valid, raise an error if not
+##' @noRd
+check_binomial <- function(y, den){
+  tolerance <- sqrt(.Machine$double.eps)
+  valid <- all(y >= 0) & all(abs(y - round(y)) < tolerance)
+  stopifnot("'y' must only consist of zero or positive integers when 'family' is 'binomial'" = valid)
+
+  if (!is.null(den)){
+    valid <- all(den >= y)
+    stopifnot("Values of 'den' must be greater than or equal to values of 'y'"= valid)
+  }
+
+  invisible(TRUE)
+}
+
+#' @title check_data
+#' @description
+#'
+#' Check that the data is an sf object, with a CRS, only containing points and if
+#' CRS == 4326 that the coordinates are possible (i.e. not latitudes > 90)
+#' @param data the data to check
+#' @return TRUE if the data is valid. Raise an error if not.
+#' @noRd
+#'
+check_data <- function(data){
+  stopifnot("'data' must be of class 'sf'" = inherits(data, "sf"))
+  stopifnot("'data' must contain a coordinate reference system" = !is.na(sf::st_crs(data)))
+  all_points <- all(sf::st_geometry_type(data) == "POINT")
+  stopifnot("'data' can only contain point geometry" = all_points)
+  if (sf::st_crs(data) == sf::st_crs(4326)){
+    tryCatch(
+      sf::st_is_longlat(data$geometry),
+      warning = function(w) {
+        stop("'data' contains impossible latitude or longitude values -
+             check you have specified the columns correctly when converting the data")
+      }
+    )
+  }
+  invisible(TRUE)
 }

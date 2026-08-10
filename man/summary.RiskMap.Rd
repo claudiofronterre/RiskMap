@@ -15,10 +15,10 @@
 }
 \value{
 A list of class \code{"summary.RiskMap"} with parameter estimates,
-  standard errors, and confidence intervals.
+standard errors, and confidence intervals.
 }
 \description{
 Provides a \code{summary} method for the "RiskMap" class that
-  computes standard errors and confidence intervals for likelihood-based
-  model fits
+computes standard errors and confidence intervals for likelihood-based
+model fits
 }

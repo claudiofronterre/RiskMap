@@ -6,6 +6,9 @@
 \usage{
 penalty_to_dast(p)
 }
+\arguments{
+\item{p}{description}
+}
 \description{
 Convert unified penalty to DAST format (list of 6 functions)
 }
