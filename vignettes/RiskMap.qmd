@@ -33,6 +33,7 @@ library(RiskMap)
 ## Datasets
 
 The package contains 11 example datasets. 
+Apart from `liberia`, all are provided in a format ready to analyse.
 They can be loaded using `data(<dataset>)` e.g. `data(anopheles)`.
 For more information on the datasets use `help(<dataset>)`
 
@@ -46,7 +47,6 @@ For more information on the datasets use `help(<dataset>)`
 - `malkenya` - Surveys of malaria in Kenya
 - `malnutrition` - Malnutrition in Ghana
 - `tz_covariates` - Covariates for prediction of malaria in Tanzania
-<!-- Why have this when tz_malaria contains covariates already? -->
 - `tz_malaria` - Malaria in Tanzania
 
 ## Loading data
@@ -54,20 +54,26 @@ For more information on the datasets use `help(<dataset>)`
 Datasets need transforming into a simple features (sf) object prior to analysis using `st_as_sf()` from the sf package, supplying the names of the columns containing the spatial coordinates and the coordinate reference system for the coordinates:
 
 ```{r}
-data(abund_sma)
-sf_data <- sf::st_as_sf(abund_sma, coords = c("lon", "lat"), crs = sf::st_crs(4326))
+data(liberia)
+sf_data <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = sf::st_crs(4326))
 
-plot(sf_data["total_females"])
-
+plot(sf_data["npos"])
 ```
+
+For the other datasets, call `data()` and they are ready to use.
 
 ## Exploratory data analysis
 
 ```{r}
 
-dist_summaries(sf_data)
+dist_summaries(sf_data, scale_to_km = TRUE)
 
-plot_s_variogram(s_variogram(sf_data, "total_females", n_bins = 14, n_permutation = 1000))
+plot_variogram(variogram(sf_data, 
+                         variable = "npos", 
+                         n_bins = 14, 
+                         n_permutations = 100,
+                         scale_to_km = TRUE), 
+               plot_envelope = TRUE)
 
 
 ```
