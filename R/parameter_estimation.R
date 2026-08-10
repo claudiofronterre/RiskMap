@@ -1,6 +1,6 @@
 ##' @title Estimation of Generalized Linear Gaussian Process Models
 ##' @description Fits generalized linear Gaussian process models to spatial data, incorporating spatial Gaussian processes with a Matern correlation function. Supports Gaussian, binomial, and Poisson response families.
-##' @param formula A formula object specifying the model to be fitted. The formula should include fixed effects, random effects (specified using \code{re()}), and spatial effects (specified using \code{gp()}).
+##' @param formula A formula object specifying the model to be fitted. The formula should include fixed effects and spatial effects (specified using \code{gp()}) and optionally, random effects (specified using \code{re()})).
 ##' @param data An sf object containing the variables in the model.
 ##' @param family A character string specifying the distribution of the response variable. Must be one of "gaussian", "binomial", or "poisson".
 ##' @param invlink A function that defines the inverse of the link function for the distribution of the data given the random effects.
@@ -83,7 +83,6 @@ glgpm <- function(formula,
   check_data(data)
 
   kappa <- inter_f$gp.spec$kappa
-  if(kappa < 0) stop("kappa must be positive.")
 
   if(family != "gaussian" & family != "binomial" &
      family != "poisson") stop("'family' must be either 'gaussian', 'binomial'
@@ -168,7 +167,7 @@ glgpm <- function(formula,
   if(all(table(ID_coords)==1) &
     is.null(family=="gaussian" && is.null(fix_tau2)) & is.null(fix_var_me)) {
     stop("When there is only one observation per location, both the nugget and measurement error cannot
-         be estimate. Consider removing either one of them. ")
+         be estimated. Consider removing either one of them. ")
   }
 
   if(scale_to_km) {

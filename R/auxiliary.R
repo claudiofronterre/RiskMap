@@ -254,27 +254,31 @@ matern.hessian.phi <- function(U, phi, kappa) {
 ##' @description Specifies the terms, smoothness, and nugget effect for a Gaussian Process (GP) model.
 ##' @param ... Variables representing the spatial coordinates or covariates for the GP model.
 ##' @param kappa The smoothness parameter \eqn{\kappa}. Default is 0.5.
-##' @param nugget The nugget effect, which represents the variance of the measurement error. Default is 0. A positive numeric value must be provided if not using the default.
-##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates), the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
+##' @param nugget The nugget effect, which represents the variance of the measurement error.
+##' Default is `FALSE` in which case it is not estimated. If `TRUE` the value will be estimated or
+##' a positive numeric value can be provided instead to fix the effect.
+##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates),
+##' the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
 ##' @return A list of class \code{gp.spec} containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{kappa}{The smoothness parameter \eqn{\kappa}.}
 ##' \item{nugget}{The nugget effect.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the GP model.}
-##' @note The nugget effect must be a positive real number if specified.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-gp <- function (..., kappa = 0.5, nugget = 0) {
+gp <- function (..., kappa = 0.5, nugget = FALSE) {
   vars <- as.list(substitute(list(...)))[-1]
   d <- length(vars)
   term <- NULL
 
-  if(length(nugget) > 0) {
-    if(!is.numeric(nugget) |
-       (is.numeric(nugget) & nugget <0)) stop("when 'nugget' is not NULL, this must be a positive
-                                 real number")
+  if((!is.numeric(kappa) || kappa <= 0)){
+    stop("'kappa' must be positive.")
+  }
+
+  if(!(is.logical(nugget) || (is.numeric(nugget) && nugget >= 0))) {
+    stop("'nugget' must be either 'TRUE' or 'FALSE' or a positive real number")
   }
 
   if (d == 0) {
