@@ -96,8 +96,6 @@ glgpm <- function(formula,
   y <- as.numeric(model.response(mf))
   n <- length(y)
 
-  if (family == "binomial") check_binomial(y, den)
-
   # Extract covariates matrix
   D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
 
@@ -114,6 +112,7 @@ glgpm <- function(formula,
       units_m <- rep(1, nrow(data))
       if(family=="binomial") warning("'den' is assumed to be 1 for all observations \n")
     } else {
+      if (family == "binomial") check_binomial(y, units_m)
       units_m <- data[[do_name]]
     }
     if(is.integer(units_m)) units_m <- as.numeric(units_m)
