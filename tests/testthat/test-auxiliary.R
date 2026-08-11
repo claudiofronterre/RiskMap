@@ -51,7 +51,7 @@ test_that("gp functions correctly", {
   expect_setequal(names(default_result), expected_output)
   expect_equal(default_result$term, "sf")
   expect_equal(default_result$kappa, 0.5)
-  expect_equal(default_result$nugget, FALSE)
+  expect_equal(default_result$nugget, 0)
   expect_equal(default_result$dim, 0)
   expect_equal(default_result$label, "gp()")
 

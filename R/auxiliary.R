@@ -277,8 +277,12 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
     stop("'kappa' must be positive.")
   }
 
-  if(!(is.logical(nugget) || (is.numeric(nugget) && nugget >= 0))) {
+  if(!(is.logical(nugget) || (is.numeric(nugget) && nugget > 0))) {
     stop("'nugget' must be either 'TRUE' or 'FALSE' or a positive real number")
+  }
+
+  if (isFALSE(nugget)){
+    nugget <- 0
   }
 
   if (d == 0) {
