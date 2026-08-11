@@ -456,7 +456,7 @@ coef.RiskMap <- function(object, ...) {
   ind_phi <- p + 2
   names(object$estimate)[ind_phi] <- "phi"
 
-  if (is.null(object$fix_tau2)) {
+  if (isTRUE(object$fix_tau2)) {
     ind_tau2 <- p + 3
     names(object$estimate)[ind_tau2] <- "tau2"
     object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
@@ -597,7 +597,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
   if (sst) ind_psi <- length(object$estimate)
 
-  if (is.null(object$fix_tau2)) {
+  if (isTRUE(object$fix_tau2)) {
     ind_tau2 <- p + 3
     names(object$estimate)[ind_tau2] <- "Variance of the nugget"
     object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
