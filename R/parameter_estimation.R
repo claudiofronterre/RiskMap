@@ -111,8 +111,8 @@ glgpm <- function(formula,
       units_m <- rep(1, nrow(data))
       if(family=="binomial") warning("'den' is assumed to be 1 for all observations \n")
     } else {
-      if (family == "binomial") check_binomial(y, units_m)
       units_m <- data[[do_name]]
+      if (family == "binomial") check_binomial(y, units_m)
     }
     if(is.integer(units_m)) units_m <- as.numeric(units_m)
     if(!is.numeric(units_m)) stop("the variable passed to `den` must be numeric")
