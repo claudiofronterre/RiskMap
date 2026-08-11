@@ -23,6 +23,7 @@ A data frame with 387 rows and 18 columns, containing the following variables:
 \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN).}
 \item{NTL}{Nighttime light intensity, indicating urbanization and infrastructure.}
 \item{Urban.Rural}{Indicator of whether the area is urban ('U') or rural ('R').}
+\item{elogit}{Empirical logit transformation of the positive cases - \code{elogit(Pf, Ex)}}
 \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
 }
 }
