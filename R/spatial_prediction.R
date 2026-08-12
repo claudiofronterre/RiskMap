@@ -2241,30 +2241,6 @@ surf_sim <- function(n_sim,
   return(out)
 }
 
-##' Plot simulated surface data for a given simulation
-##'
-##' This function plots the simulated surface data for a specific simulation from the result of `surf_sim`. It visualizes the linear predictor values on a raster grid along with the actual data points.
-##'
-##' @param surf_obj The output object from `surf_sim`, containing both simulated data (`data_sim`) and predicted grid simulations (`lp_grid_sim`).
-##' @param sim The simulation index to plot.
-##' @param ... Additional graphical parameters to be passed to the plotting function of the `terra` package.
-##'
-##' @return A plot of the simulation results.
-##'
-##' @importFrom stars st_rasterize
-##'
-##' @export
-plot_sim_surf <-  function(surf_obj, sim, ...) {
-
-  sf_object <- surf_obj$lp_grid_sim
-  value_column <- paste0("lp_sim_",sim)
-  r <- rast(st_rasterize(sf_object[,c("x",value_column)]))
-  r[r == 0] <- NA
-
-  plot(r, main = paste("Simulation no.", sim), ...)
-  points(st_coordinates(surf_obj$data_sim[[sim]]), pch = 20)
-
-}
 
 ##' @title Assess Simulations
 ##'
