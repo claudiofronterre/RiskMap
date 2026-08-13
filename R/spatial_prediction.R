@@ -777,41 +777,6 @@ pred_target_grid <- function(object,
   return(out)
 }
 
-
-
-##' Plot Method for RiskMap_pred_target_grid Objects
-##'
-##' Generates a plot of the predicted values or summaries over the regular spatial grid
-##' from an object of class 'RiskMap_pred_target_grid'.
-##'
-##' @param x An object of class 'RiskMap_pred_target_grid'.
-##' @param which_target Character string specifying which target prediction to plot.
-##' @param which_summary Character string specifying which summary statistic to plot (e.g., "mean", "sd").
-##' @param ... Additional arguments passed to the \code{\link[terra]{plot}} function of the \code{terra} package.
-##' @return A \code{ggplot} object representing the specified prediction target or summary statistic over the spatial grid.
-##' @details
-##' This function requires the 'terra' package for spatial data manipulation and plotting.
-##' It plots the values or summaries over a regular spatial grid, allowing for visual examination of spatial patterns.
-##'
-##' @seealso \code{\link{pred_target_grid}}
-##'
-##' @importFrom terra as.data.frame rast plot
-##' @method plot RiskMap_pred_target_grid
-##' @export
-##'
-##'
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
-  t_data.frame <-
-    terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
-                               x$target[[which_target]][[which_summary]]),
-                         xy = TRUE)
-  raster_out <- terra::rast(t_data.frame, crs = st_crs(x$grid_pred)$input)
-
-  terra::plot(raster_out, ...)
-}
-
 ##' @title Predictive Targets over a Shapefile (grid-aggregated)
 ##'
 ##' @description
@@ -1998,7 +1963,7 @@ assess_pp <- function(object,
 
   } # end h loop
 
-  class(out) <- "RiskMap.spatial.cv"
+  class(out) <- "RiskMap_spatial_cv"
   return(out)
 }
 
@@ -2237,7 +2202,7 @@ surf_sim <- function(n_sim,
   out$include_cov_offset <- include_cov_offset
   out$par0 <- par0
   out$family <- family
-  class(out) <- "RiskMap.sim"
+  class(out) <- "RiskMap_sim"
   return(out)
 }
 
@@ -2246,7 +2211,7 @@ surf_sim <- function(n_sim,
 ##'
 ##' @description This function evaluates the performance of models based on simulation results from the `surf_sim` function.
 ##'
-##' @param obj_sim An object of class `RiskMap.sim`, obtained as an output from the `surf_sim` function.
+##' @param obj_sim An object of class `RiskMap_sim`, obtained as an output from the `surf_sim` function.
 ##' @param models A named list of models to be evaluated.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_sim()`. Default is `set_control_sim()`.
 ##' @param spatial_scale The scale at which predictions are assessed, either `"grid"` or `"area"`.
@@ -2272,8 +2237,8 @@ assess_sim <- function(obj_sim,
                        pred_objective = c("mse","classify"),
                        categories= NULL) {
 
-  if (!inherits(obj_sim, "RiskMap.sim")) {
-    stop("'obj_sim' must be an object of class 'RiskMap.sim' obtained as an output from the 'surf_sim' function")
+  if (!inherits(obj_sim, "RiskMap_sim")) {
+    stop("'obj_sim' must be an object of class 'RiskMap_sim' obtained as an output from the 'surf_sim' function")
   }
   if (length(setdiff(pred_objective, c("mse","classify")))>0) {
     stop(paste("Invalid value for pred_objective. Allowed values are:", paste(c("mse","classify"), collapse = ", ")))

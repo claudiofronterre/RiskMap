@@ -78,10 +78,13 @@ dist_summaries <- function(data,
 ##'   \item{n_permutations}{the number of permutations}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
+##' @examples
+##' data(abund_sma)
+##'
+##' plot(variogram(abund_sma, "total_females", n_permutations = 15))
 ##'
 ##' @export
 ##'
-
 variogram <- function(data,
                       variable,
                       breaks = NULL,
