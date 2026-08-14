@@ -1,7 +1,7 @@
 ##' @title Plot Calibration Curves (AnPIT / PIT) from Spatial Cross-Validation
 ##'
 ##' @description
-##' Produce calibration plots from a \code{RiskMap.spatial.cv} object returned by
+##' Produce calibration plots from a \code{RiskMap_spatial_cv} object returned by
 ##' \code{\link{assess_pp}}.
 ##' * For Binomial or Poisson models the function visualises the
 ##'   \emph{Aggregated normalised Probability Integral Transform} (AnPIT)
@@ -12,7 +12,7 @@
 ##'
 ##' A 45° dashed red line indicates perfect calibration.
 ##'
-##' @param object       A \code{RiskMap.spatial.cv} object.
+##' @param object       A \code{RiskMap_spatial_cv} object.
 ##' @param mode         One of \code{"average"} (average curve across test sets),
 ##'                     \code{"single"} (a specific test set),
 ##'                     or \code{"all"} (every test set separately).
@@ -34,8 +34,8 @@ plot_AnPIT <- function(object,
                        model_name = NULL,
                        combine_panels = FALSE) {
 
-  if (!inherits(object, "RiskMap.spatial.cv"))
-    stop("`object` must be a 'RiskMap.spatial.cv' produced by assess_pp().")
+  if (!inherits(object, "RiskMap_spatial_cv"))
+    stop("`object` must be a 'RiskMap_spatial_cv' produced by assess_pp().")
 
   all_models <- names(object$model)
 
@@ -310,4 +310,36 @@ plot.RiskMap_pred_target_grid <- function(x, target = "linear_target", summary =
   raster_out <- terra::rast(t_data.frame, crs = st_crs(x$grid_pred)$input)
 
   terra::plot(raster_out, ...)
+}
+
+##' Plot Method for RiskMap_pred_target_shp Objects
+##'
+##' Generates a plot of predictive target values or summaries over a shapefile.
+##'
+##' @param x An object of class 'RiskMap_pred_target_shp' containing computed targets,
+##' summaries, and associated spatial data.
+##' @param which_target Character indicating the target type to plot (e.g., "linear_target").
+##' @param which_summary Character indicating the summary type to plot (e.g., "mean", "sd").
+##' @param ... Additional arguments passed to 'scale_fill_distiller' in 'ggplot2'.
+##' @return A \code{ggplot} object showing the plot of the specified predictive target or summary.
+##' @details
+##' This function plots the predictive target values or summaries over a shapefile.
+##' It requires the 'ggplot2' package for plotting and 'sf' objects for spatial data.
+##'
+##' @seealso
+##' \code{\link{pred_target_shp}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
+##' \code{\link[ggplot2]{aes}}, \code{\link[ggplot2]{scale_fill_distiller}}
+##'
+##' @method plot RiskMap_pred_target_shp
+##' @export
+##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
+##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
+plot.RiskMap_pred_target_shp <- function(x, which_target = "linear_target",
+                                         which_summary = "mean", ...) {
+  col_shp_name <- paste(which_target,"_",which_summary,sep="")
+
+  out <- ggplot(x$shp) +
+    geom_sf(aes(fill = x$shp[[col_shp_name]])) +
+    scale_fill_distiller(...)
+  return(out)
 }

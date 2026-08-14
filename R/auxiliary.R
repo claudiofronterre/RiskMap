@@ -828,7 +828,7 @@ print.summary.RiskMap <- function(x, ...) {
 
 ##' @title Generate LaTeX Tables from RiskMap Model Fits and Validation
 ##' @description Converts a fitted "RiskMap" model or cross-validation results into an \code{xtable} object, formatted for easy export to LaTeX or HTML.
-##' @param object An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap.spatial.cv" containing cross-validation results.
+##' @param object An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap_spatial_cv" containing cross-validation results.
 ##' @param ... Additional arguments to be passed to \code{\link[xtable]{xtable}} for customization.
 ##' @details This function creates a summary table from a fitted "RiskMap" model or cross-validation results for multiple models, returning it as an \code{xtable} object.
 ##'
@@ -840,7 +840,7 @@ print.summary.RiskMap <- function(x, ...) {
 ##'   \item Measurement error variance, if applicable.
 ##' }
 ##'
-##' When the input is a cross-validation summary object ("summary.RiskMap.spatial.cv"), the table includes:
+##' When the input is a cross-validation summary object ("summary.RiskMap_spatial_cv"), the table includes:
 ##' \itemize{
 ##'   \item A row for each model being compared.
 ##'   \item Performance metrics such as CRPS and SCRPS for each model.
@@ -850,7 +850,7 @@ print.summary.RiskMap <- function(x, ...) {
 ##' @return An object of class "xtable", which contains the formatted table as a \code{data.frame} and several attributes specifying table formatting options.
 ##' @importFrom xtable xtable
 ##' @export
-##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap.spatial.cv}}
+##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap_spatial_cv}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 to_table <- function(object, ...) {
@@ -861,7 +861,7 @@ to_table <- function(object, ...) {
                  summary_out$me)
     out <- xtable(x = tab,...)
   } else if (inherits(summary_out,
-                      what = "summary.RiskMap.spatial.cv", which = FALSE)) {
+                      what = "summary.RiskMap_spatial_cv", which = FALSE)) {
     n_models <- nrow(summary_out)
     n_metrics <- ncol(summary_out)
     model_names <- rownames(summary_out)
@@ -925,7 +925,7 @@ compute_ID_coords <- function(data_sf) {
 ##' @description This function summarizes cross-validation scores for different spatial models obtained
 ##' from \code{\link{assess_pp}}.
 ##'
-##' @param object A `RiskMap.spatial.cv` object containing cross-validation scores for each
+##' @param object A `RiskMap_spatial_cv` object containing cross-validation scores for each
 ##'               model, as obtained from \code{\link{assess_pp}}.
 ##' @param view_all Logical. If `TRUE`, stores the average scores across test sets for each
 ##'                 model alongside the overall average across all models. Defaults to `TRUE`.
@@ -942,14 +942,14 @@ compute_ID_coords <- function(data_sf) {
 ##' }
 ##'
 ##' @return A matrix of summary scores with models as rows and metrics as columns, with class
-##' `"summary.RiskMap.spatial.cv"`.
+##' `"summary.RiskMap_spatial_cv"`.
 ##'
 ##' @seealso \code{\link{assess_pp}}
 ##'
 ##' @export
-##' @method summary RiskMap.spatial.cv
+##' @method summary RiskMap_spatial_cv
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-summary.RiskMap.spatial.cv <- function(object, view_all = TRUE, ...) {
+summary.RiskMap_spatial_cv <- function(object, view_all = TRUE, ...) {
   model_names <- names(object$model)
   n_models <- length(model_names)
 
@@ -986,17 +986,17 @@ summary.RiskMap.spatial.cv <- function(object, view_all = TRUE, ...) {
   attr(res, "overall_averages") <- overall_averages
   attr(res, "view_all") <- view_all
 
-  class(res) <- "summary.RiskMap.spatial.cv"
+  class(res) <- "summary.RiskMap_spatial_cv"
   return(res)
 }
 
 ##' @title Print Summary of RiskMap Spatial Cross-Validation Scores
 ##'
 ##' @description This function prints the matrix of cross-validation scores produced by
-##' `summary.RiskMap.spatial.cv` in a readable format.
+##' `summary.RiskMap_spatial_cv` in a readable format.
 ##'
-##' @param x An object of class `"summary.RiskMap.spatial.cv"`, typically the output of
-##'          `summary.RiskMap.spatial.cv`.
+##' @param x An object of class `"summary.RiskMap_spatial_cv"`, typically the output of
+##'          `summary.RiskMap_spatial_cv`.
 ##' @param ... Additional arguments passed to or from other methods.
 ##'
 ##' @details
@@ -1008,8 +1008,8 @@ summary.RiskMap.spatial.cv <- function(object, view_all = TRUE, ...) {
 ##'         return a value.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @export
-##' @method print summary.RiskMap.spatial.cv
-print.summary.RiskMap.spatial.cv <- function(x, ...) {
+##' @method print summary.RiskMap_spatial_cv
+print.summary.RiskMap_spatial_cv <- function(x, ...) {
   # Extract attributes
   test_set_means <- attr(x, "test_set_means")
   overall_averages <- attr(x, "overall_averages")
