@@ -1,3 +1,14 @@
+test_that("check_binomial functions correctly", {
+
+  expect_no_error(check_binomial(0:3, NULL))
+  expect_no_error(check_binomial(0:3, 0:3))
+  expect_no_error(check_binomial(0:3, 1:4))
+  expect_no_error(check_binomial(c(0, 1.00000001, 2), NULL))
+  expect_error(check_binomial(-1:2, NULL), "'y' must only consist of zero or positive integers")
+  expect_error(check_binomial(c(0, 1.1, 2), NULL), "'y' must only consist of zero or positive integers")
+  expect_error(check_binomial(1:4, 0:3), "Values of 'den' must be greater")
+})
+
 test_that("check_data functions correctly", {
 
   data <- data.frame(

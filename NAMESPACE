@@ -49,29 +49,41 @@ import(ggplot2)
 import(sf)
 import(stats)
 importFrom(Deriv,Deriv)
-importFrom(Matrix,Matrix)
-importFrom(Matrix,forceSymmetric)
-importFrom(Matrix,solve)
-importFrom(dplyr,"%>%")
-importFrom(dplyr,first)
-importFrom(dplyr,group_by)
-importFrom(dplyr,mutate)
-importFrom(dplyr,summarize)
-importFrom(graphics,par)
-importFrom(graphics,points)
+importFrom(Matrix,
+  Matrix,
+  forceSymmetric,
+  solve
+)
+importFrom(dplyr,
+  "%>%",
+  first,
+  group_by,
+  mutate,
+  summarize
+)
+importFrom(graphics,
+  par,
+  points
+)
 importFrom(gridExtra,grid.arrange)
-importFrom(numDeriv,grad)
-importFrom(numDeriv,hessian)
+importFrom(numDeriv,
+  grad,
+  hessian
+)
 importFrom(rlang,sym)
 importFrom(sns,ess)
 importFrom(spatialEco,subsample.distance)
-importFrom(spatialsample,autoplot)
-importFrom(spatialsample,spatial_clustering_cv)
+importFrom(spatialsample,
+  autoplot,
+  spatial_clustering_cv
+)
 importFrom(stars,st_rasterize)
-importFrom(terra,as.data.frame)
-importFrom(terra,match)
-importFrom(terra,plot)
-importFrom(terra,rast)
+importFrom(terra,
+  as.data.frame,
+  match,
+  plot,
+  rast
+)
 importFrom(tibble,as_tibble)
 importFrom(utils,flush.console)
 importFrom(xtable,xtable)
