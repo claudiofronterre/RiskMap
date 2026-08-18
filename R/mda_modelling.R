@@ -250,13 +250,7 @@ dast <- function(formula,
   nong <- TRUE
 
   check_data(data)
-
-  if(!inherits(formula,
-               what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula'
-         object indicating the variables of the
-         model to be fitted")
-  }
+  check_formula(formula, data)
 
   inter_f <- interpret.formula(formula)
 
@@ -645,9 +639,7 @@ dast_sim <- function(n_sim,
     check_data(data)
   }
 
-  if (!inherits(formula, what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula'\n         object indicating the variables of the\n         model to be fitted")
-  }
+  check_formula(formula, data)
 
   inter_f <- interpret.formula(formula)
   gp_terms <- inter_f$gp.spec$term
