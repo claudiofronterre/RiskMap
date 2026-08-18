@@ -1186,25 +1186,25 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' Simulates data from a fitted Generalized Linear Gaussian Process Model (GLGPM) or a specified model formula and data.
 ##'
 ##' @param n_sim Number of simulations to perform.
-##' @param model_fit Fitted GLGPM model object of class 'RiskMap'. If provided, overrides 'formula', 'data', 'family', 'crs', 'convert_to_crs', 'scale_to_km', and 'control_mcmc' arguments.
+##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `convert_to_crs` and `scale_to_km` arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
-##' @param data 'sf' object containing the variables in the model formula.
-##' @param family Distribution family for the response variable. Must be one of 'gaussian', 'binomial', or 'poisson'.
-##' @param den Required for 'binomial' to denote the denominator (i.e. number of trials) of the Binomial distribution.
-##' For the 'poisson' family, the argument is optional and is used a multiplicative term to express the mean counts.
+##' @param data `sf` object containing the variables in the model formula.
+##' @param family Distribution family for the response variable. Must be one of `gaussian`, `binomial`, or `poisson.`
+##' @param den Required for `binomial` to denote the denominator (i.e. number of trials) of the Binomial distribution.
+##' For the `poisson` family, the argument is optional and is used a multiplicative term to express the mean counts.
 ##' @param cov_offset Offset for the covariate part of the GLGPM.
-##' @param crs Coordinate reference system (CRS) code for spatial data.
-##' @param convert_to_crs CRS code to convert spatial data if different from 'crs'.
-##' @param scale_to_km Logical; if TRUE, distances between locations are computed in kilometers; if FALSE, in meters.
-##' @param sim_pars List of simulation parameters including 'beta', 'sigma2', 'tau2', 'phi', 'sigma2_me', and 'sigma2_re'.
-##' @param messages Logical; if TRUE, display progress and informative messages.
+##' @param convert_to_crs CRS code to convert data to.
+##' @param scale_to_km Logical; if `TRUE`, distances between locations are computed in kilometers; if `FALSE`, in meters.
+##' @param sim_pars List of simulation parameters including `beta`, `sigma2`, `tau2`, `phi`, `sigma2_me`, and optionally `sigma2_re`.
+##' If multiple covariates or random effects are included, the lengths of `beta` and `sigma2_re` must match the number of covariates and random effects respectively.
+##' @param messages Logical; if `TRUE`, display progress and informative messages.
 ##'
 ##' @details
 ##' Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to model spatial correlation. This function simulates data from GLGPMs using Markov Chain Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson response families, utilizing a Matern correlation function to model spatial dependence.
 ##'
-##' The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For 'gaussian' family, the function simulates response values by adding measurement error.
+##' The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For `gaussian` family, the function simulates response values by adding measurement error.
 ##'
-##' Additionally, GLGPMs can incorporate unstructured random effects specified through the \code{re()} term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
+##' Additionally, GLGPMs can incorporate unstructured random effects specified through the [`re()`] term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
 ##'
 ##' @return A list containing simulated data, simulated spatial random effects (if applicable), and other simulation parameters.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
@@ -1217,7 +1217,7 @@ glgpm_sim <- function(n_sim,
                       family = NULL,
                       den = NULL,
                       cov_offset = NULL,
-                      crs = NULL, convert_to_crs = NULL,
+                      convert_to_crs = NULL,
                       scale_to_km = TRUE,
                       sim_pars = list(beta = NULL,
                                       sigma2 = NULL,
@@ -1230,12 +1230,15 @@ glgpm_sim <- function(n_sim,
   check_positive_integer(n_sim, "'n_sim'")
 
   if(!is.null(model_fit)) {
-    if(!inherits(model_fit,
-                    what = "RiskMap", which = FALSE)) stop("'model_fit' must be of class 'RiskMap'")
+    if(!inherits(model_fit, "RiskMap")){
+      stop("'model_fit' must be of class 'RiskMap'")
+    }
+    if (!is.null(data) | !is.null(formula)){
+      stop("if you provide 'model_fit' you should not provide 'data' or 'formula'")
+    }
     formula <- as.formula(model_fit$formula)
     data <- model_fit$data_sf
-    family = model_fit$family
-    crs <- model_fit$crs
+    family <- model_fit$family
     convert_to_crs <- model_fit$convert_to_crs
     scale_to_km <- model_fit$scale_to_km
   }
@@ -1251,12 +1254,10 @@ glgpm_sim <- function(n_sim,
      family != "poisson") stop("'family' must be either 'gaussian', 'binomial'
                                or 'poisson'")
 
-
-  mf <- model.frame(inter_f$pf,data=data, na.action = na.fail)
-
+  mf <- model.frame(inter_f$pf,data = data, na.action = na.fail)
 
   # Extract covariates matrix
-  D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
+  D <- as.matrix(model.matrix(attr(mf,"terms"), data = data))
   n <- nrow(D)
 
   hr_re <- if (length(inter_f$re.spec) > 0L) {
@@ -1301,33 +1302,40 @@ glgpm_sim <- function(n_sim,
       }
     }
   } else {
-    if(is.null(sim_pars$beta)) stop("'beta' is missing")
-    beta <- sim_pars$beta
-    if(length(beta)!=p) stop("the number of values provided for 'beta' does not match
+    # extract non-NULL names
+    par_names <- names(sim_pars)[!vapply(sim_pars, is.null, logical(1))]
+
+    # [[]] syntax avoids partial matching
+    if (!"beta" %in% par_names) stop("'beta' is missing")
+    beta <- sim_pars[["beta"]]
+    if (length(beta)!=p) stop("the number of values provided for 'beta' does not match
     the number of covariates specified in the formula")
-    if(is.null(sim_pars$sigma2)) stop("'sigma2' is missing")
-    sigma2 <- sim_pars$sigma2
-    if(is.null(sim_pars$phi)) stop("'phi' is missing")
-    phi <- sim_pars$phi
-    if(is.null(sim_pars$tau2)) stop("'tau2' is missing")
-    tau2 <- sim_pars$tau2
-    if(is.null(sim_pars$sigma2_me)) stop("'sigma2_me' is missing")
-    sigma2_me <- sim_pars$sigma2_me
-    if(n_re>0) {
-      if(is.null(sim_pars$sigma2_re)) stop("'sigma2_re' is missing")
-      if(length(sim_pars$sigma2_re)!=n_re) stop("the values passed to 'sigma2_re' in 'sim_pars'
+    if (!"sigma2" %in% par_names) stop("'sigma2' is missing")
+    sigma2 <- sim_pars[["sigma2"]]
+    if (!"phi" %in% par_names) stop("'phi' is missing")
+    phi <- sim_pars[["phi"]]
+    if (!"tau2" %in% par_names) stop("'tau2' is missing")
+    tau2 <- sim_pars[["tau2"]]
+    if (!"sigma2_me" %in% par_names) stop("'sigma2_me' is missing")
+    sigma2_me <- sim_pars[["sigma2_me"]]
+    if (n_re > 0) {
+      if(!"sigma2_re" %in% par_names) stop("'sigma2_re' is missing")
+      if(length(sim_pars[["sigma2_re"]]) != n_re) stop("the values passed to 'sigma2_re' in 'sim_pars'
       does not match the number of random effects specfied in re() in the formula")
-      sigma2_re <- sim_pars$sigma2_re
+      sigma2_re <- sim_pars[["sigma2_re"]]
+    }
+    if (n_re == 0 & "sigma2_re" %in% par_names){
+      warning("'sigma2_re' will be ignored as no random effects are included")
     }
   }
 
   # Extract coordinates
   if(!is.null(convert_to_crs)) {
-    if(!is.numeric(convert_to_crs)) stop("'convert_to_utm' must be a numeric object")
+    if(!is.numeric(convert_to_crs)) stop("'convert_to_crs' must be a numeric object")
     data <- st_transform(data, crs = convert_to_crs)
     crs <- convert_to_crs
   }
-  if(messages) message("The CRS used is", as.list(st_crs(data))$input, "\n")
+  if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
   coords_o <- st_coordinates(data)
   coords <- unique(coords_o)
@@ -1391,11 +1399,12 @@ glgpm_sim <- function(n_sim,
   if(family!="gaussian") {
     if(!is.null(den))  {
       do_name <- deparse(substitute(den))
+      y <- as.numeric(model.response(mf))
       units_m <- data[[do_name]]
 
+      if (family == "binomial") check_binomial(y, units_m)
       if(is.integer(units_m)) units_m <- as.numeric(units_m)
       if(!is.numeric(units_m)) stop("the variable passed to `den` must be numeric")
-
 
     } else {
       units_m <- model_fit$units_m

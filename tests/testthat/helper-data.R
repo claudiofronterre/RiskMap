@@ -18,3 +18,9 @@ S <- as.numeric(Sigma_sroot %*% rnorm(n))
 
 data$y <- 1 + 0.5 * data$cov + S + rnorm(n, sd = 0.1)
 sf_data <- sf::st_as_sf(data, coords = c("lon", "lat"), crs = 4326)
+
+gaussian_model <- glgpm(y ~ cov + gp(),
+                         data = sf_data,
+                         family = "gaussian",
+                         scale_to_km = FALSE,
+                         messages = FALSE)

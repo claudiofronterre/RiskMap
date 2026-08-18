@@ -7,16 +7,16 @@ expected_output <- c("y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
 
 test_that("glgpm produces expected output for gaussian models", {
 
-  fit_no_re <- glgpm(y ~ cov + gp(sf), data = sf, family = "gaussian", scale_to_km = FALSE, messages = FALSE)
+  fit_no_re <- glgpm(y ~ cov + gp(), data = sf_data, family = "gaussian", scale_to_km = FALSE, messages = FALSE)
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "gaussian")
-  expect_equal(fit_no_re$coords[,1], df$lon)
-  expect_equal(fit_no_re$coords[,2], df$lat)
+  expect_equal(fit_no_re$coords[,1], sf_data$lon)
+  expect_equal(fit_no_re$coords[,2], sf_data$lat)
   expect_equal(fit_no_re$y, sf$y)
-  expect_equal(unname(fit_no_re$D[,2]), df$cov)
+  expect_equal(unname(fit_no_re$D[,2]), sf_data$cov)
 
-  fit_re <- glgpm(y ~ cov + gp(sf) + re(i), data = sf, family = "gaussian", messages = FALSE)
+  fit_re <- glgpm(y ~ cov + gp() + re(i), data = sf_data, family = "gaussian", messages = FALSE)
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "gaussian")
@@ -24,18 +24,18 @@ test_that("glgpm produces expected output for gaussian models", {
 
 test_that("glgpm produces expected output for binomial models", {
 
-  eta <- 0.2 + 0.3 * df$cov + S
+  eta <- 0.2 + 0.3 * data$cov + S
   p <- plogis(eta)
-  df$y <- rbinom(n, size = df$den, prob = p)
-  sf <- sf::st_as_sf(df, coords = c("lon", "lat"), crs = 4326)
+  data$y <- rbinom(n, size = data$den, prob = p)
+  sf <- sf::st_as_sf(data, coords = c("lon", "lat"), crs = 4326)
 
-  fit_no_re <- glgpm(y ~ cov + gp(sf), data = sf, family = "binomial",
+  fit_no_re <- glgpm(y ~ cov + gp(), data = sf, family = "binomial",
                  den = den, messages = FALSE)
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "binomial")
 
-  fit_re <- glgpm(y ~ cov + gp(sf) + re(i), data = sf, family = "binomial",
+  fit_re <- glgpm(y ~ cov + gp() + re(i), data = sf, family = "binomial",
                      den = den, messages = FALSE)
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
@@ -44,21 +44,21 @@ test_that("glgpm produces expected output for binomial models", {
 
 test_that("glgpm produces expected output for poisson models", {
 
-  lambda <- exp(0.1 + 0.2 * df$cov + S)
-  df$y <- rpois(n, lambda)
-  sf <- sf::st_as_sf(df, coords = c("lon", "lat"), crs = 4326)
+  lambda <- exp(0.1 + 0.2 * data$cov + S)
+  data$y <- rpois(n, lambda)
+  sf <- sf::st_as_sf(data, coords = c("lon", "lat"), crs = 4326)
 
-  fit_no_re <- glgpm(y ~ cov + gp(sf), data = sf, family = "poisson", messages = FALSE)
+  fit_no_re <- glgpm(y ~ cov + gp(), data = sf, family = "poisson", messages = FALSE)
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "poisson")
 
-  fit_re <- glgpm(y ~ cov + gp(sf) + re(i), data = sf, family = "poisson", messages = FALSE)
+  fit_re <- glgpm(y ~ cov + gp() + re(i), data = sf, family = "poisson", messages = FALSE)
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "poisson")
 
-  fit_re_den <- glgpm(y ~ cov + gp(sf) + re(i), den = den, data = sf, family = "poisson", messages = FALSE)
+  fit_re_den <- glgpm(y ~ cov + gp() + re(i), den = den, data = sf, family = "poisson", messages = FALSE)
   expect_s3_class(fit_re_den, "RiskMap")
   expect_setequal(names(fit_re_den), expected_output)
   expect_equal(fit_re_den$family, "poisson")
@@ -67,12 +67,10 @@ test_that("glgpm produces expected output for poisson models", {
 
 test_that("glgpm correctly reprojects to new CRS", {
 
-  df$y <- 1 + 0.5 * df$cov + S + rnorm(n, sd = 0.1)
-  sf <- sf::st_as_sf(df, coords = c("lon", "lat"), crs = 4326)
-  suggested_crs <- propose_utm(sf)
-  sf_reproj <- sf::st_transform(sf, suggested_crs)
+  suggested_crs <- propose_utm(sf_data)
+  sf_reproj <- sf::st_transform(sf_data, suggested_crs)
   scaled_coords <- sf::st_coordinates(sf_reproj) / 1000
-  fit <- glgpm(y ~ cov + gp(sf), data = sf, family = "gaussian", scale_to_km = TRUE, messages = FALSE, convert_to_crs = suggested_crs)
+  fit <- glgpm(y ~ cov + gp(), data = sf_data, family = "gaussian", scale_to_km = TRUE, messages = FALSE, convert_to_crs = suggested_crs)
 
   expect_equal(fit$coords, scaled_coords)
   expect_equal(fit$crs, suggested_crs)
