@@ -154,7 +154,7 @@ test_that("glgpm simulations support random effects in tibble-backed sf data", {
   data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32634)
 
   set.seed(1)
-  result <- suppressWarnings(
+  result <-
     glgpm_sim(
       n_sim = 2,
       formula = y ~ gp(kappa = 0.5, nugget = 0) + re(group),
@@ -170,7 +170,6 @@ test_that("glgpm simulations support random effects in tibble-backed sf data", {
       ),
       messages = FALSE
     )
-  )
 
   expect_length(result$re_sim, 2L)
   expect_length(result$re_sim[[1]]$group, 2L)
@@ -190,7 +189,7 @@ test_that("dast simulations support random effects in tibble-backed sf data", {
   m <- data$m
 
   set.seed(1)
-  result <- suppressWarnings(
+  result <-
     dast_sim(
       n_sim = 2,
       formula = y ~ gp(kappa = 0.5, nugget = 0) + re(group),
@@ -212,7 +211,7 @@ test_that("dast simulations support random effects in tibble-backed sf data", {
       ),
       messages = FALSE
     )
-  )
+
 
   expect_length(result$re_sim, 2L)
   expect_length(result$re_sim[[1]]$group, 2L)

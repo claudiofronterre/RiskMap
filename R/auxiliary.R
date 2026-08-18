@@ -1488,3 +1488,22 @@ check_data <- function(data){
   }
   invisible(TRUE)
 }
+
+#' @title check_positive_integer
+#' @description
+#'
+#' Check that the a value is a single, positive integer and error if not
+#' @param x the value to check
+#' @param name the name of the parameter to return in error messages
+#' @return TRUE if the data is valid. Raise an error if not.
+#' @noRd
+#'
+check_positive_integer <- function(x, name) {
+  if (!is.numeric(x) || length(x) != 1 || is.na(x)) {
+    stop(name, " must be a single positive integer")
+  }
+  if (x <= 0 || x %% 1 != 0) {
+    stop(name, " must be a single positive integer")
+  }
+  invisible(TRUE)
+}

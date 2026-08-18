@@ -1233,6 +1233,8 @@ glgpm_sim <- function(n_sim,
                                       sigma2_re = NULL),
                       messages = TRUE) {
 
+  check_positive_integer(n_sim, "'n_sim'")
+
   if(!is.null(model_fit)) {
     if(!inherits(model_fit,
                     what = "RiskMap", which = FALSE)) stop("'model_fit' must be of class 'RiskMap'")
@@ -1347,9 +1349,6 @@ glgpm_sim <- function(n_sim,
     which(coords_o[i,1]==coords[,1] &
             coords_o[i,2]==coords[,2]))
   s_unique <- unique(ID_coords)
-
-
-
 
   if(all(table(ID_coords)==1) & !is.null(tau2) &
      !is.null(sigma2_me) && (tau2!=0 & sigma2_me!=0)) {

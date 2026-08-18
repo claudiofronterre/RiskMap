@@ -57,6 +57,9 @@ test_that("assess_pp uses each model's own data_sf for held-out predictors", {
   )
 
   expect_s3_class(out, "RiskMap.spatial.cv")
+
+  expect_setequal(names(out), c("test_set", "model"))
+
   expect_true("x1" %in% seen_predictors$x1)
   expect_false("x2" %in% seen_predictors$x1)
   expect_true("x2" %in% seen_predictors$x2)
@@ -85,9 +88,9 @@ test_that("assess_pp requires aligned model data", {
 test_that("AnPIT area computes trapezoidal absolute distance", {
   u <- seq(0, 1, length.out = 1001)
 
-  expect_equal(RiskMap:::.anpit_area(u, u), 0)
-  expect_equal(RiskMap:::.anpit_area(rep(0, length(u)), u), 0.5)
-  expect_equal(RiskMap:::.anpit_area(u^2, u), 1 / 6, tolerance = 1e-6)
+  expect_equal(.anpit_area(u, u), 0)
+  expect_equal(.anpit_area(rep(0, length(u)), u), 0.5)
+  expect_equal(.anpit_area(u^2, u), 1 / 6, tolerance = 1e-6)
 })
 
 test_that("assess_pp reports AnPIT area as a scalar score", {

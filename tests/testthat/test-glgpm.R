@@ -1,22 +1,3 @@
-
-set.seed(1)
-n <- 50
-coords <- cbind(runif(n, 0, 10), runif(n, 0, 10))
-
-df <- data.frame(lon = coords[,1],
-                 lat = coords[,2],
-                 cov = rnorm(n),
-                 den =  sample(5:20, n, replace = TRUE),
-                 i = 1:50)
-
-sigma2 <- 1
-phi <- 2
-kappa <- 1
-Sigma <- sigma2 * matern_cor(dist(coords), phi = phi, kappa = kappa,
-                             return_sym_matrix = TRUE)
-Sigma_sroot <- t(chol(Sigma))
-S <- as.numeric(Sigma_sroot %*% rnorm(n))
-
 expected_output <- c("y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
                      "fix_var_me", "formula", "family", "crs", "scale_to_km",
                      "data_sf", "kappa", "units_m", "cov_offset", "call")
@@ -25,9 +6,6 @@ expected_output <- c("y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
 # "estimate", "grad.MLE", "covariance", "log.lik", "S_samples", "linkf", "sst"
 
 test_that("glgpm produces expected output for gaussian models", {
-
-  df$y <- 1 + 0.5 * df$cov + S + rnorm(n, sd = 0.1)
-  sf <- sf::st_as_sf(df, coords = c("lon", "lat"), crs = 4326)
 
   fit_no_re <- glgpm(y ~ cov + gp(sf), data = sf, family = "gaussian", scale_to_km = FALSE, messages = FALSE)
   expect_s3_class(fit_no_re, "RiskMap")
