@@ -68,14 +68,21 @@ dist_summaries <- function(data,
 ##' By default \code{scale_to_km = FALSE}
 ##'
 ##' @return an object of class `RiskMap_variogram` which is a list containing the following components:
-##'   \item{variogram}{a data-frame containing the following columns: \code{mid_points},
-##' the middle points of the classes of distance provided by \code{breaks};
-##' \code{obs_vari} the values of the observed variogram; \code{obs_vari} the number of pairs.
-##' If \code{n_permutations > 0}, the data-frame also contains \code{lower_bound} and \code{upper_bound}
-##' corresponding to the lower and upper bounds of the 95% confidence intervals
-##' used to assess the departure of the observed variogram from the assumption of spatial independence.}
+##'   \describe{
+##'   \item{variogram}{a data-frame containing the following columns:
+##'   \describe{
+##'     \item{mid_points}{the middle points of the classes of distance provided by \code{breaks}}
+##'     \item{obs_vari}{the values of the observed variogram}
+##'     \item{n_obs}{the number of pairs}}
+##'   If \code{n_permutations > 0}, the data-frame also contains the following columns:
+##'.  \describe{
+##'     \item{lower_bound}{the lower bound of the 95% confidence interval}
+##'     \item{upper_bound}{the upper bound of the 95% confidence interval}
+##'   }}
 ##'   \item{scale_to_km}{the value passed to \code{scale_to_km}}
 ##'   \item{n_permutations}{the number of permutations}
+##'   \item{breaks}{the calculated breaks}
+##'   }
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##'
@@ -118,8 +125,14 @@ variogram <- function(data,
   if (n_permutations == 2){
     stop("'n_permutations' must be greater than 2")
   }
-  if (n_permutations < 100){
+  if (n_permutations != 0 & n_permutations < 100){
     warning("'n_permutations' is set very low - consider increasing it")
+  }
+  if (!is.logical(convert_to_utm)){
+    stop("'convert_to_utm' must be either TRUE or FALSE")
+  }
+  if (!is.logical(scale_to_km)){
+    stop("'scale_to_km' must be either TRUE or FALSE")
   }
   if (!convert_to_utm){
     message("The distances of the variogram are computed assuming

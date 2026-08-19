@@ -11,7 +11,7 @@ test_that("dast validates intervention matrix dimensions", {
 
   expect_error(
     dast(
-      y ~ gp(x, z),
+      y ~ gp(),
       data = data,
       den = m,
       time = time,
@@ -25,7 +25,7 @@ test_that("dast validates intervention matrix dimensions", {
 
   expect_error(
     dast(
-      y ~ gp(x, z),
+      y ~ gp(),
       data = data,
       den = m,
       time = time,
@@ -39,7 +39,7 @@ test_that("dast validates intervention matrix dimensions", {
 
   expect_error(
     dast(
-      y ~ gp(x, z),
+      y ~ gp(),
       data = data,
       den = m,
       time = time,

@@ -1,6 +1,6 @@
 set.seed(1)
 n <- 10
-coords <- cbind(runif(n, 0, 10), runif(n, 0, 10))
+coords <- cbind(runif(n, 0, 1), runif(n, 0, 1))
 
 data <- data.frame(lon = coords[,1],
                  lat = coords[,2],

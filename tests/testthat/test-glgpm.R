@@ -11,9 +11,9 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "gaussian")
-  expect_equal(fit_no_re$coords[,1], sf_data$lon)
-  expect_equal(fit_no_re$coords[,2], sf_data$lat)
-  expect_equal(fit_no_re$y, sf$y)
+  expect_equal(fit_no_re$coords[,1], data$lon)
+  expect_equal(fit_no_re$coords[,2], data$lat)
+  expect_equal(fit_no_re$y, sf_data$y)
   expect_equal(unname(fit_no_re$D[,2]), sf_data$cov)
 
   fit_re <- glgpm(y ~ cov + gp() + re(i), data = sf_data, family = "gaussian", messages = FALSE)
