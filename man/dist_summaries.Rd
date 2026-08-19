@@ -4,32 +4,27 @@
 \alias{dist_summaries}
 \title{Summaries of the distances}
 \usage{
-dist_summaries(data, convert_to_utm = TRUE, scale_to_km = FALSE)
+dist_summaries(data, convert_to_utm = TRUE, scale_to_km = TRUE)
 }
 \arguments{
-\item{data}{an object of class \code{sf} containing the variable for which the variogram
-is to be computed and the coordinates}
+\item{data}{an object of class \code{sf} containing point geometries.}
 
-\item{convert_to_utm}{a logical value, indicating if the conversion to UTM shuold be performed (\code{convert_to_utm = TRUE}) or
-the coordinate reference system of the data must be used without any conversion (\code{convert_to_utm = FALSE}).
-By default \code{convert_to_utm = TRUE}. Note: if \code{convert_to_utm = TRUE} the conversion to UTM is performed using
-the epsg provided by \code{\link{propose_utm}}.}
+\item{convert_to_utm}{a logical value, indicating if the conversion to UTM should be performed (\code{TRUE}) or
+the coordinate reference system of the data must be used without any conversion (\code{FALSE}).
+By default \code{TRUE}. Note: if \code{TRUE} the conversion to UTM is performed using
+the epsg provided by \verb{[propose_utm]}.}
 
-\item{scale_to_km}{a logical value, indicating if the distances used in the variogram must be scaled
-to kilometers (\code{scale_to_km = TRUE}) or left in meters (\code{scale_to_km = FALSE}).
-By default \code{scale_to_km = FALSE}}
+\item{scale_to_km}{a logical value, indicating if the distances used are scaled
+to kilometers (\code{TRUE}) or left in meters (\code{FALSE}). Defaults to \code{TRUE}.}
 }
 \value{
-a list containing the following components
-
-\code{min} the minimum distance
-
-\code{max} the maximum distance
-
-\code{mean} the mean distance
-
-\code{median} the minimum distance
+a named vector containing the following components
+\describe{
+\item{\code{min}}{the minimum distance}
+\item{\code{max}}{the maximum distance}
+\item{\code{mean}}{the mean distance}
+\item{\code{median}}{the minimum distance}
 }
 \description{
-Computes the distances between the locations in the data-set and returns summary statistics of these.
+Computes the distances between the locations in the dataset and returns summary statistics.
 }
