@@ -4,7 +4,7 @@ test_that("variogram produces errors", {
     df <- data.frame(x = 1:5, y = 1:5, y = rnorm(5))
     expect_error(
       variogram(df, variable = "y"),
-      "'data' must be an object of class 'sf'"
+      "'data' must be of class 'sf'"
     )
   })
 
@@ -140,14 +140,14 @@ test_that("variogram produces errors", {
 
   test_that("n_permutations of exactly 100 does not trigger the low-permutation warning", {
     expect_no_warning(
-        variogram(sf_data, variable = "y", n_permutations = 100, convert_to_utm = FALSE)
+        variogram(sf_data, variable = "y", n_permutations = 100, convert_to_utm = TRUE)
     )
   })
 
-  test_that("convert_to_utm = FALSE emits an informational message", {
-    expect_message(
+  test_that("convert_to_utm = FALSE produces an error if coords are lon lat", {
+    expect_error(
         variogram(sf_data, variable = "y", n_permutations = 100, convert_to_utm = FALSE),
-      "The distances of the variogram are computed assuming"
+      "The dataset coordinates are in longitude and latitude"
     )
   })
 
@@ -246,4 +246,65 @@ test_that("variogram produces expected output", {
   expect_equal(result$n_permutations, 0)
   expect_length(result$breaks, 10 + 1)
   expect_equal(mean(result$variogram$mid_points), mean(result$breaks))
+})
+
+test_that("variogram values are correct for a simple dataset", {
+
+  square <- data.frame(
+    x = c(1, 2, 1, 2, 10),
+    y = c(1, 1, 2, 2, 10),
+    z = c( 1, 2, 3, 4, 10)
+  )
+
+  # 10 points will be removed, so only the square distances are considered
+  square_sf <- sf::st_as_sf(square, coords = c("x", "y"), crs = 32630)
+
+  # independently calculate the variogram for all possible permutations
+  # get all possible combinations of 1:5
+  permutations <- expand.grid(1:5, 1:5, 1:5, 1:5, 1:5)
+  permutations <- as.matrix(permutations[apply(permutations, 1, function(x) length(unique(x)) == 5), ])
+
+  # compute semivariances for a permutation
+  get_bin_averages <- function(perm) {
+    vals <- c(1, 2, 3, 4, 10)[perm]
+
+    s <- c(
+      (vals[1]-vals[2])^2/2,  # 1-2: bin1
+      (vals[1]-vals[3])^2/2,  # 1-3: bin1
+      (vals[1]-vals[4])^2/2,  # 1-4: bin2
+      (vals[2]-vals[3])^2/2,  # 2-3: bin2
+      (vals[2]-vals[4])^2/2,  # 2-4: bin1
+      (vals[3]-vals[4])^2/2   # 3-4: bin1
+    )
+
+    c(bin1 = mean(s[c(1,2,5,6)]),
+      bin2 = mean(s[c(3,4)]))
+  }
+
+  manual_results <- t(apply(permutations, 1, get_bin_averages))
+  manual_envelope <- apply(manual_results, 2, quantile, probs = c(0.025, 0.975))
+  manual_observed <- get_bin_averages(1:5)
+
+  result <- variogram(square_sf,
+                      variable = "z",
+                      breaks = seq(0.1, 1.5, 0.2),
+                      convert_to_utm = FALSE,
+                      n_permutations = 100)
+
+  expect_equal(sum(result$variogram$n_obs), 6)
+
+  bin1 <- result$variogram$mid_points == 1
+  bin2 <- result$variogram$mid_points + 0.1 > sqrt(2)
+
+  expect_equal(result$variogram$n_obs[bin1], 4)
+  expect_equal(result$variogram$n_obs[bin2], 2)
+
+  expect_equal(result$variogram$obs_vari[bin1], unname(manual_observed[1]))
+  expect_equal(result$variogram$obs_vari[bin2], unname(manual_observed[2]))
+
+  expect_equal(result$variogram$lower_bound[bin1], manual_envelope[1,1])
+  expect_equal(result$variogram$lower_bound[bin2], manual_envelope[1,2])
+
+  expect_equal(result$variogram$upper_bound[bin1], manual_envelope[2,1])
+  expect_equal(result$variogram$upper_bound[bin2], manual_envelope[2,2])
 })

@@ -25,6 +25,7 @@ a named vector containing the following components
 \item{\code{mean}}{the mean distance}
 \item{\code{median}}{the minimum distance}
 }
+}
 \description{
 Computes the distances between the locations in the dataset and returns summary statistics.
 }

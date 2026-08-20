@@ -15,6 +15,7 @@
 ##'   \item{`max`}{the maximum distance}
 ##'   \item{`mean`}{the mean distance}
 ##'   \item{`median`}{the minimum distance}
+##' }
 ##' @export
 dist_summaries <- function(data,
                            convert_to_utm = TRUE,
@@ -133,12 +134,15 @@ variogram <- function(data,
   if (!is.logical(scale_to_km)){
     stop("'scale_to_km' must be either TRUE or FALSE")
   }
-  if (!convert_to_utm){
-    message("The distances of the variogram are computed assuming
-             that the CRS of the data gives distances in meters or kilometers")
+  if (!convert_to_utm & sf::st_is_longlat(data)){
+    stop("The dataset coordinates are in longitude and latitude - set 'convert_to_utm' to TRUE")
   }
-  data <- st_transform(data, crs = 4326)
-  data <- st_transform(data, crs = propose_utm(data))
+
+  if (convert_to_utm){
+    data <- st_transform(data, crs = 4326)
+    data <- st_transform(data, crs = propose_utm(data))
+  }
+
   coords <- st_coordinates(data)
   d <- as.numeric(dist(coords))
   if (scale_to_km) d <- d/1000
