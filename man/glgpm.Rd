@@ -23,7 +23,7 @@ glgpm(
 )
 }
 \arguments{
-\item{formula}{A formula object specifying the model to be fitted. The formula should include fixed effects, random effects (specified using \code{re()}), and spatial effects (specified using \code{gp()}).}
+\item{formula}{A formula object specifying the model to be fitted. The formula should include fixed effects and spatial effects (specified using \code{gp()}) and optionally, random effects (specified using \code{re()})).}
 
 \item{data}{An sf object containing the variables in the model.}
 
