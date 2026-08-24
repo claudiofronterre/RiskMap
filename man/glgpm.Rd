@@ -53,23 +53,29 @@ glgpm(
 }
 \value{
 An object of class "RiskMap" containing the fitted model and relevant information:
-\item{y}{Response variable.}
-\item{D}{Covariate matrix.}
-\item{coords}{Unique spatial coordinates.}
-\item{ID_coords}{Index of coordinates.}
-\item{re}{Random effects.}
-\item{ID_re}{Index of random effects.}
-\item{fix_tau2}{Fixed nugget effect variance.}
-\item{fix_var_me}{Fixed measurement error variance.}
-\item{formula}{Model formula.}
-\item{family}{Response family.}
-\item{crs}{Coordinate Reference System.}
-\item{scale_to_km}{Indicator if coordinates are scaled to kilometers.}
-\item{data_sf}{Original data as an sf object.}
-\item{kappa}{Spatial correlation parameter.}
-\item{units_m}{Distribution offset for binomial/Poisson.}
-\item{cov_offset}{Covariate offset.}
-\item{call}{Matched call.}
+
+\item{estimate}{placeholder}
+\item{grad_MLE}{placeholder}
+\item{covariance}{covariance}
+\item{log_lik}{log likelihood}
+\item{y}{Response variable}
+\item{D}{Covariate matrix}
+\item{coords}{Unique spatial coordinates}
+\item{ID_coords}{Index of coordinates}
+\item{re}{Random effects if \code{re()} is included in \code{formula}}
+\item{ID_re}{Index of random effects if \code{re()} is included in \code{formula}}
+\item{fix_tau2}{Fixed nugget effect variance}
+\item{formula}{Model formula}
+\item{family}{Response family}
+\item{crs}{Coordinate Reference System}
+\item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
+\item{data_sf}{Original data as an sf object}
+\item{kappa}{Spatial correlation parameter}
+\item{cov_offset}{Covariate offset}
+\item{call}{Matched call}
+\item{units_m}{Distribution offset if \code{family} is \code{binomial} or \code{poisson}}
+\item{S_samples}{MCMC samples if \code{return_samples} is \code{TRUE}}
+\item{fix_var_me}{Fixed measurement error variance}
 }
 \description{
 Fits generalized linear Gaussian process models to spatial data, incorporating spatial Gaussian processes with a Matern correlation function. Supports Gaussian, binomial, and Poisson response families.

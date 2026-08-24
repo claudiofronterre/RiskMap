@@ -29,30 +29,39 @@
 ##' The \code{start_pars} argument allows for specifying starting values for the model parameters. If not provided, default starting values are used.
 ##'
 ##' @return An object of class "RiskMap" containing the fitted model and relevant information:
-##' \item{y}{Response variable.}
-##' \item{D}{Covariate matrix.}
-##' \item{coords}{Unique spatial coordinates.}
-##' \item{ID_coords}{Index of coordinates.}
-##' \item{re}{Random effects.}
-##' \item{ID_re}{Index of random effects.}
-##' \item{fix_tau2}{Fixed nugget effect variance.}
-##' \item{fix_var_me}{Fixed measurement error variance.}
-##' \item{formula}{Model formula.}
-##' \item{family}{Response family.}
-##' \item{crs}{Coordinate Reference System.}
-##' \item{scale_to_km}{Indicator if coordinates are scaled to kilometers.}
-##' \item{data_sf}{Original data as an sf object.}
-##' \item{kappa}{Spatial correlation parameter.}
-##' \item{units_m}{Distribution offset for binomial/Poisson.}
-##' \item{cov_offset}{Covariate offset.}
-##' \item{call}{Matched call.}
+##'
+##' \item{estimate}{placeholder}
+##' \item{grad_MLE}{placeholder}
+##' \item{covariance}{covariance}
+##' \item{log_lik}{log likelihood}
+##' \item{y}{Response variable}
+##' \item{D}{Covariate matrix}
+##' \item{coords}{Unique spatial coordinates}
+##' \item{ID_coords}{Index of coordinates}
+##' \item{re}{Random effects if `re()` is included in `formula`}
+##' \item{ID_re}{Index of random effects if `re()` is included in `formula`}
+##' \item{fix_tau2}{Fixed nugget effect variance}
+##' \item{formula}{Model formula}
+##' \item{family}{Response family}
+##' \item{crs}{Coordinate Reference System}
+##' \item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
+##' \item{data_sf}{Original data as an sf object}
+##' \item{kappa}{Spatial correlation parameter}
+##' \item{cov_offset}{Covariate offset}
+##' \item{call}{Matched call}
+##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
+##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
+##' \item{fix_var_me}{Fixed measurement error variance}
+##'
+##'
 ##' @seealso \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 glgpm <- function(formula,
                  data,
-                 family, invlink=NULL,
+                 family,
+                 invlink=NULL,
                  den = NULL,
                  convert_to_crs = NULL,
                  scale_to_km = TRUE,
@@ -280,13 +289,16 @@ glgpm <- function(formula,
   res$D <- D
   res$coords <- coords
   res$ID_coords <- ID_coords
-  if(n_re>0) {
+  if(n_re > 0) {
     res$re <- re_unique_f
     res$ID_re <- as.data.frame(ID_re)
     colnames(res$ID_re) <- names_re
+  } else {
+    res["re"] <- list(NULL)
+    res["ID_re"] <- list(NULL)
   }
   res$fix_tau2 <- fix_tau2
-  res$fix_var_me <- fix_var_me
+  res["fix_var_me"] <- list(fix_var_me)
   res$formula <- formula
   res$family <- family
   if(!is.null(convert_to_crs)) {
@@ -1170,11 +1182,13 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                   control=list(trace=1*messages))
 
   out$estimate <- estim$par
-  out$grad.MLE <- grad.log.lik(estim$par)
+  out$grad_MLE <- grad.log.lik(estim$par)
   hess.MLE <- hessian.log.lik(estim$par)
   out$covariance <- solve(-hess.MLE)
-  out$log.lik <- -estim$objective
-
+  out$log_lik <- -estim$objective
+  out["link_function"] <- list(NULL)
+  out["units_m"] <- list(NULL)
+  out["S_samples"] <- list(NULL)
 
   class(out) <- "RiskMap"
   return(out)
@@ -2672,12 +2686,17 @@ glgpm_nong <-
                     control = list(trace = 1 * messages))
 
     out$estimate <- estim$par
-    out$grad.MLE <- grad.MC.log.lik(estim$par)
-    hess.MLE <- hess.MC.log.lik(estim$par)
-    out$covariance <- solve(-hess.MLE)
-    out$log.lik <- -estim$objective
-    if (return_samples) out$S_samples <- S_tot_samples
-    out$linkf <- linkf
+    out$grad_MLE <- grad.MC.log.lik(estim$par)
+    hess_MLE <- hess.MC.log.lik(estim$par)
+    out$covariance <- solve(-hess_MLE)
+    out$log_lik <- -estim$objective
+    if (return_samples){
+      out$S_samples <- S_tot_samples
+    } else {
+      out["S_samples"] <- list(NULL)
+    }
+
+    out$link_function <- linkf
     class(out) <- "RiskMap"
     return(out)
 }
