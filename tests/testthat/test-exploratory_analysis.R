@@ -1,3 +1,63 @@
+test_that("dist_summaries produces errors", {
+
+  test_that("data must be an object of class 'sf'", {
+    df <- data.frame(x = 1:5, y = 1:5, y = rnorm(5))
+    expect_error(
+      dist_summaries(df),
+      "'data' must be of class 'sf'"
+    )
+  })
+
+  test_that("convert_to_utm must be logical", {
+    expect_error(
+      dist_summaries(sf_data, convert_to_utm ="a"),
+      "'convert_to_utm' must be either TRUE or FALSE"
+    )
+  })
+
+  test_that("scale_to_km must be logical", {
+    expect_error(
+      dist_summaries(sf_data, scale_to_km ="a"),
+      "'scale_to_km' must be either TRUE or FALSE"
+    )
+  })
+})
+
+test_that("dist_summaries produces correct output", {
+
+  square <- data.frame(
+    x = c(1, 2, 1, 2),
+    y = c(1, 1, 2, 2)
+  )
+
+  square_sf <- sf::st_as_sf(square, coords = c("x", "y"), crs = 32630)
+
+  # unconverted
+  result <- dist_summaries(square_sf, convert_to_utm = FALSE, scale_to_km = FALSE)
+  expect_length(result, 4)
+  expect_setequal(names(result), c("min", "max", "mean", "median"))
+  expect_equal(result[["min"]], 1)
+  expect_equal(result[["max"]], sqrt(2))
+  expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6)
+  expect_equal(result[["median"]], 1)
+
+  # reprojected (tolerance to account for round trip)
+  result <- dist_summaries(square_sf, convert_to_utm = TRUE, scale_to_km = FALSE)
+  expect_equal(result[["min"]], 1, tolerance = 0.1)
+  expect_equal(result[["max"]], sqrt(2), tolerance = 0.1)
+  expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6, tolerance = 0.1)
+  expect_equal(result[["median"]], 1, tolerance = 0.1)
+
+  # scaled
+  result <- dist_summaries(square_sf, convert_to_utm = FALSE, scale_to_km = TRUE)
+  expect_equal(result[["min"]], 0.001)
+  expect_equal(result[["max"]], sqrt(2) / 1000)
+  expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6000)
+  expect_equal(result[["median"]], 0.001)
+
+})
+
+
 test_that("variogram produces errors", {
 
   test_that("data must be an object of class 'sf'", {

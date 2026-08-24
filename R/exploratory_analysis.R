@@ -23,6 +23,9 @@ dist_summaries <- function(data,
 
   check_data(data)
 
+  if (!is.logical(convert_to_utm)) stop("'convert_to_utm' must be either TRUE or FALSE")
+  if (!is.logical(scale_to_km)) stop("'scale_to_km' must be either TRUE or FALSE")
+
   if (!convert_to_utm & sf::st_is_longlat(data)){
     stop("The dataset coordinates are in longitude and latitude - set 'convert_to_utm' to TRUE")
   }
