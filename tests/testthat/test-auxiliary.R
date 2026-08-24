@@ -57,6 +57,13 @@ test_that("check_data functions correctly", {
   expect_error(check_data(sf_no_crs), "'data' must contain a coordinate reference system")
   expect_error(check_data(sf_merged), "'data' can only contain 'POINT' geometry")
   expect_error(check_data(sf_wrong_coord), "'data' contains impossible latitude or longitude values")
+
+  expect_no_error(check_data(sf_polygon, "polygon"))
+  expect_error(check_data(sf_data, "polygon"), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+  expect_error(check_data(sf_merged, "polygon"), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+
+  expect_no_error(check_data(sf_multipolygon, "polygon"))
+
 })
 
 test_that("gp functions correctly", {
@@ -88,11 +95,5 @@ test_that("gp functions correctly", {
   expect_equal(custom_result$nugget, 3)
   expect_equal(custom_result$dim, 2)
   expect_equal(custom_result$label, "gp(a,b)")
-
-  expect_no_error(check_data(sf_polygon, "polygon"))
-  expect_error(check_data(sf_data, "polygon"), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
-  expect_error(check_data(sf_merged, "polygon"), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
-
-  expect_no_error(check_data(sf_multipolygon, "polygon"))
 
 })

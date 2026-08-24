@@ -1566,10 +1566,10 @@ check_data <- function(data, geometry = "point"){
 #'
 check_positive_integer <- function(x, name) {
   if (!is.numeric(x) || length(x) != 1 || is.na(x)) {
-    stop(name, " must be a single positive integer")
+    stop("'", name, "' must be a single positive integer")
   }
   if (x <= 0 || x %% 1 != 0) {
-    stop(name, " must be a single positive integer")
+    stop("'", name, "' must be a single positive integer")
   }
   invisible(TRUE)
 }

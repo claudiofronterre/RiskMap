@@ -7,7 +7,7 @@
 create_grid(shp, spat_res, grid_crs = NULL)
 }
 \arguments{
-\item{shp}{An object of class 'sf' representing the shapefile within which the grid of points will be created.}
+\item{shp}{An object of class 'sf' containing POLYGONS or MULTIPOLYGONS within which the grid of points will be created.}
 
 \item{spat_res}{Numeric value specifying the spatial resolution in kilometers for the grid.}
 
@@ -27,6 +27,7 @@ library(sf)
 
 # Example shapefile data
 nc <- st_read(system.file("shape/nc.shp", package="sf"))
+nc <- st_transform(nc, crs = 32617)
 
 # Create grid with 10 km spatial resolution
 grid <- create_grid(nc, spat_res = 10)

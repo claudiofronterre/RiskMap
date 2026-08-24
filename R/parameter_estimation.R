@@ -1242,7 +1242,7 @@ glgpm_sim <- function(n_sim,
                                       sigma2_re = NULL),
                       messages = TRUE) {
 
-  check_positive_integer(n_sim, "'n_sim'")
+  check_positive_integer(n_sim, "n_sim")
 
   if(!is.null(model_fit)) {
     if(!inherits(model_fit, "RiskMap")){
