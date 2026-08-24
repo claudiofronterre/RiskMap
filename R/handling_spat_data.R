@@ -37,9 +37,7 @@
 create_grid <- function(shp, spat_res,
                         grid_crs = NULL) {
 
-  if(!inherits(shp, "sf")) stop("'shp' must be an object of class 'sf'")
-
-  if(is.na(st_crs(shp))) stop("The CRS for 'shp' is missing")
+  check_data(shp, "polygon")
 
   if(is.null(grid_crs)) {
     grid_crs <- st_crs(shp)
