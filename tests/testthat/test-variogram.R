@@ -288,8 +288,7 @@ test_that("variogram values are correct for a simple dataset", {
   result <- variogram(square_sf,
                       variable = "z",
                       breaks = seq(0.1, 1.5, 0.2),
-                      convert_to_utm = FALSE,
-                      n_permutations = 100)
+                      convert_to_utm = FALSE)
 
   expect_equal(sum(result$variogram$n_obs), 6)
 
