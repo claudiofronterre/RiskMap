@@ -1511,27 +1511,36 @@ check_binomial <- function(y, den){
 #' @title check_data
 #' @description
 #'
-#' Check that the data is an sf object, with a CRS, only containing points
+#' Check that the data is an sf or sfc object, with a CRS, only containing points
 #' or either polygons or multipolygons. If CRS == 4326 it also checks that the #
 #' coordinates are possible (i.e. not latitudes > 90)
 #' @param data the data to check
 #' @param geometry whether to check that the data contains 'point' (default) or
 #' 'polygon' (covering both polygons and multipolygons)
+#' @param geometry whether to check that the data is 'sf' (default) or
+#' 'sfc' (either sf or sfc)
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_data <- function(data, geometry = "point"){
+check_data <- function(data, geometry = "point", type = "sf"){
   stopifnot("'geometry' must be either 'point' or 'polygon'" = geometry %in% c("point", "polygon"))
-  data_type <- switch(geometry,
-                      point = "'data'",
-                      polygon = "'shp'")
+  stopifnot("'type' must be either 'sf' or 'sfc'" = type %in% c("sf", "sfc"))
+
+  # extract name passed to function
+  data_type <- paste0("'", deparse(substitute(data)), "'")
 
   geometry_type <- switch(geometry,
                           point = "'POINT'",
                           polygon = "'POLYGON' or 'MULTIPOLYGON'")
 
-  if (!inherits(data, "sf")){
-    stop(paste(data_type, "must be of class 'sf'"))
+  if (type == "sf"){
+    if (!inherits(data, "sf")){
+      stop(paste(data_type, "must be of class 'sf'"))
+    }
+  } else {
+    if (!inherits(data, c("sf", "sfc"))){
+      stop(paste(data_type, "must be of class 'sf' or 'sfc'"))
+    }
   }
 
   if (is.na(sf::st_crs(data))){

@@ -50,20 +50,23 @@ test_that("check_data functions correctly", {
   sf_multipolygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(multipolygon), crs = sf::st_crs(4326))
   sf_merged <- rbind(sf_data, sf_polygon)
 
-  expect_error(check_data(sf_data, "n"), "'geometry' must be either 'point' or 'polygon'")
+  expect_error(check_data(sf_data, geometry = "n"), "'geometry' must be either 'point' or 'polygon'")
+  expect_error(check_data(sf_data, type = "n"), "'type' must be either 'sf' or 'sfc'")
 
   expect_no_error(check_data(sf_data))
   expect_error(check_data(data), "'data' must be of class 'sf'")
-  expect_error(check_data(sf_no_crs), "'data' must contain a coordinate reference system")
-  expect_error(check_data(sf_merged), "'data' can only contain 'POINT' geometry")
-  expect_error(check_data(sf_wrong_coord), "'data' contains impossible latitude or longitude values")
+  expect_error(check_data(sf_no_crs), "'sf_no_crs' must contain a coordinate reference system")
+  expect_error(check_data(sf_merged), "'sf_merged' can only contain 'POINT' geometry")
+  expect_error(check_data(sf_wrong_coord), "'sf_wrong_coord' contains impossible latitude or longitude values")
 
   expect_no_error(check_data(sf_polygon, "polygon"))
-  expect_error(check_data(sf_data, "polygon"), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
-  expect_error(check_data(sf_merged, "polygon"), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+  expect_error(check_data(sf_data, "polygon"), "'sf_data' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+  expect_error(check_data(sf_merged, "polygon"), "'sf_merged' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
 
   expect_no_error(check_data(sf_multipolygon, "polygon"))
 
+  expect_no_error(check_data(st_geometry(sf_data), "point", "sfc"))
+  expect_no_error(check_data(st_geometry(sf_multipolygon), "polygon", "sfc"))
 })
 
 test_that("gp functions correctly", {
