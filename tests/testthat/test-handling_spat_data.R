@@ -7,8 +7,6 @@ square_coords <- c(40,40,
                    40,50,
                    40,40)
 
-
-
 test_that("create_grid produces errors", {
 
   expect_error(create_grid("sf_data", 1), "'shp' must be of class 'sf'")
@@ -38,4 +36,12 @@ test_that("create_grid functions correctly", {
 
   result <- create_grid(sf_square, 1)
   expect_length(result, 100)
+
+  # confirm for sf with multiple polygons
+  square2 <- st_polygon(list(matrix((square_coords + 10) * 1000, ncol = 2, byrow = TRUE)))
+  sf_square2 <- st_sf(geometry = st_sfc(square2), crs = st_crs(32638))
+  sf_combined <- rbind(sf_square, sf_square2)
+  result <- create_grid(sf_combined, 10)
+  expect_length(result, 2)
+
 })
