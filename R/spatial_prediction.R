@@ -211,12 +211,13 @@ pred_over_grid <- function(object,
       lapply(U_pred, function(u) par_hat$sigma2 * matern_cor(u, phi = par_hat$phi, kappa = object$kappa))
     else
       par_hat$sigma2 * matern_cor(U_pred, phi = par_hat$phi, kappa = object$kappa)
+  } else {
+    C <- par_hat$sigma2*R
   }
 
   mu <- as.numeric(object$D %*% par_hat$beta)
 
-  n_samples <- if (control_sim$linear_model) control_sim$n_sim
-  else (control_sim$n_sim - control_sim$burnin) / control_sim$thin
+  n_samples <- if (control_sim$linear_model) control_sim$n_sim else (control_sim$n_sim - control_sim$burnin) / control_sim$thin
 
   R <- matern_cor(U, phi = par_hat$phi, kappa = object$kappa, return_sym_matrix = TRUE)
 
@@ -226,13 +227,11 @@ pred_over_grid <- function(object,
   # LF:  tau2 may be estimated -> use it
   # glgpm: existing behaviour
   # ---------------------------------------------------------------------------
-    nu2 <- if (!is.null(object$fix_tau2)) object$fix_tau2 / par_hat$sigma2
-    else par_hat$tau2 / par_hat$sigma2
-    if (nu2 == 0) nu2 <- 1e-10
+  nu2 <- if (!is.null(object$fix_tau2)) object$fix_tau2 / par_hat$sigma2 else par_hat$tau2 / par_hat$sigma2
+  if (nu2 == 0) nu2 <- 1e-10
   diag(R) <- diag(R) + nu2
 
-  diff.y <- if (object$family == "gaussian") object$y - mu
-            else NULL
+  diff.y <- if (object$family == "gaussian") object$y - mu else NULL
 
   dast_model <- !is.null(object$power_val)
 
