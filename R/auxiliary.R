@@ -600,18 +600,12 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     } else {
       ind_sigma2_re <- (p + 3):(p + 2 + n_re)
     }
-    if (is.null(object$fix_alpha)) {
-      ind_alpha <- p + n_re + 3; ind_gamma <- p + n_re + 4
-    } else {
-      ind_alpha <- NULL; ind_gamma <- p + n_re + 3
-    }
   }
 
   ind_sp <- c(ind_sigma2, ind_phi, ind_tau2)
 
   n_p <- length(object$estimate)
-  object$estimate[-c(ind_beta, ind_alpha, ind_gamma)] <-
-    exp(object$estimate[-c(ind_beta, ind_alpha, ind_gamma)])
+  object$estimate[-c(ind_beta)] <- exp(object$estimate[-c(ind_beta)])
 
   if (n_re > 0)
     for (i in seq_len(n_re))
