@@ -1,6 +1,6 @@
 ##' @title Estimation of Generalized Linear Gaussian Process Models
 ##' @description Fits generalized linear Gaussian process models to spatial data, incorporating spatial Gaussian processes with a Matern correlation function. Supports Gaussian, binomial, and Poisson response families.
-##' @param formula A formula object specifying the model to be fitted. The formula should include fixed effects, random effects (specified using \code{re()}), and spatial effects (specified using \code{gp()}).
+##' @param formula A formula object specifying the model to be fitted. The formula should include fixed effects and spatial effects (specified using \code{gp()}) and optionally, random effects (specified using \code{re()})).
 ##' @param data An sf object containing the variables in the model.
 ##' @param family A character string specifying the distribution of the response variable. Must be one of "gaussian", "binomial", or "poisson".
 ##' @param invlink A function that defines the inverse of the link function for the distribution of the data given the random effects.
@@ -83,7 +83,6 @@ glgpm <- function(formula,
   check_data(data)
 
   kappa <- inter_f$gp.spec$kappa
-  if(kappa < 0) stop("kappa must be positive.")
 
   if(family != "gaussian" & family != "binomial" &
      family != "poisson") stop("'family' must be either 'gaussian', 'binomial'
@@ -164,10 +163,12 @@ glgpm <- function(formula,
 
   fix_tau2 <- inter_f$gp.spec$nugget
 
-  if(all(table(ID_coords)==1) &
-    is.null(family=="gaussian" && is.null(fix_tau2)) & is.null(fix_var_me)) {
+  if(all(table(ID_coords) == 1) &&
+     family == "gaussian" &&
+     isTRUE(fix_tau2) &&
+     is.null(fix_var_me)){
     stop("When there is only one observation per location, both the nugget and measurement error cannot
-         be estimate. Consider removing either one of them. ")
+         be estimated. Consider removing either one of them. ")
   }
 
   if(scale_to_km) {
@@ -214,7 +215,7 @@ glgpm <- function(formula,
     if(start_pars$phi<0) stop("the starting value for phi must be positive")
   }
 
-  if(is.null(fix_tau2)) {
+  if(isTRUE(fix_tau2)) {
     if(is.null(start_pars$tau2)) {
       start_pars$tau2 <- 1
     } else {
@@ -364,7 +365,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 
   ind_phi <- p+2
 
-  if(!is.null(fix_tau2)) {
+  if(!isTRUE(fix_tau2)) {
     ind_omega2 <- p+3
     if(n_re>0) {
       ind_sigma2_re <- (p+3+1):(p+3+n_re)
@@ -383,7 +384,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     beta <- par[ind_beta]
     sigma2 <- exp(par[p+1])
     phi <- exp(par[ind_phi])
-    if(!is.null(fix_tau2)) {
+    if(!isTRUE(fix_tau2)) {
       nu2 <- fix_tau2/sigma2
     } else {
       nu2 <- exp(par[ind_nu2])
@@ -448,7 +449,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     beta <- par[ind_beta]
     sigma2 <- exp(par[ind_sigma2])
     phi <- exp(par[ind_phi])
-    if(!is.null(fix_tau2)) {
+    if(!isTRUE(fix_tau2)) {
       nu2 <- fix_tau2/sigma2
     } else {
       nu2 <- exp(par[ind_nu2])
@@ -532,7 +533,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     g[p+2] <- (-0.5*der_phi_trace-0.5*t(diff.y.tilde)%*%
                  der_phi_aux%*%Sigma_star_inv%*%
                  diff.y.tilde/(omega2^2))*phi
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       der_R_nu2 <- matrix(0, nrow = sum(n_dim_re),
                           ncol = sum(n_dim_re))
       diag(der_R_nu2[1:n_dim_re[1], 1:n_dim_re[1]]) <-
@@ -609,7 +610,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     beta <- par[ind_beta]
     sigma2 <- exp(par[p+1])
     phi <- exp(par[ind_phi])
-    if(!is.null(fix_tau2)) {
+    if(!isTRUE(fix_tau2)) {
       nu2 <- fix_tau2/sigma2
     } else {
       nu2 <- exp(par[ind_nu2])
@@ -697,7 +698,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                                            diff.y.tilde/(omega2^2))*phi
 
     # beta - nu2
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       # Derivatives for nu2
       der_R_nu2 <- matrix(0, nrow = sum(n_dim_re),
                           ncol = sum(n_dim_re))
@@ -805,7 +806,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
            diff.y.tilde/(omega2^2))*sigma2*phi)
 
     # sigma2 - nu2
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       der_R_sigma2_nu2 <- der_R_nu2/sigma2
       der_nu2_Sigma_g <- der_R_nu2%*%C_g_m/omega2
       der_sigma2_nu2_Sigma_g <- der_nu2_Sigma_g/sigma2
@@ -917,7 +918,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
            diff.y.tilde/(omega2^2))*phi^2)
 
     # phi - nu2
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       der_phi_nu2_trace <- sum(Matrix::diag(-phi_trace_aux%*%nu2_trace_aux))
 
       der_Sigma_g_inv_phi_nu2_aux <-
@@ -982,7 +983,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
       }
     }
 
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       # nu2 - nu2
       der2_Sigma_g_inv_nu2_aux <- Sigma_g_inv%*%(
         2*der_R_nu2%*%Sigma_g_inv%*%der_R_nu2)%*%Sigma_g_inv
@@ -1289,7 +1290,7 @@ glgpm_sim <- function(n_sim,
     sigma2 <- par_hat$sigma2
     phi <- par_hat$phi
 
-    if(is.null(model_fit$fix_tau2)) {
+    if(isTRUE(model_fit$fix_tau2)) {
       tau2 <- par_hat$tau2
       if(is.null(model_fit$fix_var_me)) {
         sigma2_me <- par_hat$sigma2_me
@@ -2318,7 +2319,7 @@ glgpm_nong <-
     ind_sigma2 <- p + 1
     ind_phi    <- p + 2
 
-    if (!is.null(fix_tau2)) {
+    if (!isTRUE(fix_tau2)) {
       if (n_re > 0) {
         ind_sigma2_re <- (p + 3):(p + 2 + n_re)
         n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
@@ -2401,7 +2402,7 @@ glgpm_nong <-
     }
 
     par0_vec <- c(par0$beta, log(c(par0$sigma2, par0$phi)))
-    if (is.null(fix_tau2)) par0_vec <- c(par0_vec, log(par0$tau2 / par0$sigma2))
+    if (isTRUE(fix_tau2)) par0_vec <- c(par0_vec, log(par0$tau2 / par0$sigma2))
     if (n_re > 0) par0_vec <- c(par0_vec, log(par0$sigma2_re))
 
     log.f.tilde <- compute.log.f(par0_vec)
@@ -2432,7 +2433,7 @@ glgpm_nong <-
       t1.phi <- -0.5 * sum(diag(m1.phi))
       m2.phi <- m1.phi %*% R.inv; rm(m1.phi)
 
-      if (is.null(fix_tau2)) {
+      if (isTRUE(fix_tau2)) {
         t1.nu2 <- -0.5 * sum(diag(R.inv))
         m2.nu2 <- R.inv %*% R.inv
       }
@@ -2468,7 +2469,7 @@ glgpm_nong <-
 
         out <- c(grad.beta, grad.log.sigma2, grad.log.phi)
 
-        if (is.null(fix_tau2)) {
+        if (isTRUE(fix_tau2)) {
           grad.log.nu2 <- (t1.nu2 + 0.5 * as.numeric(t(S) %*% m2.nu2 %*% S) / sigma2) * nu2
           out <- c(out, grad.log.nu2)
         }
@@ -2495,7 +2496,7 @@ glgpm_nong <-
       beta   <- par[ind_beta]
       mu     <- as.numeric(D %*% beta) + cov_offset
       sigma2 <- exp(par[ind_sigma2])
-      if (!is.null(fix_tau2)) nu2 <- fix_tau2 / sigma2 else nu2 <- exp(par[ind_nu2])
+      if (!isTRUE(fix_tau2)) nu2 <- fix_tau2 / sigma2 else nu2 <- exp(par[ind_nu2])
       phi    <- exp(par[ind_phi])
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
@@ -2595,7 +2596,7 @@ glgpm_nong <-
 
         gi <- c(grad.beta, grad.log.sigma2, grad.log.phi)
 
-        if (is.null(fix_tau2)) {
+        if (isTRUE(fix_tau2)) {
           grad.log.nu2 <- ( -0.5 * trA + 0.5 * q2[i] / sigma2 ) * nu2
           gi <- c(gi, grad.log.nu2)
         }
@@ -2618,7 +2619,7 @@ glgpm_nong <-
         # β with log-params: zero per-sample
         Hi[ind_beta, ind_sigma2] <- Hi[ind_sigma2, ind_beta] <- 0
         Hi[ind_beta, ind_phi]    <- Hi[ind_phi,    ind_beta] <- 0
-        if (is.null(fix_tau2))     Hi[ind_beta, ind_nu2] <- Hi[ind_nu2, ind_beta] <- 0
+        if (isTRUE(fix_tau2))     Hi[ind_beta, ind_nu2] <- Hi[ind_nu2, ind_beta] <- 0
 
         # log σ² diag (chain rule)
         Hi[ind_sigma2, ind_sigma2] <-
@@ -2631,7 +2632,7 @@ glgpm_nong <-
         # log σ² – log φ cross:  - (1/(2σ²)) S' (A R_u A) S
         Hi[ind_sigma2, ind_phi] <- Hi[ind_phi, ind_sigma2] <- -0.5 * qMu[i] / sigma2
 
-        if (is.null(fix_tau2)) {
+        if (isTRUE(fix_tau2)) {
           # log ν² diag in v = log ν² (your correct chain-rule form)
           # ℓ_vv = ( t2.nu2 - (S' 2A^3 S)/(2σ²) ) ν²² + ℓ_v,  with ℓ_v = (-1/2 trA + (S'A²S)/(2σ²)) ν²
           ell_v <- ( -0.5 * trA + 0.5 * q2[i] / sigma2 ) * nu2

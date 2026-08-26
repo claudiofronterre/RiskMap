@@ -157,7 +157,7 @@ test_that("glgpm simulations support random effects in tibble-backed sf data", {
   result <- suppressWarnings(
     glgpm_sim(
       n_sim = 2,
-      formula = y ~ gp(kappa = 0.5, nugget = 0) + re(group),
+      formula = y ~ gp(kappa = 0.5, nugget = FALSE) + re(group),
       data = data,
       family = "gaussian",
       sim_pars = list(
@@ -193,7 +193,7 @@ test_that("dast simulations support random effects in tibble-backed sf data", {
   result <- suppressWarnings(
     dast_sim(
       n_sim = 2,
-      formula = y ~ gp(kappa = 0.5, nugget = 0) + re(group),
+      formula = y ~ gp(kappa = 0.5, nugget = FALSE) + re(group),
       data = data,
       den = m,
       time = "survey_time",

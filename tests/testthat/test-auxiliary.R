@@ -44,3 +44,35 @@ test_that("check_data functions correctly", {
   expect_no_error(check_data(sf_multipolygon, "polygon"))
 
 })
+
+test_that("gp functions correctly", {
+
+  expected_output <- c("term", "kappa", "nugget", "dim", "label")
+
+  expect_error(gp(nugget = 0), "'nugget' must be either 'TRUE'")
+  expect_error(gp(nugget = -1), "'nugget' must be either 'TRUE'")
+  expect_error(gp(nugget = "TRUE"), "'nugget' must be either 'TRUE'")
+
+  expect_error(gp(kappa = 0), "'kappa' must be positive")
+  expect_error(gp(kappa = "TRUE"), "'kappa' must be positive")
+
+  default_result <- gp()
+
+  expect_setequal(names(default_result), expected_output)
+  expect_equal(default_result$term, "sf")
+  expect_equal(default_result$kappa, 0.5)
+  expect_equal(default_result$nugget, 0)
+  expect_equal(default_result$dim, 0)
+  expect_equal(default_result$label, "gp()")
+
+  true_result <- gp(nugget = TRUE)
+  expect_equal(true_result$nugget, TRUE)
+
+  custom_result <- gp(a, b, kappa = 2, nugget = 3)
+  expect_equal(custom_result$term, c("a", "b"))
+  expect_equal(custom_result$kappa, 2)
+  expect_equal(custom_result$nugget, 3)
+  expect_equal(custom_result$dim, 2)
+  expect_equal(custom_result$label, "gp(a,b)")
+
+})
