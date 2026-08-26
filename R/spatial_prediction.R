@@ -217,7 +217,6 @@ pred_over_grid <- function(object,
 
   n_samples <- if (control_sim$linear_model) control_sim$n_sim
   else (control_sim$n_sim - control_sim$burnin) / control_sim$thin
-
   R <- matern_cor(U, phi = par_hat$phi, kappa = object$kappa, return_sym_matrix = TRUE)
 
   # ---------------------------------------------------------------------------
@@ -234,8 +233,6 @@ pred_over_grid <- function(object,
   diff.y <- if (object$family == "gaussian") object$y - mu
             else NULL
 
-  dast_model <- !is.null(object$power_val)
-
   # ===========================================================================
   # NON-GAUSSIAN MODELS
   # ===========================================================================
@@ -249,26 +246,11 @@ pred_over_grid <- function(object,
       else C %*% Sigma_inv
     }
 
-    # -------------------------------------------------------------------------
-    # FIX 3, 4, 5: DSGM spatial sampling (STH and LF)
-    # -------------------------------------------------------------------------
-    if (dast_model) {
-      alpha      <- par_hat$alpha %||% object$fix_alpha
-      mda_effect <- compute_mda_effect(object$survey_times_data, object$mda_times,
-                                       object$int_mat, alpha, par_hat$gamma,
-                                       kappa = object$power_val)
-      simulation <- Laplace_sampling_MCMC_dast(
-        y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
-        sigma2_re = par_hat$sigma2_re, mda_effect = mda_effect,
-        ID_coords = object$ID_coords, ID_re = object$ID_re,
-        control_mcmc = control_sim, messages = messages)
-    } else {
-      simulation <- Laplace_sampling_MCMC(
-        y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
-        sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
-        ID_coords = object$ID_coords, ID_re = object$ID_re,
-        family = object$family, control_mcmc = control_sim, messages = messages)
-    }
+    simulation <- Laplace_sampling_MCMC(
+      y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
+      sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
+      ID_coords = object$ID_coords, ID_re = object$ID_re,
+      family = object$family, control_mcmc = control_sim, messages = messages)
 
     if (obs_loc) {
       out$S_samples <- t(simulation$samples$S)
@@ -422,20 +404,6 @@ pred_over_grid <- function(object,
     out$re <- list(D_pred = NULL, samples = NULL)
   }
 
-  # FIX 6: include lf_mdiag in MDA metadata
-  if (dast_model || object$family %in% c("intprev", "lf_mdiag")) {
-    out$mda_times <- object$mda_times
-    if (is.null(par_hat$alpha)) out$fix_alpha <- object$fix_alpha
-    out$power_val <- object$power_val
-    out$use_mda   <- if (dast_model) {
-      !is.null(object$mda_times) && length(object$mda_times) > 0
-    } else {
-      isTRUE(object$use_mda) ||
-        (object$family == "intprev" &&
-           !is.null(object$mda_times) && length(object$mda_times) > 0)
-    }
-  }
-
   out$obs_loc  <- obs_loc
   if (obs_loc) out$ID_coords <- object$ID_coords
   out$inter_f  <- inter_f
@@ -482,14 +450,6 @@ pred_over_grid <- function(object,
 ##'   Default \code{FALSE}.
 ##' @param include_cov_offset Logical. Include the covariate offset.
 ##'   Default \code{FALSE}.
-##' @param include_mda_effect Logical. Apply the MDA decay to the linear
-##'   predictor. Default \code{TRUE}.
-##' @param mda_grid Optional. Matrix (or list of matrices for list-mode) of MDA
-##'   coverage values at each prediction location and MDA round
-##'   (\code{n_pred x n_mda_rounds}). Required when \code{include_mda_effect =
-##'   TRUE} and the model was fitted with MDA.
-##' @param time_pred Optional. Scalar or vector giving the prediction time(s).
-##'   Required when the model includes MDA.
 ##' @param include_re Logical. Include unstructured random effects.
 ##'   Default \code{FALSE}.
 ##' @param f_target Optional named list of functions to apply on the linear
@@ -510,17 +470,12 @@ pred_target_grid <- function(object,
                              include_covariates  = TRUE,
                              include_nugget      = FALSE,
                              include_cov_offset  = FALSE,
-                             include_mda_effect  = TRUE,
-                             mda_grid            = NULL,
-                             time_pred           = NULL,
                              include_re          = FALSE,
                              f_target            = NULL,
                              pd_summary          = NULL) {
 
   if (!inherits(object, "RiskMap.pred.re"))
     stop("'object' must be an output of pred_over_grid()")
-
-  dast_model <- !is.null(object$par_hat$gamma)
 
   # ---------------------------------------------------------------------------
   # list-mode detection
@@ -536,33 +491,6 @@ pred_target_grid <- function(object,
     n_pred <- nrow(object$S_samples)
   }
 
-  # ---------------------------------------------------------------------------
-  # MDA checks: only required when the model was fitted with MDA
-  # ---------------------------------------------------------------------------
-  use_mda_obj <- isTRUE(object$use_mda)
-
-  needs_mda <- include_mda_effect && use_mda_obj
-
-  if (needs_mda) {
-    if (is.null(mda_grid))
-      stop("'mda_grid' must be supplied when include_mda_effect = TRUE and the model includes MDA")
-    if (is.null(time_pred))
-      stop("'time_pred' must be supplied when include_mda_effect = TRUE and the model includes MDA")
-
-    if (list_mode) {
-      if (!is.list(mda_grid))
-        stop("When 'object$grid_pred' is a list, 'mda_grid' must also be a list")
-      if (length(mda_grid) != length(object$grid_pred))
-        stop("Length of 'mda_grid' must equal length of 'object$grid_pred'")
-      for (i in seq_along(mda_grid)) {
-        if (!is.matrix(mda_grid[[i]]) && !is.data.frame(mda_grid[[i]]))
-          stop(sprintf("'mda_grid[[%d]]' must be a matrix or data.frame", i))
-        if (nrow(mda_grid[[i]]) != n_pred[i])
-          stop(sprintf("Rows of 'mda_grid[[%d]]' must equal locations in 'object$grid_pred[[%d]]'", i, i))
-      }
-    }
-  }
-
   if (!is.null(object$par_hat$tau2) == FALSE && include_nugget)
     stop("No nugget was estimated; cannot include it in the predictive target")
 
@@ -571,7 +499,7 @@ pred_target_grid <- function(object,
   # ---------------------------------------------------------------------------
   if (is.null(f_target)) {
 
-    # glgpm / DAST: identity on linear predictor
+    # glgpm: identity on linear predictor
     f_target <- list(linear_target = function(x) x)
   }
 
@@ -718,19 +646,6 @@ pred_target_grid <- function(object,
           context = sprintf("list-mode target matrix for group %d", i)
         )
 
-        # DAST: MDA applied multiplicatively after transformation
-        if (dast_model && needs_mda) {
-          mda_vals <- compute_mda_effect(
-            rep(time_pred, n_pred[i]),
-            mda_times    = object$mda_times,
-            intervention = mda_grid[[i]],
-            alpha        = object$par_hat$alpha %||% object$fix_alpha,
-            gamma        = object$par_hat$gamma,
-            kappa        = object$power_val
-          )
-          target_mat <- target_mat * mda_vals
-        }
-
         out$target[[group_names[i]]][[names_f[fi]]] <- list()
         for (si in seq_len(n_summaries))
           out$target[[group_names[i]]][[names_f[fi]]][[names_s[si]]] <-
@@ -743,19 +658,6 @@ pred_target_grid <- function(object,
       target_mat <- f_target[[fi]](lp_samples)
       if (!is.matrix(target_mat))
         target_mat <- matrix(target_mat, nrow = nrow(lp_samples))
-
-      # DAST: MDA applied multiplicatively after transformation
-      if (dast_model && needs_mda) {
-        mda_vals <- compute_mda_effect(
-          rep(time_pred, n_pred),
-          mda_times    = object$mda_times,
-          intervention = mda_grid,
-          alpha        = object$par_hat$alpha %||% object$fix_alpha,
-          gamma        = object$par_hat$gamma,
-          kappa        = object$power_val
-        )
-        target_mat <- target_mat * mda_vals[ID_coords]
-      }
 
       out$target[[names_f[fi]]] <- list()
       for (si in seq_len(n_summaries))
@@ -817,8 +719,7 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##' @description
 ##' Computes predictive targets over polygon features using joint prediction
 ##' samples from \code{\link{pred_over_grid}}. Targets can incorporate
-##' covariates, offsets, optional unstructured random effects, and (if fitted)
-##' mass drug administration (MDA) effects from a DAST model.
+##' covariates, offsets, optional unstructured random effects.
 ##'
 ##' @param object Output from \code{\link{pred_over_grid}} (class \code{RiskMap.pred.re}),
 ##'   typically fitted with \code{type = "joint"} so that linear predictor samples are available.
@@ -833,14 +734,8 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##' @param include_covariates Logical; include fitted covariate effects in the linear predictor (default \code{TRUE}).
 ##' @param include_nugget Logical; include the nugget (unstructured measurement error) in the linear predictor (default \code{FALSE}).
 ##' @param include_cov_offset Logical; include any covariate offset term (default \code{FALSE}).
-##' @param include_mda_effect Logical; include the MDA effect as defined by the fitted DAST model
-##'   (default \code{TRUE}). Requires \code{time_pred} and, when applicable, \code{mda_grid}.
 ##' @param return_shp Logical; if \code{TRUE}, return the shapefile with appended summary columns
 ##'   defined by \code{pd_summary} (default \code{TRUE}).
-##' @param time_pred Optional numeric scalar (or time index) at which to evaluate the predictive target
-##!'   when MDA effects are included. If \code{NULL}, uses the default time implied by \code{object}.
-##' @param mda_grid Optional structure describing MDA schedules aligned with prediction grid cells
-##'   (e.g., a \code{data.frame}/matrix/list). Used only when \code{include_mda_effect = TRUE}.
 ##' @param include_re Logical; include unstructured random effects (RE) in the linear predictor (default \code{FALSE}).
 ##' @param f_target List of target functions applied to linear predictor samples (e.g.,
 ##'   \code{list(prev = plogis)} for prevalence on the probability scale). If \code{NULL},
@@ -854,7 +749,7 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##'
 ##' @details
 ##' For each polygon in \code{shp}, grid-cell samples of the linear predictor are transformed with
-##' \code{f_target}, optionally adjusted for covariates, offset, nugget, MDA effects and/or REs, and
+##' \code{f_target}, optionally adjusted for covariates, offset, nugget and/or REs, and
 ##' then aggregated via \code{shp_target} (optionally weighted). The list \code{pd_summary} is applied
 ##' to each region's target samples to produce summary statistics.
 ##'
@@ -882,10 +777,7 @@ pred_target_shp <- function(object,
                             include_covariates = TRUE,
                             include_nugget = FALSE,
                             include_cov_offset = FALSE,
-                            include_mda_effect = TRUE,
                             return_shp = TRUE,
-                            time_pred = NULL,
-                            mda_grid = NULL,
                             include_re = FALSE,
                             f_target = NULL,
                             pd_summary = NULL,
@@ -903,17 +795,6 @@ pred_target_shp <- function(object,
   }
 
   check_data(shp, "polygon")
-
-  dast_model <- !is.null(object$par_hat$gamma)
-
-  if(dast_model) {
-    if(include_mda_effect & is.null(mda_grid)) {
-      stop("The MDA coverage must be specified for each point on the grid through the argument 'mda_grid'")
-    }
-    if(is.null(time_pred)) {
-      stop("For a DAST model, the time of prediction must be specified through the argument 'time_pred'")
-    }
-  }
 
   list_mode <- is.list(object$grid_pred) & !(inherits(object$grid_pred,"sfc") |
                                                inherits(object$grid_pred,"sf"))
@@ -959,26 +840,6 @@ pred_target_shp <- function(object,
       no_weights <- TRUE
     }
 
-    if (dast_model && include_mda_effect) {
-      if (is.null(mda_grid)) {
-        stop("With DAST and include_mda_effect = TRUE, 'mda_grid' must be provided (as a list matching 'object$grid_pred').")
-      }
-      if (!is.list(mda_grid)) {
-        stop("When 'object$grid_pred' is a list, 'mda_grid' must also be a list (one element per group).")
-      }
-      if (length(mda_grid) != length(object$grid_pred)) {
-        stop("Length of 'mda_grid' must match length of 'object$grid_pred'.")
-      }
-      for (i in seq_along(mda_grid)) {
-        if (!is.matrix(mda_grid[[i]]) && !is.data.frame(mda_grid[[i]])) {
-          stop(sprintf("'mda_grid[[%d]]' must be a matrix or data.frame.", i))
-        }
-        if (nrow(mda_grid[[i]]) != n_pred[i]) {
-          stop(sprintf("Rows of 'mda_grid[[%d]]' (%d) must equal number of locations in 'object$grid_pred[[%d]]' (%d).",
-                       i, nrow(mda_grid[[i]]), i, n_pred[i]))
-        }
-      }
-    }
   } else {
     n_pred <- nrow(st_coordinates(object$grid_pred))
   }
@@ -1202,18 +1063,6 @@ pred_target_shp <- function(object,
             h, nrow(target_grid_samples_i), length(weights_h)
           ))
         }
-        if(dast_model && include_mda_effect) {
-          alpha <- object$par_hat$alpha
-          if(is.null(alpha)) alpha <- object$fix_alpha
-          gamma <- object$par_hat$gamma
-          mda_effect_time_pred <- compute_mda_effect(
-            rep(time_pred, n_pred[h]),
-            mda_times = object$mda_times,
-            intervention = mda_grid[[h]],
-            alpha = alpha, gamma = gamma, kappa = object$power_val
-          )
-          target_grid_samples_i <- target_grid_samples_i * mda_effect_time_pred
-        }
 
         target_samples_i <- apply(target_grid_samples_i, 2, function(x) shp_target(weights_h * x))
 
@@ -1245,18 +1094,6 @@ pred_target_shp <- function(object,
         }
         for(i in 1:n_f) {
           target_grid_samples_i <- as.matrix(f_target[[i]](out$lp_samples[ind_grid_h, ]))
-          if(dast_model && include_mda_effect) {
-            alpha <- object$par_hat$alpha
-            if(is.null(alpha)) alpha <- object$fix_alpha
-            gamma <- object$par_hat$gamma
-            mda_effect_time_pred <- compute_mda_effect(
-              rep(time_pred, length(ind_grid_h)),
-              mda_times = object$mda_times,
-              intervention = mda_grid[ind_grid_h, ],
-              alpha = alpha, gamma = gamma, kappa = object$power_val
-            )
-            target_grid_samples_i <- target_grid_samples_i * mda_effect_time_pred
-          }
 
           target_samples_i <- apply(target_grid_samples_i, 2, function(x) shp_target(weights_h * x))
 
@@ -1580,9 +1417,6 @@ assess_pp <- function(object,
   is_list_of_riskmap <- function(x) {
     is.list(x) && all(vapply(x, inherits, logical(1), what = "RiskMap"))
   }
-  is_dast_fit <- function(fit) {
-    !is.null(fit$mda_times) && !is.null(fit$int_mat)
-  }
 
   crps_gaussian <- function(y, mu, sigma) {
     if (sigma == 0) return(0)
@@ -1779,9 +1613,9 @@ assess_pp <- function(object,
                         gaussian = identity,
                         binomial = plogis,
                         poisson  = exp)
-    dast_flag <- is_dast_fit(fit0)
+
     if (messages) {
-      message(sprintf("\nModel '%s' (%s)", model_names[h], if (dast_flag) "DAST" else "non-DAST"))
+      message(sprintf("\nModel '%s' (%s)", model_names[h]))
     }
 
     ## containers for this model
@@ -1808,7 +1642,6 @@ assess_pp <- function(object,
         }
 
         fit0$crs <- crs_num
-        if (!dast_flag) {
           ## Original path (unchanged)
           refit_i <- eval(bquote(
             glgpm(.(
@@ -1825,27 +1658,6 @@ assess_pp <- function(object,
               start_pars   = par_hat
             ))
           ))
-        } else {
-          ## DAST refit
-          time_sym <- fit0$call$time
-          refit_i <- eval(bquote(
-            dast(
-              formula       = .(fit0$formula),
-              data          = fit_data_sf[in_id, ],
-              den           = .(as.name(den_name)),
-              time          = .(time_sym),
-              mda_times     = .(fit0$mda_times),
-              int_mat       = .(fit0$int_mat[in_id, , drop = FALSE]),
-              penalty       = .(fit0$penalty),
-              drop          = .(fit0$fix_alpha),
-              power_val     = .(fit0$power_val),
-              crs           = .(fit0$crs),
-              scale_to_km   = .(fit0$scale_to_km),
-              control_mcmc  = control_sim,
-              messages      = FALSE
-            )
-          ))
-        }
       } else {
         ## quick slice without re-fitting
         refit_i <- fit0
@@ -1860,10 +1672,6 @@ assess_pp <- function(object,
           refit_i$cov_offset <- refit_i$cov_offset[keep]
         if (!is.null(refit_i$ID_re)) {
           refit_i$ID_re <- refit_i$ID_re[keep, , drop = FALSE]
-        }
-        if (dast_flag) {
-          refit_i$survey_times_data <- refit_i$survey_times_data[keep]
-          refit_i$int_mat           <- refit_i$int_mat[keep, , drop = FALSE]
         }
         ## recompute ID_coords mapping
         refit_i$ID_coords <- compute_ID_coords(refit_i$data_sf)$ID_coords
@@ -1890,38 +1698,18 @@ assess_pp <- function(object,
         type            = "marginal",
         messages        = FALSE
       )
-      if (dast_flag) {
-        ## Build the DAST prediction inputs
-        time_col  <- deparse(fit0$call$time)
-        grid_pred_list <- list(
-          geometry            = st_as_sfc(data_test_i),
-          survey_times_data   = data_test_i[[time_col]],
-          int_mat             = fit0$int_mat[out_id_i, , drop = FALSE],
-          mda_times           = fit0$mda_times
-        )
 
-        mda_eff_cov <- compute_mda_effect(data_test_i[[time_col]],
-                                           mda_times = fit0$mda_times,
-                                           intervention = grid_pred_list$int_mat,
-                                           alpha = coef.RiskMap(fit0)$alpha,
-                                           gamma = coef.RiskMap(fit0)$gamma, kappa = fit0$power_val)
-        eta_samp <- t(pred_S$S_samples+pred_S$mu_pred)
-        mu_samp  <- t((1/(1+exp(-eta_samp))))*mda_eff_cov
-        eta_samp <- t(eta_samp)
-
-      } else {
-        pred_lp  <- pred_target_grid(
-          pred_S,
-          include_nugget     = is.null(refit_i$fix_tau2) || refit_i$fix_tau2 != 0,
-          include_cov_offset = !all(refit_i$cov_offset == 0)
-        )
-        eta_samp <- pred_lp$lp_samples
-        if (fam == "gaussian") {
-          sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
-          eta_samp <- eta_samp + sqrt(sigma2_me) * rnorm(length(eta_samp))
-        }
-        mu_samp <- linkfun(eta_samp)
+      pred_lp  <- pred_target_grid(
+        pred_S,
+        include_nugget     = is.null(refit_i$fix_tau2) || refit_i$fix_tau2 != 0,
+        include_cov_offset = !all(refit_i$cov_offset == 0)
+      )
+      eta_samp <- pred_lp$lp_samples
+      if (fam == "gaussian") {
+        sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
+        eta_samp <- eta_samp + sqrt(sigma2_me) * rnorm(length(eta_samp))
       }
+      mu_samp <- linkfun(eta_samp)
 
       n_pred <- nrow(eta_samp)
       n_draw <- ncol(eta_samp)

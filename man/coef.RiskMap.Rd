@@ -22,8 +22,6 @@ A list containing the maximum likelihood estimates. For standard models:
 \item{beta}{Coefficient estimates for log mean worm burden.}
 \item{k}{Negative binomial overdispersion parameter.}
 \item{rho}{Egg detection rate (fecundity).}
-\item{alpha_W}{Immediate worm burden reduction from MDA (if estimated or fixed).}
-\item{gamma_W}{Decay rate of MDA effect (if estimated or fixed).}
 \item{sigma2}{Spatial process variance.}
 \item{phi}{Spatial correlation scale.}
 }

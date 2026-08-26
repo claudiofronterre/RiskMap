@@ -37,7 +37,7 @@ A list of control parameters with class "mcmc.RiskMap". Contents depend on \code
 }
 \description{
 This function sets control parameters for running simulations, supporting MCMC methods
-for glgpm, dast models.
+for glgpm models.
 }
 \details{
 If \code{linear_model = TRUE}, only \code{n_sim} is required
@@ -51,7 +51,7 @@ control_mcmc <- set_control_sim(n_sim = 15000, burnin = 3000, thin = 20)
 
 }
 \seealso{
-\code{\link{glgpm}}, \code{\link{dast}}
+\code{\link{glgpm}}
 }
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}

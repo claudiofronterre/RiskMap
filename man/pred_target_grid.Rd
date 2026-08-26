@@ -9,9 +9,6 @@ pred_target_grid(
   include_covariates = TRUE,
   include_nugget = FALSE,
   include_cov_offset = FALSE,
-  include_mda_effect = TRUE,
-  mda_grid = NULL,
-  time_pred = NULL,
   include_re = FALSE,
   f_target = NULL,
   pd_summary = NULL
@@ -29,17 +26,6 @@ Default \code{FALSE}.}
 
 \item{include_cov_offset}{Logical. Include the covariate offset.
 Default \code{FALSE}.}
-
-\item{include_mda_effect}{Logical. Apply the MDA decay to the linear
-predictor. Default \code{TRUE}.}
-
-\item{mda_grid}{Optional. Matrix (or list of matrices for list-mode) of MDA
-coverage values at each prediction location and MDA round
-(\code{n_pred x n_mda_rounds}). Required when \code{include_mda_effect =
-TRUE} and the model was fitted with MDA.}
-
-\item{time_pred}{Optional. Scalar or vector giving the prediction time(s).
-Required when the model includes MDA.}
 
 \item{include_re}{Logical. Include unstructured random effects.
 Default \code{FALSE}.}
