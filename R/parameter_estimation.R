@@ -2109,7 +2109,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 ##' Set Control Parameters for Simulation
 ##'
 ##' This function sets control parameters for running simulations, supporting MCMC methods
-##' for glgpm, dast models.
+##' for glgpm models.
 ##'
 ##' @param n_sim Integer. The total number of simulations to run. Default is 12000.
 ##' @param burnin Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.
@@ -2134,7 +2134,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 ##' # Custom MCMC parameters
 ##' control_mcmc <- set_control_sim(n_sim = 15000, burnin = 3000, thin = 20)
 ##'
-##' @seealso \code{\link{glgpm}}, \code{\link{dast}}
+##' @seealso \code{\link{glgpm}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
@@ -2161,7 +2161,7 @@ set_control_sim <- function(n_sim = 12000,
   }
 
   # =============================================================================
-  # MCMC SAMPLER (Langevin for glgpm, dast)
+  # MCMC SAMPLER (Langevin for glgpm)
   # =============================================================================
 
   # Validate MCMC parameters

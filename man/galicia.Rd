@@ -5,25 +5,25 @@
 \alias{galicia}
 \title{Heavy metal biomonitoring in Galicia}
 \format{
-A data frame with 195 rows and 4 variables
+An sf object with 132 rows and 2 variables:
+\describe{
+\item{lead}{lead concentration in micrograms per gram dry weight}
+\item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
+}
 }
 \source{
 Diggle, P.J., Menezes, R. and Su, T.-L. (2010).
 Geostatistical analysis under preferential sampling (with Discussion).
-Applied Statistics, 59, 191-232.
+\emph{Applied Statistics}, 59, 191-232.
 }
 \usage{
 data(galicia)
 }
 \description{
-This data-set relates to two studies on lead concentration
-in moss samples, in micrograms per gram dry weight, collected in Galicia, norther Spain. The data are from two surveys, one conducted in July 2000.
-The variables are as follows:
-\itemize{
-\item x x-coordinate of the spatial locations.
-\item y y-coordinate of the spatial locations.
-\item lead number of tested people for the presence nodules.
+Lead concentration in moss samples,
+collected in Galicia, northern Spain. The data are from one survey conducted in July 2000.
 }
-The coordinate reference system of the data is 32629.
+\details{
+The coordinate reference system is 32629.
 }
 \keyword{datasets}

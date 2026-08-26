@@ -55,6 +55,7 @@ test_that("check_data functions correctly", {
 
   expect_no_error(check_data(sf_data))
   expect_error(check_data(data), "'data' must be of class 'sf'")
+
   expect_error(check_data(sf_no_crs), "'sf_no_crs' must contain a coordinate reference system")
   expect_error(check_data(sf_merged), "'sf_merged' can only contain 'POINT' geometry")
   expect_error(check_data(sf_wrong_coord), "'sf_wrong_coord' contains impossible latitude or longitude values")
@@ -67,6 +68,7 @@ test_that("check_data functions correctly", {
 
   expect_no_error(check_data(st_geometry(sf_data), "point", "sfc"))
   expect_no_error(check_data(st_geometry(sf_multipolygon), "polygon", "sfc"))
+
 })
 
 test_that("gp functions correctly", {
@@ -100,3 +102,7 @@ test_that("gp functions correctly", {
   expect_equal(custom_result$label, "gp(a,b)")
 
 })
+<<<<<<< HEAD
+=======
+
+>>>>>>> dev
