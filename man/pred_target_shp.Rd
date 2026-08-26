@@ -14,10 +14,7 @@ pred_target_shp(
   include_covariates = TRUE,
   include_nugget = FALSE,
   include_cov_offset = FALSE,
-  include_mda_effect = TRUE,
   return_shp = TRUE,
-  time_pred = NULL,
-  mda_grid = NULL,
   include_re = FALSE,
   f_target = NULL,
   pd_summary = NULL,
@@ -48,16 +45,8 @@ If supplied with \code{standardize_weights = TRUE}, weights are normalized withi
 
 \item{include_cov_offset}{Logical; include any covariate offset term (default \code{FALSE}).}
 
-\item{include_mda_effect}{Logical; include the MDA effect as defined by the fitted DAST model
-(default \code{TRUE}). Requires \code{time_pred} and, when applicable, \code{mda_grid}.}
-
 \item{return_shp}{Logical; if \code{TRUE}, return the shapefile with appended summary columns
 defined by \code{pd_summary} (default \code{TRUE}).}
-
-\item{time_pred}{Optional numeric scalar (or time index) at which to evaluate the predictive target}
-
-\item{mda_grid}{Optional structure describing MDA schedules aligned with prediction grid cells
-(e.g., a \code{data.frame}/matrix/list). Used only when \code{include_mda_effect = TRUE}.}
 
 \item{include_re}{Logical; include unstructured random effects (RE) in the linear predictor (default \code{FALSE}).}
 
@@ -89,12 +78,11 @@ included if \code{return_shp = TRUE}.
 \description{
 Computes predictive targets over polygon features using joint prediction
 samples from \code{\link{pred_over_grid}}. Targets can incorporate
-covariates, offsets, optional unstructured random effects, and (if fitted)
-mass drug administration (MDA) effects from a DAST model.
+covariates, offsets, optional unstructured random effects.
 }
 \details{
 For each polygon in \code{shp}, grid-cell samples of the linear predictor are transformed with
-\code{f_target}, optionally adjusted for covariates, offset, nugget, MDA effects and/or REs, and
+\code{f_target}, optionally adjusted for covariates, offset, nugget and/or REs, and
 then aggregated via \code{shp_target} (optionally weighted). The list \code{pd_summary} is applied
 to each region's target samples to produce summary statistics.
 }
