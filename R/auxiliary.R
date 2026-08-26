@@ -254,27 +254,35 @@ matern.hessian.phi <- function(U, phi, kappa) {
 ##' @description Specifies the terms, smoothness, and nugget effect for a Gaussian Process (GP) model.
 ##' @param ... Variables representing the spatial coordinates or covariates for the GP model.
 ##' @param kappa The smoothness parameter \eqn{\kappa}. Default is 0.5.
-##' @param nugget The nugget effect, which represents the variance of the measurement error. Default is 0. A positive numeric value must be provided if not using the default.
-##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates), the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
+##' @param nugget The nugget effect, which represents the variance of the measurement error.
+##' Default is `FALSE` in which case it is not estimated. If `TRUE` the value will be estimated or
+##' a positive numeric value can be provided instead to fix the effect.
+##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates),
+##' the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
 ##' @return A list of class \code{gp.spec} containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{kappa}{The smoothness parameter \eqn{\kappa}.}
 ##' \item{nugget}{The nugget effect.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the GP model.}
-##' @note The nugget effect must be a positive real number if specified.
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-gp <- function (..., kappa = 0.5, nugget = 0) {
+gp <- function (..., kappa = 0.5, nugget = FALSE) {
   vars <- as.list(substitute(list(...)))[-1]
   d <- length(vars)
   term <- NULL
 
-  if(length(nugget) > 0) {
-    if(!is.numeric(nugget) |
-       (is.numeric(nugget) & nugget <0)) stop("when 'nugget' is not NULL, this must be a positive
-                                 real number")
+  if((!is.numeric(kappa) || kappa <= 0)){
+    stop("'kappa' must be positive.")
+  }
+
+  if(!(is.logical(nugget) || (is.numeric(nugget) && nugget > 0))) {
+    stop("'nugget' must be either 'TRUE' or 'FALSE' or a positive real number")
+  }
+
+  if (isFALSE(nugget)){
+    nugget <- 0
   }
 
   if (d == 0) {
@@ -442,7 +450,7 @@ coef.RiskMap <- function(object, ...) {
   ind_phi <- p + 2
   names(object$estimate)[ind_phi] <- "phi"
 
-  if (is.null(object$fix_tau2)) {
+  if (isTRUE(object$fix_tau2)) {
     ind_tau2 <- p + 3
     names(object$estimate)[ind_tau2] <- "tau2"
     object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
@@ -568,7 +576,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
   if (sst) ind_psi <- length(object$estimate)
 
-  if (is.null(object$fix_tau2)) {
+  if (isTRUE(object$fix_tau2)) {
     ind_tau2 <- p + 3
     names(object$estimate)[ind_tau2] <- "Variance of the nugget"
     object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
@@ -1209,23 +1217,44 @@ check_binomial <- function(y, den){
 #' @title check_data
 #' @description
 #'
-#' Check that the data is an sf object, with a CRS, only containing points and if
-#' CRS == 4326 that the coordinates are possible (i.e. not latitudes > 90)
+#' Check that the data is an sf object, with a CRS, only containing points
+#' or either polygons or multipolygons. If CRS == 4326 it also checks that the #
+#' coordinates are possible (i.e. not latitudes > 90)
 #' @param data the data to check
+#' @param geometry whether to check that the data contains 'point' (default) or
+#' 'polygon' (covering both polygons and multipolygons)
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_data <- function(data){
-  stopifnot("'data' must be of class 'sf'" = inherits(data, "sf"))
-  stopifnot("'data' must contain a coordinate reference system" = !is.na(sf::st_crs(data)))
-  all_points <- all(sf::st_geometry_type(data) == "POINT")
-  stopifnot("'data' can only contain point geometry" = all_points)
+check_data <- function(data, geometry = "point"){
+  stopifnot("'geometry' must be either 'point' or 'polygon'" = geometry %in% c("point", "polygon"))
+  data_type <- switch(geometry,
+                      point = "'data'",
+                      polygon = "'shp'")
+
+  geometry_type <- switch(geometry,
+                          point = "'POINT'",
+                          polygon = "'POLYGON' or 'MULTIPOLYGON'")
+
+  if (!inherits(data, "sf")){
+    stop(paste(data_type, "must be of class 'sf'"))
+  }
+
+  if (is.na(sf::st_crs(data))){
+    stop(paste(data_type, "must contain a coordinate reference system"))
+  }
+
+  all_valid_geometry <- all(grepl(toupper(geometry), sf::st_geometry_type(data)))
+  if (!all_valid_geometry){
+    stop(paste(data_type, "can only contain", geometry_type, "geometry"))
+  }
+
   if (sf::st_crs(data) == sf::st_crs(4326)){
     tryCatch(
       sf::st_is_longlat(data$geometry),
       warning = function(w) {
-        stop("'data' contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data")
+        stop(paste(data_type, "contains impossible latitude or longitude values -
+             check you have specified the columns correctly when converting the data"))
       }
     )
   }

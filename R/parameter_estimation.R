@@ -1,11 +1,10 @@
 ##' @title Estimation of Generalized Linear Gaussian Process Models
 ##' @description Fits generalized linear Gaussian process models to spatial data, incorporating spatial Gaussian processes with a Matern correlation function. Supports Gaussian, binomial, and Poisson response families.
-##' @param formula A formula object specifying the model to be fitted. The formula should include fixed effects, random effects (specified using \code{re()}), and spatial effects (specified using \code{gp()}).
-##' @param data A data frame or sf object containing the variables in the model.
+##' @param formula A formula object specifying the model to be fitted. The formula should include fixed effects and spatial effects (specified using \code{gp()}) and optionally, random effects (specified using \code{re()})).
+##' @param data An sf object containing the variables in the model.
 ##' @param family A character string specifying the distribution of the response variable. Must be one of "gaussian", "binomial", or "poisson".
 ##' @param invlink A function that defines the inverse of the link function for the distribution of the data given the random effects.
 ##' @param den Optional offset for binomial or Poisson distributions. If not provided, defaults to 1 for binomial.
-##' @param crs Optional integer specifying the Coordinate Reference System (CRS) if data is not an sf object. Defaults to 4326 (long/lat).
 ##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates.
 ##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to TRUE.
 ##' @param control_mcmc Control parameters for MCMC sampling. Must be an object of class "mcmc.RiskMap" as returned by \code{\link{set_control_sim}}.
@@ -55,7 +54,7 @@ glgpm <- function(formula,
                  data,
                  family, invlink=NULL,
                  den = NULL,
-                 crs = NULL, convert_to_crs = NULL,
+                 convert_to_crs = NULL,
                  scale_to_km = TRUE,
                  control_mcmc = set_control_sim(),
                  par0=NULL,
@@ -72,7 +71,6 @@ glgpm <- function(formula,
 
   nong <- family=="binomial" | family=="poisson"
 
-
   if(!inherits(formula,
                what = "formula", which = FALSE)) {
     stop("'formula' must be a 'formula'
@@ -82,42 +80,9 @@ glgpm <- function(formula,
 
   inter_f <- interpret.formula(formula)
 
-  if(length(crs)>0) {
-    if(!is.numeric(crs) |
-       (is.numeric(crs) &
-        (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
-  }
-  if(inherits(data, "data.frame")) {
-    if(is.null(crs)) {
-      warning("'crs' is set to 4326 (long/lat)")
-      crs <- 4326
-    }
-    if(length(inter_f$gp.spec$term)==2) {
-      new_x <- paste(inter_f$gp.spec$term[1],"_sf",sep="")
-      new_y <- paste(inter_f$gp.spec$term[2],"_sf",sep="")
-      data[[new_x]] <-  data[[inter_f$gp.spec$term[1]]]
-      data[[new_y]] <-  data[[inter_f$gp.spec$term[2]]]
-      data <- st_as_sf(data,
-                       coords = c(new_x, new_y),
-                       crs = crs)
-    }
-  }
-
-  if(length(inter_f$gp.spec$term) == 1 & inter_f$gp.spec$term[1]=="sf" &
-     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
-
-
-  if(inherits(data, "sf")) {
-    if(is.na(st_crs(data)) & is.null(crs)) {
-      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(st_crs(data))) {
-      data <- st_as_sf(data, crs = crs)
-    }
-  }
-
+  check_data(data)
 
   kappa <- inter_f$gp.spec$kappa
-  if(kappa < 0) stop("kappa must be positive.")
 
   if(family != "gaussian" & family != "binomial" &
      family != "poisson") stop("'family' must be either 'gaussian', 'binomial'
@@ -129,8 +94,6 @@ glgpm <- function(formula,
   # Extract outcome data
   y <- as.numeric(model.response(mf))
   n <- length(y)
-
-  if (family == "binomial") check_binomial(y, den)
 
   # Extract covariates matrix
   D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
@@ -149,6 +112,7 @@ glgpm <- function(formula,
       if(family=="binomial") warning("'den' is assumed to be 1 for all observations \n")
     } else {
       units_m <- data[[do_name]]
+      if (family == "binomial") check_binomial(y, units_m)
     }
     if(is.integer(units_m)) units_m <- as.numeric(units_m)
     if(!is.numeric(units_m)) stop("the variable passed to `den` must be numeric")
@@ -199,10 +163,12 @@ glgpm <- function(formula,
 
   fix_tau2 <- inter_f$gp.spec$nugget
 
-  if(all(table(ID_coords)==1) &
-    is.null(family=="gaussian" && is.null(fix_tau2)) & is.null(fix_var_me)) {
+  if(all(table(ID_coords) == 1) &&
+     family == "gaussian" &&
+     isTRUE(fix_tau2) &&
+     is.null(fix_var_me)){
     stop("When there is only one observation per location, both the nugget and measurement error cannot
-         be estimate. Consider removing either one of them. ")
+         be estimated. Consider removing either one of them. ")
   }
 
   if(scale_to_km) {
@@ -249,7 +215,7 @@ glgpm <- function(formula,
     if(start_pars$phi<0) stop("the starting value for phi must be positive")
   }
 
-  if(is.null(fix_tau2)) {
+  if(isTRUE(fix_tau2)) {
     if(is.null(start_pars$tau2)) {
       start_pars$tau2 <- 1
     } else {
@@ -399,7 +365,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 
   ind_phi <- p+2
 
-  if(!is.null(fix_tau2)) {
+  if(!isTRUE(fix_tau2)) {
     ind_omega2 <- p+3
     if(n_re>0) {
       ind_sigma2_re <- (p+3+1):(p+3+n_re)
@@ -418,7 +384,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     beta <- par[ind_beta]
     sigma2 <- exp(par[p+1])
     phi <- exp(par[ind_phi])
-    if(!is.null(fix_tau2)) {
+    if(!isTRUE(fix_tau2)) {
       nu2 <- fix_tau2/sigma2
     } else {
       nu2 <- exp(par[ind_nu2])
@@ -483,7 +449,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     beta <- par[ind_beta]
     sigma2 <- exp(par[ind_sigma2])
     phi <- exp(par[ind_phi])
-    if(!is.null(fix_tau2)) {
+    if(!isTRUE(fix_tau2)) {
       nu2 <- fix_tau2/sigma2
     } else {
       nu2 <- exp(par[ind_nu2])
@@ -567,7 +533,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     g[p+2] <- (-0.5*der_phi_trace-0.5*t(diff.y.tilde)%*%
                  der_phi_aux%*%Sigma_star_inv%*%
                  diff.y.tilde/(omega2^2))*phi
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       der_R_nu2 <- matrix(0, nrow = sum(n_dim_re),
                           ncol = sum(n_dim_re))
       diag(der_R_nu2[1:n_dim_re[1], 1:n_dim_re[1]]) <-
@@ -644,7 +610,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     beta <- par[ind_beta]
     sigma2 <- exp(par[p+1])
     phi <- exp(par[ind_phi])
-    if(!is.null(fix_tau2)) {
+    if(!isTRUE(fix_tau2)) {
       nu2 <- fix_tau2/sigma2
     } else {
       nu2 <- exp(par[ind_nu2])
@@ -732,7 +698,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                                            diff.y.tilde/(omega2^2))*phi
 
     # beta - nu2
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       # Derivatives for nu2
       der_R_nu2 <- matrix(0, nrow = sum(n_dim_re),
                           ncol = sum(n_dim_re))
@@ -840,7 +806,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
            diff.y.tilde/(omega2^2))*sigma2*phi)
 
     # sigma2 - nu2
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       der_R_sigma2_nu2 <- der_R_nu2/sigma2
       der_nu2_Sigma_g <- der_R_nu2%*%C_g_m/omega2
       der_sigma2_nu2_Sigma_g <- der_nu2_Sigma_g/sigma2
@@ -952,7 +918,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
            diff.y.tilde/(omega2^2))*phi^2)
 
     # phi - nu2
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       der_phi_nu2_trace <- sum(Matrix::diag(-phi_trace_aux%*%nu2_trace_aux))
 
       der_Sigma_g_inv_phi_nu2_aux <-
@@ -1017,7 +983,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
       }
     }
 
-    if(is.null(fix_tau2)) {
+    if(isTRUE(fix_tau2)) {
       # nu2 - nu2
       der2_Sigma_g_inv_nu2_aux <- Sigma_g_inv%*%(
         2*der_R_nu2%*%Sigma_g_inv%*%der_R_nu2)%*%Sigma_g_inv
@@ -1229,7 +1195,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' @param n_sim Number of simulations to perform.
 ##' @param model_fit Fitted GLGPM model object of class 'RiskMap'. If provided, overrides 'formula', 'data', 'family', 'crs', 'convert_to_crs', 'scale_to_km', and 'control_mcmc' arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
-##' @param data Data frame or 'sf' object containing the variables in the model formula.
+##' @param data 'sf' object containing the variables in the model formula.
 ##' @param family Distribution family for the response variable. Must be one of 'gaussian', 'binomial', or 'poisson'.
 ##' @param den Required for 'binomial' to denote the denominator (i.e. number of trials) of the Binomial distribution.
 ##' For the 'poisson' family, the argument is optional and is used a multiplicative term to express the mean counts.
@@ -1287,39 +1253,7 @@ glgpm_sim <- function(n_sim,
                                      model to be fitted")
   }
 
-
-  if(length(crs)>0) {
-    if(!is.numeric(crs) |
-       (is.numeric(crs) &
-        (crs%%1!=0 | crs <0))) stop("'crs' must be a positive integer number")
-  }
-  if(inherits(data, "data.frame")) {
-    if(is.null(crs)) {
-      warning("'crs' is set to 4326 (long/lat)")
-      crs <- 4326
-    }
-    if(length(inter_f$gp.spec$term)==2) {
-      new_x <- paste(inter_f$gp.spec$term[1],"_sf",sep="")
-      new_y <- paste(inter_f$gp.spec$term[2],"_sf",sep="")
-      data[[new_x]] <-  data[[inter_f$gp.spec$term[1]]]
-      data[[new_y]] <-  data[[inter_f$gp.spec$term[2]]]
-      data <- st_as_sf(data,
-                       coords = c(new_x, new_y),
-                       crs = crs)
-    }
-  }
-
-  if(length(inter_f$gp.spec$term) == 1 & inter_f$gp.spec$term[1]=="sf" &
-     !inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
-
-
-  if(inherits(data, "sf")) {
-    if(is.na(st_crs(data)) & is.null(crs)) {
-      stop("the CRS of the sf object passed to 'data' is missing and and is not specified through 'crs'")
-    } else if(is.na(st_crs(data))) {
-      data <- st_as_sf(data, crs = crs)
-    }
-  }
+  check_data(data)
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
@@ -1356,7 +1290,7 @@ glgpm_sim <- function(n_sim,
     sigma2 <- par_hat$sigma2
     phi <- par_hat$phi
 
-    if(is.null(model_fit$fix_tau2)) {
+    if(isTRUE(model_fit$fix_tau2)) {
       tau2 <- par_hat$tau2
       if(is.null(model_fit$fix_var_me)) {
         sigma2_me <- par_hat$sigma2_me
@@ -2385,7 +2319,7 @@ glgpm_nong <-
     ind_sigma2 <- p + 1
     ind_phi    <- p + 2
 
-    if (!is.null(fix_tau2)) {
+    if (!isTRUE(fix_tau2)) {
       if (n_re > 0) {
         ind_sigma2_re <- (p + 3):(p + 2 + n_re)
         n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
@@ -2468,7 +2402,7 @@ glgpm_nong <-
     }
 
     par0_vec <- c(par0$beta, log(c(par0$sigma2, par0$phi)))
-    if (is.null(fix_tau2)) par0_vec <- c(par0_vec, log(par0$tau2 / par0$sigma2))
+    if (isTRUE(fix_tau2)) par0_vec <- c(par0_vec, log(par0$tau2 / par0$sigma2))
     if (n_re > 0) par0_vec <- c(par0_vec, log(par0$sigma2_re))
 
     log.f.tilde <- compute.log.f(par0_vec)
@@ -2499,7 +2433,7 @@ glgpm_nong <-
       t1.phi <- -0.5 * sum(diag(m1.phi))
       m2.phi <- m1.phi %*% R.inv; rm(m1.phi)
 
-      if (is.null(fix_tau2)) {
+      if (isTRUE(fix_tau2)) {
         t1.nu2 <- -0.5 * sum(diag(R.inv))
         m2.nu2 <- R.inv %*% R.inv
       }
@@ -2535,7 +2469,7 @@ glgpm_nong <-
 
         out <- c(grad.beta, grad.log.sigma2, grad.log.phi)
 
-        if (is.null(fix_tau2)) {
+        if (isTRUE(fix_tau2)) {
           grad.log.nu2 <- (t1.nu2 + 0.5 * as.numeric(t(S) %*% m2.nu2 %*% S) / sigma2) * nu2
           out <- c(out, grad.log.nu2)
         }
@@ -2562,7 +2496,7 @@ glgpm_nong <-
       beta   <- par[ind_beta]
       mu     <- as.numeric(D %*% beta) + cov_offset
       sigma2 <- exp(par[ind_sigma2])
-      if (!is.null(fix_tau2)) nu2 <- fix_tau2 / sigma2 else nu2 <- exp(par[ind_nu2])
+      if (!isTRUE(fix_tau2)) nu2 <- fix_tau2 / sigma2 else nu2 <- exp(par[ind_nu2])
       phi    <- exp(par[ind_phi])
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
@@ -2662,7 +2596,7 @@ glgpm_nong <-
 
         gi <- c(grad.beta, grad.log.sigma2, grad.log.phi)
 
-        if (is.null(fix_tau2)) {
+        if (isTRUE(fix_tau2)) {
           grad.log.nu2 <- ( -0.5 * trA + 0.5 * q2[i] / sigma2 ) * nu2
           gi <- c(gi, grad.log.nu2)
         }
@@ -2685,7 +2619,7 @@ glgpm_nong <-
         # β with log-params: zero per-sample
         Hi[ind_beta, ind_sigma2] <- Hi[ind_sigma2, ind_beta] <- 0
         Hi[ind_beta, ind_phi]    <- Hi[ind_phi,    ind_beta] <- 0
-        if (is.null(fix_tau2))     Hi[ind_beta, ind_nu2] <- Hi[ind_nu2, ind_beta] <- 0
+        if (isTRUE(fix_tau2))     Hi[ind_beta, ind_nu2] <- Hi[ind_nu2, ind_beta] <- 0
 
         # log σ² diag (chain rule)
         Hi[ind_sigma2, ind_sigma2] <-
@@ -2698,7 +2632,7 @@ glgpm_nong <-
         # log σ² – log φ cross:  - (1/(2σ²)) S' (A R_u A) S
         Hi[ind_sigma2, ind_phi] <- Hi[ind_phi, ind_sigma2] <- -0.5 * qMu[i] / sigma2
 
-        if (is.null(fix_tau2)) {
+        if (isTRUE(fix_tau2)) {
           # log ν² diag in v = log ν² (your correct chain-rule form)
           # ℓ_vv = ( t2.nu2 - (S' 2A^3 S)/(2σ²) ) ν²² + ℓ_v,  with ℓ_v = (-1/2 trA + (S'A²S)/(2σ²)) ν²
           ell_v <- ( -0.5 * trA + 0.5 * q2[i] / sigma2 ) * nu2

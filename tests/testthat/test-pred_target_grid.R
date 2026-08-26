@@ -38,10 +38,12 @@ test_that("pred_target_shp preserves posterior samples for one-pixel list-mode r
     group_one = sf::st_as_sf(data.frame(x = 0, y = 0), coords = c("x", "y"), crs = 4326),
     group_two = sf::st_as_sf(data.frame(x = c(1, 2), y = c(1, 2)), coords = c("x", "y"), crs = 4326)
   )
-  shp <- sf::st_sf(
-    region = c("group_one", "group_two"),
-    geometry = sf::st_sfc(sf::st_point(c(0, 0)), sf::st_point(c(1, 1)), crs = 4326)
-  )
+
+  polygon_1 <- sf::st_polygon(list(matrix(c(0,0, 0.1,0, 0.1,0.1, 0,0.1, 0,0), ncol = 2, byrow = TRUE)))
+  polygon_2 <- sf::st_polygon(list(matrix(c(1,1, 1.5,1, 1.5,1.5, 1,1.5, 1,1), ncol = 2, byrow = TRUE)))
+  shp <- sf::st_sf(region = c("group_one", "group_two"),
+                          geometry = sf::st_sfc(polygon_1, polygon_2), crs = sf::st_crs(4326))
+
   object <- list(
     type = "joint",
     grid_pred = grid_pred,
@@ -81,7 +83,7 @@ test_that("pred_target_shp errors on wrong list-mode target orientation", {
   )
   shp <- sf::st_sf(
     region = "group_one",
-    geometry = sf::st_sfc(sf::st_point(c(0, 0)), crs = 4326)
+    geometry = sf::st_sfc(sf::st_polygon(list(matrix(c(0,0, 0.1,0, 0.1,0.1, 0,0.1, 0,0), ncol = 2, byrow = TRUE))), crs = 4326)
   )
   object <- list(
     type = "joint",
