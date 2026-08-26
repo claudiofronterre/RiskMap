@@ -71,16 +71,10 @@ glgpm <- function(formula,
 
   nong <- family=="binomial" | family=="poisson"
 
-  if(!inherits(formula,
-               what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula'
-         object indicating the variables of the
-         model to be fitted")
-  }
+  check_data(data)
+  check_formula(formula, data)
 
   inter_f <- interpret.formula(formula)
-
-  check_data(data)
 
   kappa <- inter_f$gp.spec$kappa
 
@@ -1244,16 +1238,10 @@ glgpm_sim <- function(n_sim,
     convert_to_crs <- model_fit$convert_to_crs
     scale_to_km <- model_fit$scale_to_km
   }
-  inter_f <- interpret.formula(formula)
-
-  if(!inherits(formula,
-               what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula'
-                                     object indicating the variables of the
-                                     model to be fitted")
-  }
 
   check_data(data)
+  check_formula(formula, data)
+  inter_f <- interpret.formula(formula)
 
   kappa <- inter_f$gp.spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
