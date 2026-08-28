@@ -1304,7 +1304,7 @@ check_data <- function(data, geometry = "point", type = "sf"){
 #' @title check_positive_integer
 #' @description
 #'
-#' Check that the a value is a single, positive integer and error if not
+#' Check that a value is a single, positive integer and error if not
 #' @param x the value to check
 #' @param name the name of the parameter to return in error messages
 #' @return TRUE if the data is valid. Raise an error if not.
@@ -1317,5 +1317,28 @@ check_positive_integer <- function(x, name) {
   if (x <= 0 || x %% 1 != 0) {
     stop("'", name, "' must be a single positive integer")
   }
+  invisible(TRUE)
+}
+
+#' @title check_crs
+#' @description
+#'
+#' Check that a CRS is valid
+#' @param crs the CRS to check
+#' @return TRUE if the data is valid. Raise an error if not.
+#' @noRd
+#'
+check_crs <- function(crs){
+  # extract name passed to function
+  variable <- deparse(substitute(crs))
+  tryCatch(
+    st_crs(crs),
+    warning = function(w) {
+      stop("The '", variable, "' provided is not a valid CRS")
+    },
+    error = function(e){
+      stop("The '", variable, "' provided is not a valid CRS")
+    }
+  )
   invisible(TRUE)
 }
