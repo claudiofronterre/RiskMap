@@ -1320,12 +1320,33 @@ check_positive_integer <- function(x, name) {
   invisible(TRUE)
 }
 
+#' @title check_positive_number
+#' @description
+#'
+#' Check that a value is a single, positive number and error if not
+#' @param x the value to check
+#' @param type the type of value being checked. Defaults to 'starting'
+#' @return TRUE if x is valid. Raise an error if not.
+#' @noRd
+#'
+check_positive_number <- function(x, type = "starting ") {
+  # extract name, removing any list
+  name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
+
+  if (!is.numeric(x) || length(x) != 1 || x < 0 || is.na(x)) {
+    stop("The ", type, "value for '", name, "' must be a single positive number")
+  }
+
+  invisible(TRUE)
+}
+
+
 #' @title check_crs
 #' @description
 #'
 #' Check that a CRS is valid
 #' @param crs the CRS to check
-#' @return TRUE if the data is valid. Raise an error if not.
+#' @return TRUE if the CRS is valid. Raise an error if not.
 #' @noRd
 #'
 check_crs <- function(crs){
