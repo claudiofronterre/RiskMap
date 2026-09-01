@@ -1,6 +1,6 @@
 set.seed(1)
 n <- 10
-coords <- cbind(runif(n, 0, 1), runif(n, 0, 1))
+coords <- cbind(runif(n, 0, 10000), runif(n, 0, 10000))
 
 data <- data.frame(x = coords[,1],
                    z = coords[,2],
@@ -19,6 +19,7 @@ S <- as.numeric(Sigma_sroot %*% rnorm(n))
 
 data$y <- 1 + 0.5 * data$cov + S + rnorm(n, sd = 0.1)
 gaussian_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
+latlon_data <- st_transform(gaussian_data, crs = 4326)
 
 # reduce iterations to speed up fits
 control_mcmc <- set_control_sim(n_sim = 1000, burnin = 200)

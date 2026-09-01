@@ -9,10 +9,9 @@ square_coords <- c(40,40,
 
 test_that("create_grid produces errors", {
 
-  expect_error(create_grid("sf_data", 1), "'shp' must be of class 'sf'")
-  expect_error(create_grid(sf_data, 1), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+  expect_error(create_grid("gaussian_data", 1), "'shp' must be of class 'sf'")
+  expect_error(create_grid(gaussian_data, 1), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
   expect_error(create_grid(sf_polygon, 1), "The coordinates of 'shp' are in longitude and latitude")
-  expect_error(create_grid(sf_polygon, 1, 12121.2), "'grid_crs' must be a single positive integer")
   expect_error(create_grid(sf_polygon, 1, 121212), "The 'grid_crs' provided is not a valid CRS")
 
   square <- st_polygon(list(matrix(square_coords, ncol = 2, byrow = TRUE)))

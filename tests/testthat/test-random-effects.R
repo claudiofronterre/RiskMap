@@ -9,7 +9,7 @@ test_that("random effects are encoded consistently across data containers", {
     y = seq_len(4)
   )
   tibble_data <- tibble::as_tibble(base_data)
-  sf_data <- sf::st_as_sf(
+  gaussian_data <- sf::st_as_sf(
     base_data,
     coords = c("x", "y"),
     crs = 32634
@@ -30,7 +30,7 @@ test_that("random effects are encoded consistently across data containers", {
     expected
   )
   expect_equal(
-    RiskMap:::prepare_random_effects(sf_data, c("region", "province")),
+    RiskMap:::prepare_random_effects(gaussian_data, c("region", "province")),
     expected
   )
   expect_equal(
