@@ -171,7 +171,7 @@ test_that("glgpm produces errors", {
 expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
                      "fix_var_me", "formula", "family", "crs", "scale_to_km",
-                     "data_sf", "kappa", "sst", "units_m", "cov_offset", "call",
+                     "data_sf", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function")
 
 test_that("glgpm produces expected output for gaussian models", {

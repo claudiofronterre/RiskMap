@@ -14,7 +14,6 @@ glgpm(
   scale_to_km = TRUE,
   control_mcmc = set_control_sim(),
   par0 = NULL,
-  S_samples = NULL,
   return_samples = FALSE,
   messages = TRUE,
   fix_var_me = NULL,
@@ -48,8 +47,6 @@ If not provided, defaults to \code{1} for binomial models.}
 Must be an object of class \code{RiskMap_mcmc} as returned by \verb{[set_control_sim()]}.}
 
 \item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
-
-\item{S_samples}{Optional matrix of pre-specified sample paths for the spatial random effect.}
 
 \item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model. Defaults to \code{FALSE}.}
 
@@ -89,7 +86,6 @@ An object of class "RiskMap" containing the fitted model and relevant informatio
 \item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
 \item{data_sf}{Original data as an sf object}
 \item{kappa}{Spatial correlation parameter}
-\item{sst}{placeholder}
 \item{units_m}{Distribution offset if \code{family} is \code{binomial} or \code{poisson}}
 \item{cov_offset}{Covariate offset}
 \item{call}{Matched call}

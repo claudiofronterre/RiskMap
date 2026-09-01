@@ -19,7 +19,6 @@
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
 ##' Must be an object of class `RiskMap_mcmc` as returned by `[set_control_sim()]`.
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
-##' @param S_samples Optional matrix of pre-specified sample paths for the spatial random effect.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model. Defaults to `FALSE`.
 ##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
 ##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
@@ -67,7 +66,6 @@
 ##' \item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
 ##' \item{data_sf}{Original data as an sf object}
 ##' \item{kappa}{Spatial correlation parameter}
-##' \item{sst}{placeholder}
 ##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
 ##' \item{cov_offset}{Covariate offset}
 ##' \item{call}{Matched call}
@@ -87,7 +85,6 @@ glgpm <- function(formula,
                  scale_to_km = TRUE,
                  control_mcmc = set_control_sim(),
                  par0 = NULL,
-                 S_samples = NULL,
                  return_samples = FALSE,
                  messages = TRUE,
                  fix_var_me = NULL,
@@ -348,7 +345,6 @@ glgpm <- function(formula,
   res$scale_to_km <- scale_to_km
   res$data_sf <- data
   res$kappa <- kappa
-  res$sst <- FALSE
   if(not_gaussian) res$units_m <- units_m
   res$cov_offset <- cov_offset
   res$call <- match.call()
