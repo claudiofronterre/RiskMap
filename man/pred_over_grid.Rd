@@ -34,7 +34,7 @@ Must be provided if there is an offset included in the model.}
 
 \item{type}{Whether the predictions are \code{marginal} or \code{joint}. \code{marginal} predictions are less
 computationally expensive than \code{joint} predictions but cannot be used to predict areal targets.
-If \code{grid_pred} is a list, must be set to \code{joint}. Defaults to \code{marginal}.}
+If \code{grid_pred} is a list or random effects are included, must be set to \code{joint}. Defaults to \code{marginal}.}
 
 \item{messages}{Logical; display progress messages. Defaults to \code{TRUE}.}
 }

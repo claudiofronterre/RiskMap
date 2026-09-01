@@ -13,7 +13,7 @@
 ##' @param control_sim Control parameters from \code{\link{set_control_sim}}.
 ##' @param type Whether the predictions are `marginal` or `joint`. `marginal` predictions are less
 ##' computationally expensive than `joint` predictions but cannot be used to predict areal targets.
-##' If `grid_pred` is a list, must be set to `joint`. Defaults to `marginal`.
+##' If `grid_pred` is a list or random effects are included, must be set to `joint`. Defaults to `marginal`.
 ##' @param messages Logical; display progress messages. Defaults to `TRUE`.
 ##' @return An object of class \code{"RiskMap_pred"} containing:
 ##'   \describe{
@@ -69,6 +69,9 @@ pred_over_grid <- function(object,
   if (!type %in% c("marginal", "joint"))
     stop("'type' must be either 'marginal' or 'joint'")
 
+  if (!is.null(grid_pred) && is.null(predictors))
+    stop("'predictors' must be supplied if 'grid_pred' is supplied")
+
   obs_loc <- is.null(grid_pred)
   if (obs_loc) {
     if (!is.null(predictors)) warning("You have set 'predictors' but not 'grid_pred' so 'predictors' will be ignored")
@@ -94,12 +97,16 @@ pred_over_grid <- function(object,
   p <- ncol(object$D)
 
   if (!all(object$cov_offset == 0)) {
-    if (is.null(pred_cov_offset))
-      stop("'pred_cov_offset' must be specified at each prediction location")
-    if (!inherits(pred_cov_offset, "numeric"))
-      stop("'pred_cov_offset' must be a numeric vector")
-    if (length(pred_cov_offset) != n_pred)
-      stop("The length of 'pred_cov_offset' does not match the number of prediction locations")
+    if (obs_loc){
+      pred_cov_offset <- object$cov_offset
+    } else {
+      if (is.null(pred_cov_offset))
+        stop("'pred_cov_offset' must be specified at each prediction location")
+      if (!inherits(pred_cov_offset, "numeric"))
+        stop("'pred_cov_offset' must be a numeric vector")
+      if (length(pred_cov_offset) != n_pred)
+        stop("The length of 'pred_cov_offset' does not match the number of prediction locations")
+    }
   } else {
     if (!is.null(pred_cov_offset))
       warning("You have set 'pred_cov_offset' but 'object' does not contain a cov_offset so this will be ignored")
@@ -119,7 +126,7 @@ pred_over_grid <- function(object,
 
   n_re <- length(object$re)
   if (n_re > 0 && type == "marginal" && !is.null(re_predictors))
-    stop("Random effect predictions require type = 'joint'")
+    stop("Random effect predictions require 'type' to be set to 'joint'")
 
   # ---------------------------------------------------------------------------
   # Build mu_pred (fixed-effects linear predictor at prediction locations)
@@ -127,19 +134,18 @@ pred_over_grid <- function(object,
 
   if (!is.null(predictors)) {
 
-    .build_D_pred <- function(pred_i, n_i, idx = NULL) {
-      if (!is.data.frame(pred_i))
-        stop(if (is.null(idx)) "'predictors' must be a data.frame"
-             else sprintf("'predictors[[%d]]' must be a data.frame", idx))
-      if (nrow(pred_i) != n_i)
-        stop(if (is.null(idx)) "Rows of 'predictors' do not match 'grid_pred'"
-             else sprintf("Rows of 'predictors[[%d]]' do not match 'grid_pred[[%d]]'", idx, idx))
-      mf <- model.frame(inter_lt_f$pf, data = pred_i, na.action = na.fail)
-      D  <- as.matrix(model.matrix(attr(mf, "terms"), data = pred_i))
-      if (ncol(D) != p)
-        stop(if (is.null(idx)) "Predictors do not match the model formula"
-             else sprintf("Predictors in group %d do not match the model formula", idx))
-      D
+    .build_D_pred <- function(predictors, n_predictors, index = NULL) {
+      model_predictors <- setdiff(names(par_hat[[1]]), "(Intercept)")
+      if (!is.data.frame(predictors))
+        stop(if (is.null(index)) "'predictors' must be a data.frame"
+             else sprintf("'predictors[[%d]]' must be a data.frame", index))
+      if (!all(model_predictors %in% names(predictors)))
+        stop("The column names in 'predictors' do not match the variables in the model formula")
+      if (nrow(predictors) != n_predictors)
+        stop(if (is.null(index)) "The number of rows in 'predictors' does not match the number of locations in 'grid_pred'"
+             else sprintf("The number of rows in of 'predictors[[%d]]' do not match the number of locations in 'grid_pred[[%d]]'", idx, idx))
+      mf <- model.frame(inter_lt_f$pf, data = predictors, na.action = na.fail)
+      as.matrix(model.matrix(attr(mf, "terms"), data = predictors))
     }
 
     if (list_mode) {
@@ -424,7 +430,11 @@ pred_over_grid <- function(object,
   }
 
   out$obs_loc  <- obs_loc
-  if (obs_loc) out$ID_coords <- object$ID_coords
+  if (obs_loc){
+    out$ID_coords <- object$ID_coords
+  } else {
+    out["ID_coords"] <- list(NULL)
+  }
   out$inter_f  <- inter_f
   out$family   <- object$family
   out$par_hat  <- par_hat

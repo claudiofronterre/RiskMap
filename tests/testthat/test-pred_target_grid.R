@@ -1,4 +1,13 @@
 test_that("pred_target_grid handles one-pixel groups in list mode", {
+
+  skip()
+  result <- pred_over_grid(no_offset, grid)
+
+  pred_target_grid(result)
+
+})
+
+test_that("pred_target_grid handles one-pixel groups in list mode", {
   grid_pred <- list(
     group_one = sf::st_as_sf(data.frame(x = 0, y = 0), coords = c("x", "y"), crs = 4326),
     group_two = sf::st_as_sf(data.frame(x = c(1, 2), y = c(1, 2)), coords = c("x", "y"), crs = 4326)
@@ -16,7 +25,7 @@ test_that("pred_target_grid handles one-pixel groups in list mode", {
     par_hat = list(),
     family = "gaussian"
   )
-  class(object) <- "RiskMap.pred.re"
+  class(object) <- "RiskMap_pred"
 
   out <- pred_target_grid(
     object,
@@ -25,10 +34,10 @@ test_that("pred_target_grid handles one-pixel groups in list mode", {
   )
 
   expect_equal(out$target$group_one$identity_target$mean, 2)
-  expect_equal(out$target$group_one$identity_target$sd, stats::sd(c(1, 2, 3)))
+  expect_equal(out$target$group_one$identity_target$sd, sd(c(1, 2, 3)))
   expect_equal(out$target$group_two$identity_target$mean, c(2, 5))
-  expect_equal(out$target$group_two$identity_target$sd, c(stats::sd(c(1, 2, 3)),
-                                                          stats::sd(c(4, 5, 6))))
+  expect_equal(out$target$group_two$identity_target$sd, c(sd(c(1, 2, 3)),
+                                                          sd(c(4, 5, 6))))
   expect_equal(dim(out$lp_samples[[1]]), c(1, 3))
   expect_equal(dim(out$lp_samples[[2]]), c(2, 3))
 })
@@ -56,7 +65,7 @@ test_that("pred_target_shp preserves posterior samples for one-pixel list-mode r
     re = list(samples = list()),
     par_hat = list()
   )
-  class(object) <- "RiskMap.pred.re"
+  class(object) <- "RiskMap_pred"
 
   out <- pred_target_shp(
     object,
@@ -94,7 +103,7 @@ test_that("pred_target_shp errors on wrong list-mode target orientation", {
     re = list(samples = list()),
     par_hat = list()
   )
-  class(object) <- "RiskMap.pred.re"
+  class(object) <- "RiskMap_pred"
 
   expect_error(
     pred_target_shp(
