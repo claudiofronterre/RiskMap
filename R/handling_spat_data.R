@@ -46,14 +46,8 @@ create_grid <- function(shp,
     grid_crs <- st_crs(shp)
     if (st_is_longlat(shp)) stop("The coordinates of 'shp' are in longitude and latitude - please set 'grid_crs'")
   } else {
-    check_positive_integer(grid_crs, "grid_crs")
-    crs <- tryCatch(
-            st_crs(grid_crs),
-            warning = function(w) {
-              stop("The 'grid_crs' provided is not a valid CRS")
-            }
-          )
-    shp <- st_transform(shp, crs = crs)
+    check_crs(grid_crs)
+    shp <- st_transform(shp, crs = grid_crs)
   }
 
   grid_box <- st_make_grid(shp,
