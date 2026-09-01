@@ -48,12 +48,14 @@ Must be an object of class \code{RiskMap_mcmc} as returned by \verb{[set_control
 
 \item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
 
-\item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model. Defaults to \code{FALSE}.}
+\item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
+Defaults to \code{FALSE}.}
 
 \item{messages}{Logical indicating whether to print progress messages. Defaults to \code{TRUE}.}
 
 \item{fix_var_me}{Optional fixed value for the measurement error variance when fitting a Gaussian model.
-When not provided, the value will be estimated, but cannot be if each location only has one sample and the \code{nugget} term in \code{gp()} is also set to \code{TRUE}.}
+When not provided, the value will be estimated, but cannot be if each location only has one sample and
+the \code{nugget} term in \verb{[gp()]} is also set to \code{TRUE}.}
 
 \item{start_pars}{Optional list of starting values for model parameters:
 \describe{
@@ -66,12 +68,12 @@ When not provided, the value will be estimated, but cannot be if each location o
 }}
 }
 \value{
-An object of class "RiskMap" containing the fitted model and relevant information:
+An object of class \code{RiskMap} containing the fitted model and relevant information:
 
-\item{estimate}{placeholder}
-\item{grad_MLE}{placeholder}
-\item{covariance}{covariance}
-\item{log_lik}{log likelihood}
+\item{estimate}{Estimated parameters}
+\item{grad_MLE}{Gradient of the maximum likelihood function}
+\item{covariance}{Covariance}
+\item{log_lik}{Log likelihood}
 \item{y}{Response variable}
 \item{D}{Covariate matrix}
 \item{coords}{Unique spatial coordinates}
@@ -97,18 +99,29 @@ incorporating spatial Gaussian processes with a Matern correlation function.
 Supports Gaussian, binomial, and Poisson response families.
 }
 \details{
-Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.
+Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
+spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs
+using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.
 In the case of the Binomial and Poisson families, a Monte Carlo maximum likelihood algorithm is used.
 
-The spatial Gaussian process is modeled with a Matern correlation function, which is flexible and commonly used in geostatistical modeling. The function supports both spatial covariates and unstructured random effects, providing a comprehensive framework to analyze spatially correlated data across different response distributions.
+The spatial Gaussian process is modeled with a Matern correlation function, which is flexible and
+commonly used in geostatistical modeling. The function supports both spatial covariates and
+unstructured random effects, providing a comprehensive framework to analyze spatially correlated
+data across different response distributions.
 
-Additionally, the function allows for the inclusion of unstructured random effects, specified through the \code{re()} term in the model formula. These random effects can capture unexplained variability at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility in capturing complex spatial patterns.
+Additionally, the function allows for the inclusion of unstructured random effects, specified through
+the \verb{[re()]} term in the model formula. These random effects can capture unexplained variability
+at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
+in capturing complex spatial patterns.
 
-The \code{convert_to_crs} argument can be used to reproject the spatial coordinates to a different CRS. The \code{scale_to_km} argument scales the coordinates to kilometers if set to TRUE.
+The \code{convert_to_crs} argument can be used to reproject the spatial coordinates to a different CRS.
+The \code{scale_to_km} argument scales the coordinates to kilometers if set to TRUE.
 
-The \code{control_mcmc} argument specifies the control parameters for MCMC sampling. This argument must be an object returned by \code{\link{set_control_sim}}.
+The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.
+This argument must be an object returned by \verb{[set_control_sim()]}.
 
-The \code{start_pars} argument allows for specifying starting values for the model parameters. If not provided, default starting values are used.
+The \code{start_pars} argument allows for specifying starting values for the model parameters.
+If not provided, default starting values are used.
 }
 \seealso{
 \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
