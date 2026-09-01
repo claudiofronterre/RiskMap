@@ -15,7 +15,7 @@ glgpm(
   control_mcmc = set_control_sim(),
   par0 = NULL,
   S_samples = NULL,
-  return_samples = TRUE,
+  return_samples = FALSE,
   messages = TRUE,
   fix_var_me = NULL,
   start_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, sigma2_me =
@@ -23,33 +23,50 @@ glgpm(
 )
 }
 \arguments{
-\item{formula}{A formula object specifying the model to be fitted. The formula should include fixed effects and spatial effects (specified using \code{gp()}) and optionally, random effects (specified using \code{re()})).}
+\item{formula}{A formula object specifying the model to be fitted.
+The formula should include fixed effects and spatial effects specified using
+\verb{[gp()]} and optionally, random effects specified using \verb{[re()]}.}
 
 \item{data}{An sf object containing the variables in the model.}
 
-\item{family}{A character string specifying the distribution of the response variable. Must be one of "gaussian", "binomial", or "poisson".}
+\item{family}{A character string specifying the distribution of the response variable.
+Must be one of \code{gaussian}, \code{binomial}, or \code{poisson}.}
 
-\item{invlink}{A function that defines the inverse of the link function for the distribution of the data given the random effects.}
+\item{invlink}{A function that defines the inverse of the link function for
+the distribution of the data given the random effects.
+Not applicable when \code{family} is \code{gaussian}.}
 
-\item{den}{Optional offset for binomial or Poisson distributions. If not provided, defaults to 1 for binomial.}
+\item{den}{Optional offset for binomial or Poisson distributions.
+Passed as a bare/unquoted column name present in \code{data}.
+If not provided, defaults to \code{1} for binomial models.}
 
-\item{convert_to_crs}{Optional integer specifying a CRS to convert the spatial coordinates.}
+\item{convert_to_crs}{Optional integer specifying a CRS to convert the spatial coordinates to.}
 
-\item{scale_to_km}{Logical indicating whether to scale coordinates to kilometers. Defaults to TRUE.}
+\item{scale_to_km}{Logical indicating whether to scale coordinates to kilometers. Defaults to \code{TRUE}.}
 
-\item{control_mcmc}{Control parameters for MCMC sampling. Must be an object of class "mcmc.RiskMap" as returned by \code{\link{set_control_sim}}.}
+\item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
+Must be an object of class \code{RiskMap_mcmc} as returned by \verb{[set_control_sim()]}.}
 
 \item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
 
 \item{S_samples}{Optional matrix of pre-specified sample paths for the spatial random effect.}
 
-\item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model. Defaults to FALSE.}
+\item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model. Defaults to \code{FALSE}.}
 
-\item{messages}{Logical indicating whether to print progress messages. Defaults to TRUE.}
+\item{messages}{Logical indicating whether to print progress messages. Defaults to \code{TRUE}.}
 
-\item{fix_var_me}{Optional fixed value for the measurement error variance.}
+\item{fix_var_me}{Optional fixed value for the measurement error variance when fitting a Gaussian model.
+When not provided, the value will be estimated, but cannot be if each location only has one sample and the \code{nugget} term in \code{gp()} is also set to \code{TRUE}.}
 
-\item{start_pars}{Optional list of starting values for model parameters: beta (regression coefficients), sigma2 (spatial process variance), tau2 (nugget effect variance), phi (spatial correlation scale), sigma2_me (measurement error variance), and sigma2_re (random effects variances).}
+\item{start_pars}{Optional list of starting values for model parameters:
+\describe{
+\item{beta}{regression coefficients}
+\item{sigma2}{spatial process variance}
+\item{tau2}{nugget effect variance}
+\item{phi}{spatial correlation scale}
+\item{sigma2_me}{measurement error variance - only for Gaussian models}
+\item{sigma2_re}{random effects variances - only when random effects are included}
+}}
 }
 \value{
 An object of class "RiskMap" containing the fitted model and relevant information:
@@ -65,20 +82,23 @@ An object of class "RiskMap" containing the fitted model and relevant informatio
 \item{re}{Random effects if \code{re()} is included in \code{formula}}
 \item{ID_re}{Index of random effects if \code{re()} is included in \code{formula}}
 \item{fix_tau2}{Fixed nugget effect variance}
+\item{fix_var_me}{Fixed measurement error variance}
 \item{formula}{Model formula}
 \item{family}{Response family}
 \item{crs}{Coordinate Reference System}
 \item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
 \item{data_sf}{Original data as an sf object}
 \item{kappa}{Spatial correlation parameter}
+\item{sst}{placeholder}
+\item{units_m}{Distribution offset if \code{family} is \code{binomial} or \code{poisson}}
 \item{cov_offset}{Covariate offset}
 \item{call}{Matched call}
-\item{units_m}{Distribution offset if \code{family} is \code{binomial} or \code{poisson}}
 \item{S_samples}{MCMC samples if \code{return_samples} is \code{TRUE}}
-\item{fix_var_me}{Fixed measurement error variance}
 }
 \description{
-Fits generalized linear Gaussian process models to spatial data, incorporating spatial Gaussian processes with a Matern correlation function. Supports Gaussian, binomial, and Poisson response families.
+Fits generalized linear Gaussian process models to spatial data,
+incorporating spatial Gaussian processes with a Matern correlation function.
+Supports Gaussian, binomial, and Poisson response families.
 }
 \details{
 Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.

@@ -18,22 +18,40 @@ pred_over_grid(
 \arguments{
 \item{object}{A RiskMap object.}
 
-\item{grid_pred}{An \code{sfc} or \code{sf} of POINT geometries, or a list thereof for joint predictions.}
+\item{grid_pred}{An \code{sfc} or \code{sf} of POINT geometries, or a list thereof for joint predictions.
+If not provided, the predictions will be generated at the geometries provided when fitting the model.}
 
-\item{predictors}{Optional data frame of predictor variables at prediction locations.}
+\item{predictors}{Optional dataframe or list of dataframes containing predictor variables at prediction locations.
+Must be provided if you specify \code{grid_pred}.}
 
-\item{re_predictors}{Optional data frame of random effect predictors.}
+\item{re_predictors}{Optional dataframe or list of dataframes containing random effect predictors.
+Must be provided if you specify \code{grid_pred} and the model includes random effects.}
 
-\item{pred_cov_offset}{Optional numeric vector of covariate offsets at prediction locations.}
+\item{pred_cov_offset}{Optional numeric vector or list of numeric vectors containing covariate offsets at prediction locations.
+Must be provided if there is an offset included in the model.}
 
 \item{control_sim}{Control parameters from \code{\link{set_control_sim}}.}
 
-\item{type}{\code{"marginal"} or \code{"joint"}.}
+\item{type}{Whether the predictions are \code{marginal} or \code{joint}. \code{marginal} predictions are less
+computationally expensive than \code{joint} predictions but cannot be used to predict areal targets.
+If \code{grid_pred} is a list, must be set to \code{joint}. Defaults to \code{marginal}.}
 
-\item{messages}{Logical; display progress messages. Default \code{TRUE}.}
+\item{messages}{Logical; display progress messages. Defaults to \code{TRUE}.}
 }
 \value{
-An object of class \code{"RiskMap.pred.re"}.
+An object of class \code{"RiskMap_pred"} containing:
+\describe{
+\item{mu_pred}{placeholder}
+\item{grid_pred}{The locations of the predictions}
+\item{par_hat}{placeholder}
+\item{S_samples}{placeholder}
+\item{re}{placeholder}
+\item{obs_loc}{placeholder}
+\item{inter_f}{placeholder}
+\item{family}{The model family}
+\item{cov_offset}{Covariate offsets}
+\item{type}{The type of predictions}
+}
 }
 \description{
 Computes predictions over a spatial grid using a fitted model from

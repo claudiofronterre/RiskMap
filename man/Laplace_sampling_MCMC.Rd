@@ -69,7 +69,7 @@ If \code{NULL}, it is obtained internally as the mode of the integrand.}
 \item{messages}{Logical; if \code{TRUE}, prints progress and acceptance diagnostics.}
 }
 \value{
-An object of class \code{"mcmc.RiskMap"} with components:
+An object of class \code{"RiskMap_mcmc"} with components:
 \describe{
 \item{samples}{A list containing posterior draws. Always includes
 \code{$S} (latent spatial field). If \code{ID_re} is supplied,

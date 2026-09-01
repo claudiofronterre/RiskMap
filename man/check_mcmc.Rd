@@ -7,9 +7,9 @@
 check_mcmc(object, check_mean = TRUE, component = NULL, ...)
 }
 \arguments{
-\item{object}{An object of class \code{RiskMap} or \code{RiskMap.pred.re}.
+\item{object}{An object of class \code{RiskMap} or \code{RiskMap_pred}.
 \code{RiskMap} is the output from \code{\link{glgpm}} function, and
-\code{RiskMap.pred.re} is obtained from the \code{\link{pred_over_grid}} function.}
+\code{RiskMap_pred} is obtained from the \code{\link{pred_over_grid}} function.}
 
 \item{check_mean}{Logical. If \code{TRUE}, checks the MCMC chain for the mean of the spatial random effects.
 If \code{FALSE}, checks the chain for a specific component of the random effects vector.}
@@ -24,12 +24,12 @@ No return value, called for side effects (plots and warnings).
 }
 \description{
 This function checks the Markov Chain Monte Carlo (MCMC) convergence of spatial random effects
-for either a \code{RiskMap} or \code{RiskMap.pred.re} object.
+for either a \code{RiskMap} or \code{RiskMap_pred} object.
 It plots the trace plot and autocorrelation function (ACF) for the MCMC chain
 and calculates the effective sample size (ESS).
 }
 \details{
-The function first checks that the input object is either of class \code{RiskMap} or \code{RiskMap.pred.re}.
+The function first checks that the input object is either of class \code{RiskMap} or \code{RiskMap_pred}.
 Depending on the value of \code{check_mean}, it either calculates the mean of the spatial random effects
 across all locations for each iteration or uses the specified component.
 It then generates two plots:

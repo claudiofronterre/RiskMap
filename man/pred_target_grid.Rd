@@ -16,7 +16,7 @@ pred_target_grid(
 }
 \arguments{
 \item{object}{Output from \code{\link{pred_over_grid}}, a
-\code{RiskMap.pred.re} object.}
+\code{RiskMap_pred} object.}
 
 \item{include_covariates}{Logical. Include covariate effects in the linear
 predictor. Default \code{TRUE}.}

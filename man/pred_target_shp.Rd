@@ -23,7 +23,7 @@ pred_target_shp(
 )
 }
 \arguments{
-\item{object}{Output from \code{\link{pred_over_grid}} (class \code{RiskMap.pred.re}),
+\item{object}{Output from \code{\link{pred_over_grid}} (class \code{RiskMap_pred}),
 typically fitted with \code{type = "joint"} so that linear predictor samples are available.}
 
 \item{shp}{An \pkg{sf} polygon object representing regions over which predictions are aggregated.}
