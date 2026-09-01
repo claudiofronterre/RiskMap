@@ -539,11 +539,6 @@ coef.RiskMap <- function(object, ...) {
   if (n_re > 0)
     res$sigma2_re <- as.numeric(object$estimate[ind_sigma2_re])
 
-  if (object$sst) {
-    ind_psi <- length(object$estimate)
-    res$psi  <- as.numeric(exp(object$estimate[ind_psi]))
-  }
-
   return(res)
 }
 
@@ -609,9 +604,6 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   names(object$estimate)[ind_beta] <- colnames(object$D)
   ind_sigma2 <- p + 1; names(object$estimate)[ind_sigma2] <- "Spatial process var."
   ind_phi    <- p + 2; names(object$estimate)[ind_phi]    <- "Spatial corr. scale"
-  sst        <- object$sst
-
-  if (sst) ind_psi <- length(object$estimate)
 
   if (isTRUE(object$fix_tau2)) {
     ind_tau2 <- p + 3
@@ -695,18 +687,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
                             z_crit * se_par[ind_sigma2_re])
     )
 
-  if (sst) {
-    est_psi <- object$estimate[ind_psi]
-    psi_row <- c(
-      Estimate      = est_psi,
-      "Lower limit" = exp(log(est_psi) - z_crit * se_par[ind_psi]),
-      "Upper limit" = exp(log(est_psi) + z_crit * se_par[ind_psi])
-    )
-    res$sp <- rbind(res$sp, "Temporal corr. scale" = psi_row)
-  }
-
   res$conf_level      <- conf_level
-  res$sst             <- sst
   res$family          <- object$family
   res$kappa           <- object$kappa
   res$log.lik         <- object$log.lik
@@ -768,14 +749,9 @@ print.summary.RiskMap <- function(x, ...) {
     }
   }
 
-  if (!isTRUE(x$sst)) {
-    cat("\nSpatial Gaussian process\n")
-    cat("Matern covariance parameters (kappa = ", x$kappa, ")\n", sep = "")
-  } else {
-    cat("\nSpatio-temporal Gaussian process\n")
-    cat("Separable correlation: Matern (kappa = ", x$kappa,
-        ") x Exponential (time)\n", sep = "")
-  }
+  cat("\nSpatial Gaussian process\n")
+  cat("Matern covariance parameters (kappa = ", x$kappa, ")\n", sep = "")
+
   printCoefmat(x$sp, P.values = FALSE, has.Pvalue = FALSE)
   if (!is.null(x$tau2))
     cat("Variance of the nugget effect fixed at ", x$tau2, "\n", sep = "")
