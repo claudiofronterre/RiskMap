@@ -407,6 +407,8 @@ interpret.formula <- function(formula) {
   ret
 }
 
+
+
 ##' @title Check that formula is valid
 ##' @description Checks that the formula object is of class formula and that all
 ##' the terms in the formula are present in the data
@@ -422,7 +424,32 @@ check_formula <- function(formula, data){
          model to be fitted", call. = FALSE)
   }
 
-  formula_terms <- all.vars(formula)
+  # Recursively extract variable names from a formula/expression,
+  # but for calls to gp(), only look inside unnamed (positional) arguments.
+  get_formula_vars <- function(expr) {
+    if (is.symbol(expr)) {
+      return(as.character(expr))
+    }
+
+    if (is.call(expr)) {
+      fn_name <- if (is.symbol(expr[[1]])) as.character(expr[[1]]) else ""
+
+      args <- as.list(expr)[-1]
+      arg_names <- names(args)
+      if (is.null(arg_names)) arg_names <- rep("", length(args))
+
+      if (fn_name == "gp") {
+        # only keep unnamed arguments
+        args <- args[arg_names == ""]
+      }
+
+      return(unlist(lapply(args, get_formula_vars)))
+    }
+
+    NULL
+  }
+
+  formula_terms <- unique(get_formula_vars(formula))
   column_names <- names(data)
 
   contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
