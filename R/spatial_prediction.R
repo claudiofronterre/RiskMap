@@ -135,7 +135,8 @@ pred_over_grid <- function(object,
   if (!is.null(predictors)) {
 
     .build_D_pred <- function(predictors, n_predictors, index = NULL) {
-      model_predictors <- setdiff(names(par_hat[[1]]), "(Intercept)")
+      response <- as.character(object$formula[[2]])
+      model_predictors <- setdiff(get_formula_terms(object$formula), response)
       if (!is.data.frame(predictors))
         stop(if (is.null(index)) "'predictors' must be a data.frame"
              else sprintf("'predictors[[%d]]' must be a data.frame", index))

@@ -13,6 +13,7 @@ test_that("check_formula functions correctly", {
   test_kappa <- 1
   expect_no_error(check_formula(y ~ gp(), data))
   expect_no_error(check_formula(y ~ gp(kappa = test_kappa), data))
+  expect_no_error(check_formula(y ~ log(c) + gp(), data))
 
   expect_error(check_formula("not formula", data), "'formula' must be a 'formula'")
   expect_error(check_formula(y ~ c, data), "The 'formula' must contain a Gaussian Process term")

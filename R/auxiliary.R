@@ -407,6 +407,34 @@ interpret.formula <- function(formula) {
   ret
 }
 
+##' @title Extract terms from formula ignoring kappa and nugget
+##' @description Recursively extract variable names from a formula/expression,
+##' but for calls to gp(), only look inside unnamed (positional) arguments.
+##' @param formula The formula to check
+##' @return A character vector of terms
+##' @noRd
+get_formula_terms <- function(formula) {
+  if (is.symbol(formula)) {
+    return(as.character(formula))
+  }
+
+  if (is.call(formula)) {
+    fn_name <- if (is.symbol(formula[[1]])) as.character(formula[[1]]) else ""
+
+    args <- as.list(formula)[-1]
+    arg_names <- names(args)
+    if (is.null(arg_names)) arg_names <- rep("", length(args))
+
+    if (fn_name == "gp") {
+      # only keep unnamed arguments
+      args <- args[arg_names == ""]
+    }
+
+    return(unlist(lapply(args, get_formula_terms)))
+  }
+
+  NULL
+}
 
 
 ##' @title Check that formula is valid
@@ -424,32 +452,7 @@ check_formula <- function(formula, data){
          model to be fitted", call. = FALSE)
   }
 
-  # Recursively extract variable names from a formula/expression,
-  # but for calls to gp(), only look inside unnamed (positional) arguments.
-  get_formula_vars <- function(expr) {
-    if (is.symbol(expr)) {
-      return(as.character(expr))
-    }
-
-    if (is.call(expr)) {
-      fn_name <- if (is.symbol(expr[[1]])) as.character(expr[[1]]) else ""
-
-      args <- as.list(expr)[-1]
-      arg_names <- names(args)
-      if (is.null(arg_names)) arg_names <- rep("", length(args))
-
-      if (fn_name == "gp") {
-        # only keep unnamed arguments
-        args <- args[arg_names == ""]
-      }
-
-      return(unlist(lapply(args, get_formula_vars)))
-    }
-
-    NULL
-  }
-
-  formula_terms <- unique(get_formula_vars(formula))
+  formula_terms <- unique(get_formula_terms(formula))
   column_names <- names(data)
 
   contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
