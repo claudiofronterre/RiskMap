@@ -48,7 +48,7 @@ binomial_model <- glgpm(y ~ cov + gp() + re(i),
                         messages = FALSE)
 
 lambda <- exp(0.1 + 0.2 * data$cov + S)
-data$y <- rpois(n, lambda)
+data$y <- rpois(n, lambda) + 1
 poisson_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
 poisson_model <- glgpm(y ~ cov + gp() + re(i),

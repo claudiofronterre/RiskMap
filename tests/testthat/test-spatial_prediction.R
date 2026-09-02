@@ -125,6 +125,9 @@ test_that("pred_over_grid produces expected output", {
   result <- pred_over_grid(binomial_model, control_sim = control_mcmc)
   expect_setequal(names(result), expected_output)
 
+  result <- pred_over_grid(poisson_model, control_sim = control_mcmc)
+  expect_setequal(names(result), expected_output)
+
   result <- pred_over_grid(gaussian_offset_model)
   expect_setequal(names(result), expected_output)
 
@@ -144,9 +147,6 @@ test_that("pred_over_grid produces expected output", {
 
 test_that("pred_over_grid functions for poisson models and in list mode", {
   skip()
-
-  result <- pred_over_grid(poisson_model, control_sim = control_mcmc)
-  expect_setequal(names(result), expected_output)
 
   # Error in C %*% B : non-conformable arguments
   # C is a list of matrices
