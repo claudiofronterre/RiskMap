@@ -1,4 +1,4 @@
-test_that("pred_target_shp produces expected output with default arguments", {
+test_that("predict_areal_target produces expected output with default arguments", {
 
   expected_output <- c("lp_samples", "target", "shp", "f_target", "pd_summary", "grid_pred")
 
@@ -7,21 +7,21 @@ test_that("pred_target_shp produces expected output with default arguments", {
   binomial_grid <- setup_prediction(binomial_model, control_sim = control_mcmc, type = "joint")
   poisson_grid <- setup_prediction(poisson_model, control_sim = control_mcmc, type = "joint")
 
-  result <- pred_target_shp(gaussian_grid, areal)
+  result <- predict_areal_target(gaussian_grid, areal)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_shp(gaussian_offset_grid, areal)
+  result <- predict_areal_target(gaussian_offset_grid, areal)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_shp(binomial_grid, areal)
+  result <- predict_areal_target(binomial_grid, areal)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_shp(poisson_grid, areal)
+  result <- predict_areal_target(poisson_grid, areal)
   expect_setequal(names(result), expected_output)
 
 })
 
-test_that("pred_target_shp preserves posterior samples for one-pixel list-mode regions", {
+test_that("predict_areal_target preserves posterior samples for one-pixel list-mode regions", {
   grid_pred <- list(
     group_one = sf::st_as_sf(data.frame(x = 0, y = 0), coords = c("x", "y"), crs = 4326),
     group_two = sf::st_as_sf(data.frame(x = c(1, 2), y = c(1, 2)), coords = c("x", "y"), crs = 4326)
@@ -46,7 +46,7 @@ test_that("pred_target_shp preserves posterior samples for one-pixel list-mode r
   )
   class(object) <- "RiskMap_pred"
 
-  out <- pred_target_shp(
+  out <- predict_areal_target(
     object,
     shp = shp,
     shp_target = sum,
@@ -65,7 +65,7 @@ test_that("pred_target_shp preserves posterior samples for one-pixel list-mode r
   expect_equal(out$target_samples$group_two$identity_target, rep(0.325, 3))
 })
 
-test_that("pred_target_shp errors on wrong list-mode target orientation", {
+test_that("predict_areal_target errors on wrong list-mode target orientation", {
   grid_pred <- list(
     group_one = sf::st_as_sf(data.frame(x = c(0, 1), y = c(0, 1)), coords = c("x", "y"), crs = 4326)
   )
@@ -85,7 +85,7 @@ test_that("pred_target_shp errors on wrong list-mode target orientation", {
   class(object) <- "RiskMap_pred"
 
   expect_error(
-    pred_target_shp(
+    predict_areal_target(
       object,
       shp = shp,
       weights = list(c(0.5, 0.5)),

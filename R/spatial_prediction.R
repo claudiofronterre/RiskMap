@@ -798,7 +798,7 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
 ##' then aggregated via \code{shp_target} (optionally weighted). The list \code{pd_summary} is applied
 ##' to each region's target samples to produce summary statistics.
 ##'
-##' @return An object of class \code{RiskMap_pred_target_shp} with components:
+##' @return An object of class \code{RiskMap_predict_areal_target} with components:
 ##' \itemize{
 ##'   \item \code{target}: \code{data.frame} of region-level summaries (one row per region).
 ##'   \item \code{target_samples}: (optional) \code{list} with one element per region; each contains
@@ -813,7 +813,7 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
 ##'
 ##' @importFrom terra rast as.data.frame
 ##' @export
-pred_target_shp <- function(object,
+predict_areal_target <- function(object,
                             shp,
                             shp_target = mean,
                             weights = NULL,
@@ -1171,16 +1171,16 @@ pred_target_shp <- function(object,
   out$f_target <- names(f_target)
   out$pd_summary <- names(pd_summary)
   out$grid_pred <- object$grid_pred
-  class(out) <- "RiskMap_pred_target_shp"
+  class(out) <- "RiskMap_predict_areal_target"
   return(out)
 }
 
 
-##' Plot Method for RiskMap_pred_target_shp Objects
+##' Plot Method for RiskMap_predict_areal_target Objects
 ##'
 ##' Generates a plot of predictive target values or summaries over a shapefile.
 ##'
-##' @param x An object of class 'RiskMap_pred_target_shp' containing computed targets,
+##' @param x An object of class 'RiskMap_predict_areal_target' containing computed targets,
 ##' summaries, and associated spatial data.
 ##' @param which_target Character indicating the target type to plot (e.g., "linear_target").
 ##' @param which_summary Character indicating the summary type to plot (e.g., "mean", "sd").
@@ -1191,14 +1191,14 @@ pred_target_shp <- function(object,
 ##' It requires the 'ggplot2' package for plotting and 'sf' objects for spatial data.
 ##'
 ##' @seealso
-##' \code{\link{pred_target_shp}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
+##' \code{\link{predict_areal_target}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
 ##' \code{\link[ggplot2]{aes}}, \code{\link[ggplot2]{scale_fill_distiller}}
 ##'
-##' @method plot RiskMap_pred_target_shp
+##' @method plot RiskMap_predict_areal_target
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-plot.RiskMap_pred_target_shp <- function(x, which_target = "linear_target",
+plot.RiskMap_predict_areal_target <- function(x, which_target = "linear_target",
                                          which_summary = "mean", ...) {
   col_shp_name <- paste(which_target,"_",which_summary,sep="")
 
