@@ -2110,7 +2110,7 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @return A list of class `RiskMap.sim.res` containing model evaluation results.
 ##'
 ##' @export
-assess_sim <- function(obj_sim,
+assess_simulation <- function(obj_sim,
                        models,
                        control_mcmc = set_control_sim(),
                        spatial_scale,
@@ -2428,7 +2428,7 @@ assess_sim <- function(obj_sim,
 ##'
 ##' @description Summarizes the results of model evaluations from a `RiskMap.sim.res` object. Provides average metrics for classification by category and overall correct classification (CC) summary.
 ##'
-##' @param object An object of class `RiskMap.sim.res`, as returned by `assess_sim`.
+##' @param object An object of class `RiskMap.sim.res`, as returned by `assess_simulation`.
 ##' @param ... Additional arguments (not used).
 ##'
 ##' @return A list containing summary data for each model:
