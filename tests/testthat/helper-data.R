@@ -56,4 +56,11 @@ poisson_model <- glgpm(y ~ cov + gp() + re(i),
                        family = "poisson",
                        den = den,
                        control_mcmc = control_mcmc,
+                       return_samples = TRUE,
                        messages = FALSE)
+
+hull <- convex_hull_sf(gaussian_data)
+grid <- create_grid(hull, 3, propose_utm(hull))
+squares <- st_make_grid(hull, n = c(2, 2))
+areal <- st_sf(geometry = squares)
+
