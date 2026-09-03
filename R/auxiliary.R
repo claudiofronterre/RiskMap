@@ -20,13 +20,13 @@
 ##' sf_points <- st_sf(geometry = points)
 ##'
 ##' # Calculate the convex hull
-##' convex_hull_result <- convex_hull_sf(sf_points)
+##' convex_hull_result <- create_convex_hull(sf_points)
 ##'
 ##' # Plot the result
 ##' plot(sf_points, col = 'blue', pch = 19)
 ##' plot(convex_hull_result, add = TRUE, border = 'red')
 ##' @export
-convex_hull_sf <- function(sf_object) {
+create_convex_hull <- function(sf_object) {
   # Check if the input is an sf object
   if (!inherits(sf_object, "sf")) {
     stop("`sf_object` must be an sf object")
