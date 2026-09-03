@@ -2062,7 +2062,7 @@ simulate_surface <- function(n_sim,
   out$include_cov_offset <- include_cov_offset
   out$par0 <- par0
   out$family <- family
-  class(out) <- "RiskMap.sim"
+  class(out) <- "RiskMap_simulation"
   return(out)
 }
 
@@ -2095,7 +2095,7 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##'
 ##' @description This function evaluates the performance of models based on simulation results from the `simulate_surface` function.
 ##'
-##' @param obj_sim An object of class `RiskMap.sim`, obtained as an output from the `simulate_surface` function.
+##' @param obj_sim An object of class `RiskMap_simulation`, obtained as an output from the `simulate_surface` function.
 ##' @param models A named list of models to be evaluated.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param spatial_scale The scale at which predictions are assessed, either `"grid"` or `"area"`.
@@ -2121,8 +2121,8 @@ assess_simulation <- function(obj_sim,
                        pred_objective = c("mse","classify"),
                        categories= NULL) {
 
-  if (!inherits(obj_sim, "RiskMap.sim")) {
-    stop("'obj_sim' must be an object of class 'RiskMap.sim' obtained as an output from the 'simulate_surface' function")
+  if (!inherits(obj_sim, "RiskMap_simulation")) {
+    stop("'obj_sim' must be an object of class 'RiskMap_simulation' obtained as an output from the 'simulate_surface' function")
   }
   if (length(setdiff(pred_objective, c("mse","classify")))>0) {
     stop(paste("Invalid value for pred_objective. Allowed values are:", paste(c("mse","classify"), collapse = ", ")))
