@@ -40,7 +40,7 @@ test_that("assess_prediction uses each model's own data_sf for held-out predicto
       seen_predictors[[object$model_id]] <<- names(predictors)
       list(predictors = predictors)
     },
-    pred_target_grid = function(object, ...) {
+    predict_grid_target = function(object, ...) {
       list(lp_samples = matrix(rep(1, nrow(object$predictors) * 2),
                                nrow = nrow(object$predictors)))
     },
@@ -106,7 +106,7 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
     setup_prediction = function(object, grid_pred, predictors, ...) {
       list(predictors = predictors)
     },
-    pred_target_grid = function(object, ...) {
+    predict_grid_target = function(object, ...) {
       n <- nrow(object$predictors)
       list(lp_samples = matrix(rep(c(-1, 0, 1), each = n), nrow = n))
     },

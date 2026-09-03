@@ -1,4 +1,4 @@
-test_that("pred_target_grid produces expected output with default arguments", {
+test_that("predict_grid_target produces expected output with default arguments", {
 
   expected_output <- c("target", "grid_pred", "f_target", "pd_summary", "family", "lp_samples")
 
@@ -7,21 +7,21 @@ test_that("pred_target_grid produces expected output with default arguments", {
   binomial_grid <- setup_prediction(binomial_model, control_sim = control_mcmc)
   poisson_grid <- setup_prediction(poisson_model, control_sim = control_mcmc)
 
-  result <- pred_target_grid(gaussian_grid)
+  result <- predict_grid_target(gaussian_grid)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_grid(gaussian_offset_grid)
+  result <- predict_grid_target(gaussian_offset_grid)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_grid(binomial_grid)
+  result <- predict_grid_target(binomial_grid)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_grid(poisson_grid)
+  result <- predict_grid_target(poisson_grid)
   expect_setequal(names(result), expected_output)
 
 })
 
-test_that("pred_target_grid produces expected output when grid is provided", {
+test_that("predict_grid_target produces expected output when grid is provided", {
 
   expected_output <- c("target", "grid_pred", "f_target", "pd_summary", "family", "lp_samples")
 
@@ -45,19 +45,19 @@ test_that("pred_target_grid produces expected output when grid is provided", {
                                  control_sim = control_mcmc,
                                  type = "joint")
 
-  result <- pred_target_grid(gaussian_grid)
+  result <- predict_grid_target(gaussian_grid)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_grid(binomial_grid)
+  result <- predict_grid_target(binomial_grid)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_grid(poisson_grid)
+  result <- predict_grid_target(poisson_grid)
   expect_setequal(names(result), expected_output)
 
 })
 
 
-test_that("pred_target_grid produces expected output when in list mode", {
+test_that("predict_grid_target produces expected output when in list mode", {
 
   expected_output <- c("target", "grid_pred", "f_target", "pd_summary", "family", "lp_samples")
 
@@ -81,17 +81,17 @@ test_that("pred_target_grid produces expected output when in list mode", {
                                  control_sim = control_mcmc,
                                  type = "joint")
 
-  result <- pred_target_grid(gaussian_grid)
+  result <- predict_grid_target(gaussian_grid)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_grid(binomial_grid)
+  result <- predict_grid_target(binomial_grid)
   expect_setequal(names(result), expected_output)
 
-  result <- pred_target_grid(poisson_grid)
+  result <- predict_grid_target(poisson_grid)
   expect_setequal(names(result), expected_output)
 })
 
-test_that("pred_target_grid handles one-pixel groups in list mode", {
+test_that("predict_grid_target handles one-pixel groups in list mode", {
   grid_pred <- list(
     group_one = sf::st_as_sf(data.frame(x = 0, y = 0), coords = c("x", "y"), crs = 4326),
     group_two = sf::st_as_sf(data.frame(x = c(1, 2), y = c(1, 2)), coords = c("x", "y"), crs = 4326)
@@ -111,7 +111,7 @@ test_that("pred_target_grid handles one-pixel groups in list mode", {
   )
   class(object) <- "RiskMap_pred"
 
-  out <- pred_target_grid(
+  out <- predict_grid_target(
     object,
     f_target = list(identity_target = function(x) x),
     pd_summary = list(mean = mean, sd = sd)

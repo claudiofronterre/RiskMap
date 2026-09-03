@@ -499,7 +499,7 @@ setup_prediction <- function(object,
 ##'   row-wise to each target matrix (default: mean, median, sd, 2.5% and
 ##'   97.5% quantiles).
 ##'
-##' @return An object of class `RiskMap_pred_target_grid` containing:
+##' @return An object of class `RiskMap_predict_grid_target` containing:
 ##' \describe{
 ##'   \item{target}{List of the predictions for each target}
 ##'   \item{grid_pred}{`sfc` object containing the coordinates for the predictions}
@@ -513,7 +513,7 @@ setup_prediction <- function(object,
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix solve
 ##' @export
-pred_target_grid <- function(object,
+predict_grid_target <- function(object,
                              include_covariates  = TRUE,
                              include_nugget      = FALSE,
                              include_cov_offset  = FALSE,
@@ -720,18 +720,18 @@ pred_target_grid <- function(object,
   out$family     <- object$family
   out$lp_samples <- lp_samples
 
-  class(out) <- "RiskMap_pred_target_grid"
+  class(out) <- "RiskMap_predict_grid_target"
   return(out)
 }
 
 
 
-##' Plot Method for RiskMap_pred_target_grid Objects
+##' Plot Method for RiskMap_predict_grid_target Objects
 ##'
 ##' Generates a plot of the predicted values or summaries over the regular spatial grid
-##' from an object of class 'RiskMap_pred_target_grid'.
+##' from an object of class 'RiskMap_predict_grid_target'.
 ##'
-##' @param x An object of class 'RiskMap_pred_target_grid'.
+##' @param x An object of class 'RiskMap_predict_grid_target'.
 ##' @param which_target Character string specifying which target prediction to plot.
 ##' @param which_summary Character string specifying which summary statistic to plot (e.g., "mean", "sd").
 ##' @param ... Additional arguments passed to the \code{\link[terra]{plot}} function of the \code{terra} package.
@@ -740,16 +740,16 @@ pred_target_grid <- function(object,
 ##' This function requires the 'terra' package for spatial data manipulation and plotting.
 ##' It plots the values or summaries over a regular spatial grid, allowing for visual examination of spatial patterns.
 ##'
-##' @seealso \code{\link{pred_target_grid}}
+##' @seealso \code{\link{predict_grid_target}}
 ##'
 ##' @importFrom terra as.data.frame rast plot
-##' @method plot RiskMap_pred_target_grid
+##' @method plot RiskMap_predict_grid_target
 ##' @export
 ##'
 ##'
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
+plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
   t_data.frame <-
     terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
                                x$target[[which_target]][[which_summary]]),
@@ -809,7 +809,7 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##'   \item \code{f_target}, \code{pd_summary}, \code{grid_pred}: inputs echoed for reproducibility.
 ##' }
 ##'
-##' @seealso \code{\link{setup_prediction}}, \code{\link{pred_target_grid}}
+##' @seealso \code{\link{setup_prediction}}, \code{\link{predict_grid_target}}
 ##'
 ##' @importFrom terra rast as.data.frame
 ##' @export
@@ -1734,7 +1734,7 @@ assess_prediction <- function(object,
         messages        = FALSE
       )
 
-      pred_lp  <- pred_target_grid(
+      pred_lp  <- predict_grid_target(
         pred_S,
         include_nugget     = is.null(refit_i$fix_tau2) || refit_i$fix_tau2 != 0,
         include_cov_offset = !all(refit_i$cov_offset == 0)
