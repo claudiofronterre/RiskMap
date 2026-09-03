@@ -1849,6 +1849,8 @@ maxim.integrand <- function(
 ##'   If \code{NULL}, it is obtained internally at the current mode.
 ##' @param mean_pd Optional mean vector used in the Laplace approximation.
 ##'   If \code{NULL}, it is obtained internally as the mode of the integrand.
+##' @param seed Integer. Passed to `set.seed` to control random number generation for
+##' generating chains. Defaults to `12345`.
 ##' @param messages Logical; if \code{TRUE}, prints progress and acceptance diagnostics.
 ##'
 ##' @details
@@ -1886,15 +1888,33 @@ maxim.integrand <- function(
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
-                                  ID_coords, ID_re = NULL,
+Laplace_sampling_MCMC <- function(y,
+                                  units_m,
+                                  mu,
+                                  Sigma,
+                                  ID_coords,
+                                  ID_re = NULL,
                                   sigma2_re = NULL,
-                                  family, control_mcmc,
+                                  family,
+                                  control_mcmc,
                                   invlink = NULL,
-                                  Sigma_pd = NULL, mean_pd = NULL,
-                                  messages = TRUE) {
+                                  Sigma_pd = NULL,
+                                  mean_pd = NULL,
+                                  seed = 12345,
+                                  messages = TRUE
+                                  ){
 
   stopifnot(family %in% c("poisson", "binomial"))
+
+  # set seed and reset on exit
+  check_positive_integer(seed, "seed")
+  if (exists(".Random.seed", envir = .GlobalEnv)) {
+    old_seed <- get(".Random.seed", envir = .GlobalEnv)
+    on.exit(assign(".Random.seed", old_seed, envir = .GlobalEnv), add = TRUE)
+  } else {
+    on.exit(rm(".Random.seed", envir = .GlobalEnv), add = TRUE)
+  }
+  set.seed(seed)
 
   # ---------- utilities ----------
   check_vec_fun <- function(f, n, name) {

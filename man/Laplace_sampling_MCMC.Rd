@@ -17,6 +17,7 @@ Laplace_sampling_MCMC(
   invlink = NULL,
   Sigma_pd = NULL,
   mean_pd = NULL,
+  seed = 12345,
   messages = TRUE
 )
 }
@@ -65,6 +66,9 @@ If \code{NULL}, it is obtained internally at the current mode.}
 
 \item{mean_pd}{Optional mean vector used in the Laplace approximation.
 If \code{NULL}, it is obtained internally as the mode of the integrand.}
+
+\item{seed}{Integer. Passed to \code{set.seed} to control random number generation for
+generating chains. Defaults to \code{12345}.}
 
 \item{messages}{Logical; if \code{TRUE}, prints progress and acceptance diagnostics.}
 }
