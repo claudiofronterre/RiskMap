@@ -1849,8 +1849,6 @@ maxim_integrand <- function(
 ##'   If \code{NULL}, it is obtained internally at the current mode.
 ##' @param mean_pd Optional mean vector used in the Laplace approximation.
 ##'   If \code{NULL}, it is obtained internally as the mode of the integrand.
-##' @param seed Integer. Passed to `set.seed` to control random number generation for
-##' generating chains. Defaults to `12345`.
 ##' @param messages Logical; if \code{TRUE}, prints progress and acceptance diagnostics.
 ##'
 ##' @details
@@ -1900,21 +1898,19 @@ laplace_sampling_mcmc <- function(y,
                                   invlink = NULL,
                                   Sigma_pd = NULL,
                                   mean_pd = NULL,
-                                  seed = 12345,
                                   messages = TRUE
                                   ){
 
   stopifnot(family %in% c("poisson", "binomial"))
 
   # set seed and reset on exit
-  check_positive_integer(seed, "seed")
   if (exists(".Random.seed", envir = .GlobalEnv)) {
     old_seed <- get(".Random.seed", envir = .GlobalEnv)
     on.exit(assign(".Random.seed", old_seed, envir = .GlobalEnv), add = TRUE)
   } else {
     on.exit(rm(".Random.seed", envir = .GlobalEnv), add = TRUE)
   }
-  set.seed(seed)
+  set.seed(control_mcmc$seed)
 
   # ---------- utilities ----------
   check_vec_fun <- function(f, n, name) {
@@ -2183,6 +2179,8 @@ laplace_sampling_mcmc <- function(y,
 ##' @param h Numeric. An optional parameter for Langevin MCMC. Must be non-negative if specified.
 ##' @param c1.h Numeric. A control parameter for Langevin MCMC. Must be positive. Default is 0.01.
 ##' @param c2.h Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.
+##' @param seed Integer. Passed to `set.seed` to control random number generation for
+##' generating chains. Defaults to `12345`.
 ##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
 ##'
 ##' @details
@@ -2211,7 +2209,10 @@ set_control_mcmc <- function(n_sim = 12000,
                             h = NULL,
                             c1.h = 0.01,
                             c2.h = 1e-04,
+                            seed = 12345,
                             linear_model = FALSE){
+
+  check_positive_integer(seed, "seed")
 
   # =============================================================================
   # LINEAR MODEL (simple case for both samplers)
@@ -2262,6 +2263,7 @@ set_control_mcmc <- function(n_sim = 12000,
     h = h,
     c1.h = c1.h,
     c2.h = c2.h,
+    seed = seed,
     linear_model = FALSE
   )
 
