@@ -24,11 +24,11 @@ If not provided, the predictions will be generated at the geometries provided wh
 \item{predictors}{Optional dataframe or list of dataframes containing predictor variables at prediction locations.
 Must be provided if you specify \code{grid_pred}.}
 
-\item{re_predictors}{Optional dataframe or list of dataframes containing random effect predictors.
-Must be provided if you specify \code{grid_pred} and the model includes random effects.}
+\item{re_predictors}{Optional dataframe containing random effect predictors.
+Not supported if \code{grid_pred} is a list.}
 
-\item{pred_cov_offset}{Optional numeric vector or list of numeric vectors containing covariate offsets at prediction locations.
-Must be provided if there is an offset included in the model.}
+\item{pred_cov_offset}{Optional numeric vector containing covariate offsets at prediction locations.
+Must be provided if there is an offset included in the model and not supported if \code{grid_pred} is a list.}
 
 \item{control_sim}{Control parameters from \code{\link{set_control_sim}}.}
 

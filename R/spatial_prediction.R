@@ -6,10 +6,10 @@
 ##' If not provided, the predictions will be generated at the geometries provided when fitting the model.
 ##' @param predictors Optional dataframe or list of dataframes containing predictor variables at prediction locations.
 ##' Must be provided if you specify `grid_pred`.
-##' @param re_predictors Optional dataframe or list of dataframes containing random effect predictors.
-##' Must be provided if you specify `grid_pred` and the model includes random effects.
-##' @param pred_cov_offset Optional numeric vector or list of numeric vectors containing covariate offsets at prediction locations.
-##' Must be provided if there is an offset included in the model.
+##' @param re_predictors Optional dataframe containing random effect predictors.
+##' Not supported if `grid_pred` is a list.
+##' @param pred_cov_offset Optional numeric vector containing covariate offsets at prediction locations.
+##' Must be provided if there is an offset included in the model and not supported if `grid_pred` is a list.
 ##' @param control_sim Control parameters from \code{\link{set_control_sim}}.
 ##' @param type Whether the predictions are `marginal` or `joint`. `marginal` predictions are less
 ##' computationally expensive than `joint` predictions but cannot be used to predict areal targets.
@@ -74,7 +74,8 @@ pred_over_grid <- function(object,
 
   obs_loc <- is.null(grid_pred)
   if (obs_loc) {
-    if (!is.null(predictors)) warning("You have set 'predictors' but not 'grid_pred' so 'predictors' will be ignored")
+    if (!is.null(predictors))
+      warning("You have set 'predictors' but not 'grid_pred' so 'predictors' will be ignored")
     predictors <- as.data.frame(st_drop_geometry(object$data_sf))
     grid_pred  <- st_as_sfc(object$data_sf)
   } else {
@@ -100,6 +101,8 @@ pred_over_grid <- function(object,
     if (obs_loc){
       pred_cov_offset <- object$cov_offset
     } else {
+      if (list_mode)
+        stop("Predictions including covariate offsets are not yet supported when 'pred_grid' is a list")
       if (is.null(pred_cov_offset))
         stop("'pred_cov_offset' must be specified at each prediction location")
       if (!inherits(pred_cov_offset, "numeric"))
@@ -127,6 +130,10 @@ pred_over_grid <- function(object,
   n_re <- length(object$re)
   if (n_re > 0 && type == "marginal" && !is.null(re_predictors))
     stop("Random effect predictions require 'type' to be set to 'joint'")
+
+  if (!is.null(re_predictors) && list_mode)
+    stop("Prediction of random effects with a list of prediction grids ('grid_pred') is ",
+         "not yet supported - supply a single 'grid_pred' or omit 're_predictors'")
 
   # ---------------------------------------------------------------------------
   # Build mu_pred (fixed-effects linear predictor at prediction locations)
@@ -350,32 +357,58 @@ pred_over_grid <- function(object,
       Sigma_star_inv <- forceSymmetric(Matrix::solve(Sigma_star))
       B    <- -C_g %*% Sigma_star_inv %*% Matrix::t(C_g) / (par_hat$sigma2_me^2)
       diag(B) <- Matrix::diag(B) + 1 / par_hat$sigma2_me
-      A    <- C %*% B
+
+
+      A <- if (list_mode) lapply(C, function(single_grid_C) single_grid_C %*% B) else C %*% B
     } else {
       Sigma     <- par_hat$sigma2 * R
       Sigma_inv <- solve(Sigma)
-      A         <- C %*% Sigma_inv
+      A <- if (list_mode) lapply(C, function(single_grid_C) single_grid_C %*% Sigma_inv) else C %*% Sigma_inv
     }
 
-    mu_cond_S <- as.numeric(A %*% diff.y)
+    mu_cond_S <- if (list_mode) {
+      lapply(A, function(single_grid_A) as.numeric(single_grid_A %*% diff.y))
+    } else {
+      as.numeric(A %*% diff.y)
+    }
 
     if (type == "marginal") {
-      sd_cond_S <- sqrt(par_hat$sigma2 - Matrix::diag(A %*% t(C)))
-      out$S_samples <- sapply(seq_len(n_samples), function(i)
-        mu_cond_S + sd_cond_S * rnorm(n_pred))
+      if (list_mode) {
+        out$S_samples <- lapply(seq_along(A), function(i) {
+          sd_cond_S_i <- sqrt(par_hat$sigma2 - Matrix::diag(A[[i]] %*% t(C[[i]])))
+          sapply(seq_len(n_samples), function(j)
+            mu_cond_S[[i]] + sd_cond_S_i * rnorm(n_pred[i]))
+        })
+      } else {
+        sd_cond_S <- sqrt(par_hat$sigma2 - Matrix::diag(A %*% t(C)))
+        out$S_samples <- sapply(seq_len(n_samples), function(i)
+          mu_cond_S + sd_cond_S * rnorm(n_pred))
+      }
     } else {
-      Sp  <- par_hat$sigma2 * matern_cor(dist(grp), phi = par_hat$phi,
-                                         kappa = object$kappa, return_sym_matrix = TRUE)
-      Sc  <- Sp - A %*% t(C)
-      Scr <- t(chol(Sc))
-      out$S_samples <- sapply(seq_len(n_samples), function(i)
-        mu_cond_S + Scr %*% rnorm(n_pred))
+      if (list_mode) {
+        out$S_samples <- lapply(seq_along(A), function(i) {
+          spatial_covariance_i <- par_hat$sigma2 * matern_cor(dist(grp[[i]]), phi = par_hat$phi,
+                                                              kappa = object$kappa, return_sym_matrix = TRUE)
+          conditional_covariance_i <- spatial_covariance_i - A[[i]] %*% t(C[[i]])
+          cholesky_root_i <- t(chol(conditional_covariance_i))
+          sapply(seq_len(n_samples), function(j)
+            mu_cond_S[[i]] + cholesky_root_i %*% rnorm(n_pred[i]))
+        })
+      } else {
+        Sp  <- par_hat$sigma2 * matern_cor(dist(grp), phi = par_hat$phi,
+                                           kappa = object$kappa, return_sym_matrix = TRUE)
+        Sc  <- Sp - A %*% t(C)
+        Scr <- t(chol(Sc))
+        out$S_samples <- sapply(seq_len(n_samples), function(i)
+          mu_cond_S + Scr %*% rnorm(n_pred))
+      }
     }
   }
 
   # ---------------------------------------------------------------------------
   # Random effect posterior samples (unchanged from original)
   # ---------------------------------------------------------------------------
+
   if (n_re > 0 && !is.null(re_predictors)) {
     out$re          <- list()
     out$re$D_pred   <- D_re_pred
