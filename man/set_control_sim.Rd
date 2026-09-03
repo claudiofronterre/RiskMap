@@ -30,7 +30,7 @@ set_control_sim(
 \item{linear_model}{Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.}
 }
 \value{
-A list of control parameters with class "RiskMap_mcmc". Contents depend on \code{sampler}:
+A list of control parameters with class "RiskMap_control_mcmc". Contents depend on \code{sampler}:
 \itemize{
 \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
 }

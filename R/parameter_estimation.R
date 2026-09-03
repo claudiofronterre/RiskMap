@@ -17,7 +17,7 @@
 ##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates to.
 ##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to `TRUE`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
-##' Must be an object of class `RiskMap_mcmc` as returned by `[set_control_sim()]`.
+##' Must be an object of class `RiskMap_control_mcmc` as returned by `[set_control_sim()]`.
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 ##' Defaults to `FALSE`.
@@ -165,7 +165,7 @@ glgpm <- function(formula,
     }
     if(is.integer(units_m)) units_m <- as.numeric(units_m)
     if(!is.numeric(units_m)) stop("the variable passed to 'den' must be numeric")
-    if(!inherits(control_mcmc, "RiskMap_mcmc")){
+    if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
       stop("the argument passed to 'control_mcmc' must be an output
            from the function set_control_sim; see ?set_control_sim for more details")
     }
@@ -2168,7 +2168,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 ##' @details
 ##' If \code{linear_model = TRUE}, only \code{n_sim} is required
 ##'
-##' @return A list of control parameters with class "RiskMap_mcmc". Contents depend on \code{sampler}:
+##' @return A list of control parameters with class "RiskMap_control_mcmc". Contents depend on \code{sampler}:
 ##' \itemize{
 ##'   \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
 ##' }
@@ -2202,7 +2202,7 @@ set_control_sim <- function(n_sim = 12000,
       n_sim = n_sim,
       linear_model = linear_model
     )
-    class(res) <- "RiskMap_mcmc"
+    class(res) <- "RiskMap_control_mcmc"
     return(res)
   }
 
@@ -2245,7 +2245,7 @@ set_control_sim <- function(n_sim = 12000,
     linear_model = FALSE
   )
 
-  class(res) <- "RiskMap_mcmc"
+  class(res) <- "RiskMap_control_mcmc"
   return(res)
 }
 

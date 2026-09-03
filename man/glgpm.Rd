@@ -44,7 +44,7 @@ If not provided, defaults to \code{1} for binomial models.}
 \item{scale_to_km}{Logical indicating whether to scale coordinates to kilometers. Defaults to \code{TRUE}.}
 
 \item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
-Must be an object of class \code{RiskMap_mcmc} as returned by \verb{[set_control_sim()]}.}
+Must be an object of class \code{RiskMap_control_mcmc} as returned by \verb{[set_control_sim()]}.}
 
 \item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
 

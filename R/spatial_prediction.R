@@ -63,7 +63,7 @@ pred_over_grid <- function(object,
       check_data(grid_pred, type = "sfc")
   }
 
-  if (!inherits(control_sim, "RiskMap_mcmc"))
+  if (!inherits(control_sim, "RiskMap_control_mcmc"))
     stop("'control_sim' must be an output from 'set_control_sim()'")
 
   if (!type %in% c("marginal", "joint"))
@@ -1490,7 +1490,7 @@ assess_pp <- function(object,
       stop("for 'cluster', supply `fold`")
   }
 
-  if (!inherits(control_sim, "RiskMap_mcmc"))
+  if (!inherits(control_sim, "RiskMap_control_mcmc"))
     stop("`control_sim` must come from `set_control_sim()`")
 
   get_CRPS  <- "CRPS"  %in% which_metric
