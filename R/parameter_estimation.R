@@ -2805,7 +2805,7 @@ glgpm_nong <-
 ##' @importFrom sns ess
 ##' @importFrom graphics par
 ##' @export
-check_mcmc <- function(object, check_mean = TRUE,
+plot_mcmc <- function(object, check_mean = TRUE,
                        component = NULL, ...) {
   if(!inherits(object, "RiskMap") &
      !inherits(object, "RiskMap_pred")) {
