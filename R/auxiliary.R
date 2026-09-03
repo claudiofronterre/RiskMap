@@ -895,10 +895,10 @@ compute_ID_coords <- function(data_sf) {
 ##' @title Summarize Cross-Validation Scores for Spatial RiskMap Models
 ##'
 ##' @description This function summarizes cross-validation scores for different spatial models obtained
-##' from \code{\link{assess_pp}}.
+##' from \code{\link{assess_prediction}}.
 ##'
 ##' @param object A `RiskMap.spatial.cv` object containing cross-validation scores for each
-##'               model, as obtained from \code{\link{assess_pp}}.
+##'               model, as obtained from \code{\link{assess_prediction}}.
 ##' @param view_all Logical. If `TRUE`, stores the average scores across test sets for each
 ##'                 model alongside the overall average across all models. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to or from other methods.
@@ -916,7 +916,7 @@ compute_ID_coords <- function(data_sf) {
 ##' @return A matrix of summary scores with models as rows and metrics as columns, with class
 ##' `"summary.RiskMap.spatial.cv"`.
 ##'
-##' @seealso \code{\link{assess_pp}}
+##' @seealso \code{\link{assess_prediction}}
 ##'
 ##' @export
 ##' @method summary RiskMap.spatial.cv
@@ -926,7 +926,7 @@ summary.RiskMap.spatial.cv <- function(object, view_all = TRUE, ...) {
   n_models <- length(model_names)
 
   metric_names <- names(object$model[[1]]$score)
-  if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_pp'")
+  if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_prediction'")
   n_metrics <- length(metric_names)
 
   res <- matrix(NA, ncol = n_metrics, nrow = n_models)
@@ -1024,7 +1024,7 @@ print.summary.RiskMap.spatial.cv <- function(x, ...) {
 ##'
 ##' @description
 ##' Produce calibration plots from a \code{RiskMap.spatial.cv} object returned by
-##' \code{\link{assess_pp}}.
+##' \code{\link{assess_prediction}}.
 ##' * For Binomial or Poisson models the function visualises the
 ##'   \emph{Aggregated normalised Probability Integral Transform} (AnPIT)
 ##'   curves stored in \code{$AnPIT}.
@@ -1057,7 +1057,7 @@ plot_AnPIT <- function(object,
                        combine_panels = FALSE) {
 
   if (!inherits(object, "RiskMap.spatial.cv"))
-    stop("`object` must be a 'RiskMap.spatial.cv' produced by assess_pp().")
+    stop("`object` must be a 'RiskMap.spatial.cv' produced by assess_prediction().")
 
   all_models <- names(object$model)
 

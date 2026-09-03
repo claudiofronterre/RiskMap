@@ -1435,7 +1435,7 @@ update_predictors <- function(object, predictors) {
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
 ##' @export
 ##' @author Emanuele Giorgi
-assess_pp <- function(object,
+assess_prediction <- function(object,
                       keep_par_fixed = TRUE,
                       iter = 1,
                       fold = NULL, n_size = NULL,
@@ -1506,11 +1506,11 @@ assess_pp <- function(object,
   for (h in seq_along(object)) {
     fit_data <- object[[h]]$data_sf
     if (nrow(fit_data) != n_obs) {
-      stop("All models supplied to `assess_pp()` must have the same number of observations.")
+      stop("All models supplied to `assess_prediction()` must have the same number of observations.")
     }
     fit_geom <- st_as_text(st_geometry(fit_data))
     if (!identical(fit_geom, data_geom)) {
-      stop("All models supplied to `assess_pp()` must have data in the same row order and geometry.")
+      stop("All models supplied to `assess_prediction()` must have data in the same row order and geometry.")
     }
   }
 
