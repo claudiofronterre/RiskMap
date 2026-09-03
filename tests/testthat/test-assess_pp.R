@@ -36,7 +36,7 @@ test_that("assess_prediction uses each model's own data_sf for held-out predicto
 
   seen_predictors <- list()
   testthat::local_mocked_bindings(
-    pred_over_grid = function(object, grid_pred, predictors, ...) {
+    setup_prediction = function(object, grid_pred, predictors, ...) {
       seen_predictors[[object$model_id]] <<- names(predictors)
       list(predictors = predictors)
     },
@@ -103,7 +103,7 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
   data <- sf::st_sf(y = c(0, 0, 0), x1 = c(10, 20, 30), geometry = geom)
 
   testthat::local_mocked_bindings(
-    pred_over_grid = function(object, grid_pred, predictors, ...) {
+    setup_prediction = function(object, grid_pred, predictors, ...) {
       list(predictors = predictors)
     },
     pred_target_grid = function(object, ...) {

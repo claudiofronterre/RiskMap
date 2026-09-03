@@ -32,7 +32,7 @@
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix solve
 ##' @export
-pred_over_grid <- function(object,
+setup_prediction <- function(object,
                            grid_pred = NULL,
                            predictors = NULL,
                            re_predictors = NULL,
@@ -479,9 +479,9 @@ pred_over_grid <- function(object,
 ##' @title Predictive Target Over a Regular Spatial Grid
 ##'
 ##' @description Computes predictions over a regular spatial grid using outputs from
-##' \code{\link{pred_over_grid}}. Custom targets can be supplied via \code{f_target}.
+##' \code{\link{setup_prediction}}. Custom targets can be supplied via \code{f_target}.
 ##'
-##' @param object Output from \code{\link{pred_over_grid}}, a
+##' @param object Output from \code{\link{setup_prediction}}, a
 ##'   \code{RiskMap_pred} object.
 ##' @param include_covariates Logical. Include covariate effects in the linear
 ##'   predictor. Default \code{TRUE}.
@@ -508,7 +508,7 @@ pred_over_grid <- function(object,
 ##'   \item{family}{The model family}
 ##'   \item{lp_samples}{placeholder}
 ##' }
-##' @seealso \code{\link{pred_over_grid}}
+##' @seealso \code{\link{setup_prediction}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix solve
@@ -522,7 +522,7 @@ pred_target_grid <- function(object,
                              pd_summary          = NULL) {
 
   if (!inherits(object, "RiskMap_pred"))
-    stop("'object' must be an output of pred_over_grid()")
+    stop("'object' must be an output of setup_prediction()")
 
   # ---------------------------------------------------------------------------
   # list-mode detection
@@ -580,10 +580,10 @@ pred_target_grid <- function(object,
   # Covariate / offset checks
   # ---------------------------------------------------------------------------
   if (length(object$mu_pred) == 1 && object$mu_pred == 0 && include_covariates)
-    stop("Covariates were not provided in pred_over_grid(); rerun with 'predictors'")
+    stop("Covariates were not provided in setup_prediction(); rerun with 'predictors'")
 
   if (n_re == 0 && include_re)
-    stop("Random effect categories not provided; rerun pred_over_grid() with 're_predictors'")
+    stop("Random effect categories not provided; rerun setup_prediction() with 're_predictors'")
 
   if (list_mode) {
     mu_target  <- if (include_covariates) object$mu_pred  else lapply(n_pred, function(n) rep(0, n))
@@ -763,10 +763,10 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##'
 ##' @description
 ##' Computes predictive targets over polygon features using joint prediction
-##' samples from \code{\link{pred_over_grid}}. Targets can incorporate
+##' samples from \code{\link{setup_prediction}}. Targets can incorporate
 ##' covariates, offsets, optional unstructured random effects.
 ##'
-##' @param object Output from \code{\link{pred_over_grid}} (class \code{RiskMap_pred}),
+##' @param object Output from \code{\link{setup_prediction}} (class \code{RiskMap_pred}),
 ##'   typically fitted with \code{type = "joint"} so that linear predictor samples are available.
 ##' @param shp An \pkg{sf} polygon object representing regions over which predictions are aggregated.
 ##' @param shp_target A function that aggregates grid-cell values within each polygon to a
@@ -809,7 +809,7 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##'   \item \code{f_target}, \code{pd_summary}, \code{grid_pred}: inputs echoed for reproducibility.
 ##' }
 ##'
-##' @seealso \code{\link{pred_over_grid}}, \code{\link{pred_target_grid}}
+##' @seealso \code{\link{setup_prediction}}, \code{\link{pred_target_grid}}
 ##'
 ##' @importFrom terra rast as.data.frame
 ##' @export
@@ -831,12 +831,12 @@ pred_target_shp <- function(object,
 
   if(!inherits(object, what = "RiskMap_pred", which = FALSE)) {
     stop("The object passed to 'object' must be an output of
-         the function 'pred_over_grid'")
+         the function 'setup_prediction'")
   }
 
   if(object$type != "joint") {
     stop("To run predictions with a shape file, joint predictions must be used;
-         rerun 'pred_over_grid' and set 'type' = \"joint\"")
+         rerun 'setup_prediction' and set 'type' = \"joint\"")
   }
 
   check_data(shp, "polygon")
@@ -849,18 +849,18 @@ pred_target_shp <- function(object,
 
     if (!is.null(weights)) {
       if (!is.list(weights)) {
-        stop("When 'grid_pred' passed to 'pred_over_grid' is a list, 'weights' must also be a list,
+        stop("When 'grid_pred' passed to 'setup_prediction' is a list, 'weights' must also be a list,
              with one numeric vector per element of 'object$grid_pred'")
       }
       if (length(weights) != length(object$grid_pred)) {
-        stop("Length of 'weights' must match length of 'grid_pred' passed to 'pred_over_grid'")
+        stop("Length of 'weights' must match length of 'grid_pred' passed to 'setup_prediction'")
       }
       for (i in seq_along(weights)) {
         if (!is.numeric(weights[[i]])) {
           stop(sprintf("'weights[[%d]]' must be numeric", i))
         }
         if (length(weights[[i]]) != n_pred[i]) {
-          stop(sprintf("Length of 'weights[[%d]]' (%d) must equal number of locations in 'grid_pred[[%d]]' passed to 'pred_over_grid' (%d).",
+          stop(sprintf("Length of 'weights[[%d]]' (%d) must equal number of locations in 'grid_pred[[%d]]' passed to 'setup_prediction' (%d).",
                        i, length(weights[[i]]), i, n_pred[i]))
         }
         if (anyNA(weights[[i]])) {
@@ -883,7 +883,7 @@ pred_target_shp <- function(object,
 
   if(n_re == 0 && include_re) {
     stop("The categories of the random effects variables have not been provided;
-         re-run 'pred_over_grid' and provide the covariates through the argument 're_predictors'")
+         re-run 'setup_prediction' and provide the covariates through the argument 're_predictors'")
   }
 
   if(!is.null(weights)) {
@@ -919,17 +919,17 @@ pred_target_shp <- function(object,
   }
 
   if(!list_mode && (length(object$mu_pred) == 1 && object$mu_pred == 0 && include_covariates)) {
-    stop("Covariates have not been provided; re-run pred_over_grid
+    stop("Covariates have not been provided; re-run setup_prediction
          and provide the covariates through the argument 'predictors'")
   }
 
   if(!include_covariates) {
     mu_target <- 0
   } else {
-    if(is.null(object$mu_pred)) stop("the output obtained from 'pred_over_grid' does not
+    if(is.null(object$mu_pred)) stop("the output obtained from 'setup_prediction' does not
                                      contain any covariates; if including covariates
                                      in the predictive target these should be included
-                                     when running 'pred_over_grid'")
+                                     when running 'setup_prediction'")
     mu_target <- object$mu_pred
   }
 
@@ -1213,7 +1213,7 @@ plot.RiskMap_pred_target_shp <- function(x, which_target = "linear_target",
 ##' @description
 ##' This function updates the predictors of a given RiskMap prediction object. It ensures that the new predictors match the original prediction grid and updates the relevant components of the object accordingly.
 ##'
-##' @param object A `RiskMap_pred` object, which is the output of the \code{\link{pred_over_grid}} function.
+##' @param object A `RiskMap_pred` object, which is the output of the \code{\link{setup_prediction}} function.
 ##' @param predictors A data frame containing the new predictor values. The number of rows must match the prediction grid in the `object`.
 ##'
 ##' @details
@@ -1231,7 +1231,7 @@ plot.RiskMap_pred_target_shp <- function(x, which_target = "linear_target",
 ##' @export
 update_predictors <- function(object, predictors) {
   if (!inherits(object, what = "RiskMap_pred", which = FALSE)) {
-    stop("The object passed to 'object' must be an output of the function 'pred_over_grid'")
+    stop("The object passed to 'object' must be an output of the function 'setup_prediction'")
   }
 
   list_mode <- is.list(object$grid_pred) && !is.null(object$grid_pred) &
@@ -1724,7 +1724,7 @@ assess_prediction <- function(object,
       if (messages) message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
 
       ## ----- prediction over test set -----
-      pred_S <- pred_over_grid(
+      pred_S <- setup_prediction(
         object          = refit_i,
         grid_pred       = st_as_sfc(data_test_i),
         control_sim     = control_sim,
@@ -2216,7 +2216,7 @@ assess_simulation <- function(obj_sim,
 
       if(messages) message("Prediction over the grid")
       preds[[paste(model_names[i])]][[j]] <-
-        pred_over_grid(fits[[paste(model_names[i])]][[j]],
+        setup_prediction(fits[[paste(model_names[i])]][[j]],
                        grid_pred = st_as_sfc(obj_sim$lp_grid_sim),
                        predictors = predictors_i,
                        type = type, messages = FALSE)
@@ -2297,7 +2297,7 @@ assess_simulation <- function(obj_sim,
       obj_pred_ij <- preds[[paste(model_names[i])]][[j]]
       if(length(obj_pred_ij$mu_pred)==1 && obj_pred_ij$mu_pred==0 &&
          include_covariates) {
-        stop("Covariates have not been provided; re-run pred_over_grid
+        stop("Covariates have not been provided; re-run setup_prediction
          and provide the covariates through the argument 'predictors'")
       }
 
@@ -2306,10 +2306,10 @@ assess_simulation <- function(obj_sim,
         mu_target <- 0
       } else {
 
-        if(is.null(obj_pred_ij$mu_pred)) stop("the output obtained from 'pred_over_grid' does not
+        if(is.null(obj_pred_ij$mu_pred)) stop("the output obtained from 'setup_prediction' does not
                                      contain any covariates; if including covariates
                                      in the predictive target these should be included
-                                     when running 'pred_over_grid'")
+                                     when running 'setup_prediction'")
         mu_target <- obj_pred_ij$mu_pred
       }
 

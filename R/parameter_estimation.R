@@ -2777,7 +2777,7 @@ glgpm_nong <-
 ##'
 ##' @param object An object of class \code{RiskMap} or \code{RiskMap_pred}.
 ##'  \code{RiskMap} is the output from \code{\link{glgpm}} function, and
-##'  \code{RiskMap_pred} is obtained from the \code{\link{pred_over_grid}} function.
+##'  \code{RiskMap_pred} is obtained from the \code{\link{setup_prediction}} function.
 ##' @param check_mean Logical. If \code{TRUE}, checks the MCMC chain for the mean of the spatial random effects.
 ##'  If \code{FALSE}, checks the chain for a specific component of the random effects vector.
 ##' @param component Integer. The index of the spatial random effects component to check when \code{check_mean = FALSE}.
@@ -2811,7 +2811,7 @@ plot_mcmc <- function(object, check_mean = TRUE,
      !inherits(object, "RiskMap_pred")) {
     stop("'object' must be either:
            a 'RiskMap' object obtained as an output from 'glgpm';
-           a 'RiskMap_pred' object obtained as an output from 'pred_over_grid'")
+           a 'RiskMap_pred' object obtained as an output from 'setup_prediction'")
   }
 
   if (object$family == "gaussian")

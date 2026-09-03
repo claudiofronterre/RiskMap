@@ -2,10 +2,10 @@ test_that("pred_target_shp produces expected output with default arguments", {
 
   expected_output <- c("lp_samples", "target", "shp", "f_target", "pd_summary", "grid_pred")
 
-  gaussian_grid <- pred_over_grid(gaussian_model, type = "joint")
-  gaussian_offset_grid <- pred_over_grid(gaussian_offset_model, type = "joint")
-  binomial_grid <- pred_over_grid(binomial_model, control_sim = control_mcmc, type = "joint")
-  poisson_grid <- pred_over_grid(poisson_model, control_sim = control_mcmc, type = "joint")
+  gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
+  gaussian_offset_grid <- setup_prediction(gaussian_offset_model, type = "joint")
+  binomial_grid <- setup_prediction(binomial_model, control_sim = control_mcmc, type = "joint")
+  poisson_grid <- setup_prediction(poisson_model, control_sim = control_mcmc, type = "joint")
 
   result <- pred_target_shp(gaussian_grid, areal)
   expect_setequal(names(result), expected_output)

@@ -2,10 +2,10 @@ test_that("pred_target_grid produces expected output with default arguments", {
 
   expected_output <- c("target", "grid_pred", "f_target", "pd_summary", "family", "lp_samples")
 
-  gaussian_grid <- pred_over_grid(gaussian_model)
-  gaussian_offset_grid <- pred_over_grid(gaussian_offset_model)
-  binomial_grid <- pred_over_grid(binomial_model, control_sim = control_mcmc)
-  poisson_grid <- pred_over_grid(poisson_model, control_sim = control_mcmc)
+  gaussian_grid <- setup_prediction(gaussian_model)
+  gaussian_offset_grid <- setup_prediction(gaussian_offset_model)
+  binomial_grid <- setup_prediction(binomial_model, control_sim = control_mcmc)
+  poisson_grid <- setup_prediction(poisson_model, control_sim = control_mcmc)
 
   result <- pred_target_grid(gaussian_grid)
   expect_setequal(names(result), expected_output)
@@ -25,20 +25,20 @@ test_that("pred_target_grid produces expected output when grid is provided", {
 
   expected_output <- c("target", "grid_pred", "f_target", "pd_summary", "family", "lp_samples")
 
-  gaussian_grid <- pred_over_grid(gaussian_model,
+  gaussian_grid <- setup_prediction(gaussian_model,
                                   grid_pred = grid,
                                   predictors = data.frame(cov = rnorm(length(grid))),
                                   re_predictors = data.frame(i = 1:5),
                                   type = "joint")
 
-  binomial_grid <- pred_over_grid(binomial_model,
+  binomial_grid <- setup_prediction(binomial_model,
                                   grid_pred = grid,
                                   predictors = data.frame(cov = rnorm(length(grid))),
                                   re_predictors = data.frame(i = 1:5),
                                   control_sim = control_mcmc,
                                   type = "joint")
 
-  poisson_grid <- pred_over_grid(poisson_model,
+  poisson_grid <- setup_prediction(poisson_model,
                                  grid_pred = grid,
                                  predictors = data.frame(cov = rnorm(length(grid))),
                                  re_predictors = data.frame(i = 1:5),
@@ -61,20 +61,20 @@ test_that("pred_target_grid produces expected output when in list mode", {
 
   expected_output <- c("target", "grid_pred", "f_target", "pd_summary", "family", "lp_samples")
 
-  gaussian_grid <- pred_over_grid(gaussian_model,
+  gaussian_grid <- setup_prediction(gaussian_model,
                                   grid_pred = list(grid, grid),
                                   predictors = list(data.frame(cov = rnorm(length(grid))),
                                                     data.frame(cov = rnorm(length(grid)))),
                                   type = "joint")
 
-  binomial_grid <- pred_over_grid(binomial_model,
+  binomial_grid <- setup_prediction(binomial_model,
                                   grid_pred = list(grid, grid),
                                   predictors = list(data.frame(cov = rnorm(length(grid))),
                                                     data.frame(cov = rnorm(length(grid)))),
                                   control_sim = control_mcmc,
                                   type = "joint")
 
-  poisson_grid <- pred_over_grid(poisson_model,
+  poisson_grid <- setup_prediction(poisson_model,
                                  grid_pred = list(grid, grid),
                                  predictors = list(data.frame(cov = rnorm(length(grid))),
                                                    data.frame(cov = rnorm(length(grid)))),
