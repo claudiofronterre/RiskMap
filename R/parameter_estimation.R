@@ -1545,7 +1545,7 @@ simulate_glgpm <- function(n_sim,
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-maxim.integrand <- function(
+maxim_integrand <- function(
     y, units_m, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
 ) {
@@ -1857,7 +1857,7 @@ maxim.integrand <- function(
 ##' The algorithm alternates between:
 ##' \enumerate{
 ##'   \item Locating the mode of the joint integrand for the latent variables
-##'         (via \code{maxim.integrand}) when \code{Sigma_pd} and \code{mean_pd}
+##'         (via \code{maxim_integrand}) when \code{Sigma_pd} and \code{mean_pd}
 ##'         are not provided, yielding a Gaussian approximation.
 ##'   \item Metropolis–Hastings updates using a Gaussian proposal centered at
 ##'         the current approximate mean with proposal variance governed by \code{h}.
@@ -1883,7 +1883,7 @@ maxim.integrand <- function(
 ##' The default inverse links are: identity (gaussian), logistic (binomial),
 ##' and exponential (poisson). Supply \code{invlink} to override.
 ##'
-##' @seealso \code{\link{maxim.integrand}}
+##' @seealso \code{\link{maxim_integrand}}
 ##'
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
@@ -2014,7 +2014,7 @@ laplace_sampling_mcmc <- function(y,
 
   # ---------- default Laplace proposal if missing ----------
   if (is.null(Sigma_pd) || is.null(mean_pd)) {
-    out_maxim <- maxim.integrand(y = y, units_m = units_m, Sigma = Sigma, mu = mu,
+    out_maxim <- maxim_integrand(y = y, units_m = units_m, Sigma = Sigma, mu = mu,
                                  ID_coords = ID_coords, ID_re = ID_re,
                                  sigma2_re = sigma2_re,
                                  family = family, invlink = invlink,
@@ -2373,7 +2373,7 @@ glgpm_nong <-
     diag(Sigma0) <- diag(Sigma0) + tau2_0
 
     if (messages) message("\n - Obtaining proposal mean/covariance via Laplace\n")
-    out_maxim <- maxim.integrand(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
+    out_maxim <- maxim_integrand(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
                                  ID_coords = ID_coords, ID_re = ID_re,
                                  sigma2_re = sigma2_re_0,
                                  family = family, invlink = invlink)
