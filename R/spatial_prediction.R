@@ -277,7 +277,7 @@ pred_over_grid <- function(object,
       else C %*% Sigma_inv
     }
 
-    simulation <- Laplace_sampling_MCMC(
+    simulation <- laplace_sampling_mcmc(
       y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
       sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
       ID_coords = object$ID_coords, ID_re = object$ID_re,

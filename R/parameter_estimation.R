@@ -1888,7 +1888,7 @@ maxim.integrand <- function(
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-Laplace_sampling_MCMC <- function(y,
+laplace_sampling_mcmc <- function(y,
                                   units_m,
                                   mu,
                                   Sigma,
@@ -2381,7 +2381,7 @@ glgpm_nong <-
     Sigma_pd <- out_maxim$Sigma.tilde
     mean_pd  <- out_maxim$mode
 
-    simulation <- Laplace_sampling_MCMC(y = y, units_m = units_m, mu = mu0, Sigma = Sigma0,
+    simulation <- laplace_sampling_mcmc(y = y, units_m = units_m, mu = mu0, Sigma = Sigma0,
                                         sigma2_re = sigma2_re_0, invlink = invlink,
                                         ID_coords = ID_coords, ID_re = ID_re,
                                         family = family, control_mcmc = control_mcmc,
