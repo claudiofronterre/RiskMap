@@ -7,46 +7,46 @@ sim_phi <- 1.1
 sim_sigma2_me <- 0.3
 
 
-test_that("glgpm_sim produces errors as expected", {
+test_that("simulate_glgpm produces errors as expected", {
 
- expect_error(glgpm_sim(n_sim = "two",
+ expect_error(simulate_glgpm(n_sim = "two",
                         formula = y ~ gp(nugget = 1),
                         data = gaussian_data,
                         family = "gaussian"),
               "'n_sim' must be a single positive integer")
 
-  expect_error(glgpm_sim(n_sim = -1,
+  expect_error(simulate_glgpm(n_sim = -1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian"),
                "'n_sim' must be a single positive integer")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = "not a formula",
                          data = gaussian_data,
                          family = "gaussian"),
                "'formula' must be a 'formula'")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = "gaussian_data",
                          family = "gaussian"),
                "'data' must be of class 'sf'")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "not_gaussian"),
                "'family' must be either 'gaussian'")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          model_fit = gaussian_model,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian"),
                "if you provide 'model_fit' you should not")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian",
@@ -57,7 +57,7 @@ test_that("glgpm_sim produces errors as expected", {
                                          sigma2_me = sim_sigma2_me)),
                "'beta' is missing")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian",
@@ -67,7 +67,7 @@ test_that("glgpm_sim produces errors as expected", {
                                          sigma2_me = sim_sigma2_me)),
                "'beta' is missing")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian",
@@ -78,7 +78,7 @@ test_that("glgpm_sim produces errors as expected", {
                                          sigma2_me = sim_sigma2_me)),
                "the number of values provided for 'beta'")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian",
@@ -88,7 +88,7 @@ test_that("glgpm_sim produces errors as expected", {
                                          sigma2_me = sim_sigma2_me)),
                "'sigma2' is missing")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian",
@@ -98,7 +98,7 @@ test_that("glgpm_sim produces errors as expected", {
                                          sigma2_me = sim_sigma2_me)),
                "'tau2' is missing")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian",
@@ -108,7 +108,7 @@ test_that("glgpm_sim produces errors as expected", {
                                          sigma2_me = sim_sigma2_me)),
                "'phi' is missing")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian",
@@ -119,7 +119,7 @@ test_that("glgpm_sim produces errors as expected", {
                                          )),
                "'sigma2_me' is missing")
 
-  expect_warning(glgpm_sim(n_sim = 1,
+  expect_warning(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1),
                          data = gaussian_data,
                          family = "gaussian",
@@ -132,7 +132,7 @@ test_that("glgpm_sim produces errors as expected", {
                          )),
                "'sigma2_re' will be ignored")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                            formula = y ~ gp(nugget = 1) + re(i),
                            data = gaussian_data,
                            family = "gaussian",
@@ -144,7 +144,7 @@ test_that("glgpm_sim produces errors as expected", {
                            )),
                  "'sigma2_re' is missing")
 
-  expect_error(glgpm_sim(n_sim = 1,
+  expect_error(simulate_glgpm(n_sim = 1,
                          formula = y ~ gp(nugget = 1) + re(i),
                          data = gaussian_data,
                          family = "gaussian",
@@ -158,10 +158,10 @@ test_that("glgpm_sim produces errors as expected", {
                "the values passed to 'sigma2_re' in 'sim_pars'")
 })
 
-test_that("glgpm_sim produces expected output for gaussian models", {
+test_that("simulate_glgpm produces expected output for gaussian models", {
 
   set.seed(1)
-  result <- glgpm_sim(n_sim = n_sim,
+  result <- simulate_glgpm(n_sim = n_sim,
                       formula = y ~ gp(nugget = 1),
                       data = gaussian_data,
                       family = "gaussian",
@@ -192,7 +192,7 @@ test_that("glgpm_sim produces expected output for gaussian models", {
 
 })
 
-test_that("glgpm_sim produces expected output from a a gaussian model", {
+test_that("simulate_glgpm produces expected output from a a gaussian model", {
 
   model <- glgpm(y ~ cov + gp(),
                  data = gaussian_data,
@@ -200,7 +200,7 @@ test_that("glgpm_sim produces expected output from a a gaussian model", {
                  scale_to_km = FALSE,
                  messages = FALSE)
 
-  result <- glgpm_sim(n_sim = n_sim,
+  result <- simulate_glgpm(n_sim = n_sim,
                       model_fit = model)
 
   expect_setequal(names(result), c("data_sim", "S_sim", "lin_pred_sim", "beta", "sigma2", "tau2", "phi", "sigma2_me"))

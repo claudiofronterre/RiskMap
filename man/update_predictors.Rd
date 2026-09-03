@@ -7,7 +7,7 @@
 update_predictors(object, predictors)
 }
 \arguments{
-\item{object}{A \code{RiskMap_pred} object, which is the output of the \code{\link{pred_over_grid}} function.}
+\item{object}{A \code{RiskMap_pred} object, which is the output of the \code{\link{setup_prediction}} function.}
 
 \item{predictors}{A data frame containing the new predictor values. The number of rows must match the prediction grid in the \code{object}.}
 }

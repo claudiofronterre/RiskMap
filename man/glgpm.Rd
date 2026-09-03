@@ -12,7 +12,7 @@ glgpm(
   den = NULL,
   convert_to_crs = NULL,
   scale_to_km = TRUE,
-  control_mcmc = set_control_sim(),
+  control_mcmc = set_control_mcmc(),
   par0 = NULL,
   return_samples = FALSE,
   messages = TRUE,
@@ -44,7 +44,7 @@ If not provided, defaults to \code{1} for binomial models.}
 \item{scale_to_km}{Logical indicating whether to scale coordinates to kilometers. Defaults to \code{TRUE}.}
 
 \item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
-Must be an object of class \code{RiskMap_control_mcmc} as returned by \verb{[set_control_sim()]}.}
+Must be an object of class \code{RiskMap_control_mcmc} as returned by \verb{[set_control_mcmc()]}.}
 
 \item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
 
@@ -118,13 +118,13 @@ The \code{convert_to_crs} argument can be used to reproject the spatial coordina
 The \code{scale_to_km} argument scales the coordinates to kilometers if set to TRUE.
 
 The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.
-This argument must be an object returned by \verb{[set_control_sim()]}.
+This argument must be an object returned by \verb{[set_control_mcmc()]}.
 
 The \code{start_pars} argument allows for specifying starting values for the model parameters.
 If not provided, default starting values are used.
 }
 \seealso{
-\code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
+\code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 }
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}

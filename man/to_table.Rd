@@ -7,7 +7,7 @@
 to_table(object, ...)
 }
 \arguments{
-\item{object}{An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap.spatial.cv" containing cross-validation results.}
+\item{object}{An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap_cross_validation" containing cross-validation results.}
 
 \item{...}{Additional arguments to be passed to \code{\link[xtable]{xtable}} for customization.}
 }
@@ -28,7 +28,7 @@ When the input is a "RiskMap" model object, the table includes:
 \item Measurement error variance, if applicable.
 }
 
-When the input is a cross-validation summary object ("summary.RiskMap.spatial.cv"), the table includes:
+When the input is a cross-validation summary object ("summary.RiskMap_cross_validation"), the table includes:
 \itemize{
 \item A row for each model being compared.
 \item Performance metrics such as CRPS and SCRPS for each model.
@@ -37,7 +37,7 @@ When the input is a cross-validation summary object ("summary.RiskMap.spatial.cv
 The resulting \code{xtable} object can be further customized with additional formatting options and printed as a LaTeX or HTML table for reports or publications.
 }
 \seealso{
-\code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap.spatial.cv}}
+\code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap_cross_validation}}
 }
 \author{
 Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}

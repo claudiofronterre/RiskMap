@@ -17,7 +17,7 @@
 ##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates to.
 ##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to `TRUE`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
-##' Must be an object of class `RiskMap_control_mcmc` as returned by `[set_control_sim()]`.
+##' Must be an object of class `RiskMap_control_mcmc` as returned by `[set_control_mcmc()]`.
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 ##' Defaults to `FALSE`.
@@ -54,7 +54,7 @@
 ##' The `scale_to_km` argument scales the coordinates to kilometers if set to TRUE.
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
-##' This argument must be an object returned by `[set_control_sim()]`.
+##' This argument must be an object returned by `[set_control_mcmc()]`.
 ##'
 ##' The `start_pars` argument allows for specifying starting values for the model parameters.
 ##' If not provided, default starting values are used.
@@ -84,7 +84,7 @@
 ##' \item{call}{Matched call}
 ##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
 ##'
-##' @seealso \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
+##' @seealso \code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
@@ -95,7 +95,7 @@ glgpm <- function(formula,
                  den = NULL,
                  convert_to_crs = NULL,
                  scale_to_km = TRUE,
-                 control_mcmc = set_control_sim(),
+                 control_mcmc = set_control_mcmc(),
                  par0 = NULL,
                  return_samples = FALSE,
                  messages = TRUE,
@@ -167,7 +167,7 @@ glgpm <- function(formula,
     if(!is.numeric(units_m)) stop("the variable passed to 'den' must be numeric")
     if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
       stop("the argument passed to 'control_mcmc' must be an output
-           from the function set_control_sim; see ?set_control_sim for more details")
+           from the function set_control_mcmc; see ?set_control_mcmc for more details")
     }
   }
 
@@ -451,7 +451,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     }
 
 
-    R <- matern_cor(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
+    R <- matern_correlation(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
     diag(R) <- diag(R)+nu2
 
     Sigma_g <- matrix(0, nrow = sum(n_dim_re), ncol = sum(n_dim_re))
@@ -517,7 +517,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     n_p <- length(par)
     g <- rep(0, n_p)
 
-    R <- matern_cor(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
+    R <- matern_correlation(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
     diag(R) <- diag(R)+nu2
 
     Sigma_g <- matrix(0, nrow = sum(n_dim_re), ncol = sum(n_dim_re))
@@ -572,7 +572,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 
     der_R_phi <- matrix(0, nrow = sum(n_dim_re),
                         ncol = sum(n_dim_re))
-    M.der.phi <- matern.grad.phi(U, phi, kappa)
+    M.der.phi <- matern_gradient_phi(U, phi, kappa)
     der_R_phi[1:n_dim_re[1], 1:n_dim_re[1]] <-
       M.der.phi*sigma2
     der_Sigma_g_inv_phi <- Sigma_g_inv%*%der_R_phi%*%Sigma_g_inv
@@ -677,7 +677,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     n_p <- length(par)
     g <- rep(0, n_p)
 
-    R <- matern_cor(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
+    R <- matern_correlation(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
     diag(R) <- diag(R)+nu2
 
     Sigma_g <- matrix(0, nrow = sum(n_dim_re), ncol = sum(n_dim_re))
@@ -737,7 +737,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     # Derivatives for phi
     der_R_phi <- matrix(0, nrow = sum(n_dim_re),
                         ncol = sum(n_dim_re))
-    M.der.phi <- matern.grad.phi(U, phi, kappa)
+    M.der.phi <- matern_gradient_phi(U, phi, kappa)
     der_R_phi[1:n_dim_re[1], 1:n_dim_re[1]] <-
       M.der.phi*sigma2
     der_Sigma_g_inv_phi_aux <- -Sigma_g_inv%*%der_R_phi%*%Sigma_g_inv
@@ -945,7 +945,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     # phi - phi
     der2_R_phi <- matrix(0, nrow = sum(n_dim_re),
                          ncol = sum(n_dim_re))
-    M.der2.phi <- matern.hessian.phi(U, phi, kappa)
+    M.der2.phi <- matern_hessian_phi(U, phi, kappa)
     der2_R_phi[1:n_dim_re[1], 1:n_dim_re[1]] <-
       M.der2.phi*sigma2
 
@@ -1270,7 +1270,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-glgpm_sim <- function(n_sim,
+simulate_glgpm <- function(n_sim,
                       model_fit = NULL,
                       formula = NULL,
                       data = NULL,
@@ -1421,7 +1421,7 @@ glgpm_sim <- function(n_sim,
   }
 
   # Simulate S
-  Sigma <- sigma2*matern_cor(dist(coords), phi = phi, kappa = kappa,
+  Sigma <- sigma2*matern_correlation(dist(coords), phi = phi, kappa = kappa,
                              return_sym_matrix = TRUE)
   diag(Sigma) <- diag(Sigma) + tau2
   Sigma_sroot <- t(chol(Sigma))
@@ -1545,7 +1545,7 @@ glgpm_sim <- function(n_sim,
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-maxim.integrand <- function(
+maxim_integrand <- function(
     y, units_m, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
 ) {
@@ -1857,7 +1857,7 @@ maxim.integrand <- function(
 ##' The algorithm alternates between:
 ##' \enumerate{
 ##'   \item Locating the mode of the joint integrand for the latent variables
-##'         (via \code{maxim.integrand}) when \code{Sigma_pd} and \code{mean_pd}
+##'         (via \code{maxim_integrand}) when \code{Sigma_pd} and \code{mean_pd}
 ##'         are not provided, yielding a Gaussian approximation.
 ##'   \item Metropolis–Hastings updates using a Gaussian proposal centered at
 ##'         the current approximate mean with proposal variance governed by \code{h}.
@@ -1883,12 +1883,12 @@ maxim.integrand <- function(
 ##' The default inverse links are: identity (gaussian), logistic (binomial),
 ##' and exponential (poisson). Supply \code{invlink} to override.
 ##'
-##' @seealso \code{\link{maxim.integrand}}
+##' @seealso \code{\link{maxim_integrand}}
 ##'
 ##' @export
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-Laplace_sampling_MCMC <- function(y,
+laplace_sampling_mcmc <- function(y,
                                   units_m,
                                   mu,
                                   Sigma,
@@ -2014,7 +2014,7 @@ Laplace_sampling_MCMC <- function(y,
 
   # ---------- default Laplace proposal if missing ----------
   if (is.null(Sigma_pd) || is.null(mean_pd)) {
-    out_maxim <- maxim.integrand(y = y, units_m = units_m, Sigma = Sigma, mu = mu,
+    out_maxim <- maxim_integrand(y = y, units_m = units_m, Sigma = Sigma, mu = mu,
                                  ID_coords = ID_coords, ID_re = ID_re,
                                  sigma2_re = sigma2_re,
                                  family = family, invlink = invlink,
@@ -2195,17 +2195,17 @@ Laplace_sampling_MCMC <- function(y,
 ##'
 ##' @examples
 ##' # Default parameters (MCMC)
-##' control_mcmc <- set_control_sim()
+##' control_mcmc <- set_control_mcmc()
 ##'
 ##' # Custom MCMC parameters
-##' control_mcmc <- set_control_sim(n_sim = 15000, burnin = 3000, thin = 20)
+##' control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
 ##'
 ##' @seealso \code{\link{glgpm}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
-set_control_sim <- function(n_sim = 12000,
+set_control_mcmc <- function(n_sim = 12000,
                             burnin = 2000,
                             thin = 10,
                             h = NULL,
@@ -2369,11 +2369,11 @@ glgpm_nong <-
     inv2   <- linkf$d2
 
     u <- dist(coords)
-    Sigma0 <- sigma2_0 * matern_cor(u = u, phi = phi0, kappa = kappa, return_sym_matrix = TRUE)
+    Sigma0 <- sigma2_0 * matern_correlation(u = u, phi = phi0, kappa = kappa, return_sym_matrix = TRUE)
     diag(Sigma0) <- diag(Sigma0) + tau2_0
 
     if (messages) message("\n - Obtaining proposal mean/covariance via Laplace\n")
-    out_maxim <- maxim.integrand(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
+    out_maxim <- maxim_integrand(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
                                  ID_coords = ID_coords, ID_re = ID_re,
                                  sigma2_re = sigma2_re_0,
                                  family = family, invlink = invlink)
@@ -2381,7 +2381,7 @@ glgpm_nong <-
     Sigma_pd <- out_maxim$Sigma.tilde
     mean_pd  <- out_maxim$mode
 
-    simulation <- Laplace_sampling_MCMC(y = y, units_m = units_m, mu = mu0, Sigma = Sigma0,
+    simulation <- laplace_sampling_mcmc(y = y, units_m = units_m, mu = mu0, Sigma = Sigma0,
                                         sigma2_re = sigma2_re_0, invlink = invlink,
                                         ID_coords = ID_coords, ID_re = ID_re,
                                         family = family, control_mcmc = control_mcmc,
@@ -2465,7 +2465,7 @@ glgpm_nong <-
       if (n_re > 0) val$sigma2_re <- exp(par[ind_sigma2_re])
 
       if (is.na(ldetR) && is.na(as.numeric(R.inv)[1])) {
-        R <- matern_cor(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
+        R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
         diag(R) <- diag(R) + nu2
         val$ldetR <- determinant(R)$modulus
         val$R.inv <- solve(R)
@@ -2495,7 +2495,7 @@ glgpm_nong <-
       phi    <- exp(par[ind_phi])
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
-      R <- matern_cor(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
+      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
       diag(R) <- diag(R) + nu2
       R.inv <- solve(R)
       ldetR <- determinant(R)$modulus
@@ -2504,7 +2504,7 @@ glgpm_nong <-
       L.m <- sum(exp.fact)
       exp.fact <- exp.fact / L.m
 
-      R1.phi <- matern.grad.phi(u, phi, kappa)
+      R1.phi <- matern_gradient_phi(u, phi, kappa)
       m1.phi <- R.inv %*% R1.phi
       t1.phi <- -0.5 * sum(diag(m1.phi))
       m2.phi <- m1.phi %*% R.inv; rm(m1.phi)
@@ -2577,7 +2577,7 @@ glgpm_nong <-
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
       ## Build R(φ, ν²) and precision via Cholesky (fast solves)
-      R <- matern_cor(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
+      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
       diag(R) <- diag(R) + nu2
       U <- chol(R)   # R = U^T U
 
@@ -2595,8 +2595,8 @@ glgpm_nong <-
       exp.fact <- exp.fact / sum(exp.fact)
 
       ## φ in log space: R_u = dR/d(log φ), R_uu = d²R/d(log φ)²
-      R1.phi <- matern.grad.phi(u, phi, kappa)                 # ∂R/∂φ
-      R2.phi <- matern.hessian.phi(u, phi, kappa)              # ∂²R/∂φ²
+      R1.phi <- matern_gradient_phi(u, phi, kappa)                 # ∂R/∂φ
+      R2.phi <- matern_hessian_phi(u, phi, kappa)              # ∂²R/∂φ²
       R_u  <- phi * R1.phi
       R_uu <- phi^2 * R2.phi + phi * R1.phi
 
@@ -2777,7 +2777,7 @@ glgpm_nong <-
 ##'
 ##' @param object An object of class \code{RiskMap} or \code{RiskMap_pred}.
 ##'  \code{RiskMap} is the output from \code{\link{glgpm}} function, and
-##'  \code{RiskMap_pred} is obtained from the \code{\link{pred_over_grid}} function.
+##'  \code{RiskMap_pred} is obtained from the \code{\link{setup_prediction}} function.
 ##' @param check_mean Logical. If \code{TRUE}, checks the MCMC chain for the mean of the spatial random effects.
 ##'  If \code{FALSE}, checks the chain for a specific component of the random effects vector.
 ##' @param component Integer. The index of the spatial random effects component to check when \code{check_mean = FALSE}.
@@ -2805,13 +2805,13 @@ glgpm_nong <-
 ##' @importFrom sns ess
 ##' @importFrom graphics par
 ##' @export
-check_mcmc <- function(object, check_mean = TRUE,
+plot_mcmc <- function(object, check_mean = TRUE,
                        component = NULL, ...) {
   if(!inherits(object, "RiskMap") &
      !inherits(object, "RiskMap_pred")) {
     stop("'object' must be either:
            a 'RiskMap' object obtained as an output from 'glgpm';
-           a 'RiskMap_pred' object obtained as an output from 'pred_over_grid'")
+           a 'RiskMap_pred' object obtained as an output from 'setup_prediction'")
   }
 
   if (object$family == "gaussian")

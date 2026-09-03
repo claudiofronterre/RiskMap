@@ -12,7 +12,7 @@ data <- data.frame(x = coords[,1],
 sigma2 <- 1
 phi <- 2
 kappa <- 1
-Sigma <- sigma2 * matern_cor(dist(coords), phi = phi, kappa = kappa,
+Sigma <- sigma2 * matern_correlation(dist(coords), phi = phi, kappa = kappa,
                              return_sym_matrix = TRUE)
 Sigma_sroot <- t(chol(Sigma))
 S <- as.numeric(Sigma_sroot %*% rnorm(n))
@@ -22,7 +22,7 @@ gaussian_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 latlon_data <- st_transform(gaussian_data, crs = 4326)
 
 # reduce iterations to speed up fits
-control_mcmc <- set_control_sim(n_sim = 1000, burnin = 200)
+control_mcmc <- set_control_mcmc(n_sim = 1000, burnin = 200)
 
 gaussian_model <- glgpm(y ~ cov + gp() + re(i),
                         data = gaussian_data,
@@ -59,7 +59,7 @@ poisson_model <- glgpm(y ~ cov + gp() + re(i),
                        return_samples = TRUE,
                        messages = FALSE)
 
-hull <- convex_hull_sf(gaussian_data)
+hull <- create_convex_hull(gaussian_data)
 grid <- create_grid(hull, 3, propose_utm(hull))
 squares <- st_make_grid(hull, n = c(2, 2))
 areal <- st_sf(geometry = squares)
