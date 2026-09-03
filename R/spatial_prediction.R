@@ -136,7 +136,9 @@ pred_over_grid <- function(object,
 
     .build_D_pred <- function(predictors, n_predictors, index = NULL) {
       response <- as.character(object$formula[[2]])
-      model_predictors <- setdiff(get_formula_terms(object$formula), response)
+      re_names <- names(object$re)
+      offset_names <- names(object$cov_offset)
+      model_predictors <- setdiff(get_formula_terms(object$formula), c(response, re_names, offset_names))
       if (!is.data.frame(predictors))
         stop(if (is.null(index)) "'predictors' must be a data.frame"
              else sprintf("'predictors[[%d]]' must be a data.frame", index))
@@ -144,7 +146,7 @@ pred_over_grid <- function(object,
         stop("The column names in 'predictors' do not match the variables in the model formula")
       if (nrow(predictors) != n_predictors)
         stop(if (is.null(index)) "The number of rows in 'predictors' does not match the number of locations in 'grid_pred'"
-             else sprintf("The number of rows in of 'predictors[[%d]]' do not match the number of locations in 'grid_pred[[%d]]'", idx, idx))
+             else sprintf("The number of rows in of 'predictors[[%d]]' does not match the number of locations in 'grid_pred[[%d]]'", index, index))
       mf <- model.frame(inter_lt_f$pf, data = predictors, na.action = na.fail)
       as.matrix(model.matrix(attr(mf, "terms"), data = predictors))
     }
@@ -157,10 +159,6 @@ pred_over_grid <- function(object,
       mu_pred <- as.numeric(D_pred %*% par_hat$beta)
     }
 
-  } else if (intercept_only) {
-    mu_pred <- if (list_mode) lapply(n_pred, function(n) rep(par_hat$beta, n)) else par_hat$beta
-  } else {
-    mu_pred <- 0
   }
 
   # ---------------------------------------------------------------------------
@@ -448,29 +446,7 @@ pred_over_grid <- function(object,
 ##' @title Predictive Target Over a Regular Spatial Grid
 ##'
 ##' @description Computes predictions over a regular spatial grid using outputs from
-##' \code{\link{pred_over_grid}}.
-##'
-##' For \strong{STH models} (\code{family = "intprev"}) the default predictive
-##' targets are:
-##' \describe{
-##'   \item{\code{prevalence}}{Probability of observing at least one egg,
-##'     \eqn{P(Y>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
-##'   \item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
-##'   \item{\code{intensity}}{Mean egg count \eqn{\rho\,\mu_W} (unconditional).}
-##' }
-##'
-##' For \strong{LF models} (\code{family = "lf_mdiag"}) the default predictive
-##' targets are:
-##' \describe{
-##'   \item{\code{mf_prevalence}}{Microfilarial (parasitological) prevalence,
-##'     \eqn{P(\text{MF}>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
-##'   \item{\code{antigen_prevalence}}{Circulating filarial antigen (serological)
-##'     prevalence, \eqn{\gamma_s(1 - [k/(k+\mu_W)]^k)}, where \eqn{\gamma_s}
-##'     is the serological test sensitivity.}
-##'   \item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
-##' }
-##'
-##' Custom targets can always be supplied via \code{f_target}.
+##' \code{\link{pred_over_grid}}. Custom targets can be supplied via \code{f_target}.
 ##'
 ##' @param object Output from \code{\link{pred_over_grid}}, a
 ##'   \code{RiskMap_pred} object.
@@ -490,7 +466,15 @@ pred_over_grid <- function(object,
 ##'   row-wise to each target matrix (default: mean, median, sd, 2.5% and
 ##'   97.5% quantiles).
 ##'
-##' @return An object of class \code{"RiskMap_pred_target_grid"}.
+##' @return An object of class `RiskMap_pred_target_grid` containing:
+##' \describe{
+##'   \item{target}{List of the predictions for each target}
+##'   \item{grid_pred}{`sfc` object containing the coordinates for the predictions}
+##'   \item{f_target}{placeholder}
+##'   \item{pd_summary}{placeholder}
+##'   \item{family}{The model family}
+##'   \item{lp_samples}{placeholder}
+##' }
 ##' @seealso \code{\link{pred_over_grid}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
@@ -510,9 +494,7 @@ pred_target_grid <- function(object,
   # ---------------------------------------------------------------------------
   # list-mode detection
   # ---------------------------------------------------------------------------
-  list_mode <- is.list(object$grid_pred) &&
-    !inherits(object$grid_pred, "sfc") &&
-    !inherits(object$grid_pred, "sf")
+  list_mode <- inherits(object$grid_pred, "list")
 
   if (list_mode) {
     n_pred <- vapply(object$grid_pred,
@@ -816,47 +798,36 @@ pred_target_shp <- function(object,
 
   if(!inherits(object, what = "RiskMap_pred", which = FALSE)) {
     stop("The object passed to 'object' must be an output of
-         the function 'pred_S'")
+         the function 'pred_over_grid'")
   }
 
   if(object$type != "joint") {
     stop("To run predictions with a shape file, joint predictions must be used;
-         rerun 'pred_over_grid' and set type='joint'")
+         rerun 'pred_over_grid' and set 'type' = \"joint\"")
   }
 
   check_data(shp, "polygon")
 
-  list_mode <- is.list(object$grid_pred) & !(inherits(object$grid_pred,"sfc") |
-                                               inherits(object$grid_pred,"sf"))
+  list_mode <- inherits(object$grid_pred, "list")
 
   if (list_mode) {
-    ok_geom <- vapply(
-      object$grid_pred,
-      function(g) {
-        inherits(g, "sf") || inherits(g, "sfc")
-      },
-      logical(1)
-    )
-    if (!all(ok_geom)) {
-      stop("When 'object$grid_pred' is a list, each element must be an 'sf' or 'sfc' object.")
-    }
 
     n_pred <- vapply(object$grid_pred, function(g) nrow(st_coordinates(g)), integer(1))
 
     if (!is.null(weights)) {
       if (!is.list(weights)) {
-        stop("When 'object$grid_pred' is a list, 'weights' must also be a list, ",
-             "with one numeric vector per element of 'object$grid_pred'.")
+        stop("When 'grid_pred' passed to 'pred_over_grid' is a list, 'weights' must also be a list,
+             with one numeric vector per element of 'object$grid_pred'")
       }
       if (length(weights) != length(object$grid_pred)) {
-        stop("Length of 'weights' must match length of 'object$grid_pred'.")
+        stop("Length of 'weights' must match length of 'grid_pred' passed to 'pred_over_grid'")
       }
       for (i in seq_along(weights)) {
         if (!is.numeric(weights[[i]])) {
-          stop(sprintf("'weights[[%d]]' must be numeric.", i))
+          stop(sprintf("'weights[[%d]]' must be numeric", i))
         }
         if (length(weights[[i]]) != n_pred[i]) {
-          stop(sprintf("Length of 'weights[[%d]]' (%d) must equal number of locations in 'object$grid_pred[[%d]]' (%d).",
+          stop(sprintf("Length of 'weights[[%d]]' (%d) must equal number of locations in 'grid_pred[[%d]]' passed to 'pred_over_grid' (%d).",
                        i, length(weights[[i]]), i, n_pred[i]))
         }
         if (anyNA(weights[[i]])) {
@@ -878,8 +849,8 @@ pred_target_shp <- function(object,
   re_names <- names(object$re$samples)
 
   if(n_re == 0 && include_re) {
-    stop("The categories of the randome effects variables have not been provided;
-         re-run pred_over_grid and provide the covariates through the argument 're_predictors'")
+    stop("The categories of the random effects variables have not been provided;
+         re-run 'pred_over_grid' and provide the covariates through the argument 're_predictors'")
   }
 
   if(!is.null(weights)) {
@@ -922,10 +893,10 @@ pred_target_shp <- function(object,
   if(!include_covariates) {
     mu_target <- 0
   } else {
-    if(is.null(object$mu_pred)) stop("the output obtained from 'pred_S' does not
+    if(is.null(object$mu_pred)) stop("the output obtained from 'pred_over_grid' does not
                                      contain any covariates; if including covariates
-                                     in the predictive target these shuold be included
-                                     when running 'pred_S'")
+                                     in the predictive target these should be included
+                                     when running 'pred_over_grid'")
     mu_target <- object$mu_pred
   }
 
@@ -1068,6 +1039,7 @@ pred_target_shp <- function(object,
     }
   }
 
+  no_comp <- NULL
   for(h in 1:n_reg) {
 
     if(list_mode) {
@@ -1226,7 +1198,7 @@ plot.RiskMap_pred_target_shp <- function(x, which_target = "linear_target",
 ##' @export
 update_predictors <- function(object, predictors) {
   if (!inherits(object, what = "RiskMap_pred", which = FALSE)) {
-    stop("The object passed to 'object' must be an output of the function 'glgpm'")
+    stop("The object passed to 'object' must be an output of the function 'pred_over_grid'")
   }
 
   list_mode <- is.list(object$grid_pred) && !is.null(object$grid_pred) &
@@ -2301,10 +2273,10 @@ assess_sim <- function(obj_sim,
         mu_target <- 0
       } else {
 
-        if(is.null(obj_pred_ij$mu_pred)) stop("the output obtained from 'pred_S' does not
+        if(is.null(obj_pred_ij$mu_pred)) stop("the output obtained from 'pred_over_grid' does not
                                      contain any covariates; if including covariates
-                                     in the predictive target these shuold be included
-                                     when running 'pred_S'")
+                                     in the predictive target these should be included
+                                     when running 'pred_over_grid'")
         mu_target <- obj_pred_ij$mu_pred
       }
 
