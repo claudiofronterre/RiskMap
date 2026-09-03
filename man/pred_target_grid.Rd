@@ -40,33 +40,19 @@ row-wise to each target matrix (default: mean, median, sd, 2.5\% and
 97.5\% quantiles).}
 }
 \value{
-An object of class \code{"RiskMap_pred_target_grid"}.
+An object of class \code{RiskMap_pred_target_grid} containing:
+\describe{
+\item{target}{List of the predictions for each target}
+\item{grid_pred}{\code{sfc} object containing the coordinates for the predictions}
+\item{f_target}{placeholder}
+\item{pd_summary}{placeholder}
+\item{family}{The model family}
+\item{lp_samples}{placeholder}
+}
 }
 \description{
 Computes predictions over a regular spatial grid using outputs from
-\code{\link{pred_over_grid}}.
-
-For \strong{STH models} (\code{family = "intprev"}) the default predictive
-targets are:
-\describe{
-\item{\code{prevalence}}{Probability of observing at least one egg,
-\eqn{P(Y>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
-\item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
-\item{\code{intensity}}{Mean egg count \eqn{\rho\,\mu_W} (unconditional).}
-}
-
-For \strong{LF models} (\code{family = "lf_mdiag"}) the default predictive
-targets are:
-\describe{
-\item{\code{mf_prevalence}}{Microfilarial (parasitological) prevalence,
-\eqn{P(\text{MF}>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
-\item{\code{antigen_prevalence}}{Circulating filarial antigen (serological)
-prevalence, \eqn{\gamma_s(1 - [k/(k+\mu_W)]^k)}, where \eqn{\gamma_s}
-is the serological test sensitivity.}
-\item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
-}
-
-Custom targets can always be supplied via \code{f_target}.
+\code{\link{pred_over_grid}}. Custom targets can be supplied via \code{f_target}.
 }
 \seealso{
 \code{\link{pred_over_grid}}

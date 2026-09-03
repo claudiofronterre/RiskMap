@@ -198,6 +198,7 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "gaussian")
+  expect_length(fit_re$re, 1)
 })
 
 test_that("glgpm produces expected output for binomial models", {
@@ -332,7 +333,17 @@ test_that("check_mcmc produces errors as expected", {
   )
 
   expect_no_error(
-    check_mcmc(poisson_model, check_mean = FALSE,component = 10)
+    check_mcmc(poisson_model, check_mean = FALSE, component = 10)
   )
+
+  poisson_grid <- pred_over_grid(poisson_model, control_sim = control_mcmc)
+  expect_no_error(
+    check_mcmc(poisson_grid)
+  )
+
+  expect_no_error(
+    check_mcmc(poisson_grid, check_mean = FALSE, component = 10)
+  )
+
 })
 
