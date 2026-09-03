@@ -2787,20 +2787,22 @@ glgpm_nong <-
 ##' @export
 check_mcmc <- function(object, check_mean = TRUE,
                        component = NULL, ...) {
-  if(!inherits(object,
-               what = "RiskMap", which = FALSE) &
-     !inherits(object,
-               what = "RiskMap_pred", which = FALSE)) {
-    stop("'object' must be either of one of these objects:
-           a 'RiskMap' object obtained as an output from glgpm;
+  if(!inherits(object, "RiskMap") &
+     !inherits(object, "RiskMap_pred")) {
+    stop("'object' must be either:
+           a 'RiskMap' object obtained as an output from 'glgpm';
            a 'RiskMap_pred' object obtained as an output from 'pred_over_grid'")
   }
 
-  if(inherits(object,
-              what = "RiskMap", which = FALSE)) {
+  if (object$family == "gaussian")
+    stop("'object' is a gaussian model which cannot contain MCMC chains")
+
+  if (is.null(object$S_samples))
+    stop("'object' does not contain any MCMC chains - rerun 'glgpm' with 'return_samples' = TRUE")
+
+  if(inherits(object, "RiskMap")) {
     S_samples <- object$S_samples
-  } else if (inherits(object,
-                      what = "RiskMap_pred", which = FALSE)) {
+  } else if (inherits(object, "RiskMap_pred")) {
     S_samples <- t(object$S_samples)
   }
 
@@ -2813,11 +2815,12 @@ check_mcmc <- function(object, check_mean = TRUE,
   if(check_mean) {
     S_chain <- apply(S_samples, 1, mean)
   } else {
-    if(is.null(component)) stop("When check_mean = FALSE a component of the
+    if(is.null(component)) stop("When 'check_mean' = FALSE a component of the
                                 random effects vector must be specified through 'component'
                                 by providing a positive integer")
-    if(component < 0 | component > n_loc) stop("'component' must be a positive integer
-                                              between 1 and the number of locations in the data")
+    check_positive_integer(component, "component")
+    if(component > n_loc) stop("'component' must be a single positive integer
+                               between 1 and the number of locations in the data")
     S_chain <- S_samples[,component]
   }
 

@@ -277,3 +277,62 @@ test_that("glgpm correctly reprojects to new CRS", {
   expect_equal(fit$coords, scaled_coords)
   expect_equal(fit$crs, suggested_crs)
 })
+
+test_that("check_mcmc produces errors as expected", {
+
+  expect_error(
+    check_mcmc("not risk"),
+    "'object' must be either")
+
+  expect_error(
+    check_mcmc(gaussian_model),
+    "'object' is a gaussian model")
+
+  expect_error(
+    check_mcmc(binomial_model),
+    "'object' does not contain any MCMC chains")
+
+  expect_warning(
+    check_mcmc(poisson_model, component = 1),
+    "if check_mean = TRUE"
+  )
+
+  expect_error(
+    check_mcmc(poisson_model, check_mean = FALSE, component = NULL),
+    "When 'check_mean' = FALSE a component of the"
+  )
+
+  #ncol(poisson_model$S_samples) is 15
+  # expect_error(
+  #   check_mcmc(poisson_model, check_mean = FALSE, component = 11),
+  #   "'component' must be a positive integer"
+  # )
+  expect_error(
+    check_mcmc(poisson_model, check_mean = FALSE, component = 20),
+    "'component' must be a single positive integer"
+  )
+
+  expect_error(
+    check_mcmc(poisson_model, check_mean = FALSE, component = 10.5),
+    "'component' must be a single positive integer"
+  )
+
+  expect_error(
+    check_mcmc(poisson_model, check_mean = FALSE, component = 0),
+    "'component' must be a single positive integer"
+  )
+
+  expect_error(
+    check_mcmc(poisson_model, check_mean = FALSE, component = "no"),
+    "'component' must be a single positive integer"
+  )
+
+  expect_no_error(
+    check_mcmc(poisson_model, check_mean = FALSE, component = 1)
+  )
+
+  expect_no_error(
+    check_mcmc(poisson_model, check_mean = FALSE,component = 10)
+  )
+})
+
