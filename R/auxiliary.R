@@ -188,7 +188,7 @@ matern_cor <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-matern.grad.phi <- function(U, phi, kappa) {
+matern_gradient_phi <- function(U, phi, kappa) {
   der.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {
