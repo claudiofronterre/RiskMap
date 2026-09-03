@@ -10,7 +10,7 @@
 ##' Not supported if `grid_pred` is a list.
 ##' @param pred_cov_offset Optional numeric vector containing covariate offsets at prediction locations.
 ##' Must be provided if there is an offset included in the model and not supported if `grid_pred` is a list.
-##' @param control_sim Control parameters from \code{\link{set_control_sim}}.
+##' @param control_sim Control parameters from \code{\link{set_control_mcmc}}.
 ##' @param type Whether the predictions are `marginal` or `joint`. `marginal` predictions are less
 ##' computationally expensive than `joint` predictions but cannot be used to predict areal targets.
 ##' If `grid_pred` is a list or random effects are included, must be set to `joint`. Defaults to `marginal`.
@@ -37,7 +37,7 @@ setup_prediction <- function(object,
                            predictors = NULL,
                            re_predictors = NULL,
                            pred_cov_offset = NULL,
-                           control_sim = set_control_sim(),
+                           control_sim = set_control_mcmc(),
                            type = "marginal",
                            messages = TRUE) {
 
@@ -64,7 +64,7 @@ setup_prediction <- function(object,
   }
 
   if (!inherits(control_sim, "RiskMap_control_mcmc"))
-    stop("'control_sim' must be an output from 'set_control_sim()'")
+    stop("'control_sim' must be an output from 'set_control_mcmc()'")
 
   if (!type %in% c("marginal", "joint"))
     stop("'type' must be either 'marginal' or 'joint'")
@@ -1391,7 +1391,7 @@ update_predictors <- function(object, predictors) {
 ##' @param iter Integer; number of times to repeat the cross-validation.
 ##' @param fold Integer; number of folds for cross-validation (required if `method = "cluster"`).
 ##' @param n_size Optional; the size of the test set, required if `method = "regularized"`.
-##' @param control_sim Control settings for simulation, an output from `set_control_sim`.
+##' @param control_sim Control settings for simulation, an output from `set_control_mcmc`.
 ##' @param method Character; either `"cluster"` or `"regularized"` for the cross-validation method. The `"cluster"` method uses
 ##' spatial clustering as implemented by the \code{spatial_clustering_cv} function from the `spatialEco` package, while the `"regularized"` method
 ##' selects a subsample of the dataset by imposing a minimum distance, set by the `min_dist` argument, for a randomly selected
@@ -1439,7 +1439,7 @@ assess_prediction <- function(object,
                       keep_par_fixed = TRUE,
                       iter = 1,
                       fold = NULL, n_size = NULL,
-                      control_sim = set_control_sim(),
+                      control_sim = set_control_mcmc(),
                       method,
                       min_dist = NULL,
                       plot_fold = TRUE,
@@ -1491,7 +1491,7 @@ assess_prediction <- function(object,
   }
 
   if (!inherits(control_sim, "RiskMap_control_mcmc"))
-    stop("`control_sim` must come from `set_control_sim()`")
+    stop("`control_sim` must come from `set_control_mcmc()`")
 
   get_CRPS  <- "CRPS"  %in% which_metric
   get_SCRPS <- "SCRPS" %in% which_metric
@@ -1861,7 +1861,7 @@ surf_sim <- function(n_sim,
                      sampling_f,
                      family,
                      scale_to_km = TRUE,
-                     control_mcmc = set_control_sim(),
+                     control_mcmc = set_control_mcmc(),
                      par0, nugget_over_grid = FALSE,
                      include_covariates = TRUE,
                      fix_var_me = NULL,
@@ -2097,7 +2097,7 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##'
 ##' @param obj_sim An object of class `RiskMap.sim`, obtained as an output from the `surf_sim` function.
 ##' @param models A named list of models to be evaluated.
-##' @param control_mcmc A control object for MCMC sampling, created with `set_control_sim()`. Default is `set_control_sim()`.
+##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param spatial_scale The scale at which predictions are assessed, either `"grid"` or `"area"`.
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
 ##' @param f_grid_target A function for processing grid-level predictions.
@@ -2112,7 +2112,7 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @export
 assess_simulation <- function(obj_sim,
                        models,
-                       control_mcmc = set_control_sim(),
+                       control_mcmc = set_control_mcmc(),
                        spatial_scale,
                        messages = TRUE,
                        f_grid_target = NULL,

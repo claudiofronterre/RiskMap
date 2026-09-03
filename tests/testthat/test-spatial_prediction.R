@@ -24,7 +24,7 @@ test_that("setup_prediction produces errors as expected", {
   expect_error(
     setup_prediction(gaussian_model,
                    control_sim = "not mcmc"),
-    "'control_sim' must be an output from 'set_control_sim")
+    "'control_sim' must be an output from 'set_control_mcmc")
 
   expect_error(
     setup_prediction(gaussian_model,

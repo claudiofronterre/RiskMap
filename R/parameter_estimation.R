@@ -17,7 +17,7 @@
 ##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates to.
 ##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to `TRUE`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
-##' Must be an object of class `RiskMap_control_mcmc` as returned by `[set_control_sim()]`.
+##' Must be an object of class `RiskMap_control_mcmc` as returned by `[set_control_mcmc()]`.
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 ##' Defaults to `FALSE`.
@@ -54,7 +54,7 @@
 ##' The `scale_to_km` argument scales the coordinates to kilometers if set to TRUE.
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
-##' This argument must be an object returned by `[set_control_sim()]`.
+##' This argument must be an object returned by `[set_control_mcmc()]`.
 ##'
 ##' The `start_pars` argument allows for specifying starting values for the model parameters.
 ##' If not provided, default starting values are used.
@@ -84,7 +84,7 @@
 ##' \item{call}{Matched call}
 ##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
 ##'
-##' @seealso \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
+##' @seealso \code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
@@ -95,7 +95,7 @@ glgpm <- function(formula,
                  den = NULL,
                  convert_to_crs = NULL,
                  scale_to_km = TRUE,
-                 control_mcmc = set_control_sim(),
+                 control_mcmc = set_control_mcmc(),
                  par0 = NULL,
                  return_samples = FALSE,
                  messages = TRUE,
@@ -167,7 +167,7 @@ glgpm <- function(formula,
     if(!is.numeric(units_m)) stop("the variable passed to 'den' must be numeric")
     if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
       stop("the argument passed to 'control_mcmc' must be an output
-           from the function set_control_sim; see ?set_control_sim for more details")
+           from the function set_control_mcmc; see ?set_control_mcmc for more details")
     }
   }
 
@@ -2195,17 +2195,17 @@ laplace_sampling_mcmc <- function(y,
 ##'
 ##' @examples
 ##' # Default parameters (MCMC)
-##' control_mcmc <- set_control_sim()
+##' control_mcmc <- set_control_mcmc()
 ##'
 ##' # Custom MCMC parameters
-##' control_mcmc <- set_control_sim(n_sim = 15000, burnin = 3000, thin = 20)
+##' control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
 ##'
 ##' @seealso \code{\link{glgpm}}
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
-set_control_sim <- function(n_sim = 12000,
+set_control_mcmc <- function(n_sim = 12000,
                             burnin = 2000,
                             thin = 10,
                             h = NULL,
