@@ -56,7 +56,7 @@ test_that("assess_prediction uses each model's own data_sf for held-out predicto
     which_metric = "CRPS"
   )
 
-  expect_s3_class(out, "RiskMap.spatial.cv")
+  expect_s3_class(out, "RiskMap_cross_validation")
 
   expect_setequal(names(out), c("test_set", "model"))
 

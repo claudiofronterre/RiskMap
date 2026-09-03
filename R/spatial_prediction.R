@@ -1412,7 +1412,7 @@ update_predictors <- function(object, predictors) {
 ##'   regularized distance splitting defined by \code{method}.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
 ##'
-##' @return A list of class `RiskMap.spatial.cv`, containing:
+##' @return A list of class `RiskMap_cross_validation`, containing:
 ##' \describe{
 ##'   \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
 ##'   \item{model}{A named list, one per model, each containing:
@@ -1823,7 +1823,7 @@ assess_prediction <- function(object,
 
   } # end h loop
 
-  class(out) <- "RiskMap.spatial.cv"
+  class(out) <- "RiskMap_cross_validation"
   return(out)
 }
 
