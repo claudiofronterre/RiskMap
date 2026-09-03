@@ -1709,7 +1709,7 @@ assess_prediction <- function(object,
           refit_i$ID_re <- refit_i$ID_re[keep, , drop = FALSE]
         }
         ## recompute ID_coords mapping
-        refit_i$ID_coords <- compute_ID_coords(refit_i$data_sf)$ID_coords
+        refit_i$ID_coords <- create_ids(refit_i$data_sf)$ID_coords
       }
 
       ## ----- held-out set and offsets -----

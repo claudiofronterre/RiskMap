@@ -872,7 +872,7 @@ to_table <- function(object, ...) {
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##'
 ##'
-compute_ID_coords <- function(data_sf) {
+create_ids <- function(data_sf) {
   if(!inherits(data_sf,
                what = c("sfc","sf"), which = FALSE)) {
     stop("The object passed to 'grid_pred' must be an object
