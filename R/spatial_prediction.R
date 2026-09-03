@@ -237,13 +237,13 @@ setup_prediction <- function(object,
   }
 
   U <- dist(object$coords)
-  R <- matern_cor(U, phi = par_hat$phi, kappa = object$kappa, return_sym_matrix = TRUE)
+  R <- matern_correlation(U, phi = par_hat$phi, kappa = object$kappa, return_sym_matrix = TRUE)
 
   if (!obs_loc) {
     C <- if (list_mode)
-      lapply(U_pred, function(u) par_hat$sigma2 * matern_cor(u, phi = par_hat$phi, kappa = object$kappa))
+      lapply(U_pred, function(u) par_hat$sigma2 * matern_correlation(u, phi = par_hat$phi, kappa = object$kappa))
     else
-      par_hat$sigma2 * matern_cor(U_pred, phi = par_hat$phi, kappa = object$kappa)
+      par_hat$sigma2 * matern_correlation(U_pred, phi = par_hat$phi, kappa = object$kappa)
   } else {
     C <- par_hat$sigma2*R
   }
@@ -299,7 +299,7 @@ setup_prediction <- function(object,
       } else {
         if (list_mode) {
           out$S_samples <- lapply(seq_along(mu_cond_S), function(i) {
-            Sp    <- par_hat$sigma2 * matern_cor(dist(grp[[i]]), phi = par_hat$phi,
+            Sp    <- par_hat$sigma2 * matern_correlation(dist(grp[[i]]), phi = par_hat$phi,
                                                  kappa = object$kappa, return_sym_matrix = TRUE)
             Sc    <- Sp - A[[i]] %*% t(C[[i]])
             Scr   <- t(chol(Sc))
@@ -307,7 +307,7 @@ setup_prediction <- function(object,
               mu_cond_S[[i]][, j] + Scr %*% rnorm(nrow(mu_cond_S[[i]])))
           })
         } else {
-          Sp  <- par_hat$sigma2 * matern_cor(dist(grp), phi = par_hat$phi,
+          Sp  <- par_hat$sigma2 * matern_correlation(dist(grp), phi = par_hat$phi,
                                              kappa = object$kappa, return_sym_matrix = TRUE)
           Sc  <- Sp - A %*% t(C)
           Scr <- t(chol(Sc))
@@ -387,7 +387,7 @@ setup_prediction <- function(object,
     } else {
       if (list_mode) {
         out$S_samples <- lapply(seq_along(A), function(i) {
-          spatial_covariance_i <- par_hat$sigma2 * matern_cor(dist(grp[[i]]), phi = par_hat$phi,
+          spatial_covariance_i <- par_hat$sigma2 * matern_correlation(dist(grp[[i]]), phi = par_hat$phi,
                                                               kappa = object$kappa, return_sym_matrix = TRUE)
           conditional_covariance_i <- spatial_covariance_i - A[[i]] %*% t(C[[i]])
           cholesky_root_i <- t(chol(conditional_covariance_i))
@@ -395,7 +395,7 @@ setup_prediction <- function(object,
             mu_cond_S[[i]] + cholesky_root_i %*% rnorm(n_pred[i]))
         })
       } else {
-        Sp  <- par_hat$sigma2 * matern_cor(dist(grp), phi = par_hat$phi,
+        Sp  <- par_hat$sigma2 * matern_correlation(dist(grp), phi = par_hat$phi,
                                            kappa = object$kappa, return_sym_matrix = TRUE)
         Sc  <- Sp - A %*% t(C)
         Scr <- t(chol(Sc))
@@ -1987,7 +1987,7 @@ simulate_surface <- function(n_sim,
 
   # Simulate on the grid
   # Simulate S
-  Sigma <- sigma2*matern_cor(dist(grid_pred), phi = phi, kappa = kappa,
+  Sigma <- sigma2*matern_correlation(dist(grid_pred), phi = phi, kappa = kappa,
                              return_sym_matrix = TRUE)
   if(nugget_over_grid) {
     diag(Sigma) <- diag(Sigma) + tau2

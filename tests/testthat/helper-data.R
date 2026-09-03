@@ -12,7 +12,7 @@ data <- data.frame(x = coords[,1],
 sigma2 <- 1
 phi <- 2
 kappa <- 1
-Sigma <- sigma2 * matern_cor(dist(coords), phi = phi, kappa = kappa,
+Sigma <- sigma2 * matern_correlation(dist(coords), phi = phi, kappa = kappa,
                              return_sym_matrix = TRUE)
 Sigma_sroot <- t(chol(Sigma))
 S <- as.numeric(Sigma_sroot %*% rnorm(n))

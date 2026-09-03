@@ -451,7 +451,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     }
 
 
-    R <- matern_cor(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
+    R <- matern_correlation(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
     diag(R) <- diag(R)+nu2
 
     Sigma_g <- matrix(0, nrow = sum(n_dim_re), ncol = sum(n_dim_re))
@@ -517,7 +517,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     n_p <- length(par)
     g <- rep(0, n_p)
 
-    R <- matern_cor(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
+    R <- matern_correlation(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
     diag(R) <- diag(R)+nu2
 
     Sigma_g <- matrix(0, nrow = sum(n_dim_re), ncol = sum(n_dim_re))
@@ -677,7 +677,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     n_p <- length(par)
     g <- rep(0, n_p)
 
-    R <- matern_cor(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
+    R <- matern_correlation(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
     diag(R) <- diag(R)+nu2
 
     Sigma_g <- matrix(0, nrow = sum(n_dim_re), ncol = sum(n_dim_re))
@@ -1421,7 +1421,7 @@ simulate_glgpm <- function(n_sim,
   }
 
   # Simulate S
-  Sigma <- sigma2*matern_cor(dist(coords), phi = phi, kappa = kappa,
+  Sigma <- sigma2*matern_correlation(dist(coords), phi = phi, kappa = kappa,
                              return_sym_matrix = TRUE)
   diag(Sigma) <- diag(Sigma) + tau2
   Sigma_sroot <- t(chol(Sigma))
@@ -2369,7 +2369,7 @@ glgpm_nong <-
     inv2   <- linkf$d2
 
     u <- dist(coords)
-    Sigma0 <- sigma2_0 * matern_cor(u = u, phi = phi0, kappa = kappa, return_sym_matrix = TRUE)
+    Sigma0 <- sigma2_0 * matern_correlation(u = u, phi = phi0, kappa = kappa, return_sym_matrix = TRUE)
     diag(Sigma0) <- diag(Sigma0) + tau2_0
 
     if (messages) message("\n - Obtaining proposal mean/covariance via Laplace\n")
@@ -2465,7 +2465,7 @@ glgpm_nong <-
       if (n_re > 0) val$sigma2_re <- exp(par[ind_sigma2_re])
 
       if (is.na(ldetR) && is.na(as.numeric(R.inv)[1])) {
-        R <- matern_cor(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
+        R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
         diag(R) <- diag(R) + nu2
         val$ldetR <- determinant(R)$modulus
         val$R.inv <- solve(R)
@@ -2495,7 +2495,7 @@ glgpm_nong <-
       phi    <- exp(par[ind_phi])
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
-      R <- matern_cor(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
+      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
       diag(R) <- diag(R) + nu2
       R.inv <- solve(R)
       ldetR <- determinant(R)$modulus
@@ -2577,7 +2577,7 @@ glgpm_nong <-
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
       ## Build R(φ, ν²) and precision via Cholesky (fast solves)
-      R <- matern_cor(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
+      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
       diag(R) <- diag(R) + nu2
       U <- chol(R)   # R = U^T U
 

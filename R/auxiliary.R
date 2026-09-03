@@ -154,7 +154,7 @@ propose_utm <- function (data) {
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
 ##' @export
-matern_cor <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
   if (is.vector(u))
     names(u) <- NULL
   if (is.matrix(u))
