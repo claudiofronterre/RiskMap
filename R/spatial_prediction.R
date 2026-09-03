@@ -1855,7 +1855,7 @@ assess_prediction <- function(object,
 ##'
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @export
-surf_sim <- function(n_sim,
+simulate_surface <- function(n_sim,
                      pred_grid,
                      formula,
                      sampling_f,
@@ -1950,7 +1950,7 @@ surf_sim <- function(n_sim,
 
 
   if(length(inter_f$re.spec) > 0) {
-    stop("In the current impletementation of 'surf_sim' the addition of random effects
+    stop("In the current impletementation of 'simulate_surface' the addition of random effects
         with re() is not supported")
   }
   mf_pred <- model.frame(inter_lt_f$pf,data=pred_grid, na.action = na.fail)
@@ -2068,9 +2068,9 @@ surf_sim <- function(n_sim,
 
 ##' Plot simulated surface data for a given simulation
 ##'
-##' This function plots the simulated surface data for a specific simulation from the result of `surf_sim`. It visualizes the linear predictor values on a raster grid along with the actual data points.
+##' This function plots the simulated surface data for a specific simulation from the result of `simulate_surface`. It visualizes the linear predictor values on a raster grid along with the actual data points.
 ##'
-##' @param surf_obj The output object from `surf_sim`, containing both simulated data (`data_sim`) and predicted grid simulations (`lp_grid_sim`).
+##' @param surf_obj The output object from `simulate_surface`, containing both simulated data (`data_sim`) and predicted grid simulations (`lp_grid_sim`).
 ##' @param sim The simulation index to plot.
 ##' @param ... Additional graphical parameters to be passed to the plotting function of the `terra` package.
 ##'
@@ -2093,9 +2093,9 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 
 ##' @title Assess Simulations
 ##'
-##' @description This function evaluates the performance of models based on simulation results from the `surf_sim` function.
+##' @description This function evaluates the performance of models based on simulation results from the `simulate_surface` function.
 ##'
-##' @param obj_sim An object of class `RiskMap.sim`, obtained as an output from the `surf_sim` function.
+##' @param obj_sim An object of class `RiskMap.sim`, obtained as an output from the `simulate_surface` function.
 ##' @param models A named list of models to be evaluated.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param spatial_scale The scale at which predictions are assessed, either `"grid"` or `"area"`.
@@ -2122,7 +2122,7 @@ assess_simulation <- function(obj_sim,
                        categories= NULL) {
 
   if (!inherits(obj_sim, "RiskMap.sim")) {
-    stop("'obj_sim' must be an object of class 'RiskMap.sim' obtained as an output from the 'surf_sim' function")
+    stop("'obj_sim' must be an object of class 'RiskMap.sim' obtained as an output from the 'simulate_surface' function")
   }
   if (length(setdiff(pred_objective, c("mse","classify")))>0) {
     stop(paste("Invalid value for pred_objective. Allowed values are:", paste(c("mse","classify"), collapse = ", ")))
