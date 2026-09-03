@@ -2107,7 +2107,7 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @param pred_objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
 ##' @param categories A numeric vector of thresholds defining categories for classification. Required if `pred_objective = "classify"`.
 ##'
-##' @return A list of class `RiskMap.sim.res` containing model evaluation results.
+##' @return A list of class `RiskMap_assess_simulation` containing model evaluation results.
 ##'
 ##' @export
 assess_simulation <- function(obj_sim,
@@ -2420,25 +2420,25 @@ assess_simulation <- function(obj_sim,
     }
   }
   if(any(pred_objective=="classify")) out$pred_objective$classify$Class <- categories_class
-  class(out) <- "RiskMap.sim.res"
+  class(out) <- "RiskMap_assess_simulation"
   return(out)
 }
 
 ##' @title Summarize Simulation Results
 ##'
-##' @description Summarizes the results of model evaluations from a `RiskMap.sim.res` object. Provides average metrics for classification by category and overall correct classification (CC) summary.
+##' @description Summarizes the results of model evaluations from a `RiskMap_assess_simulation` object. Provides average metrics for classification by category and overall correct classification (CC) summary.
 ##'
-##' @param object An object of class `RiskMap.sim.res`, as returned by `assess_simulation`.
+##' @param object An object of class `RiskMap_assess_simulation`, as returned by `assess_simulation`.
 ##' @param ... Additional arguments (not used).
 ##'
 ##' @return A list containing summary data for each model:
 ##' - `by_cat_summary`: A data frame with average sensitivity, specificity, PPV, NPV, and CC by category.
 ##' - `CC_summary`: A numeric vector with mean, 2.5th percentile, and 97.5th percentile for CC across simulations.
 ##'
-##' @method summary RiskMap.sim.res
+##' @method summary RiskMap_assess_simulation
 ##' @export
-summary.RiskMap.sim.res <- function(object, ...) {
-  stopifnot(inherits(object, "RiskMap.sim.res"))
+summary.RiskMap_assess_simulation <- function(object, ...) {
+  stopifnot(inherits(object, "RiskMap_assess_simulation"))
 
   # Initialize results
   results <- list()
@@ -2498,7 +2498,7 @@ summary.RiskMap.sim.res <- function(object, ...) {
   }
 
   # Assign class for S3 print method
-  class(results) <- "summary.RiskMap.sim.res"
+  class(results) <- "summary.RiskMap_assess_simulation"
   return(results)
 }
 
@@ -2506,9 +2506,9 @@ summary.RiskMap.sim.res <- function(object, ...) {
 
 ##' @title Print Simulation Results
 ##'
-##' @description Prints a concise summary of simulation results from a `RiskMap.sim.res` object, including average metrics by category and a summary of overall correct classification (CC).
+##' @description Prints a concise summary of simulation results from a `RiskMap_assess_simulation` object, including average metrics by category and a summary of overall correct classification (CC).
 ##'
-##' @param x An object of class `summary.RiskMap.sim.res`, as returned by `summary.RiskMap.sim.res`.
+##' @param x An object of class `summary.RiskMap_assess_simulation`, as returned by `summary.RiskMap_assess_simulation`.
 ##' @param ... Additional arguments (not used).
 ##'
 ##' @return Invisibly returns `x`.
@@ -2516,17 +2516,17 @@ summary.RiskMap.sim.res <- function(object, ...) {
 ##'
 ##' Print Simulation Results
 ##'
-##' Prints a concise summary of simulation results from a `summary.RiskMap.sim.res` object,
+##' Prints a concise summary of simulation results from a `summary.RiskMap_assess_simulation` object,
 ##' including average metrics by category and a summary of overall correct classification (CC).
 ##'
-##' @param x An object of class `summary.RiskMap.sim.res`, as returned by `summary.RiskMap.sim.res`.
+##' @param x An object of class `summary.RiskMap_assess_simulation`, as returned by `summary.RiskMap_assess_simulation`.
 ##' @param ... Additional arguments (not used).
 ##'
 ##' @return Invisibly returns `x`.
 ##'
-##' @method print summary.RiskMap.sim.res
+##' @method print summary.RiskMap_assess_simulation
 ##' @export
-print.summary.RiskMap.sim.res <- function(x, ...) {
+print.summary.RiskMap_assess_simulation <- function(x, ...) {
   cat("Summary of Simulation Results\n\n")
 
   if (!is.null(x$mse)) {
