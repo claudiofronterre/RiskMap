@@ -222,7 +222,7 @@ matern_gradient_phi <- function(U, phi, kappa) {
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-matern.hessian.phi <- function(U, phi, kappa) {
+matern_hessian_phi <- function(U, phi, kappa) {
   der2.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {

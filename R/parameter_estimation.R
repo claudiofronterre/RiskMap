@@ -945,7 +945,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     # phi - phi
     der2_R_phi <- matrix(0, nrow = sum(n_dim_re),
                          ncol = sum(n_dim_re))
-    M.der2.phi <- matern.hessian.phi(U, phi, kappa)
+    M.der2.phi <- matern_hessian_phi(U, phi, kappa)
     der2_R_phi[1:n_dim_re[1], 1:n_dim_re[1]] <-
       M.der2.phi*sigma2
 
@@ -2596,7 +2596,7 @@ glgpm_nong <-
 
       ## φ in log space: R_u = dR/d(log φ), R_uu = d²R/d(log φ)²
       R1.phi <- matern_gradient_phi(u, phi, kappa)                 # ∂R/∂φ
-      R2.phi <- matern.hessian.phi(u, phi, kappa)              # ∂²R/∂φ²
+      R2.phi <- matern_hessian_phi(u, phi, kappa)              # ∂²R/∂φ²
       R_u  <- phi * R1.phi
       R_uu <- phi^2 * R2.phi + phi * R1.phi
 
