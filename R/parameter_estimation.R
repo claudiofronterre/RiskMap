@@ -1270,7 +1270,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-glgpm_sim <- function(n_sim,
+simulate_glgpm <- function(n_sim,
                       model_fit = NULL,
                       formula = NULL,
                       data = NULL,

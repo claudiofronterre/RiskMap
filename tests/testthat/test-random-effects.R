@@ -155,7 +155,7 @@ test_that("glgpm simulations support random effects in tibble-backed sf data", {
 
   set.seed(1)
   result <-
-    glgpm_sim(
+    simulate_glgpm(
       n_sim = 2,
       formula = y ~ gp(kappa = 0.5, nugget = FALSE) + re(group),
       data = data,
