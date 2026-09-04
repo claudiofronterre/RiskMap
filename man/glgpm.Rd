@@ -123,6 +123,40 @@ This argument must be an object returned by \verb{[set_control_mcmc()]}.
 The \code{start_pars} argument allows for specifying starting values for the model parameters.
 If not provided, default starting values are used.
 }
+\examples{
+
+data(italy_sim)
+
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+summary(fit)
+
+# add a random effect
+fit <- glgpm(
+  formula = y ~ gp() + re(province),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+summary(fit)
+
+# estimate the nugget
+fit <- glgpm(
+  formula = y ~ gp(nugget = TRUE),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+summary(fit)
+
+}
 \seealso{
 \code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 }

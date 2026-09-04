@@ -86,6 +86,27 @@ For each polygon in \code{shp}, grid-cell samples of the linear predictor are tr
 then aggregated via \code{shp_target} (optionally weighted). The list \code{pd_summary} is applied
 to each region's target samples to produce summary statistics.
 }
+\examples{
+library(sf)
+data(italy_sim)
+italy_subset <- italy_sim[1:100,]
+
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_subset,
+  family = "gaussian",
+  messages = FALSE
+)
+
+# joint predictions are required
+prediction_setup <- setup_prediction(fit, type = "joint")
+
+# split the whole area into two
+areal <- st_sf(geometry = st_make_grid(italy_subset, n = c(1, 2)))
+
+predictions <- predict_areal_target(prediction_setup, areal)
+
+}
 \seealso{
 \code{\link{setup_prediction}}, \code{\link{predict_grid_target}}
 }

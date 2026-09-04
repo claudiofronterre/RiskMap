@@ -6,7 +6,7 @@
 \alias{RiskMap-package}
 \title{RiskMap: Geostatistical Modeling of Spatially Referenced Data}
 \description{
-Geostatistical analysis of continuous and count data. Implements stationary Gaussian processes with Matérn correlation for spatial prediction, as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7).
+Geostatistical analysis of continuous and count data. Implements stationary Gaussian processes with Matérn correlation for spatial prediction, as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7). An accompanying book by Giorgi and Fronterre describes how the package can be used for model-based geostatistics in public health: \url{https://www.mbgr.org/}.
 }
 \seealso{
 Useful links:

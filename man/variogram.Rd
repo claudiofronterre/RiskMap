@@ -67,3 +67,12 @@ If \code{n_permutations > 0}, the data-frame also contains the following columns
 \description{
 Computes the empirical variogram using lag-distance breakpoints.
 }
+\examples{
+data(italy_sim)
+
+italy_variogram <- variogram(
+                     data = italy_sim[1:100,],
+                     variable = "y",
+                     n_permutations = 101)
+
+}

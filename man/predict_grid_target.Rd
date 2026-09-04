@@ -44,15 +44,45 @@ An object of class \code{RiskMap_predict_grid_target} containing:
 \describe{
 \item{target}{List of the predictions for each target}
 \item{grid_pred}{\code{sfc} object containing the coordinates for the predictions}
-\item{f_target}{placeholder}
-\item{pd_summary}{placeholder}
+\item{f_target}{Character vector giving the names of the target functions
+that were applied to the linear predictor samples. These names index the
+first level of the \code{target} list. If \code{f_target} was supplied
+unnamed, the default names \code{"f_target_1"}, \code{"f_target_2"},
+... are used.}
+\item{pd_summary}{Character vector giving the names of the summary
+functions applied to each target matrix. These names index the second
+level of the \code{target} list. If \code{pd_summary} was supplied
+unnamed, the default names \code{"pd_summary_1"}, \code{"pd_summary_2"},
+... are used.}
 \item{family}{The model family}
-\item{lp_samples}{placeholder}
+\item{lp_samples}{Samples of the linear predictor at the prediction
+locations, before the target functions in \code{f_target} are applied.
+A matrix with \code{n_pred} rows and \code{n_samples} columns, or a list
+of such matrices when \code{object} holds a list of prediction grids.
+The contributions of the covariates, the covariate offset, the nugget
+and the unstructured random effects are included only when the
+corresponding \code{include_*} arguments are set to \code{TRUE}.}
 }
 }
 \description{
 Computes predictions over a regular spatial grid using outputs from
 \code{\link{setup_prediction}}. Custom targets can be supplied via \code{f_target}.
+}
+\examples{
+data(italy_sim)
+
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+# using locations in dataset
+prediction_setup <- setup_prediction(fit)
+
+predictions <- predict_grid_target(prediction_setup)
+
 }
 \seealso{
 \code{\link{setup_prediction}}

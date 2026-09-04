@@ -27,5 +27,11 @@ a named vector containing the following components
 }
 }
 \description{
-Computes the distances between the locations in the dataset and returns summary statistics.
+Computes the distances between the unique locations in the dataset and returns summary statistics.
+}
+\examples{
+data(italy_sim)
+
+dist_summaries(italy_sim)
+
 }
