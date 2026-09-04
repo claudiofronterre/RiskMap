@@ -703,11 +703,11 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   res$conf_level      <- conf_level
   res$family          <- object$family
   res$kappa           <- object$kappa
-  res$log.lik         <- object$log.lik
+  res$log_lik         <- object$log_lik
   res$cov_offset_used <- !(is.null(object$cov_offset) ||
                              all(object$cov_offset == 0))
   if (object$family == "gaussian") {
-    res$aic <- 2 * length(object$estimate) - 2 * res$log.lik
+    res$aic <- 2 * length(object$estimate) - 2 * res$log_lik
   }
 
   res$call               <- object$call %||% NULL
@@ -766,7 +766,7 @@ print.summary.RiskMap <- function(x, ...) {
   cat("Matern covariance parameters (kappa = ", x$kappa, ")\n", sep = "")
 
   printCoefmat(x$sp, P.values = FALSE, has.Pvalue = FALSE)
-  if (!is.null(x$tau2))
+  if (!isTRUE(x$tau2))
     cat("Variance of the nugget effect fixed at ", x$tau2, "\n", sep = "")
 
   if (!is.null(x$ranef)) {
@@ -774,7 +774,7 @@ print.summary.RiskMap <- function(x, ...) {
     printCoefmat(x$ranef, P.values = FALSE, has.Pvalue = FALSE)
   }
 
-  cat("\nLog-likelihood: ", x$log.lik, "\n", sep = "")
+  cat("\nLog-likelihood: ", x$log_lik, "\n", sep = "")
   if (identical(x$family, "gaussian") && !is.null(x$aic))
     cat("AIC: ", x$aic, "\n", sep = "")
 
