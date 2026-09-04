@@ -87,8 +87,6 @@ dist_summaries <- function(data,
 ##'   \item{n_permutations}{the number of permutations}
 ##'   \item{breaks}{the calculated breaks}
 ##'   }
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##'
 ##' @export
 ##'

@@ -52,8 +52,3 @@ This function maximizes the integrand for GLGPMs using the Nelder-Mead optimizat
 
 The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family ('gaussian', 'binomial', or 'poisson').
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

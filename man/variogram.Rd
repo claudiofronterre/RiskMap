@@ -67,8 +67,3 @@ If \code{n_permutations > 0}, the data-frame also contains the following columns
 \description{
 Computes the empirical variogram using lag-distance breakpoints.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

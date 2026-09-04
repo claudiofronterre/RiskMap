@@ -18,7 +18,3 @@ Suggests the EPSG code for the UTM zone where the majority of the data falls.
 \details{
 The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

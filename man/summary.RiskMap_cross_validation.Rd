@@ -36,6 +36,3 @@ to compute averages. Attributes of the returned object include:
 \seealso{
 \code{\link{assess_prediction}}
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-}

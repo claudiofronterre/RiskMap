@@ -28,8 +28,6 @@
 ##'     \item{cov_offset}{Covariate offsets}
 ##'     \item{type}{The type of predictions}
 ##'   }
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix solve
 ##' @export
 setup_prediction <- function(object,
@@ -509,8 +507,6 @@ setup_prediction <- function(object,
 ##'   \item{lp_samples}{placeholder}
 ##' }
 ##' @seealso \code{\link{setup_prediction}}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix solve
 ##' @export
 predict_grid_target <- function(object,
@@ -747,8 +743,6 @@ predict_grid_target <- function(object,
 ##' @export
 ##'
 ##'
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
   t_data.frame <-
     terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
@@ -1196,8 +1190,6 @@ predict_areal_target <- function(object,
 ##'
 ##' @method plot RiskMap_predict_areal_target
 ##' @export
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 plot.RiskMap_predict_areal_target <- function(x, which_target = "linear_target",
                                          which_summary = "mean", ...) {
   col_shp_name <- paste(which_target,"_",which_summary,sep="")
@@ -1226,8 +1218,6 @@ plot.RiskMap_predict_areal_target <- function(x, which_target = "linear_target",
 ##' }
 ##'
 ##' @return The updated `RiskMap_pred` object.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 update_predictors <- function(object, predictors) {
   if (!inherits(object, what = "RiskMap_pred", which = FALSE)) {
@@ -1434,7 +1424,6 @@ update_predictors <- function(object, predictors) {
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
 ##' @export
-##' @author Emanuele Giorgi
 assess_prediction <- function(object,
                       keep_par_fixed = TRUE,
                       iter = 1,
@@ -1853,7 +1842,6 @@ assess_prediction <- function(object,
 ##' (\code{nugget_over_grid}), a logical  indicating if a covariate offset has been included in the linear predictor (\code{include_cov_offset}),
 ##' the model parameters set for the simulation (\code{par0}) and the family used in the model (\code{family}).
 ##'
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @export
 simulate_surface <- function(n_sim,
                      pred_grid,

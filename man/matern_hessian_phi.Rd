@@ -19,8 +19,3 @@ A matrix with the values of the second derivative of the Matern function with re
 \description{
 Computes the second derivative of the Matern correlation function with respect to \eqn{\phi}.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

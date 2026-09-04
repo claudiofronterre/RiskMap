@@ -27,6 +27,3 @@ The function extracts the coordinate pairs from the \code{sf} object and determi
 coordinates. It then assigns each row in the input data an identifier corresponding
 to the unique coordinate it matches.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-}

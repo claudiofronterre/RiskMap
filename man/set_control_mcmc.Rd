@@ -57,8 +57,3 @@ control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
 \seealso{
 \code{\link{glgpm}}
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

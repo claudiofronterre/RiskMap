@@ -45,6 +45,3 @@ If \code{check_mean = TRUE}, the \code{component} argument is ignored, and a war
 To specify a particular component of the random effects vector, set \code{check_mean = FALSE} and provide
 a valid \code{component} value.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-}

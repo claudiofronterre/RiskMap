@@ -89,6 +89,3 @@ Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of proper 
 \seealso{
 \code{\link{plot_AnPIT}}
 }
-\author{
-Emanuele Giorgi
-}

@@ -111,8 +111,3 @@ and exponential (poisson). Supply \code{invlink} to override.
 \seealso{
 \code{\link{maxim_integrand}}
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

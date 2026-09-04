@@ -30,8 +30,3 @@ It requires the 'ggplot2' package for plotting and 'sf' objects for spatial data
 \code{\link{predict_areal_target}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
 \code{\link[ggplot2]{aes}}, \code{\link[ggplot2]{scale_fill_distiller}}
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

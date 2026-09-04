@@ -25,6 +25,3 @@ This method is primarily used to format and display the summary score matrix,
 printing it to the console. It provides a clear view of the cross-validation performance
 metrics across different spatial models.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-}

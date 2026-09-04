@@ -57,8 +57,3 @@ Computes predictions over a regular spatial grid using outputs from
 \seealso{
 \code{\link{setup_prediction}}
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

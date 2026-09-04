@@ -50,8 +50,6 @@ create_convex_hull <- function(sf_object) {
 ##' \eqn{\log((y + 0.5) / (m - y + 0.5))}.
 ##' @details The empirical logit is often used as a finite transformation for
 ##' binomial data, including cases where \eqn{y = 0} or \eqn{y = m}.
-##' @author Claudio Fronterre \email{c.fronterre@@bham.ac.uk}
-##' @author Emanuele Giorgi \email{e.giorgi@@bham.ac.uk}
 ##' @examples
 ##' y <- c(0, 3, 7, 10)
 ##' m <- c(10, 10, 10, 10)
@@ -95,9 +93,6 @@ elogit <- function(y, m) {
 ##' @param data An object of class \code{sf} containing the coordinates.
 ##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 ##' @return An integer indicating the EPSG code of the UTM zone.
-##' @author
-##' Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 propose_utm <- function (data) {
   if (!inherits(data, "sf"))
@@ -148,8 +143,6 @@ propose_utm <- function (data) {
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @param return_sym_matrix A logical value indicating whether to return a symmetric correlation matrix. Defaults to \code{FALSE}.
 ##' @details The Matern correlation function is defined as
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
@@ -185,8 +178,6 @@ matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the first derivative of the Matern function with respect to \eqn{\phi} for the given distances.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 matern_gradient_phi <- function(U, phi, kappa) {
   der.phi <- function(u, phi, kappa) {
@@ -219,8 +210,6 @@ matern_gradient_phi <- function(U, phi, kappa) {
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the second derivative of the Matern function with respect to \eqn{\phi} for the given distances.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 matern_hessian_phi <- function(U, phi, kappa) {
   der2.phi <- function(u, phi, kappa) {
@@ -265,8 +254,6 @@ matern_hessian_phi <- function(U, phi, kappa) {
 ##' \item{nugget}{The nugget effect.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the GP model.}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 gp <- function (..., kappa = 0.5, nugget = FALSE) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -316,8 +303,6 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the random effect model.}
 ##' @note At least one variable must be provided as input.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 re <- function (...) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -492,8 +477,6 @@ check_formula <- function(formula, data){
 ##' \item{rho}{Egg detection rate (fecundity).}
 ##' \item{sigma2}{Spatial process variance.}
 ##' \item{phi}{Spatial correlation scale.}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @seealso \code{\link{glgpm}}
 ##' @method coef RiskMap
 ##' @export
@@ -823,8 +806,6 @@ print.summary.RiskMap <- function(x, ...) {
 ##' @importFrom xtable xtable
 ##' @export
 ##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap_cross_validation}}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 to_table <- function(object, ...) {
   summary_out <- summary(object)
   if(inherits(summary_out,
@@ -869,7 +850,6 @@ to_table <- function(object, ...) {
 ##' to the unique coordinate it matches.
 ##'
 ##' @export
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##'
 ##'
 create_ids <- function(data_sf) {
@@ -920,7 +900,6 @@ create_ids <- function(data_sf) {
 ##'
 ##' @export
 ##' @method summary RiskMap_cross_validation
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   model_names <- names(object$model)
   n_models <- length(model_names)
@@ -978,7 +957,6 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
 ##'
 ##' @return This function is used for its side effect of printing to the console. It does not
 ##'         return a value.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @export
 ##' @method print summary.RiskMap_cross_validation
 print.summary.RiskMap_cross_validation <- function(x, ...) {

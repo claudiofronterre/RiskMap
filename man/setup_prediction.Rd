@@ -57,8 +57,3 @@ An object of class \code{"RiskMap_pred"} containing:
 Computes predictions over a spatial grid using a fitted model from
 \code{\link{glgpm}}.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

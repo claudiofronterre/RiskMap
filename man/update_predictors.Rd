@@ -26,8 +26,3 @@ The function performs several checks and updates:
 \item Updates the prediction locations, the predictive samples for the random effects, and the linear predictor.
 }
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

@@ -85,8 +85,6 @@
 ##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
 ##'
 ##' @seealso \code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 glgpm <- function(formula,
                  data,
@@ -364,7 +362,6 @@ glgpm <- function(formula,
 }
 
 
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
@@ -1267,8 +1264,6 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' Additionally, GLGPMs can incorporate unstructured random effects specified through the [`re()`] term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
 ##'
 ##' @return A list containing simulated data, simulated spatial random effects (if applicable), and other simulation parameters.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 simulate_glgpm <- function(n_sim,
                       model_fit = NULL,
@@ -1543,8 +1538,6 @@ simulate_glgpm <- function(n_sim,
 ##'
 ##' @return A list containing the mode estimate, and optionally, the Hessian matrix and gradient vector.
 ##' @export
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 maxim_integrand <- function(
     y, units_m, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
@@ -1884,8 +1877,6 @@ maxim_integrand <- function(
 ##' @seealso \code{\link{maxim_integrand}}
 ##'
 ##' @export
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 laplace_sampling_mcmc <- function(y,
                                   units_m,
                                   mu,
@@ -2201,8 +2192,6 @@ laplace_sampling_mcmc <- function(y,
 ##' control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
 ##'
 ##' @seealso \code{\link{glgpm}}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
 set_control_mcmc <- function(n_sim = 12000,
@@ -2274,7 +2263,6 @@ set_control_mcmc <- function(n_sim = 12000,
   return(res)
 }
 
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_nong <-
   function(y, D, coords, units_m, kappa,
@@ -2806,7 +2794,6 @@ glgpm_nong <-
 ##'
 ##' @return
 ##' No return value, called for side effects (plots and warnings).
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @importFrom sns ess
 ##' @importFrom graphics par
 ##' @export

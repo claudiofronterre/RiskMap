@@ -57,8 +57,3 @@ The simulation process involves generating spatially correlated random effects a
 
 Additionally, GLGPMs can incorporate unstructured random effects specified through the \code{\link[=re]{re()}} term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

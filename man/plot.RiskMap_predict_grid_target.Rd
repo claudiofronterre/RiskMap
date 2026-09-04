@@ -29,8 +29,3 @@ It plots the values or summaries over a regular spatial grid, allowing for visua
 \seealso{
 \code{\link{predict_grid_target}}
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}
