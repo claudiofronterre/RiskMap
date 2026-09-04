@@ -17,18 +17,64 @@
 ##' @param messages Logical; display progress messages. Defaults to `TRUE`.
 ##' @return An object of class \code{"RiskMap_pred"} containing:
 ##'   \describe{
-##'     \item{mu_pred}{placeholder}
+##'     \item{mu_pred}{Fixed-effects component of the linear predictor at the
+##'       prediction locations, i.e. \eqn{D_{pred}\hat{\beta}}. A numeric vector
+##'       of length \code{n_pred}, or a list of such vectors when \code{grid_pred}
+##'       was supplied as a list of grids. Equal to \code{0} when the model
+##'       contains no covariates.}
 ##'     \item{grid_pred}{The locations of the predictions}
-##'     \item{par_hat}{placeholder}
-##'     \item{S_samples}{placeholder}
-##'     \item{re}{placeholder}
-##'     \item{obs_loc}{placeholder}
-##'     \item{inter_f}{placeholder}
+##'     \item{par_hat}{Named list of the maximum likelihood estimates returned by
+##'       \code{coef()} on the fitted \code{\link{glgpm}} object, containing
+##'       \code{beta} (regression coefficients), \code{sigma2} (spatial variance),
+##'       \code{phi} (scale of the spatial correlation) and, where applicable,
+##'       \code{tau2} (nugget), \code{sigma2_re} (variances of the unstructured
+##'       random effects) and \code{sigma2_me} (measurement error variance).}
+##'     \item{S_samples}{Samples from the predictive distribution of the spatial
+##'       Gaussian process at the prediction locations. A matrix with
+##'       \code{n_pred} rows and \code{n_samples} columns, or a list of such
+##'       matrices (one per grid) when \code{grid_pred} was supplied as a list.}
+##'     \item{re}{List with two elements describing the unstructured random
+##'       effects: \code{D_pred}, a list of design matrices mapping the
+##'       prediction locations onto the levels of each random effect, and
+##'       \code{samples}, a nested list giving, for each random effect and each
+##'       of its levels, a vector of \code{n_samples} draws. Both elements are
+##'       \code{NULL} when the model contains no unstructured random effects.}
+##'     \item{obs_loc}{Logical; \code{TRUE} when predictions were made at the
+##'       observed data locations, i.e. when \code{grid_pred} was left as
+##'       \code{NULL} in \code{\link{setup_prediction}}.}
+##'     \item{inter_f}{The model formula after interpretation by
+##'       \code{interpret.formula}, separating the fixed-effects terms, the
+##'       spatial term and the unstructured random effect terms. Used internally
+##'       to build the linear predictor at the prediction locations.}
 ##'     \item{family}{The model family}
 ##'     \item{cov_offset}{Covariate offsets}
-##'     \item{type}{The type of predictions}
+##'     \item{type}{The type of predictions - `marginal` or `joint`}
 ##'   }
 ##' @importFrom Matrix solve
+##' @examples
+##'
+##' data(italy_sim)
+##' italy_subset <- italy_sim[1:100,]
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_subset,
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' # using locations in dataset
+##' prediction_setup <- setup_prediction(fit)
+##'
+##' # using new locations
+##' hull <- create_convex_hull(italy_subset)
+##' grid_pred <- create_grid(hull, 20)
+##' prediction_setup <- setup_prediction(
+##'   fit,
+##'   grid_pred = grid_pred,
+##'   predictors = data.frame(y = rnorm(length(grid_pred)))
+##' )
+##'
 ##' @export
 setup_prediction <- function(object,
                            grid_pred = NULL,
@@ -243,8 +289,11 @@ setup_prediction <- function(object,
     else
       par_hat$sigma2 * matern_correlation(U_pred, phi = par_hat$phi, kappa = object$kappa)
   } else {
-    C <- par_hat$sigma2*R
+    C <- par_hat$sigma2 * R[, object$ID_coords]
+    grp <- object$coords
   }
+
+  n_pred_spatial <- if (obs_loc) nrow(object$coords) else n_pred
 
   mu <- as.numeric(object$D %*% par_hat$beta)
 
@@ -356,7 +405,6 @@ setup_prediction <- function(object,
       B    <- -C_g %*% Sigma_star_inv %*% Matrix::t(C_g) / (par_hat$sigma2_me^2)
       diag(B) <- Matrix::diag(B) + 1 / par_hat$sigma2_me
 
-
       A <- if (list_mode) lapply(C, function(single_grid_C) single_grid_C %*% B) else C %*% B
     } else {
       Sigma     <- par_hat$sigma2 * R
@@ -380,7 +428,7 @@ setup_prediction <- function(object,
       } else {
         sd_cond_S <- sqrt(par_hat$sigma2 - Matrix::diag(A %*% t(C)))
         out$S_samples <- sapply(seq_len(n_samples), function(i)
-          mu_cond_S + sd_cond_S * rnorm(n_pred))
+          mu_cond_S + sd_cond_S * rnorm(n_pred_spatial))
       }
     } else {
       if (list_mode) {
@@ -398,7 +446,7 @@ setup_prediction <- function(object,
         Sc  <- Sp - A %*% t(C)
         Scr <- t(chol(Sc))
         out$S_samples <- sapply(seq_len(n_samples), function(i)
-          mu_cond_S + Scr %*% rnorm(n_pred))
+          mu_cond_S + Scr %*% rnorm(n_pred_spatial))
       }
     }
   }
@@ -501,13 +549,43 @@ setup_prediction <- function(object,
 ##' \describe{
 ##'   \item{target}{List of the predictions for each target}
 ##'   \item{grid_pred}{`sfc` object containing the coordinates for the predictions}
-##'   \item{f_target}{placeholder}
-##'   \item{pd_summary}{placeholder}
+##'   \item{f_target}{Character vector giving the names of the target functions
+##'     that were applied to the linear predictor samples. These names index the
+##'     first level of the \code{target} list. If \code{f_target} was supplied
+##'     unnamed, the default names \code{"f_target_1"}, \code{"f_target_2"},
+##'     ... are used.}
+##'   \item{pd_summary}{Character vector giving the names of the summary
+##'     functions applied to each target matrix. These names index the second
+##'     level of the \code{target} list. If \code{pd_summary} was supplied
+##'     unnamed, the default names \code{"pd_summary_1"}, \code{"pd_summary_2"},
+##'     ... are used.}
 ##'   \item{family}{The model family}
-##'   \item{lp_samples}{placeholder}
+##'   \item{lp_samples}{Samples of the linear predictor at the prediction
+##'     locations, before the target functions in \code{f_target} are applied.
+##'     A matrix with \code{n_pred} rows and \code{n_samples} columns, or a list
+##'     of such matrices when \code{object} holds a list of prediction grids.
+##'     The contributions of the covariates, the covariate offset, the nugget
+##'     and the unstructured random effects are included only when the
+##'     corresponding \code{include_*} arguments are set to \code{TRUE}.}
 ##' }
 ##' @seealso \code{\link{setup_prediction}}
 ##' @importFrom Matrix solve
+##'
+##' @examples
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' # using locations in dataset
+##' prediction_setup <- setup_prediction(fit)
+##'
+##' predictions <- predict_grid_target(prediction_setup)
+##'
 ##' @export
 predict_grid_target <- function(object,
                              include_covariates  = TRUE,
@@ -806,6 +884,27 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
 ##' @seealso \code{\link{setup_prediction}}, \code{\link{predict_grid_target}}
 ##'
 ##' @importFrom terra rast as.data.frame
+##'
+##' @examples
+##' library(sf)
+##' data(italy_sim)
+##' italy_subset <- italy_sim[1:100,]
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_subset,
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' # joint predictions are required
+##' prediction_setup <- setup_prediction(fit, type = "joint")
+##'
+##' # split the whole area into two
+##' areal <- st_sf(geometry = st_make_grid(italy_subset, n = c(1, 2)))
+##'
+##' predictions <- predict_areal_target(prediction_setup, areal)
+##'
 ##' @export
 predict_areal_target <- function(object,
                             shp,
