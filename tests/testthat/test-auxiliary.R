@@ -10,7 +10,11 @@ test_that("check_formula functions correctly", {
 
   data <- sf::st_as_sf(df, coords = c("x", "z"), crs = 4326)
 
+  test_kappa <- 1
   expect_no_error(check_formula(y ~ gp(), data))
+  expect_no_error(check_formula(y ~ gp(kappa = test_kappa), data))
+  expect_no_error(check_formula(y ~ log(c) + gp(), data))
+
   expect_error(check_formula("not formula", data), "'formula' must be a 'formula'")
   expect_error(check_formula(y ~ c, data), "The 'formula' must contain a Gaussian Process term")
   expect_error(check_formula(y ~ gp, data), "The 'formula' must contain a Gaussian Process term")
@@ -38,7 +42,7 @@ test_that("check_data functions correctly", {
     z = c(0, 1, 0)
   )
 
-  sf_data <- sf::st_as_sf(data, coords = c("x", "y"), crs = sf::st_crs(4326))
+  gaussian_data <- sf::st_as_sf(data, coords = c("x", "y"), crs = sf::st_crs(4326))
   sf_no_crs <- sf::st_as_sf(data, coords = c("x", "y"))
 
   data$y[2] <- 100
@@ -48,22 +52,40 @@ test_that("check_data functions correctly", {
   multipolygon <- sf::st_multipolygon(list(polygon))
   sf_polygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(polygon), crs = sf::st_crs(4326))
   sf_multipolygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(multipolygon), crs = sf::st_crs(4326))
-  sf_merged <- rbind(sf_data, sf_polygon)
+  sf_merged <- rbind(gaussian_data, sf_polygon)
 
-  expect_error(check_data(sf_data, "n"), "'geometry' must be either 'point' or 'polygon'")
+  expect_error(check_data(gaussian_data, geometry = "n"), "'geometry' must be either 'point' or 'polygon'")
+  expect_error(check_data(gaussian_data, type = "n"), "'type' must be either 'sf' or 'sfc'")
 
-  expect_no_error(check_data(sf_data))
+  expect_no_error(check_data(gaussian_data))
   expect_error(check_data(data), "'data' must be of class 'sf'")
-  expect_error(check_data(sf_no_crs), "'data' must contain a coordinate reference system")
-  expect_error(check_data(sf_merged), "'data' can only contain 'POINT' geometry")
-  expect_error(check_data(sf_wrong_coord), "'data' contains impossible latitude or longitude values")
+
+  expect_error(check_data(sf_no_crs), "'sf_no_crs' must contain a coordinate reference system")
+  expect_error(check_data(sf_merged), "'sf_merged' can only contain 'POINT' geometry")
+  expect_error(check_data(sf_wrong_coord), "'sf_wrong_coord' contains impossible latitude or longitude values")
 
   expect_no_error(check_data(sf_polygon, "polygon"))
-  expect_error(check_data(sf_data, "polygon"), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
-  expect_error(check_data(sf_merged, "polygon"), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+  expect_error(check_data(gaussian_data, "polygon"), "'gaussian_data' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+  expect_error(check_data(sf_merged, "polygon"), "'sf_merged' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
 
   expect_no_error(check_data(sf_multipolygon, "polygon"))
 
+  expect_no_error(check_data(st_geometry(gaussian_data), "point", "sfc"))
+  expect_no_error(check_data(st_geometry(sf_multipolygon), "polygon", "sfc"))
+
+})
+
+test_that("check_crs functions correctly", {
+  crs <- "invalid"
+  expect_error(check_crs(crs), "The 'crs' provided is not a valid CRS")
+  crs <- 121212
+  expect_error(check_crs(crs), "The 'crs' provided is not a valid CRS")
+  dif_crs <- 12121.2
+  expect_error(check_crs(dif_crs), "The 'dif_crs' provided is not a valid CRS")
+
+  crs <- 2648
+  expect_no_error(check_crs(crs))
+  expect_no_error(check_crs(2648))
 })
 
 test_that("gp functions correctly", {
@@ -97,4 +119,5 @@ test_that("gp functions correctly", {
   expect_equal(custom_result$label, "gp(a,b)")
 
 })
+
 

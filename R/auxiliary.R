@@ -20,13 +20,13 @@
 ##' sf_points <- st_sf(geometry = points)
 ##'
 ##' # Calculate the convex hull
-##' convex_hull_result <- convex_hull_sf(sf_points)
+##' convex_hull_result <- create_convex_hull(sf_points)
 ##'
 ##' # Plot the result
 ##' plot(sf_points, col = 'blue', pch = 19)
 ##' plot(convex_hull_result, add = TRUE, border = 'red')
 ##' @export
-convex_hull_sf <- function(sf_object) {
+create_convex_hull <- function(sf_object) {
   # Check if the input is an sf object
   if (!inherits(sf_object, "sf")) {
     stop("`sf_object` must be an sf object")
@@ -50,8 +50,6 @@ convex_hull_sf <- function(sf_object) {
 ##' \eqn{\log((y + 0.5) / (m - y + 0.5))}.
 ##' @details The empirical logit is often used as a finite transformation for
 ##' binomial data, including cases where \eqn{y = 0} or \eqn{y = m}.
-##' @author Claudio Fronterre \email{c.fronterre@@bham.ac.uk}
-##' @author Emanuele Giorgi \email{e.giorgi@@bham.ac.uk}
 ##' @examples
 ##' y <- c(0, 3, 7, 10)
 ##' m <- c(10, 10, 10, 10)
@@ -95,9 +93,6 @@ elogit <- function(y, m) {
 ##' @param data An object of class \code{sf} containing the coordinates.
 ##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 ##' @return An integer indicating the EPSG code of the UTM zone.
-##' @author
-##' Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 propose_utm <- function (data) {
   if (!inherits(data, "sf"))
@@ -148,13 +143,11 @@ propose_utm <- function (data) {
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @param return_sym_matrix A logical value indicating whether to return a symmetric correlation matrix. Defaults to \code{FALSE}.
 ##' @details The Matern correlation function is defined as
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
 ##' @export
-matern_cor <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
   if (is.vector(u))
     names(u) <- NULL
   if (is.matrix(u))
@@ -185,10 +178,8 @@ matern_cor <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the first derivative of the Matern function with respect to \eqn{\phi} for the given distances.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-matern.grad.phi <- function(U, phi, kappa) {
+matern_gradient_phi <- function(U, phi, kappa) {
   der.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {
@@ -219,10 +210,8 @@ matern.grad.phi <- function(U, phi, kappa) {
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the second derivative of the Matern function with respect to \eqn{\phi} for the given distances.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-matern.hessian.phi <- function(U, phi, kappa) {
+matern_hessian_phi <- function(U, phi, kappa) {
   der2.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {
@@ -265,8 +254,6 @@ matern.hessian.phi <- function(U, phi, kappa) {
 ##' \item{nugget}{The nugget effect.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the GP model.}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 gp <- function (..., kappa = 0.5, nugget = FALSE) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -316,8 +303,6 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the random effect model.}
 ##' @note At least one variable must be provided as input.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 re <- function (...) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -407,6 +392,36 @@ interpret.formula <- function(formula) {
   ret
 }
 
+##' @title Extract terms from formula ignoring kappa and nugget
+##' @description Recursively extract variable names from a formula/expression,
+##' but for calls to gp(), only look inside unnamed (positional) arguments.
+##' @param formula The formula to check
+##' @return A character vector of terms
+##' @noRd
+get_formula_terms <- function(formula) {
+  if (is.symbol(formula)) {
+    return(as.character(formula))
+  }
+
+  if (is.call(formula)) {
+    fn_name <- if (is.symbol(formula[[1]])) as.character(formula[[1]]) else ""
+
+    args <- as.list(formula)[-1]
+    arg_names <- names(args)
+    if (is.null(arg_names)) arg_names <- rep("", length(args))
+
+    if (fn_name == "gp") {
+      # only keep unnamed arguments
+      args <- args[arg_names == ""]
+    }
+
+    return(unlist(lapply(args, get_formula_terms)))
+  }
+
+  NULL
+}
+
+
 ##' @title Check that formula is valid
 ##' @description Checks that the formula object is of class formula and that all
 ##' the terms in the formula are present in the data
@@ -422,7 +437,7 @@ check_formula <- function(formula, data){
          model to be fitted", call. = FALSE)
   }
 
-  formula_terms <- all.vars(formula)
+  formula_terms <- unique(get_formula_terms(formula))
   column_names <- names(data)
 
   contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
@@ -462,8 +477,6 @@ check_formula <- function(formula, data){
 ##' \item{rho}{Egg detection rate (fecundity).}
 ##' \item{sigma2}{Spatial process variance.}
 ##' \item{phi}{Spatial correlation scale.}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @seealso \code{\link{glgpm}}
 ##' @method coef RiskMap
 ##' @export
@@ -539,11 +552,6 @@ coef.RiskMap <- function(object, ...) {
   if (n_re > 0)
     res$sigma2_re <- as.numeric(object$estimate[ind_sigma2_re])
 
-  if (object$sst) {
-    ind_psi <- length(object$estimate)
-    res$psi  <- as.numeric(exp(object$estimate[ind_psi]))
-  }
-
   return(res)
 }
 
@@ -609,9 +617,6 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   names(object$estimate)[ind_beta] <- colnames(object$D)
   ind_sigma2 <- p + 1; names(object$estimate)[ind_sigma2] <- "Spatial process var."
   ind_phi    <- p + 2; names(object$estimate)[ind_phi]    <- "Spatial corr. scale"
-  sst        <- object$sst
-
-  if (sst) ind_psi <- length(object$estimate)
 
   if (isTRUE(object$fix_tau2)) {
     ind_tau2 <- p + 3
@@ -695,25 +700,14 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
                             z_crit * se_par[ind_sigma2_re])
     )
 
-  if (sst) {
-    est_psi <- object$estimate[ind_psi]
-    psi_row <- c(
-      Estimate      = est_psi,
-      "Lower limit" = exp(log(est_psi) - z_crit * se_par[ind_psi]),
-      "Upper limit" = exp(log(est_psi) + z_crit * se_par[ind_psi])
-    )
-    res$sp <- rbind(res$sp, "Temporal corr. scale" = psi_row)
-  }
-
   res$conf_level      <- conf_level
-  res$sst             <- sst
   res$family          <- object$family
   res$kappa           <- object$kappa
-  res$log.lik         <- object$log.lik
+  res$log_lik         <- object$log_lik
   res$cov_offset_used <- !(is.null(object$cov_offset) ||
                              all(object$cov_offset == 0))
   if (object$family == "gaussian") {
-    res$aic <- 2 * length(object$estimate) - 2 * res$log.lik
+    res$aic <- 2 * length(object$estimate) - 2 * res$log_lik
   }
 
   res$call               <- object$call %||% NULL
@@ -768,16 +762,11 @@ print.summary.RiskMap <- function(x, ...) {
     }
   }
 
-  if (!isTRUE(x$sst)) {
-    cat("\nSpatial Gaussian process\n")
-    cat("Matern covariance parameters (kappa = ", x$kappa, ")\n", sep = "")
-  } else {
-    cat("\nSpatio-temporal Gaussian process\n")
-    cat("Separable correlation: Matern (kappa = ", x$kappa,
-        ") x Exponential (time)\n", sep = "")
-  }
+  cat("\nSpatial Gaussian process\n")
+  cat("Matern covariance parameters (kappa = ", x$kappa, ")\n", sep = "")
+
   printCoefmat(x$sp, P.values = FALSE, has.Pvalue = FALSE)
-  if (!is.null(x$tau2))
+  if (!isTRUE(x$tau2))
     cat("Variance of the nugget effect fixed at ", x$tau2, "\n", sep = "")
 
   if (!is.null(x$ranef)) {
@@ -785,7 +774,7 @@ print.summary.RiskMap <- function(x, ...) {
     printCoefmat(x$ranef, P.values = FALSE, has.Pvalue = FALSE)
   }
 
-  cat("\nLog-likelihood: ", x$log.lik, "\n", sep = "")
+  cat("\nLog-likelihood: ", x$log_lik, "\n", sep = "")
   if (identical(x$family, "gaussian") && !is.null(x$aic))
     cat("AIC: ", x$aic, "\n", sep = "")
 
@@ -794,7 +783,7 @@ print.summary.RiskMap <- function(x, ...) {
 
 ##' @title Generate LaTeX Tables from RiskMap Model Fits and Validation
 ##' @description Converts a fitted "RiskMap" model or cross-validation results into an \code{xtable} object, formatted for easy export to LaTeX or HTML.
-##' @param object An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap.spatial.cv" containing cross-validation results.
+##' @param object An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap_cross_validation" containing cross-validation results.
 ##' @param ... Additional arguments to be passed to \code{\link[xtable]{xtable}} for customization.
 ##' @details This function creates a summary table from a fitted "RiskMap" model or cross-validation results for multiple models, returning it as an \code{xtable} object.
 ##'
@@ -806,7 +795,7 @@ print.summary.RiskMap <- function(x, ...) {
 ##'   \item Measurement error variance, if applicable.
 ##' }
 ##'
-##' When the input is a cross-validation summary object ("summary.RiskMap.spatial.cv"), the table includes:
+##' When the input is a cross-validation summary object ("summary.RiskMap_cross_validation"), the table includes:
 ##' \itemize{
 ##'   \item A row for each model being compared.
 ##'   \item Performance metrics such as CRPS and SCRPS for each model.
@@ -816,9 +805,7 @@ print.summary.RiskMap <- function(x, ...) {
 ##' @return An object of class "xtable", which contains the formatted table as a \code{data.frame} and several attributes specifying table formatting options.
 ##' @importFrom xtable xtable
 ##' @export
-##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap.spatial.cv}}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
+##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap_cross_validation}}
 to_table <- function(object, ...) {
   summary_out <- summary(object)
   if(inherits(summary_out,
@@ -827,7 +814,7 @@ to_table <- function(object, ...) {
                  summary_out$me)
     out <- xtable(x = tab,...)
   } else if (inherits(summary_out,
-                      what = "summary.RiskMap.spatial.cv", which = FALSE)) {
+                      what = "summary.RiskMap_cross_validation", which = FALSE)) {
     n_models <- nrow(summary_out)
     n_metrics <- ncol(summary_out)
     model_names <- rownames(summary_out)
@@ -863,10 +850,9 @@ to_table <- function(object, ...) {
 ##' to the unique coordinate it matches.
 ##'
 ##' @export
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##'
 ##'
-compute_ID_coords <- function(data_sf) {
+create_ids <- function(data_sf) {
   if(!inherits(data_sf,
                what = c("sfc","sf"), which = FALSE)) {
     stop("The object passed to 'grid_pred' must be an object
@@ -889,10 +875,10 @@ compute_ID_coords <- function(data_sf) {
 ##' @title Summarize Cross-Validation Scores for Spatial RiskMap Models
 ##'
 ##' @description This function summarizes cross-validation scores for different spatial models obtained
-##' from \code{\link{assess_pp}}.
+##' from \code{\link{assess_prediction}}.
 ##'
-##' @param object A `RiskMap.spatial.cv` object containing cross-validation scores for each
-##'               model, as obtained from \code{\link{assess_pp}}.
+##' @param object A `RiskMap_cross_validation` object containing cross-validation scores for each
+##'               model, as obtained from \code{\link{assess_prediction}}.
 ##' @param view_all Logical. If `TRUE`, stores the average scores across test sets for each
 ##'                 model alongside the overall average across all models. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to or from other methods.
@@ -908,19 +894,18 @@ compute_ID_coords <- function(data_sf) {
 ##' }
 ##'
 ##' @return A matrix of summary scores with models as rows and metrics as columns, with class
-##' `"summary.RiskMap.spatial.cv"`.
+##' `"summary.RiskMap_cross_validation"`.
 ##'
-##' @seealso \code{\link{assess_pp}}
+##' @seealso \code{\link{assess_prediction}}
 ##'
 ##' @export
-##' @method summary RiskMap.spatial.cv
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-summary.RiskMap.spatial.cv <- function(object, view_all = TRUE, ...) {
+##' @method summary RiskMap_cross_validation
+summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   model_names <- names(object$model)
   n_models <- length(model_names)
 
   metric_names <- names(object$model[[1]]$score)
-  if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_pp'")
+  if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_prediction'")
   n_metrics <- length(metric_names)
 
   res <- matrix(NA, ncol = n_metrics, nrow = n_models)
@@ -952,17 +937,17 @@ summary.RiskMap.spatial.cv <- function(object, view_all = TRUE, ...) {
   attr(res, "overall_averages") <- overall_averages
   attr(res, "view_all") <- view_all
 
-  class(res) <- "summary.RiskMap.spatial.cv"
+  class(res) <- "summary.RiskMap_cross_validation"
   return(res)
 }
 
 ##' @title Print Summary of RiskMap Spatial Cross-Validation Scores
 ##'
 ##' @description This function prints the matrix of cross-validation scores produced by
-##' `summary.RiskMap.spatial.cv` in a readable format.
+##' `summary.RiskMap_cross_validation` in a readable format.
 ##'
-##' @param x An object of class `"summary.RiskMap.spatial.cv"`, typically the output of
-##'          `summary.RiskMap.spatial.cv`.
+##' @param x An object of class `"summary.RiskMap_cross_validation"`, typically the output of
+##'          `summary.RiskMap_cross_validation`.
 ##' @param ... Additional arguments passed to or from other methods.
 ##'
 ##' @details
@@ -972,10 +957,9 @@ summary.RiskMap.spatial.cv <- function(object, view_all = TRUE, ...) {
 ##'
 ##' @return This function is used for its side effect of printing to the console. It does not
 ##'         return a value.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @export
-##' @method print summary.RiskMap.spatial.cv
-print.summary.RiskMap.spatial.cv <- function(x, ...) {
+##' @method print summary.RiskMap_cross_validation
+print.summary.RiskMap_cross_validation <- function(x, ...) {
   # Extract attributes
   test_set_means <- attr(x, "test_set_means")
   overall_averages <- attr(x, "overall_averages")
@@ -1017,8 +1001,8 @@ print.summary.RiskMap.spatial.cv <- function(x, ...) {
 ##' @title Plot Calibration Curves (AnPIT / PIT) from Spatial Cross-Validation
 ##'
 ##' @description
-##' Produce calibration plots from a \code{RiskMap.spatial.cv} object returned by
-##' \code{\link{assess_pp}}.
+##' Produce calibration plots from a \code{RiskMap_cross_validation} object returned by
+##' \code{\link{assess_prediction}}.
 ##' * For Binomial or Poisson models the function visualises the
 ##'   \emph{Aggregated normalised Probability Integral Transform} (AnPIT)
 ##'   curves stored in \code{$AnPIT}.
@@ -1028,7 +1012,7 @@ print.summary.RiskMap.spatial.cv <- function(x, ...) {
 ##'
 ##' A 45° dashed red line indicates perfect calibration.
 ##'
-##' @param object       A \code{RiskMap.spatial.cv} object.
+##' @param object       A \code{RiskMap_cross_validation} object.
 ##' @param mode         One of \code{"average"} (average curve across test sets),
 ##'                     \code{"single"} (a specific test set),
 ##'                     or \code{"all"} (every test set separately).
@@ -1050,8 +1034,8 @@ plot_AnPIT <- function(object,
                        model_name = NULL,
                        combine_panels = FALSE) {
 
-  if (!inherits(object, "RiskMap.spatial.cv"))
-    stop("`object` must be a 'RiskMap.spatial.cv' produced by assess_pp().")
+  if (!inherits(object, "RiskMap_cross_validation"))
+    stop("`object` must be a 'RiskMap_cross_validation' produced by assess_prediction().")
 
   all_models <- names(object$model)
 
@@ -1248,27 +1232,36 @@ check_binomial <- function(y, den){
 #' @title check_data
 #' @description
 #'
-#' Check that the data is an sf object, with a CRS, only containing points
+#' Check that the data is an sf or sfc object, with a CRS, only containing points
 #' or either polygons or multipolygons. If CRS == 4326 it also checks that the #
 #' coordinates are possible (i.e. not latitudes > 90)
 #' @param data the data to check
 #' @param geometry whether to check that the data contains 'point' (default) or
 #' 'polygon' (covering both polygons and multipolygons)
+#' @param geometry whether to check that the data is 'sf' (default) or
+#' 'sfc' (either sf or sfc)
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_data <- function(data, geometry = "point"){
+check_data <- function(data, geometry = "point", type = "sf"){
   stopifnot("'geometry' must be either 'point' or 'polygon'" = geometry %in% c("point", "polygon"))
-  data_type <- switch(geometry,
-                      point = "'data'",
-                      polygon = "'shp'")
+  stopifnot("'type' must be either 'sf' or 'sfc'" = type %in% c("sf", "sfc"))
+
+  # extract name passed to function
+  data_type <- paste0("'", deparse(substitute(data)), "'")
 
   geometry_type <- switch(geometry,
                           point = "'POINT'",
                           polygon = "'POLYGON' or 'MULTIPOLYGON'")
 
-  if (!inherits(data, "sf")){
-    stop(paste(data_type, "must be of class 'sf'"))
+  if (type == "sf"){
+    if (!inherits(data, "sf")){
+      stop(paste(data_type, "must be of class 'sf'"))
+    }
+  } else {
+    if (!inherits(data, c("sf", "sfc"))){
+      stop(paste(data_type, "must be of class 'sf' or 'sfc'"))
+    }
   }
 
   if (is.na(sf::st_crs(data))){
@@ -1289,5 +1282,68 @@ check_data <- function(data, geometry = "point"){
       }
     )
   }
+  invisible(TRUE)
+}
+
+#' @title check_positive_integer
+#' @description
+#'
+#' Check that a value is a single, positive integer and error if not
+#' @param x the value to check
+#' @param name the name of the parameter to return in error messages
+#' @return TRUE if the data is valid. Raise an error if not.
+#' @noRd
+#'
+check_positive_integer <- function(x, name) {
+  if (!is.numeric(x) || length(x) != 1 || is.na(x)) {
+    stop("'", name, "' must be a single positive integer")
+  }
+  if (x <= 0 || x %% 1 != 0) {
+    stop("'", name, "' must be a single positive integer")
+  }
+  invisible(TRUE)
+}
+
+#' @title check_positive_number
+#' @description
+#'
+#' Check that a value is a single, positive number and error if not
+#' @param x the value to check
+#' @param type the type of value being checked. Defaults to 'starting'
+#' @return TRUE if x is valid. Raise an error if not.
+#' @noRd
+#'
+check_positive_number <- function(x, type = "starting ") {
+  # extract name, removing any list
+  name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
+
+  if (!is.numeric(x) || length(x) != 1 || x < 0 || is.na(x)) {
+    stop("The ", type, "value for '", name, "' must be a single positive number")
+  }
+
+  invisible(TRUE)
+}
+
+
+#' @title check_crs
+#' @description
+#'
+#' Check that a CRS is valid
+#' @param crs the CRS to check
+#' @return TRUE if the CRS is valid. Raise an error if not.
+#' @noRd
+#'
+check_crs <- function(crs){
+  # extract name passed to function
+  variable <- deparse(substitute(crs))
+  tryCatch(
+    st_crs(crs),
+    warning = function(w) {
+      stop("The '", variable, "' provided is not a valid CRS")
+    },
+    error = function(e){
+      stop("The '", variable, "' provided is not a valid CRS")
+    }
+  )
   invisible(TRUE)
 }

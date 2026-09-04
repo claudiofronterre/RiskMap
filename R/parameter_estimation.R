@@ -1,65 +1,134 @@
 ##' @title Estimation of Generalized Linear Gaussian Process Models
-##' @description Fits generalized linear Gaussian process models to spatial data, incorporating spatial Gaussian processes with a Matern correlation function. Supports Gaussian, binomial, and Poisson response families.
-##' @param formula A formula object specifying the model to be fitted. The formula should include fixed effects and spatial effects (specified using \code{gp()}) and optionally, random effects (specified using \code{re()})).
+##' @description Fits generalized linear Gaussian process models to spatial data,
+##' incorporating spatial Gaussian processes with a Matern correlation function.
+##' Supports Gaussian, binomial, and Poisson response families.
+##' @param formula A formula object specifying the model to be fitted.
+##' The formula should include fixed effects and spatial effects specified using
+##' `[gp()]` and optionally, random effects specified using `[re()]`.
 ##' @param data An sf object containing the variables in the model.
-##' @param family A character string specifying the distribution of the response variable. Must be one of "gaussian", "binomial", or "poisson".
-##' @param invlink A function that defines the inverse of the link function for the distribution of the data given the random effects.
-##' @param den Optional offset for binomial or Poisson distributions. If not provided, defaults to 1 for binomial.
-##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates.
-##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to TRUE.
-##' @param control_mcmc Control parameters for MCMC sampling. Must be an object of class "mcmc.RiskMap" as returned by \code{\link{set_control_sim}}.
+##' @param family A character string specifying the distribution of the response variable.
+##' Must be one of `gaussian`, `binomial`, or `poisson`.
+##' @param invlink A function that defines the inverse of the link function for
+##' the distribution of the data given the random effects.
+##' Not applicable when `family` is `gaussian`.
+##' @param den Optional offset for binomial or Poisson distributions.
+##' Passed as a bare/unquoted column name present in `data`.
+##' If not provided, defaults to `1` for binomial models.
+##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates to.
+##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to `TRUE`.
+##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
+##' Must be an object of class `RiskMap_control_mcmc` as returned by `[set_control_mcmc()]`.
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
-##' @param S_samples Optional matrix of pre-specified sample paths for the spatial random effect.
-##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model. Defaults to FALSE.
-##' @param messages Logical indicating whether to print progress messages. Defaults to TRUE.
-##' @param fix_var_me Optional fixed value for the measurement error variance.
-##' @param start_pars Optional list of starting values for model parameters: beta (regression coefficients), sigma2 (spatial process variance), tau2 (nugget effect variance), phi (spatial correlation scale), sigma2_me (measurement error variance), and sigma2_re (random effects variances).
+##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
+##' Defaults to `FALSE`.
+##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
+##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
+##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
+##' the `nugget` term in `[gp()]` is also set to `TRUE`.
+##' @param start_pars Optional list of starting values for model parameters:
+##' \describe{
+##'   \item{beta}{regression coefficients}
+##'   \item{sigma2}{spatial process variance}
+##'   \item{tau2}{nugget effect variance}
+##'   \item{phi}{spatial correlation scale}
+##'   \item{sigma2_me}{measurement error variance - only for Gaussian models}
+##'   \item{sigma2_re}{random effects variances - only when random effects are included}
+##' }
 ##' @details
-##' Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.
+##' Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
+##' spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs
+##' using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.
 ##' In the case of the Binomial and Poisson families, a Monte Carlo maximum likelihood algorithm is used.
 ##'
-##' The spatial Gaussian process is modeled with a Matern correlation function, which is flexible and commonly used in geostatistical modeling. The function supports both spatial covariates and unstructured random effects, providing a comprehensive framework to analyze spatially correlated data across different response distributions.
+##' The spatial Gaussian process is modeled with a Matern correlation function, which is flexible and
+##' commonly used in geostatistical modeling. The function supports both spatial covariates and
+##' unstructured random effects, providing a comprehensive framework to analyze spatially correlated
+##' data across different response distributions.
 ##'
-##' Additionally, the function allows for the inclusion of unstructured random effects, specified through the \code{re()} term in the model formula. These random effects can capture unexplained variability at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility in capturing complex spatial patterns.
+##' Additionally, the function allows for the inclusion of unstructured random effects, specified through
+##' the `[re()]` term in the model formula. These random effects can capture unexplained variability
+##' at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
+##' in capturing complex spatial patterns.
 ##'
-##' The \code{convert_to_crs} argument can be used to reproject the spatial coordinates to a different CRS. The \code{scale_to_km} argument scales the coordinates to kilometers if set to TRUE.
+##' The `convert_to_crs` argument can be used to reproject the spatial coordinates to a different CRS.
+##' The `scale_to_km` argument scales the coordinates to kilometers if set to TRUE.
 ##'
-##' The \code{control_mcmc} argument specifies the control parameters for MCMC sampling. This argument must be an object returned by \code{\link{set_control_sim}}.
+##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
+##' This argument must be an object returned by `[set_control_mcmc()]`.
 ##'
-##' The \code{start_pars} argument allows for specifying starting values for the model parameters. If not provided, default starting values are used.
+##' The `start_pars` argument allows for specifying starting values for the model parameters.
+##' If not provided, default starting values are used.
 ##'
-##' @return An object of class "RiskMap" containing the fitted model and relevant information:
-##' \item{y}{Response variable.}
-##' \item{D}{Covariate matrix.}
-##' \item{coords}{Unique spatial coordinates.}
-##' \item{ID_coords}{Index of coordinates.}
-##' \item{re}{Random effects.}
-##' \item{ID_re}{Index of random effects.}
-##' \item{fix_tau2}{Fixed nugget effect variance.}
-##' \item{fix_var_me}{Fixed measurement error variance.}
-##' \item{formula}{Model formula.}
-##' \item{family}{Response family.}
-##' \item{crs}{Coordinate Reference System.}
-##' \item{scale_to_km}{Indicator if coordinates are scaled to kilometers.}
-##' \item{data_sf}{Original data as an sf object.}
-##' \item{kappa}{Spatial correlation parameter.}
-##' \item{units_m}{Distribution offset for binomial/Poisson.}
-##' \item{cov_offset}{Covariate offset.}
-##' \item{call}{Matched call.}
-##' @seealso \code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
+##' @return An object of class `RiskMap` containing the fitted model and relevant information:
+##'
+##' \item{estimate}{Estimated parameters}
+##' \item{grad_MLE}{Gradient of the maximum likelihood function}
+##' \item{covariance}{Covariance}
+##' \item{log_lik}{Log likelihood}
+##' \item{y}{Response variable}
+##' \item{D}{Covariate matrix}
+##' \item{coords}{Unique spatial coordinates}
+##' \item{ID_coords}{Index of coordinates}
+##' \item{re}{Random effects if `re()` is included in `formula`}
+##' \item{ID_re}{Index of random effects if `re()` is included in `formula`}
+##' \item{fix_tau2}{Fixed nugget effect variance}
+##' \item{fix_var_me}{Fixed measurement error variance}
+##' \item{formula}{Model formula}
+##' \item{family}{Response family}
+##' \item{crs}{Coordinate Reference System}
+##' \item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
+##' \item{data_sf}{Original data as an sf object}
+##' \item{kappa}{Spatial correlation parameter}
+##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
+##' \item{cov_offset}{Covariate offset}
+##' \item{call}{Matched call}
+##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
+##'
+##' @examples
+##'
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
+##'
+##' # add a random effect
+##' fit <- glgpm(
+##'   formula = y ~ gp() + re(province),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
+##'
+##' # estimate the nugget
+##' fit <- glgpm(
+##'   formula = y ~ gp(nugget = TRUE),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
+##'
+##' @seealso \code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @export
 glgpm <- function(formula,
                  data,
-                 family, invlink=NULL,
+                 family,
+                 invlink = NULL,
                  den = NULL,
                  convert_to_crs = NULL,
                  scale_to_km = TRUE,
-                 control_mcmc = set_control_sim(),
-                 par0=NULL,
-                 S_samples = NULL,
-                 return_samples = TRUE,
+                 control_mcmc = set_control_mcmc(),
+                 par0 = NULL,
+                 return_samples = FALSE,
                  messages = TRUE,
                  fix_var_me = NULL,
                  start_pars = list(beta = NULL,
@@ -69,28 +138,38 @@ glgpm <- function(formula,
                                    sigma2_me = NULL,
                                    sigma2_re = NULL)) {
 
-  nong <- family=="binomial" | family=="poisson"
-
   check_data(data)
   check_formula(formula, data)
+  if(!family %in% c("gaussian", "binomial", "poisson"))
+    stop("'family' must be either 'gaussian', 'binomial' or 'poisson'")
+  not_gaussian <- family != "gaussian"
+
+  stopifnot("'scale_to_km' must be either TRUE or FALSE" = is.logical(scale_to_km),
+            "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
+            "'messages' must be either TRUE or FALSE" = is.logical(messages))
+
+  if (family == "gaussian"){
+    stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
+              "'den' cannot be provided when 'family' is 'gaussian'" = is.null(den),
+              "'par0' cannot be provided when 'family' is 'gaussian'" = is.null(par0),
+              "'return_samples' cannot be TRUE when 'family' is 'gaussian'" = !return_samples,
+              "'fix_var_me' must be NULL or a single positive value or zero" =
+                is.null(fix_var_me) ||
+                (length(fix_var_me) == 1 && is.numeric(fix_var_me) && fix_var_me >= 0))
+  } else {
+    if (!is.null(fix_var_me)) stop("'fix_var_me' cannot be provided when 'family' is '", family, "'")
+  }
 
   inter_f <- interpret.formula(formula)
-
   kappa <- inter_f$gp.spec$kappa
-
-  if(family != "gaussian" & family != "binomial" &
-     family != "poisson") stop("'family' must be either 'gaussian', 'binomial'
-                               or 'poisson'")
-
-
-  mf <- model.frame(inter_f$pf,data=data, na.action = na.fail)
+  mf <- model.frame(inter_f$pf, data = data, na.action = na.fail)
 
   # Extract outcome data
   y <- as.numeric(model.response(mf))
   n <- length(y)
 
   # Extract covariates matrix
-  D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
+  D <- as.matrix(model.matrix(attr(mf, "terms"), data = data))
 
   if(is.null(inter_f$offset)) {
     cov_offset <- rep(0, nrow(data))
@@ -99,34 +178,36 @@ glgpm <- function(formula,
   }
 
   # Define denominators for Binomial and Poisson distributions
-  if(nong) {
-    do_name <- deparse(substitute(den))
-    if(do_name=="NULL") {
+  if (not_gaussian) {
+    sub_den <- substitute(den)
+    if (is.null(sub_den)){
       units_m <- rep(1, nrow(data))
-      if(family=="binomial") warning("'den' is assumed to be 1 for all observations \n")
+      if (family == "binomial") warning("'den' is assumed to be 1 for all observations")
     } else {
+      if (!is.symbol(sub_den)){
+        stop("'den' must be provided as an unquoted column name for a column in 'data'")
+      }
+      do_name <- deparse(sub_den)
+      if (!do_name %in% names(data)){
+        stop("the variable provided to 'den' is not present in 'data'")
+      }
       units_m <- data[[do_name]]
-      if (family == "binomial") check_binomial(y, units_m)
     }
+    if (family == "binomial") check_binomial(y, units_m)
     if(is.integer(units_m)) units_m <- as.numeric(units_m)
-    if(!is.numeric(units_m)) stop("the variable passed to `den` must be numeric")
-    if(family=="binomial" & any(y > units_m)) stop("The counts identified by the outcome variable cannot be larger
-                              than `den` in the case of a Binomial distribution")
-    if(!inherits(control_mcmc,
-                 what = "mcmc.RiskMap", which = FALSE)) {
-      stop ("the argument passed to 'control_mcmc' must be an output
-                                                  from the function set_control_sim; see ?set_control_sim
-                                                  for more details")
-
+    if(!is.numeric(units_m)) stop("the variable passed to 'den' must be numeric")
+    if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
+      stop("the argument passed to 'control_mcmc' must be an output
+           from the function set_control_mcmc; see ?set_control_mcmc for more details")
     }
-
   }
 
-  hr_re <- if (length(inter_f$re.spec) > 0L) {
-    inter_f$re.spec$term
+  if (length(inter_f$re.spec) > 0L) {
+    hr_re <- inter_f$re.spec$term
   } else {
-    NULL
+    hr_re <- NULL
   }
+
   random_effects <- prepare_random_effects(data, hr_re)
   n_re <- random_effects$n_re
   names_re <- random_effects$names_re
@@ -140,7 +221,7 @@ glgpm <- function(formula,
 
   # Extract coordinates
   if(!is.null(convert_to_crs)) {
-    if(!is.numeric(convert_to_crs)) stop("'convert_to_utm' must be a numeric object")
+    check_crs(convert_to_crs)
     data <- st_transform(data, crs = convert_to_crs)
     crs <- convert_to_crs
   }
@@ -162,7 +243,7 @@ glgpm <- function(formula,
      isTRUE(fix_tau2) &&
      is.null(fix_var_me)){
     stop("When there is only one observation per location, both the nugget and measurement error cannot
-         be estimated. Consider removing either one of them. ")
+         be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
   }
 
   if(scale_to_km) {
@@ -173,90 +254,95 @@ glgpm <- function(formula,
     if(messages) message("Distances between locations are computed in meters ")
   }
 
+  valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
+  if (!any(names(start_pars) %in% valid_start_pars)){
+    invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
+    stop("'", paste(invalid, collapse = "', '"), "' is not a valid starting parameter")
+  }
 
-  if(is.null(start_pars$beta)) {
+  if(is.null(start_pars[["beta"]])) {
     if(family=="gaussian") {
-      start_pars$beta <- as.numeric(solve(t(D)%*%D)%*%t(D)%*%y)
+      start_pars[["beta"]] <- as.numeric(solve(t(D)%*%D)%*%t(D)%*%y)
     } else if(family=="binomial") {
       aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
       glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
                         data = aux_data, family = binomial)
-      start_pars$beta <- coef(glm_fitted)
+      start_pars[["beta"]] <- coef(glm_fitted)
     } else if(family=="poisson") {
       pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
       data_aux <- data
       data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
       glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
-      start_pars$beta <- coef(glm_fitted)
+      start_pars[["beta"]] <- coef(glm_fitted)
     }
   } else {
-    if(length(start_pars$beta)!=ncol(D)) stop("number of starting values provided
-                                              for 'beta' do not match the number of
-                                              covariates specified in the model,
-                                              including the intercept")
+    if(length(start_pars[["beta"]]) != ncol(D))
+      stop("The number of starting values provided for 'beta' do not match the number of
+      covariates specified in the model, including the intercept")
+    if (any(!is.numeric(start_pars[["beta"]]))){
+      stop("The starting values for 'beta' must be numeric")
+    }
   }
 
-  if(is.null(start_pars$sigma2)) {
-    start_pars$sigma2 <- 1
+  if(is.null(start_pars[["sigma2"]])) {
+    start_pars[["sigma2"]] <- 1
   } else {
-    if(start_pars$sigma2<0) stop("the starting value for sigma2 must be positive")
+    check_positive_number(start_pars[["sigma2"]])
   }
 
-  if(is.null(start_pars$phi)) {
-    start_pars$phi <- quantile(dist(coords),0.1)
+  if(is.null(start_pars[["phi"]])) {
+    start_pars[["phi"]] <- quantile(dist(coords), 0.1)
   } else {
-    if(start_pars$phi<0) stop("the starting value for phi must be positive")
+    check_positive_number(start_pars[["phi"]])
   }
 
   if(isTRUE(fix_tau2)) {
-    if(is.null(start_pars$tau2)) {
-      start_pars$tau2 <- 1
+    if(is.null(start_pars[["tau2"]])) {
+      start_pars[["tau2"]] <- 1
     } else {
-      if(start_pars$tau2<0) stop("the starting value for tau2 must be positive")
+      check_positive_number(start_pars[["tau2"]])
     }
+  } else {
+    if(!is.null(start_pars[["tau2"]]))
+      stop("The starting value for 'tau2' cannot be provided when 'nugget' in 'gp()' is FALSE")
   }
 
   if(n_re > 0) {
-    if(is.null(start_pars$sigma2_re)) {
-      start_pars$sigma2_re <- rep(1,n_re)
+    if(is.null(start_pars[["sigma2_re"]])) {
+      start_pars[["sigma2_re"]] <- rep(1,n_re)
     } else {
-      if(length(start_pars$sigma2_re)!=n_re) stop("starting values for 'sigma2_re' do not
-                                       match the number of specified unstructured
-                                       random effects")
-      if(any(start_pars$sigma2_re<0)) stop("all the starting values for sigma2_re must be positive")
+      if(length(start_pars[["sigma2_re"]]) != n_re)
+        stop("The starting values for 'sigma2_re' do not match the number
+             of specified unstructured random effects")
+      if(any(start_pars[["sigma2_re"]] < 0))
+        stop("All the starting values for 'sigma2_re' must be positive")
+    }
+  } else {
+    if(!is.null(start_pars[["sigma2_re"]])) {
+      stop("Starting values for 'sigma2_re' cannot be provided when no random effects are included in the model")
     }
   }
 
-
-  if(!is.null(start_pars$beta)) {
-    if(length(start_pars$beta)!=ncol(D)) stop("The values passed to 'start_beta' do not match
-                                  the covariates passed to the 'formula'.")
-  } else {
-    start_pars$beta <- as.numeric(solve(t(D)%*%D)%*%t(D)%*%y)
-  }
-
-
-
-  if(!nong) {
+  if(!not_gaussian) {
     if(is.null(fix_var_me)) {
-      if(is.null(start_pars$sigma2_me)) {
-        start_pars$sigma2_me <- 1
+      if(is.null(start_pars[["sigma2_me"]])) {
+        start_pars[["sigma2_me"]] <- 1
       } else {
-        if(start_pars$sigma2_me<0) stop("the starting value for sigma2_me must be positive")
+        check_positive_number(start_pars[["sigma2_me"]])
       }
     }
     res <- glgpm_lm(y = y-cov_offset, D, coords, kappa = inter_f$gp.spec$kappa,
             ID_coords, ID_re, s_unique, re_unique,
             fix_var_me, fix_tau2,
-            start_beta = start_pars$beta,
-            start_cov_pars = c(start_pars$sigma2,
-                               start_pars$phi,
-                               start_pars$tau2,
-                               start_pars$sigma2_re,
-                               start_pars$sigma2_me),
+            start_beta = start_pars[["beta"]],
+            start_cov_pars = c(start_pars[["sigma2"]],
+                               start_pars[["phi"]],
+                               start_pars[["tau2"]],
+                               start_pars[["sigma2_re"]],
+                               start_pars[["sigma2_me"]]),
             messages = messages)
-  } else if(nong) {
+  } else if(not_gaussian) {
     if(is.null(par0)) {
       par0 <- start_pars
     } else {
@@ -268,11 +354,11 @@ glgpm <- function(formula,
                         fix_tau2, family = family, invlink = invlink,
                         return_samples = return_samples,
                         par0 = par0, cov_offset = cov_offset,
-                        start_beta = start_pars$beta,
-                        start_cov_pars = c(start_pars$sigma2,
-                                           start_pars$phi,
-                                           start_pars$tau2,
-                                           start_pars$sigma2_re),
+                        start_beta = start_pars[["beta"]],
+                        start_cov_pars = c(start_pars[["sigma2"]],
+                                           start_pars[["phi"]],
+                                           start_pars[["tau2"]],
+                                           start_pars[["sigma2_re"]]),
                         control_mcmc = control_mcmc,
                         messages = messages)
   }
@@ -281,13 +367,16 @@ glgpm <- function(formula,
   res$D <- D
   res$coords <- coords
   res$ID_coords <- ID_coords
-  if(n_re>0) {
+  if(n_re > 0) {
     res$re <- re_unique_f
     res$ID_re <- as.data.frame(ID_re)
     colnames(res$ID_re) <- names_re
+  } else {
+    res["re"] <- list(NULL)
+    res["ID_re"] <- list(NULL)
   }
   res$fix_tau2 <- fix_tau2
-  res$fix_var_me <- fix_var_me
+  res["fix_var_me"] <- list(fix_var_me)
   res$formula <- formula
   res$family <- family
   if(!is.null(convert_to_crs)) {
@@ -299,15 +388,13 @@ glgpm <- function(formula,
   res$scale_to_km <- scale_to_km
   res$data_sf <- data
   res$kappa <- kappa
-  res$sst <- FALSE
-  if(nong) res$units_m <- units_m
+  if(not_gaussian) res$units_m <- units_m
   res$cov_offset <- cov_offset
   res$call <- match.call()
   return(res)
 }
 
 
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
@@ -394,7 +481,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     }
 
 
-    R <- matern_cor(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
+    R <- matern_correlation(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
     diag(R) <- diag(R)+nu2
 
     Sigma_g <- matrix(0, nrow = sum(n_dim_re), ncol = sum(n_dim_re))
@@ -460,7 +547,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     n_p <- length(par)
     g <- rep(0, n_p)
 
-    R <- matern_cor(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
+    R <- matern_correlation(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
     diag(R) <- diag(R)+nu2
 
     Sigma_g <- matrix(0, nrow = sum(n_dim_re), ncol = sum(n_dim_re))
@@ -515,7 +602,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 
     der_R_phi <- matrix(0, nrow = sum(n_dim_re),
                         ncol = sum(n_dim_re))
-    M.der.phi <- matern.grad.phi(U, phi, kappa)
+    M.der.phi <- matern_gradient_phi(U, phi, kappa)
     der_R_phi[1:n_dim_re[1], 1:n_dim_re[1]] <-
       M.der.phi*sigma2
     der_Sigma_g_inv_phi <- Sigma_g_inv%*%der_R_phi%*%Sigma_g_inv
@@ -620,7 +707,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     n_p <- length(par)
     g <- rep(0, n_p)
 
-    R <- matern_cor(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
+    R <- matern_correlation(U,phi = phi, kappa=kappa,return_sym_matrix = TRUE)
     diag(R) <- diag(R)+nu2
 
     Sigma_g <- matrix(0, nrow = sum(n_dim_re), ncol = sum(n_dim_re))
@@ -680,7 +767,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     # Derivatives for phi
     der_R_phi <- matrix(0, nrow = sum(n_dim_re),
                         ncol = sum(n_dim_re))
-    M.der.phi <- matern.grad.phi(U, phi, kappa)
+    M.der.phi <- matern_gradient_phi(U, phi, kappa)
     der_R_phi[1:n_dim_re[1], 1:n_dim_re[1]] <-
       M.der.phi*sigma2
     der_Sigma_g_inv_phi_aux <- -Sigma_g_inv%*%der_R_phi%*%Sigma_g_inv
@@ -888,7 +975,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     # phi - phi
     der2_R_phi <- matrix(0, nrow = sum(n_dim_re),
                          ncol = sum(n_dim_re))
-    M.der2.phi <- matern.hessian.phi(U, phi, kappa)
+    M.der2.phi <- matern_hessian_phi(U, phi, kappa)
     der2_R_phi[1:n_dim_re[1], 1:n_dim_re[1]] <-
       M.der2.phi*sigma2
 
@@ -1171,11 +1258,13 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                   control=list(trace=1*messages))
 
   out$estimate <- estim$par
-  out$grad.MLE <- grad.log.lik(estim$par)
+  out$grad_MLE <- grad.log.lik(estim$par)
   hess.MLE <- hessian.log.lik(estim$par)
   out$covariance <- solve(-hess.MLE)
-  out$log.lik <- -estim$objective
-
+  out$log_lik <- -estim$objective
+  out["link_function"] <- list(NULL)
+  out["units_m"] <- list(NULL)
+  out["S_samples"] <- list(NULL)
 
   class(out) <- "RiskMap"
   return(out)
@@ -1187,38 +1276,36 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' Simulates data from a fitted Generalized Linear Gaussian Process Model (GLGPM) or a specified model formula and data.
 ##'
 ##' @param n_sim Number of simulations to perform.
-##' @param model_fit Fitted GLGPM model object of class 'RiskMap'. If provided, overrides 'formula', 'data', 'family', 'crs', 'convert_to_crs', 'scale_to_km', and 'control_mcmc' arguments.
+##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `convert_to_crs` and `scale_to_km` arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
-##' @param data 'sf' object containing the variables in the model formula.
-##' @param family Distribution family for the response variable. Must be one of 'gaussian', 'binomial', or 'poisson'.
-##' @param den Required for 'binomial' to denote the denominator (i.e. number of trials) of the Binomial distribution.
-##' For the 'poisson' family, the argument is optional and is used a multiplicative term to express the mean counts.
+##' @param data `sf` object containing the variables in the model formula.
+##' @param family Distribution family for the response variable. Must be one of `gaussian`, `binomial`, or `poisson.`
+##' @param den Required for `binomial` to denote the denominator (i.e. number of trials) of the Binomial distribution.
+##' For the `poisson` family, the argument is optional and is used a multiplicative term to express the mean counts.
 ##' @param cov_offset Offset for the covariate part of the GLGPM.
-##' @param crs Coordinate reference system (CRS) code for spatial data.
-##' @param convert_to_crs CRS code to convert spatial data if different from 'crs'.
-##' @param scale_to_km Logical; if TRUE, distances between locations are computed in kilometers; if FALSE, in meters.
-##' @param sim_pars List of simulation parameters including 'beta', 'sigma2', 'tau2', 'phi', 'sigma2_me', and 'sigma2_re'.
-##' @param messages Logical; if TRUE, display progress and informative messages.
+##' @param convert_to_crs CRS code to convert data to.
+##' @param scale_to_km Logical; if `TRUE`, distances between locations are computed in kilometers; if `FALSE`, in meters.
+##' @param sim_pars List of simulation parameters including `beta`, `sigma2`, `tau2`, `phi`, `sigma2_me`, and optionally `sigma2_re`.
+##' If multiple covariates or random effects are included, the lengths of `beta` and `sigma2_re` must match the number of covariates and random effects respectively.
+##' @param messages Logical; if `TRUE`, display progress and informative messages.
 ##'
 ##' @details
 ##' Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to model spatial correlation. This function simulates data from GLGPMs using Markov Chain Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson response families, utilizing a Matern correlation function to model spatial dependence.
 ##'
-##' The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For 'gaussian' family, the function simulates response values by adding measurement error.
+##' The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For `gaussian` family, the function simulates response values by adding measurement error.
 ##'
-##' Additionally, GLGPMs can incorporate unstructured random effects specified through the \code{re()} term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
+##' Additionally, GLGPMs can incorporate unstructured random effects specified through the [`re()`] term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
 ##'
 ##' @return A list containing simulated data, simulated spatial random effects (if applicable), and other simulation parameters.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-glgpm_sim <- function(n_sim,
+simulate_glgpm <- function(n_sim,
                       model_fit = NULL,
                       formula = NULL,
                       data = NULL,
                       family = NULL,
                       den = NULL,
                       cov_offset = NULL,
-                      crs = NULL, convert_to_crs = NULL,
+                      convert_to_crs = NULL,
                       scale_to_km = TRUE,
                       sim_pars = list(beta = NULL,
                                       sigma2 = NULL,
@@ -1228,13 +1315,18 @@ glgpm_sim <- function(n_sim,
                                       sigma2_re = NULL),
                       messages = TRUE) {
 
+  check_positive_integer(n_sim, "n_sim")
+
   if(!is.null(model_fit)) {
-    if(!inherits(model_fit,
-                    what = "RiskMap", which = FALSE)) stop("'model_fit' must be of class 'RiskMap'")
+    if(!inherits(model_fit, "RiskMap")){
+      stop("'model_fit' must be of class 'RiskMap'")
+    }
+    if (!is.null(data) | !is.null(formula)){
+      stop("if you provide 'model_fit' you should not provide 'data' or 'formula'")
+    }
     formula <- as.formula(model_fit$formula)
     data <- model_fit$data_sf
-    family = model_fit$family
-    crs <- model_fit$crs
+    family <- model_fit$family
     convert_to_crs <- model_fit$convert_to_crs
     scale_to_km <- model_fit$scale_to_km
   }
@@ -1250,12 +1342,10 @@ glgpm_sim <- function(n_sim,
      family != "poisson") stop("'family' must be either 'gaussian', 'binomial'
                                or 'poisson'")
 
-
-  mf <- model.frame(inter_f$pf,data=data, na.action = na.fail)
-
+  mf <- model.frame(inter_f$pf,data = data, na.action = na.fail)
 
   # Extract covariates matrix
-  D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
+  D <- as.matrix(model.matrix(attr(mf,"terms"), data = data))
   n <- nrow(D)
 
   hr_re <- if (length(inter_f$re.spec) > 0L) {
@@ -1300,33 +1390,40 @@ glgpm_sim <- function(n_sim,
       }
     }
   } else {
-    if(is.null(sim_pars$beta)) stop("'beta' is missing")
-    beta <- sim_pars$beta
-    if(length(beta)!=p) stop("the number of values provided for 'beta' does not match
+    # extract non-NULL names
+    par_names <- names(sim_pars)[!vapply(sim_pars, is.null, logical(1))]
+
+    # [[]] syntax avoids partial matching
+    if (!"beta" %in% par_names) stop("'beta' is missing")
+    beta <- sim_pars[["beta"]]
+    if (length(beta)!=p) stop("the number of values provided for 'beta' must be one plus
     the number of covariates specified in the formula")
-    if(is.null(sim_pars$sigma2)) stop("'sigma2' is missing")
-    sigma2 <- sim_pars$sigma2
-    if(is.null(sim_pars$phi)) stop("'phi' is missing")
-    phi <- sim_pars$phi
-    if(is.null(sim_pars$tau2)) stop("'tau2' is missing")
-    tau2 <- sim_pars$tau2
-    if(is.null(sim_pars$sigma2_me)) stop("'sigma2_me' is missing")
-    sigma2_me <- sim_pars$sigma2_me
-    if(n_re>0) {
-      if(is.null(sim_pars$sigma2_re)) stop("'sigma2_re' is missing")
-      if(length(sim_pars$sigma2_re)!=n_re) stop("the values passed to 'sigma2_re' in 'sim_pars'
+    if (!"sigma2" %in% par_names) stop("'sigma2' is missing")
+    sigma2 <- sim_pars[["sigma2"]]
+    if (!"phi" %in% par_names) stop("'phi' is missing")
+    phi <- sim_pars[["phi"]]
+    if (!"tau2" %in% par_names) stop("'tau2' is missing")
+    tau2 <- sim_pars[["tau2"]]
+    if (!"sigma2_me" %in% par_names) stop("'sigma2_me' is missing")
+    sigma2_me <- sim_pars[["sigma2_me"]]
+    if (n_re > 0) {
+      if(!"sigma2_re" %in% par_names) stop("'sigma2_re' is missing")
+      if(length(sim_pars[["sigma2_re"]]) != n_re) stop("the values passed to 'sigma2_re' in 'sim_pars'
       does not match the number of random effects specfied in re() in the formula")
-      sigma2_re <- sim_pars$sigma2_re
+      sigma2_re <- sim_pars[["sigma2_re"]]
+    }
+    if (n_re == 0 & "sigma2_re" %in% par_names){
+      warning("'sigma2_re' will be ignored as no random effects are included")
     }
   }
 
   # Extract coordinates
   if(!is.null(convert_to_crs)) {
-    if(!is.numeric(convert_to_crs)) stop("'convert_to_utm' must be a numeric object")
+    if(!is.numeric(convert_to_crs)) stop("'convert_to_crs' must be a numeric object")
     data <- st_transform(data, crs = convert_to_crs)
     crs <- convert_to_crs
   }
-  if(messages) message("The CRS used is", as.list(st_crs(data))$input, "\n")
+  if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
   coords_o <- st_coordinates(data)
   coords <- unique(coords_o)
@@ -1336,9 +1433,6 @@ glgpm_sim <- function(n_sim,
     which(coords_o[i,1]==coords[,1] &
             coords_o[i,2]==coords[,2]))
   s_unique <- unique(ID_coords)
-
-
-
 
   if(all(table(ID_coords)==1) & !is.null(tau2) &
      !is.null(sigma2_me) && (tau2!=0 & sigma2_me!=0)) {
@@ -1355,7 +1449,7 @@ glgpm_sim <- function(n_sim,
   }
 
   # Simulate S
-  Sigma <- sigma2*matern_cor(dist(coords), phi = phi, kappa = kappa,
+  Sigma <- sigma2*matern_correlation(dist(coords), phi = phi, kappa = kappa,
                              return_sym_matrix = TRUE)
   diag(Sigma) <- diag(Sigma) + tau2
   Sigma_sroot <- t(chol(Sigma))
@@ -1380,6 +1474,7 @@ glgpm_sim <- function(n_sim,
   }
 
   # Linear predictor
+  # try adding cov_offset here
   eta_sim <- t(sapply(1:n_sim, function(i) D%*%beta + S_sim[i,][ID_coords]))
 
   if(n_re > 0) {
@@ -1393,11 +1488,12 @@ glgpm_sim <- function(n_sim,
   if(family!="gaussian") {
     if(!is.null(den))  {
       do_name <- deparse(substitute(den))
+      y <- as.numeric(model.response(mf))
       units_m <- data[[do_name]]
 
+      if (family == "binomial") check_binomial(y, units_m)
       if(is.integer(units_m)) units_m <- as.numeric(units_m)
       if(!is.numeric(units_m)) stop("the variable passed to `den` must be numeric")
-
 
     } else {
       units_m <- model_fit$units_m
@@ -1475,9 +1571,7 @@ glgpm_sim <- function(n_sim,
 ##'
 ##' @return A list containing the mode estimate, and optionally, the Hessian matrix and gradient vector.
 ##' @export
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-maxim.integrand <- function(
+maxim_integrand <- function(
     y, units_m, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
 ) {
@@ -1566,7 +1660,7 @@ maxim.integrand <- function(
       d1_user  <- invlink$d1 %||% invlink$inv_link_prime %||% invlink$mu_eta
       d2_user  <- invlink$d2 %||% invlink$inv_link_second
     } else {
-      stop("`invlink` must be NULL, a function, or a list with components inv, d1, d2.")
+      stop("'invlink' must be NULL, a function, or a list with components inv, d1, d2")
     }
 
     # Validate the inverse link
@@ -1787,7 +1881,7 @@ maxim.integrand <- function(
 ##' The algorithm alternates between:
 ##' \enumerate{
 ##'   \item Locating the mode of the joint integrand for the latent variables
-##'         (via \code{maxim.integrand}) when \code{Sigma_pd} and \code{mean_pd}
+##'         (via \code{maxim_integrand}) when \code{Sigma_pd} and \code{mean_pd}
 ##'         are not provided, yielding a Gaussian approximation.
 ##'   \item Metropolis–Hastings updates using a Gaussian proposal centered at
 ##'         the current approximate mean with proposal variance governed by \code{h}.
@@ -1800,7 +1894,7 @@ maxim.integrand <- function(
 ##' If \code{ID_re} is provided, each column must have length \eqn{n}; when
 ##' \code{sigma2_re} is supplied, it must be named and match \code{colnames(ID_re)}.
 ##'
-##' @return An object of class \code{"mcmc.RiskMap"} with components:
+##' @return An object of class \code{"RiskMap_mcmc"} with components:
 ##' \describe{
 ##'   \item{samples}{A list containing posterior draws. Always includes
 ##'                 \code{$S} (latent spatial field). If \code{ID_re} is supplied,
@@ -1813,20 +1907,36 @@ maxim.integrand <- function(
 ##' The default inverse links are: identity (gaussian), logistic (binomial),
 ##' and exponential (poisson). Supply \code{invlink} to override.
 ##'
-##' @seealso \code{\link{maxim.integrand}}
+##' @seealso \code{\link{maxim_integrand}}
 ##'
 ##' @export
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
-                                  ID_coords, ID_re = NULL,
+laplace_sampling_mcmc <- function(y,
+                                  units_m,
+                                  mu,
+                                  Sigma,
+                                  ID_coords,
+                                  ID_re = NULL,
                                   sigma2_re = NULL,
-                                  family, control_mcmc,
+                                  family,
+                                  control_mcmc,
                                   invlink = NULL,
-                                  Sigma_pd = NULL, mean_pd = NULL,
-                                  messages = TRUE) {
+                                  Sigma_pd = NULL,
+                                  mean_pd = NULL,
+                                  messages = TRUE
+                                  ){
 
   stopifnot(family %in% c("poisson", "binomial"))
+
+  # set seed if it exists and reset on exit
+  if (!is.null(control_mcmc$seed)){
+    if (exists(".Random.seed", envir = .GlobalEnv)) {
+      old_seed <- get(".Random.seed", envir = .GlobalEnv)
+      on.exit(assign(".Random.seed", old_seed, envir = .GlobalEnv), add = TRUE)
+    } else {
+      on.exit(rm(".Random.seed", envir = .GlobalEnv), add = TRUE)
+    }
+    set.seed(control_mcmc$seed)
+  }
 
   # ---------- utilities ----------
   check_vec_fun <- function(f, n, name) {
@@ -1899,7 +2009,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
       inv_user <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
       d1_user  <- invlink$d1  %||% invlink$inv_link_prime %||% invlink$mu_eta
     } else {
-      stop("`invlink` must be NULL, a function, or a list with components inv, d1.")
+      stop("'invlink' must be NULL, a function, or a list with components inv and d1.")
     }
 
     check_vec_fun(inv_user, ncheck, "invlink")
@@ -1926,7 +2036,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 
   # ---------- default Laplace proposal if missing ----------
   if (is.null(Sigma_pd) || is.null(mean_pd)) {
-    out_maxim <- maxim.integrand(y = y, units_m = units_m, Sigma = Sigma, mu = mu,
+    out_maxim <- maxim_integrand(y = y, units_m = units_m, Sigma = Sigma, mu = mu,
                                  ID_coords = ID_coords, ID_re = ID_re,
                                  sigma2_re = sigma2_re,
                                  family = family, invlink = invlink,
@@ -2081,7 +2191,7 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
   out_sim$tuning_par <- h.vec
   out_sim$acceptance_prob <- acc_prob
   out_sim$invlink_used <- linkf$name
-  class(out_sim) <- "mcmc.RiskMap"
+  class(out_sim) <- "RiskMap_mcmc"
   out_sim
 }
 ##' Set Control Parameters for Simulation
@@ -2095,35 +2205,39 @@ Laplace_sampling_MCMC <- function(y, units_m, mu, Sigma,
 ##' @param h Numeric. An optional parameter for Langevin MCMC. Must be non-negative if specified.
 ##' @param c1.h Numeric. A control parameter for Langevin MCMC. Must be positive. Default is 0.01.
 ##' @param c2.h Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.
+##' @param seed Integer. Optional value passed to `set.seed` to control random number generation for
+##' generating chains and make results reproducible. Defaults to `NULL`.
 ##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
 ##'
 ##' @details
 ##' If \code{linear_model = TRUE}, only \code{n_sim} is required
 ##'
-##' @return A list of control parameters with class "mcmc.RiskMap". Contents depend on \code{sampler}:
+##' @return A list of control parameters with class "RiskMap_control_mcmc". Contents depend on \code{sampler}:
 ##' \itemize{
 ##'   \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
 ##' }
 ##'
 ##' @examples
 ##' # Default parameters (MCMC)
-##' control_mcmc <- set_control_sim()
+##' control_mcmc <- set_control_mcmc()
 ##'
 ##' # Custom MCMC parameters
-##' control_mcmc <- set_control_sim(n_sim = 15000, burnin = 3000, thin = 20)
+##' control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
 ##'
 ##' @seealso \code{\link{glgpm}}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
-set_control_sim <- function(n_sim = 12000,
+set_control_mcmc <- function(n_sim = 12000,
                             burnin = 2000,
                             thin = 10,
                             h = NULL,
                             c1.h = 0.01,
                             c2.h = 1e-04,
+                            seed = NULL,
                             linear_model = FALSE){
+
+  if (!is.null(seed))
+    check_positive_integer(seed, "seed")
 
   # =============================================================================
   # LINEAR MODEL (simple case for both samplers)
@@ -2134,7 +2248,7 @@ set_control_sim <- function(n_sim = 12000,
       n_sim = n_sim,
       linear_model = linear_model
     )
-    class(res) <- "mcmc.RiskMap"
+    class(res) <- "RiskMap_control_mcmc"
     return(res)
   }
 
@@ -2174,14 +2288,14 @@ set_control_sim <- function(n_sim = 12000,
     h = h,
     c1.h = c1.h,
     c2.h = c2.h,
+    seed = seed,
     linear_model = FALSE
   )
 
-  class(res) <- "mcmc.RiskMap"
+  class(res) <- "RiskMap_control_mcmc"
   return(res)
 }
 
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_nong <-
   function(y, D, coords, units_m, kappa,
@@ -2233,7 +2347,7 @@ glgpm_nong <-
         inv_user <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
         d1_user  <- invlink$d1  %||% invlink$inv_link_prime %||% invlink$mu_eta
         d2_user  <- invlink$d2  %||% invlink$inv_link_second
-      } else stop("`invlink` must be NULL, a function, or a list with inv[, d1, d2].")
+      } else stop("'invlink' must be NULL, a function, or a list with inv[, d1, d2].")
 
       check_vec_fun(inv_user, ncheck, "invlink")
 
@@ -2281,11 +2395,11 @@ glgpm_nong <-
     inv2   <- linkf$d2
 
     u <- dist(coords)
-    Sigma0 <- sigma2_0 * matern_cor(u = u, phi = phi0, kappa = kappa, return_sym_matrix = TRUE)
+    Sigma0 <- sigma2_0 * matern_correlation(u = u, phi = phi0, kappa = kappa, return_sym_matrix = TRUE)
     diag(Sigma0) <- diag(Sigma0) + tau2_0
 
     if (messages) message("\n - Obtaining proposal mean/covariance via Laplace\n")
-    out_maxim <- maxim.integrand(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
+    out_maxim <- maxim_integrand(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
                                  ID_coords = ID_coords, ID_re = ID_re,
                                  sigma2_re = sigma2_re_0,
                                  family = family, invlink = invlink)
@@ -2293,7 +2407,7 @@ glgpm_nong <-
     Sigma_pd <- out_maxim$Sigma.tilde
     mean_pd  <- out_maxim$mode
 
-    simulation <- Laplace_sampling_MCMC(y = y, units_m = units_m, mu = mu0, Sigma = Sigma0,
+    simulation <- laplace_sampling_mcmc(y = y, units_m = units_m, mu = mu0, Sigma = Sigma0,
                                         sigma2_re = sigma2_re_0, invlink = invlink,
                                         ID_coords = ID_coords, ID_re = ID_re,
                                         family = family, control_mcmc = control_mcmc,
@@ -2377,7 +2491,7 @@ glgpm_nong <-
       if (n_re > 0) val$sigma2_re <- exp(par[ind_sigma2_re])
 
       if (is.na(ldetR) && is.na(as.numeric(R.inv)[1])) {
-        R <- matern_cor(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
+        R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
         diag(R) <- diag(R) + nu2
         val$ldetR <- determinant(R)$modulus
         val$R.inv <- solve(R)
@@ -2407,7 +2521,7 @@ glgpm_nong <-
       phi    <- exp(par[ind_phi])
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
-      R <- matern_cor(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
+      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
       diag(R) <- diag(R) + nu2
       R.inv <- solve(R)
       ldetR <- determinant(R)$modulus
@@ -2416,7 +2530,7 @@ glgpm_nong <-
       L.m <- sum(exp.fact)
       exp.fact <- exp.fact / L.m
 
-      R1.phi <- matern.grad.phi(u, phi, kappa)
+      R1.phi <- matern_gradient_phi(u, phi, kappa)
       m1.phi <- R.inv %*% R1.phi
       t1.phi <- -0.5 * sum(diag(m1.phi))
       m2.phi <- m1.phi %*% R.inv; rm(m1.phi)
@@ -2489,7 +2603,7 @@ glgpm_nong <-
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
       ## Build R(φ, ν²) and precision via Cholesky (fast solves)
-      R <- matern_cor(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
+      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
       diag(R) <- diag(R) + nu2
       U <- chol(R)   # R = U^T U
 
@@ -2507,8 +2621,8 @@ glgpm_nong <-
       exp.fact <- exp.fact / sum(exp.fact)
 
       ## φ in log space: R_u = dR/d(log φ), R_uu = d²R/d(log φ)²
-      R1.phi <- matern.grad.phi(u, phi, kappa)                 # ∂R/∂φ
-      R2.phi <- matern.hessian.phi(u, phi, kappa)              # ∂²R/∂φ²
+      R1.phi <- matern_gradient_phi(u, phi, kappa)                 # ∂R/∂φ
+      R2.phi <- matern_hessian_phi(u, phi, kappa)              # ∂²R/∂φ²
       R_u  <- phi * R1.phi
       R_uu <- phi^2 * R2.phi + phi * R1.phi
 
@@ -2665,12 +2779,17 @@ glgpm_nong <-
                     control = list(trace = 1 * messages))
 
     out$estimate <- estim$par
-    out$grad.MLE <- grad.MC.log.lik(estim$par)
-    hess.MLE <- hess.MC.log.lik(estim$par)
-    out$covariance <- solve(-hess.MLE)
-    out$log.lik <- -estim$objective
-    if (return_samples) out$S_samples <- S_tot_samples
-    out$linkf <- linkf
+    out$grad_MLE <- grad.MC.log.lik(estim$par)
+    hess_MLE <- hess.MC.log.lik(estim$par)
+    out$covariance <- solve(-hess_MLE)
+    out$log_lik <- -estim$objective
+    if (return_samples){
+      out$S_samples <- S_tot_samples
+    } else {
+      out["S_samples"] <- list(NULL)
+    }
+
+    out$link_function <- linkf
     class(out) <- "RiskMap"
     return(out)
 }
@@ -2678,13 +2797,13 @@ glgpm_nong <-
 ##' Check MCMC Convergence for Spatial Random Effects
 ##'
 ##' This function checks the Markov Chain Monte Carlo (MCMC) convergence of spatial random effects
-##' for either a \code{RiskMap} or \code{RiskMap.pred.re} object.
+##' for either a \code{RiskMap} or \code{RiskMap_pred} object.
 ##' It plots the trace plot and autocorrelation function (ACF) for the MCMC chain
 ##' and calculates the effective sample size (ESS).
 ##'
-##' @param object An object of class \code{RiskMap} or \code{RiskMap.pred.re}.
+##' @param object An object of class \code{RiskMap} or \code{RiskMap_pred}.
 ##'  \code{RiskMap} is the output from \code{\link{glgpm}} function, and
-##'  \code{RiskMap.pred.re} is obtained from the \code{\link{pred_over_grid}} function.
+##'  \code{RiskMap_pred} is obtained from the \code{\link{setup_prediction}} function.
 ##' @param check_mean Logical. If \code{TRUE}, checks the MCMC chain for the mean of the spatial random effects.
 ##'  If \code{FALSE}, checks the chain for a specific component of the random effects vector.
 ##' @param component Integer. The index of the spatial random effects component to check when \code{check_mean = FALSE}.
@@ -2692,7 +2811,7 @@ glgpm_nong <-
 ##' @param ... Additional arguments passed to the \code{\link[stats]{acf}} function for customizing the ACF plot.
 ##'
 ##' @details
-##' The function first checks that the input object is either of class \code{RiskMap} or \code{RiskMap.pred.re}.
+##' The function first checks that the input object is either of class \code{RiskMap} or \code{RiskMap_pred}.
 ##' Depending on the value of \code{check_mean}, it either calculates the mean of the spatial random effects
 ##' across all locations for each iteration or uses the specified component.
 ##' It then generates two plots:
@@ -2708,26 +2827,27 @@ glgpm_nong <-
 ##'
 ##' @return
 ##' No return value, called for side effects (plots and warnings).
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @importFrom sns ess
 ##' @importFrom graphics par
 ##' @export
-check_mcmc <- function(object, check_mean = TRUE,
+plot_mcmc <- function(object, check_mean = TRUE,
                        component = NULL, ...) {
-  if(!inherits(object,
-               what = "RiskMap", which = FALSE) &
-     !inherits(object,
-               what = "RiskMap.pred.re", which = FALSE)) {
-    stop("'object' must be either of one of these objects:
-           a 'RiskMap' object obtained as an output from glgpm;
-           a 'RiskMap.pred.re' object obtained as an output from 'pred_over_grid'")
+  if(!inherits(object, "RiskMap") &
+     !inherits(object, "RiskMap_pred")) {
+    stop("'object' must be either:
+           a 'RiskMap' object obtained as an output from 'glgpm';
+           a 'RiskMap_pred' object obtained as an output from 'setup_prediction'")
   }
 
-  if(inherits(object,
-              what = "RiskMap", which = FALSE)) {
+  if (object$family == "gaussian")
+    stop("'object' is a gaussian model which cannot contain MCMC chains")
+
+  if (is.null(object$S_samples))
+    stop("'object' does not contain any MCMC chains - rerun 'glgpm' with 'return_samples' = TRUE")
+
+  if(inherits(object, "RiskMap")) {
     S_samples <- object$S_samples
-  } else if (inherits(object,
-                      what = "RiskMap.pred.re", which = FALSE)) {
+  } else if (inherits(object, "RiskMap_pred")) {
     S_samples <- t(object$S_samples)
   }
 
@@ -2740,11 +2860,12 @@ check_mcmc <- function(object, check_mean = TRUE,
   if(check_mean) {
     S_chain <- apply(S_samples, 1, mean)
   } else {
-    if(is.null(component)) stop("When check_mean = FALSE a component of the
+    if(is.null(component)) stop("When 'check_mean' = FALSE a component of the
                                 random effects vector must be specified through 'component'
                                 by providing a positive integer")
-    if(component < 0 | component > n_loc) stop("'component' must be a positive integer
-                                              between 1 and the number of locations in the data")
+    check_positive_integer(component, "component")
+    if(component > n_loc) stop("'component' must be a single positive integer
+                               between 1 and the number of locations in the data")
     S_chain <- S_samples[,component]
   }
 

@@ -24,8 +24,3 @@ The function constructs a list that includes the specified terms for the random 
 \note{
 At least one variable must be provided as input.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}

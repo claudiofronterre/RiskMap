@@ -1,4 +1,4 @@
-make_assess_pp_fit <- function(data, covariate) {
+make_assess_prediction_fit <- function(data, covariate) {
   coords <- sf::st_coordinates(data)
   fit <- list(
     formula = stats::as.formula(paste("y ~", covariate)),
@@ -24,7 +24,7 @@ make_assess_pp_fit <- function(data, covariate) {
   fit
 }
 
-test_that("assess_pp uses each model's own data_sf for held-out predictors", {
+test_that("assess_prediction uses each model's own data_sf for held-out predictors", {
   geom <- sf::st_sfc(
     sf::st_point(c(0, 0)),
     sf::st_point(c(1, 1)),
@@ -36,43 +36,46 @@ test_that("assess_pp uses each model's own data_sf for held-out predictors", {
 
   seen_predictors <- list()
   testthat::local_mocked_bindings(
-    pred_over_grid = function(object, grid_pred, predictors, ...) {
+    setup_prediction = function(object, grid_pred, predictors, ...) {
       seen_predictors[[object$model_id]] <<- names(predictors)
       list(predictors = predictors)
     },
-    pred_target_grid = function(object, ...) {
+    predict_grid_target = function(object, ...) {
       list(lp_samples = matrix(rep(1, nrow(object$predictors) * 2),
                                nrow = nrow(object$predictors)))
     },
     .package = "RiskMap"
   )
 
-  out <- assess_pp(
-    list(model_x1 = make_assess_pp_fit(data_x1, "x1"),
-         model_x2 = make_assess_pp_fit(data_x2, "x2")),
+  out <- assess_prediction(
+    list(model_x1 = make_assess_prediction_fit(data_x1, "x1"),
+         model_x2 = make_assess_prediction_fit(data_x2, "x2")),
     user_split = matrix(c(0, 1, 1), ncol = 1),
     plot_fold = FALSE,
     messages = FALSE,
     which_metric = "CRPS"
   )
 
-  expect_s3_class(out, "RiskMap.spatial.cv")
+  expect_s3_class(out, "RiskMap_cross_validation")
+
+  expect_setequal(names(out), c("test_set", "model"))
+
   expect_true("x1" %in% seen_predictors$x1)
   expect_false("x2" %in% seen_predictors$x1)
   expect_true("x2" %in% seen_predictors$x2)
   expect_false("x1" %in% seen_predictors$x2)
 })
 
-test_that("assess_pp requires aligned model data", {
+test_that("assess_prediction requires aligned model data", {
   geom_a <- sf::st_sfc(sf::st_point(c(0, 0)), sf::st_point(c(1, 1)), crs = 4326)
   geom_b <- sf::st_sfc(sf::st_point(c(0, 0)), sf::st_point(c(2, 2)), crs = 4326)
   data_a <- sf::st_sf(y = c(1, 2), x1 = c(10, 20), geometry = geom_a)
   data_b <- sf::st_sf(y = c(1, 2), x2 = c(100, 200), geometry = geom_b)
 
   expect_error(
-    assess_pp(
-      list(model_x1 = make_assess_pp_fit(data_a, "x1"),
-           model_x2 = make_assess_pp_fit(data_b, "x2")),
+    assess_prediction(
+      list(model_x1 = make_assess_prediction_fit(data_a, "x1"),
+           model_x2 = make_assess_prediction_fit(data_b, "x2")),
       user_split = matrix(c(0, 1), ncol = 1),
       plot_fold = FALSE,
       messages = FALSE,
@@ -85,12 +88,12 @@ test_that("assess_pp requires aligned model data", {
 test_that("AnPIT area computes trapezoidal absolute distance", {
   u <- seq(0, 1, length.out = 1001)
 
-  expect_equal(RiskMap:::.anpit_area(u, u), 0)
-  expect_equal(RiskMap:::.anpit_area(rep(0, length(u)), u), 0.5)
-  expect_equal(RiskMap:::.anpit_area(u^2, u), 1 / 6, tolerance = 1e-6)
+  expect_equal(.anpit_area(u, u), 0)
+  expect_equal(.anpit_area(rep(0, length(u)), u), 0.5)
+  expect_equal(.anpit_area(u^2, u), 1 / 6, tolerance = 1e-6)
 })
 
-test_that("assess_pp reports AnPIT area as a scalar score", {
+test_that("assess_prediction reports AnPIT area as a scalar score", {
   geom <- sf::st_sfc(
     sf::st_point(c(0, 0)),
     sf::st_point(c(1, 1)),
@@ -100,18 +103,18 @@ test_that("assess_pp reports AnPIT area as a scalar score", {
   data <- sf::st_sf(y = c(0, 0, 0), x1 = c(10, 20, 30), geometry = geom)
 
   testthat::local_mocked_bindings(
-    pred_over_grid = function(object, grid_pred, predictors, ...) {
+    setup_prediction = function(object, grid_pred, predictors, ...) {
       list(predictors = predictors)
     },
-    pred_target_grid = function(object, ...) {
+    predict_grid_target = function(object, ...) {
       n <- nrow(object$predictors)
       list(lp_samples = matrix(rep(c(-1, 0, 1), each = n), nrow = n))
     },
     .package = "RiskMap"
   )
 
-  out <- assess_pp(
-    list(model_x1 = make_assess_pp_fit(data, "x1")),
+  out <- assess_prediction(
+    list(model_x1 = make_assess_prediction_fit(data, "x1")),
     user_split = matrix(c(0, 1, 1), ncol = 1),
     plot_fold = FALSE,
     messages = FALSE,

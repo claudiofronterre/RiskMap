@@ -78,6 +78,8 @@ encode_random_effect <- function(group, variable_name) {
   }
 
   if (is.factor(group)) {
+    # remove empty levels
+    group <- droplevels(group)
     labels <- levels(group)
     ids <- as.integer(group)
   } else if (is.character(group)) {

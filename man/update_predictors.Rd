@@ -7,12 +7,12 @@
 update_predictors(object, predictors)
 }
 \arguments{
-\item{object}{A \code{RiskMap.pred.re} object, which is the output of the \code{\link{pred_over_grid}} function.}
+\item{object}{A \code{RiskMap_pred} object, which is the output of the \code{\link{setup_prediction}} function.}
 
 \item{predictors}{A data frame containing the new predictor values. The number of rows must match the prediction grid in the \code{object}.}
 }
 \value{
-The updated \code{RiskMap.pred.re} object.
+The updated \code{RiskMap_pred} object.
 }
 \description{
 This function updates the predictors of a given RiskMap prediction object. It ensures that the new predictors match the original prediction grid and updates the relevant components of the object accordingly.
@@ -20,14 +20,9 @@ This function updates the predictors of a given RiskMap prediction object. It en
 \details{
 The function performs several checks and updates:
 \itemize{
-\item Ensures that \code{object} is of class \code{RiskMap.pred.re}.
+\item Ensures that \code{object} is of class \code{RiskMap_pred}.
 \item Ensures that the number of rows in \code{predictors} matches the prediction grid in \code{object}.
 \item Removes any rows with missing values in \code{predictors} and updates the corresponding components of the \code{object}.
 \item Updates the prediction locations, the predictive samples for the random effects, and the linear predictor.
 }
-}
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
 }
