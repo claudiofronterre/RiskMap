@@ -20,10 +20,10 @@
 ##' @examples
 ##' data(italy_sim)
 ##'
-##' dist_summaries(italy_sim)
+##' summarise_distance(italy_sim)
 ##'
 ##' @export
-dist_summaries <- function(data,
+summarise_distance <- function(data,
                            convert_to_utm = TRUE,
                            scale_to_km = TRUE) {
 
