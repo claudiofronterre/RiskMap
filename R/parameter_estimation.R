@@ -84,6 +84,39 @@
 ##' \item{call}{Matched call}
 ##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
 ##'
+##' @examples
+##'
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
+##'
+##' # add a random effect
+##' fit <- glgpm(
+##'   formula = y ~ gp() + re(province),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
+##'
+##' # estimate the nugget
+##' fit <- glgpm(
+##'   formula = y ~ gp(nugget = TRUE),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
+##'
 ##' @seealso \code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @export
 glgpm <- function(formula,
@@ -159,8 +192,8 @@ glgpm <- function(formula,
         stop("the variable provided to 'den' is not present in 'data'")
       }
       units_m <- data[[do_name]]
-      if (family == "binomial") check_binomial(y, units_m)
     }
+    if (family == "binomial") check_binomial(y, units_m)
     if(is.integer(units_m)) units_m <- as.numeric(units_m)
     if(!is.numeric(units_m)) stop("the variable passed to 'den' must be numeric")
     if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
