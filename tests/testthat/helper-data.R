@@ -22,7 +22,9 @@ gaussian_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 latlon_data <- st_transform(gaussian_data, crs = 4326)
 
 # reduce iterations to speed up fits
-control_mcmc <- set_control_mcmc(n_sim = 1000, burnin = 200)
+control_mcmc <- set_control_mcmc(n_sim = 1000,
+                                 burnin = 200,
+                                 seed = 12345)
 
 gaussian_model <- glgpm(y ~ cov + gp() + re(i),
                         data = gaussian_data,

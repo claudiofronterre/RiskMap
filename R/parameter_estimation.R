@@ -1903,14 +1903,16 @@ laplace_sampling_mcmc <- function(y,
 
   stopifnot(family %in% c("poisson", "binomial"))
 
-  # set seed and reset on exit
-  if (exists(".Random.seed", envir = .GlobalEnv)) {
-    old_seed <- get(".Random.seed", envir = .GlobalEnv)
-    on.exit(assign(".Random.seed", old_seed, envir = .GlobalEnv), add = TRUE)
-  } else {
-    on.exit(rm(".Random.seed", envir = .GlobalEnv), add = TRUE)
+  # set seed if it exists and reset on exit
+  if (!is.null(control_mcmc$seed)){
+    if (exists(".Random.seed", envir = .GlobalEnv)) {
+      old_seed <- get(".Random.seed", envir = .GlobalEnv)
+      on.exit(assign(".Random.seed", old_seed, envir = .GlobalEnv), add = TRUE)
+    } else {
+      on.exit(rm(".Random.seed", envir = .GlobalEnv), add = TRUE)
+    }
+    set.seed(control_mcmc$seed)
   }
-  set.seed(control_mcmc$seed)
 
   # ---------- utilities ----------
   check_vec_fun <- function(f, n, name) {
@@ -2179,8 +2181,8 @@ laplace_sampling_mcmc <- function(y,
 ##' @param h Numeric. An optional parameter for Langevin MCMC. Must be non-negative if specified.
 ##' @param c1.h Numeric. A control parameter for Langevin MCMC. Must be positive. Default is 0.01.
 ##' @param c2.h Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.
-##' @param seed Integer. Passed to `set.seed` to control random number generation for
-##' generating chains. Defaults to `12345`.
+##' @param seed Integer. Optional value passed to `set.seed` to control random number generation for
+##' generating chains and make results reproducible. Defaults to `NULL`.
 ##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
 ##'
 ##' @details
@@ -2209,10 +2211,11 @@ set_control_mcmc <- function(n_sim = 12000,
                             h = NULL,
                             c1.h = 0.01,
                             c2.h = 1e-04,
-                            seed = 12345,
+                            seed = NULL,
                             linear_model = FALSE){
 
-  check_positive_integer(seed, "seed")
+  if (!is.null(seed))
+    check_positive_integer(seed, "seed")
 
   # =============================================================================
   # LINEAR MODEL (simple case for both samplers)

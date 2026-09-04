@@ -11,7 +11,7 @@ set_control_mcmc(
   h = NULL,
   c1.h = 0.01,
   c2.h = 1e-04,
-  seed = 12345,
+  seed = NULL,
   linear_model = FALSE
 )
 }
@@ -28,8 +28,8 @@ set_control_mcmc(
 
 \item{c2.h}{Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.}
 
-\item{seed}{Integer. Passed to \code{set.seed} to control random number generation for
-generating chains. Defaults to \code{12345}.}
+\item{seed}{Integer. Optional value passed to \code{set.seed} to control random number generation for
+generating chains and make results reproducible. Defaults to \code{NULL}.}
 
 \item{linear_model}{Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.}
 }
