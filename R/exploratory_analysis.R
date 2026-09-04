@@ -1,5 +1,5 @@
 ##' @title Summaries of the distances
-##' @description Computes the distances between the locations in the dataset and returns summary statistics.
+##' @description Computes the distances between the unique locations in the dataset and returns summary statistics.
 ##'
 ##' @param data an object of class `sf` containing point geometries.
 ##' @param convert_to_utm a logical value, indicating if the conversion to UTM should be performed (`TRUE`) or
@@ -16,6 +16,12 @@
 ##'   \item{`mean`}{the mean distance}
 ##'   \item{`median`}{the minimum distance}
 ##' }
+##'
+##' @examples
+##' data(italy_sim)
+##'
+##' dist_summaries(italy_sim)
+##'
 ##' @export
 dist_summaries <- function(data,
                            convert_to_utm = TRUE,
@@ -35,7 +41,7 @@ dist_summaries <- function(data,
     data <- st_transform(data, crs = propose_utm(data))
   }
 
-  coords <- st_coordinates(data)
+  coords <- unique(st_coordinates(data))
   d <- as.numeric(dist(coords))
   if (scale_to_km) d <- d/1000
 
@@ -87,6 +93,14 @@ dist_summaries <- function(data,
 ##'   \item{n_permutations}{the number of permutations}
 ##'   \item{breaks}{the calculated breaks}
 ##'   }
+##'
+##' @examples
+##' data(italy_sim)
+##'
+##' italy_variogram <- variogram(
+##'                      data = italy_sim[1:100,],
+##'                      variable = "y",
+##'                      n_permutations = 101)
 ##'
 ##' @export
 ##'
