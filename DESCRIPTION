@@ -1,9 +1,11 @@
 Package: RiskMap
-Version: 1.1.0
+Version: 2.0.0
 Title: Geostatistical Modeling of Spatially Referenced Data
 Description: Geostatistical analysis of continuous and count data.
   Implements stationary Gaussian processes with Matérn correlation for spatial prediction,
-  as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7).
+  as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7). An accompanying book
+  by Giorgi and Fronterre describes how the package can be used for model-based
+  geostatistics in public health: <https://www.mbgr.org/>.
 Authors@R: 
   c(person(given = "Emanuele",
            family = "Giorgi",
@@ -38,7 +40,6 @@ Imports:
     tibble,
     xtable
 Suggests:
-    bayesplot,
     testthat (>= 3.0.0)
 License: MIT + file LICENSE
 Encoding: UTF-8
