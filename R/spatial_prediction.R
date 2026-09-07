@@ -3,63 +3,125 @@
 ##'   \code{\link{glgpm}}.
 ##' @param object A RiskMap object.
 ##' @param grid_pred An \code{sfc} or \code{sf} of POINT geometries, or a list thereof for joint predictions.
-##' @param predictors Optional data frame of predictor variables at prediction locations.
-##' @param re_predictors Optional data frame of random effect predictors.
-##' @param pred_cov_offset Optional numeric vector of covariate offsets at prediction locations.
-##' @param control_sim Control parameters from \code{\link{set_control_sim}}.
-##' @param type \code{"marginal"} or \code{"joint"}.
-##' @param messages Logical; display progress messages. Default \code{TRUE}.
-##' @return An object of class \code{"RiskMap.pred.re"}.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
+##' If not provided, the predictions will be generated at the geometries provided when fitting the model.
+##' @param predictors Optional dataframe or list of dataframes containing predictor variables at prediction locations.
+##' Must be provided if you specify `grid_pred`.
+##' @param re_predictors Optional dataframe containing random effect predictors.
+##' Not supported if `grid_pred` is a list.
+##' @param pred_cov_offset Optional numeric vector containing covariate offsets at prediction locations.
+##' Must be provided if there is an offset included in the model and not supported if `grid_pred` is a list.
+##' @param control_sim Control parameters from \code{\link{set_control_mcmc}}.
+##' @param type Whether the predictions are `marginal` or `joint`. `marginal` predictions are less
+##' computationally expensive than `joint` predictions but cannot be used to predict areal targets.
+##' If `grid_pred` is a list or random effects are included, must be set to `joint`. Defaults to `marginal`.
+##' @param messages Logical; display progress messages. Defaults to `TRUE`.
+##' @return An object of class \code{"RiskMap_pred"} containing:
+##'   \describe{
+##'     \item{mu_pred}{Fixed-effects component of the linear predictor at the
+##'       prediction locations, i.e. \eqn{D_{pred}\hat{\beta}}. A numeric vector
+##'       of length \code{n_pred}, or a list of such vectors when \code{grid_pred}
+##'       was supplied as a list of grids. Equal to \code{0} when the model
+##'       contains no covariates.}
+##'     \item{grid_pred}{The locations of the predictions}
+##'     \item{par_hat}{Named list of the maximum likelihood estimates returned by
+##'       \code{coef()} on the fitted \code{\link{glgpm}} object, containing
+##'       \code{beta} (regression coefficients), \code{sigma2} (spatial variance),
+##'       \code{phi} (scale of the spatial correlation) and, where applicable,
+##'       \code{tau2} (nugget), \code{sigma2_re} (variances of the unstructured
+##'       random effects) and \code{sigma2_me} (measurement error variance).}
+##'     \item{S_samples}{Samples from the predictive distribution of the spatial
+##'       Gaussian process at the prediction locations. A matrix with
+##'       \code{n_pred} rows and \code{n_samples} columns, or a list of such
+##'       matrices (one per grid) when \code{grid_pred} was supplied as a list.}
+##'     \item{re}{List with two elements describing the unstructured random
+##'       effects: \code{D_pred}, a list of design matrices mapping the
+##'       prediction locations onto the levels of each random effect, and
+##'       \code{samples}, a nested list giving, for each random effect and each
+##'       of its levels, a vector of \code{n_samples} draws. Both elements are
+##'       \code{NULL} when the model contains no unstructured random effects.}
+##'     \item{obs_loc}{Logical; \code{TRUE} when predictions were made at the
+##'       observed data locations, i.e. when \code{grid_pred} was left as
+##'       \code{NULL} in \code{\link{setup_prediction}}.}
+##'     \item{inter_f}{The model formula after interpretation by
+##'       \code{interpret.formula}, separating the fixed-effects terms, the
+##'       spatial term and the unstructured random effect terms. Used internally
+##'       to build the linear predictor at the prediction locations.}
+##'     \item{family}{The model family}
+##'     \item{cov_offset}{Covariate offsets}
+##'     \item{type}{The type of predictions - `marginal` or `joint`}
+##'   }
 ##' @importFrom Matrix solve
+##' @examples
+##'
+##' data(italy_sim)
+##' italy_subset <- italy_sim[1:100,]
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_subset,
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' # using locations in dataset
+##' prediction_setup <- setup_prediction(fit)
+##'
+##' # using new locations
+##' hull <- create_convex_hull(italy_subset)
+##' grid_pred <- create_grid(hull, 20)
+##' prediction_setup <- setup_prediction(
+##'   fit,
+##'   grid_pred = grid_pred,
+##'   predictors = data.frame(y = rnorm(length(grid_pred)))
+##' )
+##'
 ##' @export
-pred_over_grid <- function(object,
+setup_prediction <- function(object,
                            grid_pred = NULL,
                            predictors = NULL,
                            re_predictors = NULL,
                            pred_cov_offset = NULL,
-                           control_sim = set_control_sim(),
+                           control_sim = set_control_mcmc(),
                            type = "marginal",
                            messages = TRUE) {
 
-  par_hat <- coef(object)
-
   # ---------------------------------------------------------------------------
-  # grid_pred validation
+  # validate inputs
   # ---------------------------------------------------------------------------
-  list_mode <- is.list(grid_pred) && !is.null(grid_pred) &&
-    !any(class(grid_pred) %in% c("sf", "sfc"))
+  stopifnot("'object' must be of class RiskMap" = inherits(object, "RiskMap"))
 
+  list_mode <- inherits(grid_pred, "list")
   if (list_mode) {
     if (type != "joint")
-      stop("When 'grid_pred' is a list, 'type' must be 'joint'.")
+      stop("When 'grid_pred' is a list, 'type' must be 'joint'")
     if (length(grid_pred) == 0L)
-      stop("'grid_pred' is a list but has length 0.")
-    grid_pred <- lapply(grid_pred, function(g) {
-      if (inherits(g, "sf")) st_geometry(g) else g
-    })
-    ok_geom <- vapply(grid_pred, function(g) {
-      inherits(g, "sfc") && all(st_geometry_type(g) == "POINT")
-    }, logical(1))
-    if (!all(ok_geom))
-      stop("Each element of 'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries.")
-
-  } else if (!is.null(grid_pred)) {
-    if (inherits(grid_pred, "sf")) grid_pred <- st_geometry(grid_pred)
-    if (!inherits(grid_pred, "sfc") || !all(st_geometry_type(grid_pred) == "POINT"))
-      stop("'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries.")
+      stop("'grid_pred' is a list but has length 0")
+    tryCatch(
+      lapply(grid_pred, check_data, type = "sfc"),
+        error = function(e){
+          stop("Each element of 'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries")
+        }
+      )
+  } else {
+    if (!is.null(grid_pred))
+      check_data(grid_pred, type = "sfc")
   }
 
+  if (!inherits(control_sim, "RiskMap_control_mcmc"))
+    stop("'control_sim' must be an output from 'set_control_mcmc()'")
+
+  if (!type %in% c("marginal", "joint"))
+    stop("'type' must be either 'marginal' or 'joint'")
+
+  if (!is.null(grid_pred) && is.null(predictors))
+    stop("'predictors' must be supplied if 'grid_pred' is supplied")
+
   obs_loc <- is.null(grid_pred)
-
-  if (!inherits(control_sim, what = "mcmc.RiskMap", which = FALSE))
-    stop("the argument passed to 'control_sim' must be an output from set_control_sim")
-
   if (obs_loc) {
+    if (!is.null(predictors))
+      warning("You have set 'predictors' but not 'grid_pred' so 'predictors' will be ignored")
     predictors <- as.data.frame(st_drop_geometry(object$data_sf))
     grid_pred  <- st_as_sfc(object$data_sf)
-    list_mode  <- FALSE
   } else {
     if (list_mode) {
       grid_pred <- lapply(grid_pred, st_transform, crs = object$crs)
@@ -79,20 +141,30 @@ pred_over_grid <- function(object,
   object$D <- as.matrix(object$D)
   p <- ncol(object$D)
 
-  if (!all(length(object$cov_offset == 0))) {
-    if (is.null(pred_cov_offset))
-      stop("The covariate offset must be specified at each prediction location.")
-    if (!inherits(pred_cov_offset, "numeric"))
-      stop("'pred_cov_offset' must be a numeric vector")
-    if (length(pred_cov_offset) != n_pred)
-      stop("The length of 'pred_cov_offset' does not match the number of prediction locations")
+  if (!all(object$cov_offset == 0)) {
+    if (obs_loc){
+      pred_cov_offset <- object$cov_offset
+    } else {
+      if (list_mode)
+        stop("Predictions including covariate offsets are not yet supported when 'pred_grid' is a list")
+      if (is.null(pred_cov_offset))
+        stop("'pred_cov_offset' must be specified at each prediction location")
+      if (!inherits(pred_cov_offset, "numeric"))
+        stop("'pred_cov_offset' must be a numeric vector")
+      if (length(pred_cov_offset) != n_pred)
+        stop("The length of 'pred_cov_offset' does not match the number of prediction locations")
+    }
   } else {
+    if (!is.null(pred_cov_offset))
+      warning("You have set 'pred_cov_offset' but 'object' does not contain a cov_offset so this will be ignored")
     pred_cov_offset <- 0
   }
 
-  if (!type %in% c("marginal", "joint"))
-    stop("the argument 'type' must be set to 'marginal' or 'joint'")
+  # ---------------------------------------------------------------------------
+  # Extract terms from object
+  # ---------------------------------------------------------------------------
 
+  par_hat <- coef(object)
   inter_f      <- interpret.formula(object$formula)
   inter_lt_f   <- inter_f
   inter_lt_f$pf <- update(inter_lt_f$pf, NULL ~.)
@@ -101,26 +173,33 @@ pred_over_grid <- function(object,
 
   n_re <- length(object$re)
   if (n_re > 0 && type == "marginal" && !is.null(re_predictors))
-    stop("Random effect predictions require type = 'joint'")
+    stop("Random effect predictions require 'type' to be set to 'joint'")
+
+  if (!is.null(re_predictors) && list_mode)
+    stop("Prediction of random effects with a list of prediction grids ('grid_pred') is ",
+         "not yet supported - supply a single 'grid_pred' or omit 're_predictors'")
 
   # ---------------------------------------------------------------------------
   # Build mu_pred (fixed-effects linear predictor at prediction locations)
   # ---------------------------------------------------------------------------
+
   if (!is.null(predictors)) {
 
-    .build_D_pred <- function(pred_i, n_i, idx = NULL) {
-      if (!is.data.frame(pred_i))
-        stop(if (is.null(idx)) "'predictors' must be a data.frame"
-             else sprintf("'predictors[[%d]]' must be a data.frame", idx))
-      if (nrow(pred_i) != n_i)
-        stop(if (is.null(idx)) "Rows of 'predictors' do not match 'grid_pred'"
-             else sprintf("Rows of 'predictors[[%d]]' do not match 'grid_pred[[%d]]'", idx, idx))
-      mf <- model.frame(inter_lt_f$pf, data = pred_i, na.action = na.fail)
-      D  <- as.matrix(model.matrix(attr(mf, "terms"), data = pred_i))
-      if (ncol(D) != p)
-        stop(if (is.null(idx)) "Predictors do not match the model formula"
-             else sprintf("Predictors in group %d do not match the model formula", idx))
-      D
+    .build_D_pred <- function(predictors, n_predictors, index = NULL) {
+      response <- as.character(object$formula[[2]])
+      re_names <- names(object$re)
+      offset_names <- names(object$cov_offset)
+      model_predictors <- setdiff(get_formula_terms(object$formula), c(response, re_names, offset_names))
+      if (!is.data.frame(predictors))
+        stop(if (is.null(index)) "'predictors' must be a data.frame"
+             else sprintf("'predictors[[%d]]' must be a data.frame", index))
+      if (!all(model_predictors %in% names(predictors)))
+        stop("The column names in 'predictors' do not match the variables in the model formula")
+      if (nrow(predictors) != n_predictors)
+        stop(if (is.null(index)) "The number of rows in 'predictors' does not match the number of locations in 'grid_pred'"
+             else sprintf("The number of rows in of 'predictors[[%d]]' does not match the number of locations in 'grid_pred[[%d]]'", index, index))
+      mf <- model.frame(inter_lt_f$pf, data = predictors, na.action = na.fail)
+      as.matrix(model.matrix(attr(mf, "terms"), data = predictors))
     }
 
     if (list_mode) {
@@ -131,10 +210,6 @@ pred_over_grid <- function(object,
       mu_pred <- as.numeric(D_pred %*% par_hat$beta)
     }
 
-  } else if (intercept_only) {
-    mu_pred <- if (list_mode) lapply(n_pred, function(n) rep(par_hat$beta, n)) else par_hat$beta
-  } else {
-    mu_pred <- 0
   }
 
   # ---------------------------------------------------------------------------
@@ -206,18 +281,23 @@ pred_over_grid <- function(object,
   }
 
   U <- dist(object$coords)
+  R <- matern_correlation(U, phi = par_hat$phi, kappa = object$kappa, return_sym_matrix = TRUE)
+
   if (!obs_loc) {
     C <- if (list_mode)
-      lapply(U_pred, function(u) par_hat$sigma2 * matern_cor(u, phi = par_hat$phi, kappa = object$kappa))
+      lapply(U_pred, function(u) par_hat$sigma2 * matern_correlation(u, phi = par_hat$phi, kappa = object$kappa))
     else
-      par_hat$sigma2 * matern_cor(U_pred, phi = par_hat$phi, kappa = object$kappa)
+      par_hat$sigma2 * matern_correlation(U_pred, phi = par_hat$phi, kappa = object$kappa)
+  } else {
+    C <- par_hat$sigma2 * R[, object$ID_coords]
+    grp <- object$coords
   }
+
+  n_pred_spatial <- if (obs_loc) nrow(object$coords) else n_pred
 
   mu <- as.numeric(object$D %*% par_hat$beta)
 
-  n_samples <- if (control_sim$linear_model) control_sim$n_sim
-  else (control_sim$n_sim - control_sim$burnin) / control_sim$thin
-  R <- matern_cor(U, phi = par_hat$phi, kappa = object$kappa, return_sym_matrix = TRUE)
+  n_samples <- if (control_sim$linear_model) control_sim$n_sim else (control_sim$n_sim - control_sim$burnin) / control_sim$thin
 
   # ---------------------------------------------------------------------------
   # FIX 2: nu2 / nugget
@@ -225,13 +305,11 @@ pred_over_grid <- function(object,
   # LF:  tau2 may be estimated -> use it
   # glgpm: existing behaviour
   # ---------------------------------------------------------------------------
-    nu2 <- if (!is.null(object$fix_tau2)) object$fix_tau2 / par_hat$sigma2
-    else par_hat$tau2 / par_hat$sigma2
-    if (nu2 == 0) nu2 <- 1e-10
+  nu2 <- if (!is.null(object$fix_tau2)) object$fix_tau2 / par_hat$sigma2 else par_hat$tau2 / par_hat$sigma2
+  if (nu2 == 0) nu2 <- 1e-10
   diag(R) <- diag(R) + nu2
 
-  diff.y <- if (object$family == "gaussian") object$y - mu
-            else NULL
+  diff.y <- if (object$family == "gaussian") object$y - mu else NULL
 
   # ===========================================================================
   # NON-GAUSSIAN MODELS
@@ -246,7 +324,7 @@ pred_over_grid <- function(object,
       else C %*% Sigma_inv
     }
 
-    simulation <- Laplace_sampling_MCMC(
+    simulation <- laplace_sampling_mcmc(
       y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
       sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
       ID_coords = object$ID_coords, ID_re = object$ID_re,
@@ -268,7 +346,7 @@ pred_over_grid <- function(object,
       } else {
         if (list_mode) {
           out$S_samples <- lapply(seq_along(mu_cond_S), function(i) {
-            Sp    <- par_hat$sigma2 * matern_cor(dist(grp[[i]]), phi = par_hat$phi,
+            Sp    <- par_hat$sigma2 * matern_correlation(dist(grp[[i]]), phi = par_hat$phi,
                                                  kappa = object$kappa, return_sym_matrix = TRUE)
             Sc    <- Sp - A[[i]] %*% t(C[[i]])
             Scr   <- t(chol(Sc))
@@ -276,7 +354,7 @@ pred_over_grid <- function(object,
               mu_cond_S[[i]][, j] + Scr %*% rnorm(nrow(mu_cond_S[[i]])))
           })
         } else {
-          Sp  <- par_hat$sigma2 * matern_cor(dist(grp), phi = par_hat$phi,
+          Sp  <- par_hat$sigma2 * matern_correlation(dist(grp), phi = par_hat$phi,
                                              kappa = object$kappa, return_sym_matrix = TRUE)
           Sc  <- Sp - A %*% t(C)
           Scr <- t(chol(Sc))
@@ -326,32 +404,57 @@ pred_over_grid <- function(object,
       Sigma_star_inv <- forceSymmetric(Matrix::solve(Sigma_star))
       B    <- -C_g %*% Sigma_star_inv %*% Matrix::t(C_g) / (par_hat$sigma2_me^2)
       diag(B) <- Matrix::diag(B) + 1 / par_hat$sigma2_me
-      A    <- C %*% B
+
+      A <- if (list_mode) lapply(C, function(single_grid_C) single_grid_C %*% B) else C %*% B
     } else {
       Sigma     <- par_hat$sigma2 * R
       Sigma_inv <- solve(Sigma)
-      A         <- C %*% Sigma_inv
+      A <- if (list_mode) lapply(C, function(single_grid_C) single_grid_C %*% Sigma_inv) else C %*% Sigma_inv
     }
 
-    mu_cond_S <- as.numeric(A %*% diff.y)
+    mu_cond_S <- if (list_mode) {
+      lapply(A, function(single_grid_A) as.numeric(single_grid_A %*% diff.y))
+    } else {
+      as.numeric(A %*% diff.y)
+    }
 
     if (type == "marginal") {
-      sd_cond_S <- sqrt(par_hat$sigma2 - Matrix::diag(A %*% t(C)))
-      out$S_samples <- sapply(seq_len(n_samples), function(i)
-        mu_cond_S + sd_cond_S * rnorm(n_pred))
+      if (list_mode) {
+        out$S_samples <- lapply(seq_along(A), function(i) {
+          sd_cond_S_i <- sqrt(par_hat$sigma2 - Matrix::diag(A[[i]] %*% t(C[[i]])))
+          sapply(seq_len(n_samples), function(j)
+            mu_cond_S[[i]] + sd_cond_S_i * rnorm(n_pred[i]))
+        })
+      } else {
+        sd_cond_S <- sqrt(par_hat$sigma2 - Matrix::diag(A %*% t(C)))
+        out$S_samples <- sapply(seq_len(n_samples), function(i)
+          mu_cond_S + sd_cond_S * rnorm(n_pred_spatial))
+      }
     } else {
-      Sp  <- par_hat$sigma2 * matern_cor(dist(grp), phi = par_hat$phi,
-                                         kappa = object$kappa, return_sym_matrix = TRUE)
-      Sc  <- Sp - A %*% t(C)
-      Scr <- t(chol(Sc))
-      out$S_samples <- sapply(seq_len(n_samples), function(i)
-        mu_cond_S + Scr %*% rnorm(n_pred))
+      if (list_mode) {
+        out$S_samples <- lapply(seq_along(A), function(i) {
+          spatial_covariance_i <- par_hat$sigma2 * matern_correlation(dist(grp[[i]]), phi = par_hat$phi,
+                                                              kappa = object$kappa, return_sym_matrix = TRUE)
+          conditional_covariance_i <- spatial_covariance_i - A[[i]] %*% t(C[[i]])
+          cholesky_root_i <- t(chol(conditional_covariance_i))
+          sapply(seq_len(n_samples), function(j)
+            mu_cond_S[[i]] + cholesky_root_i %*% rnorm(n_pred[i]))
+        })
+      } else {
+        Sp  <- par_hat$sigma2 * matern_correlation(dist(grp), phi = par_hat$phi,
+                                           kappa = object$kappa, return_sym_matrix = TRUE)
+        Sc  <- Sp - A %*% t(C)
+        Scr <- t(chol(Sc))
+        out$S_samples <- sapply(seq_len(n_samples), function(i)
+          mu_cond_S + Scr %*% rnorm(n_pred_spatial))
+      }
     }
   }
 
   # ---------------------------------------------------------------------------
   # Random effect posterior samples (unchanged from original)
   # ---------------------------------------------------------------------------
+
   if (n_re > 0 && !is.null(re_predictors)) {
     out$re          <- list()
     out$re$D_pred   <- D_re_pred
@@ -405,45 +508,27 @@ pred_over_grid <- function(object,
   }
 
   out$obs_loc  <- obs_loc
-  if (obs_loc) out$ID_coords <- object$ID_coords
+  if (obs_loc){
+    out$ID_coords <- object$ID_coords
+  } else {
+    out["ID_coords"] <- list(NULL)
+  }
   out$inter_f  <- inter_f
   out$family   <- object$family
   out$par_hat  <- par_hat
   out$cov_offset <- pred_cov_offset
   out$type     <- type
-  class(out)   <- "RiskMap.pred.re"
+  class(out)   <- "RiskMap_pred"
   return(out)
 }
 
 ##' @title Predictive Target Over a Regular Spatial Grid
 ##'
 ##' @description Computes predictions over a regular spatial grid using outputs from
-##' \code{\link{pred_over_grid}}.
+##' \code{\link{setup_prediction}}. Custom targets can be supplied via \code{f_target}.
 ##'
-##' For \strong{STH models} (\code{family = "intprev"}) the default predictive
-##' targets are:
-##' \describe{
-##'   \item{\code{prevalence}}{Probability of observing at least one egg,
-##'     \eqn{P(Y>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
-##'   \item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
-##'   \item{\code{intensity}}{Mean egg count \eqn{\rho\,\mu_W} (unconditional).}
-##' }
-##'
-##' For \strong{LF models} (\code{family = "lf_mdiag"}) the default predictive
-##' targets are:
-##' \describe{
-##'   \item{\code{mf_prevalence}}{Microfilarial (parasitological) prevalence,
-##'     \eqn{P(\text{MF}>0) = 1 - [k/(k + \mu_W(1-e^{-\rho}))]^k}.}
-##'   \item{\code{antigen_prevalence}}{Circulating filarial antigen (serological)
-##'     prevalence, \eqn{\gamma_s(1 - [k/(k+\mu_W)]^k)}, where \eqn{\gamma_s}
-##'     is the serological test sensitivity.}
-##'   \item{\code{worm_burden}}{Expected mean worm burden \eqn{\mu_W = e^{\eta}}.}
-##' }
-##'
-##' Custom targets can always be supplied via \code{f_target}.
-##'
-##' @param object Output from \code{\link{pred_over_grid}}, a
-##'   \code{RiskMap.pred.re} object.
+##' @param object Output from \code{\link{setup_prediction}}, a
+##'   \code{RiskMap_pred} object.
 ##' @param include_covariates Logical. Include covariate effects in the linear
 ##'   predictor. Default \code{TRUE}.
 ##' @param include_nugget Logical. Add a nugget draw to each spatial sample.
@@ -460,13 +545,49 @@ pred_over_grid <- function(object,
 ##'   row-wise to each target matrix (default: mean, median, sd, 2.5% and
 ##'   97.5% quantiles).
 ##'
-##' @return An object of class \code{"RiskMap_pred_target_grid"}.
-##' @seealso \code{\link{pred_over_grid}}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
+##' @return An object of class `RiskMap_predict_grid_target` containing:
+##' \describe{
+##'   \item{target}{List of the predictions for each target}
+##'   \item{grid_pred}{`sfc` object containing the coordinates for the predictions}
+##'   \item{f_target}{Character vector giving the names of the target functions
+##'     that were applied to the linear predictor samples. These names index the
+##'     first level of the \code{target} list. If \code{f_target} was supplied
+##'     unnamed, the default names \code{"f_target_1"}, \code{"f_target_2"},
+##'     ... are used.}
+##'   \item{pd_summary}{Character vector giving the names of the summary
+##'     functions applied to each target matrix. These names index the second
+##'     level of the \code{target} list. If \code{pd_summary} was supplied
+##'     unnamed, the default names \code{"pd_summary_1"}, \code{"pd_summary_2"},
+##'     ... are used.}
+##'   \item{family}{The model family}
+##'   \item{lp_samples}{Samples of the linear predictor at the prediction
+##'     locations, before the target functions in \code{f_target} are applied.
+##'     A matrix with \code{n_pred} rows and \code{n_samples} columns, or a list
+##'     of such matrices when \code{object} holds a list of prediction grids.
+##'     The contributions of the covariates, the covariate offset, the nugget
+##'     and the unstructured random effects are included only when the
+##'     corresponding \code{include_*} arguments are set to \code{TRUE}.}
+##' }
+##' @seealso \code{\link{setup_prediction}}
 ##' @importFrom Matrix solve
+##'
+##' @examples
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' # using locations in dataset
+##' prediction_setup <- setup_prediction(fit)
+##'
+##' predictions <- predict_grid_target(prediction_setup)
+##'
 ##' @export
-pred_target_grid <- function(object,
+predict_grid_target <- function(object,
                              include_covariates  = TRUE,
                              include_nugget      = FALSE,
                              include_cov_offset  = FALSE,
@@ -474,15 +595,13 @@ pred_target_grid <- function(object,
                              f_target            = NULL,
                              pd_summary          = NULL) {
 
-  if (!inherits(object, "RiskMap.pred.re"))
-    stop("'object' must be an output of pred_over_grid()")
+  if (!inherits(object, "RiskMap_pred"))
+    stop("'object' must be an output of setup_prediction()")
 
   # ---------------------------------------------------------------------------
   # list-mode detection
   # ---------------------------------------------------------------------------
-  list_mode <- is.list(object$grid_pred) &&
-    !inherits(object$grid_pred, "sfc") &&
-    !inherits(object$grid_pred, "sf")
+  list_mode <- inherits(object$grid_pred, "list")
 
   if (list_mode) {
     n_pred <- vapply(object$grid_pred,
@@ -535,10 +654,10 @@ pred_target_grid <- function(object,
   # Covariate / offset checks
   # ---------------------------------------------------------------------------
   if (length(object$mu_pred) == 1 && object$mu_pred == 0 && include_covariates)
-    stop("Covariates were not provided in pred_over_grid(); rerun with 'predictors'")
+    stop("Covariates were not provided in setup_prediction(); rerun with 'predictors'")
 
   if (n_re == 0 && include_re)
-    stop("Random effect categories not provided; rerun pred_over_grid() with 're_predictors'")
+    stop("Random effect categories not provided; rerun setup_prediction() with 're_predictors'")
 
   if (list_mode) {
     mu_target  <- if (include_covariates) object$mu_pred  else lapply(n_pred, function(n) rep(0, n))
@@ -675,18 +794,18 @@ pred_target_grid <- function(object,
   out$family     <- object$family
   out$lp_samples <- lp_samples
 
-  class(out) <- "RiskMap_pred_target_grid"
+  class(out) <- "RiskMap_predict_grid_target"
   return(out)
 }
 
 
 
-##' Plot Method for RiskMap_pred_target_grid Objects
+##' Plot Method for RiskMap_predict_grid_target Objects
 ##'
 ##' Generates a plot of the predicted values or summaries over the regular spatial grid
-##' from an object of class 'RiskMap_pred_target_grid'.
+##' from an object of class 'RiskMap_predict_grid_target'.
 ##'
-##' @param x An object of class 'RiskMap_pred_target_grid'.
+##' @param x An object of class 'RiskMap_predict_grid_target'.
 ##' @param which_target Character string specifying which target prediction to plot.
 ##' @param which_summary Character string specifying which summary statistic to plot (e.g., "mean", "sd").
 ##' @param ... Additional arguments passed to the \code{\link[terra]{plot}} function of the \code{terra} package.
@@ -695,16 +814,14 @@ pred_target_grid <- function(object,
 ##' This function requires the 'terra' package for spatial data manipulation and plotting.
 ##' It plots the values or summaries over a regular spatial grid, allowing for visual examination of spatial patterns.
 ##'
-##' @seealso \code{\link{pred_target_grid}}
+##' @seealso \code{\link{predict_grid_target}}
 ##'
 ##' @importFrom terra as.data.frame rast plot
-##' @method plot RiskMap_pred_target_grid
+##' @method plot RiskMap_predict_grid_target
 ##' @export
 ##'
 ##'
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
+plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
   t_data.frame <-
     terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
                                x$target[[which_target]][[which_summary]]),
@@ -718,10 +835,10 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##'
 ##' @description
 ##' Computes predictive targets over polygon features using joint prediction
-##' samples from \code{\link{pred_over_grid}}. Targets can incorporate
+##' samples from \code{\link{setup_prediction}}. Targets can incorporate
 ##' covariates, offsets, optional unstructured random effects.
 ##'
-##' @param object Output from \code{\link{pred_over_grid}} (class \code{RiskMap.pred.re}),
+##' @param object Output from \code{\link{setup_prediction}} (class \code{RiskMap_pred}),
 ##'   typically fitted with \code{type = "joint"} so that linear predictor samples are available.
 ##' @param shp An \pkg{sf} polygon object representing regions over which predictions are aggregated.
 ##' @param shp_target A function that aggregates grid-cell values within each polygon to a
@@ -753,7 +870,7 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##' then aggregated via \code{shp_target} (optionally weighted). The list \code{pd_summary} is applied
 ##' to each region's target samples to produce summary statistics.
 ##'
-##' @return An object of class \code{RiskMap_pred_target_shp} with components:
+##' @return An object of class \code{RiskMap_predict_areal_target} with components:
 ##' \itemize{
 ##'   \item \code{target}: \code{data.frame} of region-level summaries (one row per region).
 ##'   \item \code{target_samples}: (optional) \code{list} with one element per region; each contains
@@ -764,11 +881,32 @@ plot.RiskMap_pred_target_grid <- function(x, which_target = "linear_target", whi
 ##'   \item \code{f_target}, \code{pd_summary}, \code{grid_pred}: inputs echoed for reproducibility.
 ##' }
 ##'
-##' @seealso \code{\link{pred_over_grid}}, \code{\link{pred_target_grid}}
+##' @seealso \code{\link{setup_prediction}}, \code{\link{predict_grid_target}}
 ##'
 ##' @importFrom terra rast as.data.frame
+##'
+##' @examples
+##' library(sf)
+##' data(italy_sim)
+##' italy_subset <- italy_sim[1:100,]
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_subset,
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' # joint predictions are required
+##' prediction_setup <- setup_prediction(fit, type = "joint")
+##'
+##' # split the whole area into two
+##' areal <- st_sf(geometry = st_make_grid(italy_subset, n = c(1, 2)))
+##'
+##' predictions <- predict_areal_target(prediction_setup, areal)
+##'
 ##' @export
-pred_target_shp <- function(object,
+predict_areal_target <- function(object,
                             shp,
                             shp_target = mean,
                             weights = NULL,
@@ -784,49 +922,38 @@ pred_target_shp <- function(object,
                             messages = TRUE,
                             return_target_samples = FALSE) {
 
-  if(!inherits(object, what = "RiskMap.pred.re", which = FALSE)) {
+  if(!inherits(object, what = "RiskMap_pred", which = FALSE)) {
     stop("The object passed to 'object' must be an output of
-         the function 'pred_S'")
+         the function 'setup_prediction'")
   }
 
   if(object$type != "joint") {
     stop("To run predictions with a shape file, joint predictions must be used;
-         rerun 'pred_over_grid' and set type='joint'")
+         rerun 'setup_prediction' and set 'type' = \"joint\"")
   }
 
   check_data(shp, "polygon")
 
-  list_mode <- is.list(object$grid_pred) & !(inherits(object$grid_pred,"sfc") |
-                                               inherits(object$grid_pred,"sf"))
+  list_mode <- inherits(object$grid_pred, "list")
 
   if (list_mode) {
-    ok_geom <- vapply(
-      object$grid_pred,
-      function(g) {
-        inherits(g, "sf") || inherits(g, "sfc")
-      },
-      logical(1)
-    )
-    if (!all(ok_geom)) {
-      stop("When 'object$grid_pred' is a list, each element must be an 'sf' or 'sfc' object.")
-    }
 
     n_pred <- vapply(object$grid_pred, function(g) nrow(st_coordinates(g)), integer(1))
 
     if (!is.null(weights)) {
       if (!is.list(weights)) {
-        stop("When 'object$grid_pred' is a list, 'weights' must also be a list, ",
-             "with one numeric vector per element of 'object$grid_pred'.")
+        stop("When 'grid_pred' passed to 'setup_prediction' is a list, 'weights' must also be a list,
+             with one numeric vector per element of 'object$grid_pred'")
       }
       if (length(weights) != length(object$grid_pred)) {
-        stop("Length of 'weights' must match length of 'object$grid_pred'.")
+        stop("Length of 'weights' must match length of 'grid_pred' passed to 'setup_prediction'")
       }
       for (i in seq_along(weights)) {
         if (!is.numeric(weights[[i]])) {
-          stop(sprintf("'weights[[%d]]' must be numeric.", i))
+          stop(sprintf("'weights[[%d]]' must be numeric", i))
         }
         if (length(weights[[i]]) != n_pred[i]) {
-          stop(sprintf("Length of 'weights[[%d]]' (%d) must equal number of locations in 'object$grid_pred[[%d]]' (%d).",
+          stop(sprintf("Length of 'weights[[%d]]' (%d) must equal number of locations in 'grid_pred[[%d]]' passed to 'setup_prediction' (%d).",
                        i, length(weights[[i]]), i, n_pred[i]))
         }
         if (anyNA(weights[[i]])) {
@@ -848,8 +975,8 @@ pred_target_shp <- function(object,
   re_names <- names(object$re$samples)
 
   if(n_re == 0 && include_re) {
-    stop("The categories of the randome effects variables have not been provided;
-         re-run pred_over_grid and provide the covariates through the argument 're_predictors'")
+    stop("The categories of the random effects variables have not been provided;
+         re-run 'setup_prediction' and provide the covariates through the argument 're_predictors'")
   }
 
   if(!is.null(weights)) {
@@ -885,17 +1012,17 @@ pred_target_shp <- function(object,
   }
 
   if(!list_mode && (length(object$mu_pred) == 1 && object$mu_pred == 0 && include_covariates)) {
-    stop("Covariates have not been provided; re-run pred_over_grid
+    stop("Covariates have not been provided; re-run setup_prediction
          and provide the covariates through the argument 'predictors'")
   }
 
   if(!include_covariates) {
     mu_target <- 0
   } else {
-    if(is.null(object$mu_pred)) stop("the output obtained from 'pred_S' does not
+    if(is.null(object$mu_pred)) stop("the output obtained from 'setup_prediction' does not
                                      contain any covariates; if including covariates
-                                     in the predictive target these shuold be included
-                                     when running 'pred_S'")
+                                     in the predictive target these should be included
+                                     when running 'setup_prediction'")
     mu_target <- object$mu_pred
   }
 
@@ -1038,6 +1165,7 @@ pred_target_shp <- function(object,
     }
   }
 
+  no_comp <- NULL
   for(h in 1:n_reg) {
 
     if(list_mode) {
@@ -1136,16 +1264,16 @@ pred_target_shp <- function(object,
   out$f_target <- names(f_target)
   out$pd_summary <- names(pd_summary)
   out$grid_pred <- object$grid_pred
-  class(out) <- "RiskMap_pred_target_shp"
+  class(out) <- "RiskMap_predict_areal_target"
   return(out)
 }
 
 
-##' Plot Method for RiskMap_pred_target_shp Objects
+##' Plot Method for RiskMap_predict_areal_target Objects
 ##'
 ##' Generates a plot of predictive target values or summaries over a shapefile.
 ##'
-##' @param x An object of class 'RiskMap_pred_target_shp' containing computed targets,
+##' @param x An object of class 'RiskMap_predict_areal_target' containing computed targets,
 ##' summaries, and associated spatial data.
 ##' @param which_target Character indicating the target type to plot (e.g., "linear_target").
 ##' @param which_summary Character indicating the summary type to plot (e.g., "mean", "sd").
@@ -1156,14 +1284,12 @@ pred_target_shp <- function(object,
 ##' It requires the 'ggplot2' package for plotting and 'sf' objects for spatial data.
 ##'
 ##' @seealso
-##' \code{\link{pred_target_shp}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
+##' \code{\link{predict_areal_target}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
 ##' \code{\link[ggplot2]{aes}}, \code{\link[ggplot2]{scale_fill_distiller}}
 ##'
-##' @method plot RiskMap_pred_target_shp
+##' @method plot RiskMap_predict_areal_target
 ##' @export
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-plot.RiskMap_pred_target_shp <- function(x, which_target = "linear_target",
+plot.RiskMap_predict_areal_target <- function(x, which_target = "linear_target",
                                          which_summary = "mean", ...) {
   col_shp_name <- paste(which_target,"_",which_summary,sep="")
 
@@ -1178,25 +1304,23 @@ plot.RiskMap_pred_target_shp <- function(x, which_target = "linear_target",
 ##' @description
 ##' This function updates the predictors of a given RiskMap prediction object. It ensures that the new predictors match the original prediction grid and updates the relevant components of the object accordingly.
 ##'
-##' @param object A `RiskMap.pred.re` object, which is the output of the \code{\link{pred_over_grid}} function.
+##' @param object A `RiskMap_pred` object, which is the output of the \code{\link{setup_prediction}} function.
 ##' @param predictors A data frame containing the new predictor values. The number of rows must match the prediction grid in the `object`.
 ##'
 ##' @details
 ##' The function performs several checks and updates:
 ##' \itemize{
-##'   \item Ensures that `object` is of class `RiskMap.pred.re`.
+##'   \item Ensures that `object` is of class `RiskMap_pred`.
 ##'   \item Ensures that the number of rows in `predictors` matches the prediction grid in `object`.
 ##'   \item Removes any rows with missing values in `predictors` and updates the corresponding components of the `object`.
 ##'   \item Updates the prediction locations, the predictive samples for the random effects, and the linear predictor.
 ##' }
 ##'
-##' @return The updated `RiskMap.pred.re` object.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
+##' @return The updated `RiskMap_pred` object.
 ##' @export
 update_predictors <- function(object, predictors) {
-  if (!inherits(object, what = "RiskMap.pred.re", which = FALSE)) {
-    stop("The object passed to 'object' must be an output of the function 'glgpm'")
+  if (!inherits(object, what = "RiskMap_pred", which = FALSE)) {
+    stop("The object passed to 'object' must be an output of the function 'setup_prediction'")
   }
 
   list_mode <- is.list(object$grid_pred) && !is.null(object$grid_pred) &
@@ -1305,7 +1429,7 @@ update_predictors <- function(object, predictors) {
     object$mu_pred <- as.numeric(D_pred %*% par_hat$beta)
   }
 
-  class(object) <- "RiskMap.pred.re"
+  class(object) <- "RiskMap_pred"
   return(object)
 }
 
@@ -1356,7 +1480,7 @@ update_predictors <- function(object, predictors) {
 ##' @param iter Integer; number of times to repeat the cross-validation.
 ##' @param fold Integer; number of folds for cross-validation (required if `method = "cluster"`).
 ##' @param n_size Optional; the size of the test set, required if `method = "regularized"`.
-##' @param control_sim Control settings for simulation, an output from `set_control_sim`.
+##' @param control_sim Control settings for simulation, an output from `set_control_mcmc`.
 ##' @param method Character; either `"cluster"` or `"regularized"` for the cross-validation method. The `"cluster"` method uses
 ##' spatial clustering as implemented by the \code{spatial_clustering_cv} function from the `spatialEco` package, while the `"regularized"` method
 ##' selects a subsample of the dataset by imposing a minimum distance, set by the `min_dist` argument, for a randomly selected
@@ -1377,7 +1501,7 @@ update_predictors <- function(object, predictors) {
 ##'   regularized distance splitting defined by \code{method}.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
 ##'
-##' @return A list of class `RiskMap.spatial.cv`, containing:
+##' @return A list of class `RiskMap_cross_validation`, containing:
 ##' \describe{
 ##'   \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
 ##'   \item{model}{A named list, one per model, each containing:
@@ -1399,12 +1523,11 @@ update_predictors <- function(object, predictors) {
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
 ##' @export
-##' @author Emanuele Giorgi
-assess_pp <- function(object,
+assess_prediction <- function(object,
                       keep_par_fixed = TRUE,
                       iter = 1,
                       fold = NULL, n_size = NULL,
-                      control_sim = set_control_sim(),
+                      control_sim = set_control_mcmc(),
                       method,
                       min_dist = NULL,
                       plot_fold = TRUE,
@@ -1455,8 +1578,8 @@ assess_pp <- function(object,
       stop("for 'cluster', supply `fold`")
   }
 
-  if (!inherits(control_sim, "mcmc.RiskMap"))
-    stop("`control_sim` must come from `set_control_sim()`")
+  if (!inherits(control_sim, "RiskMap_control_mcmc"))
+    stop("`control_sim` must come from `set_control_mcmc()`")
 
   get_CRPS  <- "CRPS"  %in% which_metric
   get_SCRPS <- "SCRPS" %in% which_metric
@@ -1471,11 +1594,11 @@ assess_pp <- function(object,
   for (h in seq_along(object)) {
     fit_data <- object[[h]]$data_sf
     if (nrow(fit_data) != n_obs) {
-      stop("All models supplied to `assess_pp()` must have the same number of observations.")
+      stop("All models supplied to `assess_prediction()` must have the same number of observations.")
     }
     fit_geom <- st_as_text(st_geometry(fit_data))
     if (!identical(fit_geom, data_geom)) {
-      stop("All models supplied to `assess_pp()` must have data in the same row order and geometry.")
+      stop("All models supplied to `assess_prediction()` must have data in the same row order and geometry.")
     }
   }
 
@@ -1674,7 +1797,7 @@ assess_pp <- function(object,
           refit_i$ID_re <- refit_i$ID_re[keep, , drop = FALSE]
         }
         ## recompute ID_coords mapping
-        refit_i$ID_coords <- compute_ID_coords(refit_i$data_sf)$ID_coords
+        refit_i$ID_coords <- create_ids(refit_i$data_sf)$ID_coords
       }
 
       ## ----- held-out set and offsets -----
@@ -1689,7 +1812,7 @@ assess_pp <- function(object,
       if (messages) message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
 
       ## ----- prediction over test set -----
-      pred_S <- pred_over_grid(
+      pred_S <- setup_prediction(
         object          = refit_i,
         grid_pred       = st_as_sfc(data_test_i),
         control_sim     = control_sim,
@@ -1699,7 +1822,7 @@ assess_pp <- function(object,
         messages        = FALSE
       )
 
-      pred_lp  <- pred_target_grid(
+      pred_lp  <- predict_grid_target(
         pred_S,
         include_nugget     = is.null(refit_i$fix_tau2) || refit_i$fix_tau2 != 0,
         include_cov_offset = !all(refit_i$cov_offset == 0)
@@ -1788,7 +1911,7 @@ assess_pp <- function(object,
 
   } # end h loop
 
-  class(out) <- "RiskMap.spatial.cv"
+  class(out) <- "RiskMap_cross_validation"
   return(out)
 }
 
@@ -1818,15 +1941,14 @@ assess_pp <- function(object,
 ##' (\code{nugget_over_grid}), a logical  indicating if a covariate offset has been included in the linear predictor (\code{include_cov_offset}),
 ##' the model parameters set for the simulation (\code{par0}) and the family used in the model (\code{family}).
 ##'
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @export
-surf_sim <- function(n_sim,
+simulate_surface <- function(n_sim,
                      pred_grid,
                      formula,
                      sampling_f,
                      family,
                      scale_to_km = TRUE,
-                     control_mcmc = set_control_sim(),
+                     control_mcmc = set_control_mcmc(),
                      par0, nugget_over_grid = FALSE,
                      include_covariates = TRUE,
                      fix_var_me = NULL,
@@ -1915,7 +2037,7 @@ surf_sim <- function(n_sim,
 
 
   if(length(inter_f$re.spec) > 0) {
-    stop("In the current impletementation of 'surf_sim' the addition of random effects
+    stop("In the current impletementation of 'simulate_surface' the addition of random effects
         with re() is not supported")
   }
   mf_pred <- model.frame(inter_lt_f$pf,data=pred_grid, na.action = na.fail)
@@ -1952,7 +2074,7 @@ surf_sim <- function(n_sim,
 
   # Simulate on the grid
   # Simulate S
-  Sigma <- sigma2*matern_cor(dist(grid_pred), phi = phi, kappa = kappa,
+  Sigma <- sigma2*matern_correlation(dist(grid_pred), phi = phi, kappa = kappa,
                              return_sym_matrix = TRUE)
   if(nugget_over_grid) {
     diag(Sigma) <- diag(Sigma) + tau2
@@ -2027,15 +2149,15 @@ surf_sim <- function(n_sim,
   out$include_cov_offset <- include_cov_offset
   out$par0 <- par0
   out$family <- family
-  class(out) <- "RiskMap.sim"
+  class(out) <- "RiskMap_simulation"
   return(out)
 }
 
 ##' Plot simulated surface data for a given simulation
 ##'
-##' This function plots the simulated surface data for a specific simulation from the result of `surf_sim`. It visualizes the linear predictor values on a raster grid along with the actual data points.
+##' This function plots the simulated surface data for a specific simulation from the result of `simulate_surface`. It visualizes the linear predictor values on a raster grid along with the actual data points.
 ##'
-##' @param surf_obj The output object from `surf_sim`, containing both simulated data (`data_sim`) and predicted grid simulations (`lp_grid_sim`).
+##' @param surf_obj The output object from `simulate_surface`, containing both simulated data (`data_sim`) and predicted grid simulations (`lp_grid_sim`).
 ##' @param sim The simulation index to plot.
 ##' @param ... Additional graphical parameters to be passed to the plotting function of the `terra` package.
 ##'
@@ -2058,11 +2180,11 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 
 ##' @title Assess Simulations
 ##'
-##' @description This function evaluates the performance of models based on simulation results from the `surf_sim` function.
+##' @description This function evaluates the performance of models based on simulation results from the `simulate_surface` function.
 ##'
-##' @param obj_sim An object of class `RiskMap.sim`, obtained as an output from the `surf_sim` function.
+##' @param obj_sim An object of class `RiskMap_simulation`, obtained as an output from the `simulate_surface` function.
 ##' @param models A named list of models to be evaluated.
-##' @param control_mcmc A control object for MCMC sampling, created with `set_control_sim()`. Default is `set_control_sim()`.
+##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param spatial_scale The scale at which predictions are assessed, either `"grid"` or `"area"`.
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
 ##' @param f_grid_target A function for processing grid-level predictions.
@@ -2072,12 +2194,12 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @param pred_objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
 ##' @param categories A numeric vector of thresholds defining categories for classification. Required if `pred_objective = "classify"`.
 ##'
-##' @return A list of class `RiskMap.sim.res` containing model evaluation results.
+##' @return A list of class `RiskMap_assess_simulation` containing model evaluation results.
 ##'
 ##' @export
-assess_sim <- function(obj_sim,
+assess_simulation <- function(obj_sim,
                        models,
-                       control_mcmc = set_control_sim(),
+                       control_mcmc = set_control_mcmc(),
                        spatial_scale,
                        messages = TRUE,
                        f_grid_target = NULL,
@@ -2086,8 +2208,8 @@ assess_sim <- function(obj_sim,
                        pred_objective = c("mse","classify"),
                        categories= NULL) {
 
-  if (!inherits(obj_sim, "RiskMap.sim")) {
-    stop("'obj_sim' must be an object of class 'RiskMap.sim' obtained as an output from the 'surf_sim' function")
+  if (!inherits(obj_sim, "RiskMap_simulation")) {
+    stop("'obj_sim' must be an object of class 'RiskMap_simulation' obtained as an output from the 'simulate_surface' function")
   }
   if (length(setdiff(pred_objective, c("mse","classify")))>0) {
     stop(paste("Invalid value for pred_objective. Allowed values are:", paste(c("mse","classify"), collapse = ", ")))
@@ -2181,7 +2303,7 @@ assess_sim <- function(obj_sim,
 
       if(messages) message("Prediction over the grid")
       preds[[paste(model_names[i])]][[j]] <-
-        pred_over_grid(fits[[paste(model_names[i])]][[j]],
+        setup_prediction(fits[[paste(model_names[i])]][[j]],
                        grid_pred = st_as_sfc(obj_sim$lp_grid_sim),
                        predictors = predictors_i,
                        type = type, messages = FALSE)
@@ -2262,7 +2384,7 @@ assess_sim <- function(obj_sim,
       obj_pred_ij <- preds[[paste(model_names[i])]][[j]]
       if(length(obj_pred_ij$mu_pred)==1 && obj_pred_ij$mu_pred==0 &&
          include_covariates) {
-        stop("Covariates have not been provided; re-run pred_over_grid
+        stop("Covariates have not been provided; re-run setup_prediction
          and provide the covariates through the argument 'predictors'")
       }
 
@@ -2271,10 +2393,10 @@ assess_sim <- function(obj_sim,
         mu_target <- 0
       } else {
 
-        if(is.null(obj_pred_ij$mu_pred)) stop("the output obtained from 'pred_S' does not
+        if(is.null(obj_pred_ij$mu_pred)) stop("the output obtained from 'setup_prediction' does not
                                      contain any covariates; if including covariates
-                                     in the predictive target these shuold be included
-                                     when running 'pred_S'")
+                                     in the predictive target these should be included
+                                     when running 'setup_prediction'")
         mu_target <- obj_pred_ij$mu_pred
       }
 
@@ -2385,25 +2507,25 @@ assess_sim <- function(obj_sim,
     }
   }
   if(any(pred_objective=="classify")) out$pred_objective$classify$Class <- categories_class
-  class(out) <- "RiskMap.sim.res"
+  class(out) <- "RiskMap_assess_simulation"
   return(out)
 }
 
 ##' @title Summarize Simulation Results
 ##'
-##' @description Summarizes the results of model evaluations from a `RiskMap.sim.res` object. Provides average metrics for classification by category and overall correct classification (CC) summary.
+##' @description Summarizes the results of model evaluations from a `RiskMap_assess_simulation` object. Provides average metrics for classification by category and overall correct classification (CC) summary.
 ##'
-##' @param object An object of class `RiskMap.sim.res`, as returned by `assess_sim`.
+##' @param object An object of class `RiskMap_assess_simulation`, as returned by `assess_simulation`.
 ##' @param ... Additional arguments (not used).
 ##'
 ##' @return A list containing summary data for each model:
 ##' - `by_cat_summary`: A data frame with average sensitivity, specificity, PPV, NPV, and CC by category.
 ##' - `CC_summary`: A numeric vector with mean, 2.5th percentile, and 97.5th percentile for CC across simulations.
 ##'
-##' @method summary RiskMap.sim.res
+##' @method summary RiskMap_assess_simulation
 ##' @export
-summary.RiskMap.sim.res <- function(object, ...) {
-  stopifnot(inherits(object, "RiskMap.sim.res"))
+summary.RiskMap_assess_simulation <- function(object, ...) {
+  stopifnot(inherits(object, "RiskMap_assess_simulation"))
 
   # Initialize results
   results <- list()
@@ -2463,7 +2585,7 @@ summary.RiskMap.sim.res <- function(object, ...) {
   }
 
   # Assign class for S3 print method
-  class(results) <- "summary.RiskMap.sim.res"
+  class(results) <- "summary.RiskMap_assess_simulation"
   return(results)
 }
 
@@ -2471,9 +2593,9 @@ summary.RiskMap.sim.res <- function(object, ...) {
 
 ##' @title Print Simulation Results
 ##'
-##' @description Prints a concise summary of simulation results from a `RiskMap.sim.res` object, including average metrics by category and a summary of overall correct classification (CC).
+##' @description Prints a concise summary of simulation results from a `RiskMap_assess_simulation` object, including average metrics by category and a summary of overall correct classification (CC).
 ##'
-##' @param x An object of class `summary.RiskMap.sim.res`, as returned by `summary.RiskMap.sim.res`.
+##' @param x An object of class `summary.RiskMap_assess_simulation`, as returned by `summary.RiskMap_assess_simulation`.
 ##' @param ... Additional arguments (not used).
 ##'
 ##' @return Invisibly returns `x`.
@@ -2481,17 +2603,17 @@ summary.RiskMap.sim.res <- function(object, ...) {
 ##'
 ##' Print Simulation Results
 ##'
-##' Prints a concise summary of simulation results from a `summary.RiskMap.sim.res` object,
+##' Prints a concise summary of simulation results from a `summary.RiskMap_assess_simulation` object,
 ##' including average metrics by category and a summary of overall correct classification (CC).
 ##'
-##' @param x An object of class `summary.RiskMap.sim.res`, as returned by `summary.RiskMap.sim.res`.
+##' @param x An object of class `summary.RiskMap_assess_simulation`, as returned by `summary.RiskMap_assess_simulation`.
 ##' @param ... Additional arguments (not used).
 ##'
 ##' @return Invisibly returns `x`.
 ##'
-##' @method print summary.RiskMap.sim.res
+##' @method print summary.RiskMap_assess_simulation
 ##' @export
-print.summary.RiskMap.sim.res <- function(x, ...) {
+print.summary.RiskMap_assess_simulation <- function(x, ...) {
   cat("Summary of Simulation Results\n\n")
 
   if (!is.null(x$mse)) {

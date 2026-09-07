@@ -12,10 +12,9 @@ glgpm(
   den = NULL,
   convert_to_crs = NULL,
   scale_to_km = TRUE,
-  control_mcmc = set_control_sim(),
+  control_mcmc = set_control_mcmc(),
   par0 = NULL,
-  S_samples = NULL,
-  return_samples = TRUE,
+  return_samples = FALSE,
   messages = TRUE,
   fix_var_me = NULL,
   start_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, sigma2_me =
@@ -23,76 +22,141 @@ glgpm(
 )
 }
 \arguments{
-\item{formula}{A formula object specifying the model to be fitted. The formula should include fixed effects and spatial effects (specified using \code{gp()}) and optionally, random effects (specified using \code{re()})).}
+\item{formula}{A formula object specifying the model to be fitted.
+The formula should include fixed effects and spatial effects specified using
+\verb{[gp()]} and optionally, random effects specified using \verb{[re()]}.}
 
 \item{data}{An sf object containing the variables in the model.}
 
-\item{family}{A character string specifying the distribution of the response variable. Must be one of "gaussian", "binomial", or "poisson".}
+\item{family}{A character string specifying the distribution of the response variable.
+Must be one of \code{gaussian}, \code{binomial}, or \code{poisson}.}
 
-\item{invlink}{A function that defines the inverse of the link function for the distribution of the data given the random effects.}
+\item{invlink}{A function that defines the inverse of the link function for
+the distribution of the data given the random effects.
+Not applicable when \code{family} is \code{gaussian}.}
 
-\item{den}{Optional offset for binomial or Poisson distributions. If not provided, defaults to 1 for binomial.}
+\item{den}{Optional offset for binomial or Poisson distributions.
+Passed as a bare/unquoted column name present in \code{data}.
+If not provided, defaults to \code{1} for binomial models.}
 
-\item{convert_to_crs}{Optional integer specifying a CRS to convert the spatial coordinates.}
+\item{convert_to_crs}{Optional integer specifying a CRS to convert the spatial coordinates to.}
 
-\item{scale_to_km}{Logical indicating whether to scale coordinates to kilometers. Defaults to TRUE.}
+\item{scale_to_km}{Logical indicating whether to scale coordinates to kilometers. Defaults to \code{TRUE}.}
 
-\item{control_mcmc}{Control parameters for MCMC sampling. Must be an object of class "mcmc.RiskMap" as returned by \code{\link{set_control_sim}}.}
+\item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
+Must be an object of class \code{RiskMap_control_mcmc} as returned by \verb{[set_control_mcmc()]}.}
 
 \item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
 
-\item{S_samples}{Optional matrix of pre-specified sample paths for the spatial random effect.}
+\item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
+Defaults to \code{FALSE}.}
 
-\item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model. Defaults to FALSE.}
+\item{messages}{Logical indicating whether to print progress messages. Defaults to \code{TRUE}.}
 
-\item{messages}{Logical indicating whether to print progress messages. Defaults to TRUE.}
+\item{fix_var_me}{Optional fixed value for the measurement error variance when fitting a Gaussian model.
+When not provided, the value will be estimated, but cannot be if each location only has one sample and
+the \code{nugget} term in \verb{[gp()]} is also set to \code{TRUE}.}
 
-\item{fix_var_me}{Optional fixed value for the measurement error variance.}
-
-\item{start_pars}{Optional list of starting values for model parameters: beta (regression coefficients), sigma2 (spatial process variance), tau2 (nugget effect variance), phi (spatial correlation scale), sigma2_me (measurement error variance), and sigma2_re (random effects variances).}
+\item{start_pars}{Optional list of starting values for model parameters:
+\describe{
+\item{beta}{regression coefficients}
+\item{sigma2}{spatial process variance}
+\item{tau2}{nugget effect variance}
+\item{phi}{spatial correlation scale}
+\item{sigma2_me}{measurement error variance - only for Gaussian models}
+\item{sigma2_re}{random effects variances - only when random effects are included}
+}}
 }
 \value{
-An object of class "RiskMap" containing the fitted model and relevant information:
-\item{y}{Response variable.}
-\item{D}{Covariate matrix.}
-\item{coords}{Unique spatial coordinates.}
-\item{ID_coords}{Index of coordinates.}
-\item{re}{Random effects.}
-\item{ID_re}{Index of random effects.}
-\item{fix_tau2}{Fixed nugget effect variance.}
-\item{fix_var_me}{Fixed measurement error variance.}
-\item{formula}{Model formula.}
-\item{family}{Response family.}
-\item{crs}{Coordinate Reference System.}
-\item{scale_to_km}{Indicator if coordinates are scaled to kilometers.}
-\item{data_sf}{Original data as an sf object.}
-\item{kappa}{Spatial correlation parameter.}
-\item{units_m}{Distribution offset for binomial/Poisson.}
-\item{cov_offset}{Covariate offset.}
-\item{call}{Matched call.}
+An object of class \code{RiskMap} containing the fitted model and relevant information:
+
+\item{estimate}{Estimated parameters}
+\item{grad_MLE}{Gradient of the maximum likelihood function}
+\item{covariance}{Covariance}
+\item{log_lik}{Log likelihood}
+\item{y}{Response variable}
+\item{D}{Covariate matrix}
+\item{coords}{Unique spatial coordinates}
+\item{ID_coords}{Index of coordinates}
+\item{re}{Random effects if \code{re()} is included in \code{formula}}
+\item{ID_re}{Index of random effects if \code{re()} is included in \code{formula}}
+\item{fix_tau2}{Fixed nugget effect variance}
+\item{fix_var_me}{Fixed measurement error variance}
+\item{formula}{Model formula}
+\item{family}{Response family}
+\item{crs}{Coordinate Reference System}
+\item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
+\item{data_sf}{Original data as an sf object}
+\item{kappa}{Spatial correlation parameter}
+\item{units_m}{Distribution offset if \code{family} is \code{binomial} or \code{poisson}}
+\item{cov_offset}{Covariate offset}
+\item{call}{Matched call}
+\item{S_samples}{MCMC samples if \code{return_samples} is \code{TRUE}}
 }
 \description{
-Fits generalized linear Gaussian process models to spatial data, incorporating spatial Gaussian processes with a Matern correlation function. Supports Gaussian, binomial, and Poisson response families.
+Fits generalized linear Gaussian process models to spatial data,
+incorporating spatial Gaussian processes with a Matern correlation function.
+Supports Gaussian, binomial, and Poisson response families.
 }
 \details{
-Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.
+Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
+spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs
+using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.
 In the case of the Binomial and Poisson families, a Monte Carlo maximum likelihood algorithm is used.
 
-The spatial Gaussian process is modeled with a Matern correlation function, which is flexible and commonly used in geostatistical modeling. The function supports both spatial covariates and unstructured random effects, providing a comprehensive framework to analyze spatially correlated data across different response distributions.
+The spatial Gaussian process is modeled with a Matern correlation function, which is flexible and
+commonly used in geostatistical modeling. The function supports both spatial covariates and
+unstructured random effects, providing a comprehensive framework to analyze spatially correlated
+data across different response distributions.
 
-Additionally, the function allows for the inclusion of unstructured random effects, specified through the \code{re()} term in the model formula. These random effects can capture unexplained variability at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility in capturing complex spatial patterns.
+Additionally, the function allows for the inclusion of unstructured random effects, specified through
+the \verb{[re()]} term in the model formula. These random effects can capture unexplained variability
+at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
+in capturing complex spatial patterns.
 
-The \code{convert_to_crs} argument can be used to reproject the spatial coordinates to a different CRS. The \code{scale_to_km} argument scales the coordinates to kilometers if set to TRUE.
+The \code{convert_to_crs} argument can be used to reproject the spatial coordinates to a different CRS.
+The \code{scale_to_km} argument scales the coordinates to kilometers if set to TRUE.
 
-The \code{control_mcmc} argument specifies the control parameters for MCMC sampling. This argument must be an object returned by \code{\link{set_control_sim}}.
+The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.
+This argument must be an object returned by \verb{[set_control_mcmc()]}.
 
-The \code{start_pars} argument allows for specifying starting values for the model parameters. If not provided, default starting values are used.
+The \code{start_pars} argument allows for specifying starting values for the model parameters.
+If not provided, default starting values are used.
+}
+\examples{
+
+data(italy_sim)
+
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+summary(fit)
+
+# add a random effect
+fit <- glgpm(
+  formula = y ~ gp() + re(province),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+summary(fit)
+
+# estimate the nugget
+fit <- glgpm(
+  formula = y ~ gp(nugget = TRUE),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+summary(fit)
+
 }
 \seealso{
-\code{\link{set_control_sim}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
-}
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
+\code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 }

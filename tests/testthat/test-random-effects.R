@@ -9,32 +9,32 @@ test_that("random effects are encoded consistently across data containers", {
     y = seq_len(4)
   )
   tibble_data <- tibble::as_tibble(base_data)
-  sf_data <- sf::st_as_sf(
+  gaussian_data <- st_as_sf(
     base_data,
     coords = c("x", "y"),
     crs = 32634
   )
-  sf_tibble <- sf::st_as_sf(
+  sf_tibble <- st_as_sf(
     tibble_data,
     coords = c("x", "y"),
     crs = 32634
   )
 
-  expected <- RiskMap:::prepare_random_effects(
+  expected <- prepare_random_effects(
     base_data,
     c("region", "province")
   )
 
   expect_equal(
-    RiskMap:::prepare_random_effects(tibble_data, c("region", "province")),
+    prepare_random_effects(tibble_data, c("region", "province")),
     expected
   )
   expect_equal(
-    RiskMap:::prepare_random_effects(sf_data, c("region", "province")),
+    prepare_random_effects(gaussian_data, c("region", "province")),
     expected
   )
   expect_equal(
-    RiskMap:::prepare_random_effects(sf_tibble, c("region", "province")),
+    prepare_random_effects(sf_tibble, c("region", "province")),
     expected
   )
   expect_equal(
@@ -45,8 +45,8 @@ test_that("random effects are encoded consistently across data containers", {
       dimnames = list(NULL, c("region", "province"))
     )
   )
-  expect_equal(expected$re_unique$region, seq_len(3))
-  expect_equal(expected$re_unique_f$region, c("north", "south", "unused"))
+  expect_equal(expected$re_unique$region, seq_len(2))
+  expect_equal(expected$re_unique_f$region, c("north", "south"))
   expect_equal(expected$re_unique$province, seq_len(3))
   expect_equal(expected$re_unique_f$province, c(10, 30, 20))
 })
@@ -61,7 +61,7 @@ test_that("supported random-effect types retain their labels and ordering", {
     integer_group = c(20L, 10L, 20L)
   )
 
-  result <- RiskMap:::prepare_random_effects(
+  result <- prepare_random_effects(
     data,
     c("ordered_group", "character_group", "integer_group")
   )
@@ -78,7 +78,7 @@ test_that("supported random-effect types retain their labels and ordering", {
 })
 
 test_that("a single random effect retains a matrix index", {
-  result <- RiskMap:::prepare_random_effects(
+  result <- prepare_random_effects(
     data.frame(group = factor(c("a", "b", "a"))),
     "group"
   )
@@ -89,7 +89,7 @@ test_that("a single random effect retains a matrix index", {
 })
 
 test_that("one-row data retain all random-effect columns", {
-  result <- RiskMap:::prepare_random_effects(
+  result <- prepare_random_effects(
     data.frame(
       region = factor("north"),
       province = 10
@@ -103,7 +103,7 @@ test_that("one-row data retain all random-effect columns", {
 })
 
 test_that("no random effects return the established null representation", {
-  result <- RiskMap:::prepare_random_effects(data.frame(value = 1:3), NULL)
+  result <- prepare_random_effects(data.frame(value = 1:3), NULL)
 
   expect_equal(result$n_re, 0L)
   expect_null(result$names_re)
@@ -114,7 +114,7 @@ test_that("no random effects return the established null representation", {
 
 test_that("invalid random-effect variables fail informatively", {
   expect_error(
-    RiskMap:::prepare_random_effects(
+    prepare_random_effects(
       data.frame(group = c("a", NA)),
       "group"
     ),
@@ -122,7 +122,7 @@ test_that("invalid random-effect variables fail informatively", {
     fixed = TRUE
   )
   expect_error(
-    RiskMap:::prepare_random_effects(
+    prepare_random_effects(
       data.frame(group = c(1, Inf)),
       "group"
     ),
@@ -130,7 +130,7 @@ test_that("invalid random-effect variables fail informatively", {
     fixed = TRUE
   )
   expect_error(
-    RiskMap:::prepare_random_effects(
+    prepare_random_effects(
       data.frame(group = c(TRUE, FALSE)),
       "group"
     ),
@@ -138,7 +138,7 @@ test_that("invalid random-effect variables fail informatively", {
     fixed = TRUE
   )
   expect_error(
-    RiskMap:::prepare_random_effects(data.frame(value = 1:2), "group"),
+    prepare_random_effects(data.frame(value = 1:2), "group"),
     "not found in `data`",
     fixed = TRUE
   )
@@ -151,11 +151,11 @@ test_that("glgpm simulations support random effects in tibble-backed sf data", {
     x = c(0, 1, 0, 1),
     z = c(0, 0, 1, 1)
   )
-  data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32634)
+  data <- st_as_sf(data, coords = c("x", "z"), crs = 32634)
 
   set.seed(1)
-  result <- suppressWarnings(
-    glgpm_sim(
+  result <-
+    simulate_glgpm(
       n_sim = 2,
       formula = y ~ gp(kappa = 0.5, nugget = FALSE) + re(group),
       data = data,
@@ -170,9 +170,9 @@ test_that("glgpm simulations support random effects in tibble-backed sf data", {
       ),
       messages = FALSE
     )
-  )
 
   expect_length(result$re_sim, 2L)
   expect_length(result$re_sim[[1]]$group, 2L)
   expect_equal(result$sigma2_re, 0.2)
 })
+

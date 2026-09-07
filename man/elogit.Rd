@@ -27,8 +27,3 @@ y <- c(0, 3, 7, 10)
 m <- c(10, 10, 10, 10)
 elogit(y, m)
 }
-\author{
-Claudio Fronterre \email{c.fronterre@bham.ac.uk}
-
-Emanuele Giorgi \email{e.giorgi@bham.ac.uk}
-}

@@ -32,8 +32,3 @@ maximum likelihood estimates from model fits obtained from the \code{\link{glgpm
 \seealso{
 \code{\link{glgpm}}
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
-}
