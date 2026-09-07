@@ -634,7 +634,6 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
       if (is.null(object$fix_var_me)) {
         ind_sigma2_me <- p + 3
         names(object$estimate)[ind_sigma2_me] <- "Measurement error var."
-        object$estimate[ind_sigma2_me] <- exp(object$estimate[ind_sigma2_me])
       } else {
         ind_sigma2_me <- NULL
       }
