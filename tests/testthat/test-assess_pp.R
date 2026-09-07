@@ -85,6 +85,23 @@ test_that("assess_prediction requires aligned model data", {
   )
 })
 
+test_that("assess_prediction re-encodes random effects after subsetting", {
+  user_split <- matrix(c(1, 1, rep(0, nrow(gaussian_data) - 2)), ncol = 1)
+
+  expect_no_warning(
+    out <- assess_prediction(
+      list(model = gaussian_model),
+      user_split = user_split,
+      control_sim = control_mcmc,
+      plot_fold = FALSE,
+      messages = FALSE,
+      which_metric = "CRPS"
+    )
+  )
+
+  expect_s3_class(out, "RiskMap_cross_validation")
+})
+
 test_that("AnPIT area computes trapezoidal absolute distance", {
   u <- seq(0, 1, length.out = 1001)
 
