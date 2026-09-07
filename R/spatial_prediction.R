@@ -113,7 +113,7 @@ setup_prediction <- function(object,
   if (!type %in% c("marginal", "joint"))
     stop("'type' must be either 'marginal' or 'joint'")
 
-  if (!is.null(grid_pred) && is.null(predictors))
+  if (!is.null(grid_pred) && is.null(predictors) && ncol(object$D) > 1)
     stop("'predictors' must be supplied if 'grid_pred' is supplied")
 
   obs_loc <- is.null(grid_pred)
