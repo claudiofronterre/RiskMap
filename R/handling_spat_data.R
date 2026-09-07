@@ -52,13 +52,7 @@ create_grid <- function(shp,
                            cellsize = spat_res*1000,
                            what="centers")
 
-  intersect <- st_intersects(grid_box,
-                                 shp,
-                                 sparse = FALSE)
-
-  filter <- rowSums(intersect) > 0
-
-  grid_out <- grid_box[filter]
+  grid_out <- st_intersection(grid_box, shp)
 
   if (length(grid_out) == 0){
     stop("No points intersect with the 'shp' - try decreasing the 'spat_res'")
