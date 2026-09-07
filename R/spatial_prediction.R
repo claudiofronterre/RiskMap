@@ -210,6 +210,10 @@ setup_prediction <- function(object,
       mu_pred <- as.numeric(D_pred %*% par_hat$beta)
     }
 
+  } else if (intercept_only) {
+    mu_pred <- if (list_mode) lapply(n_pred, function(n) rep(par_hat$beta, n)) else par_hat$beta
+  } else {
+    mu_pred <- 0
   }
 
   # ---------------------------------------------------------------------------
