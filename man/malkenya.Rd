@@ -5,7 +5,7 @@
 \alias{malkenya}
 \title{Malaria Transmission in the Western Kenyan Highlands}
 \format{
-A data frame with 8204 rows and 13 variables:
+An sf object with 8204 rows and 13 variables:
 \describe{
 \item{Cluster}{unique ID for each of the 46 school clusters.}
 \item{RDT}{binary variable indicating the outcome of the RDT:

@@ -5,7 +5,7 @@
 \alias{malnutrition}
 \title{Malnutrition in Ghana}
 \format{
-A data frame with 2671 rows and 9 variables:
+An sf object with 2671 rows and 9 variables:
 \describe{
 \item{age}{age in months of the child.}
 \item{sex}{sex of the child.}
@@ -28,6 +28,6 @@ data(malnutrition)
 Malnutrition in Ghana from the Demographic and Health Survey 2014.
 }
 \details{
-The coordinate reference system is 3857.
+The coordinate reference system is 4326.
 }
 \keyword{datasets}

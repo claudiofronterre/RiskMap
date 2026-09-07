@@ -5,7 +5,7 @@
 \alias{tz_malaria}
 \title{Malaria Dataset from Tanzania Demographic Health Surveys 2015}
 \format{
-A data frame with 387 rows and 18 columns, containing the following variables:
+An sf object with 387 rows and 18 columns, containing the following variables:
 \describe{
 \item{cluster.number}{Cluster number, identifying the survey cluster.}
 \item{MM}{Month of the survey (in two-digit format).}

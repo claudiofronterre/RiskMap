@@ -5,7 +5,7 @@
 \alias{tz_covariates}
 \title{Covariates Dataset for Malaria Prediction in Tanzania}
 \format{
-A data frame with 8740 observations of 7 variables:
+An sf object with 8740 observations of 7 variables:
 \describe{
 \item{Population}{Population density in the area (in thousands).}
 \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN).}

@@ -198,7 +198,7 @@ NULL
 ##' @keywords datasets
 ##' @name malkenya
 ##' @usage data(malkenya)
-##' @format A data frame with 8204 rows and 13 variables:
+##' @format An sf object with 8204 rows and 13 variables:
 ##' \describe{
 ##'  \item{Cluster}{unique ID for each of the 46 school clusters.}
 ##'  \item{RDT}{binary variable indicating the outcome of the RDT:
@@ -237,7 +237,7 @@ NULL
 ##' @keywords datasets
 ##' @name malnutrition
 ##' @usage data(malnutrition)
-##' @format A data frame with 2671 rows and 9 variables:
+##' @format An sf object with 2671 rows and 9 variables:
 ##' \describe{
 ##'  \item{age}{age in months of the child.}
 ##'  \item{sex}{sex of the child.}
@@ -250,7 +250,7 @@ NULL
 ##'  \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in degrees latitude and longitude}
 ##' }
 ##' @source Demographic and Health Survey, dhsprogram.com
-##' @details The coordinate reference system is 3857.
+##' @details The coordinate reference system is 4326.
 NULL
 
 
@@ -264,7 +264,7 @@ NULL
 ##' @docType data
 ##' @usage data(tz_covariates)
 ##' @keywords datasets
-##' @format A data frame with 8740 observations of 7 variables:
+##' @format An sf object with 8740 observations of 7 variables:
 ##' \describe{
 ##'   \item{Population}{Population density in the area (in thousands).}
 ##'   \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN).}
@@ -284,7 +284,7 @@ NULL
 ##'
 ##' @description Malaria prevalence and associated variables from the 2015 Tanzania Demographic Health Surveys.
 ##' The data includes geographical, demographic, environmental, and health-related variables.
-##' @format A data frame with 387 rows and 18 columns, containing the following variables:
+##' @format An sf object with 387 rows and 18 columns, containing the following variables:
 ##' \describe{
 ##'   \item{cluster.number}{Cluster number, identifying the survey cluster.}
 ##'   \item{MM}{Month of the survey (in two-digit format).}
