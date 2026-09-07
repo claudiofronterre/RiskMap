@@ -1811,7 +1811,11 @@ assess_prediction <- function(object,
       out_id_i <- out_id[keep_test]
       if (h == 1) out$test_set[[i]] <- data_test_i
 
-      pred_coff_i <- if (is.null(fit0$cov_offset)) rep(0, nrow(data_test_i)) else fit0$cov_offset[out_id_i]
+      pred_coff_i <- if (is.null(fit0$cov_offset) || all(fit0$cov_offset == 0)) {
+        NULL
+      } else {
+        fit0$cov_offset[out_id_i]
+      }
 
       if (messages) message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
 
