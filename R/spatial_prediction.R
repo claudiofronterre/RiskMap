@@ -2220,11 +2220,10 @@ assess_simulation <- function(obj_sim,
   if(spatial_scale=="area" & is.null(shp)) {
     stop("if spatial_scale='area' then a shape file of the area(s) must be passed to
          'shp'")
+    check_data(shp, "polygon")
   }
 
-  check_data(shp, "polygon")
-
-    # Determine the binomial denominator column, if relevant to the family
+  # Determine the binomial denominator column, if relevant to the family
   units_m <- NULL
   if (obj_sim$family == "binomial") {
     stopifnot(!is.null(obj_sim$data_sim[[1]]$units_m))
