@@ -1794,7 +1794,11 @@ assess_prediction <- function(object,
         if (!is.null(refit_i$cov_offset))
           refit_i$cov_offset <- refit_i$cov_offset[keep]
         if (!is.null(refit_i$ID_re)) {
-          refit_i$ID_re <- refit_i$ID_re[keep, , drop = FALSE]
+          re_terms <- names(refit_i$ID_re)
+          random_effects_i <- prepare_random_effects(refit_i$data_sf, re_terms)
+          refit_i$ID_re <- as.data.frame(random_effects_i$ID_re)
+          colnames(refit_i$ID_re) <- random_effects_i$names_re
+          refit_i$re <- random_effects_i$re_unique_f
         }
         ## recompute ID_coords mapping
         refit_i$ID_coords <- create_ids(refit_i$data_sf)$ID_coords
