@@ -13,6 +13,8 @@ test_that("create_grid produces errors", {
   expect_error(create_grid(gaussian_data, 1), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
   expect_error(create_grid(sf_polygon, 1), "The coordinates of 'shp' are in longitude and latitude")
   expect_error(create_grid(sf_polygon, 1, 121212), "The 'grid_crs' provided is not a valid CRS")
+  expect_error(create_grid(sf_polygon, "not numeric"), "The value for 'spat_res' must be a single positive number")
+
 
   square <- st_polygon(list(matrix(square_coords, ncol = 2, byrow = TRUE)))
   sf_square <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
@@ -35,6 +37,9 @@ test_that("create_grid functions correctly", {
 
   result <- create_grid(sf_square, 1)
   expect_length(result, 100)
+
+  result <- create_grid(sf_square, 2.5)
+  expect_length(result, 16)
 
   # confirm for sf with multiple polygons
   square2 <- st_polygon(list(matrix((square_coords + 10) * 1000, ncol = 2, byrow = TRUE)))

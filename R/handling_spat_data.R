@@ -38,7 +38,7 @@ create_grid <- function(shp,
                         grid_crs = NULL) {
 
   check_data(shp, "polygon")
-  check_positive_integer(spat_res, "spat_res")
+  check_positive_number(spat_res, "")
 
   if(is.null(grid_crs)) {
     grid_crs <- st_crs(shp)
