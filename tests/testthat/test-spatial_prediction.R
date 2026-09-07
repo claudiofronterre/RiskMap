@@ -158,6 +158,9 @@ test_that("setup_prediction produces expected output", {
   result <- setup_prediction(gaussian_offset_model)
   expect_setequal(names(result), expected_output)
 
+  result <- setup_prediction(gaussian_intercept_model)
+  expect_setequal(names(result), expected_output)
+
   result <- setup_prediction(gaussian_model,
                            grid_pred = grid,
                            predictors = data.frame(cov = rnorm(length(grid))))

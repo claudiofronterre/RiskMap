@@ -37,6 +37,11 @@ gaussian_offset_model <- glgpm(y ~ cov + gp(nugget = TRUE) + offset(offset),
                                fix_var_me = 0,
                                messages = FALSE)
 
+gaussian_intercept_model <- glgpm(y ~ gp(),
+                                  data = gaussian_data,
+                                  family = "gaussian",
+                                  messages = FALSE)
+
 eta <- 0.2 + 0.3 * data$cov + S
 p <- plogis(eta)
 data$y <- rbinom(n, size = data$den, prob = p)
