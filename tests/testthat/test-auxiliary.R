@@ -150,3 +150,31 @@ test_that("estimates are consistent between coef and summary", {
   expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
   expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
 })
+
+test_that("check_positive_integer functions correctly", {
+  expect_no_error(check_positive_integer(1, "a"))
+  expect_no_error(check_positive_integer(999, "a"))
+
+  expect_error(check_positive_integer(0.1, "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(0, "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(c(0, 1), "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer("not", "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(NULL, "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(NA, "a"), "'a' must be a single positive integer")
+})
+
+test_that("check_positive_number functions correctly", {
+  expect_no_error(check_positive_number(1, ""))
+  expect_no_error(check_positive_number(0.1, ""))
+
+  a <- 0
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- c(0, 1)
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- "not"
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- NULL
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- NA
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+})

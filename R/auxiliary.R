@@ -1316,7 +1316,7 @@ check_positive_number <- function(x, type = "starting ") {
   # extract name, removing any list
   name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
 
-  if (!is.numeric(x) || length(x) != 1 || x < 0 || is.na(x)) {
+  if (!is.numeric(x) || length(x) != 1 || x <= 0 || is.na(x)) {
     stop("The ", type, "value for '", name, "' must be a single positive number")
   }
 
