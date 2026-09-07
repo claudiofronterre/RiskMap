@@ -6,12 +6,12 @@
 \usage{
 assess_prediction(
   object,
+  method,
   keep_par_fixed = TRUE,
   iter = 1,
   fold = NULL,
   n_size = NULL,
   control_sim = set_control_mcmc(),
-  method,
   min_dist = NULL,
   plot_fold = TRUE,
   messages = TRUE,
@@ -23,6 +23,11 @@ assess_prediction(
 \arguments{
 \item{object}{A list of \code{RiskMap} objects, each representing a model fitted with \code{glgpm}.}
 
+\item{method}{Character; either \code{"cluster"} or \code{"regularized"} for the cross-validation method. The \code{"cluster"} method uses
+spatial clustering as implemented by the \code{spatial_clustering_cv} function from the \code{spatialEco} package, while the \code{"regularized"} method
+selects a subsample of the dataset by imposing a minimum distance, set by the \code{min_dist} argument, for a randomly selected
+subset of locations.}
+
 \item{keep_par_fixed}{Logical; if \code{TRUE}, parameters are kept fixed across folds, otherwise the model is re-estimated for each fold.}
 
 \item{iter}{Integer; number of times to repeat the cross-validation.}
@@ -32,11 +37,6 @@ assess_prediction(
 \item{n_size}{Optional; the size of the test set, required if \code{method = "regularized"}.}
 
 \item{control_sim}{Control settings for simulation, an output from \code{set_control_mcmc}.}
-
-\item{method}{Character; either \code{"cluster"} or \code{"regularized"} for the cross-validation method. The \code{"cluster"} method uses
-spatial clustering as implemented by the \code{spatial_clustering_cv} function from the \code{spatialEco} package, while the \code{"regularized"} method
-selects a subsample of the dataset by imposing a minimum distance, set by the \code{min_dist} argument, for a randomly selected
-subset of locations.}
 
 \item{min_dist}{Optional; minimum distance for regularized subsampling (required if \code{method = "regularized"}).}
 

@@ -1476,15 +1476,15 @@ update_predictors <- function(object, predictors) {
 ##' Cross-validation can be performed using either spatial clustering or regularized subsampling with a minimum inter-point distance. For each fold or subset, models can be refitted or evaluated with fixed parameters, offering flexibility in model validation. The function also provides visualizations of the spatial distribution of test folds.
 ##'
 ##' @param object A list of `RiskMap` objects, each representing a model fitted with `glgpm`.
+##' @param method Character; either `"cluster"` or `"regularized"` for the cross-validation method. The `"cluster"` method uses
+##' spatial clustering as implemented by the \code{spatial_clustering_cv} function from the `spatialEco` package, while the `"regularized"` method
+##' selects a subsample of the dataset by imposing a minimum distance, set by the `min_dist` argument, for a randomly selected
+##' subset of locations.
 ##' @param keep_par_fixed Logical; if `TRUE`, parameters are kept fixed across folds, otherwise the model is re-estimated for each fold.
 ##' @param iter Integer; number of times to repeat the cross-validation.
 ##' @param fold Integer; number of folds for cross-validation (required if `method = "cluster"`).
 ##' @param n_size Optional; the size of the test set, required if `method = "regularized"`.
 ##' @param control_sim Control settings for simulation, an output from `set_control_mcmc`.
-##' @param method Character; either `"cluster"` or `"regularized"` for the cross-validation method. The `"cluster"` method uses
-##' spatial clustering as implemented by the \code{spatial_clustering_cv} function from the `spatialEco` package, while the `"regularized"` method
-##' selects a subsample of the dataset by imposing a minimum distance, set by the `min_dist` argument, for a randomly selected
-##' subset of locations.
 ##' @param min_dist Optional; minimum distance for regularized subsampling (required if `method = "regularized"`).
 ##' @param plot_fold Logical; if `TRUE`, plots each fold's test set.
 ##' @param messages Logical; if `TRUE`, displays progress messages.
@@ -1524,17 +1524,18 @@ update_predictors <- function(object, predictors) {
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
 ##' @export
 assess_prediction <- function(object,
-                      keep_par_fixed = TRUE,
-                      iter = 1,
-                      fold = NULL, n_size = NULL,
-                      control_sim = set_control_mcmc(),
-                      method,
-                      min_dist = NULL,
-                      plot_fold = TRUE,
-                      messages = TRUE,
-                      which_metric = c("AnPIT", "CRPS", "SCRPS"),
-                      user_split = NULL,
-                      ...) {
+                              method,
+                              keep_par_fixed = TRUE,
+                              iter = 1,
+                              fold = NULL,
+                              n_size = NULL,
+                              control_sim = set_control_mcmc(),
+                              min_dist = NULL,
+                              plot_fold = TRUE,
+                              messages = TRUE,
+                              which_metric = c("AnPIT", "CRPS", "SCRPS"),
+                              user_split = NULL,
+                              ...) {
 
   ## ─────────────────────────── helpers ─────────────────────────── ##
   is_list_of_riskmap <- function(x) {
@@ -1561,31 +1562,42 @@ assess_prediction <- function(object,
   }
   ## ────────────────────── sanity checks (unchanged) ─────────────────────── ##
   if (!is_list_of_riskmap(object))
-    stop("`object` must be a list of fitted models of class 'RiskMap'.")
+    stop("'object' must be a list of fitted models of class 'RiskMap'.")
 
   if (!all(which_metric %in% c("CRPS", "SCRPS", "AnPIT")))
-    stop("`which_metric` must only contain 'CRPS', 'SCRPS' or 'AnPIT'")
+    stop("'which_metric' must only contain 'CRPS', 'SCRPS' or 'AnPIT'")
 
   if (is.null(user_split)) {
     if (!method %in% c("cluster", "regularized"))
-      stop("`method` must be either 'cluster' or 'regularized' (unless `user_split` is supplied).")
+      stop("'method' must be either 'cluster' or 'regularized' (unless 'user_split' is supplied).")
 
     if (method == "regularized") {
-      if (is.null(min_dist)) stop("for 'regularized', supply `min_dist`")
-      if (is.null(n_size))   stop("for 'regularized', supply `n_size`")
+      if (is.null(min_dist)) stop("for 'regularized', supply 'min_dist'")
+      if (is.null(n_size))   stop("for 'regularized', supply 'n_size'")
     }
     if (method == "cluster" && is.null(fold))
-      stop("for 'cluster', supply `fold`")
+      stop("when 'method' is 'cluster', you must supply 'fold'")
   }
 
   if (!inherits(control_sim, "RiskMap_control_mcmc"))
-    stop("`control_sim` must come from `set_control_mcmc()`")
+    stop("'control_sim' must come from 'set_control_mcmc()'")
 
   get_CRPS  <- "CRPS"  %in% which_metric
   get_SCRPS <- "SCRPS" %in% which_metric
   get_AnPIT <- "AnPIT" %in% which_metric
 
   ## ───────────────────────────── data & splits ───────────────────────────── ##
+
+  # add names to any unnamed models
+  if (is.null(names(object))) {
+    names(object) <- paste("Model", seq_along(object))
+  } else {
+    unnamed <- which(names(object) == "")
+    if (length(unnamed) > 0) {
+      names(object)[unnamed] <- paste("Model", unnamed)
+    }
+  }
+
   object1 <- object[[1]]
   data_sf <- object1$data_sf
   n_obs   <- nrow(data_sf)
@@ -1594,11 +1606,11 @@ assess_prediction <- function(object,
   for (h in seq_along(object)) {
     fit_data <- object[[h]]$data_sf
     if (nrow(fit_data) != n_obs) {
-      stop("All models supplied to `assess_prediction()` must have the same number of observations.")
+      stop("All models supplied to 'assess_prediction()' must have the same number of observations.")
     }
     fit_geom <- st_as_text(st_geometry(fit_data))
     if (!identical(fit_geom, data_geom)) {
-      stop("All models supplied to `assess_prediction()` must have data in the same row order and geometry.")
+      stop("All models supplied to 'assess_prediction()' must have data in the same row order and geometry.")
     }
   }
 
@@ -1606,9 +1618,9 @@ assess_prediction <- function(object,
     spl <- vector("list", n_iter_expected)
     if (is.matrix(usr)) {
       if (nrow(usr) != n_obs)
-        stop("`user_split` matrix must have nrow == nrow(data).")
+        stop("'user_split' matrix must have nrow == nrow(data).")
       if (ncol(usr) != n_iter_expected)
-        stop("`user_split` matrix must have ncol == `iter`.")
+        stop("'user_split' matrix must have ncol == 'iter'.")
       for (i in seq_len(n_iter_expected)) {
         out_id <- which(usr[, i] != 0 & !is.na(usr[, i]))
         in_id  <- setdiff(seq_len(n_obs), out_id)
@@ -1618,7 +1630,7 @@ assess_prediction <- function(object,
       }
     } else if (is.list(usr)) {
       if (length(usr) != n_iter_expected)
-        stop("`user_split` list must have length == `iter`.")
+        stop("'user_split' list must have length == 'iter'.")
       for (i in seq_len(n_iter_expected)) {
         ui <- usr[[i]]
         if (is.list(ui) && !is.null(ui$in_id) && !is.null(ui$out_id)) {
@@ -1628,14 +1640,14 @@ assess_prediction <- function(object,
           out_id <- as.integer(ui)
           in_id  <- setdiff(seq_len(n_obs), out_id)
         } else {
-          stop("Each element of `user_split` must be a vector of test indices or a list(in_id=..., out_id=...).")
+          stop("Each element of 'user_split' must be a vector of test indices or a list(in_id=..., out_id=...).")
         }
         spl[[i]] <- list(in_id = in_id, out_id = out_id,
                          data = data_sf[in_id, ],
                          data_test = data_sf[out_id, ])
       }
     } else {
-      stop("`user_split` must be a matrix (nrow=n, ncol=iter) or a list.")
+      stop("'user_split' must be a matrix (nrow=n, ncol=iter) or a list.")
     }
     list(splits = spl)
   }
@@ -1738,7 +1750,7 @@ assess_prediction <- function(object,
                         poisson  = exp)
 
     if (messages) {
-      message(sprintf("\nModel '%s' (%s)", model_names[h]))
+      message(sprintf("\nModel '%s' (%s)", h, model_names[h]))
     }
 
     ## containers for this model
