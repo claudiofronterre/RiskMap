@@ -88,6 +88,7 @@
 ##'
 ##' data(italy_sim)
 ##'
+##' # intercept only
 ##' fit <- glgpm(
 ##'   formula = y ~ gp(),
 ##'   data = italy_sim[1:100,],
@@ -97,6 +98,15 @@
 ##'
 ##' summary(fit)
 ##'
+##' # add a covariate
+##' fit <- glgpm(
+##'   formula = y ~ gp() + pop_dens,
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
 ##' # add a random effect
 ##' fit <- glgpm(
 ##'   formula = y ~ gp() + re(province),
