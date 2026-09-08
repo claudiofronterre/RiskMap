@@ -45,9 +45,27 @@ test_that("assess_prediction produces errors", {
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "regularized",
+                      min_dist = 1,
+                      n_size = 1,
+                      iter = 2.1),
+    "'iter' must be a single positive integer"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "regularized",
+                      min_dist = 1,
+                      n_size = 1,
+                      control_sim = "not sim"),
+    "'control_sim' must come from 'set_control_mcmc"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "regularized",
                       min_dist = -1,
                       n_size = 1
-                      ),
+    ),
     "'min_dist' must be a single positive"
   )
 
@@ -80,17 +98,100 @@ test_that("assess_prediction produces errors", {
     "'control_sim' must come from 'set_control_mcmc"
   )
 
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "regularized",
+                      min_dist = 1,
+                      n_size = 1,
+                      plot_fold = "not true"
+    ),
+    "'plot_fold' must be either TRUE or FALSE"
+  )
 
   expect_error(
     assess_prediction(list(gaussian_model),
-                            user_split = matrix(1:2), ncol = 1))
+                      method = "regularized",
+                      min_dist = 1,
+                      n_size = 1,
+                      messages = "not true"
+    ),
+    "'messages' must be either TRUE or FALSE"
+  )
+
+  different_rows <- gaussian_model
+  different_rows$data_sf <- different_rows$data_sf[1:9,]
+
+  expect_error(
+    assess_prediction(list(gaussian_model,
+                           different_rows),
+                      method = "regularized",
+                      min_dist = 1,
+                      n_size = 1
+    ),
+    "All models in 'object' supplied must have the same number of observations"
+  )
+
+  different_order <- gaussian_model
+  different_order$data_sf <- different_order$data_sf[c(6:10, 1:5),]
+
+  expect_error(
+    assess_prediction(list(gaussian_model,
+                           different_order),
+                      method = "regularized",
+                      min_dist = 1,
+                      n_size = 1
+    ),
+    "All models in 'object' must have data in the same row order and geometry"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      user_split = matrix(1:2, ncol = 1)),
+    "'user_split' matrix must have the same number of rows as the data in the model"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      user_split = matrix(1:20, ncol = 2)),
+    "'user_split' matrix must have a number of columns equal to 'iter'"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      user_split = list(1, 2)),
+    "'user_split' list must have the same length as 'iter'"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      user_split = "not list or matrix"),
+    "'user_split' must be a matrix or a list"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      user_split = list(sample(10))),
+    "The length of values in 'user_split' to create the test set must be less than the number of rows in the data"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      user_split = list(rep(0,5))),
+    "The values in 'user_split' must be row indices of the data"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      user_split = list(c(1.1, 2, 3.3))),
+    "The values in 'user_split' must be row indices of the data"
+  )
 
 })
 
 make_assess_prediction_fit <- function(data, covariate) {
-  coords <- sf::st_coordinates(data)
+  coords <- st_coordinates(data)
   fit <- list(
-    formula = stats::as.formula(paste("y ~", covariate)),
+    formula = as.formula(paste("y ~", covariate)),
     data_sf = data,
     family = "gaussian",
     estimate = c(0, 0, 0, 0),
@@ -114,17 +215,17 @@ make_assess_prediction_fit <- function(data, covariate) {
 }
 
 test_that("assess_prediction uses each model's own data_sf for held-out predictors", {
-  geom <- sf::st_sfc(
-    sf::st_point(c(0, 0)),
-    sf::st_point(c(1, 1)),
-    sf::st_point(c(2, 2)),
+  geom <- st_sfc(
+    st_point(c(0, 0)),
+    st_point(c(1, 1)),
+    st_point(c(2, 2)),
     crs = 4326
   )
-  data_x1 <- sf::st_sf(y = c(1, 2, 3), x1 = c(10, 20, 30), geometry = geom)
-  data_x2 <- sf::st_sf(y = c(1, 2, 3), x2 = c(100, 200, 300), geometry = geom)
+  data_x1 <- st_sf(y = c(1, 2, 3), x1 = c(10, 20, 30), geometry = geom)
+  data_x2 <- st_sf(y = c(1, 2, 3), x2 = c(100, 200, 300), geometry = geom)
 
   seen_predictors <- list()
-  testthat::local_mocked_bindings(
+  local_mocked_bindings(
     setup_prediction = function(object, grid_pred, predictors, ...) {
       seen_predictors[[object$model_id]] <<- names(predictors)
       list(predictors = predictors)
@@ -156,10 +257,10 @@ test_that("assess_prediction uses each model's own data_sf for held-out predicto
 })
 
 test_that("assess_prediction requires aligned model data", {
-  geom_a <- sf::st_sfc(sf::st_point(c(0, 0)), sf::st_point(c(1, 1)), crs = 4326)
-  geom_b <- sf::st_sfc(sf::st_point(c(0, 0)), sf::st_point(c(2, 2)), crs = 4326)
-  data_a <- sf::st_sf(y = c(1, 2), x1 = c(10, 20), geometry = geom_a)
-  data_b <- sf::st_sf(y = c(1, 2), x2 = c(100, 200), geometry = geom_b)
+  geom_a <- st_sfc(st_point(c(0, 0)), st_point(c(1, 1)), crs = 4326)
+  geom_b <- st_sfc(st_point(c(0, 0)), st_point(c(2, 2)), crs = 4326)
+  data_a <- st_sf(y = c(1, 2), x1 = c(10, 20), geometry = geom_a)
+  data_b <- st_sf(y = c(1, 2), x2 = c(100, 200), geometry = geom_b)
 
   expect_error(
     assess_prediction(
@@ -295,13 +396,13 @@ test_that("AnPIT area computes trapezoidal absolute distance", {
 })
 
 test_that("assess_prediction reports AnPIT area as a scalar score", {
-  geom <- sf::st_sfc(
-    sf::st_point(c(0, 0)),
-    sf::st_point(c(1, 1)),
-    sf::st_point(c(2, 2)),
+  geom <- st_sfc(
+    st_point(c(0, 0)),
+    st_point(c(1, 1)),
+    st_point(c(2, 2)),
     crs = 4326
   )
-  data <- sf::st_sf(y = c(0, 0, 0), x1 = c(10, 20, 30), geometry = geom)
+  data <- st_sf(y = c(0, 0, 0), x1 = c(10, 20, 30), geometry = geom)
 
   testthat::local_mocked_bindings(
     setup_prediction = function(object, grid_pred, predictors, ...) {

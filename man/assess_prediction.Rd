@@ -115,6 +115,25 @@ cross_validation <-
 
 summary(cross_validation)
 
+# user_split method with a matrix
+ cross_validation <-
+  assess_prediction(list(fit),
+  user_split = matrix(
+    sample(c(rep(1, 50), rep(0, 50))),
+    ncol = 1)
+  )
+
+summary(cross_validation)
+
+# user_split method with a list
+ cross_validation <-
+  assess_prediction(list(fit),
+  user_split = list(
+    sample(100, 50))
+  )
+
+summary(cross_validation)
+
 }
 \references{
 Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of proper scoring rules. \emph{Statistical Science}, 38(1), 140–159. \doi{10.1214/22-STS864}.

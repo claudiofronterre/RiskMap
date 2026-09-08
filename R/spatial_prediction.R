@@ -1559,12 +1559,21 @@ update_predictors <- function(object, predictors) {
 ##'
 ##' summary(cross_validation)
 ##'
-##' # user_split method
+##' # user_split method with a matrix
 ##'  cross_validation <-
 ##'   assess_prediction(list(fit),
 ##'   user_split = matrix(
 ##'     sample(c(rep(1, 50), rep(0, 50))),
 ##'     ncol = 1)
+##'   )
+##'
+##' summary(cross_validation)
+##'
+##' # user_split method with a list
+##'  cross_validation <-
+##'   assess_prediction(list(fit),
+##'   user_split = list(
+##'     sample(100, 50))
 ##'   )
 ##'
 ##' summary(cross_validation)
@@ -1604,9 +1613,6 @@ assess_prediction <- function(object,
   }
   u_val <- seq(0, 1, length.out = 1000)
 
-  if(!is.null(user_split)) {
-    iter <- ncol(user_split)
-  }
   ## ────────────────────── sanity checks (unchanged) ─────────────────────── ##
   if (!is_list_of_riskmap(object))
     stop("'object' must be a list of fitted models of class 'RiskMap'.")
@@ -1633,8 +1639,19 @@ assess_prediction <- function(object,
   if (!is.logical(keep_par_fixed))
     stop("'keep_par_fixed' must be either TRUE or FALSE")
 
+  check_positive_integer(iter, "iter")
+
   if (!inherits(control_sim, "RiskMap_control_mcmc"))
     stop("'control_sim' must come from 'set_control_mcmc()'")
+
+  if (!is.null(min_dist))
+    check_positive_number(min_dist)
+
+  if (!is.logical(plot_fold))
+    stop("'plot_fold' must be either TRUE or FALSE")
+
+  if (!is.logical(messages))
+    stop("'messages' must be either TRUE or FALSE")
 
   get_CRPS  <- "CRPS"  %in% which_metric
   get_SCRPS <- "SCRPS" %in% which_metric
@@ -1655,16 +1672,16 @@ assess_prediction <- function(object,
   object1 <- object[[1]]
   data_sf <- object1$data_sf
   n_obs   <- nrow(data_sf)
-  data_geom <- st_as_text(st_geometry(data_sf))
+  data_geom <- st_geometry(data_sf)
 
   for (h in seq_along(object)) {
     fit_data <- object[[h]]$data_sf
     if (nrow(fit_data) != n_obs) {
-      stop("All models supplied to 'assess_prediction()' must have the same number of observations")
+      stop("All models in 'object' supplied must have the same number of observations")
     }
-    fit_geom <- st_as_text(st_geometry(fit_data))
+    fit_geom <- st_geometry(fit_data)
     if (!identical(fit_geom, data_geom)) {
-      stop("All models supplied to 'assess_prediction()' must have data in the same row order and geometry")
+      stop("All models in 'object' must have data in the same row order and geometry")
     }
   }
 
@@ -1674,7 +1691,7 @@ assess_prediction <- function(object,
       if (nrow(usr) != n_obs)
         stop("'user_split' matrix must have the same number of rows as the data in the model")
       if (ncol(usr) != n_iter_expected)
-        stop("'user_split' matrix must have the a number of columns equal to 'iter'")
+        stop("'user_split' matrix must have a number of columns equal to 'iter'")
       for (i in seq_len(n_iter_expected)) {
         out_id <- which(usr[, i] != 0 & !is.na(usr[, i]))
         in_id  <- setdiff(seq_len(n_obs), out_id)
@@ -1691,6 +1708,12 @@ assess_prediction <- function(object,
           in_id  <- ui$in_id
           out_id <- ui$out_id
         } else if (is.integer(ui) || is.double(ui)) {
+          if (length(ui) == nrow(data_sf)){
+            stop("The length of values in 'user_split' to create the test set must be less than the number of rows in the data")
+          }
+          if (!all(ui %in% 1:n_obs)){
+            stop("The values in 'user_split' must be row indices of the data")
+          }
           out_id <- as.integer(ui)
           in_id  <- setdiff(seq_len(n_obs), out_id)
         } else {
@@ -1701,7 +1724,7 @@ assess_prediction <- function(object,
                          data_test = data_sf[out_id, ])
       }
     } else {
-      stop("'user_split' must be a matrix or a list.")
+      stop("'user_split' must be a matrix or a list")
     }
     list(splits = spl)
   }
