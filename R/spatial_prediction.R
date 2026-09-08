@@ -1526,6 +1526,49 @@ update_predictors <- function(object, predictors) {
 ##' @importFrom gridExtra grid.arrange
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
+##'
+##' @examples
+##'
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' # cluster method
+##' cross_validation <-
+##'   assess_prediction(
+##'     list(fit),
+##'     method = "cluster",
+##'     fold = 2
+##'   )
+##'
+##' summary(cross_validation)
+##'
+##' # regularized method
+##' cross_validation <-
+##'   assess_prediction(
+##'     list(fit),
+##'     method = "regularized",
+##'     n_size = 5,
+##'     min_dist = 1
+##'   )
+##'
+##' summary(cross_validation)
+##'
+##' # user_split method
+##'  cross_validation <-
+##'   assess_prediction(list(fit),
+##'   user_split = matrix(
+##'     sample(c(rep(1, 50), rep(0, 50))),
+##'     ncol = 1)
+##'   )
+##'
+##' summary(cross_validation)
+##'
 ##' @export
 assess_prediction <- function(object,
                               method,
@@ -1576,12 +1619,19 @@ assess_prediction <- function(object,
       stop("'method' must be either 'cluster' or 'regularized' (unless 'user_split' is supplied).")
 
     if (method == "regularized") {
-      if (is.null(min_dist)) stop("for 'regularized', supply 'min_dist'")
-      if (is.null(n_size))   stop("for 'regularized', supply 'n_size'")
+      if (is.null(min_dist)) stop("when 'method' is 'regularized' you must supply 'min_dist'")
+      if (is.null(n_size))   stop("when 'method' is 'regularized' you must supply 'n_size'")
+      check_positive_number(min_dist, "")
+      check_positive_integer(n_size, "n_size")
     }
-    if (method == "cluster" && is.null(fold))
-      stop("when 'method' is 'cluster', you must supply 'fold'")
+    if (method == "cluster"){
+      if (is.null(fold)) stop("when 'method' is 'cluster' you must supply 'fold'")
+      check_positive_integer(fold, "fold")
+    }
   }
+
+  if (!is.logical(keep_par_fixed))
+    stop("'keep_par_fixed' must be either TRUE or FALSE")
 
   if (!inherits(control_sim, "RiskMap_control_mcmc"))
     stop("'control_sim' must come from 'set_control_mcmc()'")
@@ -1610,11 +1660,11 @@ assess_prediction <- function(object,
   for (h in seq_along(object)) {
     fit_data <- object[[h]]$data_sf
     if (nrow(fit_data) != n_obs) {
-      stop("All models supplied to 'assess_prediction()' must have the same number of observations.")
+      stop("All models supplied to 'assess_prediction()' must have the same number of observations")
     }
     fit_geom <- st_as_text(st_geometry(fit_data))
     if (!identical(fit_geom, data_geom)) {
-      stop("All models supplied to 'assess_prediction()' must have data in the same row order and geometry.")
+      stop("All models supplied to 'assess_prediction()' must have data in the same row order and geometry")
     }
   }
 
@@ -1622,9 +1672,9 @@ assess_prediction <- function(object,
     spl <- vector("list", n_iter_expected)
     if (is.matrix(usr)) {
       if (nrow(usr) != n_obs)
-        stop("'user_split' matrix must have nrow == nrow(data).")
+        stop("'user_split' matrix must have the same number of rows as the data in the model")
       if (ncol(usr) != n_iter_expected)
-        stop("'user_split' matrix must have ncol == 'iter'.")
+        stop("'user_split' matrix must have the a number of columns equal to 'iter'")
       for (i in seq_len(n_iter_expected)) {
         out_id <- which(usr[, i] != 0 & !is.na(usr[, i]))
         in_id  <- setdiff(seq_len(n_obs), out_id)
@@ -1632,9 +1682,9 @@ assess_prediction <- function(object,
                          data = data_sf[in_id, ],
                          data_test = data_sf[out_id, ])
       }
-    } else if (is.list(usr)) {
+    } else if (inherits(usr, "list")) {
       if (length(usr) != n_iter_expected)
-        stop("'user_split' list must have length == 'iter'.")
+        stop("'user_split' list must have the same length as 'iter'")
       for (i in seq_len(n_iter_expected)) {
         ui <- usr[[i]]
         if (is.list(ui) && !is.null(ui$in_id) && !is.null(ui$out_id)) {
@@ -1651,7 +1701,7 @@ assess_prediction <- function(object,
                          data_test = data_sf[out_id, ])
       }
     } else {
-      stop("'user_split' must be a matrix (nrow=n, ncol=iter) or a list.")
+      stop("'user_split' must be a matrix or a list.")
     }
     list(splits = spl)
   }
@@ -1713,24 +1763,18 @@ assess_prediction <- function(object,
     }
     n_iter <- iter
     if (isTRUE(plot_fold)) {
-      if (!requireNamespace("ggplot2", quietly = TRUE)) {
-        warning("plot_fold = TRUE requires the 'ggplot2' package; skipping plots.", call. = FALSE)
-      } else if (!requireNamespace("sf", quietly = TRUE)) {
-        warning("plot_fold = TRUE with geom_sf() requires the 'sf' package; skipping plots.", call. = FALSE)
-      } else {
-        plots <- lapply(seq_len(n_iter), function(i) {
-          ggplot(data_split$splits[[i]]$data_test) +
-            geom_sf() +
-            theme_minimal() +
-            ggtitle(paste("Subset", i))
-        })
+      plots <- lapply(seq_len(n_iter), function(i) {
+        ggplot(data_split$splits[[i]]$data_test) +
+          geom_sf() +
+          theme_minimal() +
+          ggtitle(paste("Subset", i))
+      })
 
-        if (n_iter > 1 && requireNamespace("gridExtra", quietly = TRUE)) {
-          do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
-        } else {
-          # Either only one plot or gridExtra not available: print sequentially
-          for (p in plots) print(p)
-        }
+      if (n_iter > 1 && requireNamespace("gridExtra", quietly = TRUE)) {
+        do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
+      } else {
+        # Either only one plot or gridExtra not available: print sequentially
+        for (p in plots) print(p)
       }
     }
   }
@@ -1773,30 +1817,25 @@ assess_prediction <- function(object,
 
       ## ----- refit or slice -----
       if (!keep_par_fixed) {
-        message("\nRe-estimating model for subset ", i)
-        crs_num <- if (is.numeric(fit0$crs)) {
-          as.integer(fit0$crs)
-        } else {
-          as.integer(sub(".*:(\\d+)$", "\\1", fit0$crs))
+        if (messages) message("\nRe-estimating model for subset ", i)
+
+        arg_list <- list(
+          formula      = fit0$formula,
+          data         = fit_data_sf[in_id, ],
+          family       = fam,
+          scale_to_km  = fit0$scale_to_km,
+          control_mcmc = control_sim,
+          fix_var_me   = fit0$fix_var_me,
+          messages     = FALSE,
+          start_pars   = par_hat
+        )
+
+        # add den if it exists
+        if (length(den_name) > 0) {
+          arg_list$den <- as.name(den_name)
         }
 
-        fit0$crs <- crs_num
-          ## Original path (unchanged)
-          refit_i <- eval(bquote(
-            glgpm(.(
-              formula      = fit0$formula,
-              data         = fit_data_sf[in_id, ],
-              cov_offset   = .(fit0$cov_offset),
-              family       = .(fam),
-              crs          = .(fit0$crs),
-              scale_to_km  = .(fit0$scale_to_km),
-              control_mcmc = control_sim,
-              fix_var_me   = .(fit0$fix_var_me),
-              den          = .(as.name(den_name)),
-              messages     = FALSE,
-              start_pars   = par_hat
-            ))
-          ))
+        refit_i <- do.call(glgpm, arg_list)
       } else {
         ## quick slice without re-fitting
         refit_i <- fit0

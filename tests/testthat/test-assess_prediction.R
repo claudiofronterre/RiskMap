@@ -1,3 +1,92 @@
+test_that("assess_prediction produces errors", {
+
+  expect_error(
+    assess_prediction("not list"),
+    "'object' must be a list of fitted models of class 'RiskMap'"
+  )
+
+  expect_error(
+    assess_prediction(list(a = 1)),
+    "'object' must be a list of fitted models of class 'RiskMap'"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "random"),
+    "'method' must be either 'cluster' or 'regularized'"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "cluster"),
+    "when 'method' is 'cluster' you must supply 'fold'"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "cluster",
+                      fold = 0.1),
+    "'fold' must be a single positive integer"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "regularized"),
+    "when 'method' is 'regularized' you must supply 'min_dist'"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "regularized",
+                      min_dist = 1),
+    "when 'method' is 'regularized' you must supply 'n_size'"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "regularized",
+                      min_dist = -1,
+                      n_size = 1
+                      ),
+    "'min_dist' must be a single positive"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "regularized",
+                      min_dist = 1,
+                      n_size = 1.1
+    ),
+    "'n_size' must be a single positive integer"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "regularized",
+                      min_dist = 1,
+                      n_size = 1,
+                      keep_par_fixed = "not logical"
+    ),
+    "'keep_par_fixed' must be either TRUE or FALSE"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "regularized",
+                      min_dist = 1,
+                      n_size = 1,
+                      control_sim = "not mcmc"
+    ),
+    "'control_sim' must come from 'set_control_mcmc"
+  )
+
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                            user_split = matrix(1:2), ncol = 1))
+
+})
+
 make_assess_prediction_fit <- function(data, covariate) {
   coords <- sf::st_coordinates(data)
   fit <- list(
@@ -101,6 +190,101 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
 
   expect_s3_class(out, "RiskMap_cross_validation")
 })
+
+test_that("assess_prediction splits test data correctly", {
+
+  n_folds <- 2
+
+  result <- assess_prediction(
+    list(intercept_only = gaussian_intercept_model,
+         with_covariate = gaussian_model),
+    method = "cluster",
+    fold = n_folds,
+    messages = FALSE)
+
+  expect_length(result$test_set, n_folds)
+  expect_equal(sum(unlist(lapply(result$test_set, nrow))), n)
+
+  combined <- do.call(rbind, result$test_set)
+  expect_true(all(!duplicated(combined)))
+
+  n_folds <- 3
+
+  result <- assess_prediction(
+    list(intercept_only = gaussian_intercept_model,
+         with_covariate = gaussian_model),
+    method = "cluster",
+    fold = n_folds,
+    messages = FALSE)
+
+  expect_length(result$test_set, n_folds)
+  expect_equal(sum(unlist(lapply(result$test_set, nrow))), n)
+
+  combined <- do.call(rbind, result$test_set)
+  expect_true(all(!duplicated(combined)))
+
+  n_size <- 4
+
+  result <- assess_prediction(
+    list(intercept_only = gaussian_intercept_model,
+         with_covariate = gaussian_model),
+    method = "regularized",
+    n_size = n_size,
+    min_dist = 1,
+    messages = FALSE)
+
+  expect_length(result$test_set, 1)
+  expect_equal(nrow(result$test_set[[1]]), n_size)
+
+
+  result <- assess_prediction(
+    list(gaussian_model),
+    user_split = matrix(
+      sample(c(rep(1, n/2), rep(0, n/2))),
+      ncol = 1),
+    messages = FALSE)
+
+  expect_length(result$test_set, 1)
+  expect_equal(nrow(result$test_set[[1]]), n/2)
+
+})
+
+test_that("assess_prediction can refit correctly for all model families", {
+
+  result <- assess_prediction(
+    list(gaussian_model),
+    method = "regularized",
+    min_dist = 1,
+    n_size = 1,
+    keep_par_fixed = FALSE,
+    messages = FALSE)
+
+  expect_setequal(names(result), c("test_set", "model"))
+
+  result <- assess_prediction(
+    list(binomial_model),
+    method = "regularized",
+    min_dist = 1,
+    n_size = 1,
+    keep_par_fixed = FALSE,
+    control_sim = control_mcmc,
+    messages = FALSE)
+
+  expect_setequal(names(result), c("test_set", "model"))
+
+  result <- assess_prediction(
+    list(poisson_model),
+    method = "regularized",
+    min_dist = 1,
+    n_size = 1,
+    keep_par_fixed = FALSE,
+    control_sim = control_mcmc,
+    messages = FALSE)
+
+  expect_setequal(names(result), c("test_set", "model"))
+
+})
+
 
 test_that("AnPIT area computes trapezoidal absolute distance", {
   u <- seq(0, 1, length.out = 1001)

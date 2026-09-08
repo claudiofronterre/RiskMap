@@ -83,6 +83,39 @@ This function evaluates the predictive performance of spatial models fitted to \
 
 Cross-validation can be performed using either spatial clustering or regularized subsampling with a minimum inter-point distance. For each fold or subset, models can be refitted or evaluated with fixed parameters, offering flexibility in model validation. The function also provides visualizations of the spatial distribution of test folds.
 }
+\examples{
+
+data(italy_sim)
+
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+# cluster method
+cross_validation <-
+  assess_prediction(
+    list(fit),
+    method = "cluster",
+    fold = 2
+  )
+
+summary(cross_validation)
+
+# regularized method
+cross_validation <-
+  assess_prediction(
+    list(fit),
+    method = "regularized",
+    n_size = 5,
+    min_dist = 1
+  )
+
+summary(cross_validation)
+
+}
 \references{
 Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of proper scoring rules. \emph{Statistical Science}, 38(1), 140–159. \doi{10.1214/22-STS864}.
 }
