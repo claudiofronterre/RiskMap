@@ -13,7 +13,7 @@ test_that("assess_prediction produces errors", {
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "random"),
-    "'method' must be either 'cluster' or 'regularized'"
+    "'method' must be either 'cluster', 'regularized' or 'user'"
   )
 
   expect_error(
@@ -146,42 +146,49 @@ test_that("assess_prediction produces errors", {
 
   expect_error(
     assess_prediction(list(gaussian_model),
+                      method = "user",
                       user_split = matrix(1:2, ncol = 1)),
     "'user_split' matrix must have the same number of rows as the data in the model"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
+                      method = "user",
                       user_split = matrix(1:20, ncol = 2)),
     "'user_split' matrix must have a number of columns equal to 'iter'"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
+                      method = "user",
                       user_split = list(1, 2)),
     "'user_split' list must have the same length as 'iter'"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
+                      method = "user",
                       user_split = "not list or matrix"),
     "'user_split' must be a matrix or a list"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
+                      method = "user",
                       user_split = list(sample(10))),
     "The length of values in 'user_split' to create the test set must be less than the number of rows in the data"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
+                      method = "user",
                       user_split = list(rep(0,5))),
     "The values in 'user_split' must be row indices of the data"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
+                      method = "user",
                       user_split = list(c(1.1, 2, 3.3))),
     "The values in 'user_split' must be row indices of the data"
   )
@@ -240,6 +247,7 @@ test_that("assess_prediction uses each model's own data_sf for held-out predicto
   out <- assess_prediction(
     list(model_x1 = make_assess_prediction_fit(data_x1, "x1"),
          model_x2 = make_assess_prediction_fit(data_x2, "x2")),
+    method = "user",
     user_split = matrix(c(0, 1, 1), ncol = 1),
     plot_fold = FALSE,
     messages = FALSE,
@@ -266,6 +274,7 @@ test_that("assess_prediction requires aligned model data", {
     assess_prediction(
       list(model_x1 = make_assess_prediction_fit(data_a, "x1"),
            model_x2 = make_assess_prediction_fit(data_b, "x2")),
+      method = "user",
       user_split = matrix(c(0, 1), ncol = 1),
       plot_fold = FALSE,
       messages = FALSE,
@@ -281,6 +290,7 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
   expect_no_warning(
     out <- assess_prediction(
       list(model = gaussian_model),
+      method = "user",
       user_split = user_split,
       control_sim = control_mcmc,
       plot_fold = FALSE,
@@ -340,6 +350,7 @@ test_that("assess_prediction splits test data correctly", {
 
   result <- assess_prediction(
     list(gaussian_model),
+    method = "user",
     user_split = matrix(
       sample(c(rep(1, n/2), rep(0, n/2))),
       ncol = 1),
@@ -417,6 +428,7 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
 
   out <- assess_prediction(
     list(model_x1 = make_assess_prediction_fit(data, "x1")),
+    method = "user",
     user_split = matrix(c(0, 1, 1), ncol = 1),
     plot_fold = FALSE,
     messages = FALSE,

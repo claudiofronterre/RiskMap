@@ -1472,37 +1472,55 @@ update_predictors <- function(object, predictors) {
 ##' @title Assess Predictive Performance via Spatial Cross-Validation
 ##'
 ##' @description
-##' This function evaluates the predictive performance of spatial models fitted to `RiskMap` objects using cross-validation. It supports two classes of diagnostic tools:
+##' This function evaluates the predictive performance of spatial models fitted
+##' to `RiskMap` objects using cross-validation. It supports two classes of diagnostic tools:
 ##'
-##' - **Scoring rules**, including the Continuous Ranked Probability Score (CRPS) and its scaled version (SCRPS), which quantify the sharpness and calibration of probabilistic forecasts;
-##' - **Calibration diagnostics**, based on the Probability Integral Transform (PIT) for Gaussian outcomes, Aggregated nonparametric PIT (AnPIT) curves for discrete outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve and the reference line.
+##' - **Scoring rules**, including the Continuous Ranked Probability Score (CRPS)
+##'  and its scaled version (SCRPS), which quantify the sharpness and calibration
+##'  of probabilistic forecasts;
+##' - **Calibration diagnostics**, based on the Probability Integral Transform (PIT)
+##' for Gaussian outcomes, Aggregated nonparametric PIT (AnPIT) curves for discrete
+##' outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve
+##' and the reference line.
 ##'
-##' Cross-validation can be performed using either spatial clustering or regularized subsampling with a minimum inter-point distance. For each fold or subset, models can be refitted or evaluated with fixed parameters, offering flexibility in model validation. The function also provides visualizations of the spatial distribution of test folds.
+##' Cross-validation can be performed using either spatial clustering, regularized
+##' subsampling with a minimum inter-point distance or a user-defined test set.
+##' For each fold or subset, models can be refitted or evaluated with fixed parameters,
+##' offering flexibility in model validation. The function also provides visualizations
+##' of the spatial distribution of test folds.
 ##'
-##' @param object A list of `RiskMap` objects, each representing a model fitted with `glgpm`.
-##' @param method Character; either `"cluster"` or `"regularized"` for the cross-validation method. The `"cluster"` method uses
-##' spatial clustering as implemented by the \code{spatial_clustering_cv} function from the `spatialEco` package, while the `"regularized"` method
-##' selects a subsample of the dataset by imposing a minimum distance, set by the `min_dist` argument, for a randomly selected
-##' subset of locations.
-##' @param keep_par_fixed Logical; if `TRUE`, parameters are kept fixed across folds, otherwise the model is re-estimated for each fold.
-##' @param iter Integer; number of times to repeat the cross-validation.
-##' @param fold Integer; number of folds for cross-validation (required if `method = "cluster"`).
-##' @param n_size Optional; the size of the test set, required if `method = "regularized"`.
-##' @param control_sim Control settings for simulation, an output from `set_control_mcmc`.
-##' @param min_dist Optional; minimum distance for regularized subsampling (required if `method = "regularized"`).
-##' @param plot_fold Logical; if `TRUE`, plots each fold's test set.
-##' @param messages Logical; if `TRUE`, displays progress messages.
-##' @param which_metric Character vector; one or more of `"CRPS"`, `"SCRPS"`, or `"AnPIT"`, to specify the predictive performance metrics to compute. When `"AnPIT"` is requested, the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation between the PIT/AnPIT curve and the reference line.
-##' @param user_split A user-defined cross-validation split. Either:
+##' @param object A list of `RiskMap` objects, each representing a model fitted with `glgpm()`.
+##' @param method Character; either `"cluster"`, `"regularized"` or `"user"` for the
+##' cross-validation method:
+##' \describe{
+##'  - The `"cluster"` method uses spatial clustering as implemented
+##' by the \code{spatial_clustering_cv} function from the `spatialsample` package.
+##'  - The `"regularized"` method selects a subsample of the dataset by imposing a minimum distance,
+##'  set by the `min_dist` argument, for a randomly selected subset of locations using
+##'  the `subsample.distance` function from the `spatialEco` package.
+##'  - The `"user"` method takes a user-defined test set defined by `user_split`
+##'  }
+##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
+##' or re-estimate for each fold. Defaults to `TRUE`.
+##' @param iter Integer; number of times to repeat the cross-validation. Defaults to `1`.
+##' @param fold Integer; required when `method = "regularized"` - number of folds for cross-validation.
+##' @param n_size Integer; the size of the test set, required if `method = "regularized"`.
+##' @param control_sim Control settings for simulation, an output from `set_control_mcmc()`.
+##' @param min_dist Numeric; required when `method = "regularized"` - minimum distance in kilometers for regularized subsampling.
+##' @param plot_fold Logical; whether to plot each fold's test set. Defaults to `TRUE`.
+##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
+##' @param which_metric Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"AnPIT"`,
+##' to specify the predictive performance metrics to compute. When `"AnPIT"` is requested,
+##' the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation
+##' between the PIT/AnPIT curve and the reference line. Defaults to all metrics.
+##' @param user_split Required when `method = "user"`. A user-defined cross-validation split. Either:
 ##'   * a matrix with \code{nrow = n} (number of observations) and
 ##'     \code{ncol = iter} (number of iterations), where entries of \code{1}
 ##'     indicate membership in the test set for that iteration and \code{0}
 ##'     indicate training set; or
 ##'   * a list of length \code{iter}, where each element is either a vector of
-##'     test indices, or a list with components \code{in_id} (training indices)
-##'     and \code{out_id} (test indices).
-##'   When supplied, \code{user_split} overrides the automatic clustering or
-##'   regularized distance splitting defined by \code{method}.
+##'     indices of the dataset to use as the test set, or a list with components
+##'     \code{in_id} (training indices) and \code{out_id} (test indices).
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
 ##'
 ##' @return A list of class `RiskMap_cross_validation`, containing:
@@ -1559,9 +1577,11 @@ update_predictors <- function(object, predictors) {
 ##'
 ##' summary(cross_validation)
 ##'
-##' # user_split method with a matrix
+##' # user method with a matrix
 ##'  cross_validation <-
-##'   assess_prediction(list(fit),
+##'   assess_prediction(
+##'   list(fit),
+##'   method = "user",
 ##'   user_split = matrix(
 ##'     sample(c(rep(1, 50), rep(0, 50))),
 ##'     ncol = 1)
@@ -1569,9 +1589,11 @@ update_predictors <- function(object, predictors) {
 ##'
 ##' summary(cross_validation)
 ##'
-##' # user_split method with a list
+##' # user method with a list
 ##'  cross_validation <-
-##'   assess_prediction(list(fit),
+##'   assess_prediction(
+##'   list(fit),
+##'   method = "user",
 ##'   user_split = list(
 ##'     sample(100, 50))
 ##'   )
@@ -1620,20 +1642,23 @@ assess_prediction <- function(object,
   if (!all(which_metric %in% c("CRPS", "SCRPS", "AnPIT")))
     stop("'which_metric' must only contain 'CRPS', 'SCRPS' or 'AnPIT'")
 
-  if (is.null(user_split)) {
-    if (!method %in% c("cluster", "regularized"))
-      stop("'method' must be either 'cluster' or 'regularized' (unless 'user_split' is supplied).")
+  if (!method %in% c("cluster", "regularized", "user"))
+    stop("'method' must be either 'cluster', 'regularized' or 'user'")
 
-    if (method == "regularized") {
-      if (is.null(min_dist)) stop("when 'method' is 'regularized' you must supply 'min_dist'")
-      if (is.null(n_size))   stop("when 'method' is 'regularized' you must supply 'n_size'")
-      check_positive_number(min_dist, "")
-      check_positive_integer(n_size, "n_size")
-    }
-    if (method == "cluster"){
-      if (is.null(fold)) stop("when 'method' is 'cluster' you must supply 'fold'")
-      check_positive_integer(fold, "fold")
-    }
+  if (method == "cluster"){
+    if (is.null(fold)) stop("when 'method' is 'cluster' you must supply 'fold'")
+    check_positive_integer(fold, "fold")
+  }
+
+  if (method == "regularized") {
+    if (is.null(min_dist)) stop("when 'method' is 'regularized' you must supply 'min_dist'")
+    if (is.null(n_size))   stop("when 'method' is 'regularized' you must supply 'n_size'")
+    check_positive_number(min_dist, "")
+    check_positive_integer(n_size, "n_size")
+  }
+
+  if (method == "user"){
+    if (is.null(user_split)) stop("when 'method' is 'user' you must supply 'user_split'")
   }
 
   if (!is.logical(keep_par_fixed))
@@ -1643,9 +1668,6 @@ assess_prediction <- function(object,
 
   if (!inherits(control_sim, "RiskMap_control_mcmc"))
     stop("'control_sim' must come from 'set_control_mcmc()'")
-
-  if (!is.null(min_dist))
-    check_positive_number(min_dist)
 
   if (!is.logical(plot_fold))
     stop("'plot_fold' must be either TRUE or FALSE")
@@ -1729,7 +1751,7 @@ assess_prediction <- function(object,
     list(splits = spl)
   }
 
-  if (!is.null(user_split)) {
+  if (method == "user") {
     data_split <- make_splits_from_user(user_split, iter)
     n_iter <- iter
 
