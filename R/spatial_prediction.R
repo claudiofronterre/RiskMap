@@ -2,8 +2,11 @@
 ##' @description Computes predictions over a spatial grid using a fitted model from
 ##'   \code{\link{glgpm}}.
 ##' @param object A RiskMap object.
-##' @param grid_pred An \code{sfc} or \code{sf} of POINT geometries, or a list thereof for joint predictions.
-##' If not provided, the predictions will be generated at the geometries provided when fitting the model.
+##' @param grid_pred An \code{sfc} or \code{sf} of POINT geometries, or a list
+##' thereof for joint predictions. Its coordinate reference system (CRS) must
+##' match the CRS used to fit \code{object}; transform it explicitly with
+##' \code{sf::st_transform()} if required. If not provided, predictions are
+##' generated at the observed locations.
 ##' @param predictors Optional dataframe or list of dataframes containing predictor variables at prediction locations.
 ##' Must be provided if you specify `grid_pred`.
 ##' @param re_predictors Optional dataframe containing random effect predictors.
@@ -91,28 +94,75 @@ setup_prediction <- function(object,
   stopifnot("'object' must be of class RiskMap" = inherits(object, "RiskMap"))
 
   list_mode <- inherits(grid_pred, "list")
+  model_crs <- st_crs(object$crs)
+
+  if (is.na(model_crs)) {
+    stop(
+      "The fitted model does not contain a valid coordinate reference system (CRS)",
+      call. = FALSE
+    )
+  }
+
+  validate_grid_element <- function(x, index) {
+    tryCatch(
+      check_data(x, type = "sfc"),
+      error = function(e) {
+        reason <- sub("^'[^']+' ", "", conditionMessage(e))
+        stop(sprintf("'grid_pred[[%d]]' %s", index, reason), call. = FALSE)
+      }
+    )
+  }
+
+  crs_label <- function(x) {
+    x_crs <- st_crs(x)
+    if (!is.na(x_crs$epsg)) paste0("EPSG:", x_crs$epsg) else x_crs$input
+  }
 
   if (list_mode) {
-    if (type != "joint")
+    if (type != "joint") {
       stop("When 'grid_pred' is a list, 'type' must be 'joint'")
-    if (length(grid_pred) == 0L)
+    }
+    if (length(grid_pred) == 0L) {
       stop("'grid_pred' is a list but has length 0")
-    tryCatch(
-      lapply(grid_pred, check_data, type = "sfc"),
-        error = function(e){
-          stop("Each element of 'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries")
-        }
-      )
-    crs_mismatch <- unlist(lapply(grid_pred, function(x) st_crs(x)$input != object$crs))
-    if (any(crs_mismatch)){
+    }
+    invisible(Map(validate_grid_element, grid_pred, seq_along(grid_pred)))
+    crs_mismatch <- vapply(
+      grid_pred,
+      function(x) !isTRUE(st_crs(x) == model_crs),
+      logical(1)
+    )
+    if (any(crs_mismatch)) {
       mismatch_indices <- which(crs_mismatch)
-      stop("The CRS of each element of 'grid_pred' must match the CRS of the model. Differences found for indices: ", paste(mismatch_indices, collapse = ", "))
+      mismatch_labels <- vapply(
+        grid_pred[mismatch_indices],
+        crs_label,
+        character(1)
+      )
+      mismatch_details <- paste0(
+        mismatch_indices,
+        " (",
+        mismatch_labels,
+        ")",
+        collapse = ", "
+      )
+      stop(
+        "The CRS of every element of 'grid_pred' must match the fitted model CRS (",
+        crs_label(model_crs), "). Mismatches: ", mismatch_details,
+        ". Transform these elements explicitly with sf::st_transform().",
+        call. = FALSE
+      )
     }
   } else {
-    if (!is.null(grid_pred)){
+    if (!is.null(grid_pred)) {
       check_data(grid_pred, type = "sfc")
-      if (st_crs(grid_pred)$input != object$crs)
-        stop("The CRS of 'grid_pred' must match the CRS of the model - use sf::st_transform to transform 'grid_pred'")
+      if (!isTRUE(st_crs(grid_pred) == model_crs)) {
+        stop(
+          "The CRS of 'grid_pred' (", crs_label(grid_pred),
+          ") must match the fitted model CRS (", crs_label(model_crs),
+          "). Transform 'grid_pred' explicitly with sf::st_transform().",
+          call. = FALSE
+        )
+      }
     }
   }
 

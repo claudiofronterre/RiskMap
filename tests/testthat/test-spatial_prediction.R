@@ -13,7 +13,7 @@ test_that("setup_prediction produces errors as expected", {
     setup_prediction(gaussian_model,
                    grid_pred = list("not sf"),
                    type = "joint"),
-    "Each element of 'grid_pred' must be an 'sf' or 'sfc'")
+    "'grid_pred\\[\\[1\\]\\]' must be of class 'sf' or 'sfc'")
 
   wrong_crs <- st_transform(grid, 4326)
 
@@ -21,13 +21,34 @@ test_that("setup_prediction produces errors as expected", {
     setup_prediction(gaussian_model,
                      grid_pred = wrong_crs,
                      type = "joint"),
-    "The CRS of 'grid_pred' must match the CRS of the model")
+    "The CRS of 'grid_pred' \\(EPSG:4326\\) must match the fitted model CRS \\(EPSG:32637\\)")
 
   expect_error(
     setup_prediction(gaussian_model,
                      grid_pred = list(grid, wrong_crs),
                      type = "joint"),
-    "Differences found for indices: 2")
+    "Mismatches: 2 \\(EPSG:4326\\)")
+
+  missing_crs <- grid
+  st_crs(missing_crs) <- NA
+
+  expect_error(
+    setup_prediction(gaussian_model,
+                     grid_pred = list(grid, missing_crs),
+                     type = "joint"),
+    "'grid_pred\\[\\[2\\]\\]' must contain a coordinate reference system")
+
+  converted_model <- gaussian_model
+  converted_model$crs <- 32637
+
+  converted_prediction <- setup_prediction(
+    converted_model,
+    grid_pred = grid,
+    predictors = data.frame(cov = rep(0, length(grid))),
+    type = "joint",
+    messages = FALSE
+  )
+  expect_identical(converted_prediction$grid_pred, grid)
 
   expect_error(
     setup_prediction(gaussian_model,
@@ -213,4 +234,3 @@ test_that("setup_prediction produces expected output", {
 
 
 })
-
