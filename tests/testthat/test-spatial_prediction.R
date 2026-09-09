@@ -15,6 +15,20 @@ test_that("setup_prediction produces errors as expected", {
                    type = "joint"),
     "Each element of 'grid_pred' must be an 'sf' or 'sfc'")
 
+  wrong_crs <- st_transform(grid, 4326)
+
+  expect_error(
+    setup_prediction(gaussian_model,
+                     grid_pred = wrong_crs,
+                     type = "joint"),
+    "The CRS of 'grid_pred' must match the CRS of the model")
+
+  expect_error(
+    setup_prediction(gaussian_model,
+                     grid_pred = list(grid, wrong_crs),
+                     type = "joint"),
+    "Differences found for indices: 2")
+
   expect_error(
     setup_prediction(gaussian_model,
                    grid_pred = list(gaussian_data),

@@ -91,6 +91,7 @@ setup_prediction <- function(object,
   stopifnot("'object' must be of class RiskMap" = inherits(object, "RiskMap"))
 
   list_mode <- inherits(grid_pred, "list")
+
   if (list_mode) {
     if (type != "joint")
       stop("When 'grid_pred' is a list, 'type' must be 'joint'")
@@ -102,9 +103,17 @@ setup_prediction <- function(object,
           stop("Each element of 'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries")
         }
       )
+    crs_mismatch <- unlist(lapply(grid_pred, function(x) st_crs(x)$input != object$crs))
+    if (any(crs_mismatch)){
+      mismatch_indices <- which(crs_mismatch)
+      stop("The CRS of each element of 'grid_pred' must match the CRS of the model. Differences found for indices: ", paste(mismatch_indices, collapse = ", "))
+    }
   } else {
-    if (!is.null(grid_pred))
+    if (!is.null(grid_pred)){
       check_data(grid_pred, type = "sfc")
+      if (st_crs(grid_pred)$input != object$crs)
+        stop("The CRS of 'grid_pred' must match the CRS of the model - use sf::st_transform to transform 'grid_pred'")
+    }
   }
 
   if (!inherits(control_sim, "RiskMap_control_mcmc"))
@@ -122,12 +131,6 @@ setup_prediction <- function(object,
       warning("You have set 'predictors' but not 'grid_pred' so 'predictors' will be ignored")
     predictors <- as.data.frame(st_drop_geometry(object$data_sf))
     grid_pred  <- st_as_sfc(object$data_sf)
-  } else {
-    if (list_mode) {
-      grid_pred <- lapply(grid_pred, st_transform, crs = object$crs)
-    } else {
-      grid_pred <- st_transform(grid_pred, crs = object$crs)
-    }
   }
 
   if (list_mode) {
