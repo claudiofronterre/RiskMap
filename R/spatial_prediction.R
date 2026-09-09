@@ -1987,16 +1987,8 @@ simulate_surface <- function(n_sim,
   }
   inter_f <- interpret.formula(formula)
   include_cov_offset <- !is.null(inter_f$offset)
-  if(!inherits(pred_grid, "sf")) {
-    stop("'pred_grid' must be an 'sf'
-          object indicating the variables of the
-          model to be fitted")
-  }
-
+  check_data(pred_grid)
   sim_crs <- st_crs(pred_grid)$epsg
-  if (is.na(sim_crs)) {
-    stop("'pred_grid' must have a valid coordinate reference system (CRS) set.")
-  }
 
   if(!inherits(sampling_f, "function")){
     stop("'sampling_f' must be an object of class 'function'")
@@ -2147,8 +2139,7 @@ simulate_surface <- function(n_sim,
     data_sim[[i]]$y <- NA
 
     if(family=="gaussian") {
-
-      data_sim[[i]]$y <- eta_sim_tot[1:n[[i]]] + sqrt(sigma2_me)*rnorm(n)
+      data_sim[[i]]$y <- eta_sim_tot[1:n[[i]]] + sqrt(sigma2_me)*rnorm(n[[i]])
 
     } else if(family=="binomial") {
       prob_i <- exp(eta_sim_tot[1:n[[i]]])/(1+exp(eta_sim_tot[1:n[[i]]]))
