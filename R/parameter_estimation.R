@@ -1286,27 +1286,43 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' Simulates data from a fitted Generalized Linear Gaussian Process Model (GLGPM) or a specified model formula and data.
 ##'
 ##' @param n_sim Number of simulations to perform.
-##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `convert_to_crs` and `scale_to_km` arguments.
+##' @param model_fit Fitted GLGPM model object of class `RiskMap`.
+##' If provided, overrides `formula`, `data`, `family`, `convert_to_crs` and `scale_to_km` arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
 ##' @param data `sf` object containing the variables in the model formula.
-##' @param family Distribution family for the response variable. Must be one of `gaussian`, `binomial`, or `poisson.`
+##' @param family Distribution family for the response variable.
+##' Must be one of `gaussian`, `binomial`, or `poisson.`
 ##' @param den Required for `binomial` to denote the denominator (i.e. number of trials) of the Binomial distribution.
 ##' For the `poisson` family, the argument is optional and is used a multiplicative term to express the mean counts.
 ##' @param cov_offset Offset for the covariate part of the GLGPM.
 ##' @param convert_to_crs CRS code to convert data to.
-##' @param scale_to_km Logical; if `TRUE`, distances between locations are computed in kilometers; if `FALSE`, in meters.
-##' @param sim_pars List of simulation parameters including `beta`, `sigma2`, `tau2`, `phi`, `sigma2_me`, and optionally `sigma2_re`.
-##' If multiple covariates or random effects are included, the lengths of `beta` and `sigma2_re` must match the number of covariates and random effects respectively.
+##' @param scale_to_km Logical; if `TRUE`, distances between locations
+##' are computed in kilometers; if `FALSE`, in meters.
+##' @param sim_pars List of simulation parameters including
+##' `beta`, `sigma2`, `tau2`, `phi`, `sigma2_me`, and optionally `sigma2_re`.
+##' If multiple covariates or random effects are included, the length of `beta`
+##' must match the number of covariates plus one (for the intercept) and the
+##' length of `sigma2_re` must match the number of random effects.
 ##' @param messages Logical; if `TRUE`, display progress and informative messages.
 ##'
 ##' @details
-##' Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to model spatial correlation. This function simulates data from GLGPMs using Markov Chain Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson response families, utilizing a Matern correlation function to model spatial dependence.
+##' Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear
+##' models (GLMs) by incorporating spatial Gaussian processes to model spatial
+##' correlation. This function simulates data from GLGPMs using Markov Chain
+##' Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson
+##' response families, utilizing a Matern correlation function to model spatial
+##' dependence.
 ##'
-##' The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For `gaussian` family, the function simulates response values by adding measurement error.
+##' The simulation process involves generating spatially correlated random effects
+##' and simulating responses based on the fitted or specified model parameters.
+##' For `gaussian` family, the function simulates response values by adding measurement error.
 ##'
-##' Additionally, GLGPMs can incorporate unstructured random effects specified through the [`re()`] term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
+##' Additionally, GLGPMs can incorporate unstructured random effects specified
+##' through the [`re()`] term in the model formula, allowing for capturing
+##' additional variability beyond fixed and spatial covariate effects.
 ##'
-##' @return A list containing simulated data, simulated spatial random effects (if applicable), and other simulation parameters.
+##' @return A list containing simulated data, simulated spatial random effects
+##' (if applicable), and other simulation parameters.
 ##' @export
 simulate_glgpm <- function(n_sim,
                       model_fit = NULL,
@@ -1484,7 +1500,6 @@ simulate_glgpm <- function(n_sim,
   }
 
   # Linear predictor
-  # try adding cov_offset here
   eta_sim <- t(sapply(1:n_sim, function(i) D%*%beta + S_sim[i,][ID_coords]))
 
   if(n_re > 0) {
@@ -1548,12 +1563,17 @@ simulate_glgpm <- function(n_sim,
               sigma2 = sigma2,
               tau2 = tau2,
               phi = phi)
-  if(family=="gaussian") {
+  if(family == "gaussian") {
     out$sigma2_me <- sigma2_me
+  } else {
+    out["sigma2_me"] <- list(NULL)
   }
-  if(n_re>0) {
+  if(n_re > 0) {
     out$sigma2_re <- sigma2_re
     out$re_sim <- re_sim
+  } else {
+    out["sigma2_re"] <- list(NULL)
+    out["re_sim"] <- list(NULL)
   }
   return(out)
 }

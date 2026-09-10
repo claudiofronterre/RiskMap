@@ -22,13 +22,15 @@ simulate_glgpm(
 \arguments{
 \item{n_sim}{Number of simulations to perform.}
 
-\item{model_fit}{Fitted GLGPM model object of class \code{RiskMap}. If provided, overrides \code{formula}, \code{data}, \code{family}, \code{convert_to_crs} and \code{scale_to_km} arguments.}
+\item{model_fit}{Fitted GLGPM model object of class \code{RiskMap}.
+If provided, overrides \code{formula}, \code{data}, \code{family}, \code{convert_to_crs} and \code{scale_to_km} arguments.}
 
 \item{formula}{Model formula indicating the variables of the model to be simulated.}
 
 \item{data}{\code{sf} object containing the variables in the model formula.}
 
-\item{family}{Distribution family for the response variable. Must be one of \code{gaussian}, \code{binomial}, or \code{poisson.}}
+\item{family}{Distribution family for the response variable.
+Must be one of \code{gaussian}, \code{binomial}, or \code{poisson.}}
 
 \item{den}{Required for \code{binomial} to denote the denominator (i.e. number of trials) of the Binomial distribution.
 For the \code{poisson} family, the argument is optional and is used a multiplicative term to express the mean counts.}
@@ -37,23 +39,37 @@ For the \code{poisson} family, the argument is optional and is used a multiplica
 
 \item{convert_to_crs}{CRS code to convert data to.}
 
-\item{scale_to_km}{Logical; if \code{TRUE}, distances between locations are computed in kilometers; if \code{FALSE}, in meters.}
+\item{scale_to_km}{Logical; if \code{TRUE}, distances between locations
+are computed in kilometers; if \code{FALSE}, in meters.}
 
-\item{sim_pars}{List of simulation parameters including \code{beta}, \code{sigma2}, \code{tau2}, \code{phi}, \code{sigma2_me}, and optionally \code{sigma2_re}.
-If multiple covariates or random effects are included, the lengths of \code{beta} and \code{sigma2_re} must match the number of covariates and random effects respectively.}
+\item{sim_pars}{List of simulation parameters including
+\code{beta}, \code{sigma2}, \code{tau2}, \code{phi}, \code{sigma2_me}, and optionally \code{sigma2_re}.
+If multiple covariates or random effects are included, the length of \code{beta}
+must match the number of covariates plus one (for the intercept) and the
+length of \code{sigma2_re} must match the number of random effects.}
 
 \item{messages}{Logical; if \code{TRUE}, display progress and informative messages.}
 }
 \value{
-A list containing simulated data, simulated spatial random effects (if applicable), and other simulation parameters.
+A list containing simulated data, simulated spatial random effects
+(if applicable), and other simulation parameters.
 }
 \description{
 Simulates data from a fitted Generalized Linear Gaussian Process Model (GLGPM) or a specified model formula and data.
 }
 \details{
-Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to model spatial correlation. This function simulates data from GLGPMs using Markov Chain Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson response families, utilizing a Matern correlation function to model spatial dependence.
+Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear
+models (GLMs) by incorporating spatial Gaussian processes to model spatial
+correlation. This function simulates data from GLGPMs using Markov Chain
+Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson
+response families, utilizing a Matern correlation function to model spatial
+dependence.
 
-The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For \code{gaussian} family, the function simulates response values by adding measurement error.
+The simulation process involves generating spatially correlated random effects
+and simulating responses based on the fitted or specified model parameters.
+For \code{gaussian} family, the function simulates response values by adding measurement error.
 
-Additionally, GLGPMs can incorporate unstructured random effects specified through the \code{\link[=re]{re()}} term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
+Additionally, GLGPMs can incorporate unstructured random effects specified
+through the \code{\link[=re]{re()}} term in the model formula, allowing for capturing
+additional variability beyond fixed and spatial covariate effects.
 }

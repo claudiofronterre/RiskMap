@@ -6,7 +6,6 @@ sim_tau2 <- 0.01
 sim_phi <- 1.1
 sim_sigma2_me <- 0.3
 
-
 test_that("simulate_glgpm produces errors as expected", {
 
  expect_error(simulate_glgpm(n_sim = "two",
@@ -172,7 +171,7 @@ test_that("simulate_glgpm produces expected output for gaussian models", {
                                       sigma2_me = 0),
                       messages = FALSE)
 
-  expect_setequal(names(result), c("data_sim", "S_sim", "lin_pred_sim", "beta", "sigma2", "tau2", "phi", "sigma2_me"))
+  expect_setequal(names(result), c("data_sim", "S_sim", "lin_pred_sim", "beta", "sigma2", "tau2", "phi", "sigma2_me", "sigma2_re", "re_sim"))
   expect_s3_class(result$data_sim, "sf")
   expect_equal(result$data_sim$geometry, gaussian_data$geometry)
   expect_equal(nrow(result$data_sim), nrow(gaussian_data))
@@ -192,18 +191,12 @@ test_that("simulate_glgpm produces expected output for gaussian models", {
 
 })
 
-test_that("simulate_glgpm produces expected output from a a gaussian model", {
-
-  model <- glgpm(y ~ cov + gp(),
-                 data = gaussian_data,
-                 family = "gaussian",
-                 scale_to_km = FALSE,
-                 messages = FALSE)
+test_that("simulate_glgpm produces expected output from a gaussian model", {
 
   result <- simulate_glgpm(n_sim = n_sim,
-                      model_fit = model)
+                      model_fit = gaussian_model)
 
-  expect_setequal(names(result), c("data_sim", "S_sim", "lin_pred_sim", "beta", "sigma2", "tau2", "phi", "sigma2_me"))
+  expect_setequal(names(result), c("data_sim", "S_sim", "lin_pred_sim", "beta", "sigma2", "tau2", "phi", "sigma2_me", "sigma2_re", "re_sim"))
   expect_s3_class(result$data_sim, "sf")
   expect_equal(result$data_sim$geometry, gaussian_data$geometry)
   expect_equal(nrow(result$data_sim), nrow(gaussian_data))
