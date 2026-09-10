@@ -18,8 +18,11 @@ setup_prediction(
 \arguments{
 \item{object}{A RiskMap object.}
 
-\item{grid_pred}{An \code{sfc} or \code{sf} of POINT geometries, or a list thereof for joint predictions.
-If not provided, the predictions will be generated at the geometries provided when fitting the model.}
+\item{grid_pred}{An \code{sfc} or \code{sf} of POINT geometries, or a list
+thereof for joint predictions. Its coordinate reference system (CRS) must
+match the CRS used to fit \code{object}; transform it explicitly with
+\code{sf::st_transform()} if required. If not provided, predictions are
+generated at the observed locations.}
 
 \item{predictors}{Optional dataframe or list of dataframes containing predictor variables at prediction locations.
 Must be provided if you specify \code{grid_pred}.}
