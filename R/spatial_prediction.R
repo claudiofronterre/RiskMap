@@ -2232,9 +2232,9 @@ assess_simulation <- function(obj_sim,
   if(spatial_scale != "grid" & spatial_scale != "area") {
     stop("'spatial_scale' must be set to 'grid' or 'area'")
   }
-  if(spatial_scale=="area" & is.null(shp)) {
-    stop("if spatial_scale='area' then a shape file of the area(s) must be passed to
-         'shp'")
+  if(spatial_scale == "area"){
+    if(is.null(shp))
+      stop("if spatial_scale = 'area' then a shape file of the area(s) must be passed to 'shp'")
     check_data(shp, "polygon")
   }
 
@@ -2558,8 +2558,6 @@ summary.RiskMap_assess_simulation <- function(object, ...) {
       )
 
       results$mse <- mse_summary
-    } else {
-      stop("mse_data must be a matrix.")
     }
   }
 
@@ -2578,7 +2576,7 @@ summary.RiskMap_assess_simulation <- function(object, ...) {
       n_sim <- length(model_data$by_cat)
       res_class <- model_data$by_cat[[1]][,-1]
       den <- 0
-      for(j in 2:n_sim) {
+      for(j in seq_along(n_sim)) {
         if(!any(is.na(model_data$by_cat[[j]][,-1]))) {
           den <- den + 1
           res_class <- res_class+model_data$by_cat[[j]][,-1]
@@ -2631,8 +2629,7 @@ print.summary.RiskMap_assess_simulation <- function(x, ...) {
   cat("Summary of Simulation Results\n\n")
 
   if (!is.null(x$mse)) {
-    cat("Mean Squared Error (MSE):\n")
-    print(x$mse)
+    cat("Mean Squared Error (MSE):", x$mse$MSE_mean,  "\n")
     cat("\n")
   }
 
