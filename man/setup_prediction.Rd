@@ -35,9 +35,9 @@ Must be provided if there is an offset included in the model and not supported i
 
 \item{control_sim}{Control parameters from \code{\link{set_control_mcmc}}.}
 
-\item{type}{Whether the predictions are \code{marginal} or \code{joint}. \code{marginal} predictions are less
-computationally expensive than \code{joint} predictions but cannot be used to predict areal targets.
-If \code{grid_pred} is a list or random effects are included, must be set to \code{joint}. Defaults to \code{marginal}.}
+\item{type}{Whether the predictions are \code{"marginal"} or \code{"joint"}. \code{"marginal"} predictions are less
+computationally expensive than \code{"joint"} predictions but cannot be used to predict areal targets.
+If \code{grid_pred} is a list or random effects are included, must be set to \code{"joint"}. Defaults to \code{"marginal"}.}
 
 \item{messages}{Logical; display progress messages. Defaults to \code{TRUE}.}
 }
@@ -75,7 +75,7 @@ spatial term and the unstructured random effect terms. Used internally
 to build the linear predictor at the prediction locations.}
 \item{family}{The model family}
 \item{cov_offset}{Covariate offsets}
-\item{type}{The type of predictions - \code{marginal} or \code{joint}}
+\item{type}{The type of predictions - \code{"marginal"} or \code{"joint"}}
 }
 }
 \description{

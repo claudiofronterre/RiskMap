@@ -31,7 +31,7 @@ maxim_integrand(
 
 \item{ID_re}{Indices mapping response to unstructured random effects.}
 
-\item{family}{Distribution family for the response variable. Must be one of 'gaussian', 'binomial', or 'poisson'.}
+\item{family}{Distribution family for the response variable. Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
 
 \item{sigma2_re}{Variance of the unstructured random effects.}
 
@@ -50,5 +50,5 @@ Maximizes the integrand function for Generalized Linear Gaussian Process Models 
 \details{
 This function maximizes the integrand for GLGPMs using the Nelder-Mead optimization algorithm. It computes the likelihood function incorporating spatial covariance and unstructured random effects, if provided.
 
-The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family ('gaussian', 'binomial', or 'poisson').
+The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family (\code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}).
 }

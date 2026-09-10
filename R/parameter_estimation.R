@@ -7,10 +7,10 @@
 ##' `[gp()]` and optionally, random effects specified using `[re()]`.
 ##' @param data An sf object containing the variables in the model.
 ##' @param family A character string specifying the distribution of the response variable.
-##' Must be one of `gaussian`, `binomial`, or `poisson`.
+##' Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
 ##' @param invlink A function that defines the inverse of the link function for
 ##' the distribution of the data given the random effects.
-##' Not applicable when `family` is `gaussian`.
+##' Not applicable when `family` is `"gaussian"`.
 ##' @param den Optional offset for binomial or Poisson distributions.
 ##' Passed as a bare/unquoted column name present in `data`.
 ##' If not provided, defaults to `1` for binomial models.
@@ -1289,9 +1289,9 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `convert_to_crs` and `scale_to_km` arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
 ##' @param data `sf` object containing the variables in the model formula.
-##' @param family Distribution family for the response variable. Must be one of `gaussian`, `binomial`, or `poisson.`
-##' @param den Required for `binomial` to denote the denominator (i.e. number of trials) of the Binomial distribution.
-##' For the `poisson` family, the argument is optional and is used a multiplicative term to express the mean counts.
+##' @param family Distribution family for the response variable. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
+##' @param den Required for `"binomial"` to denote the denominator (i.e. number of trials) of the Binomial distribution.
+##' For the `"poisson"` family, the argument is optional and is used a multiplicative term to express the mean counts.
 ##' @param cov_offset Offset for the covariate part of the GLGPM.
 ##' @param convert_to_crs CRS code to convert data to.
 ##' @param scale_to_km Logical; if `TRUE`, distances between locations are computed in kilometers; if `FALSE`, in meters.
@@ -1302,7 +1302,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' @details
 ##' Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to model spatial correlation. This function simulates data from GLGPMs using Markov Chain Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson response families, utilizing a Matern correlation function to model spatial dependence.
 ##'
-##' The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For `gaussian` family, the function simulates response values by adding measurement error.
+##' The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For the `"gaussian"` family, the function simulates response values by adding measurement error.
 ##'
 ##' Additionally, GLGPMs can incorporate unstructured random effects specified through the [`re()`] term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
 ##'
@@ -1568,7 +1568,7 @@ simulate_glgpm <- function(n_sim,
 ##' @param Sigma Covariance matrix of the spatial process.
 ##' @param ID_coords Indices mapping response to locations.
 ##' @param ID_re Indices mapping response to unstructured random effects.
-##' @param family Distribution family for the response variable. Must be one of 'gaussian', 'binomial', or 'poisson'.
+##' @param family Distribution family for the response variable. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
 ##' @param sigma2_re Variance of the unstructured random effects.
 ##' @param hessian Logical; if TRUE, compute the Hessian matrix.
 ##' @param gradient Logical; if TRUE, compute the gradient vector.
@@ -1577,7 +1577,7 @@ simulate_glgpm <- function(n_sim,
 ##' @details
 ##' This function maximizes the integrand for GLGPMs using the Nelder-Mead optimization algorithm. It computes the likelihood function incorporating spatial covariance and unstructured random effects, if provided.
 ##'
-##' The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family ('gaussian', 'binomial', or 'poisson').
+##' The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family (`"gaussian"`, `"binomial"`, or `"poisson"`).
 ##'
 ##' @return A list containing the mode estimate, and optionally, the Hessian matrix and gradient vector.
 ##' @export

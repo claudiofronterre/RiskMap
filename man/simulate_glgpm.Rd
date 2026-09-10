@@ -28,10 +28,10 @@ simulate_glgpm(
 
 \item{data}{\code{sf} object containing the variables in the model formula.}
 
-\item{family}{Distribution family for the response variable. Must be one of \code{gaussian}, \code{binomial}, or \code{poisson.}}
+\item{family}{Distribution family for the response variable. Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
 
-\item{den}{Required for \code{binomial} to denote the denominator (i.e. number of trials) of the Binomial distribution.
-For the \code{poisson} family, the argument is optional and is used a multiplicative term to express the mean counts.}
+\item{den}{Required for \code{"binomial"} to denote the denominator (i.e. number of trials) of the Binomial distribution.
+For the \code{"poisson"} family, the argument is optional and is used a multiplicative term to express the mean counts.}
 
 \item{cov_offset}{Offset for the covariate part of the GLGPM.}
 
@@ -53,7 +53,7 @@ Simulates data from a fitted Generalized Linear Gaussian Process Model (GLGPM) o
 \details{
 Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to model spatial correlation. This function simulates data from GLGPMs using Markov Chain Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson response families, utilizing a Matern correlation function to model spatial dependence.
 
-The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For \code{gaussian} family, the function simulates response values by adding measurement error.
+The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For the \code{"gaussian"} family, the function simulates response values by adding measurement error.
 
 Additionally, GLGPMs can incorporate unstructured random effects specified through the \code{\link[=re]{re()}} term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
 }

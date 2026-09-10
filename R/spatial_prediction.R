@@ -14,9 +14,9 @@
 ##' @param pred_cov_offset Optional numeric vector containing covariate offsets at prediction locations.
 ##' Must be provided if there is an offset included in the model and not supported if `grid_pred` is a list.
 ##' @param control_sim Control parameters from \code{\link{set_control_mcmc}}.
-##' @param type Whether the predictions are `marginal` or `joint`. `marginal` predictions are less
-##' computationally expensive than `joint` predictions but cannot be used to predict areal targets.
-##' If `grid_pred` is a list or random effects are included, must be set to `joint`. Defaults to `marginal`.
+##' @param type Whether the predictions are `"marginal"` or `"joint"`. `"marginal"` predictions are less
+##' computationally expensive than `"joint"` predictions but cannot be used to predict areal targets.
+##' If `grid_pred` is a list or random effects are included, must be set to `"joint"`. Defaults to `"marginal"`.
 ##' @param messages Logical; display progress messages. Defaults to `TRUE`.
 ##' @return An object of class \code{"RiskMap_pred"} containing:
 ##'   \describe{
@@ -51,7 +51,7 @@
 ##'       to build the linear predictor at the prediction locations.}
 ##'     \item{family}{The model family}
 ##'     \item{cov_offset}{Covariate offsets}
-##'     \item{type}{The type of predictions - `marginal` or `joint`}
+##'     \item{type}{The type of predictions - `"marginal"` or `"joint"`}
 ##'   }
 ##' @importFrom Matrix solve
 ##' @examples
@@ -2002,7 +2002,7 @@ assess_prediction <- function(object,
 ##' @param pred_grid An `sf` object representing the prediction grid where the simulation will take place.
 ##' @param formula A formula object specifying the model to be fitted. It should include both fixed effects and random effects if applicable.
 ##' @param sampling_f A function that returns a sampled dataset (of class `sf`) to simulate data from.
-##' @param family A character string specifying the family of the model. Must be one of "gaussian", "binomial", or "poisson".
+##' @param family A character string specifying the family of the model. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
 ##' @param scale_to_km A logical indicating whether the coordinates should be scaled to kilometers. Defaults to `TRUE`.
 ##' @param control_mcmc A list of control parameters for MCMC (not used in this implementation but can be expanded later).
 ##' @param par0 A list containing initial parameter values for the simulation, including `beta`, `sigma2`, `phi`, `tau2`, and `sigma2_me`.
