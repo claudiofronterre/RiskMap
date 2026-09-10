@@ -27,7 +27,8 @@ RiskMap 2.0.0
 | `s_variogram` | `variogram` |
 
 - Apart from `liberia`, all datasets are now in an sf format.
-- `glpgm()` now only accepts data in an sf format.
+- `glpgm()` now only accepts data in an sf format. 
+Consequently the locations do not need to be passed to `gp()` when fitting a model as they are included automatically.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - The `nugget` parameter in `gp()` is now `FALSE` by default.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian outputs reproducible.
