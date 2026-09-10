@@ -1379,6 +1379,15 @@ simulate_glgpm <- function(n_sim,
   } else {
     NULL
   }
+
+  if (!is.null(cov_offset)){
+    if (!is.numeric(cov_offset) ||length(cov_offset) != n){
+      stop("'cov_offset' must be a numeric vector of the same length as the number of rows in 'data'")
+    }
+  } else {
+    cov_offset <- rep(0, n)
+  }
+
   random_effects <- prepare_random_effects(data, hr_re)
   n_re <- random_effects$n_re
   ID_re <- random_effects$ID_re
@@ -1500,7 +1509,7 @@ simulate_glgpm <- function(n_sim,
   }
 
   # Linear predictor
-  eta_sim <- t(sapply(1:n_sim, function(i) D%*%beta + S_sim[i,][ID_coords]))
+  eta_sim <- t(sapply(1:n_sim, function(i) D%*%beta + S_sim[i,][ID_coords] + cov_offset))
 
   if(n_re > 0) {
     for(i in 1:n_sim) {
