@@ -31,4 +31,6 @@ RiskMap 2.0.0
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - The `nugget` parameter in `gp()` is now `FALSE` by default.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian outputs reproducible.
+- `"user"` has been added as an option to `method` the parameter of `assess_prediction()` 
+replacing the previous behaviour where providing the `user_split` parameter overrode any provided `method`
 - Test coverage has been increased from 0 to 70 %.
