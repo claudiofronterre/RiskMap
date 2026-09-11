@@ -70,7 +70,13 @@ the \code{nugget} term in \verb{[gp()]} is also set to \code{TRUE}.}
 \value{
 An object of class \code{RiskMap} containing the fitted model and relevant information:
 
-\item{estimate}{Estimated parameters}
+\item{estimate}{Estimated parameters, on their internal (working) scale, unnamed}
+\item{named_estimate}{The same vector as \code{estimate}, with names identifying each
+entry (regression coefficients, \code{sigma2}, \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2}
+when the nugget is estimated, \code{sigma2_me} for Gaussian models with an estimated
+measurement error variance, and \code{<name>_sigma2_re} per random effect). Currently
+unused by \code{coef.RiskMap}/\code{summary.RiskMap}, which still recompute these positions
+independently; provided for validation ahead of a future switch-over (see #92).}
 \item{grad_MLE}{Gradient of the maximum likelihood function}
 \item{covariance}{Covariance}
 \item{log_lik}{Log likelihood}

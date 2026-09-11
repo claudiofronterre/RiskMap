@@ -61,7 +61,13 @@
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
-##' \item{estimate}{Estimated parameters}
+##' \item{estimate}{Estimated parameters, on their internal (working) scale, unnamed}
+##' \item{named_estimate}{The same vector as \code{estimate}, with names identifying each
+##' entry (regression coefficients, \code{sigma2}, \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2}
+##' when the nugget is estimated, \code{sigma2_me} for Gaussian models with an estimated
+##' measurement error variance, and \code{<name>_sigma2_re} per random effect). Currently
+##' unused by \code{coef.RiskMap}/\code{summary.RiskMap}, which still recompute these positions
+##' independently; provided for validation ahead of a future switch-over (see #92).}
 ##' \item{grad_MLE}{Gradient of the maximum likelihood function}
 ##' \item{covariance}{Covariance}
 ##' \item{log_lik}{Log likelihood}
@@ -404,6 +410,30 @@ glgpm <- function(formula,
   return(res)
 }
 
+
+##' Name the raw parameter vector returned by the optimizer
+##'
+##' Builds the names for the working-scale (i.e. not yet exponentiated) vector
+##' of estimates returned by `glgpm_lm()`/`glgpm_nong()`, in the same order in
+##' which the fitting engines lay the parameters out in `par`: regression
+##' coefficients, `sigma2`, `phi`, optionally `nu2` (`= tau2 / sigma2`, only
+##' when the nugget is estimated), optionally `sigma2_me` (Gaussian models
+##' only, when the measurement error variance is not fixed), and finally one
+##' `<name>_sigma2_re` entry per unstructured random effect.
+##'
+##' Used to build `named_estimate`, a named copy of `estimate` kept alongside
+##' the (untouched) unnamed vector, so its names can be validated against the
+##' index arithmetic that `coef.RiskMap()`/`summary.RiskMap()` still use
+##' independently, ahead of switching them over to a name-based lookup (#92).
+##'
+##' @noRd
+name_cov_pars <- function(beta_names, fix_tau2, sigma2_me = FALSE, re_names = NULL) {
+  nm <- c(beta_names, "sigma2", "phi")
+  if (isTRUE(fix_tau2)) nm <- c(nm, "nu2")
+  if (isTRUE(sigma2_me)) nm <- c(nm, "sigma2_me")
+  if (!is.null(re_names)) nm <- c(nm, paste0(re_names, "_sigma2_re"))
+  nm
+}
 
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
@@ -1268,6 +1298,13 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                   control=list(trace=1*messages))
 
   out$estimate <- estim$par
+  out$named_estimate <- estim$par
+  names(out$named_estimate) <- name_cov_pars(
+    beta_names = colnames(D),
+    fix_tau2   = fix_tau2,
+    sigma2_me  = is.null(fix_var_me),
+    re_names   = if (n_re > 0) names(ID_re) else NULL
+  )
   out$grad_MLE <- grad.log.lik(estim$par)
   hess.MLE <- hessian.log.lik(estim$par)
   out$covariance <- solve(-hess.MLE)
@@ -2789,6 +2826,13 @@ glgpm_nong <-
                     control = list(trace = 1 * messages))
 
     out$estimate <- estim$par
+    out$named_estimate <- estim$par
+    names(out$named_estimate) <- name_cov_pars(
+      beta_names = colnames(D),
+      fix_tau2   = fix_tau2,
+      sigma2_me  = FALSE,
+      re_names   = if (n_re > 0) names(ID_re) else NULL
+    )
     out$grad_MLE <- grad.MC.log.lik(estim$par)
     hess_MLE <- hess.MC.log.lik(estim$par)
     out$covariance <- solve(-hess_MLE)
