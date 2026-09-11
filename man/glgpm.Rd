@@ -29,11 +29,11 @@ The formula should include fixed effects and spatial effects specified using
 \item{data}{An sf object containing the variables in the model.}
 
 \item{family}{A character string specifying the distribution of the response variable.
-Must be one of \code{gaussian}, \code{binomial}, or \code{poisson}.}
+Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
 
 \item{invlink}{A function that defines the inverse of the link function for
 the distribution of the data given the random effects.
-Not applicable when \code{family} is \code{gaussian}.}
+Not applicable when \code{family} is \code{"gaussian"}.}
 
 \item{den}{Optional offset for binomial or Poisson distributions.
 Passed as a bare/unquoted column name present in \code{data}.

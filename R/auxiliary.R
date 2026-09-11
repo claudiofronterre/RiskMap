@@ -1235,10 +1235,10 @@ check_binomial <- function(y, den){
 #' or either polygons or multipolygons. If CRS == 4326 it also checks that the #
 #' coordinates are possible (i.e. not latitudes > 90)
 #' @param data the data to check
-#' @param geometry whether to check that the data contains 'point' (default) or
-#' 'polygon' (covering both polygons and multipolygons)
-#' @param geometry whether to check that the data is 'sf' (default) or
-#' 'sfc' (either sf or sfc)
+#' @param geometry whether to check that the data contains `"point"` (default) or
+#' `"polygon"` (covering both polygons and multipolygons)
+#' @param type whether to check that the data is `"sf"` (default) or
+#' `"sfc"` (either sf or sfc)
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
@@ -1308,7 +1308,7 @@ check_positive_integer <- function(x, name) {
 #'
 #' Check that a value is a single, positive number and error if not
 #' @param x the value to check
-#' @param type the type of value being checked. Defaults to 'starting'
+#' @param type the type of value being checked. Defaults to `"starting"`.
 #' @return TRUE if x is valid. Raise an error if not.
 #' @noRd
 #'
