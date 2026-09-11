@@ -29,6 +29,10 @@ RiskMap 2.0.0
 - Apart from `liberia`, all datasets are now in an sf format.
 - `glpgm()` now only accepts data in an sf format. 
 Consequently the locations do not need to be passed to `gp()` when fitting a model as they are included automatically.
+- In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and `scale_to_km` has been replaced with `coordinate_units` (`"km"` or `"m"`).
+If `data` are in longitude/latitude and `model_crs` is not supplied, the coordinates are now automatically reprojected to an appropriate UTM zone, with a message reporting the conversion; providing `model_crs` in longitude/latitude now raises an error.
+The `crs` element of the fitted model has been removed and `data_sf` has been renamed to `data`.
+Functions that consume a fitted `RiskMap` object (e.g. `setup_prediction()`, `simulate_glgpm()`, `assess_prediction()`) have not yet been updated to match and will error until they are.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - The `nugget` parameter in `gp()` is now `FALSE` by default.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian outputs reproducible.

@@ -115,7 +115,8 @@ propose_utm <- function (data) {
   }
 
   # Determine Hemisphere (fixing the latitude check)
-  ns <- sign(st_coordinates(data)[, 2])  # Use latitude, not longitude
+  # latitude 0 (the Equator) is treated as northern hemisphere, per UTM convention
+  ns <- ifelse(st_coordinates(data)[, 2] >= 0, 1, -1)  # Use latitude, not longitude
   ns_u <- unique(ns)
 
   if (length(ns_u) > 1) {

@@ -14,8 +14,14 @@
 ##' @param den Optional offset for binomial or Poisson distributions.
 ##' Passed as a bare/unquoted column name present in `data`.
 ##' If not provided, defaults to `1` for binomial models.
-##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates to.
-##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to `TRUE`.
+##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for model fitting.
+##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
+##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
+##' reprojected to an appropriate UTM zone (see `[propose_utm()]`) and a message reports the conversion used.
+##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
+##' @param coordinate_units Character string, either `"km"` or `"m"`, indicating the units used
+##' internally for distances between locations (and so for reporting spatial parameters such as `phi`).
+##' Defaults to `"km"`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
 ##' Must be an object of class `RiskMap_control_mcmc` as returned by `[set_control_mcmc()]`.
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
@@ -50,8 +56,13 @@
 ##' at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
 ##' in capturing complex spatial patterns.
 ##'
-##' The `convert_to_crs` argument can be used to reproject the spatial coordinates to a different CRS.
-##' The `scale_to_km` argument scales the coordinates to kilometers if set to TRUE.
+##' The `model_crs` argument can be used to reproject the spatial coordinates to a different, projected
+##' CRS for model fitting. If `data` are in longitude/latitude and `model_crs` is not supplied, the
+##' coordinates are automatically reprojected to an appropriate UTM zone and a message details the
+##' conversion; automatic projection is avoided for `model_crs` explicitly supplied in longitude/latitude,
+##' which raises an error.
+##' The `coordinate_units` argument controls whether distances between locations (and so parameters such
+##' as `phi`) are expressed in kilometers (`"km"`, the default) or meters (`"m"`).
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
 ##' This argument must be an object returned by `[set_control_mcmc()]`.
@@ -75,9 +86,8 @@
 ##' \item{fix_var_me}{Fixed measurement error variance}
 ##' \item{formula}{Model formula}
 ##' \item{family}{Response family}
-##' \item{crs}{Coordinate Reference System}
-##' \item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
-##' \item{data_sf}{Original data as an sf object}
+##' \item{coordinate_units}{Units (`"km"` or `"m"`) used for distances between locations}
+##' \item{data}{The `sf` data used for model fitting, in the CRS used internally}
 ##' \item{kappa}{Spatial correlation parameter}
 ##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
 ##' \item{cov_offset}{Covariate offset}
@@ -134,8 +144,8 @@ glgpm <- function(formula,
                  family,
                  invlink = NULL,
                  den = NULL,
-                 convert_to_crs = NULL,
-                 scale_to_km = TRUE,
+                 model_crs = NULL,
+                 coordinate_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
                  par0 = NULL,
                  return_samples = FALSE,
@@ -154,9 +164,11 @@ glgpm <- function(formula,
     stop("'family' must be either 'gaussian', 'binomial' or 'poisson'")
   not_gaussian <- family != "gaussian"
 
-  stopifnot("'scale_to_km' must be either TRUE or FALSE" = is.logical(scale_to_km),
+  stopifnot("'coordinate_units' must be either 'km' or 'm'" =
+              is.character(coordinate_units) && all(coordinate_units %in% c("km", "m")),
             "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
             "'messages' must be either TRUE or FALSE" = is.logical(messages))
+  coordinate_units <- match.arg(coordinate_units)
 
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
@@ -230,10 +242,20 @@ glgpm <- function(formula,
 
 
   # Extract coordinates
-  if(!is.null(convert_to_crs)) {
-    check_crs(convert_to_crs)
-    data <- st_transform(data, crs = convert_to_crs)
-    crs <- convert_to_crs
+  if(!is.null(model_crs)) {
+    check_crs(model_crs)
+    data <- st_transform(data, crs = model_crs)
+    if(sf::st_is_longlat(data)) {
+      stop("'model_crs' must be a projected CRS, not longitude/latitude")
+    }
+  } else if(sf::st_is_longlat(data)) {
+    auto_crs <- propose_utm(data)
+    data <- st_transform(data, crs = auto_crs)
+    if(messages) {
+      message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
+              "automatically reprojecting to EPSG:", auto_crs,
+              " for model fitting. Set 'model_crs' to override.")
+    }
   }
   if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
@@ -256,7 +278,7 @@ glgpm <- function(formula,
          be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
   }
 
-  if(scale_to_km) {
+  if(coordinate_units == "km") {
     coords_o <- coords_o/1000
     coords <- coords/1000
     if(messages) message("Distances between locations are computed in kilometers ")
@@ -389,14 +411,8 @@ glgpm <- function(formula,
   res["fix_var_me"] <- list(fix_var_me)
   res$formula <- formula
   res$family <- family
-  if(!is.null(convert_to_crs)) {
-    crs <- convert_to_crs
-  } else {
-    crs <- st_crs(data)$input
-  }
-  res$crs <- crs
-  res$scale_to_km <- scale_to_km
-  res$data_sf <- data
+  res$coordinate_units <- coordinate_units
+  res$data <- data
   res$kappa <- kappa
   if(not_gaussian) res$units_m <- units_m
   res$cov_offset <- cov_offset
