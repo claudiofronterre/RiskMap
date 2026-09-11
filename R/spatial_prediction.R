@@ -2374,7 +2374,7 @@ assess_simulation <- function(obj_sim,
                                                               names(obj_sim$lp_grid_sim))])
 
   if(spatial_scale == "grid") {
-    true_target_sim <- f_grid_target(lp_true_sim)
+    true_target_sim <- f_grid_target(as.matrix(lp_true_sim))
   } else if(spatial_scale == "area") {
     true_target_sim <- matrix(NA, nrow = n_reg, ncol = n_sim)
     true_target_grid_sim <- f_grid_target(lp_true_sim)
@@ -2589,10 +2589,8 @@ summary.RiskMap_assess_simulation <- function(object, ...) {
                          lower = quantile(model_data$CC, 0.025, na.rm = TRUE),
                          upper = quantile(model_data$CC, 0.975, na.rm = TRUE))
 
-      results$classify[[paste(name_models[i])]] <- list(classify_res = res_class,
-                                            cc_summary = list(mean = mean(model_data$CC, na.rm = TRUE),
-                                                                     lower = quantile(model_data$CC, 0.025, na.rm = TRUE),
-                                                                     upper = quantile(model_data$CC, 0.975, na.rm = TRUE)))
+      results$classify[[name_models[i]]] <- list(classify_res = res_class,
+                                                 cc_summary = cc_summary)
     }
   }
 
