@@ -1302,15 +1302,20 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' Simulates data from a fitted Generalized Linear Gaussian Process Model (GLGPM) or a specified model formula and data.
 ##'
 ##' @param n_sim Number of simulations to perform.
-##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `convert_to_crs` and `scale_to_km` arguments.
+##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `model_crs` and `coordinate_units` arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
 ##' @param data `sf` object containing the variables in the model formula.
 ##' @param family Distribution family for the response variable. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
 ##' @param den Required for `"binomial"` to denote the denominator (i.e. number of trials) of the Binomial distribution.
 ##' For the `"poisson"` family, the argument is optional and is used a multiplicative term to express the mean counts.
 ##' @param cov_offset Offset for the covariate part of the GLGPM.
-##' @param convert_to_crs CRS code to convert data to.
-##' @param scale_to_km Logical; if `TRUE`, distances between locations are computed in kilometers; if `FALSE`, in meters.
+##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for simulation, ignored if `model_fit` is provided.
+##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
+##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
+##' reprojected to an appropriate UTM zone (see `[propose_utm()]`) and a message reports the conversion used.
+##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
+##' @param coordinate_units Character string, either `"km"` or `"m"`, indicating the units used
+##' internally for distances between locations. Defaults to `"km"`. Ignored if `model_fit` is provided.
 ##' @param sim_pars List of simulation parameters including `beta`, `sigma2`, `tau2`, `phi`, `sigma2_me`, and optionally `sigma2_re`.
 ##' If multiple covariates or random effects are included, the lengths of `beta` and `sigma2_re` must match the number of covariates and random effects respectively.
 ##' @param messages Logical; if `TRUE`, display progress and informative messages.
@@ -1331,8 +1336,8 @@ simulate_glgpm <- function(n_sim,
                       family = NULL,
                       den = NULL,
                       cov_offset = NULL,
-                      convert_to_crs = NULL,
-                      scale_to_km = TRUE,
+                      model_crs = NULL,
+                      coordinate_units = c("km", "m"),
                       sim_pars = list(beta = NULL,
                                       sigma2 = NULL,
                                       tau2 = NULL,
@@ -1343,6 +1348,10 @@ simulate_glgpm <- function(n_sim,
 
   check_positive_integer(n_sim, "n_sim")
 
+  stopifnot("'coordinate_units' must be either 'km' or 'm'" =
+              is.character(coordinate_units) && all(coordinate_units %in% c("km", "m")))
+  coordinate_units <- match.arg(coordinate_units)
+
   if(!is.null(model_fit)) {
     if(!inherits(model_fit, "RiskMap")){
       stop("'model_fit' must be of class 'RiskMap'")
@@ -1351,10 +1360,10 @@ simulate_glgpm <- function(n_sim,
       stop("if you provide 'model_fit' you should not provide 'data' or 'formula'")
     }
     formula <- as.formula(model_fit$formula)
-    data <- model_fit$data_sf
+    data <- model_fit$data
     family <- model_fit$family
-    convert_to_crs <- model_fit$convert_to_crs
-    scale_to_km <- model_fit$scale_to_km
+    model_crs <- NULL
+    coordinate_units <- model_fit$coordinate_units
   }
 
   check_data(data)
@@ -1444,10 +1453,22 @@ simulate_glgpm <- function(n_sim,
   }
 
   # Extract coordinates
-  if(!is.null(convert_to_crs)) {
-    if(!is.numeric(convert_to_crs)) stop("'convert_to_crs' must be a numeric object")
-    data <- st_transform(data, crs = convert_to_crs)
-    crs <- convert_to_crs
+  if(is.null(model_fit)) {
+    if(!is.null(model_crs)) {
+      check_crs(model_crs)
+      data <- st_transform(data, crs = model_crs)
+      if(sf::st_is_longlat(data)) {
+        stop("'model_crs' must be a projected CRS, not longitude/latitude")
+      }
+    } else if(sf::st_is_longlat(data)) {
+      auto_crs <- propose_utm(data)
+      data <- st_transform(data, crs = auto_crs)
+      if(messages) {
+        message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
+                "automatically reprojecting to EPSG:", auto_crs,
+                " for simulation. Set 'model_crs' to override.")
+      }
+    }
   }
   if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
@@ -1466,7 +1487,7 @@ simulate_glgpm <- function(n_sim,
          be estimated. Consider removing either one of them. ")
   }
 
-  if(scale_to_km) {
+  if(coordinate_units == "km") {
     coords_o <- coords_o/1000
     coords <- coords/1000
     if(messages) message("Distances between locations are computed in kilometers \n")
@@ -1549,7 +1570,7 @@ simulate_glgpm <- function(n_sim,
   }
 
   if(!is.null(model_fit)) {
-    data_sim <- model_fit$data_sf
+    data_sim <- model_fit$data
   } else {
     data_sim <- data
   }

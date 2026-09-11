@@ -94,7 +94,7 @@ setup_prediction <- function(object,
   stopifnot("'object' must be of class RiskMap" = inherits(object, "RiskMap"))
 
   list_mode <- inherits(grid_pred, "list")
-  model_crs <- st_crs(object$crs)
+  model_crs <- st_crs(object$data)
 
   if (is.na(model_crs)) {
     stop(
@@ -179,8 +179,8 @@ setup_prediction <- function(object,
   if (obs_loc) {
     if (!is.null(predictors))
       warning("You have set 'predictors' but not 'grid_pred' so 'predictors' will be ignored")
-    predictors <- as.data.frame(st_drop_geometry(object$data_sf))
-    grid_pred  <- st_as_sfc(object$data_sf)
+    predictors <- as.data.frame(st_drop_geometry(object$data))
+    grid_pred  <- st_as_sfc(object$data)
   }
 
   if (list_mode) {
@@ -309,7 +309,7 @@ setup_prediction <- function(object,
   # ---------------------------------------------------------------------------
   out <- list(mu_pred = mu_pred, grid_pred = grid_pred, par_hat = par_hat)
 
-  if (object$scale_to_km) {
+  if (object$coordinate_units == "km") {
     grp <- if (list_mode) lapply(grp, function(g) g / 1000) else grp / 1000
   }
 
@@ -1656,12 +1656,12 @@ assess_prediction <- function(object,
   }
 
   object1 <- object[[1]]
-  data_sf <- object1$data_sf
+  data_sf <- object1$data
   n_obs   <- nrow(data_sf)
   data_geom <- st_as_text(st_geometry(data_sf))
 
   for (h in seq_along(object)) {
-    fit_data <- object[[h]]$data_sf
+    fit_data <- object[[h]]$data
     if (nrow(fit_data) != n_obs) {
       stop("All models supplied to 'assess_prediction()' must have the same number of observations.")
     }
@@ -1797,7 +1797,7 @@ assess_prediction <- function(object,
   for (h in seq_len(n_models)) {
 
     fit0      <- object[[h]]
-    fit_data_sf <- fit0$data_sf
+    fit_data_sf <- fit0$data
     par_hat   <- coef(fit0)
     den_name  <- as.character(fit0$call$den)
     fam       <- fit0$family
@@ -1827,34 +1827,30 @@ assess_prediction <- function(object,
       ## ----- refit or slice -----
       if (!keep_par_fixed) {
         message("\nRe-estimating model for subset ", i)
-        crs_num <- if (is.numeric(fit0$crs)) {
-          as.integer(fit0$crs)
-        } else {
-          as.integer(sub(".*:(\\d+)$", "\\1", fit0$crs))
-        }
+        model_crs_num <- sf::st_crs(fit0$data)$epsg
 
-        fit0$crs <- crs_num
-          ## Original path (unchanged)
-          refit_i <- eval(bquote(
-            glgpm(.(
-              formula      = fit0$formula,
-              data         = fit_data_sf[in_id, ],
-              cov_offset   = .(fit0$cov_offset),
-              family       = .(fam),
-              crs          = .(fit0$crs),
-              scale_to_km  = .(fit0$scale_to_km),
-              control_mcmc = control_sim,
-              fix_var_me   = .(fit0$fix_var_me),
-              den          = .(as.name(den_name)),
-              messages     = FALSE,
-              start_pars   = par_hat
-            ))
-          ))
+        refit_args <- list(
+          formula          = fit0$formula,
+          data             = fit_data_sf[in_id, ],
+          family           = fam,
+          model_crs        = model_crs_num,
+          coordinate_units = fit0$coordinate_units,
+          control_mcmc     = control_sim,
+          fix_var_me       = fit0$fix_var_me,
+          messages         = FALSE,
+          start_pars       = par_hat
+        )
+        ## 'den' must be passed as an unquoted column name (NSE); only include it
+        ## when the original model was fitted with one
+        if (length(den_name) == 1 && nzchar(den_name)) {
+          refit_args$den <- as.name(den_name)
+        }
+        refit_i <- do.call(glgpm, refit_args)
       } else {
         ## quick slice without re-fitting
         refit_i <- fit0
         keep <- in_id
-        refit_i$data_sf  <- refit_i$data_sf [keep, ]
+        refit_i$data  <- refit_i$data [keep, ]
         refit_i$units_m  <- refit_i$units_m[keep]
         keep_coord <- unique(refit_i$ID_coords[keep])
         refit_i$coords   <- refit_i$coords[keep_coord, , drop = FALSE]
@@ -1864,13 +1860,13 @@ assess_prediction <- function(object,
           refit_i$cov_offset <- refit_i$cov_offset[keep]
         if (!is.null(refit_i$ID_re)) {
           re_terms <- names(refit_i$ID_re)
-          random_effects_i <- prepare_random_effects(refit_i$data_sf, re_terms)
+          random_effects_i <- prepare_random_effects(refit_i$data, re_terms)
           refit_i$ID_re <- as.data.frame(random_effects_i$ID_re)
           colnames(refit_i$ID_re) <- random_effects_i$names_re
           refit_i$re <- random_effects_i$re_unique_f
         }
         ## recompute ID_coords mapping
-        refit_i$ID_coords <- create_ids(refit_i$data_sf)$ID_coords
+        refit_i$ID_coords <- create_ids(refit_i$data)$ID_coords
       }
 
       ## ----- held-out set and offsets -----

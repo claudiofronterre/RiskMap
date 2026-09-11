@@ -12,8 +12,8 @@ simulate_glgpm(
   family = NULL,
   den = NULL,
   cov_offset = NULL,
-  convert_to_crs = NULL,
-  scale_to_km = TRUE,
+  model_crs = NULL,
+  coordinate_units = c("km", "m"),
   sim_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, sigma2_me = NULL,
     sigma2_re = NULL),
   messages = TRUE
@@ -22,7 +22,7 @@ simulate_glgpm(
 \arguments{
 \item{n_sim}{Number of simulations to perform.}
 
-\item{model_fit}{Fitted GLGPM model object of class \code{RiskMap}. If provided, overrides \code{formula}, \code{data}, \code{family}, \code{convert_to_crs} and \code{scale_to_km} arguments.}
+\item{model_fit}{Fitted GLGPM model object of class \code{RiskMap}. If provided, overrides \code{formula}, \code{data}, \code{family}, \code{model_crs} and \code{coordinate_units} arguments.}
 
 \item{formula}{Model formula indicating the variables of the model to be simulated.}
 
@@ -35,9 +35,14 @@ For the \code{"poisson"} family, the argument is optional and is used a multipli
 
 \item{cov_offset}{Offset for the covariate part of the GLGPM.}
 
-\item{convert_to_crs}{CRS code to convert data to.}
+\item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for simulation, ignored if \code{model_fit} is provided.
+If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
+If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
+reprojected to an appropriate UTM zone (see \verb{[propose_utm()]}) and a message reports the conversion used.
+If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
 
-\item{scale_to_km}{Logical; if \code{TRUE}, distances between locations are computed in kilometers; if \code{FALSE}, in meters.}
+\item{coordinate_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
+internally for distances between locations. Defaults to \code{"km"}. Ignored if \code{model_fit} is provided.}
 
 \item{sim_pars}{List of simulation parameters including \code{beta}, \code{sigma2}, \code{tau2}, \code{phi}, \code{sigma2_me}, and optionally \code{sigma2_re}.
 If multiple covariates or random effects are included, the lengths of \code{beta} and \code{sigma2_re} must match the number of covariates and random effects respectively.}
