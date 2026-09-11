@@ -617,7 +617,8 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
   names(object$estimate)[ind_beta] <- colnames(object$D)
   ind_sigma2 <- p + 1; names(object$estimate)[ind_sigma2] <- "Spatial process var."
-  ind_phi    <- p + 2; names(object$estimate)[ind_phi]    <- "Spatial corr. scale"
+  ind_phi    <- p + 2; names(object$estimate)[ind_phi]    <-
+    paste0("Spatial corr. scale (", object$coordinate_units, ")")
 
   if (isTRUE(object$fix_tau2)) {
     ind_tau2 <- p + 3
