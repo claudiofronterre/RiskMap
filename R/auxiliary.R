@@ -489,7 +489,7 @@ coef.RiskMap <- function(object, ...) {
 
   res      <- list()
   res$beta <- estimate$beta
-  names(res$beta) <- if (length(beta_names) == 1) "Intercept" else beta_names
+  names(res$beta) <- beta_names
 
   res$sigma2 <- exp(estimate$sigma2)
   res$phi    <- exp(estimate$phi)

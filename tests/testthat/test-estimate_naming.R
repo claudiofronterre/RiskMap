@@ -59,6 +59,20 @@ test_that("estimate reproduces coef.RiskMap() for an intercept-only model", {
   expect_equal(exp(est$sigma2_me), co$sigma2_me, ignore_attr = TRUE)
 })
 
+test_that("coef.RiskMap() does not mislabel a single covariate as the intercept when the model has none (#92)", {
+  ## Bug: coef.RiskMap() used to relabel beta to "Intercept" whenever there
+  ## was exactly one coefficient, regardless of whether it actually was the
+  ## intercept - so `y ~ 0 + cov + gp()` (no intercept, one covariate)
+  ## reported "Intercept" instead of "cov".
+  fit <- glgpm(y ~ 0 + cov + gp(), data = gaussian_data, family = "gaussian",
+              messages = FALSE)
+
+  expect_equal(colnames(fit$D), "cov")
+  expect_equal(names(fit$estimate$beta), "cov")
+  expect_equal(names(coef(fit)$beta), "cov")
+  expect_equal(rownames(summary(fit)$reg_coef), "cov")
+})
+
 test_that("estimate reproduces coef.RiskMap() for a model with an estimated nugget and fix_var_me", {
   ## gaussian_offset_model: gp(nugget = TRUE), fix_var_me = 0, no random effects
   co <- coef(gaussian_offset_model)
