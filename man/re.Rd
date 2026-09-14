@@ -10,7 +10,7 @@ re(...)
 \item{...}{Variables representing the random effects in the model.}
 }
 \value{
-A list of class \code{re.spec} containing the following elements:
+A list of class \code{RiskMap_re_spec} containing the following elements:
 \item{term}{A character vector of the specified terms.}
 \item{dim}{The number of specified terms.}
 \item{label}{A character string representing the full call for the random effect model.}

@@ -70,7 +70,7 @@ of its levels, a vector of \code{n_samples} draws. Both elements are
 observed data locations, i.e. when \code{grid_pred} was left as
 \code{NULL} in \code{\link{setup_prediction}}.}
 \item{inter_f}{The model formula after interpretation by
-\code{interpret.formula}, separating the fixed-effects terms, the
+\code{interpret_formula}, separating the fixed-effects terms, the
 spatial term and the unstructured random effect terms. Used internally
 to build the linear predictor at the prediction locations.}
 \item{family}{The model family}

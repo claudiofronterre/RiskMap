@@ -16,7 +16,7 @@ Default is \code{FALSE} in which case it is not estimated. If \code{TRUE} the va
 a positive numeric value can be provided instead to fix the effect.}
 }
 \value{
-A list of class \code{gp.spec} containing the following elements:
+A list of class \code{RiskMap_gp_spec} containing the following elements:
 \item{term}{A character vector of the specified terms.}
 \item{kappa}{The smoothness parameter \eqn{\kappa}.}
 \item{nugget}{The nugget effect.}
