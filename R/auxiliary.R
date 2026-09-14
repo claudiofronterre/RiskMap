@@ -241,8 +241,9 @@ matern_hessian_phi <- function(U, phi, kappa) {
 }
 ##' @title Gaussian Process Model Specification
 ##' @description Specifies the terms, smoothness, and nugget effect for a Gaussian Process (GP) model.
-##' @param ... Variables representing the spatial coordinates or covariates for the GP model.
-##' @param kappa The smoothness parameter \eqn{\kappa}. Default is 0.5.
+##' @param ... Variable representing the spatial coordinates for the GP model. If left blank the
+##' `geometry` column from the data is used automatically.
+##' @param kappa The smoothness parameter \eqn{\kappa}. Default is `0.5`.
 ##' @param nugget The nugget effect, which represents the variance of the measurement error.
 ##' Default is `FALSE` in which case it is not estimated. If `TRUE` the value will be estimated or
 ##' a positive numeric value can be provided instead to fix the effect.
