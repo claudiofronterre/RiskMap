@@ -2092,7 +2092,7 @@ simulate_surface <- function(n_sim,
     data_sim[[i]] <- cbind(data_sim[[i]], pred_grid_vars)
   }
 
-  kappa <- inter_f$gp.spec$kappa
+  kappa <- inter_f$gp_spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
 
   if(family != "gaussian" & family != "binomial" &
@@ -2113,7 +2113,7 @@ simulate_surface <- function(n_sim,
   }
 
 
-  if(length(inter_f$re.spec) > 0) {
+  if(length(inter_f$re_spec) > 0) {
     stop("In the current impletementation of 'simulate_surface' the addition of random effects
         with re() is not supported")
   }

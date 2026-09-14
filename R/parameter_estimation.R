@@ -171,7 +171,7 @@ glgpm <- function(formula,
   }
 
   inter_f <- interpret.formula(formula)
-  kappa <- inter_f$gp.spec$kappa
+  kappa <- inter_f$gp_spec$kappa
   mf <- model.frame(inter_f$pf, data = data, na.action = na.fail)
 
   # Extract outcome data
@@ -212,8 +212,8 @@ glgpm <- function(formula,
     }
   }
 
-  if (length(inter_f$re.spec) > 0L) {
-    hr_re <- inter_f$re.spec$term
+  if (length(inter_f$re_spec) > 0L) {
+    hr_re <- inter_f$re_spec$term
   } else {
     hr_re <- NULL
   }
@@ -246,7 +246,7 @@ glgpm <- function(formula,
                      coords_o[i,2]==coords[,2]))
   s_unique <- unique(ID_coords)
 
-  fix_tau2 <- inter_f$gp.spec$nugget
+  fix_tau2 <- inter_f$gp_spec$nugget
 
   if(all(table(ID_coords) == 1) &&
      family == "gaussian" &&
@@ -342,7 +342,7 @@ glgpm <- function(formula,
         check_positive_number(start_pars[["sigma2_me"]])
       }
     }
-    res <- glgpm_lm(y = y-cov_offset, D, coords, kappa = inter_f$gp.spec$kappa,
+    res <- glgpm_lm(y = y-cov_offset, D, coords, kappa = inter_f$gp_spec$kappa,
             ID_coords, ID_re, s_unique, re_unique,
             fix_var_me, fix_tau2,
             start_beta = start_pars[["beta"]],
@@ -359,7 +359,7 @@ glgpm <- function(formula,
       if(length(par0$beta)!=ncol(D)) stop("the values passed to `beta` in par0 do not match the
                                           variables specified in the formula")
     }
-    res <- glgpm_nong(y = y, D, coords, units_m, kappa = inter_f$gp.spec$kappa,
+    res <- glgpm_nong(y = y, D, coords, units_m, kappa = inter_f$gp_spec$kappa,
                         ID_coords, ID_re, s_unique, re_unique,
                         fix_tau2, family = family, invlink = invlink,
                         return_samples = return_samples,
@@ -1345,7 +1345,7 @@ simulate_glgpm <- function(n_sim,
   check_formula(formula, data)
   inter_f <- interpret.formula(formula)
 
-  kappa <- inter_f$gp.spec$kappa
+  kappa <- inter_f$gp_spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
 
   if(family != "gaussian" & family != "binomial" &
@@ -1358,8 +1358,8 @@ simulate_glgpm <- function(n_sim,
   D <- as.matrix(model.matrix(attr(mf,"terms"), data = data))
   n <- nrow(D)
 
-  hr_re <- if (length(inter_f$re.spec) > 0L) {
-    inter_f$re.spec$term
+  hr_re <- if (length(inter_f$re_spec) > 0L) {
+    inter_f$re_spec$term
   } else {
     NULL
   }
@@ -1471,7 +1471,7 @@ simulate_glgpm <- function(n_sim,
     if(!is.null(model_fit)) {
       re_names <- names(model_fit$re)
     } else {
-      re_names <- inter_f$re.spec$term
+      re_names <- inter_f$re_spec$term
     }
 
     dim_re <- sapply(1:n_re, function(j) length(re_unique[[j]]))
