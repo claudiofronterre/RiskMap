@@ -1714,30 +1714,20 @@ assess_prediction <- function(object,
     n_iter <- iter
 
     if (isTRUE(plot_fold)) {
-      if (!requireNamespace("ggplot2", quietly = TRUE)) {
-        warning("plot_fold = TRUE requires the 'ggplot2' package; skipping plots.", call. = FALSE)
+      if (n_iter == 1) {
+        p <- ggplot(data_split$splits[[1]]$data_test) +
+          geom_sf() +
+          theme_minimal() +
+          ggtitle("Test set")
+        print(p)
       } else {
-        if (n_iter == 1) {
-          p <- ggplot(data_split$splits[[1]]$data_test) +
+        plots <- lapply(seq_len(n_iter), function(i) {
+          ggplot(data_split$splits[[i]]$data_test) +
             geom_sf() +
             theme_minimal() +
-            ggtitle("Test set")
-          print(p)
-        } else {
-          plots <- lapply(seq_len(n_iter), function(i) {
-            ggplot(data_split$splits[[i]]$data_test) +
-              geom_sf() +
-              theme_minimal() +
-              ggtitle(paste("Test", i))
-          })
-
-          if (requireNamespace("gridExtra", quietly = TRUE)) {
-            do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
-          } else {
-            warning("Optional package 'gridExtra' not installed; printing plots sequentially.", call. = FALSE)
-            for (p in plots) print(p)
-          }
-        }
+            ggtitle(paste("Test", i))
+        })
+        do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
       }
     }
   } else if (method == "cluster") {
@@ -1766,24 +1756,18 @@ assess_prediction <- function(object,
     }
     n_iter <- iter
     if (isTRUE(plot_fold)) {
-      if (!requireNamespace("ggplot2", quietly = TRUE)) {
-        warning("plot_fold = TRUE requires the 'ggplot2' package; skipping plots.", call. = FALSE)
-      } else if (!requireNamespace("sf", quietly = TRUE)) {
-        warning("plot_fold = TRUE with geom_sf() requires the 'sf' package; skipping plots.", call. = FALSE)
-      } else {
-        plots <- lapply(seq_len(n_iter), function(i) {
-          ggplot(data_split$splits[[i]]$data_test) +
-            geom_sf() +
-            theme_minimal() +
-            ggtitle(paste("Subset", i))
-        })
+      plots <- lapply(seq_len(n_iter), function(i) {
+        ggplot(data_split$splits[[i]]$data_test) +
+          geom_sf() +
+          theme_minimal() +
+          ggtitle(paste("Subset", i))
+      })
 
-        if (n_iter > 1 && requireNamespace("gridExtra", quietly = TRUE)) {
-          do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
-        } else {
-          # Either only one plot or gridExtra not available: print sequentially
-          for (p in plots) print(p)
-        }
+      if (n_iter > 1) {
+        do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
+      } else {
+        # Only one plot: no need for a grid arrangement
+        for (p in plots) print(p)
       }
     }
   }
