@@ -424,7 +424,7 @@ glgpm <- function(formula,
 ##' recomputing the layout positionally themselves (#92).
 ##'
 ##' @noRd
-name_cov_pars <- function(beta_names, fix_tau2, sigma2_me = FALSE, re_names = NULL) {
+name_estimates <- function(beta_names, fix_tau2, sigma2_me = FALSE, re_names = NULL) {
   nm <- c(beta_names, "sigma2", "phi")
   if (isTRUE(fix_tau2)) nm <- c(nm, "nu2")
   if (isTRUE(sigma2_me)) nm <- c(nm, "sigma2_me")
@@ -1295,7 +1295,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                   control=list(trace=1*messages))
 
   out$estimate <- estim$par
-  names(out$estimate) <- name_cov_pars(
+  names(out$estimate) <- name_estimates(
     beta_names = colnames(D),
     fix_tau2   = fix_tau2,
     sigma2_me  = is.null(fix_var_me),
@@ -2823,7 +2823,7 @@ glgpm_nong <-
                     control = list(trace = 1 * messages))
 
     out$estimate <- estim$par
-    names(out$estimate) <- name_cov_pars(
+    names(out$estimate) <- name_estimates(
       beta_names = colnames(D),
       fix_tau2   = fix_tau2,
       sigma2_me  = FALSE,

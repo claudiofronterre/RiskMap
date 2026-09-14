@@ -1,5 +1,5 @@
 ## Validation for issue #92: `estimate` is named directly by the fitting
-## engines (glgpm_lm()/glgpm_nong(), via name_cov_pars()), and coef.RiskMap()/
+## engines (glgpm_lm()/glgpm_nong(), via name_estimates()), and coef.RiskMap()/
 ## summary.RiskMap() subset it (and `covariance`, which shares the same
 ## dimnames) by these names rather than recomputing positions themselves.
 ## These tests check that the names correctly identify each raw (working-
@@ -31,11 +31,11 @@ test_that("estimate reproduces coef.RiskMap() for a model with random effects (n
   est <- gaussian_model$estimate
 
   expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "sigma2_me", "i_sigma2_re"))
-  expect_equal(unname(est[c("(Intercept)", "cov")]), unname(co$beta))
-  expect_equal(exp(unname(est["sigma2"])), co$sigma2)
-  expect_equal(exp(unname(est["phi"])), co$phi)
-  expect_equal(exp(unname(est["sigma2_me"])), co$sigma2_me)
-  expect_equal(exp(unname(est["i_sigma2_re"])), unname(co$sigma2_re))
+  expect_equal(est[c("(Intercept)", "cov")], co$beta, ignore_attr = TRUE)
+  expect_equal(exp(est["sigma2"]), co$sigma2, ignore_attr = TRUE)
+  expect_equal(exp(est["phi"]), co$phi, ignore_attr = TRUE)
+  expect_equal(exp(est["sigma2_me"]), co$sigma2_me, ignore_attr = TRUE)
+  expect_equal(exp(est["i_sigma2_re"]), co$sigma2_re, ignore_attr = TRUE)
 })
 
 test_that("estimate reproduces coef.RiskMap() for an intercept-only model", {
@@ -43,10 +43,10 @@ test_that("estimate reproduces coef.RiskMap() for an intercept-only model", {
   est <- gaussian_intercept_model$estimate
 
   expect_setequal(names(est), c("(Intercept)", "sigma2", "phi", "sigma2_me"))
-  expect_equal(unname(est["(Intercept)"]), unname(co$beta))
-  expect_equal(exp(unname(est["sigma2"])), co$sigma2)
-  expect_equal(exp(unname(est["phi"])), co$phi)
-  expect_equal(exp(unname(est["sigma2_me"])), co$sigma2_me)
+  expect_equal(est["(Intercept)"], co$beta, ignore_attr = TRUE)
+  expect_equal(exp(est["sigma2"]), co$sigma2, ignore_attr = TRUE)
+  expect_equal(exp(est["phi"]), co$phi, ignore_attr = TRUE)
+  expect_equal(exp(est["sigma2_me"]), co$sigma2_me, ignore_attr = TRUE)
 })
 
 test_that("estimate reproduces coef.RiskMap() for a model with an estimated nugget and fix_var_me", {
@@ -57,7 +57,7 @@ test_that("estimate reproduces coef.RiskMap() for a model with an estimated nugg
   expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "nu2"))
   ## tau2 isn't a raw parameter: the engines fit nu2 = tau2 / sigma2 on the log
   ## scale, so reconstructing tau2 needs both named entries added before exp()
-  expect_equal(exp(unname(est["nu2"]) + unname(est["sigma2"])), unname(co$tau2))
+  expect_equal(exp(est["nu2"] + est["sigma2"]), co$tau2, ignore_attr = TRUE)
 })
 
 test_that("estimate reproduces coef.RiskMap() for binomial and poisson models with random effects", {
@@ -66,10 +66,10 @@ test_that("estimate reproduces coef.RiskMap() for binomial and poisson models wi
     est <- fit$estimate
 
     expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "i_sigma2_re"))
-    expect_equal(unname(est[c("(Intercept)", "cov")]), unname(co$beta))
-    expect_equal(exp(unname(est["sigma2"])), co$sigma2)
-    expect_equal(exp(unname(est["phi"])), co$phi)
-    expect_equal(exp(unname(est["i_sigma2_re"])), unname(co$sigma2_re))
+    expect_equal(est[c("(Intercept)", "cov")], co$beta, ignore_attr = TRUE)
+    expect_equal(exp(est["sigma2"]), co$sigma2, ignore_attr = TRUE)
+    expect_equal(exp(est["phi"]), co$phi, ignore_attr = TRUE)
+    expect_equal(exp(est["i_sigma2_re"]), co$sigma2_re, ignore_attr = TRUE)
   }
 })
 
@@ -94,6 +94,6 @@ test_that("estimate correctly names sigma2_me even when the nugget is also estim
   est <- fit$estimate
 
   expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "nu2", "sigma2_me"))
-  expect_equal(exp(unname(est["sigma2_me"])), co$sigma2_me)
-  expect_equal(exp(unname(est["nu2"]) + unname(est["sigma2"])), unname(co$tau2))
+  expect_equal(exp(est["sigma2_me"]), co$sigma2_me, ignore_attr = TRUE)
+  expect_equal(exp(est["nu2"] + est["sigma2"]), co$tau2, ignore_attr = TRUE)
 })
