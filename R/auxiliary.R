@@ -330,7 +330,7 @@ re <- function (...) {
   ret
 }
 
-interpret.formula <- function(formula) {
+interpret_formula <- function(formula) {
   p.env <- environment(formula)
   tf <- terms.formula(formula, specials = c("gp", "re"))
   terms <- attr(tf, "term.labels")

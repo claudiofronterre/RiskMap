@@ -170,7 +170,7 @@ glgpm <- function(formula,
     if (!is.null(fix_var_me)) stop("'fix_var_me' cannot be provided when 'family' is '", family, "'")
   }
 
-  inter_f <- interpret.formula(formula)
+  inter_f <- interpret_formula(formula)
   kappa <- inter_f$gp_spec$kappa
   mf <- model.frame(inter_f$pf, data = data, na.action = na.fail)
 
@@ -1343,7 +1343,7 @@ simulate_glgpm <- function(n_sim,
 
   check_data(data)
   check_formula(formula, data)
-  inter_f <- interpret.formula(formula)
+  inter_f <- interpret_formula(formula)
 
   kappa <- inter_f$gp_spec$kappa
   if(kappa < 0) stop("kappa must be positive.")

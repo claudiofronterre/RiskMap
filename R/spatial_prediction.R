@@ -46,7 +46,7 @@
 ##'       observed data locations, i.e. when \code{grid_pred} was left as
 ##'       \code{NULL} in \code{\link{setup_prediction}}.}
 ##'     \item{inter_f}{The model formula after interpretation by
-##'       \code{interpret.formula}, separating the fixed-effects terms, the
+##'       \code{interpret_formula}, separating the fixed-effects terms, the
 ##'       spatial term and the unstructured random effect terms. Used internally
 ##'       to build the linear predictor at the prediction locations.}
 ##'     \item{family}{The model family}
@@ -218,7 +218,7 @@ setup_prediction <- function(object,
   # ---------------------------------------------------------------------------
 
   par_hat <- coef(object)
-  inter_f      <- interpret.formula(object$formula)
+  inter_f      <- interpret_formula(object$formula)
   inter_lt_f   <- inter_f
   inter_lt_f$pf <- update(inter_lt_f$pf, NULL ~.)
 
@@ -2038,7 +2038,7 @@ simulate_surface <- function(n_sim,
                                      object indicating the variables of the
                                      model to be fitted")
   }
-  inter_f <- interpret.formula(formula)
+  inter_f <- interpret_formula(formula)
   include_cov_offset <- !is.null(inter_f$offset)
   if(!inherits(pred_grid, "sf")) {
     stop("'pred_grid' must be an 'sf'
@@ -2358,7 +2358,7 @@ assess_simulation <- function(obj_sim,
   for(i in 1:n_models) {
     if(messages) message("Model: ", paste(model_names[i]),"\n")
 
-    if_i <- interpret.formula(models[[i]])
+    if_i <- interpret_formula(models[[i]])
     rhs_terms <- attr(terms(if_i$pf), "term.labels")
     # Check if there are any covariates
     if (length(rhs_terms) == 0) {
