@@ -30,12 +30,13 @@ test_that("estimate reproduces coef.RiskMap() for a model with random effects (n
   co <- coef(gaussian_model)
   est <- gaussian_model$estimate
 
-  expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "sigma2_me", "i_sigma2_re"))
+  expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "sigma2_me", "sigma2_re_i"))
   expect_equal(est[c("(Intercept)", "cov")], co$beta, ignore_attr = TRUE)
   expect_equal(exp(est["sigma2"]), co$sigma2, ignore_attr = TRUE)
   expect_equal(exp(est["phi"]), co$phi, ignore_attr = TRUE)
   expect_equal(exp(est["sigma2_me"]), co$sigma2_me, ignore_attr = TRUE)
-  expect_equal(exp(est["i_sigma2_re"]), co$sigma2_re, ignore_attr = TRUE)
+  expect_equal(exp(est["sigma2_re_i"]), co$sigma2_re, ignore_attr = TRUE)
+  expect_equal(names(co$sigma2_re), "i")
 })
 
 test_that("estimate reproduces coef.RiskMap() for an intercept-only model", {
@@ -65,11 +66,12 @@ test_that("estimate reproduces coef.RiskMap() for binomial and poisson models wi
     co <- coef(fit)
     est <- fit$estimate
 
-    expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "i_sigma2_re"))
+    expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "sigma2_re_i"))
     expect_equal(est[c("(Intercept)", "cov")], co$beta, ignore_attr = TRUE)
     expect_equal(exp(est["sigma2"]), co$sigma2, ignore_attr = TRUE)
     expect_equal(exp(est["phi"]), co$phi, ignore_attr = TRUE)
-    expect_equal(exp(est["i_sigma2_re"]), co$sigma2_re, ignore_attr = TRUE)
+    expect_equal(exp(est["sigma2_re_i"]), co$sigma2_re, ignore_attr = TRUE)
+    expect_equal(names(co$sigma2_re), "i")
   }
 })
 

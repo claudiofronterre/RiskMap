@@ -64,7 +64,7 @@
 ##' \item{estimate}{Estimated parameters, on their internal (working) scale. Named:
 ##' regression coefficients, \code{sigma2}, \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2}
 ##' when the nugget is estimated, \code{sigma2_me} for Gaussian models with an estimated
-##' measurement error variance, and \code{<name>_sigma2_re} per random effect. \code{covariance}
+##' measurement error variance, and \code{sigma2_re_<name>} per random effect. \code{covariance}
 ##' shares the same names on its rows/columns.}
 ##' \item{grad_MLE}{Gradient of the maximum likelihood function}
 ##' \item{covariance}{Covariance}
@@ -417,7 +417,7 @@ glgpm <- function(formula,
 ##' coefficients, `sigma2`, `phi`, optionally `nu2` (`= tau2 / sigma2`, only
 ##' when the nugget is estimated), optionally `sigma2_me` (Gaussian models
 ##' only, when the measurement error variance is not fixed), and finally one
-##' `<name>_sigma2_re` entry per unstructured random effect.
+##' `sigma2_re_<name>` entry per unstructured random effect.
 ##'
 ##' `coef.RiskMap()`/`summary.RiskMap()` subset `estimate` (and `covariance`,
 ##' which shares the same dimnames) by these names directly, rather than
@@ -428,7 +428,7 @@ name_estimates <- function(beta_names, fix_tau2, sigma2_me = FALSE, re_names = N
   nm <- c(beta_names, "sigma2", "phi")
   if (isTRUE(fix_tau2)) nm <- c(nm, "nu2")
   if (isTRUE(sigma2_me)) nm <- c(nm, "sigma2_me")
-  if (!is.null(re_names)) nm <- c(nm, paste0(re_names, "_sigma2_re"))
+  if (!is.null(re_names)) nm <- c(nm, paste0("sigma2_re_", re_names))
   nm
 }
 

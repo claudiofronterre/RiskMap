@@ -73,7 +73,7 @@ An object of class \code{RiskMap} containing the fitted model and relevant infor
 \item{estimate}{Estimated parameters, on their internal (working) scale. Named:
 regression coefficients, \code{sigma2}, \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2}
 when the nugget is estimated, \code{sigma2_me} for Gaussian models with an estimated
-measurement error variance, and \code{<name>_sigma2_re} per random effect. \code{covariance}
+measurement error variance, and \code{sigma2_re_<name>} per random effect. \code{covariance}
 shares the same names on its rows/columns.}
 \item{grad_MLE}{Gradient of the maximum likelihood function}
 \item{covariance}{Covariance}

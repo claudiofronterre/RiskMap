@@ -471,7 +471,7 @@ check_formula <- function(formula, data){
 ##' \item{phi}{The estimate for the spatial range parameter \eqn{\phi}.}
 ##' \item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
 ##' \item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
-##' \item{sigma2_re}{A vector of variance estimates for the random effects, if applicable.}
+##' \item{sigma2_re}{A named vector of variance estimates for the random effects, if applicable.}
 ##' \item{beta}{Coefficient estimates for log mean worm burden.}
 ##' \item{k}{Negative binomial overdispersion parameter.}
 ##' \item{rho}{Egg detection rate (fecundity).}
@@ -505,8 +505,10 @@ coef.RiskMap <- function(object, ...) {
     ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add
     res$tau2 <- exp(unname(estimate["nu2"]) + unname(estimate["sigma2"]))
 
-  if (n_re > 0)
-    res$sigma2_re <- exp(unname(estimate[paste0(re_names, "_sigma2_re")]))
+  if (n_re > 0) {
+    res$sigma2_re <- exp(unname(estimate[paste0("sigma2_re_", re_names)]))
+    names(res$sigma2_re) <- re_names
+  }
 
   return(res)
 }
@@ -573,7 +575,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
   has_tau2      <- "nu2" %in% nm
   has_sigma2_me <- object$family == "gaussian" && "sigma2_me" %in% nm
-  re_par_names  <- if (n_re > 0) paste0(re_names, "_sigma2_re") else NULL
+  re_par_names  <- if (n_re > 0) paste0("sigma2_re_", re_names) else NULL
 
   ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add. This is
   ## the one linear reparametrisation of the working-scale parameters that
