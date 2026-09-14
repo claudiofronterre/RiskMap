@@ -4,7 +4,7 @@ make_assess_prediction_fit <- function(data, covariate) {
     formula = stats::as.formula(paste("y ~", covariate)),
     data_sf = data,
     family = "gaussian",
-    estimate = c(0, 0, 0, 0),
+    estimate = list(beta = c(0, 0), sigma2 = 0, phi = 0),
     D = matrix(1, nrow = nrow(data), ncol = 2),
     re = list(),
     cov_offset = NULL,

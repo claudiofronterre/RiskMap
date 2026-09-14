@@ -1,28 +1,37 @@
-## Validation for issue #92: `estimate` is named directly by the fitting
-## engines (glgpm_lm()/glgpm_nong(), via name_estimates()), and coef.RiskMap()/
-## summary.RiskMap() subset it (and `covariance`, which shares the same
-## dimnames) by these names rather than recomputing positions themselves.
-## These tests check that the names correctly identify each raw (working-
-## scale) parameter, by manually combining them with the appropriate
-## exp()/addition and confirming the result matches what coef.RiskMap()
-## reports.
+## Validation for issue #92: `estimate` is a named list (beta, sigma2, phi,
+## [nu2], [sigma2_me], [sigma2_re]) built directly by the fitting engines
+## (glgpm_lm()/glgpm_nong(), via structure_estimate()), and coef.RiskMap()/
+## summary.RiskMap() read from it directly rather than recomputing positions
+## themselves.
+##
+## A flat named vector can't be keyed safely by name: a covariate literally
+## named e.g. "sigma2" collides with the spatial variance parameter's own
+## name, silently corrupting name-based lookups (reported against the
+## flat-vector version of this fix - see the last test below). Nesting
+## `estimate` keeps those namespaces separate; `unlist(estimate)` (used
+## internally by summary.RiskMap() to line up against `covariance`, which is
+## estimated as one joint matrix over every parameter) disambiguates the same
+## way, e.g. "beta.sigma2" vs "sigma2".
 
-test_that("estimate is named for every model configuration", {
+test_that("estimate is a list with numeric beta/sigma2/phi for every model configuration", {
   fits <- list(gaussian_model, gaussian_offset_model, gaussian_intercept_model,
                binomial_model, poisson_model)
 
   for (fit in fits) {
-    expect_false(is.null(names(fit$estimate)))
-    expect_equal(length(names(fit$estimate)), length(fit$estimate))
+    expect_type(fit$estimate, "list")
+    expect_true(is.numeric(fit$estimate$beta))
+    expect_true(is.numeric(fit$estimate$sigma2))
+    expect_true(is.numeric(fit$estimate$phi))
   }
 })
 
-test_that("covariance shares estimate's names on both dimensions", {
+test_that("covariance is named to match unlist(estimate) on both dimensions", {
   fits <- list(gaussian_model, gaussian_offset_model, gaussian_intercept_model,
                binomial_model, poisson_model)
 
   for (fit in fits) {
-    expect_equal(dimnames(fit$covariance), list(names(fit$estimate), names(fit$estimate)))
+    flat_names <- names(unlist(fit$estimate))
+    expect_equal(dimnames(fit$covariance), list(flat_names, flat_names))
   }
 })
 
@@ -30,12 +39,12 @@ test_that("estimate reproduces coef.RiskMap() for a model with random effects (n
   co <- coef(gaussian_model)
   est <- gaussian_model$estimate
 
-  expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "sigma2_me", "sigma2_re_i"))
-  expect_equal(est[c("(Intercept)", "cov")], co$beta, ignore_attr = TRUE)
-  expect_equal(exp(est["sigma2"]), co$sigma2, ignore_attr = TRUE)
-  expect_equal(exp(est["phi"]), co$phi, ignore_attr = TRUE)
-  expect_equal(exp(est["sigma2_me"]), co$sigma2_me, ignore_attr = TRUE)
-  expect_equal(exp(est["sigma2_re_i"]), co$sigma2_re, ignore_attr = TRUE)
+  expect_setequal(names(est), c("beta", "sigma2", "phi", "sigma2_me", "sigma2_re"))
+  expect_equal(est$beta, co$beta, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2), co$sigma2, ignore_attr = TRUE)
+  expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2_me), co$sigma2_me, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2_re), co$sigma2_re, ignore_attr = TRUE)
   expect_equal(names(co$sigma2_re), "i")
 })
 
@@ -43,11 +52,11 @@ test_that("estimate reproduces coef.RiskMap() for an intercept-only model", {
   co <- coef(gaussian_intercept_model)
   est <- gaussian_intercept_model$estimate
 
-  expect_setequal(names(est), c("(Intercept)", "sigma2", "phi", "sigma2_me"))
-  expect_equal(est["(Intercept)"], co$beta, ignore_attr = TRUE)
-  expect_equal(exp(est["sigma2"]), co$sigma2, ignore_attr = TRUE)
-  expect_equal(exp(est["phi"]), co$phi, ignore_attr = TRUE)
-  expect_equal(exp(est["sigma2_me"]), co$sigma2_me, ignore_attr = TRUE)
+  expect_setequal(names(est), c("beta", "sigma2", "phi", "sigma2_me"))
+  expect_equal(est$beta, co$beta, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2), co$sigma2, ignore_attr = TRUE)
+  expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2_me), co$sigma2_me, ignore_attr = TRUE)
 })
 
 test_that("estimate reproduces coef.RiskMap() for a model with an estimated nugget and fix_var_me", {
@@ -55,10 +64,10 @@ test_that("estimate reproduces coef.RiskMap() for a model with an estimated nugg
   co <- coef(gaussian_offset_model)
   est <- gaussian_offset_model$estimate
 
-  expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "nu2"))
+  expect_setequal(names(est), c("beta", "sigma2", "phi", "nu2"))
   ## tau2 isn't a raw parameter: the engines fit nu2 = tau2 / sigma2 on the log
-  ## scale, so reconstructing tau2 needs both named entries added before exp()
-  expect_equal(exp(est["nu2"] + est["sigma2"]), co$tau2, ignore_attr = TRUE)
+  ## scale, so reconstructing tau2 needs both entries added before exp()
+  expect_equal(exp(est$nu2 + est$sigma2), co$tau2, ignore_attr = TRUE)
 })
 
 test_that("estimate reproduces coef.RiskMap() for binomial and poisson models with random effects", {
@@ -66,18 +75,18 @@ test_that("estimate reproduces coef.RiskMap() for binomial and poisson models wi
     co <- coef(fit)
     est <- fit$estimate
 
-    expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "sigma2_re_i"))
-    expect_equal(est[c("(Intercept)", "cov")], co$beta, ignore_attr = TRUE)
-    expect_equal(exp(est["sigma2"]), co$sigma2, ignore_attr = TRUE)
-    expect_equal(exp(est["phi"]), co$phi, ignore_attr = TRUE)
-    expect_equal(exp(est["sigma2_re_i"]), co$sigma2_re, ignore_attr = TRUE)
+    expect_setequal(names(est), c("beta", "sigma2", "phi", "sigma2_re"))
+    expect_equal(est$beta, co$beta, ignore_attr = TRUE)
+    expect_equal(exp(est$sigma2), co$sigma2, ignore_attr = TRUE)
+    expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
+    expect_equal(exp(est$sigma2_re), co$sigma2_re, ignore_attr = TRUE)
     expect_equal(names(co$sigma2_re), "i")
   }
 })
 
 test_that("estimate correctly names sigma2_me even when the nugget is also estimated", {
-  ## Before the #92 swap-over, coef.RiskMap() never assigned the name
-  ## "sigma2_me" internally in this combination (nugget estimated +
+  ## Before the #92 name-based swap-over, coef.RiskMap() never assigned the
+  ## name "sigma2_me" internally in this combination (nugget estimated +
   ## sigma2_me estimated) - see the #92 issue comment. Its *value* was still
   ## extracted correctly by position, so output was numerically unaffected;
   ## this guards against that gap reappearing now that lookup is name-based.
@@ -95,7 +104,36 @@ test_that("estimate correctly names sigma2_me even when the nugget is also estim
   co <- coef(fit)
   est <- fit$estimate
 
-  expect_setequal(names(est), c("(Intercept)", "cov", "sigma2", "phi", "nu2", "sigma2_me"))
-  expect_equal(exp(est["sigma2_me"]), co$sigma2_me, ignore_attr = TRUE)
-  expect_equal(exp(est["nu2"] + est["sigma2"]), co$tau2, ignore_attr = TRUE)
+  expect_setequal(names(est), c("beta", "sigma2", "phi", "nu2", "sigma2_me"))
+  expect_equal(exp(est$sigma2_me), co$sigma2_me, ignore_attr = TRUE)
+  expect_equal(exp(est$nu2 + est$sigma2), co$tau2, ignore_attr = TRUE)
+})
+
+test_that("a covariate named after a parameter no longer corrupts estimates (#92)", {
+  ## Regression test for the bug a colleague reported: with `estimate` as one
+  ## flat named vector, a covariate literally called "sigma2" collided with
+  ## the spatial variance parameter's own name, and name-based lookups (e.g.
+  ## estimate["sigma2"] in coef.RiskMap()) silently returned the wrong value
+  ## - the covariate's beta coefficient, exponentiated, instead of the actual
+  ## spatial variance. Structuring `estimate` as a list (beta$sigma2 vs
+  ## top-level $sigma2) keeps those namespaces separate.
+  clashing_data <- gaussian_data
+  clashing_data$sigma2 <- clashing_data$cov
+
+  fit_clash <- glgpm(y ~ sigma2 + gp() + re(i), data = clashing_data,
+                     family = "gaussian", messages = FALSE)
+  fit_ref   <- glgpm(y ~ cov + gp() + re(i), data = gaussian_data,
+                     family = "gaussian", messages = FALSE)
+
+  co_clash <- coef(fit_clash)
+  co_ref   <- coef(fit_ref)
+
+  expect_equal(co_clash$sigma2, co_ref$sigma2)
+  expect_equal(co_clash$phi, co_ref$phi)
+  expect_equal(co_clash$beta, co_ref$beta, ignore_attr = TRUE)
+  expect_equal(co_clash$sigma2_re, co_ref$sigma2_re, ignore_attr = TRUE)
+
+  ## summary()'s standard errors go through the separate unlist()-based
+  ## delta-method path, so check that's unaffected by the name clash too
+  expect_equal(summary(fit_clash)$sp, summary(fit_ref)$sp, ignore_attr = TRUE)
 })

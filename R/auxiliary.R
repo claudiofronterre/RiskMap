@@ -484,31 +484,25 @@ check_formula <- function(formula, data){
 coef.RiskMap <- function(object, ...) {
 
   estimate <- object$estimate
-  nm       <- names(estimate)
-
-  n_re     <- length(object$re)
-  re_names <- if (n_re > 0) names(object$re) else NULL
 
   beta_names <- colnames(as.matrix(object$D))
 
   res      <- list()
-  res$beta <- estimate[beta_names]
+  res$beta <- estimate$beta
   names(res$beta) <- if (length(beta_names) == 1) "Intercept" else beta_names
 
-  res$sigma2 <- exp(unname(estimate["sigma2"]))
-  res$phi    <- exp(unname(estimate["phi"]))
+  res$sigma2 <- exp(estimate$sigma2)
+  res$phi    <- exp(estimate$phi)
 
-  if (object$family == "gaussian" && "sigma2_me" %in% nm)
-    res$sigma2_me <- exp(unname(estimate["sigma2_me"]))
+  if (object$family == "gaussian" && !is.null(estimate$sigma2_me))
+    res$sigma2_me <- exp(estimate$sigma2_me)
 
-  if ("nu2" %in% nm)
+  if (!is.null(estimate$nu2))
     ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add
-    res$tau2 <- exp(unname(estimate["nu2"]) + unname(estimate["sigma2"]))
+    res$tau2 <- exp(estimate$nu2 + estimate$sigma2)
 
-  if (n_re > 0) {
-    res$sigma2_re <- exp(unname(estimate[paste0("sigma2_re_", re_names)]))
-    names(res$sigma2_re) <- re_names
-  }
+  if (!is.null(estimate$sigma2_re))
+    res$sigma2_re <- exp(estimate$sigma2_re)
 
   return(res)
 }
@@ -569,13 +563,20 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   n_re     <- length(object$re)
   re_names <- if (n_re > 0) names(object$re) else NULL
 
-  estimate   <- object$estimate
-  nm         <- names(estimate)
   beta_names <- colnames(as.matrix(object$D))
 
+  ## `object$estimate` is a list (#92: keeps e.g. a "sigma2" covariate's name
+  ## from colliding with the spatial variance parameter's own name). The
+  ## delta-method covariance adjustment below needs a flat vector to line up
+  ## against `covariance` (one joint matrix over every parameter); `unlist()`
+  ## gives that, disambiguating the same way ("beta.sigma2" vs "sigma2").
+  estimate <- unlist(object$estimate)
+  nm       <- names(estimate)
+
+  beta_flat_names <- paste0("beta.", beta_names)
   has_tau2      <- "nu2" %in% nm
   has_sigma2_me <- object$family == "gaussian" && "sigma2_me" %in% nm
-  re_par_names  <- if (n_re > 0) paste0("sigma2_re_", re_names) else NULL
+  re_par_names  <- if (n_re > 0) paste0("sigma2_re.", re_names) else NULL
 
   ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add. This is
   ## the one linear reparametrisation of the working-scale parameters that
@@ -593,19 +594,20 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   covariance_new <- solve(-H_new)
   se_par         <- sqrt(diag(covariance_new))
 
-  non_beta <- setdiff(nm, beta_names)
+  non_beta <- setdiff(nm, beta_flat_names)
   estimate[non_beta] <- exp(estimate[non_beta])
 
-  se_beta <- se_par[beta_names]
-  zval <- estimate[beta_names] / se_beta
+  se_beta <- se_par[beta_flat_names]
+  zval <- estimate[beta_flat_names] / se_beta
   res$reg_coef <- cbind(
-    Estimate      = estimate[beta_names],
-    "Lower limit" = estimate[beta_names] - se_beta * z_crit,
-    "Upper limit" = estimate[beta_names] + se_beta * z_crit,
+    Estimate      = estimate[beta_flat_names],
+    "Lower limit" = estimate[beta_flat_names] - se_beta * z_crit,
+    "Upper limit" = estimate[beta_flat_names] + se_beta * z_crit,
     StdErr        = se_beta,
     z.value       = zval,
     p.value       = 2 * pnorm(-abs(zval))
   )
+  rownames(res$reg_coef) <- beta_names
 
   if (object$family == "gaussian") {
     if (has_sigma2_me) {
@@ -652,7 +654,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   res$cov_offset_used <- !(is.null(object$cov_offset) ||
                              all(object$cov_offset == 0))
   if (object$family == "gaussian") {
-    res$aic <- 2 * length(object$estimate) - 2 * res$log_lik
+    res$aic <- 2 * length(unlist(object$estimate)) - 2 * res$log_lik
   }
 
   res$call               <- object$call %||% NULL
