@@ -103,7 +103,7 @@ grid_pred <- create_grid(hull, 20)
 prediction_setup <- setup_prediction(
   fit,
   grid_pred = grid_pred,
-  predictors = data.frame(y = rnorm(length(grid_pred)))
+  predictors = data.frame(y = rnorm(nrow(grid_pred)))
 )
 
 }

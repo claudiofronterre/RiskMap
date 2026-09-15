@@ -27,20 +27,20 @@ test_that("predict_grid_target produces expected output when grid is provided", 
 
   gaussian_grid <- setup_prediction(gaussian_model,
                                   grid_pred = grid,
-                                  predictors = data.frame(cov = rnorm(length(grid))),
+                                  predictors = data.frame(cov = rnorm(nrow(grid))),
                                   re_predictors = data.frame(i = 1:5),
                                   type = "joint")
 
   binomial_grid <- setup_prediction(binomial_model,
                                   grid_pred = grid,
-                                  predictors = data.frame(cov = rnorm(length(grid))),
+                                  predictors = data.frame(cov = rnorm(nrow(grid))),
                                   re_predictors = data.frame(i = 1:5),
                                   control_sim = control_mcmc,
                                   type = "joint")
 
   poisson_grid <- setup_prediction(poisson_model,
                                  grid_pred = grid,
-                                 predictors = data.frame(cov = rnorm(length(grid))),
+                                 predictors = data.frame(cov = rnorm(nrow(grid))),
                                  re_predictors = data.frame(i = 1:5),
                                  control_sim = control_mcmc,
                                  type = "joint")
@@ -63,21 +63,21 @@ test_that("predict_grid_target produces expected output when in list mode", {
 
   gaussian_grid <- setup_prediction(gaussian_model,
                                   grid_pred = list(grid, grid),
-                                  predictors = list(data.frame(cov = rnorm(length(grid))),
-                                                    data.frame(cov = rnorm(length(grid)))),
+                                  predictors = list(data.frame(cov = rnorm(nrow(grid))),
+                                                    data.frame(cov = rnorm(nrow(grid)))),
                                   type = "joint")
 
   binomial_grid <- setup_prediction(binomial_model,
                                   grid_pred = list(grid, grid),
-                                  predictors = list(data.frame(cov = rnorm(length(grid))),
-                                                    data.frame(cov = rnorm(length(grid)))),
+                                  predictors = list(data.frame(cov = rnorm(nrow(grid))),
+                                                    data.frame(cov = rnorm(nrow(grid)))),
                                   control_sim = control_mcmc,
                                   type = "joint")
 
   poisson_grid <- setup_prediction(poisson_model,
                                  grid_pred = list(grid, grid),
-                                 predictors = list(data.frame(cov = rnorm(length(grid))),
-                                                   data.frame(cov = rnorm(length(grid)))),
+                                 predictors = list(data.frame(cov = rnorm(nrow(grid))),
+                                                   data.frame(cov = rnorm(nrow(grid)))),
                                  control_sim = control_mcmc,
                                  type = "joint")
 

@@ -41,7 +41,7 @@ test_that("setup_prediction produces errors as expected", {
   converted_prediction <- setup_prediction(
     gaussian_model,
     grid_pred = grid,
-    predictors = data.frame(cov = rep(0, length(grid))),
+    predictors = data.frame(cov = rep(0, nrow(grid))),
     type = "joint",
     messages = FALSE
   )
@@ -66,14 +66,14 @@ test_that("setup_prediction produces errors as expected", {
   expect_error(
     setup_prediction(gaussian_offset_model,
                    grid_pred = grid,
-                   predictors = data.frame(not_cov = rnorm(length(grid)))),
+                   predictors = data.frame(not_cov = rnorm(nrow(grid)))),
     "'pred_cov_offset' must be specified at each prediction location"
   )
 
   expect_error(
     setup_prediction(gaussian_offset_model,
                    grid_pred = grid,
-                   predictors = data.frame(not_cov = rnorm(length(grid))),
+                   predictors = data.frame(not_cov = rnorm(nrow(grid))),
                    pred_cov_offset = "not n"),
     "'pred_cov_offset' must be a numeric vector"
   )
@@ -81,17 +81,17 @@ test_that("setup_prediction produces errors as expected", {
   expect_error(
     setup_prediction(gaussian_offset_model,
                    grid_pred = grid,
-                   predictors = data.frame(not_cov = rnorm(length(grid))),
-                   pred_cov_offset = rnorm(length(grid) - 1)),
+                   predictors = data.frame(not_cov = rnorm(nrow(grid))),
+                   pred_cov_offset = rnorm(nrow(grid) - 1)),
     "The length of 'pred_cov_offset' does"
   )
 
   expect_error(
     setup_prediction(gaussian_offset_model,
                    grid_pred = list(grid, grid),
-                   predictors = list(data.frame(cov = rnorm(length(grid))),
-                                     data.frame(cov = rnorm(length(grid)))),
-                   pred_cov_offset = rnorm(length(grid) - 1),
+                   predictors = list(data.frame(cov = rnorm(nrow(grid))),
+                                     data.frame(cov = rnorm(nrow(grid)))),
+                   pred_cov_offset = rnorm(nrow(grid) - 1),
                    type = "joint"),
     "Predictions including covariate offsets"
   )
@@ -99,7 +99,7 @@ test_that("setup_prediction produces errors as expected", {
   expect_error(
     setup_prediction(gaussian_model,
                    grid_pred = grid,
-                   predictors = data.frame(not_cov = rnorm(length(grid))),
+                   predictors = data.frame(not_cov = rnorm(nrow(grid))),
                    re_predictors = 1),
     "Random effect predictions require 'type' to be set to 'joint'"
   )
@@ -120,22 +120,22 @@ test_that("setup_prediction produces errors as expected", {
   expect_error(
     setup_prediction(gaussian_model,
                    grid,
-                   predictors = data.frame(cov = rnorm(length(grid) - 1))),
+                   predictors = data.frame(cov = rnorm(nrow(grid) - 1))),
     "The number of rows in 'predictors' does not match the number of locations in 'grid_pred'"
   )
 
   expect_error(
     setup_prediction(gaussian_model,
                    grid,
-                   predictors = data.frame(not_cov = rnorm(length(grid)))),
+                   predictors = data.frame(not_cov = rnorm(nrow(grid)))),
     "The column names in 'predictors' do not match the variables in the model formula"
   )
 
   expect_error(
     setup_prediction(gaussian_model,
                    grid_pred = list(grid, grid),
-                   predictors = list(data.frame(cov = rnorm(length(grid))),
-                                     data.frame(cov = rnorm(length(grid)))),
+                   predictors = list(data.frame(cov = rnorm(nrow(grid))),
+                                     data.frame(cov = rnorm(nrow(grid)))),
                    re_predictors = list(data.frame(i = 1:5),
                                         data.frame(i = 1:5)),
                    type = "joint"),
@@ -146,8 +146,8 @@ test_that("setup_prediction produces errors as expected", {
     setup_prediction(gaussian_model,
                    list(grid, grid),
                    type = "joint",
-                   predictors = list(data.frame(not_cov = rnorm(length(grid))),
-                                     data.frame(not_cov = rnorm(length(grid))))
+                   predictors = list(data.frame(not_cov = rnorm(nrow(grid))),
+                                     data.frame(not_cov = rnorm(nrow(grid))))
                    ),
     "The column names in 'predictors' do not match the variables in the model formula"
   )
@@ -161,7 +161,7 @@ test_that("setup_prediction generates warnings", {
   expect_error(
     setup_prediction(gaussian_model,
                    grid_pred = grid,
-                   predictors = data.frame(not_cov = rnorm(length(grid))),
+                   predictors = data.frame(not_cov = rnorm(nrow(grid))),
                    pred_cov_offset = 1:n),
     "You have set 'pred_cov_offset' but 'object'"
   )
@@ -195,35 +195,35 @@ test_that("setup_prediction produces expected output", {
 
   result <- setup_prediction(gaussian_model,
                            grid_pred = grid,
-                           predictors = data.frame(cov = rnorm(length(grid))))
+                           predictors = data.frame(cov = rnorm(nrow(grid))))
   expect_setequal(names(result), expected_output)
 
   result <- setup_prediction(gaussian_model,
                            grid_pred = grid,
-                           predictors = data.frame(cov = rnorm(length(grid))),
+                           predictors = data.frame(cov = rnorm(nrow(grid))),
                            re_predictors = data.frame(i = 1:5),
                            type = "joint")
   expect_setequal(names(result), expected_output)
 
   result <- setup_prediction(gaussian_model,
                            grid_pred = list(grid, grid),
-                           predictors = list(data.frame(cov = rnorm(length(grid))),
-                                             data.frame(cov = rnorm(length(grid)))),
+                           predictors = list(data.frame(cov = rnorm(nrow(grid))),
+                                             data.frame(cov = rnorm(nrow(grid)))),
                            type = "joint")
   expect_setequal(names(result), expected_output)
 
   result <- setup_prediction(binomial_model,
                            grid_pred = list(grid, grid),
-                           predictors = list(data.frame(cov = rnorm(length(grid))),
-                                             data.frame(cov = rnorm(length(grid)))),
+                           predictors = list(data.frame(cov = rnorm(nrow(grid))),
+                                             data.frame(cov = rnorm(nrow(grid)))),
                            control_sim = control_mcmc,
                            type = "joint")
   expect_setequal(names(result), expected_output)
 
   result <- setup_prediction(poisson_model,
                            grid_pred = list(grid, grid),
-                           predictors = list(data.frame(cov = rnorm(length(grid))),
-                                             data.frame(cov = rnorm(length(grid)))),
+                           predictors = list(data.frame(cov = rnorm(nrow(grid))),
+                                             data.frame(cov = rnorm(nrow(grid)))),
                            control_sim = control_mcmc,
                            type = "joint")
   expect_setequal(names(result), expected_output)
