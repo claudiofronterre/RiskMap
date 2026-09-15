@@ -37,4 +37,7 @@ If `data` are in longitude/latitude and `model_crs` is not supplied, the coordin
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - The `nugget` parameter in `gp()` is now `FALSE` by default.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian outputs reproducible.
+- `"user"` has been added as an option to `method` the parameter of `assess_prediction()` 
+replacing the previous behaviour where providing the `user_split` parameter overrode any provided `method`
+- In `assess_prediction()`, `n_size` has been renamed to `size` (for consistency with `iter` and `fold`) and `which_metric` has been renamed to `metrics`. Parameters have also been reordered: mandatory arguments first, then those required per `method` (in the order `"cluster"`, `"regularized"`, `"user"`), then the remaining optional arguments.
 - Test coverage has been increased from 0 to 70 %.
