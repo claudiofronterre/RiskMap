@@ -15,10 +15,10 @@ test_that("summarise_distance produces errors", {
     )
   })
 
-  test_that("scale_to_km must be logical", {
+  test_that("coordinate_units must be 'km' or 'm'", {
     expect_error(
-      summarise_distance(gaussian_data, scale_to_km ="a"),
-      "'scale_to_km' must be either TRUE or FALSE"
+      summarise_distance(gaussian_data, coordinate_units = "a"),
+      "'coordinate_units' must be either 'km' or 'm'"
     )
   })
 })
@@ -33,7 +33,7 @@ test_that("summarise_distance produces correct output", {
   square_sf <- sf::st_as_sf(square, coords = c("x", "y"), crs = 32630)
 
   # unconverted
-  result <- summarise_distance(square_sf, convert_to_utm = FALSE, scale_to_km = FALSE)
+  result <- summarise_distance(square_sf, convert_to_utm = FALSE, coordinate_units = "m")
   expect_length(result, 4)
   expect_setequal(names(result), c("min", "max", "mean", "median"))
   expect_equal(result[["min"]], 1)
@@ -42,14 +42,14 @@ test_that("summarise_distance produces correct output", {
   expect_equal(result[["median"]], 1)
 
   # reprojected (tolerance to account for round trip)
-  result <- summarise_distance(square_sf, convert_to_utm = TRUE, scale_to_km = FALSE)
+  result <- summarise_distance(square_sf, convert_to_utm = TRUE, coordinate_units = "m")
   expect_equal(result[["min"]], 1, tolerance = 0.1)
   expect_equal(result[["max"]], sqrt(2), tolerance = 0.1)
   expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6, tolerance = 0.1)
   expect_equal(result[["median"]], 1, tolerance = 0.1)
 
-  # scaled
-  result <- summarise_distance(square_sf, convert_to_utm = FALSE, scale_to_km = TRUE)
+  # scaled (default coordinate_units = "km")
+  result <- summarise_distance(square_sf, convert_to_utm = FALSE)
   expect_equal(result[["min"]], 0.001)
   expect_equal(result[["max"]], sqrt(2) / 1000)
   expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6000)
@@ -259,14 +259,14 @@ test_that("variogram produces errors", {
     )
   })
 
-  test_that("convert_to_utm and scale_to_km must be logical", {
+  test_that("convert_to_utm must be logical and coordinate_units must be 'km' or 'm'", {
     expect_error(
       variogram(gaussian_data, variable = "y", convert_to_utm = "a"),
       "'convert_to_utm' must be either TRUE or FALSE")
 
     expect_error(
-      variogram(gaussian_data, variable = "y", scale_to_km = "a"),
-      "'scale_to_km' must be either TRUE or FALSE")
+      variogram(gaussian_data, variable = "y", coordinate_units = "a"),
+      "'coordinate_units' must be either 'km' or 'm'")
   })
 
 })
@@ -274,7 +274,7 @@ test_that("variogram produces errors", {
 
 test_that("variogram produces expected output", {
 
-  expected_output <- c("variogram", "scale_to_km", "n_permutations", "breaks")
+  expected_output <- c("variogram", "coordinate_units", "n_permutations", "breaks")
   expected_columns <- c("mid_points", "obs_vari", "n_obs", "lower_bound", "upper_bound")
   expected_columns_zero <- c("mid_points", "obs_vari", "n_obs")
 
@@ -284,7 +284,7 @@ test_that("variogram produces expected output", {
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
   expect_equal(nrow(result$variogram), 10)
-  expect_false(result$scale_to_km)
+  expect_equal(result$coordinate_units, "m")
   expect_equal(result$n_permutations, 100)
   expect_length(result$breaks, 10 + 1)
   expect_equal(mean(result$variogram$mid_points), mean(result$breaks))
@@ -294,7 +294,7 @@ test_that("variogram produces expected output", {
   expect_s3_class(result, "RiskMap_variogram")
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
-  expect_false(result$scale_to_km)
+  expect_equal(result$coordinate_units, "m")
   expect_equal(result$n_permutations, 100)
   expect_equal(nrow(result$variogram), length(breaks) - 1)
   expect_equal(result$breaks, breaks)
@@ -305,7 +305,7 @@ test_that("variogram produces expected output", {
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns_zero)
   expect_equal(nrow(result$variogram), 10)
-  expect_false(result$scale_to_km)
+  expect_equal(result$coordinate_units, "m")
   expect_equal(result$n_permutations, 0)
   expect_length(result$breaks, 10 + 1)
   expect_equal(mean(result$variogram$mid_points), mean(result$breaks))

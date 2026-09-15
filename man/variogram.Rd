@@ -12,7 +12,7 @@ variogram(
   max_dist = NULL,
   n_permutations = 1000,
   convert_to_utm = TRUE,
-  scale_to_km = FALSE
+  coordinate_units = c("m", "km")
 )
 }
 \arguments{
@@ -42,9 +42,9 @@ the coordinate reference system of the data must be used without any conversion 
 By default \code{convert_to_utm = TRUE}. Note: if \code{convert_to_utm = TRUE} the conversion to UTM is performed using
 the epsg provided by \code{\link{propose_utm}}.}
 
-\item{scale_to_km}{a logical value, indicating if the distances used in the variogram must be scaled
-to kilometers (\code{scale_to_km = TRUE}) or left in meters (\code{scale_to_km = FALSE}).
-By default \code{scale_to_km = FALSE}}
+\item{coordinate_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether
+the distances used in the variogram are expressed in kilometers or meters.
+By default \code{coordinate_units = "m"}}
 }
 \value{
 an object of class \code{RiskMap_variogram} which is a list containing the following components:
@@ -59,7 +59,7 @@ If \code{n_permutations > 0}, the data-frame also contains the following columns
 \item{lower_bound}{the lower bound of the 95\% confidence interval}
 \item{upper_bound}{the upper bound of the 95\% confidence interval}
 }}
-\item{scale_to_km}{the value passed to \code{scale_to_km}}
+\item{coordinate_units}{the value passed to \code{coordinate_units}}
 \item{n_permutations}{the number of permutations}
 \item{breaks}{the calculated breaks}
 }
