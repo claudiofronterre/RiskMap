@@ -24,7 +24,7 @@ glgpm(
 \arguments{
 \item{formula}{A formula object specifying the model to be fitted.
 The formula should include fixed effects and spatial effects specified using
-\verb{[gp()]} and optionally, random effects specified using \verb{[re()]}.}
+\code{\link[=gp]{gp()}} and optionally, random effects specified using \code{\link[=re]{re()}}.}
 
 \item{data}{An sf object containing the variables in the model.}
 
@@ -42,7 +42,7 @@ If not provided, defaults to \code{1} for binomial models.}
 \item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
 If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
 If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
-reprojected to an appropriate UTM zone (see \verb{[propose_utm()]}) and a message reports the conversion used.
+reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
 If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
 
 \item{coordinate_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
@@ -50,7 +50,7 @@ internally for distances between locations (and so for reporting spatial paramet
 Defaults to \code{"km"}.}
 
 \item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
-Must be an object of class \code{RiskMap_control_mcmc} as returned by \verb{[set_control_mcmc()]}.}
+Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.}
 
 \item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
 
@@ -61,7 +61,7 @@ Defaults to \code{FALSE}.}
 
 \item{fix_var_me}{Optional fixed value for the measurement error variance when fitting a Gaussian model.
 When not provided, the value will be estimated, but cannot be if each location only has one sample and
-the \code{nugget} term in \verb{[gp()]} is also set to \code{TRUE}.}
+the \code{nugget} term in \code{\link[=gp]{gp()}} is also set to \code{TRUE}.}
 
 \item{start_pars}{Optional list of starting values for model parameters:
 \describe{
@@ -92,6 +92,7 @@ An object of class \code{RiskMap} containing the fitted model and relevant infor
 \item{family}{Response family}
 \item{coordinate_units}{Units (\code{"km"} or \code{"m"}) used for distances between locations}
 \item{data}{The \code{sf} data used for model fitting, in the CRS used internally}
+\item{input_crs}{The CRS of the input data}
 \item{kappa}{Spatial correlation parameter}
 \item{units_m}{Distribution offset if \code{family} is \code{binomial} or \code{poisson}}
 \item{cov_offset}{Covariate offset}
@@ -115,7 +116,7 @@ unstructured random effects, providing a comprehensive framework to analyze spat
 data across different response distributions.
 
 Additionally, the function allows for the inclusion of unstructured random effects, specified through
-the \verb{[re()]} term in the model formula. These random effects can capture unexplained variability
+the \code{\link[=re]{re()}} term in the model formula. These random effects can capture unexplained variability
 at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
 in capturing complex spatial patterns.
 
@@ -128,7 +129,7 @@ The \code{coordinate_units} argument controls whether distances between location
 as \code{phi}) are expressed in kilometers (\code{"km"}, the default) or meters (\code{"m"}).
 
 The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.
-This argument must be an object returned by \verb{[set_control_mcmc()]}.
+This argument must be an object returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.
 
 The \code{start_pars} argument allows for specifying starting values for the model parameters.
 If not provided, default starting values are used.

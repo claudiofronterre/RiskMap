@@ -176,7 +176,7 @@ test_that("glgpm produces errors", {
 expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
                      "fix_var_me", "formula", "family", "coordinate_units",
-                     "data", "kappa", "units_m", "cov_offset", "call",
+                     "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function")
 
 test_that("glgpm produces expected output for gaussian models", {
@@ -273,29 +273,19 @@ test_that("glgpm correctly reprojects to new CRS", {
   suggested_crs <- propose_utm(latlon)
   sf_reproj <- st_transform(latlon, suggested_crs)
   scaled_coords <- st_coordinates(sf_reproj) / 1000
-  fit <- glgpm(y ~ cov + gp(),
-               data = latlon,
-               family = "gaussian",
-               coordinate_units = "km",
-               messages = FALSE,
-               model_crs = suggested_crs)
-
-  expect_equal(fit$coords, scaled_coords)
-  expect_equal(sf::st_crs(fit$data), sf::st_crs(suggested_crs))
-})
-
-test_that("glgpm automatically reprojects longitude/latitude data", {
-
-  latlon <- st_transform(gaussian_data, 4326)
-  suggested_crs <- propose_utm(latlon)
 
   expect_message(
-    fit <- glgpm(y ~ cov + gp(), data = latlon, family = "gaussian"),
+    fit <- glgpm(y ~ cov + gp(),
+                 data = latlon,
+                 family = "gaussian",
+                 coordinate_units = "km",
+                 messages = FALSE),
     "automatically reprojecting to EPSG"
   )
 
-  expect_equal(sf::st_crs(fit$data), sf::st_crs(suggested_crs))
-  expect_false(sf::st_is_longlat(fit$data))
+  expect_equal(fit$input_crs, st_crs(latlon))
+  expect_equal(fit$coords, scaled_coords)
+  expect_equal(st_crs(fit$data), st_crs(suggested_crs))
 })
 
 test_that("plot_mcmc produces errors as expected", {

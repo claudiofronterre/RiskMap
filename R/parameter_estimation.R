@@ -4,7 +4,7 @@
 ##' Supports Gaussian, binomial, and Poisson response families.
 ##' @param formula A formula object specifying the model to be fitted.
 ##' The formula should include fixed effects and spatial effects specified using
-##' `[gp()]` and optionally, random effects specified using `[re()]`.
+##' [gp()] and optionally, random effects specified using [re()].
 ##' @param data An sf object containing the variables in the model.
 ##' @param family A character string specifying the distribution of the response variable.
 ##' Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
@@ -17,20 +17,20 @@
 ##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for model fitting.
 ##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
 ##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
-##' reprojected to an appropriate UTM zone (see `[propose_utm()]`) and a message reports the conversion used.
+##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
 ##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
 ##' @param coordinate_units Character string, either `"km"` or `"m"`, indicating the units used
 ##' internally for distances between locations (and so for reporting spatial parameters such as `phi`).
 ##' Defaults to `"km"`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
-##' Must be an object of class `RiskMap_control_mcmc` as returned by `[set_control_mcmc()]`.
+##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 ##' Defaults to `FALSE`.
 ##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
 ##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
 ##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
-##' the `nugget` term in `[gp()]` is also set to `TRUE`.
+##' the `nugget` term in [gp()] is also set to `TRUE`.
 ##' @param start_pars Optional list of starting values for model parameters:
 ##' \describe{
 ##'   \item{beta}{regression coefficients}
@@ -52,7 +52,7 @@
 ##' data across different response distributions.
 ##'
 ##' Additionally, the function allows for the inclusion of unstructured random effects, specified through
-##' the `[re()]` term in the model formula. These random effects can capture unexplained variability
+##' the [re()] term in the model formula. These random effects can capture unexplained variability
 ##' at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
 ##' in capturing complex spatial patterns.
 ##'
@@ -65,7 +65,7 @@
 ##' as `phi`) are expressed in kilometers (`"km"`, the default) or meters (`"m"`).
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
-##' This argument must be an object returned by `[set_control_mcmc()]`.
+##' This argument must be an object returned by [set_control_mcmc()].
 ##'
 ##' The `start_pars` argument allows for specifying starting values for the model parameters.
 ##' If not provided, default starting values are used.
@@ -88,6 +88,7 @@
 ##' \item{family}{Response family}
 ##' \item{coordinate_units}{Units (`"km"` or `"m"`) used for distances between locations}
 ##' \item{data}{The `sf` data used for model fitting, in the CRS used internally}
+##' \item{input_crs}{The CRS of the input data}
 ##' \item{kappa}{Spatial correlation parameter}
 ##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
 ##' \item{cov_offset}{Covariate offset}
@@ -241,7 +242,8 @@ glgpm <- function(formula,
   re_unique_f <- random_effects$re_unique_f
 
 
-  # Extract coordinates
+  # transform crs and extract coordinates
+  input_crs <- st_crs(data)
   if(!is.null(model_crs)) {
     check_crs(model_crs)
     data <- st_transform(data, crs = model_crs)
@@ -251,11 +253,9 @@ glgpm <- function(formula,
   } else if(sf::st_is_longlat(data)) {
     auto_crs <- propose_utm(data)
     data <- st_transform(data, crs = auto_crs)
-    if(messages) {
-      message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
-              "automatically reprojecting to EPSG:", auto_crs,
-              " for model fitting. Set 'model_crs' to override.")
-    }
+    message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
+            "automatically reprojecting to EPSG:", auto_crs,
+            " for model fitting. Set 'model_crs' to override.")
   }
   if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
@@ -413,6 +413,7 @@ glgpm <- function(formula,
   res$family <- family
   res$coordinate_units <- coordinate_units
   res$data <- data
+  res$input_crs <- input_crs
   res$kappa <- kappa
   if(not_gaussian) res$units_m <- units_m
   res$cov_offset <- cov_offset
@@ -1312,7 +1313,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for simulation, ignored if `model_fit` is provided.
 ##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
 ##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
-##' reprojected to an appropriate UTM zone (see `[propose_utm()]`) and a message reports the conversion used.
+##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
 ##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
 ##' @param coordinate_units Character string, either `"km"` or `"m"`, indicating the units used
 ##' internally for distances between locations. Defaults to `"km"`. Ignored if `model_fit` is provided.

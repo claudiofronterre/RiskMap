@@ -38,7 +38,7 @@ For the \code{"poisson"} family, the argument is optional and is used a multipli
 \item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for simulation, ignored if \code{model_fit} is provided.
 If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
 If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
-reprojected to an appropriate UTM zone (see \verb{[propose_utm()]}) and a message reports the conversion used.
+reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
 If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
 
 \item{coordinate_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
