@@ -67,7 +67,6 @@ poisson_model <- glgpm(y ~ cov + gp() + re(i),
                        messages = FALSE)
 
 hull <- create_convex_hull(gaussian_data)
-grid <- create_grid(hull, 3, 32637)
+grid <- create_grid(hull, 3)
 squares <- st_make_grid(hull, n = c(2, 2))
 areal <- st_sf(geometry = squares)
-

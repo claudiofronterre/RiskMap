@@ -1236,14 +1236,14 @@ check_data <- function(data, geometry = "point", type = "sf"){
   invisible(TRUE)
 }
 
-#' Convert spatial coordinates to requested distance units
+#' Convert between CRS and requested distance units
 #'
 #' @param data An `sf` or `sfc` object with a projected CRS.
 #' @param distance_units The requested coordinate units, either `"m"` or `"km"`.
-#' @return A numeric coordinate matrix expressed in `distance_units`.
+#' @return The numeric factor converting one CRS unit to `distance_units`.
 #' @importFrom units set_units
 #' @noRd
-coordinates_in_units <- function(data, distance_units) {
+crs_to_distance_factor <- function(data, distance_units) {
   crs_unit <- st_crs(data)$ud_unit
 
   if (is.null(crs_unit)) {
@@ -1254,7 +1254,7 @@ coordinates_in_units <- function(data, distance_units) {
     )
   }
 
-  conversion_factor <- tryCatch(
+  tryCatch(
     as.numeric(
       set_units(crs_unit,
                 distance_units,
@@ -1269,8 +1269,15 @@ coordinates_in_units <- function(data, distance_units) {
       )
     }
   )
+}
 
-  st_coordinates(data) * conversion_factor
+#' Convert spatial coordinates to requested distance units
+#'
+#' @inheritParams crs_to_distance_factor
+#' @return A numeric coordinate matrix expressed in `distance_units`.
+#' @noRd
+coordinates_in_units <- function(data, distance_units) {
+  st_coordinates(data) * crs_to_distance_factor(data, distance_units)
 }
 
 #' @title check_positive_integer
