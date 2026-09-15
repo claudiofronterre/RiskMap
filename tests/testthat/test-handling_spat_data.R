@@ -11,7 +11,6 @@ test_that("create_grid produces errors", {
 
   expect_error(create_grid("gaussian_data", 1), "'shp' must be of class 'sf'")
   expect_error(create_grid(gaussian_data, 1), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
-  expect_error(create_grid(sf_polygon, 1), "longitude and latitude")
   expect_error(create_grid(sf_polygon, "not numeric"), "The value for 'spacing' must be a single positive number")
   expect_error(create_grid(sf_polygon, 1, distance_units = "feet"),
                "'distance_units' must be either 'km' or 'm'")
@@ -50,6 +49,17 @@ test_that("create_grid functions correctly", {
   result <- create_grid(sf_combined, 10)
   expect_equal(nrow(result), 2)
 
+})
+
+test_that("create_grid converts longitude/latitude data automatically, like glgpm()", {
+  expect_message(
+    result <- create_grid(sf_polygon, 1),
+    "longitude/latitude"
+  )
+  expect_s3_class(result, "sf")
+  expect_false(st_is_longlat(result))
+  expect_equal(as.character(unique(st_geometry_type(result))), "POINT")
+  expect_gt(nrow(result), 0)
 })
 
 test_that("create_grid converts spacing to the projected CRS units", {

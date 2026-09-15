@@ -20,7 +20,7 @@ An 'sf' object containing the generated grid points within the shapefile.
 Generates regularly spaced point centres within a polygon boundary.
 }
 \details{
-This function creates point centres within the boundaries of \code{shp}; it does not create polygon cells or define an areal prediction target. The CRS is inherited from \code{shp}, which must use a projected CRS with recognised linear units.
+This function creates point centres within the boundaries of \code{shp}; it does not create polygon cells or define an areal prediction target. The CRS is inherited from \code{shp}. If \code{shp} is in longitude/latitude, it is automatically reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used; transform \code{shp} to a projected CRS yourself first to use a different one.
 }
 \examples{
 library(sf)
@@ -38,5 +38,5 @@ plot(grid, add = TRUE, col = 'red')
 
 }
 \seealso{
-\code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersects}}, \code{\link[sf]{st_transform}}, \code{\link[sf]{st_crs}}
+\code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersects}}, \code{\link[sf]{st_transform}}, \code{\link[sf]{st_crs}}, \code{\link{propose_utm}}
 }

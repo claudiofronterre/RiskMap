@@ -4,11 +4,7 @@
 \alias{summarise_distance}
 \title{Summaries of the distances}
 \usage{
-summarise_distance(
-  data,
-  convert_to_utm = TRUE,
-  distance_units = c("km", "m")
-)
+summarise_distance(data, convert_to_utm = TRUE, distance_units = c("km", "m"))
 }
 \arguments{
 \item{data}{an object of class \code{sf} containing point geometries.}

@@ -8,7 +8,7 @@
 ##' @param distance_units Character string, either `"km"` or `"m"`, giving the units of `spacing`. Defaults to `"km"`.
 ##'
 ##' @details
-##' This function creates point centres within the boundaries of `shp`; it does not create polygon cells or define an areal prediction target. The CRS is inherited from `shp`, which must use a projected CRS with recognised linear units.
+##' This function creates point centres within the boundaries of `shp`; it does not create polygon cells or define an areal prediction target. The CRS is inherited from `shp`. If `shp` is in longitude/latitude, it is automatically reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used; transform `shp` to a projected CRS yourself first to use a different one.
 ##'
 ##' @return
 ##' An 'sf' object containing the generated grid points within the shapefile.
@@ -30,7 +30,7 @@
 ##' plot(grid, add = TRUE, col = 'red')
 ##'
 ##' @seealso
-##' \code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersects}}, \code{\link[sf]{st_transform}}, \code{\link[sf]{st_crs}}
+##' \code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersects}}, \code{\link[sf]{st_transform}}, \code{\link[sf]{st_crs}}, \code{\link{propose_utm}}
 ##'
 ##'
 create_grid <- function(shp,
@@ -45,11 +45,11 @@ create_grid <- function(shp,
   distance_units <- match.arg(distance_units)
 
   if (st_is_longlat(shp)) {
-    stop(
-      "The coordinates of 'shp' are in longitude and latitude; ",
-      "transform 'shp' to a suitable projected CRS before creating the grid.",
-      call. = FALSE
-    )
+    auto_crs <- propose_utm(shp)
+    shp <- st_transform(shp, crs = auto_crs)
+    message("'shp' is in longitude/latitude; automatically reprojecting to EPSG:",
+            auto_crs, " to create the grid. Transform 'shp' to a projected CRS ",
+            "yourself to override.")
   }
 
   cellsize <- spacing / crs_to_distance_factor(shp, distance_units)
