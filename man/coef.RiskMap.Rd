@@ -18,7 +18,7 @@ A list containing the maximum likelihood estimates. For standard models:
 \item{phi}{The estimate for the spatial range parameter \eqn{\phi}.}
 \item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
 \item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
-\item{sigma2_re}{A vector of variance estimates for the random effects, if applicable.}
+\item{sigma2_re}{A named vector of variance estimates for the random effects, if applicable.}
 \item{beta}{Coefficient estimates for log mean worm burden.}
 \item{k}{Negative binomial overdispersion parameter.}
 \item{rho}{Egg detection rate (fecundity).}

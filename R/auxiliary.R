@@ -473,7 +473,7 @@ check_formula <- function(formula, data){
 ##' \item{phi}{The estimate for the spatial range parameter \eqn{\phi}.}
 ##' \item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
 ##' \item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
-##' \item{sigma2_re}{A vector of variance estimates for the random effects, if applicable.}
+##' \item{sigma2_re}{A named vector of variance estimates for the random effects, if applicable.}
 ##' \item{beta}{Coefficient estimates for log mean worm burden.}
 ##' \item{k}{Negative binomial overdispersion parameter.}
 ##' \item{rho}{Egg detection rate (fecundity).}
@@ -485,74 +485,26 @@ check_formula <- function(formula, data){
 ##'
 coef.RiskMap <- function(object, ...) {
 
-  n_re <- length(object$re)
-  if (n_re > 0) re_names <- names(object$re)
+  estimate <- object$estimate
 
-  p        <- ncol(as.matrix(object$D))
-  ind_beta <- 1:p
+  beta_names <- colnames(as.matrix(object$D))
 
-  if (p == 1) {
-    object$D <- as.matrix(object$D)
-    names(object$estimate)[ind_beta] <- "Intercept"
-  } else {
-    names(object$estimate)[ind_beta] <- colnames(object$D)
-  }
-  ind_sigma2 <- p + 1
-  names(object$estimate)[ind_sigma2] <- "sigma2"
-  ind_phi <- p + 2
-  names(object$estimate)[ind_phi] <- "phi"
+  res      <- list()
+  res$beta <- estimate$beta
+  names(res$beta) <- beta_names
 
-  if (isTRUE(object$fix_tau2)) {
-    ind_tau2 <- p + 3
-    names(object$estimate)[ind_tau2] <- "tau2"
-    object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
-    if (object$family == "gaussian") {
-      if (is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p + 4
-        if (n_re > 0) ind_sigma2_re <- (p + 5):(p + 4 + n_re)
-      } else {
-        ind_sigma2_me <- NULL
-        if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-      }
-    } else {
-      ind_sigma2_me <- NULL
-      if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-    }
-  } else {
-    ind_tau2 <- NULL
-    if (object$family == "gaussian") {
-      if (is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p + 3
-        names(object$estimate)[ind_sigma2_me] <- "sigma2_me"
-        if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-      } else {
-        ind_sigma2_me <- NULL
-        if (n_re > 0) ind_sigma2_re <- (p + 3):(p + 2 + n_re)
-      }
-    } else {
-      if (n_re > 0) ind_sigma2_re <- (p + 3):(p + 2 + n_re)
-    }
-  }
+  res$sigma2 <- exp(estimate$sigma2)
+  res$phi    <- exp(estimate$phi)
 
-  ind_sp <- c(ind_sigma2, ind_phi, ind_tau2)
-  object$estimate[ind_sp] <- exp(object$estimate[ind_sp])
+  if (object$family == "gaussian" && !is.null(estimate$sigma2_me))
+    res$sigma2_me <- exp(estimate$sigma2_me)
 
-  if (n_re > 0) {
-    for (i in seq_len(n_re))
-      names(object$estimate)[ind_sigma2_re[i]] <-
-        paste0(re_names[i], "_sigma2_re")
-  }
+  if (!is.null(estimate$nu2))
+    ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add
+    res$tau2 <- exp(estimate$nu2 + estimate$sigma2)
 
-  res        <- list()
-  res$beta   <- object$estimate[ind_beta]
-  res$sigma2 <- as.numeric(object$estimate[ind_sigma2])
-  res$phi    <- as.numeric(object$estimate[ind_phi])
-  if (object$family == "gaussian" && !is.null(ind_sigma2_me))
-    res$sigma2_me <- exp(as.numeric(object$estimate[ind_sigma2_me]))
-  if (!is.null(ind_tau2))
-    res$tau2 <- object$estimate[ind_tau2]
-  if (n_re > 0)
-    res$sigma2_re <- exp(as.numeric(object$estimate[ind_sigma2_re]))
+  if (!is.null(estimate$sigma2_re))
+    res$sigma2_re <- exp(estimate$sigma2_re)
 
   return(res)
 }
@@ -610,97 +562,94 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     }
   }
 
-  n_re <- length(object$re)
-  if (n_re > 0) re_names <- names(object$re)
+  n_re     <- length(object$re)
+  re_names <- if (n_re > 0) names(object$re) else NULL
 
-  p        <- ncol(object$D)
-  ind_beta <- seq_len(p)
+  beta_names <- colnames(as.matrix(object$D))
 
-  names(object$estimate)[ind_beta] <- colnames(object$D)
-  ind_sigma2 <- p + 1; names(object$estimate)[ind_sigma2] <- "Spatial process var."
-  ind_phi    <- p + 2; names(object$estimate)[ind_phi]    <-
-    paste0("Spatial corr. scale (", object$distance_units, ")")
+  ## `object$estimate` is a list (#92: keeps e.g. a "sigma2" covariate's name
+  ## from colliding with the spatial variance parameter's own name). The
+  ## delta-method covariance adjustment below needs a flat vector to line up
+  ## against `covariance` (one joint matrix over every parameter); `unlist()`
+  ## gives that, disambiguating the same way ("beta.sigma2" vs "sigma2").
+  estimate <- unlist(object$estimate)
+  nm       <- names(estimate)
 
-  if (isTRUE(object$fix_tau2)) {
-    ind_tau2 <- p + 3
-    names(object$estimate)[ind_tau2] <- "Variance of the nugget"
-    object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
-    if (object$family == "gaussian") {
-      ind_sigma2_me <- if (is.null(object$fix_var_me)) p + 4 else NULL
-      if (n_re > 0) ind_sigma2_re <- (p + 5):(p + 4 + n_re)
-    } else {
-      ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-    }
-  } else {
-    ind_tau2 <- NULL
-    if (object$family == "gaussian") {
-      if (is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p + 3
-        names(object$estimate)[ind_sigma2_me] <- "Measurement error var."
-      } else {
-        ind_sigma2_me <- NULL
-      }
-      if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-    } else {
-      ind_sigma2_re <- (p + 3):(p + 2 + n_re)
-    }
+  beta_flat_names <- paste0("beta.", beta_names)
+  has_tau2      <- "nu2" %in% nm
+  has_sigma2_me <- object$family == "gaussian" && "sigma2_me" %in% nm
+  re_par_names  <- if (n_re > 0) paste0("sigma2_re.", re_names) else NULL
+
+  ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add. This is
+  ## the one linear reparametrisation of the working-scale parameters that
+  ## isn't just an exp(); its covariance is obtained via the delta method
+  ## below (J), alongside the other, unchanged parameters.
+  J <- diag(length(estimate))
+  dimnames(J) <- list(nm, nm)
+  if (has_tau2) {
+    estimate["nu2"] <- estimate["nu2"] + estimate["sigma2"]
+    J["nu2", "sigma2"] <- 1
   }
 
-  ind_sp <- c(ind_sigma2, ind_phi, ind_tau2)
-
-  n_p <- length(object$estimate)
-  object$estimate[-c(ind_beta)] <- exp(object$estimate[-c(ind_beta)])
-
-  if (n_re > 0)
-    for (i in seq_len(n_re))
-      names(object$estimate)[ind_sigma2_re[i]] <-
-    paste0(re_names[i], " (random eff. var.)")
-
-  J <- diag(n_p)
-  if (length(ind_tau2) > 0) J[ind_tau2, ind_sigma2] <- 1
-  H_new          <- t(J) %*% solve(-object$covariance) %*% J
+  covariance <- object$covariance
+  H_new          <- t(J) %*% solve(-covariance) %*% J
   covariance_new <- solve(-H_new)
   se_par         <- sqrt(diag(covariance_new))
 
-  zval <- object$estimate[ind_beta] / se_par[ind_beta]
+  non_beta <- setdiff(nm, beta_flat_names)
+  estimate[non_beta] <- exp(estimate[non_beta])
+
+  se_beta <- se_par[beta_flat_names]
+  zval <- estimate[beta_flat_names] / se_beta
   res$reg_coef <- cbind(
-    Estimate      = object$estimate[ind_beta],
-    "Lower limit" = object$estimate[ind_beta] - se_par[ind_beta] * z_crit,
-    "Upper limit" = object$estimate[ind_beta] + se_par[ind_beta] * z_crit,
-    StdErr        = se_par[ind_beta],
+    Estimate      = estimate[beta_flat_names],
+    "Lower limit" = estimate[beta_flat_names] - se_beta * z_crit,
+    "Upper limit" = estimate[beta_flat_names] + se_beta * z_crit,
+    StdErr        = se_beta,
     z.value       = zval,
     p.value       = 2 * pnorm(-abs(zval))
   )
+  rownames(res$reg_coef) <- beta_names
 
   if (object$family == "gaussian") {
-    if (is.null(object$fix_var_me)) {
+    if (has_sigma2_me) {
+      est_me <- estimate["sigma2_me"]
+      se_me  <- se_par["sigma2_me"]
       res$me <- cbind(
-        Estimate      = object$estimate[ind_sigma2_me],
-        "Lower limit" = exp(log(object$estimate[ind_sigma2_me]) -
-                              z_crit * se_par[ind_sigma2_me]),
-        "Upper limit" = exp(log(object$estimate[ind_sigma2_me]) +
-                              z_crit * se_par[ind_sigma2_me])
+        Estimate      = est_me,
+        "Lower limit" = exp(log(est_me) - z_crit * se_me),
+        "Upper limit" = exp(log(est_me) + z_crit * se_me)
       )
+      rownames(res$me) <- "Measurement error var."
     } else {
       res$me <- object$fix_var_me
     }
   }
 
+  sp_names <- c("sigma2", "phi", if (has_tau2) "nu2")
+  est_sp <- estimate[sp_names]
+  se_sp  <- se_par[sp_names]
   res$sp <- cbind(
-    Estimate      = object$estimate[ind_sp],
-    "Lower limit" = exp(log(object$estimate[ind_sp]) - z_crit * se_par[ind_sp]),
-    "Upper limit" = exp(log(object$estimate[ind_sp]) + z_crit * se_par[ind_sp])
+    Estimate      = est_sp,
+    "Lower limit" = exp(log(est_sp) - z_crit * se_sp),
+    "Upper limit" = exp(log(est_sp) + z_crit * se_sp)
   )
+  rownames(res$sp) <- c("Spatial process var.",
+                        paste0("Spatial corr. scale (",
+                               object$distance_units, ")"),
+                        if (has_tau2) "Variance of the nugget")
   if (!is.null(object$fix_tau2)) res$tau2 <- object$fix_tau2
 
-  if (n_re > 0)
+  if (n_re > 0) {
+    est_re <- estimate[re_par_names]
+    se_re  <- se_par[re_par_names]
     res$ranef <- cbind(
-      Estimate      = object$estimate[ind_sigma2_re],
-      "Lower limit" = exp(log(object$estimate[ind_sigma2_re]) -
-                            z_crit * se_par[ind_sigma2_re]),
-      "Upper limit" = exp(log(object$estimate[ind_sigma2_re]) +
-                            z_crit * se_par[ind_sigma2_re])
+      Estimate      = est_re,
+      "Lower limit" = exp(log(est_re) - z_crit * se_re),
+      "Upper limit" = exp(log(est_re) + z_crit * se_re)
     )
+    rownames(res$ranef) <- paste0(re_names, " (random eff. var.)")
+  }
 
   res$conf_level      <- conf_level
   res$family          <- object$family
@@ -709,7 +658,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   res$cov_offset_used <- !(is.null(object$cov_offset) ||
                              all(object$cov_offset == 0))
   if (object$family == "gaussian") {
-    res$aic <- 2 * length(object$estimate) - 2 * res$log_lik
+    res$aic <- 2 * length(unlist(object$estimate)) - 2 * res$log_lik
   }
 
   res$call               <- object$call %||% NULL
