@@ -7,16 +7,16 @@
 assess_prediction(
   object,
   method,
-  keep_par_fixed = TRUE,
-  iter = 1,
   fold = NULL,
-  n_size = NULL,
-  control_sim = set_control_mcmc(),
   min_dist = NULL,
+  size = NULL,
+  user_split = NULL,
+  iter = 1,
+  metrics = c("AnPIT", "CRPS", "SCRPS"),
+  keep_par_fixed = TRUE,
+  control_sim = set_control_mcmc(),
   plot_fold = TRUE,
   messages = TRUE,
-  which_metric = c("AnPIT", "CRPS", "SCRPS"),
-  user_split = NULL,
   ...
 )
 }
@@ -36,27 +36,11 @@ the \code{subsample.distance} function from the \code{spatialEco} package.
 }
 }}
 
-\item{keep_par_fixed}{Logical; whether to keep parameters fixed across folds,
-or re-estimate for each fold. Defaults to \code{TRUE}.}
-
-\item{iter}{Integer; number of times to repeat the cross-validation. Defaults to \code{1}.}
-
-\item{fold}{Integer; required when \code{method = "regularized"} - number of folds for cross-validation.}
-
-\item{n_size}{Integer; the size of the test set, required if \code{method = "regularized"}.}
-
-\item{control_sim}{Control settings for simulation, an output from \code{set_control_mcmc()}.}
+\item{fold}{Integer; required when \code{method = "cluster"} - number of folds for cross-validation.}
 
 \item{min_dist}{Numeric; required when \code{method = "regularized"} - minimum distance in kilometers for regularized subsampling.}
 
-\item{plot_fold}{Logical; whether to plot each fold's test set. Defaults to \code{TRUE}.}
-
-\item{messages}{Logical; whether to display progress messages. Defaults to \code{TRUE}.}
-
-\item{which_metric}{Character vector; one or more of \code{"CRPS"}, \code{"SCRPS"} and \code{"AnPIT"},
-to specify the predictive performance metrics to compute. When \code{"AnPIT"} is requested,
-the scalar score \code{"AnPIT_area"} is also computed as the integrated absolute deviation
-between the PIT/AnPIT curve and the reference line. Defaults to all metrics.}
+\item{size}{Integer; the size of the test set, required when \code{method = "regularized"}.}
 
 \item{user_split}{Required when \code{method = "user"}. A user-defined cross-validation split. Either:
 \itemize{
@@ -69,6 +53,22 @@ indices of the dataset to use as the test set, or a list with components
 \code{in_id} (training indices) and \code{out_id} (test indices).
 }}
 
+\item{iter}{Integer; number of times to repeat the cross-validation. Defaults to \code{1}.}
+
+\item{metrics}{Character vector; one or more of \code{"CRPS"}, \code{"SCRPS"} and \code{"AnPIT"},
+to specify the predictive performance metrics to compute. When \code{"AnPIT"} is requested,
+the scalar score \code{"AnPIT_area"} is also computed as the integrated absolute deviation
+between the PIT/AnPIT curve and the reference line. Defaults to all metrics.}
+
+\item{keep_par_fixed}{Logical; whether to keep parameters fixed across folds,
+or re-estimate for each fold. Defaults to \code{TRUE}.}
+
+\item{control_sim}{Control settings for simulation, an output from \code{set_control_mcmc()}.}
+
+\item{plot_fold}{Logical; whether to plot each fold's test set. Defaults to \code{TRUE}.}
+
+\item{messages}{Logical; whether to display progress messages. Defaults to \code{TRUE}.}
+
 \item{...}{Additional arguments passed to clustering or subsampling functions.}
 }
 \value{
@@ -78,8 +78,8 @@ A list of class \code{RiskMap_cross_validation}, containing:
 \item{model}{A named list, one per model, each containing:
 \describe{
 \item{score}{A list with CRPS, SCRPS, and/or AnPIT area scores for each fold if requested.}
-\item{PIT}{(if \code{family = "gaussian"} and \code{which_metric} includes \code{"AnPIT"}) A list of PIT values for test data.}
-\item{AnPIT}{(if \code{family} is discrete and \code{which_metric} includes \code{"AnPIT"}) A list of AnPIT curves for test data.}
+\item{PIT}{(if \code{family = "gaussian"} and \code{metrics} includes \code{"AnPIT"}) A list of PIT values for test data.}
+\item{AnPIT}{(if \code{family} is discrete and \code{metrics} includes \code{"AnPIT"}) A list of AnPIT curves for test data.}
 }
 }
 }
@@ -129,7 +129,7 @@ cross_validation <-
   assess_prediction(
     list(fit),
     method = "regularized",
-    n_size = 5,
+    size = 5,
     min_dist = 1
   )
 

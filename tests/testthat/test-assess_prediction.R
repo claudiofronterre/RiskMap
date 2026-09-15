@@ -39,14 +39,14 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1),
-    "when 'method' is 'regularized' you must supply 'n_size'"
+    "when 'method' is 'regularized' you must supply 'size'"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1,
-                      n_size = 1,
+                      size = 1,
                       iter = 2.1),
     "'iter' must be a single positive integer"
   )
@@ -55,7 +55,7 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1,
-                      n_size = 1,
+                      size = 1,
                       control_sim = "not sim"),
     "'control_sim' must come from 'set_control_mcmc"
   )
@@ -64,7 +64,7 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = -1,
-                      n_size = 1
+                      size = 1
     ),
     "'min_dist' must be a single positive"
   )
@@ -73,16 +73,16 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1,
-                      n_size = 1.1
+                      size = 1.1
     ),
-    "'n_size' must be a single positive integer"
+    "'size' must be a single positive integer"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1,
-                      n_size = 1,
+                      size = 1,
                       keep_par_fixed = "not logical"
     ),
     "'keep_par_fixed' must be either TRUE or FALSE"
@@ -92,7 +92,7 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1,
-                      n_size = 1,
+                      size = 1,
                       control_sim = "not mcmc"
     ),
     "'control_sim' must come from 'set_control_mcmc"
@@ -102,7 +102,7 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1,
-                      n_size = 1,
+                      size = 1,
                       plot_fold = "not true"
     ),
     "'plot_fold' must be either TRUE or FALSE"
@@ -112,7 +112,7 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1,
-                      n_size = 1,
+                      size = 1,
                       messages = "not true"
     ),
     "'messages' must be either TRUE or FALSE"
@@ -126,7 +126,7 @@ test_that("assess_prediction produces errors", {
                            different_rows),
                       method = "regularized",
                       min_dist = 1,
-                      n_size = 1
+                      size = 1
     ),
     "All models in 'object' supplied must have the same number of observations"
   )
@@ -139,7 +139,7 @@ test_that("assess_prediction produces errors", {
                            different_order),
                       method = "regularized",
                       min_dist = 1,
-                      n_size = 1
+                      size = 1
     ),
     "All models in 'object' must have data in the same row order and geometry"
   )
@@ -251,7 +251,7 @@ test_that("assess_prediction uses each model's own data for held-out predictors"
     user_split = matrix(c(0, 1, 1), ncol = 1),
     plot_fold = FALSE,
     messages = FALSE,
-    which_metric = "CRPS"
+    metrics = "CRPS"
   )
 
   expect_s3_class(out, "RiskMap_cross_validation")
@@ -286,7 +286,7 @@ test_that("assess_prediction preserves a custom model CRS when refitting", {
       control_sim = control_mcmc,
       plot_fold = FALSE,
       messages = FALSE,
-      which_metric = "CRPS"
+      metrics = "CRPS"
     )
   )
 })
@@ -305,7 +305,7 @@ test_that("assess_prediction requires aligned model data", {
       user_split = matrix(c(0, 1), ncol = 1),
       plot_fold = FALSE,
       messages = FALSE,
-      which_metric = "CRPS"
+      metrics = "CRPS"
     ),
     "same row order and geometry"
   )
@@ -322,7 +322,7 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
       control_sim = control_mcmc,
       plot_fold = FALSE,
       messages = FALSE,
-      which_metric = "CRPS"
+      metrics = "CRPS"
     )
   )
 
@@ -361,18 +361,18 @@ test_that("assess_prediction splits test data correctly", {
   combined <- do.call(rbind, result$test_set)
   expect_true(all(!duplicated(combined)))
 
-  n_size <- 4
+  size <- 4
 
   result <- assess_prediction(
     list(intercept_only = gaussian_intercept_model,
          with_covariate = gaussian_model),
     method = "regularized",
-    n_size = n_size,
+    size = size,
     min_dist = 1,
     messages = FALSE)
 
   expect_length(result$test_set, 1)
-  expect_equal(nrow(result$test_set[[1]]), n_size)
+  expect_equal(nrow(result$test_set[[1]]), size)
 
 
   result <- assess_prediction(
@@ -394,7 +394,7 @@ test_that("assess_prediction can refit correctly for all model families", {
     list(gaussian_model),
     method = "regularized",
     min_dist = 1,
-    n_size = 1,
+    size = 1,
     keep_par_fixed = FALSE,
     messages = FALSE)
 
@@ -404,7 +404,7 @@ test_that("assess_prediction can refit correctly for all model families", {
     list(binomial_model),
     method = "regularized",
     min_dist = 1,
-    n_size = 1,
+    size = 1,
     keep_par_fixed = FALSE,
     control_sim = control_mcmc,
     messages = FALSE)
@@ -415,7 +415,7 @@ test_that("assess_prediction can refit correctly for all model families", {
     list(poisson_model),
     method = "regularized",
     min_dist = 1,
-    n_size = 1,
+    size = 1,
     keep_par_fixed = FALSE,
     control_sim = control_mcmc,
     messages = FALSE)
@@ -459,7 +459,7 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
     user_split = matrix(c(0, 1, 1), ncol = 1),
     plot_fold = FALSE,
     messages = FALSE,
-    which_metric = "AnPIT"
+    metrics = "AnPIT"
   )
 
   expect_named(out$model$model_x1$score, "AnPIT_area")

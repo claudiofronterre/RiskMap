@@ -1555,19 +1555,9 @@ update_predictors <- function(object, predictors) {
 ##'  the `subsample.distance` function from the `spatialEco` package.
 ##'  - The `"user"` method takes a user-defined test set defined by `user_split`
 ##'  }
-##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
-##' or re-estimate for each fold. Defaults to `TRUE`.
-##' @param iter Integer; number of times to repeat the cross-validation. Defaults to `1`.
-##' @param fold Integer; required when `method = "regularized"` - number of folds for cross-validation.
-##' @param n_size Integer; the size of the test set, required if `method = "regularized"`.
-##' @param control_sim Control settings for simulation, an output from `set_control_mcmc()`.
+##' @param fold Integer; required when `method = "cluster"` - number of folds for cross-validation.
 ##' @param min_dist Numeric; required when `method = "regularized"` - minimum distance in kilometers for regularized subsampling.
-##' @param plot_fold Logical; whether to plot each fold's test set. Defaults to `TRUE`.
-##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
-##' @param which_metric Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"AnPIT"`,
-##' to specify the predictive performance metrics to compute. When `"AnPIT"` is requested,
-##' the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation
-##' between the PIT/AnPIT curve and the reference line. Defaults to all metrics.
+##' @param size Integer; the size of the test set, required when `method = "regularized"`.
 ##' @param user_split Required when `method = "user"`. A user-defined cross-validation split. Either:
 ##'   * a matrix with \code{nrow = n} (number of observations) and
 ##'     \code{ncol = iter} (number of iterations), where entries of \code{1}
@@ -1576,6 +1566,16 @@ update_predictors <- function(object, predictors) {
 ##'   * a list of length \code{iter}, where each element is either a vector of
 ##'     indices of the dataset to use as the test set, or a list with components
 ##'     \code{in_id} (training indices) and \code{out_id} (test indices).
+##' @param iter Integer; number of times to repeat the cross-validation. Defaults to `1`.
+##' @param metrics Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"AnPIT"`,
+##' to specify the predictive performance metrics to compute. When `"AnPIT"` is requested,
+##' the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation
+##' between the PIT/AnPIT curve and the reference line. Defaults to all metrics.
+##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
+##' or re-estimate for each fold. Defaults to `TRUE`.
+##' @param control_sim Control settings for simulation, an output from `set_control_mcmc()`.
+##' @param plot_fold Logical; whether to plot each fold's test set. Defaults to `TRUE`.
+##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
 ##'
 ##' @return A list of class `RiskMap_cross_validation`, containing:
@@ -1584,8 +1584,8 @@ update_predictors <- function(object, predictors) {
 ##'   \item{model}{A named list, one per model, each containing:
 ##'     \describe{
 ##'       \item{score}{A list with CRPS, SCRPS, and/or AnPIT area scores for each fold if requested.}
-##'       \item{PIT}{(if `family = "gaussian"` and `which_metric` includes `"AnPIT"`) A list of PIT values for test data.}
-##'       \item{AnPIT}{(if `family` is discrete and `which_metric` includes `"AnPIT"`) A list of AnPIT curves for test data.}
+##'       \item{PIT}{(if `family = "gaussian"` and `metrics` includes `"AnPIT"`) A list of PIT values for test data.}
+##'       \item{AnPIT}{(if `family` is discrete and `metrics` includes `"AnPIT"`) A list of AnPIT curves for test data.}
 ##'     }
 ##'   }
 ##' }
@@ -1626,7 +1626,7 @@ update_predictors <- function(object, predictors) {
 ##'   assess_prediction(
 ##'     list(fit),
 ##'     method = "regularized",
-##'     n_size = 5,
+##'     size = 5,
 ##'     min_dist = 1
 ##'   )
 ##'
@@ -1658,16 +1658,16 @@ update_predictors <- function(object, predictors) {
 ##' @export
 assess_prediction <- function(object,
                               method,
-                              keep_par_fixed = TRUE,
-                              iter = 1,
                               fold = NULL,
-                              n_size = NULL,
-                              control_sim = set_control_mcmc(),
                               min_dist = NULL,
+                              size = NULL,
+                              user_split = NULL,
+                              iter = 1,
+                              metrics = c("AnPIT", "CRPS", "SCRPS"),
+                              keep_par_fixed = TRUE,
+                              control_sim = set_control_mcmc(),
                               plot_fold = TRUE,
                               messages = TRUE,
-                              which_metric = c("AnPIT", "CRPS", "SCRPS"),
-                              user_split = NULL,
                               ...) {
 
   ## ─────────────────────────── helpers ─────────────────────────── ##
@@ -1694,8 +1694,8 @@ assess_prediction <- function(object,
   if (!is_list_of_riskmap(object))
     stop("'object' must be a list of fitted models of class 'RiskMap'.")
 
-  if (!all(which_metric %in% c("CRPS", "SCRPS", "AnPIT")))
-    stop("'which_metric' must only contain 'CRPS', 'SCRPS' or 'AnPIT'")
+  if (!all(metrics %in% c("CRPS", "SCRPS", "AnPIT")))
+    stop("'metrics' must only contain 'CRPS', 'SCRPS' or 'AnPIT'")
 
   if (!method %in% c("cluster", "regularized", "user"))
     stop("'method' must be either 'cluster', 'regularized' or 'user'")
@@ -1707,9 +1707,9 @@ assess_prediction <- function(object,
 
   if (method == "regularized") {
     if (is.null(min_dist)) stop("when 'method' is 'regularized' you must supply 'min_dist'")
-    if (is.null(n_size))   stop("when 'method' is 'regularized' you must supply 'n_size'")
+    if (is.null(size))     stop("when 'method' is 'regularized' you must supply 'size'")
     check_positive_number(min_dist, "")
-    check_positive_integer(n_size, "n_size")
+    check_positive_integer(size, "size")
   }
 
   if (method == "user"){
@@ -1730,9 +1730,9 @@ assess_prediction <- function(object,
   if (!is.logical(messages))
     stop("'messages' must be either TRUE or FALSE")
 
-  get_CRPS  <- "CRPS"  %in% which_metric
-  get_SCRPS <- "SCRPS" %in% which_metric
-  get_AnPIT <- "AnPIT" %in% which_metric
+  get_CRPS  <- "CRPS"  %in% metrics
+  get_SCRPS <- "SCRPS" %in% metrics
+  get_AnPIT <- "AnPIT" %in% metrics
 
   ## ───────────────────────────── data & splits ───────────────────────────── ##
 
@@ -1844,7 +1844,7 @@ assess_prediction <- function(object,
     for (i in seq_len(iter)) {
       locations_sf <- data_sf[!duplicated(st_as_text(data_sf$geometry)), ]
       data_split$splits[[i]] <- list()
-      data_split$splits[[i]]$data_test <- subsample.distance(locations_sf, size = n_size, d = min_dist * 1000, ...)
+      data_split$splits[[i]]$data_test <- subsample.distance(locations_sf, size = size, d = min_dist * 1000, ...)
       test_geom <- st_as_text(data_split$splits[[i]]$data_test$geometry)
       in_test   <- st_as_text(data_sf$geometry) %in% test_geom
       data_split$splits[[i]]$out_id <- which(in_test)
