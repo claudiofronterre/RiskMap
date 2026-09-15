@@ -61,7 +61,17 @@
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
-##' \item{estimate}{Estimated parameters}
+##' \item{estimate}{Estimated parameters, on their internal (working) scale, as
+##' a named list: \code{beta} (named regression coefficients), \code{sigma2},
+##' \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
+##' estimated, \code{sigma2_me} for Gaussian models with an estimated
+##' measurement error variance, and \code{sigma2_re} (a named vector, one
+##' entry per random effect) when random effects are included. Keeping these
+##' in separate list elements - rather than one flat named vector - avoids a
+##' covariate whose name collides with a parameter name (e.g. a covariate
+##' literally called \code{"sigma2"}) corrupting name-based lookups.
+##' \code{covariance} is estimated as one joint matrix over every parameter;
+##' its rows/columns are named to match \code{unlist(estimate)}.}
 ##' \item{grad_MLE}{Gradient of the maximum likelihood function}
 ##' \item{covariance}{Covariance}
 ##' \item{log_lik}{Log likelihood}
@@ -404,6 +414,53 @@ glgpm <- function(formula,
   return(res)
 }
 
+
+##' Structure the raw parameter vector returned by the optimizer
+##'
+##' Splits the working-scale (i.e. not yet exponentiated) vector of estimates
+##' returned by `glgpm_lm()`/`glgpm_nong()` into a named list, using the same
+##' order in which the fitting engines lay the parameters out in `par`:
+##' regression coefficients, `sigma2`, `phi`, optionally `nu2` (`= tau2 /
+##' sigma2`, only when the nugget is estimated), optionally `sigma2_me`
+##' (Gaussian models only, when the measurement error variance is not fixed),
+##' and finally one entry per unstructured random effect.
+##'
+##' A flat named vector (as used prior to #92) can't safely be keyed by
+##' parameter name: a covariate literally named e.g. `"sigma2"` collides with
+##' the spatial variance parameter's own name, silently corrupting name-based
+##' lookups. Structuring `estimate` as a list instead - `estimate$beta` for
+##' the regression coefficients, `estimate$sigma2` for the spatial variance,
+##' etc. - keeps those namespaces separate. `coef.RiskMap()`/`summary.RiskMap()`
+##' read from this list directly; `summary.RiskMap()` additionally needs a
+##' *flat* vector to line up against `covariance` (which is estimated as one
+##' joint matrix over every parameter) - `unlist()` provides that, and
+##' disambiguates the same way (e.g. `"beta.sigma2"` vs `"sigma2"`).
+##'
+##' @noRd
+structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_names = NULL) {
+  p    <- length(beta_names)
+  beta <- par[seq_len(p)]
+  names(beta) <- beta_names
+
+  out <- list(beta = beta, sigma2 = unname(par[p + 1]), phi = unname(par[p + 2]))
+  idx <- p + 2
+
+  if (isTRUE(fix_tau2)) {
+    idx <- idx + 1
+    out$nu2 <- unname(par[idx])
+  }
+  if (isTRUE(sigma2_me)) {
+    idx <- idx + 1
+    out$sigma2_me <- unname(par[idx])
+  }
+  if (!is.null(re_names)) {
+    sigma2_re <- unname(par[(idx + 1):(idx + length(re_names))])
+    names(sigma2_re) <- re_names
+    out$sigma2_re <- sigma2_re
+  }
+
+  out
+}
 
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
@@ -1267,10 +1324,18 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                   function(x) -hessian.log.lik(x),
                   control=list(trace=1*messages))
 
-  out$estimate <- estim$par
+  out$estimate <- structure_estimate(
+    estim$par,
+    beta_names = colnames(D),
+    fix_tau2   = fix_tau2,
+    sigma2_me  = is.null(fix_var_me),
+    re_names   = if (n_re > 0) names(ID_re) else NULL
+  )
   out$grad_MLE <- grad.log.lik(estim$par)
   hess.MLE <- hessian.log.lik(estim$par)
   out$covariance <- solve(-hess.MLE)
+  flat_names <- names(unlist(out$estimate))
+  dimnames(out$covariance) <- list(flat_names, flat_names)
   out$log_lik <- -estim$objective
   out["link_function"] <- list(NULL)
   out["units_m"] <- list(NULL)
@@ -2769,10 +2834,18 @@ glgpm_nong <-
                     function(x) -hess.MC.log.lik(x),
                     control = list(trace = 1 * messages))
 
-    out$estimate <- estim$par
+    out$estimate <- structure_estimate(
+      estim$par,
+      beta_names = colnames(D),
+      fix_tau2   = fix_tau2,
+      sigma2_me  = FALSE,
+      re_names   = if (n_re > 0) names(ID_re) else NULL
+    )
     out$grad_MLE <- grad.MC.log.lik(estim$par)
     hess_MLE <- hess.MC.log.lik(estim$par)
     out$covariance <- solve(-hess_MLE)
+    flat_names <- names(unlist(out$estimate))
+    dimnames(out$covariance) <- list(flat_names, flat_names)
     out$log_lik <- -estim$objective
     if (return_samples){
       out$S_samples <- S_tot_samples

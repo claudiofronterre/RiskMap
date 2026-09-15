@@ -70,7 +70,17 @@ the \code{nugget} term in \verb{[gp()]} is also set to \code{TRUE}.}
 \value{
 An object of class \code{RiskMap} containing the fitted model and relevant information:
 
-\item{estimate}{Estimated parameters}
+\item{estimate}{Estimated parameters, on their internal (working) scale, as
+a named list: \code{beta} (named regression coefficients), \code{sigma2},
+\code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
+estimated, \code{sigma2_me} for Gaussian models with an estimated
+measurement error variance, and \code{sigma2_re} (a named vector, one
+entry per random effect) when random effects are included. Keeping these
+in separate list elements - rather than one flat named vector - avoids a
+covariate whose name collides with a parameter name (e.g. a covariate
+literally called \code{"sigma2"}) corrupting name-based lookups.
+\code{covariance} is estimated as one joint matrix over every parameter;
+its rows/columns are named to match \code{unlist(estimate)}.}
 \item{grad_MLE}{Gradient of the maximum likelihood function}
 \item{covariance}{Covariance}
 \item{log_lik}{Log likelihood}
