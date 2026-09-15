@@ -2,8 +2,11 @@
 ##' @description Computes predictions over a spatial grid using a fitted model from
 ##'   \code{\link{glgpm}}.
 ##' @param object A RiskMap object.
-##' @param grid_pred An \code{sfc} or \code{sf} of POINT geometries, or a list thereof for joint predictions.
-##' If not provided, the predictions will be generated at the geometries provided when fitting the model.
+##' @param grid_pred An \code{sfc} or \code{sf} of POINT geometries, or a list
+##' thereof for joint predictions. Its coordinate reference system (CRS) must
+##' match the CRS used to fit \code{object}; transform it explicitly with
+##' \code{sf::st_transform()} if required. If not provided, predictions are
+##' generated at the observed locations.
 ##' @param predictors Optional dataframe or list of dataframes containing predictor variables at prediction locations.
 ##' Must be provided if you specify `grid_pred`.
 ##' @param re_predictors Optional dataframe containing random effect predictors.
@@ -11,9 +14,9 @@
 ##' @param pred_cov_offset Optional numeric vector containing covariate offsets at prediction locations.
 ##' Must be provided if there is an offset included in the model and not supported if `grid_pred` is a list.
 ##' @param control_sim Control parameters from \code{\link{set_control_mcmc}}.
-##' @param type Whether the predictions are `marginal` or `joint`. `marginal` predictions are less
-##' computationally expensive than `joint` predictions but cannot be used to predict areal targets.
-##' If `grid_pred` is a list or random effects are included, must be set to `joint`. Defaults to `marginal`.
+##' @param type Whether the predictions are `"marginal"` or `"joint"`. `"marginal"` predictions are less
+##' computationally expensive than `"joint"` predictions but cannot be used to predict areal targets.
+##' If `grid_pred` is a list or random effects are included, must be set to `"joint"`. Defaults to `"marginal"`.
 ##' @param messages Logical; display progress messages. Defaults to `TRUE`.
 ##' @return An object of class \code{"RiskMap_pred"} containing:
 ##'   \describe{
@@ -43,12 +46,12 @@
 ##'       observed data locations, i.e. when \code{grid_pred} was left as
 ##'       \code{NULL} in \code{\link{setup_prediction}}.}
 ##'     \item{inter_f}{The model formula after interpretation by
-##'       \code{interpret.formula}, separating the fixed-effects terms, the
+##'       \code{interpret_formula}, separating the fixed-effects terms, the
 ##'       spatial term and the unstructured random effect terms. Used internally
 ##'       to build the linear predictor at the prediction locations.}
 ##'     \item{family}{The model family}
 ##'     \item{cov_offset}{Covariate offsets}
-##'     \item{type}{The type of predictions - `marginal` or `joint`}
+##'     \item{type}{The type of predictions - `"marginal"` or `"joint"`}
 ##'   }
 ##' @importFrom Matrix solve
 ##' @examples
@@ -72,7 +75,7 @@
 ##' prediction_setup <- setup_prediction(
 ##'   fit,
 ##'   grid_pred = grid_pred,
-##'   predictors = data.frame(y = rnorm(length(grid_pred)))
+##'   predictors = data.frame(y = rnorm(nrow(grid_pred)))
 ##' )
 ##'
 ##' @export
@@ -91,20 +94,76 @@ setup_prediction <- function(object,
   stopifnot("'object' must be of class RiskMap" = inherits(object, "RiskMap"))
 
   list_mode <- inherits(grid_pred, "list")
-  if (list_mode) {
-    if (type != "joint")
-      stop("When 'grid_pred' is a list, 'type' must be 'joint'")
-    if (length(grid_pred) == 0L)
-      stop("'grid_pred' is a list but has length 0")
+  model_crs <- st_crs(object$data)
+
+  if (is.na(model_crs)) {
+    stop(
+      "The fitted model does not contain a valid coordinate reference system (CRS)",
+      call. = FALSE
+    )
+  }
+
+  validate_grid_element <- function(x, index) {
     tryCatch(
-      lapply(grid_pred, check_data, type = "sfc"),
-        error = function(e){
-          stop("Each element of 'grid_pred' must be an 'sf' or 'sfc' object with POINT geometries")
-        }
+      check_data(x, type = "sfc"),
+      error = function(e) {
+        reason <- sub("^'[^']+' ", "", conditionMessage(e))
+        stop(sprintf("'grid_pred[[%d]]' %s", index, reason), call. = FALSE)
+      }
+    )
+  }
+
+  crs_label <- function(x) {
+    x_crs <- st_crs(x)
+    if (!is.na(x_crs$epsg)) paste0("EPSG:", x_crs$epsg) else x_crs$input
+  }
+
+  if (list_mode) {
+    if (type != "joint") {
+      stop("When 'grid_pred' is a list, 'type' must be 'joint'")
+    }
+    if (length(grid_pred) == 0L) {
+      stop("'grid_pred' is a list but has length 0")
+    }
+    invisible(Map(validate_grid_element, grid_pred, seq_along(grid_pred)))
+    crs_mismatch <- vapply(
+      grid_pred,
+      function(x) !isTRUE(st_crs(x) == model_crs),
+      logical(1)
+    )
+    if (any(crs_mismatch)) {
+      mismatch_indices <- which(crs_mismatch)
+      mismatch_labels <- vapply(
+        grid_pred[mismatch_indices],
+        crs_label,
+        character(1)
       )
+      mismatch_details <- paste0(
+        mismatch_indices,
+        " (",
+        mismatch_labels,
+        ")",
+        collapse = ", "
+      )
+      stop(
+        "The CRS of every element of 'grid_pred' must match the fitted model CRS (",
+        crs_label(model_crs), "). Mismatches: ", mismatch_details,
+        ". Transform these elements explicitly with sf::st_transform().",
+        call. = FALSE
+      )
+    }
   } else {
-    if (!is.null(grid_pred))
+    if (!is.null(grid_pred)) {
       check_data(grid_pred, type = "sfc")
+      if (!isTRUE(st_crs(grid_pred) == model_crs)) {
+        stop(
+          "The CRS of 'grid_pred' (", crs_label(grid_pred),
+          ") must match the fitted model CRS (", crs_label(model_crs),
+          "). Transform 'grid_pred' explicitly with sf::st_transform().",
+          call. = FALSE
+        )
+      }
+    }
   }
 
   if (!inherits(control_sim, "RiskMap_control_mcmc"))
@@ -120,21 +179,16 @@ setup_prediction <- function(object,
   if (obs_loc) {
     if (!is.null(predictors))
       warning("You have set 'predictors' but not 'grid_pred' so 'predictors' will be ignored")
-    predictors <- as.data.frame(st_drop_geometry(object$data_sf))
-    grid_pred  <- st_as_sfc(object$data_sf)
-  } else {
-    if (list_mode) {
-      grid_pred <- lapply(grid_pred, st_transform, crs = object$crs)
-    } else {
-      grid_pred <- st_transform(grid_pred, crs = object$crs)
-    }
+    predictors <- as.data.frame(st_drop_geometry(object$data))
+    grid_pred  <- st_as_sfc(object$data)
   }
 
   if (list_mode) {
-    grp    <- lapply(grid_pred, st_coordinates)
+    grp    <- lapply(grid_pred, coordinates_in_units,
+                     distance_units = object$distance_units)
     n_pred <- vapply(grp, nrow, integer(1))
   } else {
-    grp    <- st_coordinates(grid_pred)
+    grp    <- coordinates_in_units(grid_pred, object$distance_units)
     n_pred <- nrow(grp)
   }
 
@@ -165,7 +219,7 @@ setup_prediction <- function(object,
   # ---------------------------------------------------------------------------
 
   par_hat <- coef(object)
-  inter_f      <- interpret.formula(object$formula)
+  inter_f      <- interpret_formula(object$formula)
   inter_lt_f   <- inter_f
   inter_lt_f$pf <- update(inter_lt_f$pf, NULL ~.)
 
@@ -230,7 +284,12 @@ setup_prediction <- function(object,
         ind_c       <- complete.cases(re_predictors)
         re_predictors <- re_predictors[ind_c, , drop = FALSE]
         grid_pred   <- if (list_mode) lapply(grid_pred, `[`, ind_c) else grid_pred[ind_c]
-        grp         <- if (list_mode) lapply(grid_pred, st_coordinates) else st_coordinates(grid_pred)
+        grp         <- if (list_mode) {
+          lapply(grid_pred, coordinates_in_units,
+                 distance_units = object$distance_units)
+        } else {
+          coordinates_in_units(grid_pred, object$distance_units)
+        }
         n_pred      <- if (list_mode) vapply(grp, nrow, integer(1)) else nrow(grp)
       }
       if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
@@ -255,10 +314,6 @@ setup_prediction <- function(object,
   # Spatial quantities
   # ---------------------------------------------------------------------------
   out <- list(mu_pred = mu_pred, grid_pred = grid_pred, par_hat = par_hat)
-
-  if (object$scale_to_km) {
-    grp <- if (list_mode) lapply(grp, function(g) g / 1000) else grp / 1000
-  }
 
   if (object$family != "gaussian" && !obs_loc) {
     if (list_mode) {
@@ -830,7 +885,7 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
     terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
                                x$target[[which_target]][[which_summary]]),
                          xy = TRUE)
-  raster_out <- terra::rast(t_data.frame, crs = st_crs(x$grid_pred)$input)
+  raster_out <- rast(t_data.frame, crs = st_crs(x$grid_pred)$wkt)
 
   terra::plot(raster_out, ...)
 }
@@ -1149,9 +1204,9 @@ predict_areal_target <- function(object,
   }
 
   if(list_mode) {
-    shp <- st_transform(shp, crs = st_crs(object$grid_pred[[1]])$input)
+    shp <- st_transform(shp, crs = st_crs(object$grid_pred[[1]]))
   } else {
-    shp <- st_transform(shp, crs = st_crs(object$grid_pred)$input)
+    shp <- st_transform(shp, crs = st_crs(object$grid_pred))
   }
 
   if(!list_mode) {
@@ -1692,12 +1747,12 @@ assess_prediction <- function(object,
   }
 
   object1 <- object[[1]]
-  data_sf <- object1$data_sf
+  data_sf <- object1$data
   n_obs   <- nrow(data_sf)
   data_geom <- st_geometry(data_sf)
 
   for (h in seq_along(object)) {
-    fit_data <- object[[h]]$data_sf
+    fit_data <- object[[h]]$data
     if (nrow(fit_data) != n_obs) {
       stop("All models in 'object' supplied must have the same number of observations")
     }
@@ -1756,30 +1811,20 @@ assess_prediction <- function(object,
     n_iter <- iter
 
     if (isTRUE(plot_fold)) {
-      if (!requireNamespace("ggplot2", quietly = TRUE)) {
-        warning("plot_fold = TRUE requires the 'ggplot2' package; skipping plots.", call. = FALSE)
+      if (n_iter == 1) {
+        p <- ggplot(data_split$splits[[1]]$data_test) +
+          geom_sf() +
+          theme_minimal() +
+          ggtitle("Test set")
+        print(p)
       } else {
-        if (n_iter == 1) {
-          p <- ggplot(data_split$splits[[1]]$data_test) +
+        plots <- lapply(seq_len(n_iter), function(i) {
+          ggplot(data_split$splits[[i]]$data_test) +
             geom_sf() +
             theme_minimal() +
-            ggtitle("Test set")
-          print(p)
-        } else {
-          plots <- lapply(seq_len(n_iter), function(i) {
-            ggplot(data_split$splits[[i]]$data_test) +
-              geom_sf() +
-              theme_minimal() +
-              ggtitle(paste("Test", i))
-          })
-
-          if (requireNamespace("gridExtra", quietly = TRUE)) {
-            do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
-          } else {
-            warning("Optional package 'gridExtra' not installed; printing plots sequentially.", call. = FALSE)
-            for (p in plots) print(p)
-          }
-        }
+            ggtitle(paste("Test", i))
+        })
+        do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
       }
     }
   } else if (method == "cluster") {
@@ -1815,10 +1860,10 @@ assess_prediction <- function(object,
           ggtitle(paste("Subset", i))
       })
 
-      if (n_iter > 1 && requireNamespace("gridExtra", quietly = TRUE)) {
+      if (n_iter > 1) {
         do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
       } else {
-        # Either only one plot or gridExtra not available: print sequentially
+        # Only one plot: no need for a grid arrangement
         for (p in plots) print(p)
       }
     }
@@ -1833,7 +1878,7 @@ assess_prediction <- function(object,
   for (h in seq_len(n_models)) {
 
     fit0      <- object[[h]]
-    fit_data_sf <- fit0$data_sf
+    fit_data_sf <- fit0$data
     par_hat   <- coef(fit0)
     den_name  <- as.character(fit0$call$den)
     fam       <- fit0$family
@@ -1862,30 +1907,32 @@ assess_prediction <- function(object,
 
       ## ----- refit or slice -----
       if (!keep_par_fixed) {
-        if (messages) message("\nRe-estimating model for subset ", i)
 
-        arg_list <- list(
-          formula      = fit0$formula,
-          data         = fit_data_sf[in_id, ],
-          family       = fam,
-          scale_to_km  = fit0$scale_to_km,
-          control_mcmc = control_sim,
-          fix_var_me   = fit0$fix_var_me,
-          messages     = FALSE,
-          start_pars   = par_hat
+        message("\nRe-estimating model for subset ", i)
+        model_crs <- st_crs(fit0$data)
+
+        refit_args <- list(
+          formula        = fit0$formula,
+          data           = fit_data_sf[in_id, ],
+          family         = fam,
+          model_crs      = model_crs,
+          distance_units = fit0$distance_units,
+          control_mcmc   = control_sim,
+          fix_var_me     = fit0$fix_var_me,
+          messages       = FALSE,
+          start_pars     = par_hat
         )
-
-        # add den if it exists
-        if (length(den_name) > 0) {
-          arg_list$den <- as.name(den_name)
+        ## 'den' must be passed as an unquoted column name (NSE); only include it
+        ## when the original model was fitted with one
+        if (length(den_name) == 1 && nzchar(den_name)) {
+          refit_args$den <- as.name(den_name)
         }
-
-        refit_i <- do.call(glgpm, arg_list)
+        refit_i <- do.call(glgpm, refit_args)
       } else {
         ## quick slice without re-fitting
         refit_i <- fit0
         keep <- in_id
-        refit_i$data_sf  <- refit_i$data_sf [keep, ]
+        refit_i$data  <- refit_i$data [keep, ]
         refit_i$units_m  <- refit_i$units_m[keep]
         keep_coord <- unique(refit_i$ID_coords[keep])
         refit_i$coords   <- refit_i$coords[keep_coord, , drop = FALSE]
@@ -1895,13 +1942,13 @@ assess_prediction <- function(object,
           refit_i$cov_offset <- refit_i$cov_offset[keep]
         if (!is.null(refit_i$ID_re)) {
           re_terms <- names(refit_i$ID_re)
-          random_effects_i <- prepare_random_effects(refit_i$data_sf, re_terms)
+          random_effects_i <- prepare_random_effects(refit_i$data, re_terms)
           refit_i$ID_re <- as.data.frame(random_effects_i$ID_re)
           colnames(refit_i$ID_re) <- random_effects_i$names_re
           refit_i$re <- random_effects_i$re_unique_f
         }
         ## recompute ID_coords mapping
-        refit_i$ID_coords <- create_ids(refit_i$data_sf)$ID_coords
+        refit_i$ID_coords <- create_ids(refit_i$data)$ID_coords
       }
 
       ## ----- held-out set and offsets -----
@@ -2033,7 +2080,7 @@ assess_prediction <- function(object,
 ##' @param pred_grid An `sf` object representing the prediction grid where the simulation will take place.
 ##' @param formula A formula object specifying the model to be fitted. It should include both fixed effects and random effects if applicable.
 ##' @param sampling_f A function that returns a sampled dataset (of class `sf`) to simulate data from.
-##' @param family A character string specifying the family of the model. Must be one of "gaussian", "binomial", or "poisson".
+##' @param family A character string specifying the family of the model. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
 ##' @param scale_to_km A logical indicating whether the coordinates should be scaled to kilometers. Defaults to `TRUE`.
 ##' @param control_mcmc A list of control parameters for MCMC (not used in this implementation but can be expanded later).
 ##' @param par0 A list containing initial parameter values for the simulation, including `beta`, `sigma2`, `phi`, `tau2`, and `sigma2_me`.
@@ -2069,7 +2116,7 @@ simulate_surface <- function(n_sim,
                                      object indicating the variables of the
                                      model to be fitted")
   }
-  inter_f <- interpret.formula(formula)
+  inter_f <- interpret_formula(formula)
   include_cov_offset <- !is.null(inter_f$offset)
   if(!inherits(pred_grid, "sf")) {
     stop("'pred_grid' must be an 'sf'
@@ -2077,7 +2124,7 @@ simulate_surface <- function(n_sim,
           model to be fitted")
   }
 
-  sim_crs <- st_crs(pred_grid)$epsg
+  sim_crs <- st_crs(pred_grid)
   if (is.na(sim_crs)) {
     stop("'pred_grid' must have a valid coordinate reference system (CRS) set.")
   }
@@ -2102,7 +2149,7 @@ simulate_surface <- function(n_sim,
     data_sim[[i]] <- sampling_f()
     coords_sim[[i]] <- st_coordinates(data_sim[[i]])
     if(scale_to_km) coords_sim[[i]] <- coords_sim[[i]]/1000
-    if (st_crs(data_sim[[i]]) != st_crs(pred_grid)) {
+    if (!isTRUE(st_crs(data_sim[[i]]) == st_crs(pred_grid))) {
       pred_grid <- st_transform(pred_grid, st_crs(data_sim[[i]]))
       if(i==1) {
         sim_crs_data <- st_crs(data_sim[[i]])
@@ -2123,7 +2170,7 @@ simulate_surface <- function(n_sim,
     data_sim[[i]] <- cbind(data_sim[[i]], pred_grid_vars)
   }
 
-  kappa <- inter_f$gp.spec$kappa
+  kappa <- inter_f$gp_spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
 
   if(family != "gaussian" & family != "binomial" &
@@ -2144,7 +2191,7 @@ simulate_surface <- function(n_sim,
   }
 
 
-  if(length(inter_f$re.spec) > 0) {
+  if(length(inter_f$re_spec) > 0) {
     stop("In the current impletementation of 'simulate_surface' the addition of random effects
         with re() is not supported")
   }
@@ -2389,7 +2436,7 @@ assess_simulation <- function(obj_sim,
   for(i in 1:n_models) {
     if(messages) message("Model: ", paste(model_names[i]),"\n")
 
-    if_i <- interpret.formula(models[[i]])
+    if_i <- interpret_formula(models[[i]])
     rhs_terms <- attr(terms(if_i$pf), "term.labels")
     # Check if there are any covariates
     if (length(rhs_terms) == 0) {

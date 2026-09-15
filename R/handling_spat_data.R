@@ -1,14 +1,14 @@
 ##' @title Create Grid of Points Within Shapefile
 ##'
 ##' @description
-##' Generates a grid of points within a given shapefile. The grid points are created based on a specified spatial resolution.
+##' Generates regularly spaced point centres within a polygon boundary.
 ##'
 ##' @param shp An object of class 'sf' containing POLYGONS or MULTIPOLYGONS within which the grid of points will be created.
-##' @param spat_res Numeric value specifying the spatial resolution in kilometers for the grid.
-##' @param grid_crs Coordinate reference system for the grid. If NULL, the CRS of 'shp' is used. The shapefile 'shp' will be transformed to this CRS if specified.
+##' @param spacing A single positive number specifying the distance between grid-point centres.
+##' @param distance_units Character string, either `"km"` or `"m"`, giving the units of `spacing`. Defaults to `"km"`.
 ##'
 ##' @details
-##' This function creates a grid of points within the boundaries of the provided shapefile ('shp'). The grid points are generated using the specified spatial resolution ('spat_res'). If a coordinate reference system ('grid_crs') is provided, the shapefile is transformed to this CRS before creating the grid.
+##' This function creates point centres within the boundaries of `shp`; it does not create polygon cells or define an areal prediction target. The CRS is inherited from `shp`. If `shp` is in longitude/latitude, it is automatically reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used; transform `shp` to a projected CRS yourself first to use a different one.
 ##'
 ##' @return
 ##' An 'sf' object containing the generated grid points within the shapefile.
@@ -22,41 +22,49 @@
 ##' nc <- st_read(system.file("shape/nc.shp", package="sf"))
 ##' nc <- st_transform(nc, crs = 32617)
 ##'
-##' # Create grid with 10 km spatial resolution
-##' grid <- create_grid(nc, spat_res = 10)
+##' # Create grid with 10 km spacing
+##' grid <- create_grid(nc, spacing = 10)
 ##'
 ##' # Plot the grid
 ##' plot(st_geometry(nc))
 ##' plot(grid, add = TRUE, col = 'red')
 ##'
 ##' @seealso
-##' \code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersects}}, \code{\link[sf]{st_transform}}, \code{\link[sf]{st_crs}}
+##' \code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersection}}
 ##'
 ##'
 create_grid <- function(shp,
-                        spat_res,
-                        grid_crs = NULL) {
+                        spacing,
+                        distance_units = c("km", "m")) {
 
   check_data(shp, "polygon")
-  check_positive_number(spat_res, "")
+  check_positive_number(spacing, "")
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) &&
+              all(distance_units %in% c("km", "m")))
+  distance_units <- match.arg(distance_units)
 
-  if(is.null(grid_crs)) {
-    grid_crs <- st_crs(shp)
-    if (st_is_longlat(shp)) stop("The coordinates of 'shp' are in longitude and latitude - please set 'grid_crs'")
-  } else {
-    check_crs(grid_crs)
-    shp <- st_transform(shp, crs = grid_crs)
+  if (st_is_longlat(shp)) {
+    auto_crs <- propose_utm(shp)
+    shp <- st_transform(shp, crs = auto_crs)
+    message("'shp' is in longitude/latitude; automatically reprojecting to EPSG:",
+            auto_crs, " to create the grid. Transform 'shp' to a projected CRS ",
+            "yourself to override.")
   }
 
+  cellsize <- spacing / crs_to_distance_factor(shp, distance_units)
   grid_box <- st_make_grid(shp,
-                           cellsize = spat_res*1000,
-                           what="centers")
+                           cellsize = cellsize,
+                           what = "centers")
 
-  grid_out <- st_intersection(grid_box, shp)
+  grid_out <- st_sf(geometry = st_intersection(grid_box, shp))
 
-  if (length(grid_out) == 0){
-    stop("No points intersect with the 'shp' - try decreasing the 'spat_res'")
+  if (nrow(grid_out) == 0) {
+    stop(
+      "No grid-point centres fall within 'shp'; try decreasing 'spacing' and check 'distance_units'.",
+      call. = FALSE
+    )
   }
 
-  return(grid_out)
+  grid_out
 }

@@ -4,27 +4,34 @@
 ##' Supports Gaussian, binomial, and Poisson response families.
 ##' @param formula A formula object specifying the model to be fitted.
 ##' The formula should include fixed effects and spatial effects specified using
-##' `[gp()]` and optionally, random effects specified using `[re()]`.
+##' [gp()] and optionally, random effects specified using [re()].
 ##' @param data An sf object containing the variables in the model.
 ##' @param family A character string specifying the distribution of the response variable.
-##' Must be one of `gaussian`, `binomial`, or `poisson`.
+##' Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
 ##' @param invlink A function that defines the inverse of the link function for
 ##' the distribution of the data given the random effects.
-##' Not applicable when `family` is `gaussian`.
+##' Not applicable when `family` is `"gaussian"`.
 ##' @param den Optional offset for binomial or Poisson distributions.
 ##' Passed as a bare/unquoted column name present in `data`.
 ##' If not provided, defaults to `1` for binomial models.
-##' @param convert_to_crs Optional integer specifying a CRS to convert the spatial coordinates to.
-##' @param scale_to_km Logical indicating whether to scale coordinates to kilometers. Defaults to `TRUE`.
+##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for model fitting.
+##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
+##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
+##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
+##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
+##' @param distance_units Character string, either `"km"` or `"m"`, indicating the units used
+##' for internal coordinate distances and spatial parameters such as `phi`. The coordinates in
+##' the returned `data` retain the linear units declared by its CRS.
+##' Defaults to `"km"`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
-##' Must be an object of class `RiskMap_control_mcmc` as returned by `[set_control_mcmc()]`.
+##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 ##' Defaults to `FALSE`.
 ##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
 ##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
 ##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
-##' the `nugget` term in `[gp()]` is also set to `TRUE`.
+##' the `nugget` term in [gp()] is also set to `TRUE`.
 ##' @param start_pars Optional list of starting values for model parameters:
 ##' \describe{
 ##'   \item{beta}{regression coefficients}
@@ -46,22 +53,37 @@
 ##' data across different response distributions.
 ##'
 ##' Additionally, the function allows for the inclusion of unstructured random effects, specified through
-##' the `[re()]` term in the model formula. These random effects can capture unexplained variability
+##' the [re()] term in the model formula. These random effects can capture unexplained variability
 ##' at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
 ##' in capturing complex spatial patterns.
 ##'
-##' The `convert_to_crs` argument can be used to reproject the spatial coordinates to a different CRS.
-##' The `scale_to_km` argument scales the coordinates to kilometers if set to TRUE.
+##' The `model_crs` argument can be used to reproject the spatial coordinates to a different, projected
+##' CRS for model fitting. If `data` are in longitude/latitude and `model_crs` is not supplied, the
+##' coordinates are automatically reprojected to an appropriate UTM zone and a message details the
+##' conversion; automatic projection is avoided for `model_crs` explicitly supplied in longitude/latitude,
+##' which raises an error.
+##' The `distance_units` argument controls whether distances between locations (and so parameters such
+##' as `phi`) are expressed in kilometers (`"km"`, the default) or meters (`"m"`).
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
-##' This argument must be an object returned by `[set_control_mcmc()]`.
+##' This argument must be an object returned by [set_control_mcmc()].
 ##'
 ##' The `start_pars` argument allows for specifying starting values for the model parameters.
 ##' If not provided, default starting values are used.
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
-##' \item{estimate}{Estimated parameters}
+##' \item{estimate}{Estimated parameters, on their internal (working) scale, as
+##' a named list: \code{beta} (named regression coefficients), \code{sigma2},
+##' \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
+##' estimated, \code{sigma2_me} for Gaussian models with an estimated
+##' measurement error variance, and \code{sigma2_re} (a named vector, one
+##' entry per random effect) when random effects are included. Keeping these
+##' in separate list elements - rather than one flat named vector - avoids a
+##' covariate whose name collides with a parameter name (e.g. a covariate
+##' literally called \code{"sigma2"}) corrupting name-based lookups.
+##' \code{covariance} is estimated as one joint matrix over every parameter;
+##' its rows/columns are named to match \code{unlist(estimate)}.}
 ##' \item{grad_MLE}{Gradient of the maximum likelihood function}
 ##' \item{covariance}{Covariance}
 ##' \item{log_lik}{Log likelihood}
@@ -75,9 +97,9 @@
 ##' \item{fix_var_me}{Fixed measurement error variance}
 ##' \item{formula}{Model formula}
 ##' \item{family}{Response family}
-##' \item{crs}{Coordinate Reference System}
-##' \item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
-##' \item{data_sf}{Original data as an sf object}
+##' \item{distance_units}{Units (`"km"` or `"m"`) used for internal coordinate distances and spatial parameters}
+##' \item{data}{The `sf` data used for model fitting, in the CRS used internally}
+##' \item{input_crs}{The CRS of the input data}
 ##' \item{kappa}{Spatial correlation parameter}
 ##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
 ##' \item{cov_offset}{Covariate offset}
@@ -134,8 +156,8 @@ glgpm <- function(formula,
                  family,
                  invlink = NULL,
                  den = NULL,
-                 convert_to_crs = NULL,
-                 scale_to_km = TRUE,
+                 model_crs = NULL,
+                 distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
                  par0 = NULL,
                  return_samples = FALSE,
@@ -154,9 +176,11 @@ glgpm <- function(formula,
     stop("'family' must be either 'gaussian', 'binomial' or 'poisson'")
   not_gaussian <- family != "gaussian"
 
-  stopifnot("'scale_to_km' must be either TRUE or FALSE" = is.logical(scale_to_km),
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) && all(distance_units %in% c("km", "m")),
             "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
             "'messages' must be either TRUE or FALSE" = is.logical(messages))
+  distance_units <- match.arg(distance_units)
 
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
@@ -170,8 +194,8 @@ glgpm <- function(formula,
     if (!is.null(fix_var_me)) stop("'fix_var_me' cannot be provided when 'family' is '", family, "'")
   }
 
-  inter_f <- interpret.formula(formula)
-  kappa <- inter_f$gp.spec$kappa
+  inter_f <- interpret_formula(formula)
+  kappa <- inter_f$gp_spec$kappa
   mf <- model.frame(inter_f$pf, data = data, na.action = na.fail)
 
   # Extract outcome data
@@ -212,8 +236,8 @@ glgpm <- function(formula,
     }
   }
 
-  if (length(inter_f$re.spec) > 0L) {
-    hr_re <- inter_f$re.spec$term
+  if (length(inter_f$re_spec) > 0L) {
+    hr_re <- inter_f$re_spec$term
   } else {
     hr_re <- NULL
   }
@@ -229,15 +253,24 @@ glgpm <- function(formula,
   re_unique_f <- random_effects$re_unique_f
 
 
-  # Extract coordinates
-  if(!is.null(convert_to_crs)) {
-    check_crs(convert_to_crs)
-    data <- st_transform(data, crs = convert_to_crs)
-    crs <- convert_to_crs
+  # transform crs and extract coordinates
+  input_crs <- st_crs(data)
+  if(!is.null(model_crs)) {
+    check_crs(model_crs)
+    data <- st_transform(data, crs = model_crs)
+    if(st_is_longlat(data)) {
+      stop("'model_crs' must be a projected CRS, not longitude/latitude")
+    }
+  } else if(st_is_longlat(data)) {
+    auto_crs <- propose_utm(data)
+    data <- st_transform(data, crs = auto_crs)
+    message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
+            "automatically reprojecting to EPSG:", auto_crs,
+            " for model fitting. Set 'model_crs' to override.")
   }
   if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
-  coords_o <- st_coordinates(data)
+  coords_o <- coordinates_in_units(data, distance_units)
   coords <- unique(coords_o)
 
   m <- nrow(coords_o)
@@ -246,7 +279,7 @@ glgpm <- function(formula,
                      coords_o[i,2]==coords[,2]))
   s_unique <- unique(ID_coords)
 
-  fix_tau2 <- inter_f$gp.spec$nugget
+  fix_tau2 <- inter_f$gp_spec$nugget
 
   if(all(table(ID_coords) == 1) &&
      family == "gaussian" &&
@@ -256,13 +289,7 @@ glgpm <- function(formula,
          be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
   }
 
-  if(scale_to_km) {
-    coords_o <- coords_o/1000
-    coords <- coords/1000
-    if(messages) message("Distances between locations are computed in kilometers ")
-  } else {
-    if(messages) message("Distances between locations are computed in meters ")
-  }
+  if(messages) message("Distances between locations are computed in ", distance_units, " ")
 
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
   if (!any(names(start_pars) %in% valid_start_pars)){
@@ -342,7 +369,7 @@ glgpm <- function(formula,
         check_positive_number(start_pars[["sigma2_me"]])
       }
     }
-    res <- glgpm_lm(y = y-cov_offset, D, coords, kappa = inter_f$gp.spec$kappa,
+    res <- glgpm_lm(y = y-cov_offset, D, coords, kappa = inter_f$gp_spec$kappa,
             ID_coords, ID_re, s_unique, re_unique,
             fix_var_me, fix_tau2,
             start_beta = start_pars[["beta"]],
@@ -359,7 +386,7 @@ glgpm <- function(formula,
       if(length(par0$beta)!=ncol(D)) stop("the values passed to `beta` in par0 do not match the
                                           variables specified in the formula")
     }
-    res <- glgpm_nong(y = y, D, coords, units_m, kappa = inter_f$gp.spec$kappa,
+    res <- glgpm_nong(y = y, D, coords, units_m, kappa = inter_f$gp_spec$kappa,
                         ID_coords, ID_re, s_unique, re_unique,
                         fix_tau2, family = family, invlink = invlink,
                         return_samples = return_samples,
@@ -389,14 +416,9 @@ glgpm <- function(formula,
   res["fix_var_me"] <- list(fix_var_me)
   res$formula <- formula
   res$family <- family
-  if(!is.null(convert_to_crs)) {
-    crs <- convert_to_crs
-  } else {
-    crs <- st_crs(data)$input
-  }
-  res$crs <- crs
-  res$scale_to_km <- scale_to_km
-  res$data_sf <- data
+  res$distance_units <- distance_units
+  res$data <- data
+  res$input_crs <- input_crs
   res$kappa <- kappa
   if(not_gaussian) res$units_m <- units_m
   res$cov_offset <- cov_offset
@@ -404,6 +426,53 @@ glgpm <- function(formula,
   return(res)
 }
 
+
+##' Structure the raw parameter vector returned by the optimizer
+##'
+##' Splits the working-scale (i.e. not yet exponentiated) vector of estimates
+##' returned by `glgpm_lm()`/`glgpm_nong()` into a named list, using the same
+##' order in which the fitting engines lay the parameters out in `par`:
+##' regression coefficients, `sigma2`, `phi`, optionally `nu2` (`= tau2 /
+##' sigma2`, only when the nugget is estimated), optionally `sigma2_me`
+##' (Gaussian models only, when the measurement error variance is not fixed),
+##' and finally one entry per unstructured random effect.
+##'
+##' A flat named vector (as used prior to #92) can't safely be keyed by
+##' parameter name: a covariate literally named e.g. `"sigma2"` collides with
+##' the spatial variance parameter's own name, silently corrupting name-based
+##' lookups. Structuring `estimate` as a list instead - `estimate$beta` for
+##' the regression coefficients, `estimate$sigma2` for the spatial variance,
+##' etc. - keeps those namespaces separate. `coef.RiskMap()`/`summary.RiskMap()`
+##' read from this list directly; `summary.RiskMap()` additionally needs a
+##' *flat* vector to line up against `covariance` (which is estimated as one
+##' joint matrix over every parameter) - `unlist()` provides that, and
+##' disambiguates the same way (e.g. `"beta.sigma2"` vs `"sigma2"`).
+##'
+##' @noRd
+structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_names = NULL) {
+  p    <- length(beta_names)
+  beta <- par[seq_len(p)]
+  names(beta) <- beta_names
+
+  out <- list(beta = beta, sigma2 = unname(par[p + 1]), phi = unname(par[p + 2]))
+  idx <- p + 2
+
+  if (isTRUE(fix_tau2)) {
+    idx <- idx + 1
+    out$nu2 <- unname(par[idx])
+  }
+  if (isTRUE(sigma2_me)) {
+    idx <- idx + 1
+    out$sigma2_me <- unname(par[idx])
+  }
+  if (!is.null(re_names)) {
+    sigma2_re <- unname(par[(idx + 1):(idx + length(re_names))])
+    names(sigma2_re) <- re_names
+    out$sigma2_re <- sigma2_re
+  }
+
+  out
+}
 
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
@@ -1267,10 +1336,18 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                   function(x) -hessian.log.lik(x),
                   control=list(trace=1*messages))
 
-  out$estimate <- estim$par
+  out$estimate <- structure_estimate(
+    estim$par,
+    beta_names = colnames(D),
+    fix_tau2   = fix_tau2,
+    sigma2_me  = is.null(fix_var_me),
+    re_names   = if (n_re > 0) names(ID_re) else NULL
+  )
   out$grad_MLE <- grad.log.lik(estim$par)
   hess.MLE <- hessian.log.lik(estim$par)
   out$covariance <- solve(-hess.MLE)
+  flat_names <- names(unlist(out$estimate))
+  dimnames(out$covariance) <- list(flat_names, flat_names)
   out$log_lik <- -estim$objective
   out["link_function"] <- list(NULL)
   out["units_m"] <- list(NULL)
@@ -1286,15 +1363,21 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' Simulates data from a fitted Generalized Linear Gaussian Process Model (GLGPM) or a specified model formula and data.
 ##'
 ##' @param n_sim Number of simulations to perform.
-##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `convert_to_crs` and `scale_to_km` arguments.
+##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `model_crs` and `distance_units` arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
 ##' @param data `sf` object containing the variables in the model formula.
-##' @param family Distribution family for the response variable. Must be one of `gaussian`, `binomial`, or `poisson.`
-##' @param den Required for `binomial` to denote the denominator (i.e. number of trials) of the Binomial distribution.
-##' For the `poisson` family, the argument is optional and is used a multiplicative term to express the mean counts.
+##' @param family Distribution family for the response variable. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
+##' @param den Required for `"binomial"` to denote the denominator (i.e. number of trials) of the Binomial distribution.
+##' For the `"poisson"` family, the argument is optional and is used a multiplicative term to express the mean counts.
 ##' @param cov_offset Offset for the covariate part of the GLGPM.
-##' @param convert_to_crs CRS code to convert data to.
-##' @param scale_to_km Logical; if `TRUE`, distances between locations are computed in kilometers; if `FALSE`, in meters.
+##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for simulation, ignored if `model_fit` is provided.
+##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
+##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
+##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
+##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
+##' @param distance_units Character string, either `"km"` or `"m"`, indicating the units used
+##' for internal coordinate distances and spatial parameters. The coordinates in `data` retain
+##' the linear units declared by its CRS. Defaults to `"km"`. Ignored if `model_fit` is provided.
 ##' @param sim_pars List of simulation parameters including `beta`, `sigma2`, `tau2`, `phi`, `sigma2_me`, and optionally `sigma2_re`.
 ##' If multiple covariates or random effects are included, the lengths of `beta` and `sigma2_re` must match the number of covariates and random effects respectively.
 ##' @param messages Logical; if `TRUE`, display progress and informative messages.
@@ -1302,7 +1385,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' @details
 ##' Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to model spatial correlation. This function simulates data from GLGPMs using Markov Chain Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson response families, utilizing a Matern correlation function to model spatial dependence.
 ##'
-##' The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For `gaussian` family, the function simulates response values by adding measurement error.
+##' The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For the `"gaussian"` family, the function simulates response values by adding measurement error.
 ##'
 ##' Additionally, GLGPMs can incorporate unstructured random effects specified through the [`re()`] term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
 ##'
@@ -1315,8 +1398,8 @@ simulate_glgpm <- function(n_sim,
                       family = NULL,
                       den = NULL,
                       cov_offset = NULL,
-                      convert_to_crs = NULL,
-                      scale_to_km = TRUE,
+                      model_crs = NULL,
+                      distance_units = c("km", "m"),
                       sim_pars = list(beta = NULL,
                                       sigma2 = NULL,
                                       tau2 = NULL,
@@ -1327,6 +1410,10 @@ simulate_glgpm <- function(n_sim,
 
   check_positive_integer(n_sim, "n_sim")
 
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) && all(distance_units %in% c("km", "m")))
+  distance_units <- match.arg(distance_units)
+
   if(!is.null(model_fit)) {
     if(!inherits(model_fit, "RiskMap")){
       stop("'model_fit' must be of class 'RiskMap'")
@@ -1335,17 +1422,17 @@ simulate_glgpm <- function(n_sim,
       stop("if you provide 'model_fit' you should not provide 'data' or 'formula'")
     }
     formula <- as.formula(model_fit$formula)
-    data <- model_fit$data_sf
+    data <- model_fit$data
     family <- model_fit$family
-    convert_to_crs <- model_fit$convert_to_crs
-    scale_to_km <- model_fit$scale_to_km
+    model_crs <- NULL
+    distance_units <- model_fit$distance_units
   }
 
   check_data(data)
   check_formula(formula, data)
-  inter_f <- interpret.formula(formula)
+  inter_f <- interpret_formula(formula)
 
-  kappa <- inter_f$gp.spec$kappa
+  kappa <- inter_f$gp_spec$kappa
   if(kappa < 0) stop("kappa must be positive.")
 
   if(family != "gaussian" & family != "binomial" &
@@ -1358,8 +1445,8 @@ simulate_glgpm <- function(n_sim,
   D <- as.matrix(model.matrix(attr(mf,"terms"), data = data))
   n <- nrow(D)
 
-  hr_re <- if (length(inter_f$re.spec) > 0L) {
-    inter_f$re.spec$term
+  hr_re <- if (length(inter_f$re_spec) > 0L) {
+    inter_f$re_spec$term
   } else {
     NULL
   }
@@ -1428,14 +1515,26 @@ simulate_glgpm <- function(n_sim,
   }
 
   # Extract coordinates
-  if(!is.null(convert_to_crs)) {
-    if(!is.numeric(convert_to_crs)) stop("'convert_to_crs' must be a numeric object")
-    data <- st_transform(data, crs = convert_to_crs)
-    crs <- convert_to_crs
+  if(is.null(model_fit)) {
+    if(!is.null(model_crs)) {
+      check_crs(model_crs)
+      data <- st_transform(data, crs = model_crs)
+      if(st_is_longlat(data)) {
+        stop("'model_crs' must be a projected CRS, not longitude/latitude")
+      }
+    } else if(st_is_longlat(data)) {
+      auto_crs <- propose_utm(data)
+      data <- st_transform(data, crs = auto_crs)
+      if(messages) {
+        message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
+                "automatically reprojecting to EPSG:", auto_crs,
+                " for simulation. Set 'model_crs' to override.")
+      }
+    }
   }
   if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
-  coords_o <- st_coordinates(data)
+  coords_o <- coordinates_in_units(data, distance_units)
   coords <- unique(coords_o)
 
   m <- nrow(coords_o)
@@ -1450,13 +1549,7 @@ simulate_glgpm <- function(n_sim,
          be estimated. Consider removing either one of them. ")
   }
 
-  if(scale_to_km) {
-    coords_o <- coords_o/1000
-    coords <- coords/1000
-    if(messages) message("Distances between locations are computed in kilometers \n")
-  } else {
-    if(messages) message("Distances between locations are computed in meters \n")
-  }
+  if(messages) message("Distances between locations are computed in ", distance_units, "\n")
 
   # Simulate S
   Sigma <- sigma2*matern_correlation(dist(coords), phi = phi, kappa = kappa,
@@ -1471,7 +1564,7 @@ simulate_glgpm <- function(n_sim,
     if(!is.null(model_fit)) {
       re_names <- names(model_fit$re)
     } else {
-      re_names <- inter_f$re.spec$term
+      re_names <- inter_f$re_spec$term
     }
 
     dim_re <- sapply(1:n_re, function(j) length(re_unique[[j]]))
@@ -1533,7 +1626,7 @@ simulate_glgpm <- function(n_sim,
   }
 
   if(!is.null(model_fit)) {
-    data_sim <- model_fit$data_sf
+    data_sim <- model_fit$data
   } else {
     data_sim <- data
   }
@@ -1558,6 +1651,40 @@ simulate_glgpm <- function(n_sim,
   return(out)
 }
 
+##' Differentiate a vector-in/vector-out function w.r.t. `eta`
+##'
+##' Used to auto-derive a missing `d1`/`d2` from a user-supplied inverse link
+##' (or from an already-derived `d1`, for `d2`). Tries symbolic
+##' differentiation via `Deriv::Deriv()` first, since the result is fast and
+##' stable when evaluated repeatedly; `Deriv::Deriv()` raises a hard error
+##' when it cannot process `f`'s body (e.g. a call it has no derivative rule
+##' for), so that attempt - construction and validation together - is wrapped
+##' in a single `tryCatch()`. If it fails for any reason, falls back to
+##' numerical differentiation via `numDeriv::grad()`, vectorised over `eta`.
+##'
+##' @param f Function of a single argument `eta`, returning a numeric vector.
+##' @param ncheck Length of the probe vector used to validate a candidate
+##' derivative before accepting it.
+##' @return A function of `eta` approximating the derivative of `f`.
+##' @noRd
+differentiate <- function(f, ncheck) {
+  is_valid <- function(d) {
+    out <- tryCatch(d(rep(0, ncheck)), error = function(e) NULL)
+    is.numeric(out) && length(out) == ncheck && all(is.finite(out))
+  }
+
+  symbolic <- tryCatch({
+    wrapped <- function(eta) f(eta)
+    d <- Deriv::Deriv(wrapped, "eta")
+    if (!is_valid(d)) stop("symbolic derivative failed validation")
+    d
+  }, error = function(e) NULL)
+
+  if (!is.null(symbolic)) return(symbolic)
+
+  function(eta) vapply(eta, function(z) numDeriv::grad(f, z), numeric(1))
+}
+
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
 ##'
 ##' Maximizes the integrand function for Generalized Linear Gaussian Process Models (GLGPMs), which involves the evaluation of likelihood functions with spatially correlated random effects.
@@ -1568,7 +1695,7 @@ simulate_glgpm <- function(n_sim,
 ##' @param Sigma Covariance matrix of the spatial process.
 ##' @param ID_coords Indices mapping response to locations.
 ##' @param ID_re Indices mapping response to unstructured random effects.
-##' @param family Distribution family for the response variable. Must be one of 'gaussian', 'binomial', or 'poisson'.
+##' @param family Distribution family for the response variable. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
 ##' @param sigma2_re Variance of the unstructured random effects.
 ##' @param hessian Logical; if TRUE, compute the Hessian matrix.
 ##' @param gradient Logical; if TRUE, compute the gradient vector.
@@ -1577,7 +1704,7 @@ simulate_glgpm <- function(n_sim,
 ##' @details
 ##' This function maximizes the integrand for GLGPMs using the Nelder-Mead optimization algorithm. It computes the likelihood function incorporating spatial covariance and unstructured random effects, if provided.
 ##'
-##' The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family ('gaussian', 'binomial', or 'poisson').
+##' The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family (`"gaussian"`, `"binomial"`, or `"poisson"`).
 ##'
 ##' @return A list containing the mode estimate, and optionally, the Hessian matrix and gradient vector.
 ##' @export
@@ -1640,9 +1767,6 @@ maxim_integrand <- function(
   n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
 
   make_link_funs <- function(family, invlink, ncheck) {
-    have_Deriv <- requireNamespace("Deriv", quietly = TRUE)
-    have_numDeriv <- requireNamespace("numDeriv", quietly = TRUE)
-
     # Canonical defaults
     if (is.null(invlink)) {
       if (family == "poisson") {
@@ -1677,29 +1801,10 @@ maxim_integrand <- function(
     check_vec_fun(inv_user, ncheck, "invlink")
 
     # Obtain missing derivatives once
-    if (is.null(d1_user)) {
-      if (have_Deriv) {
-        inv_wrapped <- function(eta) inv_user(eta)
-        d1_user <- Deriv::Deriv(inv_wrapped, "eta")
-      } else if (have_numDeriv) {
-        d1_user <- function(eta) vapply(eta, function(z)
-          numDeriv::grad(function(x) inv_user(x), z), numeric(1))
-      } else {
-        stop("Cannot auto-derive first derivative. Install `Deriv` or `numDeriv`, or provide `d1`.")
-      }
-    }
+    if (is.null(d1_user)) d1_user <- differentiate(inv_user, ncheck)
     check_vec_fun(d1_user, ncheck, "invlink_prime")
 
-    if (is.null(d2_user)) {
-      if (have_Deriv) {
-        d2_user <- Deriv::Deriv(d1_user, "eta")
-      } else if (have_numDeriv) {
-        d2_user <- function(eta) vapply(eta, function(z)
-          numDeriv::grad(function(x) d1_user(x), z), numeric(1))
-      } else {
-        stop("Cannot auto-derive second derivative. Install `Deriv` or `numDeriv`, or provide `d2`.")
-      }
-    }
+    if (is.null(d2_user)) d2_user <- differentiate(d1_user, ncheck)
     check_vec_fun(d2_user, ncheck, "invlink_second")
 
     list(inv = inv_user, d1 = d1_user, d2 = d2_user, name = "custom")
@@ -1996,9 +2101,6 @@ laplace_sampling_mcmc <- function(y,
 
   # ---------- inverse link handling (inv, d1) ----------
   make_invlink_funs <- function(family, invlink, ncheck) {
-    have_Deriv <- requireNamespace("Deriv", quietly = TRUE)
-    have_numDeriv <- requireNamespace("numDeriv", quietly = TRUE)
-
     if (is.null(invlink)) {
       if (family == "poisson") {
         inv <- function(x) exp(x)
@@ -2024,17 +2126,7 @@ laplace_sampling_mcmc <- function(y,
 
     check_vec_fun(inv_user, ncheck, "invlink")
 
-    if (is.null(d1_user)) {
-      if (have_Deriv) {
-        inv_wrapped <- function(eta) inv_user(eta)
-        d1_user <- Deriv::Deriv(inv_wrapped, "eta")
-      } else if (have_numDeriv) {
-        d1_user <- function(eta) vapply(eta, function(z)
-          numDeriv::grad(function(x) inv_user(x), z), numeric(1))
-      } else {
-        stop("Cannot auto-derive first derivative. Install `Deriv` or `numDeriv`, or provide `d1`.")
-      }
-    }
+    if (is.null(d1_user)) d1_user <- differentiate(inv_user, ncheck)
     check_vec_fun(d1_user, ncheck, "invlink_prime")
 
     list(inv = inv_user, d1 = d1_user, name = "custom")
@@ -2332,9 +2424,6 @@ glgpm_nong <-
     }
 
     make_invlink_funs <- function(family, invlink, ncheck) {
-      have_Deriv <- requireNamespace("Deriv", quietly = TRUE)
-      have_numDeriv <- requireNamespace("numDeriv", quietly = TRUE)
-
       if (is.null(invlink)) {
         if (family == "poisson") {
           inv <- function(x) exp(x)
@@ -2361,25 +2450,10 @@ glgpm_nong <-
 
       check_vec_fun(inv_user, ncheck, "invlink")
 
-      if (is.null(d1_user)) {
-        if (have_Deriv) {
-          inv_wrapped <- function(eta) inv_user(eta)
-          d1_user <- Deriv::Deriv(inv_wrapped, "eta")
-        } else if (have_numDeriv) {
-          d1_user <- function(eta) vapply(eta, function(z)
-            numDeriv::grad(function(x) inv_user(x), z), numeric(1))
-        } else stop("Provide `d1` or install `Deriv`/`numDeriv`.")
-      }
+      if (is.null(d1_user)) d1_user <- differentiate(inv_user, ncheck)
       check_vec_fun(d1_user, ncheck, "invlink_prime")
 
-      if (is.null(d2_user)) {
-        if (have_Deriv) {
-          d2_user <- Deriv::Deriv(d1_user, "eta")
-        } else if (have_numDeriv) {
-          d2_user <- function(eta) vapply(eta, function(z)
-            numDeriv::grad(function(x) d1_user(x), z), numeric(1))
-        } else stop("Provide `d2` or install `Deriv`/`numDeriv`.")
-      }
+      if (is.null(d2_user)) d2_user <- differentiate(d1_user, ncheck)
       check_vec_fun(d2_user, ncheck, "invlink_second")
 
       list(inv=inv_user, d1=d1_user, d2=d2_user, name="custom")
@@ -2788,10 +2862,18 @@ glgpm_nong <-
                     function(x) -hess.MC.log.lik(x),
                     control = list(trace = 1 * messages))
 
-    out$estimate <- estim$par
+    out$estimate <- structure_estimate(
+      estim$par,
+      beta_names = colnames(D),
+      fix_tau2   = fix_tau2,
+      sigma2_me  = FALSE,
+      re_names   = if (n_re > 0) names(ID_re) else NULL
+    )
     out$grad_MLE <- grad.MC.log.lik(estim$par)
     hess_MLE <- hess.MC.log.lik(estim$par)
     out$covariance <- solve(-hess_MLE)
+    flat_names <- names(unlist(out$estimate))
+    dimnames(out$covariance) <- list(flat_names, flat_names)
     out$log_lik <- -estim$objective
     if (return_samples){
       out$S_samples <- S_tot_samples

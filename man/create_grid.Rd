@@ -4,23 +4,23 @@
 \alias{create_grid}
 \title{Create Grid of Points Within Shapefile}
 \usage{
-create_grid(shp, spat_res, grid_crs = NULL)
+create_grid(shp, spacing, distance_units = c("km", "m"))
 }
 \arguments{
 \item{shp}{An object of class 'sf' containing POLYGONS or MULTIPOLYGONS within which the grid of points will be created.}
 
-\item{spat_res}{Numeric value specifying the spatial resolution in kilometers for the grid.}
+\item{spacing}{A single positive number specifying the distance between grid-point centres.}
 
-\item{grid_crs}{Coordinate reference system for the grid. If NULL, the CRS of 'shp' is used. The shapefile 'shp' will be transformed to this CRS if specified.}
+\item{distance_units}{Character string, either \code{"km"} or \code{"m"}, giving the units of \code{spacing}. Defaults to \code{"km"}.}
 }
 \value{
 An 'sf' object containing the generated grid points within the shapefile.
 }
 \description{
-Generates a grid of points within a given shapefile. The grid points are created based on a specified spatial resolution.
+Generates regularly spaced point centres within a polygon boundary.
 }
 \details{
-This function creates a grid of points within the boundaries of the provided shapefile ('shp'). The grid points are generated using the specified spatial resolution ('spat_res'). If a coordinate reference system ('grid_crs') is provided, the shapefile is transformed to this CRS before creating the grid.
+This function creates point centres within the boundaries of \code{shp}; it does not create polygon cells or define an areal prediction target. The CRS is inherited from \code{shp}. If \code{shp} is in longitude/latitude, it is automatically reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used; transform \code{shp} to a projected CRS yourself first to use a different one.
 }
 \examples{
 library(sf)
@@ -29,8 +29,8 @@ library(sf)
 nc <- st_read(system.file("shape/nc.shp", package="sf"))
 nc <- st_transform(nc, crs = 32617)
 
-# Create grid with 10 km spatial resolution
-grid <- create_grid(nc, spat_res = 10)
+# Create grid with 10 km spacing
+grid <- create_grid(nc, spacing = 10)
 
 # Plot the grid
 plot(st_geometry(nc))
@@ -38,5 +38,5 @@ plot(grid, add = TRUE, col = 'red')
 
 }
 \seealso{
-\code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersects}}, \code{\link[sf]{st_transform}}, \code{\link[sf]{st_crs}}
+\code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersection}}
 }

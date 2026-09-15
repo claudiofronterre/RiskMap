@@ -38,6 +38,7 @@ Imports:
     stars,
     terra,
     tibble,
+    units,
     xtable
 Suggests:
     testthat (>= 3.0.0)

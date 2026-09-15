@@ -28,7 +28,7 @@ simulate_surface(
 
 \item{sampling_f}{A function that returns a sampled dataset (of class \code{sf}) to simulate data from.}
 
-\item{family}{A character string specifying the family of the model. Must be one of "gaussian", "binomial", or "poisson".}
+\item{family}{A character string specifying the family of the model. Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
 
 \item{scale_to_km}{A logical indicating whether the coordinates should be scaled to kilometers. Defaults to \code{TRUE}.}
 

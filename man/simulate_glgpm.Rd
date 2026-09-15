@@ -12,8 +12,8 @@ simulate_glgpm(
   family = NULL,
   den = NULL,
   cov_offset = NULL,
-  convert_to_crs = NULL,
-  scale_to_km = TRUE,
+  model_crs = NULL,
+  distance_units = c("km", "m"),
   sim_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, sigma2_me = NULL,
     sigma2_re = NULL),
   messages = TRUE
@@ -22,22 +22,28 @@ simulate_glgpm(
 \arguments{
 \item{n_sim}{Number of simulations to perform.}
 
-\item{model_fit}{Fitted GLGPM model object of class \code{RiskMap}. If provided, overrides \code{formula}, \code{data}, \code{family}, \code{convert_to_crs} and \code{scale_to_km} arguments.}
+\item{model_fit}{Fitted GLGPM model object of class \code{RiskMap}. If provided, overrides \code{formula}, \code{data}, \code{family}, \code{model_crs} and \code{distance_units} arguments.}
 
 \item{formula}{Model formula indicating the variables of the model to be simulated.}
 
 \item{data}{\code{sf} object containing the variables in the model formula.}
 
-\item{family}{Distribution family for the response variable. Must be one of \code{gaussian}, \code{binomial}, or \code{poisson.}}
+\item{family}{Distribution family for the response variable. Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
 
-\item{den}{Required for \code{binomial} to denote the denominator (i.e. number of trials) of the Binomial distribution.
-For the \code{poisson} family, the argument is optional and is used a multiplicative term to express the mean counts.}
+\item{den}{Required for \code{"binomial"} to denote the denominator (i.e. number of trials) of the Binomial distribution.
+For the \code{"poisson"} family, the argument is optional and is used a multiplicative term to express the mean counts.}
 
 \item{cov_offset}{Offset for the covariate part of the GLGPM.}
 
-\item{convert_to_crs}{CRS code to convert data to.}
+\item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for simulation, ignored if \code{model_fit} is provided.
+If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
+If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
+reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
+If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
 
-\item{scale_to_km}{Logical; if \code{TRUE}, distances between locations are computed in kilometers; if \code{FALSE}, in meters.}
+\item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
+for internal coordinate distances and spatial parameters. The coordinates in \code{data} retain
+the linear units declared by its CRS. Defaults to \code{"km"}. Ignored if \code{model_fit} is provided.}
 
 \item{sim_pars}{List of simulation parameters including \code{beta}, \code{sigma2}, \code{tau2}, \code{phi}, \code{sigma2_me}, and optionally \code{sigma2_re}.
 If multiple covariates or random effects are included, the lengths of \code{beta} and \code{sigma2_re} must match the number of covariates and random effects respectively.}
@@ -53,7 +59,7 @@ Simulates data from a fitted Generalized Linear Gaussian Process Model (GLGPM) o
 \details{
 Generalized Linear Gaussian Process Models (GLGPMs) extend generalized linear models (GLMs) by incorporating spatial Gaussian processes to model spatial correlation. This function simulates data from GLGPMs using Markov Chain Monte Carlo (MCMC) methods. It supports Gaussian, binomial, and Poisson response families, utilizing a Matern correlation function to model spatial dependence.
 
-The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For \code{gaussian} family, the function simulates response values by adding measurement error.
+The simulation process involves generating spatially correlated random effects and simulating responses based on the fitted or specified model parameters. For the \code{"gaussian"} family, the function simulates response values by adding measurement error.
 
 Additionally, GLGPMs can incorporate unstructured random effects specified through the \code{\link[=re]{re()}} term in the model formula, allowing for capturing additional variability beyond fixed and spatial covariate effects.
 }

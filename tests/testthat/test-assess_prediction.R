@@ -119,7 +119,7 @@ test_that("assess_prediction produces errors", {
   )
 
   different_rows <- gaussian_model
-  different_rows$data_sf <- different_rows$data_sf[1:9,]
+  different_rows$data <- different_rows$data[1:9,]
 
   expect_error(
     assess_prediction(list(gaussian_model,
@@ -132,7 +132,7 @@ test_that("assess_prediction produces errors", {
   )
 
   different_order <- gaussian_model
-  different_order$data_sf <- different_order$data_sf[c(6:10, 1:5),]
+  different_order$data <- different_order$data[c(6:10, 1:5),]
 
   expect_error(
     assess_prediction(list(gaussian_model,
@@ -199,9 +199,10 @@ make_assess_prediction_fit <- function(data, covariate) {
   coords <- st_coordinates(data)
   fit <- list(
     formula = as.formula(paste("y ~", covariate)),
-    data_sf = data,
+    data = data,
+    input_crs = sf::st_crs(data),
     family = "gaussian",
-    estimate = c(0, 0, 0, 0),
+    estimate = list(beta = c(0, 0), sigma2 = 0, phi = 0),
     D = matrix(1, nrow = nrow(data), ncol = 2),
     re = list(),
     cov_offset = NULL,
@@ -212,8 +213,7 @@ make_assess_prediction_fit <- function(data, covariate) {
     y = data$y,
     ID_coords = seq_len(nrow(data)),
     coords = coords,
-    crs = 4326,
-    scale_to_km = FALSE,
+    distance_units = "m",
     call = list(den = quote(units_m)),
     model_id = covariate
   )
@@ -221,7 +221,7 @@ make_assess_prediction_fit <- function(data, covariate) {
   fit
 }
 
-test_that("assess_prediction uses each model's own data_sf for held-out predictors", {
+test_that("assess_prediction uses each model's own data for held-out predictors", {
   geom <- st_sfc(
     st_point(c(0, 0)),
     st_point(c(1, 1)),
@@ -262,6 +262,33 @@ test_that("assess_prediction uses each model's own data_sf for held-out predicto
   expect_false("x2" %in% seen_predictors$x1)
   expect_true("x2" %in% seen_predictors$x2)
   expect_false("x1" %in% seen_predictors$x2)
+})
+
+test_that("assess_prediction preserves a custom model CRS when refitting", {
+
+  custom_crs <- st_crs(
+    "+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs"
+  )
+  custom_data <- st_transform(gaussian_data, custom_crs)
+  custom_model <- glgpm(y ~ cov + gp(),
+                        data = custom_data,
+                        family = "gaussian",
+                        messages = FALSE)
+  user_split <- matrix(c(1, 1, rep(0, nrow(custom_data) - 2)), ncol = 1)
+
+  expect_true(is.na(st_crs(custom_model$data)$epsg))
+  expect_no_error(
+    assess_prediction(
+      list(model = custom_model),
+      method = "user",
+      keep_par_fixed = FALSE,
+      user_split = user_split,
+      control_sim = control_mcmc,
+      plot_fold = FALSE,
+      messages = FALSE,
+      which_metric = "CRPS"
+    )
+  )
 })
 
 test_that("assess_prediction requires aligned model data", {

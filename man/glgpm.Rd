@@ -10,8 +10,8 @@ glgpm(
   family,
   invlink = NULL,
   den = NULL,
-  convert_to_crs = NULL,
-  scale_to_km = TRUE,
+  model_crs = NULL,
+  distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
   par0 = NULL,
   return_samples = FALSE,
@@ -24,27 +24,34 @@ glgpm(
 \arguments{
 \item{formula}{A formula object specifying the model to be fitted.
 The formula should include fixed effects and spatial effects specified using
-\verb{[gp()]} and optionally, random effects specified using \verb{[re()]}.}
+\code{\link[=gp]{gp()}} and optionally, random effects specified using \code{\link[=re]{re()}}.}
 
 \item{data}{An sf object containing the variables in the model.}
 
 \item{family}{A character string specifying the distribution of the response variable.
-Must be one of \code{gaussian}, \code{binomial}, or \code{poisson}.}
+Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
 
 \item{invlink}{A function that defines the inverse of the link function for
 the distribution of the data given the random effects.
-Not applicable when \code{family} is \code{gaussian}.}
+Not applicable when \code{family} is \code{"gaussian"}.}
 
 \item{den}{Optional offset for binomial or Poisson distributions.
 Passed as a bare/unquoted column name present in \code{data}.
 If not provided, defaults to \code{1} for binomial models.}
 
-\item{convert_to_crs}{Optional integer specifying a CRS to convert the spatial coordinates to.}
+\item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
+If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
+If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
+reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
+If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
 
-\item{scale_to_km}{Logical indicating whether to scale coordinates to kilometers. Defaults to \code{TRUE}.}
+\item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
+for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates in
+the returned \code{data} retain the linear units declared by its CRS.
+Defaults to \code{"km"}.}
 
 \item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
-Must be an object of class \code{RiskMap_control_mcmc} as returned by \verb{[set_control_mcmc()]}.}
+Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.}
 
 \item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
 
@@ -55,7 +62,7 @@ Defaults to \code{FALSE}.}
 
 \item{fix_var_me}{Optional fixed value for the measurement error variance when fitting a Gaussian model.
 When not provided, the value will be estimated, but cannot be if each location only has one sample and
-the \code{nugget} term in \verb{[gp()]} is also set to \code{TRUE}.}
+the \code{nugget} term in \code{\link[=gp]{gp()}} is also set to \code{TRUE}.}
 
 \item{start_pars}{Optional list of starting values for model parameters:
 \describe{
@@ -70,7 +77,17 @@ the \code{nugget} term in \verb{[gp()]} is also set to \code{TRUE}.}
 \value{
 An object of class \code{RiskMap} containing the fitted model and relevant information:
 
-\item{estimate}{Estimated parameters}
+\item{estimate}{Estimated parameters, on their internal (working) scale, as
+a named list: \code{beta} (named regression coefficients), \code{sigma2},
+\code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
+estimated, \code{sigma2_me} for Gaussian models with an estimated
+measurement error variance, and \code{sigma2_re} (a named vector, one
+entry per random effect) when random effects are included. Keeping these
+in separate list elements - rather than one flat named vector - avoids a
+covariate whose name collides with a parameter name (e.g. a covariate
+literally called \code{"sigma2"}) corrupting name-based lookups.
+\code{covariance} is estimated as one joint matrix over every parameter;
+its rows/columns are named to match \code{unlist(estimate)}.}
 \item{grad_MLE}{Gradient of the maximum likelihood function}
 \item{covariance}{Covariance}
 \item{log_lik}{Log likelihood}
@@ -84,9 +101,9 @@ An object of class \code{RiskMap} containing the fitted model and relevant infor
 \item{fix_var_me}{Fixed measurement error variance}
 \item{formula}{Model formula}
 \item{family}{Response family}
-\item{crs}{Coordinate Reference System}
-\item{scale_to_km}{Indicator if coordinates are scaled to kilometers}
-\item{data_sf}{Original data as an sf object}
+\item{distance_units}{Units (\code{"km"} or \code{"m"}) used for internal coordinate distances and spatial parameters}
+\item{data}{The \code{sf} data used for model fitting, in the CRS used internally}
+\item{input_crs}{The CRS of the input data}
 \item{kappa}{Spatial correlation parameter}
 \item{units_m}{Distribution offset if \code{family} is \code{binomial} or \code{poisson}}
 \item{cov_offset}{Covariate offset}
@@ -110,15 +127,20 @@ unstructured random effects, providing a comprehensive framework to analyze spat
 data across different response distributions.
 
 Additionally, the function allows for the inclusion of unstructured random effects, specified through
-the \verb{[re()]} term in the model formula. These random effects can capture unexplained variability
+the \code{\link[=re]{re()}} term in the model formula. These random effects can capture unexplained variability
 at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
 in capturing complex spatial patterns.
 
-The \code{convert_to_crs} argument can be used to reproject the spatial coordinates to a different CRS.
-The \code{scale_to_km} argument scales the coordinates to kilometers if set to TRUE.
+The \code{model_crs} argument can be used to reproject the spatial coordinates to a different, projected
+CRS for model fitting. If \code{data} are in longitude/latitude and \code{model_crs} is not supplied, the
+coordinates are automatically reprojected to an appropriate UTM zone and a message details the
+conversion; automatic projection is avoided for \code{model_crs} explicitly supplied in longitude/latitude,
+which raises an error.
+The \code{distance_units} argument controls whether distances between locations (and so parameters such
+as \code{phi}) are expressed in kilometers (\code{"km"}, the default) or meters (\code{"m"}).
 
 The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.
-This argument must be an object returned by \verb{[set_control_mcmc()]}.
+This argument must be an object returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.
 
 The \code{start_pars} argument allows for specifying starting values for the model parameters.
 If not provided, default starting values are used.

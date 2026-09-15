@@ -18,8 +18,11 @@ setup_prediction(
 \arguments{
 \item{object}{A RiskMap object.}
 
-\item{grid_pred}{An \code{sfc} or \code{sf} of POINT geometries, or a list thereof for joint predictions.
-If not provided, the predictions will be generated at the geometries provided when fitting the model.}
+\item{grid_pred}{An \code{sfc} or \code{sf} of POINT geometries, or a list
+thereof for joint predictions. Its coordinate reference system (CRS) must
+match the CRS used to fit \code{object}; transform it explicitly with
+\code{sf::st_transform()} if required. If not provided, predictions are
+generated at the observed locations.}
 
 \item{predictors}{Optional dataframe or list of dataframes containing predictor variables at prediction locations.
 Must be provided if you specify \code{grid_pred}.}
@@ -32,9 +35,9 @@ Must be provided if there is an offset included in the model and not supported i
 
 \item{control_sim}{Control parameters from \code{\link{set_control_mcmc}}.}
 
-\item{type}{Whether the predictions are \code{marginal} or \code{joint}. \code{marginal} predictions are less
-computationally expensive than \code{joint} predictions but cannot be used to predict areal targets.
-If \code{grid_pred} is a list or random effects are included, must be set to \code{joint}. Defaults to \code{marginal}.}
+\item{type}{Whether the predictions are \code{"marginal"} or \code{"joint"}. \code{"marginal"} predictions are less
+computationally expensive than \code{"joint"} predictions but cannot be used to predict areal targets.
+If \code{grid_pred} is a list or random effects are included, must be set to \code{"joint"}. Defaults to \code{"marginal"}.}
 
 \item{messages}{Logical; display progress messages. Defaults to \code{TRUE}.}
 }
@@ -67,12 +70,12 @@ of its levels, a vector of \code{n_samples} draws. Both elements are
 observed data locations, i.e. when \code{grid_pred} was left as
 \code{NULL} in \code{\link{setup_prediction}}.}
 \item{inter_f}{The model formula after interpretation by
-\code{interpret.formula}, separating the fixed-effects terms, the
+\code{interpret_formula}, separating the fixed-effects terms, the
 spatial term and the unstructured random effect terms. Used internally
 to build the linear predictor at the prediction locations.}
 \item{family}{The model family}
 \item{cov_offset}{Covariate offsets}
-\item{type}{The type of predictions - \code{marginal} or \code{joint}}
+\item{type}{The type of predictions - \code{"marginal"} or \code{"joint"}}
 }
 }
 \description{
@@ -100,7 +103,7 @@ grid_pred <- create_grid(hull, 20)
 prediction_setup <- setup_prediction(
   fit,
   grid_pred = grid_pred,
-  predictors = data.frame(y = rnorm(length(grid_pred)))
+  predictors = data.frame(y = rnorm(nrow(grid_pred)))
 )
 
 }
