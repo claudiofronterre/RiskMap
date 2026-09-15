@@ -86,6 +86,9 @@ test_that("check_crs functions correctly", {
   crs <- 2648
   expect_no_error(check_crs(crs))
   expect_no_error(check_crs(2648))
+
+  custom_crs <- "+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs"
+  expect_no_error(check_crs(custom_crs))
 })
 
 test_that("gp functions correctly", {
