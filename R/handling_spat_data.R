@@ -53,11 +53,14 @@ create_grid <- function(shp,
   }
 
   cellsize <- spacing / crs_to_distance_factor(shp, distance_units)
-  grid_box <- st_make_grid(shp,
-                           cellsize = cellsize,
-                           what = "centers")
+  grid_box <- st_sf(
+    geometry = st_make_grid(shp,
+                            cellsize = cellsize,
+                            what = "centers")
+  )
 
-  grid_out <- st_sf(geometry = st_intersection(grid_box, shp))
+  study_boundary <- st_union(st_geometry(shp))
+  grid_out <- st_filter(grid_box, study_boundary)
 
   if (nrow(grid_out) == 0) {
     stop(
