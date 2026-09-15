@@ -115,7 +115,8 @@ propose_utm <- function (data) {
   }
 
   # Determine Hemisphere (fixing the latitude check)
-  ns <- sign(st_coordinates(data)[, 2])  # Use latitude, not longitude
+  # latitude 0 (the Equator) is treated as northern hemisphere, per UTM convention
+  ns <- ifelse(st_coordinates(data)[, 2] >= 0, 1, -1)  # Use latitude, not longitude
   ns_u <- unique(ns)
 
   if (length(ns_u) > 1) {
@@ -633,7 +634,9 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     "Lower limit" = exp(log(est_sp) - z_crit * se_sp),
     "Upper limit" = exp(log(est_sp) + z_crit * se_sp)
   )
-  rownames(res$sp) <- c("Spatial process var.", "Spatial corr. scale",
+  rownames(res$sp) <- c("Spatial process var.",
+                        paste0("Spatial corr. scale (",
+                               object$distance_units, ")"),
                         if (has_tau2) "Variance of the nugget")
   if (!is.null(object$fix_tau2)) res$tau2 <- object$fix_tau2
 
@@ -1233,6 +1236,43 @@ check_data <- function(data, geometry = "point", type = "sf"){
   invisible(TRUE)
 }
 
+#' Convert spatial coordinates to requested distance units
+#'
+#' @param data An `sf` or `sfc` object with a projected CRS.
+#' @param distance_units The requested coordinate units, either `"m"` or `"km"`.
+#' @return A numeric coordinate matrix expressed in `distance_units`.
+#' @importFrom units set_units
+#' @noRd
+coordinates_in_units <- function(data, distance_units) {
+  crs_unit <- st_crs(data)$ud_unit
+
+  if (is.null(crs_unit)) {
+    stop(
+      "The modelling CRS does not define linear coordinate units. ",
+      "Use a projected CRS with recognised linear units.",
+      call. = FALSE
+    )
+  }
+
+  conversion_factor <- tryCatch(
+    as.numeric(
+      set_units(crs_unit,
+                distance_units,
+                mode = "standard")
+    ),
+    error = function(e) {
+      stop(
+        "The modelling CRS units cannot be converted to '",
+        distance_units,
+        "'. Use a projected CRS with recognised linear units.",
+        call. = FALSE
+      )
+    }
+  )
+
+  st_coordinates(data) * conversion_factor
+}
+
 #' @title check_positive_integer
 #' @description
 #'
@@ -1287,10 +1327,10 @@ check_crs <- function(crs){
   tryCatch(
     st_crs(crs),
     warning = function(w) {
-      stop("The '", variable, "' provided is not a valid CRS")
+      stop("The '", variable, "' provided is not a valid CRS", call. = FALSE)
     },
     error = function(e){
-      stop("The '", variable, "' provided is not a valid CRS")
+      stop("The '", variable, "' provided is not a valid CRS", call. = FALSE)
     }
   )
   invisible(TRUE)

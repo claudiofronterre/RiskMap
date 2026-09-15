@@ -57,5 +57,5 @@ test_that("a custom invlink that Deriv cannot differentiate still fits via the n
               messages = FALSE)
 
   expect_s3_class(fit, "RiskMap")
-  expect_true(all(is.finite(fit$estimate)))
+  expect_true(all(is.finite(unlist(fit$estimate))))
 })
