@@ -19,8 +19,9 @@
 ##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
 ##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
 ##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
-##' @param coordinate_units Character string, either `"km"` or `"m"`, indicating the units used
-##' internally for distances between locations (and so for reporting spatial parameters such as `phi`).
+##' @param distance_units Character string, either `"km"` or `"m"`, indicating the units used
+##' for internal coordinate distances and spatial parameters such as `phi`. The coordinates in
+##' the returned `data` retain the linear units declared by its CRS.
 ##' Defaults to `"km"`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
 ##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
@@ -61,7 +62,7 @@
 ##' coordinates are automatically reprojected to an appropriate UTM zone and a message details the
 ##' conversion; automatic projection is avoided for `model_crs` explicitly supplied in longitude/latitude,
 ##' which raises an error.
-##' The `coordinate_units` argument controls whether distances between locations (and so parameters such
+##' The `distance_units` argument controls whether distances between locations (and so parameters such
 ##' as `phi`) are expressed in kilometers (`"km"`, the default) or meters (`"m"`).
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
@@ -86,7 +87,7 @@
 ##' \item{fix_var_me}{Fixed measurement error variance}
 ##' \item{formula}{Model formula}
 ##' \item{family}{Response family}
-##' \item{coordinate_units}{Units (`"km"` or `"m"`) used for distances between locations}
+##' \item{distance_units}{Units (`"km"` or `"m"`) used for internal coordinate distances and spatial parameters}
 ##' \item{data}{The `sf` data used for model fitting, in the CRS used internally}
 ##' \item{input_crs}{The CRS of the input data}
 ##' \item{kappa}{Spatial correlation parameter}
@@ -146,7 +147,7 @@ glgpm <- function(formula,
                  invlink = NULL,
                  den = NULL,
                  model_crs = NULL,
-                 coordinate_units = c("km", "m"),
+                 distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
                  par0 = NULL,
                  return_samples = FALSE,
@@ -165,11 +166,11 @@ glgpm <- function(formula,
     stop("'family' must be either 'gaussian', 'binomial' or 'poisson'")
   not_gaussian <- family != "gaussian"
 
-  stopifnot("'coordinate_units' must be either 'km' or 'm'" =
-              is.character(coordinate_units) && all(coordinate_units %in% c("km", "m")),
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) && all(distance_units %in% c("km", "m")),
             "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
             "'messages' must be either TRUE or FALSE" = is.logical(messages))
-  coordinate_units <- match.arg(coordinate_units)
+  distance_units <- match.arg(distance_units)
 
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
@@ -259,7 +260,7 @@ glgpm <- function(formula,
   }
   if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
-  coords_o <- st_coordinates(data)
+  coords_o <- coordinates_in_units(data, distance_units)
   coords <- unique(coords_o)
 
   m <- nrow(coords_o)
@@ -278,13 +279,7 @@ glgpm <- function(formula,
          be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
   }
 
-  if(coordinate_units == "km") {
-    coords_o <- coords_o/1000
-    coords <- coords/1000
-    if(messages) message("Distances between locations are computed in kilometers ")
-  } else {
-    if(messages) message("Distances between locations are computed in meters ")
-  }
+  if(messages) message("Distances between locations are computed in ", distance_units, " ")
 
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
   if (!any(names(start_pars) %in% valid_start_pars)){
@@ -411,7 +406,7 @@ glgpm <- function(formula,
   res["fix_var_me"] <- list(fix_var_me)
   res$formula <- formula
   res$family <- family
-  res$coordinate_units <- coordinate_units
+  res$distance_units <- distance_units
   res$data <- data
   res$input_crs <- input_crs
   res$kappa <- kappa
@@ -1303,7 +1298,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' Simulates data from a fitted Generalized Linear Gaussian Process Model (GLGPM) or a specified model formula and data.
 ##'
 ##' @param n_sim Number of simulations to perform.
-##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `model_crs` and `coordinate_units` arguments.
+##' @param model_fit Fitted GLGPM model object of class `RiskMap`. If provided, overrides `formula`, `data`, `family`, `model_crs` and `distance_units` arguments.
 ##' @param formula Model formula indicating the variables of the model to be simulated.
 ##' @param data `sf` object containing the variables in the model formula.
 ##' @param family Distribution family for the response variable. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
@@ -1315,8 +1310,9 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
 ##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
 ##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
-##' @param coordinate_units Character string, either `"km"` or `"m"`, indicating the units used
-##' internally for distances between locations. Defaults to `"km"`. Ignored if `model_fit` is provided.
+##' @param distance_units Character string, either `"km"` or `"m"`, indicating the units used
+##' for internal coordinate distances and spatial parameters. The coordinates in `data` retain
+##' the linear units declared by its CRS. Defaults to `"km"`. Ignored if `model_fit` is provided.
 ##' @param sim_pars List of simulation parameters including `beta`, `sigma2`, `tau2`, `phi`, `sigma2_me`, and optionally `sigma2_re`.
 ##' If multiple covariates or random effects are included, the lengths of `beta` and `sigma2_re` must match the number of covariates and random effects respectively.
 ##' @param messages Logical; if `TRUE`, display progress and informative messages.
@@ -1338,7 +1334,7 @@ simulate_glgpm <- function(n_sim,
                       den = NULL,
                       cov_offset = NULL,
                       model_crs = NULL,
-                      coordinate_units = c("km", "m"),
+                      distance_units = c("km", "m"),
                       sim_pars = list(beta = NULL,
                                       sigma2 = NULL,
                                       tau2 = NULL,
@@ -1349,9 +1345,9 @@ simulate_glgpm <- function(n_sim,
 
   check_positive_integer(n_sim, "n_sim")
 
-  stopifnot("'coordinate_units' must be either 'km' or 'm'" =
-              is.character(coordinate_units) && all(coordinate_units %in% c("km", "m")))
-  coordinate_units <- match.arg(coordinate_units)
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) && all(distance_units %in% c("km", "m")))
+  distance_units <- match.arg(distance_units)
 
   if(!is.null(model_fit)) {
     if(!inherits(model_fit, "RiskMap")){
@@ -1364,7 +1360,7 @@ simulate_glgpm <- function(n_sim,
     data <- model_fit$data
     family <- model_fit$family
     model_crs <- NULL
-    coordinate_units <- model_fit$coordinate_units
+    distance_units <- model_fit$distance_units
   }
 
   check_data(data)
@@ -1473,7 +1469,7 @@ simulate_glgpm <- function(n_sim,
   }
   if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
-  coords_o <- st_coordinates(data)
+  coords_o <- coordinates_in_units(data, distance_units)
   coords <- unique(coords_o)
 
   m <- nrow(coords_o)
@@ -1488,13 +1484,7 @@ simulate_glgpm <- function(n_sim,
          be estimated. Consider removing either one of them. ")
   }
 
-  if(coordinate_units == "km") {
-    coords_o <- coords_o/1000
-    coords <- coords/1000
-    if(messages) message("Distances between locations are computed in kilometers \n")
-  } else {
-    if(messages) message("Distances between locations are computed in meters \n")
-  }
+  if(messages) message("Distances between locations are computed in ", distance_units, "\n")
 
   # Simulate S
   Sigma <- sigma2*matern_correlation(dist(coords), phi = phi, kappa = kappa,

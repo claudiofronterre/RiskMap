@@ -6,7 +6,7 @@
 ##' the coordinate reference system of the data must be used without any conversion (`FALSE`).
 ##' By default `TRUE`. Note: if `TRUE` the conversion to UTM is performed using
 ##' the epsg provided by `[propose_utm]`.
-##' @param coordinate_units Character string, either `"km"` or `"m"`, indicating whether the
+##' @param distance_units Character string, either `"km"` or `"m"`, indicating whether the
 ##' distances used are expressed in kilometers or meters. Defaults to `"km"`.
 ##'
 ##' @return a named vector containing the following components
@@ -25,14 +25,14 @@
 ##' @export
 summarise_distance <- function(data,
                            convert_to_utm = TRUE,
-                           coordinate_units = c("km", "m")) {
+                           distance_units = c("km", "m")) {
 
   check_data(data)
 
   if (!is.logical(convert_to_utm)) stop("'convert_to_utm' must be either TRUE or FALSE")
-  stopifnot("'coordinate_units' must be either 'km' or 'm'" =
-              is.character(coordinate_units) && all(coordinate_units %in% c("km", "m")))
-  coordinate_units <- match.arg(coordinate_units)
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) && all(distance_units %in% c("km", "m")))
+  distance_units <- match.arg(distance_units)
 
   if (!convert_to_utm & sf::st_is_longlat(data)){
     stop("The dataset coordinates are in longitude and latitude - set 'convert_to_utm' to TRUE")
@@ -45,7 +45,7 @@ summarise_distance <- function(data,
 
   coords <- unique(st_coordinates(data))
   d <- as.numeric(dist(coords))
-  if (coordinate_units == "km") d <- d/1000
+  if (distance_units == "km") d <- d/1000
 
   out <- c(min(d), max(d), mean(d), median(d))
   names(out) <- c("min", "max", "mean", "median")
@@ -75,9 +75,9 @@ summarise_distance <- function(data,
 ##' the coordinate reference system of the data must be used without any conversion (\code{convert_to_utm = FALSE}).
 ##' By default \code{convert_to_utm = TRUE}. Note: if \code{convert_to_utm = TRUE} the conversion to UTM is performed using
 ##' the epsg provided by \code{\link{propose_utm}}.
-##' @param coordinate_units Character string, either \code{"km"} or \code{"m"}, indicating whether
+##' @param distance_units Character string, either \code{"km"} or \code{"m"}, indicating whether
 ##' the distances used in the variogram are expressed in kilometers or meters.
-##' By default \code{coordinate_units = "m"}
+##' By default \code{distance_units = "m"}
 ##'
 ##' @return an object of class `RiskMap_variogram` which is a list containing the following components:
 ##'   \describe{
@@ -91,7 +91,7 @@ summarise_distance <- function(data,
 ##'     \item{lower_bound}{the lower bound of the 95% confidence interval}
 ##'     \item{upper_bound}{the upper bound of the 95% confidence interval}
 ##'   }}
-##'   \item{coordinate_units}{the value passed to \code{coordinate_units}}
+##'   \item{distance_units}{the value passed to \code{distance_units}}
 ##'   \item{n_permutations}{the number of permutations}
 ##'   \item{breaks}{the calculated breaks}
 ##'   }
@@ -114,7 +114,7 @@ variogram <- function(data,
                       max_dist = NULL,
                       n_permutations = 1000,
                       convert_to_utm = TRUE,
-                      coordinate_units = c("m", "km")) {
+                      distance_units = c("m", "km")) {
 
   check_data(data)
 
@@ -148,9 +148,9 @@ variogram <- function(data,
   if (!is.logical(convert_to_utm)){
     stop("'convert_to_utm' must be either TRUE or FALSE")
   }
-  stopifnot("'coordinate_units' must be either 'km' or 'm'" =
-              is.character(coordinate_units) && all(coordinate_units %in% c("km", "m")))
-  coordinate_units <- match.arg(coordinate_units)
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) && all(distance_units %in% c("km", "m")))
+  distance_units <- match.arg(distance_units)
   if (!convert_to_utm & sf::st_is_longlat(data)){
     stop("The dataset coordinates are in longitude and latitude - set 'convert_to_utm' to TRUE")
   }
@@ -162,7 +162,7 @@ variogram <- function(data,
 
   coords <- st_coordinates(data)
   d <- as.numeric(dist(coords))
-  if (coordinate_units == "km") d <- d/1000
+  if (distance_units == "km") d <- d/1000
   v <- (as.numeric(dist(data[[variable]])) ^ 2) / 2
   vario_df <- data.frame(d=d, v=v)
 
@@ -189,7 +189,7 @@ variogram <- function(data,
   vario_df <- vario_df[vario_df$d <= upper_dist,]
   if (nrow(vario_df) == 0){
     stop("the provided lag distances do not match the
-          scale of the observed distances; consider setting coordinate_units = 'km'")
+          scale of the observed distances; consider setting distance_units = 'km'")
   }
   vario_df$dist_class <- cut(vario_df$d, breaks = breaks,
                              include.lowest = TRUE, right = TRUE)
@@ -221,7 +221,7 @@ variogram <- function(data,
                                             function(x) quantile(x, 0.975))
   }
   result <- list(variogram = variogram)
-  result$coordinate_units <- coordinate_units
+  result$distance_units <- distance_units
   result$n_permutations <- n_permutations
   result$breaks <- breaks
 
@@ -265,7 +265,7 @@ plot_variogram <- function(variogram_output,
                   fill = color, alpha = 0.3)
   }
 
-  if (variogram_output$coordinate_units == "km") {
+  if (variogram_output$distance_units == "km") {
     x_label <- "Distance (km)"
   } else {
     x_label <- "Distance (m)"

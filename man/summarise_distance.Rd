@@ -7,7 +7,7 @@
 summarise_distance(
   data,
   convert_to_utm = TRUE,
-  coordinate_units = c("km", "m")
+  distance_units = c("km", "m")
 )
 }
 \arguments{
@@ -18,7 +18,7 @@ the coordinate reference system of the data must be used without any conversion 
 By default \code{TRUE}. Note: if \code{TRUE} the conversion to UTM is performed using
 the epsg provided by \verb{[propose_utm]}.}
 
-\item{coordinate_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether the
+\item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether the
 distances used are expressed in kilometers or meters. Defaults to \code{"km"}.}
 }
 \value{

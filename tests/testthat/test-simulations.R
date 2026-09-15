@@ -197,7 +197,7 @@ test_that("simulate_glgpm produces expected output from a a gaussian model", {
   model <- glgpm(y ~ cov + gp(),
                  data = gaussian_data,
                  family = "gaussian",
-                 coordinate_units = "m",
+                 distance_units = "m",
                  messages = FALSE)
 
   result <- simulate_glgpm(n_sim = n_sim,

@@ -184,10 +184,11 @@ setup_prediction <- function(object,
   }
 
   if (list_mode) {
-    grp    <- lapply(grid_pred, st_coordinates)
+    grp    <- lapply(grid_pred, coordinates_in_units,
+                     distance_units = object$distance_units)
     n_pred <- vapply(grp, nrow, integer(1))
   } else {
-    grp    <- st_coordinates(grid_pred)
+    grp    <- coordinates_in_units(grid_pred, object$distance_units)
     n_pred <- nrow(grp)
   }
 
@@ -283,7 +284,12 @@ setup_prediction <- function(object,
         ind_c       <- complete.cases(re_predictors)
         re_predictors <- re_predictors[ind_c, , drop = FALSE]
         grid_pred   <- if (list_mode) lapply(grid_pred, `[`, ind_c) else grid_pred[ind_c]
-        grp         <- if (list_mode) lapply(grid_pred, st_coordinates) else st_coordinates(grid_pred)
+        grp         <- if (list_mode) {
+          lapply(grid_pred, coordinates_in_units,
+                 distance_units = object$distance_units)
+        } else {
+          coordinates_in_units(grid_pred, object$distance_units)
+        }
         n_pred      <- if (list_mode) vapply(grp, nrow, integer(1)) else nrow(grp)
       }
       if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
@@ -308,10 +314,6 @@ setup_prediction <- function(object,
   # Spatial quantities
   # ---------------------------------------------------------------------------
   out <- list(mu_pred = mu_pred, grid_pred = grid_pred, par_hat = par_hat)
-
-  if (object$coordinate_units == "km") {
-    grp <- if (list_mode) lapply(grp, function(g) g / 1000) else grp / 1000
-  }
 
   if (object$family != "gaussian" && !obs_loc) {
     if (list_mode) {
@@ -1827,18 +1829,18 @@ assess_prediction <- function(object,
       ## ----- refit or slice -----
       if (!keep_par_fixed) {
         message("\nRe-estimating model for subset ", i)
-        model_crs_num <- sf::st_crs(fit0$data)$epsg
+        model_crs <- st_crs(fit0$data)
 
         refit_args <- list(
-          formula          = fit0$formula,
-          data             = fit_data_sf[in_id, ],
-          family           = fam,
-          model_crs        = model_crs_num,
-          coordinate_units = fit0$coordinate_units,
-          control_mcmc     = control_sim,
-          fix_var_me       = fit0$fix_var_me,
-          messages         = FALSE,
-          start_pars       = par_hat
+          formula        = fit0$formula,
+          data           = fit_data_sf[in_id, ],
+          family         = fam,
+          model_crs      = model_crs,
+          distance_units = fit0$distance_units,
+          control_mcmc   = control_sim,
+          fix_var_me     = fit0$fix_var_me,
+          messages       = FALSE,
+          start_pars     = par_hat
         )
         ## 'den' must be passed as an unquoted column name (NSE); only include it
         ## when the original model was fitted with one

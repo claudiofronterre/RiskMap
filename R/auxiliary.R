@@ -619,7 +619,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
   names(object$estimate)[ind_beta] <- colnames(object$D)
   ind_sigma2 <- p + 1; names(object$estimate)[ind_sigma2] <- "Spatial process var."
   ind_phi    <- p + 2; names(object$estimate)[ind_phi]    <-
-    paste0("Spatial corr. scale (", object$coordinate_units, ")")
+    paste0("Spatial corr. scale (", object$distance_units, ")")
 
   if (isTRUE(object$fix_tau2)) {
     ind_tau2 <- p + 3
@@ -1285,6 +1285,43 @@ check_data <- function(data, geometry = "point", type = "sf"){
     )
   }
   invisible(TRUE)
+}
+
+#' Convert spatial coordinates to requested distance units
+#'
+#' @param data An `sf` or `sfc` object with a projected CRS.
+#' @param distance_units The requested coordinate units, either `"m"` or `"km"`.
+#' @return A numeric coordinate matrix expressed in `distance_units`.
+#' @importFrom units set_units
+#' @noRd
+coordinates_in_units <- function(data, distance_units) {
+  crs_unit <- st_crs(data)$ud_unit
+
+  if (is.null(crs_unit)) {
+    stop(
+      "The modelling CRS does not define linear coordinate units. ",
+      "Use a projected CRS with recognised linear units.",
+      call. = FALSE
+    )
+  }
+
+  conversion_factor <- tryCatch(
+    as.numeric(
+      set_units(crs_unit,
+                distance_units,
+                mode = "standard")
+    ),
+    error = function(e) {
+      stop(
+        "The modelling CRS units cannot be converted to '",
+        distance_units,
+        "'. Use a projected CRS with recognised linear units.",
+        call. = FALSE
+      )
+    }
+  )
+
+  st_coordinates(data) * conversion_factor
 }
 
 #' @title check_positive_integer

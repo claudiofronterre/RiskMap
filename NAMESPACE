@@ -79,5 +79,6 @@ importFrom(terra,
   rast
 )
 importFrom(tibble,as_tibble)
+importFrom(units,set_units)
 importFrom(utils,flush.console)
 importFrom(xtable,xtable)

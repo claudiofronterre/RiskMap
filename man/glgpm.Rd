@@ -11,7 +11,7 @@ glgpm(
   invlink = NULL,
   den = NULL,
   model_crs = NULL,
-  coordinate_units = c("km", "m"),
+  distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
   par0 = NULL,
   return_samples = FALSE,
@@ -45,8 +45,9 @@ If \code{data} are in longitude/latitude and \code{model_crs} is not provided, t
 reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
 If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
 
-\item{coordinate_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
-internally for distances between locations (and so for reporting spatial parameters such as \code{phi}).
+\item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
+for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates in
+the returned \code{data} retain the linear units declared by its CRS.
 Defaults to \code{"km"}.}
 
 \item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
@@ -90,7 +91,7 @@ An object of class \code{RiskMap} containing the fitted model and relevant infor
 \item{fix_var_me}{Fixed measurement error variance}
 \item{formula}{Model formula}
 \item{family}{Response family}
-\item{coordinate_units}{Units (\code{"km"} or \code{"m"}) used for distances between locations}
+\item{distance_units}{Units (\code{"km"} or \code{"m"}) used for internal coordinate distances and spatial parameters}
 \item{data}{The \code{sf} data used for model fitting, in the CRS used internally}
 \item{input_crs}{The CRS of the input data}
 \item{kappa}{Spatial correlation parameter}
@@ -125,7 +126,7 @@ CRS for model fitting. If \code{data} are in longitude/latitude and \code{model_
 coordinates are automatically reprojected to an appropriate UTM zone and a message details the
 conversion; automatic projection is avoided for \code{model_crs} explicitly supplied in longitude/latitude,
 which raises an error.
-The \code{coordinate_units} argument controls whether distances between locations (and so parameters such
+The \code{distance_units} argument controls whether distances between locations (and so parameters such
 as \code{phi}) are expressed in kilometers (\code{"km"}, the default) or meters (\code{"m"}).
 
 The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.

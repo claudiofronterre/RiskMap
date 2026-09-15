@@ -38,11 +38,8 @@ test_that("setup_prediction produces errors as expected", {
                      type = "joint"),
     "'grid_pred\\[\\[2\\]\\]' must contain a coordinate reference system")
 
-  converted_model <- gaussian_model
-  converted_model$crs <- 32637
-
   converted_prediction <- setup_prediction(
-    converted_model,
+    gaussian_model,
     grid_pred = grid,
     predictors = data.frame(cov = rep(0, length(grid))),
     type = "joint",

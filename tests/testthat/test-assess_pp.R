@@ -2,7 +2,8 @@ make_assess_prediction_fit <- function(data, covariate) {
   coords <- sf::st_coordinates(data)
   fit <- list(
     formula = stats::as.formula(paste("y ~", covariate)),
-    data_sf = data,
+    data = data,
+    input_crs = sf::st_crs(data),
     family = "gaussian",
     estimate = c(0, 0, 0, 0),
     D = matrix(1, nrow = nrow(data), ncol = 2),
@@ -15,8 +16,7 @@ make_assess_prediction_fit <- function(data, covariate) {
     y = data$y,
     ID_coords = seq_len(nrow(data)),
     coords = coords,
-    crs = 4326,
-    scale_to_km = FALSE,
+    distance_units = "m",
     call = list(den = quote(units_m)),
     model_id = covariate
   )
@@ -24,7 +24,7 @@ make_assess_prediction_fit <- function(data, covariate) {
   fit
 }
 
-test_that("assess_prediction uses each model's own data_sf for held-out predictors", {
+test_that("assess_prediction uses each model's own data for held-out predictors", {
   geom <- sf::st_sfc(
     sf::st_point(c(0, 0)),
     sf::st_point(c(1, 1)),
@@ -100,6 +100,32 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
   )
 
   expect_s3_class(out, "RiskMap_cross_validation")
+})
+
+test_that("assess_prediction preserves a custom model CRS when refitting", {
+
+  custom_crs <- st_crs(
+    "+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs"
+  )
+  custom_data <- st_transform(gaussian_data, custom_crs)
+  custom_model <- glgpm(y ~ cov + gp(),
+                        data = custom_data,
+                        family = "gaussian",
+                        messages = FALSE)
+  user_split <- matrix(c(1, 1, rep(0, nrow(custom_data) - 2)), ncol = 1)
+
+  expect_true(is.na(st_crs(custom_model$data)$epsg))
+  expect_no_error(
+    assess_prediction(
+      list(model = custom_model),
+      keep_par_fixed = FALSE,
+      user_split = user_split,
+      control_sim = control_mcmc,
+      plot_fold = FALSE,
+      messages = FALSE,
+      which_metric = "CRPS"
+    )
+  )
 })
 
 test_that("AnPIT area computes trapezoidal absolute distance", {

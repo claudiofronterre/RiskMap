@@ -54,8 +54,8 @@ test_that("glgpm produces errors", {
   )
 
   expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", coordinate_units = "not valid"),
-    "'coordinate_units' must be either 'km' or 'm'"
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", distance_units = "not valid"),
+    "'distance_units' must be either 'km' or 'm'"
   )
 
   expect_error(
@@ -175,7 +175,7 @@ test_that("glgpm produces errors", {
 
 expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
-                     "fix_var_me", "formula", "family", "coordinate_units",
+                     "fix_var_me", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function")
 
@@ -184,7 +184,7 @@ test_that("glgpm produces expected output for gaussian models", {
   fit_no_re <- glgpm(y ~ cov + gp(),
                      data = gaussian_data,
                      family = "gaussian",
-                     coordinate_units = "m",
+                     distance_units = "m",
                      messages = FALSE)
 
   expect_s3_class(fit_no_re, "RiskMap")
@@ -272,13 +272,13 @@ test_that("glgpm correctly reprojects to new CRS", {
 
   suggested_crs <- propose_utm(latlon)
   sf_reproj <- st_transform(latlon, suggested_crs)
-  scaled_coords <- st_coordinates(sf_reproj) / 1000
+  scaled_coords <- coordinates_in_units(sf_reproj, "km")
 
   expect_message(
     fit <- glgpm(y ~ cov + gp(),
                  data = latlon,
                  family = "gaussian",
-                 coordinate_units = "km",
+                 distance_units = "km",
                  messages = FALSE),
     "automatically reprojecting to EPSG"
   )
@@ -286,6 +286,32 @@ test_that("glgpm correctly reprojects to new CRS", {
   expect_equal(fit$input_crs, st_crs(latlon))
   expect_equal(fit$coords, scaled_coords)
   expect_equal(st_crs(fit$data), st_crs(suggested_crs))
+})
+
+test_that("glgpm honours an explicitly supplied projected model_crs", {
+
+  latlon <- st_transform(gaussian_data, 4326)
+
+  fit <- glgpm(y ~ cov + gp(),
+               data = latlon,
+               family = "gaussian",
+               model_crs = 32637,
+               distance_units = "m",
+               messages = FALSE)
+
+  expect_equal(st_crs(fit$data), st_crs(32637))
+  expect_equal(fit$coords, coordinates_in_units(fit$data, "m"))
+})
+
+test_that("coordinates_in_units converts projected CRS units", {
+
+  metre_data <- gaussian_data
+  foot_data <- st_transform(gaussian_data, 2263)
+
+  expect_equal(coordinates_in_units(metre_data, "km"),
+               st_coordinates(metre_data) / 1000)
+  expect_equal(coordinates_in_units(foot_data, "m"),
+               st_coordinates(foot_data) * 0.3048006096012192)
 })
 
 test_that("plot_mcmc produces errors as expected", {
@@ -355,4 +381,3 @@ test_that("plot_mcmc produces errors as expected", {
   )
 
 })
-
