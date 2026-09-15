@@ -242,14 +242,15 @@ matern_hessian_phi <- function(U, phi, kappa) {
 }
 ##' @title Gaussian Process Model Specification
 ##' @description Specifies the terms, smoothness, and nugget effect for a Gaussian Process (GP) model.
-##' @param ... Variables representing the spatial coordinates or covariates for the GP model.
-##' @param kappa The smoothness parameter \eqn{\kappa}. Default is 0.5.
+##' @param ... Variable representing the spatial coordinates for the GP model. If left blank the
+##' `geometry` column from the data is used automatically.
+##' @param kappa The smoothness parameter \eqn{\kappa}. Default is `0.5`.
 ##' @param nugget The nugget effect, which represents the variance of the measurement error.
 ##' Default is `FALSE` in which case it is not estimated. If `TRUE` the value will be estimated or
 ##' a positive numeric value can be provided instead to fix the effect.
 ##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates),
 ##' the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
-##' @return A list of class \code{gp.spec} containing the following elements:
+##' @return A list of class \code{RiskMap_gp_spec} containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{kappa}{The smoothness parameter \eqn{\kappa}.}
 ##' \item{nugget}{The nugget effect.}
@@ -292,14 +293,14 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
   label <- gsub("sf", "", paste(full.call, ")", sep = ""))
   ret <- list(term = term, kappa = kappa, nugget = nugget, dim = d,
               label = label)
-  class(ret) <- "gp.spec"
+  class(ret) <- "RiskMap_gp_spec"
   ret
 }
 ##' @title Random Effect Model Specification
 ##' @description Specifies the terms for a random effect model.
 ##' @param ... Variables representing the random effects in the model.
 ##' @details The function constructs a list that includes the specified terms for the random effects. This list can be used as a specification for a random effect model.
-##' @return A list of class \code{re.spec} containing the following elements:
+##' @return A list of class \code{RiskMap_re_spec} containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the random effect model.}
@@ -327,11 +328,11 @@ re <- function (...) {
                                       sep = "")
   label <- gsub("sf", "", paste(full.call, ")", sep = ""))
   ret <- list(term = term, dim = d, label = label)
-  class(ret) <- "re.spec"
+  class(ret) <- "RiskMap_re_spec"
   ret
 }
 
-interpret.formula <- function(formula) {
+interpret_formula <- function(formula) {
   p.env <- environment(formula)
   tf <- terms.formula(formula, specials = c("gp", "re"))
   terms <- attr(tf, "term.labels")
@@ -364,8 +365,8 @@ interpret.formula <- function(formula) {
 
   len.gp <- length(gp)
   len.re <- length(re)
-  gp.spec <- eval(parse(text = terms[gp]), envir = p.env)
-  re.spec <- eval(parse(text = terms[re]), envir = p.env)
+  gp_spec <- eval(parse(text = terms[gp]), envir = p.env)
+  re_spec <- eval(parse(text = terms[re]), envir = p.env)
 
   if (length(off) > 0) {
     offset <- as.character(attr(tf, "variables")[[off[i] + 1]])[2]
@@ -385,8 +386,8 @@ interpret.formula <- function(formula) {
 
   ret <- list(
     pf = as.formula(pf, p.env),
-    gp.spec = gp.spec,
-    re.spec = re.spec,
+    gp_spec = gp_spec,
+    re_spec = re_spec,
     offset = offset,
     response = response
   )
