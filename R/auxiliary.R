@@ -1341,10 +1341,10 @@ check_crs <- function(crs){
   tryCatch(
     st_crs(crs),
     warning = function(w) {
-      stop("The '", variable, "' provided is not a valid CRS")
+      stop("The '", variable, "' provided is not a valid CRS", call. = FALSE)
     },
     error = function(e){
-      stop("The '", variable, "' provided is not a valid CRS")
+      stop("The '", variable, "' provided is not a valid CRS", call. = FALSE)
     }
   )
   invisible(TRUE)
