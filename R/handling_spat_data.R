@@ -30,7 +30,7 @@
 ##' plot(grid, add = TRUE, col = 'red')
 ##'
 ##' @seealso
-##' \code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersects}}, \code{\link[sf]{st_transform}}, \code{\link[sf]{st_crs}}, \code{\link{propose_utm}}
+##' \code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersection}}
 ##'
 ##'
 create_grid <- function(shp,
@@ -53,18 +53,15 @@ create_grid <- function(shp,
   }
 
   cellsize <- spacing / crs_to_distance_factor(shp, distance_units)
-  grid_box <- st_sf(
-    geometry = st_make_grid(shp,
-                            cellsize = cellsize,
-                            what = "centers")
-  )
+  grid_box <- st_make_grid(shp,
+                           cellsize = cellsize,
+                           what = "centers")
 
-  study_boundary <- st_union(st_geometry(shp))
-  grid_out <- st_filter(grid_box, study_boundary)
+  grid_out <- st_sf(geometry = st_intersection(grid_box, shp))
 
   if (nrow(grid_out) == 0) {
     stop(
-      "No grid-point centres fall within 'shp'; try decreasing 'spacing'.",
+      "No grid-point centres fall within 'shp'; try decreasing 'spacing' and check 'distance_units'.",
       call. = FALSE
     )
   }

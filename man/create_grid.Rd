@@ -38,5 +38,5 @@ plot(grid, add = TRUE, col = 'red')
 
 }
 \seealso{
-\code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersects}}, \code{\link[sf]{st_transform}}, \code{\link[sf]{st_crs}}, \code{\link{propose_utm}}
+\code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersection}}
 }
