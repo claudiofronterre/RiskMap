@@ -885,7 +885,7 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
     terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
                                x$target[[which_target]][[which_summary]]),
                          xy = TRUE)
-  raster_out <- terra::rast(t_data.frame, crs = st_crs(x$grid_pred)$input)
+  raster_out <- rast(t_data.frame, crs = st_crs(x$grid_pred)$wkt)
 
   terra::plot(raster_out, ...)
 }
@@ -1204,9 +1204,9 @@ predict_areal_target <- function(object,
   }
 
   if(list_mode) {
-    shp <- st_transform(shp, crs = st_crs(object$grid_pred[[1]])$input)
+    shp <- st_transform(shp, crs = st_crs(object$grid_pred[[1]]))
   } else {
-    shp <- st_transform(shp, crs = st_crs(object$grid_pred)$input)
+    shp <- st_transform(shp, crs = st_crs(object$grid_pred))
   }
 
   if(!list_mode) {
@@ -2028,7 +2028,7 @@ simulate_surface <- function(n_sim,
           model to be fitted")
   }
 
-  sim_crs <- st_crs(pred_grid)$epsg
+  sim_crs <- st_crs(pred_grid)
   if (is.na(sim_crs)) {
     stop("'pred_grid' must have a valid coordinate reference system (CRS) set.")
   }
@@ -2053,7 +2053,7 @@ simulate_surface <- function(n_sim,
     data_sim[[i]] <- sampling_f()
     coords_sim[[i]] <- st_coordinates(data_sim[[i]])
     if(scale_to_km) coords_sim[[i]] <- coords_sim[[i]]/1000
-    if (st_crs(data_sim[[i]]) != st_crs(pred_grid)) {
+    if (!isTRUE(st_crs(data_sim[[i]]) == st_crs(pred_grid))) {
       pred_grid <- st_transform(pred_grid, st_crs(data_sim[[i]]))
       if(i==1) {
         sim_crs_data <- st_crs(data_sim[[i]])
