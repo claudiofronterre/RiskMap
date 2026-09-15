@@ -247,10 +247,10 @@ glgpm <- function(formula,
   if(!is.null(model_crs)) {
     check_crs(model_crs)
     data <- st_transform(data, crs = model_crs)
-    if(sf::st_is_longlat(data)) {
+    if(st_is_longlat(data)) {
       stop("'model_crs' must be a projected CRS, not longitude/latitude")
     }
-  } else if(sf::st_is_longlat(data)) {
+  } else if(st_is_longlat(data)) {
     auto_crs <- propose_utm(data)
     data <- st_transform(data, crs = auto_crs)
     message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
@@ -1458,10 +1458,10 @@ simulate_glgpm <- function(n_sim,
     if(!is.null(model_crs)) {
       check_crs(model_crs)
       data <- st_transform(data, crs = model_crs)
-      if(sf::st_is_longlat(data)) {
+      if(st_is_longlat(data)) {
         stop("'model_crs' must be a projected CRS, not longitude/latitude")
       }
-    } else if(sf::st_is_longlat(data)) {
+    } else if(st_is_longlat(data)) {
       auto_crs <- propose_utm(data)
       data <- st_transform(data, crs = auto_crs)
       if(messages) {
