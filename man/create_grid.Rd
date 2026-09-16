@@ -2,30 +2,30 @@
 % Please edit documentation in R/handling_spat_data.R
 \name{create_grid}
 \alias{create_grid}
-\title{Create Grid of Points Within Shapefile}
+\title{Create Grid of Points Within Boundaries}
 \usage{
-create_grid(shp, spacing, distance_units = c("km", "m"))
+create_grid(boundaries, spacing, distance_units = c("km", "m"))
 }
 \arguments{
-\item{shp}{An object of class 'sf' containing POLYGONS or MULTIPOLYGONS within which the grid of points will be created.}
+\item{boundaries}{An object of class \code{sf} containing POLYGONS or MULTIPOLYGONS within which the grid of points will be created.}
 
 \item{spacing}{A single positive number specifying the distance between grid-point centres.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, giving the units of \code{spacing}. Defaults to \code{"km"}.}
 }
 \value{
-An 'sf' object containing the generated grid points within the shapefile.
+An \code{sf} object containing the generated grid points within the boundaries.
 }
 \description{
 Generates regularly spaced point centres within a polygon boundary.
 }
 \details{
-This function creates point centres within the boundaries of \code{shp}; it does not create polygon cells or define an areal prediction target. The CRS is inherited from \code{shp}. If \code{shp} is in longitude/latitude, it is automatically reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used; transform \code{shp} to a projected CRS yourself first to use a different one.
+This function creates point centres within \code{boundaries}; it does not create polygon cells or define an areal prediction target. The CRS is inherited from \code{boundaries}. If \code{boundaries} is in longitude/latitude, it is automatically reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used; transform \code{boundaries} to a projected CRS yourself first to use a different one.
 }
 \examples{
 library(sf)
 
-# Example shapefile data
+# Example boundary data
 nc <- st_read(system.file("shape/nc.shp", package="sf"))
 nc <- st_transform(nc, crs = 32617)
 

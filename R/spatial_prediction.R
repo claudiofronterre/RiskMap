@@ -890,7 +890,7 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
   terra::plot(raster_out, ...)
 }
 
-##' @title Predictive Targets over a Shapefile (grid-aggregated)
+##' @title Predictive Targets over Boundaries (grid-aggregated)
 ##'
 ##' @description
 ##' Computes predictive targets over polygon features using joint prediction
@@ -899,18 +899,18 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
 ##'
 ##' @param object Output from \code{\link{setup_prediction}} (class \code{RiskMap_pred}),
 ##'   typically fitted with \code{type = "joint"} so that linear predictor samples are available.
-##' @param shp An \pkg{sf} polygon object representing regions over which predictions are aggregated.
-##' @param shp_target A function that aggregates grid-cell values within each polygon to a
+##' @param boundaries An \pkg{sf} polygon object representing regions over which predictions are aggregated.
+##' @param areal_target A function that aggregates grid-cell values within each polygon to a
 ##'   single regional value (default \code{mean}). Examples: \code{mean}, \code{sum},
 ##'   a custom weighted mean, etc.
-##' @param weights Optional numeric vector of weights used inside \code{shp_target}.
+##' @param weights Optional numeric vector of weights used inside \code{areal_target}.
 ##'   If supplied with \code{standardize_weights = TRUE}, weights are normalized within each region.
 ##' @param standardize_weights Logical; standardize \code{weights} within each region (\code{FALSE} by default).
-##' @param col_names Name or column index in \code{shp} containing region identifiers to use in outputs.
+##' @param col_names Name or column index in \code{boundaries} containing region identifiers to use in outputs.
 ##' @param include_covariates Logical; include fitted covariate effects in the linear predictor (default \code{TRUE}).
 ##' @param include_nugget Logical; include the nugget (unstructured measurement error) in the linear predictor (default \code{FALSE}).
 ##' @param include_cov_offset Logical; include any covariate offset term (default \code{FALSE}).
-##' @param return_shp Logical; if \code{TRUE}, return the shapefile with appended summary columns
+##' @param return_boundaries Logical; if \code{TRUE}, return \code{boundaries} with appended summary columns
 ##'   defined by \code{pd_summary} (default \code{TRUE}).
 ##' @param include_re Logical; include unstructured random effects (RE) in the linear predictor (default \code{FALSE}).
 ##' @param f_target List of target functions applied to linear predictor samples (e.g.,
@@ -924,9 +924,9 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
 ##'   (default \code{FALSE}).
 ##'
 ##' @details
-##' For each polygon in \code{shp}, grid-cell samples of the linear predictor are transformed with
+##' For each polygon in \code{boundaries}, grid-cell samples of the linear predictor are transformed with
 ##' \code{f_target}, optionally adjusted for covariates, offset, nugget and/or REs, and
-##' then aggregated via \code{shp_target} (optionally weighted). The list \code{pd_summary} is applied
+##' then aggregated via \code{areal_target} (optionally weighted). The list \code{pd_summary} is applied
 ##' to each region's target samples to produce summary statistics.
 ##'
 ##' @return An object of class \code{RiskMap_predict_areal_target} with components:
@@ -935,8 +935,8 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
 ##'   \item \code{target_samples}: (optional) \code{list} with one element per region; each contains
 ##'         a \code{data.frame}/matrix of raw samples for each named target in \code{f_target},
 ##'         if \code{return_target_samples = TRUE}.
-##'   \item \code{shp}: (optional) the input \code{sf} object with appended summary columns,
-##'         included if \code{return_shp = TRUE}.
+##'   \item \code{boundaries}: (optional) the input \code{sf} object with appended summary columns,
+##'         included if \code{return_boundaries = TRUE}.
 ##'   \item \code{f_target}, \code{pd_summary}, \code{grid_pred}: inputs echoed for reproducibility.
 ##' }
 ##'
@@ -966,15 +966,15 @@ plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", 
 ##'
 ##' @export
 predict_areal_target <- function(object,
-                            shp,
-                            shp_target = mean,
+                            boundaries,
+                            areal_target = mean,
                             weights = NULL,
                             standardize_weights = FALSE,
                             col_names = NULL,
                             include_covariates = TRUE,
                             include_nugget = FALSE,
                             include_cov_offset = FALSE,
-                            return_shp = TRUE,
+                            return_boundaries = TRUE,
                             include_re = FALSE,
                             f_target = NULL,
                             pd_summary = NULL,
@@ -987,11 +987,11 @@ predict_areal_target <- function(object,
   }
 
   if(object$type != "joint") {
-    stop("To run predictions with a shape file, joint predictions must be used;
+    stop("To run predictions for areas, joint predictions must be used;
          rerun 'setup_prediction' and set 'type' = \"joint\"")
   }
 
-  check_data(shp, "polygon")
+  check_data(boundaries, "polygon")
 
   list_mode <- inherits(object$grid_pred, "list")
 
@@ -1190,13 +1190,13 @@ predict_areal_target <- function(object,
   names_s <- names(pd_summary)
   out$target <- list()
 
-  n_reg <- nrow(shp)
+  n_reg <- nrow(boundaries)
   if(is.null(col_names)) {
-    shp$region <- paste("reg", 1:n_reg, sep = "")
+    boundaries$region <- paste("reg", 1:n_reg, sep = "")
     col_names <- "region"
-    names_reg <- shp$region
+    names_reg <- boundaries$region
   } else {
-    names_reg <- shp[[col_names]]
+    names_reg <- boundaries[[col_names]]
     if(n_reg != length(names_reg)) {
       stop("The names in the column identified by 'col_names' do not
          provide a unique set of names, but there are duplicates")
@@ -1204,13 +1204,13 @@ predict_areal_target <- function(object,
   }
 
   if(list_mode) {
-    shp <- st_transform(shp, crs = st_crs(object$grid_pred[[1]]))
+    boundaries <- st_transform(boundaries, crs = st_crs(object$grid_pred[[1]]))
   } else {
-    shp <- st_transform(shp, crs = st_crs(object$grid_pred))
+    boundaries <- st_transform(boundaries, crs = st_crs(object$grid_pred))
   }
 
   if(!list_mode) {
-    inter <- st_intersects(shp, object$grid_pred)
+    inter <- st_intersects(boundaries, object$grid_pred)
     if(any(is.na(weights))) {
       warning("Missing values found in 'weights' are set to 0 \n")
       weights[is.na(weights)] <- 0
@@ -1228,7 +1228,7 @@ predict_areal_target <- function(object,
   for(h in 1:n_reg) {
 
     if(list_mode) {
-      if(messages) message("Computing predictive target for: ", shp[[col_names]][h])
+      if(messages) message("Computing predictive target for: ", boundaries[[col_names]][h])
       if(standardize_weights & !no_weights) {
         weights_h <- weights[[h]] / sum(weights[[h]])
       } else {
@@ -1251,7 +1251,7 @@ predict_areal_target <- function(object,
           ))
         }
 
-        target_samples_i <- apply(target_grid_samples_i, 2, function(x) shp_target(weights_h * x))
+        target_samples_i <- apply(target_grid_samples_i, 2, function(x) areal_target(weights_h * x))
 
         if (return_target_samples) {
           if (is.null(out$target_samples[[ names_reg[h] ]])) out$target_samples[[ names_reg[h] ]] <- list()
@@ -1267,9 +1267,9 @@ predict_areal_target <- function(object,
       if(messages) message(" \n")
 
     } else {
-      if(messages) message("Computing predictive target for:", shp[[col_names]][h])
+      if(messages) message("Computing predictive target for:", boundaries[[col_names]][h])
       if(length(inter[[h]]) == 0) {
-        warning(paste("No points on the grid fall within", shp[[col_names]][h],
+        warning(paste("No points on the grid fall within", boundaries[[col_names]][h],
                       "and no predictions are carried out for this area"))
         no_comp <- c(no_comp, h)
       } else {
@@ -1282,7 +1282,7 @@ predict_areal_target <- function(object,
         for(i in 1:n_f) {
           target_grid_samples_i <- as.matrix(f_target[[i]](out$lp_samples[ind_grid_h, ]))
 
-          target_samples_i <- apply(target_grid_samples_i, 2, function(x) shp_target(weights_h * x))
+          target_samples_i <- apply(target_grid_samples_i, 2, function(x) areal_target(weights_h * x))
 
           if (return_target_samples) {
             if (is.null(out$target_samples[[ names_reg[h] ]])) out$target_samples[[ names_reg[h] ]] <- list()
@@ -1300,7 +1300,7 @@ predict_areal_target <- function(object,
     }
   }
 
-  if(return_shp) {
+  if(return_boundaries) {
     if(length(no_comp) > 0) {
       ind_reg <- (1:n_reg)[-no_comp]
     } else {
@@ -1309,17 +1309,17 @@ predict_areal_target <- function(object,
     for(i in 1:n_f) {
       for(j in 1:n_summaries) {
         name_ij <- paste(names_f[i], "_", paste(names_s[j]), sep = "")
-        shp[[name_ij]] <- rep(NA, n_reg)
+        boundaries[[name_ij]] <- rep(NA, n_reg)
         for(h in ind_reg) {
-          which_reg <- which(shp[[col_names]] == names_reg[h])
-          shp[which_reg, ][[name_ij]] <-
+          which_reg <- which(boundaries[[col_names]] == names_reg[h])
+          boundaries[which_reg, ][[name_ij]] <-
             out$target[[ paste(names_reg[h]) ]][[ paste(names_f[i]) ]][[ paste(names_s[j]) ]]
         }
       }
     }
   }
 
-  out$shp <- shp
+  out$boundaries <- boundaries
   out$f_target <- names(f_target)
   out$pd_summary <- names(pd_summary)
   out$grid_pred <- object$grid_pred
@@ -1330,7 +1330,7 @@ predict_areal_target <- function(object,
 
 ##' Plot Method for RiskMap_predict_areal_target Objects
 ##'
-##' Generates a plot of predictive target values or summaries over a shapefile.
+##' Generates a plot of predictive target values or summaries over boundaries.
 ##'
 ##' @param x An object of class 'RiskMap_predict_areal_target' containing computed targets,
 ##' summaries, and associated spatial data.
@@ -1338,10 +1338,6 @@ predict_areal_target <- function(object,
 ##' @param which_summary Character indicating the summary type to plot (e.g., "mean", "sd").
 ##' @param ... Additional arguments passed to 'scale_fill_distiller' in 'ggplot2'.
 ##' @return A \code{ggplot} object showing the plot of the specified predictive target or summary.
-##' @details
-##' This function plots the predictive target values or summaries over a shapefile.
-##' It requires the 'ggplot2' package for plotting and 'sf' objects for spatial data.
-##'
 ##' @seealso
 ##' \code{\link{predict_areal_target}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
 ##' \code{\link[ggplot2]{aes}}, \code{\link[ggplot2]{scale_fill_distiller}}
@@ -1350,10 +1346,10 @@ predict_areal_target <- function(object,
 ##' @export
 plot.RiskMap_predict_areal_target <- function(x, which_target = "linear_target",
                                          which_summary = "mean", ...) {
-  col_shp_name <- paste(which_target,"_",which_summary,sep="")
+  col_boundaries_name <- paste(which_target,"_",which_summary,sep="")
 
-  out <- ggplot(x$shp) +
-    geom_sf(aes(fill = x$shp[[col_shp_name]])) +
+  out <- ggplot(x$boundaries) +
+    geom_sf(aes(fill = x$boundaries[[col_boundaries_name]])) +
     scale_fill_distiller(...)
   return(out)
 }
@@ -2248,8 +2244,8 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
 ##' @param f_grid_target A function for processing grid-level predictions.
 ##' @param f_area_target A function for processing area-level predictions.
-##' @param shp A shapefile of class `sf` for area-level analysis, required if `spatial_scale = "area"`.
-##' @param col_names Column name in `shp` containing unique region names. If `NULL`, defaults to `"region"`.
+##' @param boundaries An `sf` object containing only POLYGON or MULTIPOLYGON geometries, required if `spatial_scale = "area"`.
+##' @param col_names Column name in `boundaries` containing unique region names. If `NULL`, defaults to `"region"`.
 ##' @param pred_objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
 ##' @param categories A numeric vector of thresholds defining categories for classification. Required if `pred_objective = "classify"`.
 ##'
@@ -2263,7 +2259,7 @@ assess_simulation <- function(obj_sim,
                        messages = TRUE,
                        f_grid_target = NULL,
                        f_area_target = NULL,
-                       shp = NULL, col_names = NULL,
+                       boundaries = NULL, col_names = NULL,
                        pred_objective = c("mse","classify"),
                        categories= NULL) {
 
@@ -2276,10 +2272,10 @@ assess_simulation <- function(obj_sim,
   if(spatial_scale != "grid" & spatial_scale != "area") {
     stop("'spatial_scale' must be set to 'grid' or 'area'")
   }
-  if(spatial_scale=="area" & is.null(shp)) {
-    stop("if spatial_scale='area' then a shape file of the area(s) must be passed to
-         'shp'")
-    check_data(shp, "polygon")
+  if(spatial_scale=="area" & is.null(boundaries)) {
+    stop("if spatial_scale='area' then an sf object of the area(s) must be passed to
+         'boundaries'")
+    check_data(boundaries, "polygon")
   }
 
   # Determine the binomial denominator column, if relevant to the family
@@ -2315,26 +2311,26 @@ assess_simulation <- function(obj_sim,
     type <- "marginal"
   } else if(spatial_scale=="area") {
     type <- "joint"
-    n_reg <- nrow(shp)
-    if(is.null(shp)) stop("If spatial_scale='area', then 'shp' must be specified")
-    if(!inherits(shp,
+    n_reg <- nrow(boundaries)
+    if(is.null(boundaries)) stop("If spatial_scale='area', then 'boundaries' must be specified")
+    if(!inherits(boundaries,
                  what = c("sf"), which = FALSE)) {
-      stop("The object passed to 'shp' must be an object of class 'sf'")
+      stop("The object passed to 'boundaries' must be an object of class 'sf'")
     }
 
     if(is.null(col_names)) {
-      shp$region <- paste("reg",1:n_reg, sep="")
+      boundaries$region <- paste("reg",1:n_reg, sep="")
       col_names <- "region"
-      names_reg <- shp$region
+      names_reg <- boundaries$region
     } else {
-      names_reg <- shp[[col_names]]
+      names_reg <- boundaries[[col_names]]
       if(n_reg != length(names_reg)) {
         stop("The names in the column identified by 'col_names' do not
          provide a unique set of names, but there are duplicates")
       }
     }
-    shp <- st_transform(shp, st_crs(obj_sim$lp_grid_sim))
-    inter <- st_intersects(shp, obj_sim$lp_grid_sim)
+    boundaries <- st_transform(boundaries, st_crs(obj_sim$lp_grid_sim))
+    inter <- st_intersects(boundaries, obj_sim$lp_grid_sim)
   }
 
   for(i in 1:n_models) {
@@ -2425,7 +2421,7 @@ assess_simulation <- function(obj_sim,
     for(i in 1:n_reg) {
       for(j in 1:n_sim) {
         if(length(inter[[i]])==0) {
-          warning(paste("No points on the grid fall within", shp[[col_names]][i],
+          warning(paste("No points on the grid fall within", boundaries[[col_names]][i],
                         "and no predictions are carried out for this area"))
           no_comp <- c(no_comp, i)
         } else {
@@ -2500,7 +2496,7 @@ assess_simulation <- function(obj_sim,
         mean_target_ij <- rep(NA,n_reg)
         for(h in 1:n_reg) {
           if(length(inter[[h]])==0) {
-            warning(paste("No points on the grid fall within", shp[[col_names]][h],
+            warning(paste("No points on the grid fall within", boundaries[[col_names]][h],
                           "and no predictions are carried out for this area"))
             no_comp <- c(no_comp, h)
           } else {

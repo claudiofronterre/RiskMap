@@ -1,6 +1,6 @@
 test_that("predict_areal_target produces expected output with default arguments", {
 
-  expected_output <- c("lp_samples", "target", "shp", "f_target", "pd_summary", "grid_pred")
+  expected_output <- c("lp_samples", "target", "boundaries", "f_target", "pd_summary", "grid_pred")
 
   gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
   gaussian_offset_grid <- setup_prediction(gaussian_offset_model, type = "joint")
@@ -29,7 +29,7 @@ test_that("predict_areal_target preserves posterior samples for one-pixel list-m
 
   polygon_1 <- sf::st_polygon(list(matrix(c(0,0, 0.1,0, 0.1,0.1, 0,0.1, 0,0), ncol = 2, byrow = TRUE)))
   polygon_2 <- sf::st_polygon(list(matrix(c(1,1, 1.5,1, 1.5,1.5, 1,1.5, 1,1), ncol = 2, byrow = TRUE)))
-  shp <- sf::st_sf(region = c("group_one", "group_two"),
+  boundaries <- sf::st_sf(region = c("group_one", "group_two"),
                    geometry = sf::st_sfc(polygon_1, polygon_2), crs = sf::st_crs(4326))
 
   object <- list(
@@ -48,14 +48,14 @@ test_that("predict_areal_target preserves posterior samples for one-pixel list-m
 
   out <- predict_areal_target(
     object,
-    shp = shp,
-    shp_target = sum,
+    boundaries = boundaries,
+    areal_target = sum,
     weights = list(1, c(0.25, 0.75)),
     standardize_weights = FALSE,
     col_names = "region",
     f_target = list(identity_target = identity),
     pd_summary = list(mean = mean),
-    return_shp = FALSE,
+    return_boundaries = FALSE,
     return_target_samples = TRUE,
     messages = FALSE
   )
@@ -69,7 +69,7 @@ test_that("predict_areal_target errors on wrong list-mode target orientation", {
   grid_pred <- list(
     group_one = sf::st_as_sf(data.frame(x = c(0, 1), y = c(0, 1)), coords = c("x", "y"), crs = 4326)
   )
-  shp <- sf::st_sf(
+  boundaries <- sf::st_sf(
     region = "group_one",
     geometry = sf::st_sfc(sf::st_polygon(list(matrix(c(0,0, 0.1,0, 0.1,0.1, 0,0.1, 0,0), ncol = 2, byrow = TRUE))), crs = 4326)
   )
@@ -87,12 +87,12 @@ test_that("predict_areal_target errors on wrong list-mode target orientation", {
   expect_error(
     predict_areal_target(
       object,
-      shp = shp,
+      boundaries = boundaries,
       weights = list(c(0.5, 0.5)),
       col_names = "region",
       f_target = list(bad_target = function(x) t(x)),
       pd_summary = list(mean = mean),
-      return_shp = FALSE,
+      return_boundaries = FALSE,
       messages = FALSE
     ),
     "expected a 2 x 3 matrix"
