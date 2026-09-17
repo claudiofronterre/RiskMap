@@ -6,6 +6,18 @@ sim_tau2 <- 0.01
 sim_phi <- 1.1
 sim_sigma2_me <- 0.3
 
+test_that("assess_simulation validates area boundaries", {
+  obj_sim <- structure(list(), class = "RiskMap_simulation")
+
+  expect_error(
+    assess_simulation(obj_sim,
+                      models = list(model = y ~ 1),
+                      spatial_scale = "area",
+                      boundaries = gaussian_data,
+                      f_area_target = mean),
+    "'boundaries' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry"
+  )
+})
 
 test_that("simulate_glgpm produces errors as expected", {
 

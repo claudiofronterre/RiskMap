@@ -1317,9 +1317,9 @@ predict_areal_target <- function(object,
         }
       }
     }
+    out$boundaries <- boundaries
   }
 
-  out$boundaries <- boundaries
   out$f_target <- names(f_target)
   out$pd_summary <- names(pd_summary)
   out$grid_pred <- object$grid_pred
@@ -2272,9 +2272,11 @@ assess_simulation <- function(obj_sim,
   if(spatial_scale != "grid" & spatial_scale != "area") {
     stop("'spatial_scale' must be set to 'grid' or 'area'")
   }
-  if(spatial_scale=="area" & is.null(boundaries)) {
-    stop("if spatial_scale='area' then an sf object of the area(s) must be passed to
-         'boundaries'")
+  if (spatial_scale == "area") {
+    if (is.null(boundaries)) {
+      stop("if spatial_scale='area' then an sf object of the area(s) must be passed to
+           'boundaries'")
+    }
     check_data(boundaries, "polygon")
   }
 
@@ -2312,11 +2314,6 @@ assess_simulation <- function(obj_sim,
   } else if(spatial_scale=="area") {
     type <- "joint"
     n_reg <- nrow(boundaries)
-    if(is.null(boundaries)) stop("If spatial_scale='area', then 'boundaries' must be specified")
-    if(!inherits(boundaries,
-                 what = c("sf"), which = FALSE)) {
-      stop("The object passed to 'boundaries' must be an object of class 'sf'")
-    }
 
     if(is.null(col_names)) {
       boundaries$region <- paste("reg",1:n_reg, sep="")
