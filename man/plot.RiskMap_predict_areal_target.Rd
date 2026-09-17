@@ -20,11 +20,7 @@ summaries, and associated spatial data.}
 A \code{ggplot} object showing the plot of the specified predictive target or summary.
 }
 \description{
-Generates a plot of predictive target values or summaries over a shapefile.
-}
-\details{
-This function plots the predictive target values or summaries over a shapefile.
-It requires the 'ggplot2' package for plotting and 'sf' objects for spatial data.
+Generates a plot of predictive target values or summaries over boundaries.
 }
 \seealso{
 \code{\link{predict_areal_target}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},

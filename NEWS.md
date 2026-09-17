@@ -33,7 +33,8 @@ Consequently the locations do not need to be passed to `gp()` when fitting a mod
 If `data` are in longitude/latitude and `model_crs` is not supplied, the coordinates are now automatically reprojected to an appropriate UTM zone; providing `model_crs` in longitude/latitude now raises an error.
 `setup_prediction()`, `simulate_glgpm()` and `assess_prediction()` have been updated to match; `simulate_glgpm()`'s own `convert_to_crs`/`scale_to_km` arguments have likewise been replaced with `model_crs`/`distance_units`.
 - In `summarise_distance()` and `variogram()`, `scale_to_km` has similarly been replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`. Default behaviour is unchanged (`"km"` for `summarise_distance()`, `"m"` for `variogram()`).
-- `create_grid()` no longer raises an error when `shp` is in longitude/latitude; like `glgpm()`, it now automatically reprojects to an appropriate UTM zone and reports the conversion with a message.
+- `create_grid()` no longer raises an error when `boundaries` is in longitude/latitude; like `glgpm()`, it now automatically reprojects to an appropriate UTM zone and reports the conversion with a message.
+- The `shp` parameter has been renamed to `boundaries` in `create_grid()`, `predict_areal_target()` and `assess_simulation()`; `shp_target` and `return_shp` in `predict_areal_target()` have similarly been renamed to `areal_target` and `return_boundaries`. `predict_areal_target()`'s returned `shp` component is now named `boundaries`.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to `TRUE` to estimate it.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian outputs reproducible.

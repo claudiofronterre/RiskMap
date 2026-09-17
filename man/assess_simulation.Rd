@@ -12,7 +12,7 @@ assess_simulation(
   messages = TRUE,
   f_grid_target = NULL,
   f_area_target = NULL,
-  shp = NULL,
+  boundaries = NULL,
   col_names = NULL,
   pred_objective = c("mse", "classify"),
   categories = NULL
@@ -33,9 +33,9 @@ assess_simulation(
 
 \item{f_area_target}{A function for processing area-level predictions.}
 
-\item{shp}{A shapefile of class \code{sf} for area-level analysis, required if \code{spatial_scale = "area"}.}
+\item{boundaries}{An \code{sf} object containing only POLYGON or MULTIPOLYGON geometries, required if \code{spatial_scale = "area"}.}
 
-\item{col_names}{Column name in \code{shp} containing unique region names. If \code{NULL}, defaults to \code{"region"}.}
+\item{col_names}{Column name in \code{boundaries} containing unique region names. If \code{NULL}, defaults to \code{"region"}.}
 
 \item{pred_objective}{A character vector specifying objectives, either \code{"mse"}, \code{"classify"}, or both.}
 
