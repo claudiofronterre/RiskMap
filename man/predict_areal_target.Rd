@@ -2,19 +2,19 @@
 % Please edit documentation in R/spatial_prediction.R
 \name{predict_areal_target}
 \alias{predict_areal_target}
-\title{Predictive Targets over a Shapefile (grid-aggregated)}
+\title{Predictive Targets over Boundaries (grid-aggregated)}
 \usage{
 predict_areal_target(
   object,
-  shp,
-  shp_target = mean,
+  boundaries,
+  areal_target = mean,
   weights = NULL,
   standardize_weights = FALSE,
   col_names = NULL,
   include_covariates = TRUE,
   include_nugget = FALSE,
   include_cov_offset = FALSE,
-  return_shp = TRUE,
+  return_boundaries = TRUE,
   include_re = FALSE,
   f_target = NULL,
   pd_summary = NULL,
@@ -26,18 +26,18 @@ predict_areal_target(
 \item{object}{Output from \code{\link{setup_prediction}} (class \code{RiskMap_pred}),
 typically fitted with \code{type = "joint"} so that linear predictor samples are available.}
 
-\item{shp}{An \pkg{sf} polygon object representing regions over which predictions are aggregated.}
+\item{boundaries}{An \pkg{sf} polygon object representing regions over which predictions are aggregated.}
 
-\item{shp_target}{A function that aggregates grid-cell values within each polygon to a
+\item{areal_target}{A function that aggregates grid-cell values within each polygon to a
 single regional value (default \code{mean}). Examples: \code{mean}, \code{sum},
 a custom weighted mean, etc.}
 
-\item{weights}{Optional numeric vector of weights used inside \code{shp_target}.
+\item{weights}{Optional numeric vector of weights used inside \code{areal_target}.
 If supplied with \code{standardize_weights = TRUE}, weights are normalized within each region.}
 
 \item{standardize_weights}{Logical; standardize \code{weights} within each region (\code{FALSE} by default).}
 
-\item{col_names}{Name or column index in \code{shp} containing region identifiers to use in outputs.}
+\item{col_names}{Name or column index in \code{boundaries} containing region identifiers to use in outputs.}
 
 \item{include_covariates}{Logical; include fitted covariate effects in the linear predictor (default \code{TRUE}).}
 
@@ -45,7 +45,7 @@ If supplied with \code{standardize_weights = TRUE}, weights are normalized withi
 
 \item{include_cov_offset}{Logical; include any covariate offset term (default \code{FALSE}).}
 
-\item{return_shp}{Logical; if \code{TRUE}, return the shapefile with appended summary columns
+\item{return_boundaries}{Logical; if \code{TRUE}, return \code{boundaries} with appended summary columns
 defined by \code{pd_summary} (default \code{TRUE}).}
 
 \item{include_re}{Logical; include unstructured random effects (RE) in the linear predictor (default \code{FALSE}).}
@@ -70,8 +70,8 @@ An object of class \code{RiskMap_predict_areal_target} with components:
 \item \code{target_samples}: (optional) \code{list} with one element per region; each contains
 a \code{data.frame}/matrix of raw samples for each named target in \code{f_target},
 if \code{return_target_samples = TRUE}.
-\item \code{shp}: (optional) the input \code{sf} object with appended summary columns,
-included if \code{return_shp = TRUE}.
+\item \code{boundaries}: (optional) the input \code{sf} object with appended summary columns,
+included if \code{return_boundaries = TRUE}.
 \item \code{f_target}, \code{pd_summary}, \code{grid_pred}: inputs echoed for reproducibility.
 }
 }
@@ -81,9 +81,9 @@ samples from \code{\link{setup_prediction}}. Targets can incorporate
 covariates, offsets, optional unstructured random effects.
 }
 \details{
-For each polygon in \code{shp}, grid-cell samples of the linear predictor are transformed with
+For each polygon in \code{boundaries}, grid-cell samples of the linear predictor are transformed with
 \code{f_target}, optionally adjusted for covariates, offset, nugget and/or REs, and
-then aggregated via \code{shp_target} (optionally weighted). The list \code{pd_summary} is applied
+then aggregated via \code{areal_target} (optionally weighted). The list \code{pd_summary} is applied
 to each region's target samples to produce summary statistics.
 }
 \examples{

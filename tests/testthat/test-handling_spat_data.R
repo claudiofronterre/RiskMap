@@ -9,8 +9,8 @@ square_coords <- c(40,40,
 
 test_that("create_grid produces errors", {
 
-  expect_error(create_grid("gaussian_data", 1), "'shp' must be of class 'sf'")
-  expect_error(create_grid(gaussian_data, 1), "'shp' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+  expect_error(create_grid("gaussian_data", 1), "'boundaries' must be of class 'sf'")
+  expect_error(create_grid(gaussian_data, 1), "'boundaries' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
   expect_error(create_grid(sf_polygon, "not numeric"), "The value for 'spacing' must be a single positive number")
   expect_error(create_grid(sf_polygon, 1, distance_units = "feet"),
                "'distance_units' must be either 'km' or 'm'")
@@ -18,9 +18,8 @@ test_that("create_grid produces errors", {
 
   square <- st_polygon(list(matrix(square_coords, ncol = 2, byrow = TRUE)))
   sf_square <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
-  expect_error(create_grid(sf_square, 1), "No grid-point centres fall within 'shp'")
+  expect_error(create_grid(sf_square, 1), "No grid-point centres fall within 'boundaries'")
 })
-
 
 test_that("create_grid functions correctly", {
 
