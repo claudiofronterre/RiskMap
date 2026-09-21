@@ -153,26 +153,11 @@ test_that("glgpm simulations support random effects in tibble-backed sf data", {
   )
   data <- st_as_sf(data, coords = c("x", "z"), crs = 32634)
 
-  set.seed(1)
-  result <-
-    simulate_glgpm(
-      n_sim = 2,
-      formula = y ~ gp(kappa = 0.5, nugget = FALSE) + re(group),
-      data = data,
-      family = "gaussian",
-      sim_pars = list(
-        beta = 0,
-        sigma2 = 1,
-        tau2 = 0,
-        phi = 1,
-        sigma2_me = 0.1,
-        sigma2_re = 0.2
-      ),
-      messages = FALSE
-    )
-
-  expect_length(result$re_sim, 2L)
-  expect_length(result$re_sim[[1]]$group, 2L)
-  expect_equal(result$sigma2_re, 0.2)
+  model <- specify_glgpm(y ~ gp(kappa = 0.5) + re(group), data, "gaussian",
+                         list(beta = 0, sigma2 = 1, phi = 1,
+                              sigma2_me = 0.1, sigma2_re = 0.2))
+  result <- simulate_glgpm(model, nsim = 2, seed = 1)
+  expect_equal(result$samples$data[1, , "group_effect"],
+               result$samples$data[2, , "group_effect"])
+  expect_equal(unname(result$model$parameters$sigma2_re), 0.2)
 })
-

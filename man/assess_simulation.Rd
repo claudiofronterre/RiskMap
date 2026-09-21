@@ -19,7 +19,9 @@ assess_simulation(
 )
 }
 \arguments{
-\item{obj_sim}{An object of class \code{RiskMap_simulation}, obtained as an output from the \code{simulate_surface} function.}
+\item{obj_sim}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}} with both data and surface.
+The current assessment interface supports generating models without
+grouped \code{re()} effects or custom inverse links.}
 
 \item{models}{A named list of models to be evaluated.}
 
@@ -45,5 +47,5 @@ assess_simulation(
 A list of class \code{RiskMap_assess_simulation} containing model evaluation results.
 }
 \description{
-This function evaluates the performance of models based on simulation results from the \code{simulate_surface} function.
+Evaluates models using joint data and surface simulations.
 }

@@ -3,6 +3,16 @@ RiskMap 2.0.0
 
 - This version introduces many breaking changes from v1. The package should not be considered stable, but further breaking changes will be handled gracefully.
 - `dast()` has been removed.
+- `simulate_glgpm()` now accepts a fitted model or `specify_glgpm()` model,
+  with `nsim`, `what`, `sample_locations`, `prediction_grid` and `seed`.
+  `what = c("data", "surface")` simulates jointly at the exact union of both
+  sets of locations. This replaces `simulate_surface()` and its nearest-grid
+  approximation. The old simulation arguments and output structure are removed.
+  Parameters remain fixed, offsets and fitted inverse links are retained, and
+  Poisson responses use exposure times the inverse-link mean.
+  Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
+  extract results. See `SIMULATION_MIGRATION.md` for migration examples and
+  the corresponding changes needed in Chapters 3 and 4 of the book.
 - Many functions have been renamed:
 
 | v1 | v2 | 
