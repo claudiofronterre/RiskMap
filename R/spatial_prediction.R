@@ -425,7 +425,7 @@ setup_prediction <- function(object,
 
   } else {
     # =========================================================================
-    # GAUSSIAN MODEL (unchanged)
+    # GAUSSIAN MODEL
     # =========================================================================
     if (!is.null(object$fix_var_me) && object$fix_var_me > 0 || is.null(object$fix_var_me)) {
       m        <- length(object$y)
@@ -447,24 +447,17 @@ setup_prediction <- function(object,
         }
       }
       C_g      <- Matrix(C_g, sparse = TRUE, doDiag = FALSE)
-      C_g_m    <- forceSymmetric(Matrix::t(C_g) %*% C_g)
       Sigma_g  <- matrix(0, nrow = sum(n_dim_re_tot), ncol = sum(n_dim_re_tot))
-      Sigma_g_inv <- matrix(0, nrow = sum(n_dim_re_tot), ncol = sum(n_dim_re_tot))
       Sigma_g[seq_len(n_dim_re_tot[1]), seq_len(n_dim_re_tot[1])] <- par_hat$sigma2 * R
-      Sigma_g_inv[seq_len(n_dim_re_tot[1]), seq_len(n_dim_re_tot[1])] <- solve(R) / par_hat$sigma2
       if (n_re > 0) {
         for (j in seq_len(n_re)) {
           sc <- sum(n_dim_re_tot[seq_len(j)])
           diag(Sigma_g[sc + seq_len(n_dim_re_tot[j+1]), sc + seq_len(n_dim_re_tot[j+1])]) <- par_hat$sigma2_re[j]
-          diag(Sigma_g_inv[sc + seq_len(n_dim_re_tot[j+1]), sc + seq_len(n_dim_re_tot[j+1])]) <- 1 / par_hat$sigma2_re[j]
         }
       }
-      Sigma_star     <- Sigma_g_inv + C_g_m / par_hat$sigma2_me
-      Sigma_star_inv <- forceSymmetric(Matrix::solve(Sigma_star))
-      B    <- -C_g %*% Sigma_star_inv %*% Matrix::t(C_g) / (par_hat$sigma2_me^2)
-      diag(B) <- Matrix::diag(B) + 1 / par_hat$sigma2_me
-
-      A <- if (list_mode) lapply(C, function(single_grid_C) single_grid_C %*% B) else C %*% B
+      prediction_weights <- gaussian_prediction_weights(C_g, Sigma_g, ID_g,
+                                                         par_hat$sigma2_me)
+      A <- if (list_mode) lapply(C, prediction_weights) else prediction_weights(C)
     } else {
       Sigma     <- par_hat$sigma2 * R
       Sigma_inv <- solve(Sigma)
@@ -528,23 +521,15 @@ setup_prediction <- function(object,
           C_Z[, add + seq_len(n_dim_re_tot[i+1])]
         add <- n_dim_re_tot[i+1]
       }
-      A_Z          <- Matrix::t(C_Z) %*% B %*% t(C) %*% Sigma_cond_inv
+      W_Z          <- prediction_weights(Matrix::t(C_Z))
+      A_Z          <- W_Z %*% t(C) %*% Sigma_cond_inv
       Sigma_Z_cond <- diag(rep(par_hat$sigma2_re, n_dim_re_tot[-1])) -
-        Matrix::t(C_Z) %*% B %*% C_Z -
-        A_Z %*% C %*% Matrix::t(B) %*% C_Z
+        W_Z %*% C_Z -
+        A_Z %*% C %*% t(W_Z)
       Scr_Z        <- t(chol(Sigma_Z_cond))
       mu_Z_cond    <- sapply(seq_len(n_samples), function(i)
         as.matrix(A_Z %*% (out$S_samples[, i] - mu_cond_S)))
-      add <- 0
-      for (i in seq_len(n_re)) {
-        for (j in seq_len(n_dim_re_tot[1 + i])) {
-          add <- add + 1
-          ind_ij   <- which(object$ID_re[[i]] == re_unique[[i]][j])
-          C_re_ij  <- matrix(0, ncol = m)
-          C_re_ij[, ind_ij] <- par_hat$sigma2_re[i]
-          mu_Z_cond[add, ] <- as.numeric(C_re_ij %*% B %*% diff.y) + mu_Z_cond[add, ]
-        }
-      }
+      mu_Z_cond <- mu_Z_cond + as.numeric(W_Z %*% diff.y)
       re_samples <- sapply(seq_len(n_samples), function(i)
         as.numeric(mu_Z_cond[, i] + Scr_Z %*% rnorm(sum(n_dim_re_tot[-1]))))
     } else {
