@@ -46,7 +46,8 @@ importFrom(Deriv,Deriv)
 importFrom(Matrix,
   Matrix,
   forceSymmetric,
-  solve
+  solve,
+  sparseMatrix
 )
 importFrom(dplyr,
   "%>%",

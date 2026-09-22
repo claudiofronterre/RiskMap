@@ -1,6 +1,9 @@
 RiskMap 2.0.0
 =============
 
+- Gaussian prediction uses a stable reduced covariance solve, avoiding cancellation
+  with small measurement-error variances while retaining the same conditional model.
+
 - This version introduces many breaking changes from v1. The package should not be considered stable, but further breaking changes will be handled gracefully.
 - `dast()` has been removed.
 - Many functions have been renamed:
