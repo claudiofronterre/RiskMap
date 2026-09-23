@@ -1190,7 +1190,7 @@ check_binomial <- function(y, den){
 #' @description
 #'
 #' Check that the data is an sf or sfc object, with a CRS, only containing points
-#' or either polygons or multipolygons and that there are no missing coordinates.
+#' or either polygons or multipolygons.
 #' If CRS == 4326 it also checks that the coordinates are possible (i.e. not
 #' latitudes > 90)
 #' @param data the data to check
@@ -1226,12 +1226,6 @@ check_data <- function(data, geometry = "point", type = "sf"){
   all_valid_geometry <- all(grepl(toupper(geometry), sf::st_geometry_type(data)))
   if (!all_valid_geometry)
     stop(paste(data_type, "can only contain", geometry_type, "geometry"))
-
-  empty_geom <- any(st_is_empty(data))
-  na_geom <- any(vapply(st_geometry(data), function(g) any(is.na(st_bbox(g))), logical(1)))
-
-  if (empty_geom | na_geom)
-    stop(paste(data_type, "contains rows that are missing coordinates"))
 
   if (st_crs(data) == st_crs(4326)){
     tryCatch(
