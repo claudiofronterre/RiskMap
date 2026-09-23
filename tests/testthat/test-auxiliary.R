@@ -21,6 +21,9 @@ test_that("check_formula functions correctly", {
   expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
   expect_error(check_formula(y ~ gp(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
   expect_error(check_formula(y ~ gp(c) + re(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
+
+  data$y[1] <- NA
+  expect_error(check_formula(y ~ gp(), data), "'data' contains rows with missing data")
  })
 
 test_that("check_binomial functions correctly", {
@@ -63,6 +66,7 @@ test_that("check_data functions correctly", {
   expect_error(check_data(sf_no_crs), "'sf_no_crs' must contain a coordinate reference system")
   expect_error(check_data(sf_merged), "'sf_merged' can only contain 'POINT' geometry")
   expect_error(check_data(sf_wrong_coord), "'sf_wrong_coord' contains impossible latitude or longitude values")
+  expect_error(check_data(sf_missing_coord), "'sf_missing_coord' contains rows that are missing coordinates")
 
   expect_no_error(check_data(sf_polygon, "polygon"))
   expect_error(check_data(gaussian_data, "polygon"), "'gaussian_data' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
