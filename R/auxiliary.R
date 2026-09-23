@@ -445,7 +445,7 @@ check_formula <- function(formula, data){
   contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
 
   if (!contains_gp){
-    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'")
+    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'", call. = FALSE)
   }
 
   missing_columns <- setdiff(formula_terms, column_names)
@@ -463,7 +463,7 @@ check_formula <- function(formula, data){
   drop_coords <- st_drop_geometry(data)
   missing_data <- any(!complete.cases(drop_coords))
   if (missing_data)
-    stop("'data' contains rows with missing data - check or remove them" )
+    stop("'data' contains rows with missing data - check or remove them", call. = FALSE)
 
   invisible(TRUE)
 }
@@ -1214,25 +1214,25 @@ check_data <- function(data, geometry = "point", type = "sf"){
 
   if (type == "sf"){
     if (!inherits(data, "sf"))
-      stop(paste(data_type, "must be of class 'sf'"))
+      stop(paste(data_type, "must be of class 'sf'"), call. = FALSE)
   } else {
     if (!inherits(data, c("sf", "sfc")))
-      stop(paste(data_type, "must be of class 'sf' or 'sfc'"))
+      stop(paste(data_type, "must be of class 'sf' or 'sfc'"), call. = FALSE)
   }
 
   if (is.na(st_crs(data)))
-    stop(paste(data_type, "must contain a coordinate reference system"))
+    stop(paste(data_type, "must contain a coordinate reference system"), call. = FALSE)
 
-  all_valid_geometry <- all(grepl(toupper(geometry), sf::st_geometry_type(data)))
+  all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
   if (!all_valid_geometry)
-    stop(paste(data_type, "can only contain", geometry_type, "geometry"))
+    stop(paste(data_type, "can only contain", geometry_type, "geometry"), call. = FALSE)
 
   if (st_crs(data) == st_crs(4326)){
     tryCatch(
       st_is_longlat(data$geometry),
       warning = function(w) {
         stop(paste(data_type, "contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data"))
+             check you have specified the columns correctly when converting the data"), call. = FALSE)
       }
     )
   }
