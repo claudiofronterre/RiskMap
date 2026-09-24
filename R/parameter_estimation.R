@@ -289,6 +289,21 @@ glgpm <- function(formula,
          be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
   }
 
+  # For the Gaussian family the measurement error is already an independent
+  # effect with one value per observation, so a random effect with one level
+  # per observation is perfectly confounded with it.
+  if (family == "gaussian" && n_re > 0 && is.null(fix_var_me)) {
+    n_levels_re <- vapply(re_unique, length, integer(1))
+    is_saturated_re <- n_levels_re == n
+    if (any(is_saturated_re)) {
+      stop("The random effect(s) '",
+           paste(names_re[is_saturated_re], collapse = "', '"),
+           "' have one level per observation, which cannot be distinguished ",
+           "from the measurement error when 'family' is 'gaussian'. Either ",
+           "drop the random effect or supply a value for 'fix_var_me'.")
+    }
+  }
+
   if(messages) message("Distances between locations are computed in ", distance_units, " ")
 
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
@@ -519,24 +534,22 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   C_g_m <- Matrix::t(C_g)%*%C_g
   C_g_m <- forceSymmetric(C_g_m)
 
+
   ind_beta <- 1:p
+  ind_sigma2 <- p + 1
+  ind_phi <- p + 2
+  ind_next <- ind_phi
 
-  ind_sigma2 <- p+1
-
-  ind_phi <- p+2
-
-  if(!isTRUE(fix_tau2)) {
-    ind_omega2 <- p+3
-    if(n_re>0) {
-      ind_sigma2_re <- (p+3+1):(p+3+n_re)
-    }
-  } else {
-    ind_nu2 <- p+3
-    ind_omega2 <- p+4
-    if(n_re>0) {
-      ind_omega2 <- p+4
-      ind_sigma2_re <- (p+4+1):(p+4+n_re)
-    }
+  if(isTRUE(fix_tau2)) {
+    ind_next <- ind_next + 1
+    ind_nu2 <- ind_next
+  }
+  if(is.null(fix_var_me)) {
+    ind_next <- ind_next + 1
+    ind_omega2 <- ind_next
+  }
+  if(n_re > 0) {
+    ind_sigma2_re <- ind_next + seq_len(n_re)
   }
 
 
