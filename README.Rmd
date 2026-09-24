@@ -70,10 +70,9 @@ library(RiskMap)
 data(italy_sim)
 
 fit <- glgpm(
-  formula = y ~ gp(x1, x2),
+  formula = y ~ gp(),
   data = italy_sim,
   family = "gaussian",
-  crs = 32634,
   messages = FALSE
 )
 

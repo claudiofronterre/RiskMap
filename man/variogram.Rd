@@ -12,7 +12,7 @@ variogram(
   max_dist = NULL,
   n_permutations = 1000,
   convert_to_utm = TRUE,
-  scale_to_km = FALSE
+  distance_units = c("m", "km")
 )
 }
 \arguments{
@@ -42,26 +42,37 @@ the coordinate reference system of the data must be used without any conversion 
 By default \code{convert_to_utm = TRUE}. Note: if \code{convert_to_utm = TRUE} the conversion to UTM is performed using
 the epsg provided by \code{\link{propose_utm}}.}
 
-\item{scale_to_km}{a logical value, indicating if the distances used in the variogram must be scaled
-to kilometers (\code{scale_to_km = TRUE}) or left in meters (\code{scale_to_km = FALSE}).
-By default \code{scale_to_km = FALSE}}
+\item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether
+the distances used in the variogram are expressed in kilometers or meters.
+By default \code{distance_units = "m"}}
 }
 \value{
 an object of class \code{RiskMap_variogram} which is a list containing the following components:
-\item{variogram}{a data-frame containing the following columns: \code{mid_points},
-the middle points of the classes of distance provided by \code{breaks};
-\code{obs_vari} the values of the observed variogram; \code{obs_vari} the number of pairs.
-If \code{n_permutations > 0}, the data-frame also contains \code{lower_bound} and \code{upper_bound}
-corresponding to the lower and upper bounds of the 95\% confidence intervals
-used to assess the departure of the observed variogram from the assumption of spatial independence.}
-\item{scale_to_km}{the value passed to \code{scale_to_km}}
+\describe{
+\item{variogram}{a data-frame containing the following columns:
+\describe{
+\item{mid_points}{the middle points of the classes of distance provided by \code{breaks}}
+\item{obs_vari}{the values of the observed variogram}
+\item{n_obs}{the number of pairs}}
+If \code{n_permutations > 0}, the data-frame also contains the following columns:
+.  \describe{
+\item{lower_bound}{the lower bound of the 95\% confidence interval}
+\item{upper_bound}{the upper bound of the 95\% confidence interval}
+}}
+\item{distance_units}{the value passed to \code{distance_units}}
 \item{n_permutations}{the number of permutations}
+\item{breaks}{the calculated breaks}
+}
 }
 \description{
 Computes the empirical variogram using lag-distance breakpoints.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
+\examples{
+data(italy_sim)
 
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
+italy_variogram <- variogram(
+                     data = italy_sim[1:100,],
+                     variable = "y",
+                     n_permutations = 101)
+
 }

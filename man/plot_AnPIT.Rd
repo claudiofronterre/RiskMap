@@ -13,7 +13,7 @@ plot_AnPIT(
 )
 }
 \arguments{
-\item{object}{A \code{RiskMap.spatial.cv} object.}
+\item{object}{A \code{RiskMap_cross_validation} object.}
 
 \item{mode}{One of \code{"average"} (average curve across test sets),
 \code{"single"} (a specific test set),
@@ -33,8 +33,8 @@ A \pkg{ggplot2} object (single plot) or a \pkg{grid} object
 from \pkg{gridExtra} (multiple panels).
 }
 \description{
-Produce calibration plots from a \code{RiskMap.spatial.cv} object returned by
-\code{\link{assess_pp}}.
+Produce calibration plots from a \code{RiskMap_cross_validation} object returned by
+\code{\link{assess_prediction}}.
 \itemize{
 \item For Binomial or Poisson models the function visualises the
 \emph{Aggregated normalised Probability Integral Transform} (AnPIT)

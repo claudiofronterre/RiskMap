@@ -1,3 +1,28 @@
+test_that("check_formula functions correctly", {
+
+  df <- data.frame(
+    y = c(1, 2, 3),
+    x = c(0, 1, 2),
+    z = c(0, 1, 0),
+    c = c(1, 2, 3),
+    gp = c(1, 2, 3)
+  )
+
+  data <- sf::st_as_sf(df, coords = c("x", "z"), crs = 4326)
+
+  test_kappa <- 1
+  expect_no_error(check_formula(y ~ gp(), data))
+  expect_no_error(check_formula(y ~ gp(kappa = test_kappa), data))
+  expect_no_error(check_formula(y ~ log(c) + gp(), data))
+
+  expect_error(check_formula("not formula", data), "'formula' must be a 'formula'")
+  expect_error(check_formula(y ~ c, data), "The 'formula' must contain a Gaussian Process term")
+  expect_error(check_formula(y ~ gp, data), "The 'formula' must contain a Gaussian Process term")
+  expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
+  expect_error(check_formula(y ~ gp(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
+  expect_error(check_formula(y ~ gp(c) + re(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
+ })
+
 test_that("check_binomial functions correctly", {
 
   expect_no_error(check_binomial(0:3, NULL))
@@ -17,20 +42,142 @@ test_that("check_data functions correctly", {
     z = c(0, 1, 0)
   )
 
-  sf_data <- sf::st_as_sf(data, coords = c("x", "y"), crs = sf::st_crs(4326))
+  gaussian_data <- sf::st_as_sf(data, coords = c("x", "y"), crs = sf::st_crs(4326))
   sf_no_crs <- sf::st_as_sf(data, coords = c("x", "y"))
 
   data$y[2] <- 100
   sf_wrong_coord <- sf::st_as_sf(data, coords = c("x", "y"), crs = sf::st_crs(4326))
 
   polygon <- sf::st_polygon(list(matrix(c(4,4, 5,4, 5,5, 4,5, 4,4), ncol = 2, byrow = TRUE)))
+  multipolygon <- sf::st_multipolygon(list(polygon))
   sf_polygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(polygon), crs = sf::st_crs(4326))
-  sf_merged <- rbind(sf_data, sf_polygon)
+  sf_multipolygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(multipolygon), crs = sf::st_crs(4326))
+  sf_merged <- rbind(gaussian_data, sf_polygon)
 
-  expect_no_error(check_data(sf_data))
+  expect_error(check_data(gaussian_data, geometry = "n"), "'geometry' must be either 'point' or 'polygon'")
+  expect_error(check_data(gaussian_data, type = "n"), "'type' must be either 'sf' or 'sfc'")
+
+  expect_no_error(check_data(gaussian_data))
   expect_error(check_data(data), "'data' must be of class 'sf'")
-  expect_error(check_data(sf_no_crs), "'data' must contain a coordinate reference system")
-  expect_error(check_data(sf_merged), "'data' can only contain point geometry")
-  expect_error(check_data(sf_wrong_coord), "'data' contains impossible latitude or longitude values")
 
+  expect_error(check_data(sf_no_crs), "'sf_no_crs' must contain a coordinate reference system")
+  expect_error(check_data(sf_merged), "'sf_merged' can only contain 'POINT' geometry")
+  expect_error(check_data(sf_wrong_coord), "'sf_wrong_coord' contains impossible latitude or longitude values")
+
+  expect_no_error(check_data(sf_polygon, "polygon"))
+  expect_error(check_data(gaussian_data, "polygon"), "'gaussian_data' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+  expect_error(check_data(sf_merged, "polygon"), "'sf_merged' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+
+  expect_no_error(check_data(sf_multipolygon, "polygon"))
+
+  expect_no_error(check_data(st_geometry(gaussian_data), "point", "sfc"))
+  expect_no_error(check_data(st_geometry(sf_multipolygon), "polygon", "sfc"))
+
+})
+
+test_that("check_crs functions correctly", {
+  crs <- "invalid"
+  expect_error(check_crs(crs), "The 'crs' provided is not a valid CRS")
+  crs <- 121212
+  expect_error(check_crs(crs), "The 'crs' provided is not a valid CRS")
+  dif_crs <- 12121.2
+  expect_error(check_crs(dif_crs), "The 'dif_crs' provided is not a valid CRS")
+
+  crs <- 2648
+  expect_no_error(check_crs(crs))
+  expect_no_error(check_crs(2648))
+
+  custom_crs <- "+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs"
+  expect_no_error(check_crs(custom_crs))
+})
+
+test_that("gp functions correctly", {
+
+  expected_output <- c("term", "kappa", "nugget", "dim", "label")
+
+  expect_error(gp(nugget = 0), "'nugget' must be either 'TRUE'")
+  expect_error(gp(nugget = -1), "'nugget' must be either 'TRUE'")
+  expect_error(gp(nugget = "TRUE"), "'nugget' must be either 'TRUE'")
+
+  expect_error(gp(kappa = 0), "'kappa' must be positive")
+  expect_error(gp(kappa = "TRUE"), "'kappa' must be positive")
+
+  default_result <- gp()
+
+  expect_setequal(names(default_result), expected_output)
+  expect_equal(default_result$term, "sf")
+  expect_equal(default_result$kappa, 0.5)
+  expect_equal(default_result$nugget, 0)
+  expect_equal(default_result$dim, 0)
+  expect_equal(default_result$label, "gp()")
+
+  true_result <- gp(nugget = TRUE)
+  expect_equal(true_result$nugget, TRUE)
+
+  custom_result <- gp(a, b, kappa = 2, nugget = 3)
+  expect_equal(custom_result$term, c("a", "b"))
+  expect_equal(custom_result$kappa, 2)
+  expect_equal(custom_result$nugget, 3)
+  expect_equal(custom_result$dim, 2)
+  expect_equal(custom_result$label, "gp(a,b)")
+
+})
+
+test_that("estimates are consistent between coef and summary", {
+
+  sum <- summary(gaussian_model)
+  cof <- coef(gaussian_model)
+
+  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
+  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
+  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2_me, sum$me[1,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
+
+  sum <- summary(binomial_model)
+  cof <- coef(binomial_model)
+
+  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
+  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
+  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
+
+  sum <- summary(poisson_model)
+  cof <- coef(poisson_model)
+
+  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
+  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
+  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
+})
+
+test_that("check_positive_integer functions correctly", {
+  expect_no_error(check_positive_integer(1, "a"))
+  expect_no_error(check_positive_integer(999, "a"))
+
+  expect_error(check_positive_integer(0.1, "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(0, "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(c(0, 1), "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer("not", "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(NULL, "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(NA, "a"), "'a' must be a single positive integer")
+})
+
+test_that("check_positive_number functions correctly", {
+  expect_no_error(check_positive_number(1, ""))
+  expect_no_error(check_positive_number(0.1, ""))
+
+  a <- 0
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- c(0, 1)
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- "not"
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- NULL
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- NA
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
 })

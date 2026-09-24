@@ -1,42 +1,54 @@
 ##' @title Summaries of the distances
-##' @description
-##' Computes the distances between the locations in the data-set and returns summary statistics of these.
+##' @description Computes the distances between the unique locations in the dataset and returns summary statistics.
 ##'
-##' @param data an object of class \code{sf} containing the variable for which the variogram
-##' is to be computed and the coordinates
-##' @param convert_to_utm a logical value, indicating if the conversion to UTM shuold be performed (\code{convert_to_utm = TRUE}) or
-##' the coordinate reference system of the data must be used without any conversion (\code{convert_to_utm = FALSE}).
-##' By default \code{convert_to_utm = TRUE}. Note: if \code{convert_to_utm = TRUE} the conversion to UTM is performed using
-##' the epsg provided by \code{\link{propose_utm}}.
-##' @param scale_to_km a logical value, indicating if the distances used in the variogram must be scaled
-##' to kilometers (\code{scale_to_km = TRUE}) or left in meters (\code{scale_to_km = FALSE}).
-##' By default \code{scale_to_km = FALSE}
+##' @param data an object of class `sf` containing point geometries.
+##' @param convert_to_utm a logical value, indicating if the conversion to UTM should be performed (`TRUE`) or
+##' the coordinate reference system of the data must be used without any conversion (`FALSE`).
+##' By default `TRUE`. Note: if `TRUE` the conversion to UTM is performed using
+##' the epsg provided by `[propose_utm]`.
+##' @param distance_units Character string, either `"km"` or `"m"`, indicating whether the
+##' distances used are expressed in kilometers or meters. Defaults to `"km"`.
 ##'
-##' @return a list containing the following components
-##' @return \code{min} the minimum distance
-##' @return \code{max} the maximum distance
-##' @return \code{mean} the mean distance
-##' @return \code{median} the minimum distance
+##' @return a named vector containing the following components
+##' \describe{
+##'   \item{`min`}{the minimum distance}
+##'   \item{`max`}{the maximum distance}
+##'   \item{`mean`}{the mean distance}
+##'   \item{`median`}{the minimum distance}
+##' }
+##'
+##' @examples
+##' data(italy_sim)
+##'
+##' summarise_distance(italy_sim)
+##'
 ##' @export
-dist_summaries <- function(data,
-                        convert_to_utm = TRUE,
-                        scale_to_km = FALSE) {
+summarise_distance <- function(data,
+                           convert_to_utm = TRUE,
+                           distance_units = c("km", "m")) {
 
-  if(!inherits(data, "sf")) stop("'data' must be an object of class 'sf'")
+  check_data(data)
 
-  if(!convert_to_utm) message("The distances of the variogram are computed assuming
-                          that the CRS of the data gives distances in meters or kilometers")
-  data <- st_transform(data, crs = 4326)
-  data <- st_transform(data, crs = propose_utm(data))
-  coords <- st_coordinates(data)
+  if (!is.logical(convert_to_utm)) stop("'convert_to_utm' must be either TRUE or FALSE")
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) && all(distance_units %in% c("km", "m")))
+  distance_units <- match.arg(distance_units)
+
+  if (!convert_to_utm & sf::st_is_longlat(data)){
+    stop("The dataset coordinates are in longitude and latitude - set 'convert_to_utm' to TRUE")
+  }
+
+  if (convert_to_utm){
+    data <- st_transform(data, crs = 4326)
+    data <- st_transform(data, crs = propose_utm(data))
+  }
+
+  coords <- unique(st_coordinates(data))
   d <- as.numeric(dist(coords))
-  if(scale_to_km) d <- d/1000
+  if (distance_units == "km") d <- d/1000
 
-  out <- list()
-  out$min <- min(d)
-  out$max <- max(d)
-  out$mean <- mean(d)
-  out$median <- median(d)
+  out <- c(min(d), max(d), mean(d), median(d))
+  names(out) <- c("min", "max", "mean", "median")
 
   return(out)
 }
@@ -63,21 +75,34 @@ dist_summaries <- function(data,
 ##' the coordinate reference system of the data must be used without any conversion (\code{convert_to_utm = FALSE}).
 ##' By default \code{convert_to_utm = TRUE}. Note: if \code{convert_to_utm = TRUE} the conversion to UTM is performed using
 ##' the epsg provided by \code{\link{propose_utm}}.
-##' @param scale_to_km a logical value, indicating if the distances used in the variogram must be scaled
-##' to kilometers (\code{scale_to_km = TRUE}) or left in meters (\code{scale_to_km = FALSE}).
-##' By default \code{scale_to_km = FALSE}
+##' @param distance_units Character string, either \code{"km"} or \code{"m"}, indicating whether
+##' the distances used in the variogram are expressed in kilometers or meters.
+##' By default \code{distance_units = "m"}
 ##'
 ##' @return an object of class `RiskMap_variogram` which is a list containing the following components:
-##'   \item{variogram}{a data-frame containing the following columns: \code{mid_points},
-##' the middle points of the classes of distance provided by \code{breaks};
-##' \code{obs_vari} the values of the observed variogram; \code{obs_vari} the number of pairs.
-##' If \code{n_permutations > 0}, the data-frame also contains \code{lower_bound} and \code{upper_bound}
-##' corresponding to the lower and upper bounds of the 95% confidence intervals
-##' used to assess the departure of the observed variogram from the assumption of spatial independence.}
-##'   \item{scale_to_km}{the value passed to \code{scale_to_km}}
+##'   \describe{
+##'   \item{variogram}{a data-frame containing the following columns:
+##'   \describe{
+##'     \item{mid_points}{the middle points of the classes of distance provided by \code{breaks}}
+##'     \item{obs_vari}{the values of the observed variogram}
+##'     \item{n_obs}{the number of pairs}}
+##'   If \code{n_permutations > 0}, the data-frame also contains the following columns:
+##'.  \describe{
+##'     \item{lower_bound}{the lower bound of the 95% confidence interval}
+##'     \item{upper_bound}{the upper bound of the 95% confidence interval}
+##'   }}
+##'   \item{distance_units}{the value passed to \code{distance_units}}
 ##'   \item{n_permutations}{the number of permutations}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
+##'   \item{breaks}{the calculated breaks}
+##'   }
+##'
+##' @examples
+##' data(italy_sim)
+##'
+##' italy_variogram <- variogram(
+##'                      data = italy_sim[1:100,],
+##'                      variable = "y",
+##'                      n_permutations = 101)
 ##'
 ##' @export
 ##'
@@ -89,11 +114,10 @@ variogram <- function(data,
                       max_dist = NULL,
                       n_permutations = 1000,
                       convert_to_utm = TRUE,
-                      scale_to_km = FALSE) {
+                      distance_units = c("m", "km")) {
 
-  if (!inherits(data, "sf")){
-    stop("'data' must be an object of class 'sf'")
-  }
+  check_data(data)
+
   if (!inherits(variable, "character") | length(variable) > 1){
     stop("'variable' must be a single object of class 'character'")
   }
@@ -118,18 +142,27 @@ variogram <- function(data,
   if (n_permutations == 2){
     stop("'n_permutations' must be greater than 2")
   }
-  if (n_permutations < 100){
+  if (n_permutations != 0 & n_permutations < 100){
     warning("'n_permutations' is set very low - consider increasing it")
   }
-  if (!convert_to_utm){
-    message("The distances of the variogram are computed assuming
-             that the CRS of the data gives distances in meters or kilometers")
+  if (!is.logical(convert_to_utm)){
+    stop("'convert_to_utm' must be either TRUE or FALSE")
   }
-  data <- st_transform(data, crs = 4326)
-  data <- st_transform(data, crs = propose_utm(data))
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) && all(distance_units %in% c("km", "m")))
+  distance_units <- match.arg(distance_units)
+  if (!convert_to_utm & sf::st_is_longlat(data)){
+    stop("The dataset coordinates are in longitude and latitude - set 'convert_to_utm' to TRUE")
+  }
+
+  if (convert_to_utm){
+    data <- st_transform(data, crs = 4326)
+    data <- st_transform(data, crs = propose_utm(data))
+  }
+
   coords <- st_coordinates(data)
   d <- as.numeric(dist(coords))
-  if (scale_to_km) d <- d/1000
+  if (distance_units == "km") d <- d/1000
   v <- (as.numeric(dist(data[[variable]])) ^ 2) / 2
   vario_df <- data.frame(d=d, v=v)
 
@@ -156,7 +189,7 @@ variogram <- function(data,
   vario_df <- vario_df[vario_df$d <= upper_dist,]
   if (nrow(vario_df) == 0){
     stop("the provided lag distances do not match the
-          scale of the observed distances; consider setting scale_to_km = TRUE")
+          scale of the observed distances; consider setting distance_units = 'km'")
   }
   vario_df$dist_class <- cut(vario_df$d, breaks = breaks,
                              include.lowest = TRUE, right = TRUE)
@@ -188,7 +221,7 @@ variogram <- function(data,
                                             function(x) quantile(x, 0.975))
   }
   result <- list(variogram = variogram)
-  result$scale_to_km <- scale_to_km
+  result$distance_units <- distance_units
   result$n_permutations <- n_permutations
   result$breaks <- breaks
 
@@ -232,7 +265,7 @@ plot_variogram <- function(variogram_output,
                   fill = color, alpha = 0.3)
   }
 
-  if (variogram_output$scale_to_km) {
+  if (variogram_output$distance_units == "km") {
     x_label <- "Distance (km)"
   } else {
     x_label <- "Distance (m)"

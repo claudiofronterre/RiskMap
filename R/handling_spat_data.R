@@ -1,59 +1,73 @@
-##' @title Create Grid of Points Within Shapefile
+##' @title Create Grid of Points Within Boundaries
 ##'
 ##' @description
-##' Generates a grid of points within a given shapefile. The grid points are created based on a specified spatial resolution.
+##' Generates regularly spaced point centres within a polygon boundary.
 ##'
-##' @param shp An object of class 'sf' representing the shapefile within which the grid of points will be created.
-##' @param spat_res Numeric value specifying the spatial resolution in kilometers for the grid.
-##' @param grid_crs Coordinate reference system for the grid. If NULL, the CRS of 'shp' is used. The shapefile 'shp' will be transformed to this CRS if specified.
+##' @param boundaries An object of class `sf` containing POLYGONS or MULTIPOLYGONS within which the grid of points will be created.
+##' @param spacing A single positive number specifying the distance between grid-point centres.
+##' @param distance_units Character string, either `"km"` or `"m"`, giving the units of `spacing`. Defaults to `"km"`.
 ##'
 ##' @details
-##' This function creates a grid of points within the boundaries of the provided shapefile ('shp'). The grid points are generated using the specified spatial resolution ('spat_res'). If a coordinate reference system ('grid_crs') is provided, the shapefile is transformed to this CRS before creating the grid.
+##' This function creates point centres within `boundaries`; it does not create polygon cells or define an areal prediction target. The CRS is inherited from `boundaries`. If `boundaries` is in longitude/latitude, it is automatically reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used; transform `boundaries` to a projected CRS yourself first to use a different one.
 ##'
 ##' @return
-##' An 'sf' object containing the generated grid points within the shapefile.
+##' An `sf` object containing the generated grid points within the boundaries.
 ##'
 ##' @export
 ##'
 ##' @examples
 ##' library(sf)
 ##'
-##' # Example shapefile data
+##' # Example boundary data
 ##' nc <- st_read(system.file("shape/nc.shp", package="sf"))
+##' nc <- st_transform(nc, crs = 32617)
 ##'
-##' # Create grid with 10 km spatial resolution
-##' grid <- create_grid(nc, spat_res = 10)
+##' # Create grid with 10 km spacing
+##' grid <- create_grid(nc, spacing = 10)
 ##'
 ##' # Plot the grid
 ##' plot(st_geometry(nc))
 ##' plot(grid, add = TRUE, col = 'red')
 ##'
 ##' @seealso
-##' \code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersects}}, \code{\link[sf]{st_transform}}, \code{\link[sf]{st_crs}}
+##' \code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersection}}
 ##'
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##'
-create_grid <- function(shp, spat_res,
-                        grid_crs = NULL) {
+create_grid <- function(boundaries,
+                        spacing,
+                        distance_units = c("km", "m")) {
 
-  if(!inherits(shp, "sf")) stop("'shp' must be an object of class 'sf'")
+  check_data(boundaries, "polygon")
+  check_positive_number(spacing, "")
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) &&
+              all(distance_units %in% c("km", "m")))
+  distance_units <- match.arg(distance_units)
 
-  if(is.na(st_crs(shp))) stop("The CRS for 'shp' is missing")
-
-  if(is.null(grid_crs)) {
-    grid_crs <- st_crs(shp)
-  } else {
-    shp <- st_transform(shp, crs = grid_crs)
+  if (st_is_longlat(boundaries)) {
+    auto_crs <- propose_utm(boundaries)
+    boundaries <- st_transform(boundaries, crs = auto_crs)
+    message("'boundaries' is in longitude/latitude; automatically reprojecting to EPSG:",
+            auto_crs, " to create the grid. Transform 'boundaries' to a projected CRS ",
+            "yourself to override.")
   }
 
-  grid_box <- st_make_grid(shp,
-                           cellsize = spat_res*1000,
-                           what="centers")
+  cellsize <- spacing / crs_to_distance_factor(boundaries, distance_units)
+  grid_box <- st_sf(
+    geometry = st_make_grid(boundaries,
+                            cellsize = cellsize,
+                            what = "centers")
+  )
 
-  liberia.inout <- st_intersects(grid_box,
-                                 shp,
-                                 sparse = FALSE)
-  grid_out <- grid_box[liberia.inout]
-  return(grid_out)
+  study_boundary <- st_union(st_geometry(boundaries))
+  grid_out <- st_filter(grid_box, study_boundary)
+
+  if (nrow(grid_out) == 0) {
+    stop(
+      "No grid-point centres fall within 'boundaries'; try decreasing 'spacing' and check 'distance_units'.",
+      call. = FALSE
+    )
+  }
+
+  grid_out
 }

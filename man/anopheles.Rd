@@ -3,30 +3,31 @@
 \docType{data}
 \name{anopheles}
 \alias{anopheles}
-\title{Anopheles mosquitoes in Southern Cameroon}
+\title{\emph{Anopheles} mosquitoes in Southern Cameroon}
 \format{
-A data frame with 116 rows and 7 variables
+An sf object with 116 rows and 6 variables:
+\describe{
+\item{Locality}{Name of the place of the sampled location.}
+\item{An.coluzzii}{Counts of \emph{Anopheles coluzzii}.}
+\item{An.gambiae}{Counts of \emph{Anopheles gambiae}.}
+\item{Total}{Total counts of \emph{Anopheles coluzzii} and \emph{Anopheles gambiae}.}
+\item{elevation}{Elevation in meters of the sampled location.}
+\item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in degrees latitude and longitude}
+}
 }
 \source{
 Tene Fossog, B., Ayala, D., Acevedo, P., Kengne, P., Ngomo Abeso Mebuy,
 I., Makanga, B., et al. (2015) Habitat segregation and ecological character displacement in cryptic African malaria
-mosquitoes. Evolutionary Applications, 8 (4), 326-345.
+mosquitoes. \emph{Evolutionary Applications}, 8 (4), 326-345.
 }
 \usage{
 data(anopheles)
 }
 \description{
-These data contain 116 georeferenced locations on the counts of Anopheles gambiae and
-Anopheles coluzzii in Southern Cameroon.
-\itemize{
-\item web_x x-coordinate of the spatial locations.
-\item web_y y-coordinate of the spatial locations.
-\item Locality: name of the place of the sampled location.
-\item An.coluzzii: counts of Anopheles coluzzii.
-\item An.gambiae: counts of Anopheles gambiae.
-\item Total: total counts of Anopheles coluzzii and Anopheles gambiae.
-\item elevation: elevation in meters of the sampled location.
+Counts of \emph{Anopheles gambiae} and
+\emph{Anopheles coluzzii} in Southern Cameroon.
 }
+\details{
 The coordinate reference system is 3857.
 }
 \keyword{datasets}

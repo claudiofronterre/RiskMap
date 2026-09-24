@@ -9,3 +9,5 @@
 ^\.github$
 sticker/
 _pkgdown.yml
+CLAUDE.md
+^dev$
