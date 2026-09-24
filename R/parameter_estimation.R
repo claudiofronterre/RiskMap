@@ -289,6 +289,21 @@ glgpm <- function(formula,
          be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
   }
 
+  # For the Gaussian family the measurement error is already an independent
+  # effect with one value per observation, so a random effect with one level
+  # per observation is perfectly confounded with it.
+  if (family == "gaussian" && n_re > 0 && is.null(fix_var_me)) {
+    n_levels_re <- vapply(re_unique, length, integer(1))
+    is_saturated_re <- n_levels_re == n
+    if (any(is_saturated_re)) {
+      stop("The random effect(s) '",
+           paste(names_re[is_saturated_re], collapse = "', '"),
+           "' have one level per observation, which cannot be distinguished ",
+           "from the measurement error when 'family' is 'gaussian'. Either ",
+           "drop the random effect or supply a value for 'fix_var_me'.")
+    }
+  }
+
   if(messages) message("Distances between locations are computed in ", distance_units, " ")
 
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")

@@ -12,6 +12,14 @@ test_that("glgpm produces errors", {
     "When there is only one observation per location"
   )
 
+  saturated_data <- gaussian_data
+  saturated_data$row_id <- seq_len(nrow(saturated_data))
+
+  expect_error(
+    glgpm(y ~ cov + gp() + re(row_id), data = saturated_data, family = "gaussian", messages = FALSE),
+    "have one level per observation.*'gaussian'"
+  )
+
   expect_error(
     glgpm(y ~ cov + gp(), data = data, family = "gaussian"),
     "'data' must be of class 'sf'"
