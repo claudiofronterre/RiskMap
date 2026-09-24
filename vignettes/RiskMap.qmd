@@ -51,7 +51,7 @@ For more information on the datasets use `help(<dataset>)`
 
 ## Loading data
 
-Datasets need transforming into a simple features (sf) object prior to analysis using `st_as_sf()` from the sf package, supplying the names of the columns containing the spatial coordinates and the coordinate reference system for the coordinates:
+Datasets need transforming into a simple features (sf) object prior to analysis. With the exception of `liberia`, the datasets are already converted to this format. To convert a dataframe to a suitable format, use `st_as_sf()` from the sf package, supplying the names of the columns containing the spatial coordinates and the coordinate reference system for the coordinates:
 
 ```{r}
 data(liberia)
@@ -60,21 +60,24 @@ sf_data <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = sf::st_crs(432
 plot(sf_data["npos"])
 ```
 
-For the other datasets, call `data()` and they are ready to use.
-
 ## Exploratory data analysis
 
+The distances between data points can be summarised with `summarise_distance`. By default, coordinates are converted to a projected coordinate reference system and reported in kilometers, but these can be overridden.
+
 ```{r}
+summarise_distance(sf_data)
+```
 
-dist_summaries(sf_data, scale_to_km = TRUE)
 
-plot_variogram(variogram(sf_data, 
+
+```{r}
+liberia_variogram <- variogram(sf_data, 
                          variable = "npos", 
                          n_bins = 14, 
                          n_permutations = 100,
-                         scale_to_km = TRUE), 
-               plot_envelope = TRUE)
+                         distance_units = "km")
 
+plot_variogram(variogram, plot_envelope = TRUE)
 
 ```
 
