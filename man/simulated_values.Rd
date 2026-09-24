@@ -14,7 +14,9 @@ simulated_values(
 \arguments{
 \item{object}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}}.}
 
-\item{component}{Components to extract. Defaults to all available components.}
+\item{component}{Components to extract. Choose from \code{"spatial_effect"},
+\code{"nugget"}, \code{"group_effect"}, \code{"linear_predictor"}, \code{"mean"} and, for
+data simulations, \code{"response"}. Defaults to all available components.}
 
 \item{simulation}{Simulation numbers to extract. Defaults to all simulations.}
 

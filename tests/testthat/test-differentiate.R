@@ -53,7 +53,7 @@ test_that("a custom invlink that Deriv cannot differentiate still fits via the n
   invlink <- list(inv = function(eta) af(eta))
 
   fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
-              den = den, invlink = invlink, control_mcmc = control_mcmc,
+              denominator = denominator, invlink = invlink, control_mcmc = control_mcmc,
               messages = FALSE)
 
   expect_s3_class(fit, "RiskMap")

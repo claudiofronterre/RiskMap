@@ -12,7 +12,9 @@ simulated_surface(object, simulation = 1)
 \arguments{
 \item{object}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}}.}
 
-\item{simulation}{A single simulation number, defaulting to one.}
+\item{simulation}{A single simulation number, defaulting to one. These
+accessors return one \code{sf} object at a time; use \code{\link[=simulated_values]{simulated_values()}} to
+extract multiple simulations in one tidy table.}
 }
 \value{
 \code{simulated_data()} returns the sample \code{sf} data with its response

@@ -11,7 +11,7 @@
 ##' @param invlink A function that defines the inverse of the link function for
 ##' the distribution of the data given the random effects.
 ##' Not applicable when `family` is `"gaussian"`.
-##' @param den Optional offset for binomial or Poisson distributions.
+##' @param denominator Optional denominator or exposure for binomial or Poisson distributions.
 ##' Passed as a bare/unquoted column name present in `data`.
 ##' If not provided, defaults to `1` for binomial models.
 ##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for model fitting.
@@ -155,7 +155,7 @@ glgpm <- function(formula,
                  data,
                  family,
                  invlink = NULL,
-                 den = NULL,
+                 denominator = NULL,
                  model_crs = NULL,
                  distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
@@ -184,7 +184,7 @@ glgpm <- function(formula,
 
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
-              "'den' cannot be provided when 'family' is 'gaussian'" = is.null(den),
+              "'denominator' cannot be provided when 'family' is 'gaussian'" = is.null(denominator),
               "'par0' cannot be provided when 'family' is 'gaussian'" = is.null(par0),
               "'return_samples' cannot be TRUE when 'family' is 'gaussian'" = !return_samples,
               "'fix_var_me' must be NULL or a single positive value or zero" =
@@ -213,23 +213,23 @@ glgpm <- function(formula,
 
   # Define denominators for Binomial and Poisson distributions
   if (not_gaussian) {
-    sub_den <- substitute(den)
+    sub_den <- substitute(denominator)
     if (is.null(sub_den)){
       units_m <- rep(1, nrow(data))
-      if (family == "binomial") warning("'den' is assumed to be 1 for all observations")
+      if (family == "binomial") warning("'denominator' is assumed to be 1 for all observations")
     } else {
       if (!is.symbol(sub_den)){
-        stop("'den' must be provided as an unquoted column name for a column in 'data'")
+        stop("'denominator' must be provided as an unquoted column name for a column in 'data'")
       }
       do_name <- deparse(sub_den)
       if (!do_name %in% names(data)){
-        stop("the variable provided to 'den' is not present in 'data'")
+        stop("the variable provided to 'denominator' is not present in 'data'")
       }
       units_m <- data[[do_name]]
     }
     if (family == "binomial") check_binomial(y, units_m)
     if(is.integer(units_m)) units_m <- as.numeric(units_m)
-    if(!is.numeric(units_m)) stop("the variable passed to 'den' must be numeric")
+    if(!is.numeric(units_m)) stop("the variable passed to 'denominator' must be numeric")
     if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
       stop("the argument passed to 'control_mcmc' must be an output
            from the function set_control_mcmc; see ?set_control_mcmc for more details")
@@ -1751,12 +1751,8 @@ laplace_sampling_mcmc <- function(y,
 
   # set seed if it exists and reset on exit
   if (!is.null(control_mcmc$seed)){
-    if (exists(".Random.seed", envir = .GlobalEnv)) {
-      old_seed <- get(".Random.seed", envir = .GlobalEnv)
-      on.exit(assign(".Random.seed", old_seed, envir = .GlobalEnv), add = TRUE)
-    } else {
-      on.exit(rm(".Random.seed", envir = .GlobalEnv), add = TRUE)
-    }
+    restore_seed <- preserve_random_seed()
+    on.exit(restore_seed(), add = TRUE)
     set.seed(control_mcmc$seed)
   }
 
@@ -2045,8 +2041,8 @@ set_control_mcmc <- function(n_sim = 12000,
                             seed = NULL,
                             linear_model = FALSE){
 
-  if (!is.null(seed))
-    check_positive_integer(seed, "seed")
+  check_positive_integer(seed, "seed", allow_null = TRUE,
+                         allow_zero = TRUE)
 
   # =============================================================================
   # LINEAR MODEL (simple case for both samplers)

@@ -1766,7 +1766,7 @@ assess_prediction <- function(object,
     fit0      <- object[[h]]
     fit_data_sf <- fit0$data
     par_hat   <- coef(fit0)
-    den_name  <- as.character(fit0$call$den)
+    den_name  <- as.character(fit0$call$denominator)
     fam       <- fit0$family
     linkfun   <- switch(fam,
                         gaussian = identity,
@@ -1807,10 +1807,10 @@ assess_prediction <- function(object,
           messages       = FALSE,
           start_pars     = par_hat
         )
-        ## 'den' must be passed as an unquoted column name (NSE); only include it
+        ## 'denominator' is passed as an unquoted column name (NSE); include it
         ## when the original model was fitted with one
         if (length(den_name) == 1 && nzchar(den_name)) {
-          refit_args$den <- as.name(den_name)
+          refit_args$denominator <- as.name(den_name)
         }
         refit_i <- do.call(glgpm, refit_args)
       } else {
@@ -2100,7 +2100,7 @@ assess_simulation <- function(obj_sim,
                          data = obj_sim$data_sim[[j]],
                          distance_units = obj_sim$distance_units,
                          control_mcmc = control_mcmc, messages = FALSE)
-      if (obj_sim$family != "gaussian") refit_args$den <- quote(units_m)
+      if (obj_sim$family != "gaussian") refit_args$denominator <- quote(units_m)
       fits[[paste(model_names[i])]][[j]] <- do.call(glgpm, refit_args)
 
       if(messages) message("Prediction over the grid")

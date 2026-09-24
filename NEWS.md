@@ -14,8 +14,7 @@ RiskMap 2.0.0
   Parameters remain fixed, offsets and fitted inverse links are retained, and
   Poisson responses use exposure times the inverse-link mean.
   Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
-  extract results. See `SIMULATION_MIGRATION.md` for migration examples and
-  the corresponding changes needed in Chapters 3 and 4 of the book.
+  extract results.
 - Many functions have been renamed:
 
 | v1 | v2 | 
@@ -36,10 +35,11 @@ RiskMap 2.0.0
 | `pred_target_grid` | `predict_grid_target` |
 | `pred_target_shp` | `predict_areal_target` |
 | `set_control_sim` | `set_control_mcmc` |
-| `surf_sim` | `simulate_surface` |
+| `surf_sim` | `simulate_glgpm` |
 | `s_variogram` | `variogram` |
 
 - Apart from `liberia`, all datasets are now in an sf format.
+- The `den` argument in `glgpm()` has been renamed to `denominator`.
 - `glpgm()` now only accepts data in an sf format. 
 Consequently the locations do not need to be passed to `gp()` when fitting a model as they are included automatically.
 - In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and `scale_to_km` has been replaced with `distance_units` (`"km"` or `"m"`).

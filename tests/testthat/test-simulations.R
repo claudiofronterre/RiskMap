@@ -22,6 +22,31 @@ test_that("joint simulations share effects at overlapping locations", {
   expect_equal(nrow(simulated_values(sim, "response")), 6L)
 })
 
+test_that("simulation model validation remains informative", {
+  expect_error(
+    specify_glgpm("not a formula", gaussian_data, "gaussian",
+                  list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
+    "'formula' must be a 'formula'"
+  )
+  expect_error(
+    specify_glgpm(y ~ gp(), "not spatial data", "gaussian",
+                  list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
+    "class 'sf'"
+  )
+  expect_error(
+    specify_glgpm(y ~ gp(), gaussian_data, "not-a-family",
+                  list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
+    "should be one of"
+  )
+  expect_error(
+    specify_glgpm(y ~ gp(), gaussian_data, "gaussian",
+                  list(sigma2 = 1, phi = 1, sigma2_me = 0)),
+    "Missing simulation parameters: beta"
+  )
+  expect_error(simulate_glgpm(gaussian_model, nsim = -1),
+               "positive integer")
+})
+
 test_that("joint draws follow the specified covariance and distance units", {
   data <- gaussian_data[1:2, ]
   model <- specify_glgpm(y ~ gp(), data, "gaussian",
@@ -58,11 +83,12 @@ test_that("fitted models retain offsets, parameters, denominators and links", {
 
 test_that("Poisson responses use exposure times the exponential mean", {
   model <- specify_glgpm(y ~ gp() + offset(offset), poisson_data, "poisson",
-                         list(beta = log(3), sigma2 = 0, phi = 1), denominator = "den")
+                         list(beta = log(3), sigma2 = 0, phi = 1),
+                         denominator = denominator)
   sim <- simulate_glgpm(model, nsim = 2000, seed = 1)
   expected <- 3 * exp(poisson_data$offset)
   expect_equal(sim$samples$data[, 1, "mean"], expected)
-  expect_equal(rowMeans(sim$samples$data[, , "response"]) / poisson_data$den,
+  expect_equal(rowMeans(sim$samples$data[, , "response"]) / poisson_data$denominator,
                expected, tolerance = 0.03)
 })
 
@@ -74,7 +100,12 @@ test_that("validation is informative and local seeds preserve RNG", {
   expect_identical(first$samples, simulate_glgpm(gaussian_model, seed = 3)$samples)
   expect_error(simulate_glgpm(gaussian_model, nsim = Inf), "positive integer")
   expect_error(simulate_glgpm(gaussian_model, what = "surface"), "prediction_grid")
-  expect_error(simulate_glgpm(gaussian_model, sample_locations = latlon_data), "st_transform")
+  expect_message(
+    transformed <- simulate_glgpm(gaussian_model,
+                                  sample_locations = latlon_data),
+    "transformed to the model CRS"
+  )
+  expect_identical(st_crs(transformed$locations$data), st_crs(gaussian_model$data))
   expect_error(simulate_glgpm(binomial_model, sample_locations = binomial_data[, "cov"]),
                "Random-effect|denominator")
   expect_error(simulated_data(first, 2), "valid simulation")

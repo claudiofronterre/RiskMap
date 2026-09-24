@@ -10,17 +10,20 @@ specify_glgpm(
   family,
   parameters,
   denominator = NULL,
+  model_crs = NULL,
   distance_units = c("km", "m"),
   invlink = NULL
 )
 }
 \arguments{
-\item{formula}{Model formula containing \code{gp()} and optionally \code{re()} and
-\code{offset()}, as in \code{\link[=glgpm]{glgpm()}}. The response need not exist in \code{data}.}
+\item{formula}{A formula object specifying the model to be fitted.
+The formula should include fixed effects and spatial effects specified using
+\code{\link[=gp]{gp()}} and optionally, random effects specified using \code{\link[=re]{re()}}.}
 
-\item{data}{An \code{sf} point object containing covariates and grouping variables.}
+\item{data}{An sf object containing the variables in the model.}
 
-\item{family}{One of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
+\item{family}{A character string specifying the distribution of the response variable.
+Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
 
 \item{parameters}{A named list containing \code{beta}, \code{sigma2} and \code{phi}.
 \code{beta} has one entry per design-matrix column, including the intercept
@@ -28,23 +31,38 @@ when present. Supply \code{tau2} when \code{gp(nugget = TRUE)}, \code{sigma2_me}
 Gaussian measurement error, and \code{sigma2_re} for each \code{re()} term.
 Variances may be zero. \code{phi} is expressed in \code{distance_units}.}
 
-\item{denominator}{Optional column name, supplied as a character string,
-for binomial trial totals or Poisson exposure. Defaults to one.}
+\item{denominator}{Optional denominator or exposure for binomial or Poisson distributions.
+Passed as a bare/unquoted column name present in \code{data}.
+If not provided, defaults to \code{1} for binomial models.}
 
-\item{distance_units}{Units of spatial distances and \code{phi}, \code{"km"} or \code{"m"}.}
+\item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
+If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
+If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
+reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
+If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
 
-\item{invlink}{Optional inverse-link function for binomial or Poisson
-models. Defaults to \code{plogis} or \code{exp}, respectively.}
+\item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
+for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates in
+the returned \code{data} retain the linear units declared by its CRS.
+Defaults to \code{"km"}.}
+
+\item{invlink}{A function that defines the inverse of the link function for
+the distribution of the data given the random effects.
+Not applicable when \code{family} is \code{"gaussian"}.}
 }
 \value{
-A validated \code{RiskMap_simulation_model} for \code{\link[=simulate_glgpm]{simulate_glgpm()}}.
+A validated \code{RiskMap_simulation_model} for \code{\link[=simulate_glgpm]{simulate_glgpm()}}. It
+contains the formula, transformed model data, family, fixed parameters,
+denominator name, distance units, inverse link, fixed-effect design
+information, random-effect terms, offset, Matern smoothness and response.
 }
 \description{
 Defines a data-generating model without fitting it. Parameters are supplied
 on their natural scale and remain fixed across simulations.
 }
 \details{
-\code{data} must have a projected CRS. Transform longitude/latitude
-coordinates explicitly before specifying the model. Its geometry retains
-the CRS units, independently of the requested distance units.
+The response in \code{formula} need not exist in \code{data}. CRS handling
+follows \code{\link[=glgpm]{glgpm()}}: \code{model_crs} is used when supplied, otherwise
+longitude/latitude data are transformed to an automatically selected UTM
+CRS. A message reports automatic transformations.
 }

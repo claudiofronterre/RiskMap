@@ -157,6 +157,8 @@ test_that("estimates are consistent between coef and summary", {
 test_that("check_positive_integer functions correctly", {
   expect_no_error(check_positive_integer(1, "a"))
   expect_no_error(check_positive_integer(999, "a"))
+  expect_no_error(check_positive_integer(NULL, "a", allow_null = TRUE))
+  expect_no_error(check_positive_integer(0, "a", allow_zero = TRUE))
 
   expect_error(check_positive_integer(0.1, "a"), "'a' must be a single positive integer")
   expect_error(check_positive_integer(0, "a"), "'a' must be a single positive integer")
@@ -164,6 +166,7 @@ test_that("check_positive_integer functions correctly", {
   expect_error(check_positive_integer("not", "a"), "'a' must be a single positive integer")
   expect_error(check_positive_integer(NULL, "a"), "'a' must be a single positive integer")
   expect_error(check_positive_integer(NA, "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(Inf, "a"), "'a' must be a single positive integer")
 })
 
 test_that("check_positive_number functions correctly", {

@@ -33,10 +33,12 @@ variables and offsets for the requested surface. Required for \code{"surface"}.}
 random-number state is restored on exit.}
 }
 \value{
-A \code{RiskMap_simulation} object with location data stored once and
-numeric simulation arrays. Use \code{\link[=simulated_data]{simulated_data()}} to obtain a dataset
-ready for refitting, \code{\link[=simulated_surface]{simulated_surface()}} for a surface, and
-\code{\link[=simulated_values]{simulated_values()}} for a tidy table of selected simulation components.
+A \code{RiskMap_simulation} object containing \code{locations}, the transformed
+\code{sf} data used for each requested location set; \code{samples}, numeric arrays
+indexed by location, simulation and component; \code{nsim}; the simulation
+\code{model}; the requested \code{what}; and \code{seed}. Use \code{\link[=simulated_data]{simulated_data()}} to obtain
+a dataset ready for refitting, \code{\link[=simulated_surface]{simulated_surface()}} for a surface, and
+\code{\link[=simulated_values]{simulated_values()}} for a tidy table of selected components.
 }
 \description{
 Generates unconditional realizations from a fitted or specified model,
@@ -61,19 +63,21 @@ Matching group labels share a newly simulated group effect, also across
 sample and grid locations. Measurement error and response sampling are
 independent across observations conditional on the latent effects.
 
-Locations must use the model's projected CRS. Transform them explicitly
-when necessary. Exact joint simulation uses a dense covariance matrix, so
-memory grows quadratically with the number of unique locations.
+Locations are transformed to the model CRS when necessary, with a message
+reporting the conversion. Exact joint simulation uses a dense covariance
+matrix, so memory grows quadratically with the number of unique locations.
 }
 \examples{
 library(sf)
 locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
                       coords = c("x", "y"), crs = 32629)
+grid <- st_as_sf(data.frame(x = c(500, 1500), y = 500),
+                 coords = c("x", "y"), crs = 32629)
 model <- specify_glgpm(response ~ gp(), locations, "gaussian",
                        parameters = list(beta = 1, sigma2 = 1, phi = 2,
                                          sigma2_me = 0.1))
 sim <- simulate_glgpm(model, nsim = 2, what = c("data", "surface"),
-                      prediction_grid = locations, seed = 1)
+                      prediction_grid = grid, seed = 1)
 simulated_data(sim, simulation = 1)
 simulated_values(sim, component = "spatial_effect")
 }

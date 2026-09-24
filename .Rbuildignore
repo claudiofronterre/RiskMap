@@ -11,4 +11,3 @@ sticker/
 _pkgdown.yml
 CLAUDE.md
 ^dev$
-^SIMULATION_MIGRATION\.md$
