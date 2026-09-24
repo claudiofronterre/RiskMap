@@ -28,6 +28,16 @@ test_that("check_formula functions correctly", {
 
   data$y[1] <- NA
   expect_error(check_formula(y ~ gp(), data), "'data' contains rows with missing data")
+
+  data_without_response <- data[, "c"]
+  data_without_response$c[1] <- 1
+  expect_no_error(check_formula(y ~ c + gp(), data_without_response,
+                                response_required = FALSE))
+
+  data_without_response$c[1] <- NA
+  expect_error(check_formula(y ~ c + gp(), data_without_response,
+                             response_required = FALSE),
+               "'data' contains rows with missing data")
  })
 
 test_that("check_binomial functions correctly", {
