@@ -7,7 +7,8 @@ data <- data.frame(x = coords[,1],
                    cov = rnorm(n),
                    den =  sample(5:20, n, replace = TRUE),
                    offset = rnorm(n),
-                   i = rep(1:(n/2), each = 2))
+                   i = rep(1:(n/2), each = 2),
+                   j = rep(1:2, each = n/2))
 
 sigma2 <- 1
 phi <- 2
