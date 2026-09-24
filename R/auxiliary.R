@@ -424,14 +424,15 @@ get_formula_terms <- function(formula) {
 }
 
 
-##' @title Check that formula is valid
+##' @title Check that formula is valid and that there is no missing data
 ##' @description Checks that the formula object is of class formula and that all
 ##' the terms in the formula are present in the data
 ##' @param formula The formula to check
 ##' @param data The data to look for variables in
+##' @param response_required Whether the response must be present in `data`.
 ##' @return TRUE if the formula is valid or raise an error if not
 ##' @noRd
-check_formula <- function(formula, data){
+check_formula <- function(formula, data, response_required = TRUE){
 
   if(!inherits(formula, "formula")) {
     stop("'formula' must be a 'formula'
@@ -445,9 +446,12 @@ check_formula <- function(formula, data){
   contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
 
   if (!contains_gp){
-    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'")
+    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'", call. = FALSE)
   }
 
+  if (!response_required) {
+    formula_terms <- setdiff(formula_terms, all.vars(formula[[2L]]))
+  }
   missing_columns <- setdiff(formula_terms, column_names)
   n_missing <- length(missing_columns)
   if (n_missing > 0){
@@ -458,6 +462,12 @@ check_formula <- function(formula, data){
           ifelse(n_missing > 1, "' are", "' is"),
          " not present in 'data'"), call. = FALSE)
   }
+
+  data <- data[, formula_terms]
+  drop_coords <- st_drop_geometry(data)
+  missing_data <- any(!complete.cases(drop_coords))
+  if (missing_data)
+    stop("'data' contains rows with missing data - check or remove them", call. = FALSE)
 
   invisible(TRUE)
 }
@@ -1184,8 +1194,9 @@ check_binomial <- function(y, den){
 #' @description
 #'
 #' Check that the data is an sf or sfc object, with a CRS, only containing points
-#' or either polygons or multipolygons. If CRS == 4326 it also checks that the #
-#' coordinates are possible (i.e. not latitudes > 90)
+#' or either polygons or multipolygons.
+#' If CRS == 4326 it also checks that the coordinates are possible (i.e. not
+#' latitudes > 90)
 #' @param data the data to check
 #' @param geometry whether to check that the data contains `"point"` (default) or
 #' `"polygon"` (covering both polygons and multipolygons)
@@ -1206,30 +1217,26 @@ check_data <- function(data, geometry = "point", type = "sf"){
                           polygon = "'POLYGON' or 'MULTIPOLYGON'")
 
   if (type == "sf"){
-    if (!inherits(data, "sf")){
-      stop(paste(data_type, "must be of class 'sf'"))
-    }
+    if (!inherits(data, "sf"))
+      stop(paste(data_type, "must be of class 'sf'"), call. = FALSE)
   } else {
-    if (!inherits(data, c("sf", "sfc"))){
-      stop(paste(data_type, "must be of class 'sf' or 'sfc'"))
-    }
+    if (!inherits(data, c("sf", "sfc")))
+      stop(paste(data_type, "must be of class 'sf' or 'sfc'"), call. = FALSE)
   }
 
-  if (is.na(sf::st_crs(data))){
-    stop(paste(data_type, "must contain a coordinate reference system"))
-  }
+  if (is.na(st_crs(data)))
+    stop(paste(data_type, "must contain a coordinate reference system"), call. = FALSE)
 
-  all_valid_geometry <- all(grepl(toupper(geometry), sf::st_geometry_type(data)))
-  if (!all_valid_geometry){
-    stop(paste(data_type, "can only contain", geometry_type, "geometry"))
-  }
+  all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
+  if (!all_valid_geometry)
+    stop(paste(data_type, "can only contain", geometry_type, "geometry"), call. = FALSE)
 
-  if (sf::st_crs(data) == sf::st_crs(4326)){
+  if (st_crs(data) == st_crs(4326)){
     tryCatch(
-      sf::st_is_longlat(data$geometry),
+      st_is_longlat(data$geometry),
       warning = function(w) {
         stop(paste(data_type, "contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data"))
+             check you have specified the columns correctly when converting the data"), call. = FALSE)
       }
     )
   }
@@ -1286,17 +1293,44 @@ coordinates_in_units <- function(data, distance_units) {
 #' Check that a value is a single, positive integer and error if not
 #' @param x the value to check
 #' @param name the name of the parameter to return in error messages
+#' @param allow_null whether `NULL` is permitted
+#' @param allow_zero whether zero is permitted
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_positive_integer <- function(x, name) {
-  if (!is.numeric(x) || length(x) != 1 || is.na(x)) {
-    stop("'", name, "' must be a single positive integer")
-  }
-  if (x <= 0 || x %% 1 != 0) {
-    stop("'", name, "' must be a single positive integer")
+check_positive_integer <- function(x, name, allow_null = FALSE,
+                                   allow_zero = FALSE) {
+  if (is.null(x) && allow_null) return(invisible(TRUE))
+  description <- if (allow_zero) "non-negative" else "positive"
+  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
+    !is.finite(x) || x %% 1 != 0 || x < as.integer(!allow_zero) ||
+    x > .Machine$integer.max
+  if (invalid) {
+    stop("'", name, "' must be a single ", description, " integer",
+         call. = FALSE)
   }
   invisible(TRUE)
+}
+
+#' Preserve the caller's random-number state
+#'
+#' Capture the current random-number state and return a function that restores
+#' it. If no state existed, the returned function removes any state subsequently
+#' created. Callers should register the returned function with `on.exit()` before
+#' calling `set.seed()`.
+#'
+#' @return A function that restores the captured random-number state.
+#' @noRd
+preserve_random_seed <- function() {
+  had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_seed <- if (had_seed) get(".Random.seed", envir = .GlobalEnv) else NULL
+  function() {
+    if (had_seed) {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }
 }
 
 #' @title check_positive_number

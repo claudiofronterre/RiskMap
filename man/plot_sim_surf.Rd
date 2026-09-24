@@ -7,7 +7,7 @@
 plot_sim_surf(surf_obj, sim, ...)
 }
 \arguments{
-\item{surf_obj}{The output object from \code{simulate_surface}, containing both simulated data (\code{data_sim}) and predicted grid simulations (\code{lp_grid_sim}).}
+\item{surf_obj}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}} including a surface.}
 
 \item{sim}{The simulation index to plot.}
 
@@ -17,5 +17,6 @@ plot_sim_surf(surf_obj, sim, ...)
 A plot of the simulation results.
 }
 \description{
-This function plots the simulated surface data for a specific simulation from the result of \code{simulate_surface}. It visualizes the linear predictor values on a raster grid along with the actual data points.
+Plots the linear predictor from \code{\link[=simulate_glgpm]{simulate_glgpm()}} on a regular grid,
+with sampling locations overlaid when replicated data are available.
 }

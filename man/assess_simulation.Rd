@@ -12,14 +12,16 @@ assess_simulation(
   messages = TRUE,
   f_grid_target = NULL,
   f_area_target = NULL,
-  shp = NULL,
+  boundaries = NULL,
   col_names = NULL,
   pred_objective = c("mse", "classify"),
   categories = NULL
 )
 }
 \arguments{
-\item{obj_sim}{An object of class \code{RiskMap_simulation}, obtained as an output from the \code{simulate_surface} function.}
+\item{obj_sim}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}} with both data and surface.
+The current assessment interface supports generating models without
+grouped \code{re()} effects or custom inverse links.}
 
 \item{models}{A named list of models to be evaluated.}
 
@@ -33,9 +35,9 @@ assess_simulation(
 
 \item{f_area_target}{A function for processing area-level predictions.}
 
-\item{shp}{A shapefile of class \code{sf} for area-level analysis, required if \code{spatial_scale = "area"}.}
+\item{boundaries}{An \code{sf} object containing only POLYGON or MULTIPOLYGON geometries, required if \code{spatial_scale = "area"}.}
 
-\item{col_names}{Column name in \code{shp} containing unique region names. If \code{NULL}, defaults to \code{"region"}.}
+\item{col_names}{Column name in \code{boundaries} containing unique region names. If \code{NULL}, defaults to \code{"region"}.}
 
 \item{pred_objective}{A character vector specifying objectives, either \code{"mse"}, \code{"classify"}, or both.}
 
@@ -45,5 +47,5 @@ assess_simulation(
 A list of class \code{RiskMap_assess_simulation} containing model evaluation results.
 }
 \description{
-This function evaluates the performance of models based on simulation results from the \code{simulate_surface} function.
+Evaluates models using joint data and surface simulations.
 }

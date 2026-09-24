@@ -34,7 +34,10 @@ export(re)
 export(set_control_mcmc)
 export(setup_prediction)
 export(simulate_glgpm)
-export(simulate_surface)
+export(simulated_data)
+export(simulated_surface)
+export(simulated_values)
+export(specify_glgpm)
 export(summarise_distance)
 export(to_table)
 export(update_predictors)
@@ -46,7 +49,8 @@ importFrom(Deriv,Deriv)
 importFrom(Matrix,
   Matrix,
   forceSymmetric,
-  solve
+  solve,
+  sparseMatrix
 )
 importFrom(dplyr,
   "%>%",

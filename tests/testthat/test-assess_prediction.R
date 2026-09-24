@@ -196,9 +196,9 @@ test_that("assess_prediction produces errors", {
 })
 
 make_assess_prediction_fit <- function(data, covariate) {
-  coords <- st_coordinates(data)
+  coords <- sf::st_coordinates(data)
   fit <- list(
-    formula = as.formula(paste("y ~", covariate)),
+    formula = stats::as.formula(paste("y ~", covariate)),
     data = data,
     input_crs = sf::st_crs(data),
     family = "gaussian",
@@ -214,7 +214,7 @@ make_assess_prediction_fit <- function(data, covariate) {
     ID_coords = seq_len(nrow(data)),
     coords = coords,
     distance_units = "m",
-    call = list(den = quote(units_m)),
+    call = list(denominator = quote(units_m)),
     model_id = covariate
   )
   class(fit) <- "RiskMap"
