@@ -459,7 +459,7 @@ check_formula <- function(formula, data){
          " not present in 'data'"), call. = FALSE)
   }
 
-  data <- data[, column_names]
+  data <- data[, formula_terms]
   drop_coords <- st_drop_geometry(data)
   missing_data <- any(!complete.cases(drop_coords))
   if (missing_data)
