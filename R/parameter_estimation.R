@@ -534,24 +534,22 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   C_g_m <- Matrix::t(C_g)%*%C_g
   C_g_m <- forceSymmetric(C_g_m)
 
+
   ind_beta <- 1:p
+  ind_sigma2 <- p + 1
+  ind_phi <- p + 2
+  ind_next <- ind_phi
 
-  ind_sigma2 <- p+1
-
-  ind_phi <- p+2
-
-  if(!isTRUE(fix_tau2)) {
-    ind_omega2 <- p+3
-    if(n_re>0) {
-      ind_sigma2_re <- (p+3+1):(p+3+n_re)
-    }
-  } else {
-    ind_nu2 <- p+3
-    ind_omega2 <- p+4
-    if(n_re>0) {
-      ind_omega2 <- p+4
-      ind_sigma2_re <- (p+4+1):(p+4+n_re)
-    }
+  if(isTRUE(fix_tau2)) {
+    ind_next <- ind_next + 1
+    ind_nu2 <- ind_next
+  }
+  if(is.null(fix_var_me)) {
+    ind_next <- ind_next + 1
+    ind_omega2 <- ind_next
+  }
+  if(n_re > 0) {
+    ind_sigma2_re <- ind_next + seq_len(n_re)
   }
 
 
