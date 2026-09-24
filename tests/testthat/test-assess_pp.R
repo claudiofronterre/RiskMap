@@ -17,7 +17,7 @@ make_assess_prediction_fit <- function(data, covariate) {
     ID_coords = seq_len(nrow(data)),
     coords = coords,
     distance_units = "m",
-    call = list(den = quote(units_m)),
+    call = list(denominator = quote(units_m)),
     model_id = covariate
   )
   class(fit) <- "RiskMap"

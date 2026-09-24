@@ -34,18 +34,18 @@ test_that("glgpm produces errors", {
   )
 
   expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", den = 1),
-    "'den' cannot be provided when 'family' is 'gaussian'"
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", denominator = 1),
+    "'denominator' cannot be provided when 'family' is 'gaussian'"
   )
 
   expect_error(
-    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", den = 1),
-    "'den' must be provided as an unquoted column name for a column in 'data'"
+    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", denominator = 1),
+    "'denominator' must be provided as an unquoted column name for a column in 'data'"
   )
 
   expect_error(
-    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", den = not_present),
-    "the variable provided to 'den' is not present in 'data'"
+    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", denominator = not_present),
+    "the variable provided to 'denominator' is not present in 'data'"
   )
 
   expect_error(
@@ -211,7 +211,7 @@ test_that("glgpm produces expected output for binomial models", {
   fit_no_re <- glgpm(y ~ cov + gp(),
                      data = binomial_data,
                      family = "binomial",
-                     den = den,
+                     denominator = denominator,
                      control_mcmc = control_mcmc,
                      messages = FALSE)
 
@@ -222,7 +222,7 @@ test_that("glgpm produces expected output for binomial models", {
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = binomial_data,
                   family = "binomial",
-                  den = den,
+                  denominator = denominator,
                   control_mcmc = control_mcmc,
                   messages = FALSE)
 
@@ -255,7 +255,7 @@ test_that("glgpm produces expected output for poisson models", {
 
   fit_re_den <- glgpm(y ~ cov + gp() + re(i),
                       data = poisson_data,
-                      den = den,
+                      denominator = denominator,
                       family = "poisson",
                       control_mcmc = control_mcmc,
                       messages = FALSE)

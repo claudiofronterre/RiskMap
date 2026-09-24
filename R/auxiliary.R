@@ -429,9 +429,10 @@ get_formula_terms <- function(formula) {
 ##' the terms in the formula are present in the data
 ##' @param formula The formula to check
 ##' @param data The data to look for variables in
+##' @param response_required Whether the response must be present in `data`.
 ##' @return TRUE if the formula is valid or raise an error if not
 ##' @noRd
-check_formula <- function(formula, data){
+check_formula <- function(formula, data, response_required = TRUE){
 
   if(!inherits(formula, "formula")) {
     stop("'formula' must be a 'formula'
@@ -448,6 +449,9 @@ check_formula <- function(formula, data){
     stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'", call. = FALSE)
   }
 
+  if (!response_required) {
+    formula_terms <- setdiff(formula_terms, all.vars(formula[[2L]]))
+  }
   missing_columns <- setdiff(formula_terms, column_names)
   n_missing <- length(missing_columns)
   if (n_missing > 0){
@@ -1289,17 +1293,44 @@ coordinates_in_units <- function(data, distance_units) {
 #' Check that a value is a single, positive integer and error if not
 #' @param x the value to check
 #' @param name the name of the parameter to return in error messages
+#' @param allow_null whether `NULL` is permitted
+#' @param allow_zero whether zero is permitted
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_positive_integer <- function(x, name) {
-  if (!is.numeric(x) || length(x) != 1 || is.na(x)) {
-    stop("'", name, "' must be a single positive integer")
-  }
-  if (x <= 0 || x %% 1 != 0) {
-    stop("'", name, "' must be a single positive integer")
+check_positive_integer <- function(x, name, allow_null = FALSE,
+                                   allow_zero = FALSE) {
+  if (is.null(x) && allow_null) return(invisible(TRUE))
+  description <- if (allow_zero) "non-negative" else "positive"
+  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
+    !is.finite(x) || x %% 1 != 0 || x < as.integer(!allow_zero) ||
+    x > .Machine$integer.max
+  if (invalid) {
+    stop("'", name, "' must be a single ", description, " integer",
+         call. = FALSE)
   }
   invisible(TRUE)
+}
+
+#' Preserve the caller's random-number state
+#'
+#' Capture the current random-number state and return a function that restores
+#' it. If no state existed, the returned function removes any state subsequently
+#' created. Callers should register the returned function with `on.exit()` before
+#' calling `set.seed()`.
+#'
+#' @return A function that restores the captured random-number state.
+#' @noRd
+preserve_random_seed <- function() {
+  had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_seed <- if (had_seed) get(".Random.seed", envir = .GlobalEnv) else NULL
+  function() {
+    if (had_seed) {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }
 }
 
 #' @title check_positive_number
