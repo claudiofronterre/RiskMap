@@ -528,14 +528,22 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   if(!isTRUE(fix_tau2)) {
     ind_omega2 <- p+3
     if(n_re>0) {
-      ind_sigma2_re <- (p+3+1):(p+3+n_re)
+      if(is.null(fix_var_me)) {
+        ind_sigma2_re <- (p+3+1):(p+3+n_re)
+      } else {
+        ind_sigma2_re <- (p+3):(p+2+n_re)
+      }
     }
   } else {
     ind_nu2 <- p+3
     ind_omega2 <- p+4
     if(n_re>0) {
       ind_omega2 <- p+4
-      ind_sigma2_re <- (p+4+1):(p+4+n_re)
+      if(is.null(fix_var_me)) {
+        ind_sigma2_re <- (p+4+1):(p+4+n_re)
+      } else {
+        ind_sigma2_re <- (p+4):(p+3+n_re)
+      }
     }
   }
 
