@@ -21,6 +21,13 @@ test_that("check_formula functions correctly", {
   expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
   expect_error(check_formula(y ~ gp(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
   expect_error(check_formula(y ~ gp(c) + re(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
+
+  # c not included in formula so should not error
+  data$c[1] <- NA
+  expect_no_error(check_formula(y ~ gp(), data))
+
+  data$y[1] <- NA
+  expect_error(check_formula(y ~ gp(), data), "'data' contains rows with missing data")
  })
 
 test_that("check_binomial functions correctly", {

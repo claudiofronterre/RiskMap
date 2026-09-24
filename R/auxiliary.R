@@ -424,7 +424,7 @@ get_formula_terms <- function(formula) {
 }
 
 
-##' @title Check that formula is valid
+##' @title Check that formula is valid and that there is no missing data
 ##' @description Checks that the formula object is of class formula and that all
 ##' the terms in the formula are present in the data
 ##' @param formula The formula to check
@@ -445,7 +445,7 @@ check_formula <- function(formula, data){
   contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
 
   if (!contains_gp){
-    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'")
+    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'", call. = FALSE)
   }
 
   missing_columns <- setdiff(formula_terms, column_names)
@@ -458,6 +458,12 @@ check_formula <- function(formula, data){
           ifelse(n_missing > 1, "' are", "' is"),
          " not present in 'data'"), call. = FALSE)
   }
+
+  data <- data[, formula_terms]
+  drop_coords <- st_drop_geometry(data)
+  missing_data <- any(!complete.cases(drop_coords))
+  if (missing_data)
+    stop("'data' contains rows with missing data - check or remove them", call. = FALSE)
 
   invisible(TRUE)
 }
@@ -1184,8 +1190,9 @@ check_binomial <- function(y, den){
 #' @description
 #'
 #' Check that the data is an sf or sfc object, with a CRS, only containing points
-#' or either polygons or multipolygons. If CRS == 4326 it also checks that the #
-#' coordinates are possible (i.e. not latitudes > 90)
+#' or either polygons or multipolygons.
+#' If CRS == 4326 it also checks that the coordinates are possible (i.e. not
+#' latitudes > 90)
 #' @param data the data to check
 #' @param geometry whether to check that the data contains `"point"` (default) or
 #' `"polygon"` (covering both polygons and multipolygons)
@@ -1206,30 +1213,26 @@ check_data <- function(data, geometry = "point", type = "sf"){
                           polygon = "'POLYGON' or 'MULTIPOLYGON'")
 
   if (type == "sf"){
-    if (!inherits(data, "sf")){
-      stop(paste(data_type, "must be of class 'sf'"))
-    }
+    if (!inherits(data, "sf"))
+      stop(paste(data_type, "must be of class 'sf'"), call. = FALSE)
   } else {
-    if (!inherits(data, c("sf", "sfc"))){
-      stop(paste(data_type, "must be of class 'sf' or 'sfc'"))
-    }
+    if (!inherits(data, c("sf", "sfc")))
+      stop(paste(data_type, "must be of class 'sf' or 'sfc'"), call. = FALSE)
   }
 
-  if (is.na(sf::st_crs(data))){
-    stop(paste(data_type, "must contain a coordinate reference system"))
-  }
+  if (is.na(st_crs(data)))
+    stop(paste(data_type, "must contain a coordinate reference system"), call. = FALSE)
 
-  all_valid_geometry <- all(grepl(toupper(geometry), sf::st_geometry_type(data)))
-  if (!all_valid_geometry){
-    stop(paste(data_type, "can only contain", geometry_type, "geometry"))
-  }
+  all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
+  if (!all_valid_geometry)
+    stop(paste(data_type, "can only contain", geometry_type, "geometry"), call. = FALSE)
 
-  if (sf::st_crs(data) == sf::st_crs(4326)){
+  if (st_crs(data) == st_crs(4326)){
     tryCatch(
-      sf::st_is_longlat(data$geometry),
+      st_is_longlat(data$geometry),
       warning = function(w) {
         stop(paste(data_type, "contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data"))
+             check you have specified the columns correctly when converting the data"), call. = FALSE)
       }
     )
   }
