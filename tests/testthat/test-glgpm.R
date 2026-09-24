@@ -244,6 +244,18 @@ test_that("glgpm fits gaussian models combining re() with a fixed measurement er
   expect_true(all(is.finite(unlist(fit_nugget$estimate))))
 })
 
+
+test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provided", {
+  saturated_data <- gaussian_data
+  saturated_data$row_id <- seq_len(nrow(saturated_data))
+
+  fit <- glgpm(formula = y ~ cov + gp() + re(row_id), data = saturated_data,
+               family = "gaussian", messages = FALSE, fix_var_me = 0.1)
+
+  expect_s3_class(fit, "RiskMap")
+  expect_setequal(names(fit$estimate), c("beta", "sigma2", "phi", "sigma2_re"))
+})
+
 test_that("glgpm produces expected output for binomial models", {
 
   fit_no_re <- glgpm(y ~ cov + gp(),
