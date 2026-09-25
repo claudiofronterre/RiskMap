@@ -5,6 +5,9 @@ RiskMap 2.0.0
   with small measurement-error variances while retaining the same conditional model.
 
 - This version introduces many breaking changes from v1. The package should not be considered stable, but further breaking changes will be handled gracefully.
+- `to_table()` now returns a directly renderable `knitr_kable` table, with an
+  explicit `digits` argument that preserves trailing zeroes. This replaces the
+  previous `xtable` return value.
 - `dast()` has been removed.
 - `simulate_glgpm()` now accepts a fitted model or `specify_glgpm()` model,
   with `nsim`, `what`, `sample_locations`, `prediction_grid` and `seed`.
