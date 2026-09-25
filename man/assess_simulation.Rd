@@ -27,7 +27,8 @@ grouped \code{re()} effects or custom inverse links.}
 
 \item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
 
-\item{spatial_scale}{The scale at which predictions are assessed, either \code{"grid"} or \code{"area"}.}
+\item{spatial_scale}{The scale(s) at which predictions are assessed: \code{"grid"}, \code{"area"}, or \code{c("grid", "area")}
+to compute both from a single fit-and-predict pass over the simulations.}
 
 \item{messages}{Logical, if \code{TRUE} messages will be displayed during processing. Default is \code{TRUE}.}
 
@@ -35,7 +36,7 @@ grouped \code{re()} effects or custom inverse links.}
 
 \item{f_area_target}{A function for processing area-level predictions.}
 
-\item{boundaries}{An \code{sf} object containing only POLYGON or MULTIPOLYGON geometries, required if \code{spatial_scale = "area"}.}
+\item{boundaries}{An \code{sf} object containing only POLYGON or MULTIPOLYGON geometries, required if \code{spatial_scale} includes \code{"area"}.}
 
 \item{col_names}{Column name in \code{boundaries} containing unique region names. If \code{NULL}, defaults to \code{"region"}.}
 
@@ -44,7 +45,9 @@ grouped \code{re()} effects or custom inverse links.}
 \item{categories}{A numeric vector of thresholds defining categories for classification. Required if \code{pred_objective = "classify"}.}
 }
 \value{
-A list of class \code{RiskMap_assess_simulation} containing model evaluation results.
+A list of class \code{RiskMap_assess_simulation}. \code{pred_objective} holds one element per
+requested \code{spatial_scale} (\code{"grid"} and/or \code{"area"}), each in turn holding \code{mse} and/or
+\code{classify} per the requested \code{pred_objective}.
 }
 \description{
 Evaluates models using joint data and surface simulations.

@@ -169,6 +169,12 @@ setup_prediction <- function(object,
   if (!inherits(control_sim, "RiskMap_control_mcmc"))
     stop("'control_sim' must be an output from 'set_control_mcmc()'")
 
+  if (!is.null(control_sim$seed)) {
+    restore_seed <- preserve_random_seed()
+    on.exit(restore_seed(), add = TRUE)
+    set.seed(control_sim$seed)
+  }
+
   if (!type %in% c("marginal", "joint"))
     stop("'type' must be either 'marginal' or 'joint'")
 
@@ -1992,16 +1998,19 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##'   grouped `re()` effects or custom inverse links.
 ##' @param models A named list of models to be evaluated.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
-##' @param spatial_scale The scale at which predictions are assessed, either `"grid"` or `"area"`.
+##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
+##'   to compute both from a single fit-and-predict pass over the simulations.
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
 ##' @param f_grid_target A function for processing grid-level predictions.
 ##' @param f_area_target A function for processing area-level predictions.
-##' @param boundaries An `sf` object containing only POLYGON or MULTIPOLYGON geometries, required if `spatial_scale = "area"`.
+##' @param boundaries An `sf` object containing only POLYGON or MULTIPOLYGON geometries, required if `spatial_scale` includes `"area"`.
 ##' @param col_names Column name in `boundaries` containing unique region names. If `NULL`, defaults to `"region"`.
 ##' @param pred_objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
 ##' @param categories A numeric vector of thresholds defining categories for classification. Required if `pred_objective = "classify"`.
 ##'
-##' @return A list of class `RiskMap_assess_simulation` containing model evaluation results.
+##' @return A list of class `RiskMap_assess_simulation`. `pred_objective` holds one element per
+##'   requested `spatial_scale` (`"grid"` and/or `"area"`), each in turn holding `mse` and/or
+##'   `classify` per the requested `pred_objective`.
 ##'
 ##' @export
 assess_simulation <- function(obj_sim,
@@ -2011,22 +2020,29 @@ assess_simulation <- function(obj_sim,
                        messages = TRUE,
                        f_grid_target = NULL,
                        f_area_target = NULL,
-                       boundaries = NULL, col_names = NULL,
-                       pred_objective = c("mse","classify"),
-                       categories= NULL) {
+                       boundaries = NULL,
+                       col_names = NULL,
+                       pred_objective = c("mse", "classify"),
+                       categories = NULL) {
 
   if (!inherits(obj_sim, "RiskMap_simulation")) {
-    stop("'obj_sim' must be output from simulate_glgpm().")
+    stop("'obj_sim' must be output from simulate_glgpm()")
   }
-  if (length(setdiff(pred_objective, c("mse","classify")))>0) {
-    stop(paste("Invalid value for pred_objective. Allowed values are:", paste(c("mse","classify"), collapse = ", ")))
+  if (!all(pred_objective %in% c("mse", "classify"))) {
+    stop("'pred_objective' must be either 'mse', 'classify' or c('mse', 'classify')")
   }
-  if(spatial_scale != "grid" & spatial_scale != "area") {
-    stop("'spatial_scale' must be set to 'grid' or 'area'")
+  if (!all(spatial_scale %in% c("grid", "area"))) {
+    stop("'spatial_scale' must be set to 'grid', 'area', or c('grid', 'area')")
   }
-  if (spatial_scale == "area") {
+
+  want_grid <- "grid" %in% spatial_scale
+  want_area <- "area" %in% spatial_scale
+  want_mse <- "mse" %in% pred_objective
+  want_classify <- "classify" %in% pred_objective
+
+  if (want_area) {
     if (is.null(boundaries)) {
-      stop("if spatial_scale='area' then an sf object of the area(s) must be passed to
+      stop("if spatial_scale includes 'area' then an sf object of the area(s) must be passed to
            'boundaries'")
     }
     check_data(boundaries, "polygon")
@@ -2037,17 +2053,17 @@ assess_simulation <- function(obj_sim,
     stop("Provide 'f_grid_target' to define the target on the linear-predictor scale.")
   }
 
-  if(any(pred_objective=="classify")) {
-    if(is.null(categories)) stop("if pred_objective='class', a value for 'categories' must be specified")
+  if(want_classify) {
+    if(is.null(categories)) stop("if 'pred_objective' is 'class', a value for 'categories' must be specified")
     if (length(categories) < 3) {
-      stop("Categories vector must contain at least three unique, strictly increasing values.")
+      stop("'categories' must contain at least three unique, strictly increasing values.")
     }
   }
   n_sim <- length(obj_sim$data_sim)
   n_models <- length(models)
 
-  if(spatial_scale == "area" & is.null(f_area_target)) {
-    stop("If 'spatial_scale' is set to 'area', then 'f_area_target' must be provided")
+  if(want_area && is.null(f_area_target)) {
+    stop("If 'spatial_scale' includes 'area', then 'f_area_target' must be provided")
   }
   model_names <- names(models)
 
@@ -2060,10 +2076,13 @@ assess_simulation <- function(obj_sim,
 
   no_comp <- NULL
 
-  if(spatial_scale=="grid") {
-    type <- "marginal"
-  } else if(spatial_scale=="area") {
-    type <- "joint"
+  # A joint prediction is required for area-level aggregation, since it needs
+  # spatially correlated samples across the grid; it also carries everything
+  # a marginal grid-level assessment needs, so requesting both scales still
+  # only takes one fit-and-predict pass over the simulations (#109).
+  type <- if (want_area) "joint" else "marginal"
+
+  if (want_area) {
     n_reg <- nrow(boundaries)
 
     if(is.null(col_names)) {
@@ -2118,76 +2137,102 @@ assess_simulation <- function(obj_sim,
   n_samples <- (control_mcmc$n_sim-control_mcmc$burnin)/control_mcmc$thin
   n_pred <- nrow(obj_sim$lp_grid_sim)
 
-
-  out <- list(pred_objective = list())
-
-  if(any(pred_objective=="mse")) {
-    out$pred_objective$mse <- array(NA, c(n_models, n_sim))
-    rownames(out$pred_objective$mse) <- model_names
-    colnames(out$pred_objective$mse) <- paste0("sim_",1:n_sim)
-  }
-
-  if(any(pred_objective=="classify")) {
-
+  if(want_classify) {
     # Ensure categories are unique and strictly increasing
     categories <- unique(sort(categories))
-
-
-    # Assign classification to the output object
-    out$pred_objective$classify <- setNames(vector("list", length(model_names)), model_names)
-
-    # Correctly generate breaks and labels
-    breaks <- categories  # Use categories directly as breaks
     categories_class <- factor(paste0("(", utils::head(categories, -1), ",",
                                       categories[-1], "]"))  # Labels to match intervals
-
-
-
-    for(i in 1:n_models) {
-      out$pred_objective$classify[[model_names[i]]] <- list(by_cat = list(),
-                                                            across_cat = list())
-      out$pred_objective$classify[[model_names[i]]]$by_cat <- vector("list", n_sim)
-      for(j in 1:n_sim) {
-        out$pred_objective$classify[[paste(model_names[i])]]$by_cat[[j]] <-
-          data.frame(
-            Class = categories_class,
-            Sensitivity = NA,
-            Specificity = NA,
-            PPV = NA,
-            NPV = NA,
-            CC = NA
-          )
-      }
-      out$pred_objective$classify[[model_names[i]]]$CC <- rep(NA,n_sim)
-    }
   }
+
+  # One `mse`/`classify` store per requested spatial scale, all sharing the
+  # same layout - only what each store is computed from differs below.
+  init_objective_store <- function() {
+    store <- list()
+    if(want_mse) {
+      store$mse <- array(NA, c(n_models, n_sim))
+      rownames(store$mse) <- model_names
+      colnames(store$mse) <- paste0("sim_", 1:n_sim)
+    }
+    if(want_classify) {
+      store$classify <- setNames(vector("list", length(model_names)), model_names)
+      for(i in 1:n_models) {
+        store$classify[[model_names[i]]] <- list(by_cat = vector("list", n_sim),
+                                                  across_cat = list())
+        for(j in 1:n_sim) {
+          store$classify[[model_names[i]]]$by_cat[[j]] <-
+            data.frame(
+              Class = categories_class,
+              Sensitivity = NA,
+              Specificity = NA,
+              PPV = NA,
+              NPV = NA,
+              CC = NA
+            )
+        }
+        store$classify[[model_names[i]]]$CC <- rep(NA, n_sim)
+      }
+    }
+    store
+  }
+
+  out <- list(pred_objective = list())
+  if(want_grid) out$pred_objective$grid <- init_objective_store()
+  if(want_area) out$pred_objective$area <- init_objective_store()
+
+  # Given true/predicted category counts, update `store`'s by-category and
+  # CC entries for one model/simulation - shared by the grid and area paths.
+  update_classify_store <- function(store, model_name, sim_index, true_vals, samples) {
+    true_class <- cut(true_vals, breaks = categories)
+    n_categories <- length(categories) - 1
+    prob_cat <- matrix(0, nrow = nrow(samples), ncol = n_categories)
+    for(h in 1:n_categories) {
+      prob_cat[, h] <- apply(categories[h] < samples & categories[h + 1] > samples, 1, mean)
+    }
+    pred_class <- apply(prob_cat, 1, function(x) categories_class[which.max(x)])
+    conf_matrix <- table(true_class, pred_class)
+
+    by_cat <- store$classify[[model_name]]$by_cat[[sim_index]]
+    for(h in 1:nrow(conf_matrix)) {
+      TP <- conf_matrix[h, h]
+      FP <- sum(conf_matrix[, h]) - conf_matrix[h, h]
+      FN <- sum(conf_matrix[h, ]) - conf_matrix[h, h]
+      TN <- sum(conf_matrix) - sum(conf_matrix[h, ]) - sum(conf_matrix[, h]) + conf_matrix[h, h]
+
+      by_cat$Sensitivity[h] <- ifelse((TP + FN) == 0, NA, TP / (TP + FN))
+      by_cat$Specificity[h] <- ifelse((TN + FP) == 0, NA, TN / (TN + FP))
+      by_cat$PPV[h]         <- ifelse((TP + FP) == 0, NA, TP / (TP + FP))
+      by_cat$NPV[h]         <- ifelse((TN + FN) == 0, NA, TN / (TN + FN))
+      by_cat$CC[h]          <- ifelse((TP + FN) == 0, NA, TP / (TP + FN))
+    }
+    store$classify[[model_name]]$by_cat[[sim_index]] <- by_cat
+    store$classify[[model_name]]$CC[sim_index] <- mean(true_class == pred_class)
+    store
+  }
+
   lp_true_sim <- as.matrix(st_drop_geometry(obj_sim$lp_grid_sim[, grepl("^lp_sim_[0-9]+$",
                                                                        names(obj_sim$lp_grid_sim))]))
 
-  if(spatial_scale == "grid") {
-    true_target_sim <- f_grid_target(lp_true_sim)
-  } else if(spatial_scale == "area") {
-    true_target_sim <- matrix(NA, nrow = n_reg, ncol = n_sim)
-    true_target_grid_sim <- f_grid_target(lp_true_sim)
+  true_target_grid_sim <- f_grid_target(lp_true_sim)
+
+  if(want_area) {
+    true_target_area_sim <- matrix(NA, nrow = n_reg, ncol = n_sim)
     for(i in 1:n_reg) {
       for(j in 1:n_sim) {
-        if(length(inter[[i]])==0) {
+        if(length(inter[[i]]) == 0) {
           warning(paste("No points on the grid fall within", boundaries[[col_names]][i],
                         "and no predictions are carried out for this area"))
           no_comp <- c(no_comp, i)
         } else {
-          true_target_sim[i,j] <- f_area_target(true_target_grid_sim[inter[[i]],j])
+          true_target_area_sim[i,j] <- f_area_target(true_target_grid_sim[inter[[i]],j])
         }
       }
     }
   }
 
-
-
   for(i in 1:n_models) {
     for(j in 1:n_sim) {
       obj_pred_ij <- preds[[paste(model_names[i])]][[j]]
-      if(length(obj_pred_ij$mu_pred)==1 && obj_pred_ij$mu_pred==0 &&
+      if(length(obj_pred_ij$mu_pred) == 1 && obj_pred_ij$mu_pred == 0 &&
          include_covariates) {
         stop("Covariates have not been provided; re-run setup_prediction
          and provide the covariates through the argument 'predictors'")
@@ -2208,7 +2253,7 @@ assess_simulation <- function(obj_sim,
       if(!include_cov_offset) {
         cov_offset <- 0
       } else {
-        if(length(obj_pred_ij$cov_offset)==1) {
+        if(length(obj_pred_ij$cov_offset) == 1) {
           stop("No covariate offset was included in the model;
            set include_cov_offset = FALSE, or refit the model and include
            the covariate offset")
@@ -2238,80 +2283,54 @@ assess_simulation <- function(obj_sim,
                                   obj_pred_ij$S_samples[,h])
       }
 
+      # Grid-cell-level target samples are shared by both scales: grid
+      # objectives use them directly, area objectives aggregate them by
+      # region below.
       target_samples_ij <- f_grid_target(lp_samples_ij)
 
-      if(spatial_scale == "grid") {
-        mean_target_ij <- apply(target_samples_ij, 1, mean)
-      } else if(spatial_scale == "area") {
+      if(want_grid) {
+        mean_target_grid_ij <- apply(target_samples_ij, 1, mean)
+
+        if(want_mse) {
+          out$pred_objective$grid$mse[i,j] <-
+            mean((mean_target_grid_ij - true_target_grid_sim[,j])^2)
+        }
+        if(want_classify) {
+          out$pred_objective$grid <- update_classify_store(
+            out$pred_objective$grid, model_names[i], j,
+            true_target_grid_sim[,j], target_samples_ij)
+        }
+      }
+
+      if(want_area) {
         target_area_samples_ij <- matrix(NA, nrow = n_reg, ncol = n_samples)
-        mean_target_ij <- rep(NA,n_reg)
+        mean_target_area_ij <- rep(NA,n_reg)
         for(h in 1:n_reg) {
-          if(length(inter[[h]])==0) {
-            warning(paste("No points on the grid fall within", boundaries[[col_names]][h],
-                          "and no predictions are carried out for this area"))
-            no_comp <- c(no_comp, h)
-          } else {
+          if(length(inter[[h]]) > 0) {
             ind_grid_h <- inter[[h]]
             target_area_samples_ij[h,] <-  apply(target_samples_ij[ind_grid_h,], 2,
                                                  f_area_target)
-            mean_target_ij[h] <- mean(target_area_samples_ij[h,])
-          }
-        }
-      }
-
-      if(any(pred_objective=="mse")) {
-        out$pred_objective$mse[i,j] <- mean((mean_target_ij-true_target_sim[,j])^2)
-      }
-
-      if(any(pred_objective=="classify")) {
-        true_class_ij <- cut(true_target_sim[,j], breaks = categories)
-        n_categories <- length(categories)-1
-        if(spatial_scale == "grid") {
-          prob_cat_ij <- matrix(0, nrow=n_pred, ncol = n_categories)
-        } else if(spatial_scale == "area") {
-          prob_cat_ij <- matrix(0, nrow=n_reg, ncol = n_categories)
-        }
-        for(h in 1:(n_categories)) {
-          if(spatial_scale == "grid") {
-            prob_cat_ij[,h] <- apply(categories[h] < target_samples_ij &
-                                       categories[h+1] > target_samples_ij, 1, mean)
-          } else if(spatial_scale == "area") {
-            prob_cat_ij[,h] <- apply(categories[h] < target_area_samples_ij &
-                                       categories[h+1] > target_area_samples_ij, 1, mean)
+            mean_target_area_ij[h] <- mean(target_area_samples_ij[h,])
           }
         }
 
-        pred_class_ij <- apply(prob_cat_ij, 1, function(x) categories_class[which.max(x)])
-
-        # Define the confusion matrix
-        conf_matrix <- table(true_class_ij, pred_class_ij)
-
-        # Calculate metrics for each class
-        for (h in 1:nrow(conf_matrix)) {
-          TP <- conf_matrix[h, h]  # True Positives: diagonal entry
-          FP <- sum(conf_matrix[, h]) - conf_matrix[h, h]  # False Positives: column sum minus diagonal
-          FN <- sum(conf_matrix[h, ]) - conf_matrix[h, h]  # False Negatives: row sum minus diagonal
-          TN <- sum(conf_matrix) - sum(conf_matrix[h, ]) - sum(conf_matrix[, h]) + conf_matrix[h, h]
-
-
-          # Handle cases where division by zero could occur
-          out$pred_objective$classify[[paste(model_names[[i]])]]$by_cat[[j]][h,]$Sensitivity <-
-            ifelse((TP + FN) == 0, NA, TP / (TP + FN))
-          out$pred_objective$classify[[paste(model_names[[i]])]]$by_cat[[j]][h,]$Specificity <-
-            ifelse((TN + FP) == 0, NA, TN / (TN + FP))
-          out$pred_objective$classify[[paste(model_names[[i]])]]$by_cat[[j]][h,]$PPV <-
-            ifelse((TP + FP) == 0, NA, TP / (TP + FP))
-          out$pred_objective$classify[[paste(model_names[[i]])]]$by_cat[[j]][h,]$NPV <-
-            ifelse((TN + FN) == 0, NA, TN / (TN + FN))
-          out$pred_objective$classify[[paste(model_names[[i]])]]$by_cat[[j]][h,]$CC <-
-            ifelse((TP + FN) == 0, NA, (TP ) / (TP + FN))
+        if(any(pred_objective == "mse")) {
+          out$pred_objective$area$mse[i,j] <-
+            mean((mean_target_area_ij - true_target_area_sim[,j])^2)
         }
-        out$pred_objective$classify[[paste(model_names[[i]])]]$CC[j] <-
-          mean(true_class_ij==pred_class_ij)
+        if(any(pred_objective == "classify")) {
+          out$pred_objective$area <- update_classify_store(
+            out$pred_objective$area, model_names[i], j,
+            true_target_area_sim[,j], target_area_samples_ij)
+        }
       }
     }
   }
-  if(any(pred_objective=="classify")) out$pred_objective$classify$Class <- categories_class
+  if(want_classify) {
+    if(want_grid) out$pred_objective$grid$classify$Class <- categories_class
+    if(want_area) out$pred_objective$area$classify$Class <- categories_class
+  }
+  out$spatial_scale <- spatial_scale
   class(out) <- "RiskMap_assess_simulation"
   return(out)
 }
@@ -2332,12 +2351,30 @@ assess_simulation <- function(obj_sim,
 summary.RiskMap_assess_simulation <- function(object, ...) {
   stopifnot(inherits(object, "RiskMap_assess_simulation"))
 
-  # Initialize results
+  # `object$pred_objective` holds one element per requested spatial scale
+  # ("grid" and/or "area"); each is summarized the same way.
+  results <- list()
+  for (scale in intersect(c("grid", "area"), names(object$pred_objective))) {
+    results[[scale]] <- summarize_pred_objective(object$pred_objective[[scale]])
+  }
+
+  # Assign class for S3 print method
+  class(results) <- "summary.RiskMap_assess_simulation"
+  return(results)
+}
+
+##' Summarize one spatial scale's `mse`/`classify` results
+##'
+##' @param pred_objective The `mse`/`classify` element of a
+##'   `RiskMap_assess_simulation` object for a single spatial scale.
+##' @return A list with `mse` and/or `classify` summaries.
+##' @noRd
+summarize_pred_objective <- function(pred_objective) {
   results <- list()
 
   # Check for "mse" in pred_objective
-  if ("mse" %in% names(object$pred_objective)) {
-    mse_data <- object$pred_objective$mse
+  if ("mse" %in% names(pred_objective)) {
+    mse_data <- pred_objective$mse
 
     # Check if mse_data is a matrix
     if (is.matrix(mse_data)) {
@@ -2355,11 +2392,11 @@ summary.RiskMap_assess_simulation <- function(object, ...) {
   }
 
   # Check for "classify" in pred_objective
-  if ("classify" %in% names(object$pred_objective)) {
-    classify_data <- object$pred_objective$classify
+  if ("classify" %in% names(pred_objective)) {
+    classify_data <- pred_objective$classify
 
     # Loop over each model (e.g., M1, M2)
-    n_models <- length(classify_data)-1
+    n_models <- length(classify_data) - 1
     name_models <- names(classify_data)[1:n_models]
     results$classify <- list()
     for(i in 1:n_models) {
@@ -2372,10 +2409,10 @@ summary.RiskMap_assess_simulation <- function(object, ...) {
       for(j in 2:n_sim) {
         if(!any(is.na(model_data$by_cat[[j]][,-1]))) {
           den <- den + 1
-          res_class <- res_class+model_data$by_cat[[j]][,-1]
+          res_class <- res_class + model_data$by_cat[[j]][,-1]
         }
       }
-      res_class <- data.frame(res_class/den)
+      res_class <- data.frame(res_class / den)
       res_class$Class <- model_data$by_cat[[1]][,1]
 
       cc_summary <- list(mean = mean(model_data$CC, na.rm = TRUE),
@@ -2389,9 +2426,7 @@ summary.RiskMap_assess_simulation <- function(object, ...) {
     }
   }
 
-  # Assign class for S3 print method
-  class(results) <- "summary.RiskMap_assess_simulation"
-  return(results)
+  results
 }
 
 
@@ -2421,6 +2456,22 @@ summary.RiskMap_assess_simulation <- function(object, ...) {
 print.summary.RiskMap_assess_simulation <- function(x, ...) {
   cat("Summary of Simulation Results\n\n")
 
+  scale_label <- c(grid = "Grid", area = "Area")
+  for (scale in intersect(c("grid", "area"), names(x))) {
+    if (length(x) > 1) cat(sprintf("== %s-level results ==\n\n", scale_label[[scale]]))
+    print_pred_objective(x[[scale]])
+  }
+
+  invisible(x)
+}
+
+##' Print one spatial scale's `mse`/`classify` summary
+##'
+##' @param x An element of a `summary.RiskMap_assess_simulation` object, as
+##'   returned by `summarize_pred_objective()`.
+##' @return Invisibly returns `x`.
+##' @noRd
+print_pred_objective <- function(x) {
   if (!is.null(x$mse)) {
     cat("Mean Squared Error (MSE):\n")
     print(x$mse)
