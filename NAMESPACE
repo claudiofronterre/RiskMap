@@ -76,12 +76,13 @@ importFrom(spatialsample,
   autoplot,
   spatial_clustering_cv
 )
-importFrom(stars,st_rasterize)
 importFrom(terra,
   as.data.frame,
   match,
   plot,
-  rast
+  rast,
+  rasterize,
+  vect
 )
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)
