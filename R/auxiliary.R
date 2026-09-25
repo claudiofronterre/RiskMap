@@ -742,11 +742,20 @@ print.summary.RiskMap <- function(x, ...) {
   return(invisible(x))
 }
 
-##' @title Generate LaTeX Tables from RiskMap Model Fits and Validation
-##' @description Converts a fitted "RiskMap" model or cross-validation results into an \code{xtable} object, formatted for easy export to LaTeX or HTML.
-##' @param object An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap_cross_validation" containing cross-validation results.
-##' @param ... Additional arguments to be passed to \code{\link[xtable]{xtable}} for customization.
-##' @details This function creates a summary table from a fitted "RiskMap" model or cross-validation results for multiple models, returning it as an \code{xtable} object.
+##' @title Format RiskMap Model and Validation Results as a Table
+##' @description Converts a fitted "RiskMap" model or cross-validation
+##' results into a table that renders directly in Quarto, R Markdown, HTML,
+##' LaTeX and the R console.
+##' @param object An object of class "RiskMap" resulting from a call to
+##' \code{\link{glgpm}}, a "summary.RiskMap" object, or a
+##' "summary.RiskMap_cross_validation" object.
+##' @param digits A non-negative integer giving the number of decimal places
+##' used to display numeric results.
+##' @param ... Additional arguments passed to \code{\link[knitr]{kable}}.
+##' @details This function creates a presentation-ready summary table from a
+##' fitted "RiskMap" model or cross-validation results for multiple models.
+##' Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
+##' required for further analysis.
 ##'
 ##' When the input is a "RiskMap" model object, the table includes:
 ##' \itemize{
@@ -762,18 +771,29 @@ print.summary.RiskMap <- function(x, ...) {
 ##'   \item Performance metrics such as CRPS and SCRPS for each model.
 ##' }
 ##'
-##' The resulting \code{xtable} object can be further customized with additional formatting options and printed as a LaTeX or HTML table for reports or publications.
-##' @return An object of class "xtable", which contains the formatted table as a \code{data.frame} and several attributes specifying table formatting options.
-##' @importFrom xtable xtable
+##' @return An object of class "knitr_kable" that can be rendered directly.
+##' @importFrom knitr kable
 ##' @export
-##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap_cross_validation}}
-to_table <- function(object, ...) {
-  summary_out <- summary(object)
-  if(inherits(summary_out,
+##' @seealso \code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
+##' @examples
+##' \dontrun{
+##' fit <- glgpm(y ~ x + gp(), data = example_data)
+##' to_table(fit, digits = 3)
+##' }
+to_table <- function(object, digits = 3, ...) {
+  check_positive_integer(digits, "digits", allow_zero = TRUE)
+
+  if (inherits(object, "summary.RiskMap") ||
+      inherits(object, "summary.RiskMap_cross_validation")) {
+    summary_out <- object
+  } else {
+    summary_out <- summary(object)
+  }
+  if (inherits(summary_out,
                what = "summary.RiskMap", which = FALSE)) {
-    tab <- rbind(summary_out$reg_coef[,1:3], summary_out$sp, summary_out$ranef,
+    tab <- rbind(summary_out$reg_coef[, 1:3], summary_out$sp, summary_out$ranef,
                  summary_out$me)
-    out <- xtable(x = tab,...)
+    include_row_names <- TRUE
   } else if (inherits(summary_out,
                       what = "summary.RiskMap_cross_validation", which = FALSE)) {
     n_models <- nrow(summary_out)
@@ -781,12 +801,31 @@ to_table <- function(object, ...) {
     model_names <- rownames(summary_out)
     metric_names <- toupper(colnames(summary_out))
     tab <- data.frame(Model = model_names)
-    for(i in 1:n_metrics) {
+    for (i in seq_len(n_metrics)) {
       tab[[paste(metric_names[i])]] <- summary_out[,i]
     }
-    out <- xtable(x = tab,...)
+    include_row_names <- FALSE
+  } else {
+    stop("'object' must be a RiskMap model or RiskMap cross-validation result")
   }
-  return(out)
+
+  tab <- as.data.frame(tab, check.names = FALSE)
+  numeric_columns <- vapply(tab, is.numeric, logical(1))
+  tab[numeric_columns] <- lapply(
+    tab[numeric_columns],
+    formatC,
+    format = "f",
+    digits = as.integer(digits)
+  )
+
+  dots <- list(...)
+  if (is.null(dots$row.names))
+    dots$row.names <- include_row_names
+  if (is.null(dots$align))
+    dots$align <- if (include_row_names) rep("r", ncol(tab)) else
+      c("l", rep("r", ncol(tab) - 1L))
+
+  do.call(kable, c(list(x = tab), dots))
 }
 
 ##' @title Compute Unique Coordinate Identifiers
