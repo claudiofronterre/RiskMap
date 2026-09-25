@@ -71,8 +71,12 @@ Computes the empirical variogram using lag-distance breakpoints.
 data(italy_sim)
 
 italy_variogram <- variogram(
-                     data = italy_sim[1:100,],
+                     data = italy_sim[1:200,],
                      variable = "y",
-                     n_permutations = 101)
+                     n_bins = 10,
+                     n_permutations = 100)
+
+plot_variogram(italy_variogram,
+               plot_envelope = TRUE)
 
 }
