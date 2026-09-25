@@ -755,7 +755,9 @@ print.summary.RiskMap <- function(x, ...) {
 ##' @details This function creates a presentation-ready summary table from a
 ##' fitted "RiskMap" model or cross-validation results for multiple models.
 ##' Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
-##' required for further analysis.
+##' required for further analysis. Numeric values use fixed notation with
+##' \code{digits} decimal places, except when scientific notation is needed to
+##' represent very large or very small values clearly.
 ##'
 ##' When the input is a "RiskMap" model object, the table includes:
 ##' \itemize{
@@ -813,9 +815,17 @@ to_table <- function(object, digits = 3, ...) {
   numeric_columns <- vapply(tab, is.numeric, logical(1))
   tab[numeric_columns] <- lapply(
     tab[numeric_columns],
-    formatC,
-    format = "f",
-    digits = as.integer(digits)
+    function(x) {
+      use_scientific <- is.finite(x) & x != 0 &
+        (abs(x) >= 1e6 | abs(x) < 10^(-digits))
+      out <- formatC(x, format = "f", digits = as.integer(digits))
+      out[use_scientific] <- formatC(
+        x[use_scientific],
+        format = "e",
+        digits = as.integer(digits)
+      )
+      out
+    }
   )
 
   dots <- list(...)

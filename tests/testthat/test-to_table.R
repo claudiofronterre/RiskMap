@@ -51,6 +51,18 @@ test_that("to_table formats cross-validation summaries directly", {
   expect_match(rendered, "CRPS", fixed = TRUE)
 })
 
+test_that("to_table uses scientific notation only when fixed notation is unsuitable", {
+  object <- table_test_model()
+  object$reg_coef[1, 1] <- 1e100
+  object$reg_coef[2, 1] <- 1e-8
+  table <- to_table(object, digits = 3, format = "pipe")
+  rendered <- paste(as.character(table), collapse = "\n")
+
+  expect_match(rendered, "1.000e+100", fixed = TRUE)
+  expect_match(rendered, "1.000e-08", fixed = TRUE)
+  expect_match(rendered, "0.400", fixed = TRUE)
+})
+
 test_that("to_table validates its inputs", {
   object <- table_test_model()
 

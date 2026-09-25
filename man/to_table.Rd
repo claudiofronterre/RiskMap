@@ -28,7 +28,9 @@ LaTeX and the R console.
 This function creates a presentation-ready summary table from a
 fitted "RiskMap" model or cross-validation results for multiple models.
 Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
-required for further analysis.
+required for further analysis. Numeric values use fixed notation with
+\code{digits} decimal places, except when scientific notation is needed to
+represent very large or very small values clearly.
 
 When the input is a "RiskMap" model object, the table includes:
 \itemize{
