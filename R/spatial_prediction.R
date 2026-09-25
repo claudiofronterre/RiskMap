@@ -2314,11 +2314,11 @@ assess_simulation <- function(obj_sim,
           }
         }
 
-        if(any(pred_objective == "mse")) {
+        if(want_mse) {
           out$pred_objective$area$mse[i,j] <-
             mean((mean_target_area_ij - true_target_area_sim[,j])^2)
         }
-        if(any(pred_objective == "classify")) {
+        if(want_classify) {
           out$pred_objective$area <- update_classify_store(
             out$pred_objective$area, model_names[i], j,
             true_target_area_sim[,j], target_area_samples_ij)
