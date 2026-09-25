@@ -8,10 +8,17 @@ test_that("summarise_distance produces errors", {
     )
   })
 
-  test_that("convert_to_utm must be logical", {
+  test_that("distance_crs must be a valid CRS", {
     expect_error(
-      summarise_distance(gaussian_data, convert_to_utm ="a"),
-      "'convert_to_utm' must be either TRUE or FALSE"
+      summarise_distance(gaussian_data, distance_crs = "a"),
+      "The 'distance_crs' provided is not a valid CRS"
+    )
+  })
+
+  test_that("distance_crs must be projected", {
+    expect_error(
+      summarise_distance(gaussian_data, distance_crs = 4326),
+      "'distance_crs' must be a projected CRS, not longitude/latitude"
     )
   })
 
@@ -32,8 +39,8 @@ test_that("summarise_distance produces correct output", {
 
   square_sf <- sf::st_as_sf(square, coords = c("x", "y"), crs = 32630)
 
-  # unconverted
-  result <- summarise_distance(square_sf, convert_to_utm = FALSE, distance_units = "m")
+  # already projected: distance_crs = NULL retains the existing CRS as-is
+  result <- summarise_distance(square_sf, distance_units = "m")
   expect_length(result, 4)
   expect_setequal(names(result), c("min", "max", "mean", "median"))
   expect_equal(result[["min"]], 1)
@@ -41,20 +48,49 @@ test_that("summarise_distance produces correct output", {
   expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6)
   expect_equal(result[["median"]], 1)
 
-  # reprojected (tolerance to account for round trip)
-  result <- summarise_distance(square_sf, convert_to_utm = TRUE, distance_units = "m")
+  # reprojected to an explicit distance_crs (tolerance to account for round trip)
+  result <- summarise_distance(square_sf, distance_crs = 3857, distance_units = "m")
   expect_equal(result[["min"]], 1, tolerance = 0.1)
   expect_equal(result[["max"]], sqrt(2), tolerance = 0.1)
   expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6, tolerance = 0.1)
   expect_equal(result[["median"]], 1, tolerance = 0.1)
 
   # scaled (default distance_units = "km")
-  result <- summarise_distance(square_sf, convert_to_utm = FALSE)
+  result <- summarise_distance(square_sf)
   expect_equal(result[["min"]], 0.001)
   expect_equal(result[["max"]], sqrt(2) / 1000)
   expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6000)
   expect_equal(result[["median"]], 0.001)
 
+})
+
+test_that("summarise_distance follows the glgpm() CRS convention", {
+
+  latlon <- st_transform(gaussian_data, 4326)
+  suggested_crs <- propose_utm(latlon)
+
+  expect_message(
+    result <- summarise_distance(latlon, distance_units = "m"),
+    "automatically reprojecting to EPSG"
+  )
+  expect_equal(result, summarise_distance(st_transform(latlon, suggested_crs),
+                                          distance_units = "m"))
+
+  # an already-projected CRS is retained as-is, with no message
+  expect_no_message(summarise_distance(gaussian_data))
+
+  # an explicit distance_crs is honoured
+  result <- summarise_distance(gaussian_data, distance_crs = 32637, distance_units = "m")
+  expect_equal(result, summarise_distance(gaussian_data, distance_units = "m"))
+})
+
+test_that("summarise_distance derives distance units from a non-metre CRS", {
+
+  foot_data <- st_transform(gaussian_data, 2263)
+  coords <- coordinates_in_units(foot_data, "m")
+
+  result <- summarise_distance(foot_data, distance_units = "m")
+  expect_equal(result[["max"]], max(dist(unique(coords))))
 })
 
 
@@ -101,8 +137,7 @@ test_that("variogram produces errors", {
     expect_no_error(
       variogram(gaussian_data,
                 variable = "y",
-                breaks = seq(0, 9000, 1000),
-                convert_to_utm = TRUE),
+                breaks = seq(0, 9000, 1000)),
     )
   })
 
@@ -203,18 +238,25 @@ test_that("variogram produces errors", {
 
   test_that("n_permutations of exactly 100 does not trigger the low-permutation warning", {
     expect_no_warning(
-        variogram(gaussian_data, variable = "y", n_permutations = 100, convert_to_utm = TRUE)
+        variogram(gaussian_data, variable = "y", n_permutations = 100)
     )
   })
 
-  test_that("convert_to_utm = FALSE produces an error if coords are lon lat", {
+  test_that("an explicit distance_crs that is longitude/latitude produces an error", {
     expect_error(
-        variogram(latlon_data, variable = "y", n_permutations = 100, convert_to_utm = FALSE),
-      "The dataset coordinates are in longitude and latitude"
+        variogram(latlon_data, variable = "y", n_permutations = 100, distance_crs = 4326),
+      "'distance_crs' must be a projected CRS, not longitude/latitude"
     )
   })
 
-  test_that("convert_to_utm = TRUE (default) does not emit that message", {
+  test_that("longitude/latitude data is automatically reprojected with a message", {
+    expect_message(
+        variogram(latlon_data, variable = "y", n_permutations = 100),
+      "automatically reprojecting to EPSG"
+    )
+  })
+
+  test_that("distance_crs = NULL (default) on already-projected data does not emit that message", {
     expect_no_message(
         variogram(gaussian_data, variable = "y", n_permutations = 100)
     )
@@ -259,10 +301,10 @@ test_that("variogram produces errors", {
     )
   })
 
-  test_that("convert_to_utm must be logical and distance_units must be 'km' or 'm'", {
+  test_that("distance_crs must be a valid, projected CRS and distance_units must be 'km' or 'm'", {
     expect_error(
-      variogram(gaussian_data, variable = "y", convert_to_utm = "a"),
-      "'convert_to_utm' must be either TRUE or FALSE")
+      variogram(gaussian_data, variable = "y", distance_crs = "a"),
+      "The 'distance_crs' provided is not a valid CRS")
 
     expect_error(
       variogram(gaussian_data, variable = "y", distance_units = "a"),
@@ -350,8 +392,7 @@ test_that("variogram values are correct for a simple dataset", {
 
   result <- variogram(square_sf,
                       variable = "z",
-                      breaks = seq(0.1, 1.5, 0.2),
-                      convert_to_utm = FALSE)
+                      breaks = seq(0.1, 1.5, 0.2))
 
   expect_equal(sum(result$variogram$n_obs), 6)
 
@@ -369,4 +410,25 @@ test_that("variogram values are correct for a simple dataset", {
 
   expect_equal(result$variogram$upper_bound[bin1], manual_envelope[2,1])
   expect_equal(result$variogram$upper_bound[bin2], manual_envelope[2,2])
+})
+
+test_that("plot_variogram defaults to plotting the envelope when available", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10, n_permutations = 100)
+
+  expect_no_warning(p <- plot_variogram(result))
+  expect_true("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
+})
+
+test_that("plot_variogram warns and skips the envelope when n_permutations <= 1", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10, n_permutations = 0)
+
+  expect_warning(
+    p <- plot_variogram(result),
+    "'n_permutations' was 0"
+  )
+  expect_false("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
+
+  expect_no_warning(plot_variogram(result, plot_envelope = FALSE))
 })

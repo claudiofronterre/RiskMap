@@ -4,15 +4,15 @@
 \alias{summarise_distance}
 \title{Summaries of the distances}
 \usage{
-summarise_distance(data, convert_to_utm = TRUE, distance_units = c("km", "m"))
+summarise_distance(data, distance_crs = NULL, distance_units = c("km", "m"))
 }
 \arguments{
 \item{data}{an object of class \code{sf} containing point geometries.}
 
-\item{convert_to_utm}{a logical value, indicating if the conversion to UTM should be performed (\code{TRUE}) or
-the coordinate reference system of the data must be used without any conversion (\code{FALSE}).
-By default \code{TRUE}. Note: if \code{TRUE} the conversion to UTM is performed using
-the epsg provided by \verb{[propose_utm]}.}
+\item{distance_crs}{\code{NULL} to retain an existing projected CRS, or
+automatically reproject longitude/latitude data to an appropriate UTM CRS
+(with a message reporting the choice). Alternatively, a CRS to reproject
+\code{data} to, which must itself be projected.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether the
 distances used are expressed in kilometers or meters. Defaults to \code{"km"}.}
