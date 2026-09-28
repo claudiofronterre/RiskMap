@@ -371,7 +371,7 @@ test_that("plot_mcmc produces errors as expected", {
     plot_mcmc(poisson_model, check_mean = FALSE, component = 10)
   )
 
-  poisson_grid <- setup_prediction(poisson_model, control_sim = control_mcmc)
+  poisson_grid <- setup_prediction(poisson_model, control_mcmc = control_mcmc)
   expect_no_error(
     plot_mcmc(poisson_grid)
   )

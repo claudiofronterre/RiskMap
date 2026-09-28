@@ -66,6 +66,7 @@ named `boundaries`.
 `TRUE` to estimate it.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian
 outputs reproducible.
+- `control_sim` parameters have been renamed to `control_mcmc`.
 - `to_table()` now returns a directly renderable `knitr_kable` table, with an
   explicit `digits` argument that preserves trailing zeroes. This replaces the
   previous `xtable` return value.
@@ -80,6 +81,4 @@ outputs reproducible.
   extract results.
 - Gaussian prediction uses a stable reduced covariance solve, avoiding cancellation
 with small measurement-error variances while retaining the same conditional model.
-
-  
 - Test coverage has been increased from 0 to 70 %.
