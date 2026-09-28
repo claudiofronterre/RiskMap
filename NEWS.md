@@ -41,7 +41,7 @@ providing `model_crs` in longitude/latitude now raises an error.
 been updated to match; `simulate_glgpm()`'s own `convert_to_crs`/`scale_to_km`
 arguments have likewise been replaced with `model_crs`/`distance_units`.
 - In `summarise_distance()` and `variogram()`, `scale_to_km` has similarly been
-replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`. 
+replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`.
 Default behaviour is unchanged (`"km"` for `summarise_distance()`, `"m"` for
 `variogram()`).
 - In `summarise_distance()` and `variogram()`, `convert_to_utm` has been replaced
@@ -56,9 +56,9 @@ skipped instead of erroring.
 - `create_grid()` no longer raises an error when `boundaries` is in
 longitude/latitude; like `glgpm()`, it now automatically reprojects to an
 appropriate UTM zone and reports the conversion with a message.
-- The `shp` parameter has been renamed to `boundaries` in `create_grid()`, 
-`predict_areal_target()` and `assess_simulation()`; `shp_target` and `return_shp` 
-in `predict_areal_target()` have similarly been renamed to `areal_target` and 
+- The `shp` parameter has been renamed to `boundaries` in `create_grid()`,
+`predict_areal_target()` and `assess_simulation()`; `shp_target` and `return_shp`
+in `predict_areal_target()` have similarly been renamed to `areal_target` and
 `return_boundaries`. `predict_areal_target()`'s returned `shp` component is now
 named `boundaries`.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
