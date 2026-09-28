@@ -4,8 +4,8 @@ test_that("predict_grid_target produces expected output with default arguments",
 
   gaussian_grid <- setup_prediction(gaussian_model)
   gaussian_offset_grid <- setup_prediction(gaussian_offset_model)
-  binomial_grid <- setup_prediction(binomial_model, control_sim = control_mcmc)
-  poisson_grid <- setup_prediction(poisson_model, control_sim = control_mcmc)
+  binomial_grid <- setup_prediction(binomial_model, control_mcmc = control_mcmc)
+  poisson_grid <- setup_prediction(poisson_model, control_mcmc = control_mcmc)
 
   result <- predict_grid_target(gaussian_grid)
   expect_setequal(names(result), expected_output)
@@ -35,14 +35,14 @@ test_that("predict_grid_target produces expected output when grid is provided", 
                                   grid_pred = grid,
                                   predictors = data.frame(cov = rnorm(nrow(grid))),
                                   re_predictors = data.frame(i = 1:5),
-                                  control_sim = control_mcmc,
+                                  control_mcmc = control_mcmc,
                                   type = "joint")
 
   poisson_grid <- setup_prediction(poisson_model,
                                  grid_pred = grid,
                                  predictors = data.frame(cov = rnorm(nrow(grid))),
                                  re_predictors = data.frame(i = 1:5),
-                                 control_sim = control_mcmc,
+                                 control_mcmc = control_mcmc,
                                  type = "joint")
 
   result <- predict_grid_target(gaussian_grid)
@@ -71,14 +71,14 @@ test_that("predict_grid_target produces expected output when in list mode", {
                                   grid_pred = list(grid, grid),
                                   predictors = list(data.frame(cov = rnorm(nrow(grid))),
                                                     data.frame(cov = rnorm(nrow(grid)))),
-                                  control_sim = control_mcmc,
+                                  control_mcmc = control_mcmc,
                                   type = "joint")
 
   poisson_grid <- setup_prediction(poisson_model,
                                  grid_pred = list(grid, grid),
                                  predictors = list(data.frame(cov = rnorm(nrow(grid))),
                                                    data.frame(cov = rnorm(nrow(grid)))),
-                                 control_sim = control_mcmc,
+                                 control_mcmc = control_mcmc,
                                  type = "joint")
 
   result <- predict_grid_target(gaussian_grid)

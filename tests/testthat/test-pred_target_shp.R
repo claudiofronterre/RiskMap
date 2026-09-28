@@ -4,8 +4,8 @@ test_that("predict_areal_target produces expected output with default arguments"
 
   gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
   gaussian_offset_grid <- setup_prediction(gaussian_offset_model, type = "joint")
-  binomial_grid <- setup_prediction(binomial_model, control_sim = control_mcmc, type = "joint")
-  poisson_grid <- setup_prediction(poisson_model, control_sim = control_mcmc, type = "joint")
+  binomial_grid <- setup_prediction(binomial_model, control_mcmc = control_mcmc, type = "joint")
+  poisson_grid <- setup_prediction(poisson_model, control_mcmc = control_mcmc, type = "joint")
 
   result <- predict_areal_target(gaussian_grid, areal)
   expect_setequal(names(result), expected_output)

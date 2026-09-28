@@ -23,7 +23,7 @@ test_that("Gaussian predictions remain finite with tiny measurement error", {
       expect_warning(prediction <- setup_prediction(model,
                                                     grid_pred = st_geometry(gaussian_data),
                                                     type = type,
-                                                    control_sim = control_mcmc,
+                                                    control_mcmc = control_mcmc,
                                                     messages = FALSE), NA)
       expect_true(all(is.finite(prediction$S_samples)))
     }
