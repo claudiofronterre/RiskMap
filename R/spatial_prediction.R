@@ -850,8 +850,10 @@ predict_grid_target <- function(object,
 ##' from an object of class 'RiskMap_predict_grid_target'.
 ##'
 ##' @param x An object of class 'RiskMap_predict_grid_target'.
-##' @param which_target Character string specifying which target prediction to plot.
-##' @param which_summary Character string specifying which summary statistic to plot (e.g., "mean", "sd").
+##' @param target Character string specifying which target prediction to plot,
+##' one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.
+##' @param summary Character string specifying which summary statistic to plot
+##' (e.g., "mean", "sd"), one of \code{x$pd_summary}. Defaults to \code{"mean"}.
 ##' @param ... Additional arguments passed to the \code{\link[terra]{plot}} function of the \code{terra} package.
 ##' @return A \code{ggplot} object representing the specified prediction target or summary statistic over the spatial grid.
 ##' @details
@@ -865,10 +867,19 @@ predict_grid_target <- function(object,
 ##' @export
 ##'
 ##'
-plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
+plot.RiskMap_predict_grid_target <- function(x, target = NULL, summary = "mean", ...) {
+  if (is.null(target)) {
+    target <- x$f_target[1]
+  } else if (!target %in% x$f_target) {
+    stop("'target' must be one of: ", paste(shQuote(x$f_target), collapse = ", "))
+  }
+  if (!summary %in% x$pd_summary) {
+    stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
+  }
+
   t_data.frame <-
     terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
-                               x$target[[which_target]][[which_summary]]),
+                               x$target[[target]][[summary]]),
                          xy = TRUE)
   raster_out <- rast(t_data.frame, crs = st_crs(x$grid_pred)$wkt)
 
@@ -1319,8 +1330,10 @@ predict_areal_target <- function(object,
 ##'
 ##' @param x An object of class 'RiskMap_predict_areal_target' containing computed targets,
 ##' summaries, and associated spatial data.
-##' @param which_target Character indicating the target type to plot (e.g., "linear_target").
-##' @param which_summary Character indicating the summary type to plot (e.g., "mean", "sd").
+##' @param target Character indicating the target type to plot (e.g., "linear_target"),
+##' one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.
+##' @param summary Character indicating the summary type to plot (e.g., "mean", "sd"),
+##' one of \code{x$pd_summary}. Defaults to \code{"mean"}.
 ##' @param ... Additional arguments passed to 'scale_fill_distiller' in 'ggplot2'.
 ##' @return A \code{ggplot} object showing the plot of the specified predictive target or summary.
 ##' @seealso
@@ -1329,9 +1342,16 @@ predict_areal_target <- function(object,
 ##'
 ##' @method plot RiskMap_predict_areal_target
 ##' @export
-plot.RiskMap_predict_areal_target <- function(x, which_target = "linear_target",
-                                         which_summary = "mean", ...) {
-  col_boundaries_name <- paste(which_target,"_",which_summary,sep="")
+plot.RiskMap_predict_areal_target <- function(x, target = NULL, summary = "mean", ...) {
+  if (is.null(target)) {
+    target <- x$f_target[1]
+  } else if (!target %in% x$f_target) {
+    stop("'target' must be one of: ", paste(shQuote(x$f_target), collapse = ", "))
+  }
+  if (!summary %in% x$pd_summary) {
+    stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
+  }
+  col_boundaries_name <- paste(target, "_", summary, sep = "")
 
   out <- ggplot(x$boundaries) +
     geom_sf(aes(fill = x$boundaries[[col_boundaries_name]])) +

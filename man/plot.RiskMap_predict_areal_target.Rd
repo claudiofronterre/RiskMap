@@ -4,15 +4,17 @@
 \alias{plot.RiskMap_predict_areal_target}
 \title{Plot Method for RiskMap_predict_areal_target Objects}
 \usage{
-\method{plot}{RiskMap_predict_areal_target}(x, which_target = "linear_target", which_summary = "mean", ...)
+\method{plot}{RiskMap_predict_areal_target}(x, target = NULL, summary = "mean", ...)
 }
 \arguments{
 \item{x}{An object of class 'RiskMap_predict_areal_target' containing computed targets,
 summaries, and associated spatial data.}
 
-\item{which_target}{Character indicating the target type to plot (e.g., "linear_target").}
+\item{target}{Character indicating the target type to plot (e.g., "linear_target"),
+one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.}
 
-\item{which_summary}{Character indicating the summary type to plot (e.g., "mean", "sd").}
+\item{summary}{Character indicating the summary type to plot (e.g., "mean", "sd"),
+one of \code{x$pd_summary}. Defaults to \code{"mean"}.}
 
 \item{...}{Additional arguments passed to 'scale_fill_distiller' in 'ggplot2'.}
 }
