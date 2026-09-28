@@ -1408,19 +1408,21 @@ check_positive_number <- function(x, type = "starting ") {
 #'
 #' Check that a CRS is valid
 #' @param crs the CRS to check
+#' @param name the argument name to use in the error message. Defaults to the
+#'   name of the variable passed as `crs`; callers wrapping this in another
+#'   function should pass their own argument's name explicitly, since
+#'   `substitute()` only sees the immediate call site.
 #' @return TRUE if the CRS is valid. Raise an error if not.
 #' @noRd
 #'
-check_crs <- function(crs){
-  # extract name passed to function
-  variable <- deparse(substitute(crs))
+check_crs <- function(crs, name = deparse(substitute(crs))){
   tryCatch(
     st_crs(crs),
     warning = function(w) {
-      stop("The '", variable, "' provided is not a valid CRS", call. = FALSE)
+      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
     },
     error = function(e){
-      stop("The '", variable, "' provided is not a valid CRS", call. = FALSE)
+      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
     }
   )
   invisible(TRUE)

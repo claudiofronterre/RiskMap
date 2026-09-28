@@ -11,7 +11,7 @@ variogram(
   n_bins = 14L,
   max_dist = NULL,
   n_permutations = 1000,
-  convert_to_utm = TRUE,
+  distance_crs = NULL,
   distance_units = c("m", "km")
 )
 }
@@ -37,10 +37,10 @@ used to compute the 95\% confidence level envelope under the assumption of spati
 independence. By default \code{n_permutations=1000} but if set to zero then no
 envelope is generated. Values between 2 and 100 will raise a warning.}
 
-\item{convert_to_utm}{a logical value, indicating if the conversion to UTM should be performed (\code{convert_to_utm = TRUE}) or
-the coordinate reference system of the data must be used without any conversion (\code{convert_to_utm = FALSE}).
-By default \code{convert_to_utm = TRUE}. Note: if \code{convert_to_utm = TRUE} the conversion to UTM is performed using
-the epsg provided by \code{\link{propose_utm}}.}
+\item{distance_crs}{\code{NULL} to retain an existing projected CRS, or
+automatically reproject longitude/latitude data to an appropriate UTM CRS
+(with a message reporting the choice). Alternatively, a CRS to reproject
+\code{data} to, which must itself be projected.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether
 the distances used in the variogram are expressed in kilometers or meters.
