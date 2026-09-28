@@ -11,7 +11,7 @@ assess_prediction(
   iter = 1,
   fold = NULL,
   n_size = NULL,
-  control_sim = set_control_mcmc(),
+  control_mcmc = set_control_mcmc(),
   min_dist = NULL,
   plot_fold = TRUE,
   messages = TRUE,
@@ -36,7 +36,7 @@ subset of locations.}
 
 \item{n_size}{Optional; the size of the test set, required if \code{method = "regularized"}.}
 
-\item{control_sim}{Control settings for simulation, an output from \code{set_control_mcmc}.}
+\item{control_mcmc}{Control settings for simulation, an output from \code{set_control_mcmc}.}
 
 \item{min_dist}{Optional; minimum distance for regularized subsampling (required if \code{method = "regularized"}).}
 

@@ -100,9 +100,13 @@ summarise_distance <- function(data,
 ##' data(italy_sim)
 ##'
 ##' italy_variogram <- variogram(
-##'                      data = italy_sim[1:100,],
+##'                      data = italy_sim[1:200,],
 ##'                      variable = "y",
-##'                      n_permutations = 101)
+##'                      n_bins = 10,
+##'                      n_permutations = 100)
+##'
+##' plot_variogram(italy_variogram,
+##'                plot_envelope = TRUE)
 ##'
 ##' @export
 ##'
@@ -251,7 +255,7 @@ plot_variogram <- function(variogram_output,
   }
 
   basic_plot <- ggplot(data = variogram_output$variogram,
-                  aes_string(x = "mid_points", y = "obs_vari")) +
+                  aes(x = .data$mid_points, y = .data$obs_vari)) +
                   geom_point() +
                   geom_line()
 
@@ -265,14 +269,7 @@ plot_variogram <- function(variogram_output,
                   fill = color, alpha = 0.3)
   }
 
-  if (variogram_output$distance_units == "km") {
-    x_label <- "Distance (km)"
-  } else {
-    x_label <- "Distance (m)"
-  }
+  x_label <- sprintf("Distance (%s)", variogram_output$distance_units)
 
-  basic_plot <- basic_plot + labs(x = x_label,
-                                  y = "Variogram")
-
-  return(basic_plot)
+  basic_plot + labs(x = x_label, y = "Variogram")
 }

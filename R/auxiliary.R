@@ -424,14 +424,15 @@ get_formula_terms <- function(formula) {
 }
 
 
-##' @title Check that formula is valid
+##' @title Check that formula is valid and that there is no missing data
 ##' @description Checks that the formula object is of class formula and that all
 ##' the terms in the formula are present in the data
 ##' @param formula The formula to check
 ##' @param data The data to look for variables in
+##' @param response_required Whether the response must be present in `data`.
 ##' @return TRUE if the formula is valid or raise an error if not
 ##' @noRd
-check_formula <- function(formula, data){
+check_formula <- function(formula, data, response_required = TRUE){
 
   if(!inherits(formula, "formula")) {
     stop("'formula' must be a 'formula'
@@ -445,9 +446,12 @@ check_formula <- function(formula, data){
   contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
 
   if (!contains_gp){
-    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'")
+    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'", call. = FALSE)
   }
 
+  if (!response_required) {
+    formula_terms <- setdiff(formula_terms, all.vars(formula[[2L]]))
+  }
   missing_columns <- setdiff(formula_terms, column_names)
   n_missing <- length(missing_columns)
   if (n_missing > 0){
@@ -458,6 +462,12 @@ check_formula <- function(formula, data){
           ifelse(n_missing > 1, "' are", "' is"),
          " not present in 'data'"), call. = FALSE)
   }
+
+  data <- data[, formula_terms]
+  drop_coords <- st_drop_geometry(data)
+  missing_data <- any(!complete.cases(drop_coords))
+  if (missing_data)
+    stop("'data' contains rows with missing data - check or remove them", call. = FALSE)
 
   invisible(TRUE)
 }
@@ -732,11 +742,22 @@ print.summary.RiskMap <- function(x, ...) {
   return(invisible(x))
 }
 
-##' @title Generate LaTeX Tables from RiskMap Model Fits and Validation
-##' @description Converts a fitted "RiskMap" model or cross-validation results into an \code{xtable} object, formatted for easy export to LaTeX or HTML.
-##' @param object An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap_cross_validation" containing cross-validation results.
-##' @param ... Additional arguments to be passed to \code{\link[xtable]{xtable}} for customization.
-##' @details This function creates a summary table from a fitted "RiskMap" model or cross-validation results for multiple models, returning it as an \code{xtable} object.
+##' @title Format RiskMap Model and Validation Results as a Table
+##' @description Converts a fitted "RiskMap" model or cross-validation
+##' results into a table that renders directly in Quarto, R Markdown, HTML,
+##' LaTeX and the R console.
+##' @param object An object of class "RiskMap" resulting from a call to
+##' \code{\link{glgpm}}, a "summary.RiskMap" object, or a
+##' "summary.RiskMap_cross_validation" object.
+##' @param digits A non-negative integer giving the number of decimal places
+##' used to display numeric results.
+##' @param ... Additional arguments passed to \code{\link[knitr]{kable}}.
+##' @details This function creates a presentation-ready summary table from a
+##' fitted "RiskMap" model or cross-validation results for multiple models.
+##' Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
+##' required for further analysis. Numeric values use fixed notation with
+##' \code{digits} decimal places, except when scientific notation is needed to
+##' represent very large or very small values clearly.
 ##'
 ##' When the input is a "RiskMap" model object, the table includes:
 ##' \itemize{
@@ -752,18 +773,29 @@ print.summary.RiskMap <- function(x, ...) {
 ##'   \item Performance metrics such as CRPS and SCRPS for each model.
 ##' }
 ##'
-##' The resulting \code{xtable} object can be further customized with additional formatting options and printed as a LaTeX or HTML table for reports or publications.
-##' @return An object of class "xtable", which contains the formatted table as a \code{data.frame} and several attributes specifying table formatting options.
-##' @importFrom xtable xtable
+##' @return An object of class "knitr_kable" that can be rendered directly.
+##' @importFrom knitr kable
 ##' @export
-##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap_cross_validation}}
-to_table <- function(object, ...) {
-  summary_out <- summary(object)
-  if(inherits(summary_out,
+##' @seealso \code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
+##' @examples
+##' \dontrun{
+##' fit <- glgpm(y ~ x + gp(), data = example_data)
+##' to_table(fit, digits = 3)
+##' }
+to_table <- function(object, digits = 3, ...) {
+  check_positive_integer(digits, "digits", allow_zero = TRUE)
+
+  if (inherits(object, "summary.RiskMap") ||
+      inherits(object, "summary.RiskMap_cross_validation")) {
+    summary_out <- object
+  } else {
+    summary_out <- summary(object)
+  }
+  if (inherits(summary_out,
                what = "summary.RiskMap", which = FALSE)) {
-    tab <- rbind(summary_out$reg_coef[,1:3], summary_out$sp, summary_out$ranef,
+    tab <- rbind(summary_out$reg_coef[, 1:3], summary_out$sp, summary_out$ranef,
                  summary_out$me)
-    out <- xtable(x = tab,...)
+    include_row_names <- TRUE
   } else if (inherits(summary_out,
                       what = "summary.RiskMap_cross_validation", which = FALSE)) {
     n_models <- nrow(summary_out)
@@ -771,12 +803,39 @@ to_table <- function(object, ...) {
     model_names <- rownames(summary_out)
     metric_names <- toupper(colnames(summary_out))
     tab <- data.frame(Model = model_names)
-    for(i in 1:n_metrics) {
+    for (i in seq_len(n_metrics)) {
       tab[[paste(metric_names[i])]] <- summary_out[,i]
     }
-    out <- xtable(x = tab,...)
+    include_row_names <- FALSE
+  } else {
+    stop("'object' must be a RiskMap model or RiskMap cross-validation result")
   }
-  return(out)
+
+  tab <- as.data.frame(tab, check.names = FALSE)
+  numeric_columns <- vapply(tab, is.numeric, logical(1))
+  tab[numeric_columns] <- lapply(
+    tab[numeric_columns],
+    function(x) {
+      use_scientific <- is.finite(x) & x != 0 &
+        (abs(x) >= 1e6 | abs(x) < 10^(-digits))
+      out <- formatC(x, format = "f", digits = as.integer(digits))
+      out[use_scientific] <- formatC(
+        x[use_scientific],
+        format = "e",
+        digits = as.integer(digits)
+      )
+      out
+    }
+  )
+
+  dots <- list(...)
+  if (is.null(dots$row.names))
+    dots$row.names <- include_row_names
+  if (is.null(dots$align))
+    dots$align <- if (include_row_names) rep("r", ncol(tab)) else
+      c("l", rep("r", ncol(tab) - 1L))
+
+  do.call(kable, c(list(x = tab), dots))
 }
 
 ##' @title Compute Unique Coordinate Identifiers
@@ -1184,8 +1243,9 @@ check_binomial <- function(y, den){
 #' @description
 #'
 #' Check that the data is an sf or sfc object, with a CRS, only containing points
-#' or either polygons or multipolygons. If CRS == 4326 it also checks that the #
-#' coordinates are possible (i.e. not latitudes > 90)
+#' or either polygons or multipolygons.
+#' If CRS == 4326 it also checks that the coordinates are possible (i.e. not
+#' latitudes > 90)
 #' @param data the data to check
 #' @param geometry whether to check that the data contains `"point"` (default) or
 #' `"polygon"` (covering both polygons and multipolygons)
@@ -1206,30 +1266,26 @@ check_data <- function(data, geometry = "point", type = "sf"){
                           polygon = "'POLYGON' or 'MULTIPOLYGON'")
 
   if (type == "sf"){
-    if (!inherits(data, "sf")){
-      stop(paste(data_type, "must be of class 'sf'"))
-    }
+    if (!inherits(data, "sf"))
+      stop(paste(data_type, "must be of class 'sf'"), call. = FALSE)
   } else {
-    if (!inherits(data, c("sf", "sfc"))){
-      stop(paste(data_type, "must be of class 'sf' or 'sfc'"))
-    }
+    if (!inherits(data, c("sf", "sfc")))
+      stop(paste(data_type, "must be of class 'sf' or 'sfc'"), call. = FALSE)
   }
 
-  if (is.na(sf::st_crs(data))){
-    stop(paste(data_type, "must contain a coordinate reference system"))
-  }
+  if (is.na(st_crs(data)))
+    stop(paste(data_type, "must contain a coordinate reference system"), call. = FALSE)
 
-  all_valid_geometry <- all(grepl(toupper(geometry), sf::st_geometry_type(data)))
-  if (!all_valid_geometry){
-    stop(paste(data_type, "can only contain", geometry_type, "geometry"))
-  }
+  all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
+  if (!all_valid_geometry)
+    stop(paste(data_type, "can only contain", geometry_type, "geometry"), call. = FALSE)
 
-  if (sf::st_crs(data) == sf::st_crs(4326)){
+  if (st_crs(data) == st_crs(4326)){
     tryCatch(
-      sf::st_is_longlat(data$geometry),
+      st_is_longlat(data$geometry),
       warning = function(w) {
         stop(paste(data_type, "contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data"))
+             check you have specified the columns correctly when converting the data"), call. = FALSE)
       }
     )
   }
@@ -1286,17 +1342,44 @@ coordinates_in_units <- function(data, distance_units) {
 #' Check that a value is a single, positive integer and error if not
 #' @param x the value to check
 #' @param name the name of the parameter to return in error messages
+#' @param allow_null whether `NULL` is permitted
+#' @param allow_zero whether zero is permitted
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_positive_integer <- function(x, name) {
-  if (!is.numeric(x) || length(x) != 1 || is.na(x)) {
-    stop("'", name, "' must be a single positive integer")
-  }
-  if (x <= 0 || x %% 1 != 0) {
-    stop("'", name, "' must be a single positive integer")
+check_positive_integer <- function(x, name, allow_null = FALSE,
+                                   allow_zero = FALSE) {
+  if (is.null(x) && allow_null) return(invisible(TRUE))
+  description <- if (allow_zero) "non-negative" else "positive"
+  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
+    !is.finite(x) || x %% 1 != 0 || x < as.integer(!allow_zero) ||
+    x > .Machine$integer.max
+  if (invalid) {
+    stop("'", name, "' must be a single ", description, " integer",
+         call. = FALSE)
   }
   invisible(TRUE)
+}
+
+#' Preserve the caller's random-number state
+#'
+#' Capture the current random-number state and return a function that restores
+#' it. If no state existed, the returned function removes any state subsequently
+#' created. Callers should register the returned function with `on.exit()` before
+#' calling `set.seed()`.
+#'
+#' @return A function that restores the captured random-number state.
+#' @noRd
+preserve_random_seed <- function() {
+  had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_seed <- if (had_seed) get(".Random.seed", envir = .GlobalEnv) else NULL
+  function() {
+    if (had_seed) {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }
 }
 
 #' @title check_positive_number

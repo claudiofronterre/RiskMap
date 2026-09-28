@@ -9,7 +9,7 @@ glgpm(
   data,
   family,
   invlink = NULL,
-  den = NULL,
+  denominator = NULL,
   model_crs = NULL,
   distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
@@ -35,7 +35,7 @@ Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
 the distribution of the data given the random effects.
 Not applicable when \code{family} is \code{"gaussian"}.}
 
-\item{den}{Optional offset for binomial or Poisson distributions.
+\item{denominator}{Optional denominator or exposure for binomial or Poisson distributions.
 Passed as a bare/unquoted column name present in \code{data}.
 If not provided, defaults to \code{1} for binomial models.}
 

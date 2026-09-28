@@ -21,6 +21,23 @@ test_that("check_formula functions correctly", {
   expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
   expect_error(check_formula(y ~ gp(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
   expect_error(check_formula(y ~ gp(c) + re(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
+
+  # c not included in formula so should not error
+  data$c[1] <- NA
+  expect_no_error(check_formula(y ~ gp(), data))
+
+  data$y[1] <- NA
+  expect_error(check_formula(y ~ gp(), data), "'data' contains rows with missing data")
+
+  data_without_response <- data[, "c"]
+  data_without_response$c[1] <- 1
+  expect_no_error(check_formula(y ~ c + gp(), data_without_response,
+                                response_required = FALSE))
+
+  data_without_response$c[1] <- NA
+  expect_error(check_formula(y ~ c + gp(), data_without_response,
+                             response_required = FALSE),
+               "'data' contains rows with missing data")
  })
 
 test_that("check_binomial functions correctly", {
@@ -157,6 +174,8 @@ test_that("estimates are consistent between coef and summary", {
 test_that("check_positive_integer functions correctly", {
   expect_no_error(check_positive_integer(1, "a"))
   expect_no_error(check_positive_integer(999, "a"))
+  expect_no_error(check_positive_integer(NULL, "a", allow_null = TRUE))
+  expect_no_error(check_positive_integer(0, "a", allow_zero = TRUE))
 
   expect_error(check_positive_integer(0.1, "a"), "'a' must be a single positive integer")
   expect_error(check_positive_integer(0, "a"), "'a' must be a single positive integer")
@@ -164,6 +183,7 @@ test_that("check_positive_integer functions correctly", {
   expect_error(check_positive_integer("not", "a"), "'a' must be a single positive integer")
   expect_error(check_positive_integer(NULL, "a"), "'a' must be a single positive integer")
   expect_error(check_positive_integer(NA, "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(Inf, "a"), "'a' must be a single positive integer")
 })
 
 test_that("check_positive_number functions correctly", {

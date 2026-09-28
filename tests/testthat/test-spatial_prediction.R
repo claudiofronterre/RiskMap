@@ -55,8 +55,8 @@ test_that("setup_prediction produces errors as expected", {
 
   expect_error(
     setup_prediction(gaussian_model,
-                   control_sim = "not mcmc"),
-    "'control_sim' must be an output from 'set_control_mcmc")
+                   control_mcmc = "not mcmc"),
+    "'control_mcmc' must be an output from 'set_control_mcmc")
 
   expect_error(
     setup_prediction(gaussian_model,
@@ -181,10 +181,10 @@ test_that("setup_prediction produces expected output", {
   result <- setup_prediction(gaussian_model)
   expect_setequal(names(result), expected_output)
 
-  result <- setup_prediction(binomial_model, control_sim = control_mcmc)
+  result <- setup_prediction(binomial_model, control_mcmc = control_mcmc)
   expect_setequal(names(result), expected_output)
 
-  result <- setup_prediction(poisson_model, control_sim = control_mcmc)
+  result <- setup_prediction(poisson_model, control_mcmc = control_mcmc)
   expect_setequal(names(result), expected_output)
 
   result <- setup_prediction(gaussian_offset_model)
@@ -216,7 +216,7 @@ test_that("setup_prediction produces expected output", {
                            grid_pred = list(grid, grid),
                            predictors = list(data.frame(cov = rnorm(nrow(grid))),
                                              data.frame(cov = rnorm(nrow(grid)))),
-                           control_sim = control_mcmc,
+                           control_mcmc = control_mcmc,
                            type = "joint")
   expect_setequal(names(result), expected_output)
 
@@ -224,7 +224,7 @@ test_that("setup_prediction produces expected output", {
                            grid_pred = list(grid, grid),
                            predictors = list(data.frame(cov = rnorm(nrow(grid))),
                                              data.frame(cov = rnorm(nrow(grid)))),
-                           control_sim = control_mcmc,
+                           control_mcmc = control_mcmc,
                            type = "joint")
   expect_setequal(names(result), expected_output)
 

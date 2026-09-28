@@ -5,7 +5,19 @@ RiskMap 2.0.0
   with small measurement-error variances while retaining the same conditional model.
 
 - This version introduces many breaking changes from v1. The package should not be considered stable, but further breaking changes will be handled gracefully.
+- `to_table()` now returns a directly renderable `knitr_kable` table, with an
+  explicit `digits` argument that preserves trailing zeroes. This replaces the
+  previous `xtable` return value.
 - `dast()` has been removed.
+- `simulate_glgpm()` now accepts a fitted model or `specify_glgpm()` model,
+  with `nsim`, `what`, `sample_locations`, `prediction_grid` and `seed`.
+  `what = c("data", "surface")` simulates jointly at the exact union of both
+  sets of locations. This replaces `simulate_surface()` and its nearest-grid
+  approximation. The old simulation arguments and output structure are removed.
+  Parameters remain fixed, offsets and fitted inverse links are retained, and
+  Poisson responses use exposure times the inverse-link mean.
+  Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
+  extract results.
 - Many functions have been renamed:
 
 | v1 | v2 | 
@@ -26,10 +38,11 @@ RiskMap 2.0.0
 | `pred_target_grid` | `predict_grid_target` |
 | `pred_target_shp` | `predict_areal_target` |
 | `set_control_sim` | `set_control_mcmc` |
-| `surf_sim` | `simulate_surface` |
+| `surf_sim` | `simulate_glgpm` |
 | `s_variogram` | `variogram` |
 
 - Apart from `liberia`, all datasets are now in an sf format.
+- The `den` argument in `glgpm()` has been renamed to `denominator`.
 - `glpgm()` now only accepts data in an sf format. 
 Consequently the locations do not need to be passed to `gp()` when fitting a model as they are included automatically.
 - In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and `scale_to_km` has been replaced with `distance_units` (`"km"` or `"m"`).
@@ -41,4 +54,5 @@ If `data` are in longitude/latitude and `model_crs` is not supplied, the coordin
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to `TRUE` to estimate it.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian outputs reproducible.
+- `control_sim` parameters have been renamed to `control_mcmc`.
 - Test coverage has been increased from 0 to 70 %.

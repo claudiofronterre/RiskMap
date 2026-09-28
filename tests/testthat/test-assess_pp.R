@@ -17,7 +17,7 @@ make_assess_prediction_fit <- function(data, covariate) {
     ID_coords = seq_len(nrow(data)),
     coords = coords,
     distance_units = "m",
-    call = list(den = quote(units_m)),
+    call = list(denominator = quote(units_m)),
     model_id = covariate
   )
   class(fit) <- "RiskMap"
@@ -92,7 +92,7 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
     out <- assess_prediction(
       list(model = gaussian_model),
       user_split = user_split,
-      control_sim = control_mcmc,
+      control_mcmc = control_mcmc,
       plot_fold = FALSE,
       messages = FALSE,
       which_metric = "CRPS"
@@ -120,7 +120,7 @@ test_that("assess_prediction preserves a custom model CRS when refitting", {
       list(model = custom_model),
       keep_par_fixed = FALSE,
       user_split = user_split,
-      control_sim = control_mcmc,
+      control_mcmc = control_mcmc,
       plot_fold = FALSE,
       messages = FALSE,
       which_metric = "CRPS"
