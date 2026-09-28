@@ -41,6 +41,9 @@ Imports:
     tibble,
     units
 Suggests:
+    elevatr,
+    geobounds,
+    quarto,
     testthat (>= 3.0.0)
 License: MIT + file LICENSE
 Encoding: UTF-8

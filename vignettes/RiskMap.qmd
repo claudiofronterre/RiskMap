@@ -55,9 +55,9 @@ Datasets need transforming into a simple features (sf) object prior to analysis.
 
 ```{r}
 data(liberia)
-sf_data <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = sf::st_crs(4326))
+data <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = sf::st_crs(4326))
 
-plot(sf_data["npos"])
+plot(data["npos"])
 ```
 
 ## Exploratory data analysis
@@ -65,22 +65,113 @@ plot(sf_data["npos"])
 The distances between data points can be summarised with `summarise_distance`. By default, coordinates are converted to a projected coordinate reference system and reported in kilometers, but these can be overridden.
 
 ```{r}
-summarise_distance(sf_data)
+summarise_distance(data)
 ```
 
+The empirical variogram can be used to assess spatial independence in the data. In this example, `n_permutations is set low to speed up computation, but should be set to 10000 for final runs.
 
+<need to explain succinctly what points outside the envelope signify>
 
 ```{r}
-liberia_variogram <- variogram(sf_data, 
-                         variable = "npos", 
-                         n_bins = 14, 
-                         n_permutations = 100,
-                         distance_units = "km")
+variogram <- variogram(data, 
+                       variable = "npos", 
+                       n_permutations = 100,
+                       distance_units = "km")
 
 plot_variogram(variogram, plot_envelope = TRUE)
+```
+
+## Model fitting
+
+`glpgm()` fits generalised linear Gaussian process models. The model family can be either `gaussian`, `binomial` or `poisson`. For this dataset consisting of counts of disease incidence, a binomial model is most appropriate. To make the results reproducible, set a `seed` value in `set_control_mcmc()`.
+
+```{r}
+model <- glgpm(npos ~ log(elevation) + gp(),
+               denominator = ntest, 
+               data = data,
+               model_crs = 32629,
+               control_mcmc = set_control_mcmc(seed = 2026),
+               return_samples = TRUE,
+               family = "binomial",
+               messages = FALSE)
+```
+
+We can access the model coefficients with `coef()`:
+
+```{r}
+coef(model)
+```
+
+Or summarise the model fit with `summary()`:
+
+```{r}
+summary(model)
+```
+
+For binomial and Poisson models, we can assess model convergence with `plot_mcmc()`:
+
+```{r}
+plot_mcmc(model)
+```
+
+## Generating predictions
+
+To generate predictions from the model, we first need to generate locations where we wish to generate predictions for. Often, this involves obtaining boundary data for the region of interest, for which we can use the `geobounds` package and then generating a grid of points at a specified `spacing` inside it using `create_grid()`:
+
+```{r}
+library(geobounds)
+liberia_boundary <- gb_get_adm0("Liberia")
+liberia_boundary <- sf::st_transform(liberia_boundary, crs = 32629)
+liberia_grid <- create_grid(liberia_boundary, spacing = 50)
+
+plot(st_geometry(liberia_boundary))
+plot(liberia_grid, add = TRUE, col = 'red')
+```
+
+Alternatively, we can use `create_convex_hull()` to generate a boundary encompassing all of the locations in the data and generate a grid from this:
+
+```{r}
+liberia_hull <- create_convex_hull(data)
+liberia_hull <- sf::st_transform(liberia_hull, crs = 32629)
+liberia_hull_grid <- create_grid(liberia_hull, spacing = 50)
+
+plot(st_geometry(liberia_hull))
+plot(liberia_hull_grid, add = TRUE, col = 'red')
+```
+
+After generating a grid, we need to generate a dataframe containing the variables included in the model for the new locations. In this example, we will obtain `elevation` from using the `elevatr` package:
+
+```{r}
+# Download elevation data
+library(elevatr)
+liberia_elev <- get_elev_raster(locations = liberia_grid, 
+                                z = 6, 
+                                clip = "locations",
+                                verbose = FALSE)
+
+# 3) Extracting elevation at the grid locations
+new_data <- data.frame(elevation = 
+                         terra::extract(liberia_elev,
+                                sf::st_coordinates(liberia_grid)))
 
 ```
 
+We can then use `setup_prediction()` to prepare the data to generate predictions either at the grid locations or for areal targets. To be able to generate predictions for areal targets, we need to set `type` to `"joint"`:
+
+```{r}
+prediction_prep <- setup_prediction(model, 
+                                    grid_pred = liberia_grid,
+                                    predictors = new_data,
+                                    type = "joint",
+                                    messages = FALSE)
+```
+
+```{r}
+grid_prediction <- predict_grid_target(prediction_prep,
+                                       f_target = list(prev = function(lp) exp(lp)/(1+exp(lp))))
+
+plot(grid_prediction)
+```
 
 
 
