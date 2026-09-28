@@ -8,7 +8,7 @@ vignette: >
 
 **RiskMap** contains functions for model based geostatistics (MBG).
 MBG takes point based observations and generate predictions across the entire area of interest.
-A comprehensive guide to using the package and MBG in general is available at [https://www.mbgr.org/] but this vignette provides a basic overview of the package's functionality.
+A comprehensive guide to using the package and MBG in general is available at <https://www.mbgr.org/> but this vignette provides a basic overview of the package's functionality.
 
 ## Installation and loading
 
@@ -54,6 +54,7 @@ For more information on the datasets use `help(<dataset>)`
 Datasets need transforming into a simple features (sf) object prior to analysis. With the exception of `liberia`, the datasets are already converted to this format. To convert a dataframe to a suitable format, use `st_as_sf()` from the sf package, supplying the names of the columns containing the spatial coordinates and the coordinate reference system for the coordinates:
 
 ```{r}
+library(RiskMap)
 data(liberia)
 data <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = sf::st_crs(4326))
 
@@ -62,13 +63,13 @@ plot(data["npos"])
 
 ## Exploratory data analysis
 
-The distances between data points can be summarised with `summarise_distance`. By default, coordinates are converted to a projected coordinate reference system and reported in kilometers, but these can be overridden.
+The distances between data points can be summarised with `summarise_distance()`. By default, coordinates are converted to a projected coordinate reference system and reported in kilometers, but these can be overridden.
 
 ```{r}
 summarise_distance(data)
 ```
 
-The empirical variogram can be used to assess spatial independence in the data. In this example, `n_permutations is set low to speed up computation, but should be set to 10000 for final runs.
+The empirical variogram can be used to assess spatial independence in the data. In this example, `n_permutations` is set to 100 to speed up computation, but should be set to 10000 for final runs.
 
 <need to explain succinctly what points outside the envelope signify>
 
@@ -124,7 +125,7 @@ liberia_boundary <- gb_get_adm0("Liberia")
 liberia_boundary <- sf::st_transform(liberia_boundary, crs = 32629)
 liberia_grid <- create_grid(liberia_boundary, spacing = 50)
 
-plot(st_geometry(liberia_boundary))
+plot(sf::st_geometry(liberia_boundary))
 plot(liberia_grid, add = TRUE, col = 'red')
 ```
 
@@ -135,7 +136,7 @@ liberia_hull <- create_convex_hull(data)
 liberia_hull <- sf::st_transform(liberia_hull, crs = 32629)
 liberia_hull_grid <- create_grid(liberia_hull, spacing = 50)
 
-plot(st_geometry(liberia_hull))
+plot(sf::st_geometry(liberia_hull))
 plot(liberia_hull_grid, add = TRUE, col = 'red')
 ```
 
