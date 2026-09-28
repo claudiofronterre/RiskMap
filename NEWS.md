@@ -54,4 +54,5 @@ If `data` are in longitude/latitude and `model_crs` is not supplied, the coordin
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to `TRUE` to estimate it.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian outputs reproducible.
+- `control_sim` parameters have been renamed to `control_mcmc`.
 - Test coverage has been increased from 0 to 70 %.
