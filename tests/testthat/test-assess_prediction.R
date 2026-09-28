@@ -56,8 +56,8 @@ test_that("assess_prediction produces errors", {
                       method = "regularized",
                       min_dist = 1,
                       size = 1,
-                      control_sim = "not sim"),
-    "'control_sim' must come from 'set_control_mcmc"
+                      control_mcmc = "not sim"),
+    "'control_mcmc' must come from 'set_control_mcmc"
   )
 
   expect_error(
@@ -93,9 +93,9 @@ test_that("assess_prediction produces errors", {
                       method = "regularized",
                       min_dist = 1,
                       size = 1,
-                      control_sim = "not mcmc"
+                      control_mcmc = "not mcmc"
     ),
-    "'control_sim' must come from 'set_control_mcmc"
+    "'control_mcmc' must come from 'set_control_mcmc"
   )
 
   expect_error(
@@ -283,7 +283,7 @@ test_that("assess_prediction preserves a custom model CRS when refitting", {
       method = "user",
       keep_par_fixed = FALSE,
       user_split = user_split,
-      control_sim = control_mcmc,
+      control_mcmc = control_mcmc,
       plot_fold = FALSE,
       messages = FALSE,
       metrics = "CRPS"
@@ -319,7 +319,7 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
       list(model = gaussian_model),
       method = "user",
       user_split = user_split,
-      control_sim = control_mcmc,
+      control_mcmc = control_mcmc,
       plot_fold = FALSE,
       messages = FALSE,
       metrics = "CRPS"
@@ -406,7 +406,7 @@ test_that("assess_prediction can refit correctly for all model families", {
     min_dist = 1,
     size = 1,
     keep_par_fixed = FALSE,
-    control_sim = control_mcmc,
+    control_mcmc = control_mcmc,
     messages = FALSE)
 
   expect_setequal(names(result), c("test_set", "model"))
@@ -417,7 +417,7 @@ test_that("assess_prediction can refit correctly for all model families", {
     min_dist = 1,
     size = 1,
     keep_par_fixed = FALSE,
-    control_sim = control_mcmc,
+    control_mcmc = control_mcmc,
     messages = FALSE)
 
   expect_setequal(names(result), c("test_set", "model"))

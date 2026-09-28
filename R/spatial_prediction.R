@@ -13,7 +13,7 @@
 ##' Not supported if `grid_pred` is a list.
 ##' @param pred_cov_offset Optional numeric vector containing covariate offsets at prediction locations.
 ##' Must be provided if there is an offset included in the model and not supported if `grid_pred` is a list.
-##' @param control_sim Control parameters from \code{\link{set_control_mcmc}}.
+##' @param control_mcmc Control parameters from \code{\link{set_control_mcmc}}.
 ##' @param type Whether the predictions are `"marginal"` or `"joint"`. `"marginal"` predictions are less
 ##' computationally expensive than `"joint"` predictions but cannot be used to predict areal targets.
 ##' If `grid_pred` is a list or random effects are included, must be set to `"joint"`. Defaults to `"marginal"`.
@@ -84,7 +84,7 @@ setup_prediction <- function(object,
                            predictors = NULL,
                            re_predictors = NULL,
                            pred_cov_offset = NULL,
-                           control_sim = set_control_mcmc(),
+                           control_mcmc = set_control_mcmc(),
                            type = "marginal",
                            messages = TRUE) {
 
@@ -166,8 +166,8 @@ setup_prediction <- function(object,
     }
   }
 
-  if (!inherits(control_sim, "RiskMap_control_mcmc"))
-    stop("'control_sim' must be an output from 'set_control_mcmc()'")
+  if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
+    stop("'control_mcmc' must be an output from 'set_control_mcmc()'")
 
   if (!type %in% c("marginal", "joint"))
     stop("'type' must be either 'marginal' or 'joint'")
@@ -356,7 +356,7 @@ setup_prediction <- function(object,
 
   mu <- as.numeric(object$D %*% par_hat$beta)
 
-  n_samples <- if (control_sim$linear_model) control_sim$n_sim else (control_sim$n_sim - control_sim$burnin) / control_sim$thin
+  n_samples <- if (control_mcmc$linear_model) control_mcmc$n_sim else (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
 
   # ---------------------------------------------------------------------------
   # FIX 2: nu2 / nugget
@@ -387,7 +387,7 @@ setup_prediction <- function(object,
       y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
       sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
       ID_coords = object$ID_coords, ID_re = object$ID_re,
-      family = object$family, control_mcmc = control_sim, messages = messages)
+      family = object$family, control_mcmc = control_mcmc, messages = messages)
 
     if (obs_loc) {
       out$S_samples <- t(simulation$samples$S)
@@ -1554,7 +1554,7 @@ update_predictors <- function(object, predictors) {
 ##' between the PIT/AnPIT curve and the reference line. Defaults to all metrics.
 ##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
 ##' or re-estimate for each fold. Defaults to `TRUE`.
-##' @param control_sim Control settings for simulation, an output from `set_control_mcmc()`.
+##' @param control_mcmc Control settings for simulation, an output from `set_control_mcmc()`.
 ##' @param plot_fold Logical; whether to plot each fold's test set. Defaults to `TRUE`.
 ##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
@@ -1646,7 +1646,7 @@ assess_prediction <- function(object,
                               iter = 1,
                               metrics = c("AnPIT", "CRPS", "SCRPS"),
                               keep_par_fixed = TRUE,
-                              control_sim = set_control_mcmc(),
+                              control_mcmc = set_control_mcmc(),
                               plot_fold = TRUE,
                               messages = TRUE,
                               ...) {
@@ -1702,8 +1702,8 @@ assess_prediction <- function(object,
 
   check_positive_integer(iter, "iter")
 
-  if (!inherits(control_sim, "RiskMap_control_mcmc"))
-    stop("'control_sim' must come from 'set_control_mcmc()'")
+  if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
+    stop("'control_mcmc' must come from 'set_control_mcmc()'")
 
   if (!is.logical(plot_fold))
     stop("'plot_fold' must be either TRUE or FALSE")
@@ -1898,7 +1898,7 @@ assess_prediction <- function(object,
           family         = fam,
           model_crs      = model_crs,
           distance_units = fit0$distance_units,
-          control_mcmc   = control_sim,
+          control_mcmc   = control_mcmc,
           fix_var_me     = fit0$fix_var_me,
           messages       = FALSE,
           start_pars     = par_hat
@@ -1951,7 +1951,7 @@ assess_prediction <- function(object,
       pred_S <- setup_prediction(
         object          = refit_i,
         grid_pred       = st_as_sfc(data_test_i),
-        control_sim     = control_sim,
+        control_mcmc     = control_mcmc,
         predictors      = data_test_i,
         pred_cov_offset = pred_coff_i,
         type            = "marginal",
@@ -2206,7 +2206,7 @@ assess_simulation <- function(obj_sim,
                        predictors = predictors_i,
                        pred_cov_offset = if (is.null(if_i$offset)) NULL else
                          obj_sim$lp_grid_sim[[if_i$offset]],
-                       control_sim = control_mcmc,
+                       control_mcmc = control_mcmc,
                        type = type, messages = FALSE)
     }
   }

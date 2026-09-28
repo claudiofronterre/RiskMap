@@ -10,7 +10,7 @@ set_control_mcmc(
   thin = 10,
   h = NULL,
   c1.h = 0.01,
-  c2.h = 0.0001,
+  c2.h = 1e-04,
   seed = NULL,
   linear_model = FALSE
 )

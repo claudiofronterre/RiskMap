@@ -14,7 +14,7 @@ assess_prediction(
   iter = 1,
   metrics = c("AnPIT", "CRPS", "SCRPS"),
   keep_par_fixed = TRUE,
-  control_sim = set_control_mcmc(),
+  control_mcmc = set_control_mcmc(),
   plot_fold = TRUE,
   messages = TRUE,
   ...
@@ -63,7 +63,7 @@ between the PIT/AnPIT curve and the reference line. Defaults to all metrics.}
 \item{keep_par_fixed}{Logical; whether to keep parameters fixed across folds,
 or re-estimate for each fold. Defaults to \code{TRUE}.}
 
-\item{control_sim}{Control settings for simulation, an output from \code{set_control_mcmc()}.}
+\item{control_mcmc}{Control settings for simulation, an output from \code{set_control_mcmc()}.}
 
 \item{plot_fold}{Logical; whether to plot each fold's test set. Defaults to \code{TRUE}.}
 

@@ -64,6 +64,7 @@ importFrom(graphics,
   points
 )
 importFrom(gridExtra,grid.arrange)
+importFrom(knitr,kable)
 importFrom(numDeriv,
   grad,
   hessian
@@ -85,4 +86,3 @@ importFrom(terra,
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)
 importFrom(utils,flush.console)
-importFrom(xtable,xtable)

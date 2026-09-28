@@ -28,6 +28,7 @@ Imports:
     dplyr,
     ggplot2,
     gridExtra,
+    knitr,
     Matrix,
     numDeriv,
     rlang,
@@ -38,8 +39,7 @@ Imports:
     stars,
     terra,
     tibble,
-    units,
-    xtable
+    units
 Suggests:
     testthat (>= 3.0.0)
 License: MIT + file LICENSE
