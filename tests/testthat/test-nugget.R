@@ -10,6 +10,11 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
 
   expect_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", messages = FALSE), "When there is only one observation per location")
   expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fix_var_me = 1, messages = FALSE))
+  zero_error_fit <- glgpm(
+    z ~ gp(), gaussian_data, "gaussian", fix_var_me = 0, messages = FALSE
+  )
+  expect_equal(zero_error_fit$fix_var_me, 0)
+  expect_lt(max(abs(zero_error_fit$grad_MLE)), 0.001)
   expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "binomial", denominator = denominator, messages = FALSE))
 
   two_location_data <- rbind(data,
@@ -22,16 +27,20 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
 
   gaussian_data <- sf::st_as_sf(two_location_data, coords = c("x", "y"), crs = sf::st_crs(4326))
 
+  expect_error(
+    glgpm(z ~ gp(), gaussian_data, "gaussian", fix_var_me = 0,
+          messages = FALSE),
+    "structurally singular"
+  )
+
   expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", messages = FALSE))
 
   result <- glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fix_var_me = 1, messages = FALSE)
   expect_true("tau2" %in% names(coef(result)))
 
-  expect_warning(
-    result <- glgpm(z ~ gp(nugget = 1), gaussian_data, "gaussian", messages = FALSE),
-    "did not converge"
-  )
+  result <- glgpm(z ~ gp(nugget = 1), gaussian_data, "gaussian", messages = FALSE)
   expect_equal(summary(result)$tau2, 1)
+  expect_lt(max(abs(result$grad_MLE)), 0.001)
 
 })
 

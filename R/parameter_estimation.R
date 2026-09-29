@@ -745,6 +745,14 @@ softplus <- function(x) {
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
 
+  if (identical(fix_var_me, 0) ||
+      (is.numeric(fix_tau2) && length(fix_tau2) == 1L && fix_tau2 > 0)) {
+    return(glgpm_lm_direct(
+      y, D, coords, kappa, ID_coords, ID_re,
+      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages
+    ))
+  }
+
   m <- length(y)
   p <- ncol(D)
   U <- pairwise_distances(coords)
@@ -752,12 +760,6 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     n_re <- 0
   } else {
     n_re <- ncol(ID_re)
-  }
-
-  if(!is.null(fix_var_me)) {
-    if(fix_var_me==0) {
-      fix_var_me <- 10e-10
-    }
   }
 
   ID_g <- as.matrix(cbind(ID_coords, ID_re))
