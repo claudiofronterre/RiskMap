@@ -195,6 +195,13 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_equal(fit_no_re$y, gaussian_data$y)
   expect_equal(unname(fit_no_re$D[,2]), gaussian_data$cov)
 
+  fit_re_fixed_me <- glgpm(y ~ cov + gp() + re(i),
+                           data = gaussian_data,
+                           family = "gaussian",
+                           fix_var_me = 0.1,
+                           messages = FALSE)
+  expect_true(is.finite(coef(fit_re_fixed_me)$sigma2_re[["i"]]))
+
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = gaussian_data,
                   family = "gaussian",

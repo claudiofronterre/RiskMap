@@ -381,8 +381,8 @@ glgpm <- function(formula,
             start_cov_pars = c(start_pars[["sigma2"]],
                                fitting_start_phi,
                                start_pars[["tau2"]],
-                               start_pars[["sigma2_re"]],
-                               start_pars[["sigma2_me"]]),
+                               start_pars[["sigma2_me"]],
+                               start_pars[["sigma2_re"]]),
             messages = messages)
   } else if(not_gaussian) {
     if(is.null(par0)) {
@@ -608,22 +608,20 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 
   ind_beta <- 1:p
 
-  ind_sigma2 <- p+1
+  ind_sigma2 <- p + 1
+  ind_phi <- p + 2
+  next_index <- ind_phi
 
-  ind_phi <- p+2
-
-  if(!isTRUE(fix_tau2)) {
-    ind_omega2 <- p+3
-    if(n_re>0) {
-      ind_sigma2_re <- (p+3+1):(p+3+n_re)
-    }
-  } else {
-    ind_nu2 <- p+3
-    ind_omega2 <- p+4
-    if(n_re>0) {
-      ind_omega2 <- p+4
-      ind_sigma2_re <- (p+4+1):(p+4+n_re)
-    }
+  if (isTRUE(fix_tau2)) {
+    next_index <- next_index + 1
+    ind_nu2 <- next_index
+  }
+  if (is.null(fix_var_me)) {
+    next_index <- next_index + 1
+    ind_omega2 <- next_index
+  }
+  if (n_re > 0) {
+    ind_sigma2_re <- next_index + seq_len(n_re)
   }
 
 
@@ -1423,6 +1421,11 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                   function(x) -hessian.log.lik(x),
                   control=list(trace=1*messages))
 
+  if (messages && estim$convergence != 0) {
+    warning("Model optimisation did not converge: ", estim$message,
+            call. = FALSE)
+  }
+
   out$estimate <- structure_estimate(
     estim$par,
     beta_names = colnames(D),
@@ -1432,13 +1435,18 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   )
   out$grad_MLE <- grad.log.lik(estim$par)
   hess.MLE <- hessian.log.lik(estim$par)
-  out$covariance <- solve(-hess.MLE)
+  information_root <- factor_covariance(
+    -hess.MLE,
+    "observed information matrix"
+  )
+  out$covariance <- chol2inv(information_root)
   flat_names <- names(unlist(out$estimate))
   dimnames(out$covariance) <- list(flat_names, flat_names)
   out$log_lik <- -estim$objective
   out["link_function"] <- list(NULL)
   out["units_m"] <- list(NULL)
   out["S_samples"] <- list(NULL)
+  attr(out, "optimizer") <- estim[c("convergence", "message", "evaluations")]
 
   class(out) <- "RiskMap"
   return(out)
@@ -2700,7 +2708,7 @@ glgpm_nong <-
                     function(x) -grad_mc_log_lik(x),
                     control = list(trace = 1 * messages))
 
-    if (estim$convergence != 0) {
+    if (messages && estim$convergence != 0) {
       warning("Model optimisation did not converge: ", estim$message,
               call. = FALSE)
     }
