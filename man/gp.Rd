@@ -4,17 +4,20 @@
 \alias{gp}
 \title{Gaussian Process Model Specification}
 \usage{
-gp(..., kappa = 0.5, nugget = 0)
+gp(..., kappa = 0.5, nugget = FALSE)
 }
 \arguments{
-\item{...}{Variables representing the spatial coordinates or covariates for the GP model.}
+\item{...}{Variable representing the spatial coordinates for the GP model. If left blank the
+\code{geometry} column from the data is used automatically.}
 
-\item{kappa}{The smoothness parameter \eqn{\kappa}. Default is 0.5.}
+\item{kappa}{The smoothness parameter \eqn{\kappa}. Default is \code{0.5}.}
 
-\item{nugget}{The nugget effect, which represents the variance of the measurement error. Default is 0. A positive numeric value must be provided if not using the default.}
+\item{nugget}{The nugget effect, which represents the variance of the measurement error.
+Default is \code{FALSE} in which case it is not estimated. If \code{TRUE} the value will be estimated or
+a positive numeric value can be provided instead to fix the effect.}
 }
 \value{
-A list of class \code{gp.spec} containing the following elements:
+A list of class \code{RiskMap_gp_spec} containing the following elements:
 \item{term}{A character vector of the specified terms.}
 \item{kappa}{The smoothness parameter \eqn{\kappa}.}
 \item{nugget}{The nugget effect.}
@@ -25,13 +28,6 @@ A list of class \code{gp.spec} containing the following elements:
 Specifies the terms, smoothness, and nugget effect for a Gaussian Process (GP) model.
 }
 \details{
-The function constructs a list that includes the specified terms (spatial coordinates or covariates), the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
-}
-\note{
-The nugget effect must be a positive real number if specified.
-}
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
+The function constructs a list that includes the specified terms (spatial coordinates or covariates),
+the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
 }

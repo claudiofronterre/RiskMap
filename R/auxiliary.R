@@ -20,13 +20,13 @@
 ##' sf_points <- st_sf(geometry = points)
 ##'
 ##' # Calculate the convex hull
-##' convex_hull_result <- convex_hull_sf(sf_points)
+##' convex_hull_result <- create_convex_hull(sf_points)
 ##'
 ##' # Plot the result
 ##' plot(sf_points, col = 'blue', pch = 19)
 ##' plot(convex_hull_result, add = TRUE, border = 'red')
 ##' @export
-convex_hull_sf <- function(sf_object) {
+create_convex_hull <- function(sf_object) {
   # Check if the input is an sf object
   if (!inherits(sf_object, "sf")) {
     stop("`sf_object` must be an sf object")
@@ -50,8 +50,6 @@ convex_hull_sf <- function(sf_object) {
 ##' \eqn{\log((y + 0.5) / (m - y + 0.5))}.
 ##' @details The empirical logit is often used as a finite transformation for
 ##' binomial data, including cases where \eqn{y = 0} or \eqn{y = m}.
-##' @author Claudio Fronterre \email{c.fronterre@@bham.ac.uk}
-##' @author Emanuele Giorgi \email{e.giorgi@@bham.ac.uk}
 ##' @examples
 ##' y <- c(0, 3, 7, 10)
 ##' m <- c(10, 10, 10, 10)
@@ -95,9 +93,6 @@ elogit <- function(y, m) {
 ##' @param data An object of class \code{sf} containing the coordinates.
 ##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 ##' @return An integer indicating the EPSG code of the UTM zone.
-##' @author
-##' Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 propose_utm <- function (data) {
   if (!inherits(data, "sf"))
@@ -120,7 +115,8 @@ propose_utm <- function (data) {
   }
 
   # Determine Hemisphere (fixing the latitude check)
-  ns <- sign(st_coordinates(data)[, 2])  # Use latitude, not longitude
+  # latitude 0 (the Equator) is treated as northern hemisphere, per UTM convention
+  ns <- ifelse(st_coordinates(data)[, 2] >= 0, 1, -1)  # Use latitude, not longitude
   ns_u <- unique(ns)
 
   if (length(ns_u) > 1) {
@@ -148,13 +144,11 @@ propose_utm <- function (data) {
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @param return_sym_matrix A logical value indicating whether to return a symmetric correlation matrix. Defaults to \code{FALSE}.
 ##' @details The Matern correlation function is defined as
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
 ##' @export
-matern_cor <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
   if (is.vector(u))
     names(u) <- NULL
   if (is.matrix(u))
@@ -185,10 +179,8 @@ matern_cor <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the first derivative of the Matern function with respect to \eqn{\phi} for the given distances.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-matern.grad.phi <- function(U, phi, kappa) {
+matern_gradient_phi <- function(U, phi, kappa) {
   der.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {
@@ -219,10 +211,8 @@ matern.grad.phi <- function(U, phi, kappa) {
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the second derivative of the Matern function with respect to \eqn{\phi} for the given distances.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-matern.hessian.phi <- function(U, phi, kappa) {
+matern_hessian_phi <- function(U, phi, kappa) {
   der2.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {
@@ -252,29 +242,36 @@ matern.hessian.phi <- function(U, phi, kappa) {
 }
 ##' @title Gaussian Process Model Specification
 ##' @description Specifies the terms, smoothness, and nugget effect for a Gaussian Process (GP) model.
-##' @param ... Variables representing the spatial coordinates or covariates for the GP model.
-##' @param kappa The smoothness parameter \eqn{\kappa}. Default is 0.5.
-##' @param nugget The nugget effect, which represents the variance of the measurement error. Default is 0. A positive numeric value must be provided if not using the default.
-##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates), the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
-##' @return A list of class \code{gp.spec} containing the following elements:
+##' @param ... Variable representing the spatial coordinates for the GP model. If left blank the
+##' `geometry` column from the data is used automatically.
+##' @param kappa The smoothness parameter \eqn{\kappa}. Default is `0.5`.
+##' @param nugget The nugget effect, which represents the variance of the measurement error.
+##' Default is `FALSE` in which case it is not estimated. If `TRUE` the value will be estimated or
+##' a positive numeric value can be provided instead to fix the effect.
+##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates),
+##' the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
+##' @return A list of class \code{RiskMap_gp_spec} containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{kappa}{The smoothness parameter \eqn{\kappa}.}
 ##' \item{nugget}{The nugget effect.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the GP model.}
-##' @note The nugget effect must be a positive real number if specified.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
-gp <- function (..., kappa = 0.5, nugget = 0) {
+gp <- function (..., kappa = 0.5, nugget = FALSE) {
   vars <- as.list(substitute(list(...)))[-1]
   d <- length(vars)
   term <- NULL
 
-  if(length(nugget) > 0) {
-    if(!is.numeric(nugget) |
-       (is.numeric(nugget) & nugget <0)) stop("when 'nugget' is not NULL, this must be a positive
-                                 real number")
+  if((!is.numeric(kappa) || kappa <= 0)){
+    stop("'kappa' must be positive.")
+  }
+
+  if(!(is.logical(nugget) || (is.numeric(nugget) && nugget > 0))) {
+    stop("'nugget' must be either 'TRUE' or 'FALSE' or a positive real number")
+  }
+
+  if (isFALSE(nugget)){
+    nugget <- 0
   }
 
   if (d == 0) {
@@ -296,20 +293,18 @@ gp <- function (..., kappa = 0.5, nugget = 0) {
   label <- gsub("sf", "", paste(full.call, ")", sep = ""))
   ret <- list(term = term, kappa = kappa, nugget = nugget, dim = d,
               label = label)
-  class(ret) <- "gp.spec"
+  class(ret) <- "RiskMap_gp_spec"
   ret
 }
 ##' @title Random Effect Model Specification
 ##' @description Specifies the terms for a random effect model.
 ##' @param ... Variables representing the random effects in the model.
 ##' @details The function constructs a list that includes the specified terms for the random effects. This list can be used as a specification for a random effect model.
-##' @return A list of class \code{re.spec} containing the following elements:
+##' @return A list of class \code{RiskMap_re_spec} containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the random effect model.}
 ##' @note At least one variable must be provided as input.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @export
 re <- function (...) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -333,11 +328,11 @@ re <- function (...) {
                                       sep = "")
   label <- gsub("sf", "", paste(full.call, ")", sep = ""))
   ret <- list(term = term, dim = d, label = label)
-  class(ret) <- "re.spec"
+  class(ret) <- "RiskMap_re_spec"
   ret
 }
 
-interpret.formula <- function(formula) {
+interpret_formula <- function(formula) {
   p.env <- environment(formula)
   tf <- terms.formula(formula, specials = c("gp", "re"))
   terms <- attr(tf, "term.labels")
@@ -370,8 +365,8 @@ interpret.formula <- function(formula) {
 
   len.gp <- length(gp)
   len.re <- length(re)
-  gp.spec <- eval(parse(text = terms[gp]), envir = p.env)
-  re.spec <- eval(parse(text = terms[re]), envir = p.env)
+  gp_spec <- eval(parse(text = terms[gp]), envir = p.env)
+  re_spec <- eval(parse(text = terms[re]), envir = p.env)
 
   if (length(off) > 0) {
     offset <- as.character(attr(tf, "variables")[[off[i] + 1]])[2]
@@ -391,14 +386,91 @@ interpret.formula <- function(formula) {
 
   ret <- list(
     pf = as.formula(pf, p.env),
-    gp.spec = gp.spec,
-    re.spec = re.spec,
+    gp_spec = gp_spec,
+    re_spec = re_spec,
     offset = offset,
     response = response
   )
   ret
 }
 
+##' @title Extract terms from formula ignoring kappa and nugget
+##' @description Recursively extract variable names from a formula/expression,
+##' but for calls to gp(), only look inside unnamed (positional) arguments.
+##' @param formula The formula to check
+##' @return A character vector of terms
+##' @noRd
+get_formula_terms <- function(formula) {
+  if (is.symbol(formula)) {
+    return(as.character(formula))
+  }
+
+  if (is.call(formula)) {
+    fn_name <- if (is.symbol(formula[[1]])) as.character(formula[[1]]) else ""
+
+    args <- as.list(formula)[-1]
+    arg_names <- names(args)
+    if (is.null(arg_names)) arg_names <- rep("", length(args))
+
+    if (fn_name == "gp") {
+      # only keep unnamed arguments
+      args <- args[arg_names == ""]
+    }
+
+    return(unlist(lapply(args, get_formula_terms)))
+  }
+
+  NULL
+}
+
+
+##' @title Check that formula is valid and that there is no missing data
+##' @description Checks that the formula object is of class formula and that all
+##' the terms in the formula are present in the data
+##' @param formula The formula to check
+##' @param data The data to look for variables in
+##' @param response_required Whether the response must be present in `data`.
+##' @return TRUE if the formula is valid or raise an error if not
+##' @noRd
+check_formula <- function(formula, data, response_required = TRUE){
+
+  if(!inherits(formula, "formula")) {
+    stop("'formula' must be a 'formula'
+         object indicating the variables of the
+         model to be fitted", call. = FALSE)
+  }
+
+  formula_terms <- unique(get_formula_terms(formula))
+  column_names <- names(data)
+
+  contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
+
+  if (!contains_gp){
+    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'", call. = FALSE)
+  }
+
+  if (!response_required) {
+    formula_terms <- setdiff(formula_terms, all.vars(formula[[2L]]))
+  }
+  missing_columns <- setdiff(formula_terms, column_names)
+  n_missing <- length(missing_columns)
+  if (n_missing > 0){
+
+    stop(paste0("The 'formula' term",
+          ifelse(n_missing > 1, "s '", " '"),
+          paste(missing_columns, collapse = "', '"),
+          ifelse(n_missing > 1, "' are", "' is"),
+         " not present in 'data'"), call. = FALSE)
+  }
+
+  data <- data[, formula_terms]
+  drop_coords <- st_drop_geometry(data)
+  missing_data <- any(!complete.cases(drop_coords))
+  if (missing_data)
+    stop("'data' contains rows with missing data - check or remove them", call. = FALSE)
+
+  invisible(TRUE)
+}
 
 ##' @title Extract Parameter Estimates from a "RiskMap" Model Fit
 ##' @description This \code{coef} method for the "RiskMap" class extracts the
@@ -411,113 +483,38 @@ interpret.formula <- function(formula) {
 ##' \item{phi}{The estimate for the spatial range parameter \eqn{\phi}.}
 ##' \item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
 ##' \item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
-##' \item{sigma2_re}{A vector of variance estimates for the random effects, if applicable.}
+##' \item{sigma2_re}{A named vector of variance estimates for the random effects, if applicable.}
 ##' \item{beta}{Coefficient estimates for log mean worm burden.}
 ##' \item{k}{Negative binomial overdispersion parameter.}
 ##' \item{rho}{Egg detection rate (fecundity).}
-##' \item{alpha_W}{Immediate worm burden reduction from MDA (if estimated or fixed).}
-##' \item{gamma_W}{Decay rate of MDA effect (if estimated or fixed).}
 ##' \item{sigma2}{Spatial process variance.}
 ##' \item{phi}{Spatial correlation scale.}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
 ##' @seealso \code{\link{glgpm}}
 ##' @method coef RiskMap
 ##' @export
 ##'
 coef.RiskMap <- function(object, ...) {
 
-  # ===========================================================================
-  # STANDARD RISKMAP MODEL (glgpm / dast)
-  # ===========================================================================
+  estimate <- object$estimate
 
-  n_re <- length(object$re)
-  if (n_re > 0) re_names <- names(object$re)
+  beta_names <- colnames(as.matrix(object$D))
 
-  p        <- ncol(as.matrix(object$D))
-  ind_beta <- 1:p
+  res      <- list()
+  res$beta <- estimate$beta
+  names(res$beta) <- beta_names
 
-  if (p == 1) {
-    object$D <- as.matrix(object$D)
-    names(object$estimate)[ind_beta] <- "Intercept"
-  } else {
-    names(object$estimate)[ind_beta] <- colnames(object$D)
-  }
-  ind_sigma2 <- p + 1
-  names(object$estimate)[ind_sigma2] <- "sigma2"
-  ind_phi <- p + 2
-  names(object$estimate)[ind_phi] <- "phi"
+  res$sigma2 <- exp(estimate$sigma2)
+  res$phi    <- exp(estimate$phi)
 
-  if (is.null(object$fix_tau2)) {
-    ind_tau2 <- p + 3
-    names(object$estimate)[ind_tau2] <- "tau2"
-    object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
-    if (object$family == "gaussian") {
-      if (is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p + 4
-        if (n_re > 0) ind_sigma2_re <- (p + 5):(p + 4 + n_re)
-      } else {
-        ind_sigma2_me <- NULL
-        if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-      }
-    } else {
-      ind_sigma2_me <- NULL
-      if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-    }
-  } else {
-    ind_tau2 <- NULL
-    if (object$family == "gaussian") {
-      if (is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p + 3
-        names(object$estimate)[ind_sigma2_me] <- "sigma2_me"
-        if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-      } else {
-        ind_sigma2_me <- NULL
-        if (n_re > 0) ind_sigma2_re <- (p + 3):(p + 2 + n_re)
-      }
-    } else {
-      if (n_re > 0) ind_sigma2_re <- (p + 3):(p + 2 + n_re)
-    }
-  }
+  if (object$family == "gaussian" && !is.null(estimate$sigma2_me))
+    res$sigma2_me <- exp(estimate$sigma2_me)
 
-  ind_sp <- c(ind_sigma2, ind_phi, ind_tau2)
-  object$estimate[ind_sp] <- exp(object$estimate[ind_sp])
+  if (!is.null(estimate$nu2))
+    ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add
+    res$tau2 <- exp(estimate$nu2 + estimate$sigma2)
 
-  if (n_re > 0) {
-    for (i in seq_len(n_re))
-      names(object$estimate)[ind_sigma2_re[i]] <-
-        paste0(re_names[i], "_sigma2_re")
-  }
-
-  res        <- list()
-  res$beta   <- object$estimate[ind_beta]
-  res$sigma2 <- as.numeric(object$estimate[ind_sigma2])
-  res$phi    <- as.numeric(object$estimate[ind_phi])
-  if (object$family == "gaussian" && !is.null(ind_sigma2_me))
-    res$sigma2_me <- as.numeric(exp(object$estimate[ind_sigma2_me]))
-  if (!is.null(ind_tau2))
-    res$tau2 <- object$estimate[ind_tau2]
-  if (n_re > 0)
-    res$sigma2_re <- as.numeric(object$estimate[ind_sigma2_re])
-
-  dast_model <- !is.null(object$power_val)
-  if (dast_model) {
-    if (!is.null(ind_tau2)) {
-      if (is.null(object$fix_alpha)) { ind_alpha <- p + n_re + 4; ind_gamma <- p + n_re + 5 }
-      else                           { ind_gamma <- p + n_re + 4 }
-    } else {
-      if (is.null(object$fix_alpha)) { ind_alpha <- p + n_re + 3; ind_gamma <- p + n_re + 4 }
-      else                           { ind_gamma <- p + n_re + 3 }
-    }
-    if (is.null(object$fix_alpha))
-      res$alpha <- as.numeric(1 / (1 + exp(-object$estimate[ind_alpha])))
-    res$gamma <- as.numeric(exp(object$estimate[ind_gamma]))
-  }
-
-  if (object$sst) {
-    ind_psi <- length(object$estimate)
-    res$psi  <- as.numeric(exp(object$estimate[ind_psi]))
-  }
+  if (!is.null(estimate$sigma2_re))
+    res$sigma2_re <- exp(estimate$sigma2_re)
 
   return(res)
 }
@@ -548,7 +545,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
       "Upper limit" = exp(log(est) + z_crit * se / est))
 
   # ===========================================================================
-  # STANDARD RISKMAP MODELS (glgpm / DAST)
+  # STANDARD RISKMAP MODELS (glgpm)
   # ===========================================================================
 
   link_name <- NULL
@@ -575,169 +572,103 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     }
   }
 
-  n_re <- length(object$re)
-  if (n_re > 0) re_names <- names(object$re)
+  n_re     <- length(object$re)
+  re_names <- if (n_re > 0) names(object$re) else NULL
 
-  p        <- ncol(object$D)
-  ind_beta <- seq_len(p)
+  beta_names <- colnames(as.matrix(object$D))
 
-  names(object$estimate)[ind_beta] <- colnames(object$D)
-  ind_sigma2 <- p + 1; names(object$estimate)[ind_sigma2] <- "Spatial process var."
-  ind_phi    <- p + 2; names(object$estimate)[ind_phi]    <- "Spatial corr. scale"
-  dast_model <- !is.null(object$power_val)
-  sst        <- object$sst
+  ## `object$estimate` is a list (#92: keeps e.g. a "sigma2" covariate's name
+  ## from colliding with the spatial variance parameter's own name). The
+  ## delta-method covariance adjustment below needs a flat vector to line up
+  ## against `covariance` (one joint matrix over every parameter); `unlist()`
+  ## gives that, disambiguating the same way ("beta.sigma2" vs "sigma2").
+  estimate <- unlist(object$estimate)
+  nm       <- names(estimate)
 
-  if (sst) ind_psi <- length(object$estimate)
+  beta_flat_names <- paste0("beta.", beta_names)
+  has_tau2      <- "nu2" %in% nm
+  has_sigma2_me <- object$family == "gaussian" && "sigma2_me" %in% nm
+  re_par_names  <- if (n_re > 0) paste0("sigma2_re.", re_names) else NULL
 
-  if (is.null(object$fix_tau2)) {
-    ind_tau2 <- p + 3
-    names(object$estimate)[ind_tau2] <- "Variance of the nugget"
-    object$estimate[ind_tau2] <- object$estimate[ind_tau2] + object$estimate[ind_sigma2]
-    if (object$family == "gaussian") {
-      ind_sigma2_me <- if (is.null(object$fix_var_me)) p + 4 else NULL
-      if (n_re > 0) ind_sigma2_re <- (p + 5):(p + 4 + n_re)
-    } else {
-      ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-    }
-    if (dast_model) {
-      if (is.null(object$fix_alpha)) {
-        ind_alpha <- p + n_re + 4; ind_gamma <- p + n_re + 5
-      } else {
-        ind_gamma <- p + n_re + 4
-      }
-    } else {
-      ind_alpha <- ind_gamma <- NULL
-    }
-  } else {
-    ind_tau2 <- NULL
-    if (object$family == "gaussian") {
-      if (is.null(object$fix_var_me)) {
-        ind_sigma2_me <- p + 3
-        names(object$estimate)[ind_sigma2_me] <- "Measurement error var."
-        object$estimate[ind_sigma2_me] <- exp(object$estimate[ind_sigma2_me])
-      } else {
-        ind_sigma2_me <- NULL
-      }
-      if (n_re > 0) ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-    } else {
-      ind_sigma2_re <- (p + 3):(p + 2 + n_re)
-    }
-    if (is.null(object$fix_alpha)) {
-      ind_alpha <- p + n_re + 3; ind_gamma <- p + n_re + 4
-    } else {
-      ind_alpha <- NULL; ind_gamma <- p + n_re + 3
-    }
+  ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add. This is
+  ## the one linear reparametrisation of the working-scale parameters that
+  ## isn't just an exp(); its covariance is obtained via the delta method
+  ## below (J), alongside the other, unchanged parameters.
+  J <- diag(length(estimate))
+  dimnames(J) <- list(nm, nm)
+  if (has_tau2) {
+    estimate["nu2"] <- estimate["nu2"] + estimate["sigma2"]
+    J["nu2", "sigma2"] <- 1
   }
 
-  ind_sp <- c(ind_sigma2, ind_phi, ind_tau2)
-
-  if (dast_model) {
-    if (!is.null(object$fix_alpha))
-      names(object$estimate)[ind_gamma] <- "Scale of the decay (gamma)"
-    else {
-      names(object$estimate)[ind_alpha] <- "Drop (alpha)"
-      names(object$estimate)[ind_gamma] <- "Scale of the decay (gamma)"
-    }
-  }
-
-  n_p <- length(object$estimate)
-  object$estimate[-c(ind_beta, ind_alpha, ind_gamma)] <-
-    exp(object$estimate[-c(ind_beta, ind_alpha, ind_gamma)])
-
-  if (n_re > 0)
-    for (i in seq_len(n_re))
-      names(object$estimate)[ind_sigma2_re[i]] <-
-    paste0(re_names[i], " (random eff. var.)")
-
-  J <- diag(n_p)
-  if (length(ind_tau2) > 0) J[ind_tau2, ind_sigma2] <- 1
-  H_new          <- t(J) %*% solve(-object$covariance) %*% J
+  covariance <- object$covariance
+  H_new          <- t(J) %*% solve(-covariance) %*% J
   covariance_new <- solve(-H_new)
   se_par         <- sqrt(diag(covariance_new))
 
-  zval <- object$estimate[ind_beta] / se_par[ind_beta]
+  non_beta <- setdiff(nm, beta_flat_names)
+  estimate[non_beta] <- exp(estimate[non_beta])
+
+  se_beta <- se_par[beta_flat_names]
+  zval <- estimate[beta_flat_names] / se_beta
   res$reg_coef <- cbind(
-    Estimate      = object$estimate[ind_beta],
-    "Lower limit" = object$estimate[ind_beta] - se_par[ind_beta] * z_crit,
-    "Upper limit" = object$estimate[ind_beta] + se_par[ind_beta] * z_crit,
-    StdErr        = se_par[ind_beta],
+    Estimate      = estimate[beta_flat_names],
+    "Lower limit" = estimate[beta_flat_names] - se_beta * z_crit,
+    "Upper limit" = estimate[beta_flat_names] + se_beta * z_crit,
+    StdErr        = se_beta,
     z.value       = zval,
     p.value       = 2 * pnorm(-abs(zval))
   )
+  rownames(res$reg_coef) <- beta_names
 
   if (object$family == "gaussian") {
-    if (is.null(object$fix_var_me)) {
+    if (has_sigma2_me) {
+      est_me <- estimate["sigma2_me"]
+      se_me  <- se_par["sigma2_me"]
       res$me <- cbind(
-        Estimate      = object$estimate[ind_sigma2_me],
-        "Lower limit" = exp(log(object$estimate[ind_sigma2_me]) -
-                              z_crit * se_par[ind_sigma2_me]),
-        "Upper limit" = exp(log(object$estimate[ind_sigma2_me]) +
-                              z_crit * se_par[ind_sigma2_me])
+        Estimate      = est_me,
+        "Lower limit" = exp(log(est_me) - z_crit * se_me),
+        "Upper limit" = exp(log(est_me) + z_crit * se_me)
       )
+      rownames(res$me) <- "Measurement error var."
     } else {
       res$me <- object$fix_var_me
     }
   }
 
+  sp_names <- c("sigma2", "phi", if (has_tau2) "nu2")
+  est_sp <- estimate[sp_names]
+  se_sp  <- se_par[sp_names]
   res$sp <- cbind(
-    Estimate      = object$estimate[ind_sp],
-    "Lower limit" = exp(log(object$estimate[ind_sp]) - z_crit * se_par[ind_sp]),
-    "Upper limit" = exp(log(object$estimate[ind_sp]) + z_crit * se_par[ind_sp])
+    Estimate      = est_sp,
+    "Lower limit" = exp(log(est_sp) - z_crit * se_sp),
+    "Upper limit" = exp(log(est_sp) + z_crit * se_sp)
   )
+  rownames(res$sp) <- c("Spatial process var.",
+                        paste0("Spatial corr. scale (",
+                               object$distance_units, ")"),
+                        if (has_tau2) "Variance of the nugget")
   if (!is.null(object$fix_tau2)) res$tau2 <- object$fix_tau2
 
-  if (n_re > 0)
+  if (n_re > 0) {
+    est_re <- estimate[re_par_names]
+    se_re  <- se_par[re_par_names]
     res$ranef <- cbind(
-      Estimate      = object$estimate[ind_sigma2_re],
-      "Lower limit" = exp(log(object$estimate[ind_sigma2_re]) -
-                            z_crit * se_par[ind_sigma2_re]),
-      "Upper limit" = exp(log(object$estimate[ind_sigma2_re]) +
-                            z_crit * se_par[ind_sigma2_re])
+      Estimate      = est_re,
+      "Lower limit" = exp(log(est_re) - z_crit * se_re),
+      "Upper limit" = exp(log(est_re) + z_crit * se_re)
     )
-
-  if (dast_model) {
-    anti_logit <- function(x) 1 / (1 + exp(-x))
-    if (is.null(object$fix_alpha)) {
-      est_alpha   <- anti_logit(object$estimate[ind_alpha])
-      lower_alpha <- anti_logit(object$estimate[ind_alpha] -
-                                  z_crit * se_par[ind_alpha])
-      upper_alpha <- anti_logit(object$estimate[ind_alpha] +
-                                  z_crit * se_par[ind_alpha])
-    } else {
-      est_alpha <- lower_alpha <- upper_alpha <- NULL
-      res$alpha <- object$fix_alpha
-    }
-    est_gamma   <- exp(object$estimate[ind_gamma])
-    lower_gamma <- exp(object$estimate[ind_gamma] - z_crit * se_par[ind_gamma])
-    upper_gamma <- exp(object$estimate[ind_gamma] + z_crit * se_par[ind_gamma])
-    res$dast_par <- cbind(
-      Estimate      = c(est_alpha,   est_gamma),
-      "Lower limit" = c(lower_alpha, lower_gamma),
-      "Upper limit" = c(upper_alpha, upper_gamma)
-    )
-    res$power_val <- object$power_val
-  }
-
-  if (sst) {
-    est_psi <- object$estimate[ind_psi]
-    psi_row <- c(
-      Estimate      = est_psi,
-      "Lower limit" = exp(log(est_psi) - z_crit * se_par[ind_psi]),
-      "Upper limit" = exp(log(est_psi) + z_crit * se_par[ind_psi])
-    )
-    res$sp <- rbind(res$sp, "Temporal corr. scale" = psi_row)
+    rownames(res$ranef) <- paste0(re_names, " (random eff. var.)")
   }
 
   res$conf_level      <- conf_level
-  res$sst             <- sst
   res$family          <- object$family
-  res$dast            <- dast_model
   res$kappa           <- object$kappa
-  res$log.lik         <- object$log.lik
+  res$log_lik         <- object$log_lik
   res$cov_offset_used <- !(is.null(object$cov_offset) ||
                              all(object$cov_offset == 0))
   if (object$family == "gaussian") {
-    res$aic <- 2 * length(object$estimate) - 2 * res$log.lik
+    res$aic <- 2 * length(unlist(object$estimate)) - 2 * res$log_lik
   }
 
   res$call               <- object$call %||% NULL
@@ -769,8 +700,7 @@ print.summary.RiskMap <- function(x, ...) {
   if (identical(x$family, "gaussian")) {
     cat("Linear geostatistical model\n")
   } else if (identical(x$family, "binomial")) {
-    cat(if (isTRUE(x$dast)) "Decay adjusted spatio-temporal model\n"
-        else                 "Binomial geostatistical model\n")
+    cat("Binomial geostatistical model\n")
   } else if (identical(x$family, "poisson")) {
     cat("Poisson geostatistical model\n")
   }
@@ -793,44 +723,41 @@ print.summary.RiskMap <- function(x, ...) {
     }
   }
 
-  if (!isTRUE(x$sst)) {
-    cat("\nSpatial Gaussian process\n")
-    cat("Matern covariance parameters (kappa = ", x$kappa, ")\n", sep = "")
-  } else {
-    cat("\nSpatio-temporal Gaussian process\n")
-    cat("Separable correlation: Matern (kappa = ", x$kappa,
-        ") x Exponential (time)\n", sep = "")
-  }
-  printCoefmat(x$sp, P.values = FALSE, has.Pvalue = FALSE)
-  if (!is.null(x$tau2))
-    cat("Variance of the nugget effect fixed at ", x$tau2, "\n", sep = "")
+  cat("\nSpatial Gaussian process\n")
+  cat("Matern covariance parameters (kappa = ", x$kappa, ")\n", sep = "")
 
-  if (isTRUE(x$dast)) {
-    cat("\nMDA impact function\n")
-    cat("f(v) = alpha * exp(-(v/gamma)^delta),  delta fixed at ",
-        x$power_val, "\n", sep = "")
-    if (!is.null(x$alpha))
-      cat("alpha fixed at ", x$alpha, "\n", sep = "")
-    printCoefmat(x$dast_par, P.values = FALSE, has.Pvalue = FALSE)
-  }
+  printCoefmat(x$sp, P.values = FALSE, has.Pvalue = FALSE)
+  if (!isTRUE(x$tau2))
+    cat("Variance of the nugget effect fixed at ", x$tau2, "\n", sep = "")
 
   if (!is.null(x$ranef)) {
     cat("\nUnstructured random effects\n")
     printCoefmat(x$ranef, P.values = FALSE, has.Pvalue = FALSE)
   }
 
-  cat("\nLog-likelihood: ", x$log.lik, "\n", sep = "")
+  cat("\nLog-likelihood: ", x$log_lik, "\n", sep = "")
   if (identical(x$family, "gaussian") && !is.null(x$aic))
     cat("AIC: ", x$aic, "\n", sep = "")
 
   return(invisible(x))
 }
 
-##' @title Generate LaTeX Tables from RiskMap Model Fits and Validation
-##' @description Converts a fitted "RiskMap" model or cross-validation results into an \code{xtable} object, formatted for easy export to LaTeX or HTML.
-##' @param object An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap_spatial_cv" containing cross-validation results.
-##' @param ... Additional arguments to be passed to \code{\link[xtable]{xtable}} for customization.
-##' @details This function creates a summary table from a fitted "RiskMap" model or cross-validation results for multiple models, returning it as an \code{xtable} object.
+##' @title Format RiskMap Model and Validation Results as a Table
+##' @description Converts a fitted "RiskMap" model or cross-validation
+##' results into a table that renders directly in Quarto, R Markdown, HTML,
+##' LaTeX and the R console.
+##' @param object An object of class "RiskMap" resulting from a call to
+##' \code{\link{glgpm}}, a "summary.RiskMap" object, or a
+##' "summary.RiskMap_cross_validation" object.
+##' @param digits A non-negative integer giving the number of decimal places
+##' used to display numeric results.
+##' @param ... Additional arguments passed to \code{\link[knitr]{kable}}.
+##' @details This function creates a presentation-ready summary table from a
+##' fitted "RiskMap" model or cross-validation results for multiple models.
+##' Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
+##' required for further analysis. Numeric values use fixed notation with
+##' \code{digits} decimal places, except when scientific notation is needed to
+##' represent very large or very small values clearly.
 ##'
 ##' When the input is a "RiskMap" model object, the table includes:
 ##' \itemize{
@@ -840,39 +767,75 @@ print.summary.RiskMap <- function(x, ...) {
 ##'   \item Measurement error variance, if applicable.
 ##' }
 ##'
-##' When the input is a cross-validation summary object ("summary.RiskMap_spatial_cv"), the table includes:
+##' When the input is a cross-validation summary object ("summary.RiskMap_cross_validation"), the table includes:
 ##' \itemize{
 ##'   \item A row for each model being compared.
 ##'   \item Performance metrics such as CRPS and SCRPS for each model.
 ##' }
 ##'
-##' The resulting \code{xtable} object can be further customized with additional formatting options and printed as a LaTeX or HTML table for reports or publications.
-##' @return An object of class "xtable", which contains the formatted table as a \code{data.frame} and several attributes specifying table formatting options.
-##' @importFrom xtable xtable
+##' @return An object of class "knitr_kable" that can be rendered directly.
+##' @importFrom knitr kable
 ##' @export
-##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap_spatial_cv}}
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-##' @author Claudio Fronterre \email{c.fronterre@@lancaster.ac.uk}
-to_table <- function(object, ...) {
-  summary_out <- summary(object)
-  if(inherits(summary_out,
+##' @seealso \code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
+##' @examples
+##' \dontrun{
+##' fit <- glgpm(y ~ x + gp(), data = example_data)
+##' to_table(fit, digits = 3)
+##' }
+to_table <- function(object, digits = 3, ...) {
+  check_positive_integer(digits, "digits", allow_zero = TRUE)
+
+  if (inherits(object, "summary.RiskMap") ||
+      inherits(object, "summary.RiskMap_cross_validation")) {
+    summary_out <- object
+  } else {
+    summary_out <- summary(object)
+  }
+  if (inherits(summary_out,
                what = "summary.RiskMap", which = FALSE)) {
-    tab <- rbind(summary_out$reg_coef[,1:3], summary_out$sp, summary_out$ranef,
+    tab <- rbind(summary_out$reg_coef[, 1:3], summary_out$sp, summary_out$ranef,
                  summary_out$me)
-    out <- xtable(x = tab,...)
+    include_row_names <- TRUE
   } else if (inherits(summary_out,
-                      what = "summary.RiskMap_spatial_cv", which = FALSE)) {
+                      what = "summary.RiskMap_cross_validation", which = FALSE)) {
     n_models <- nrow(summary_out)
     n_metrics <- ncol(summary_out)
     model_names <- rownames(summary_out)
     metric_names <- toupper(colnames(summary_out))
     tab <- data.frame(Model = model_names)
-    for(i in 1:n_metrics) {
+    for (i in seq_len(n_metrics)) {
       tab[[paste(metric_names[i])]] <- summary_out[,i]
     }
-    out <- xtable(x = tab,...)
+    include_row_names <- FALSE
+  } else {
+    stop("'object' must be a RiskMap model or RiskMap cross-validation result")
   }
-  return(out)
+
+  tab <- as.data.frame(tab, check.names = FALSE)
+  numeric_columns <- vapply(tab, is.numeric, logical(1))
+  tab[numeric_columns] <- lapply(
+    tab[numeric_columns],
+    function(x) {
+      use_scientific <- is.finite(x) & x != 0 &
+        (abs(x) >= 1e6 | abs(x) < 10^(-digits))
+      out <- formatC(x, format = "f", digits = as.integer(digits))
+      out[use_scientific] <- formatC(
+        x[use_scientific],
+        format = "e",
+        digits = as.integer(digits)
+      )
+      out
+    }
+  )
+
+  dots <- list(...)
+  if (is.null(dots$row.names))
+    dots$row.names <- include_row_names
+  if (is.null(dots$align))
+    dots$align <- if (include_row_names) rep("r", ncol(tab)) else
+      c("l", rep("r", ncol(tab) - 1L))
+
+  do.call(kable, c(list(x = tab), dots))
 }
 
 ##' @title Compute Unique Coordinate Identifiers
@@ -897,10 +860,9 @@ to_table <- function(object, ...) {
 ##' to the unique coordinate it matches.
 ##'
 ##' @export
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##'
 ##'
-compute_ID_coords <- function(data_sf) {
+create_ids <- function(data_sf) {
   if(!inherits(data_sf,
                what = c("sfc","sf"), which = FALSE)) {
     stop("The object passed to 'grid_pred' must be an object
@@ -923,10 +885,10 @@ compute_ID_coords <- function(data_sf) {
 ##' @title Summarize Cross-Validation Scores for Spatial RiskMap Models
 ##'
 ##' @description This function summarizes cross-validation scores for different spatial models obtained
-##' from \code{\link{assess_pp}}.
+##' from \code{\link{assess_prediction}}.
 ##'
-##' @param object A `RiskMap_spatial_cv` object containing cross-validation scores for each
-##'               model, as obtained from \code{\link{assess_pp}}.
+##' @param object A `RiskMap_cross_validation` object containing cross-validation scores for each
+##'               model, as obtained from \code{\link{assess_prediction}}.
 ##' @param view_all Logical. If `TRUE`, stores the average scores across test sets for each
 ##'                 model alongside the overall average across all models. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to or from other methods.
@@ -942,19 +904,18 @@ compute_ID_coords <- function(data_sf) {
 ##' }
 ##'
 ##' @return A matrix of summary scores with models as rows and metrics as columns, with class
-##' `"summary.RiskMap_spatial_cv"`.
+##' `"summary.RiskMap_cross_validation"`.
 ##'
-##' @seealso \code{\link{assess_pp}}
+##' @seealso \code{\link{assess_prediction}}
 ##'
 ##' @export
-##' @method summary RiskMap_spatial_cv
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
-summary.RiskMap_spatial_cv <- function(object, view_all = TRUE, ...) {
+##' @method summary RiskMap_cross_validation
+summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   model_names <- names(object$model)
   n_models <- length(model_names)
 
   metric_names <- names(object$model[[1]]$score)
-  if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_pp'")
+  if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_prediction'")
   n_metrics <- length(metric_names)
 
   res <- matrix(NA, ncol = n_metrics, nrow = n_models)
@@ -985,18 +946,17 @@ summary.RiskMap_spatial_cv <- function(object, view_all = TRUE, ...) {
   attr(res, "test_set_means") <- test_set_means
   attr(res, "overall_averages") <- overall_averages
   attr(res, "view_all") <- view_all
-
-  class(res) <- "summary.RiskMap_spatial_cv"
+  class(res) <- "summary.RiskMap_cross_validation"
   return(res)
 }
 
 ##' @title Print Summary of RiskMap Spatial Cross-Validation Scores
 ##'
 ##' @description This function prints the matrix of cross-validation scores produced by
-##' `summary.RiskMap_spatial_cv` in a readable format.
+##' `summary.RiskMap_cross_validation` in a readable format.
 ##'
-##' @param x An object of class `"summary.RiskMap_spatial_cv"`, typically the output of
-##'          `summary.RiskMap_spatial_cv`.
+##' @param x An object of class `"summary.RiskMap_cross_validation"`, typically the output of
+##'          `summary.RiskMap_cross_validation`.
 ##' @param ... Additional arguments passed to or from other methods.
 ##'
 ##' @details
@@ -1006,10 +966,9 @@ summary.RiskMap_spatial_cv <- function(object, view_all = TRUE, ...) {
 ##'
 ##' @return This function is used for its side effect of printing to the console. It does not
 ##'         return a value.
-##' @author Emanuele Giorgi \email{e.giorgi@@lancaster.ac.uk}
 ##' @export
-##' @method print summary.RiskMap_spatial_cv
-print.summary.RiskMap_spatial_cv <- function(x, ...) {
+##' @method print summary.RiskMap_cross_validation
+print.summary.RiskMap_cross_validation <- function(x, ...) {
   # Extract attributes
   test_set_means <- attr(x, "test_set_means")
   overall_averages <- attr(x, "overall_averages")
@@ -1047,8 +1006,212 @@ print.summary.RiskMap_spatial_cv <- function(x, ...) {
   }
 }
 
+##' @title Plot Calibration Curves (AnPIT / PIT) from Spatial Cross-Validation
+##'
+##' @description
+##' Produce calibration plots from a \code{RiskMap_cross_validation} object returned by
+##' \code{\link{assess_prediction}}.
+##' * For Binomial or Poisson models the function visualises the
+##'   \emph{Aggregated normalised Probability Integral Transform} (AnPIT)
+##'   curves stored in \code{$AnPIT}.
+##' * For Gaussian models it detects the list \code{$PIT} and instead plots
+##'   the empirical \emph{Probability Integral Transform} curve
+##'   (ECDF of PIT values) on the same \eqn{u}-grid.
+##'
+##' A 45° dashed red line indicates perfect calibration.
+##'
+##' @param object       A \code{RiskMap_cross_validation} object.
+##' @param mode         One of \code{"average"} (average curve across test sets),
+##'                     \code{"single"} (a specific test set),
+##'                     or \code{"all"} (every test set separately).
+##' @param test_set     Integer; required when \code{mode = "single"}.
+##' @param model_name   Optional character string; if supplied,
+##'                     only that model is plotted.
+##' @param combine_panels Logical; when \code{mode = "average"}, draw
+##'                       all models in a single panel (\code{TRUE})
+##'                       or one panel per model (\code{FALSE}, default).
+##'
+##' @return A \pkg{ggplot2} object (single plot) or a \pkg{grid} object
+##'   from \pkg{gridExtra} (multiple panels).
+##'
+##' @importFrom dplyr   group_by summarize %>%
+##' @export
+plot_AnPIT <- function(object,
+                       mode = "average",
+                       test_set = NULL,
+                       model_name = NULL,
+                       combine_panels = FALSE) {
+
+  if (!inherits(object, "RiskMap_cross_validation"))
+    stop("`object` must be a 'RiskMap_cross_validation' produced by assess_prediction().")
+
+  all_models <- names(object$model)
+
+  if (!is.null(model_name)) {
+    if (!model_name %in% all_models)
+      stop("Model name '", model_name, "' not found in `object$model`.")
+    all_models <- model_name
+  }
+
+  make_df <- function(mname) {
+    m <- object$model[[mname]]
+    if (!is.null(m$AnPIT)) {
+      lapply(seq_along(m$AnPIT), function(j) {
+        curve_vals <- m$AnPIT[[j]]
+        if (length(curve_vals) == 0) return(NULL)
+        data.frame(
+          u_val   = seq(0, 1, length.out = length(curve_vals)),
+          value   = curve_vals,
+          test_set = j,
+          model    = mname,
+          type     = "AnPIT"
+        )
+      })
+    } else if (!is.null(m$PIT)) {
+      u_grid <- seq(0, 1, length.out = 1000)
+      lapply(seq_along(m$PIT), function(j) {
+        pit_vec <- m$PIT[[j]]
+        if (length(pit_vec) == 0) return(NULL)
+        data.frame(
+          u_val   = u_grid,
+          value   = ecdf(pit_vec)(u_grid),
+          test_set = j,
+          model    = mname,
+          type     = "PIT"
+        )
+      })
+    } else {
+      NULL
+    }
+  }
+
+  plot_data <- do.call(rbind, unlist(lapply(all_models, make_df), recursive = FALSE))
+
+  if (is.null(plot_data) || nrow(plot_data) == 0)
+    stop("No AnPIT or PIT data available for plotting.")
+
+  y_label <- unique(plot_data$type)
+  if (length(y_label) > 1) y_label <- "Calibration curve"
+
+  id_line <- geom_abline(intercept = 0, slope = 1,
+                         linetype = "dashed", colour = "red")
+
+  if (mode == "average" && combine_panels) {
+    avg <- plot_data %>%
+      dplyr::group_by(.data$model, .data$u_val) %>%
+      dplyr::summarize(value = mean(.data$value), .groups = "drop")
+
+    return(
+      ggplot(avg, aes(.data$u_val, .data$value, colour = .data$model)) +
+        geom_line() + id_line +
+        labs(title = "Average calibration curves",
+             x = "", y = y_label) +
+        theme_minimal() +
+        guides(colour = guide_legend(title = "Model"))
+    )
+  }
+
+  build_plot <- function(df, title_suffix = "") {
+    ggplot(df, aes(.data$u_val, .data$value,
+                   colour = if (mode == "all") as.factor(test_set) else NULL)) +
+      geom_line() + id_line +
+      labs(title = title_suffix, x = "", y = unique(df$type)) +
+      theme_minimal() +
+      guides(colour = guide_legend(title = "Test set"))
+  }
+
+  plots <- list()
+  for (mname in all_models) {
+    df_model <- dplyr::filter(plot_data, .data$model == mname)
+
+    p <- switch(mode,
+                average = {
+                  avg <- df_model %>%
+                    dplyr::group_by(.data$u_val) %>%
+                    dplyr::summarize(value = mean(.data$value), .groups = "drop")
+                  avg$type <- unique(df_model$type)
+                  build_plot(avg, paste("Model", mname, ": average"))
+                },
+                single  = {
+                  if (is.null(test_set))
+                    stop("Provide `test_set` when mode = 'single'.")
+                  df_ts <- dplyr::filter(df_model, test_set == test_set)
+                  if (nrow(df_ts) == 0)
+                    stop("No data for test_set ", test_set, " in model ", mname)
+                  build_plot(df_ts,
+                             paste("Model", mname, "- test set", test_set))
+                },
+                all     = build_plot(df_model,
+                                     paste("Model", mname, "- all test sets")),
+                stop("Invalid `mode`. Use 'average', 'single' or 'all'.")
+    )
+
+    plots[[mname]] <- p
+  }
+
+  if (length(plots) == 1) {
+    plots[[1]]
+  } else {
+    ncol <- ifelse(length(plots) == 2, 2, 2)
+    nrow <- ceiling(length(plots) / ncol)
+    do.call(gridExtra::grid.arrange, c(plots, ncol = ncol, nrow = nrow))
+  }
+}
 
 
+##' @title Plot Spatial Scores for a Specific Model and Metric
+##'
+##' @description This function visualizes spatial scores for a specified model and metric.
+##' It combines test set data, handles duplicate locations by averaging scores,
+##' and creates a customizable map using ggplot2.
+##'
+##' @param object A list containing test sets and model scores. The structure should include
+##'   `object$test_set` (list of sf objects) and `object$model[[which_model]]$score[[which_score]]`.
+##' @param which_score A string specifying the score to visualize. Must match a score computed in the model.
+##' @param which_model A string specifying the model whose scores to visualize.
+##' @param ... Additional arguments to customize ggplot, such as `scale_color_gradient` or `scale_color_manual`.
+##' @return A ggplot object visualizing the spatial distribution of the specified score.
+##' @export
+plot_score <- function(object, which_score, which_model, ...) {
+
+  # Check if "which_score" exists
+  if (!which_score %in% names(object$model[[which_model]]$score)) {
+    stop(paste("Error: The score", shQuote(which_score), "was not computed for model", shQuote(which_model)))
+  }
+
+  # Extract the test sets and number of test sets
+  test_sets <- object$test_set
+  n_test <- length(test_sets)
+
+  # Combine the data and add the score variable
+  data_full <- st_as_sf(test_sets[[1]])
+  data_full$score <- object$model[[which_model]]$score[[which_score]][[1]]
+
+  if (n_test > 1) {
+    for (i in 1:n_test) {
+      test_sets[[i]]$score <- object$model[[which_model]]$score[[which_score]][[i]]
+      data_full <- rbind(data_full, test_sets[[i]])
+    }
+  }
+
+  # Check for duplicate locations and average the score
+  data_full <- data_full %>%
+    mutate(geom_id = st_as_text(.data$geometry)) %>%
+    group_by(.data$geom_id) %>%
+    summarize(score = mean(.data$score, na.rm = TRUE),
+              geometry = first(.data$geometry), .groups = "drop") %>%
+    st_as_sf()
+
+
+  # Create the base plot
+  out <- ggplot(data = data_full) +
+    geom_sf(aes(color = .data$score), size = 2) +
+    ggtitle(paste("Visualizing", which_score, "for model", which_model)) +
+    theme_minimal()
+
+
+  return(out)
+}
 
 ##' @title Check for valid binomial values
 ##'
@@ -1077,25 +1240,188 @@ check_binomial <- function(y, den){
 #' @title check_data
 #' @description
 #'
-#' Check that the data is an sf object, with a CRS, only containing points and if
-#' CRS == 4326 that the coordinates are possible (i.e. not latitudes > 90)
+#' Check that the data is an sf or sfc object, with a CRS, only containing points
+#' or either polygons or multipolygons.
+#' If CRS == 4326 it also checks that the coordinates are possible (i.e. not
+#' latitudes > 90)
 #' @param data the data to check
+#' @param geometry whether to check that the data contains `"point"` (default) or
+#' `"polygon"` (covering both polygons and multipolygons)
+#' @param type whether to check that the data is `"sf"` (default) or
+#' `"sfc"` (either sf or sfc)
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_data <- function(data){
-  stopifnot("'data' must be of class 'sf'" = inherits(data, "sf"))
-  stopifnot("'data' must contain a coordinate reference system" = !is.na(sf::st_crs(data)))
-  all_points <- all(sf::st_geometry_type(data) == "POINT")
-  stopifnot("'data' can only contain point geometry" = all_points)
-  if (sf::st_crs(data) == sf::st_crs(4326)){
+check_data <- function(data, geometry = "point", type = "sf"){
+  stopifnot("'geometry' must be either 'point' or 'polygon'" = geometry %in% c("point", "polygon"))
+  stopifnot("'type' must be either 'sf' or 'sfc'" = type %in% c("sf", "sfc"))
+
+  # extract name passed to function
+  data_type <- paste0("'", deparse(substitute(data)), "'")
+
+  geometry_type <- switch(geometry,
+                          point = "'POINT'",
+                          polygon = "'POLYGON' or 'MULTIPOLYGON'")
+
+  if (type == "sf"){
+    if (!inherits(data, "sf"))
+      stop(paste(data_type, "must be of class 'sf'"), call. = FALSE)
+  } else {
+    if (!inherits(data, c("sf", "sfc")))
+      stop(paste(data_type, "must be of class 'sf' or 'sfc'"), call. = FALSE)
+  }
+
+  if (is.na(st_crs(data)))
+    stop(paste(data_type, "must contain a coordinate reference system"), call. = FALSE)
+
+  all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
+  if (!all_valid_geometry)
+    stop(paste(data_type, "can only contain", geometry_type, "geometry"), call. = FALSE)
+
+  if (st_crs(data) == st_crs(4326)){
     tryCatch(
-      sf::st_is_longlat(data$geometry),
+      st_is_longlat(data$geometry),
       warning = function(w) {
-        stop("'data' contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data")
+        stop(paste(data_type, "contains impossible latitude or longitude values -
+             check you have specified the columns correctly when converting the data"), call. = FALSE)
       }
     )
   }
+  invisible(TRUE)
+}
+
+#' Convert between CRS and requested distance units
+#'
+#' @param data An `sf` or `sfc` object with a projected CRS.
+#' @param distance_units The requested coordinate units, either `"m"` or `"km"`.
+#' @return The numeric factor converting one CRS unit to `distance_units`.
+#' @importFrom units set_units
+#' @noRd
+crs_to_distance_factor <- function(data, distance_units) {
+  crs_unit <- st_crs(data)$ud_unit
+
+  if (is.null(crs_unit)) {
+    stop(
+      "The modelling CRS does not define linear coordinate units. ",
+      "Use a projected CRS with recognised linear units.",
+      call. = FALSE
+    )
+  }
+
+  tryCatch(
+    as.numeric(
+      set_units(crs_unit,
+                distance_units,
+                mode = "standard")
+    ),
+    error = function(e) {
+      stop(
+        "The modelling CRS units cannot be converted to '",
+        distance_units,
+        "'. Use a projected CRS with recognised linear units.",
+        call. = FALSE
+      )
+    }
+  )
+}
+
+#' Convert spatial coordinates to requested distance units
+#'
+#' @inheritParams crs_to_distance_factor
+#' @return A numeric coordinate matrix expressed in `distance_units`.
+#' @noRd
+coordinates_in_units <- function(data, distance_units) {
+  st_coordinates(data) * crs_to_distance_factor(data, distance_units)
+}
+
+#' @title check_positive_integer
+#' @description
+#'
+#' Check that a value is a single, positive integer and error if not
+#' @param x the value to check
+#' @param name the name of the parameter to return in error messages
+#' @param allow_null whether `NULL` is permitted
+#' @param allow_zero whether zero is permitted
+#' @return TRUE if the data is valid. Raise an error if not.
+#' @noRd
+#'
+check_positive_integer <- function(x, name, allow_null = FALSE,
+                                   allow_zero = FALSE) {
+  if (is.null(x) && allow_null) return(invisible(TRUE))
+  description <- if (allow_zero) "non-negative" else "positive"
+  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
+    !is.finite(x) || x %% 1 != 0 || x < as.integer(!allow_zero) ||
+    x > .Machine$integer.max
+  if (invalid) {
+    stop("'", name, "' must be a single ", description, " integer",
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' Preserve the caller's random-number state
+#'
+#' Capture the current random-number state and return a function that restores
+#' it. If no state existed, the returned function removes any state subsequently
+#' created. Callers should register the returned function with `on.exit()` before
+#' calling `set.seed()`.
+#'
+#' @return A function that restores the captured random-number state.
+#' @noRd
+preserve_random_seed <- function() {
+  had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_seed <- if (had_seed) get(".Random.seed", envir = .GlobalEnv) else NULL
+  function() {
+    if (had_seed) {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }
+}
+
+#' @title check_positive_number
+#' @description
+#'
+#' Check that a value is a single, positive number and error if not
+#' @param x the value to check
+#' @param type the type of value being checked. Defaults to `"starting"`.
+#' @return TRUE if x is valid. Raise an error if not.
+#' @noRd
+#'
+check_positive_number <- function(x, type = "starting ") {
+  # extract name, removing any list
+  name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
+
+  if (!is.numeric(x) || length(x) != 1 || x <= 0 || is.na(x)) {
+    stop("The ", type, "value for '", name, "' must be a single positive number")
+  }
+
+  invisible(TRUE)
+}
+
+
+#' @title check_crs
+#' @description
+#'
+#' Check that a CRS is valid
+#' @param crs the CRS to check
+#' @param name the argument name to use in the error message. Defaults to the
+#'   name of the variable passed as `crs`; callers wrapping this in another
+#'   function should pass their own argument's name explicitly, since
+#'   `substitute()` only sees the immediate call site.
+#' @return TRUE if the CRS is valid. Raise an error if not.
+#' @noRd
+#'
+check_crs <- function(crs, name = deparse(substitute(crs))){
+  tryCatch(
+    st_crs(crs),
+    warning = function(w) {
+      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
+    },
+    error = function(e){
+      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
+    }
+  )
   invisible(TRUE)
 }

@@ -2,23 +2,35 @@
 % Please edit documentation in R/auxiliary.R
 \name{to_table}
 \alias{to_table}
-\title{Generate LaTeX Tables from RiskMap Model Fits and Validation}
+\title{Format RiskMap Model and Validation Results as a Table}
 \usage{
-to_table(object, ...)
+to_table(object, digits = 3, ...)
 }
 \arguments{
-\item{object}{An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap.spatial.cv" containing cross-validation results.}
+\item{object}{An object of class "RiskMap" resulting from a call to
+\code{\link{glgpm}}, a "summary.RiskMap" object, or a
+"summary.RiskMap_cross_validation" object.}
 
-\item{...}{Additional arguments to be passed to \code{\link[xtable]{xtable}} for customization.}
+\item{digits}{A non-negative integer giving the number of decimal places
+used to display numeric results.}
+
+\item{...}{Additional arguments passed to \code{\link[knitr]{kable}}.}
 }
 \value{
-An object of class "xtable", which contains the formatted table as a \code{data.frame} and several attributes specifying table formatting options.
+An object of class "knitr_kable" that can be rendered directly.
 }
 \description{
-Converts a fitted "RiskMap" model or cross-validation results into an \code{xtable} object, formatted for easy export to LaTeX or HTML.
+Converts a fitted "RiskMap" model or cross-validation
+results into a table that renders directly in Quarto, R Markdown, HTML,
+LaTeX and the R console.
 }
 \details{
-This function creates a summary table from a fitted "RiskMap" model or cross-validation results for multiple models, returning it as an \code{xtable} object.
+This function creates a presentation-ready summary table from a
+fitted "RiskMap" model or cross-validation results for multiple models.
+Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
+required for further analysis. Numeric values use fixed notation with
+\code{digits} decimal places, except when scientific notation is needed to
+represent very large or very small values clearly.
 
 When the input is a "RiskMap" model object, the table includes:
 \itemize{
@@ -28,19 +40,18 @@ When the input is a "RiskMap" model object, the table includes:
 \item Measurement error variance, if applicable.
 }
 
-When the input is a cross-validation summary object ("summary.RiskMap.spatial.cv"), the table includes:
+When the input is a cross-validation summary object ("summary.RiskMap_cross_validation"), the table includes:
 \itemize{
 \item A row for each model being compared.
 \item Performance metrics such as CRPS and SCRPS for each model.
 }
-
-The resulting \code{xtable} object can be further customized with additional formatting options and printed as a LaTeX or HTML table for reports or publications.
+}
+\examples{
+\dontrun{
+fit <- glgpm(y ~ x + gp(), data = example_data)
+to_table(fit, digits = 3)
+}
 }
 \seealso{
-\code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap.spatial.cv}}
-}
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterre@lancaster.ac.uk}
+\code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
 }

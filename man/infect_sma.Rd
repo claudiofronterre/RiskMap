@@ -5,13 +5,12 @@
 \alias{infect_sma}
 \title{West Nile virus pool tests for female \emph{Culex pipiens} in the Sacramento Metropolitan Area}
 \format{
-A data frame with one row per tested pool (for a total of 596 pools) and 5 variables:
+An sf object with one row per tested pool (for a total of 596 pools) and 4 variables:
 \describe{
-\item{lon}{Numeric. Longitude in decimal degrees (WGS84).}
-\item{lat}{Numeric. Latitude in decimal degrees (WGS84).}
 \item{est_pool_n}{Integer. Estimated number of mosquitoes in the pool (see Details).}
 \item{wnv_pos}{Logical. Whether the pool tested positive for West Nile virus (\code{TRUE}/\code{FALSE}).}
 \item{date}{Date. Pool collection date (local).}
+\item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in degrees latitude and longitude}
 }
 }
 \source{
@@ -28,7 +27,7 @@ location and date, with an estimated pool size.
 }
 \details{
 Derived from the \pkg{vectorsurvR} sample datasets by:
-\enumerate{
+\itemize{
 \item Filtering to female \emph{Culex pipiens} pools with WNV testing within the SMA
 using point-in-polygon against the union of Sacramento, Placer, and El Dorado counties.
 \item Estimating pool size \code{est_pool_n} for each pool by:
@@ -39,7 +38,7 @@ and within a spatial radius (e.g., 2 km) to obtain \eqn{T_{\mathrm{near}}}.
 \item Setting \code{est_pool_n = round(max(1, T_near / m_near))}; if no nearby collections are found,
 a conservative fallback (default 25) is used.
 }
-\item Coordinates are kept as WGS84 (EPSG:4326).
+\item The coordinate reference system is 4326.
 }
 
 \strong{Important:} \code{est_pool_n} is an estimate for demonstration and pooled-modelling
