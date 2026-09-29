@@ -4,14 +4,16 @@
 \alias{plot.RiskMap_predict_grid_target}
 \title{Plot Method for RiskMap_predict_grid_target Objects}
 \usage{
-\method{plot}{RiskMap_predict_grid_target}(x, which_target = "linear_target", which_summary = "mean", ...)
+\method{plot}{RiskMap_predict_grid_target}(x, target = NULL, summary = "mean", ...)
 }
 \arguments{
 \item{x}{An object of class 'RiskMap_predict_grid_target'.}
 
-\item{which_target}{Character string specifying which target prediction to plot.}
+\item{target}{Character string specifying which target prediction to plot,
+one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.}
 
-\item{which_summary}{Character string specifying which summary statistic to plot (e.g., "mean", "sd").}
+\item{summary}{Character string specifying which summary statistic to plot
+(e.g., "mean", "sd"), one of \code{x$pd_summary}. Defaults to \code{"mean"}.}
 
 \item{...}{Additional arguments passed to the \code{\link[terra]{plot}} function of the \code{terra} package.}
 }

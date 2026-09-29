@@ -62,6 +62,11 @@ in `predict_areal_target()` have similarly been renamed to `areal_target` and
 `return_boundaries`. `predict_areal_target()`'s returned `shp` component is now
 named `boundaries`.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
+- In `plot.RiskMap_predict_grid_target()` and `plot.RiskMap_predict_areal_target()`,
+`which_target`/`which_summary` have been renamed to `target`/`summary`, for
+consistency elsewhere in the package. `target` now defaults to `NULL`, which
+plots the first available target; an unrecognised `target` or `summary` now
+raises an informative error instead of a blank plot.
 - The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to
 `TRUE` to estimate it.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian
