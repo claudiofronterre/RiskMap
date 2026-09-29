@@ -20,3 +20,12 @@ test_that("normalise_log_weights remains finite on extreme scales", {
     "All Monte Carlo importance weights are non-finite"
   )
 })
+
+test_that("softplus is stable in both tails", {
+  ordinary <- c(-2, 0, 3)
+  expect_equal(softplus(ordinary), log1p(exp(ordinary)))
+
+  expect_equal(softplus(1000), 1000)
+  expect_equal(softplus(-1000), 0)
+  expect_true(all(is.finite(softplus(c(-1000, 1000)))))
+})

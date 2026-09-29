@@ -538,6 +538,13 @@ normalise_log_weights <- function(log_weights) {
   weights / sum(weights)
 }
 
+##' Evaluate log(1 + exp(x)) without overflow
+##'
+##' @noRd
+softplus <- function(x) {
+  pmax(x, 0) + log1p(exp(-abs(x)))
+}
+
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
@@ -2314,7 +2321,15 @@ glgpm_nong <-
       eta <- val$mu + S[ID_coords]
       if (n_re > 0) for (i in 1:n_re) eta <- eta + S_re_list[[i]][ID_re[, i]]
 
-      if (family == "poisson") {
+      if (linkf$name == "canonical" && family == "poisson") {
+        # The canonical form avoids taking log(exp(eta)) and remains valid in
+        # the tails until the Poisson mean itself exceeds floating-point range.
+        llik <- sum(y * eta - units_m * exp(eta))
+      } else if (linkf$name == "canonical") {
+        # y * eta - m * log(1 + exp(eta)) is the binomial log-likelihood
+        # without evaluating probabilities that may round exactly to 0 or 1.
+        llik <- sum(y * eta - units_m * softplus(eta))
+      } else if (family == "poisson") {
         mu_vec <- inv_fn(eta)
         if (any(!is.finite(mu_vec)) || any(mu_vec < 0)) stop("invlink must return positive means (Poisson).")
         llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
@@ -2409,7 +2424,13 @@ glgpm_nong <-
         eta <- mu + S[ID_coords]
         if (n_re > 0) for (i in 1:n_re) eta <- eta + S_re_list[[i]][ID_re[, i]]
 
-        if (family == "poisson") {
+        if (linkf$name == "canonical" && family == "poisson") {
+          mu_vec <- exp(eta)
+          g_eta <- y - units_m * mu_vec
+        } else if (linkf$name == "canonical") {
+          p <- plogis(eta)
+          g_eta <- y - units_m * p
+        } else if (family == "poisson") {
           mu_vec <- inv_fn(eta)
           if (any(mu_vec <= 0 | !is.finite(mu_vec))) stop("invlink invalid (Poisson).")
           mu1 <- inv1(eta)
@@ -2542,8 +2563,16 @@ glgpm_nong <-
           }
         }
 
-        ## General inverse link (must exist in parent: inv_fn, inv1, inv2)
-        if (family == "poisson") {
+        ## Canonical links have simpler, stable score and curvature formulas.
+        if (linkf$name == "canonical" && family == "poisson") {
+          mu_vec <- exp(eta)
+          g_eta <- y - units_m * mu_vec
+          w <- units_m * mu_vec
+        } else if (linkf$name == "canonical") {
+          p <- plogis(eta)
+          g_eta <- y - units_m * p
+          w <- units_m * p * (1 - p)
+        } else if (family == "poisson") {
           mu_vec <- inv_fn(eta); mu1 <- inv1(eta); mu2 <- inv2(eta)
           g_eta  <- (y - units_m * mu_vec) * (mu1 / mu_vec)
           l2     <- - y * (mu1^2) / (mu_vec^2) + (y / mu_vec - units_m) * mu2
