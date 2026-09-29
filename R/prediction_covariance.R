@@ -40,12 +40,14 @@ gaussian_prediction_weights <- function(incidence, covariance, ids, variance) {
   reduced_design <- as.matrix(reduced_design)
   reduced_covariance <- reduced_design %*% covariance %*% t(reduced_design)
   diag(reduced_covariance) <- diag(reduced_covariance) + variance
-  root <- chol(reduced_covariance)
+  root <- factor_covariance(
+    reduced_covariance, "reduced Gaussian observation covariance"
+  )
   basis_transpose <- Matrix::t(basis)
 
   function(cross_covariance) {
     projected <- as.matrix(cross_covariance %*% basis)
-    weights <- backsolve(root, forwardsolve(t(root), t(projected)))
+    weights <- solve_from_cholesky(root, t(projected))
     as.matrix(t(weights) %*% basis_transpose)
   }
 }

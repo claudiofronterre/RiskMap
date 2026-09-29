@@ -553,7 +553,9 @@ setup_prediction <- function(object,
       Sigma_Z_cond <- diag(rep(par_hat$sigma2_re, n_dim_re_tot[-1])) -
         W_Z %*% C_Z -
         A_Z %*% C %*% t(W_Z)
-      Scr_Z        <- t(chol(Sigma_Z_cond))
+      Scr_Z        <- t(factor_covariance(
+        Sigma_Z_cond, "conditional random-effect covariance"
+      ))
       mu_Z_cond    <- A_Z %*% (out$S_samples - mu_cond_S)
       mu_Z_cond <- mu_Z_cond + as.numeric(W_Z %*% diff.y)
       re_samples <- sample_correlated_gaussian(
