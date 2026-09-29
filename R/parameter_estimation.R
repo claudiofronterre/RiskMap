@@ -554,6 +554,33 @@ linear_start_values <- function(design, response) {
   unname(fit$coefficients)
 }
 
+##' Wrap an optimiser objective with controlled invalid-trial handling
+##'
+##' Covariance parameters can temporarily define a non-positive-definite
+##' matrix. Such a trial is outside the valid parameter space, so return a
+##' finite penalty rather than allowing a linear-algebra error to abort the
+##' complete fit. The counter is retained for post-fit diagnostics.
+##'
+##' @noRd
+safe_optimizer_objective <- function(objective) {
+  diagnostics <- new.env(parent = emptyenv())
+  diagnostics$invalid_evaluations <- 0L
+  penalty <- sqrt(.Machine$double.xmax)
+
+  wrapped <- function(par) {
+    value <- tryCatch(objective(par), error = function(error) NA_real_)
+    if (length(value) != 1L || !is.finite(value)) {
+      diagnostics$invalid_evaluations <-
+        diagnostics$invalid_evaluations + 1L
+      return(penalty)
+    }
+
+    value
+  }
+  attr(wrapped, "diagnostics") <- diagnostics
+  wrapped
+}
+
 ##' Evaluate log(1 + exp(x)) without overflow
 ##'
 ##' @noRd
@@ -1415,8 +1442,9 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   start_par <- c(start_beta, log(start_cov_pars))
 
   out <- list()
+  objective <- safe_optimizer_objective(function(x) -log.lik(x))
   estim <- nlminb(start_par,
-                  function(x) -log.lik(x),
+                  objective,
                   function(x) -grad.log.lik(x),
                   function(x) -hessian.log.lik(x),
                   control=list(trace=1*messages))
@@ -1446,7 +1474,10 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   out["link_function"] <- list(NULL)
   out["units_m"] <- list(NULL)
   out["S_samples"] <- list(NULL)
-  attr(out, "optimizer") <- estim[c("convergence", "message", "evaluations")]
+  optimizer_diagnostics <- estim[c("convergence", "message", "evaluations")]
+  optimizer_diagnostics$invalid_evaluations <-
+    attr(objective, "diagnostics")$invalid_evaluations
+  attr(out, "optimizer") <- optimizer_diagnostics
 
   class(out) <- "RiskMap"
   return(out)
@@ -2707,8 +2738,9 @@ glgpm_nong <-
     start_par <- c(start_beta, log(start_cov_pars))
 
     out <- list()
+    objective <- safe_optimizer_objective(function(x) -mc_log_lik(x))
     estim <- nlminb(start_par,
-                    function(x) -mc_log_lik(x),
+                    objective,
                     function(x) -grad_mc_log_lik(x),
                     function(x) -hess_mc_log_lik(x),
                     control = list(trace = 1 * messages))
@@ -2742,7 +2774,10 @@ glgpm_nong <-
     }
 
     out$link_function <- linkf
-    attr(out, "optimizer") <- estim[c("convergence", "message", "evaluations")]
+    optimizer_diagnostics <- estim[c("convergence", "message", "evaluations")]
+    optimizer_diagnostics$invalid_evaluations <-
+      attr(objective, "diagnostics")$invalid_evaluations
+    attr(out, "optimizer") <- optimizer_diagnostics
     class(out) <- "RiskMap"
     return(out)
 }

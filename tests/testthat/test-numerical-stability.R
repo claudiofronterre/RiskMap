@@ -41,3 +41,16 @@ test_that("linear_start_values uses a rank-aware least-squares solve", {
     "model matrix is rank deficient"
   )
 })
+
+test_that("safe_optimizer_objective penalises and counts invalid trials", {
+  objective <- safe_optimizer_objective(function(x) {
+    if (x < 0) stop("invalid trial")
+    if (x == 0) return(Inf)
+    x^2
+  })
+
+  expect_equal(objective(2), 4)
+  expect_true(is.finite(objective(-1)))
+  expect_true(is.finite(objective(0)))
+  expect_equal(attr(objective, "diagnostics")$invalid_evaluations, 2L)
+})
