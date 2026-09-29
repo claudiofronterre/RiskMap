@@ -27,7 +27,10 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
   result <- glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fix_var_me = 1, messages = FALSE)
   expect_true("tau2" %in% names(coef(result)))
 
-  result <- glgpm(z ~ gp(nugget = 1), gaussian_data, "gaussian", messages = FALSE)
+  expect_warning(
+    result <- glgpm(z ~ gp(nugget = 1), gaussian_data, "gaussian", messages = FALSE),
+    "did not converge"
+  )
   expect_equal(summary(result)$tau2, 1)
 
 })

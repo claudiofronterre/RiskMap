@@ -194,6 +194,15 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_equal(fit_no_re$coords[,2], data$z)
   expect_equal(fit_no_re$y, gaussian_data$y)
   expect_equal(unname(fit_no_re$D[,2]), gaussian_data$cov)
+  optimizer <- attr(fit_no_re, "optimizer")
+  expect_named(
+    optimizer,
+    c("convergence", "message", "evaluations", "invalid_evaluations",
+      "max_abs_gradient", "stationary", "information_rcond",
+      "information_jitter")
+  )
+  expect_true(is.logical(optimizer$stationary))
+  expect_true(optimizer$information_rcond >= 0)
 
   fit_re_fixed_me <- glgpm(y ~ cov + gp() + re(i),
                            data = gaussian_data,

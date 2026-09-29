@@ -704,6 +704,36 @@ safe_optimizer_objective <- function(objective) {
   wrapped
 }
 
+##' Collect diagnostics needed to assess an optimiser result
+##'
+##' @noRd
+collect_optimizer_diagnostics <- function(estimate, objective, gradient,
+                                          information, information_root) {
+  diagnostics <- estimate[c("convergence", "message", "evaluations")]
+  diagnostics$invalid_evaluations <-
+    attr(objective, "diagnostics")$invalid_evaluations
+  diagnostics$max_abs_gradient <- max(abs(gradient))
+  diagnostics$stationary <- diagnostics$max_abs_gradient <= 1e-3
+  diagnostics$information_rcond <- rcond(information)
+  diagnostics$information_jitter <- attr(information_root, "jitter")
+  diagnostics
+}
+
+##' Report an optimiser result that should not be treated as converged
+##'
+##' @noRd
+warn_unconverged_optimizer <- function(diagnostics) {
+  if (diagnostics$convergence != 0 && !diagnostics$stationary) {
+    warning(
+      "Model optimisation did not converge (code ",
+      diagnostics$convergence, "): ", diagnostics$message,
+      ". The maximum absolute score is ",
+      format(diagnostics$max_abs_gradient, scientific = TRUE), ".",
+      call. = FALSE
+    )
+  }
+}
+
 ##' Evaluate log(1 + exp(x)) without overflow
 ##'
 ##' @noRd
@@ -1570,12 +1600,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                   objective,
                   function(x) -grad.log.lik(x),
                   function(x) -hessian.log.lik(x),
-                  control=list(trace=1*messages))
-
-  if (messages && estim$convergence != 0) {
-    warning("Model optimisation did not converge: ", estim$message,
-            call. = FALSE)
-  }
+                  control = list(trace = 1 * messages))
 
   out$estimate <- structure_estimate(
     estim$par,
@@ -1586,8 +1611,9 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   )
   out$grad_MLE <- grad.log.lik(estim$par)
   hess.MLE <- hessian.log.lik(estim$par)
+  information <- -hess.MLE
   information_root <- factor_covariance(
-    -hess.MLE,
+    information,
     "observed information matrix"
   )
   out$covariance <- chol2inv(information_root)
@@ -1597,9 +1623,10 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   out["link_function"] <- list(NULL)
   out["units_m"] <- list(NULL)
   out["S_samples"] <- list(NULL)
-  optimizer_diagnostics <- estim[c("convergence", "message", "evaluations")]
-  optimizer_diagnostics$invalid_evaluations <-
-    attr(objective, "diagnostics")$invalid_evaluations
+  optimizer_diagnostics <- collect_optimizer_diagnostics(
+    estim, objective, out$grad_MLE, information, information_root
+  )
+  warn_unconverged_optimizer(optimizer_diagnostics)
   attr(out, "optimizer") <- optimizer_diagnostics
 
   class(out) <- "RiskMap"
@@ -2859,11 +2886,6 @@ glgpm_nong <-
                     function(x) -hess_mc_log_lik(x),
                     control = list(trace = 1 * messages))
 
-    if (messages && estim$convergence != 0) {
-      warning("Model optimisation did not converge: ", estim$message,
-              call. = FALSE)
-    }
-
     out$estimate <- structure_estimate(
       estim$par,
       beta_names = colnames(D),
@@ -2873,8 +2895,9 @@ glgpm_nong <-
     )
     out$grad_MLE <- grad_mc_log_lik(estim$par)
     hess_MLE <- hess_mc_log_lik(estim$par)
+    information <- -hess_MLE
     information_root <- factor_covariance(
-      -hess_MLE,
+      information,
       "observed information matrix"
     )
     out$covariance <- chol2inv(information_root)
@@ -2888,9 +2911,10 @@ glgpm_nong <-
     }
 
     out$link_function <- linkf
-    optimizer_diagnostics <- estim[c("convergence", "message", "evaluations")]
-    optimizer_diagnostics$invalid_evaluations <-
-      attr(objective, "diagnostics")$invalid_evaluations
+    optimizer_diagnostics <- collect_optimizer_diagnostics(
+      estim, objective, out$grad_MLE, information, information_root
+    )
+    warn_unconverged_optimizer(optimizer_diagnostics)
     final_weights <- normalise_log_weights(
       compute_log_f(estim$par) - log_f_tilde
     )
