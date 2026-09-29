@@ -213,6 +213,42 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_length(fit_re$re, 1)
 })
 
+test_that("glgpm is invariant to fixed-effect covariate scale", {
+  scaled_data <- gaussian_data
+  scaled_data$cov_large <- scaled_data$cov * 1e6
+
+  ordinary_fit <- glgpm(
+    y ~ cov + gp(),
+    data = scaled_data,
+    family = "gaussian",
+    messages = FALSE
+  )
+  scaled_fit <- glgpm(
+    y ~ cov_large + gp(),
+    data = scaled_data,
+    family = "gaussian",
+    messages = FALSE
+  )
+
+  expect_equal(ordinary_fit$log_lik, scaled_fit$log_lik,
+               tolerance = 1e-7)
+  expect_equal(
+    as.numeric(ordinary_fit$D %*% ordinary_fit$estimate$beta),
+    as.numeric(scaled_fit$D %*% scaled_fit$estimate$beta),
+    tolerance = 1e-7
+  )
+  expect_equal(
+    unname(ordinary_fit$estimate$beta[["cov"]]),
+    unname(scaled_fit$estimate$beta[["cov_large"]]) * 1e6,
+    tolerance = 1e-7
+  )
+  expect_equal(
+    unname(diag(ordinary_fit$covariance)[1:2]),
+    unname(diag(scaled_fit$covariance)[1:2]) * c(1, 1e12),
+    tolerance = 1e-6
+  )
+})
+
 test_that("glgpm produces expected output for binomial models", {
 
   fit_no_re <- glgpm(y ~ cov + gp(),

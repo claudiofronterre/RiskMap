@@ -44,6 +44,75 @@ test_that("linear_start_values uses a rank-aware least-squares solve", {
   )
 })
 
+test_that("design standardisation preserves linear predictors", {
+  design <- cbind(
+    "(Intercept)" = 1,
+    elevation = c(1000, 1500, 2500, 4000),
+    rainfall = c(0.01, 0.04, 0.02, 0.08)
+  )
+  beta <- c(0.5, -0.002, 8)
+  scaled <- standardize_design_matrix(design)
+  scaled_beta <- solve(scaled$coefficient_transform, beta)
+
+  expect_equal(
+    as.numeric(scaled$design %*% scaled_beta),
+    as.numeric(design %*% beta)
+  )
+  expect_equal(unname(colMeans(scaled$design[, -1, drop = FALSE])), c(0, 0),
+               tolerance = 1e-14)
+  expect_equal(unname(apply(scaled$design[, -1, drop = FALSE], 2, sd)), c(1, 1))
+
+  no_intercept <- design[, -1, drop = FALSE]
+  scaled_no_intercept <- standardize_design_matrix(no_intercept)
+  expect_equal(unname(scaled_no_intercept$center), c(0, 0))
+  expect_equal(
+    as.numeric(scaled_no_intercept$design %*%
+                 solve(scaled_no_intercept$coefficient_transform, beta[-1])),
+    as.numeric(no_intercept %*% beta[-1])
+  )
+
+  intercept_only <- standardize_design_matrix(design[, 1, drop = FALSE])
+  expect_equal(intercept_only$design, design[, 1, drop = FALSE])
+  expect_equal(unname(intercept_only$coefficient_transform), diag(1))
+
+  expect_error(
+    standardize_design_matrix(cbind("(Intercept)" = 1, constant = 2)),
+    "constant.*constant"
+  )
+  expect_equal(
+    sd(standardize_design_matrix(
+      cbind("(Intercept)" = 1, tiny = (1:4) * 1e-12)
+    )$design[, "tiny"]),
+    1
+  )
+})
+
+test_that("fixed-effect results are restored with the full Jacobian", {
+  transform <- matrix(c(1, 0, -2, 0.5), nrow = 2)
+  working_covariance <- matrix(
+    c(2, 0.2, 0.4,
+      0.2, 1, 0.3,
+      0.4, 0.3, 3),
+    nrow = 3
+  )
+  result <- list(
+    estimate = list(beta = c("(Intercept)" = 3, x = 4), sigma2 = 0.5),
+    covariance = working_covariance,
+    grad_MLE = c(0.1, -0.2, 0.3)
+  )
+  jacobian <- diag(3)
+  jacobian[1:2, 1:2] <- transform
+
+  restored <- restore_fixed_effect_scale(result, transform)
+
+  expect_equal(unname(restored$estimate$beta),
+               as.numeric(transform %*% c(3, 4)))
+  expect_equal(unname(restored$covariance),
+               jacobian %*% working_covariance %*% t(jacobian))
+  expect_equal(unname(restored$grad_MLE),
+               as.numeric(solve(t(jacobian), result$grad_MLE)))
+})
+
 test_that("safe_optimizer_objective penalises and counts invalid trials", {
   objective <- safe_optimizer_objective(function(x) {
     if (x < 0) stop("invalid trial")

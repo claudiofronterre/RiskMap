@@ -73,8 +73,8 @@
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
-##' \item{estimate}{Estimated parameters, on their internal (working) scale, as
-##' a named list: \code{beta} (named regression coefficients), \code{sigma2},
+##' \item{estimate}{Estimated parameters as a named list: \code{beta} (named
+##' regression coefficients on the scale of the supplied covariates), \code{sigma2},
 ##' \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
 ##' estimated, \code{sigma2_me} for Gaussian models with an estimated
 ##' measurement error variance, and \code{sigma2_re} (a named vector, one
@@ -204,6 +204,7 @@ glgpm <- function(formula,
 
   # Extract covariates matrix
   D <- as.matrix(model.matrix(attr(mf, "terms"), data = data))
+  original_D <- D
 
   if(is.null(inter_f$offset)) {
     cov_offset <- rep(0, nrow(data))
@@ -364,6 +365,12 @@ glgpm <- function(formula,
     }
   }
 
+  design_scaling <- standardize_design_matrix(D)
+  D <- design_scaling$design
+  start_pars[["beta"]] <- as.numeric(
+    solve(design_scaling$coefficient_transform, start_pars[["beta"]])
+  )
+
   if(!not_gaussian) {
     if(is.null(fix_var_me)) {
       if(is.null(start_pars[["sigma2_me"]])) {
@@ -391,6 +398,9 @@ glgpm <- function(formula,
                                           variables specified in the formula")
     }
     fitting_par0 <- par0
+    fitting_par0$beta <- as.numeric(
+      solve(design_scaling$coefficient_transform, par0$beta)
+    )
     fitting_par0$phi <- par0$phi / spatial_scaling$distance_scale
     res <- glgpm_nong(y = y, D, fitting_coords, units_m,
                         kappa = inter_f$gp_spec$kappa,
@@ -407,13 +417,19 @@ glgpm <- function(formula,
                         messages = messages)
   }
 
+  res <- restore_fixed_effect_scale(
+    res,
+    design_scaling$coefficient_transform
+  )
+
   # The fitting engines optimise log(phi) on scaled coordinates. An additive
   # shift restores the original distance units without changing its Hessian.
   res$estimate$phi <- res$estimate$phi +
     log(spatial_scaling$distance_scale)
 
   res$y <- y
-  res$D <- D
+  res$D <- original_D
+  attr(res, "design_scaling") <- design_scaling[c("center", "scale")]
   res$coords <- coords
   attr(res, "distance_scale") <- spatial_scaling$distance_scale
   res$ID_coords <- ID_coords
@@ -558,6 +574,107 @@ linear_start_values <- function(design, response) {
   }
 
   unname(fit$coefficients)
+}
+
+##' Standardise the fixed-effect design without changing its column space
+##'
+##' With an intercept, non-intercept columns are centred and scaled. Without
+##' an intercept they are only scaled, because centring would implicitly add
+##' an intercept to the fitted model. `coefficient_transform` maps coefficients
+##' on the standardised scale back to the scale supplied by the user.
+##'
+##' @noRd
+standardize_design_matrix <- function(design) {
+  design <- as.matrix(design)
+  p <- ncol(design)
+  coefficient_names <- colnames(design)
+  intercept <- which(coefficient_names == "(Intercept)")
+
+  if (length(intercept) > 1L) {
+    stop("The model matrix contains more than one intercept column.",
+         call. = FALSE)
+  }
+
+  columns_to_scale <- setdiff(seq_len(p), intercept)
+  center <- setNames(numeric(p), coefficient_names)
+  scale <- setNames(rep(1, p), coefficient_names)
+
+  if (length(columns_to_scale) > 0L) {
+    if (length(intercept) == 1L) {
+      center[columns_to_scale] <-
+        colMeans(design[, columns_to_scale, drop = FALSE])
+    }
+
+    centered <- sweep(
+      design[, columns_to_scale, drop = FALSE],
+      2L,
+      center[columns_to_scale],
+      FUN = "-"
+    )
+    scale[columns_to_scale] <- sqrt(colSums(centered^2) /
+                                      max(1, nrow(design) - 1L))
+
+    invalid <- !is.finite(scale[columns_to_scale]) |
+      scale[columns_to_scale] == 0
+    if (any(invalid)) {
+      invalid_names <- coefficient_names[columns_to_scale][invalid]
+      stop(
+        "The model matrix contains constant or numerically constant column",
+        if (length(invalid_names) > 1L) "s" else "",
+        ": ", paste(invalid_names, collapse = ", "), ".",
+        call. = FALSE
+      )
+    }
+  }
+
+  coefficient_transform <- diag(p)
+  dimnames(coefficient_transform) <-
+    list(coefficient_names, coefficient_names)
+  if (length(columns_to_scale) > 0L) {
+    coefficient_transform[cbind(columns_to_scale, columns_to_scale)] <-
+      1 / scale[columns_to_scale]
+    if (length(intercept) == 1L) {
+      coefficient_transform[intercept, columns_to_scale] <-
+        -center[columns_to_scale] / scale[columns_to_scale]
+    }
+  }
+
+  list(
+    design = design %*% coefficient_transform,
+    coefficient_transform = coefficient_transform,
+    center = center,
+    scale = scale
+  )
+}
+
+##' Restore fixed-effect results to the scale supplied by the user
+##'
+##' Applies the same linear transformation to the estimates and their full
+##' covariance matrix, including cross-covariances with covariance parameters.
+##' The score is transformed with the inverse transpose Jacobian.
+##'
+##' @noRd
+restore_fixed_effect_scale <- function(result, coefficient_transform) {
+  p <- nrow(coefficient_transform)
+  parameter_names <- names(unlist(result$estimate))
+  n_parameters <- length(parameter_names)
+  jacobian <- diag(n_parameters)
+  jacobian[seq_len(p), seq_len(p)] <- coefficient_transform
+
+  beta_names <- names(result$estimate$beta)
+  result$estimate$beta <- as.numeric(
+    coefficient_transform %*% result$estimate$beta
+  )
+  names(result$estimate$beta) <- beta_names
+
+  result$covariance <- jacobian %*% result$covariance %*% t(jacobian)
+  dimnames(result$covariance) <- list(parameter_names, parameter_names)
+
+  result$grad_MLE <- as.numeric(
+    solve(t(jacobian), result$grad_MLE)
+  )
+  names(result$grad_MLE) <- parameter_names
+  result
 }
 
 ##' Wrap an optimiser objective with controlled invalid-trial handling
