@@ -125,3 +125,27 @@ test_that("prediction scaling preserves draws at fixed fitted parameters", {
                unscaled_prediction$S_samples,
                tolerance = 1e-12)
 })
+
+test_that("Cholesky prediction weights agree with a direct covariance solve", {
+  covariance <- crossprod(matrix(c(2, 0.5, 0.5, 1.5), 2, 2))
+  cross_covariance <- matrix(c(0.2, 0.4, 0.7, 0.1, 0.3, 0.8), ncol = 2)
+  root <- factor_covariance(covariance)
+
+  expect_equal(cholesky_prediction_weights(cross_covariance, root),
+               cross_covariance %*% solve(covariance),
+               tolerance = 1e-14)
+})
+
+test_that("adaptive jitter is reported and conditional variances are guarded", {
+  singular <- matrix(1, 2, 2)
+  expect_warning(root <- factor_covariance(singular, "test covariance"),
+                 "required diagonal jitter")
+  expect_gt(attr(root, "jitter"), 0)
+
+  expect_equal(conditional_variances(1, matrix(c(1, 0)),
+                                     matrix(c(1 + 1e-15, 0))),
+               c(0, 1))
+  expect_error(conditional_variances(1, matrix(c(1, 0)),
+                                     matrix(c(1.01, 0))),
+               "materially negative")
+})

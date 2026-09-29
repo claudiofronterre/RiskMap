@@ -68,3 +68,87 @@ scale_spatial_coordinates <- function(coordinates, phi = NULL) {
 restore_spatial_range <- function(phi_scaled, distance_scale) {
   phi_scaled * distance_scale
 }
+
+#' Stable Cholesky factorisation
+#'
+#' Symmetrise a covariance matrix and factorise it. Scale-aware diagonal jitter
+#' is attempted only after the unmodified matrix fails.
+#'
+#' @param covariance Numeric square covariance matrix.
+#' @param context Short description used in diagnostics.
+#' @return An upper-triangular Cholesky factor. The applied jitter is stored in
+#'   the `jitter` attribute.
+#' @noRd
+factor_covariance <- function(covariance, context = "covariance matrix") {
+  covariance <- as.matrix(covariance)
+  if (nrow(covariance) != ncol(covariance)) {
+    stop("The ", context, " must be square.", call. = FALSE)
+  }
+
+  covariance <- (covariance + t(covariance)) / 2
+  root <- tryCatch(chol(covariance), error = function(error) NULL)
+  if (!is.null(root)) {
+    attr(root, "jitter") <- 0
+    return(root)
+  }
+
+  covariance_scale <- max(abs(diag(covariance)), 1)
+  relative_jitter <- 10^seq(-12, -6)
+  for (relative_value in relative_jitter) {
+    jitter <- relative_value * covariance_scale
+    adjusted <- covariance
+    diag(adjusted) <- diag(adjusted) + jitter
+    root <- tryCatch(chol(adjusted), error = function(error) NULL)
+    if (!is.null(root)) {
+      attr(root, "jitter") <- jitter
+      warning("The ", context, " required diagonal jitter of ",
+              format(jitter, scientific = TRUE), " for Cholesky factorisation.",
+              call. = FALSE)
+      return(root)
+    }
+  }
+
+  stop("The ", context, " is not positive definite, even after adaptive jitter.",
+       call. = FALSE)
+}
+
+#' Solve a positive-definite system from its Cholesky factor
+#'
+#' @param root Upper-triangular factor returned by [factor_covariance()].
+#' @param right_hand_side Numeric vector or matrix.
+#' @return Solution to `crossprod(root) %*% x = right_hand_side`.
+#' @noRd
+solve_from_cholesky <- function(root, right_hand_side) {
+  backsolve(root, forwardsolve(t(root), right_hand_side))
+}
+
+#' Compute prediction weights without forming a covariance inverse
+#'
+#' @param cross_covariance Prediction-by-observation cross-covariance matrix.
+#' @param root Upper-triangular Cholesky factor of the observation covariance.
+#' @return `cross_covariance %*% solve(covariance)`.
+#' @noRd
+cholesky_prediction_weights <- function(cross_covariance, root) {
+  t(solve_from_cholesky(root, t(cross_covariance)))
+}
+
+#' Validate conditional marginal variances
+#'
+#' @param marginal_variance Unconditional marginal variance.
+#' @param weights Prediction weights.
+#' @param cross_covariance Prediction-by-observation cross-covariance matrix.
+#' @return Non-negative conditional variances.
+#' @noRd
+conditional_variances <- function(marginal_variance, weights,
+                                  cross_covariance) {
+  variance <- marginal_variance - rowSums(weights * cross_covariance)
+  tolerance <- 100 * .Machine$double.eps *
+    max(1, abs(marginal_variance), abs(variance))
+
+  if (any(variance < -tolerance)) {
+    stop("The conditional covariance produced materially negative variances.",
+         call. = FALSE)
+  }
+
+  pmax(variance, 0)
+}

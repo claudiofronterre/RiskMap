@@ -379,11 +379,14 @@ setup_prediction <- function(object,
   if (object$family != "gaussian") {
 
     Sigma     <- par_hat$sigma2 * R
-    Sigma_inv <- solve(Sigma)
+    Sigma_root <- factor_covariance(Sigma, "observation covariance")
 
     if (!obs_loc) {
-      A <- if (list_mode) lapply(C, function(Ci) Ci %*% Sigma_inv)
-      else C %*% Sigma_inv
+      A <- if (list_mode) {
+        lapply(C, cholesky_prediction_weights, root = Sigma_root)
+      } else {
+        cholesky_prediction_weights(C, Sigma_root)
+      }
     }
 
     simulation <- laplace_sampling_mcmc(
@@ -401,7 +404,7 @@ setup_prediction <- function(object,
         A %*% t(simulation$samples$S)
 
       if (type == "marginal") {
-        sd_cond_S <- sqrt(par_hat$sigma2 - diag(A %*% t(C)))
+        sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
         out$S_samples <- sapply(seq_len(n_samples), function(i)
           mu_cond_S[, i] + sd_cond_S * rnorm(n_pred))
 
@@ -411,7 +414,9 @@ setup_prediction <- function(object,
             Sp    <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
                                                  kappa = object$kappa, return_sym_matrix = TRUE)
             Sc    <- Sp - A[[i]] %*% t(C[[i]])
-            Scr   <- t(chol(Sc))
+            Scr   <- t(factor_covariance(
+              Sc, "conditional prediction covariance"
+            ))
             sapply(seq_len(n_samples), function(j)
               mu_cond_S[[i]][, j] + Scr %*% rnorm(nrow(mu_cond_S[[i]])))
           })
@@ -419,7 +424,10 @@ setup_prediction <- function(object,
           Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
                                              kappa = object$kappa, return_sym_matrix = TRUE)
           Sc  <- Sp - A %*% t(C)
-          Scr <- t(chol(Sc))
+          Sc_root <- factor_covariance(
+            Sc, "conditional prediction covariance"
+          )
+          Scr <- t(Sc_root)
           out$S_samples <- sapply(seq_len(n_samples), function(i)
             mu_cond_S[, i] + Scr %*% rnorm(nrow(mu_cond_S)))
         }
@@ -463,8 +471,12 @@ setup_prediction <- function(object,
       A <- if (list_mode) lapply(C, prediction_weights) else prediction_weights(C)
     } else {
       Sigma     <- par_hat$sigma2 * R
-      Sigma_inv <- solve(Sigma)
-      A <- if (list_mode) lapply(C, function(single_grid_C) single_grid_C %*% Sigma_inv) else C %*% Sigma_inv
+      Sigma_root <- factor_covariance(Sigma, "observation covariance")
+      A <- if (list_mode) {
+        lapply(C, cholesky_prediction_weights, root = Sigma_root)
+      } else {
+        cholesky_prediction_weights(C, Sigma_root)
+      }
     }
 
     mu_cond_S <- if (list_mode) {
@@ -476,12 +488,14 @@ setup_prediction <- function(object,
     if (type == "marginal") {
       if (list_mode) {
         out$S_samples <- lapply(seq_along(A), function(i) {
-          sd_cond_S_i <- sqrt(par_hat$sigma2 - Matrix::diag(A[[i]] %*% t(C[[i]])))
+          sd_cond_S_i <- sqrt(conditional_variances(
+            par_hat$sigma2, A[[i]], C[[i]]
+          ))
           sapply(seq_len(n_samples), function(j)
             mu_cond_S[[i]] + sd_cond_S_i * rnorm(n_pred[i]))
         })
       } else {
-        sd_cond_S <- sqrt(par_hat$sigma2 - Matrix::diag(A %*% t(C)))
+        sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
         out$S_samples <- sapply(seq_len(n_samples), function(i)
           mu_cond_S + sd_cond_S * rnorm(n_pred_spatial))
       }
@@ -491,7 +505,10 @@ setup_prediction <- function(object,
           spatial_covariance_i <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
                                                               kappa = object$kappa, return_sym_matrix = TRUE)
           conditional_covariance_i <- spatial_covariance_i - A[[i]] %*% t(C[[i]])
-          cholesky_root_i <- t(chol(conditional_covariance_i))
+          cholesky_root_i <- t(factor_covariance(
+            conditional_covariance_i,
+            "conditional prediction covariance"
+          ))
           sapply(seq_len(n_samples), function(j)
             mu_cond_S[[i]] + cholesky_root_i %*% rnorm(n_pred[i]))
         })
@@ -499,7 +516,10 @@ setup_prediction <- function(object,
         Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
                                            kappa = object$kappa, return_sym_matrix = TRUE)
         Sc  <- Sp - A %*% t(C)
-        Scr <- t(chol(Sc))
+        Sc_root <- factor_covariance(
+          Sc, "conditional prediction covariance"
+        )
+        Scr <- t(Sc_root)
         out$S_samples <- sapply(seq_len(n_samples), function(i)
           mu_cond_S + Scr %*% rnorm(n_pred_spatial))
       }
@@ -516,7 +536,6 @@ setup_prediction <- function(object,
     out$re$samples  <- list()
     re_names        <- colnames(object$ID_re)
     if (object$family == "gaussian") {
-      Sigma_cond_inv <- solve(Sc)
       C_Z  <- C_g[, -(seq_len(n_dim_re_tot[1]))]
       add  <- 0
       for (i in seq_along(n_dim_re_tot[-1])) {
@@ -525,7 +544,7 @@ setup_prediction <- function(object,
         add <- n_dim_re_tot[i+1]
       }
       W_Z          <- prediction_weights(Matrix::t(C_Z))
-      A_Z          <- W_Z %*% t(C) %*% Sigma_cond_inv
+      A_Z          <- cholesky_prediction_weights(W_Z %*% t(C), Sc_root)
       Sigma_Z_cond <- diag(rep(par_hat$sigma2_re, n_dim_re_tot[-1])) -
         W_Z %*% C_Z -
         A_Z %*% C %*% t(W_Z)
