@@ -1354,9 +1354,8 @@ plot.RiskMap_predict_areal_target <- function(x, target = NULL, summary = "mean"
     stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
   }
   col_boundaries_name <- paste(target, "_", summary, sep = "")
-
   out <- ggplot(x$boundaries) +
-    geom_sf(aes(fill = x$boundaries[[col_boundaries_name]])) +
+    geom_sf(aes(fill = .data[[col_boundaries_name]])) +
     scale_fill_distiller(...)
   return(out)
 }
