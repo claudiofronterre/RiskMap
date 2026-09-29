@@ -116,7 +116,11 @@ its rows/columns are named to match \code{unlist(estimate)}.}
 \item{S_samples}{MCMC samples if \code{return_samples} is \code{TRUE}}
 \item{mcml_history}{For non-Gaussian models, one entry per MCML update,
 containing its estimates, likelihood, parameter change, importance-sampling
-effective sample size, and seed. Estimates use the same parameterisation as
+effective sample size, and seed. The likelihood-ratio gain is measured
+relative to the reference parameter used to generate that update's sample;
+it is therefore zero at the reference rather than an absolute likelihood.
+Both working-scale parameter change and change relative to the current
+standard errors are reported. Estimates use the same parameterisation as
 \code{estimate}, with regression coefficients and spatial range restored to the
 supplied covariate and distance units.}
 \item{mcml_converged}{Whether repeated MCML updates met the requested

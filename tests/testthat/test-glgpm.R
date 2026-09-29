@@ -352,6 +352,12 @@ test_that("iterative MCML updates its reference and records reproducible history
   )
   expect_lte(fit$mcml_history[[2]]$max_parameter_change,
              iterative_control$tolerance)
+  expect_true(is.finite(
+    fit$mcml_history[[2]]$log_likelihood_ratio_gain
+  ))
+  expect_true(is.finite(
+    fit$mcml_history[[2]]$max_standardized_change
+  ))
   expect_equal(fit$mcml_history[[2]]$estimate, fit$estimate)
 })
 

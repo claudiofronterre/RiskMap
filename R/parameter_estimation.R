@@ -113,7 +113,11 @@
 ##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
 ##' \item{mcml_history}{For non-Gaussian models, one entry per MCML update,
 ##' containing its estimates, likelihood, parameter change, importance-sampling
-##' effective sample size, and seed. Estimates use the same parameterisation as
+##' effective sample size, and seed. The likelihood-ratio gain is measured
+##' relative to the reference parameter used to generate that update's sample;
+##' it is therefore zero at the reference rather than an absolute likelihood.
+##' Both working-scale parameter change and change relative to the current
+##' standard errors are reported. Estimates use the same parameterisation as
 ##' `estimate`, with regression coefficients and spatial range restored to the
 ##' supplied covariate and distance units.}
 ##' \item{mcml_converged}{Whether repeated MCML updates met the requested
@@ -448,12 +452,17 @@ glgpm <- function(formula,
       working_estimate <- unlist(res$estimate, use.names = TRUE)
       change <- if (is.null(previous_estimate)) NA_real_ else
         max(abs(working_estimate - previous_estimate))
+      standard_error <- sqrt(pmax(diag(res$covariance), 0))
+      standardized_change <- if (is.null(previous_estimate)) NA_real_ else
+        max(abs(working_estimate - previous_estimate) /
+              pmax(standard_error, sqrt(.Machine$double.eps)))
       optimizer <- attr(res, "optimizer")
       mcml_history[[iteration]] <- list(
         iteration = iteration,
         estimate = res$estimate,
-        log_lik = res$log_lik,
+        log_likelihood_ratio_gain = res$log_lik,
         max_parameter_change = change,
+        max_standardized_change = standardized_change,
         importance_ess = optimizer$importance_ess,
         relative_importance_ess = optimizer$relative_importance_ess,
         seed = iteration_mcmc$seed
