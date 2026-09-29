@@ -4,6 +4,7 @@ vignette: >
   %\VignetteIndexEntry{An introduction to RiskMap}
   %\VignetteEngine{quarto::html}
   %\VignetteEncoding{UTF-8}
+author: Simon Smart
 ---
 
 **RiskMap** contains functions for model based geostatistics (MBG).
@@ -167,22 +168,28 @@ prediction_prep <- setup_prediction(model,
                                     messages = FALSE)
 ```
 
+We can then generate a prediction over the grid with `predict_target_grid()`. By default, the `f_target` is the linear predictor and to obtain the prevalence prediction, we need to define a custom target. Once complete, we can visualise the result by calling `plot()`. By default the mean of the first target will be plotted, but if multiple targets are specified, the one to plot can be specified:
+
 ```{r}
 grid_prediction <- predict_grid_target(prediction_prep,
                                        f_target = list(prev = function(lp) exp(lp)/(1+exp(lp))))
 
-plot(grid_prediction, "prev")
+plot(grid_prediction)
 ```
 
 ```{r}
+plot(grid_prediction, summary = "lower")
+```
 
-squares <- sf::st_make_grid(liberia_boundary, n = c(2, 2)) |> sf::st_as_sf()
+To generate areal predictions, we need to provide `boundaries` to `predict_areal_grid()`. In this example, we generate four squares covering the area of Liberia. To generate the predictions, at least one of the points of the `grid_pred` passed to `setup_prediction()` must fall inside each boundary. As with the grid predictions, we need to define `f_target` and we can visualise the predictions by passing the result to `plot()`.
 
-areal_prediction <- predict_areal_target(prediction_prep, squares, f_target = list(prev = function(lp) exp(lp)/(1+exp(lp))))
+```{r}
+squares <- sf::st_as_sf(sf::st_make_grid(liberia_boundary, n = c(2, 2)))
+areal_prediction <- predict_areal_target(prediction_prep, 
+                                         boundaries = squares, 
+                                         f_target = list(prev = function(lp) exp(lp)/(1+exp(lp))))
 
-plot(areal_prediction, "prev")
-
-
+plot(areal_prediction)
 ```
 
 
