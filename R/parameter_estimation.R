@@ -334,6 +334,10 @@ glgpm <- function(formula,
     check_positive_number(start_pars[["phi"]])
   }
 
+  spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
+  fitting_coords <- spatial_scaling$coordinates
+  fitting_start_phi <- spatial_scaling$phi
+
   if(isTRUE(fix_tau2)) {
     if(is.null(start_pars[["tau2"]])) {
       start_pars[["tau2"]] <- 1
@@ -369,12 +373,13 @@ glgpm <- function(formula,
         check_positive_number(start_pars[["sigma2_me"]])
       }
     }
-    res <- glgpm_lm(y = y-cov_offset, D, coords, kappa = inter_f$gp_spec$kappa,
+    res <- glgpm_lm(y = y-cov_offset, D, fitting_coords,
+            kappa = inter_f$gp_spec$kappa,
             ID_coords, ID_re, s_unique, re_unique,
             fix_var_me, fix_tau2,
             start_beta = start_pars[["beta"]],
             start_cov_pars = c(start_pars[["sigma2"]],
-                               start_pars[["phi"]],
+                               fitting_start_phi,
                                start_pars[["tau2"]],
                                start_pars[["sigma2_re"]],
                                start_pars[["sigma2_me"]]),
@@ -386,23 +391,32 @@ glgpm <- function(formula,
       if(length(par0$beta)!=ncol(D)) stop("the values passed to `beta` in par0 do not match the
                                           variables specified in the formula")
     }
-    res <- glgpm_nong(y = y, D, coords, units_m, kappa = inter_f$gp_spec$kappa,
+    fitting_par0 <- par0
+    fitting_par0$phi <- par0$phi / spatial_scaling$distance_scale
+    res <- glgpm_nong(y = y, D, fitting_coords, units_m,
+                        kappa = inter_f$gp_spec$kappa,
                         ID_coords, ID_re, s_unique, re_unique,
                         fix_tau2, family = family, invlink = invlink,
                         return_samples = return_samples,
-                        par0 = par0, cov_offset = cov_offset,
+                        par0 = fitting_par0, cov_offset = cov_offset,
                         start_beta = start_pars[["beta"]],
                         start_cov_pars = c(start_pars[["sigma2"]],
-                                           start_pars[["phi"]],
+                                           fitting_start_phi,
                                            start_pars[["tau2"]],
                                            start_pars[["sigma2_re"]]),
                         control_mcmc = control_mcmc,
                         messages = messages)
   }
 
+  # The fitting engines optimise log(phi) on scaled coordinates. An additive
+  # shift restores the original distance units without changing its Hessian.
+  res$estimate$phi <- res$estimate$phi +
+    log(spatial_scaling$distance_scale)
+
   res$y <- y
   res$D <- D
   res$coords <- coords
+  attr(res, "distance_scale") <- spatial_scaling$distance_scale
   res$ID_coords <- ID_coords
   if(n_re > 0) {
     res$re <- re_unique_f

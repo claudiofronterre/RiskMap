@@ -82,3 +82,46 @@ test_that("distance scaling rejects coincident observed locations", {
   expect_error(scale_spatial_coordinates(matrix(1, nrow = 3, ncol = 2)),
                "at least two distinct locations")
 })
+
+test_that("fitted spatial ranges remain in the requested distance units", {
+  model_metres <- glgpm(y ~ cov + gp() + re(i),
+                        data = gaussian_data,
+                        family = "gaussian",
+                        distance_units = "m",
+                        messages = FALSE)
+
+  expect_equal(coef(model_metres)$phi,
+               1000 * coef(gaussian_model)$phi,
+               tolerance = 1e-6)
+  expect_equal(model_metres$log_lik, gaussian_model$log_lik,
+               tolerance = 1e-8)
+  expect_equal(attr(model_metres, "distance_scale"),
+               max(pairwise_distances(model_metres$coords)))
+})
+
+test_that("prediction scaling preserves draws at fixed fitted parameters", {
+  scaled_model <- gaussian_intercept_model
+  unscaled_model <- scaled_model
+  attr(unscaled_model, "distance_scale") <- NULL
+
+  set.seed(712)
+  scaled_prediction <- setup_prediction(
+    scaled_model,
+    grid_pred = st_geometry(gaussian_data),
+    type = "joint",
+    control_mcmc = control_mcmc,
+    messages = FALSE
+  )
+  set.seed(712)
+  unscaled_prediction <- setup_prediction(
+    unscaled_model,
+    grid_pred = st_geometry(gaussian_data),
+    type = "joint",
+    control_mcmc = control_mcmc,
+    messages = FALSE
+  )
+
+  expect_equal(scaled_prediction$S_samples,
+               unscaled_prediction$S_samples,
+               tolerance = 1e-12)
+})

@@ -316,30 +316,40 @@ setup_prediction <- function(object,
   # Spatial quantities
   # ---------------------------------------------------------------------------
   out <- list(mu_pred = mu_pred, grid_pred = grid_pred, par_hat = par_hat)
+  distance_scale <- attr(object, "distance_scale") %||% 1
+  fitting_coords <- object$coords / distance_scale
+  fitting_phi <- par_hat$phi / distance_scale
+  fitting_grp <- if (list_mode) {
+    lapply(grp, `/`, distance_scale)
+  } else {
+    grp / distance_scale
+  }
 
   if (object$family != "gaussian" && !obs_loc) {
     if (list_mode) {
-      U_pred <- lapply(grp, cross_distances, second = object$coords)
+      U_pred <- lapply(fitting_grp, cross_distances, second = fitting_coords)
     } else {
-      U_pred <- cross_distances(grp, object$coords)
+      U_pred <- cross_distances(fitting_grp, fitting_coords)
     }
   } else if (object$family == "gaussian" && !obs_loc) {
-    observation_coords <- object$coords[object$ID_coords, , drop = FALSE]
+    observation_coords <- fitting_coords[object$ID_coords, , drop = FALSE]
     if (list_mode) {
-      U_pred <- lapply(grp, cross_distances, second = observation_coords)
+      U_pred <- lapply(fitting_grp, cross_distances,
+                       second = observation_coords)
     } else {
-      U_pred <- cross_distances(grp, observation_coords)
+      U_pred <- cross_distances(fitting_grp, observation_coords)
     }
   }
 
-  U <- pairwise_distances(object$coords)
-  R <- matern_correlation(U, phi = par_hat$phi, kappa = object$kappa, return_sym_matrix = TRUE)
+  U <- pairwise_distances(fitting_coords)
+  R <- matern_correlation(U, phi = fitting_phi, kappa = object$kappa,
+                          return_sym_matrix = TRUE)
 
   if (!obs_loc) {
     C <- if (list_mode)
-      lapply(U_pred, function(u) par_hat$sigma2 * matern_correlation(u, phi = par_hat$phi, kappa = object$kappa))
+      lapply(U_pred, function(u) par_hat$sigma2 * matern_correlation(u, phi = fitting_phi, kappa = object$kappa))
     else
-      par_hat$sigma2 * matern_correlation(U_pred, phi = par_hat$phi, kappa = object$kappa)
+      par_hat$sigma2 * matern_correlation(U_pred, phi = fitting_phi, kappa = object$kappa)
   } else {
     C <- par_hat$sigma2 * R[, object$ID_coords]
     grp <- object$coords
@@ -398,7 +408,7 @@ setup_prediction <- function(object,
       } else {
         if (list_mode) {
           out$S_samples <- lapply(seq_along(mu_cond_S), function(i) {
-            Sp    <- par_hat$sigma2 * matern_correlation(pairwise_distances(grp[[i]]), phi = par_hat$phi,
+            Sp    <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
                                                  kappa = object$kappa, return_sym_matrix = TRUE)
             Sc    <- Sp - A[[i]] %*% t(C[[i]])
             Scr   <- t(chol(Sc))
@@ -406,7 +416,7 @@ setup_prediction <- function(object,
               mu_cond_S[[i]][, j] + Scr %*% rnorm(nrow(mu_cond_S[[i]])))
           })
         } else {
-          Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(grp), phi = par_hat$phi,
+          Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
                                              kappa = object$kappa, return_sym_matrix = TRUE)
           Sc  <- Sp - A %*% t(C)
           Scr <- t(chol(Sc))
@@ -478,7 +488,7 @@ setup_prediction <- function(object,
     } else {
       if (list_mode) {
         out$S_samples <- lapply(seq_along(A), function(i) {
-          spatial_covariance_i <- par_hat$sigma2 * matern_correlation(pairwise_distances(grp[[i]]), phi = par_hat$phi,
+          spatial_covariance_i <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
                                                               kappa = object$kappa, return_sym_matrix = TRUE)
           conditional_covariance_i <- spatial_covariance_i - A[[i]] %*% t(C[[i]])
           cholesky_root_i <- t(chol(conditional_covariance_i))
@@ -486,7 +496,7 @@ setup_prediction <- function(object,
             mu_cond_S[[i]] + cholesky_root_i %*% rnorm(n_pred[i]))
         })
       } else {
-        Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(grp), phi = par_hat$phi,
+        Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
                                            kappa = object$kappa, return_sym_matrix = TRUE)
         Sc  <- Sp - A %*% t(C)
         Scr <- t(chol(Sc))

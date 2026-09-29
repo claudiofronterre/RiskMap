@@ -86,6 +86,12 @@ specify_glgpm <- function(formula, data, family, parameters,
               xlevels = xlevels, re_terms = re_terms, offset = inter$offset,
               kappa = inter$gp_spec$kappa, response = inter$response,
               custom_link = custom_link)
+  model_coords <- unique(coordinates_in_units(data, distance_units))
+  attr(out, "distance_scale") <- if (parameters$sigma2 > 0) {
+    scale_spatial_coordinates(model_coords, parameters$phi)$distance_scale
+  } else {
+    1
+  }
   class(out) <- "RiskMap_simulation_model"
   # Validate data-dependent settings before accepting the specification.
   simulation_inputs(out, data, TRUE, "data")
@@ -200,9 +206,14 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   n_unique <- nrow(unique_coords)
   pars <- model$parameters
   if (pars$sigma2 > 0) {
-    covariance <- pars$sigma2 * matern_correlation(pairwise_distances(unique_coords[, c("x", "y")]),
-                                                  phi = pars$phi, kappa = model$kappa,
-                                                  return_sym_matrix = TRUE)
+    distance_scale <- attr(model, "distance_scale") %||% 1
+    fitting_coords <- unique_coords[, c("x", "y")] / distance_scale
+    fitting_phi <- pars$phi / distance_scale
+    covariance <- pars$sigma2 * matern_correlation(
+      pairwise_distances(fitting_coords),
+      phi = fitting_phi, kappa = model$kappa,
+      return_sym_matrix = TRUE
+    )
     root <- tryCatch(t(chol(covariance)), error = function(e) {
       stop("The spatial covariance could not be factorised. Check spatial ",
            "parameters and nearly coincident locations. ", conditionMessage(e),
@@ -521,6 +532,8 @@ simulation_model <- function(object) {
   model <- specify_glgpm(object$formula, object$data, object$family, pars,
                          distance_units = object$distance_units,
                          invlink = invlink)
+  attr(model, "distance_scale") <- attr(object, "distance_scale") %||%
+    attr(model, "distance_scale")
   model$denominator <- denominator
   simulation_inputs(model, model$data, TRUE, "data", original = TRUE)
   model$original_denominator <- object$units_m

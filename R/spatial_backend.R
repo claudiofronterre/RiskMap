@@ -43,6 +43,10 @@ cross_distances <- function(first, second) {
 #' @noRd
 scale_spatial_coordinates <- function(coordinates, phi = NULL) {
   coordinates <- as.matrix(coordinates)
+  if (nrow(coordinates) < 2) {
+    stop("Spatial coordinates must contain at least two distinct locations.",
+         call. = FALSE)
+  }
   distance_scale <- max(pairwise_distances(coordinates))
 
   if (!is.finite(distance_scale) || distance_scale <= 0) {
