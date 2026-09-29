@@ -63,7 +63,11 @@ between the PIT/AnPIT curve and the reference line. Defaults to all metrics.}
 \item{keep_par_fixed}{Logical; whether to keep parameters fixed across folds,
 or re-estimate for each fold. Defaults to \code{TRUE}.}
 
-\item{control_mcmc}{Control settings for simulation, an output from \code{set_control_mcmc()}.}
+\item{control_mcmc}{Control settings for simulation, an output from \code{set_control_mcmc()}.
+If it carries a \code{seed}, the random splits generated for \code{method = "cluster"}
+or \code{method = "regularized"} are reproducible; ignored for \code{method = "user"},
+which is already deterministic. The caller's random number generator state
+is restored on exit.}
 
 \item{plot_fold}{Logical; whether to plot each fold's test set. Defaults to \code{TRUE}.}
 

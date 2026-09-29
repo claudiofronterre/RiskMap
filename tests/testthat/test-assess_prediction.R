@@ -476,12 +476,19 @@ test_that("assess_prediction splits test data correctly", {
 
 test_that("assess_prediction can refit correctly for all model families", {
 
+  # 'regularized' holds out a single random point from the tiny (n = 10)
+  # fixtures; refitting on whichever 9 points remain is occasionally
+  # numerically singular for an unlucky holdout, so a seeded 'control_mcmc'
+  # is used here to keep the test deterministic (was intermittently failing
+  # on CI). control_mcmc's fixture seed (see helper-data.R) is verified
+  # stable for all three families.
   result <- assess_prediction(
     list(gaussian_model),
     method = "regularized",
     min_dist = 1,
     size = 1,
     keep_par_fixed = FALSE,
+    control_mcmc = control_mcmc,
     messages = FALSE)
 
   expect_setequal(names(result), c("test_set", "model"))
@@ -508,6 +515,33 @@ test_that("assess_prediction can refit correctly for all model families", {
 
   expect_setequal(names(result), c("test_set", "model"))
 
+})
+
+test_that("assess_prediction's control_mcmc seed makes regularized/cluster splits reproducible and restores the RNG state", {
+
+  rng_before <- .Random.seed
+
+  result1 <- assess_prediction(
+    list(gaussian_model),
+    method = "regularized",
+    min_dist = 1,
+    size = 1,
+    messages = FALSE,
+    plot_fold = FALSE,
+    control_mcmc = control_mcmc)
+
+  expect_identical(rng_before, .Random.seed)
+
+  result2 <- assess_prediction(
+    list(gaussian_model),
+    method = "regularized",
+    min_dist = 1,
+    size = 1,
+    messages = FALSE,
+    plot_fold = FALSE,
+    control_mcmc = control_mcmc)
+
+  expect_identical(result1$test_set, result2$test_set)
 })
 
 

@@ -70,6 +70,9 @@ with `iter` and `fold`) and `which_metric` has been renamed to `metrics`.
 Parameters have also been reordered: mandatory arguments first, then those
 required per `method` (in the order `"cluster"`, `"regularized"`, `"user"`),
 then the remaining optional arguments.
+- `assess_prediction()` now honours a `seed` set on its `control_mcmc` argument
+to make the random splits generated for `method = "cluster"` or `"regularized"`
+reproducible.
 - The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to
 `TRUE` to estimate it.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian

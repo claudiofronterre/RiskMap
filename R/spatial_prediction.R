@@ -1555,6 +1555,10 @@ update_predictors <- function(object, predictors) {
 ##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
 ##' or re-estimate for each fold. Defaults to `TRUE`.
 ##' @param control_mcmc Control settings for simulation, an output from `set_control_mcmc()`.
+##' If it carries a `seed`, the random splits generated for `method = "cluster"`
+##' or `method = "regularized"` are reproducible; ignored for `method = "user"`,
+##' which is already deterministic. The caller's random number generator state
+##' is restored on exit.
 ##' @param plot_fold Logical; whether to plot each fold's test set. Defaults to `TRUE`.
 ##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
@@ -1811,6 +1815,12 @@ assess_prediction <- function(object,
       stop("'user_split' must be a matrix or a list")
     }
     list(splits = spl)
+  }
+
+  if (!is.null(control_mcmc$seed)) {
+    restore_seed <- preserve_random_seed()
+    on.exit(restore_seed(), add = TRUE)
+    set.seed(control_mcmc$seed)
   }
 
   if (method == "user") {
