@@ -1697,19 +1697,16 @@ assess_prediction <- function(object,
     if (is.null(user_split)) stop("when 'method' is 'user' you must supply 'user_split'")
   }
 
-  if (!is.logical(keep_par_fixed))
-    stop("'keep_par_fixed' must be either TRUE or FALSE")
+  check_logical(keep_par_fixed)
 
   check_positive_integer(iter, "iter")
 
   if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
     stop("'control_mcmc' must come from 'set_control_mcmc()'")
 
-  if (!is.logical(plot_fold))
-    stop("'plot_fold' must be either TRUE or FALSE")
+  check_logical(plot_fold)
 
-  if (!is.logical(messages))
-    stop("'messages' must be either TRUE or FALSE")
+  check_logical(messages)
 
   get_CRPS  <- "CRPS"  %in% metrics
   get_SCRPS <- "SCRPS" %in% metrics
@@ -1743,6 +1740,27 @@ assess_prediction <- function(object,
     }
   }
 
+  # Validates one user-supplied `list(in_id = ..., out_id = ...)` split:
+  # non-missing numeric row indices, non-empty, no duplicates within either
+  # id vector, in range, and no overlap between train and test (an overlap
+  # would silently leak a held-out observation into training).
+  validate_split_indices <- function(in_id, out_id, index) {
+    what <- sprintf("'user_split[[%d]]'s", index)
+    if (!is.numeric(in_id) || !is.numeric(out_id) || anyNA(in_id) || anyNA(out_id))
+      stop(what, " 'in_id' and 'out_id' must be non-missing numeric vectors of row indices")
+    if (length(in_id) == 0 || length(out_id) == 0)
+      stop(what, " 'in_id' and 'out_id' must both be non-empty")
+    if (any(in_id != round(in_id)) || any(out_id != round(out_id)))
+      stop(what, " 'in_id' and 'out_id' must contain whole numbers")
+    if (anyDuplicated(in_id) || anyDuplicated(out_id))
+      stop(what, " 'in_id' and 'out_id' must not contain duplicate indices")
+    if (!all(in_id %in% seq_len(n_obs)) || !all(out_id %in% seq_len(n_obs)))
+      stop(what, " 'in_id' and 'out_id' must be row indices between 1 and the number of observations")
+    if (length(intersect(in_id, out_id)) > 0)
+      stop(what, " 'in_id' and 'out_id' must not overlap")
+    list(in_id = as.integer(in_id), out_id = as.integer(out_id))
+  }
+
   make_splits_from_user <- function(usr, n_iter_expected) {
     spl <- vector("list", n_iter_expected)
     if (is.matrix(usr)) {
@@ -1750,9 +1768,16 @@ assess_prediction <- function(object,
         stop("'user_split' matrix must have the same number of rows as the data in the model")
       if (ncol(usr) != n_iter_expected)
         stop("'user_split' matrix must have a number of columns equal to 'iter'")
+      if (anyNA(usr))
+        stop("'user_split' matrix must not contain missing values")
+      if (!all(usr %in% c(0, 1)))
+        stop("'user_split' matrix must only contain 0s (training) and 1s (test)")
       for (i in seq_len(n_iter_expected)) {
-        out_id <- which(usr[, i] != 0 & !is.na(usr[, i]))
-        in_id  <- setdiff(seq_len(n_obs), out_id)
+        out_id <- which(usr[, i] == 1)
+        in_id  <- which(usr[, i] == 0)
+        if (length(in_id) == 0 || length(out_id) == 0)
+          stop("Column ", i, " of 'user_split' must contain at least one training (0) ",
+               "and one test (1) observation")
         spl[[i]] <- list(in_id = in_id, out_id = out_id,
                          data = data_sf[in_id, ],
                          data_test = data_sf[out_id, ])
@@ -1763,8 +1788,9 @@ assess_prediction <- function(object,
       for (i in seq_len(n_iter_expected)) {
         ui <- usr[[i]]
         if (is.list(ui) && !is.null(ui$in_id) && !is.null(ui$out_id)) {
-          in_id  <- ui$in_id
-          out_id <- ui$out_id
+          validated <- validate_split_indices(ui$in_id, ui$out_id, i)
+          in_id  <- validated$in_id
+          out_id <- validated$out_id
         } else if (is.integer(ui) || is.double(ui)) {
           if (length(ui) == nrow(data_sf)){
             stop("The length of values in 'user_split' to create the test set must be less than the number of rows in the data")

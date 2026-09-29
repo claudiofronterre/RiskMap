@@ -1403,6 +1403,26 @@ check_positive_number <- function(x, type = "starting ") {
 }
 
 
+#' @title check_logical
+#' @description
+#'
+#' Check that a value is a single, non-missing logical (`TRUE` or `FALSE`)
+#' and error if not
+#' @param x the value to check
+#' @return TRUE if x is valid. Raise an error if not.
+#' @noRd
+#'
+check_logical <- function(x) {
+  name <- deparse(substitute(x))
+
+  if (!isTRUE(x) && !isFALSE(x)) {
+    stop("'", name, "' must be either TRUE or FALSE", call. = FALSE)
+  }
+
+  invisible(TRUE)
+}
+
+
 #' @title check_crs
 #' @description
 #'

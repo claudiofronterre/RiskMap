@@ -193,6 +193,83 @@ test_that("assess_prediction produces errors", {
     "The values in 'user_split' must be row indices of the data"
   )
 
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = matrix(c(NA, rep(0, n - 1)), ncol = 1)),
+    "'user_split' matrix must not contain missing values"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = matrix(c(2, rep(0, n - 1)), ncol = 1)),
+    "'user_split' matrix must only contain 0s \\(training\\) and 1s \\(test\\)"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = matrix(rep(0, n), ncol = 1)),
+    "must contain at least one training \\(0\\) and one test \\(1\\) observation"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = matrix(rep(1, n), ncol = 1)),
+    "must contain at least one training \\(0\\) and one test \\(1\\) observation"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(list(in_id = c(1, 2, 3), out_id = c(3, 4)))),
+    "'in_id' and 'out_id' must not overlap"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(list(in_id = c(1, 1, 2), out_id = 3:n))),
+    "'in_id' and 'out_id' must not contain duplicate indices"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(list(in_id = 1:2, out_id = n + 1))),
+    "'in_id' and 'out_id' must be row indices between 1 and the number of observations"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(list(in_id = integer(0), out_id = 1:n))),
+    "'in_id' and 'out_id' must both be non-empty"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(list(in_id = c(1, 2.5), out_id = 3:n))),
+    "'in_id' and 'out_id' must contain whole numbers"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(list(in_id = c("1", "2"), out_id = 3:n))),
+    "'in_id' and 'out_id' must be non-missing numeric vectors of row indices"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(list(in_id = c(1, NA), out_id = 3:n))),
+    "'in_id' and 'out_id' must be non-missing numeric vectors of row indices"
+  )
+
 })
 
 make_assess_prediction_fit <- function(data, covariate) {
@@ -385,6 +462,15 @@ test_that("assess_prediction splits test data correctly", {
 
   expect_length(result$test_set, 1)
   expect_equal(nrow(result$test_set[[1]]), n/2)
+
+  result <- assess_prediction(
+    list(gaussian_model),
+    method = "user",
+    user_split = list(list(in_id = 1:(n - 2), out_id = (n - 1):n)),
+    messages = FALSE)
+
+  expect_length(result$test_set, 1)
+  expect_equal(nrow(result$test_set[[1]]), 2)
 
 })
 
