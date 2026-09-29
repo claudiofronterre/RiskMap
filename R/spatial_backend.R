@@ -178,3 +178,63 @@ sample_correlated_gaussian <- function(mean, lower_root, n_samples) {
   noise <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
   mean + lower_root %*% noise
 }
+
+#' Select an internal marginal-prediction batch size
+#'
+#' Keep each dense prediction-by-observation intermediate near 64 MiB. Small
+#' problems remain unbatched.
+#'
+#' @param n_prediction Number of prediction locations.
+#' @param n_conditioning Number of conditioning locations or observations.
+#' @param target_bytes Target size of one dense intermediate matrix.
+#' @return Integer batch size.
+#' @noRd
+marginal_prediction_batch_size <- function(
+    n_prediction, n_conditioning, target_bytes = 64 * 1024^2) {
+  if (n_prediction == 0 || n_conditioning == 0) {
+    return(n_prediction)
+  }
+
+  max(1L, min(n_prediction, floor(target_bytes / (8 * n_conditioning))))
+}
+
+#' Compute marginal spatial predictions in location batches
+#'
+#' @param prediction_coordinates Prediction coordinates.
+#' @param conditioning_coordinates Coordinates defining cross-covariances.
+#' @param weight_function Function mapping cross-covariances to weights.
+#' @param conditional_signal Vector or matrix multiplied by the weights.
+#' @param marginal_variance Unconditional spatial variance.
+#' @param phi Matérn range on the internal coordinate scale.
+#' @param kappa Matérn smoothness.
+#' @param n_samples Number of predictive samples.
+#' @param batch_size Number of prediction locations per batch.
+#' @return Matrix with prediction locations in rows and samples in columns.
+#' @noRd
+batched_marginal_prediction <- function(
+    prediction_coordinates, conditioning_coordinates, weight_function,
+    conditional_signal, marginal_variance, phi, kappa, n_samples,
+    batch_size) {
+  n_prediction <- nrow(prediction_coordinates)
+  samples <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
+
+  for (start in seq.int(1L, n_prediction, by = batch_size)) {
+    index <- start:min(start + batch_size - 1L, n_prediction)
+    distance <- cross_distances(
+      prediction_coordinates[index, , drop = FALSE],
+      conditioning_coordinates
+    )
+    cross_covariance <- marginal_variance * matern_correlation(
+      distance, phi = phi, kappa = kappa
+    )
+    weights <- weight_function(cross_covariance)
+    conditional_mean <- weights %*% conditional_signal
+    conditional_sd <- sqrt(conditional_variances(
+      marginal_variance, weights, cross_covariance
+    ))
+    samples[index, ] <- conditional_mean +
+      conditional_sd * samples[index, , drop = FALSE]
+  }
+
+  samples
+}

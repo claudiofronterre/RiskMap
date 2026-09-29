@@ -174,3 +174,37 @@ test_that("vectorised Gaussian sampling preserves seeded draws", {
     correlated_means, lower_root, ncol(correlated_means)
   ), expected_correlated)
 })
+
+test_that("automatic marginal batching preserves unbatched predictions", {
+  prediction <- cbind(seq(0, 1, length.out = 17), 0)
+  conditioning <- cbind(seq(0, 1, length.out = 5), 0)
+  covariance <- matern_correlation(
+    pairwise_distances(conditioning), phi = 0.3, kappa = 1.5,
+    return_sym_matrix = TRUE
+  )
+  diag(covariance) <- diag(covariance) + 0.1
+  root <- factor_covariance(covariance)
+  weight_function <- function(x) cholesky_prediction_weights(x, root)
+  signal <- matrix(seq_len(20) / 20, nrow = 5)
+
+  distance <- cross_distances(prediction, conditioning)
+  cross_covariance <- matern_correlation(distance, phi = 0.3, kappa = 1.5)
+  weights <- weight_function(cross_covariance)
+  means <- weights %*% signal
+  standard_deviation <- sqrt(conditional_variances(
+    1, weights, cross_covariance
+  ))
+  set.seed(150)
+  expected <- sample_independent_gaussian(
+    means, standard_deviation, ncol(signal)
+  )
+
+  set.seed(150)
+  actual <- batched_marginal_prediction(
+    prediction, conditioning, weight_function, signal, 1, 0.3, 1.5,
+    ncol(signal), batch_size = 3
+  )
+  expect_equal(actual, expected, tolerance = 1e-14)
+  expect_equal(marginal_prediction_batch_size(10, 5), 10)
+  expect_lt(marginal_prediction_batch_size(1e6, 1000), 1e6)
+})

@@ -325,19 +325,31 @@ setup_prediction <- function(object,
     grp / distance_scale
   }
 
-  if (object$family != "gaussian" && !obs_loc) {
+  conditioning_coords <- if (object$family == "gaussian") {
+    fitting_coords[object$ID_coords, , drop = FALSE]
+  } else {
+    fitting_coords
+  }
+  marginal_batch_size <- if (!list_mode && !obs_loc && type == "marginal") {
+    marginal_prediction_batch_size(n_pred, nrow(conditioning_coords))
+  } else {
+    n_pred
+  }
+  batch_marginal <- !list_mode && !obs_loc && type == "marginal" &&
+    marginal_batch_size < n_pred
+
+  if (object$family != "gaussian" && !obs_loc && !batch_marginal) {
     if (list_mode) {
       U_pred <- lapply(fitting_grp, cross_distances, second = fitting_coords)
     } else {
       U_pred <- cross_distances(fitting_grp, fitting_coords)
     }
-  } else if (object$family == "gaussian" && !obs_loc) {
-    observation_coords <- fitting_coords[object$ID_coords, , drop = FALSE]
+  } else if (object$family == "gaussian" && !obs_loc && !batch_marginal) {
     if (list_mode) {
       U_pred <- lapply(fitting_grp, cross_distances,
-                       second = observation_coords)
+                       second = conditioning_coords)
     } else {
-      U_pred <- cross_distances(fitting_grp, observation_coords)
+      U_pred <- cross_distances(fitting_grp, conditioning_coords)
     }
   }
 
@@ -345,7 +357,7 @@ setup_prediction <- function(object,
   R <- matern_correlation(U, phi = fitting_phi, kappa = object$kappa,
                           return_sym_matrix = TRUE)
 
-  if (!obs_loc) {
+  if (!obs_loc && !batch_marginal) {
     C <- if (list_mode)
       lapply(U_pred, function(u) par_hat$sigma2 * matern_correlation(u, phi = fitting_phi, kappa = object$kappa))
     else
@@ -381,11 +393,15 @@ setup_prediction <- function(object,
     Sigma     <- par_hat$sigma2 * R
     Sigma_root <- factor_covariance(Sigma, "observation covariance")
 
-    if (!obs_loc) {
+    prediction_weights <- function(cross_covariance) {
+      cholesky_prediction_weights(cross_covariance, Sigma_root)
+    }
+
+    if (!obs_loc && !batch_marginal) {
       A <- if (list_mode) {
-        lapply(C, cholesky_prediction_weights, root = Sigma_root)
+        lapply(C, prediction_weights)
       } else {
-        cholesky_prediction_weights(C, Sigma_root)
+        prediction_weights(C)
       }
     }
 
@@ -397,6 +413,12 @@ setup_prediction <- function(object,
 
     if (obs_loc) {
       out$S_samples <- t(simulation$samples$S)
+    } else if (batch_marginal) {
+      out$S_samples <- batched_marginal_prediction(
+        fitting_grp, conditioning_coords, prediction_weights,
+        t(simulation$samples$S), par_hat$sigma2, fitting_phi,
+        object$kappa, n_samples, marginal_batch_size
+      )
     } else {
       mu_cond_S <- if (list_mode)
         lapply(A, function(Ai) Ai %*% t(simulation$samples$S))
@@ -469,64 +491,90 @@ setup_prediction <- function(object,
       }
       prediction_weights <- gaussian_prediction_weights(C_g, Sigma_g, ID_g,
                                                          par_hat$sigma2_me)
-      A <- if (list_mode) lapply(C, prediction_weights) else prediction_weights(C)
+      if (!batch_marginal) {
+        A <- if (list_mode) {
+          lapply(C, prediction_weights)
+        } else {
+          prediction_weights(C)
+        }
+      }
     } else {
       Sigma     <- par_hat$sigma2 * R
       Sigma_root <- factor_covariance(Sigma, "observation covariance")
-      A <- if (list_mode) {
-        lapply(C, cholesky_prediction_weights, root = Sigma_root)
-      } else {
-        cholesky_prediction_weights(C, Sigma_root)
+      prediction_weights <- function(cross_covariance) {
+        cholesky_prediction_weights(cross_covariance, Sigma_root)
+      }
+      if (!batch_marginal) {
+        A <- if (list_mode) {
+          lapply(C, prediction_weights)
+        } else {
+          prediction_weights(C)
+        }
       }
     }
 
-    mu_cond_S <- if (list_mode) {
-      lapply(A, function(single_grid_A) as.numeric(single_grid_A %*% diff.y))
+    if (batch_marginal) {
+      out$S_samples <- batched_marginal_prediction(
+        fitting_grp, conditioning_coords, prediction_weights, diff.y,
+        par_hat$sigma2, fitting_phi, object$kappa, n_samples,
+        marginal_batch_size
+      )
     } else {
-      as.numeric(A %*% diff.y)
-    }
-
-    if (type == "marginal") {
-      if (list_mode) {
-        out$S_samples <- lapply(seq_along(A), function(i) {
-          sd_cond_S_i <- sqrt(conditional_variances(
-            par_hat$sigma2, A[[i]], C[[i]]
-          ))
-          sample_independent_gaussian(
-            mu_cond_S[[i]], sd_cond_S_i, n_samples
-          )
+      mu_cond_S <- if (list_mode) {
+        lapply(A, function(single_grid_A) {
+          as.numeric(single_grid_A %*% diff.y)
         })
       } else {
-        sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
-        out$S_samples <- sample_independent_gaussian(
-          mu_cond_S, sd_cond_S, n_samples
-        )
+        as.numeric(A %*% diff.y)
       }
-    } else {
-      if (list_mode) {
-        out$S_samples <- lapply(seq_along(A), function(i) {
-          spatial_covariance_i <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
-                                                              kappa = object$kappa, return_sym_matrix = TRUE)
-          conditional_covariance_i <- spatial_covariance_i - A[[i]] %*% t(C[[i]])
-          cholesky_root_i <- t(factor_covariance(
-            conditional_covariance_i,
-            "conditional prediction covariance"
-          ))
-          sample_correlated_gaussian(
-            mu_cond_S[[i]], cholesky_root_i, n_samples
+
+      if (type == "marginal") {
+        if (list_mode) {
+          out$S_samples <- lapply(seq_along(A), function(i) {
+            sd_cond_S_i <- sqrt(conditional_variances(
+              par_hat$sigma2, A[[i]], C[[i]]
+            ))
+            sample_independent_gaussian(
+              mu_cond_S[[i]], sd_cond_S_i, n_samples
+            )
+          })
+        } else {
+          sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
+          out$S_samples <- sample_independent_gaussian(
+            mu_cond_S, sd_cond_S, n_samples
           )
-        })
+        }
       } else {
-        Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
-                                           kappa = object$kappa, return_sym_matrix = TRUE)
-        Sc  <- Sp - A %*% t(C)
-        Sc_root <- factor_covariance(
-          Sc, "conditional prediction covariance"
-        )
-        Scr <- t(Sc_root)
-        out$S_samples <- sample_correlated_gaussian(
-          mu_cond_S, Scr, n_samples
-        )
+        if (list_mode) {
+          out$S_samples <- lapply(seq_along(A), function(i) {
+            spatial_covariance_i <- par_hat$sigma2 * matern_correlation(
+              pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
+              kappa = object$kappa, return_sym_matrix = TRUE
+            )
+            conditional_covariance_i <- spatial_covariance_i -
+              A[[i]] %*% t(C[[i]])
+            cholesky_root_i <- t(factor_covariance(
+              conditional_covariance_i,
+              "conditional prediction covariance"
+            ))
+            sample_correlated_gaussian(
+              mu_cond_S[[i]], cholesky_root_i, n_samples
+            )
+          })
+        } else {
+          Sp <- par_hat$sigma2 * matern_correlation(
+            pairwise_distances(fitting_grp), phi = fitting_phi,
+            kappa = object$kappa, return_sym_matrix = TRUE
+          )
+          Sc <- Sp - A %*% t(C)
+          Sc_root <- factor_covariance(
+            Sc, "conditional prediction covariance"
+          )
+          Scr <- t(Sc_root)
+          out$S_samples <- sample_correlated_gaussian(
+            mu_cond_S, Scr, n_samples
+          )
+        }
       }
     }
   }
