@@ -30,6 +30,30 @@ cross_distances <- function(first, second) {
   cpp_cross_distances(as.matrix(first), as.matrix(second))
 }
 
+#' Index repeated two-dimensional coordinates
+#'
+#' @param coordinates Numeric matrix with locations in rows.
+#' @return A list containing unique locations in first-occurrence order and an
+#'   integer index mapping every input row to its unique location.
+#' @noRd
+index_coordinate_rows <- function(coordinates) {
+  coordinates <- as.matrix(coordinates)
+  if (ncol(coordinates) != 2L) {
+    stop("Spatial coordinates must have exactly two columns.", call. = FALSE)
+  }
+
+  # Complex values provide an exact, collision-free key for a pair of finite
+  # doubles and avoid an O(n^2) row-by-row search.
+  keys <- complex(real = coordinates[, 1], imaginary = coordinates[, 2])
+  unique_rows <- !duplicated(keys)
+  unique_keys <- keys[unique_rows]
+
+  list(
+    coordinates = coordinates[unique_rows, , drop = FALSE],
+    index = match(keys, unique_keys)
+  )
+}
+
 #' Scale spatial coordinates and range
 #'
 #' The maximum observed pairwise distance is used for both fitting and future

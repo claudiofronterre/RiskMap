@@ -271,12 +271,11 @@ glgpm <- function(formula,
   if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
   coords_o <- coordinates_in_units(data, distance_units)
-  coords <- unique(coords_o)
+  coordinate_index <- index_coordinate_rows(coords_o)
+  coords <- coordinate_index$coordinates
+  ID_coords <- coordinate_index$index
 
   m <- nrow(coords_o)
-  ID_coords <- sapply(1:m, function(i)
-               which(coords_o[i,1]==coords[,1] &
-                     coords_o[i,2]==coords[,2]))
   s_unique <- unique(ID_coords)
 
   fix_tau2 <- inter_f$gp_spec$nugget
