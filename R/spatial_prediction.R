@@ -1968,13 +1968,28 @@ assess_prediction <- function(object,
 ##'
 ##' @return A plot of the simulation results.
 ##'
-##' @importFrom stars st_rasterize
+##' @importFrom terra rast rasterize vect
 ##'
 ##' @export
 plot_sim_surf <-  function(surf_obj, sim, ...) {
 
   sf_object <- simulated_surface(surf_obj, sim)
-  r <- rast(st_rasterize(sf_object[, "linear_predictor", drop = FALSE]))
+
+  # Points are assumed to fall on a regular lattice (e.g. from create_grid());
+  # infer its cell size from the smallest gap between distinct coordinates,
+  # and pad the extent by half a cell so points land at cell centres.
+  coords <- st_coordinates(sf_object)
+  cellsize <- c(min(diff(sort(unique(coords[, "X"])))),
+               min(diff(sort(unique(coords[, "Y"])))))
+  template <- rast(
+    xmin = min(coords[, "X"]) - cellsize[1] / 2,
+    xmax = max(coords[, "X"]) + cellsize[1] / 2,
+    ymin = min(coords[, "Y"]) - cellsize[2] / 2,
+    ymax = max(coords[, "Y"]) + cellsize[2] / 2,
+    resolution = cellsize,
+    crs = st_crs(sf_object)$wkt
+  )
+  r <- rasterize(vect(sf_object), template, field = "linear_predictor")
 
   plot(r, main = paste("Simulation no.", sim), ...)
   if (!is.null(surf_obj$locations$data)) {
