@@ -299,7 +299,7 @@ glgpm <- function(formula,
 
   if(is.null(start_pars[["beta"]])) {
     if(family=="gaussian") {
-      start_pars[["beta"]] <- as.numeric(solve(t(D)%*%D)%*%t(D)%*%y)
+      start_pars[["beta"]] <- linear_start_values(D, y)
     } else if(family=="binomial") {
       aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
@@ -536,6 +536,22 @@ normalise_log_weights <- function(log_weights) {
 
   weights <- exp(log_weights - shift)
   weights / sum(weights)
+}
+
+##' Obtain stable Gaussian regression starting values
+##'
+##' QR decomposition avoids squaring the condition number as the normal
+##' equations do, and lets us reject a rank-deficient model matrix explicitly.
+##'
+##' @noRd
+linear_start_values <- function(design, response) {
+  fit <- lm.fit(x = design, y = response)
+  if (fit$rank < ncol(design)) {
+    stop("The model matrix is rank deficient; regression starting values ",
+         "cannot be determined.", call. = FALSE)
+  }
+
+  unname(fit$coefficients)
 }
 
 ##' Evaluate log(1 + exp(x)) without overflow
@@ -2682,8 +2698,12 @@ glgpm_nong <-
     estim <- nlminb(start_par,
                     function(x) -mc_log_lik(x),
                     function(x) -grad_mc_log_lik(x),
-                    function(x) -hess_mc_log_lik(x),
                     control = list(trace = 1 * messages))
+
+    if (estim$convergence != 0) {
+      warning("Model optimisation did not converge: ", estim$message,
+              call. = FALSE)
+    }
 
     out$estimate <- structure_estimate(
       estim$par,
@@ -2694,7 +2714,11 @@ glgpm_nong <-
     )
     out$grad_MLE <- grad_mc_log_lik(estim$par)
     hess_MLE <- hess_mc_log_lik(estim$par)
-    out$covariance <- solve(-hess_MLE)
+    information_root <- factor_covariance(
+      -hess_MLE,
+      "observed information matrix"
+    )
+    out$covariance <- chol2inv(information_root)
     flat_names <- names(unlist(out$estimate))
     dimnames(out$covariance) <- list(flat_names, flat_names)
     out$log_lik <- -estim$objective
@@ -2705,6 +2729,7 @@ glgpm_nong <-
     }
 
     out$link_function <- linkf
+    attr(out, "optimizer") <- estim[c("convergence", "message", "evaluations")]
     class(out) <- "RiskMap"
     return(out)
 }

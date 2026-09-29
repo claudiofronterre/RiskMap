@@ -75,4 +75,5 @@ test_that("non-Gaussian estimated nugget uses consistent derivatives", {
   # Monte Carlo likelihood and its analytical derivatives.
   expect_lt(max(abs(fit$grad_MLE)), 0.01)
   expect_true(is.finite(coef(fit)[["tau2"]]))
+  expect_identical(attr(fit, "optimizer")$convergence, 0L)
 })

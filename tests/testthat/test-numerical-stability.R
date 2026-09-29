@@ -29,3 +29,15 @@ test_that("softplus is stable in both tails", {
   expect_equal(softplus(-1000), 0)
   expect_true(all(is.finite(softplus(c(-1000, 1000)))))
 })
+
+test_that("linear_start_values uses a rank-aware least-squares solve", {
+  design <- cbind(1, c(-1, 0, 1))
+  response <- c(0, 1, 4)
+
+  expect_equal(linear_start_values(design, response),
+               unname(coef(lm(response ~ design[, 2]))))
+  expect_error(
+    linear_start_values(cbind(1, 1:3, 2 * (1:3)), response),
+    "model matrix is rank deficient"
+  )
+})
