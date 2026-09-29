@@ -171,8 +171,20 @@ prediction_prep <- setup_prediction(model,
 grid_prediction <- predict_grid_target(prediction_prep,
                                        f_target = list(prev = function(lp) exp(lp)/(1+exp(lp))))
 
-plot(grid_prediction)
+plot(grid_prediction, "prev")
 ```
+
+```{r}
+
+squares <- sf::st_make_grid(liberia_boundary, n = c(2, 2)) |> sf::st_as_sf()
+
+areal_prediction <- predict_areal_target(prediction_prep, squares, f_target = list(prev = function(lp) exp(lp)/(1+exp(lp))))
+
+plot(areal_prediction, "prev")
+
+
+```
+
 
 
 
