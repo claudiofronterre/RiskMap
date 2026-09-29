@@ -240,3 +240,20 @@ test_that("setup_prediction produces expected output", {
 
 })
 
+test_that("joint prediction supports repeated observations at fitted locations", {
+  repeated_model <- gaussian_intercept_model
+  repeated_index <- rep(seq_len(nrow(repeated_model$data)), each = 2)
+  repeated_model$data <- repeated_model$data[repeated_index, ]
+  repeated_model$y <- repeated_model$y[repeated_index]
+  repeated_model$D <- repeated_model$D[repeated_index, , drop = FALSE]
+  repeated_model$ID_coords <- rep(
+    seq_len(nrow(repeated_model$coords)), each = 2
+  )
+  repeated_model$cov_offset <- repeated_model$cov_offset[repeated_index]
+
+  result <- setup_prediction(
+    repeated_model, type = "joint", messages = FALSE
+  )
+
+  expect_equal(nrow(result$S_samples), nrow(repeated_model$coords))
+})

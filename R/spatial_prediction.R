@@ -365,6 +365,7 @@ setup_prediction <- function(object,
   } else {
     C <- par_hat$sigma2 * R[, object$ID_coords]
     grp <- object$coords
+    fitting_grp <- fitting_coords
   }
 
   n_pred_spatial <- if (obs_loc) nrow(object$coords) else n_pred
