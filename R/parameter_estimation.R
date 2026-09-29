@@ -2363,8 +2363,9 @@ glgpm_nong <-
       if (is.na(ldetR) && is.na(as.numeric(R.inv)[1])) {
         R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
         diag(R) <- diag(R) + nu2
-        val$ldetR <- determinant(R)$modulus
-        val$R.inv <- solve(R)
+        root <- factor_covariance(R, "spatial correlation matrix")
+        val$ldetR <- log_determinant_from_cholesky(root)
+        val$R.inv <- chol2inv(root)
       } else {
         val$ldetR <- ldetR
         val$R.inv <- R.inv
@@ -2397,8 +2398,9 @@ glgpm_nong <-
 
       R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
       diag(R) <- diag(R) + nu2
-      R.inv <- solve(R)
-      ldetR <- determinant(R)$modulus
+      root <- factor_covariance(R, "spatial correlation matrix")
+      R.inv <- chol2inv(root)
+      ldetR <- log_determinant_from_cholesky(root)
 
       importance_weights <- normalise_log_weights(
         compute.log.f(par, ldetR, R.inv) - log.f.tilde
@@ -2491,18 +2493,14 @@ glgpm_nong <-
       ## Build R(φ, ν²) and precision via Cholesky (fast solves)
       R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
       diag(R) <- diag(R) + nu2
-      U <- chol(R)   # R = U^T U
+      root <- factor_covariance(R, "spatial correlation matrix")
 
-      solve_R <- function(B) {
-        backsolve(U, forwardsolve(t(U), B, upper.tri = FALSE), upper.tri = TRUE)
-      }
-
-      A   <- chol2inv(U)                  # R^{-1} (explicit once)
+      A   <- chol2inv(root)               # R^{-1} (explicit once)
       trA <- sum(diag(A))
       t2.nu2 <- 0.5 * sum(A * A)          # 0.5 tr(A^2)
 
       ## MC weights for the importance average
-      ldetR    <- determinant(R)$modulus
+      ldetR <- log_determinant_from_cholesky(root)
       importance_weights <- normalise_log_weights(
         compute.log.f(par, ldetR, A) - log.f.tilde
       )
@@ -2524,10 +2522,10 @@ glgpm_nong <-
       ## -------- Batched precomputes across ALL samples (no heavy ops in loop) --------
       S_sp <- t(S_tot_samples[, 1:n_loc, drop = FALSE])        # n_loc x n_samples
 
-      AS  <- solve_R(S_sp)                                     # A S
+      AS  <- solve_from_cholesky(root, S_sp)                    # A S
       qS  <- colSums(S_sp * AS)                                # S' A S
 
-      A2S <- solve_R(AS)                                       # A^2 S
+      A2S <- solve_from_cholesky(root, AS)                      # A^2 S
       q2  <- colSums(S_sp * A2S)                               # S' A^2 S
       q3  <- colSums(AS * A2S)                                 # S' A^3 S (= (AS)·(A2S))
 
@@ -2535,10 +2533,11 @@ glgpm_nong <-
       qMu  <- colSums(AS * RuAS)                               # S' (A R_u A) S
 
       ## Speedups for φ–ν² path:
-      MuA     <- solve_R(R_u)                                  # M_{uA} = A R_u  (one wide solve)
+      MuA     <- solve_from_cholesky(root, R_u)                 # M_{uA} = A R_u  (one wide solve)
       Ku      <- MuA %*% AS                                    # A R_u A S
       ARuA2S  <- MuA %*% A2S                                   # A R_u A^2 S
-      NuS     <- 2 * (MuA %*% Ku) - solve_R(R_uu %*% AS)       # A(2 R_u A R_u - R_uu)A S
+      NuS     <- 2 * (MuA %*% Ku) -
+        solve_from_cholesky(root, R_uu %*% AS)                  # A(2 R_u A R_u - R_uu)A S
       qNu     <- colSums(S_sp * NuS)                           # S' N_u S
 
       ## >>> FIX: include A·Ku term in qNuv

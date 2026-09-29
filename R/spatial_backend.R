@@ -122,6 +122,15 @@ solve_from_cholesky <- function(root, right_hand_side) {
   backsolve(root, forwardsolve(t(root), right_hand_side))
 }
 
+#' Compute a positive-definite log determinant from its Cholesky factor
+#'
+#' @param root Upper-triangular factor returned by [factor_covariance()].
+#' @return Log determinant of the original covariance matrix.
+#' @noRd
+log_determinant_from_cholesky <- function(root) {
+  2 * sum(log(diag(root)))
+}
+
 #' Compute prediction weights without forming a covariance inverse
 #'
 #' @param cross_covariance Prediction-by-observation cross-covariance matrix.

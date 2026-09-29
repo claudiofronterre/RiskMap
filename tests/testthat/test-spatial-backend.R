@@ -134,6 +134,9 @@ test_that("Cholesky prediction weights agree with a direct covariance solve", {
   expect_equal(cholesky_prediction_weights(cross_covariance, root),
                cross_covariance %*% solve(covariance),
                tolerance = 1e-14)
+  expect_equal(log_determinant_from_cholesky(root),
+               as.numeric(determinant(covariance, logarithm = TRUE)$modulus),
+               tolerance = 1e-14)
 })
 
 test_that("adaptive jitter is reported and conditional variances are guarded", {
