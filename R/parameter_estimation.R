@@ -2483,6 +2483,85 @@ glgpm_nong <-
       }
     }
 
+    spatial_samples <- S_tot_samples[, seq_len(n_loc), drop = FALSE]
+
+    sample_likelihood_state <- function(mu, include_curvature = FALSE) {
+      eta <- sweep(spatial_samples[, ID_coords, drop = FALSE], 2L, mu, "+")
+      if (n_re > 0) {
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          eta <- eta + random_samples[, ID_re[, j], drop = FALSE]
+        }
+      }
+
+      if (linkf$name == "canonical" && family == "poisson") {
+        mean <- exp(eta)
+        log_likelihood <- rowSums(sweep(eta, 2L, y, "*") -
+                                    sweep(mean, 2L, units_m, "*"))
+        score <- sweep(mean, 2L, units_m, "*")
+        score <- sweep(score, 2L, y, function(x, y) y - x)
+        curvature <- sweep(mean, 2L, units_m, "*")
+      } else if (linkf$name == "canonical") {
+        probability <- plogis(eta)
+        log_likelihood <- rowSums(sweep(eta, 2L, y, "*") -
+                                    sweep(softplus(eta), 2L, units_m, "*"))
+        score <- sweep(probability, 2L, units_m, "*")
+        score <- sweep(score, 2L, y, function(x, y) y - x)
+        curvature <- sweep(
+          probability * (1 - probability),
+          2L,
+          units_m,
+          "*"
+        )
+      } else if (family == "poisson") {
+        mean <- matrix(inv_fn(as.vector(eta)), nrow = n_samples)
+        if (any(!is.finite(mean)) || any(mean <= 0)) {
+          stop("invlink must return positive means (Poisson).")
+        }
+        first <- matrix(inv1(as.vector(eta)), nrow = n_samples)
+        log_likelihood <- rowSums(sweep(log(mean), 2L, y, "*") -
+                                    sweep(mean, 2L, units_m, "*"))
+        score <- sweep(mean, 2L, units_m, "*")
+        score <- sweep(score, 2L, y, function(x, y) y - x) * first / mean
+        if (include_curvature) {
+          second <- matrix(inv2(as.vector(eta)), nrow = n_samples)
+          mean_residual <- sweep(1 / mean, 2L, y, "*")
+          mean_residual <- sweep(mean_residual, 2L, units_m, "-")
+          curvature <- sweep(first^2 / mean^2, 2L, y, "*") -
+            second * mean_residual
+        }
+      } else {
+        probability <- matrix(inv_fn(as.vector(eta)), nrow = n_samples)
+        if (any(!is.finite(probability)) ||
+            any(probability <= 0 | probability >= 1)) {
+          stop("invlink must return values in (0,1) (Binomial).")
+        }
+        first <- matrix(inv1(as.vector(eta)), nrow = n_samples)
+        denominator <- probability * (1 - probability)
+        log_likelihood <- rowSums(
+          sweep(log(probability), 2L, y, "*") +
+            sweep(log1p(-probability), 2L, units_m - y, "*")
+        )
+        score <- sweep(probability, 2L, units_m, "*")
+        score <- sweep(score, 2L, y, function(x, y) y - x) *
+          first / denominator
+        if (include_curvature) {
+          second <- matrix(inv2(as.vector(eta)), nrow = n_samples)
+          residual <- sweep(probability, 2L, units_m, "*")
+          residual <- sweep(residual, 2L, y, function(x, y) y - x)
+          curvature <- sweep(first^2 / denominator, 2L, units_m, "*") -
+            residual * (second / denominator -
+                          first^2 * (1 - 2 * probability) / denominator^2)
+        }
+      }
+
+      list(
+        log_likelihood = log_likelihood,
+        score = score,
+        curvature = if (include_curvature) curvature else NULL
+      )
+    }
+
     # nlminb commonly requests the objective, score and Hessian at the same
     # parameter vector. Cache their shared covariance decomposition so that it
     # is built only once at each distinct trial point.
@@ -2527,59 +2606,30 @@ glgpm_nong <-
       state
     }
 
-    # --- 1) log.integrand, generalized link ---
-    log.integrand <- function(S_tot, val) {
-      S <- S_tot[1:n_loc]
-
-      q.f_re <- 0
-      if (n_re > 0) {
-        S_re_list <- vector("list", n_re)
-        for (i in 1:n_re) {
-          S_re_list[[i]] <- S_tot[ind_re[[i]]]
-          q.f_re <- q.f_re + n_dim_re[i] * log(val$sigma2_re[i]) +
-            sum(S_re_list[[i]]^2) / val$sigma2_re[i]
-        }
-      }
-
-      eta <- val$mu + S[ID_coords]
-      if (n_re > 0) for (i in 1:n_re) eta <- eta + S_re_list[[i]][ID_re[, i]]
-
-      if (linkf$name == "canonical" && family == "poisson") {
-        # The canonical form avoids taking log(exp(eta)) and remains valid in
-        # the tails until the Poisson mean itself exceeds floating-point range.
-        llik <- sum(y * eta - units_m * exp(eta))
-      } else if (linkf$name == "canonical") {
-        # y * eta - m * log(1 + exp(eta)) is the binomial log-likelihood
-        # without evaluating probabilities that may round exactly to 0 or 1.
-        llik <- sum(y * eta - units_m * softplus(eta))
-      } else if (family == "poisson") {
-        mu_vec <- inv_fn(eta)
-        if (any(!is.finite(mu_vec)) || any(mu_vec < 0)) stop("invlink must return positive means (Poisson).")
-        llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
-      } else {
-        pvec <- inv_fn(eta)
-        if (any(!is.finite(pvec)) || any(pvec < 0 | pvec > 1)) stop("invlink must return values in (0,1) (Binomial).")
-        llik <- sum(y * log(pmax(pvec, .Machine$double.eps)) +
-                      (units_m - y) * log(pmax(1 - pvec, .Machine$double.eps)))
-      }
-
-      q.f_S <- n_loc * log(val$sigma2) + val$ldetR + as.numeric(t(S) %*% val$R.inv %*% S) / val$sigma2
-      -0.5 * (q.f_S + q.f_re) + llik
-    }
-
-    # --- 2) Monte Carlo log integrand ---
+    # --- 1) Monte Carlo log integrand ---
     compute_log_f <- function(par) {
       beta   <- par[ind_beta]
       covariance <- covariance_state(par)
+      mu <- as.numeric(D %*% beta) + cov_offset
+      likelihood <- sample_likelihood_state(mu)$log_likelihood
+      precision_samples <- spatial_samples %*% covariance$inverse
+      spatial_quadratic <- rowSums(spatial_samples * precision_samples)
 
-      val <- list()
-      val$sigma2 <- covariance$sigma2
-      val$mu <- as.numeric(D %*% beta) + cov_offset
-      if (n_re > 0) val$sigma2_re <- exp(par[ind_sigma2_re])
-      val$ldetR <- covariance$log_determinant
-      val$R.inv <- covariance$inverse
+      random_quadratic <- numeric(n_samples)
+      if (n_re > 0) {
+        sigma2_re <- exp(par[ind_sigma2_re])
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          random_quadratic <- random_quadratic +
+            n_dim_re[j] * log(sigma2_re[j]) +
+            rowSums(random_samples^2) / sigma2_re[j]
+        }
+      }
 
-      sapply(seq_len(n_samples), function(i) log.integrand(S_tot_samples[i, ], val))
+      spatial_quadratic <- n_loc * log(covariance$sigma2) +
+        covariance$log_determinant +
+        spatial_quadratic / covariance$sigma2
+      -0.5 * (spatial_quadratic + random_quadratic) + likelihood
     }
 
     par0_vec <- c(par0$beta, log(c(par0$sigma2, par0$phi)))
@@ -2592,7 +2642,7 @@ glgpm_nong <-
       log_mean_exp(compute_log_f(par) - log_f_tilde)
     }
 
-    # --- 3) Monte Carlo score, generalized link ---
+    # --- 2) Monte Carlo score, generalized link ---
     grad_mc_log_lik <- function(par) {
       beta   <- par[ind_beta]; mu <- as.numeric(D %*% beta) + cov_offset
       covariance <- covariance_state(par)
@@ -2617,67 +2667,39 @@ glgpm_nong <-
         m2.nu2 <- R.inv %*% R.inv
       }
 
-      gradient.S <- function(S_tot) {
-        S <- S_tot[1:n_loc]
-        if (n_re > 0) {
-          S_re_list <- vector("list", n_re)
-          for (i in 1:n_re) S_re_list[[i]] <- S_tot[ind_re[[i]]]
-        }
+      score <- sample_likelihood_state(mu)$score
+      q_f_S <- rowSums((spatial_samples %*% R.inv) * spatial_samples)
+      q_phi <- rowSums((spatial_samples %*% m2.phi) * spatial_samples)
+      sample_gradients <- cbind(
+        score %*% D,
+        (-n_loc / (2 * sigma2) + 0.5 * q_f_S / sigma2^2) * sigma2,
+        (t1.phi + 0.5 * q_phi / sigma2) * phi
+      )
 
-        eta <- mu + S[ID_coords]
-        if (n_re > 0) for (i in 1:n_re) eta <- eta + S_re_list[[i]][ID_re[, i]]
-
-        if (linkf$name == "canonical" && family == "poisson") {
-          mu_vec <- exp(eta)
-          g_eta <- y - units_m * mu_vec
-        } else if (linkf$name == "canonical") {
-          p <- plogis(eta)
-          g_eta <- y - units_m * p
-        } else if (family == "poisson") {
-          mu_vec <- inv_fn(eta)
-          if (any(mu_vec <= 0 | !is.finite(mu_vec))) stop("invlink invalid (Poisson).")
-          mu1 <- inv1(eta)
-          g_eta <- (y - units_m * mu_vec) * (mu1 / mu_vec)
-        } else {
-          p <- inv_fn(eta)
-          if (any(p <= 0 | p >= 1 | !is.finite(p))) stop("invlink invalid (Binomial).")
-          p1 <- inv1(eta)
-          den <- p * (1 - p)
-          g_eta <- (y - units_m * p) * (p1 / den)
-        }
-
-        q.f_S <- as.numeric(t(S) %*% R.inv %*% S)
-
-        grad.beta <- t(D) %*% g_eta
-        grad.log.sigma2 <- (-n_loc/(2*sigma2) + 0.5*q.f_S/(sigma2^2)) * sigma2
-        grad.log.phi    <- (t1.phi + 0.5 * as.numeric(t(S) %*% m2.phi %*% S) / sigma2) * phi
-
-        out <- c(grad.beta, grad.log.sigma2, grad.log.phi)
-
-        if (isTRUE(fix_tau2)) {
-          grad.log.nu2 <- (t1.nu2 + 0.5 * as.numeric(t(S) %*% m2.nu2 %*% S) / sigma2) * nu2
-          out <- c(out, grad.log.nu2)
-        }
-
-        if (n_re > 0) {
-          grad.log.sigma2_re <- numeric(n_re)
-          for (i in 1:n_re) {
-            grad.log.sigma2_re[i] <- (-n_dim_re[i]/(2*sigma2_re[i]) +
-                                        0.5 * sum(S_re_list[[i]]^2) / (sigma2_re[i]^2)) * sigma2_re[i]
-          }
-          out <- c(out, grad.log.sigma2_re)
-        }
-        out
+      if (isTRUE(fix_tau2)) {
+        q_nu2 <- rowSums((spatial_samples %*% m2.nu2) * spatial_samples)
+        sample_gradients <- cbind(
+          sample_gradients,
+          (t1.nu2 + 0.5 * q_nu2 / sigma2) * nu2
+        )
       }
 
-      out <- rep(0, length(par))
-      for (i in 1:n_samples) {
-        out <- out + importance_weights[i] * gradient.S(S_tot_samples[i, ])
+      if (n_re > 0) {
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          sample_gradients <- cbind(
+            sample_gradients,
+            (-n_dim_re[j] / (2 * sigma2_re[j]) +
+               0.5 * rowSums(random_samples^2) / sigma2_re[j]^2) *
+              sigma2_re[j]
+          )
+        }
       }
-      out
+
+      colSums(sweep(sample_gradients, 1L, importance_weights, "*"))
     }
 
-    # --- 4) Monte Carlo Hessian, generalized link ---
+    # --- 3) Monte Carlo Hessian, generalized link ---
     hess_mc_log_lik <- function(par) {
       ## Unpack parameters
       beta   <- par[ind_beta]
@@ -2741,119 +2763,88 @@ glgpm_nong <-
 
       tr_ARuA <- sum((A %*% R_u) * A)                          # tr(A R_u A)
 
-      ## Accumulators for MC Hessian
-      H_acc <- matrix(0, nrow = length(par), ncol = length(par))
-      g_acc <- numeric(length(par))
-
-      for (i in seq_len(n_samples)) {
-        ## Build eta for sample i
-        S_i  <- S_sp[, i, drop = TRUE]
-        eta  <- mu + S_i[ID_coords]
-        if (n_re > 0) {
-          S_re_list <- vector("list", n_re)
-          for (j in seq_len(n_re)) {
-            S_re_list[[j]] <- S_tot_samples[i, ind_re[[j]]]
-            eta <- eta + S_re_list[[j]][ID_re[, j]]
-          }
+      likelihood <- sample_likelihood_state(mu, include_curvature = TRUE)
+      sample_gradients <- cbind(
+        likelihood$score %*% D,
+        (-n_loc / (2 * sigma2) + 0.5 * qS / sigma2^2) * sigma2,
+        t1.u + 0.5 * qMu / sigma2
+      )
+      if (isTRUE(fix_tau2)) {
+        sample_gradients <- cbind(
+          sample_gradients,
+          (-0.5 * trA + 0.5 * q2 / sigma2) * nu2
+        )
+      }
+      if (n_re > 0) {
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          sample_gradients <- cbind(
+            sample_gradients,
+            (-n_dim_re[j] / (2 * sigma2_re[j]) +
+               0.5 * rowSums(random_samples^2) / sigma2_re[j]^2) *
+              sigma2_re[j]
+          )
         }
-
-        ## Canonical links have simpler, stable score and curvature formulas.
-        if (linkf$name == "canonical" && family == "poisson") {
-          mu_vec <- exp(eta)
-          g_eta <- y - units_m * mu_vec
-          w <- units_m * mu_vec
-        } else if (linkf$name == "canonical") {
-          p <- plogis(eta)
-          g_eta <- y - units_m * p
-          w <- units_m * p * (1 - p)
-        } else if (family == "poisson") {
-          mu_vec <- inv_fn(eta); mu1 <- inv1(eta); mu2 <- inv2(eta)
-          g_eta  <- (y - units_m * mu_vec) * (mu1 / mu_vec)
-          l2     <- - y * (mu1^2) / (mu_vec^2) + (y / mu_vec - units_m) * mu2
-          w      <- -l2
-        } else { # binomial
-          p   <- inv_fn(eta); p1 <- inv1(eta); p2 <- inv2(eta)
-          den <- p * (1 - p)
-          g_eta <- (y - units_m * p) * (p1 / den)
-          l2    <- - units_m * (p1^2) / den +
-            (y - units_m * p) * ( p2 / den - (p1^2) * (1 - 2 * p) / (den^2) )
-          w     <- -l2
-        }
-
-        ## Per-sample gradients (match grad_mc_log_lik)
-        grad.beta       <- t(D) %*% g_eta
-        grad.log.sigma2 <- (-n_loc/(2 * sigma2) + 0.5 * qS[i] / (sigma2^2)) * sigma2
-        grad.log.phi    <- t1.u + 0.5 * qMu[i] / sigma2
-
-        gi <- c(grad.beta, grad.log.sigma2, grad.log.phi)
-
-        if (isTRUE(fix_tau2)) {
-          grad.log.nu2 <- ( -0.5 * trA + 0.5 * q2[i] / sigma2 ) * nu2
-          gi <- c(gi, grad.log.nu2)
-        }
-
-        if (n_re > 0) {
-          grad.log.sigma2_re <- numeric(n_re)
-          for (j in seq_len(n_re)) {
-            Sj <- S_re_list[[j]]
-            grad.log.sigma2_re[j] <- (-n_dim_re[j]/(2 * sigma2_re[j]) +
-                                        0.5 * sum(Sj^2) / (sigma2_re[j]^2)) * sigma2_re[j]
-          }
-          gi <- c(gi, grad.log.sigma2_re)
-        }
-
-        ## Per-sample curvature (all heavy bits precomputed above)
-        Hi <- matrix(0, nrow = length(par), ncol = length(par))
-
-        # ββ block
-        Hi[ind_beta, ind_beta] <- -crossprod(D, D * as.numeric(w))
-        # β with log-params: zero per-sample
-        Hi[ind_beta, ind_sigma2] <- Hi[ind_sigma2, ind_beta] <- 0
-        Hi[ind_beta, ind_phi]    <- Hi[ind_phi,    ind_beta] <- 0
-        if (isTRUE(fix_tau2))     Hi[ind_beta, ind_nu2] <- Hi[ind_nu2, ind_beta] <- 0
-
-        # log σ² diag (chain rule)
-        Hi[ind_sigma2, ind_sigma2] <-
-          (n_loc/(2 * sigma2^2) - qS[i] / (sigma2^3)) * sigma2^2 + grad.log.sigma2
-
-        # log φ diag in u = log φ:
-        #   ℓ_uu = -1/2 tr(A R_uu - A R_u A R_u) + (1/2σ²) S' A( R_uu - 2 R_u A R_u )A S
-        Hi[ind_phi, ind_phi] <- t2.u - 0.5 * qNu[i] / sigma2
-
-        # log σ² – log φ cross:  - (1/(2σ²)) S' (A R_u A) S
-        Hi[ind_sigma2, ind_phi] <- Hi[ind_phi, ind_sigma2] <- -0.5 * qMu[i] / sigma2
-
-        if (isTRUE(fix_tau2)) {
-          # log ν² diag in v = log ν² (your correct chain-rule form)
-          # ℓ_vv = ( t2.nu2 - (S' 2A^3 S)/(2σ²) ) ν²² + ℓ_v,  with ℓ_v = (-1/2 trA + (S'A²S)/(2σ²)) ν²
-          ell_v <- ( -0.5 * trA + 0.5 * q2[i] / sigma2 ) * nu2
-          Hi[ind_nu2, ind_nu2] <- ( t2.nu2 - q3[i] / sigma2 ) * nu2^2 + ell_v
-
-          # log ν² – log φ cross (u,v):
-          # ℓ_uv = 0.5 ν² tr(A R_u A) - (ν²/(2σ²)) S' A (R_u A + A R_u) A S
-          Hi[ind_phi, ind_nu2] <- Hi[ind_nu2, ind_phi] <-
-            0.5 * nu2 * tr_ARuA - 0.5 * nu2 * qNuv[i] / sigma2
-
-          # log σ² – log ν² cross:  - (ν²/(2σ²)) S' A² S
-          Hi[ind_sigma2, ind_nu2] <- Hi[ind_nu2, ind_sigma2] <- -0.5 * nu2 * q2[i] / sigma2
-        }
-
-        # σ²_re diagonals
-        if (n_re > 0) {
-          for (j in seq_len(n_re)) {
-            Sj <- S_re_list[[j]]
-            Hi[ind_sigma2_re[j], ind_sigma2_re[j]] <-
-              ( n_dim_re[j] / (2 * sigma2_re[j]^2) - sum(Sj^2) / (sigma2_re[j]^3) ) * sigma2_re[j]^2 +
-              ( - n_dim_re[j] / (2 * sigma2_re[j]) + 0.5 * sum(Sj^2) / (sigma2_re[j]^2) ) * sigma2_re[j]
-          }
-        }
-
-        ef <- importance_weights[i]
-        H_acc <- H_acc + ef * (gi %*% t(gi) + Hi)
-        g_acc <- g_acc + ef * gi
       }
 
-      H_acc - g_acc %*% t(g_acc)
+      conditional_hessian <- matrix(0, nrow = length(par), ncol = length(par))
+      mean_curvature <- colSums(
+        sweep(likelihood$curvature, 1L, importance_weights, "*")
+      )
+      conditional_hessian[ind_beta, ind_beta] <-
+        -crossprod(D, D * mean_curvature)
+      conditional_hessian[ind_sigma2, ind_sigma2] <- sum(
+        importance_weights *
+          ((n_loc / (2 * sigma2^2) - qS / sigma2^3) * sigma2^2 +
+             sample_gradients[, ind_sigma2])
+      )
+      conditional_hessian[ind_phi, ind_phi] <- sum(
+        importance_weights * (t2.u - 0.5 * qNu / sigma2)
+      )
+      conditional_hessian[ind_sigma2, ind_phi] <-
+        conditional_hessian[ind_phi, ind_sigma2] <-
+        sum(importance_weights * (-0.5 * qMu / sigma2))
+
+      if (isTRUE(fix_tau2)) {
+        conditional_hessian[ind_nu2, ind_nu2] <- sum(
+          importance_weights *
+            ((t2.nu2 - q3 / sigma2) * nu2^2 +
+               sample_gradients[, ind_nu2])
+        )
+        conditional_hessian[ind_phi, ind_nu2] <-
+          conditional_hessian[ind_nu2, ind_phi] <- sum(
+            importance_weights *
+              (0.5 * nu2 * tr_ARuA - 0.5 * nu2 * qNuv / sigma2)
+          )
+        conditional_hessian[ind_sigma2, ind_nu2] <-
+          conditional_hessian[ind_nu2, ind_sigma2] <-
+          sum(importance_weights * (-0.5 * nu2 * q2 / sigma2))
+      }
+
+      if (n_re > 0) {
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          sum_squares <- rowSums(random_samples^2)
+          conditional_hessian[ind_sigma2_re[j], ind_sigma2_re[j]] <- sum(
+            importance_weights *
+              ((n_dim_re[j] / (2 * sigma2_re[j]^2) -
+                  sum_squares / sigma2_re[j]^3) * sigma2_re[j]^2 +
+                 sample_gradients[, ind_sigma2_re[j]])
+          )
+        }
+      }
+
+      weighted_gradients <- sweep(
+        sample_gradients,
+        1L,
+        sqrt(importance_weights),
+        "*"
+      )
+      mean_gradient <- colSums(
+        sweep(sample_gradients, 1L, importance_weights, "*")
+      )
+      crossprod(weighted_gradients) + conditional_hessian -
+        tcrossprod(mean_gradient)
     }
 
     # --- optimization ---
