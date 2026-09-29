@@ -244,6 +244,7 @@ setup_prediction <- function(object,
       re_names <- names(object$re)
       offset_names <- names(object$cov_offset)
       model_predictors <- setdiff(get_formula_terms(object$formula), c(response, re_names, offset_names))
+
       if (!is.data.frame(predictors))
         stop(if (is.null(index)) "'predictors' must be a data.frame"
              else sprintf("'predictors[[%d]]' must be a data.frame", index))
@@ -252,6 +253,7 @@ setup_prediction <- function(object,
       if (nrow(predictors) != n_predictors)
         stop(if (is.null(index)) "The number of rows in 'predictors' does not match the number of locations in 'grid_pred'"
              else sprintf("The number of rows in of 'predictors[[%d]]' does not match the number of locations in 'grid_pred[[%d]]'", index, index))
+      check_complete_data(predictors, model_predictors)
       mf <- model.frame(inter_lt_f$pf, data = predictors, na.action = na.fail)
       as.matrix(model.matrix(attr(mf, "terms"), data = predictors))
     }
