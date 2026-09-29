@@ -141,21 +141,16 @@ plot(sf::st_geometry(liberia_hull))
 plot(liberia_hull_grid, add = TRUE, col = 'red')
 ```
 
-After generating a grid, we need to generate a dataframe containing the variables included in the model for the new locations. In this example, we will obtain `elevation` from using the `elevatr` package:
+After generating a grid, we need to generate a dataframe containing the variables included in the model for the new locations. In this example, we will obtain `elevation` from using the `elevatr` package and then extract values at each of the grid locations:
 
 ```{r}
-# Download elevation data
 library(elevatr)
 liberia_elev <- get_elev_raster(locations = liberia_grid, 
                                 z = 6, 
                                 clip = "locations",
                                 verbose = FALSE)
 
-# 3) Extracting elevation at the grid locations
-new_data <- data.frame(elevation = 
-                         terra::extract(liberia_elev,
-                                sf::st_coordinates(liberia_grid)))
-
+new_data <- data.frame(elevation = terra::extract(liberia_elev, liberia_grid))
 ```
 
 We can then use `setup_prediction()` to prepare the data to generate predictions either at the grid locations or for areal targets. To be able to generate predictions for areal targets, we need to set `type` to `"joint"`:
@@ -168,7 +163,7 @@ prediction_prep <- setup_prediction(model,
                                     messages = FALSE)
 ```
 
-We can then generate a prediction over the grid with `predict_target_grid()`. By default, the `f_target` is the linear predictor and to obtain the prevalence prediction, we need to define a custom target. Once complete, we can visualise the result by calling `plot()`. By default the mean of the first target will be plotted, but if multiple targets are specified, the one to plot can be specified:
+We can then generate a prediction over the grid with `predict_target_grid()`. By default, the `f_target` is the linear predictor and to obtain the prevalence prediction, we need to define a custom target. We can visualise the result by passing the result to `plot()`. By default the mean of the first target will be plotted, but if multiple targets are specified, the one to plot can be specified:
 
 ```{r}
 grid_prediction <- predict_grid_target(prediction_prep,
@@ -192,6 +187,31 @@ areal_prediction <- predict_areal_target(prediction_prep,
 plot(areal_prediction)
 ```
 
+## Assessing predictions
 
+```{r}
+cross_validation <- assess_prediction(list(model = model),
+                                      method = "cluster",
+                                      fold = 2,
+                                      plot_fold = FALSE,
+                                      messages = FALSE)
+
+```
+
+
+
+## Simulations
+
+```{r}
+
+liberia_grid$elevation <- new_data$elevation
+
+simulation <- simulate_glgpm(model, 
+                             nsim = 2, 
+                             what = c("data", "surface"), 
+                             prediction_grid = liberia_grid, 
+                             seed = 2026)
+
+```
 
 
