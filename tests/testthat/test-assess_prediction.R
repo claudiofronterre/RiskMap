@@ -176,21 +176,42 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(sample(10))),
-    "The length of values in 'user_split' to create the test set must be less than the number of rows in the data"
+    "must leave at least one observation for training"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
-                      user_split = list(rep(0,5))),
-    "The values in 'user_split' must be row indices of the data"
+                      user_split = list(integer(0))),
+    "test indices must be non-empty"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(0)),
+    "test indices must be row indices between 1 and the number of observations"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(c(1.1, 2, 3.3))),
-    "The values in 'user_split' must be row indices of the data"
+    "test indices must contain whole numbers"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(c(1, NA, 3))),
+    "test indices must be a non-missing numeric vector of row indices"
+  )
+
+  expect_error(
+    assess_prediction(list(gaussian_model),
+                      method = "user",
+                      user_split = list(c(1, 1, 2))),
+    "test indices must not contain duplicate indices"
   )
 
   expect_error(
@@ -232,42 +253,42 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, 1, 2), out_id = 3:n))),
-    "'in_id' and 'out_id' must not contain duplicate indices"
+    "'in_id' must not contain duplicate indices"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = 1:2, out_id = n + 1))),
-    "'in_id' and 'out_id' must be row indices between 1 and the number of observations"
+    "'out_id' must be row indices between 1 and the number of observations"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = integer(0), out_id = 1:n))),
-    "'in_id' and 'out_id' must both be non-empty"
+    "'in_id' must be non-empty"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, 2.5), out_id = 3:n))),
-    "'in_id' and 'out_id' must contain whole numbers"
+    "'in_id' must contain whole numbers"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c("1", "2"), out_id = 3:n))),
-    "'in_id' and 'out_id' must be non-missing numeric vectors of row indices"
+    "'in_id' must be a non-missing numeric vector of row indices"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, NA), out_id = 3:n))),
-    "'in_id' and 'out_id' must be non-missing numeric vectors of row indices"
+    "'in_id' must be a non-missing numeric vector of row indices"
   )
 
 })
@@ -467,6 +488,15 @@ test_that("assess_prediction splits test data correctly", {
     list(gaussian_model),
     method = "user",
     user_split = list(list(in_id = 1:(n - 2), out_id = (n - 1):n)),
+    messages = FALSE)
+
+  expect_length(result$test_set, 1)
+  expect_equal(nrow(result$test_set[[1]]), 2)
+
+  result <- assess_prediction(
+    list(gaussian_model),
+    method = "user",
+    user_split = list((n - 1):n),
     messages = FALSE)
 
   expect_length(result$test_set, 1)

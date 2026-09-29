@@ -1744,24 +1744,46 @@ assess_prediction <- function(object,
     }
   }
 
-  # Validates one user-supplied `list(in_id = ..., out_id = ...)` split:
-  # non-missing numeric row indices, non-empty, no duplicates within either
-  # id vector, in range, and no overlap between train and test (an overlap
-  # would silently leak a held-out observation into training).
-  validate_split_indices <- function(in_id, out_id, index) {
-    what <- sprintf("'user_split[[%d]]'s", index)
-    if (!is.numeric(in_id) || !is.numeric(out_id) || anyNA(in_id) || anyNA(out_id))
-      stop(what, " 'in_id' and 'out_id' must be non-missing numeric vectors of row indices")
-    if (length(in_id) == 0 || length(out_id) == 0)
-      stop(what, " 'in_id' and 'out_id' must both be non-empty")
-    if (any(in_id != round(in_id)) || any(out_id != round(out_id)))
-      stop(what, " 'in_id' and 'out_id' must contain whole numbers")
-    if (anyDuplicated(in_id) || anyDuplicated(out_id))
-      stop(what, " 'in_id' and 'out_id' must not contain duplicate indices")
-    if (!all(in_id %in% seq_len(n_obs)) || !all(out_id %in% seq_len(n_obs)))
-      stop(what, " 'in_id' and 'out_id' must be row indices between 1 and the number of observations")
-    if (length(intersect(in_id, out_id)) > 0)
-      stop(what, " 'in_id' and 'out_id' must not overlap")
+  # Validates one vector of row indices for a 'user_split' entry: non-missing
+  # numeric, non-empty, whole numbers, no duplicates, in range. `what` names
+  # whichever vector the caller actually supplied, so it reads sensibly for
+  # both call sites below (a bare vector of test indices, or an explicit
+  # 'in_id'/'out_id').
+  validate_split_vector <- function(v, what) {
+    if (!is.numeric(v) || anyNA(v))
+      stop(what, " must be a non-missing numeric vector of row indices")
+    if (length(v) == 0)
+      stop(what, " must be non-empty")
+    if (any(v != round(v)))
+      stop(what, " must contain whole numbers")
+    if (anyDuplicated(v))
+      stop(what, " must not contain duplicate indices")
+    if (!all(v %in% seq_len(n_obs)))
+      stop(what, " must be row indices between 1 and the number of observations")
+    invisible(TRUE)
+  }
+
+  # Validates one user-supplied 'user_split' entry: either a bare vector of
+  # test indices (the shorthand form - training indices are its computed
+  # complement, which can never independently be invalid) or an explicit
+  # list(in_id = ..., out_id = ...) pair, both directly supplied by the
+  # caller. For the latter, also checks train and test don't overlap - an
+  # overlap would silently leak a held-out observation into training.
+  validate_split_indices <- function(out_id, index, in_id = NULL) {
+    tag <- sprintf("user_split[[%d]]", index)
+
+    if (is.null(in_id)) {
+      validate_split_vector(out_id, sprintf("'%s' test indices", tag))
+      in_id <- setdiff(seq_len(n_obs), out_id)
+      if (length(in_id) == 0)
+        stop("'", tag, "' must leave at least one observation for training")
+    } else {
+      validate_split_vector(in_id, sprintf("'%s's 'in_id'", tag))
+      validate_split_vector(out_id, sprintf("'%s's 'out_id'", tag))
+      if (length(intersect(in_id, out_id)) > 0)
+        stop("'", tag, "'s 'in_id' and 'out_id' must not overlap")
+    }
+
     list(in_id = as.integer(in_id), out_id = as.integer(out_id))
   }
 
@@ -1792,18 +1814,13 @@ assess_prediction <- function(object,
       for (i in seq_len(n_iter_expected)) {
         ui <- usr[[i]]
         if (is.list(ui) && !is.null(ui$in_id) && !is.null(ui$out_id)) {
-          validated <- validate_split_indices(ui$in_id, ui$out_id, i)
+          validated <- validate_split_indices(ui$out_id, i, ui$in_id)
           in_id  <- validated$in_id
           out_id <- validated$out_id
-        } else if (is.integer(ui) || is.double(ui)) {
-          if (length(ui) == nrow(data_sf)){
-            stop("The length of values in 'user_split' to create the test set must be less than the number of rows in the data")
-          }
-          if (!all(ui %in% 1:n_obs)){
-            stop("The values in 'user_split' must be row indices of the data")
-          }
-          out_id <- as.integer(ui)
-          in_id  <- setdiff(seq_len(n_obs), out_id)
+        } else if (is.numeric(ui)) {
+          validated <- validate_split_indices(ui, i)
+          in_id  <- validated$in_id
+          out_id <- validated$out_id
         } else {
           stop("Each element of 'user_split' must be a vector of test indices or a list(in_id=..., out_id=...).")
         }
