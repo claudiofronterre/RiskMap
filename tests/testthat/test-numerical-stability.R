@@ -125,3 +125,10 @@ test_that("safe_optimizer_objective penalises and counts invalid trials", {
   expect_true(is.finite(objective(0)))
   expect_equal(attr(objective, "diagnostics")$invalid_evaluations, 2L)
 })
+
+test_that("Gaussian covariance backend selection preserves correctness overrides", {
+  expect_true(use_direct_gaussian_covariance(100, 50, 0.2, FALSE))
+  expect_false(use_direct_gaussian_covariance(500, 50, 0.2, FALSE))
+  expect_true(use_direct_gaussian_covariance(500, 50, 0, FALSE))
+  expect_true(use_direct_gaussian_covariance(500, 50, 0.2, 0.4))
+})

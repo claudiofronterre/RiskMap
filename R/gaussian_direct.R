@@ -4,6 +4,18 @@
 ##' (zero measurement error) or has incorrect fixed-nugget derivatives.
 ##'
 ##' @noRd
+use_direct_gaussian_covariance <- function(n_observations, latent_dimension,
+                                           fix_var_me, fix_tau2) {
+  correctness_requires_direct <- identical(fix_var_me, 0) ||
+    (is.numeric(fix_tau2) && length(fix_tau2) == 1L && fix_tau2 > 0)
+
+  # Benchmarks show that direct factorisation is faster with light replication,
+  # while Woodbury is substantially faster once observations greatly outnumber
+  # latent effects.
+  correctness_requires_direct || n_observations <= 3 * latent_dimension
+}
+
+##' @noRd
 glgpm_lm_direct <- function(y, D, coords, kappa, ID_coords, ID_re,
                             fix_var_me, fix_tau2, start_beta,
                             start_cov_pars, messages) {

@@ -745,8 +745,14 @@ softplus <- function(x) {
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
 
-  if (identical(fix_var_me, 0) ||
-      (is.numeric(fix_tau2) && length(fix_tau2) == 1L && fix_tau2 > 0)) {
+  latent_dimension <- nrow(coords)
+  if (!is.null(ID_re)) {
+    latent_dimension <- latent_dimension +
+      sum(vapply(seq_len(ncol(ID_re)), function(j) max(ID_re[, j]), numeric(1)))
+  }
+  if (use_direct_gaussian_covariance(
+    length(y), latent_dimension, fix_var_me, fix_tau2
+  )) {
     return(glgpm_lm_direct(
       y, D, coords, kappa, ID_coords, ID_re,
       fix_var_me, fix_tau2, start_beta, start_cov_pars, messages
