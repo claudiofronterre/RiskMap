@@ -152,3 +152,29 @@ conditional_variances <- function(marginal_variance, weights,
 
   pmax(variance, 0)
 }
+
+#' Draw independent conditional Gaussian samples
+#'
+#' @param mean Numeric vector or matrix of conditional means.
+#' @param standard_deviation Numeric vector of conditional standard deviations.
+#' @param n_samples Number of samples.
+#' @return Matrix with prediction locations in rows and samples in columns.
+#' @noRd
+sample_independent_gaussian <- function(mean, standard_deviation, n_samples) {
+  n_prediction <- length(standard_deviation)
+  noise <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
+  mean + standard_deviation * noise
+}
+
+#' Draw correlated conditional Gaussian samples
+#'
+#' @param mean Numeric vector or matrix of conditional means.
+#' @param lower_root Lower-triangular covariance factor.
+#' @param n_samples Number of samples.
+#' @return Matrix with prediction locations in rows and samples in columns.
+#' @noRd
+sample_correlated_gaussian <- function(mean, lower_root, n_samples) {
+  n_prediction <- nrow(lower_root)
+  noise <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
+  mean + lower_root %*% noise
+}

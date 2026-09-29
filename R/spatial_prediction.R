@@ -405,8 +405,9 @@ setup_prediction <- function(object,
 
       if (type == "marginal") {
         sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
-        out$S_samples <- sapply(seq_len(n_samples), function(i)
-          mu_cond_S[, i] + sd_cond_S * rnorm(n_pred))
+        out$S_samples <- sample_independent_gaussian(
+          mu_cond_S, sd_cond_S, n_samples
+        )
 
       } else {
         if (list_mode) {
@@ -417,8 +418,7 @@ setup_prediction <- function(object,
             Scr   <- t(factor_covariance(
               Sc, "conditional prediction covariance"
             ))
-            sapply(seq_len(n_samples), function(j)
-              mu_cond_S[[i]][, j] + Scr %*% rnorm(nrow(mu_cond_S[[i]])))
+            sample_correlated_gaussian(mu_cond_S[[i]], Scr, n_samples)
           })
         } else {
           Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
@@ -428,8 +428,9 @@ setup_prediction <- function(object,
             Sc, "conditional prediction covariance"
           )
           Scr <- t(Sc_root)
-          out$S_samples <- sapply(seq_len(n_samples), function(i)
-            mu_cond_S[, i] + Scr %*% rnorm(nrow(mu_cond_S)))
+          out$S_samples <- sample_correlated_gaussian(
+            mu_cond_S, Scr, n_samples
+          )
         }
       }
     }
@@ -491,13 +492,15 @@ setup_prediction <- function(object,
           sd_cond_S_i <- sqrt(conditional_variances(
             par_hat$sigma2, A[[i]], C[[i]]
           ))
-          sapply(seq_len(n_samples), function(j)
-            mu_cond_S[[i]] + sd_cond_S_i * rnorm(n_pred[i]))
+          sample_independent_gaussian(
+            mu_cond_S[[i]], sd_cond_S_i, n_samples
+          )
         })
       } else {
         sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
-        out$S_samples <- sapply(seq_len(n_samples), function(i)
-          mu_cond_S + sd_cond_S * rnorm(n_pred_spatial))
+        out$S_samples <- sample_independent_gaussian(
+          mu_cond_S, sd_cond_S, n_samples
+        )
       }
     } else {
       if (list_mode) {
@@ -509,8 +512,9 @@ setup_prediction <- function(object,
             conditional_covariance_i,
             "conditional prediction covariance"
           ))
-          sapply(seq_len(n_samples), function(j)
-            mu_cond_S[[i]] + cholesky_root_i %*% rnorm(n_pred[i]))
+          sample_correlated_gaussian(
+            mu_cond_S[[i]], cholesky_root_i, n_samples
+          )
         })
       } else {
         Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
@@ -520,8 +524,9 @@ setup_prediction <- function(object,
           Sc, "conditional prediction covariance"
         )
         Scr <- t(Sc_root)
-        out$S_samples <- sapply(seq_len(n_samples), function(i)
-          mu_cond_S + Scr %*% rnorm(n_pred_spatial))
+        out$S_samples <- sample_correlated_gaussian(
+          mu_cond_S, Scr, n_samples
+        )
       }
     }
   }
@@ -549,11 +554,11 @@ setup_prediction <- function(object,
         W_Z %*% C_Z -
         A_Z %*% C %*% t(W_Z)
       Scr_Z        <- t(chol(Sigma_Z_cond))
-      mu_Z_cond    <- sapply(seq_len(n_samples), function(i)
-        as.matrix(A_Z %*% (out$S_samples[, i] - mu_cond_S)))
+      mu_Z_cond    <- A_Z %*% (out$S_samples - mu_cond_S)
       mu_Z_cond <- mu_Z_cond + as.numeric(W_Z %*% diff.y)
-      re_samples <- sapply(seq_len(n_samples), function(i)
-        as.numeric(mu_Z_cond[, i] + Scr_Z %*% rnorm(sum(n_dim_re_tot[-1]))))
+      re_samples <- sample_correlated_gaussian(
+        mu_Z_cond, Scr_Z, n_samples
+      )
     } else {
       re_samples <- matrix(0, nrow = sum(n_dim_re_tot[-1]), ncol = n_samples)
       add <- 0

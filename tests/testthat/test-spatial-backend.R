@@ -149,3 +149,28 @@ test_that("adaptive jitter is reported and conditional variances are guarded", {
                                      matrix(c(1.01, 0))),
                "materially negative")
 })
+
+test_that("vectorised Gaussian sampling preserves seeded draws", {
+  means <- matrix(seq_len(12) / 10, nrow = 3)
+  standard_deviation <- c(0.2, 0.4, 0.7)
+
+  set.seed(148)
+  expected_independent <- sapply(seq_len(ncol(means)), function(i) {
+    means[, i] + standard_deviation * rnorm(nrow(means))
+  })
+  set.seed(148)
+  expect_equal(sample_independent_gaussian(
+    means, standard_deviation, ncol(means)
+  ), expected_independent)
+
+  lower_root <- t(chol(matrix(c(1, 0.3, 0.3, 2), 2, 2)))
+  correlated_means <- matrix(seq_len(8) / 10, nrow = 2)
+  set.seed(149)
+  expected_correlated <- sapply(seq_len(ncol(correlated_means)), function(i) {
+    correlated_means[, i] + lower_root %*% rnorm(nrow(correlated_means))
+  })
+  set.seed(149)
+  expect_equal(sample_correlated_gaussian(
+    correlated_means, lower_root, ncol(correlated_means)
+  ), expected_correlated)
+})
