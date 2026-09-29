@@ -2706,6 +2706,7 @@ glgpm_nong <-
     estim <- nlminb(start_par,
                     function(x) -mc_log_lik(x),
                     function(x) -grad_mc_log_lik(x),
+                    function(x) -hess_mc_log_lik(x),
                     control = list(trace = 1 * messages))
 
     if (messages && estim$convergence != 0) {
