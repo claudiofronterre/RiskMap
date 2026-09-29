@@ -76,10 +76,13 @@ restore_spatial_range <- function(phi_scaled, distance_scale) {
 #'
 #' @param covariance Numeric square covariance matrix.
 #' @param context Short description used in diagnostics.
+#' @param allow_jitter Whether to try reported scale-aware diagonal jitter after
+#'   an unmodified factorisation fails.
 #' @return An upper-triangular Cholesky factor. The applied jitter is stored in
 #'   the `jitter` attribute.
 #' @noRd
-factor_covariance <- function(covariance, context = "covariance matrix") {
+factor_covariance <- function(covariance, context = "covariance matrix",
+                              allow_jitter = TRUE) {
   covariance <- as.matrix(covariance)
   if (nrow(covariance) != ncol(covariance)) {
     stop("The ", context, " must be square.", call. = FALSE)
@@ -90,6 +93,10 @@ factor_covariance <- function(covariance, context = "covariance matrix") {
   if (!is.null(root)) {
     attr(root, "jitter") <- 0
     return(root)
+  }
+
+  if (!allow_jitter) {
+    stop("The ", context, " is not positive definite.", call. = FALSE)
   }
 
   covariance_scale <- max(abs(diag(covariance)), 1)

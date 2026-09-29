@@ -2353,7 +2353,11 @@ glgpm_nong <-
         return_sym_matrix = TRUE
       )
       diag(correlation) <- diag(correlation) + nu2
-      root <- factor_covariance(correlation, "spatial correlation matrix")
+      root <- factor_covariance(
+        correlation,
+        "spatial correlation matrix",
+        allow_jitter = FALSE
+      )
 
       state <- list(
         sigma2 = sigma2,

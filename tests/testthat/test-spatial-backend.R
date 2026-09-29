@@ -141,6 +141,10 @@ test_that("Cholesky prediction weights agree with a direct covariance solve", {
 
 test_that("adaptive jitter is reported and conditional variances are guarded", {
   singular <- matrix(1, 2, 2)
+  expect_error(
+    factor_covariance(singular, "test covariance", allow_jitter = FALSE),
+    "not positive definite"
+  )
   expect_warning(root <- factor_covariance(singular, "test covariance"),
                  "required diagonal jitter")
   expect_gt(attr(root, "jitter"), 0)
