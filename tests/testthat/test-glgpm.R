@@ -119,6 +119,15 @@ test_that("glgpm produces errors", {
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          control_mcml = list(max_iterations = 2), messages = FALSE),
+    "set_control_mcml"
+  )
+
+  expect_error(set_control_mcml(max_iterations = 0), "positive integer")
+  expect_error(set_control_mcml(tolerance = 0), "positive finite number")
+
+  expect_error(
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = c("a", "b")), messages = FALSE),
     "The starting values for 'beta' must be numeric"
   )
@@ -178,6 +187,9 @@ expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "fix_var_me", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function")
+expected_nongaussian_output <- c(
+  expected_output, "mcml_history", "mcml_converged"
+)
 
 test_that("glgpm produces expected output for gaussian models", {
 
@@ -268,7 +280,7 @@ test_that("glgpm produces expected output for binomial models", {
                      messages = FALSE)
 
   expect_s3_class(fit_no_re, "RiskMap")
-  expect_setequal(names(fit_no_re), expected_output)
+  expect_setequal(names(fit_no_re), expected_nongaussian_output)
   expect_equal(fit_no_re$family, "binomial")
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
@@ -279,7 +291,7 @@ test_that("glgpm produces expected output for binomial models", {
                   messages = FALSE)
 
   expect_s3_class(fit_re, "RiskMap")
-  expect_setequal(names(fit_re), expected_output)
+  expect_setequal(names(fit_re), expected_nongaussian_output)
   expect_equal(fit_re$family, "binomial")
 })
 
@@ -292,7 +304,7 @@ test_that("glgpm produces expected output for poisson models", {
                      messages = FALSE)
 
   expect_s3_class(fit_no_re, "RiskMap")
-  expect_setequal(names(fit_no_re), expected_output)
+  expect_setequal(names(fit_no_re), expected_nongaussian_output)
   expect_equal(fit_no_re$family, "poisson")
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
@@ -302,7 +314,7 @@ test_that("glgpm produces expected output for poisson models", {
                   messages = FALSE)
 
   expect_s3_class(fit_re, "RiskMap")
-  expect_setequal(names(fit_re), expected_output)
+  expect_setequal(names(fit_re), expected_nongaussian_output)
   expect_equal(fit_re$family, "poisson")
 
   fit_re_den <- glgpm(y ~ cov + gp() + re(i),
@@ -313,8 +325,34 @@ test_that("glgpm produces expected output for poisson models", {
                       messages = FALSE)
 
   expect_s3_class(fit_re_den, "RiskMap")
-  expect_setequal(names(fit_re_den), expected_output)
+  expect_setequal(names(fit_re_den), expected_nongaussian_output)
   expect_equal(fit_re_den$family, "poisson")
+})
+
+test_that("iterative MCML updates its reference and records reproducible history", {
+  iterative_control <- set_control_mcml(
+    max_iterations = 2,
+    tolerance = 1e6
+  )
+  fit <- glgpm(
+    y ~ cov + gp(),
+    data = binomial_data,
+    family = "binomial",
+    denominator = denominator,
+    control_mcmc = control_mcmc,
+    control_mcml = iterative_control,
+    messages = FALSE
+  )
+
+  expect_true(fit$mcml_converged)
+  expect_length(fit$mcml_history, 2)
+  expect_equal(
+    vapply(fit$mcml_history, `[[`, numeric(1), "seed"),
+    c(control_mcmc$seed, control_mcmc$seed + 1L)
+  )
+  expect_lte(fit$mcml_history[[2]]$max_parameter_change,
+             iterative_control$tolerance)
+  expect_equal(fit$mcml_history[[2]]$estimate, fit$estimate)
 })
 
 

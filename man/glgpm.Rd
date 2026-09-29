@@ -13,6 +13,7 @@ glgpm(
   model_crs = NULL,
   distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
+  control_mcml = set_control_mcml(),
   par0 = NULL,
   return_samples = FALSE,
   messages = TRUE,
@@ -53,6 +54,10 @@ Defaults to \code{"km"}.}
 \item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
 Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.}
 
+\item{control_mcml}{Control parameters for repeated Monte Carlo maximum
+likelihood updates. Must be returned by \code{\link[=set_control_mcml]{set_control_mcml()}}. The default
+performs one update, preserving the usual single-stage fit.}
+
 \item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
 
 \item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
@@ -77,8 +82,8 @@ the \code{nugget} term in \code{\link[=gp]{gp()}} is also set to \code{TRUE}.}
 \value{
 An object of class \code{RiskMap} containing the fitted model and relevant information:
 
-\item{estimate}{Estimated parameters, on their internal (working) scale, as
-a named list: \code{beta} (named regression coefficients), \code{sigma2},
+\item{estimate}{Estimated parameters as a named list: \code{beta} (named
+regression coefficients on the scale of the supplied covariates), \code{sigma2},
 \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
 estimated, \code{sigma2_me} for Gaussian models with an estimated
 measurement error variance, and \code{sigma2_re} (a named vector, one
@@ -109,6 +114,13 @@ its rows/columns are named to match \code{unlist(estimate)}.}
 \item{cov_offset}{Covariate offset}
 \item{call}{Matched call}
 \item{S_samples}{MCMC samples if \code{return_samples} is \code{TRUE}}
+\item{mcml_history}{For non-Gaussian models, one entry per MCML update,
+containing its estimates, likelihood, parameter change, importance-sampling
+effective sample size, and seed. Estimates use the same parameterisation as
+\code{estimate}, with regression coefficients and spatial range restored to the
+supplied covariate and distance units.}
+\item{mcml_converged}{Whether repeated MCML updates met the requested
+tolerance. \code{NA} when only one update was requested.}
 }
 \description{
 Fits generalized linear Gaussian process models to spatial data,
@@ -141,6 +153,9 @@ as \code{phi}) are expressed in kilometers (\code{"km"}, the default) or meters 
 
 The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.
 This argument must be an object returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.
+For non-Gaussian models, \code{control_mcml} can request repeated MCML updates.
+Each update draws a new importance sample around the preceding estimate and
+uses a distinct reproducible seed when \code{control_mcmc$seed} is set.
 
 The \code{start_pars} argument allows for specifying starting values for the model parameters.
 If not provided, default starting values are used.
@@ -190,5 +205,6 @@ summary(fit)
 
 }
 \seealso{
-\code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
+\code{\link[=set_control_mcmc]{set_control_mcmc()}}, \code{\link[=set_control_mcml]{set_control_mcml()}},
+\code{\link{summary.RiskMap}}, \code{\link{to_table}}
 }

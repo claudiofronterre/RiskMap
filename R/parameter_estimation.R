@@ -25,6 +25,9 @@
 ##' Defaults to `"km"`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
 ##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
+##' @param control_mcml Control parameters for repeated Monte Carlo maximum
+##' likelihood updates. Must be returned by [set_control_mcml()]. The default
+##' performs one update, preserving the usual single-stage fit.
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 ##' Defaults to `FALSE`.
@@ -67,6 +70,9 @@
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
 ##' This argument must be an object returned by [set_control_mcmc()].
+##' For non-Gaussian models, `control_mcml` can request repeated MCML updates.
+##' Each update draws a new importance sample around the preceding estimate and
+##' uses a distinct reproducible seed when `control_mcmc$seed` is set.
 ##'
 ##' The `start_pars` argument allows for specifying starting values for the model parameters.
 ##' If not provided, default starting values are used.
@@ -105,6 +111,13 @@
 ##' \item{cov_offset}{Covariate offset}
 ##' \item{call}{Matched call}
 ##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
+##' \item{mcml_history}{For non-Gaussian models, one entry per MCML update,
+##' containing its estimates, likelihood, parameter change, importance-sampling
+##' effective sample size, and seed. Estimates use the same parameterisation as
+##' `estimate`, with regression coefficients and spatial range restored to the
+##' supplied covariate and distance units.}
+##' \item{mcml_converged}{Whether repeated MCML updates met the requested
+##' tolerance. `NA` when only one update was requested.}
 ##'
 ##' @examples
 ##'
@@ -149,7 +162,8 @@
 ##'
 ##' summary(fit)
 ##'
-##' @seealso \code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
+##' @seealso [set_control_mcmc()], [set_control_mcml()],
+##'   \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @export
 glgpm <- function(formula,
                  data,
@@ -159,6 +173,7 @@ glgpm <- function(formula,
                  model_crs = NULL,
                  distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
+                 control_mcml = set_control_mcml(),
                  par0 = NULL,
                  return_samples = FALSE,
                  messages = TRUE,
@@ -181,6 +196,10 @@ glgpm <- function(formula,
             "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
             "'messages' must be either TRUE or FALSE" = is.logical(messages))
   distance_units <- match.arg(distance_units)
+  if (!inherits(control_mcml, "RiskMap_control_mcml")) {
+    stop("the argument passed to 'control_mcml' must be an output from ",
+         "the function set_control_mcml; see ?set_control_mcml for details")
+  }
 
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
@@ -402,7 +421,17 @@ glgpm <- function(formula,
       solve(design_scaling$coefficient_transform, par0$beta)
     )
     fitting_par0$phi <- par0$phi / spatial_scaling$distance_scale
-    res <- glgpm_nong(y = y, D, fitting_coords, units_m,
+    mcml_history <- vector("list", control_mcml$max_iterations)
+    previous_estimate <- NULL
+    converged <- if (control_mcml$max_iterations == 1L) NA else FALSE
+    for (iteration in seq_len(control_mcml$max_iterations)) {
+      iteration_mcmc <- mcml_iteration_control(control_mcmc, iteration)
+      if (messages && control_mcml$max_iterations > 1L) {
+        message("\nMCML update ", iteration, " of ",
+                control_mcml$max_iterations)
+      }
+
+      res <- glgpm_nong(y = y, D, fitting_coords, units_m,
                         kappa = inter_f$gp_spec$kappa,
                         ID_coords, ID_re, s_unique, re_unique,
                         fix_tau2, family = family, invlink = invlink,
@@ -413,14 +442,53 @@ glgpm <- function(formula,
                                            fitting_start_phi,
                                            start_pars[["tau2"]],
                                            start_pars[["sigma2_re"]]),
-                        control_mcmc = control_mcmc,
+                        control_mcmc = iteration_mcmc,
                         messages = messages)
+
+      working_estimate <- unlist(res$estimate, use.names = TRUE)
+      change <- if (is.null(previous_estimate)) NA_real_ else
+        max(abs(working_estimate - previous_estimate))
+      optimizer <- attr(res, "optimizer")
+      mcml_history[[iteration]] <- list(
+        iteration = iteration,
+        estimate = res$estimate,
+        log_lik = res$log_lik,
+        max_parameter_change = change,
+        importance_ess = optimizer$importance_ess,
+        relative_importance_ess = optimizer$relative_importance_ess,
+        seed = iteration_mcmc$seed
+      )
+
+      if (!is.na(change) && change <= control_mcml$tolerance) {
+        converged <- TRUE
+        mcml_history <- mcml_history[seq_len(iteration)]
+        break
+      }
+      previous_estimate <- working_estimate
+      fitting_par0 <- estimate_to_mcml_reference(res$estimate, fix_tau2)
+    }
+    if (control_mcml$max_iterations > 1L && !isTRUE(converged)) {
+      warning(
+        "MCML updates reached 'max_iterations' without satisfying the ",
+        "parameter-change tolerance.",
+        call. = FALSE
+      )
+    }
+    res$mcml_history <- mcml_history
+    res$mcml_converged <- converged
   }
 
   res <- restore_fixed_effect_scale(
     res,
     design_scaling$coefficient_transform
   )
+  if (!is.null(res$mcml_history)) {
+    res$mcml_history <- restore_mcml_history_scale(
+      res$mcml_history,
+      design_scaling$coefficient_transform,
+      spatial_scaling$distance_scale
+    )
+  }
 
   # The fitting engines optimise log(phi) on scaled coordinates. An additive
   # shift restores the original distance units without changing its Hessian.
@@ -675,6 +743,20 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
   )
   names(result$grad_MLE) <- parameter_names
   result
+}
+
+##' Restore MCML history estimates to user-facing covariate and distance scales
+##' @noRd
+restore_mcml_history_scale <- function(history, coefficient_transform,
+                                       distance_scale) {
+  lapply(history, function(entry) {
+    entry$estimate$beta <- as.numeric(
+      coefficient_transform %*% entry$estimate$beta
+    )
+    names(entry$estimate$beta) <- colnames(coefficient_transform)
+    entry$estimate$phi <- entry$estimate$phi + log(distance_scale)
+    entry
+  })
 }
 
 ##' Wrap an optimiser objective with controlled invalid-trial handling
@@ -2284,6 +2366,65 @@ laplace_sampling_mcmc <- function(y,
   class(out_sim) <- "RiskMap_mcmc"
   out_sim
 }
+##' Set control parameters for iterative MCML estimation
+##'
+##' Repeated Monte Carlo maximum likelihood (MCML) updates regenerate the
+##' importance sample around the estimate from the preceding update. A single
+##' update reproduces the standard RiskMap fitting procedure.
+##'
+##' @param max_iterations Positive integer giving the maximum number of MCML
+##' updates. Defaults to one.
+##' @param tolerance Positive numeric tolerance for the maximum absolute change
+##' in the internally standardised regression coefficients and log covariance
+##' parameters. It is evaluated from the second update onwards.
+##' @return A control object of class `RiskMap_control_mcml`.
+##' @examples
+##' control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.05)
+##' @seealso [glgpm()], [set_control_mcmc()]
+##' @export
+set_control_mcml <- function(max_iterations = 1L, tolerance = 0.05) {
+  check_positive_integer(max_iterations, "max_iterations")
+  if (!is.numeric(tolerance) || length(tolerance) != 1L ||
+      !is.finite(tolerance) || tolerance <= 0) {
+    stop("'tolerance' must be a single positive finite number.", call. = FALSE)
+  }
+
+  structure(
+    list(max_iterations = as.integer(max_iterations), tolerance = tolerance),
+    class = "RiskMap_control_mcml"
+  )
+}
+
+##' Use a distinct reproducible MCMC stream for each MCML update
+##' @noRd
+mcml_iteration_control <- function(control_mcmc, iteration) {
+  out <- control_mcmc
+  if (!is.null(out$seed) && iteration > 1L) {
+    integer_max <- .Machine$integer.max
+    out$seed <- as.integer(((out$seed - 1 + iteration - 1) %% integer_max) + 1)
+  }
+  out
+}
+
+##' Convert a working-scale estimate into the next MCML reference point
+##' @noRd
+estimate_to_mcml_reference <- function(estimate, fix_tau2) {
+  out <- list(
+    beta = unname(estimate$beta),
+    sigma2 = exp(estimate$sigma2),
+    phi = exp(estimate$phi)
+  )
+  if (isTRUE(fix_tau2)) {
+    out$tau2 <- exp(estimate$sigma2 + estimate$nu2)
+  } else {
+    out$tau2 <- fix_tau2
+  }
+  if (!is.null(estimate$sigma2_re)) {
+    out$sigma2_re <- exp(estimate$sigma2_re)
+  }
+  out
+}
+
 ##' Set Control Parameters for Simulation
 ##'
 ##' This function sets control parameters for running simulations, supporting MCMC methods
