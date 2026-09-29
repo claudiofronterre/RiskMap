@@ -200,7 +200,7 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   n_unique <- nrow(unique_coords)
   pars <- model$parameters
   if (pars$sigma2 > 0) {
-    covariance <- pars$sigma2 * matern_correlation(dist(unique_coords[, c("x", "y")]),
+    covariance <- pars$sigma2 * matern_correlation(pairwise_distances(unique_coords[, c("x", "y")]),
                                                   phi = pars$phi, kappa = model$kappa,
                                                   return_sym_matrix = TRUE)
     root <- tryCatch(t(chol(covariance)), error = function(e) {

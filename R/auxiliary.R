@@ -149,15 +149,23 @@ propose_utm <- function (data) {
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
 ##' @export
 matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+  input_dimensions <- if (is.matrix(u)) dim(u) else NULL
   if (is.vector(u))
     names(u) <- NULL
   if (is.matrix(u))
     dimnames(u) <- list(NULL, NULL)
-  uphi <- u / phi
-  uphi <- ifelse(u > 0, (((2^(-(kappa - 1)))/ifelse(0, Inf,
-                                                    gamma(kappa))) * (uphi^kappa) * besselK(x = uphi, nu = kappa)),
-                 1)
-  uphi[u > 600 * phi] <- 0
+  if (kappa %in% c(0.5, 1.5, 2.5)) {
+    uphi <- cpp_half_integer_matern(as.numeric(u), phi, kappa)
+    if (!is.null(input_dimensions)) {
+      dim(uphi) <- input_dimensions
+    }
+  } else {
+    uphi <- u / phi
+    uphi <- ifelse(u > 0, (((2^(-(kappa - 1)))/ifelse(0, Inf,
+                                                      gamma(kappa))) * (uphi^kappa) * besselK(x = uphi, nu = kappa)),
+                   1)
+    uphi[u > 600 * phi] <- 0
+  }
 
   if(return_sym_matrix) {
     n <- (1 + sqrt(1 + 8 * length(uphi))) / 2

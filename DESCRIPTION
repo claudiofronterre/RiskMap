@@ -31,6 +31,7 @@ Imports:
     knitr,
     Matrix,
     numDeriv,
+    Rcpp,
     rlang,
     sf,
     sns,
@@ -39,6 +40,8 @@ Imports:
     terra,
     tibble,
     units
+LinkingTo:
+    Rcpp
 Suggests:
     testthat (>= 3.0.0)
 License: MIT + file LICENSE

@@ -329,7 +329,7 @@ glgpm <- function(formula,
   }
 
   if(is.null(start_pars[["phi"]])) {
-    start_pars[["phi"]] <- quantile(dist(coords), 0.1)
+    start_pars[["phi"]] <- quantile(pairwise_distances(coords), 0.1)
   } else {
     check_positive_number(start_pars[["phi"]])
   }
@@ -480,7 +480,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 
   m <- length(y)
   p <- ncol(D)
-  U <- dist(coords)
+  U <- pairwise_distances(coords)
   if(is.null(ID_re)) {
     n_re <- 0
   } else {
@@ -603,7 +603,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   }
 
   D.tilde <- t(D)%*%C_g
-  U <- dist(coords)
+  U <- pairwise_distances(coords)
 
   grad.log.lik <- function(par) {
     beta <- par[ind_beta]
@@ -2181,7 +2181,7 @@ glgpm_nong <-
     inv1   <- linkf$d1
     inv2   <- linkf$d2
 
-    u <- dist(coords)
+    u <- pairwise_distances(coords)
     Sigma0 <- sigma2_0 * matern_correlation(u = u, phi = phi0, kappa = kappa, return_sym_matrix = TRUE)
     diag(Sigma0) <- diag(Sigma0) + tau2_0
 

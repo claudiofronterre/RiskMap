@@ -52,6 +52,7 @@ importFrom(Matrix,
   solve,
   sparseMatrix
 )
+importFrom(Rcpp,evalCpp)
 importFrom(dplyr,
   "%>%",
   first,
@@ -87,3 +88,4 @@ importFrom(terra,
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)
 importFrom(utils,flush.console)
+useDynLib(RiskMap, .registration = TRUE)
