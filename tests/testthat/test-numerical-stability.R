@@ -19,6 +19,8 @@ test_that("normalise_log_weights remains finite on extreme scales", {
     normalise_log_weights(rep(-Inf, 3)),
     "All Monte Carlo importance weights are non-finite"
   )
+  expect_equal(importance_effective_sample_size(rep(0.25, 4)), 4)
+  expect_equal(importance_effective_sample_size(c(1, 0, 0, 0)), 1)
 })
 
 test_that("softplus is stable in both tails", {

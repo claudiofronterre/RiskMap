@@ -76,4 +76,6 @@ test_that("non-Gaussian estimated nugget uses consistent derivatives", {
   expect_lt(max(abs(fit$grad_MLE)), 0.01)
   expect_true(is.finite(coef(fit)[["tau2"]]))
   expect_identical(attr(fit, "optimizer")$convergence, 0L)
+  expect_true(attr(fit, "optimizer")$importance_ess >= 1)
+  expect_true(attr(fit, "optimizer")$relative_importance_ess <= 1)
 })

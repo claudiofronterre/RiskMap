@@ -538,6 +538,13 @@ normalise_log_weights <- function(log_weights) {
   weights / sum(weights)
 }
 
+##' Effective sample size of normalised importance weights
+##'
+##' @noRd
+importance_effective_sample_size <- function(weights) {
+  1 / sum(weights^2)
+}
+
 ##' Obtain stable Gaussian regression starting values
 ##'
 ##' QR decomposition avoids squaring the condition number as the normal
@@ -2777,6 +2784,23 @@ glgpm_nong <-
     optimizer_diagnostics <- estim[c("convergence", "message", "evaluations")]
     optimizer_diagnostics$invalid_evaluations <-
       attr(objective, "diagnostics")$invalid_evaluations
+    final_weights <- normalise_log_weights(
+      compute_log_f(estim$par) - log_f_tilde
+    )
+    optimizer_diagnostics$importance_ess <-
+      importance_effective_sample_size(final_weights)
+    optimizer_diagnostics$relative_importance_ess <-
+      optimizer_diagnostics$importance_ess / length(final_weights)
+    if (messages && optimizer_diagnostics$relative_importance_ess < 0.1) {
+      warning(
+        "The importance-sampling effective sample size is only ",
+        format(100 * optimizer_diagnostics$relative_importance_ess,
+               digits = 3),
+        "% of the retained samples; consider improving the proposal or ",
+        "increasing the MCMC sample size.",
+        call. = FALSE
+      )
+    }
     attr(out, "optimizer") <- optimizer_diagnostics
     class(out) <- "RiskMap"
     return(out)
