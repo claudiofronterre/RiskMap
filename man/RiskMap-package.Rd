@@ -22,12 +22,8 @@ Useful links:
 Authors:
 \itemize{
   \item Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
-}
-
-Other contributors:
-\itemize{
-  \item Claudio Fronterre \email{c.fronterre@bham.ac.uk} (\href{https://orcid.org/0000-0001-6723-9727}{ORCID}) [contributor]
-  \item Simon Smart (\href{https://orcid.org/0000-0002-3624-8951}{ORCID}) [contributor]
+  \item Claudio Fronterre \email{c.fronterre@bham.ac.uk} (\href{https://orcid.org/0000-0001-6723-9727}{ORCID})
+  \item Simon Smart (\href{https://orcid.org/0000-0002-3624-8951}{ORCID})
 }
 
 }

@@ -244,6 +244,7 @@ setup_prediction <- function(object,
       re_names <- names(object$re)
       offset_names <- names(object$cov_offset)
       model_predictors <- setdiff(get_formula_terms(object$formula), c(response, re_names, offset_names))
+
       if (!is.data.frame(predictors))
         stop(if (is.null(index)) "'predictors' must be a data.frame"
              else sprintf("'predictors[[%d]]' must be a data.frame", index))
@@ -252,6 +253,7 @@ setup_prediction <- function(object,
       if (nrow(predictors) != n_predictors)
         stop(if (is.null(index)) "The number of rows in 'predictors' does not match the number of locations in 'grid_pred'"
              else sprintf("The number of rows in of 'predictors[[%d]]' does not match the number of locations in 'grid_pred[[%d]]'", index, index))
+      check_complete_data(predictors, model_predictors)
       mf <- model.frame(inter_lt_f$pf, data = predictors, na.action = na.fail)
       as.matrix(model.matrix(attr(mf, "terms"), data = predictors))
     }
@@ -850,8 +852,10 @@ predict_grid_target <- function(object,
 ##' from an object of class 'RiskMap_predict_grid_target'.
 ##'
 ##' @param x An object of class 'RiskMap_predict_grid_target'.
-##' @param which_target Character string specifying which target prediction to plot.
-##' @param which_summary Character string specifying which summary statistic to plot (e.g., "mean", "sd").
+##' @param target Character string specifying which target prediction to plot,
+##' one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.
+##' @param summary Character string specifying which summary statistic to plot
+##' (e.g., "mean", "sd"), one of \code{x$pd_summary}. Defaults to \code{"mean"}.
 ##' @param ... Additional arguments passed to the \code{\link[terra]{plot}} function of the \code{terra} package.
 ##' @return A \code{ggplot} object representing the specified prediction target or summary statistic over the spatial grid.
 ##' @details
@@ -865,10 +869,19 @@ predict_grid_target <- function(object,
 ##' @export
 ##'
 ##'
-plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
+plot.RiskMap_predict_grid_target <- function(x, target = NULL, summary = "mean", ...) {
+  if (is.null(target)) {
+    target <- x$f_target[1]
+  } else if (!target %in% x$f_target) {
+    stop("'target' must be one of: ", paste(shQuote(x$f_target), collapse = ", "))
+  }
+  if (!summary %in% x$pd_summary) {
+    stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
+  }
+
   t_data.frame <-
     terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
-                               x$target[[which_target]][[which_summary]]),
+                               x$target[[target]][[summary]]),
                          xy = TRUE)
   raster_out <- rast(t_data.frame, crs = st_crs(x$grid_pred)$wkt)
 
@@ -1319,8 +1332,10 @@ predict_areal_target <- function(object,
 ##'
 ##' @param x An object of class 'RiskMap_predict_areal_target' containing computed targets,
 ##' summaries, and associated spatial data.
-##' @param which_target Character indicating the target type to plot (e.g., "linear_target").
-##' @param which_summary Character indicating the summary type to plot (e.g., "mean", "sd").
+##' @param target Character indicating the target type to plot (e.g., "linear_target"),
+##' one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.
+##' @param summary Character indicating the summary type to plot (e.g., "mean", "sd"),
+##' one of \code{x$pd_summary}. Defaults to \code{"mean"}.
 ##' @param ... Additional arguments passed to 'scale_fill_distiller' in 'ggplot2'.
 ##' @return A \code{ggplot} object showing the plot of the specified predictive target or summary.
 ##' @seealso
@@ -1329,12 +1344,18 @@ predict_areal_target <- function(object,
 ##'
 ##' @method plot RiskMap_predict_areal_target
 ##' @export
-plot.RiskMap_predict_areal_target <- function(x, which_target = "linear_target",
-                                         which_summary = "mean", ...) {
-  col_boundaries_name <- paste(which_target,"_",which_summary,sep="")
-
+plot.RiskMap_predict_areal_target <- function(x, target = NULL, summary = "mean", ...) {
+  if (is.null(target)) {
+    target <- x$f_target[1]
+  } else if (!target %in% x$f_target) {
+    stop("'target' must be one of: ", paste(shQuote(x$f_target), collapse = ", "))
+  }
+  if (!summary %in% x$pd_summary) {
+    stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
+  }
+  col_boundaries_name <- paste(target, "_", summary, sep = "")
   out <- ggplot(x$boundaries) +
-    geom_sf(aes(fill = x$boundaries[[col_boundaries_name]])) +
+    geom_sf(aes(fill = .data[[col_boundaries_name]])) +
     scale_fill_distiller(...)
   return(out)
 }
@@ -2117,13 +2138,28 @@ assess_prediction <- function(object,
 ##'
 ##' @return A plot of the simulation results.
 ##'
-##' @importFrom stars st_rasterize
+##' @importFrom terra rast rasterize vect
 ##'
 ##' @export
 plot_sim_surf <-  function(surf_obj, sim, ...) {
 
   sf_object <- simulated_surface(surf_obj, sim)
-  r <- rast(st_rasterize(sf_object[, "linear_predictor", drop = FALSE]))
+
+  # Points are assumed to fall on a regular lattice (e.g. from create_grid());
+  # infer its cell size from the smallest gap between distinct coordinates,
+  # and pad the extent by half a cell so points land at cell centres.
+  coords <- st_coordinates(sf_object)
+  cellsize <- c(min(diff(sort(unique(coords[, "X"])))),
+               min(diff(sort(unique(coords[, "Y"])))))
+  template <- rast(
+    xmin = min(coords[, "X"]) - cellsize[1] / 2,
+    xmax = max(coords[, "X"]) + cellsize[1] / 2,
+    ymin = min(coords[, "Y"]) - cellsize[2] / 2,
+    ymax = max(coords[, "Y"]) + cellsize[2] / 2,
+    resolution = cellsize,
+    crs = st_crs(sf_object)$wkt
+  )
+  r <- rasterize(vect(sf_object), template, field = "linear_predictor")
 
   plot(r, main = paste("Simulation no.", sim), ...)
   if (!is.null(surf_obj$locations$data)) {

@@ -40,6 +40,16 @@ test_that("check_formula functions correctly", {
                "'data' contains rows with missing data")
  })
 
+test_that("check_complete_data only checks the specified columns and names the caller's argument", {
+
+  df <- data.frame(a = c(1, 2, 3), b = c(1, NA, 3))
+
+  # "b" has a missing value, but it is ignored when only checking "a"
+  expect_no_error(check_complete_data(df, "a"))
+  expect_error(check_complete_data(df, "b"), "'df' contains rows with missing data")
+  expect_error(check_complete_data(df, c("a", "b")), "'df' contains rows with missing data")
+})
+
 test_that("check_binomial functions correctly", {
 
   expect_no_error(check_binomial(0:3, NULL))

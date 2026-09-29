@@ -126,3 +126,25 @@ test_that("predict_grid_target handles one-pixel groups in list mode", {
   expect_equal(dim(out$lp_samples[[2]]), c(2, 3))
 })
 
+test_that("plot.RiskMap_predict_grid_target defaults to the first target and validates target/summary #143", {
+
+  gaussian_grid <- setup_prediction(gaussian_model,
+                                  grid_pred = grid,
+                                  predictors = data.frame(cov = rnorm(nrow(grid))),
+                                  re_predictors = data.frame(i = 1:5),
+                                  type = "joint")
+  result <- predict_grid_target(gaussian_grid)
+
+  expect_no_error(plot(result))
+  expect_no_error(plot(result, target = result$f_target[1]))
+
+  expect_error(
+    plot(result, target = "not_a_target"),
+    "'target' must be one of"
+  )
+  expect_error(
+    plot(result, summary = "not_a_summary"),
+    "'summary' must be one of"
+  )
+})
+

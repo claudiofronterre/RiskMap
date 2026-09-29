@@ -73,6 +73,11 @@ then the remaining optional arguments.
 - `assess_prediction()` now honours a `seed` set on its `control_mcmc` argument
 to make the random splits generated for `method = "cluster"` or `"regularized"`
 reproducible.
+- In `plot.RiskMap_predict_grid_target()` and `plot.RiskMap_predict_areal_target()`,
+`which_target`/`which_summary` have been renamed to `target`/`summary`, for
+consistency elsewhere in the package. `target` now defaults to `NULL`, which
+plots the first available target; an unrecognised `target` or `summary` now
+raises an informative error instead of a blank plot.
 - The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to
 `TRUE` to estimate it.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian

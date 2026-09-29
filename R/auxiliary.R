@@ -424,6 +424,24 @@ get_formula_terms <- function(formula) {
 }
 
 
+##' @title Check that select columns of the data contain no missing values
+##' @description Checks that the specified columns are complete, ignoring
+##' missing values elsewhere in `data`. The error message names the argument
+##' as passed by the caller (e.g. `predictors` from `setup_prediction()`,
+##' `data` from `check_formula()`).
+##' @param data The data to check.
+##' @param columns The column names to check for missing data.
+##' @return TRUE if there is no missing data, or raise an error if not.
+##' @noRd
+check_complete_data <- function(data, columns) {
+  name <- deparse(substitute(data))
+  drop_coords <- st_drop_geometry(data[, columns])
+  if (any(!complete.cases(drop_coords))) {
+    stop("'", name, "' contains rows with missing data - check or remove them", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 ##' @title Check that formula is valid and that there is no missing data
 ##' @description Checks that the formula object is of class formula and that all
 ##' the terms in the formula are present in the data
@@ -463,11 +481,7 @@ check_formula <- function(formula, data, response_required = TRUE){
          " not present in 'data'"), call. = FALSE)
   }
 
-  data <- data[, formula_terms]
-  drop_coords <- st_drop_geometry(data)
-  missing_data <- any(!complete.cases(drop_coords))
-  if (missing_data)
-    stop("'data' contains rows with missing data - check or remove them", call. = FALSE)
+  check_complete_data(data, formula_terms)
 
   invisible(TRUE)
 }
