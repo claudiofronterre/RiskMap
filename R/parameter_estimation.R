@@ -1662,6 +1662,7 @@ maxim_integrand <- function(
           sum_by_group(g, ID_re[, j], n_dim_re[j])
       }
     }
+
     out
   }
 
@@ -2304,6 +2305,46 @@ glgpm_nong <-
       }
     }
 
+    # nlminb commonly requests the objective, score and Hessian at the same
+    # parameter vector. Cache their shared covariance decomposition so that it
+    # is built only once at each distinct trial point.
+    covariance_cache <- new.env(parent = emptyenv())
+    covariance_state <- function(par) {
+      if (exists("par", covariance_cache, inherits = FALSE) &&
+          identical(par, covariance_cache$par)) {
+        return(covariance_cache$state)
+      }
+
+      sigma2 <- exp(par[ind_sigma2])
+      nu2 <- nugget_ratio(
+        fix_tau2,
+        sigma2,
+        if (isTRUE(fix_tau2)) par[ind_nu2] else NULL
+      )
+      phi <- exp(par[ind_phi])
+      correlation <- matern_correlation(
+        u,
+        phi = phi,
+        kappa = kappa,
+        return_sym_matrix = TRUE
+      )
+      diag(correlation) <- diag(correlation) + nu2
+      root <- factor_covariance(correlation, "spatial correlation matrix")
+
+      state <- list(
+        sigma2 = sigma2,
+        nu2 = nu2,
+        phi = phi,
+        correlation = correlation,
+        root = root,
+        inverse = chol2inv(root),
+        log_determinant = log_determinant_from_cholesky(root)
+      )
+      covariance_cache$par <- par
+      covariance_cache$state <- state
+      state
+    }
+
     # --- 1) log.integrand, generalized link ---
     log.integrand <- function(S_tot, val) {
       S <- S_tot[1:n_loc]
@@ -2344,32 +2385,17 @@ glgpm_nong <-
       -0.5 * (q.f_S + q.f_re) + llik
     }
 
-    # --- 2) compute.log.f, generalized link (uses log.integrand) ---
-    compute.log.f <- function(par, ldetR = NA, R.inv = NA) {
+    # --- 2) Monte Carlo log integrand ---
+    compute_log_f <- function(par) {
       beta   <- par[ind_beta]
-      sigma2 <- exp(par[ind_sigma2])
-      nu2    <- nugget_ratio(
-        fix_tau2,
-        sigma2,
-        if (isTRUE(fix_tau2)) par[ind_nu2] else NULL
-      )
-      phi    <- exp(par[ind_phi])
+      covariance <- covariance_state(par)
 
       val <- list()
-      val$sigma2 <- sigma2
+      val$sigma2 <- covariance$sigma2
       val$mu <- as.numeric(D %*% beta) + cov_offset
       if (n_re > 0) val$sigma2_re <- exp(par[ind_sigma2_re])
-
-      if (is.na(ldetR) && is.na(as.numeric(R.inv)[1])) {
-        R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
-        diag(R) <- diag(R) + nu2
-        root <- factor_covariance(R, "spatial correlation matrix")
-        val$ldetR <- log_determinant_from_cholesky(root)
-        val$R.inv <- chol2inv(root)
-      } else {
-        val$ldetR <- ldetR
-        val$R.inv <- R.inv
-      }
+      val$ldetR <- covariance$log_determinant
+      val$R.inv <- covariance$inverse
 
       sapply(seq_len(n_samples), function(i) log.integrand(S_tot_samples[i, ], val))
     }
@@ -2378,32 +2404,25 @@ glgpm_nong <-
     if (isTRUE(fix_tau2)) par0_vec <- c(par0_vec, log(par0$tau2 / par0$sigma2))
     if (n_re > 0) par0_vec <- c(par0_vec, log(par0$sigma2_re))
 
-    log.f.tilde <- compute.log.f(par0_vec)
+    log_f_tilde <- compute_log_f(par0_vec)
 
     mc_log_lik <- function(par) {
-      log_mean_exp(compute.log.f(par) - log.f.tilde)
+      log_mean_exp(compute_log_f(par) - log_f_tilde)
     }
 
     # --- 3) Monte Carlo score, generalized link ---
     grad_mc_log_lik <- function(par) {
       beta   <- par[ind_beta]; mu <- as.numeric(D %*% beta) + cov_offset
-      sigma2 <- exp(par[ind_sigma2])
-      nu2    <- nugget_ratio(
-        fix_tau2,
-        sigma2,
-        if (isTRUE(fix_tau2)) par[ind_nu2] else NULL
-      )
-      phi    <- exp(par[ind_phi])
+      covariance <- covariance_state(par)
+      sigma2 <- covariance$sigma2
+      nu2 <- covariance$nu2
+      phi <- covariance$phi
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
-      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
-      diag(R) <- diag(R) + nu2
-      root <- factor_covariance(R, "spatial correlation matrix")
-      R.inv <- chol2inv(root)
-      ldetR <- log_determinant_from_cholesky(root)
+      R.inv <- covariance$inverse
 
       importance_weights <- normalise_log_weights(
-        compute.log.f(par, ldetR, R.inv) - log.f.tilde
+        compute_log_f(par) - log_f_tilde
       )
 
       R1.phi <- matern_gradient_phi(u, phi, kappa)
@@ -2481,28 +2500,22 @@ glgpm_nong <-
       ## Unpack parameters
       beta   <- par[ind_beta]
       mu     <- as.numeric(D %*% beta) + cov_offset
-      sigma2 <- exp(par[ind_sigma2])
-      nu2    <- nugget_ratio(
-        fix_tau2,
-        sigma2,
-        if (isTRUE(fix_tau2)) par[ind_nu2] else NULL
-      )
-      phi    <- exp(par[ind_phi])
+      covariance <- covariance_state(par)
+      sigma2 <- covariance$sigma2
+      nu2 <- covariance$nu2
+      phi <- covariance$phi
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
       ## Build R(φ, ν²) and precision via Cholesky (fast solves)
-      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
-      diag(R) <- diag(R) + nu2
-      root <- factor_covariance(R, "spatial correlation matrix")
+      root <- covariance$root
 
-      A   <- chol2inv(root)               # R^{-1} (explicit once)
+      A   <- covariance$inverse           # R^{-1} (explicit once)
       trA <- sum(diag(A))
       t2.nu2 <- 0.5 * sum(A * A)          # 0.5 tr(A^2)
 
       ## MC weights for the importance average
-      ldetR <- log_determinant_from_cholesky(root)
       importance_weights <- normalise_log_weights(
-        compute.log.f(par, ldetR, A) - log.f.tilde
+        compute_log_f(par) - log_f_tilde
       )
 
       ## φ in log space: R_u = dR/d(log φ), R_uu = d²R/d(log φ)²
