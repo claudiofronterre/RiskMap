@@ -196,6 +196,26 @@ test_that("check_positive_integer functions correctly", {
   expect_error(check_positive_integer(Inf, "a"), "'a' must be a single positive integer")
 })
 
+test_that("check_logical functions correctly and names the caller's argument", {
+  my_flag <- TRUE
+  expect_no_error(check_logical(my_flag))
+
+  my_flag <- FALSE
+  expect_no_error(check_logical(my_flag))
+
+  my_flag <- NA
+  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
+
+  my_flag <- c(TRUE, FALSE)
+  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
+
+  my_flag <- "TRUE"
+  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
+
+  my_flag <- 1
+  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
+})
+
 test_that("check_positive_number functions correctly", {
   expect_no_error(check_positive_number(1, ""))
   expect_no_error(check_positive_number(0.1, ""))
