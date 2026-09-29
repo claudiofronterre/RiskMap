@@ -357,15 +357,15 @@ setup_prediction <- function(object,
   R <- matern_correlation(U, phi = fitting_phi, kappa = object$kappa,
                           return_sym_matrix = TRUE)
 
-  if (!obs_loc && !batch_marginal) {
+  if (obs_loc) {
+    C <- par_hat$sigma2 * R[, object$ID_coords]
+    grp <- object$coords
+    fitting_grp <- fitting_coords
+  } else if (!batch_marginal) {
     C <- if (list_mode)
       lapply(U_pred, function(u) par_hat$sigma2 * matern_correlation(u, phi = fitting_phi, kappa = object$kappa))
     else
       par_hat$sigma2 * matern_correlation(U_pred, phi = fitting_phi, kappa = object$kappa)
-  } else {
-    C <- par_hat$sigma2 * R[, object$ID_coords]
-    grp <- object$coords
-    fitting_grp <- fitting_coords
   }
 
   n_pred_spatial <- if (obs_loc) nrow(object$coords) else n_pred

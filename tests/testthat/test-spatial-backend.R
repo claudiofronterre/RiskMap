@@ -204,7 +204,23 @@ test_that("automatic marginal batching preserves unbatched predictions", {
     prediction, conditioning, weight_function, signal, 1, 0.3, 1.5,
     ncol(signal), batch_size = 3
   )
+  expect_equal(dim(actual), c(nrow(prediction), ncol(signal)))
   expect_equal(actual, expected, tolerance = 1e-14)
+
+  vector_signal <- signal[, 1]
+  vector_means <- as.numeric(weights %*% vector_signal)
+  set.seed(151)
+  expected_vector <- sample_independent_gaussian(
+    vector_means, standard_deviation, 4
+  )
+  set.seed(151)
+  actual_vector <- batched_marginal_prediction(
+    prediction, conditioning, weight_function, vector_signal, 1, 0.3, 1.5,
+    n_samples = 4, batch_size = 3
+  )
+  expect_equal(dim(actual_vector), c(nrow(prediction), 4L))
+  expect_equal(actual_vector, expected_vector, tolerance = 1e-14)
+
   expect_equal(marginal_prediction_batch_size(10, 5), 10)
   expect_lt(marginal_prediction_batch_size(1e6, 1000), 1e6)
 })

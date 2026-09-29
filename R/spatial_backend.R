@@ -229,6 +229,9 @@ batched_marginal_prediction <- function(
     )
     weights <- weight_function(cross_covariance)
     conditional_mean <- weights %*% conditional_signal
+    if (is.null(dim(conditional_signal))) {
+      conditional_mean <- as.numeric(conditional_mean)
+    }
     conditional_sd <- sqrt(conditional_variances(
       marginal_variance, weights, cross_covariance
     ))
