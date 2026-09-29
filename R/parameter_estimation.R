@@ -509,6 +509,35 @@ nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
   as.numeric(fix_tau2) / sigma2
 }
 
+##' Evaluate log(mean(exp(x))) without exponentiating large values
+##'
+##' @noRd
+log_mean_exp <- function(x) {
+  shift <- max(x)
+
+  if (!is.finite(shift)) {
+    return(shift)
+  }
+
+  shift + log(mean(exp(x - shift)))
+}
+
+##' Convert log weights to probabilities without overflow or underflow
+##'
+##' The common shift cancels during normalisation, while keeping every
+##' exponentiated value no greater than one.
+##'
+##' @noRd
+normalise_log_weights <- function(log_weights) {
+  shift <- max(log_weights)
+  if (!is.finite(shift)) {
+    stop("All Monte Carlo importance weights are non-finite.", call. = FALSE)
+  }
+
+  weights <- exp(log_weights - shift)
+  weights / sum(weights)
+}
+
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
@@ -2335,12 +2364,12 @@ glgpm_nong <-
 
     log.f.tilde <- compute.log.f(par0_vec)
 
-    MC.log.lik <- function(par) {
-      log(mean(exp(compute.log.f(par) - log.f.tilde)))
+    mc_log_lik <- function(par) {
+      log_mean_exp(compute.log.f(par) - log.f.tilde)
     }
 
-    # --- 3) grad.MC.log.lik, generalized link ---
-    grad.MC.log.lik <- function(par) {
+    # --- 3) Monte Carlo score, generalized link ---
+    grad_mc_log_lik <- function(par) {
       beta   <- par[ind_beta]; mu <- as.numeric(D %*% beta) + cov_offset
       sigma2 <- exp(par[ind_sigma2])
       nu2    <- nugget_ratio(
@@ -2356,9 +2385,9 @@ glgpm_nong <-
       R.inv <- solve(R)
       ldetR <- determinant(R)$modulus
 
-      exp.fact <- exp(compute.log.f(par, ldetR, R.inv) - log.f.tilde)
-      L.m <- sum(exp.fact)
-      exp.fact <- exp.fact / L.m
+      importance_weights <- normalise_log_weights(
+        compute.log.f(par, ldetR, R.inv) - log.f.tilde
+      )
 
       R1.phi <- matern_gradient_phi(u, phi, kappa)
       m1.phi <- R.inv %*% R1.phi
@@ -2418,12 +2447,14 @@ glgpm_nong <-
       }
 
       out <- rep(0, length(par))
-      for (i in 1:n_samples) out <- out + exp.fact[i] * gradient.S(S_tot_samples[i, ])
+      for (i in 1:n_samples) {
+        out <- out + importance_weights[i] * gradient.S(S_tot_samples[i, ])
+      }
       out
     }
 
-    # --- 4) hess.MC.log.lik, generalized link ---
-    hess.MC.log.lik <- function(par) {
+    # --- 4) Monte Carlo Hessian, generalized link ---
+    hess_mc_log_lik <- function(par) {
       ## Unpack parameters
       beta   <- par[ind_beta]
       mu     <- as.numeric(D %*% beta) + cov_offset
@@ -2451,8 +2482,9 @@ glgpm_nong <-
 
       ## MC weights for the importance average
       ldetR    <- determinant(R)$modulus
-      exp.fact <- exp(compute.log.f(par, ldetR, A) - log.f.tilde)
-      exp.fact <- exp.fact / sum(exp.fact)
+      importance_weights <- normalise_log_weights(
+        compute.log.f(par, ldetR, A) - log.f.tilde
+      )
 
       ## φ in log space: R_u = dR/d(log φ), R_uu = d²R/d(log φ)²
       R1.phi <- matern_gradient_phi(u, phi, kappa)                 # ∂R/∂φ
@@ -2525,7 +2557,7 @@ glgpm_nong <-
           w     <- -l2
         }
 
-        ## Per-sample gradients (match grad.MC.log.lik)
+        ## Per-sample gradients (match grad_mc_log_lik)
         grad.beta       <- t(D) %*% g_eta
         grad.log.sigma2 <- (-n_loc/(2 * sigma2) + 0.5 * qS[i] / (sigma2^2)) * sigma2
         grad.log.phi    <- t1.u + 0.5 * qMu[i] / sigma2
@@ -2593,7 +2625,7 @@ glgpm_nong <-
           }
         }
 
-        ef <- exp.fact[i]
+        ef <- importance_weights[i]
         H_acc <- H_acc + ef * (gi %*% t(gi) + Hi)
         g_acc <- g_acc + ef * gi
       }
@@ -2607,9 +2639,9 @@ glgpm_nong <-
 
     out <- list()
     estim <- nlminb(start_par,
-                    function(x) -MC.log.lik(x),
-                    function(x) -grad.MC.log.lik(x),
-                    function(x) -hess.MC.log.lik(x),
+                    function(x) -mc_log_lik(x),
+                    function(x) -grad_mc_log_lik(x),
+                    function(x) -hess_mc_log_lik(x),
                     control = list(trace = 1 * messages))
 
     out$estimate <- structure_estimate(
@@ -2619,8 +2651,8 @@ glgpm_nong <-
       sigma2_me  = FALSE,
       re_names   = if (n_re > 0) names(ID_re) else NULL
     )
-    out$grad_MLE <- grad.MC.log.lik(estim$par)
-    hess_MLE <- hess.MC.log.lik(estim$par)
+    out$grad_MLE <- grad_mc_log_lik(estim$par)
+    hess_MLE <- hess_mc_log_lik(estim$par)
     out$covariance <- solve(-hess_MLE)
     flat_names <- names(unlist(out$estimate))
     dimnames(out$covariance) <- list(flat_names, flat_names)
