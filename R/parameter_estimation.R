@@ -488,6 +488,27 @@ structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_
   out
 }
 
+##' Compute the nugget-to-spatial variance ratio
+##'
+##' The parser stores `TRUE` when the nugget is estimated and a numeric value
+##' when it is fixed. Keeping this distinction in one helper prevents the
+##' likelihood and its derivatives from interpreting the same model
+##' differently.
+##'
+##' @noRd
+nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
+  if (isTRUE(fix_tau2)) {
+    if (is.null(log_nu2)) {
+      stop("'log_nu2' is required when the nugget is estimated.",
+           call. = FALSE)
+    }
+
+    return(exp(log_nu2))
+  }
+
+  as.numeric(fix_tau2) / sigma2
+}
+
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
@@ -2283,7 +2304,11 @@ glgpm_nong <-
     compute.log.f <- function(par, ldetR = NA, R.inv = NA) {
       beta   <- par[ind_beta]
       sigma2 <- exp(par[ind_sigma2])
-      nu2    <- if (length(fix_tau2) > 0) fix_tau2 / sigma2 else exp(par[ind_nu2])
+      nu2    <- nugget_ratio(
+        fix_tau2,
+        sigma2,
+        if (isTRUE(fix_tau2)) par[ind_nu2] else NULL
+      )
       phi    <- exp(par[ind_phi])
 
       val <- list()
@@ -2318,7 +2343,11 @@ glgpm_nong <-
     grad.MC.log.lik <- function(par) {
       beta   <- par[ind_beta]; mu <- as.numeric(D %*% beta) + cov_offset
       sigma2 <- exp(par[ind_sigma2])
-      nu2    <- if (length(fix_tau2) > 0) fix_tau2 / sigma2 else exp(par[ind_nu2])
+      nu2    <- nugget_ratio(
+        fix_tau2,
+        sigma2,
+        if (isTRUE(fix_tau2)) par[ind_nu2] else NULL
+      )
       phi    <- exp(par[ind_phi])
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
@@ -2399,7 +2428,11 @@ glgpm_nong <-
       beta   <- par[ind_beta]
       mu     <- as.numeric(D %*% beta) + cov_offset
       sigma2 <- exp(par[ind_sigma2])
-      if (!isTRUE(fix_tau2)) nu2 <- fix_tau2 / sigma2 else nu2 <- exp(par[ind_nu2])
+      nu2    <- nugget_ratio(
+        fix_tau2,
+        sigma2,
+        if (isTRUE(fix_tau2)) par[ind_nu2] else NULL
+      )
       phi    <- exp(par[ind_phi])
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 

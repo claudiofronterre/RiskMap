@@ -31,3 +31,48 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
   expect_equal(summary(result)$tau2, 1)
 
 })
+
+test_that("nugget_ratio distinguishes estimated and fixed nuggets", {
+  expect_equal(nugget_ratio(FALSE, sigma2 = 2), 0)
+  expect_equal(nugget_ratio(0.6, sigma2 = 2), 0.3)
+  expect_equal(nugget_ratio(TRUE, sigma2 = 2, log_nu2 = log(0.3)), 0.3)
+  expect_error(
+    nugget_ratio(TRUE, sigma2 = 2),
+    "'log_nu2' is required when the nugget is estimated"
+  )
+})
+
+test_that("non-Gaussian estimated nugget uses consistent derivatives", {
+  set.seed(2029)
+  n <- 80L
+  denominator <- sample(10:50, n, replace = TRUE)
+  covariate <- rnorm(n)
+  data <- data.frame(
+    y = rbinom(n, denominator, plogis(-0.5 + 0.4 * covariate)),
+    covariate = covariate,
+    denominator = denominator,
+    x = runif(n, 0, 100000),
+    z = runif(n, 0, 100000)
+  )
+  spatial_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32630)
+  control <- set_control_mcmc(
+    n_sim = 500,
+    burnin = 100,
+    thin = 4,
+    seed = 2029
+  )
+
+  fit <- glgpm(
+    y ~ covariate + gp(nugget = TRUE),
+    data = spatial_data,
+    denominator = denominator,
+    family = "binomial",
+    control_mcmc = control,
+    messages = FALSE
+  )
+
+  # A large score at the reported optimum catches disagreement between the
+  # Monte Carlo likelihood and its analytical derivatives.
+  expect_lt(max(abs(fit$grad_MLE)), 0.01)
+  expect_true(is.finite(coef(fit)[["tau2"]]))
+})
