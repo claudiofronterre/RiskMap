@@ -16,6 +16,30 @@ test_that("MALA adaptation stops after burn-in", {
   expect_named(fit$acceptance_rate, c("burnin", "sampling"))
 })
 
+test_that("MALA warm-up recovers from poor initial step sizes", {
+  run_with_h <- function(h, seed) {
+    laplace_sampling_mcmc(
+      y = 3, units_m = 8, mu = 0, Sigma = matrix(0.7),
+      ID_coords = 1L, family = "binomial",
+      control_mcmc = set_control_mcmc(
+        n_sim = 1200, burnin = 1000, thin = 1, h = h, seed = seed
+      ),
+      messages = FALSE
+    )
+  }
+  from_small <- run_with_h(0.05, 711)
+  from_large <- run_with_h(5, 712)
+
+  expect_true(
+    tail(from_small$tuning_par, 1) > 0.2 &&
+      tail(from_large$tuning_par, 1) < 2 &&
+      all(c(from_small$acceptance_rate["sampling"],
+            from_large$acceptance_rate["sampling"]) > 0.2) &&
+      all(c(from_small$acceptance_rate["sampling"],
+            from_large$acceptance_rate["sampling"]) < 0.9)
+  )
+})
+
 test_that("one-dimensional binomial samples reproduce exact posterior moments", {
   control <- set_control_mcmc(
     n_sim = 7000, burnin = 1000, thin = 1, h = 0.8,
@@ -43,9 +67,11 @@ test_that("one-dimensional binomial samples reproduce exact posterior moments", 
     function(s) s^2 * exp(log_kernel(s)), -Inf, Inf
   )$value / normalizer
 
-  expect_equal(mean(fit$samples$S), exact_mean, tolerance = 0.06)
-  expect_equal(var(as.numeric(fit$samples$S)),
-               exact_second - exact_mean^2, tolerance = 0.06)
+  expect_equal(
+    c(mean = mean(fit$samples$S), variance = var(as.numeric(fit$samples$S))),
+    c(mean = exact_mean, variance = exact_second - exact_mean^2),
+    tolerance = 0.06
+  )
 })
 
 test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
@@ -75,9 +101,11 @@ test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
     function(s) s^2 * exp(log_kernel(s)), -Inf, Inf
   )$value / normalizer
 
-  expect_equal(mean(fit$samples$S), exact_mean, tolerance = 0.06)
-  expect_equal(var(as.numeric(fit$samples$S)),
-               exact_second - exact_mean^2, tolerance = 0.06)
+  expect_equal(
+    c(mean = mean(fit$samples$S), variance = var(as.numeric(fit$samples$S))),
+    c(mean = exact_mean, variance = exact_second - exact_mean^2),
+    tolerance = 0.06
+  )
 })
 
 test_that("correlated binomial samples reproduce grid-integrated moments", {
@@ -109,10 +137,11 @@ test_that("correlated binomial samples reproduce grid-integrated moments", {
   centred <- sweep(as.matrix(grid), 2, exact_mean)
   exact_cov <- crossprod(centred, centred * weights)
 
-  expect_equal(unname(colMeans(fit$samples$S)), unname(exact_mean),
-               tolerance = 0.07)
-  expect_equal(unname(cov(fit$samples$S)), unname(exact_cov),
-               tolerance = 0.07)
+  expect_equal(
+    c(unname(colMeans(fit$samples$S)), unname(cov(fit$samples$S))),
+    c(unname(exact_mean), unname(exact_cov)),
+    tolerance = 0.07
+  )
 })
 
 test_that("sampler controls and location indices are validated", {

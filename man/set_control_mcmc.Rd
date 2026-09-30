@@ -9,7 +9,7 @@ set_control_mcmc(
   burnin = 2000,
   thin = 10,
   h = NULL,
-  c1.h = 0.01,
+  c1.h = 1,
   c2.h = 0.6,
   seed = NULL,
   linear_model = FALSE
@@ -25,7 +25,7 @@ set_control_mcmc(
 \item{h}{Numeric. An optional positive step size for Langevin MCMC.}
 
 \item{c1.h}{Numeric. Positive scale for the burn-in Robbins-Monro step-size
-adaptation. Default is 0.01.}
+adaptation. Default is 1.}
 
 \item{c2.h}{Numeric. Exponent controlling the diminishing adaptation gain.
 Must be larger than 0.5 and no larger than 1. Default is 0.6.}

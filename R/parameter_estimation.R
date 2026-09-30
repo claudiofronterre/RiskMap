@@ -2425,6 +2425,11 @@ laplace_sampling_mcmc <- function(y,
     if (i <= burnin) {
       log_h <- log(h) + c1.h * i^(-c2.h) * (accepted[i] - 0.574)
       h <- exp(log_h)
+      # The Langevin mean depends on h. Recompute it for the next iteration
+      # after every warm-up update, including when the proposal was rejected.
+      mean_curr <- as.numeric(
+        W_curr + (h^2 / 2) * lang.grad(W_curr, S_tot_curr)
+      )
     }
     h.vec[i] <- h
 
@@ -2542,7 +2547,7 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 ##' @param thin Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.
 ##' @param h Numeric. An optional positive step size for Langevin MCMC.
 ##' @param c1.h Numeric. Positive scale for the burn-in Robbins-Monro step-size
-##'   adaptation. Default is 0.01.
+##'   adaptation. Default is 1.
 ##' @param c2.h Numeric. Exponent controlling the diminishing adaptation gain.
 ##'   Must be larger than 0.5 and no larger than 1. Default is 0.6.
 ##' @param seed Integer. Optional value passed to `set.seed` to control random number generation for
@@ -2571,7 +2576,7 @@ set_control_mcmc <- function(n_sim = 12000,
                             burnin = 2000,
                             thin = 10,
                             h = NULL,
-                            c1.h = 0.01,
+                            c1.h = 1,
                             c2.h = 0.6,
                             seed = NULL,
                             linear_model = FALSE){
