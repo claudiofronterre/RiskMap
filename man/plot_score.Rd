@@ -8,7 +8,7 @@ plot_score(object, which_score, which_model, ...)
 }
 \arguments{
 \item{object}{A list containing test sets and model scores. The structure should include
-\code{object$test_set} (list of sf objects) and \code{object$model[[which_model]]$score[[which_score]]}.}
+\code{object$test_set} (list of sf objects) and \code{object$model[[which_model]]$metric[[which_score]]}.}
 
 \item{which_score}{A string specifying the score to visualize. Must match a score computed in the model.}
 

@@ -625,3 +625,54 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
   expect_equal(summary_out["model_x1", "AnPIT_area"],
                out$model$model_x1$metric$AnPIT_area[[1]])
 })
+
+test_that("plot_folds() plots every observation, coloured by training/test set (#157)", {
+  n <- nrow(gaussian_data)
+  data_split <- list(splits = list(
+    list(data = gaussian_data[1:7, ], data_test = gaussian_data[8:10, ]),
+    list(data = gaussian_data[c(1:5, 9:10), ], data_test = gaussian_data[6:8, ])
+  ))
+
+  p <- plot_folds(data_split)
+  expect_s3_class(p, "ggplot")
+
+  built <- ggplot2::ggplot_build(p)
+  expect_equal(nrow(built$data[[1]]), 2 * n)
+  expect_length(unique(built$data[[1]]$PANEL), 2)
+  expect_length(unique(built$data[[1]]$colour), 2)
+})
+
+test_that("plot_folds() doesn't facet when there is only one iteration", {
+  data_split <- list(splits = list(
+    list(data = gaussian_data[1:7, ], data_test = gaussian_data[8:10, ])
+  ))
+
+  p <- plot_folds(data_split)
+  built <- ggplot2::ggplot_build(p)
+  expect_length(unique(built$data[[1]]$PANEL), 1)
+  expect_equal(nrow(built$data[[1]]), nrow(gaussian_data))
+})
+
+test_that("assess_prediction(plot_fold = TRUE) uses plot_folds() for 'user' and 'regularized', autoplot() for 'cluster' (#157)", {
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off(), add = TRUE)
+
+  user_split <- matrix(c(1, 1, rep(0, nrow(gaussian_data) - 2)), ncol = 1)
+  expect_no_error(
+    assess_prediction(list(model = gaussian_model), method = "user",
+                      user_split = user_split, control_mcmc = control_mcmc,
+                      plot_fold = TRUE, messages = FALSE, metrics = "CRPS")
+  )
+
+  expect_no_error(
+    assess_prediction(list(model = gaussian_model), method = "regularized",
+                      min_dist = 1, size = 2, control_mcmc = control_mcmc,
+                      plot_fold = TRUE, messages = FALSE, metrics = "CRPS")
+  )
+
+  expect_no_error(
+    assess_prediction(list(model = gaussian_model), method = "cluster",
+                      fold = 2, control_mcmc = control_mcmc,
+                      plot_fold = TRUE, messages = FALSE, metrics = "CRPS")
+  )
+})
