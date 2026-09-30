@@ -231,3 +231,34 @@ test_that("check_positive_number functions correctly", {
   a <- NA
   expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
 })
+
+test_that("plot_metric validates model before metric (#156)", {
+  ## an invalid model should be reported even when the metric is also invalid -
+  ## previously this incorrectly complained about the metric first
+  expect_error(
+    plot_metric(cross_validation, metric = "not_a_metric", model = "not_a_model"),
+    "'model' 'not_a_model' was not found"
+  )
+
+  expect_error(
+    plot_metric(cross_validation, metric = "not_a_metric", model = "model_a"),
+    "'metric' 'not_a_metric' was not computed for model 'model_a'"
+  )
+})
+
+test_that("plot_metric plots the requested metric for the requested model", {
+  p <- plot_metric(cross_validation, metric = "SCRPS", model = "model_b")
+
+  expect_s3_class(p, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(p))
+})
+
+test_that("plot_metric applies extra ggplot components passed via ...", {
+  p_plain <- plot_metric(cross_validation, metric = "CRPS", model = "model_a")
+  expect_length(p_plain$scales$scales, 0)
+
+  p_custom <- plot_metric(cross_validation, metric = "CRPS", model = "model_a",
+                          ggplot2::scale_color_gradient(low = "yellow", high = "red"))
+  expect_length(p_custom$scales$scales, 1)
+  expect_no_error(ggplot2::ggplot_build(p_custom))
+})

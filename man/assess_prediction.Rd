@@ -81,7 +81,7 @@ A list of class \code{RiskMap_cross_validation}, containing:
 \item{test_set}{A list of test sets used for validation, each of class \code{'sf'}.}
 \item{model}{A named list, one per model, each containing:
 \describe{
-\item{score}{A list with CRPS, SCRPS, and/or AnPIT_area scores for each fold if requested.}
+\item{metric}{A list with CRPS, SCRPS, and/or AnPIT_area metrics for each fold if requested.}
 \item{PIT}{(if \code{family = "gaussian"} and \code{metrics} includes \code{"AnPIT"}) A list of PIT values for test data.}
 \item{AnPIT}{(if \code{family} is discrete and \code{metrics} includes \code{"AnPIT"}) A list of AnPIT curves for test data.}
 }

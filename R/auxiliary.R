@@ -1175,56 +1175,63 @@ plot_AnPIT <- function(object,
 }
 
 
-##' @title Plot Spatial Scores for a Specific Model and Metric
+##' @title Plot a Predictive Performance Metric for a Specific Model
 ##'
-##' @description This function visualizes spatial scores for a specified model and metric.
-##' It combines test set data, handles duplicate locations by averaging scores,
-##' and creates a customizable map using ggplot2.
+##' @description This function visualizes a predictive performance metric, from
+##' `assess_prediction()`, for a specified model. It combines test set data,
+##' handles duplicate locations by averaging, and creates a customizable map
+##' using ggplot2.
 ##'
 ##' @param object A list containing test sets and model scores. The structure should include
-##'   `object$test_set` (list of sf objects) and `object$model[[which_model]]$metric[[which_score]]`.
-##' @param which_score A string specifying the score to visualize. Must match a score computed in the model.
-##' @param which_model A string specifying the model whose scores to visualize.
+##'   `object$test_set` (list of sf objects) and `object$model[[model]]$metric[[metric]]`.
+##' @param metric A string specifying which metric to visualize. Must be one of the
+##' values passed to `metrics` in the `assess_prediction()` call that produced `object`.
+##' @param model A string specifying the model whose scores to visualize.
 ##' @param ... Additional arguments to customize ggplot, such as `scale_color_gradient` or `scale_color_manual`.
-##' @return A ggplot object visualizing the spatial distribution of the specified score.
+##' @return A ggplot object visualizing the spatial distribution of the specified metric.
 ##' @export
-plot_score <- function(object, which_score, which_model, ...) {
+plot_metric <- function(object, metric, model, ...) {
 
-  # Check if "which_score" exists
-  if (!which_score %in% names(object$model[[which_model]]$metric)) {
-    stop(paste("Error: The score", shQuote(which_score), "was not computed for model", shQuote(which_model)))
+  if (!model %in% names(object$model)) {
+    stop(paste("'model'", shQuote(model), "was not found in 'object'"))
+  }
+
+  if (!metric %in% names(object$model[[model]]$metric)) {
+    stop(paste("'metric'", shQuote(metric), "was not computed for model", shQuote(model)))
   }
 
   # Extract the test sets and number of test sets
   test_sets <- object$test_set
   n_test <- length(test_sets)
 
-  # Combine the data and add the score variable
+  # Combine the data and add the metric variable
   data_full <- st_as_sf(test_sets[[1]])
-  data_full$metric <- object$model[[which_model]]$metric[[which_score]][[1]]
+  data_full$value <- object$model[[model]]$metric[[metric]][[1]]
 
   if (n_test > 1) {
     for (i in 1:n_test) {
-      test_sets[[i]]$metric <- object$model[[which_model]]$metric[[which_score]][[i]]
+      test_sets[[i]]$value <- object$model[[model]]$metric[[metric]][[i]]
       data_full <- rbind(data_full, test_sets[[i]])
     }
   }
 
-  # Check for duplicate locations and average the score
+  # Check for duplicate locations and average the metric
   data_full <- data_full %>%
     mutate(geom_id = st_as_text(.data$geometry)) %>%
     group_by(.data$geom_id) %>%
-    summarize(score = mean(.data$metric, na.rm = TRUE),
+    summarize(value = mean(.data$value, na.rm = TRUE),
               geometry = first(.data$geometry), .groups = "drop") %>%
     st_as_sf()
 
 
   # Create the base plot
   out <- ggplot(data = data_full) +
-    geom_sf(aes(color = .data$metric), size = 2) +
-    ggtitle(paste("Visualizing", which_score, "for model", which_model)) +
+    geom_sf(aes(color = .data$value), size = 2) +
+    ggtitle(paste("Visualizing", metric, "for model", model)) +
     theme_minimal()
 
+  # Layer on any additional ggplot components passed via ...
+  out <- Reduce(`+`, list(...), out)
 
   return(out)
 }
