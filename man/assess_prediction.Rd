@@ -81,7 +81,7 @@ A list of class \code{RiskMap_cross_validation}, containing:
 \item{test_set}{A list of test sets used for validation, each of class \code{'sf'}.}
 \item{model}{A named list, one per model, each containing:
 \describe{
-\item{score}{A list with CRPS, SCRPS, and/or AnPIT area scores for each fold if requested.}
+\item{score}{A list with CRPS, SCRPS, and/or AnPIT_area scores for each fold if requested.}
 \item{PIT}{(if \code{family = "gaussian"} and \code{metrics} includes \code{"AnPIT"}) A list of PIT values for test data.}
 \item{AnPIT}{(if \code{family} is discrete and \code{metrics} includes \code{"AnPIT"}) A list of AnPIT curves for test data.}
 }
@@ -94,11 +94,11 @@ to \code{RiskMap} objects using cross-validation. It supports two classes of dia
 \itemize{
 \item \strong{Scoring rules}, including the Continuous Ranked Probability Score (CRPS)
 and its scaled version (SCRPS), which quantify the sharpness and calibration
-of probabilistic forecasts;
+of probabilistic forecasts (Bolin & Wallin, 2023);
 \item \strong{Calibration diagnostics}, based on the Probability Integral Transform (PIT)
-for Gaussian outcomes, Aggregated nonparametric PIT (AnPIT) curves for discrete
+for Gaussian outcomes, Average nonrandomized PIT (AnPIT) curves for discrete
 outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve
-and the reference line.
+and the reference line (Giorgi \emph{et al.} 2026).
 }
 
 Cross-validation can be performed using either spatial clustering, regularized
@@ -164,7 +164,13 @@ summary(cross_validation)
 
 }
 \references{
-Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of proper scoring rules. \emph{Statistical Science}, 38(1), 140–159. \doi{10.1214/22-STS864}.
+Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
+proper scoring rules. \emph{Statistical Science}, 38(1), 140–159. \doi{10.1214/22-STS864}.
+
+Giorgi, E., Fronterre, C. & Diggle, P. J. (2026). A decay-adjusted spatio-temporal
+model to account for the impact of mass drug administration on neglected
+tropical disease prevalence. \emph{Journal of the Royal Statistical Society Series
+A: Statistics in Society}.\doi{10.1093/jrsssa/qnag100}.
 }
 \seealso{
 \code{\link{plot_AnPIT}}

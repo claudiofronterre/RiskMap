@@ -928,7 +928,7 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   model_names <- names(object$model)
   n_models <- length(model_names)
 
-  metric_names <- names(object$model[[1]]$score)
+  metric_names <- names(object$model[[1]]$metric)
   if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_prediction'")
   n_metrics <- length(metric_names)
 
@@ -938,15 +938,15 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
 
   test_set_means <- list()
 
-  n_subs <- length(object$model[[1]]$score[[1]])
-  w <- unlist(lapply(object$model[[1]]$score[[1]], length))
+  n_subs <- length(object$model[[1]]$metric[[1]])
+  w <- unlist(lapply(object$model[[1]]$metric[[1]], length))
 
   for (i in 1:n_models) {
     model_scores <- list()
     for (j in 1:n_metrics) {
       score_j <- rep(NA, n_subs)
       for (h in 1:n_subs) {
-        score_j[h] <- mean(object$model[[i]]$score[[j]][[h]])
+        score_j[h] <- mean(object$model[[i]]$metric[[j]][[h]])
       }
       model_scores[[j]] <- score_j
       res[i, j] <- sum(w * score_j) / sum(w)
@@ -1182,7 +1182,7 @@ plot_AnPIT <- function(object,
 ##' and creates a customizable map using ggplot2.
 ##'
 ##' @param object A list containing test sets and model scores. The structure should include
-##'   `object$test_set` (list of sf objects) and `object$model[[which_model]]$score[[which_score]]`.
+##'   `object$test_set` (list of sf objects) and `object$model[[which_model]]$metric[[which_score]]`.
 ##' @param which_score A string specifying the score to visualize. Must match a score computed in the model.
 ##' @param which_model A string specifying the model whose scores to visualize.
 ##' @param ... Additional arguments to customize ggplot, such as `scale_color_gradient` or `scale_color_manual`.
@@ -1191,7 +1191,7 @@ plot_AnPIT <- function(object,
 plot_score <- function(object, which_score, which_model, ...) {
 
   # Check if "which_score" exists
-  if (!which_score %in% names(object$model[[which_model]]$score)) {
+  if (!which_score %in% names(object$model[[which_model]]$metric)) {
     stop(paste("Error: The score", shQuote(which_score), "was not computed for model", shQuote(which_model)))
   }
 
@@ -1201,11 +1201,11 @@ plot_score <- function(object, which_score, which_model, ...) {
 
   # Combine the data and add the score variable
   data_full <- st_as_sf(test_sets[[1]])
-  data_full$score <- object$model[[which_model]]$score[[which_score]][[1]]
+  data_full$metric <- object$model[[which_model]]$metric[[which_score]][[1]]
 
   if (n_test > 1) {
     for (i in 1:n_test) {
-      test_sets[[i]]$score <- object$model[[which_model]]$score[[which_score]][[i]]
+      test_sets[[i]]$metric <- object$model[[which_model]]$metric[[which_score]][[i]]
       data_full <- rbind(data_full, test_sets[[i]])
     }
   }
@@ -1214,14 +1214,14 @@ plot_score <- function(object, which_score, which_model, ...) {
   data_full <- data_full %>%
     mutate(geom_id = st_as_text(.data$geometry)) %>%
     group_by(.data$geom_id) %>%
-    summarize(score = mean(.data$score, na.rm = TRUE),
+    summarize(score = mean(.data$metric, na.rm = TRUE),
               geometry = first(.data$geometry), .groups = "drop") %>%
     st_as_sf()
 
 
   # Create the base plot
   out <- ggplot(data = data_full) +
-    geom_sf(aes(color = .data$score), size = 2) +
+    geom_sf(aes(color = .data$metric), size = 2) +
     ggtitle(paste("Visualizing", which_score, "for model", which_model)) +
     theme_minimal()
 

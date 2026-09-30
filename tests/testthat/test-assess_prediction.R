@@ -612,16 +612,16 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
     metrics = "AnPIT"
   )
 
-  expect_named(out$model$model_x1$score, "AnPIT_area")
-  expect_length(out$model$model_x1$score$AnPIT_area, 1)
-  expect_type(out$model$model_x1$score$AnPIT_area[[1]], "double")
-  expect_true(is.finite(out$model$model_x1$score$AnPIT_area[[1]]))
-  expect_true(out$model$model_x1$score$AnPIT_area[[1]] >= 0)
-  expect_true(out$model$model_x1$score$AnPIT_area[[1]] <= 0.5)
+  expect_named(out$model$model_x1$metric, "AnPIT_area")
+  expect_length(out$model$model_x1$metric$AnPIT_area, 1)
+  expect_type(out$model$model_x1$metric$AnPIT_area[[1]], "double")
+  expect_true(is.finite(out$model$model_x1$metric$AnPIT_area[[1]]))
+  expect_true(out$model$model_x1$metric$AnPIT_area[[1]] >= 0)
+  expect_true(out$model$model_x1$metric$AnPIT_area[[1]] <= 0.5)
   expect_length(out$model$model_x1$PIT[[1]], 2)
 
   summary_out <- summary(out)
   expect_true("AnPIT_area" %in% colnames(summary_out))
   expect_equal(summary_out["model_x1", "AnPIT_area"],
-               out$model$model_x1$score$AnPIT_area[[1]])
+               out$model$model_x1$metric$AnPIT_area[[1]])
 })
