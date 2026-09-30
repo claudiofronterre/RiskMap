@@ -58,8 +58,15 @@ Datasets need transforming into a simple features (sf) object prior to analysis.
 library(RiskMap)
 data(liberia)
 data <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = sf::st_crs(4326))
+head(data)
+```
 
-plot(data["npos"])
+When the coordinates are in latitute and longitude, the functions will automatically reproject them to meters (or kilometers) using an appropriate coordinate reference system (CRS) and print a message detailing the conversion. To handle this manually, `propose_utm()` can be used to suggest a CRS to use and passed to `sf::st_transform()`:
+
+```{r}
+suggested_crs <- propose_utm(data)
+data <- sf::st_transform(data, suggested_crs)
+plot(data["npos"], axes = TRUE)
 ```
 
 ## Exploratory data analysis
@@ -70,9 +77,7 @@ The distances between data points can be summarised with `summarise_distance()`.
 summarise_distance(data)
 ```
 
-The empirical variogram can be used to assess spatial independence in the data. In this example, `n_permutations` is set to 100 to speed up computation, but should be set to 10000 for final runs.
-
-<need to explain succinctly what points outside the envelope signify>
+The empirical variogram can be used to assess spatial independence in the data. In this example, `n_permutations` is set to 100 to speed up computation, but should be set to 10000 for final runs. If the points fall outside the envelope, this signifies that the data is not spatially independent and that it is appropriate to fit a model with a spatial term.
 
 ```{r}
 variogram <- variogram(data, 
@@ -85,14 +90,17 @@ plot_variogram(variogram, plot_envelope = TRUE)
 
 ## Model fitting
 
-`glpgm()` fits generalised linear Gaussian process models. The model family can be either `gaussian`, `binomial` or `poisson`. For this dataset consisting of counts of disease incidence, a binomial model is most appropriate. To make the results reproducible, set a `seed` value in `set_control_mcmc()`.
+`glpgm()` fits generalised linear Gaussian process models. The model family can be either `gaussian`, `binomial` or `poisson`. For this dataset consisting of counts of disease incidence (`npos`, the number of positive tests), a binomial model is most appropriate. The `denominator` is `ntest`, the number of tests. To make the results reproducible, set a `seed` value in `set_control_mcmc()`, `n_sim` and `burnin` are also reduced in this example to speed up computation.
 
 ```{r}
+control_mcmc <- set_control_mcmc(n_sim = 1000,
+                                 burnin = 100,
+                                 seed = 2026)
+
 model <- glgpm(npos ~ log(elevation) + gp(),
                denominator = ntest, 
                data = data,
-               model_crs = 32629,
-               control_mcmc = set_control_mcmc(seed = 2026),
+               control_mcmc = control_mcmc,
                return_samples = TRUE,
                family = "binomial",
                messages = FALSE)
@@ -108,6 +116,12 @@ Or summarise the model fit with `summary()`:
 
 ```{r}
 summary(model)
+```
+
+The coefficients can also be printed in a format to include in a report with `to_table()`:
+
+```{r}
+to_table(model)
 ```
 
 For binomial and Poisson models, we can assess model convergence with `plot_mcmc()`:
@@ -147,13 +161,12 @@ After generating a grid, we need to generate a dataframe containing the variable
 library(elevatr)
 liberia_elev <- get_elev_raster(locations = liberia_grid, 
                                 z = 6, 
-                                clip = "locations",
-                                verbose = FALSE)
+                                clip = "locations")
 
 new_data <- data.frame(elevation = terra::extract(liberia_elev, liberia_grid))
 ```
 
-We can then use `setup_prediction()` to prepare the data to generate predictions either at the grid locations or for areal targets. To be able to generate predictions for areal targets, we need to set `type` to `"joint"`:
+Use `setup_prediction()` to prepare the data to generate predictions either at the grid locations or for areal targets. To be able to generate predictions for areal targets, we need to set `type` to `"joint"`:
 
 ```{r}
 prediction_prep <- setup_prediction(model, 
@@ -163,7 +176,7 @@ prediction_prep <- setup_prediction(model,
                                     messages = FALSE)
 ```
 
-We can then generate a prediction over the grid with `predict_target_grid()`. By default, the `f_target` is the linear predictor and to obtain the prevalence prediction, we need to define a custom target. We can visualise the result by passing the result to `plot()`. By default the mean of the first target will be plotted, but if multiple targets are specified, the one to plot can be specified:
+Generate a prediction over the grid with `predict_target_grid()`. By default, the `f_target` is the linear predictor and to obtain the prevalence prediction, we need to define a custom target. We can visualise the result by passing the result to `plot()`. By default the mean of the first target will be plotted, but if multiple targets are specified, the one to plot can be specified:
 
 ```{r}
 grid_prediction <- predict_grid_target(prediction_prep,
@@ -189,15 +202,33 @@ plot(areal_prediction)
 
 ## Assessing predictions
 
+To assess the predictive performance of models, we can perform cross validation using `assess_prediction()`. Multiple models can be supplied and compared, so we will fit another model to the data, omitting the elevation covariate. By default, the test set of the data is plotted and three metrics are calculated - `AnPIT`
+
 ```{r}
-cross_validation <- assess_prediction(list(model = model),
+no_elevation <- glgpm(npos ~ gp(),
+               denominator = ntest, 
+               data = data,
+               control_mcmc = control_mcmc,
+               return_samples = TRUE,
+               family = "binomial",
+               messages = FALSE)
+
+cross_validation <- assess_prediction(list(elevation = model,
+                                           no_elevation = no_elevation),
                                       method = "cluster",
                                       fold = 2,
-                                      plot_fold = FALSE,
                                       messages = FALSE)
 
 ```
 
+
+```{r}
+plot_AnPIT(cross_validation)
+```
+
+```{r}
+plot_score(cross_validation, "CRPS", "elevation")
+```
 
 
 ## Simulations
