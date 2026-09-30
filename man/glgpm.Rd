@@ -122,9 +122,10 @@ it is therefore zero at the reference rather than an absolute likelihood.
 Both working-scale parameter change and change relative to the current
 standard errors are reported. Estimates use the same parameterisation as
 \code{estimate}, with regression coefficients and spatial range restored to the
-supplied covariate and distance units.}
+supplied covariate and distance units. \code{NULL} for Gaussian models.}
 \item{mcml_converged}{Whether repeated MCML updates met the requested
-tolerance. \code{NA} when only one update was requested.}
+tolerance. \code{NA} when only one update was requested and \code{NULL} for Gaussian
+models.}
 }
 \description{
 Fits generalized linear Gaussian process models to spatial data,

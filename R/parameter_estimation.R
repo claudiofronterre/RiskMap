@@ -119,9 +119,10 @@
 ##' Both working-scale parameter change and change relative to the current
 ##' standard errors are reported. Estimates use the same parameterisation as
 ##' `estimate`, with regression coefficients and spatial range restored to the
-##' supplied covariate and distance units.}
+##' supplied covariate and distance units. `NULL` for Gaussian models.}
 ##' \item{mcml_converged}{Whether repeated MCML updates met the requested
-##' tolerance. `NA` when only one update was requested.}
+##' tolerance. `NA` when only one update was requested and `NULL` for Gaussian
+##' models.}
 ##'
 ##' @examples
 ##'
@@ -413,6 +414,8 @@ glgpm <- function(formula,
                                start_pars[["sigma2_me"]],
                                start_pars[["sigma2_re"]]),
             messages = messages)
+    res["mcml_history"] <- list(NULL)
+    res["mcml_converged"] <- list(NULL)
   } else if(not_gaussian) {
     if(is.null(par0)) {
       par0 <- start_pars
@@ -2399,16 +2402,8 @@ laplace_sampling_mcmc <- function(y,
 set_control_mcml <- function(max_iterations = 1L, tolerance = 0.05,
                              min_relative_ess = 0.1) {
   check_positive_integer(max_iterations, "max_iterations")
-  if (!is.numeric(tolerance) || length(tolerance) != 1L ||
-      !is.finite(tolerance) || tolerance <= 0) {
-    stop("'tolerance' must be a single positive finite number.", call. = FALSE)
-  }
-  if (!is.numeric(min_relative_ess) || length(min_relative_ess) != 1L ||
-      !is.finite(min_relative_ess) || min_relative_ess < 0 ||
-      min_relative_ess > 1) {
-    stop("'min_relative_ess' must be a single number between zero and one.",
-         call. = FALSE)
-  }
+  check_positive_number(tolerance, "")
+  check_zero_one(min_relative_ess, "min_relative_ess")
 
   structure(
     list(max_iterations = as.integer(max_iterations), tolerance = tolerance,
@@ -2539,9 +2534,7 @@ set_control_mcmc <- function(n_sim = 12000,
     stop("c1.h must be positive.")
   }
 
-  if (c2.h < 0 | c2.h > 1) {
-    stop("c2.h must be between 0 and 1.")
-  }
+  check_zero_one(c2.h, "c2.h")
 
   res <- list(
     n_sim = n_sim,

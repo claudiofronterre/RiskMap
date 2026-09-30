@@ -3,6 +3,17 @@
 ##' This path is used where the Woodbury implementation is either undefined
 ##' (zero measurement error) or has incorrect fixed-nugget derivatives.
 ##'
+##' @param n_observations Number of observed outcomes.
+##' @param latent_dimension Dimension of the combined spatial and unstructured
+##'   random-effect vector.
+##' @param fix_var_me Fixed measurement-error variance, or `NULL` when it is
+##'   estimated.
+##' @param fix_tau2 Nugget specification passed from `gp()`.
+##' @return A single logical value selecting the direct covariance engine.
+##' @details Correctness takes precedence where the Woodbury representation is
+##' undefined or its fixed-nugget derivatives are invalid. Otherwise, package
+##' benchmarks found direct factorisation faster up to three observations per
+##' latent effect and Woodbury faster beyond that replication ratio.
 ##' @noRd
 use_direct_gaussian_covariance <- function(n_observations, latent_dimension,
                                            fix_var_me, fix_tau2) {

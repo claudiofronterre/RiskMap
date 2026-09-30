@@ -1417,10 +1417,28 @@ check_positive_number <- function(x, type = "starting ") {
   # extract name, removing any list
   name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
 
-  if (!is.numeric(x) || length(x) != 1 || x <= 0 || is.na(x)) {
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
+      !is.finite(x) || x <= 0) {
     stop("The ", type, "value for '", name, "' must be a single positive number")
   }
 
+  invisible(TRUE)
+}
+
+#' Check that a value belongs to the closed unit interval
+#'
+#' @param x The value to check.
+#' @param name The argument name to use in the error message. Defaults to the
+#'   expression supplied as `x`.
+#' @return `TRUE` invisibly when valid; otherwise raises an error.
+#' @noRd
+check_zero_one <- function(x, name = deparse(substitute(x))) {
+  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
+    !is.finite(x) || x < 0 || x > 1
+  if (invalid) {
+    stop("'", name, "' must be a single number between zero and one",
+         call. = FALSE)
+  }
   invisible(TRUE)
 }
 

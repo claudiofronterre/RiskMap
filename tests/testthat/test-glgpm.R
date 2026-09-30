@@ -124,7 +124,8 @@ test_that("glgpm produces errors", {
   )
 
   expect_error(set_control_mcml(max_iterations = 0), "positive integer")
-  expect_error(set_control_mcml(tolerance = 0), "positive finite number")
+  expect_error(set_control_mcml(tolerance = 0), "positive number")
+  expect_error(set_control_mcml(tolerance = Inf), "positive number")
   expect_error(set_control_mcml(min_relative_ess = 2), "between zero and one")
 
   expect_error(
@@ -187,10 +188,8 @@ expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
                      "fix_var_me", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
-                     "S_samples", "link_function")
-expected_nongaussian_output <- c(
-  expected_output, "mcml_history", "mcml_converged"
-)
+                     "S_samples", "link_function", "mcml_history",
+                     "mcml_converged")
 
 test_that("glgpm produces expected output for gaussian models", {
 
@@ -202,6 +201,8 @@ test_that("glgpm produces expected output for gaussian models", {
 
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
+  expect_null(fit_no_re$mcml_history)
+  expect_null(fit_no_re$mcml_converged)
   expect_equal(fit_no_re$family, "gaussian")
   expect_equal(fit_no_re$coords[,1], data$x)
   expect_equal(fit_no_re$coords[,2], data$z)
@@ -281,7 +282,7 @@ test_that("glgpm produces expected output for binomial models", {
                      messages = FALSE)
 
   expect_s3_class(fit_no_re, "RiskMap")
-  expect_setequal(names(fit_no_re), expected_nongaussian_output)
+  expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "binomial")
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
@@ -292,7 +293,7 @@ test_that("glgpm produces expected output for binomial models", {
                   messages = FALSE)
 
   expect_s3_class(fit_re, "RiskMap")
-  expect_setequal(names(fit_re), expected_nongaussian_output)
+  expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "binomial")
 })
 
@@ -305,7 +306,7 @@ test_that("glgpm produces expected output for poisson models", {
                      messages = FALSE)
 
   expect_s3_class(fit_no_re, "RiskMap")
-  expect_setequal(names(fit_no_re), expected_nongaussian_output)
+  expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "poisson")
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
@@ -315,7 +316,7 @@ test_that("glgpm produces expected output for poisson models", {
                   messages = FALSE)
 
   expect_s3_class(fit_re, "RiskMap")
-  expect_setequal(names(fit_re), expected_nongaussian_output)
+  expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "poisson")
 
   fit_re_den <- glgpm(y ~ cov + gp() + re(i),
@@ -326,7 +327,7 @@ test_that("glgpm produces expected output for poisson models", {
                       messages = FALSE)
 
   expect_s3_class(fit_re_den, "RiskMap")
-  expect_setequal(names(fit_re_den), expected_nongaussian_output)
+  expect_setequal(names(fit_re_den), expected_output)
   expect_equal(fit_re_den$family, "poisson")
 })
 
