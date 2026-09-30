@@ -9,6 +9,10 @@ cpp_cross_distances <- function(first, second) {
     .Call(`_RiskMap_cpp_cross_distances`, first, second)
 }
 
+cpp_binned_semivariances <- function(permuted_values, first_index, second_index, bin_index, number_bins) {
+    .Call(`_RiskMap_cpp_binned_semivariances`, permuted_values, first_index, second_index, bin_index, number_bins)
+}
+
 cpp_half_integer_matern <- function(distances, phi, kappa) {
     .Call(`_RiskMap_cpp_half_integer_matern`, distances, phi, kappa)
 }

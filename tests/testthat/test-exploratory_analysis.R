@@ -152,28 +152,28 @@ test_that("variogram produces errors", {
   test_that("n_bins must be numeric", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = "10"),
-      "'n_bins' must be a positive integer"
+      "'n_bins' must be a single positive integer"
     )
   })
 
   test_that("n_bins must have length 1", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = c(5, 10)),
-      "'n_bins' must be a positive integer"
+      "'n_bins' must be a single positive integer"
     )
   })
 
   test_that("n_bins must be >= 1", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = 0),
-      "'n_bins' must be a positive integer"
+      "'n_bins' must be a single positive integer"
     )
   })
 
   test_that("n_bins must be a whole number", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = 4.5),
-      "'n_bins' must be a positive integer"
+      "'n_bins' must be a single positive integer"
     )
   })
 
@@ -205,28 +205,33 @@ test_that("variogram produces errors", {
   test_that("n_permutations must be non-negative", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_permutations = -1),
-      "'n_permutations' must be a positive integer number"
+      "'n_permutations' must be a single non-negative integer"
     )
   })
 
   test_that("n_permutations must be a whole number", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_permutations = 10.5),
-      "'n_permutations' must be a positive integer number"
+      "'n_permutations' must be a single non-negative integer"
     )
   })
 
-  test_that("n_permutations of exactly 2 is explicitly rejected", {
+  test_that("too few permutations for the requested level are rejected", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_permutations = 2),
-      "'n_permutations' must be greater than 2"
+      "'n_permutations' is too small to construct a global envelope"
     )
   })
 
-  test_that("n_permutations below 100 raises a warning (but is not an error)", {
-    expect_warning(
-        variogram(gaussian_data, variable = "y", n_permutations = 50),
-      "'n_permutations' is set very low - consider increasing it"
+  test_that("the requested level controls the minimum permutation count", {
+    expect_no_warning(
+      variogram(gaussian_data, variable = "y", n_permutations = 50,
+                level = 0.95)
+    )
+    expect_error(
+      variogram(gaussian_data, variable = "y", n_permutations = 50,
+                level = 0.99),
+      "too small to construct a global envelope"
     )
   })
 
@@ -316,31 +321,35 @@ test_that("variogram produces errors", {
 
 test_that("variogram produces expected output", {
 
-  expected_output <- c("variogram", "distance_units", "n_permutations", "breaks")
-  expected_columns <- c("mid_points", "obs_vari", "n_obs", "lower_bound", "upper_bound")
-  expected_columns_zero <- c("mid_points", "obs_vari", "n_obs")
+  expected_output <- c("variogram", "distance_units", "n_permutations", "breaks",
+                       "level", "envelope_method")
+  expected_columns <- c("distance", "semivariance", "n_pairs",
+                        "lower_envelope", "upper_envelope")
+  expected_columns_zero <- c("distance", "semivariance", "n_pairs")
 
-  result <- variogram(gaussian_data, variable = "y", n_bins = 10, n_permutations = 100)
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10,
+                      n_permutations = 99, seed = 123)
 
   expect_s3_class(result, "RiskMap_variogram")
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
   expect_equal(nrow(result$variogram), 10)
   expect_equal(result$distance_units, "m")
-  expect_equal(result$n_permutations, 100)
+  expect_equal(result$n_permutations, 99)
   expect_length(result$breaks, 10 + 1)
-  expect_equal(mean(result$variogram$mid_points), mean(result$breaks))
+  expect_equal(result$level, 0.95)
+  expect_equal(result$envelope_method, "global_extreme_rank_length")
 
   breaks <- seq(0, 9000, 1000)
-  result <- variogram(gaussian_data, variable = "y", breaks = breaks, n_permutations = 100)
+  result <- variogram(gaussian_data, variable = "y", breaks = breaks,
+                      n_permutations = 99, seed = 123)
   expect_s3_class(result, "RiskMap_variogram")
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
   expect_equal(result$distance_units, "m")
-  expect_equal(result$n_permutations, 100)
+  expect_equal(result$n_permutations, 99)
   expect_equal(nrow(result$variogram), length(breaks) - 1)
   expect_equal(result$breaks, breaks)
-  expect_equal(mean(result$variogram$mid_points), mean(result$breaks))
 
   result <- variogram(gaussian_data, variable = "y", n_bins = 10, n_permutations = 0)
   expect_s3_class(result, "RiskMap_variogram")
@@ -350,7 +359,7 @@ test_that("variogram produces expected output", {
   expect_equal(result$distance_units, "m")
   expect_equal(result$n_permutations, 0)
   expect_length(result$breaks, 10 + 1)
-  expect_equal(mean(result$variogram$mid_points), mean(result$breaks))
+  expect_null(result$envelope_method)
 })
 
 test_that("variogram values are correct for a simple dataset", {
@@ -364,57 +373,73 @@ test_that("variogram values are correct for a simple dataset", {
   # 10 points will be removed, so only the square distances are considered
   square_sf <- sf::st_as_sf(square, coords = c("x", "y"), crs = 32630)
 
-  # independently calculate the variogram for all possible permutations
-  # get all possible combinations of 1:5
-  permutations <- expand.grid(1:5, 1:5, 1:5, 1:5, 1:5)
-  permutations <- as.matrix(permutations[apply(permutations, 1, function(x) length(unique(x)) == 5), ])
-
-  # compute semivariances for a permutation
-  get_bin_averages <- function(perm) {
-    vals <- c(1, 2, 3, 4, 10)[perm]
-
-    s <- c(
-      (vals[1]-vals[2])^2/2,  # 1-2: bin1
-      (vals[1]-vals[3])^2/2,  # 1-3: bin1
-      (vals[1]-vals[4])^2/2,  # 1-4: bin2
-      (vals[2]-vals[3])^2/2,  # 2-3: bin2
-      (vals[2]-vals[4])^2/2,  # 2-4: bin1
-      (vals[3]-vals[4])^2/2   # 3-4: bin1
-    )
-
-    c(bin1 = mean(s[c(1,2,5,6)]),
-      bin2 = mean(s[c(3,4)]))
-  }
-
-  manual_results <- t(apply(permutations, 1, get_bin_averages))
-  manual_envelope <- apply(manual_results, 2, quantile, probs = c(0.025, 0.975))
-  manual_observed <- get_bin_averages(1:5)
+  manual_observed <- c(
+    mean(c((1 - 2)^2, (1 - 3)^2, (2 - 4)^2, (3 - 4)^2) / 2),
+    mean(c((1 - 4)^2, (2 - 3)^2) / 2)
+  )
 
   result <- variogram(square_sf,
                       variable = "z",
-                      breaks = seq(0.1, 1.5, 0.2))
+                      breaks = seq(0.1, 1.5, 0.2),
+                      n_permutations = 119,
+                      seed = 12)
 
-  expect_equal(sum(result$variogram$n_obs), 6)
+  expect_equal(sum(result$variogram$n_pairs), 6)
 
-  bin1 <- result$variogram$mid_points == 1
-  bin2 <- result$variogram$mid_points + 0.1 > sqrt(2)
+  bin1 <- result$variogram$n_pairs == 4
+  bin2 <- result$variogram$n_pairs == 2
 
-  expect_equal(result$variogram$n_obs[bin1], 4)
-  expect_equal(result$variogram$n_obs[bin2], 2)
+  expect_equal(result$variogram$distance[bin1], 1)
+  expect_equal(result$variogram$distance[bin2], sqrt(2))
 
-  expect_equal(result$variogram$obs_vari[bin1], unname(manual_observed[1]))
-  expect_equal(result$variogram$obs_vari[bin2], unname(manual_observed[2]))
+  expect_equal(result$variogram$semivariance[bin1], manual_observed[1])
+  expect_equal(result$variogram$semivariance[bin2], manual_observed[2])
+})
 
-  expect_equal(result$variogram$lower_bound[bin1], manual_envelope[1,1])
-  expect_equal(result$variogram$lower_bound[bin2], manual_envelope[1,2])
+test_that("compiled binned semivariances agree with a direct calculation", {
+  values <- c(2, 5, 11, 13)
+  permutations <- cbind(1:4, c(4, 2, 1, 3))
+  first <- c(1L, 2L, 3L, 2L, 3L, 3L)
+  second <- c(0L, 0L, 0L, 1L, 1L, 2L)
+  bins <- c(0L, 0L, 1L, 1L, 0L, 1L)
 
-  expect_equal(result$variogram$upper_bound[bin1], manual_envelope[2,1])
-  expect_equal(result$variogram$upper_bound[bin2], manual_envelope[2,2])
+  permuted_values <- matrix(values[permutations], nrow = length(values))
+  result <- cpp_binned_semivariances(permuted_values, first, second, bins, 2L)
+  direct <- vapply(seq_len(ncol(permutations)), function(column) {
+    permuted <- values[permutations[, column]]
+    pair_values <- (permuted[first + 1L] - permuted[second + 1L])^2 / 2
+    c(mean(pair_values[bins == 0L]), mean(pair_values[bins == 1L]))
+  }, numeric(2))
+
+  expect_equal(result, direct)
+})
+
+test_that("global rank envelope uses the whole curve and handles ties conservatively", {
+  curves <- rbind(
+    c(10, 0, 4, 4, 4),
+    c(0, 10, 4, 4, 4)
+  )
+
+  envelope <- global_rank_envelope(curves, level = 0.8)
+
+  expect_equal(envelope$lower, c(0, 0))
+  expect_equal(envelope$upper, c(10, 10))
+})
+
+test_that("a variogram seed is reproducible without changing the caller RNG", {
+  set.seed(91)
+  state_before <- .Random.seed
+  first <- variogram(gaussian_data, "y", n_permutations = 99, seed = 5)
+  expect_identical(.Random.seed, state_before)
+  second <- variogram(gaussian_data, "y", n_permutations = 99, seed = 5)
+
+  expect_equal(first, second)
 })
 
 test_that("plot_variogram defaults to plotting the envelope when available", {
 
-  result <- variogram(gaussian_data, variable = "y", n_bins = 10, n_permutations = 100)
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10,
+                      n_permutations = 99, seed = 123)
 
   expect_no_warning(p <- plot_variogram(result))
   expect_true("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
