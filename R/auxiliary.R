@@ -1197,7 +1197,7 @@ plot_metric <- function(object, metric, model, ...) {
   }
 
   if (!metric %in% names(object$model[[model]]$metric)) {
-    stop(paste("'metric'", shQuote(metric, type = "sh"), "was not computed for model", shQuote(model)))
+    stop(paste("'metric'", shQuote(metric, type = "sh"), "was not computed for model", shQuote(model, type = "sh")))
   }
 
   # Extract the test sets and number of test sets
