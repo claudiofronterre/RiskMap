@@ -145,3 +145,16 @@ test_that("MCML convergence requires stable parameters and adequate overlap", {
   expect_false(mcml_update_converged(0.04, 0.05, control))
   expect_false(mcml_update_converged(NA_real_, 0.2, control))
 })
+
+test_that("MCML steps are shortened when the proposal lacks overlap", {
+  result <- supported_importance_step(
+    reference = 0,
+    proposal = 1,
+    log_weight_function = function(parameter) c(0, -20 * parameter),
+    min_relative_ess = 0.75
+  )
+
+  expect_lt(result$step_fraction, 1)
+  expect_gte(result$relative_importance_ess, 0.75)
+  expect_lt(result$proposal_relative_importance_ess, 0.75)
+})

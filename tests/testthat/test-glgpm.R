@@ -1,6 +1,10 @@
 test_that("glgpm produces errors", {
-
-  # par0 is not checked
+  expect_error(
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          start_pars = list(beta = c(0, 1), unknown = 1)),
+    "'unknown' is not a valid starting parameter",
+    fixed = TRUE
+  )
 
   expect_error(
     glgpm("not formula", data = gaussian_data, family = "gaussian"),
@@ -92,12 +96,6 @@ test_that("glgpm produces errors", {
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = -1),
     "'fix_var_me' must be NULL or a single positive value or zero"
   )
-
-  expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", par0 = 1),
-    "'par0' cannot be provided when 'family' is 'gaussian'"
-  )
-
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
@@ -295,6 +293,37 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "binomial")
+})
+
+test_that("explicit non-Gaussian defaults reproduce the default starting path", {
+  data_frame <- sf::st_drop_geometry(binomial_data)
+  glm_start <- glm(
+    cbind(y, denominator - y) ~ cov,
+    data = data_frame,
+    family = binomial
+  )
+  start_pars <- list(
+    beta = coef(glm_start),
+    sigma2 = 1,
+    phi = quantile(
+      pairwise_distances(coordinates_in_units(binomial_data, "km")),
+      0.1
+    )
+  )
+
+  default_fit <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    messages = FALSE
+  )
+  explicit_fit <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    start_pars = start_pars, messages = FALSE
+  )
+
+  expect_equal(default_fit$estimate, explicit_fit$estimate)
+  expect_equal(default_fit$log_lik, explicit_fit$log_lik)
 })
 
 test_that("glgpm produces expected output for poisson models", {

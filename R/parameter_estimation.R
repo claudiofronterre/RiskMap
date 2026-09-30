@@ -28,7 +28,6 @@
 ##' @param control_mcml Control parameters for repeated Monte Carlo maximum
 ##' likelihood updates. Must be returned by [set_control_mcml()]. The default
 ##' performs one update, preserving the usual single-stage fit.
-##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 ##' Defaults to `FALSE`.
 ##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
@@ -179,7 +178,6 @@ glgpm <- function(formula,
                  distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
                  control_mcml = set_control_mcml(),
-                 par0 = NULL,
                  return_samples = FALSE,
                  messages = TRUE,
                  fix_var_me = NULL,
@@ -209,7 +207,6 @@ glgpm <- function(formula,
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
               "'denominator' cannot be provided when 'family' is 'gaussian'" = is.null(denominator),
-              "'par0' cannot be provided when 'family' is 'gaussian'" = is.null(par0),
               "'return_samples' cannot be TRUE when 'family' is 'gaussian'" = !return_samples,
               "'fix_var_me' must be NULL or a single positive value or zero" =
                 is.null(fix_var_me) ||
@@ -316,8 +313,8 @@ glgpm <- function(formula,
   if(messages) message("Distances between locations are computed in ", distance_units, " ")
 
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
-  if (!any(names(start_pars) %in% valid_start_pars)){
-    invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
+  invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
+  if (length(invalid)) {
     stop("'", paste(invalid, collapse = "', '"), "' is not a valid starting parameter")
   }
 
@@ -417,17 +414,11 @@ glgpm <- function(formula,
     res["mcml_history"] <- list(NULL)
     res["mcml_converged"] <- list(NULL)
   } else if(not_gaussian) {
-    if(is.null(par0)) {
-      par0 <- start_pars
-    } else {
-      if(length(par0$beta)!=ncol(D)) stop("the values passed to `beta` in par0 do not match the
-                                          variables specified in the formula")
-    }
-    fitting_par0 <- par0
-    fitting_par0$beta <- as.numeric(
-      solve(design_scaling$coefficient_transform, par0$beta)
-    )
-    fitting_par0$phi <- par0$phi / spatial_scaling$distance_scale
+    # For MCML, the starting parameters also define the posterior reference
+    # distribution used for the first importance sample. Later references are
+    # updated internally and are not a separate user-facing choice.
+    fitting_reference <- start_pars
+    fitting_reference$phi <- fitting_start_phi
     mcml_history <- vector("list", control_mcml$max_iterations)
     previous_estimate <- NULL
     converged <- if (control_mcml$max_iterations == 1L) NA else FALSE
@@ -443,43 +434,47 @@ glgpm <- function(formula,
                         ID_coords, ID_re, s_unique, re_unique,
                         fix_tau2, family = family, invlink = invlink,
                         return_samples = return_samples,
-                        par0 = fitting_par0, cov_offset = cov_offset,
-                        start_beta = start_pars[["beta"]],
-                        start_cov_pars = c(start_pars[["sigma2"]],
-                                           fitting_start_phi,
-                                           start_pars[["tau2"]],
-                                           start_pars[["sigma2_re"]]),
+                        reference_pars = fitting_reference,
+                        cov_offset = cov_offset,
                         control_mcmc = iteration_mcmc,
+                        min_relative_ess = control_mcml$min_relative_ess,
                         messages = messages)
 
-      working_estimate <- unlist(res$estimate, use.names = TRUE)
+      optimizer <- attr(res, "optimizer")
+      supported_estimate <- optimizer$supported_estimate
+      working_estimate <- unlist(supported_estimate, use.names = TRUE)
       change <- if (is.null(previous_estimate)) NA_real_ else
         max(abs(working_estimate - previous_estimate))
       standard_error <- sqrt(pmax(diag(res$covariance), 0))
       standardized_change <- if (is.null(previous_estimate)) NA_real_ else
         max(abs(working_estimate - previous_estimate) /
               pmax(standard_error, sqrt(.Machine$double.eps)))
-      optimizer <- attr(res, "optimizer")
       mcml_history[[iteration]] <- list(
         iteration = iteration,
-        estimate = res$estimate,
-        log_likelihood_ratio_gain = res$log_lik,
+        estimate = supported_estimate,
+        proposed_estimate = res$estimate,
+        log_likelihood_ratio_gain =
+          optimizer$supported_log_likelihood_ratio,
         max_parameter_change = change,
         max_standardized_change = standardized_change,
         importance_ess = optimizer$importance_ess,
         relative_importance_ess = optimizer$relative_importance_ess,
+        proposed_relative_importance_ess =
+          optimizer$proposal_relative_importance_ess,
+        step_fraction = optimizer$step_fraction,
         seed = iteration_mcmc$seed
       )
 
       if (mcml_update_converged(
         change, optimizer$relative_importance_ess, control_mcml
-      )) {
+      ) && optimizer$step_fraction == 1) {
         converged <- TRUE
         mcml_history <- mcml_history[seq_len(iteration)]
         break
       }
       previous_estimate <- working_estimate
-      fitting_par0 <- estimate_to_mcml_reference(res$estimate, fix_tau2)
+      fitting_reference <-
+        estimate_to_mcml_reference(supported_estimate, fix_tau2)
     }
     if (control_mcml$max_iterations > 1L && !isTRUE(converged)) {
       warning(
@@ -642,6 +637,62 @@ importance_effective_sample_size <- function(weights) {
   1 / sum(weights^2)
 }
 
+##' Limit an MCML update to the region supported by its importance sample
+##'
+##' The optimiser may propose a parameter vector far from the reference used
+##' to generate the importance sample. This routine follows the straight line
+##' from the reference to that proposal and returns the largest prefix for
+##' which the relative weight ESS remains above the requested threshold.
+##'
+##' @noRd
+supported_importance_step <- function(reference, proposal,
+                                      log_weight_function,
+                                      min_relative_ess,
+                                      max_bisections = 30L) {
+  evaluate <- function(fraction) {
+    parameters <- reference + fraction * (proposal - reference)
+    log_weights <- log_weight_function(parameters)
+    weights <- normalise_log_weights(log_weights)
+    list(
+      parameters = parameters,
+      weights = weights,
+      log_likelihood_ratio = log_mean_exp(log_weights),
+      importance_ess = importance_effective_sample_size(weights),
+      relative_importance_ess =
+        importance_effective_sample_size(weights) / length(weights),
+      max_importance_weight = max(weights)
+    )
+  }
+
+  proposed <- evaluate(1)
+  if (min_relative_ess <= 0 ||
+      proposed$relative_importance_ess >= min_relative_ess) {
+    proposed$step_fraction <- 1
+    proposed$proposal_relative_importance_ess <-
+      proposed$relative_importance_ess
+    return(proposed)
+  }
+
+  lower <- 0
+  upper <- 1
+  accepted <- evaluate(lower)
+  for (i in seq_len(max_bisections)) {
+    middle <- (lower + upper) / 2
+    candidate <- evaluate(middle)
+    if (candidate$relative_importance_ess >= min_relative_ess) {
+      lower <- middle
+      accepted <- candidate
+    } else {
+      upper <- middle
+    }
+  }
+
+  accepted$step_fraction <- lower
+  accepted$proposal_relative_importance_ess <-
+    proposed$relative_importance_ess
+  accepted
+}
+
 ##' Obtain stable Gaussian regression starting values
 ##'
 ##' QR decomposition avoids squaring the condition number as the normal
@@ -764,11 +815,13 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
 restore_mcml_history_scale <- function(history, coefficient_transform,
                                        distance_scale) {
   lapply(history, function(entry) {
-    entry$estimate$beta <- as.numeric(
-      coefficient_transform %*% entry$estimate$beta
-    )
-    names(entry$estimate$beta) <- colnames(coefficient_transform)
-    entry$estimate$phi <- entry$estimate$phi + log(distance_scale)
+    for (field in intersect(c("estimate", "proposed_estimate"), names(entry))) {
+      entry[[field]]$beta <- as.numeric(
+        coefficient_transform %*% entry[[field]]$beta
+      )
+      names(entry[[field]]$beta) <- colnames(coefficient_transform)
+      entry[[field]]$phi <- entry[[field]]$phi + log(distance_scale)
+    }
     entry
   })
 }
@@ -2665,12 +2718,12 @@ set_control_mcmc <- function(n_sim = 12000,
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_nong <-
   function(y, D, coords, units_m, kappa,
-           par0, cov_offset,
+           reference_pars, cov_offset,
            ID_coords, ID_re, s_unique, re_unique,
            fix_tau2, family, return_samples,
-           start_beta, invlink,
-           start_cov_pars,
+           invlink,
            control_mcmc,
+           min_relative_ess = 0,
            messages = TRUE) {
 
     stopifnot(family %in% c("poisson", "binomial"))
@@ -2724,13 +2777,13 @@ glgpm_nong <-
     }
 
     # --- setup ---
-    beta0   <- par0$beta
+    beta0   <- reference_pars$beta
     mu0     <- as.numeric(D %*% beta0 + cov_offset)
-    sigma2_0 <- par0$sigma2
-    phi0    <- par0$phi
-    tau2_0  <- par0$tau2
+    sigma2_0 <- reference_pars$sigma2
+    phi0    <- reference_pars$phi
+    tau2_0  <- reference_pars$tau2
     if (is.null(tau2_0)) tau2_0 <- fix_tau2
-    sigma2_re_0 <- par0$sigma2_re
+    sigma2_re_0 <- reference_pars$sigma2_re
 
     n_loc <- nrow(coords)
     n_re  <- length(sigma2_re_0)
@@ -2943,11 +2996,21 @@ glgpm_nong <-
       -0.5 * (spatial_quadratic + random_quadratic) + likelihood
     }
 
-    par0_vec <- c(par0$beta, log(c(par0$sigma2, par0$phi)))
-    if (isTRUE(fix_tau2)) par0_vec <- c(par0_vec, log(par0$tau2 / par0$sigma2))
-    if (n_re > 0) par0_vec <- c(par0_vec, log(par0$sigma2_re))
+    reference_vec <- c(
+      reference_pars$beta,
+      log(c(reference_pars$sigma2, reference_pars$phi))
+    )
+    if (isTRUE(fix_tau2)) {
+      reference_vec <- c(
+        reference_vec,
+        log(reference_pars$tau2 / reference_pars$sigma2)
+      )
+    }
+    if (n_re > 0) {
+      reference_vec <- c(reference_vec, log(reference_pars$sigma2_re))
+    }
 
-    log_f_tilde <- compute_log_f(par0_vec)
+    log_f_tilde <- compute_log_f(reference_vec)
 
     mc_log_lik <- function(par) {
       log_mean_exp(compute_log_f(par) - log_f_tilde)
@@ -3159,8 +3222,10 @@ glgpm_nong <-
     }
 
     # --- optimization ---
-    start_cov_pars[-(1:2)] <- start_cov_pars[-(1:2)] / start_cov_pars[1]
-    start_par <- c(start_beta, log(start_cov_pars))
+    # Each MCML optimisation must begin at the parameter value whose latent
+    # posterior generated the current importance sample. In particular, an
+    # iterative update must not restart from the original model defaults.
+    start_par <- reference_vec
 
     out <- list()
     objective <- safe_optimizer_objective(function(x) -mc_log_lik(x))
@@ -3170,6 +3235,15 @@ glgpm_nong <-
                     function(x) -hess_mc_log_lik(x),
                     control = list(trace = 1 * messages))
 
+    proposal_gradient <- grad_mc_log_lik(estim$par)
+    proposal_information <- -hess_mc_log_lik(estim$par)
+
+    supported_step <- supported_importance_step(
+      reference = reference_vec,
+      proposal = estim$par,
+      log_weight_function = function(par) compute_log_f(par) - log_f_tilde,
+      min_relative_ess = min_relative_ess
+    )
     out$estimate <- structure_estimate(
       estim$par,
       beta_names = colnames(D),
@@ -3177,9 +3251,8 @@ glgpm_nong <-
       sigma2_me  = FALSE,
       re_names   = if (n_re > 0) names(ID_re) else NULL
     )
-    out$grad_MLE <- grad_mc_log_lik(estim$par)
-    hess_MLE <- hess_mc_log_lik(estim$par)
-    information <- -hess_MLE
+    out$grad_MLE <- proposal_gradient
+    information <- proposal_information
     information_root <- factor_covariance(
       information,
       "observed information matrix"
@@ -3199,20 +3272,37 @@ glgpm_nong <-
       estim, objective, out$grad_MLE, information, information_root
     )
     warn_unconverged_optimizer(optimizer_diagnostics)
-    final_weights <- normalise_log_weights(
-      compute_log_f(estim$par) - log_f_tilde
+    optimizer_diagnostics$proposed_estimate <- structure_estimate(
+      estim$par,
+      beta_names = colnames(D),
+      fix_tau2 = fix_tau2,
+      sigma2_me = FALSE,
+      re_names = if (n_re > 0) names(ID_re) else NULL
     )
-    optimizer_diagnostics$importance_ess <-
-      importance_effective_sample_size(final_weights)
+    optimizer_diagnostics$supported_estimate <- structure_estimate(
+      supported_step$parameters,
+      beta_names = colnames(D),
+      fix_tau2 = fix_tau2,
+      sigma2_me = FALSE,
+      re_names = if (n_re > 0) names(ID_re) else NULL
+    )
+    optimizer_diagnostics$step_fraction <- supported_step$step_fraction
+    optimizer_diagnostics$importance_ess <- supported_step$importance_ess
     optimizer_diagnostics$relative_importance_ess <-
-      optimizer_diagnostics$importance_ess / length(final_weights)
-    if (messages && optimizer_diagnostics$relative_importance_ess < 0.1) {
+      supported_step$relative_importance_ess
+    optimizer_diagnostics$proposal_relative_importance_ess <-
+      supported_step$proposal_relative_importance_ess
+    optimizer_diagnostics$supported_log_likelihood_ratio <-
+      supported_step$log_likelihood_ratio
+    optimizer_diagnostics$max_importance_weight <-
+      supported_step$max_importance_weight
+    if (messages && supported_step$step_fraction < 1) {
       warning(
-        "The importance-sampling effective sample size is only ",
-        format(100 * optimizer_diagnostics$relative_importance_ess,
-               digits = 3),
-        "% of the retained samples; consider improving the proposal or ",
-        "increasing the MCMC sample size.",
+        "The unrestricted MCML update had a relative importance ESS of ",
+        format(100 * supported_step$proposal_relative_importance_ess,
+               digits = 3), "% and was shortened to ",
+        format(100 * supported_step$step_fraction, digits = 3),
+        "% of the proposed parameter change to retain adequate overlap.",
         call. = FALSE
       )
     }
