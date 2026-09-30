@@ -1814,11 +1814,10 @@ maxim_integrand <- function(
   }
 
   sum_by_group <- function(v, grp, nlev) {
-    f <- factor(grp, levels = seq_len(nlev))
-    s <- tapply(v, f, sum)
-    ans <- rep(0, nlev)
-    if (!is.null(s)) ans[seq_along(s)] <- replace(s, is.na(s), 0)
-    as.numeric(ans)
+    sums <- rowsum(v, grp, reorder = FALSE)
+    out <- numeric(nlev)
+    out[as.integer(rownames(sums))] <- sums[, 1L]
+    out
   }
 
   cross_sum <- function(v, grp1, n1, grp2, n2) {
@@ -2180,14 +2179,6 @@ laplace_sampling_mcmc <- function(y,
     invisible(TRUE)
   }
 
-  sum_by_group <- function(v, grp, nlev) {
-    f <- factor(grp, levels = seq_len(nlev))
-    s <- tapply(v, f, sum)
-    ans <- rep(0, nlev)
-    if (!is.null(s)) ans[seq_along(s)] <- replace(s, is.na(s), 0)
-    as.numeric(ans)
-  }
-
   # ---------- dimensions ----------
   if (( !is.null(ID_re) && is.null(sigma2_re)) ||
       (  is.null(ID_re) && !is.null(sigma2_re))) {
@@ -2227,6 +2218,20 @@ laplace_sampling_mcmc <- function(y,
     }
   }
   n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
+  coordinate_aggregation <- Matrix::sparseMatrix(
+    i = ID_coords, j = seq_len(n), x = 1,
+    dims = c(n_loc, n)
+  )
+  re_aggregation <- if (n_re > 0) {
+    lapply(seq_len(n_re), function(i) {
+      Matrix::sparseMatrix(
+        i = ID_re[, i], j = seq_len(n), x = 1,
+        dims = c(n_dim_re[i], n)
+      )
+    })
+  } else {
+    list()
+  }
 
   # ---------- inverse link handling (inv, d1) ----------
   make_invlink_funs <- function(family, invlink, ncheck) {
@@ -2286,10 +2291,11 @@ laplace_sampling_mcmc <- function(y,
 
   # ---------- affine reparameterisation ----------
   n_sim   <- control_mcmc$n_sim
-  Sigma_pd_sroot <- t(factor_covariance(
+  Sigma_pd_root <- factor_covariance(
     Sigma_pd, context = "Laplace-approximation covariance matrix"
-  ))
-  A <- solve(Sigma_pd_sroot)
+  )
+  Sigma_pd_sroot <- t(Sigma_pd_root)
+  A <- forwardsolve(Sigma_pd_sroot, diag(n_tot))
 
   if (n_re == 0) {
     Sigma_tot <- Sigma
@@ -2302,9 +2308,16 @@ laplace_sampling_mcmc <- function(y,
     A %*% Sigma_tot %*% t(A),
     context = "transformed latent covariance matrix"
   )
+  Sigma_w_sroot <- t(Sigma_w_root)
+  solve_w_covariance <- function(right_hand_side) {
+    backsolve(
+      Sigma_w_root,
+      forwardsolve(Sigma_w_sroot, right_hand_side)
+    )
+  }
   mu_w <- -as.numeric(A %*% mean_pd)
 
-  cond.dens.W <- function(W, S_tot) {
+  target_state <- function(W, S_tot) {
     S <- S_tot[1:n_loc]
     S_re_list <- if (n_re > 0) lapply(seq_len(n_re), function(i) S_tot[ind_re[[i]]]) else NULL
 
@@ -2313,49 +2326,39 @@ laplace_sampling_mcmc <- function(y,
 
     if (family == "poisson") {
       mu_vec <- inv_link(eta)
-      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) return(-Inf)
+      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) return(NULL)
       llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
-    } else {
-      p <- inv_link(eta)
-      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) return(-Inf)
-      llik <- sum(y * log(pmax(p, .Machine$double.eps)) +
-                    (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
-    }
-    diff_w <- W - mu_w
-    prior_solution <- solve_from_cholesky(Sigma_w_root, diff_w)
-    as.numeric(-0.5 * crossprod(diff_w, prior_solution) + llik)
-  }
-
-  lang.grad <- function(W, S_tot) {
-    S <- S_tot[1:n_loc]
-    S_re_list <- if (n_re > 0) lapply(seq_len(n_re), function(i) S_tot[ind_re[[i]]]) else NULL
-
-    eta <- mu + S[ID_coords]
-    if (n_re > 0) for (i in seq_len(n_re)) eta <- eta + S_re_list[[i]][ID_re[, i]]
-
-    if (family == "poisson") {
-      mu_vec <- inv_link(eta)
-      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) stop("invlink must return positive means for Poisson.")
       mu1 <- inv1(eta)
       g_eta <- (y - units_m * mu_vec) * (mu1 / mu_vec)
     } else {
       p <- inv_link(eta)
-      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) stop("invlink must return values in (0,1) for Binomial.")
+      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) return(NULL)
+      llik <- sum(y * log(pmax(p, .Machine$double.eps)) +
+                    (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
       p1 <- inv1(eta)
-      den <- p * (1 - p)
-      g_eta <- (y - units_m * p) * (p1 / den)
+      g_eta <- (y - units_m * p) * (p1 / (p * (1 - p)))
     }
+    diff_w <- W - mu_w
+    prior_solution <- solve_w_covariance(diff_w)
 
     grad_S_tot <- numeric(n_tot)
-    grad_S_tot[1:n_loc] <- sum_by_group(g_eta, ID_coords, n_loc)
+    grad_S_tot[1:n_loc] <- as.numeric(coordinate_aggregation %*% g_eta)
     if (n_re > 0) {
       for (j in seq_len(n_re)) {
-        grad_S_tot[ind_re[[j]]] <- sum_by_group(g_eta, ID_re[, j], n_dim_re[j])
+        grad_S_tot[ind_re[[j]]] <- as.numeric(
+          re_aggregation[[j]] %*% g_eta
+        )
       }
     }
 
-    prior_gradient <- solve_from_cholesky(Sigma_w_root, W - mu_w)
-    as.numeric(-prior_gradient + t(Sigma_pd_sroot) %*% grad_S_tot)
+    list(
+      log_density = as.numeric(
+        -0.5 * crossprod(diff_w, prior_solution) + llik
+      ),
+      gradient = as.numeric(
+        -prior_solution + Sigma_pd_root %*% grad_S_tot
+      )
+    )
   }
 
   # ---------- MALA tuning ----------
@@ -2367,8 +2370,12 @@ laplace_sampling_mcmc <- function(y,
 
   W_curr <- rep(0, n_tot)
   S_tot_curr <- as.numeric(Sigma_pd_sroot %*% W_curr + mean_pd)
-  mean_curr <- as.numeric(W_curr + (h^2/2) * lang.grad(W_curr, S_tot_curr))
-  lp_curr <- cond.dens.W(W_curr, S_tot_curr)
+  state_curr <- target_state(W_curr, S_tot_curr)
+  if (is.null(state_curr)) {
+    stop("The initial state has a non-finite target density or gradient.")
+  }
+  mean_curr <- as.numeric(W_curr + (h^2 / 2) * state_curr$gradient)
+  lp_curr <- state_curr$log_density
   acc <- 0L
   n_samples <- floor((n_sim - burnin) / thin)   # was: (n_sim - burnin) / thin
   sim <- matrix(NA_real_, nrow = n_samples, ncol = n_tot)
@@ -2389,17 +2396,23 @@ laplace_sampling_mcmc <- function(y,
     W_prop <- mean_curr + h * rnorm(n_tot)
     S_tot_prop <- as.numeric(Sigma_pd_sroot %*% W_prop + mean_pd)
     proposal <- tryCatch({
-      grad_prop <- lang.grad(W_prop, S_tot_prop)
-      mean_prop <- as.numeric(W_prop + (h^2 / 2) * grad_prop)
-      lp_prop <- cond.dens.W(W_prop, S_tot_prop)
-      if (any(!is.finite(mean_prop)) || !is.finite(lp_prop)) {
+      state_prop <- target_state(W_prop, S_tot_prop)
+      if (is.null(state_prop)) {
         NULL
       } else {
-        dprop_curr <- -sum((W_prop - mean_curr)^2) / (2 * h^2)
-        dprop_prop <- -sum((W_curr - mean_prop)^2) / (2 * h^2)
-        list(mean = mean_prop,
-             log_prob = lp_prop + dprop_prop - lp_curr - dprop_curr,
-             log_density = lp_prop)
+        mean_prop <- as.numeric(
+          W_prop + (h^2 / 2) * state_prop$gradient
+        )
+        lp_prop <- state_prop$log_density
+        if (any(!is.finite(mean_prop)) || !is.finite(lp_prop)) {
+          NULL
+        } else {
+          dprop_curr <- -sum((W_prop - mean_curr)^2) / (2 * h^2)
+          dprop_prop <- -sum((W_curr - mean_prop)^2) / (2 * h^2)
+          list(mean = mean_prop,
+               log_prob = lp_prop + dprop_prop - lp_curr - dprop_curr,
+               state = state_prop)
+        }
       }
     }, error = function(e) NULL)
 
@@ -2409,7 +2422,8 @@ laplace_sampling_mcmc <- function(y,
       accepted[i] <- TRUE
       W_curr <- W_prop
       S_tot_curr <- S_tot_prop
-      lp_curr <- proposal$log_density
+      state_curr <- proposal$state
+      lp_curr <- state_curr$log_density
       mean_curr <- proposal$mean
     }
 
@@ -2428,7 +2442,7 @@ laplace_sampling_mcmc <- function(y,
       # The Langevin mean depends on h. Recompute it for the next iteration
       # after every warm-up update, including when the proposal was rejected.
       mean_curr <- as.numeric(
-        W_curr + (h^2 / 2) * lang.grad(W_curr, S_tot_curr)
+        W_curr + (h^2 / 2) * state_curr$gradient
       )
     }
     h.vec[i] <- h
