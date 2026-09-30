@@ -2137,6 +2137,17 @@ laplace_sampling_mcmc <- function(y,
 
   n <- length(y)
   n_loc <- nrow(Sigma)
+  if (!is.numeric(y) || n < 1L || any(!is.finite(y)) ||
+      any(y < 0) || any(y != as.integer(y))) {
+    stop("'y' must be a non-empty vector of non-negative integer counts.")
+  }
+  if (!is.numeric(units_m) || length(units_m) != n ||
+      any(!is.finite(units_m)) || any(units_m <= 0)) {
+    stop("'units_m' must contain one positive finite value per response.")
+  }
+  if (family == "binomial" && any(y > units_m)) {
+    stop("Binomial responses in 'y' cannot exceed 'units_m'.")
+  }
   if (!is.numeric(Sigma) || length(dim(Sigma)) != 2L ||
       n_loc != ncol(Sigma) || n_loc < 1L) {
     stop("'Sigma' must be a non-empty square numeric matrix.")
@@ -2188,8 +2199,26 @@ laplace_sampling_mcmc <- function(y,
     n_dim_re <- integer(0)
     ind_re <- list()
   } else {
+    ID_re <- as.matrix(ID_re)
+    if (nrow(ID_re) != n || ncol(ID_re) < 1L || anyNA(ID_re) ||
+        any(ID_re != as.integer(ID_re)) || any(ID_re < 1L)) {
+      stop("'ID_re' must contain positive integer indices and one row per response.")
+    }
     n_re <- length(sigma2_re)
+    if (n_re != ncol(ID_re) || any(!is.finite(sigma2_re)) ||
+        any(sigma2_re <= 0)) {
+      stop("'sigma2_re' must contain one positive finite variance per random effect.")
+    }
+    if (!is.null(names(sigma2_re)) && !is.null(colnames(ID_re)) &&
+        !identical(names(sigma2_re), colnames(ID_re))) {
+      stop("Names of 'sigma2_re' must match the columns of 'ID_re'.")
+    }
     n_dim_re <- vapply(seq_len(n_re), function(i) length(unique(ID_re[, i])), integer(1))
+    for (i in seq_len(n_re)) {
+      if (!identical(sort(unique(ID_re[, i])), seq_len(n_dim_re[i]))) {
+        stop("Each column of 'ID_re' must use consecutive indices starting at 1.")
+      }
+    }
     ind_re <- vector("list", n_re)
     add_i <- 0L
     for (i in seq_len(n_re)) {
@@ -2246,10 +2275,20 @@ laplace_sampling_mcmc <- function(y,
     if (is.null(Sigma_pd)) Sigma_pd <- out_maxim$Sigma.tilde
     if (is.null(mean_pd))  mean_pd  <- out_maxim$mode
   }
+  if (!is.numeric(Sigma_pd) || length(dim(Sigma_pd)) != 2L ||
+      any(dim(Sigma_pd) != n_tot) || any(!is.finite(Sigma_pd))) {
+    stop("'Sigma_pd' must be a finite covariance matrix for all latent effects.")
+  }
+  if (!is.numeric(mean_pd) || length(mean_pd) != n_tot ||
+      any(!is.finite(mean_pd))) {
+    stop("'mean_pd' must contain one finite value for each latent effect.")
+  }
 
   # ---------- affine reparameterisation ----------
   n_sim   <- control_mcmc$n_sim
-  Sigma_pd_sroot <- t(chol(Sigma_pd))
+  Sigma_pd_sroot <- t(factor_covariance(
+    Sigma_pd, context = "Laplace-approximation covariance matrix"
+  ))
   A <- solve(Sigma_pd_sroot)
 
   if (n_re == 0) {
@@ -2259,7 +2298,10 @@ laplace_sampling_mcmc <- function(y,
     Sigma_tot[1:n_loc, 1:n_loc] <- Sigma
     for (i in seq_len(n_re)) diag(Sigma_tot)[ind_re[[i]]] <- sigma2_re[i]
   }
-  Sigma_w_inv <- solve(A %*% Sigma_tot %*% t(A))
+  Sigma_w_root <- factor_covariance(
+    A %*% Sigma_tot %*% t(A),
+    context = "transformed latent covariance matrix"
+  )
   mu_w <- -as.numeric(A %*% mean_pd)
 
   cond.dens.W <- function(W, S_tot) {
@@ -2280,7 +2322,8 @@ laplace_sampling_mcmc <- function(y,
                     (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
     }
     diff_w <- W - mu_w
-    as.numeric(-0.5 * crossprod(diff_w, Sigma_w_inv %*% diff_w) + llik)
+    prior_solution <- solve_from_cholesky(Sigma_w_root, diff_w)
+    as.numeric(-0.5 * crossprod(diff_w, prior_solution) + llik)
   }
 
   lang.grad <- function(W, S_tot) {
@@ -2311,7 +2354,8 @@ laplace_sampling_mcmc <- function(y,
       }
     }
 
-    as.numeric(-Sigma_w_inv %*% (W - mu_w) + t(Sigma_pd_sroot) %*% grad_S_tot)
+    prior_gradient <- solve_from_cholesky(Sigma_w_root, W - mu_w)
+    as.numeric(-prior_gradient + t(Sigma_pd_sroot) %*% grad_S_tot)
   }
 
   # ---------- MALA tuning ----------
@@ -3153,6 +3197,10 @@ glgpm_nong <-
         call. = FALSE
       )
     }
+    attr(out, "mcmc") <- simulation[c(
+      "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
+      "invlink_used"
+    )]
     attr(out, "optimizer") <- optimizer_diagnostics
     class(out) <- "RiskMap"
     return(out)

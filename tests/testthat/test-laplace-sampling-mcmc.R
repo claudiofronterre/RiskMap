@@ -48,6 +48,73 @@ test_that("one-dimensional binomial samples reproduce exact posterior moments", 
                exact_second - exact_mean^2, tolerance = 0.06)
 })
 
+test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
+  control <- set_control_mcmc(
+    n_sim = 7000, burnin = 1000, thin = 1, h = 0.75,
+    seed = 3141
+  )
+  sigma2 <- 0.8
+  y <- 5
+  exposure <- 1.4
+
+  fit <- laplace_sampling_mcmc(
+    y = y, units_m = exposure, mu = 0, Sigma = matrix(sigma2),
+    ID_coords = 1L, family = "poisson", control_mcmc = control,
+    messages = FALSE
+  )
+
+  log_kernel <- function(s) {
+    dpois(y, lambda = exposure * exp(s), log = TRUE) +
+      dnorm(s, sd = sqrt(sigma2), log = TRUE)
+  }
+  normalizer <- integrate(function(s) exp(log_kernel(s)), -Inf, Inf)$value
+  exact_mean <- integrate(
+    function(s) s * exp(log_kernel(s)), -Inf, Inf
+  )$value / normalizer
+  exact_second <- integrate(
+    function(s) s^2 * exp(log_kernel(s)), -Inf, Inf
+  )$value / normalizer
+
+  expect_equal(mean(fit$samples$S), exact_mean, tolerance = 0.06)
+  expect_equal(var(as.numeric(fit$samples$S)),
+               exact_second - exact_mean^2, tolerance = 0.06)
+})
+
+test_that("correlated binomial samples reproduce grid-integrated moments", {
+  control <- set_control_mcmc(
+    n_sim = 12000, burnin = 2000, thin = 1, h = 0.65,
+    seed = 1618
+  )
+  Sigma <- matrix(c(0.9, 0.45, 0.45, 0.8), 2, 2)
+  y <- c(2, 7)
+  m <- c(8, 9)
+
+  fit <- laplace_sampling_mcmc(
+    y = y, units_m = m, mu = c(0, 0), Sigma = Sigma,
+    ID_coords = 1:2, family = "binomial", control_mcmc = control,
+    messages = FALSE
+  )
+
+  # A dense deterministic grid provides an independent reference calculation.
+  axis <- seq(-4.5, 4.5, length.out = 401)
+  grid <- expand.grid(s1 = axis, s2 = axis)
+  Sigma_inv <- solve(Sigma)
+  prior_quadratic <- rowSums((as.matrix(grid) %*% Sigma_inv) * grid)
+  log_weights <- dbinom(y[1], m[1], plogis(grid$s1), log = TRUE) +
+    dbinom(y[2], m[2], plogis(grid$s2), log = TRUE) -
+    prior_quadratic / 2
+  weights <- exp(log_weights - max(log_weights))
+  weights <- weights / sum(weights)
+  exact_mean <- colSums(as.matrix(grid) * weights)
+  centred <- sweep(as.matrix(grid), 2, exact_mean)
+  exact_cov <- crossprod(centred, centred * weights)
+
+  expect_equal(unname(colMeans(fit$samples$S)), unname(exact_mean),
+               tolerance = 0.07)
+  expect_equal(unname(cov(fit$samples$S)), unname(exact_cov),
+               tolerance = 0.07)
+})
+
 test_that("sampler controls and location indices are validated", {
   expect_error(
     set_control_mcmc(n_sim = 100, burnin = 100),
@@ -64,5 +131,22 @@ test_that("sampler controls and location indices are validated", {
       control_mcmc = control, messages = FALSE
     ),
     "valid integer location index"
+  )
+
+  expect_error(
+    laplace_sampling_mcmc(
+      y = 5, units_m = 4, mu = 0, Sigma = matrix(1),
+      ID_coords = 1L, family = "binomial", control_mcmc = control,
+      messages = FALSE
+    ),
+    "cannot exceed"
+  )
+  expect_error(
+    laplace_sampling_mcmc(
+      y = c(1, 2), units_m = c(4, 4), mu = 0, Sigma = matrix(1),
+      ID_coords = c(1, 1), ID_re = matrix(c(1, 3)), sigma2_re = 1,
+      family = "binomial", control_mcmc = control, messages = FALSE
+    ),
+    "consecutive indices"
   )
 })
