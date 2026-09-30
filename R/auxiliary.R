@@ -1193,11 +1193,11 @@ plot_AnPIT <- function(object,
 plot_metric <- function(object, metric, model, ...) {
 
   if (!model %in% names(object$model)) {
-    stop(paste("'model'", shQuote(model), "was not found in 'object'"))
+    stop(paste("'model'", shQuote(model, type = "sh"), "was not found in 'object'"))
   }
 
   if (!metric %in% names(object$model[[model]]$metric)) {
-    stop(paste("'metric'", shQuote(metric), "was not computed for model", shQuote(model)))
+    stop(paste("'metric'", shQuote(metric, type = "sh"), "was not computed for model", shQuote(model)))
   }
 
   # Extract the test sets and number of test sets
