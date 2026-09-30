@@ -2074,7 +2074,7 @@ maxim_integrand <- function(
 ##'   }
 ##' @param invlink Optional inverse-link function. If \code{NULL}, defaults are used:
 ##'   \code{identity} (gaussian), \code{plogis} (binomial), and \code{exp} (poisson).
-##' @param Sigma_pd Optional precision matrix used in the Laplace approximation.
+##' @param Sigma_pd Optional covariance matrix used in the Laplace approximation.
 ##'   If \code{NULL}, it is obtained internally at the current mode.
 ##' @param mean_pd Optional mean vector used in the Laplace approximation.
 ##'   If \code{NULL}, it is obtained internally as the mode of the integrand.
@@ -2103,7 +2103,10 @@ maxim_integrand <- function(
 ##'                 \code{$S} (latent spatial field). If \code{ID_re} is supplied,
 ##'                 each unstructured RE is returned under \code{$<re_name>}.}
 ##'   \item{tuning_par}{Numeric vector of step sizes (\code{h}) used over iterations.}
-##'   \item{acceptance_prob}{Numeric vector of Metropolis–Hastings acceptance probabilities.}
+##'   \item{acceptance_prob}{Numeric vector of cumulative Metropolis–Hastings acceptance rates.}
+##'   \item{acceptance}{Logical vector recording whether each proposal was accepted.}
+##'   \item{acceptance_rate}{Named vector giving acceptance rates during burn-in
+##'                         and retained-sample iterations.}
 ##' }
 ##'
 ##' @section Default links:
@@ -2128,7 +2131,24 @@ laplace_sampling_mcmc <- function(y,
                                   messages = TRUE
                                   ){
 
-  stopifnot(family %in% c("poisson", "binomial"))
+  if (length(family) != 1L || !family %in% c("poisson", "binomial")) {
+    stop("'family' must be either 'poisson' or 'binomial'.")
+  }
+
+  n <- length(y)
+  n_loc <- nrow(Sigma)
+  if (!is.numeric(Sigma) || length(dim(Sigma)) != 2L ||
+      n_loc != ncol(Sigma) || n_loc < 1L) {
+    stop("'Sigma' must be a non-empty square numeric matrix.")
+  }
+  if (length(mu) != n_loc || any(!is.finite(mu))) {
+    stop("'mu' must contain one finite value for each row of 'Sigma'.")
+  }
+  if (length(ID_coords) != n || anyNA(ID_coords) ||
+      any(ID_coords != as.integer(ID_coords)) ||
+      any(ID_coords < 1L | ID_coords > n_loc)) {
+    stop("'ID_coords' must contain one valid integer location index per response.")
+  }
 
   # set seed if it exists and reset on exit
   if (!is.null(control_mcmc$seed)){
@@ -2158,10 +2178,6 @@ laplace_sampling_mcmc <- function(y,
   }
 
   # ---------- dimensions ----------
-  Sigma.inv <- solve(Sigma)
-  n_loc <- nrow(Sigma)
-  n <- length(y)
-
   if (( !is.null(ID_re) && is.null(sigma2_re)) ||
       (  is.null(ID_re) && !is.null(sigma2_re))) {
     stop("To introduce unstructured random effects both `ID_re` and `sigma2_re` must be provided.")
@@ -2255,11 +2271,11 @@ laplace_sampling_mcmc <- function(y,
 
     if (family == "poisson") {
       mu_vec <- inv_link(eta)
-      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) stop("invlink must return positive means for Poisson.")
+      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) return(-Inf)
       llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
     } else {
       p <- inv_link(eta)
-      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) stop("invlink must return values in (0,1) for Binomial.")
+      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) return(-Inf)
       llik <- sum(y * log(pmax(p, .Machine$double.eps)) +
                     (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
     }
@@ -2323,24 +2339,34 @@ laplace_sampling_mcmc <- function(y,
 
   h.vec <- rep(NA_real_, n_sim)
   acc_prob <- rep(NA_real_, n_sim)
+  accepted <- rep(FALSE, n_sim)
 
   for (i in seq_len(n_sim)) {
     W_prop <- mean_curr + h * rnorm(n_tot)
     S_tot_prop <- as.numeric(Sigma_pd_sroot %*% W_prop + mean_pd)
-    mean_prop <- as.numeric(W_prop + (h^2/2) * lang.grad(W_prop, S_tot_prop))
-    lp_prop <- cond.dens.W(W_prop, S_tot_prop)
+    proposal <- tryCatch({
+      grad_prop <- lang.grad(W_prop, S_tot_prop)
+      mean_prop <- as.numeric(W_prop + (h^2 / 2) * grad_prop)
+      lp_prop <- cond.dens.W(W_prop, S_tot_prop)
+      if (any(!is.finite(mean_prop)) || !is.finite(lp_prop)) {
+        NULL
+      } else {
+        dprop_curr <- -sum((W_prop - mean_curr)^2) / (2 * h^2)
+        dprop_prop <- -sum((W_curr - mean_prop)^2) / (2 * h^2)
+        list(mean = mean_prop,
+             log_prob = lp_prop + dprop_prop - lp_curr - dprop_curr,
+             log_density = lp_prop)
+      }
+    }, error = function(e) NULL)
 
-    dprop_curr <- -sum((W_prop - mean_curr)^2) / (2 * h^2)
-    dprop_prop <- -sum((W_curr - mean_prop)^2) / (2 * h^2)
-
-    log_prob <- lp_prop + dprop_prop - lp_curr - dprop_curr
-
-    if (log(runif(1)) < log_prob) {
+    if (!is.null(proposal) && is.finite(proposal$log_prob) &&
+        log(runif(1)) < proposal$log_prob) {
       acc <- acc + 1L
+      accepted[i] <- TRUE
       W_curr <- W_prop
       S_tot_curr <- S_tot_prop
-      lp_curr <- lp_prop
-      mean_curr <- mean_prop
+      lp_curr <- proposal$log_density
+      mean_curr <- proposal$mean
     }
 
     if (i > burnin && (i - burnin) %% thin == 0) {
@@ -2349,7 +2375,13 @@ laplace_sampling_mcmc <- function(y,
     }
 
     acc_prob[i] <- acc / i
-    h <- max(1e-19, h + c1.h * i^(-c2.h) * (acc / i - 0.57))
+    # Adapt only during burn-in so retained draws use a fixed Markov kernel.
+    # Updating log(h) keeps the step size positive; the diminishing gain is a
+    # Robbins-Monro update targeting the standard MALA acceptance rate.
+    if (i <= burnin) {
+      log_h <- log(h) + c1.h * i^(-c2.h) * (accepted[i] - 0.574)
+      h <- exp(log_h)
+    }
     h.vec[i] <- h
 
     if (messages) {
@@ -2376,6 +2408,11 @@ laplace_sampling_mcmc <- function(y,
   }
   out_sim$tuning_par <- h.vec
   out_sim$acceptance_prob <- acc_prob
+  out_sim$acceptance <- accepted
+  out_sim$acceptance_rate <- c(
+    burnin = if (burnin > 0L) mean(accepted[seq_len(burnin)]) else NA_real_,
+    sampling = mean(accepted[seq.int(burnin + 1L, n_sim)])
+  )
   out_sim$invlink_used <- linkf$name
   class(out_sim) <- "RiskMap_mcmc"
   out_sim
@@ -2459,9 +2496,11 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 ##' @param n_sim Integer. The total number of simulations to run. Default is 12000.
 ##' @param burnin Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.
 ##' @param thin Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.
-##' @param h Numeric. An optional parameter for Langevin MCMC. Must be non-negative if specified.
-##' @param c1.h Numeric. A control parameter for Langevin MCMC. Must be positive. Default is 0.01.
-##' @param c2.h Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.
+##' @param h Numeric. An optional positive step size for Langevin MCMC.
+##' @param c1.h Numeric. Positive scale for the burn-in Robbins-Monro step-size
+##'   adaptation. Default is 0.01.
+##' @param c2.h Numeric. Exponent controlling the diminishing adaptation gain.
+##'   Must be larger than 0.5 and no larger than 1. Default is 0.6.
 ##' @param seed Integer. Optional value passed to `set.seed` to control random number generation for
 ##' generating chains and make results reproducible. Defaults to `NULL`.
 ##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
@@ -2489,7 +2528,7 @@ set_control_mcmc <- function(n_sim = 12000,
                             thin = 10,
                             h = NULL,
                             c1.h = 0.01,
-                            c2.h = 1e-04,
+                            c2.h = 0.6,
                             seed = NULL,
                             linear_model = FALSE){
 
@@ -2514,8 +2553,12 @@ set_control_mcmc <- function(n_sim = 12000,
   # =============================================================================
 
   # Validate MCMC parameters
-  if (n_sim < burnin) {
-    stop("n_sim cannot be smaller than burnin.")
+  check_positive_integer(n_sim, "n_sim")
+  check_positive_integer(burnin, "burnin", allow_zero = TRUE)
+  check_positive_integer(thin, "thin")
+
+  if (n_sim <= burnin) {
+    stop("n_sim must be larger than burnin.")
   }
 
   if (thin <= 0) {
@@ -2526,15 +2569,20 @@ set_control_mcmc <- function(n_sim = 12000,
     stop("thin must be a divisor of (n_sim - burnin)")
   }
 
-  if (!is.null(h) && h < 0) {
-    stop("h must be non-negative.")
+  if (!is.null(h) && (!is.numeric(h) || length(h) != 1L ||
+                      !is.finite(h) || h <= 0)) {
+    stop("h must be a positive finite number.")
   }
 
-  if (c1.h <= 0) {
-    stop("c1.h must be positive.")
+  if (!is.numeric(c1.h) || length(c1.h) != 1L ||
+      !is.finite(c1.h) || c1.h <= 0) {
+    stop("c1.h must be a positive finite number.")
   }
 
   check_zero_one(c2.h, "c2.h")
+  if (c2.h <= 0.5) {
+    stop("c2.h must be larger than 0.5 and no larger than 1.")
+  }
 
   res <- list(
     n_sim = n_sim,
