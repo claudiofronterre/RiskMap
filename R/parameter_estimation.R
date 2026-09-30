@@ -74,7 +74,12 @@
 ##' uses a distinct reproducible seed when `control_mcmc$seed` is set.
 ##'
 ##' The `start_pars` argument allows for specifying starting values for the model parameters.
-##' If not provided, default starting values are used.
+##' Explicitly supplied values remain authoritative. For canonical binomial or
+##' Poisson models without a nugget or additional random effects, a fully
+##' automatic fit compares the existing GLM-based start with a transformed-
+##' Gaussian geostatistical start and selects the candidate with the larger
+##' finite Laplace approximation. Any failure retains the existing start.
+##' Selection diagnostics are stored in the `"starting_values"` attribute.
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
@@ -317,6 +322,11 @@ glgpm <- function(formula,
   if (length(invalid)) {
     stop("'", paste(invalid, collapse = "', '"), "' is not a valid starting parameter")
   }
+  user_supplied_start <- any(vapply(
+    start_pars,
+    function(value) !is.null(value),
+    logical(1)
+  ))
 
   if(is.null(start_pars[["beta"]])) {
     if(family=="gaussian") {
@@ -355,10 +365,6 @@ glgpm <- function(formula,
     check_positive_number(start_pars[["phi"]])
   }
 
-  spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
-  fitting_coords <- spatial_scaling$coordinates
-  fitting_start_phi <- spatial_scaling$phi
-
   if(isTRUE(fix_tau2)) {
     if(is.null(start_pars[["tau2"]])) {
       start_pars[["tau2"]] <- 1
@@ -385,6 +391,40 @@ glgpm <- function(formula,
       stop("Starting values for 'sigma2_re' cannot be provided when no random effects are included in the model")
     }
   }
+
+  starting_diagnostics <- list(
+    selected = if (user_supplied_start) "user" else "current",
+    current_laplace = NA_real_,
+    transformed_laplace = NA_real_,
+    elapsed_seconds = 0,
+    fallback_reason = NULL
+  )
+  if (not_gaussian && !user_supplied_start) {
+    selection_start <- proc.time()[["elapsed"]]
+    selection <- select_nongaussian_start(
+      current = start_pars,
+      y = y,
+      units_m = units_m,
+      D = D,
+      coords = coords,
+      ID_coords = ID_coords,
+      family = family,
+      kappa = kappa,
+      cov_offset = cov_offset,
+      invlink = invlink,
+      fix_tau2 = fix_tau2,
+      n_re = n_re,
+      messages = messages
+    )
+    start_pars <- selection$start
+    starting_diagnostics <- selection$diagnostics
+    starting_diagnostics$elapsed_seconds <-
+      proc.time()[["elapsed"]] - selection_start
+  }
+
+  spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
+  fitting_coords <- spatial_scaling$coordinates
+  fitting_start_phi <- spatial_scaling$phi
 
   design_scaling <- standardize_design_matrix(D)
   D <- design_scaling$design
@@ -509,6 +549,9 @@ glgpm <- function(formula,
   attr(res, "design_scaling") <- design_scaling[c("center", "scale")]
   res$coords <- coords
   attr(res, "distance_scale") <- spatial_scaling$distance_scale
+  if (not_gaussian) {
+    attr(res, "starting_values") <- starting_diagnostics
+  }
   res$ID_coords <- ID_coords
   if(n_re > 0) {
     res$re <- re_unique_f
@@ -888,6 +931,180 @@ warn_unconverged_optimizer <- function(diagnostics) {
 ##' @noRd
 softplus <- function(x) {
   pmax(x, 0) + log1p(exp(-abs(x)))
+}
+
+##' Laplace approximation used to compare automatic non-Gaussian starts
+##'
+##' Constants that do not depend on the candidate are retained for clarity.
+##' The comparison is only used to choose an initial posterior reference; it is
+##' not reported as the fitted model likelihood.
+##'
+##' @noRd
+starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
+                                          ID_coords, family, kappa,
+                                          cov_offset) {
+  distances <- pairwise_distances(coords)
+  covariance <- candidate$sigma2 * matern_correlation(
+    distances,
+    phi = candidate$phi,
+    kappa = kappa,
+    return_sym_matrix = TRUE
+  )
+  covariance_root <- factor_covariance(
+    covariance,
+    "starting-value spatial covariance"
+  )
+  mu <- as.numeric(D %*% candidate$beta) + cov_offset
+  laplace <- maxim_integrand(
+    y = y,
+    units_m = units_m,
+    mu = mu,
+    Sigma = covariance,
+    ID_coords = ID_coords,
+    family = family
+  )
+  mode <- laplace$mode
+  eta <- mu + mode[ID_coords]
+  log_likelihood <- if (family == "binomial") {
+    sum(y * eta - units_m * softplus(eta))
+  } else {
+    means <- exp(eta)
+    if (any(!is.finite(means))) {
+      return(-Inf)
+    }
+    sum(y * eta - units_m * means)
+  }
+  log_prior <- -0.5 * (
+    nrow(covariance) * log(2 * pi) +
+      log_determinant_from_cholesky(covariance_root) +
+      sum(mode * solve_from_cholesky(covariance_root, mode))
+  )
+  laplace_root <- factor_covariance(
+    laplace$Sigma.tilde,
+    "starting-value Laplace covariance"
+  )
+  log_likelihood + log_prior +
+    0.5 * length(mode) * log(2 * pi) +
+    0.5 * log_determinant_from_cholesky(laplace_root)
+}
+
+##' Select between the existing and transformed-Gaussian starting values
+##'
+##' The conservative eligibility conditions match the model structures used in
+##' validation. All failures retain the existing start so that automatic
+##' initialisation cannot make a previously valid fit fail.
+##'
+##' @noRd
+select_nongaussian_start <- function(current, y, units_m, D, coords,
+                                     ID_coords, family, kappa, cov_offset,
+                                     invlink, fix_tau2, n_re,
+                                     messages = TRUE) {
+  diagnostics <- list(
+    selected = "current",
+    current_laplace = NA_real_,
+    transformed_laplace = NA_real_,
+    elapsed_seconds = NA_real_,
+    fallback_reason = NULL
+  )
+  ineligible_reason <- if (!is.null(invlink)) {
+    "custom inverse links are not supported by the transformed initializer"
+  } else if (n_re > 0L) {
+    "additional random effects are not yet supported by the transformed initializer"
+  } else if (isTRUE(fix_tau2) ||
+             (is.numeric(fix_tau2) && length(fix_tau2) == 1L &&
+              fix_tau2 > 0)) {
+    "nugget models are not yet supported by the transformed initializer"
+  } else {
+    NULL
+  }
+  if (!is.null(ineligible_reason)) {
+    diagnostics$fallback_reason <- ineligible_reason
+    return(list(start = current, diagnostics = diagnostics))
+  }
+
+  transformed_fit <- tryCatch({
+    transformed_response <- if (family == "binomial") {
+      log((y + 0.5) / (units_m - y + 0.5))
+    } else {
+      log((y + 0.5) / units_m)
+    }
+    glgpm_lm(
+      y = transformed_response - cov_offset,
+      D = D,
+      coords = coords,
+      kappa = kappa,
+      ID_coords = ID_coords,
+      ID_re = NULL,
+      s_unique = unique(ID_coords),
+      re_unique = NULL,
+      fix_var_me = NULL,
+      fix_tau2 = FALSE,
+      start_beta = current$beta,
+      start_cov_pars = c(1, current$phi, 1),
+      messages = FALSE
+    )
+  }, error = identity)
+  if (inherits(transformed_fit, "error")) {
+    diagnostics$fallback_reason <- paste(
+      "transformed Gaussian fit failed:",
+      conditionMessage(transformed_fit)
+    )
+    return(list(start = current, diagnostics = diagnostics))
+  }
+
+  transformed <- current
+  transformed$beta <- unname(transformed_fit$estimate$beta)
+  transformed$sigma2 <- exp(transformed_fit$estimate$sigma2)
+  transformed$phi <- exp(transformed_fit$estimate$phi)
+  candidate_values <- c(
+    transformed$beta,
+    transformed$sigma2,
+    transformed$phi
+  )
+  if (any(!is.finite(candidate_values)) ||
+      transformed$sigma2 <= 0 || transformed$phi <= 0) {
+    diagnostics$fallback_reason <-
+      "transformed Gaussian fit returned invalid starting values"
+    return(list(start = current, diagnostics = diagnostics))
+  }
+
+  scores <- tryCatch(
+    c(
+      current = starting_laplace_log_marginal(
+        current, y, units_m, D, coords, ID_coords, family, kappa, cov_offset
+      ),
+      transformed_gaussian = starting_laplace_log_marginal(
+        transformed, y, units_m, D, coords, ID_coords, family, kappa,
+        cov_offset
+      )
+    ),
+    error = identity
+  )
+  if (inherits(scores, "error")) {
+    diagnostics$fallback_reason <- paste(
+      "starting-value Laplace comparison failed:",
+      conditionMessage(scores)
+    )
+    return(list(start = current, diagnostics = diagnostics))
+  }
+  diagnostics$current_laplace <- unname(scores["current"])
+  diagnostics$transformed_laplace <-
+    unname(scores["transformed_gaussian"])
+  if (is.finite(scores["transformed_gaussian"]) &&
+      (!is.finite(scores["current"]) ||
+       scores["transformed_gaussian"] > scores["current"])) {
+    diagnostics$selected <- "transformed_gaussian"
+    if (messages) {
+      message("Using transformed-Gaussian automatic starting values.")
+    }
+    return(list(start = transformed, diagnostics = diagnostics))
+  }
+
+  if (!is.finite(scores["current"])) {
+    diagnostics$fallback_reason <-
+      "neither automatic starting candidate had a finite Laplace value"
+  }
+  list(start = current, diagnostics = diagnostics)
 }
 
 ##' @importFrom Matrix Matrix forceSymmetric

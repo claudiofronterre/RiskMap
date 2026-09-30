@@ -282,6 +282,12 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "binomial")
+  starting_values <- attr(fit_no_re, "starting_values")
+  expect_true(starting_values$selected %in%
+                c("current", "transformed_gaussian"))
+  expect_true(is.finite(starting_values$current_laplace))
+  expect_true(is.finite(starting_values$transformed_laplace))
+  expect_gte(starting_values$elapsed_seconds, 0)
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = binomial_data,
@@ -293,9 +299,14 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "binomial")
+  expect_equal(attr(fit_re, "starting_values")$selected, "current")
+  expect_match(
+    attr(fit_re, "starting_values")$fallback_reason,
+    "additional random effects"
+  )
 })
 
-test_that("explicit non-Gaussian defaults reproduce the default starting path", {
+test_that("explicit non-Gaussian starts remain authoritative", {
   data_frame <- sf::st_drop_geometry(binomial_data)
   glm_start <- glm(
     cbind(y, denominator - y) ~ cov,
@@ -311,10 +322,10 @@ test_that("explicit non-Gaussian defaults reproduce the default starting path", 
     )
   )
 
-  default_fit <- glgpm(
+  explicit_fit_2 <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
-    messages = FALSE
+    start_pars = start_pars, messages = FALSE
   )
   explicit_fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
@@ -322,8 +333,30 @@ test_that("explicit non-Gaussian defaults reproduce the default starting path", 
     start_pars = start_pars, messages = FALSE
   )
 
-  expect_equal(default_fit$estimate, explicit_fit$estimate)
-  expect_equal(default_fit$log_lik, explicit_fit$log_lik)
+  expect_equal(attr(explicit_fit, "starting_values")$selected, "user")
+  expect_equal(explicit_fit$estimate, explicit_fit_2$estimate)
+  expect_equal(explicit_fit$log_lik, explicit_fit_2$log_lik)
+})
+
+test_that("custom inverse links retain the current automatic start", {
+  custom_link <- list(
+    inv = plogis,
+    d1 = function(x) plogis(x) * (1 - plogis(x)),
+    d2 = function(x) {
+      probability <- plogis(x)
+      probability * (1 - probability) * (1 - 2 * probability)
+    }
+  )
+  fit <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    invlink = custom_link,
+    messages = FALSE
+  )
+
+  diagnostics <- attr(fit, "starting_values")
+  expect_equal(diagnostics$selected, "current")
+  expect_match(diagnostics$fallback_reason, "custom inverse links")
 })
 
 test_that("glgpm produces expected output for poisson models", {

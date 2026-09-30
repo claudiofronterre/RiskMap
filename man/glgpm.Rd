@@ -160,7 +160,12 @@ Each update draws a new importance sample around the preceding estimate and
 uses a distinct reproducible seed when \code{control_mcmc$seed} is set.
 
 The \code{start_pars} argument allows for specifying starting values for the model parameters.
-If not provided, default starting values are used.
+Explicitly supplied values remain authoritative. For canonical binomial or
+Poisson models without a nugget or additional random effects, a fully
+automatic fit compares the existing GLM-based start with a transformed-
+Gaussian geostatistical start and selects the candidate with the larger
+finite Laplace approximation. Any failure retains the existing start.
+Selection diagnostics are stored in the \code{"starting_values"} attribute.
 }
 \examples{
 
