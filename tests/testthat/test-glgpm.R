@@ -125,6 +125,7 @@ test_that("glgpm produces errors", {
 
   expect_error(set_control_mcml(max_iterations = 0), "positive integer")
   expect_error(set_control_mcml(tolerance = 0), "positive finite number")
+  expect_error(set_control_mcml(min_relative_ess = 2), "between zero and one")
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
@@ -332,7 +333,8 @@ test_that("glgpm produces expected output for poisson models", {
 test_that("iterative MCML updates its reference and records reproducible history", {
   iterative_control <- set_control_mcml(
     max_iterations = 2,
-    tolerance = 1e6
+    tolerance = 1e6,
+    min_relative_ess = 0
   )
   fit <- glgpm(
     y ~ cov + gp(),

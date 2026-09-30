@@ -4,7 +4,7 @@
 \alias{set_control_mcml}
 \title{Set control parameters for iterative MCML estimation}
 \usage{
-set_control_mcml(max_iterations = 1L, tolerance = 0.05)
+set_control_mcml(max_iterations = 1L, tolerance = 0.05, min_relative_ess = 0.1)
 }
 \arguments{
 \item{max_iterations}{Positive integer giving the maximum number of MCML
@@ -13,6 +13,10 @@ updates. Defaults to one.}
 \item{tolerance}{Positive numeric tolerance for the maximum absolute change
 in the internally standardised regression coefficients and log covariance
 parameters. It is evaluated from the second update onwards.}
+
+\item{min_relative_ess}{Number between zero and one giving the minimum
+effective sample size, as a proportion of retained importance samples,
+required before an update can be declared converged. Defaults to 0.1.}
 }
 \value{
 A control object of class \code{RiskMap_control_mcml}.

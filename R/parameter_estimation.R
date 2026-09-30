@@ -468,7 +468,9 @@ glgpm <- function(formula,
         seed = iteration_mcmc$seed
       )
 
-      if (!is.na(change) && change <= control_mcml$tolerance) {
+      if (mcml_update_converged(
+        change, optimizer$relative_importance_ess, control_mcml
+      )) {
         converged <- TRUE
         mcml_history <- mcml_history[seq_len(iteration)]
         break
@@ -478,8 +480,8 @@ glgpm <- function(formula,
     }
     if (control_mcml$max_iterations > 1L && !isTRUE(converged)) {
       warning(
-        "MCML updates reached 'max_iterations' without satisfying the ",
-        "parameter-change tolerance.",
+        "MCML updates reached 'max_iterations' without satisfying both the ",
+        "parameter-change tolerance and minimum relative importance ESS.",
         call. = FALSE
       )
     }
@@ -2386,20 +2388,31 @@ laplace_sampling_mcmc <- function(y,
 ##' @param tolerance Positive numeric tolerance for the maximum absolute change
 ##' in the internally standardised regression coefficients and log covariance
 ##' parameters. It is evaluated from the second update onwards.
+##' @param min_relative_ess Number between zero and one giving the minimum
+##' effective sample size, as a proportion of retained importance samples,
+##' required before an update can be declared converged. Defaults to 0.1.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
 ##' control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.05)
 ##' @seealso [glgpm()], [set_control_mcmc()]
 ##' @export
-set_control_mcml <- function(max_iterations = 1L, tolerance = 0.05) {
+set_control_mcml <- function(max_iterations = 1L, tolerance = 0.05,
+                             min_relative_ess = 0.1) {
   check_positive_integer(max_iterations, "max_iterations")
   if (!is.numeric(tolerance) || length(tolerance) != 1L ||
       !is.finite(tolerance) || tolerance <= 0) {
     stop("'tolerance' must be a single positive finite number.", call. = FALSE)
   }
+  if (!is.numeric(min_relative_ess) || length(min_relative_ess) != 1L ||
+      !is.finite(min_relative_ess) || min_relative_ess < 0 ||
+      min_relative_ess > 1) {
+    stop("'min_relative_ess' must be a single number between zero and one.",
+         call. = FALSE)
+  }
 
   structure(
-    list(max_iterations = as.integer(max_iterations), tolerance = tolerance),
+    list(max_iterations = as.integer(max_iterations), tolerance = tolerance,
+         min_relative_ess = min_relative_ess),
     class = "RiskMap_control_mcml"
   )
 }
@@ -2413,6 +2426,15 @@ mcml_iteration_control <- function(control_mcmc, iteration) {
     out$seed <- as.integer(((out$seed - 1 + iteration - 1) %% integer_max) + 1)
   }
   out
+}
+
+##' Assess both numerical stability and importance-sampling overlap
+##' @noRd
+mcml_update_converged <- function(parameter_change, relative_ess,
+                                  control_mcml) {
+  !is.na(parameter_change) &&
+    parameter_change <= control_mcml$tolerance &&
+    relative_ess >= control_mcml$min_relative_ess
 }
 
 ##' Convert a working-scale estimate into the next MCML reference point
