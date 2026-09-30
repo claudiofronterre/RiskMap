@@ -299,11 +299,33 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "binomial")
-  expect_equal(attr(fit_re, "starting_values")$selected, "current")
-  expect_match(
-    attr(fit_re, "starting_values")$fallback_reason,
-    "additional random effects"
+  re_starting_values <- attr(fit_re, "starting_values")
+  expect_true(re_starting_values$selected %in%
+                c("current", "transformed_gaussian"))
+  expect_false(identical(
+    re_starting_values$fallback_reason,
+    "additional random effects are not yet supported by the transformed initializer"
+  ))
+  expect_true(
+    is.finite(re_starting_values$transformed_laplace) ||
+      grepl("invalid starting values|non-finite Laplace",
+            re_starting_values$fallback_reason)
   )
+})
+
+test_that("transformed starts preserve an estimated nugget", {
+  fit <- glgpm(
+    y ~ cov + gp(nugget = TRUE), data = binomial_data,
+    family = "binomial", denominator = denominator,
+    control_mcmc = control_mcmc, messages = FALSE
+  )
+
+  diagnostics <- attr(fit, "starting_values")
+  expect_true(diagnostics$selected %in%
+                c("current", "transformed_gaussian"))
+  expect_true(is.finite(diagnostics$current_laplace))
+  expect_true(is.finite(diagnostics$transformed_laplace))
+  expect_true(is.finite(fit$estimate$nu2))
 })
 
 test_that("explicit non-Gaussian starts remain authoritative", {

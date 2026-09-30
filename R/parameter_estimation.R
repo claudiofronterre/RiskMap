@@ -75,10 +75,10 @@
 ##'
 ##' The `start_pars` argument allows for specifying starting values for the model parameters.
 ##' Explicitly supplied values remain authoritative. For canonical binomial or
-##' Poisson models without a nugget or additional random effects, a fully
-##' automatic fit compares the existing GLM-based start with a transformed-
-##' Gaussian geostatistical start and selects the candidate with the larger
-##' finite Laplace approximation. Any failure retains the existing start.
+##' Poisson models, a fully automatic fit compares the existing GLM-based
+##' start with a transformed-Gaussian fit having the same spatial, nugget and
+##' random-effect structure, and selects the candidate with the larger finite
+##' Laplace approximation. Any failure retains the existing start.
 ##' Selection diagnostics are stored in the `"starting_values"` attribute.
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
@@ -414,6 +414,9 @@ glgpm <- function(formula,
       invlink = invlink,
       fix_tau2 = fix_tau2,
       n_re = n_re,
+      ID_re = ID_re,
+      s_unique = s_unique,
+      re_unique = re_unique,
       messages = messages
     )
     start_pars <- selection$start
@@ -942,7 +945,8 @@ softplus <- function(x) {
 ##' @noRd
 starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
                                           ID_coords, family, kappa,
-                                          cov_offset) {
+                                          cov_offset, ID_re = NULL,
+                                          fix_tau2 = FALSE) {
   distances <- pairwise_distances(coords)
   covariance <- candidate$sigma2 * matern_correlation(
     distances,
@@ -950,6 +954,16 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
     kappa = kappa,
     return_sym_matrix = TRUE
   )
+  nugget_variance <- if (isTRUE(fix_tau2)) {
+    candidate$tau2
+  } else if (is.numeric(fix_tau2) && fix_tau2 > 0) {
+    fix_tau2
+  } else {
+    0
+  }
+  if (nugget_variance > 0) {
+    diag(covariance) <- diag(covariance) + nugget_variance
+  }
   covariance_root <- factor_covariance(
     covariance,
     "starting-value spatial covariance"
@@ -961,10 +975,21 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
     mu = mu,
     Sigma = covariance,
     ID_coords = ID_coords,
+    ID_re = ID_re,
+    sigma2_re = candidate$sigma2_re,
     family = family
   )
   mode <- laplace$mode
   eta <- mu + mode[ID_coords]
+  if (!is.null(ID_re)) {
+    offset <- nrow(covariance)
+    for (j in seq_len(ncol(ID_re))) {
+      n_levels <- max(ID_re[, j])
+      indices <- offset + seq_len(n_levels)
+      eta <- eta + mode[indices][ID_re[, j]]
+      offset <- offset + n_levels
+    }
+  }
   log_likelihood <- if (family == "binomial") {
     sum(y * eta - units_m * softplus(eta))
   } else {
@@ -977,8 +1002,23 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
   log_prior <- -0.5 * (
     nrow(covariance) * log(2 * pi) +
       log_determinant_from_cholesky(covariance_root) +
-      sum(mode * solve_from_cholesky(covariance_root, mode))
+      sum(mode[seq_len(nrow(covariance))] * solve_from_cholesky(
+        covariance_root, mode[seq_len(nrow(covariance))]
+      ))
   )
+  if (!is.null(ID_re)) {
+    offset <- nrow(covariance)
+    for (j in seq_len(ncol(ID_re))) {
+      n_levels <- max(ID_re[, j])
+      random_mode <- mode[offset + seq_len(n_levels)]
+      variance <- candidate$sigma2_re[j]
+      log_prior <- log_prior - 0.5 * (
+        n_levels * log(2 * pi * variance) +
+          sum(random_mode^2) / variance
+      )
+      offset <- offset + n_levels
+    }
+  }
   laplace_root <- factor_covariance(
     laplace$Sigma.tilde,
     "starting-value Laplace covariance"
@@ -998,6 +1038,8 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
 select_nongaussian_start <- function(current, y, units_m, D, coords,
                                      ID_coords, family, kappa, cov_offset,
                                      invlink, fix_tau2, n_re,
+                                     ID_re = NULL, s_unique = NULL,
+                                     re_unique = NULL,
                                      messages = TRUE) {
   diagnostics <- list(
     selected = "current",
@@ -1008,12 +1050,6 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   )
   ineligible_reason <- if (!is.null(invlink)) {
     "custom inverse links are not supported by the transformed initializer"
-  } else if (n_re > 0L) {
-    "additional random effects are not yet supported by the transformed initializer"
-  } else if (isTRUE(fix_tau2) ||
-             (is.numeric(fix_tau2) && length(fix_tau2) == 1L &&
-              fix_tau2 > 0)) {
-    "nugget models are not yet supported by the transformed initializer"
   } else {
     NULL
   }
@@ -1028,19 +1064,38 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     } else {
       log((y + 0.5) / units_m)
     }
+    # With one observation per location, transformed sampling variation and a
+    # Gaussian nugget are otherwise confounded. The Gaussian engine currently
+    # accepts a scalar measurement variance, so fix it at the median
+    # delta-method variance when the nugget is estimated.
+    transformed_measurement_variance <- if (isTRUE(fix_tau2)) {
+      if (family == "binomial") {
+        median(1 / (y + 0.5) + 1 / (units_m - y + 0.5))
+      } else {
+        median(1 / (y + 0.5))
+      }
+    } else {
+      NULL
+    }
     glgpm_lm(
       y = transformed_response - cov_offset,
       D = D,
       coords = coords,
       kappa = kappa,
       ID_coords = ID_coords,
-      ID_re = NULL,
-      s_unique = unique(ID_coords),
-      re_unique = NULL,
-      fix_var_me = NULL,
-      fix_tau2 = FALSE,
+      ID_re = ID_re,
+      s_unique = s_unique,
+      re_unique = re_unique,
+      fix_var_me = transformed_measurement_variance,
+      fix_tau2 = fix_tau2,
       start_beta = current$beta,
-      start_cov_pars = c(1, current$phi, 1),
+      start_cov_pars = c(
+        current$sigma2,
+        current$phi,
+        if (isTRUE(fix_tau2)) current$tau2,
+        if (is.null(transformed_measurement_variance)) 1,
+        current$sigma2_re
+      ),
       messages = FALSE
     )
   }, error = identity)
@@ -1056,13 +1111,25 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   transformed$beta <- unname(transformed_fit$estimate$beta)
   transformed$sigma2 <- exp(transformed_fit$estimate$sigma2)
   transformed$phi <- exp(transformed_fit$estimate$phi)
+  if (isTRUE(fix_tau2)) {
+    transformed$tau2 <- transformed$sigma2 *
+      exp(transformed_fit$estimate$nu2)
+  }
+  if (n_re > 0L) {
+    transformed$sigma2_re <- exp(transformed_fit$estimate$sigma2_re)
+  }
   candidate_values <- c(
     transformed$beta,
     transformed$sigma2,
-    transformed$phi
+    transformed$phi,
+    transformed$tau2,
+    transformed$sigma2_re
   )
   if (any(!is.finite(candidate_values)) ||
-      transformed$sigma2 <= 0 || transformed$phi <= 0) {
+      transformed$sigma2 <= 0 || transformed$phi <= 0 ||
+      (!is.null(transformed$tau2) && transformed$tau2 <= 0) ||
+      (!is.null(transformed$sigma2_re) &&
+       any(transformed$sigma2_re <= 0))) {
     diagnostics$fallback_reason <-
       "transformed Gaussian fit returned invalid starting values"
     return(list(start = current, diagnostics = diagnostics))
@@ -1071,11 +1138,12 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   scores <- tryCatch(
     c(
       current = starting_laplace_log_marginal(
-        current, y, units_m, D, coords, ID_coords, family, kappa, cov_offset
+        current, y, units_m, D, coords, ID_coords, family, kappa, cov_offset,
+        ID_re, fix_tau2
       ),
       transformed_gaussian = starting_laplace_log_marginal(
         transformed, y, units_m, D, coords, ID_coords, family, kappa,
-        cov_offset
+        cov_offset, ID_re, fix_tau2
       )
     ),
     error = identity
@@ -1103,6 +1171,9 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   if (!is.finite(scores["current"])) {
     diagnostics$fallback_reason <-
       "neither automatic starting candidate had a finite Laplace value"
+  } else if (!is.finite(scores["transformed_gaussian"])) {
+    diagnostics$fallback_reason <-
+      "transformed Gaussian candidate had a non-finite Laplace value"
   }
   list(start = current, diagnostics = diagnostics)
 }
