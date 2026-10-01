@@ -127,6 +127,22 @@ test_that("new locations preserve factor coding without observed responses", {
 
 test_that("assess_simulation validates area boundaries", {
   obj_sim <- structure(list(), class = "RiskMap_simulation")
+  expect_error(
+    assess_simulation(obj_sim, models = list(model = y ~ 1),
+                      spatial_scale = character(), f_grid_target = identity),
+    "'spatial_scale' must be set"
+  )
+  expect_error(
+    assess_simulation(obj_sim, models = list(model = y ~ 1),
+                      spatial_scale = c("grid", "grid"), f_grid_target = identity),
+    "'spatial_scale' must be set"
+  )
+  expect_error(
+    assess_simulation(obj_sim, models = list(model = y ~ 1),
+                      spatial_scale = "grid", pred_objective = character(),
+                      f_grid_target = identity),
+    "'pred_objective' must be either"
+  )
   expect_error(assess_simulation(obj_sim, models = list(model = y ~ 1),
                                  spatial_scale = "area", boundaries = gaussian_data,
                                  f_area_target = mean),
@@ -204,4 +220,18 @@ test_that("assess_simulation computes grid and area objectives in one combined r
 
   expect_length(combined_classify$pred_objective$grid$classify$intercept$by_cat, 2L)
   expect_length(combined_classify$pred_objective$area$classify$intercept$by_cat, 2L)
+  expected_classes <- c("(-3,-1]", "(-1,0]", "(0,1]", "(1,3]")
+  expect_identical(
+    levels(combined_classify$pred_objective$grid$classify$Class),
+    expected_classes
+  )
+
+  expect_error(
+    assess_simulation(sim, models = list(intercept = y ~ gp()),
+                      control_mcmc = control_mcmc,
+                      spatial_scale = "grid", f_grid_target = identity,
+                      pred_objective = "classify", categories = c(-1, 0, 0),
+                      messages = FALSE),
+    "unique, strictly increasing"
+  )
 })

@@ -2028,10 +2028,14 @@ assess_simulation <- function(obj_sim,
   if (!inherits(obj_sim, "RiskMap_simulation")) {
     stop("'obj_sim' must be output from simulate_glgpm()")
   }
-  if (!all(pred_objective %in% c("mse", "classify"))) {
+  if (!is.character(pred_objective) || length(pred_objective) == 0 ||
+      anyDuplicated(pred_objective) ||
+      !all(pred_objective %in% c("mse", "classify"))) {
     stop("'pred_objective' must be either 'mse', 'classify' or c('mse', 'classify')")
   }
-  if (!all(spatial_scale %in% c("grid", "area"))) {
+  if (!is.character(spatial_scale) || length(spatial_scale) == 0 ||
+      anyDuplicated(spatial_scale) ||
+      !all(spatial_scale %in% c("grid", "area"))) {
     stop("'spatial_scale' must be set to 'grid', 'area', or c('grid', 'area')")
   }
 
@@ -2053,9 +2057,11 @@ assess_simulation <- function(obj_sim,
     stop("Provide 'f_grid_target' to define the target on the linear-predictor scale.")
   }
 
-  if(want_classify) {
-    if(is.null(categories)) stop("if 'pred_objective' is 'class', a value for 'categories' must be specified")
-    if (length(categories) < 3) {
+  if (want_classify) {
+    if (is.null(categories)) stop("if 'pred_objective' is 'classify', a value for 'categories' must be specified")
+    if (!is.numeric(categories) || length(categories) < 3 ||
+        anyNA(categories) || any(!is.finite(categories)) ||
+        any(diff(categories) <= 0)) {
       stop("'categories' must contain at least three unique, strictly increasing values.")
     }
   }
@@ -2070,9 +2076,6 @@ assess_simulation <- function(obj_sim,
   include_covariates <- obj_sim$include_covariates
   include_cov_offset <- obj_sim$include_cov_offset
   include_nugget <- obj_sim$nugget_over_grid
-
-  fits <- list()
-  preds <- list()
 
   no_comp <- NULL
 
@@ -2100,48 +2103,12 @@ assess_simulation <- function(obj_sim,
     inter <- st_intersects(boundaries, obj_sim$lp_grid_sim)
   }
 
-  for(i in 1:n_models) {
-    if(messages) message("Model: ", paste(model_names[i]),"\n")
-
-    if_i <- interpret_formula(models[[i]])
-    rhs_terms <- attr(terms(if_i$pf), "term.labels")
-    # Check if there are any covariates
-    if (length(rhs_terms) == 0) {
-      predictors_i <- NULL
-    } else {
-      predictors_i <- obj_sim$lp_grid_sim
-    }
-    for(j in 1:n_sim) {
-      if(messages) message("Processing simulation no.", j)
-      f_i <- update(models[[i]], y ~ .)
-      if(messages) message("Estimation")
-      refit_args <- list(formula = f_i, family = obj_sim$family,
-                         data = obj_sim$data_sim[[j]],
-                         distance_units = obj_sim$distance_units,
-                         control_mcmc = control_mcmc, messages = FALSE)
-      if (obj_sim$family != "gaussian") refit_args$denominator <- quote(units_m)
-      fits[[paste(model_names[i])]][[j]] <- do.call(glgpm, refit_args)
-
-      if(messages) message("Prediction over the grid")
-      preds[[paste(model_names[i])]][[j]] <-
-        setup_prediction(fits[[paste(model_names[i])]][[j]],
-                       grid_pred = st_as_sfc(obj_sim$lp_grid_sim),
-                       predictors = predictors_i,
-                       pred_cov_offset = if (is.null(if_i$offset)) NULL else
-                         obj_sim$lp_grid_sim[[if_i$offset]],
-                       control_sim = control_mcmc,
-                       type = type, messages = FALSE)
-    }
-  }
-
-  n_samples <- (control_mcmc$n_sim-control_mcmc$burnin)/control_mcmc$thin
   n_pred <- nrow(obj_sim$lp_grid_sim)
 
-  if(want_classify) {
-    # Ensure categories are unique and strictly increasing
-    categories <- unique(sort(categories))
-    categories_class <- factor(paste0("(", utils::head(categories, -1), ",",
-                                      categories[-1], "]"))  # Labels to match intervals
+  if (want_classify) {
+    category_labels <- paste0("(", utils::head(categories, -1), ",",
+                              categories[-1], "]")
+    categories_class <- factor(category_labels, levels = category_labels)
   }
 
   # One `mse`/`classify` store per requested spatial scale, all sharing the
@@ -2186,7 +2153,7 @@ assess_simulation <- function(obj_sim,
     n_categories <- length(categories) - 1
     prob_cat <- matrix(0, nrow = nrow(samples), ncol = n_categories)
     for(h in 1:n_categories) {
-      prob_cat[, h] <- apply(categories[h] < samples & categories[h + 1] > samples, 1, mean)
+      prob_cat[, h] <- apply(categories[h] < samples & samples <= categories[h + 1], 1, mean)
     }
     pred_class <- apply(prob_cat, 1, function(x) categories_class[which.max(x)])
     conf_matrix <- table(true_class, pred_class)
@@ -2230,8 +2197,43 @@ assess_simulation <- function(obj_sim,
   }
 
   for(i in 1:n_models) {
+    if (messages) message("Model: ", model_names[i], "\n")
+
+    if_i <- interpret_formula(models[[i]])
+    rhs_terms <- attr(terms(if_i$pf), "term.labels")
+    predictors_i <- if (length(rhs_terms) == 0) NULL else obj_sim$lp_grid_sim
+    f_i <- update(models[[i]], y ~ .)
+
     for(j in 1:n_sim) {
-      obj_pred_ij <- preds[[paste(model_names[i])]][[j]]
+      if (messages) message("Processing simulation no. ", j)
+
+      # Fit, predict and score one model/simulation pair at a time. Keeping
+      # these objects local avoids retaining every fit and posterior sample
+      # matrix until the complete assessment has finished.
+      if (messages) message("Estimation")
+      refit_args <- list(
+        formula = f_i,
+        family = obj_sim$family,
+        data = obj_sim$data_sim[[j]],
+        distance_units = obj_sim$distance_units,
+        control_mcmc = control_mcmc,
+        messages = FALSE
+      )
+      if (obj_sim$family != "gaussian") refit_args$denominator <- quote(units_m)
+      fit_ij <- do.call(glgpm, refit_args)
+
+      if (messages) message("Prediction over the grid")
+      obj_pred_ij <- setup_prediction(
+        fit_ij,
+        grid_pred = st_as_sfc(obj_sim$lp_grid_sim),
+        predictors = predictors_i,
+        pred_cov_offset = if (is.null(if_i$offset)) NULL else
+          obj_sim$lp_grid_sim[[if_i$offset]],
+        control_sim = control_mcmc,
+        type = type,
+        messages = FALSE
+      )
+
       if(length(obj_pred_ij$mu_pred) == 1 && obj_pred_ij$mu_pred == 0 &&
          include_covariates) {
         stop("Covariates have not been provided; re-run setup_prediction
@@ -2265,11 +2267,14 @@ assess_simulation <- function(obj_sim,
         if(is.null(obj_pred_ij$par_hat$tau2)) stop("'include_nugget' cannot be
                                                    set to TRUE if this has not been included
                                                    in the fit of the model")
+        n_samples <- ncol(obj_pred_ij$S_samples)
         Z_sim <- matrix(rnorm(n_samples*n_pred,
                               sd = sqrt(obj_pred_ij$par_hat$tau2)),
                         ncol = n_samples)
         obj_pred_ij$S_samples <- obj_pred_ij$S_samples+Z_sim
       }
+
+      n_samples <- ncol(obj_pred_ij$S_samples)
 
       if(is.matrix(mu_target)) {
         lp_samples_ij <- sapply(1:n_samples,
