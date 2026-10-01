@@ -21,7 +21,34 @@ test_that("check_formula functions correctly", {
   expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
   expect_error(check_formula(y ~ gp(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
   expect_error(check_formula(y ~ gp(c) + re(xx, zz), data), "The 'formula' terms 'xx', 'zz'")
+
+  # c not included in formula so should not error
+  data$c[1] <- NA
+  expect_no_error(check_formula(y ~ gp(), data))
+
+  data$y[1] <- NA
+  expect_error(check_formula(y ~ gp(), data), "'data' contains rows with missing data")
+
+  data_without_response <- data[, "c"]
+  data_without_response$c[1] <- 1
+  expect_no_error(check_formula(y ~ c + gp(), data_without_response,
+                                response_required = FALSE))
+
+  data_without_response$c[1] <- NA
+  expect_error(check_formula(y ~ c + gp(), data_without_response,
+                             response_required = FALSE),
+               "'data' contains rows with missing data")
  })
+
+test_that("check_complete_data only checks the specified columns and names the caller's argument", {
+
+  df <- data.frame(a = c(1, 2, 3), b = c(1, NA, 3))
+
+  # "b" has a missing value, but it is ignored when only checking "a"
+  expect_no_error(check_complete_data(df, "a"))
+  expect_error(check_complete_data(df, "b"), "'df' contains rows with missing data")
+  expect_error(check_complete_data(df, c("a", "b")), "'df' contains rows with missing data")
+})
 
 test_that("check_binomial functions correctly", {
 
@@ -157,6 +184,8 @@ test_that("estimates are consistent between coef and summary", {
 test_that("check_positive_integer functions correctly", {
   expect_no_error(check_positive_integer(1, "a"))
   expect_no_error(check_positive_integer(999, "a"))
+  expect_no_error(check_positive_integer(NULL, "a", allow_null = TRUE))
+  expect_no_error(check_positive_integer(0, "a", allow_zero = TRUE))
 
   expect_error(check_positive_integer(0.1, "a"), "'a' must be a single positive integer")
   expect_error(check_positive_integer(0, "a"), "'a' must be a single positive integer")
@@ -164,6 +193,27 @@ test_that("check_positive_integer functions correctly", {
   expect_error(check_positive_integer("not", "a"), "'a' must be a single positive integer")
   expect_error(check_positive_integer(NULL, "a"), "'a' must be a single positive integer")
   expect_error(check_positive_integer(NA, "a"), "'a' must be a single positive integer")
+  expect_error(check_positive_integer(Inf, "a"), "'a' must be a single positive integer")
+})
+
+test_that("check_logical functions correctly and names the caller's argument", {
+  my_flag <- TRUE
+  expect_no_error(check_logical(my_flag))
+
+  my_flag <- FALSE
+  expect_no_error(check_logical(my_flag))
+
+  my_flag <- NA
+  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
+
+  my_flag <- c(TRUE, FALSE)
+  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
+
+  my_flag <- "TRUE"
+  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
+
+  my_flag <- 1
+  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
 })
 
 test_that("check_positive_number functions correctly", {
@@ -180,4 +230,49 @@ test_that("check_positive_number functions correctly", {
   expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
   a <- NA
   expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- Inf
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+})
+
+test_that("check_zero_one validates the closed unit interval", {
+  expect_no_error(check_zero_one(0, "a"))
+  expect_no_error(check_zero_one(0.5, "a"))
+  expect_no_error(check_zero_one(1, "a"))
+
+  expect_error(check_zero_one(-0.1, "a"), "between zero and one")
+  expect_error(check_zero_one(1.1, "a"), "between zero and one")
+  expect_error(check_zero_one(c(0, 1), "a"), "between zero and one")
+  expect_error(check_zero_one(NA, "a"), "between zero and one")
+  expect_error(check_zero_one(Inf, "a"), "between zero and one")
+})
+
+test_that("plot_metric validates model before metric (#156)", {
+  ## an invalid model should be reported even when the metric is also invalid -
+  ## previously this incorrectly complained about the metric first
+  expect_error(
+    plot_metric(cross_validation, metric = "not_a_metric", model = "not_a_model"),
+    "'model' 'not_a_model' was not found"
+  )
+
+  expect_error(
+    plot_metric(cross_validation, metric = "not_a_metric", model = "model_a"),
+    "'metric' 'not_a_metric' was not computed for model 'model_a'"
+  )
+})
+
+test_that("plot_metric plots the requested metric for the requested model", {
+  p <- plot_metric(cross_validation, metric = "SCRPS", model = "model_b")
+
+  expect_s3_class(p, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(p))
+})
+
+test_that("plot_metric applies extra ggplot components passed via ...", {
+  p_plain <- plot_metric(cross_validation, metric = "CRPS", model = "model_a")
+  expect_length(p_plain$scales$scales, 0)
+
+  p_custom <- plot_metric(cross_validation, metric = "CRPS", model = "model_a",
+                          ggplot2::scale_color_gradient(low = "yellow", high = "red"))
+  expect_length(p_custom$scales$scales, 1)
+  expect_no_error(ggplot2::ggplot_build(p_custom))
 })

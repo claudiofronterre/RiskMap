@@ -5,3 +5,8 @@
 docs
 codex.txt
 /dev/
+src/*.o
+src/*.so
+src/*.dll
+src/*-win.def
+src/*.rds

@@ -13,7 +13,7 @@
 ##' Not supported if `grid_pred` is a list.
 ##' @param pred_cov_offset Optional numeric vector containing covariate offsets at prediction locations.
 ##' Must be provided if there is an offset included in the model and not supported if `grid_pred` is a list.
-##' @param control_sim Control parameters from \code{\link{set_control_mcmc}}.
+##' @param control_mcmc Control parameters from \code{\link{set_control_mcmc}}.
 ##' @param type Whether the predictions are `"marginal"` or `"joint"`. `"marginal"` predictions are less
 ##' computationally expensive than `"joint"` predictions but cannot be used to predict areal targets.
 ##' If `grid_pred` is a list or random effects are included, must be set to `"joint"`. Defaults to `"marginal"`.
@@ -84,7 +84,7 @@ setup_prediction <- function(object,
                            predictors = NULL,
                            re_predictors = NULL,
                            pred_cov_offset = NULL,
-                           control_sim = set_control_mcmc(),
+                           control_mcmc = set_control_mcmc(),
                            type = "marginal",
                            messages = TRUE) {
 
@@ -166,8 +166,8 @@ setup_prediction <- function(object,
     }
   }
 
-  if (!inherits(control_sim, "RiskMap_control_mcmc"))
-    stop("'control_sim' must be an output from 'set_control_mcmc()'")
+  if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
+    stop("'control_mcmc' must be an output from 'set_control_mcmc()'")
 
   if (!type %in% c("marginal", "joint"))
     stop("'type' must be either 'marginal' or 'joint'")
@@ -244,6 +244,7 @@ setup_prediction <- function(object,
       re_names <- names(object$re)
       offset_names <- names(object$cov_offset)
       model_predictors <- setdiff(get_formula_terms(object$formula), c(response, re_names, offset_names))
+
       if (!is.data.frame(predictors))
         stop(if (is.null(index)) "'predictors' must be a data.frame"
              else sprintf("'predictors[[%d]]' must be a data.frame", index))
@@ -252,6 +253,7 @@ setup_prediction <- function(object,
       if (nrow(predictors) != n_predictors)
         stop(if (is.null(index)) "The number of rows in 'predictors' does not match the number of locations in 'grid_pred'"
              else sprintf("The number of rows in of 'predictors[[%d]]' does not match the number of locations in 'grid_pred[[%d]]'", index, index))
+      check_complete_data(predictors, model_predictors)
       mf <- model.frame(inter_lt_f$pf, data = predictors, na.action = na.fail)
       as.matrix(model.matrix(attr(mf, "terms"), data = predictors))
     }
@@ -314,49 +316,63 @@ setup_prediction <- function(object,
   # Spatial quantities
   # ---------------------------------------------------------------------------
   out <- list(mu_pred = mu_pred, grid_pred = grid_pred, par_hat = par_hat)
+  distance_scale <- attr(object, "distance_scale") %||% 1
+  fitting_coords <- object$coords / distance_scale
+  fitting_phi <- par_hat$phi / distance_scale
+  fitting_grp <- if (list_mode) {
+    lapply(grp, `/`, distance_scale)
+  } else {
+    grp / distance_scale
+  }
 
-  if (object$family != "gaussian" && !obs_loc) {
+  conditioning_coords <- if (object$family == "gaussian") {
+    fitting_coords[object$ID_coords, , drop = FALSE]
+  } else {
+    fitting_coords
+  }
+  marginal_batch_size <- if (!list_mode && !obs_loc && type == "marginal") {
+    marginal_prediction_batch_size(n_pred, nrow(conditioning_coords))
+  } else {
+    n_pred
+  }
+  batch_marginal <- !list_mode && !obs_loc && type == "marginal" &&
+    marginal_batch_size < n_pred
+
+  if (object$family != "gaussian" && !obs_loc && !batch_marginal) {
     if (list_mode) {
-      U_pred <- lapply(grp, function(g) {
-        t(sapply(seq_len(nrow(g)), function(i)
-          sqrt((object$coords[, 1] - g[i, 1])^2 + (object$coords[, 2] - g[i, 2])^2)))
-      })
+      U_pred <- lapply(fitting_grp, cross_distances, second = fitting_coords)
     } else {
-      U_pred <- t(sapply(seq_len(n_pred), function(i)
-        sqrt((object$coords[, 1] - grp[i, 1])^2 + (object$coords[, 2] - grp[i, 2])^2)))
+      U_pred <- cross_distances(fitting_grp, fitting_coords)
     }
-  } else if (object$family == "gaussian" && !obs_loc) {
+  } else if (object$family == "gaussian" && !obs_loc && !batch_marginal) {
     if (list_mode) {
-      U_pred <- lapply(grp, function(g) {
-        t(sapply(seq_len(nrow(g)), function(i)
-          sqrt((object$coords[object$ID_coords, 1] - g[i, 1])^2 +
-                 (object$coords[object$ID_coords, 2] - g[i, 2])^2)))
-      })
+      U_pred <- lapply(fitting_grp, cross_distances,
+                       second = conditioning_coords)
     } else {
-      U_pred <- t(sapply(seq_len(n_pred), function(i)
-        sqrt((object$coords[object$ID_coords, 1] - grp[i, 1])^2 +
-               (object$coords[object$ID_coords, 2] - grp[i, 2])^2)))
+      U_pred <- cross_distances(fitting_grp, conditioning_coords)
     }
   }
 
-  U <- dist(object$coords)
-  R <- matern_correlation(U, phi = par_hat$phi, kappa = object$kappa, return_sym_matrix = TRUE)
+  U <- pairwise_distances(fitting_coords)
+  R <- matern_correlation(U, phi = fitting_phi, kappa = object$kappa,
+                          return_sym_matrix = TRUE)
 
-  if (!obs_loc) {
-    C <- if (list_mode)
-      lapply(U_pred, function(u) par_hat$sigma2 * matern_correlation(u, phi = par_hat$phi, kappa = object$kappa))
-    else
-      par_hat$sigma2 * matern_correlation(U_pred, phi = par_hat$phi, kappa = object$kappa)
-  } else {
+  if (obs_loc) {
     C <- par_hat$sigma2 * R[, object$ID_coords]
     grp <- object$coords
+    fitting_grp <- fitting_coords
+  } else if (!batch_marginal) {
+    C <- if (list_mode)
+      lapply(U_pred, function(u) par_hat$sigma2 * matern_correlation(u, phi = fitting_phi, kappa = object$kappa))
+    else
+      par_hat$sigma2 * matern_correlation(U_pred, phi = fitting_phi, kappa = object$kappa)
   }
 
   n_pred_spatial <- if (obs_loc) nrow(object$coords) else n_pred
 
   mu <- as.numeric(object$D %*% par_hat$beta)
 
-  n_samples <- if (control_sim$linear_model) control_sim$n_sim else (control_sim$n_sim - control_sim$burnin) / control_sim$thin
+  n_samples <- if (control_mcmc$linear_model) control_mcmc$n_sim else (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
 
   # ---------------------------------------------------------------------------
   # FIX 2: nu2 / nugget
@@ -376,21 +392,34 @@ setup_prediction <- function(object,
   if (object$family != "gaussian") {
 
     Sigma     <- par_hat$sigma2 * R
-    Sigma_inv <- solve(Sigma)
+    Sigma_root <- factor_covariance(Sigma, "observation covariance")
 
-    if (!obs_loc) {
-      A <- if (list_mode) lapply(C, function(Ci) Ci %*% Sigma_inv)
-      else C %*% Sigma_inv
+    prediction_weights <- function(cross_covariance) {
+      cholesky_prediction_weights(cross_covariance, Sigma_root)
+    }
+
+    if (!obs_loc && !batch_marginal) {
+      A <- if (list_mode) {
+        lapply(C, prediction_weights)
+      } else {
+        prediction_weights(C)
+      }
     }
 
     simulation <- laplace_sampling_mcmc(
       y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
       sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
       ID_coords = object$ID_coords, ID_re = object$ID_re,
-      family = object$family, control_mcmc = control_sim, messages = messages)
+      family = object$family, control_mcmc = control_mcmc, messages = messages)
 
     if (obs_loc) {
       out$S_samples <- t(simulation$samples$S)
+    } else if (batch_marginal) {
+      out$S_samples <- batched_marginal_prediction(
+        fitting_grp, conditioning_coords, prediction_weights,
+        t(simulation$samples$S), par_hat$sigma2, fitting_phi,
+        object$kappa, n_samples, marginal_batch_size
+      )
     } else {
       mu_cond_S <- if (list_mode)
         lapply(A, function(Ai) Ai %*% t(simulation$samples$S))
@@ -398,27 +427,33 @@ setup_prediction <- function(object,
         A %*% t(simulation$samples$S)
 
       if (type == "marginal") {
-        sd_cond_S <- sqrt(par_hat$sigma2 - diag(A %*% t(C)))
-        out$S_samples <- sapply(seq_len(n_samples), function(i)
-          mu_cond_S[, i] + sd_cond_S * rnorm(n_pred))
+        sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
+        out$S_samples <- sample_independent_gaussian(
+          mu_cond_S, sd_cond_S, n_samples
+        )
 
       } else {
         if (list_mode) {
           out$S_samples <- lapply(seq_along(mu_cond_S), function(i) {
-            Sp    <- par_hat$sigma2 * matern_correlation(dist(grp[[i]]), phi = par_hat$phi,
+            Sp    <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
                                                  kappa = object$kappa, return_sym_matrix = TRUE)
             Sc    <- Sp - A[[i]] %*% t(C[[i]])
-            Scr   <- t(chol(Sc))
-            sapply(seq_len(n_samples), function(j)
-              mu_cond_S[[i]][, j] + Scr %*% rnorm(nrow(mu_cond_S[[i]])))
+            Scr   <- t(factor_covariance(
+              Sc, "conditional prediction covariance"
+            ))
+            sample_correlated_gaussian(mu_cond_S[[i]], Scr, n_samples)
           })
         } else {
-          Sp  <- par_hat$sigma2 * matern_correlation(dist(grp), phi = par_hat$phi,
+          Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
                                              kappa = object$kappa, return_sym_matrix = TRUE)
           Sc  <- Sp - A %*% t(C)
-          Scr <- t(chol(Sc))
-          out$S_samples <- sapply(seq_len(n_samples), function(i)
-            mu_cond_S[, i] + Scr %*% rnorm(nrow(mu_cond_S)))
+          Sc_root <- factor_covariance(
+            Sc, "conditional prediction covariance"
+          )
+          Scr <- t(Sc_root)
+          out$S_samples <- sample_correlated_gaussian(
+            mu_cond_S, Scr, n_samples
+          )
         }
       }
     }
@@ -457,48 +492,90 @@ setup_prediction <- function(object,
       }
       prediction_weights <- gaussian_prediction_weights(C_g, Sigma_g, ID_g,
                                                          par_hat$sigma2_me)
-      A <- if (list_mode) lapply(C, prediction_weights) else prediction_weights(C)
-    } else {
-      Sigma     <- par_hat$sigma2 * R
-      Sigma_inv <- solve(Sigma)
-      A <- if (list_mode) lapply(C, function(single_grid_C) single_grid_C %*% Sigma_inv) else C %*% Sigma_inv
-    }
-
-    mu_cond_S <- if (list_mode) {
-      lapply(A, function(single_grid_A) as.numeric(single_grid_A %*% diff.y))
-    } else {
-      as.numeric(A %*% diff.y)
-    }
-
-    if (type == "marginal") {
-      if (list_mode) {
-        out$S_samples <- lapply(seq_along(A), function(i) {
-          sd_cond_S_i <- sqrt(par_hat$sigma2 - Matrix::diag(A[[i]] %*% t(C[[i]])))
-          sapply(seq_len(n_samples), function(j)
-            mu_cond_S[[i]] + sd_cond_S_i * rnorm(n_pred[i]))
-        })
-      } else {
-        sd_cond_S <- sqrt(par_hat$sigma2 - Matrix::diag(A %*% t(C)))
-        out$S_samples <- sapply(seq_len(n_samples), function(i)
-          mu_cond_S + sd_cond_S * rnorm(n_pred_spatial))
+      if (!batch_marginal) {
+        A <- if (list_mode) {
+          lapply(C, prediction_weights)
+        } else {
+          prediction_weights(C)
+        }
       }
     } else {
-      if (list_mode) {
-        out$S_samples <- lapply(seq_along(A), function(i) {
-          spatial_covariance_i <- par_hat$sigma2 * matern_correlation(dist(grp[[i]]), phi = par_hat$phi,
-                                                              kappa = object$kappa, return_sym_matrix = TRUE)
-          conditional_covariance_i <- spatial_covariance_i - A[[i]] %*% t(C[[i]])
-          cholesky_root_i <- t(chol(conditional_covariance_i))
-          sapply(seq_len(n_samples), function(j)
-            mu_cond_S[[i]] + cholesky_root_i %*% rnorm(n_pred[i]))
+      Sigma     <- par_hat$sigma2 * R
+      Sigma_root <- factor_covariance(Sigma, "observation covariance")
+      prediction_weights <- function(cross_covariance) {
+        cholesky_prediction_weights(cross_covariance, Sigma_root)
+      }
+      if (!batch_marginal) {
+        A <- if (list_mode) {
+          lapply(C, prediction_weights)
+        } else {
+          prediction_weights(C)
+        }
+      }
+    }
+
+    if (batch_marginal) {
+      out$S_samples <- batched_marginal_prediction(
+        fitting_grp, conditioning_coords, prediction_weights, diff.y,
+        par_hat$sigma2, fitting_phi, object$kappa, n_samples,
+        marginal_batch_size
+      )
+    } else {
+      mu_cond_S <- if (list_mode) {
+        lapply(A, function(single_grid_A) {
+          as.numeric(single_grid_A %*% diff.y)
         })
       } else {
-        Sp  <- par_hat$sigma2 * matern_correlation(dist(grp), phi = par_hat$phi,
-                                           kappa = object$kappa, return_sym_matrix = TRUE)
-        Sc  <- Sp - A %*% t(C)
-        Scr <- t(chol(Sc))
-        out$S_samples <- sapply(seq_len(n_samples), function(i)
-          mu_cond_S + Scr %*% rnorm(n_pred_spatial))
+        as.numeric(A %*% diff.y)
+      }
+
+      if (type == "marginal") {
+        if (list_mode) {
+          out$S_samples <- lapply(seq_along(A), function(i) {
+            sd_cond_S_i <- sqrt(conditional_variances(
+              par_hat$sigma2, A[[i]], C[[i]]
+            ))
+            sample_independent_gaussian(
+              mu_cond_S[[i]], sd_cond_S_i, n_samples
+            )
+          })
+        } else {
+          sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
+          out$S_samples <- sample_independent_gaussian(
+            mu_cond_S, sd_cond_S, n_samples
+          )
+        }
+      } else {
+        if (list_mode) {
+          out$S_samples <- lapply(seq_along(A), function(i) {
+            spatial_covariance_i <- par_hat$sigma2 * matern_correlation(
+              pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
+              kappa = object$kappa, return_sym_matrix = TRUE
+            )
+            conditional_covariance_i <- spatial_covariance_i -
+              A[[i]] %*% t(C[[i]])
+            cholesky_root_i <- t(factor_covariance(
+              conditional_covariance_i,
+              "conditional prediction covariance"
+            ))
+            sample_correlated_gaussian(
+              mu_cond_S[[i]], cholesky_root_i, n_samples
+            )
+          })
+        } else {
+          Sp <- par_hat$sigma2 * matern_correlation(
+            pairwise_distances(fitting_grp), phi = fitting_phi,
+            kappa = object$kappa, return_sym_matrix = TRUE
+          )
+          Sc <- Sp - A %*% t(C)
+          Sc_root <- factor_covariance(
+            Sc, "conditional prediction covariance"
+          )
+          Scr <- t(Sc_root)
+          out$S_samples <- sample_correlated_gaussian(
+            mu_cond_S, Scr, n_samples
+          )
+        }
       }
     }
   }
@@ -513,7 +590,6 @@ setup_prediction <- function(object,
     out$re$samples  <- list()
     re_names        <- colnames(object$ID_re)
     if (object$family == "gaussian") {
-      Sigma_cond_inv <- solve(Sc)
       C_Z  <- C_g[, -(seq_len(n_dim_re_tot[1]))]
       add  <- 0
       for (i in seq_along(n_dim_re_tot[-1])) {
@@ -522,16 +598,18 @@ setup_prediction <- function(object,
         add <- n_dim_re_tot[i+1]
       }
       W_Z          <- prediction_weights(Matrix::t(C_Z))
-      A_Z          <- W_Z %*% t(C) %*% Sigma_cond_inv
+      A_Z          <- cholesky_prediction_weights(W_Z %*% t(C), Sc_root)
       Sigma_Z_cond <- diag(rep(par_hat$sigma2_re, n_dim_re_tot[-1])) -
         W_Z %*% C_Z -
         A_Z %*% C %*% t(W_Z)
-      Scr_Z        <- t(chol(Sigma_Z_cond))
-      mu_Z_cond    <- sapply(seq_len(n_samples), function(i)
-        as.matrix(A_Z %*% (out$S_samples[, i] - mu_cond_S)))
+      Scr_Z        <- t(factor_covariance(
+        Sigma_Z_cond, "conditional random-effect covariance"
+      ))
+      mu_Z_cond    <- A_Z %*% (out$S_samples - mu_cond_S)
       mu_Z_cond <- mu_Z_cond + as.numeric(W_Z %*% diff.y)
-      re_samples <- sapply(seq_len(n_samples), function(i)
-        as.numeric(mu_Z_cond[, i] + Scr_Z %*% rnorm(sum(n_dim_re_tot[-1]))))
+      re_samples <- sample_correlated_gaussian(
+        mu_Z_cond, Scr_Z, n_samples
+      )
     } else {
       re_samples <- matrix(0, nrow = sum(n_dim_re_tot[-1]), ncol = n_samples)
       add <- 0
@@ -850,8 +928,10 @@ predict_grid_target <- function(object,
 ##' from an object of class 'RiskMap_predict_grid_target'.
 ##'
 ##' @param x An object of class 'RiskMap_predict_grid_target'.
-##' @param which_target Character string specifying which target prediction to plot.
-##' @param which_summary Character string specifying which summary statistic to plot (e.g., "mean", "sd").
+##' @param target Character string specifying which target prediction to plot,
+##' one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.
+##' @param summary Character string specifying which summary statistic to plot
+##' (e.g., "mean", "sd"), one of \code{x$pd_summary}. Defaults to \code{"mean"}.
 ##' @param ... Additional arguments passed to the \code{\link[terra]{plot}} function of the \code{terra} package.
 ##' @return A \code{ggplot} object representing the specified prediction target or summary statistic over the spatial grid.
 ##' @details
@@ -865,10 +945,19 @@ predict_grid_target <- function(object,
 ##' @export
 ##'
 ##'
-plot.RiskMap_predict_grid_target <- function(x, which_target = "linear_target", which_summary = "mean", ...) {
+plot.RiskMap_predict_grid_target <- function(x, target = NULL, summary = "mean", ...) {
+  if (is.null(target)) {
+    target <- x$f_target[1]
+  } else if (!target %in% x$f_target) {
+    stop("'target' must be one of: ", paste(shQuote(x$f_target), collapse = ", "))
+  }
+  if (!summary %in% x$pd_summary) {
+    stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
+  }
+
   t_data.frame <-
     terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
-                               x$target[[which_target]][[which_summary]]),
+                               x$target[[target]][[summary]]),
                          xy = TRUE)
   raster_out <- rast(t_data.frame, crs = st_crs(x$grid_pred)$wkt)
 
@@ -1319,8 +1408,10 @@ predict_areal_target <- function(object,
 ##'
 ##' @param x An object of class 'RiskMap_predict_areal_target' containing computed targets,
 ##' summaries, and associated spatial data.
-##' @param which_target Character indicating the target type to plot (e.g., "linear_target").
-##' @param which_summary Character indicating the summary type to plot (e.g., "mean", "sd").
+##' @param target Character indicating the target type to plot (e.g., "linear_target"),
+##' one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.
+##' @param summary Character indicating the summary type to plot (e.g., "mean", "sd"),
+##' one of \code{x$pd_summary}. Defaults to \code{"mean"}.
 ##' @param ... Additional arguments passed to 'scale_fill_distiller' in 'ggplot2'.
 ##' @return A \code{ggplot} object showing the plot of the specified predictive target or summary.
 ##' @seealso
@@ -1329,12 +1420,18 @@ predict_areal_target <- function(object,
 ##'
 ##' @method plot RiskMap_predict_areal_target
 ##' @export
-plot.RiskMap_predict_areal_target <- function(x, which_target = "linear_target",
-                                         which_summary = "mean", ...) {
-  col_boundaries_name <- paste(which_target,"_",which_summary,sep="")
-
+plot.RiskMap_predict_areal_target <- function(x, target = NULL, summary = "mean", ...) {
+  if (is.null(target)) {
+    target <- x$f_target[1]
+  } else if (!target %in% x$f_target) {
+    stop("'target' must be one of: ", paste(shQuote(x$f_target), collapse = ", "))
+  }
+  if (!summary %in% x$pd_summary) {
+    stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
+  }
+  col_boundaries_name <- paste(target, "_", summary, sep = "")
   out <- ggplot(x$boundaries) +
-    geom_sf(aes(fill = x$boundaries[[col_boundaries_name]])) +
+    geom_sf(aes(fill = .data[[col_boundaries_name]])) +
     scale_fill_distiller(...)
   return(out)
 }
@@ -1505,40 +1602,105 @@ update_predictors <- function(object, predictors) {
   x
 }
 
+##' @title Plot Training/Test Splits
+##'
+##' @description
+##' Plots every observation used by \code{\link{assess_prediction}}, coloured
+##' by whether it fell in the training or test set for a given iteration,
+##' faceted by iteration when there is more than one. Mimics the visual style
+##' of \code{spatialsample::autoplot()} (used directly for
+##' \code{method = "cluster"}), for the \code{"user"} and \code{"regularized"}
+##' methods, whose splits aren't necessarily a complete partition of the data
+##' and so aren't well suited to colouring by fold membership alone.
+##'
+##' @param data_split A list with a \code{splits} element, each entry itself a
+##' list with an \code{sf} \code{data} (the training set) and an \code{sf}
+##' \code{data_test} (the test set) - the structure built internally by
+##' \code{assess_prediction()} for \code{method = "user"} and
+##' \code{method = "regularized"}.
+##' @param alpha Point transparency, passed to \code{ggplot2::geom_sf()}.
+##' Defaults to \code{0.6}, matching \code{spatialsample::autoplot()}.
+##' @return A \code{ggplot} object.
+##' @noRd
+plot_folds <- function(data_split, alpha = 0.6) {
+  n_iter <- length(data_split$splits)
+
+  combined <- do.call(rbind, lapply(seq_len(n_iter), function(i) {
+    split_i <- data_split$splits[[i]]
+    rbind(
+      cbind(split_i$data,      set = "Training", iteration = i),
+      cbind(split_i$data_test, set = "Testing",  iteration = i)
+    )
+  }))
+
+  p <- ggplot(data = combined, aes(color = .data$set, fill = .data$set)) +
+    geom_sf(alpha = alpha) +
+    guides(colour = guide_legend("Set"), fill = guide_legend("Set")) +
+    theme_minimal()
+
+  if (n_iter > 1) {
+    p <- p + facet_wrap(vars(.data$iteration))
+  }
+
+  p + coord_sf()
+}
+
 ##' @title Assess Predictive Performance via Spatial Cross-Validation
 ##'
 ##' @description
-##' This function evaluates the predictive performance of spatial models fitted to `RiskMap` objects using cross-validation. It supports two classes of diagnostic tools:
+##' This function evaluates the predictive performance of spatial models fitted
+##' to `RiskMap` objects using cross-validation. It supports two classes of diagnostic tools:
 ##'
-##' - **Scoring rules**, including the Continuous Ranked Probability Score (CRPS) and its scaled version (SCRPS), which quantify the sharpness and calibration of probabilistic forecasts;
-##' - **Calibration diagnostics**, based on the Probability Integral Transform (PIT) for Gaussian outcomes, Aggregated nonparametric PIT (AnPIT) curves for discrete outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve and the reference line.
+##' - **Scoring rules**, including the Continuous Ranked Probability Score (CRPS)
+##'  and its scaled version (SCRPS), which quantify the sharpness and calibration
+##'  of probabilistic forecasts (Bolin & Wallin, 2023);
+##' - **Calibration diagnostics**, based on the Probability Integral Transform (PIT)
+##' for Gaussian outcomes, Average nonrandomized PIT (AnPIT) curves for discrete
+##' outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve
+##' and the reference line (Giorgi *et al.* 2026).
 ##'
-##' Cross-validation can be performed using either spatial clustering or regularized subsampling with a minimum inter-point distance. For each fold or subset, models can be refitted or evaluated with fixed parameters, offering flexibility in model validation. The function also provides visualizations of the spatial distribution of test folds.
+##' Cross-validation can be performed using either spatial clustering, regularized
+##' subsampling with a minimum inter-point distance or a user-defined test set.
+##' For each fold or subset, models can be refitted or evaluated with fixed parameters,
+##' offering flexibility in model validation. The function also provides visualizations
+##' of the spatial distribution of test folds.
 ##'
-##' @param object A list of `RiskMap` objects, each representing a model fitted with `glgpm`.
-##' @param method Character; either `"cluster"` or `"regularized"` for the cross-validation method. The `"cluster"` method uses
-##' spatial clustering as implemented by the \code{spatial_clustering_cv} function from the `spatialEco` package, while the `"regularized"` method
-##' selects a subsample of the dataset by imposing a minimum distance, set by the `min_dist` argument, for a randomly selected
-##' subset of locations.
-##' @param keep_par_fixed Logical; if `TRUE`, parameters are kept fixed across folds, otherwise the model is re-estimated for each fold.
-##' @param iter Integer; number of times to repeat the cross-validation.
-##' @param fold Integer; number of folds for cross-validation (required if `method = "cluster"`).
-##' @param n_size Optional; the size of the test set, required if `method = "regularized"`.
-##' @param control_sim Control settings for simulation, an output from `set_control_mcmc`.
-##' @param min_dist Optional; minimum distance for regularized subsampling (required if `method = "regularized"`).
-##' @param plot_fold Logical; if `TRUE`, plots each fold's test set.
-##' @param messages Logical; if `TRUE`, displays progress messages.
-##' @param which_metric Character vector; one or more of `"CRPS"`, `"SCRPS"`, or `"AnPIT"`, to specify the predictive performance metrics to compute. When `"AnPIT"` is requested, the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation between the PIT/AnPIT curve and the reference line.
-##' @param user_split A user-defined cross-validation split. Either:
+##' @param object A list of `RiskMap` objects, each representing a model fitted with `glgpm()`.
+##' @param method Character; either `"cluster"`, `"regularized"` or `"user"` for the
+##' cross-validation method:
+##' \describe{
+##'  - The `"cluster"` method uses spatial clustering as implemented
+##' by the \code{spatial_clustering_cv} function from the `spatialsample` package.
+##'  - The `"regularized"` method selects a subsample of the dataset by imposing a minimum distance,
+##'  set by the `min_dist` argument, for a randomly selected subset of locations using
+##'  the `subsample.distance` function from the `spatialEco` package.
+##'  - The `"user"` method takes a user-defined test set defined by `user_split`
+##'  }
+##' @param fold Integer; required when `method = "cluster"` - number of folds for cross-validation.
+##' @param min_dist Numeric; required when `method = "regularized"` - minimum distance in kilometers for regularized subsampling.
+##' @param size Integer; the size of the test set, required when `method = "regularized"`.
+##' @param user_split Required when `method = "user"`. A user-defined cross-validation split. Either:
 ##'   * a matrix with \code{nrow = n} (number of observations) and
 ##'     \code{ncol = iter} (number of iterations), where entries of \code{1}
 ##'     indicate membership in the test set for that iteration and \code{0}
 ##'     indicate training set; or
 ##'   * a list of length \code{iter}, where each element is either a vector of
-##'     test indices, or a list with components \code{in_id} (training indices)
-##'     and \code{out_id} (test indices).
-##'   When supplied, \code{user_split} overrides the automatic clustering or
-##'   regularized distance splitting defined by \code{method}.
+##'     indices of the dataset to use as the test set, or a list with components
+##'     \code{in_id} (training indices) and \code{out_id} (test indices).
+##' @param iter Integer; number of times to repeat the cross-validation. Defaults to `1`.
+##' @param metrics Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"AnPIT"`,
+##' to specify the predictive performance metrics to compute. When `"AnPIT"` is requested,
+##' the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation
+##' between the PIT/AnPIT curve and the reference line. Defaults to all metrics.
+##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
+##' or re-estimate for each fold. Defaults to `TRUE`.
+##' @param control_mcmc Control settings for simulation, an output from `set_control_mcmc()`.
+##' If it carries a `seed`, the random splits generated for `method = "cluster"`
+##' or `method = "regularized"` are reproducible; ignored for `method = "user"`,
+##' which is already deterministic. The caller's random number generator state
+##' is restored on exit.
+##' @param plot_fold Logical; whether to plot each iteration's test and training sets. Defaults to `TRUE`.
+##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
 ##'
 ##' @return A list of class `RiskMap_cross_validation`, containing:
@@ -1546,9 +1708,9 @@ update_predictors <- function(object, predictors) {
 ##'   \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
 ##'   \item{model}{A named list, one per model, each containing:
 ##'     \describe{
-##'       \item{score}{A list with CRPS, SCRPS, and/or AnPIT area scores for each fold if requested.}
-##'       \item{PIT}{(if `family = "gaussian"` and `which_metric` includes `"AnPIT"`) A list of PIT values for test data.}
-##'       \item{AnPIT}{(if `family` is discrete and `which_metric` includes `"AnPIT"`) A list of AnPIT curves for test data.}
+##'       \item{metric}{A list with CRPS, SCRPS, and/or AnPIT_area metrics for each fold if requested.}
+##'       \item{PIT}{(if `family = "gaussian"` and `metrics` includes `"AnPIT"`) A list of PIT values for test data.}
+##'       \item{AnPIT}{(if `family` is discrete and `metrics` includes `"AnPIT"`) A list of AnPIT curves for test data.}
 ##'     }
 ##'   }
 ##' }
@@ -1556,25 +1718,86 @@ update_predictors <- function(object, predictors) {
 ##' @seealso \code{\link{plot_AnPIT}}
 ##'
 ##' @references
-##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of proper scoring rules. *Statistical Science*, 38(1), 140–159. \doi{10.1214/22-STS864}.
+##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
+##' proper scoring rules. *Statistical Science*, 38(1), 140–159. \doi{10.1214/22-STS864}.
+##'
+##' Giorgi, E., Fronterre, C. & Diggle, P. J. (2026). A decay-adjusted spatio-temporal
+##' model to account for the impact of mass drug administration on neglected
+##' tropical disease prevalence. *Journal of the Royal Statistical Society Series
+##' A: Statistics in Society*.\doi{10.1093/jrsssa/qnag100}.
 ##'
 ##' @importFrom terra match
-##' @importFrom gridExtra grid.arrange
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
+##'
+##' @examples
+##'
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' # cluster method
+##' cross_validation <-
+##'   assess_prediction(
+##'     list(fit),
+##'     method = "cluster",
+##'     fold = 2
+##'   )
+##'
+##' summary(cross_validation)
+##'
+##' # regularized method
+##' cross_validation <-
+##'   assess_prediction(
+##'     list(fit),
+##'     method = "regularized",
+##'     size = 5,
+##'     min_dist = 1
+##'   )
+##'
+##' summary(cross_validation)
+##'
+##' # user method with a matrix
+##'  cross_validation <-
+##'   assess_prediction(
+##'   list(fit),
+##'   method = "user",
+##'   user_split = matrix(
+##'     sample(c(rep(1, 50), rep(0, 50))),
+##'     ncol = 1)
+##'   )
+##'
+##' summary(cross_validation)
+##'
+##' # user method with a list
+##'  cross_validation <-
+##'   assess_prediction(
+##'   list(fit),
+##'   method = "user",
+##'   user_split = list(
+##'     sample(100, 50))
+##'   )
+##'
+##' summary(cross_validation)
+##'
 ##' @export
 assess_prediction <- function(object,
                               method,
-                              keep_par_fixed = TRUE,
-                              iter = 1,
                               fold = NULL,
-                              n_size = NULL,
-                              control_sim = set_control_mcmc(),
                               min_dist = NULL,
+                              size = NULL,
+                              user_split = NULL,
+                              iter = 1,
+                              metrics = c("AnPIT", "CRPS", "SCRPS"),
+                              keep_par_fixed = TRUE,
+                              control_mcmc = set_control_mcmc(),
                               plot_fold = TRUE,
                               messages = TRUE,
-                              which_metric = c("AnPIT", "CRPS", "SCRPS"),
-                              user_split = NULL,
                               ...) {
 
   ## ─────────────────────────── helpers ─────────────────────────── ##
@@ -1597,34 +1820,46 @@ assess_prediction <- function(object,
   }
   u_val <- seq(0, 1, length.out = 1000)
 
-  if(!is.null(user_split)) {
-    iter <- ncol(user_split)
-  }
   ## ────────────────────── sanity checks (unchanged) ─────────────────────── ##
   if (!is_list_of_riskmap(object))
     stop("'object' must be a list of fitted models of class 'RiskMap'.")
 
-  if (!all(which_metric %in% c("CRPS", "SCRPS", "AnPIT")))
-    stop("'which_metric' must only contain 'CRPS', 'SCRPS' or 'AnPIT'")
+  if (!all(metrics %in% c("CRPS", "SCRPS", "AnPIT")))
+    stop("'metrics' must only contain 'CRPS', 'SCRPS' or 'AnPIT'")
 
-  if (is.null(user_split)) {
-    if (!method %in% c("cluster", "regularized"))
-      stop("'method' must be either 'cluster' or 'regularized' (unless 'user_split' is supplied).")
+  if (!method %in% c("cluster", "regularized", "user"))
+    stop("'method' must be either 'cluster', 'regularized' or 'user'")
 
-    if (method == "regularized") {
-      if (is.null(min_dist)) stop("for 'regularized', supply 'min_dist'")
-      if (is.null(n_size))   stop("for 'regularized', supply 'n_size'")
-    }
-    if (method == "cluster" && is.null(fold))
-      stop("when 'method' is 'cluster', you must supply 'fold'")
+  if (method == "cluster"){
+    if (is.null(fold)) stop("when 'method' is 'cluster' you must supply 'fold'")
+    check_positive_integer(fold, "fold")
   }
 
-  if (!inherits(control_sim, "RiskMap_control_mcmc"))
-    stop("'control_sim' must come from 'set_control_mcmc()'")
+  if (method == "regularized") {
+    if (is.null(min_dist)) stop("when 'method' is 'regularized' you must supply 'min_dist'")
+    if (is.null(size))     stop("when 'method' is 'regularized' you must supply 'size'")
+    check_positive_number(min_dist, "")
+    check_positive_integer(size, "size")
+  }
 
-  get_CRPS  <- "CRPS"  %in% which_metric
-  get_SCRPS <- "SCRPS" %in% which_metric
-  get_AnPIT <- "AnPIT" %in% which_metric
+  if (method == "user"){
+    if (is.null(user_split)) stop("when 'method' is 'user' you must supply 'user_split'")
+  }
+
+  check_logical(keep_par_fixed)
+
+  check_positive_integer(iter, "iter")
+
+  if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
+    stop("'control_mcmc' must come from 'set_control_mcmc()'")
+
+  check_logical(plot_fold)
+
+  check_logical(messages)
+
+  get_CRPS  <- "CRPS"  %in% metrics
+  get_SCRPS <- "SCRPS" %in% metrics
+  get_AnPIT <- "AnPIT" %in% metrics
 
   ## ───────────────────────────── data & splits ───────────────────────────── ##
 
@@ -1641,44 +1876,96 @@ assess_prediction <- function(object,
   object1 <- object[[1]]
   data_sf <- object1$data
   n_obs   <- nrow(data_sf)
-  data_geom <- st_as_text(st_geometry(data_sf))
+  data_geom <- st_geometry(data_sf)
 
   for (h in seq_along(object)) {
     fit_data <- object[[h]]$data
     if (nrow(fit_data) != n_obs) {
-      stop("All models supplied to 'assess_prediction()' must have the same number of observations.")
+      stop("All models in 'object' supplied must have the same number of observations")
     }
-    fit_geom <- st_as_text(st_geometry(fit_data))
+    fit_geom <- st_geometry(fit_data)
     if (!identical(fit_geom, data_geom)) {
-      stop("All models supplied to 'assess_prediction()' must have data in the same row order and geometry.")
+      stop("All models in 'object' must have data in the same row order and geometry")
     }
+  }
+
+  # Validates one vector of row indices for a 'user_split' entry: non-missing
+  # numeric, non-empty, whole numbers, no duplicates, in range. `what` names
+  # whichever vector the caller actually supplied, so it reads sensibly for
+  # both call sites below (a bare vector of test indices, or an explicit
+  # 'in_id'/'out_id').
+  validate_split_vector <- function(v, what) {
+    if (!is.numeric(v) || anyNA(v))
+      stop(what, " must be a non-missing numeric vector of row indices")
+    if (length(v) == 0)
+      stop(what, " must be non-empty")
+    if (any(v != round(v)))
+      stop(what, " must contain whole numbers")
+    if (anyDuplicated(v))
+      stop(what, " must not contain duplicate indices")
+    if (!all(v %in% seq_len(n_obs)))
+      stop(what, " must be row indices between 1 and the number of observations")
+    invisible(TRUE)
+  }
+
+  # Validates one user-supplied 'user_split' entry: either a bare vector of
+  # test indices (the shorthand form - training indices are its computed
+  # complement, which can never independently be invalid) or an explicit
+  # list(in_id = ..., out_id = ...) pair, both directly supplied by the
+  # caller. For the latter, also checks train and test don't overlap - an
+  # overlap would silently leak a held-out observation into training.
+  validate_split_indices <- function(out_id, index, in_id = NULL) {
+    tag <- sprintf("user_split[[%d]]", index)
+
+    if (is.null(in_id)) {
+      validate_split_vector(out_id, sprintf("'%s' test indices", tag))
+      in_id <- setdiff(seq_len(n_obs), out_id)
+      if (length(in_id) == 0)
+        stop("'", tag, "' must leave at least one observation for training")
+    } else {
+      validate_split_vector(in_id, sprintf("'%s's 'in_id'", tag))
+      validate_split_vector(out_id, sprintf("'%s's 'out_id'", tag))
+      if (length(intersect(in_id, out_id)) > 0)
+        stop("'", tag, "'s 'in_id' and 'out_id' must not overlap")
+    }
+
+    list(in_id = as.integer(in_id), out_id = as.integer(out_id))
   }
 
   make_splits_from_user <- function(usr, n_iter_expected) {
     spl <- vector("list", n_iter_expected)
     if (is.matrix(usr)) {
       if (nrow(usr) != n_obs)
-        stop("'user_split' matrix must have nrow == nrow(data).")
+        stop("'user_split' matrix must have the same number of rows as the data in the model")
       if (ncol(usr) != n_iter_expected)
-        stop("'user_split' matrix must have ncol == 'iter'.")
+        stop("'user_split' matrix must have a number of columns equal to 'iter'")
+      if (anyNA(usr))
+        stop("'user_split' matrix must not contain missing values")
+      if (!all(usr %in% c(0, 1)))
+        stop("'user_split' matrix must only contain 0s (training) and 1s (test)")
       for (i in seq_len(n_iter_expected)) {
-        out_id <- which(usr[, i] != 0 & !is.na(usr[, i]))
-        in_id  <- setdiff(seq_len(n_obs), out_id)
+        out_id <- which(usr[, i] == 1)
+        in_id  <- which(usr[, i] == 0)
+        if (length(in_id) == 0 || length(out_id) == 0)
+          stop("Column ", i, " of 'user_split' must contain at least one training (0) ",
+               "and one test (1) observation")
         spl[[i]] <- list(in_id = in_id, out_id = out_id,
                          data = data_sf[in_id, ],
                          data_test = data_sf[out_id, ])
       }
-    } else if (is.list(usr)) {
+    } else if (inherits(usr, "list")) {
       if (length(usr) != n_iter_expected)
-        stop("'user_split' list must have length == 'iter'.")
+        stop("'user_split' list must have the same length as 'iter'")
       for (i in seq_len(n_iter_expected)) {
         ui <- usr[[i]]
         if (is.list(ui) && !is.null(ui$in_id) && !is.null(ui$out_id)) {
-          in_id  <- ui$in_id
-          out_id <- ui$out_id
-        } else if (is.integer(ui) || is.double(ui)) {
-          out_id <- as.integer(ui)
-          in_id  <- setdiff(seq_len(n_obs), out_id)
+          validated <- validate_split_indices(ui$out_id, i, ui$in_id)
+          in_id  <- validated$in_id
+          out_id <- validated$out_id
+        } else if (is.numeric(ui)) {
+          validated <- validate_split_indices(ui, i)
+          in_id  <- validated$in_id
+          out_id <- validated$out_id
         } else {
           stop("Each element of 'user_split' must be a vector of test indices or a list(in_id=..., out_id=...).")
         }
@@ -1687,32 +1974,22 @@ assess_prediction <- function(object,
                          data_test = data_sf[out_id, ])
       }
     } else {
-      stop("'user_split' must be a matrix (nrow=n, ncol=iter) or a list.")
+      stop("'user_split' must be a matrix or a list")
     }
     list(splits = spl)
   }
 
-  if (!is.null(user_split)) {
+  if (!is.null(control_mcmc$seed)) {
+    restore_seed <- preserve_random_seed()
+    on.exit(restore_seed(), add = TRUE)
+    set.seed(control_mcmc$seed)
+  }
+
+  if (method == "user") {
     data_split <- make_splits_from_user(user_split, iter)
     n_iter <- iter
 
-    if (isTRUE(plot_fold)) {
-      if (n_iter == 1) {
-        p <- ggplot(data_split$splits[[1]]$data_test) +
-          geom_sf() +
-          theme_minimal() +
-          ggtitle("Test set")
-        print(p)
-      } else {
-        plots <- lapply(seq_len(n_iter), function(i) {
-          ggplot(data_split$splits[[i]]$data_test) +
-            geom_sf() +
-            theme_minimal() +
-            ggtitle(paste("Test", i))
-        })
-        do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
-      }
-    }
+    if (isTRUE(plot_fold)) print(plot_folds(data_split))
   } else if (method == "cluster") {
     data_split <- spatial_clustering_cv(data = data_sf, v = fold, repeats = iter, ...)
     # ensure out_id present
@@ -1730,7 +2007,7 @@ assess_prediction <- function(object,
     for (i in seq_len(iter)) {
       locations_sf <- data_sf[!duplicated(st_as_text(data_sf$geometry)), ]
       data_split$splits[[i]] <- list()
-      data_split$splits[[i]]$data_test <- subsample.distance(locations_sf, size = n_size, d = min_dist * 1000, ...)
+      data_split$splits[[i]]$data_test <- subsample.distance(locations_sf, size = size, d = min_dist * 1000, ...)
       test_geom <- st_as_text(data_split$splits[[i]]$data_test$geometry)
       in_test   <- st_as_text(data_sf$geometry) %in% test_geom
       data_split$splits[[i]]$out_id <- which(in_test)
@@ -1738,21 +2015,7 @@ assess_prediction <- function(object,
       data_split$splits[[i]]$data   <- data_sf[!in_test, ]
     }
     n_iter <- iter
-    if (isTRUE(plot_fold)) {
-      plots <- lapply(seq_len(n_iter), function(i) {
-        ggplot(data_split$splits[[i]]$data_test) +
-          geom_sf() +
-          theme_minimal() +
-          ggtitle(paste("Subset", i))
-      })
-
-      if (n_iter > 1) {
-        do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
-      } else {
-        # Only one plot: no need for a grid arrangement
-        for (p in plots) print(p)
-      }
-    }
+    if (isTRUE(plot_fold)) print(plot_folds(data_split))
   }
 
   ## ───────────────────────── initialise output ───────────────────────── ##
@@ -1766,7 +2029,7 @@ assess_prediction <- function(object,
     fit0      <- object[[h]]
     fit_data_sf <- fit0$data
     par_hat   <- coef(fit0)
-    den_name  <- as.character(fit0$call$den)
+    den_name  <- as.character(fit0$call$denominator)
     fam       <- fit0$family
     linkfun   <- switch(fam,
                         gaussian = identity,
@@ -1793,6 +2056,7 @@ assess_prediction <- function(object,
 
       ## ----- refit or slice -----
       if (!keep_par_fixed) {
+
         message("\nRe-estimating model for subset ", i)
         model_crs <- st_crs(fit0$data)
 
@@ -1802,15 +2066,15 @@ assess_prediction <- function(object,
           family         = fam,
           model_crs      = model_crs,
           distance_units = fit0$distance_units,
-          control_mcmc   = control_sim,
+          control_mcmc   = control_mcmc,
           fix_var_me     = fit0$fix_var_me,
           messages       = FALSE,
           start_pars     = par_hat
         )
-        ## 'den' must be passed as an unquoted column name (NSE); only include it
+        ## 'denominator' is passed as an unquoted column name (NSE); include it
         ## when the original model was fitted with one
         if (length(den_name) == 1 && nzchar(den_name)) {
-          refit_args$den <- as.name(den_name)
+          refit_args$denominator <- as.name(den_name)
         }
         refit_i <- do.call(glgpm, refit_args)
       } else {
@@ -1855,7 +2119,7 @@ assess_prediction <- function(object,
       pred_S <- setup_prediction(
         object          = refit_i,
         grid_pred       = st_as_sfc(data_test_i),
-        control_sim     = control_sim,
+        control_mcmc     = control_mcmc,
         predictors      = data_test_i,
         pred_cov_offset = pred_coff_i,
         type            = "marginal",
@@ -1941,11 +2205,11 @@ assess_prediction <- function(object,
     } # end i loop
 
     ## ─────────────── finalise output for this model ─────────────── ##
-    out$model[[model_names[h]]] <- list(score = list())
-    if (get_CRPS)  out$model[[model_names[h]]]$score$CRPS  <- CRPS
-    if (get_SCRPS) out$model[[model_names[h]]]$score$SCRPS <- SCRPS
+    out$model[[model_names[h]]] <- list(metric = list())
+    if (get_CRPS)  out$model[[model_names[h]]]$metric$CRPS  <- CRPS
+    if (get_SCRPS) out$model[[model_names[h]]]$metric$SCRPS <- SCRPS
     if (get_AnPIT) {
-      out$model[[model_names[h]]]$score$AnPIT_area <- AnPIT_area
+      out$model[[model_names[h]]]$metric$AnPIT_area <- AnPIT_area
       if (fam == "gaussian") out$model[[model_names[h]]]$PIT <- PIT else out$model[[model_names[h]]]$AnPIT <- AnPIT
     }
 
@@ -1957,272 +2221,54 @@ assess_prediction <- function(object,
 
 
 
-##' Simulate surface data based on a spatial model
-##'
-##' This function simulates surface data based on a user-defined formula and other parameters. It allows for simulation of spatial data with various model families (Gaussian, Binomial, or Poisson). The simulation involves creating spatially correlated random fields and generating outcomes for data points in a given prediction grid.
-##'
-##' @param n_sim The number of simulations to run.
-##' @param pred_grid An `sf` object representing the prediction grid where the simulation will take place.
-##' @param formula A formula object specifying the model to be fitted. It should include both fixed effects and random effects if applicable.
-##' @param sampling_f A function that returns a sampled dataset (of class `sf`) to simulate data from.
-##' @param family A character string specifying the family of the model. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
-##' @param scale_to_km A logical indicating whether the coordinates should be scaled to kilometers. Defaults to `TRUE`.
-##' @param control_mcmc A list of control parameters for MCMC (not used in this implementation but can be expanded later).
-##' @param par0 A list containing initial parameter values for the simulation, including `beta`, `sigma2`, `phi`, `tau2`, and `sigma2_me`.
-##' @param include_covariates A logical indicating if the covariates (or the intercept if no covariates are used) should be included in the linear
-##' predictor. By default \code{include_covariates = TRUE}
-##' @param nugget_over_grid A logical indicating whether to include a nugget effect over the entire prediction grid.
-##' @param fix_var_me A parameter to fix the variance of the random effects for the measurement error. Defaults to `NULL`.
-##' @param messages A logical value indicating whether to print messages during the simulation. Defaults to `TRUE`.
-##'
-##' @return A list containing the simulated data (\code{data_sim}), the linear predictors (\code{lp_grid_sim}),
-##' a logical value indicating if covariates have been included in the linear predictor (\code{include_covariates}),
-##' a logical value indicating if the nugget has been included into the simulations of the linear predictor over the grid
-##' (\code{nugget_over_grid}), a logical  indicating if a covariate offset has been included in the linear predictor (\code{include_cov_offset}),
-##' the model parameters set for the simulation (\code{par0}) and the family used in the model (\code{family}).
-##'
-##' @export
-simulate_surface <- function(n_sim,
-                     pred_grid,
-                     formula,
-                     sampling_f,
-                     family,
-                     scale_to_km = TRUE,
-                     control_mcmc = set_control_mcmc(),
-                     par0, nugget_over_grid = FALSE,
-                     include_covariates = TRUE,
-                     fix_var_me = NULL,
-                     messages = TRUE) {
-
-
-  if(!inherits(formula,
-               what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula'
-                                     object indicating the variables of the
-                                     model to be fitted")
-  }
-  inter_f <- interpret_formula(formula)
-  include_cov_offset <- !is.null(inter_f$offset)
-  if(!inherits(pred_grid, "sf")) {
-    stop("'pred_grid' must be an 'sf'
-          object indicating the variables of the
-          model to be fitted")
-  }
-
-  sim_crs <- st_crs(pred_grid)
-  if (is.na(sim_crs)) {
-    stop("'pred_grid' must have a valid coordinate reference system (CRS) set.")
-  }
-
-  if(!inherits(sampling_f, "function")){
-    stop("'sampling_f' must be an object of class 'function'")
-  }
-
-  data_test <- sampling_f()
-  if(!inherits(data_test, "sf")) {
-    stop("The object return by 'sampling_f' must be of an 'sf' object")
-  }
-
-  if (!"units_m" %in% colnames(data_test)) {
-    stop("The object returned by 'sampling_f' must contain a column named 'units_m'.")
-  }
-
-
-  data_sim <- list()
-  coords_sim <- list()
-  for(i in 1:n_sim) {
-    data_sim[[i]] <- sampling_f()
-    coords_sim[[i]] <- st_coordinates(data_sim[[i]])
-    if(scale_to_km) coords_sim[[i]] <- coords_sim[[i]]/1000
-    if (!isTRUE(st_crs(data_sim[[i]]) == st_crs(pred_grid))) {
-      pred_grid <- st_transform(pred_grid, st_crs(data_sim[[i]]))
-      if(i==1) {
-        sim_crs_data <- st_crs(data_sim[[i]])
-      }
-    } else {
-      if(i==1) {
-        sim_crs_data <- sim_crs
-      }
-    }
-
-    # Find nearest neighbor in 'pred_grid' for each feature in 'data'
-    nearest_indices <- st_nearest_feature(data_sim[[i]], pred_grid)
-
-    # Extract variables from the nearest features in 'pred_grid'
-    pred_grid_vars <- st_drop_geometry(pred_grid[nearest_indices, ])
-
-    # Bind the extracted variables to 'data'
-    data_sim[[i]] <- cbind(data_sim[[i]], pred_grid_vars)
-  }
-
-  kappa <- inter_f$gp_spec$kappa
-  if(kappa < 0) stop("kappa must be positive.")
-
-  if(family != "gaussian" & family != "binomial" &
-     family != "poisson") stop("'family' must be either 'gaussian', 'binomial'
-                               or 'poisson'")
-
-  inter_lt_f <- inter_f
-  inter_lt_f$pf <- update(inter_lt_f$pf, NULL ~.)
-  D <- list()
-  n <- list()
-  for(i in 1:n_sim) {
-    mf <- model.frame(inter_lt_f$pf,data=data_sim[[i]], na.action = na.fail)
-
-
-    # Extract covariates matrix
-    D[[i]] <- as.matrix(model.matrix(attr(mf,"terms"),data=data_sim[[i]]))
-    n[[i]] <- nrow(D[[i]])
-  }
-
-
-  if(length(inter_f$re_spec) > 0) {
-    stop("In the current impletementation of 'simulate_surface' the addition of random effects
-        with re() is not supported")
-  }
-  mf_pred <- model.frame(inter_lt_f$pf,data=pred_grid, na.action = na.fail)
-  D_pred <- as.matrix(model.matrix(attr(mf_pred,"terms"),data=pred_grid))
-  if(ncol(D_pred)!=ncol(D[[1]])) stop("the provided variables in 'grid_pred' do not match the number of explanatory variables used to fit the model.")
-
-  # Number of covariates
-  p <- ncol(D[[1]])
-
-  beta <- par0$beta
-
-  if(length(beta)!=p) stop("The values passed to 'beta' do not match the variables in 'grid_pred'")
-
-  sigma2 <- par0$sigma2
-  phi <- par0$phi
-
-  if(is.null(par0$tau2)) {
-    tau2 <- 0
-  } else {
-    tau2 <- par0$tau2
-  }
-
-  if(is.null(fix_var_me)) {
-    sigma2_me <- 0
-  } else {
-    sigma2_me <- par0$sigma2_me
-  }
-
-  ID_coords <- sapply(1:n_sim, function(i) 1:n[[i]])
-
-  grid_pred <- st_coordinates(pred_grid)
-  if(scale_to_km) grid_pred <- grid_pred/1000
-  n_pred <- nrow(grid_pred)
-
-  # Simulate on the grid
-  # Simulate S
-  Sigma <- sigma2*matern_correlation(dist(grid_pred), phi = phi, kappa = kappa,
-                             return_sym_matrix = TRUE)
-  if(nugget_over_grid) {
-    diag(Sigma) <- diag(Sigma) + tau2
-  }
-  Sigma_sroot <- t(chol(Sigma))
-
-  S_sim <- sapply(1:n_sim, function(i) Sigma_sroot%*%rnorm(n_pred))
-
-  sim_columns <- paste0("sim_", 1:n_sim)
-  S_sim_df <- as.data.frame(S_sim)
-  colnames(S_sim_df) <- sim_columns
-
-  # Combine simulations with grid_pred
-  S_sim <- cbind(grid_pred, S_sim_df)
-  S_sim <- st_sf(S_sim, geometry = st_geometry(pred_grid))
-
-  coords_tot <- list()
-  out <- list()
-
-  for(i in 1:n_sim) {
-    coords_tot[[i]] <- rbind(coords_sim[[i]], grid_pred)
-    ind_data <- 1:n[[i]]
-    ind_pred <- (n[[i]]+1):(n[[i]]+n_pred)
-
-    D_tot <- rbind(D[[i]], D_pred)
-
-    # Find the nearest features in grid_pred_with_sim for each location in data_sim[[i]]
-    nearest_indices <- st_nearest_feature(data_sim[[i]],
-                                          S_sim)
-
-    # Extract the i-th simulation values
-    sim_column <- paste0("sim_", i)  # Column name for the i-th simulation
-    S_sim_data <- S_sim[nearest_indices, sim_column, drop = TRUE]
-
-    if(tau2>0 & !nugget_over_grid) {
-      S_sim_data <- S_sim_data + sqrt(tau2)*rnorm(n[[i]])
-    }
-    # Linear predictor
-    if(include_covariates) {
-      eta_sim_tot <- D_tot%*%beta +
-        c(S_sim_data, S_sim[[sim_column]])
-    } else {
-      eta_sim_tot <- c(S_sim_data, S_sim[[sim_column]])
-    }
-
-    data_sim[[i]]$y <- NA
-
-    if(family=="gaussian") {
-
-      data_sim[[i]]$y <- eta_sim_tot[1:n[[i]]] + sqrt(sigma2_me)*rnorm(n)
-
-    } else if(family=="binomial") {
-      prob_i <- exp(eta_sim_tot[1:n[[i]]])/(1+exp(eta_sim_tot[1:n[[i]]]))
-      data_sim[[i]]$y <- rbinom(n[[i]], size = data_sim[[i]]$units_m,
-                                prob = prob_i)
-    } else if(family=="poisson") {
-      mean_i <- data_sim[[i]]$units_m*exp(eta_sim_tot[1:n[[i]]])
-      data_sim[[i]]$y <- rpois(n[[i]], lambda = mean_i)
-    }
-
-    data_sim[[i]]$lp_data <- S_sim_data
-
-    pred_grid[[paste0("lp_",sim_column)]] <- eta_sim_tot[-(1:n[[i]])]
-
-  }
-
-  out$data_sim <- data_sim
-  out$crs <- sim_crs_data
-  out$lp_grid_sim <- pred_grid
-  out$include_covariates <- include_covariates
-  out$nugget_over_grid <- nugget_over_grid
-  out$include_cov_offset <- include_cov_offset
-  out$par0 <- par0
-  out$family <- family
-  class(out) <- "RiskMap_simulation"
-  return(out)
-}
-
 ##' Plot simulated surface data for a given simulation
 ##'
-##' This function plots the simulated surface data for a specific simulation from the result of `simulate_surface`. It visualizes the linear predictor values on a raster grid along with the actual data points.
+##' Plots the linear predictor from [simulate_glgpm()] on a regular grid,
+##' with sampling locations overlaid when replicated data are available.
 ##'
-##' @param surf_obj The output object from `simulate_surface`, containing both simulated data (`data_sim`) and predicted grid simulations (`lp_grid_sim`).
+##' @param surf_obj Output from [simulate_glgpm()] including a surface.
 ##' @param sim The simulation index to plot.
 ##' @param ... Additional graphical parameters to be passed to the plotting function of the `terra` package.
 ##'
 ##' @return A plot of the simulation results.
 ##'
-##' @importFrom stars st_rasterize
+##' @importFrom terra rast rasterize vect
 ##'
 ##' @export
 plot_sim_surf <-  function(surf_obj, sim, ...) {
 
-  sf_object <- surf_obj$lp_grid_sim
-  value_column <- paste0("lp_sim_",sim)
-  r <- rast(st_rasterize(sf_object[,c("x",value_column)]))
-  r[r == 0] <- NA
+  sf_object <- simulated_surface(surf_obj, sim)
+
+  # Points are assumed to fall on a regular lattice (e.g. from create_grid());
+  # infer its cell size from the smallest gap between distinct coordinates,
+  # and pad the extent by half a cell so points land at cell centres.
+  coords <- st_coordinates(sf_object)
+  cellsize <- c(min(diff(sort(unique(coords[, "X"])))),
+               min(diff(sort(unique(coords[, "Y"])))))
+  template <- rast(
+    xmin = min(coords[, "X"]) - cellsize[1] / 2,
+    xmax = max(coords[, "X"]) + cellsize[1] / 2,
+    ymin = min(coords[, "Y"]) - cellsize[2] / 2,
+    ymax = max(coords[, "Y"]) + cellsize[2] / 2,
+    resolution = cellsize,
+    crs = st_crs(sf_object)$wkt
+  )
+  r <- rasterize(vect(sf_object), template, field = "linear_predictor")
 
   plot(r, main = paste("Simulation no.", sim), ...)
-  points(st_coordinates(surf_obj$data_sim[[sim]]), pch = 20)
+  if (!is.null(surf_obj$locations$data)) {
+    points(st_coordinates(surf_obj$locations$data), pch = 20)
+  }
 
 }
 
 ##' @title Assess Simulations
 ##'
-##' @description This function evaluates the performance of models based on simulation results from the `simulate_surface` function.
+##' @description Evaluates models using joint data and surface simulations.
 ##'
-##' @param obj_sim An object of class `RiskMap_simulation`, obtained as an output from the `simulate_surface` function.
+##' @param obj_sim Output from [simulate_glgpm()] with both data and surface.
+##'   The current assessment interface supports generating models without
+##'   grouped `re()` effects or custom inverse links.
 ##' @param models A named list of models to be evaluated.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param spatial_scale The scale at which predictions are assessed, either `"grid"` or `"area"`.
@@ -2249,7 +2295,7 @@ assess_simulation <- function(obj_sim,
                        categories= NULL) {
 
   if (!inherits(obj_sim, "RiskMap_simulation")) {
-    stop("'obj_sim' must be an object of class 'RiskMap_simulation' obtained as an output from the 'simulate_surface' function")
+    stop("'obj_sim' must be output from simulate_glgpm().")
   }
   if (length(setdiff(pred_objective, c("mse","classify")))>0) {
     stop(paste("Invalid value for pred_objective. Allowed values are:", paste(c("mse","classify"), collapse = ", ")))
@@ -2265,12 +2311,11 @@ assess_simulation <- function(obj_sim,
     check_data(boundaries, "polygon")
   }
 
-  # Determine the binomial denominator column, if relevant to the family
-  units_m <- NULL
-  if (obj_sim$family == "binomial") {
-    stopifnot(!is.null(obj_sim$data_sim[[1]]$units_m))
-    units_m <- obj_sim$data_sim[[1]]$units_m
+  obj_sim <- simulation_assessment_data(obj_sim)
+  if (!is.function(f_grid_target)) {
+    stop("Provide 'f_grid_target' to define the target on the linear-predictor scale.")
   }
+
   if(any(pred_objective=="classify")) {
     if(is.null(categories)) stop("if pred_objective='class', a value for 'categories' must be specified")
     if (length(categories) < 3) {
@@ -2330,18 +2375,21 @@ assess_simulation <- function(obj_sim,
       if(messages) message("Processing simulation no.", j)
       f_i <- update(models[[i]], y ~ .)
       if(messages) message("Estimation")
-      fits[[paste(model_names[i])]][[j]] <- glgpm(formula = f_i,
-                                                  den = units_m,
-                                                  family = obj_sim$family,
-                                                  data = obj_sim$data_sim[[j]],
-                                                  control_mcmc = control_mcmc,
-                                                  messages = FALSE)
+      refit_args <- list(formula = f_i, family = obj_sim$family,
+                         data = obj_sim$data_sim[[j]],
+                         distance_units = obj_sim$distance_units,
+                         control_mcmc = control_mcmc, messages = FALSE)
+      if (obj_sim$family != "gaussian") refit_args$denominator <- quote(units_m)
+      fits[[paste(model_names[i])]][[j]] <- do.call(glgpm, refit_args)
 
       if(messages) message("Prediction over the grid")
       preds[[paste(model_names[i])]][[j]] <-
         setup_prediction(fits[[paste(model_names[i])]][[j]],
                        grid_pred = st_as_sfc(obj_sim$lp_grid_sim),
                        predictors = predictors_i,
+                       pred_cov_offset = if (is.null(if_i$offset)) NULL else
+                         obj_sim$lp_grid_sim[[if_i$offset]],
+                       control_mcmc = control_mcmc,
                        type = type, messages = FALSE)
     }
   }
@@ -2392,8 +2440,8 @@ assess_simulation <- function(obj_sim,
       out$pred_objective$classify[[model_names[i]]]$CC <- rep(NA,n_sim)
     }
   }
-  lp_true_sim <- st_drop_geometry(obj_sim$lp_grid_sim[, grepl("lp_sim",
-                                                              names(obj_sim$lp_grid_sim))])
+  lp_true_sim <- as.matrix(st_drop_geometry(obj_sim$lp_grid_sim[, grepl("^lp_sim_[0-9]+$",
+                                                                       names(obj_sim$lp_grid_sim))]))
 
   if(spatial_scale == "grid") {
     true_target_sim <- f_grid_target(lp_true_sim)

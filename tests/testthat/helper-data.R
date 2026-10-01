@@ -5,7 +5,7 @@ coords <- cbind(runif(n, 0, 10000), runif(n, 0, 10000))
 data <- data.frame(x = coords[,1],
                    z = coords[,2],
                    cov = rnorm(n),
-                   den =  sample(5:20, n, replace = TRUE),
+                   denominator =  sample(5:20, n, replace = TRUE),
                    offset = rnorm(n),
                    i = rep(1:(n/2), each = 2),
                    j = rep(1:2, each = n/2))
@@ -45,13 +45,13 @@ gaussian_intercept_model <- glgpm(y ~ gp(),
 
 eta <- 0.2 + 0.3 * data$cov + S
 p <- plogis(eta)
-data$y <- rbinom(n, size = data$den, prob = p)
+data$y <- rbinom(n, size = data$denominator, prob = p)
 binomial_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
 binomial_model <- glgpm(y ~ cov + gp() + re(i),
                         data = binomial_data,
                         family = "binomial",
-                        den = den,
+                        denominator = denominator,
                         control_mcmc = control_mcmc,
                         messages = FALSE)
 
@@ -62,7 +62,7 @@ poisson_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32637)
 poisson_model <- glgpm(y ~ cov + gp() + re(i),
                        data = poisson_data,
                        family = "poisson",
-                       den = den,
+                       denominator = denominator,
                        control_mcmc = control_mcmc,
                        return_samples = TRUE,
                        messages = FALSE)
@@ -71,3 +71,12 @@ hull <- create_convex_hull(gaussian_data)
 grid <- create_grid(hull, 3)
 squares <- st_make_grid(hull, n = c(2, 2))
 areal <- st_sf(geometry = squares)
+
+cross_validation <- assess_prediction(
+  list(model_a = gaussian_model,
+       model_b = gaussian_offset_model),
+  method = "cluster",
+  fold = 2,
+  plot_fold = FALSE,
+  messages = FALSE
+)

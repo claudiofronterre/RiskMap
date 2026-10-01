@@ -24,7 +24,7 @@ export(matern_hessian_phi)
 export(maxim_integrand)
 export(plot_AnPIT)
 export(plot_mcmc)
-export(plot_score)
+export(plot_metric)
 export(plot_sim_surf)
 export(plot_variogram)
 export(predict_areal_target)
@@ -32,9 +32,13 @@ export(predict_grid_target)
 export(propose_utm)
 export(re)
 export(set_control_mcmc)
+export(set_control_mcml)
 export(setup_prediction)
 export(simulate_glgpm)
-export(simulate_surface)
+export(simulated_data)
+export(simulated_surface)
+export(simulated_values)
+export(specify_glgpm)
 export(summarise_distance)
 export(to_table)
 export(update_predictors)
@@ -49,6 +53,7 @@ importFrom(Matrix,
   solve,
   sparseMatrix
 )
+importFrom(Rcpp,evalCpp)
 importFrom(dplyr,
   "%>%",
   first,
@@ -61,6 +66,7 @@ importFrom(graphics,
   points
 )
 importFrom(gridExtra,grid.arrange)
+importFrom(knitr,kable)
 importFrom(numDeriv,
   grad,
   hessian
@@ -72,14 +78,15 @@ importFrom(spatialsample,
   autoplot,
   spatial_clustering_cv
 )
-importFrom(stars,st_rasterize)
 importFrom(terra,
   as.data.frame,
   match,
   plot,
-  rast
+  rast,
+  rasterize,
+  vect
 )
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)
 importFrom(utils,flush.console)
-importFrom(xtable,xtable)
+useDynLib(RiskMap, .registration = TRUE)

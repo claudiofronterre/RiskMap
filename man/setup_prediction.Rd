@@ -10,7 +10,7 @@ setup_prediction(
   predictors = NULL,
   re_predictors = NULL,
   pred_cov_offset = NULL,
-  control_sim = set_control_mcmc(),
+  control_mcmc = set_control_mcmc(),
   type = "marginal",
   messages = TRUE
 )
@@ -33,7 +33,7 @@ Not supported if \code{grid_pred} is a list.}
 \item{pred_cov_offset}{Optional numeric vector containing covariate offsets at prediction locations.
 Must be provided if there is an offset included in the model and not supported if \code{grid_pred} is a list.}
 
-\item{control_sim}{Control parameters from \code{\link{set_control_mcmc}}.}
+\item{control_mcmc}{Control parameters from \code{\link{set_control_mcmc}}.}
 
 \item{type}{Whether the predictions are \code{"marginal"} or \code{"joint"}. \code{"marginal"} predictions are less
 computationally expensive than \code{"joint"} predictions but cannot be used to predict areal targets.

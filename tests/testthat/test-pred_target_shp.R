@@ -4,8 +4,8 @@ test_that("predict_areal_target produces expected output with default arguments"
 
   gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
   gaussian_offset_grid <- setup_prediction(gaussian_offset_model, type = "joint")
-  binomial_grid <- setup_prediction(binomial_model, control_sim = control_mcmc, type = "joint")
-  poisson_grid <- setup_prediction(poisson_model, control_sim = control_mcmc, type = "joint")
+  binomial_grid <- setup_prediction(binomial_model, control_mcmc = control_mcmc, type = "joint")
+  poisson_grid <- setup_prediction(poisson_model, control_mcmc = control_mcmc, type = "joint")
 
   result <- predict_areal_target(gaussian_grid, areal)
   expect_setequal(names(result), expected_output)
@@ -97,5 +97,23 @@ test_that("predict_areal_target errors on wrong list-mode target orientation", {
       messages = FALSE
     ),
     "expected a 2 x 3 matrix"
+  )
+})
+
+test_that("plot.RiskMap_predict_areal_target defaults to the first target and validates target/summary #143", {
+
+  gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
+  result <- predict_areal_target(gaussian_grid, areal, messages = FALSE)
+
+  expect_no_error(plot(result))
+  expect_no_error(plot(result, target = result$f_target[1]))
+
+  expect_error(
+    plot(result, target = "not_a_target"),
+    "'target' must be one of"
+  )
+  expect_error(
+    plot(result, summary = "not_a_summary"),
+    "'summary' must be one of"
   )
 })
