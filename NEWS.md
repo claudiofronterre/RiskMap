@@ -19,6 +19,7 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `matern.hessian.phi` | `matern_hessian_phi` |
 | `matern_cor` | `matern_correlation` |
 | `maxim.integrand` | `maxim_integrand` |
+| `plot_score` | `plot_metric` |
 | `plot_s_variogram` | `plot_variogram` |
 | `pred_over_grid` | `setup_prediction` |
 | `pred_target_grid` | `predict_grid_target` |
@@ -68,11 +69,27 @@ in `predict_areal_target()` have similarly been renamed to `areal_target` and
 `return_boundaries`. `predict_areal_target()`'s returned `shp` component is now
 named `boundaries`.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
+- `"user"` has been added as an option to `method` the parameter of
+`assess_prediction()` replacing the previous behaviour where providing the
+`user_split` parameter overrode any provided `method`
+- In `assess_prediction()`, `n_size` has been renamed to `size` (for consistency
+with `iter` and `fold`) and `which_metric` has been renamed to `metrics`.
+Parameters have also been reordered: mandatory arguments first, then those
+required per `method` (in the order `"cluster"`, `"regularized"`, `"user"`),
+then the remaining optional arguments.
+- `assess_prediction()` now honours a `seed` set on its `control_mcmc` argument
+to make the random splits generated for `method = "cluster"` or `"regularized"`
+reproducible.
+- `assess_prediction()`'s `plot_fold = TRUE` plots are now consistent across
+`method`s: `"cluster"` is unchanged (`spatialsample::autoplot()`), while
+`"user"` and `"regularized"` now plot the testing and training datasets.
 - In `plot.RiskMap_predict_grid_target()` and `plot.RiskMap_predict_areal_target()`,
 `which_target`/`which_summary` have been renamed to `target`/`summary`, for
 consistency elsewhere in the package. `target` now defaults to `NULL`, which
 plots the first available target; an unrecognised `target` or `summary` now
 raises an informative error instead of a blank plot.
+- In `plot_metric()`; its `which_score`/`which_model`
+parameters have been renamed to `metric`/`model`.
 - The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to
 `TRUE` to estimate it.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian

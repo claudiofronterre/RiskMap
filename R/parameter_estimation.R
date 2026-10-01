@@ -73,13 +73,9 @@
 ##' Each update draws a new importance sample around the preceding estimate and
 ##' uses a distinct reproducible seed when `control_mcmc$seed` is set.
 ##'
-##' The `start_pars` argument allows for specifying starting values for the model parameters.
-##' Explicitly supplied values remain authoritative. For canonical binomial or
-##' Poisson models, a fully automatic fit compares the existing GLM-based
-##' start with a transformed-Gaussian fit having the same spatial, nugget and
-##' random-effect structure, and selects the candidate with the larger finite
-##' Laplace approximation. Any failure retains the existing start.
-##' Selection diagnostics are stored in the `"starting_values"` attribute.
+##' The `start_pars` argument allows starting values to be supplied explicitly.
+##' Otherwise, binomial and Poisson models compare two automatic candidates
+##' and use the one with the better Laplace approximation.
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
@@ -315,6 +311,32 @@ glgpm <- function(formula,
          be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
   }
 
+  # For the Gaussian family, an observation-level random effect is perfectly
+  # confounded with an estimated measurement-error variance. When there is
+  # only one observation per location, it is also confounded with an estimated
+  # nugget. Fixed variance components do not create this identifiability issue.
+  if (family == "gaussian" && n_re > 0) {
+    n_levels_re <- vapply(re_unique, length, integer(1))
+    is_saturated_re <- n_levels_re == n
+    confounded_with_me <- is.null(fix_var_me)
+    confounded_with_nugget <- isTRUE(fix_tau2) && all(table(ID_coords) == 1)
+
+    if (any(is_saturated_re) && (confounded_with_me || confounded_with_nugget)) {
+      confounded_component <- if (confounded_with_me && confounded_with_nugget) {
+        "the measurement error and nugget"
+      } else if (confounded_with_me) {
+        "the measurement error"
+      } else {
+        "the nugget"
+      }
+      stop("The random effect(s) '",
+           paste(names_re[is_saturated_re], collapse = "', '"),
+           "' have one level per observation, which cannot be distinguished ",
+           "from ", confounded_component, " when 'family' is 'gaussian'. ",
+           "Drop the random effect or fix the confounded variance component(s).")
+    }
+  }
+
   if(messages) message("Distances between locations are computed in ", distance_units, " ")
 
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
@@ -396,11 +418,9 @@ glgpm <- function(formula,
     selected = if (user_supplied_start) "user" else "current",
     current_laplace = NA_real_,
     transformed_laplace = NA_real_,
-    elapsed_seconds = 0,
     fallback_reason = NULL
   )
   if (not_gaussian && !user_supplied_start) {
-    selection_start <- proc.time()[["elapsed"]]
     selection <- select_nongaussian_start(
       current = start_pars,
       y = y,
@@ -421,8 +441,6 @@ glgpm <- function(formula,
     )
     start_pars <- selection$start
     starting_diagnostics <- selection$diagnostics
-    starting_diagnostics$elapsed_seconds <-
-      proc.time()[["elapsed"]] - selection_start
   }
 
   spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
@@ -443,16 +461,19 @@ glgpm <- function(formula,
         check_positive_number(start_pars[["sigma2_me"]])
       }
     }
+    gaussian_layout <- cov_par_layout(ncol(D), fix_tau2 = fix_tau2,
+                                      sigma2_me = is.null(fix_var_me), n_re = n_re)
     res <- glgpm_lm(y = y-cov_offset, D, fitting_coords,
             kappa = inter_f$gp_spec$kappa,
             ID_coords, ID_re, s_unique, re_unique,
             fix_var_me, fix_tau2,
             start_beta = start_pars[["beta"]],
-            start_cov_pars = c(start_pars[["sigma2"]],
-                               fitting_start_phi,
-                               start_pars[["tau2"]],
-                               start_pars[["sigma2_me"]],
-                               start_pars[["sigma2_re"]]),
+            start_cov_pars = pack_cov_pars(gaussian_layout,
+                                           sigma2    = start_pars[["sigma2"]],
+                                           phi       = fitting_start_phi,
+                                           nu2       = start_pars[["tau2"]],
+                                           sigma2_me = start_pars[["sigma2_me"]],
+                                           sigma2_re = start_pars[["sigma2_re"]]),
             messages = messages)
     res["mcml_history"] <- list(NULL)
     res["mcml_converged"] <- list(NULL)
@@ -579,15 +600,75 @@ glgpm <- function(formula,
 }
 
 
+##' Canonical working-scale covariance-parameter layout
+##'
+##' Single source of truth for where each non-beta parameter sits in the flat
+##' numeric vector `glgpm_lm()`/`glgpm_nong()` optimise over: `sigma2`, `phi`,
+##' optionally `nu2` (only when the nugget is estimated), optionally
+##' `sigma2_me` (Gaussian models only, when the measurement error variance is
+##' not fixed), and finally one entry per unstructured random effect.
+##' Fixed-effect coefficients always occupy `1:p` and are handled separately.
+##'
+##' @param p Number of fixed-effect coefficients.
+##' @param fix_tau2 Logical; `TRUE` when the nugget is estimated, so `nu2` is
+##' a free parameter.
+##' @param sigma2_me Logical; `TRUE` when the (Gaussian) measurement-error
+##' variance is estimated.
+##' @param n_re Number of unstructured random effects (`0` for none).
+##' @return A list with `index` (a named list of integer positions: `beta`,
+##' `sigma2`, `phi`, and - only when applicable - `nu2`, `sigma2_me`,
+##' `sigma2_re`) and `length` (the total vector length, including `beta`).
+##' @noRd
+cov_par_layout <- function(p, fix_tau2, sigma2_me = FALSE, n_re = 0L) {
+  index <- list(beta = seq_len(p), sigma2 = p + 1L, phi = p + 2L)
+  idx   <- p + 2L
+
+  if (isTRUE(fix_tau2)) {
+    idx <- idx + 1L
+    index$nu2 <- idx
+  }
+  if (isTRUE(sigma2_me)) {
+    idx <- idx + 1L
+    index$sigma2_me <- idx
+  }
+  if (n_re > 0) {
+    index$sigma2_re <- idx + seq_len(n_re)
+    idx <- idx + n_re
+  }
+
+  list(index = index, length = idx)
+}
+
+##' Pack working-scale starting values using a `cov_par_layout()` layout
+##'
+##' @param layout A layout from `cov_par_layout()`.
+##' @param sigma2,phi Starting values (always required).
+##' @param nu2,sigma2_me,sigma2_re Starting values for the parameters the
+##' layout includes; only consulted when `layout$index` has a matching entry,
+##' so passing e.g. `sigma2_me` when the layout has no `sigma2_me` slot is
+##' silently ignored (matching this family/specification not using it).
+##' @return A numeric vector of the non-beta working-scale parameters, in
+##' `layout`'s order - the same contract `start_cov_pars` has always had.
+##' @noRd
+pack_cov_pars <- function(layout, sigma2, phi, nu2 = NULL, sigma2_me = NULL, sigma2_re = NULL) {
+  p   <- length(layout$index$beta)
+  out <- numeric(layout$length - p)
+
+  out[layout$index$sigma2 - p] <- sigma2
+  out[layout$index$phi - p]    <- phi
+  if (!is.null(layout$index$nu2))       out[layout$index$nu2 - p]       <- nu2
+  if (!is.null(layout$index$sigma2_me)) out[layout$index$sigma2_me - p] <- sigma2_me
+  if (!is.null(layout$index$sigma2_re)) out[layout$index$sigma2_re - p] <- sigma2_re
+
+  out
+}
+
 ##' Structure the raw parameter vector returned by the optimizer
 ##'
 ##' Splits the working-scale (i.e. not yet exponentiated) vector of estimates
 ##' returned by `glgpm_lm()`/`glgpm_nong()` into a named list, using the same
-##' order in which the fitting engines lay the parameters out in `par`:
-##' regression coefficients, `sigma2`, `phi`, optionally `nu2` (`= tau2 /
-##' sigma2`, only when the nugget is estimated), optionally `sigma2_me`
-##' (Gaussian models only, when the measurement error variance is not fixed),
-##' and finally one entry per unstructured random effect.
+##' `cov_par_layout()` those fitting engines build their `ind_*` positions
+##' from, so this can never drift out of step with them (see #135/#117).
 ##'
 ##' A flat named vector (as used prior to #92) can't safely be keyed by
 ##' parameter name: a covariate literally named e.g. `"sigma2"` collides with
@@ -602,23 +683,21 @@ glgpm <- function(formula,
 ##'
 ##' @noRd
 structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_names = NULL) {
-  p    <- length(beta_names)
-  beta <- par[seq_len(p)]
+  p      <- length(beta_names)
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = sigma2_me,
+                           n_re = length(re_names))
+
+  beta <- par[layout$index$beta]
   names(beta) <- beta_names
 
-  out <- list(beta = beta, sigma2 = unname(par[p + 1]), phi = unname(par[p + 2]))
-  idx <- p + 2
+  out <- list(beta = beta,
+              sigma2 = unname(par[layout$index$sigma2]),
+              phi    = unname(par[layout$index$phi]))
 
-  if (isTRUE(fix_tau2)) {
-    idx <- idx + 1
-    out$nu2 <- unname(par[idx])
-  }
-  if (isTRUE(sigma2_me)) {
-    idx <- idx + 1
-    out$sigma2_me <- unname(par[idx])
-  }
-  if (!is.null(re_names)) {
-    sigma2_re <- unname(par[(idx + 1):(idx + length(re_names))])
+  if (!is.null(layout$index$nu2))       out$nu2       <- unname(par[layout$index$nu2])
+  if (!is.null(layout$index$sigma2_me)) out$sigma2_me <- unname(par[layout$index$sigma2_me])
+  if (!is.null(layout$index$sigma2_re)) {
+    sigma2_re <- unname(par[layout$index$sigma2_re])
     names(sigma2_re) <- re_names
     out$sigma2_re <- sigma2_re
   }
@@ -1045,7 +1124,6 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     selected = "current",
     current_laplace = NA_real_,
     transformed_laplace = NA_real_,
-    elapsed_seconds = NA_real_,
     fallback_reason = NULL
   )
   ineligible_reason <- if (!is.null(invlink)) {
@@ -1231,23 +1309,14 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   C_g_m <- Matrix::t(C_g)%*%C_g
   C_g_m <- forceSymmetric(C_g_m)
 
-  ind_beta <- 1:p
 
-  ind_sigma2 <- p + 1
-  ind_phi <- p + 2
-  next_index <- ind_phi
-
-  if (isTRUE(fix_tau2)) {
-    next_index <- next_index + 1
-    ind_nu2 <- next_index
-  }
-  if (is.null(fix_var_me)) {
-    next_index <- next_index + 1
-    ind_omega2 <- next_index
-  }
-  if (n_re > 0) {
-    ind_sigma2_re <- next_index + seq_len(n_re)
-  }
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = is.null(fix_var_me), n_re = n_re)
+  ind_beta   <- layout$index$beta
+  ind_sigma2 <- layout$index$sigma2
+  ind_phi    <- layout$index$phi
+  if (!is.null(layout$index$nu2))       ind_nu2       <- layout$index$nu2
+  if (!is.null(layout$index$sigma2_me)) ind_omega2    <- layout$index$sigma2_me
+  if (!is.null(layout$index$sigma2_re)) ind_sigma2_re <- layout$index$sigma2_re
 
 
   log.lik <- function(par) {
@@ -2455,7 +2524,6 @@ maxim_integrand <- function(
 ##'
 ##' @seealso \code{\link{maxim_integrand}}
 ##'
-##' @export
 laplace_sampling_mcmc <- function(y,
                                   units_m,
                                   mu,
@@ -3105,22 +3173,15 @@ glgpm_nong <-
 
     S_tot_samples <- simulation$samples$S
 
-    p <- ncol(D)
-    ind_beta   <- 1:p
-    ind_sigma2 <- p + 1
-    ind_phi    <- p + 2
-
-    if (!isTRUE(fix_tau2)) {
-      if (n_re > 0) {
-        ind_sigma2_re <- (p + 3):(p + 2 + n_re)
-        n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
-      }
-    } else {
-      ind_nu2 <- p + 3
-      if (n_re > 0) {
-        ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-        n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
-      }
+    p      <- ncol(D)
+    layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = FALSE, n_re = n_re)
+    ind_beta   <- layout$index$beta
+    ind_sigma2 <- layout$index$sigma2
+    ind_phi    <- layout$index$phi
+    if (!is.null(layout$index$nu2))       ind_nu2       <- layout$index$nu2
+    if (!is.null(layout$index$sigma2_re)) ind_sigma2_re <- layout$index$sigma2_re
+    if (n_re > 0) {
+      n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
     }
 
     if (n_re > 0) {

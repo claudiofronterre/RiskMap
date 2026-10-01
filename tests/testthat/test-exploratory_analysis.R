@@ -180,25 +180,25 @@ test_that("variogram produces errors", {
   test_that("max_dist must be numeric", {
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = "100"),
-      "'max_dist' must be a positive numeric value"
+      "'max_dist' must be a single finite number strictly between 0 and Inf"
     )
   })
 
   test_that("max_dist must have length 1", {
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = c(10, 20)),
-      "'max_dist' must be a positive numeric value"
+      "'max_dist' must be a single finite number strictly between 0 and Inf"
     )
   })
 
   test_that("max_dist must be strictly positive", {
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = 0),
-      "'max_dist' must be a positive numeric value"
+      "'max_dist' must be a single finite number strictly between 0 and Inf"
     )
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = -5),
-      "'max_dist' must be a positive numeric value"
+      "'max_dist' must be a single finite number strictly between 0 and Inf"
     )
   })
 

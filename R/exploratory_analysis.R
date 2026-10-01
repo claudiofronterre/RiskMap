@@ -231,16 +231,12 @@ variogram <- function(data,
   }
 
   check_positive_integer(n_bins, "n_bins")
-  if (!is.null(max_dist) && (length(max_dist) != 1L || !is.numeric(max_dist) ||
-                            !is.finite(max_dist) || max_dist <= 0)) {
-    stop("'max_dist' must be a positive numeric value")
+  if (!is.null(max_dist)) {
+    check_range(max_dist, min = 0, max = Inf, allow_equal = FALSE,
+                name = "max_dist")
   }
   check_positive_integer(n_permutations, "n_permutations", allow_zero = TRUE)
-  if (!is.numeric(level) || length(level) != 1L || !is.finite(level) ||
-      level <= 0 || level >= 1) {
-    stop("'level' must be a single number strictly between zero and one",
-         call. = FALSE)
-  }
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
   if (n_permutations > 0L &&
       n_permutations + 1L < ceiling(1 / (1 - level))) {
     stop("'n_permutations' is too small to construct a global envelope at ",

@@ -16,6 +16,14 @@ test_that("glgpm produces errors", {
     "When there is only one observation per location"
   )
 
+  saturated_data <- gaussian_data
+  saturated_data$row_id <- seq_len(nrow(saturated_data))
+
+  expect_error(
+    glgpm(y ~ cov + gp() + re(row_id), data = saturated_data, family = "gaussian", messages = FALSE),
+    "have one level per observation.*'gaussian'"
+  )
+
   expect_error(
     glgpm(y ~ cov + gp(), data = data, family = "gaussian"),
     "'data' must be of class 'sf'"
@@ -124,7 +132,7 @@ test_that("glgpm produces errors", {
   expect_error(set_control_mcml(max_iterations = 0), "positive integer")
   expect_error(set_control_mcml(tolerance = 0), "positive number")
   expect_error(set_control_mcml(tolerance = Inf), "positive number")
-  expect_error(set_control_mcml(min_relative_ess = 2), "between zero and one")
+  expect_error(set_control_mcml(min_relative_ess = 2), "between 0 and 1")
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
@@ -232,6 +240,57 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "gaussian")
   expect_length(fit_re$re, 1)
+
+  fit_re2 <- glgpm(y ~ cov + gp() + re(i, j),
+                  data = gaussian_data,
+                  family = "gaussian",
+                  messages = FALSE)
+
+  expect_s3_class(fit_re2, "RiskMap")
+  expect_length(fit_re2$re, 2)
+})
+
+test_that("glgpm fits gaussian models combining re() with a fixed measurement error variance #117", {
+
+  fit <- glgpm(y ~ cov + gp() + re(i),
+              data = gaussian_data,
+              family = "gaussian",
+              fix_var_me = 0.1,
+              messages = FALSE)
+
+  expect_s3_class(fit, "RiskMap")
+  expect_setequal(names(fit), expected_output)
+  expect_true(all(is.finite(unlist(fit$estimate))))
+
+  fit_nugget <- glgpm(y ~ cov + gp(nugget = TRUE) + re(i),
+                      data = gaussian_data,
+                      family = "gaussian",
+                      fix_var_me = 0.1,
+                      messages = FALSE)
+
+  expect_s3_class(fit_nugget, "RiskMap")
+  expect_true(all(is.finite(unlist(fit_nugget$estimate))))
+})
+
+
+test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provided", {
+  saturated_data <- gaussian_data
+  saturated_data$row_id <- seq_len(nrow(saturated_data))
+
+  fit <- glgpm(formula = y ~ cov + gp() + re(row_id), data = saturated_data,
+               family = "gaussian", messages = FALSE, fix_var_me = 0.1)
+
+  expect_s3_class(fit, "RiskMap")
+  expect_setequal(names(fit$estimate), c("beta", "sigma2", "phi", "sigma2_re"))
+
+  expect_error(
+    glgpm(formula = y ~ cov + gp(nugget = TRUE) + re(row_id),
+          data = saturated_data,
+          family = "gaussian",
+          messages = FALSE,
+          fix_var_me = 0.1),
+    "cannot be distinguished from the nugget"
+  )
 })
 
 test_that("glgpm is invariant to fixed-effect covariate scale", {
@@ -287,7 +346,6 @@ test_that("glgpm produces expected output for binomial models", {
                 c("current", "transformed_gaussian"))
   expect_true(is.finite(starting_values$current_laplace))
   expect_true(is.finite(starting_values$transformed_laplace))
-  expect_gte(starting_values$elapsed_seconds, 0)
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = binomial_data,
