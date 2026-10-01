@@ -159,3 +159,78 @@ test_that("a covariate named after a parameter no longer corrupts estimates (#92
   ## delta-method path, so check that's unaffected by the name clash too
   expect_equal(summary(fit_clash)$sp, summary(fit_ref)$sp, ignore_attr = TRUE)
 })
+
+test_that("cov_par_layout() places sigma2_me before sigma2_re, consistently", {
+  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, sigma2_me = TRUE, n_re = 2)
+
+  expect_equal(layout$index$beta, 1:2)
+  expect_equal(layout$index$sigma2, 3)
+  expect_equal(layout$index$phi, 4)
+  expect_equal(layout$index$sigma2_me, 5)
+  expect_equal(layout$index$sigma2_re, c(6, 7))
+  expect_equal(layout$length, 7)
+  expect_null(layout$index$nu2)
+})
+
+test_that("cov_par_layout() omits slots that don't apply", {
+  no_re <- cov_par_layout(p = 1, fix_tau2 = FALSE, sigma2_me = FALSE, n_re = 0)
+  expect_null(no_re$index$nu2)
+  expect_null(no_re$index$sigma2_me)
+  expect_null(no_re$index$sigma2_re)
+  expect_equal(no_re$length, 3)
+
+  with_nugget <- cov_par_layout(p = 1, fix_tau2 = TRUE, sigma2_me = TRUE, n_re = 1)
+  expect_equal(with_nugget$index$nu2, 4)
+  expect_equal(with_nugget$index$sigma2_me, 5)
+  expect_equal(with_nugget$index$sigma2_re, 6)
+})
+
+test_that("pack_cov_pars() places deliberately different sigma2_re and sigma2_me at the layout's own positions (#135/#117)", {
+  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, sigma2_me = TRUE, n_re = 2)
+
+  packed <- pack_cov_pars(layout, sigma2 = 1, phi = 2,
+                          sigma2_me = 999, sigma2_re = c(100, 200))
+
+  ## pack_cov_pars() returns the non-beta parameters only (start_cov_pars's
+  ## existing contract), so positions are offset by p = 2
+  p <- length(layout$index$beta)
+  expect_equal(packed[layout$index$sigma2 - p], 1)
+  expect_equal(packed[layout$index$phi - p], 2)
+  expect_equal(packed[layout$index$sigma2_me - p], 999)
+  expect_equal(packed[layout$index$sigma2_re - p], c(100, 200))
+
+  ## the specific bug: before the fix, reading this same vector back with the
+  ## *indexing* order (sigma2_me before sigma2_re) would have returned the
+  ## first sigma2_re value where sigma2_me belongs, and sigma2_me's value
+  ## folded into sigma2_re - i.e. exactly what packing and indexing now both
+  ## agree not to do
+  expect_false(isTRUE(all.equal(unname(packed[layout$index$sigma2_me - p]),
+                                unname(packed[layout$index$sigma2_re - p][1]))))
+})
+
+test_that("structure_estimate() and the fitting engines' indices agree on sigma2_me vs sigma2_re", {
+  ## structure_estimate() builds its positions from the same cov_par_layout()
+  ## the fitting engines use, so unpacking a vector built by pack_cov_pars()
+  ## recovers exactly what was packed - the three steps  (packing, indexing,
+  ## unpacking) now can't disagree with each other.
+  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, sigma2_me = TRUE, n_re = 2)
+  packed <- pack_cov_pars(layout, sigma2 = 1, phi = 2,
+                          sigma2_me = 999, sigma2_re = c(100, 200))
+  par <- c(10, 20, packed)  # arbitrary beta values prepended
+
+  est <- structure_estimate(par, beta_names = c("(Intercept)", "cov"),
+                            fix_tau2 = FALSE, sigma2_me = TRUE,
+                            re_names = c("i", "j"))
+
+  expect_equal(est$sigma2_me, 999)
+  expect_equal(unname(est$sigma2_re), c(100, 200))
+})
+
+test_that("glgpm fits gaussian re() + estimated measurement error with deliberately different sigma2_re/sigma2_me starting values (#135/#117)", {
+  fit <- glgpm(y ~ cov + gp() + re(i, j), data = gaussian_data, family = "gaussian",
+              messages = FALSE,
+              start_pars = list(sigma2_re = c(5, 10), sigma2_me = 0.01))
+
+  expect_s3_class(fit, "RiskMap")
+  expect_true(all(is.finite(unlist(fit$estimate))))
+})

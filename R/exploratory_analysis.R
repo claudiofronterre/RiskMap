@@ -1,11 +1,53 @@
+#' Resolve the CRS and compute pairwise distances for distance-based computations
+#'
+#' Projected data retain their CRS; longitude/latitude data are automatically
+#' reprojected to an appropriate UTM CRS, with an informative message. This is
+#' the same convention used by `glgpm()`'s `model_crs`, applied here to
+#' functions with no fitted model of their own (`summarise_distance()`,
+#' `variogram()`).
+#'
+#' @param data An `sf` object.
+#' @param crs `NULL` to retain an existing projected CRS or auto-select UTM
+#'   for longitude/latitude data, or a CRS (must be projected) to reproject
+#'   `data` to.
+#' @param crs_arg The name of the caller's CRS argument, used in messages and
+#'   errors.
+#' @param purpose A short description of what the CRS is used for, e.g.
+#'   `"computing distances"`, used in the auto-reprojection message.
+#' @param distance_units The requested coordinate units, either `"m"` or `"km"`.
+#' @param dedupe Whether to drop duplicate coordinates before computing
+#'   distances. Defaults to `FALSE`.
+#' @return A numeric vector of pairwise distances, in `distance_units`, as
+#'   returned by `dist()`.
+#' @noRd
+extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
+                              dedupe = FALSE) {
+  if (!is.null(crs)) {
+    check_crs(crs, name = crs_arg)
+    data <- st_transform(data, crs = crs)
+    if (st_is_longlat(data)) {
+      stop("'", crs_arg, "' must be a projected CRS, not longitude/latitude", call. = FALSE)
+    }
+  } else if (st_is_longlat(data)) {
+    auto_crs <- propose_utm(data)
+    data <- st_transform(data, crs = auto_crs)
+    message("'data' are in longitude/latitude and '", crs_arg, "' was not provided; ",
+            "automatically reprojecting to EPSG:", auto_crs,
+            " for ", purpose, ". Set '", crs_arg, "' to override.")
+  }
+  coords <- coordinates_in_units(data, distance_units)
+  if (dedupe) coords <- unique(coords)
+  as.numeric(dist(coords))
+}
+
 ##' @title Summaries of the distances
 ##' @description Computes the distances between the unique locations in the dataset and returns summary statistics.
 ##'
 ##' @param data an object of class `sf` containing point geometries.
-##' @param convert_to_utm a logical value, indicating if the conversion to UTM should be performed (`TRUE`) or
-##' the coordinate reference system of the data must be used without any conversion (`FALSE`).
-##' By default `TRUE`. Note: if `TRUE` the conversion to UTM is performed using
-##' the epsg provided by `[propose_utm]`.
+##' @param distance_crs `NULL` to retain an existing projected CRS, or
+##' automatically reproject longitude/latitude data to an appropriate UTM CRS
+##' (with a message reporting the choice). Alternatively, a CRS to reproject
+##' `data` to, which must itself be projected.
 ##' @param distance_units Character string, either `"km"` or `"m"`, indicating whether the
 ##' distances used are expressed in kilometers or meters. Defaults to `"km"`.
 ##'
@@ -24,28 +66,17 @@
 ##'
 ##' @export
 summarise_distance <- function(data,
-                           convert_to_utm = TRUE,
+                           distance_crs = NULL,
                            distance_units = c("km", "m")) {
 
   check_data(data)
 
-  if (!is.logical(convert_to_utm)) stop("'convert_to_utm' must be either TRUE or FALSE")
   stopifnot("'distance_units' must be either 'km' or 'm'" =
               is.character(distance_units) && all(distance_units %in% c("km", "m")))
   distance_units <- match.arg(distance_units)
 
-  if (!convert_to_utm & sf::st_is_longlat(data)){
-    stop("The dataset coordinates are in longitude and latitude - set 'convert_to_utm' to TRUE")
-  }
-
-  if (convert_to_utm){
-    data <- st_transform(data, crs = 4326)
-    data <- st_transform(data, crs = propose_utm(data))
-  }
-
-  coords <- unique(st_coordinates(data))
-  d <- as.numeric(dist(coords))
-  if (distance_units == "km") d <- d/1000
+  d <- extract_distances(data, distance_crs, "distance_crs", "computing distances",
+                         distance_units, dedupe = TRUE)
 
   out <- c(min(d), max(d), mean(d), median(d))
   names(out) <- c("min", "max", "mean", "median")
@@ -71,10 +102,10 @@ summarise_distance <- function(data,
 ##' used to compute the 95% confidence level envelope under the assumption of spatial
 ##' independence. By default \code{n_permutations=1000} but if set to zero then no
 ##' envelope is generated. Values between 2 and 100 will raise a warning.
-##' @param convert_to_utm a logical value, indicating if the conversion to UTM should be performed (\code{convert_to_utm = TRUE}) or
-##' the coordinate reference system of the data must be used without any conversion (\code{convert_to_utm = FALSE}).
-##' By default \code{convert_to_utm = TRUE}. Note: if \code{convert_to_utm = TRUE} the conversion to UTM is performed using
-##' the epsg provided by \code{\link{propose_utm}}.
+##' @param distance_crs `NULL` to retain an existing projected CRS, or
+##' automatically reproject longitude/latitude data to an appropriate UTM CRS
+##' (with a message reporting the choice). Alternatively, a CRS to reproject
+##' `data` to, which must itself be projected.
 ##' @param distance_units Character string, either \code{"km"} or \code{"m"}, indicating whether
 ##' the distances used in the variogram are expressed in kilometers or meters.
 ##' By default \code{distance_units = "m"}
@@ -117,7 +148,7 @@ variogram <- function(data,
                       n_bins = 14L,
                       max_dist = NULL,
                       n_permutations = 1000,
-                      convert_to_utm = TRUE,
+                      distance_crs = NULL,
                       distance_units = c("m", "km")) {
 
   check_data(data)
@@ -149,24 +180,12 @@ variogram <- function(data,
   if (n_permutations != 0 & n_permutations < 100){
     warning("'n_permutations' is set very low - consider increasing it")
   }
-  if (!is.logical(convert_to_utm)){
-    stop("'convert_to_utm' must be either TRUE or FALSE")
-  }
   stopifnot("'distance_units' must be either 'km' or 'm'" =
               is.character(distance_units) && all(distance_units %in% c("km", "m")))
   distance_units <- match.arg(distance_units)
-  if (!convert_to_utm & sf::st_is_longlat(data)){
-    stop("The dataset coordinates are in longitude and latitude - set 'convert_to_utm' to TRUE")
-  }
 
-  if (convert_to_utm){
-    data <- st_transform(data, crs = 4326)
-    data <- st_transform(data, crs = propose_utm(data))
-  }
-
-  coords <- st_coordinates(data)
-  d <- as.numeric(dist(coords))
-  if (distance_units == "km") d <- d/1000
+  d <- extract_distances(data, distance_crs, "distance_crs", "computing distances",
+                        distance_units)
   v <- (as.numeric(dist(data[[variable]])) ^ 2) / 2
   vario_df <- data.frame(d=d, v=v)
 
@@ -239,19 +258,28 @@ variogram <- function(data,
 ##' @param variogram_output The output generated by the function \code{\link{variogram}}.
 ##' @param plot_envelope A logical value indicating if the envelope of spatial independence
 ##' generated using the permutation test must be displayed (\code{plot_envelope = TRUE}) or not
-##' (\code{plot_envelope = FALSE}). By default \code{plot_envelope = FALSE}. Note: if \code{n_permutations = 0} when
-##' running the function \code{\link{variogram}}, the function will display an error message because no envelope can be generated.
+##' (\code{plot_envelope = FALSE}). By default \code{plot_envelope = TRUE}. Note: if
+##' \code{n_permutations} was 1 or 0 when running \code{\link{variogram}}, no envelope
+##' can be generated; a warning is raised and the envelope is skipped.
 ##' @param color If \code{plot_envelope = TRUE}, it sets the colour of the envelope; run \code{vignette("ggplot2-specs")} for more details on this argument.
 ##' @return A \code{ggplot} object representing the empirical variogram plot, optionally including the envelope of spatial independence.
 ##' @details This function plots the empirical variogram, which shows the spatial dependence structure of the data. If \code{plot_envelope} is set to \code{TRUE}, the plot will also include an envelope indicating the range of values under spatial independence, based on a permutation test.
 ##' @seealso \code{\link{variogram}}
 ##' @export
 plot_variogram <- function(variogram_output,
-                           plot_envelope = FALSE,
+                           plot_envelope = TRUE,
                            color = "royalblue1") {
 
   if (!inherits(variogram_output, "RiskMap_variogram")){
     stop("'variogram' must be an object of class 'RiskMap_variogram'")
+  }
+
+  if (plot_envelope && variogram_output$n_permutations <= 1){
+    warning("No envelope for spatial independence can be plotted because 'n_permutations' ",
+            "was ", variogram_output$n_permutations, " when 'variogram()' was run; ",
+            "plotting without the envelope. Increase 'n_permutations' or set ",
+            "plot_envelope = FALSE to silence this warning.")
+    plot_envelope <- FALSE
   }
 
   basic_plot <- ggplot(data = variogram_output$variogram,
@@ -260,9 +288,6 @@ plot_variogram <- function(variogram_output,
                   geom_line()
 
   if (plot_envelope) {
-    if (variogram_output$n_permutations == 0){
-      stop("To plot the envelope for spatial independence 'n_permutations' in `variogram()` must be greater than 0")
-    }
     basic_plot <- basic_plot +
       geom_ribbon(aes(ymin = variogram_output$variogram$lower_bound,
                       ymax = variogram_output$variogram$upper_bound),

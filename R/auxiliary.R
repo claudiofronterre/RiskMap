@@ -149,15 +149,23 @@ propose_utm <- function (data) {
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
 ##' @export
 matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+  input_dimensions <- if (is.matrix(u)) dim(u) else NULL
   if (is.vector(u))
     names(u) <- NULL
   if (is.matrix(u))
     dimnames(u) <- list(NULL, NULL)
-  uphi <- u / phi
-  uphi <- ifelse(u > 0, (((2^(-(kappa - 1)))/ifelse(0, Inf,
-                                                    gamma(kappa))) * (uphi^kappa) * besselK(x = uphi, nu = kappa)),
-                 1)
-  uphi[u > 600 * phi] <- 0
+  if (kappa %in% c(0.5, 1.5, 2.5)) {
+    uphi <- cpp_half_integer_matern(as.numeric(u), phi, kappa)
+    if (!is.null(input_dimensions)) {
+      dim(uphi) <- input_dimensions
+    }
+  } else {
+    uphi <- u / phi
+    uphi <- ifelse(u > 0, (((2^(-(kappa - 1)))/ifelse(0, Inf,
+                                                      gamma(kappa))) * (uphi^kappa) * besselK(x = uphi, nu = kappa)),
+                   1)
+    uphi[u > 600 * phi] <- 0
+  }
 
   if(return_sym_matrix) {
     n <- (1 + sqrt(1 + 8 * length(uphi))) / 2
@@ -424,6 +432,24 @@ get_formula_terms <- function(formula) {
 }
 
 
+##' @title Check that select columns of the data contain no missing values
+##' @description Checks that the specified columns are complete, ignoring
+##' missing values elsewhere in `data`. The error message names the argument
+##' as passed by the caller (e.g. `predictors` from `setup_prediction()`,
+##' `data` from `check_formula()`).
+##' @param data The data to check.
+##' @param columns The column names to check for missing data.
+##' @return TRUE if there is no missing data, or raise an error if not.
+##' @noRd
+check_complete_data <- function(data, columns) {
+  name <- deparse(substitute(data))
+  drop_coords <- st_drop_geometry(data[, columns])
+  if (any(!complete.cases(drop_coords))) {
+    stop("'", name, "' contains rows with missing data - check or remove them", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 ##' @title Check that formula is valid and that there is no missing data
 ##' @description Checks that the formula object is of class formula and that all
 ##' the terms in the formula are present in the data
@@ -463,11 +489,7 @@ check_formula <- function(formula, data, response_required = TRUE){
          " not present in 'data'"), call. = FALSE)
   }
 
-  data <- data[, formula_terms]
-  drop_coords <- st_drop_geometry(data)
-  missing_data <- any(!complete.cases(drop_coords))
-  if (missing_data)
-    stop("'data' contains rows with missing data - check or remove them", call. = FALSE)
+  check_complete_data(data, formula_terms)
 
   invisible(TRUE)
 }
@@ -742,11 +764,22 @@ print.summary.RiskMap <- function(x, ...) {
   return(invisible(x))
 }
 
-##' @title Generate LaTeX Tables from RiskMap Model Fits and Validation
-##' @description Converts a fitted "RiskMap" model or cross-validation results into an \code{xtable} object, formatted for easy export to LaTeX or HTML.
-##' @param object An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap_cross_validation" containing cross-validation results.
-##' @param ... Additional arguments to be passed to \code{\link[xtable]{xtable}} for customization.
-##' @details This function creates a summary table from a fitted "RiskMap" model or cross-validation results for multiple models, returning it as an \code{xtable} object.
+##' @title Format RiskMap Model and Validation Results as a Table
+##' @description Converts a fitted "RiskMap" model or cross-validation
+##' results into a table that renders directly in Quarto, R Markdown, HTML,
+##' LaTeX and the R console.
+##' @param object An object of class "RiskMap" resulting from a call to
+##' \code{\link{glgpm}}, a "summary.RiskMap" object, or a
+##' "summary.RiskMap_cross_validation" object.
+##' @param digits A non-negative integer giving the number of decimal places
+##' used to display numeric results.
+##' @param ... Additional arguments passed to \code{\link[knitr]{kable}}.
+##' @details This function creates a presentation-ready summary table from a
+##' fitted "RiskMap" model or cross-validation results for multiple models.
+##' Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
+##' required for further analysis. Numeric values use fixed notation with
+##' \code{digits} decimal places, except when scientific notation is needed to
+##' represent very large or very small values clearly.
 ##'
 ##' When the input is a "RiskMap" model object, the table includes:
 ##' \itemize{
@@ -762,18 +795,29 @@ print.summary.RiskMap <- function(x, ...) {
 ##'   \item Performance metrics such as CRPS and SCRPS for each model.
 ##' }
 ##'
-##' The resulting \code{xtable} object can be further customized with additional formatting options and printed as a LaTeX or HTML table for reports or publications.
-##' @return An object of class "xtable", which contains the formatted table as a \code{data.frame} and several attributes specifying table formatting options.
-##' @importFrom xtable xtable
+##' @return An object of class "knitr_kable" that can be rendered directly.
+##' @importFrom knitr kable
 ##' @export
-##' @seealso \code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap_cross_validation}}
-to_table <- function(object, ...) {
-  summary_out <- summary(object)
-  if(inherits(summary_out,
+##' @seealso \code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
+##' @examples
+##' \dontrun{
+##' fit <- glgpm(y ~ x + gp(), data = example_data)
+##' to_table(fit, digits = 3)
+##' }
+to_table <- function(object, digits = 3, ...) {
+  check_positive_integer(digits, "digits", allow_zero = TRUE)
+
+  if (inherits(object, "summary.RiskMap") ||
+      inherits(object, "summary.RiskMap_cross_validation")) {
+    summary_out <- object
+  } else {
+    summary_out <- summary(object)
+  }
+  if (inherits(summary_out,
                what = "summary.RiskMap", which = FALSE)) {
-    tab <- rbind(summary_out$reg_coef[,1:3], summary_out$sp, summary_out$ranef,
+    tab <- rbind(summary_out$reg_coef[, 1:3], summary_out$sp, summary_out$ranef,
                  summary_out$me)
-    out <- xtable(x = tab,...)
+    include_row_names <- TRUE
   } else if (inherits(summary_out,
                       what = "summary.RiskMap_cross_validation", which = FALSE)) {
     n_models <- nrow(summary_out)
@@ -781,12 +825,39 @@ to_table <- function(object, ...) {
     model_names <- rownames(summary_out)
     metric_names <- toupper(colnames(summary_out))
     tab <- data.frame(Model = model_names)
-    for(i in 1:n_metrics) {
+    for (i in seq_len(n_metrics)) {
       tab[[paste(metric_names[i])]] <- summary_out[,i]
     }
-    out <- xtable(x = tab,...)
+    include_row_names <- FALSE
+  } else {
+    stop("'object' must be a RiskMap model or RiskMap cross-validation result")
   }
-  return(out)
+
+  tab <- as.data.frame(tab, check.names = FALSE)
+  numeric_columns <- vapply(tab, is.numeric, logical(1))
+  tab[numeric_columns] <- lapply(
+    tab[numeric_columns],
+    function(x) {
+      use_scientific <- is.finite(x) & x != 0 &
+        (abs(x) >= 1e6 | abs(x) < 10^(-digits))
+      out <- formatC(x, format = "f", digits = as.integer(digits))
+      out[use_scientific] <- formatC(
+        x[use_scientific],
+        format = "e",
+        digits = as.integer(digits)
+      )
+      out
+    }
+  )
+
+  dots <- list(...)
+  if (is.null(dots$row.names))
+    dots$row.names <- include_row_names
+  if (is.null(dots$align))
+    dots$align <- if (include_row_names) rep("r", ncol(tab)) else
+      c("l", rep("r", ncol(tab) - 1L))
+
+  do.call(kable, c(list(x = tab), dots))
 }
 
 ##' @title Compute Unique Coordinate Identifiers
@@ -865,7 +936,7 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   model_names <- names(object$model)
   n_models <- length(model_names)
 
-  metric_names <- names(object$model[[1]]$score)
+  metric_names <- names(object$model[[1]]$metric)
   if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_prediction'")
   n_metrics <- length(metric_names)
 
@@ -875,15 +946,15 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
 
   test_set_means <- list()
 
-  n_subs <- length(object$model[[1]]$score[[1]])
-  w <- unlist(lapply(object$model[[1]]$score[[1]], length))
+  n_subs <- length(object$model[[1]]$metric[[1]])
+  w <- unlist(lapply(object$model[[1]]$metric[[1]], length))
 
   for (i in 1:n_models) {
     model_scores <- list()
     for (j in 1:n_metrics) {
       score_j <- rep(NA, n_subs)
       for (h in 1:n_subs) {
-        score_j[h] <- mean(object$model[[i]]$score[[j]][[h]])
+        score_j[h] <- mean(object$model[[i]]$metric[[j]][[h]])
       }
       model_scores[[j]] <- score_j
       res[i, j] <- sum(w * score_j) / sum(w)
@@ -1112,56 +1183,63 @@ plot_AnPIT <- function(object,
 }
 
 
-##' @title Plot Spatial Scores for a Specific Model and Metric
+##' @title Plot a Predictive Performance Metric for a Specific Model
 ##'
-##' @description This function visualizes spatial scores for a specified model and metric.
-##' It combines test set data, handles duplicate locations by averaging scores,
-##' and creates a customizable map using ggplot2.
+##' @description This function visualizes a predictive performance metric, from
+##' `assess_prediction()`, for a specified model. It combines test set data,
+##' handles duplicate locations by averaging, and creates a customizable map
+##' using ggplot2.
 ##'
 ##' @param object A list containing test sets and model scores. The structure should include
-##'   `object$test_set` (list of sf objects) and `object$model[[which_model]]$score[[which_score]]`.
-##' @param which_score A string specifying the score to visualize. Must match a score computed in the model.
-##' @param which_model A string specifying the model whose scores to visualize.
+##'   `object$test_set` (list of sf objects) and `object$model[[model]]$metric[[metric]]`.
+##' @param metric A string specifying which metric to visualize. Must be one of the
+##' values passed to `metrics` in the `assess_prediction()` call that produced `object`.
+##' @param model A string specifying the model whose scores to visualize.
 ##' @param ... Additional arguments to customize ggplot, such as `scale_color_gradient` or `scale_color_manual`.
-##' @return A ggplot object visualizing the spatial distribution of the specified score.
+##' @return A ggplot object visualizing the spatial distribution of the specified metric.
 ##' @export
-plot_score <- function(object, which_score, which_model, ...) {
+plot_metric <- function(object, metric, model, ...) {
 
-  # Check if "which_score" exists
-  if (!which_score %in% names(object$model[[which_model]]$score)) {
-    stop(paste("Error: The score", shQuote(which_score), "was not computed for model", shQuote(which_model)))
+  if (!model %in% names(object$model)) {
+    stop(paste("'model'", shQuote(model, type = "sh"), "was not found in 'object'"))
+  }
+
+  if (!metric %in% names(object$model[[model]]$metric)) {
+    stop(paste("'metric'", shQuote(metric, type = "sh"), "was not computed for model", shQuote(model, type = "sh")))
   }
 
   # Extract the test sets and number of test sets
   test_sets <- object$test_set
   n_test <- length(test_sets)
 
-  # Combine the data and add the score variable
+  # Combine the data and add the metric variable
   data_full <- st_as_sf(test_sets[[1]])
-  data_full$score <- object$model[[which_model]]$score[[which_score]][[1]]
+  data_full$value <- object$model[[model]]$metric[[metric]][[1]]
 
   if (n_test > 1) {
-    for (i in 1:n_test) {
-      test_sets[[i]]$score <- object$model[[which_model]]$score[[which_score]][[i]]
+    for (i in 2:n_test) {
+      test_sets[[i]]$value <- object$model[[model]]$metric[[metric]][[i]]
       data_full <- rbind(data_full, test_sets[[i]])
     }
   }
 
-  # Check for duplicate locations and average the score
+  # Check for duplicate locations and average the metric
   data_full <- data_full %>%
     mutate(geom_id = st_as_text(.data$geometry)) %>%
     group_by(.data$geom_id) %>%
-    summarize(score = mean(.data$score, na.rm = TRUE),
+    summarize(value = mean(.data$value, na.rm = TRUE),
               geometry = first(.data$geometry), .groups = "drop") %>%
     st_as_sf()
 
 
   # Create the base plot
   out <- ggplot(data = data_full) +
-    geom_sf(aes(color = .data$score), size = 2) +
-    ggtitle(paste("Visualizing", which_score, "for model", which_model)) +
+    geom_sf(aes(color = .data$value), size = 2) +
+    ggtitle(paste("Visualizing", metric, "for model", model)) +
     theme_minimal()
 
+  # Layer on any additional ggplot components passed via ...
+  out <- Reduce(`+`, list(...), out)
 
   return(out)
 }
@@ -1346,8 +1424,46 @@ check_positive_number <- function(x, type = "starting ") {
   # extract name, removing any list
   name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
 
-  if (!is.numeric(x) || length(x) != 1 || x <= 0 || is.na(x)) {
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
+      !is.finite(x) || x <= 0) {
     stop("The ", type, "value for '", name, "' must be a single positive number")
+  }
+
+  invisible(TRUE)
+}
+
+#' Check that a value belongs to the closed unit interval
+#'
+#' @param x The value to check.
+#' @param name The argument name to use in the error message. Defaults to the
+#'   expression supplied as `x`.
+#' @return `TRUE` invisibly when valid; otherwise raises an error.
+#' @noRd
+check_zero_one <- function(x, name = deparse(substitute(x))) {
+  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
+    !is.finite(x) || x < 0 || x > 1
+  if (invalid) {
+    stop("'", name, "' must be a single number between zero and one",
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+
+#' @title check_logical
+#' @description
+#'
+#' Check that a value is a single, non-missing logical (`TRUE` or `FALSE`)
+#' and error if not
+#' @param x the value to check
+#' @return TRUE if x is valid. Raise an error if not.
+#' @noRd
+#'
+check_logical <- function(x) {
+  name <- deparse(substitute(x))
+
+  if (!isTRUE(x) && !isFALSE(x)) {
+    stop("'", name, "' must be either TRUE or FALSE", call. = FALSE)
   }
 
   invisible(TRUE)
@@ -1359,19 +1475,21 @@ check_positive_number <- function(x, type = "starting ") {
 #'
 #' Check that a CRS is valid
 #' @param crs the CRS to check
+#' @param name the argument name to use in the error message. Defaults to the
+#'   name of the variable passed as `crs`; callers wrapping this in another
+#'   function should pass their own argument's name explicitly, since
+#'   `substitute()` only sees the immediate call site.
 #' @return TRUE if the CRS is valid. Raise an error if not.
 #' @noRd
 #'
-check_crs <- function(crs){
-  # extract name passed to function
-  variable <- deparse(substitute(crs))
+check_crs <- function(crs, name = deparse(substitute(crs))){
   tryCatch(
     st_crs(crs),
     warning = function(w) {
-      stop("The '", variable, "' provided is not a valid CRS", call. = FALSE)
+      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
     },
     error = function(e){
-      stop("The '", variable, "' provided is not a valid CRS", call. = FALSE)
+      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
     }
   )
   invisible(TRUE)
