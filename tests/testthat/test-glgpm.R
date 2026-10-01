@@ -254,6 +254,15 @@ test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provi
 
   expect_s3_class(fit, "RiskMap")
   expect_setequal(names(fit$estimate), c("beta", "sigma2", "phi", "sigma2_re"))
+
+  expect_error(
+    glgpm(formula = y ~ cov + gp(nugget = TRUE) + re(row_id),
+          data = saturated_data,
+          family = "gaussian",
+          messages = FALSE,
+          fix_var_me = 0.1),
+    "cannot be distinguished from the nugget"
+  )
 })
 
 test_that("glgpm produces expected output for binomial models", {

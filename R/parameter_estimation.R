@@ -289,18 +289,29 @@ glgpm <- function(formula,
          be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
   }
 
-  # For the Gaussian family the measurement error is already an independent
-  # effect with one value per observation, so a random effect with one level
-  # per observation is perfectly confounded with it.
-  if (family == "gaussian" && n_re > 0 && is.null(fix_var_me)) {
+  # For the Gaussian family, an observation-level random effect is perfectly
+  # confounded with an estimated measurement-error variance. When there is
+  # only one observation per location, it is also confounded with an estimated
+  # nugget. Fixed variance components do not create this identifiability issue.
+  if (family == "gaussian" && n_re > 0) {
     n_levels_re <- vapply(re_unique, length, integer(1))
     is_saturated_re <- n_levels_re == n
-    if (any(is_saturated_re)) {
+    confounded_with_me <- is.null(fix_var_me)
+    confounded_with_nugget <- isTRUE(fix_tau2) && all(table(ID_coords) == 1)
+
+    if (any(is_saturated_re) && (confounded_with_me || confounded_with_nugget)) {
+      confounded_component <- if (confounded_with_me && confounded_with_nugget) {
+        "the measurement error and nugget"
+      } else if (confounded_with_me) {
+        "the measurement error"
+      } else {
+        "the nugget"
+      }
       stop("The random effect(s) '",
            paste(names_re[is_saturated_re], collapse = "', '"),
            "' have one level per observation, which cannot be distinguished ",
-           "from the measurement error when 'family' is 'gaussian'. Either ",
-           "drop the random effect or supply a value for 'fix_var_me'.")
+           "from ", confounded_component, " when 'family' is 'gaussian'. ",
+           "Drop the random effect or fix the confounded variance component(s).")
     }
   }
 
