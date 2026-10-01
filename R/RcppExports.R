@@ -12,3 +12,4 @@ cpp_cross_distances <- function(first, second) {
 cpp_half_integer_matern <- function(distances, phi, kappa) {
     .Call(`_RiskMap_cpp_half_integer_matern`, distances, phi, kappa)
 }
+
