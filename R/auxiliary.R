@@ -149,15 +149,23 @@ propose_utm <- function (data) {
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
 ##' @export
 matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+  input_dimensions <- if (is.matrix(u)) dim(u) else NULL
   if (is.vector(u))
     names(u) <- NULL
   if (is.matrix(u))
     dimnames(u) <- list(NULL, NULL)
-  uphi <- u / phi
-  uphi <- ifelse(u > 0, (((2^(-(kappa - 1)))/ifelse(0, Inf,
-                                                    gamma(kappa))) * (uphi^kappa) * besselK(x = uphi, nu = kappa)),
-                 1)
-  uphi[u > 600 * phi] <- 0
+  if (kappa %in% c(0.5, 1.5, 2.5)) {
+    uphi <- cpp_half_integer_matern(as.numeric(u), phi, kappa)
+    if (!is.null(input_dimensions)) {
+      dim(uphi) <- input_dimensions
+    }
+  } else {
+    uphi <- u / phi
+    uphi <- ifelse(u > 0, (((2^(-(kappa - 1)))/ifelse(0, Inf,
+                                                      gamma(kappa))) * (uphi^kappa) * besselK(x = uphi, nu = kappa)),
+                   1)
+    uphi[u > 600 * phi] <- 0
+  }
 
   if(return_sym_matrix) {
     n <- (1 + sqrt(1 + 8 * length(uphi))) / 2
@@ -1409,8 +1417,46 @@ check_positive_number <- function(x, type = "starting ") {
   # extract name, removing any list
   name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
 
-  if (!is.numeric(x) || length(x) != 1 || x <= 0 || is.na(x)) {
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
+      !is.finite(x) || x <= 0) {
     stop("The ", type, "value for '", name, "' must be a single positive number")
+  }
+
+  invisible(TRUE)
+}
+
+#' Check that a value belongs to the closed unit interval
+#'
+#' @param x The value to check.
+#' @param name The argument name to use in the error message. Defaults to the
+#'   expression supplied as `x`.
+#' @return `TRUE` invisibly when valid; otherwise raises an error.
+#' @noRd
+check_zero_one <- function(x, name = deparse(substitute(x))) {
+  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
+    !is.finite(x) || x < 0 || x > 1
+  if (invalid) {
+    stop("'", name, "' must be a single number between zero and one",
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+
+#' @title check_logical
+#' @description
+#'
+#' Check that a value is a single, non-missing logical (`TRUE` or `FALSE`)
+#' and error if not
+#' @param x the value to check
+#' @return TRUE if x is valid. Raise an error if not.
+#' @noRd
+#'
+check_logical <- function(x) {
+  name <- deparse(substitute(x))
+
+  if (!isTRUE(x) && !isFALSE(x)) {
+    stop("'", name, "' must be either TRUE or FALSE", call. = FALSE)
   }
 
   invisible(TRUE)

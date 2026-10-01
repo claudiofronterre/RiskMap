@@ -32,6 +32,7 @@ export(predict_grid_target)
 export(propose_utm)
 export(re)
 export(set_control_mcmc)
+export(set_control_mcml)
 export(setup_prediction)
 export(simulate_glgpm)
 export(simulated_data)
@@ -52,6 +53,7 @@ importFrom(Matrix,
   solve,
   sparseMatrix
 )
+importFrom(Rcpp,evalCpp)
 importFrom(dplyr,
   "%>%",
   first,
@@ -87,3 +89,4 @@ importFrom(terra,
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)
 importFrom(utils,flush.console)
+useDynLib(RiskMap, .registration = TRUE)
