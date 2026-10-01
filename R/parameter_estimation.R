@@ -25,6 +25,9 @@
 ##' Defaults to `"km"`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
 ##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
+##' @param control_mcml Control parameters for repeated Monte Carlo maximum
+##' likelihood updates. Must be returned by [set_control_mcml()]. The default
+##' performs one update, preserving the usual single-stage fit.
 ##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 ##' Defaults to `FALSE`.
@@ -67,14 +70,17 @@
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
 ##' This argument must be an object returned by [set_control_mcmc()].
+##' For non-Gaussian models, `control_mcml` can request repeated MCML updates.
+##' Each update draws a new importance sample around the preceding estimate and
+##' uses a distinct reproducible seed when `control_mcmc$seed` is set.
 ##'
 ##' The `start_pars` argument allows for specifying starting values for the model parameters.
 ##' If not provided, default starting values are used.
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
-##' \item{estimate}{Estimated parameters, on their internal (working) scale, as
-##' a named list: \code{beta} (named regression coefficients), \code{sigma2},
+##' \item{estimate}{Estimated parameters as a named list: \code{beta} (named
+##' regression coefficients on the scale of the supplied covariates), \code{sigma2},
 ##' \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
 ##' estimated, \code{sigma2_me} for Gaussian models with an estimated
 ##' measurement error variance, and \code{sigma2_re} (a named vector, one
@@ -105,6 +111,18 @@
 ##' \item{cov_offset}{Covariate offset}
 ##' \item{call}{Matched call}
 ##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
+##' \item{mcml_history}{For non-Gaussian models, one entry per MCML update,
+##' containing its estimates, likelihood, parameter change, importance-sampling
+##' effective sample size, and seed. The likelihood-ratio gain is measured
+##' relative to the reference parameter used to generate that update's sample;
+##' it is therefore zero at the reference rather than an absolute likelihood.
+##' Both working-scale parameter change and change relative to the current
+##' standard errors are reported. Estimates use the same parameterisation as
+##' `estimate`, with regression coefficients and spatial range restored to the
+##' supplied covariate and distance units. `NULL` for Gaussian models.}
+##' \item{mcml_converged}{Whether repeated MCML updates met the requested
+##' tolerance. `NA` when only one update was requested and `NULL` for Gaussian
+##' models.}
 ##'
 ##' @examples
 ##'
@@ -149,7 +167,8 @@
 ##'
 ##' summary(fit)
 ##'
-##' @seealso \code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
+##' @seealso [set_control_mcmc()], [set_control_mcml()],
+##'   \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @export
 glgpm <- function(formula,
                  data,
@@ -159,6 +178,7 @@ glgpm <- function(formula,
                  model_crs = NULL,
                  distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
+                 control_mcml = set_control_mcml(),
                  par0 = NULL,
                  return_samples = FALSE,
                  messages = TRUE,
@@ -181,6 +201,10 @@ glgpm <- function(formula,
             "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
             "'messages' must be either TRUE or FALSE" = is.logical(messages))
   distance_units <- match.arg(distance_units)
+  if (!inherits(control_mcml, "RiskMap_control_mcml")) {
+    stop("the argument passed to 'control_mcml' must be an output from ",
+         "the function set_control_mcml; see ?set_control_mcml for details")
+  }
 
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
@@ -204,6 +228,7 @@ glgpm <- function(formula,
 
   # Extract covariates matrix
   D <- as.matrix(model.matrix(attr(mf, "terms"), data = data))
+  original_D <- D
 
   if(is.null(inter_f$offset)) {
     cov_offset <- rep(0, nrow(data))
@@ -271,12 +296,11 @@ glgpm <- function(formula,
   if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
 
   coords_o <- coordinates_in_units(data, distance_units)
-  coords <- unique(coords_o)
+  coordinate_index <- index_coordinate_rows(coords_o)
+  coords <- coordinate_index$coordinates
+  ID_coords <- coordinate_index$index
 
   m <- nrow(coords_o)
-  ID_coords <- sapply(1:m, function(i)
-               which(coords_o[i,1]==coords[,1] &
-                     coords_o[i,2]==coords[,2]))
   s_unique <- unique(ID_coords)
 
   fix_tau2 <- inter_f$gp_spec$nugget
@@ -299,7 +323,7 @@ glgpm <- function(formula,
 
   if(is.null(start_pars[["beta"]])) {
     if(family=="gaussian") {
-      start_pars[["beta"]] <- as.numeric(solve(t(D)%*%D)%*%t(D)%*%y)
+      start_pars[["beta"]] <- linear_start_values(D, y)
     } else if(family=="binomial") {
       aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
@@ -365,6 +389,12 @@ glgpm <- function(formula,
     }
   }
 
+  design_scaling <- standardize_design_matrix(D)
+  D <- design_scaling$design
+  start_pars[["beta"]] <- as.numeric(
+    solve(design_scaling$coefficient_transform, start_pars[["beta"]])
+  )
+
   if(!not_gaussian) {
     if(is.null(fix_var_me)) {
       if(is.null(start_pars[["sigma2_me"]])) {
@@ -381,9 +411,11 @@ glgpm <- function(formula,
             start_cov_pars = c(start_pars[["sigma2"]],
                                fitting_start_phi,
                                start_pars[["tau2"]],
-                               start_pars[["sigma2_re"]],
-                               start_pars[["sigma2_me"]]),
+                               start_pars[["sigma2_me"]],
+                               start_pars[["sigma2_re"]]),
             messages = messages)
+    res["mcml_history"] <- list(NULL)
+    res["mcml_converged"] <- list(NULL)
   } else if(not_gaussian) {
     if(is.null(par0)) {
       par0 <- start_pars
@@ -392,8 +424,21 @@ glgpm <- function(formula,
                                           variables specified in the formula")
     }
     fitting_par0 <- par0
+    fitting_par0$beta <- as.numeric(
+      solve(design_scaling$coefficient_transform, par0$beta)
+    )
     fitting_par0$phi <- par0$phi / spatial_scaling$distance_scale
-    res <- glgpm_nong(y = y, D, fitting_coords, units_m,
+    mcml_history <- vector("list", control_mcml$max_iterations)
+    previous_estimate <- NULL
+    converged <- if (control_mcml$max_iterations == 1L) NA else FALSE
+    for (iteration in seq_len(control_mcml$max_iterations)) {
+      iteration_mcmc <- mcml_iteration_control(control_mcmc, iteration)
+      if (messages && control_mcml$max_iterations > 1L) {
+        message("\nMCML update ", iteration, " of ",
+                control_mcml$max_iterations)
+      }
+
+      res <- glgpm_nong(y = y, D, fitting_coords, units_m,
                         kappa = inter_f$gp_spec$kappa,
                         ID_coords, ID_re, s_unique, re_unique,
                         fix_tau2, family = family, invlink = invlink,
@@ -404,8 +449,59 @@ glgpm <- function(formula,
                                            fitting_start_phi,
                                            start_pars[["tau2"]],
                                            start_pars[["sigma2_re"]]),
-                        control_mcmc = control_mcmc,
+                        control_mcmc = iteration_mcmc,
                         messages = messages)
+
+      working_estimate <- unlist(res$estimate, use.names = TRUE)
+      change <- if (is.null(previous_estimate)) NA_real_ else
+        max(abs(working_estimate - previous_estimate))
+      standard_error <- sqrt(pmax(diag(res$covariance), 0))
+      standardized_change <- if (is.null(previous_estimate)) NA_real_ else
+        max(abs(working_estimate - previous_estimate) /
+              pmax(standard_error, sqrt(.Machine$double.eps)))
+      optimizer <- attr(res, "optimizer")
+      mcml_history[[iteration]] <- list(
+        iteration = iteration,
+        estimate = res$estimate,
+        log_likelihood_ratio_gain = res$log_lik,
+        max_parameter_change = change,
+        max_standardized_change = standardized_change,
+        importance_ess = optimizer$importance_ess,
+        relative_importance_ess = optimizer$relative_importance_ess,
+        seed = iteration_mcmc$seed
+      )
+
+      if (mcml_update_converged(
+        change, optimizer$relative_importance_ess, control_mcml
+      )) {
+        converged <- TRUE
+        mcml_history <- mcml_history[seq_len(iteration)]
+        break
+      }
+      previous_estimate <- working_estimate
+      fitting_par0 <- estimate_to_mcml_reference(res$estimate, fix_tau2)
+    }
+    if (control_mcml$max_iterations > 1L && !isTRUE(converged)) {
+      warning(
+        "MCML updates reached 'max_iterations' without satisfying both the ",
+        "parameter-change tolerance and minimum relative importance ESS.",
+        call. = FALSE
+      )
+    }
+    res$mcml_history <- mcml_history
+    res$mcml_converged <- converged
+  }
+
+  res <- restore_fixed_effect_scale(
+    res,
+    design_scaling$coefficient_transform
+  )
+  if (!is.null(res$mcml_history)) {
+    res$mcml_history <- restore_mcml_history_scale(
+      res$mcml_history,
+      design_scaling$coefficient_transform,
+      spatial_scaling$distance_scale
+    )
   }
 
   # The fitting engines optimise log(phi) on scaled coordinates. An additive
@@ -414,7 +510,8 @@ glgpm <- function(formula,
     log(spatial_scaling$distance_scale)
 
   res$y <- y
-  res$D <- D
+  res$D <- original_D
+  attr(res, "design_scaling") <- design_scaling[c("center", "scale")]
   res$coords <- coords
   attr(res, "distance_scale") <- spatial_scaling$distance_scale
   res$ID_coords <- ID_coords
@@ -488,9 +585,275 @@ structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_
   out
 }
 
+##' Compute the nugget-to-spatial variance ratio
+##'
+##' The parser stores `TRUE` when the nugget is estimated and a numeric value
+##' when it is fixed. Keeping this distinction in one helper prevents the
+##' likelihood and its derivatives from interpreting the same model
+##' differently.
+##'
+##' @noRd
+nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
+  if (isTRUE(fix_tau2)) {
+    if (is.null(log_nu2)) {
+      stop("'log_nu2' is required when the nugget is estimated.",
+           call. = FALSE)
+    }
+
+    return(exp(log_nu2))
+  }
+
+  as.numeric(fix_tau2) / sigma2
+}
+
+##' Evaluate log(mean(exp(x))) without exponentiating large values
+##'
+##' @noRd
+log_mean_exp <- function(x) {
+  shift <- max(x)
+
+  if (!is.finite(shift)) {
+    return(shift)
+  }
+
+  shift + log(mean(exp(x - shift)))
+}
+
+##' Convert log weights to probabilities without overflow or underflow
+##'
+##' The common shift cancels during normalisation, while keeping every
+##' exponentiated value no greater than one.
+##'
+##' @noRd
+normalise_log_weights <- function(log_weights) {
+  shift <- max(log_weights)
+  if (!is.finite(shift)) {
+    stop("All Monte Carlo importance weights are non-finite.", call. = FALSE)
+  }
+
+  weights <- exp(log_weights - shift)
+  weights / sum(weights)
+}
+
+##' Effective sample size of normalised importance weights
+##'
+##' @noRd
+importance_effective_sample_size <- function(weights) {
+  1 / sum(weights^2)
+}
+
+##' Obtain stable Gaussian regression starting values
+##'
+##' QR decomposition avoids squaring the condition number as the normal
+##' equations do, and lets us reject a rank-deficient model matrix explicitly.
+##'
+##' @noRd
+linear_start_values <- function(design, response) {
+  fit <- lm.fit(x = design, y = response)
+  if (fit$rank < ncol(design)) {
+    stop("The model matrix is rank deficient; regression starting values ",
+         "cannot be determined.", call. = FALSE)
+  }
+
+  unname(fit$coefficients)
+}
+
+##' Standardise the fixed-effect design without changing its column space
+##'
+##' With an intercept, non-intercept columns are centred and scaled. Without
+##' an intercept they are only scaled, because centring would implicitly add
+##' an intercept to the fitted model. `coefficient_transform` maps coefficients
+##' on the standardised scale back to the scale supplied by the user.
+##'
+##' @noRd
+standardize_design_matrix <- function(design) {
+  design <- as.matrix(design)
+  p <- ncol(design)
+  coefficient_names <- colnames(design)
+  intercept <- which(coefficient_names == "(Intercept)")
+
+  if (length(intercept) > 1L) {
+    stop("The model matrix contains more than one intercept column.",
+         call. = FALSE)
+  }
+
+  columns_to_scale <- setdiff(seq_len(p), intercept)
+  center <- setNames(numeric(p), coefficient_names)
+  scale <- setNames(rep(1, p), coefficient_names)
+
+  if (length(columns_to_scale) > 0L) {
+    if (length(intercept) == 1L) {
+      center[columns_to_scale] <-
+        colMeans(design[, columns_to_scale, drop = FALSE])
+    }
+
+    centered <- sweep(
+      design[, columns_to_scale, drop = FALSE],
+      2L,
+      center[columns_to_scale],
+      FUN = "-"
+    )
+    scale[columns_to_scale] <- sqrt(colSums(centered^2) /
+                                      max(1, nrow(design) - 1L))
+
+    invalid <- !is.finite(scale[columns_to_scale]) |
+      scale[columns_to_scale] == 0
+    if (any(invalid)) {
+      invalid_names <- coefficient_names[columns_to_scale][invalid]
+      stop(
+        "The model matrix contains constant or numerically constant column",
+        if (length(invalid_names) > 1L) "s" else "",
+        ": ", paste(invalid_names, collapse = ", "), ".",
+        call. = FALSE
+      )
+    }
+  }
+
+  coefficient_transform <- diag(p)
+  dimnames(coefficient_transform) <-
+    list(coefficient_names, coefficient_names)
+  if (length(columns_to_scale) > 0L) {
+    coefficient_transform[cbind(columns_to_scale, columns_to_scale)] <-
+      1 / scale[columns_to_scale]
+    if (length(intercept) == 1L) {
+      coefficient_transform[intercept, columns_to_scale] <-
+        -center[columns_to_scale] / scale[columns_to_scale]
+    }
+  }
+
+  list(
+    design = design %*% coefficient_transform,
+    coefficient_transform = coefficient_transform,
+    center = center,
+    scale = scale
+  )
+}
+
+##' Restore fixed-effect results to the scale supplied by the user
+##'
+##' Applies the same linear transformation to the estimates and their full
+##' covariance matrix, including cross-covariances with covariance parameters.
+##' The score is transformed with the inverse transpose Jacobian.
+##'
+##' @noRd
+restore_fixed_effect_scale <- function(result, coefficient_transform) {
+  p <- nrow(coefficient_transform)
+  parameter_names <- names(unlist(result$estimate))
+  n_parameters <- length(parameter_names)
+  jacobian <- diag(n_parameters)
+  jacobian[seq_len(p), seq_len(p)] <- coefficient_transform
+
+  beta_names <- names(result$estimate$beta)
+  result$estimate$beta <- as.numeric(
+    coefficient_transform %*% result$estimate$beta
+  )
+  names(result$estimate$beta) <- beta_names
+
+  result$covariance <- jacobian %*% result$covariance %*% t(jacobian)
+  dimnames(result$covariance) <- list(parameter_names, parameter_names)
+
+  result$grad_MLE <- as.numeric(
+    solve(t(jacobian), result$grad_MLE)
+  )
+  names(result$grad_MLE) <- parameter_names
+  result
+}
+
+##' Restore MCML history estimates to user-facing covariate and distance scales
+##' @noRd
+restore_mcml_history_scale <- function(history, coefficient_transform,
+                                       distance_scale) {
+  lapply(history, function(entry) {
+    entry$estimate$beta <- as.numeric(
+      coefficient_transform %*% entry$estimate$beta
+    )
+    names(entry$estimate$beta) <- colnames(coefficient_transform)
+    entry$estimate$phi <- entry$estimate$phi + log(distance_scale)
+    entry
+  })
+}
+
+##' Wrap an optimiser objective with controlled invalid-trial handling
+##'
+##' Covariance parameters can temporarily define a non-positive-definite
+##' matrix. Such a trial is outside the valid parameter space, so return a
+##' finite penalty rather than allowing a linear-algebra error to abort the
+##' complete fit. The counter is retained for post-fit diagnostics.
+##'
+##' @noRd
+safe_optimizer_objective <- function(objective) {
+  diagnostics <- new.env(parent = emptyenv())
+  diagnostics$invalid_evaluations <- 0L
+  penalty <- sqrt(.Machine$double.xmax)
+
+  wrapped <- function(par) {
+    value <- tryCatch(objective(par), error = function(error) NA_real_)
+    if (length(value) != 1L || !is.finite(value)) {
+      diagnostics$invalid_evaluations <-
+        diagnostics$invalid_evaluations + 1L
+      return(penalty)
+    }
+
+    value
+  }
+  attr(wrapped, "diagnostics") <- diagnostics
+  wrapped
+}
+
+##' Collect diagnostics needed to assess an optimiser result
+##'
+##' @noRd
+collect_optimizer_diagnostics <- function(estimate, objective, gradient,
+                                          information, information_root) {
+  diagnostics <- estimate[c("convergence", "message", "evaluations")]
+  diagnostics$invalid_evaluations <-
+    attr(objective, "diagnostics")$invalid_evaluations
+  diagnostics$max_abs_gradient <- max(abs(gradient))
+  diagnostics$stationary <- diagnostics$max_abs_gradient <= 1e-3
+  diagnostics$information_rcond <- rcond(information)
+  diagnostics$information_jitter <- attr(information_root, "jitter")
+  diagnostics
+}
+
+##' Report an optimiser result that should not be treated as converged
+##'
+##' @noRd
+warn_unconverged_optimizer <- function(diagnostics) {
+  if (diagnostics$convergence != 0 && !diagnostics$stationary) {
+    warning(
+      "Model optimisation did not converge (code ",
+      diagnostics$convergence, "): ", diagnostics$message,
+      ". The maximum absolute score is ",
+      format(diagnostics$max_abs_gradient, scientific = TRUE), ".",
+      call. = FALSE
+    )
+  }
+}
+
+##' Evaluate log(1 + exp(x)) without overflow
+##'
+##' @noRd
+softplus <- function(x) {
+  pmax(x, 0) + log1p(exp(-abs(x)))
+}
+
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
+
+  latent_dimension <- nrow(coords)
+  if (!is.null(ID_re)) {
+    latent_dimension <- latent_dimension +
+      sum(vapply(seq_len(ncol(ID_re)), function(j) max(ID_re[, j]), numeric(1)))
+  }
+  if (use_direct_gaussian_covariance(
+    length(y), latent_dimension, fix_var_me, fix_tau2
+  )) {
+    return(glgpm_lm_direct(
+      y, D, coords, kappa, ID_coords, ID_re,
+      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages
+    ))
+  }
 
   m <- length(y)
   p <- ncol(D)
@@ -499,12 +862,6 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     n_re <- 0
   } else {
     n_re <- ncol(ID_re)
-  }
-
-  if(!is.null(fix_var_me)) {
-    if(fix_var_me==0) {
-      fix_var_me <- 10e-10
-    }
   }
 
   ID_g <- as.matrix(cbind(ID_coords, ID_re))
@@ -535,22 +892,20 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 
   ind_beta <- 1:p
 
-  ind_sigma2 <- p+1
+  ind_sigma2 <- p + 1
+  ind_phi <- p + 2
+  next_index <- ind_phi
 
-  ind_phi <- p+2
-
-  if(!isTRUE(fix_tau2)) {
-    ind_omega2 <- p+3
-    if(n_re>0) {
-      ind_sigma2_re <- (p+3+1):(p+3+n_re)
-    }
-  } else {
-    ind_nu2 <- p+3
-    ind_omega2 <- p+4
-    if(n_re>0) {
-      ind_omega2 <- p+4
-      ind_sigma2_re <- (p+4+1):(p+4+n_re)
-    }
+  if (isTRUE(fix_tau2)) {
+    next_index <- next_index + 1
+    ind_nu2 <- next_index
+  }
+  if (is.null(fix_var_me)) {
+    next_index <- next_index + 1
+    ind_omega2 <- next_index
+  }
+  if (n_re > 0) {
+    ind_sigma2_re <- next_index + seq_len(n_re)
   }
 
 
@@ -1344,11 +1699,12 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   start_par <- c(start_beta, log(start_cov_pars))
 
   out <- list()
+  objective <- safe_optimizer_objective(function(x) -log.lik(x))
   estim <- nlminb(start_par,
-                  function(x) -log.lik(x),
+                  objective,
                   function(x) -grad.log.lik(x),
                   function(x) -hessian.log.lik(x),
-                  control=list(trace=1*messages))
+                  control = list(trace = 1 * messages))
 
   out$estimate <- structure_estimate(
     estim$par,
@@ -1359,13 +1715,23 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   )
   out$grad_MLE <- grad.log.lik(estim$par)
   hess.MLE <- hessian.log.lik(estim$par)
-  out$covariance <- solve(-hess.MLE)
+  information <- -hess.MLE
+  information_root <- factor_covariance(
+    information,
+    "observed information matrix"
+  )
+  out$covariance <- chol2inv(information_root)
   flat_names <- names(unlist(out$estimate))
   dimnames(out$covariance) <- list(flat_names, flat_names)
   out$log_lik <- -estim$objective
   out["link_function"] <- list(NULL)
   out["units_m"] <- list(NULL)
   out["S_samples"] <- list(NULL)
+  optimizer_diagnostics <- collect_optimizer_diagnostics(
+    estim, objective, out$grad_MLE, information, information_root
+  )
+  warn_unconverged_optimizer(optimizer_diagnostics)
+  attr(out, "optimizer") <- optimizer_diagnostics
 
   class(out) <- "RiskMap"
   return(out)
@@ -1605,6 +1971,7 @@ maxim_integrand <- function(
           sum_by_group(g, ID_re[, j], n_dim_re[j])
       }
     }
+
     out
   }
 
@@ -2013,6 +2380,77 @@ laplace_sampling_mcmc <- function(y,
   class(out_sim) <- "RiskMap_mcmc"
   out_sim
 }
+##' Set control parameters for iterative MCML estimation
+##'
+##' Repeated Monte Carlo maximum likelihood (MCML) updates regenerate the
+##' importance sample around the estimate from the preceding update. A single
+##' update reproduces the standard RiskMap fitting procedure.
+##'
+##' @param max_iterations Positive integer giving the maximum number of MCML
+##' updates. Defaults to one.
+##' @param tolerance Positive numeric tolerance for the maximum absolute change
+##' in the internally standardised regression coefficients and log covariance
+##' parameters. It is evaluated from the second update onwards.
+##' @param min_relative_ess Number between zero and one giving the minimum
+##' effective sample size, as a proportion of retained importance samples,
+##' required before an update can be declared converged. Defaults to 0.1.
+##' @return A control object of class `RiskMap_control_mcml`.
+##' @examples
+##' control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.05)
+##' @seealso [glgpm()], [set_control_mcmc()]
+##' @export
+set_control_mcml <- function(max_iterations = 1L, tolerance = 0.05,
+                             min_relative_ess = 0.1) {
+  check_positive_integer(max_iterations, "max_iterations")
+  check_positive_number(tolerance, "")
+  check_zero_one(min_relative_ess, "min_relative_ess")
+
+  structure(
+    list(max_iterations = as.integer(max_iterations), tolerance = tolerance,
+         min_relative_ess = min_relative_ess),
+    class = "RiskMap_control_mcml"
+  )
+}
+
+##' Use a distinct reproducible MCMC stream for each MCML update
+##' @noRd
+mcml_iteration_control <- function(control_mcmc, iteration) {
+  out <- control_mcmc
+  if (!is.null(out$seed) && iteration > 1L) {
+    integer_max <- .Machine$integer.max
+    out$seed <- as.integer(((out$seed - 1 + iteration - 1) %% integer_max) + 1)
+  }
+  out
+}
+
+##' Assess both numerical stability and importance-sampling overlap
+##' @noRd
+mcml_update_converged <- function(parameter_change, relative_ess,
+                                  control_mcml) {
+  !is.na(parameter_change) &&
+    parameter_change <= control_mcml$tolerance &&
+    relative_ess >= control_mcml$min_relative_ess
+}
+
+##' Convert a working-scale estimate into the next MCML reference point
+##' @noRd
+estimate_to_mcml_reference <- function(estimate, fix_tau2) {
+  out <- list(
+    beta = unname(estimate$beta),
+    sigma2 = exp(estimate$sigma2),
+    phi = exp(estimate$phi)
+  )
+  if (isTRUE(fix_tau2)) {
+    out$tau2 <- exp(estimate$sigma2 + estimate$nu2)
+  } else {
+    out$tau2 <- fix_tau2
+  }
+  if (!is.null(estimate$sigma2_re)) {
+    out$sigma2_re <- exp(estimate$sigma2_re)
+  }
+  out
+}
+
 ##' Set Control Parameters for Simulation
 ##'
 ##' This function sets control parameters for running simulations, supporting MCMC methods
@@ -2096,9 +2534,7 @@ set_control_mcmc <- function(n_sim = 12000,
     stop("c1.h must be positive.")
   }
 
-  if (c2.h < 0 | c2.h > 1) {
-    stop("c2.h must be between 0 and 1.")
-  }
+  check_zero_one(c2.h, "c2.h")
 
   res <- list(
     n_sim = n_sim,
@@ -2247,89 +2683,179 @@ glgpm_nong <-
       }
     }
 
-    # --- 1) log.integrand, generalized link ---
-    log.integrand <- function(S_tot, val) {
-      S <- S_tot[1:n_loc]
+    spatial_samples <- S_tot_samples[, seq_len(n_loc), drop = FALSE]
 
-      q.f_re <- 0
+    sample_likelihood_state <- function(mu, include_curvature = FALSE) {
+      eta <- sweep(spatial_samples[, ID_coords, drop = FALSE], 2L, mu, "+")
       if (n_re > 0) {
-        S_re_list <- vector("list", n_re)
-        for (i in 1:n_re) {
-          S_re_list[[i]] <- S_tot[ind_re[[i]]]
-          q.f_re <- q.f_re + n_dim_re[i] * log(val$sigma2_re[i]) +
-            sum(S_re_list[[i]]^2) / val$sigma2_re[i]
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          eta <- eta + random_samples[, ID_re[, j], drop = FALSE]
         }
       }
 
-      eta <- val$mu + S[ID_coords]
-      if (n_re > 0) for (i in 1:n_re) eta <- eta + S_re_list[[i]][ID_re[, i]]
-
-      if (family == "poisson") {
-        mu_vec <- inv_fn(eta)
-        if (any(!is.finite(mu_vec)) || any(mu_vec < 0)) stop("invlink must return positive means (Poisson).")
-        llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
+      if (linkf$name == "canonical" && family == "poisson") {
+        mean <- exp(eta)
+        log_likelihood <- rowSums(sweep(eta, 2L, y, "*") -
+                                    sweep(mean, 2L, units_m, "*"))
+        score <- sweep(mean, 2L, units_m, "*")
+        score <- sweep(score, 2L, y, function(x, y) y - x)
+        curvature <- sweep(mean, 2L, units_m, "*")
+      } else if (linkf$name == "canonical") {
+        probability <- plogis(eta)
+        log_likelihood <- rowSums(sweep(eta, 2L, y, "*") -
+                                    sweep(softplus(eta), 2L, units_m, "*"))
+        score <- sweep(probability, 2L, units_m, "*")
+        score <- sweep(score, 2L, y, function(x, y) y - x)
+        curvature <- sweep(
+          probability * (1 - probability),
+          2L,
+          units_m,
+          "*"
+        )
+      } else if (family == "poisson") {
+        mean <- matrix(inv_fn(as.vector(eta)), nrow = n_samples)
+        if (any(!is.finite(mean)) || any(mean <= 0)) {
+          stop("invlink must return positive means (Poisson).")
+        }
+        first <- matrix(inv1(as.vector(eta)), nrow = n_samples)
+        log_likelihood <- rowSums(sweep(log(mean), 2L, y, "*") -
+                                    sweep(mean, 2L, units_m, "*"))
+        score <- sweep(mean, 2L, units_m, "*")
+        score <- sweep(score, 2L, y, function(x, y) y - x) * first / mean
+        if (include_curvature) {
+          second <- matrix(inv2(as.vector(eta)), nrow = n_samples)
+          mean_residual <- sweep(1 / mean, 2L, y, "*")
+          mean_residual <- sweep(mean_residual, 2L, units_m, "-")
+          curvature <- sweep(first^2 / mean^2, 2L, y, "*") -
+            second * mean_residual
+        }
       } else {
-        pvec <- inv_fn(eta)
-        if (any(!is.finite(pvec)) || any(pvec < 0 | pvec > 1)) stop("invlink must return values in (0,1) (Binomial).")
-        llik <- sum(y * log(pmax(pvec, .Machine$double.eps)) +
-                      (units_m - y) * log(pmax(1 - pvec, .Machine$double.eps)))
+        probability <- matrix(inv_fn(as.vector(eta)), nrow = n_samples)
+        if (any(!is.finite(probability)) ||
+            any(probability <= 0 | probability >= 1)) {
+          stop("invlink must return values in (0,1) (Binomial).")
+        }
+        first <- matrix(inv1(as.vector(eta)), nrow = n_samples)
+        denominator <- probability * (1 - probability)
+        log_likelihood <- rowSums(
+          sweep(log(probability), 2L, y, "*") +
+            sweep(log1p(-probability), 2L, units_m - y, "*")
+        )
+        score <- sweep(probability, 2L, units_m, "*")
+        score <- sweep(score, 2L, y, function(x, y) y - x) *
+          first / denominator
+        if (include_curvature) {
+          second <- matrix(inv2(as.vector(eta)), nrow = n_samples)
+          residual <- sweep(probability, 2L, units_m, "*")
+          residual <- sweep(residual, 2L, y, function(x, y) y - x)
+          curvature <- sweep(first^2 / denominator, 2L, units_m, "*") -
+            residual * (second / denominator -
+                          first^2 * (1 - 2 * probability) / denominator^2)
+        }
       }
 
-      q.f_S <- n_loc * log(val$sigma2) + val$ldetR + as.numeric(t(S) %*% val$R.inv %*% S) / val$sigma2
-      -0.5 * (q.f_S + q.f_re) + llik
+      list(
+        log_likelihood = log_likelihood,
+        score = score,
+        curvature = if (include_curvature) curvature else NULL
+      )
     }
 
-    # --- 2) compute.log.f, generalized link (uses log.integrand) ---
-    compute.log.f <- function(par, ldetR = NA, R.inv = NA) {
-      beta   <- par[ind_beta]
-      sigma2 <- exp(par[ind_sigma2])
-      nu2    <- if (length(fix_tau2) > 0) fix_tau2 / sigma2 else exp(par[ind_nu2])
-      phi    <- exp(par[ind_phi])
-
-      val <- list()
-      val$sigma2 <- sigma2
-      val$mu <- as.numeric(D %*% beta) + cov_offset
-      if (n_re > 0) val$sigma2_re <- exp(par[ind_sigma2_re])
-
-      if (is.na(ldetR) && is.na(as.numeric(R.inv)[1])) {
-        R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
-        diag(R) <- diag(R) + nu2
-        val$ldetR <- determinant(R)$modulus
-        val$R.inv <- solve(R)
-      } else {
-        val$ldetR <- ldetR
-        val$R.inv <- R.inv
+    # nlminb commonly requests the objective, score and Hessian at the same
+    # parameter vector. Cache their shared covariance decomposition so that it
+    # is built only once at each distinct trial point.
+    covariance_cache <- new.env(parent = emptyenv())
+    covariance_state <- function(par) {
+      if (exists("par", covariance_cache, inherits = FALSE) &&
+          identical(par, covariance_cache$par)) {
+        return(covariance_cache$state)
       }
 
-      sapply(seq_len(n_samples), function(i) log.integrand(S_tot_samples[i, ], val))
+      sigma2 <- exp(par[ind_sigma2])
+      nu2 <- nugget_ratio(
+        fix_tau2,
+        sigma2,
+        if (isTRUE(fix_tau2)) par[ind_nu2] else NULL
+      )
+      phi <- exp(par[ind_phi])
+      correlation <- matern_correlation(
+        u,
+        phi = phi,
+        kappa = kappa,
+        return_sym_matrix = TRUE
+      )
+      diag(correlation) <- diag(correlation) + nu2
+      root <- factor_covariance(
+        correlation,
+        "spatial correlation matrix",
+        allow_jitter = FALSE
+      )
+
+      state <- list(
+        sigma2 = sigma2,
+        nu2 = nu2,
+        phi = phi,
+        correlation = correlation,
+        root = root,
+        inverse = chol2inv(root),
+        log_determinant = log_determinant_from_cholesky(root)
+      )
+      covariance_cache$par <- par
+      covariance_cache$state <- state
+      state
+    }
+
+    # --- 1) Monte Carlo log integrand ---
+    compute_log_f <- function(par) {
+      beta   <- par[ind_beta]
+      covariance <- covariance_state(par)
+      mu <- as.numeric(D %*% beta) + cov_offset
+      likelihood <- sample_likelihood_state(mu)$log_likelihood
+      precision_samples <- spatial_samples %*% covariance$inverse
+      spatial_quadratic <- rowSums(spatial_samples * precision_samples)
+
+      random_quadratic <- numeric(n_samples)
+      if (n_re > 0) {
+        sigma2_re <- exp(par[ind_sigma2_re])
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          random_quadratic <- random_quadratic +
+            n_dim_re[j] * log(sigma2_re[j]) +
+            rowSums(random_samples^2) / sigma2_re[j]
+        }
+      }
+
+      spatial_quadratic <- n_loc * log(covariance$sigma2) +
+        covariance$log_determinant +
+        spatial_quadratic / covariance$sigma2
+      -0.5 * (spatial_quadratic + random_quadratic) + likelihood
     }
 
     par0_vec <- c(par0$beta, log(c(par0$sigma2, par0$phi)))
     if (isTRUE(fix_tau2)) par0_vec <- c(par0_vec, log(par0$tau2 / par0$sigma2))
     if (n_re > 0) par0_vec <- c(par0_vec, log(par0$sigma2_re))
 
-    log.f.tilde <- compute.log.f(par0_vec)
+    log_f_tilde <- compute_log_f(par0_vec)
 
-    MC.log.lik <- function(par) {
-      log(mean(exp(compute.log.f(par) - log.f.tilde)))
+    mc_log_lik <- function(par) {
+      log_mean_exp(compute_log_f(par) - log_f_tilde)
     }
 
-    # --- 3) grad.MC.log.lik, generalized link ---
-    grad.MC.log.lik <- function(par) {
+    # --- 2) Monte Carlo score, generalized link ---
+    grad_mc_log_lik <- function(par) {
       beta   <- par[ind_beta]; mu <- as.numeric(D %*% beta) + cov_offset
-      sigma2 <- exp(par[ind_sigma2])
-      nu2    <- if (length(fix_tau2) > 0) fix_tau2 / sigma2 else exp(par[ind_nu2])
-      phi    <- exp(par[ind_phi])
+      covariance <- covariance_state(par)
+      sigma2 <- covariance$sigma2
+      nu2 <- covariance$nu2
+      phi <- covariance$phi
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
-      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
-      diag(R) <- diag(R) + nu2
-      R.inv <- solve(R)
-      ldetR <- determinant(R)$modulus
+      R.inv <- covariance$inverse
 
-      exp.fact <- exp(compute.log.f(par, ldetR, R.inv) - log.f.tilde)
-      L.m <- sum(exp.fact)
-      exp.fact <- exp.fact / L.m
+      importance_weights <- normalise_log_weights(
+        compute_log_f(par) - log_f_tilde
+      )
 
       R1.phi <- matern_gradient_phi(u, phi, kappa)
       m1.phi <- R.inv %*% R1.phi
@@ -2341,85 +2867,60 @@ glgpm_nong <-
         m2.nu2 <- R.inv %*% R.inv
       }
 
-      gradient.S <- function(S_tot) {
-        S <- S_tot[1:n_loc]
-        if (n_re > 0) {
-          S_re_list <- vector("list", n_re)
-          for (i in 1:n_re) S_re_list[[i]] <- S_tot[ind_re[[i]]]
-        }
+      score <- sample_likelihood_state(mu)$score
+      q_f_S <- rowSums((spatial_samples %*% R.inv) * spatial_samples)
+      q_phi <- rowSums((spatial_samples %*% m2.phi) * spatial_samples)
+      sample_gradients <- cbind(
+        score %*% D,
+        (-n_loc / (2 * sigma2) + 0.5 * q_f_S / sigma2^2) * sigma2,
+        (t1.phi + 0.5 * q_phi / sigma2) * phi
+      )
 
-        eta <- mu + S[ID_coords]
-        if (n_re > 0) for (i in 1:n_re) eta <- eta + S_re_list[[i]][ID_re[, i]]
-
-        if (family == "poisson") {
-          mu_vec <- inv_fn(eta)
-          if (any(mu_vec <= 0 | !is.finite(mu_vec))) stop("invlink invalid (Poisson).")
-          mu1 <- inv1(eta)
-          g_eta <- (y - units_m * mu_vec) * (mu1 / mu_vec)
-        } else {
-          p <- inv_fn(eta)
-          if (any(p <= 0 | p >= 1 | !is.finite(p))) stop("invlink invalid (Binomial).")
-          p1 <- inv1(eta)
-          den <- p * (1 - p)
-          g_eta <- (y - units_m * p) * (p1 / den)
-        }
-
-        q.f_S <- as.numeric(t(S) %*% R.inv %*% S)
-
-        grad.beta <- t(D) %*% g_eta
-        grad.log.sigma2 <- (-n_loc/(2*sigma2) + 0.5*q.f_S/(sigma2^2)) * sigma2
-        grad.log.phi    <- (t1.phi + 0.5 * as.numeric(t(S) %*% m2.phi %*% S) / sigma2) * phi
-
-        out <- c(grad.beta, grad.log.sigma2, grad.log.phi)
-
-        if (isTRUE(fix_tau2)) {
-          grad.log.nu2 <- (t1.nu2 + 0.5 * as.numeric(t(S) %*% m2.nu2 %*% S) / sigma2) * nu2
-          out <- c(out, grad.log.nu2)
-        }
-
-        if (n_re > 0) {
-          grad.log.sigma2_re <- numeric(n_re)
-          for (i in 1:n_re) {
-            grad.log.sigma2_re[i] <- (-n_dim_re[i]/(2*sigma2_re[i]) +
-                                        0.5 * sum(S_re_list[[i]]^2) / (sigma2_re[i]^2)) * sigma2_re[i]
-          }
-          out <- c(out, grad.log.sigma2_re)
-        }
-        out
+      if (isTRUE(fix_tau2)) {
+        q_nu2 <- rowSums((spatial_samples %*% m2.nu2) * spatial_samples)
+        sample_gradients <- cbind(
+          sample_gradients,
+          (t1.nu2 + 0.5 * q_nu2 / sigma2) * nu2
+        )
       }
 
-      out <- rep(0, length(par))
-      for (i in 1:n_samples) out <- out + exp.fact[i] * gradient.S(S_tot_samples[i, ])
-      out
+      if (n_re > 0) {
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          sample_gradients <- cbind(
+            sample_gradients,
+            (-n_dim_re[j] / (2 * sigma2_re[j]) +
+               0.5 * rowSums(random_samples^2) / sigma2_re[j]^2) *
+              sigma2_re[j]
+          )
+        }
+      }
+
+      colSums(sweep(sample_gradients, 1L, importance_weights, "*"))
     }
 
-    # --- 4) hess.MC.log.lik, generalized link ---
-    hess.MC.log.lik <- function(par) {
+    # --- 3) Monte Carlo Hessian, generalized link ---
+    hess_mc_log_lik <- function(par) {
       ## Unpack parameters
       beta   <- par[ind_beta]
       mu     <- as.numeric(D %*% beta) + cov_offset
-      sigma2 <- exp(par[ind_sigma2])
-      if (!isTRUE(fix_tau2)) nu2 <- fix_tau2 / sigma2 else nu2 <- exp(par[ind_nu2])
-      phi    <- exp(par[ind_phi])
+      covariance <- covariance_state(par)
+      sigma2 <- covariance$sigma2
+      nu2 <- covariance$nu2
+      phi <- covariance$phi
       if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
 
       ## Build R(φ, ν²) and precision via Cholesky (fast solves)
-      R <- matern_correlation(u, phi = phi, kappa = kappa, return_sym_matrix = TRUE)
-      diag(R) <- diag(R) + nu2
-      U <- chol(R)   # R = U^T U
+      root <- covariance$root
 
-      solve_R <- function(B) {
-        backsolve(U, forwardsolve(t(U), B, upper.tri = FALSE), upper.tri = TRUE)
-      }
-
-      A   <- chol2inv(U)                  # R^{-1} (explicit once)
+      A   <- covariance$inverse           # R^{-1} (explicit once)
       trA <- sum(diag(A))
       t2.nu2 <- 0.5 * sum(A * A)          # 0.5 tr(A^2)
 
       ## MC weights for the importance average
-      ldetR    <- determinant(R)$modulus
-      exp.fact <- exp(compute.log.f(par, ldetR, A) - log.f.tilde)
-      exp.fact <- exp.fact / sum(exp.fact)
+      importance_weights <- normalise_log_weights(
+        compute_log_f(par) - log_f_tilde
+      )
 
       ## φ in log space: R_u = dR/d(log φ), R_uu = d²R/d(log φ)²
       R1.phi <- matern_gradient_phi(u, phi, kappa)                 # ∂R/∂φ
@@ -2438,10 +2939,10 @@ glgpm_nong <-
       ## -------- Batched precomputes across ALL samples (no heavy ops in loop) --------
       S_sp <- t(S_tot_samples[, 1:n_loc, drop = FALSE])        # n_loc x n_samples
 
-      AS  <- solve_R(S_sp)                                     # A S
+      AS  <- solve_from_cholesky(root, S_sp)                    # A S
       qS  <- colSums(S_sp * AS)                                # S' A S
 
-      A2S <- solve_R(AS)                                       # A^2 S
+      A2S <- solve_from_cholesky(root, AS)                      # A^2 S
       q2  <- colSums(S_sp * A2S)                               # S' A^2 S
       q3  <- colSums(AS * A2S)                                 # S' A^3 S (= (AS)·(A2S))
 
@@ -2449,10 +2950,11 @@ glgpm_nong <-
       qMu  <- colSums(AS * RuAS)                               # S' (A R_u A) S
 
       ## Speedups for φ–ν² path:
-      MuA     <- solve_R(R_u)                                  # M_{uA} = A R_u  (one wide solve)
+      MuA     <- solve_from_cholesky(root, R_u)                 # M_{uA} = A R_u  (one wide solve)
       Ku      <- MuA %*% AS                                    # A R_u A S
       ARuA2S  <- MuA %*% A2S                                   # A R_u A^2 S
-      NuS     <- 2 * (MuA %*% Ku) - solve_R(R_uu %*% AS)       # A(2 R_u A R_u - R_uu)A S
+      NuS     <- 2 * (MuA %*% Ku) -
+        solve_from_cholesky(root, R_uu %*% AS)                  # A(2 R_u A R_u - R_uu)A S
       qNu     <- colSums(S_sp * NuS)                           # S' N_u S
 
       ## >>> FIX: include A·Ku term in qNuv
@@ -2461,111 +2963,88 @@ glgpm_nong <-
 
       tr_ARuA <- sum((A %*% R_u) * A)                          # tr(A R_u A)
 
-      ## Accumulators for MC Hessian
-      H_acc <- matrix(0, nrow = length(par), ncol = length(par))
-      g_acc <- numeric(length(par))
-
-      for (i in seq_len(n_samples)) {
-        ## Build eta for sample i
-        S_i  <- S_sp[, i, drop = TRUE]
-        eta  <- mu + S_i[ID_coords]
-        if (n_re > 0) {
-          S_re_list <- vector("list", n_re)
-          for (j in seq_len(n_re)) {
-            S_re_list[[j]] <- S_tot_samples[i, ind_re[[j]]]
-            eta <- eta + S_re_list[[j]][ID_re[, j]]
-          }
+      likelihood <- sample_likelihood_state(mu, include_curvature = TRUE)
+      sample_gradients <- cbind(
+        likelihood$score %*% D,
+        (-n_loc / (2 * sigma2) + 0.5 * qS / sigma2^2) * sigma2,
+        t1.u + 0.5 * qMu / sigma2
+      )
+      if (isTRUE(fix_tau2)) {
+        sample_gradients <- cbind(
+          sample_gradients,
+          (-0.5 * trA + 0.5 * q2 / sigma2) * nu2
+        )
+      }
+      if (n_re > 0) {
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          sample_gradients <- cbind(
+            sample_gradients,
+            (-n_dim_re[j] / (2 * sigma2_re[j]) +
+               0.5 * rowSums(random_samples^2) / sigma2_re[j]^2) *
+              sigma2_re[j]
+          )
         }
-
-        ## General inverse link (must exist in parent: inv_fn, inv1, inv2)
-        if (family == "poisson") {
-          mu_vec <- inv_fn(eta); mu1 <- inv1(eta); mu2 <- inv2(eta)
-          g_eta  <- (y - units_m * mu_vec) * (mu1 / mu_vec)
-          l2     <- - y * (mu1^2) / (mu_vec^2) + (y / mu_vec - units_m) * mu2
-          w      <- -l2
-        } else { # binomial
-          p   <- inv_fn(eta); p1 <- inv1(eta); p2 <- inv2(eta)
-          den <- p * (1 - p)
-          g_eta <- (y - units_m * p) * (p1 / den)
-          l2    <- - units_m * (p1^2) / den +
-            (y - units_m * p) * ( p2 / den - (p1^2) * (1 - 2 * p) / (den^2) )
-          w     <- -l2
-        }
-
-        ## Per-sample gradients (match grad.MC.log.lik)
-        grad.beta       <- t(D) %*% g_eta
-        grad.log.sigma2 <- (-n_loc/(2 * sigma2) + 0.5 * qS[i] / (sigma2^2)) * sigma2
-        grad.log.phi    <- t1.u + 0.5 * qMu[i] / sigma2
-
-        gi <- c(grad.beta, grad.log.sigma2, grad.log.phi)
-
-        if (isTRUE(fix_tau2)) {
-          grad.log.nu2 <- ( -0.5 * trA + 0.5 * q2[i] / sigma2 ) * nu2
-          gi <- c(gi, grad.log.nu2)
-        }
-
-        if (n_re > 0) {
-          grad.log.sigma2_re <- numeric(n_re)
-          for (j in seq_len(n_re)) {
-            Sj <- S_re_list[[j]]
-            grad.log.sigma2_re[j] <- (-n_dim_re[j]/(2 * sigma2_re[j]) +
-                                        0.5 * sum(Sj^2) / (sigma2_re[j]^2)) * sigma2_re[j]
-          }
-          gi <- c(gi, grad.log.sigma2_re)
-        }
-
-        ## Per-sample curvature (all heavy bits precomputed above)
-        Hi <- matrix(0, nrow = length(par), ncol = length(par))
-
-        # ββ block
-        Hi[ind_beta, ind_beta] <- -crossprod(D, D * as.numeric(w))
-        # β with log-params: zero per-sample
-        Hi[ind_beta, ind_sigma2] <- Hi[ind_sigma2, ind_beta] <- 0
-        Hi[ind_beta, ind_phi]    <- Hi[ind_phi,    ind_beta] <- 0
-        if (isTRUE(fix_tau2))     Hi[ind_beta, ind_nu2] <- Hi[ind_nu2, ind_beta] <- 0
-
-        # log σ² diag (chain rule)
-        Hi[ind_sigma2, ind_sigma2] <-
-          (n_loc/(2 * sigma2^2) - qS[i] / (sigma2^3)) * sigma2^2 + grad.log.sigma2
-
-        # log φ diag in u = log φ:
-        #   ℓ_uu = -1/2 tr(A R_uu - A R_u A R_u) + (1/2σ²) S' A( R_uu - 2 R_u A R_u )A S
-        Hi[ind_phi, ind_phi] <- t2.u - 0.5 * qNu[i] / sigma2
-
-        # log σ² – log φ cross:  - (1/(2σ²)) S' (A R_u A) S
-        Hi[ind_sigma2, ind_phi] <- Hi[ind_phi, ind_sigma2] <- -0.5 * qMu[i] / sigma2
-
-        if (isTRUE(fix_tau2)) {
-          # log ν² diag in v = log ν² (your correct chain-rule form)
-          # ℓ_vv = ( t2.nu2 - (S' 2A^3 S)/(2σ²) ) ν²² + ℓ_v,  with ℓ_v = (-1/2 trA + (S'A²S)/(2σ²)) ν²
-          ell_v <- ( -0.5 * trA + 0.5 * q2[i] / sigma2 ) * nu2
-          Hi[ind_nu2, ind_nu2] <- ( t2.nu2 - q3[i] / sigma2 ) * nu2^2 + ell_v
-
-          # log ν² – log φ cross (u,v):
-          # ℓ_uv = 0.5 ν² tr(A R_u A) - (ν²/(2σ²)) S' A (R_u A + A R_u) A S
-          Hi[ind_phi, ind_nu2] <- Hi[ind_nu2, ind_phi] <-
-            0.5 * nu2 * tr_ARuA - 0.5 * nu2 * qNuv[i] / sigma2
-
-          # log σ² – log ν² cross:  - (ν²/(2σ²)) S' A² S
-          Hi[ind_sigma2, ind_nu2] <- Hi[ind_nu2, ind_sigma2] <- -0.5 * nu2 * q2[i] / sigma2
-        }
-
-        # σ²_re diagonals
-        if (n_re > 0) {
-          for (j in seq_len(n_re)) {
-            Sj <- S_re_list[[j]]
-            Hi[ind_sigma2_re[j], ind_sigma2_re[j]] <-
-              ( n_dim_re[j] / (2 * sigma2_re[j]^2) - sum(Sj^2) / (sigma2_re[j]^3) ) * sigma2_re[j]^2 +
-              ( - n_dim_re[j] / (2 * sigma2_re[j]) + 0.5 * sum(Sj^2) / (sigma2_re[j]^2) ) * sigma2_re[j]
-          }
-        }
-
-        ef <- exp.fact[i]
-        H_acc <- H_acc + ef * (gi %*% t(gi) + Hi)
-        g_acc <- g_acc + ef * gi
       }
 
-      H_acc - g_acc %*% t(g_acc)
+      conditional_hessian <- matrix(0, nrow = length(par), ncol = length(par))
+      mean_curvature <- colSums(
+        sweep(likelihood$curvature, 1L, importance_weights, "*")
+      )
+      conditional_hessian[ind_beta, ind_beta] <-
+        -crossprod(D, D * mean_curvature)
+      conditional_hessian[ind_sigma2, ind_sigma2] <- sum(
+        importance_weights *
+          ((n_loc / (2 * sigma2^2) - qS / sigma2^3) * sigma2^2 +
+             sample_gradients[, ind_sigma2])
+      )
+      conditional_hessian[ind_phi, ind_phi] <- sum(
+        importance_weights * (t2.u - 0.5 * qNu / sigma2)
+      )
+      conditional_hessian[ind_sigma2, ind_phi] <-
+        conditional_hessian[ind_phi, ind_sigma2] <-
+        sum(importance_weights * (-0.5 * qMu / sigma2))
+
+      if (isTRUE(fix_tau2)) {
+        conditional_hessian[ind_nu2, ind_nu2] <- sum(
+          importance_weights *
+            ((t2.nu2 - q3 / sigma2) * nu2^2 +
+               sample_gradients[, ind_nu2])
+        )
+        conditional_hessian[ind_phi, ind_nu2] <-
+          conditional_hessian[ind_nu2, ind_phi] <- sum(
+            importance_weights *
+              (0.5 * nu2 * tr_ARuA - 0.5 * nu2 * qNuv / sigma2)
+          )
+        conditional_hessian[ind_sigma2, ind_nu2] <-
+          conditional_hessian[ind_nu2, ind_sigma2] <-
+          sum(importance_weights * (-0.5 * nu2 * q2 / sigma2))
+      }
+
+      if (n_re > 0) {
+        for (j in seq_len(n_re)) {
+          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
+          sum_squares <- rowSums(random_samples^2)
+          conditional_hessian[ind_sigma2_re[j], ind_sigma2_re[j]] <- sum(
+            importance_weights *
+              ((n_dim_re[j] / (2 * sigma2_re[j]^2) -
+                  sum_squares / sigma2_re[j]^3) * sigma2_re[j]^2 +
+                 sample_gradients[, ind_sigma2_re[j]])
+          )
+        }
+      }
+
+      weighted_gradients <- sweep(
+        sample_gradients,
+        1L,
+        sqrt(importance_weights),
+        "*"
+      )
+      mean_gradient <- colSums(
+        sweep(sample_gradients, 1L, importance_weights, "*")
+      )
+      crossprod(weighted_gradients) + conditional_hessian -
+        tcrossprod(mean_gradient)
     }
 
     # --- optimization ---
@@ -2573,10 +3052,11 @@ glgpm_nong <-
     start_par <- c(start_beta, log(start_cov_pars))
 
     out <- list()
+    objective <- safe_optimizer_objective(function(x) -mc_log_lik(x))
     estim <- nlminb(start_par,
-                    function(x) -MC.log.lik(x),
-                    function(x) -grad.MC.log.lik(x),
-                    function(x) -hess.MC.log.lik(x),
+                    objective,
+                    function(x) -grad_mc_log_lik(x),
+                    function(x) -hess_mc_log_lik(x),
                     control = list(trace = 1 * messages))
 
     out$estimate <- structure_estimate(
@@ -2586,9 +3066,14 @@ glgpm_nong <-
       sigma2_me  = FALSE,
       re_names   = if (n_re > 0) names(ID_re) else NULL
     )
-    out$grad_MLE <- grad.MC.log.lik(estim$par)
-    hess_MLE <- hess.MC.log.lik(estim$par)
-    out$covariance <- solve(-hess_MLE)
+    out$grad_MLE <- grad_mc_log_lik(estim$par)
+    hess_MLE <- hess_mc_log_lik(estim$par)
+    information <- -hess_MLE
+    information_root <- factor_covariance(
+      information,
+      "observed information matrix"
+    )
+    out$covariance <- chol2inv(information_root)
     flat_names <- names(unlist(out$estimate))
     dimnames(out$covariance) <- list(flat_names, flat_names)
     out$log_lik <- -estim$objective
@@ -2599,6 +3084,28 @@ glgpm_nong <-
     }
 
     out$link_function <- linkf
+    optimizer_diagnostics <- collect_optimizer_diagnostics(
+      estim, objective, out$grad_MLE, information, information_root
+    )
+    warn_unconverged_optimizer(optimizer_diagnostics)
+    final_weights <- normalise_log_weights(
+      compute_log_f(estim$par) - log_f_tilde
+    )
+    optimizer_diagnostics$importance_ess <-
+      importance_effective_sample_size(final_weights)
+    optimizer_diagnostics$relative_importance_ess <-
+      optimizer_diagnostics$importance_ess / length(final_weights)
+    if (messages && optimizer_diagnostics$relative_importance_ess < 0.1) {
+      warning(
+        "The importance-sampling effective sample size is only ",
+        format(100 * optimizer_diagnostics$relative_importance_ess,
+               digits = 3),
+        "% of the retained samples; consider improving the proposal or ",
+        "increasing the MCMC sample size.",
+        call. = FALSE
+      )
+    }
+    attr(out, "optimizer") <- optimizer_diagnostics
     class(out) <- "RiskMap"
     return(out)
 }

@@ -30,6 +30,30 @@ cross_distances <- function(first, second) {
   cpp_cross_distances(as.matrix(first), as.matrix(second))
 }
 
+#' Index repeated two-dimensional coordinates
+#'
+#' @param coordinates Numeric matrix with locations in rows.
+#' @return A list containing unique locations in first-occurrence order and an
+#'   integer index mapping every input row to its unique location.
+#' @noRd
+index_coordinate_rows <- function(coordinates) {
+  coordinates <- as.matrix(coordinates)
+  if (ncol(coordinates) != 2L) {
+    stop("Spatial coordinates must have exactly two columns.", call. = FALSE)
+  }
+
+  # Complex values provide an exact, collision-free key for a pair of finite
+  # doubles and avoid an O(n^2) row-by-row search.
+  keys <- complex(real = coordinates[, 1], imaginary = coordinates[, 2])
+  unique_rows <- !duplicated(keys)
+  unique_keys <- keys[unique_rows]
+
+  list(
+    coordinates = coordinates[unique_rows, , drop = FALSE],
+    index = match(keys, unique_keys)
+  )
+}
+
 #' Scale spatial coordinates and range
 #'
 #' The maximum observed pairwise distance is used for both fitting and future
@@ -76,10 +100,13 @@ restore_spatial_range <- function(phi_scaled, distance_scale) {
 #'
 #' @param covariance Numeric square covariance matrix.
 #' @param context Short description used in diagnostics.
+#' @param allow_jitter Whether to try reported scale-aware diagonal jitter after
+#'   an unmodified factorisation fails.
 #' @return An upper-triangular Cholesky factor. The applied jitter is stored in
 #'   the `jitter` attribute.
 #' @noRd
-factor_covariance <- function(covariance, context = "covariance matrix") {
+factor_covariance <- function(covariance, context = "covariance matrix",
+                              allow_jitter = TRUE) {
   covariance <- as.matrix(covariance)
   if (nrow(covariance) != ncol(covariance)) {
     stop("The ", context, " must be square.", call. = FALSE)
@@ -90,6 +117,10 @@ factor_covariance <- function(covariance, context = "covariance matrix") {
   if (!is.null(root)) {
     attr(root, "jitter") <- 0
     return(root)
+  }
+
+  if (!allow_jitter) {
+    stop("The ", context, " is not positive definite.", call. = FALSE)
   }
 
   covariance_scale <- max(abs(diag(covariance)), 1)
@@ -120,6 +151,15 @@ factor_covariance <- function(covariance, context = "covariance matrix") {
 #' @noRd
 solve_from_cholesky <- function(root, right_hand_side) {
   backsolve(root, forwardsolve(t(root), right_hand_side))
+}
+
+#' Compute a positive-definite log determinant from its Cholesky factor
+#'
+#' @param root Upper-triangular factor returned by [factor_covariance()].
+#' @return Log determinant of the original covariance matrix.
+#' @noRd
+log_determinant_from_cholesky <- function(root) {
+  2 * sum(log(diag(root)))
 }
 
 #' Compute prediction weights without forming a covariance inverse

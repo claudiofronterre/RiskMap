@@ -230,4 +230,18 @@ test_that("check_positive_number functions correctly", {
   expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
   a <- NA
   expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+  a <- Inf
+  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
+})
+
+test_that("check_zero_one validates the closed unit interval", {
+  expect_no_error(check_zero_one(0, "a"))
+  expect_no_error(check_zero_one(0.5, "a"))
+  expect_no_error(check_zero_one(1, "a"))
+
+  expect_error(check_zero_one(-0.1, "a"), "between zero and one")
+  expect_error(check_zero_one(1.1, "a"), "between zero and one")
+  expect_error(check_zero_one(c(0, 1), "a"), "between zero and one")
+  expect_error(check_zero_one(NA, "a"), "between zero and one")
+  expect_error(check_zero_one(Inf, "a"), "between zero and one")
 })

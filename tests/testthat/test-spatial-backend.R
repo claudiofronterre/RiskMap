@@ -134,10 +134,28 @@ test_that("Cholesky prediction weights agree with a direct covariance solve", {
   expect_equal(cholesky_prediction_weights(cross_covariance, root),
                cross_covariance %*% solve(covariance),
                tolerance = 1e-14)
+  expect_equal(log_determinant_from_cholesky(root),
+               as.numeric(determinant(covariance, logarithm = TRUE)$modulus),
+               tolerance = 1e-14)
+})
+
+test_that("coordinate rows are indexed in first-occurrence order", {
+  coordinates <- rbind(c(3, 4), c(1, 2), c(3, 4), c(-1, 2), c(1, 2))
+  indexed <- index_coordinate_rows(coordinates)
+
+  expect_equal(indexed$coordinates,
+               rbind(c(3, 4), c(1, 2), c(-1, 2)))
+  expect_identical(indexed$index, c(1L, 2L, 1L, 3L, 2L))
+  expect_error(index_coordinate_rows(matrix(1:9, ncol = 3)),
+               "exactly two columns")
 })
 
 test_that("adaptive jitter is reported and conditional variances are guarded", {
   singular <- matrix(1, 2, 2)
+  expect_error(
+    factor_covariance(singular, "test covariance", allow_jitter = FALSE),
+    "not positive definite"
+  )
   expect_warning(root <- factor_covariance(singular, "test covariance"),
                  "required diagonal jitter")
   expect_gt(attr(root, "jitter"), 0)
