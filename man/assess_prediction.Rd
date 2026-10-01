@@ -69,7 +69,7 @@ or \code{method = "regularized"} are reproducible; ignored for \code{method = "u
 which is already deterministic. The caller's random number generator state
 is restored on exit.}
 
-\item{plot_fold}{Logical; whether to plot each fold's test and training sets. Defaults to \code{TRUE}.}
+\item{plot_fold}{Logical; whether to plot each iteration's test and training sets. Defaults to \code{TRUE}.}
 
 \item{messages}{Logical; whether to display progress messages. Defaults to \code{TRUE}.}
 
