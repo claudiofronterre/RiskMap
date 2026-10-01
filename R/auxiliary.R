@@ -1209,7 +1209,7 @@ plot_metric <- function(object, metric, model, ...) {
   data_full$value <- object$model[[model]]$metric[[metric]][[1]]
 
   if (n_test > 1) {
-    for (i in 1:n_test) {
+    for (i in 2:n_test) {
       test_sets[[i]]$value <- object$model[[model]]$metric[[metric]][[i]]
       data_full <- rbind(data_full, test_sets[[i]])
     }
