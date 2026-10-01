@@ -70,10 +70,13 @@ named `boundaries`.
 with `iter` and `fold`) and `which_metric` has been renamed to `metrics`.
 Parameters have also been reordered: mandatory arguments first, then those
 required per `method` (in the order `"cluster"`, `"regularized"`, `"user"`),
-then the remaining optional arguments.
+then the remaining optional arguments. 
 - `assess_prediction()` now honours a `seed` set on its `control_mcmc` argument
 to make the random splits generated for `method = "cluster"` or `"regularized"`
 reproducible.
+- `assess_prediction()`'s `plot_fold = TRUE` plots are now consistent across
+`method`s: `"cluster"` is unchanged (`spatialsample::autoplot()`), while
+`"user"` and `"regularized"` now plot the testing and training datasets.
 - In `plot.RiskMap_predict_grid_target()` and `plot.RiskMap_predict_areal_target()`,
 `which_target`/`which_summary` have been renamed to `target`/`summary`, for
 consistency elsewhere in the package. `target` now defaults to `NULL`, which
