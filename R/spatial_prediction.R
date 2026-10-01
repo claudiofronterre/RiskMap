@@ -169,10 +169,10 @@ setup_prediction <- function(object,
   if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
     stop("'control_mcmc' must be an output from 'set_control_mcmc()'")
 
-  if (!is.null(control_sim$seed)) {
+  if (!is.null(control_mcmc$seed)) {
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
-    set.seed(control_sim$seed)
+    set.seed(control_mcmc$seed)
   }
 
   if (!type %in% c("marginal", "joint"))
@@ -2382,40 +2382,6 @@ assess_simulation <- function(obj_sim,
     inter <- st_intersects(boundaries, obj_sim$lp_grid_sim)
   }
 
-  for(i in 1:n_models) {
-    if(messages) message("Model: ", paste(model_names[i]),"\n")
-
-    if_i <- interpret_formula(models[[i]])
-    rhs_terms <- attr(terms(if_i$pf), "term.labels")
-    # Check if there are any covariates
-    if (length(rhs_terms) == 0) {
-      predictors_i <- NULL
-    } else {
-      predictors_i <- obj_sim$lp_grid_sim
-    }
-    for(j in 1:n_sim) {
-      if(messages) message("Processing simulation no.", j)
-      f_i <- update(models[[i]], y ~ .)
-      if(messages) message("Estimation")
-      refit_args <- list(formula = f_i, family = obj_sim$family,
-                         data = obj_sim$data_sim[[j]],
-                         distance_units = obj_sim$distance_units,
-                         control_mcmc = control_mcmc, messages = FALSE)
-      if (obj_sim$family != "gaussian") refit_args$denominator <- quote(units_m)
-      fits[[paste(model_names[i])]][[j]] <- do.call(glgpm, refit_args)
-
-      if(messages) message("Prediction over the grid")
-      preds[[paste(model_names[i])]][[j]] <-
-        setup_prediction(fits[[paste(model_names[i])]][[j]],
-                       grid_pred = st_as_sfc(obj_sim$lp_grid_sim),
-                       predictors = predictors_i,
-                       pred_cov_offset = if (is.null(if_i$offset)) NULL else
-                         obj_sim$lp_grid_sim[[if_i$offset]],
-                       control_mcmc = control_mcmc,
-                       type = type, messages = FALSE)
-    }
-  }
-
   n_samples <- (control_mcmc$n_sim-control_mcmc$burnin)/control_mcmc$thin
   n_pred <- nrow(obj_sim$lp_grid_sim)
 
@@ -2543,7 +2509,7 @@ assess_simulation <- function(obj_sim,
         predictors = predictors_i,
         pred_cov_offset = if (is.null(if_i$offset)) NULL else
           obj_sim$lp_grid_sim[[if_i$offset]],
-        control_sim = control_mcmc,
+        control_mcmc = control_mcmc,
         type = type,
         messages = FALSE
       )
