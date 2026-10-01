@@ -1602,6 +1602,49 @@ update_predictors <- function(object, predictors) {
   x
 }
 
+##' @title Plot Training/Test Splits
+##'
+##' @description
+##' Plots every observation used by \code{\link{assess_prediction}}, coloured
+##' by whether it fell in the training or test set for a given iteration,
+##' faceted by iteration when there is more than one. Mimics the visual style
+##' of \code{spatialsample::autoplot()} (used directly for
+##' \code{method = "cluster"}), for the \code{"user"} and \code{"regularized"}
+##' methods, whose splits aren't necessarily a complete partition of the data
+##' and so aren't well suited to colouring by fold membership alone.
+##'
+##' @param data_split A list with a \code{splits} element, each entry itself a
+##' list with an \code{sf} \code{data} (the training set) and an \code{sf}
+##' \code{data_test} (the test set) - the structure built internally by
+##' \code{assess_prediction()} for \code{method = "user"} and
+##' \code{method = "regularized"}.
+##' @param alpha Point transparency, passed to \code{ggplot2::geom_sf()}.
+##' Defaults to \code{0.6}, matching \code{spatialsample::autoplot()}.
+##' @return A \code{ggplot} object.
+##' @noRd
+plot_folds <- function(data_split, alpha = 0.6) {
+  n_iter <- length(data_split$splits)
+
+  combined <- do.call(rbind, lapply(seq_len(n_iter), function(i) {
+    split_i <- data_split$splits[[i]]
+    rbind(
+      cbind(split_i$data,      set = "Training", iteration = i),
+      cbind(split_i$data_test, set = "Testing",  iteration = i)
+    )
+  }))
+
+  p <- ggplot(data = combined, aes(color = .data$set, fill = .data$set)) +
+    geom_sf(alpha = alpha) +
+    guides(colour = guide_legend("Set"), fill = guide_legend("Set")) +
+    theme_minimal()
+
+  if (n_iter > 1) {
+    p <- p + facet_wrap(vars(.data$iteration))
+  }
+
+  p + coord_sf()
+}
+
 ##' @title Assess Predictive Performance via Spatial Cross-Validation
 ##'
 ##' @description
@@ -1610,11 +1653,11 @@ update_predictors <- function(object, predictors) {
 ##'
 ##' - **Scoring rules**, including the Continuous Ranked Probability Score (CRPS)
 ##'  and its scaled version (SCRPS), which quantify the sharpness and calibration
-##'  of probabilistic forecasts;
+##'  of probabilistic forecasts (Bolin & Wallin, 2023);
 ##' - **Calibration diagnostics**, based on the Probability Integral Transform (PIT)
-##' for Gaussian outcomes, Aggregated nonparametric PIT (AnPIT) curves for discrete
+##' for Gaussian outcomes, Average nonrandomized PIT (AnPIT) curves for discrete
 ##' outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve
-##' and the reference line.
+##' and the reference line (Giorgi *et al.* 2026).
 ##'
 ##' Cross-validation can be performed using either spatial clustering, regularized
 ##' subsampling with a minimum inter-point distance or a user-defined test set.
@@ -1656,7 +1699,7 @@ update_predictors <- function(object, predictors) {
 ##' or `method = "regularized"` are reproducible; ignored for `method = "user"`,
 ##' which is already deterministic. The caller's random number generator state
 ##' is restored on exit.
-##' @param plot_fold Logical; whether to plot each fold's test set. Defaults to `TRUE`.
+##' @param plot_fold Logical; whether to plot each iteration's test and training sets. Defaults to `TRUE`.
 ##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
 ##'
@@ -1665,7 +1708,7 @@ update_predictors <- function(object, predictors) {
 ##'   \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
 ##'   \item{model}{A named list, one per model, each containing:
 ##'     \describe{
-##'       \item{score}{A list with CRPS, SCRPS, and/or AnPIT area scores for each fold if requested.}
+##'       \item{metric}{A list with CRPS, SCRPS, and/or AnPIT_area metrics for each fold if requested.}
 ##'       \item{PIT}{(if `family = "gaussian"` and `metrics` includes `"AnPIT"`) A list of PIT values for test data.}
 ##'       \item{AnPIT}{(if `family` is discrete and `metrics` includes `"AnPIT"`) A list of AnPIT curves for test data.}
 ##'     }
@@ -1675,10 +1718,15 @@ update_predictors <- function(object, predictors) {
 ##' @seealso \code{\link{plot_AnPIT}}
 ##'
 ##' @references
-##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of proper scoring rules. *Statistical Science*, 38(1), 140–159. \doi{10.1214/22-STS864}.
+##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
+##' proper scoring rules. *Statistical Science*, 38(1), 140–159. \doi{10.1214/22-STS864}.
+##'
+##' Giorgi, E., Fronterre, C. & Diggle, P. J. (2026). A decay-adjusted spatio-temporal
+##' model to account for the impact of mass drug administration on neglected
+##' tropical disease prevalence. *Journal of the Royal Statistical Society Series
+##' A: Statistics in Society*.\doi{10.1093/jrsssa/qnag100}.
 ##'
 ##' @importFrom terra match
-##' @importFrom gridExtra grid.arrange
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
 ##'
@@ -1941,23 +1989,7 @@ assess_prediction <- function(object,
     data_split <- make_splits_from_user(user_split, iter)
     n_iter <- iter
 
-    if (isTRUE(plot_fold)) {
-      if (n_iter == 1) {
-        p <- ggplot(data_split$splits[[1]]$data_test) +
-          geom_sf() +
-          theme_minimal() +
-          ggtitle("Test set")
-        print(p)
-      } else {
-        plots <- lapply(seq_len(n_iter), function(i) {
-          ggplot(data_split$splits[[i]]$data_test) +
-            geom_sf() +
-            theme_minimal() +
-            ggtitle(paste("Test", i))
-        })
-        do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
-      }
-    }
+    if (isTRUE(plot_fold)) print(plot_folds(data_split))
   } else if (method == "cluster") {
     data_split <- spatial_clustering_cv(data = data_sf, v = fold, repeats = iter, ...)
     # ensure out_id present
@@ -1983,21 +2015,7 @@ assess_prediction <- function(object,
       data_split$splits[[i]]$data   <- data_sf[!in_test, ]
     }
     n_iter <- iter
-    if (isTRUE(plot_fold)) {
-      plots <- lapply(seq_len(n_iter), function(i) {
-        ggplot(data_split$splits[[i]]$data_test) +
-          geom_sf() +
-          theme_minimal() +
-          ggtitle(paste("Subset", i))
-      })
-
-      if (n_iter > 1) {
-        do.call(gridExtra::grid.arrange, c(plots, ncol = 2))
-      } else {
-        # Only one plot: no need for a grid arrangement
-        for (p in plots) print(p)
-      }
-    }
+    if (isTRUE(plot_fold)) print(plot_folds(data_split))
   }
 
   ## ───────────────────────── initialise output ───────────────────────── ##
@@ -2187,11 +2205,11 @@ assess_prediction <- function(object,
     } # end i loop
 
     ## ─────────────── finalise output for this model ─────────────── ##
-    out$model[[model_names[h]]] <- list(score = list())
-    if (get_CRPS)  out$model[[model_names[h]]]$score$CRPS  <- CRPS
-    if (get_SCRPS) out$model[[model_names[h]]]$score$SCRPS <- SCRPS
+    out$model[[model_names[h]]] <- list(metric = list())
+    if (get_CRPS)  out$model[[model_names[h]]]$metric$CRPS  <- CRPS
+    if (get_SCRPS) out$model[[model_names[h]]]$metric$SCRPS <- SCRPS
     if (get_AnPIT) {
-      out$model[[model_names[h]]]$score$AnPIT_area <- AnPIT_area
+      out$model[[model_names[h]]]$metric$AnPIT_area <- AnPIT_area
       if (fam == "gaussian") out$model[[model_names[h]]]$PIT <- PIT else out$model[[model_names[h]]]$AnPIT <- AnPIT
     }
 
