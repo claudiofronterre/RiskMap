@@ -50,9 +50,15 @@ already-projected CRS is retained as-is, longitude/latitude data is automaticall
 reprojected to an appropriate UTM zone with a message, and an explicitly supplied
 `distance_crs` must be projected. Distances now correctly account for the CRS's
 native linear units rather than assuming metres.
-- `plot_variogram()`'s `plot_envelope` now defaults to `TRUE`; if `n_permutations`
-was 0 or 1 in the `variogram()` call, a warning is raised and the envelope is
-skipped instead of erroring.
+- `variogram()` now uses a simultaneous extreme-rank-length permutation envelope
+  instead of separate pointwise intervals. It remains an exploratory diagnostic
+  and does not report a hypothesis-test p-value. Its pairwise permutation engine
+  is compiled, distances and lag bins are computed once, and the default is 999
+  permutations plus the observed curve. The returned columns are now `distance`,
+  `semivariance`, `n_pairs`, `lower_envelope` and `upper_envelope`. A `seed` can
+  be supplied without changing the caller's random-number state.
+  `plot_variogram()` continues to show the envelope by default and warns when it
+  was omitted with `n_permutations = 0`.
 - `create_grid()` no longer raises an error when `boundaries` is in
 longitude/latitude; like `glgpm()`, it now automatically reprojects to an
 appropriate UTM zone and reports the conversion with a message.
