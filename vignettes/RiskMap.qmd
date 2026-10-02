@@ -8,7 +8,7 @@ author: Simon Smart
 ---
 
 **RiskMap** contains functions for model based geostatistics (MBG).
-MBG takes point based observations and generate predictions across the entire area of interest.
+MBG takes point based observations and generates predictions across the entire area of interest.
 A comprehensive guide to using the package and MBG in general is available at <https://www.mbgr.org/> but this vignette provides a basic overview of the package's functionality.
 
 ## Installation and loading
@@ -50,6 +50,7 @@ For more information on the datasets use `help(<dataset>)`
 - `tz_covariates` - Covariates for prediction of malaria in Tanzania
 - `tz_malaria` - Malaria in Tanzania
 
+
 ## Loading data
 
 Datasets need transforming into a simple features (sf) object prior to analysis. With the exception of `liberia`, the datasets are already converted to this format. To convert a dataframe to a suitable format, use `st_as_sf()` from the sf package, supplying the names of the columns containing the spatial coordinates and the coordinate reference system for the coordinates:
@@ -77,12 +78,11 @@ The distances between data points can be summarised with `summarise_distance()`.
 summarise_distance(data)
 ```
 
-The empirical variogram can be used to assess spatial independence in the data. In this example, `n_permutations` is set to 100 to speed up computation, but should be set to 10000 for final runs. If the points fall outside the envelope, this signifies that the data is not spatially independent and that it is appropriate to fit a model with a spatial term.
+The empirical variogram can be used to assess spatial independence in the data. If the points fall outside the envelope, this signifies that the data is not spatially independent and that it is appropriate to fit a model with a spatial term.
 
 ```{r}
 variogram <- variogram(data, 
                        variable = "npos", 
-                       n_permutations = 100,
                        distance_units = "km")
 
 plot_variogram(variogram, plot_envelope = TRUE)
@@ -90,7 +90,9 @@ plot_variogram(variogram, plot_envelope = TRUE)
 
 ## Model fitting
 
-`glpgm()` fits generalised linear Gaussian process models. The model family can be either `gaussian`, `binomial` or `poisson`. For this dataset consisting of counts of disease incidence (`npos`, the number of positive tests), a binomial model is most appropriate. The `denominator` is `ntest`, the number of tests. To make the results reproducible, set a `seed` value in `set_control_mcmc()`, `n_sim` and `burnin` are also reduced in this example to speed up computation.
+`glpgm()` fits generalised linear Gaussian process models for either Gaussia, binomial or Poisson responses. Every model must include `gp()` which automatically includes a spatial term based on the coordinates contained in the data. Optionally, you can specify random effects with `re()` and offsets with `offset()`. 
+
+For this dataset consisting of counts of disease incidence (`npos`, the number of positive tests), a binomial model is most appropriate. The `denominator` is `ntest`, the number of tests. To make the results reproducible, set a `seed` value in `set_control_mcmc()`, `n_sim` and `burnin` are also reduced in this example to speed up computation.
 
 ```{r}
 control_mcmc <- set_control_mcmc(n_sim = 1000,
@@ -202,7 +204,7 @@ plot(areal_prediction)
 
 ## Assessing predictions
 
-To assess the predictive performance of models, we can perform cross validation using `assess_prediction()`. Multiple models can be supplied and compared, so we will fit another model to the data, omitting the elevation covariate. By default, the test set of the data is plotted and three metrics are calculated - `AnPIT`
+To assess the predictive performance of models, perform cross validation using `assess_prediction()`. Multiple models can be supplied and compared, so fit another model to the data, omitting the elevation covariate. By default, the test set of the data is plotted and three metrics are calculated - `AnPIT`
 
 ```{r}
 no_elevation <- glgpm(npos ~ gp(),
@@ -227,7 +229,7 @@ plot_AnPIT(cross_validation)
 ```
 
 ```{r}
-plot_score(cross_validation, "CRPS", "elevation")
+plot_metric(cross_validation, "CRPS", "elevation")
 ```
 
 
