@@ -2426,33 +2426,14 @@ assess_simulation <- function(obj_sim,
   if(want_grid) out$pred_objective$grid <- init_objective_store()
   if(want_area) out$pred_objective$area <- init_objective_store()
 
-  # Given true/predicted category counts, update `store`'s by-category and
-  # CC entries for one model/simulation - shared by the grid and area paths.
+  # Update one model/simulation result. The helper below keeps every category
+  # in the confusion matrix, including categories absent from this simulation.
   update_classify_store <- function(store, model_name, sim_index, true_vals, samples) {
-    true_class <- cut(true_vals, breaks = categories)
-    n_categories <- length(categories) - 1
-    prob_cat <- matrix(0, nrow = nrow(samples), ncol = n_categories)
-    for(h in 1:n_categories) {
-      prob_cat[, h] <- apply(categories[h] < samples & samples <= categories[h + 1], 1, mean)
-    }
-    pred_class <- apply(prob_cat, 1, function(x) categories_class[which.max(x)])
-    conf_matrix <- table(true_class, pred_class)
-
-    by_cat <- store$classify[[model_name]]$by_cat[[sim_index]]
-    for(h in 1:nrow(conf_matrix)) {
-      TP <- conf_matrix[h, h]
-      FP <- sum(conf_matrix[, h]) - conf_matrix[h, h]
-      FN <- sum(conf_matrix[h, ]) - conf_matrix[h, h]
-      TN <- sum(conf_matrix) - sum(conf_matrix[h, ]) - sum(conf_matrix[, h]) + conf_matrix[h, h]
-
-      by_cat$Sensitivity[h] <- ifelse((TP + FN) == 0, NA, TP / (TP + FN))
-      by_cat$Specificity[h] <- ifelse((TN + FP) == 0, NA, TN / (TN + FP))
-      by_cat$PPV[h]         <- ifelse((TP + FP) == 0, NA, TP / (TP + FP))
-      by_cat$NPV[h]         <- ifelse((TN + FN) == 0, NA, TN / (TN + FN))
-      by_cat$CC[h]          <- ifelse((TP + FN) == 0, NA, TP / (TP + FN))
-    }
-    store$classify[[model_name]]$by_cat[[sim_index]] <- by_cat
-    store$classify[[model_name]]$CC[sim_index] <- mean(true_class == pred_class)
+    metrics <- simulation_classification_metrics(
+      true_vals, samples, categories, levels(categories_class)
+    )
+    store$classify[[model_name]]$by_cat[[sim_index]] <- metrics$by_cat
+    store$classify[[model_name]]$CC[sim_index] <- metrics$overall_cc
     store
   }
 
@@ -2615,9 +2596,57 @@ assess_simulation <- function(obj_sim,
     if(want_grid) out$pred_objective$grid$classify$Class <- categories_class
     if(want_area) out$pred_objective$area$classify$Class <- categories_class
   }
+  out$n_sim <- n_sim
   out$spatial_scale <- spatial_scale
   class(out) <- "RiskMap_assess_simulation"
   return(out)
+}
+
+##' Classification metrics for one simulated dataset
+##'
+##' @param true_values True target values.
+##' @param samples Matrix of predictive target samples, one row per target.
+##' @param breaks Category boundaries.
+##' @param labels Fixed category labels.
+##' @return A list containing category-specific metrics and overall accuracy.
+##' @noRd
+simulation_classification_metrics <- function(true_values, samples, breaks, labels) {
+  true_class <- cut(true_values, breaks = breaks, labels = labels)
+  true_class <- factor(true_class, levels = labels)
+
+  probabilities <- do.call(cbind, lapply(seq_len(length(breaks) - 1L), function(i) {
+    rowMeans(breaks[i] < samples & samples <= breaks[i + 1L])
+  }))
+  predicted_class <- factor(labels[max.col(probabilities, ties.method = "first")],
+                            levels = labels)
+  confusion <- table(true_class, predicted_class)
+  total <- sum(confusion)
+
+  divide_or_na <- function(numerator, denominator) {
+    if (denominator == 0) NA_real_ else numerator / denominator
+  }
+  by_category <- lapply(seq_along(labels), function(i) {
+    true_positive <- confusion[i, i]
+    false_positive <- sum(confusion[, i]) - true_positive
+    false_negative <- sum(confusion[i, ]) - true_positive
+    true_negative <- total - true_positive - false_positive - false_negative
+    data.frame(
+      Class = labels[i],
+      Sensitivity = divide_or_na(true_positive, true_positive + false_negative),
+      Specificity = divide_or_na(true_negative, true_negative + false_positive),
+      PPV = divide_or_na(true_positive, true_positive + false_positive),
+      NPV = divide_or_na(true_negative, true_negative + false_negative),
+      CC = divide_or_na(true_positive + true_negative, total)
+    )
+  })
+
+  valid <- !is.na(true_class)
+  overall_cc <- if (any(valid)) {
+    mean(true_class[valid] == predicted_class[valid])
+  } else {
+    NA_real_
+  }
+  list(by_cat = do.call(rbind, by_category), overall_cc = overall_cc)
 }
 
 ##' @title Summarize Simulation Results
@@ -2635,6 +2664,11 @@ assess_simulation <- function(obj_sim,
 ##' @export
 summary.RiskMap_assess_simulation <- function(object, ...) {
   stopifnot(inherits(object, "RiskMap_assess_simulation"))
+
+  if (identical(object$n_sim, 1L)) {
+    warning("The assessment contains one simulation. Point estimates are shown, ",
+            "but across-simulation uncertainty cannot be estimated.", call. = FALSE)
+  }
 
   # `object$pred_objective` holds one element per requested spatial scale
   # ("grid" and/or "area"); each is summarized the same way.
@@ -2663,11 +2697,13 @@ summarize_pred_objective <- function(pred_objective) {
 
     # Check if mse_data is a matrix
     if (is.matrix(mse_data)) {
-      # Compute mean and SD for each model (row)
+      n_valid <- rowSums(is.finite(mse_data))
       mse_summary <- data.frame(
         Model = rownames(mse_data),
-        MSE_mean = rowMeans(mse_data, na.rm = TRUE),
-        MSE_sd = apply(mse_data, 1, sd, na.rm = TRUE)
+        n_sim = ncol(mse_data),
+        n_valid = n_valid,
+        MSE_mean = apply(mse_data, 1, finite_mean),
+        MSE_sd = apply(mse_data, 1, finite_sd)
       )
 
       results$mse <- mse_summary
@@ -2680,38 +2716,66 @@ summarize_pred_objective <- function(pred_objective) {
   if ("classify" %in% names(pred_objective)) {
     classify_data <- pred_objective$classify
 
-    # Loop over each model (e.g., M1, M2)
-    n_models <- length(classify_data) - 1
-    name_models <- names(classify_data)[1:n_models]
+    name_models <- setdiff(names(classify_data), "Class")
     results$classify <- list()
-    for(i in 1:n_models) {
-
-      model_data <- classify_data[[i]]
-
+    for(model_name in name_models) {
+      model_data <- classify_data[[model_name]]
       n_sim <- length(model_data$by_cat)
-      res_class <- model_data$by_cat[[1]][,-1]
-      den <- 0
-      for(j in 2:n_sim) {
-        if(!any(is.na(model_data$by_cat[[j]][,-1]))) {
-          den <- den + 1
-          res_class <- res_class + model_data$by_cat[[j]][,-1]
-        }
+      metric_names <- setdiff(names(model_data$by_cat[[1]]), "Class")
+      classes <- model_data$by_cat[[1]]$Class
+      metric_array <- array(
+        NA_real_,
+        dim = c(length(classes), length(metric_names), n_sim),
+        dimnames = list(classes, metric_names, paste0("sim_", seq_len(n_sim)))
+      )
+      for(j in seq_len(n_sim)) {
+        current <- model_data$by_cat[[j]]
+        row_index <- match(classes, current$Class)
+        metric_array[, , j] <- as.matrix(current[row_index, metric_names, drop = FALSE])
       }
-      res_class <- data.frame(res_class / den)
-      res_class$Class <- model_data$by_cat[[1]][,1]
+      metric_mean <- apply(metric_array, c(1, 2), finite_mean)
+      metric_n_valid <- apply(is.finite(metric_array), c(1, 2), sum)
+      classify_res <- data.frame(Class = classes, metric_mean,
+                                 check.names = FALSE, row.names = NULL)
+      n_valid <- data.frame(Class = classes, metric_n_valid,
+                            check.names = FALSE, row.names = NULL)
 
-      cc_summary <- list(mean = mean(model_data$CC, na.rm = TRUE),
-                         lower = quantile(model_data$CC, 0.025, na.rm = TRUE),
-                         upper = quantile(model_data$CC, 0.975, na.rm = TRUE))
-
-      results$classify[[paste(name_models[i])]] <- list(classify_res = res_class,
-                                            cc_summary = list(mean = mean(model_data$CC, na.rm = TRUE),
-                                                                     lower = quantile(model_data$CC, 0.025, na.rm = TRUE),
-                                                                     upper = quantile(model_data$CC, 0.975, na.rm = TRUE)))
+      results$classify[[model_name]] <- list(
+        classify_res = classify_res,
+        n_valid = n_valid,
+        n_sim = n_sim,
+        cc_summary = summarize_simulation_metric(model_data$CC, n_sim)
+      )
     }
   }
 
   results
+}
+
+##' @noRd
+finite_mean <- function(x) {
+  x <- x[is.finite(x)]
+  if (length(x)) mean(x) else NA_real_
+}
+
+##' @noRd
+finite_sd <- function(x) {
+  x <- x[is.finite(x)]
+  if (length(x) >= 2L) stats::sd(x) else NA_real_
+}
+
+##' @noRd
+summarize_simulation_metric <- function(x, n_sim = length(x)) {
+  x <- x[is.finite(x)]
+  n_valid <- length(x)
+  list(
+    mean = if (n_valid) mean(x) else NA_real_,
+    sd = if (n_valid >= 2L) stats::sd(x) else NA_real_,
+    lower = if (n_valid >= 2L) unname(stats::quantile(x, 0.025)) else NA_real_,
+    upper = if (n_valid >= 2L) unname(stats::quantile(x, 0.975)) else NA_real_,
+    n_valid = n_valid,
+    n_sim = n_sim
+  )
 }
 
 
@@ -2775,10 +2839,21 @@ print_pred_objective <- function(x) {
       cat("\nAverages across simulations by Category:\n")
       print(model_data$classify_res)
 
+      cat("\nNumber of valid simulations by Category and metric ",
+          sprintf("(out of %d):\n", model_data$n_sim), sep = "")
+      print(model_data$n_valid)
+
       cat("\nProportion of Correct Classification (CC) across categories:\n")
       cc_summary <- model_data$cc_summary
-      cat(sprintf("Mean: %.3f, 95%% CI: [%.3f, %.3f]\n",
-                  cc_summary$mean, cc_summary$lower, cc_summary$upper))
+      if (cc_summary$n_valid >= 2L) {
+        cat(sprintf("Mean: %.3f, SD: %.3f, 95%% simulation interval: [%.3f, %.3f] ",
+                    cc_summary$mean, cc_summary$sd,
+                    cc_summary$lower, cc_summary$upper))
+      } else {
+        cat(sprintf("Mean: %.3f, uncertainty unavailable ", cc_summary$mean))
+      }
+      cat(sprintf("(n_valid = %d of %d)\n",
+                  cc_summary$n_valid, cc_summary$n_sim))
     }
     cat("\n")
   }
