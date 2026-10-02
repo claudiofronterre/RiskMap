@@ -283,6 +283,8 @@ simulation_values <- simulated_values(simulation)
 head(simulation_values)
 ```
 
+The results of the simulations can be assessed using `assess_simulation()` and passing the output to `summary()`:
+
 ```{r}
 
 simulation_assessment <- assess_simulation(simulation,
@@ -295,5 +297,5 @@ simulation_assessment <- assess_simulation(simulation,
                   pred_objective = "mse",
                   messages = FALSE)
                   
-
+summary(simulation_assessment)
 ```
