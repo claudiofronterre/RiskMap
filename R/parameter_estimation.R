@@ -28,7 +28,6 @@
 ##' @param control_mcml Control parameters for repeated Monte Carlo maximum
 ##' likelihood updates. Must be returned by [set_control_mcml()]. The default
 ##' performs one update, preserving the usual single-stage fit.
-##' @param par0 Optional list of initial parameter values for the MCMC algorithm.
 ##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 ##' Defaults to `FALSE`.
 ##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
@@ -74,8 +73,9 @@
 ##' Each update draws a new importance sample around the preceding estimate and
 ##' uses a distinct reproducible seed when `control_mcmc$seed` is set.
 ##'
-##' The `start_pars` argument allows for specifying starting values for the model parameters.
-##' If not provided, default starting values are used.
+##' The `start_pars` argument allows starting values to be supplied explicitly.
+##' Otherwise, binomial and Poisson models compare two automatic candidates
+##' and use the one with the better Laplace approximation.
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
@@ -179,7 +179,6 @@ glgpm <- function(formula,
                  distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
                  control_mcml = set_control_mcml(),
-                 par0 = NULL,
                  return_samples = FALSE,
                  messages = TRUE,
                  fix_var_me = NULL,
@@ -209,7 +208,6 @@ glgpm <- function(formula,
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
               "'denominator' cannot be provided when 'family' is 'gaussian'" = is.null(denominator),
-              "'par0' cannot be provided when 'family' is 'gaussian'" = is.null(par0),
               "'return_samples' cannot be TRUE when 'family' is 'gaussian'" = !return_samples,
               "'fix_var_me' must be NULL or a single positive value or zero" =
                 is.null(fix_var_me) ||
@@ -313,13 +311,44 @@ glgpm <- function(formula,
          be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
   }
 
+  # For the Gaussian family, an observation-level random effect is perfectly
+  # confounded with an estimated measurement-error variance. When there is
+  # only one observation per location, it is also confounded with an estimated
+  # nugget. Fixed variance components do not create this identifiability issue.
+  if (family == "gaussian" && n_re > 0) {
+    n_levels_re <- vapply(re_unique, length, integer(1))
+    is_saturated_re <- n_levels_re == n
+    confounded_with_me <- is.null(fix_var_me)
+    confounded_with_nugget <- isTRUE(fix_tau2) && all(table(ID_coords) == 1)
+
+    if (any(is_saturated_re) && (confounded_with_me || confounded_with_nugget)) {
+      confounded_component <- if (confounded_with_me && confounded_with_nugget) {
+        "the measurement error and nugget"
+      } else if (confounded_with_me) {
+        "the measurement error"
+      } else {
+        "the nugget"
+      }
+      stop("The random effect(s) '",
+           paste(names_re[is_saturated_re], collapse = "', '"),
+           "' have one level per observation, which cannot be distinguished ",
+           "from ", confounded_component, " when 'family' is 'gaussian'. ",
+           "Drop the random effect or fix the confounded variance component(s).")
+    }
+  }
+
   if(messages) message("Distances between locations are computed in ", distance_units, " ")
 
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
-  if (!any(names(start_pars) %in% valid_start_pars)){
-    invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
+  invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
+  if (length(invalid)) {
     stop("'", paste(invalid, collapse = "', '"), "' is not a valid starting parameter")
   }
+  user_supplied_start <- any(vapply(
+    start_pars,
+    function(value) !is.null(value),
+    logical(1)
+  ))
 
   if(is.null(start_pars[["beta"]])) {
     if(family=="gaussian") {
@@ -358,10 +387,6 @@ glgpm <- function(formula,
     check_positive_number(start_pars[["phi"]])
   }
 
-  spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
-  fitting_coords <- spatial_scaling$coordinates
-  fitting_start_phi <- spatial_scaling$phi
-
   if(isTRUE(fix_tau2)) {
     if(is.null(start_pars[["tau2"]])) {
       start_pars[["tau2"]] <- 1
@@ -389,6 +414,39 @@ glgpm <- function(formula,
     }
   }
 
+  starting_diagnostics <- list(
+    selected = if (user_supplied_start) "user" else "current",
+    current_laplace = NA_real_,
+    transformed_laplace = NA_real_,
+    fallback_reason = NULL
+  )
+  if (not_gaussian && !user_supplied_start) {
+    selection <- select_nongaussian_start(
+      current = start_pars,
+      y = y,
+      units_m = units_m,
+      D = D,
+      coords = coords,
+      ID_coords = ID_coords,
+      family = family,
+      kappa = kappa,
+      cov_offset = cov_offset,
+      invlink = invlink,
+      fix_tau2 = fix_tau2,
+      n_re = n_re,
+      ID_re = ID_re,
+      s_unique = s_unique,
+      re_unique = re_unique,
+      messages = messages
+    )
+    start_pars <- selection$start
+    starting_diagnostics <- selection$diagnostics
+  }
+
+  spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
+  fitting_coords <- spatial_scaling$coordinates
+  fitting_start_phi <- spatial_scaling$phi
+
   design_scaling <- standardize_design_matrix(D)
   D <- design_scaling$design
   start_pars[["beta"]] <- as.numeric(
@@ -403,31 +461,28 @@ glgpm <- function(formula,
         check_positive_number(start_pars[["sigma2_me"]])
       }
     }
+    gaussian_layout <- cov_par_layout(ncol(D), fix_tau2 = fix_tau2,
+                                      sigma2_me = is.null(fix_var_me), n_re = n_re)
     res <- glgpm_lm(y = y-cov_offset, D, fitting_coords,
             kappa = inter_f$gp_spec$kappa,
             ID_coords, ID_re, s_unique, re_unique,
             fix_var_me, fix_tau2,
             start_beta = start_pars[["beta"]],
-            start_cov_pars = c(start_pars[["sigma2"]],
-                               fitting_start_phi,
-                               start_pars[["tau2"]],
-                               start_pars[["sigma2_me"]],
-                               start_pars[["sigma2_re"]]),
+            start_cov_pars = pack_cov_pars(gaussian_layout,
+                                           sigma2    = start_pars[["sigma2"]],
+                                           phi       = fitting_start_phi,
+                                           nu2       = start_pars[["tau2"]],
+                                           sigma2_me = start_pars[["sigma2_me"]],
+                                           sigma2_re = start_pars[["sigma2_re"]]),
             messages = messages)
     res["mcml_history"] <- list(NULL)
     res["mcml_converged"] <- list(NULL)
   } else if(not_gaussian) {
-    if(is.null(par0)) {
-      par0 <- start_pars
-    } else {
-      if(length(par0$beta)!=ncol(D)) stop("the values passed to `beta` in par0 do not match the
-                                          variables specified in the formula")
-    }
-    fitting_par0 <- par0
-    fitting_par0$beta <- as.numeric(
-      solve(design_scaling$coefficient_transform, par0$beta)
-    )
-    fitting_par0$phi <- par0$phi / spatial_scaling$distance_scale
+    # For MCML, the starting parameters also define the posterior reference
+    # distribution used for the first importance sample. Later references are
+    # updated internally and are not a separate user-facing choice.
+    fitting_reference <- start_pars
+    fitting_reference$phi <- fitting_start_phi
     mcml_history <- vector("list", control_mcml$max_iterations)
     previous_estimate <- NULL
     converged <- if (control_mcml$max_iterations == 1L) NA else FALSE
@@ -443,43 +498,47 @@ glgpm <- function(formula,
                         ID_coords, ID_re, s_unique, re_unique,
                         fix_tau2, family = family, invlink = invlink,
                         return_samples = return_samples,
-                        par0 = fitting_par0, cov_offset = cov_offset,
-                        start_beta = start_pars[["beta"]],
-                        start_cov_pars = c(start_pars[["sigma2"]],
-                                           fitting_start_phi,
-                                           start_pars[["tau2"]],
-                                           start_pars[["sigma2_re"]]),
+                        reference_pars = fitting_reference,
+                        cov_offset = cov_offset,
                         control_mcmc = iteration_mcmc,
+                        min_relative_ess = control_mcml$min_relative_ess,
                         messages = messages)
 
-      working_estimate <- unlist(res$estimate, use.names = TRUE)
+      optimizer <- attr(res, "optimizer")
+      supported_estimate <- optimizer$supported_estimate
+      working_estimate <- unlist(supported_estimate, use.names = TRUE)
       change <- if (is.null(previous_estimate)) NA_real_ else
         max(abs(working_estimate - previous_estimate))
       standard_error <- sqrt(pmax(diag(res$covariance), 0))
       standardized_change <- if (is.null(previous_estimate)) NA_real_ else
         max(abs(working_estimate - previous_estimate) /
               pmax(standard_error, sqrt(.Machine$double.eps)))
-      optimizer <- attr(res, "optimizer")
       mcml_history[[iteration]] <- list(
         iteration = iteration,
-        estimate = res$estimate,
-        log_likelihood_ratio_gain = res$log_lik,
+        estimate = supported_estimate,
+        proposed_estimate = res$estimate,
+        log_likelihood_ratio_gain =
+          optimizer$supported_log_likelihood_ratio,
         max_parameter_change = change,
         max_standardized_change = standardized_change,
         importance_ess = optimizer$importance_ess,
         relative_importance_ess = optimizer$relative_importance_ess,
+        proposed_relative_importance_ess =
+          optimizer$proposal_relative_importance_ess,
+        step_fraction = optimizer$step_fraction,
         seed = iteration_mcmc$seed
       )
 
       if (mcml_update_converged(
         change, optimizer$relative_importance_ess, control_mcml
-      )) {
+      ) && optimizer$step_fraction == 1) {
         converged <- TRUE
         mcml_history <- mcml_history[seq_len(iteration)]
         break
       }
       previous_estimate <- working_estimate
-      fitting_par0 <- estimate_to_mcml_reference(res$estimate, fix_tau2)
+      fitting_reference <-
+        estimate_to_mcml_reference(supported_estimate, fix_tau2)
     }
     if (control_mcml$max_iterations > 1L && !isTRUE(converged)) {
       warning(
@@ -514,6 +573,9 @@ glgpm <- function(formula,
   attr(res, "design_scaling") <- design_scaling[c("center", "scale")]
   res$coords <- coords
   attr(res, "distance_scale") <- spatial_scaling$distance_scale
+  if (not_gaussian) {
+    attr(res, "starting_values") <- starting_diagnostics
+  }
   res$ID_coords <- ID_coords
   if(n_re > 0) {
     res$re <- re_unique_f
@@ -538,15 +600,75 @@ glgpm <- function(formula,
 }
 
 
+##' Canonical working-scale covariance-parameter layout
+##'
+##' Single source of truth for where each non-beta parameter sits in the flat
+##' numeric vector `glgpm_lm()`/`glgpm_nong()` optimise over: `sigma2`, `phi`,
+##' optionally `nu2` (only when the nugget is estimated), optionally
+##' `sigma2_me` (Gaussian models only, when the measurement error variance is
+##' not fixed), and finally one entry per unstructured random effect.
+##' Fixed-effect coefficients always occupy `1:p` and are handled separately.
+##'
+##' @param p Number of fixed-effect coefficients.
+##' @param fix_tau2 Logical; `TRUE` when the nugget is estimated, so `nu2` is
+##' a free parameter.
+##' @param sigma2_me Logical; `TRUE` when the (Gaussian) measurement-error
+##' variance is estimated.
+##' @param n_re Number of unstructured random effects (`0` for none).
+##' @return A list with `index` (a named list of integer positions: `beta`,
+##' `sigma2`, `phi`, and - only when applicable - `nu2`, `sigma2_me`,
+##' `sigma2_re`) and `length` (the total vector length, including `beta`).
+##' @noRd
+cov_par_layout <- function(p, fix_tau2, sigma2_me = FALSE, n_re = 0L) {
+  index <- list(beta = seq_len(p), sigma2 = p + 1L, phi = p + 2L)
+  idx   <- p + 2L
+
+  if (isTRUE(fix_tau2)) {
+    idx <- idx + 1L
+    index$nu2 <- idx
+  }
+  if (isTRUE(sigma2_me)) {
+    idx <- idx + 1L
+    index$sigma2_me <- idx
+  }
+  if (n_re > 0) {
+    index$sigma2_re <- idx + seq_len(n_re)
+    idx <- idx + n_re
+  }
+
+  list(index = index, length = idx)
+}
+
+##' Pack working-scale starting values using a `cov_par_layout()` layout
+##'
+##' @param layout A layout from `cov_par_layout()`.
+##' @param sigma2,phi Starting values (always required).
+##' @param nu2,sigma2_me,sigma2_re Starting values for the parameters the
+##' layout includes; only consulted when `layout$index` has a matching entry,
+##' so passing e.g. `sigma2_me` when the layout has no `sigma2_me` slot is
+##' silently ignored (matching this family/specification not using it).
+##' @return A numeric vector of the non-beta working-scale parameters, in
+##' `layout`'s order - the same contract `start_cov_pars` has always had.
+##' @noRd
+pack_cov_pars <- function(layout, sigma2, phi, nu2 = NULL, sigma2_me = NULL, sigma2_re = NULL) {
+  p   <- length(layout$index$beta)
+  out <- numeric(layout$length - p)
+
+  out[layout$index$sigma2 - p] <- sigma2
+  out[layout$index$phi - p]    <- phi
+  if (!is.null(layout$index$nu2))       out[layout$index$nu2 - p]       <- nu2
+  if (!is.null(layout$index$sigma2_me)) out[layout$index$sigma2_me - p] <- sigma2_me
+  if (!is.null(layout$index$sigma2_re)) out[layout$index$sigma2_re - p] <- sigma2_re
+
+  out
+}
+
 ##' Structure the raw parameter vector returned by the optimizer
 ##'
 ##' Splits the working-scale (i.e. not yet exponentiated) vector of estimates
 ##' returned by `glgpm_lm()`/`glgpm_nong()` into a named list, using the same
-##' order in which the fitting engines lay the parameters out in `par`:
-##' regression coefficients, `sigma2`, `phi`, optionally `nu2` (`= tau2 /
-##' sigma2`, only when the nugget is estimated), optionally `sigma2_me`
-##' (Gaussian models only, when the measurement error variance is not fixed),
-##' and finally one entry per unstructured random effect.
+##' `cov_par_layout()` those fitting engines build their `ind_*` positions
+##' from, so this can never drift out of step with them (see #135/#117).
 ##'
 ##' A flat named vector (as used prior to #92) can't safely be keyed by
 ##' parameter name: a covariate literally named e.g. `"sigma2"` collides with
@@ -561,23 +683,21 @@ glgpm <- function(formula,
 ##'
 ##' @noRd
 structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_names = NULL) {
-  p    <- length(beta_names)
-  beta <- par[seq_len(p)]
+  p      <- length(beta_names)
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = sigma2_me,
+                           n_re = length(re_names))
+
+  beta <- par[layout$index$beta]
   names(beta) <- beta_names
 
-  out <- list(beta = beta, sigma2 = unname(par[p + 1]), phi = unname(par[p + 2]))
-  idx <- p + 2
+  out <- list(beta = beta,
+              sigma2 = unname(par[layout$index$sigma2]),
+              phi    = unname(par[layout$index$phi]))
 
-  if (isTRUE(fix_tau2)) {
-    idx <- idx + 1
-    out$nu2 <- unname(par[idx])
-  }
-  if (isTRUE(sigma2_me)) {
-    idx <- idx + 1
-    out$sigma2_me <- unname(par[idx])
-  }
-  if (!is.null(re_names)) {
-    sigma2_re <- unname(par[(idx + 1):(idx + length(re_names))])
+  if (!is.null(layout$index$nu2))       out$nu2       <- unname(par[layout$index$nu2])
+  if (!is.null(layout$index$sigma2_me)) out$sigma2_me <- unname(par[layout$index$sigma2_me])
+  if (!is.null(layout$index$sigma2_re)) {
+    sigma2_re <- unname(par[layout$index$sigma2_re])
     names(sigma2_re) <- re_names
     out$sigma2_re <- sigma2_re
   }
@@ -640,6 +760,62 @@ normalise_log_weights <- function(log_weights) {
 ##' @noRd
 importance_effective_sample_size <- function(weights) {
   1 / sum(weights^2)
+}
+
+##' Limit an MCML update to the region supported by its importance sample
+##'
+##' The optimiser may propose a parameter vector far from the reference used
+##' to generate the importance sample. This routine follows the straight line
+##' from the reference to that proposal and returns the largest prefix for
+##' which the relative weight ESS remains above the requested threshold.
+##'
+##' @noRd
+supported_importance_step <- function(reference, proposal,
+                                      log_weight_function,
+                                      min_relative_ess,
+                                      max_bisections = 30L) {
+  evaluate <- function(fraction) {
+    parameters <- reference + fraction * (proposal - reference)
+    log_weights <- log_weight_function(parameters)
+    weights <- normalise_log_weights(log_weights)
+    list(
+      parameters = parameters,
+      weights = weights,
+      log_likelihood_ratio = log_mean_exp(log_weights),
+      importance_ess = importance_effective_sample_size(weights),
+      relative_importance_ess =
+        importance_effective_sample_size(weights) / length(weights),
+      max_importance_weight = max(weights)
+    )
+  }
+
+  proposed <- evaluate(1)
+  if (min_relative_ess <= 0 ||
+      proposed$relative_importance_ess >= min_relative_ess) {
+    proposed$step_fraction <- 1
+    proposed$proposal_relative_importance_ess <-
+      proposed$relative_importance_ess
+    return(proposed)
+  }
+
+  lower <- 0
+  upper <- 1
+  accepted <- evaluate(lower)
+  for (i in seq_len(max_bisections)) {
+    middle <- (lower + upper) / 2
+    candidate <- evaluate(middle)
+    if (candidate$relative_importance_ess >= min_relative_ess) {
+      lower <- middle
+      accepted <- candidate
+    } else {
+      upper <- middle
+    }
+  }
+
+  accepted$step_fraction <- lower
+  accepted$proposal_relative_importance_ess <-
+    proposed$relative_importance_ess
+  accepted
 }
 
 ##' Obtain stable Gaussian regression starting values
@@ -764,11 +940,13 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
 restore_mcml_history_scale <- function(history, coefficient_transform,
                                        distance_scale) {
   lapply(history, function(entry) {
-    entry$estimate$beta <- as.numeric(
-      coefficient_transform %*% entry$estimate$beta
-    )
-    names(entry$estimate$beta) <- colnames(coefficient_transform)
-    entry$estimate$phi <- entry$estimate$phi + log(distance_scale)
+    for (field in intersect(c("estimate", "proposed_estimate"), names(entry))) {
+      entry[[field]]$beta <- as.numeric(
+        coefficient_transform %*% entry[[field]]$beta
+      )
+      names(entry[[field]]$beta) <- colnames(coefficient_transform)
+      entry[[field]]$phi <- entry[[field]]$phi + log(distance_scale)
+    }
     entry
   })
 }
@@ -837,6 +1015,247 @@ softplus <- function(x) {
   pmax(x, 0) + log1p(exp(-abs(x)))
 }
 
+##' Laplace approximation used to compare automatic non-Gaussian starts
+##'
+##' Constants that do not depend on the candidate are retained for clarity.
+##' The comparison is only used to choose an initial posterior reference; it is
+##' not reported as the fitted model likelihood.
+##'
+##' @noRd
+starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
+                                          ID_coords, family, kappa,
+                                          cov_offset, ID_re = NULL,
+                                          fix_tau2 = FALSE) {
+  distances <- pairwise_distances(coords)
+  covariance <- candidate$sigma2 * matern_correlation(
+    distances,
+    phi = candidate$phi,
+    kappa = kappa,
+    return_sym_matrix = TRUE
+  )
+  nugget_variance <- if (isTRUE(fix_tau2)) {
+    candidate$tau2
+  } else if (is.numeric(fix_tau2) && fix_tau2 > 0) {
+    fix_tau2
+  } else {
+    0
+  }
+  if (nugget_variance > 0) {
+    diag(covariance) <- diag(covariance) + nugget_variance
+  }
+  covariance_root <- factor_covariance(
+    covariance,
+    "starting-value spatial covariance"
+  )
+  mu <- as.numeric(D %*% candidate$beta) + cov_offset
+  laplace <- maxim_integrand(
+    y = y,
+    units_m = units_m,
+    mu = mu,
+    Sigma = covariance,
+    ID_coords = ID_coords,
+    ID_re = ID_re,
+    sigma2_re = candidate$sigma2_re,
+    family = family
+  )
+  mode <- laplace$mode
+  eta <- mu + mode[ID_coords]
+  if (!is.null(ID_re)) {
+    offset <- nrow(covariance)
+    for (j in seq_len(ncol(ID_re))) {
+      n_levels <- max(ID_re[, j])
+      indices <- offset + seq_len(n_levels)
+      eta <- eta + mode[indices][ID_re[, j]]
+      offset <- offset + n_levels
+    }
+  }
+  log_likelihood <- if (family == "binomial") {
+    sum(y * eta - units_m * softplus(eta))
+  } else {
+    means <- exp(eta)
+    if (any(!is.finite(means))) {
+      return(-Inf)
+    }
+    sum(y * eta - units_m * means)
+  }
+  log_prior <- -0.5 * (
+    nrow(covariance) * log(2 * pi) +
+      log_determinant_from_cholesky(covariance_root) +
+      sum(mode[seq_len(nrow(covariance))] * solve_from_cholesky(
+        covariance_root, mode[seq_len(nrow(covariance))]
+      ))
+  )
+  if (!is.null(ID_re)) {
+    offset <- nrow(covariance)
+    for (j in seq_len(ncol(ID_re))) {
+      n_levels <- max(ID_re[, j])
+      random_mode <- mode[offset + seq_len(n_levels)]
+      variance <- candidate$sigma2_re[j]
+      log_prior <- log_prior - 0.5 * (
+        n_levels * log(2 * pi * variance) +
+          sum(random_mode^2) / variance
+      )
+      offset <- offset + n_levels
+    }
+  }
+  laplace_root <- factor_covariance(
+    laplace$Sigma.tilde,
+    "starting-value Laplace covariance"
+  )
+  log_likelihood + log_prior +
+    0.5 * length(mode) * log(2 * pi) +
+    0.5 * log_determinant_from_cholesky(laplace_root)
+}
+
+##' Select between the existing and transformed-Gaussian starting values
+##'
+##' The conservative eligibility conditions match the model structures used in
+##' validation. All failures retain the existing start so that automatic
+##' initialisation cannot make a previously valid fit fail.
+##'
+##' @noRd
+select_nongaussian_start <- function(current, y, units_m, D, coords,
+                                     ID_coords, family, kappa, cov_offset,
+                                     invlink, fix_tau2, n_re,
+                                     ID_re = NULL, s_unique = NULL,
+                                     re_unique = NULL,
+                                     messages = TRUE) {
+  diagnostics <- list(
+    selected = "current",
+    current_laplace = NA_real_,
+    transformed_laplace = NA_real_,
+    fallback_reason = NULL
+  )
+  ineligible_reason <- if (!is.null(invlink)) {
+    "custom inverse links are not supported by the transformed initializer"
+  } else {
+    NULL
+  }
+  if (!is.null(ineligible_reason)) {
+    diagnostics$fallback_reason <- ineligible_reason
+    return(list(start = current, diagnostics = diagnostics))
+  }
+
+  transformed_fit <- tryCatch({
+    transformed_response <- if (family == "binomial") {
+      log((y + 0.5) / (units_m - y + 0.5))
+    } else {
+      log((y + 0.5) / units_m)
+    }
+    # With one observation per location, transformed sampling variation and a
+    # Gaussian nugget are otherwise confounded. The Gaussian engine currently
+    # accepts a scalar measurement variance, so fix it at the median
+    # delta-method variance when the nugget is estimated.
+    transformed_measurement_variance <- if (isTRUE(fix_tau2)) {
+      if (family == "binomial") {
+        median(1 / (y + 0.5) + 1 / (units_m - y + 0.5))
+      } else {
+        median(1 / (y + 0.5))
+      }
+    } else {
+      NULL
+    }
+    glgpm_lm(
+      y = transformed_response - cov_offset,
+      D = D,
+      coords = coords,
+      kappa = kappa,
+      ID_coords = ID_coords,
+      ID_re = ID_re,
+      s_unique = s_unique,
+      re_unique = re_unique,
+      fix_var_me = transformed_measurement_variance,
+      fix_tau2 = fix_tau2,
+      start_beta = current$beta,
+      start_cov_pars = c(
+        current$sigma2,
+        current$phi,
+        if (isTRUE(fix_tau2)) current$tau2,
+        if (is.null(transformed_measurement_variance)) 1,
+        current$sigma2_re
+      ),
+      messages = FALSE
+    )
+  }, error = identity)
+  if (inherits(transformed_fit, "error")) {
+    diagnostics$fallback_reason <- paste(
+      "transformed Gaussian fit failed:",
+      conditionMessage(transformed_fit)
+    )
+    return(list(start = current, diagnostics = diagnostics))
+  }
+
+  transformed <- current
+  transformed$beta <- unname(transformed_fit$estimate$beta)
+  transformed$sigma2 <- exp(transformed_fit$estimate$sigma2)
+  transformed$phi <- exp(transformed_fit$estimate$phi)
+  if (isTRUE(fix_tau2)) {
+    transformed$tau2 <- transformed$sigma2 *
+      exp(transformed_fit$estimate$nu2)
+  }
+  if (n_re > 0L) {
+    transformed$sigma2_re <- exp(transformed_fit$estimate$sigma2_re)
+  }
+  candidate_values <- c(
+    transformed$beta,
+    transformed$sigma2,
+    transformed$phi,
+    transformed$tau2,
+    transformed$sigma2_re
+  )
+  if (any(!is.finite(candidate_values)) ||
+      transformed$sigma2 <= 0 || transformed$phi <= 0 ||
+      (!is.null(transformed$tau2) && transformed$tau2 <= 0) ||
+      (!is.null(transformed$sigma2_re) &&
+       any(transformed$sigma2_re <= 0))) {
+    diagnostics$fallback_reason <-
+      "transformed Gaussian fit returned invalid starting values"
+    return(list(start = current, diagnostics = diagnostics))
+  }
+
+  scores <- tryCatch(
+    c(
+      current = starting_laplace_log_marginal(
+        current, y, units_m, D, coords, ID_coords, family, kappa, cov_offset,
+        ID_re, fix_tau2
+      ),
+      transformed_gaussian = starting_laplace_log_marginal(
+        transformed, y, units_m, D, coords, ID_coords, family, kappa,
+        cov_offset, ID_re, fix_tau2
+      )
+    ),
+    error = identity
+  )
+  if (inherits(scores, "error")) {
+    diagnostics$fallback_reason <- paste(
+      "starting-value Laplace comparison failed:",
+      conditionMessage(scores)
+    )
+    return(list(start = current, diagnostics = diagnostics))
+  }
+  diagnostics$current_laplace <- unname(scores["current"])
+  diagnostics$transformed_laplace <-
+    unname(scores["transformed_gaussian"])
+  if (is.finite(scores["transformed_gaussian"]) &&
+      (!is.finite(scores["current"]) ||
+       scores["transformed_gaussian"] > scores["current"])) {
+    diagnostics$selected <- "transformed_gaussian"
+    if (messages) {
+      message("Using transformed-Gaussian automatic starting values.")
+    }
+    return(list(start = transformed, diagnostics = diagnostics))
+  }
+
+  if (!is.finite(scores["current"])) {
+    diagnostics$fallback_reason <-
+      "neither automatic starting candidate had a finite Laplace value"
+  } else if (!is.finite(scores["transformed_gaussian"])) {
+    diagnostics$fallback_reason <-
+      "transformed Gaussian candidate had a non-finite Laplace value"
+  }
+  list(start = current, diagnostics = diagnostics)
+}
+
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
@@ -890,23 +1309,14 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   C_g_m <- Matrix::t(C_g)%*%C_g
   C_g_m <- forceSymmetric(C_g_m)
 
-  ind_beta <- 1:p
 
-  ind_sigma2 <- p + 1
-  ind_phi <- p + 2
-  next_index <- ind_phi
-
-  if (isTRUE(fix_tau2)) {
-    next_index <- next_index + 1
-    ind_nu2 <- next_index
-  }
-  if (is.null(fix_var_me)) {
-    next_index <- next_index + 1
-    ind_omega2 <- next_index
-  }
-  if (n_re > 0) {
-    ind_sigma2_re <- next_index + seq_len(n_re)
-  }
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = is.null(fix_var_me), n_re = n_re)
+  ind_beta   <- layout$index$beta
+  ind_sigma2 <- layout$index$sigma2
+  ind_phi    <- layout$index$phi
+  if (!is.null(layout$index$nu2))       ind_nu2       <- layout$index$nu2
+  if (!is.null(layout$index$sigma2_me)) ind_omega2    <- layout$index$sigma2_me
+  if (!is.null(layout$index$sigma2_re)) ind_sigma2_re <- layout$index$sigma2_re
 
 
   log.lik <- function(par) {
@@ -1814,11 +2224,10 @@ maxim_integrand <- function(
   }
 
   sum_by_group <- function(v, grp, nlev) {
-    f <- factor(grp, levels = seq_len(nlev))
-    s <- tapply(v, f, sum)
-    ans <- rep(0, nlev)
-    if (!is.null(s)) ans[seq_along(s)] <- replace(s, is.na(s), 0)
-    as.numeric(ans)
+    sums <- rowsum(v, grp, reorder = FALSE)
+    out <- numeric(nlev)
+    out[as.integer(rownames(sums))] <- sums[, 1L]
+    out
   }
 
   cross_sum <- function(v, grp1, n1, grp2, n2) {
@@ -2074,7 +2483,7 @@ maxim_integrand <- function(
 ##'   }
 ##' @param invlink Optional inverse-link function. If \code{NULL}, defaults are used:
 ##'   \code{identity} (gaussian), \code{plogis} (binomial), and \code{exp} (poisson).
-##' @param Sigma_pd Optional precision matrix used in the Laplace approximation.
+##' @param Sigma_pd Optional covariance matrix used in the Laplace approximation.
 ##'   If \code{NULL}, it is obtained internally at the current mode.
 ##' @param mean_pd Optional mean vector used in the Laplace approximation.
 ##'   If \code{NULL}, it is obtained internally as the mode of the integrand.
@@ -2103,7 +2512,10 @@ maxim_integrand <- function(
 ##'                 \code{$S} (latent spatial field). If \code{ID_re} is supplied,
 ##'                 each unstructured RE is returned under \code{$<re_name>}.}
 ##'   \item{tuning_par}{Numeric vector of step sizes (\code{h}) used over iterations.}
-##'   \item{acceptance_prob}{Numeric vector of Metropolis–Hastings acceptance probabilities.}
+##'   \item{acceptance_prob}{Numeric vector of cumulative Metropolis–Hastings acceptance rates.}
+##'   \item{acceptance}{Logical vector recording whether each proposal was accepted.}
+##'   \item{acceptance_rate}{Named vector giving acceptance rates during burn-in
+##'                         and retained-sample iterations.}
 ##' }
 ##'
 ##' @section Default links:
@@ -2112,7 +2524,6 @@ maxim_integrand <- function(
 ##'
 ##' @seealso \code{\link{maxim_integrand}}
 ##'
-##' @export
 laplace_sampling_mcmc <- function(y,
                                   units_m,
                                   mu,
@@ -2128,7 +2539,35 @@ laplace_sampling_mcmc <- function(y,
                                   messages = TRUE
                                   ){
 
-  stopifnot(family %in% c("poisson", "binomial"))
+  if (length(family) != 1L || !family %in% c("poisson", "binomial")) {
+    stop("'family' must be either 'poisson' or 'binomial'.")
+  }
+
+  n <- length(y)
+  n_loc <- nrow(Sigma)
+  if (!is.numeric(y) || n < 1L || any(!is.finite(y)) ||
+      any(y < 0) || any(y != as.integer(y))) {
+    stop("'y' must be a non-empty vector of non-negative integer counts.")
+  }
+  if (!is.numeric(units_m) || length(units_m) != n ||
+      any(!is.finite(units_m)) || any(units_m <= 0)) {
+    stop("'units_m' must contain one positive finite value per response.")
+  }
+  if (family == "binomial" && any(y > units_m)) {
+    stop("Binomial responses in 'y' cannot exceed 'units_m'.")
+  }
+  if (!is.numeric(Sigma) || length(dim(Sigma)) != 2L ||
+      n_loc != ncol(Sigma) || n_loc < 1L) {
+    stop("'Sigma' must be a non-empty square numeric matrix.")
+  }
+  if (length(mu) != n_loc || any(!is.finite(mu))) {
+    stop("'mu' must contain one finite value for each row of 'Sigma'.")
+  }
+  if (length(ID_coords) != n || anyNA(ID_coords) ||
+      any(ID_coords != as.integer(ID_coords)) ||
+      any(ID_coords < 1L | ID_coords > n_loc)) {
+    stop("'ID_coords' must contain one valid integer location index per response.")
+  }
 
   # set seed if it exists and reset on exit
   if (!is.null(control_mcmc$seed)){
@@ -2149,19 +2588,7 @@ laplace_sampling_mcmc <- function(y,
     invisible(TRUE)
   }
 
-  sum_by_group <- function(v, grp, nlev) {
-    f <- factor(grp, levels = seq_len(nlev))
-    s <- tapply(v, f, sum)
-    ans <- rep(0, nlev)
-    if (!is.null(s)) ans[seq_along(s)] <- replace(s, is.na(s), 0)
-    as.numeric(ans)
-  }
-
   # ---------- dimensions ----------
-  Sigma.inv <- solve(Sigma)
-  n_loc <- nrow(Sigma)
-  n <- length(y)
-
   if (( !is.null(ID_re) && is.null(sigma2_re)) ||
       (  is.null(ID_re) && !is.null(sigma2_re))) {
     stop("To introduce unstructured random effects both `ID_re` and `sigma2_re` must be provided.")
@@ -2172,8 +2599,26 @@ laplace_sampling_mcmc <- function(y,
     n_dim_re <- integer(0)
     ind_re <- list()
   } else {
+    ID_re <- as.matrix(ID_re)
+    if (nrow(ID_re) != n || ncol(ID_re) < 1L || anyNA(ID_re) ||
+        any(ID_re != as.integer(ID_re)) || any(ID_re < 1L)) {
+      stop("'ID_re' must contain positive integer indices and one row per response.")
+    }
     n_re <- length(sigma2_re)
+    if (n_re != ncol(ID_re) || any(!is.finite(sigma2_re)) ||
+        any(sigma2_re <= 0)) {
+      stop("'sigma2_re' must contain one positive finite variance per random effect.")
+    }
+    if (!is.null(names(sigma2_re)) && !is.null(colnames(ID_re)) &&
+        !identical(names(sigma2_re), colnames(ID_re))) {
+      stop("Names of 'sigma2_re' must match the columns of 'ID_re'.")
+    }
     n_dim_re <- vapply(seq_len(n_re), function(i) length(unique(ID_re[, i])), integer(1))
+    for (i in seq_len(n_re)) {
+      if (!identical(sort(unique(ID_re[, i])), seq_len(n_dim_re[i]))) {
+        stop("Each column of 'ID_re' must use consecutive indices starting at 1.")
+      }
+    }
     ind_re <- vector("list", n_re)
     add_i <- 0L
     for (i in seq_len(n_re)) {
@@ -2182,6 +2627,20 @@ laplace_sampling_mcmc <- function(y,
     }
   }
   n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
+  coordinate_aggregation <- Matrix::sparseMatrix(
+    i = ID_coords, j = seq_len(n), x = 1,
+    dims = c(n_loc, n)
+  )
+  re_aggregation <- if (n_re > 0) {
+    lapply(seq_len(n_re), function(i) {
+      Matrix::sparseMatrix(
+        i = ID_re[, i], j = seq_len(n), x = 1,
+        dims = c(n_dim_re[i], n)
+      )
+    })
+  } else {
+    list()
+  }
 
   # ---------- inverse link handling (inv, d1) ----------
   make_invlink_funs <- function(family, invlink, ncheck) {
@@ -2230,11 +2689,22 @@ laplace_sampling_mcmc <- function(y,
     if (is.null(Sigma_pd)) Sigma_pd <- out_maxim$Sigma.tilde
     if (is.null(mean_pd))  mean_pd  <- out_maxim$mode
   }
+  if (!is.numeric(Sigma_pd) || length(dim(Sigma_pd)) != 2L ||
+      any(dim(Sigma_pd) != n_tot) || any(!is.finite(Sigma_pd))) {
+    stop("'Sigma_pd' must be a finite covariance matrix for all latent effects.")
+  }
+  if (!is.numeric(mean_pd) || length(mean_pd) != n_tot ||
+      any(!is.finite(mean_pd))) {
+    stop("'mean_pd' must contain one finite value for each latent effect.")
+  }
 
   # ---------- affine reparameterisation ----------
   n_sim   <- control_mcmc$n_sim
-  Sigma_pd_sroot <- t(chol(Sigma_pd))
-  A <- solve(Sigma_pd_sroot)
+  Sigma_pd_root <- factor_covariance(
+    Sigma_pd, context = "Laplace-approximation covariance matrix"
+  )
+  Sigma_pd_sroot <- t(Sigma_pd_root)
+  A <- forwardsolve(Sigma_pd_sroot, diag(n_tot))
 
   if (n_re == 0) {
     Sigma_tot <- Sigma
@@ -2243,10 +2713,20 @@ laplace_sampling_mcmc <- function(y,
     Sigma_tot[1:n_loc, 1:n_loc] <- Sigma
     for (i in seq_len(n_re)) diag(Sigma_tot)[ind_re[[i]]] <- sigma2_re[i]
   }
-  Sigma_w_inv <- solve(A %*% Sigma_tot %*% t(A))
+  Sigma_w_root <- factor_covariance(
+    A %*% Sigma_tot %*% t(A),
+    context = "transformed latent covariance matrix"
+  )
+  Sigma_w_sroot <- t(Sigma_w_root)
+  solve_w_covariance <- function(right_hand_side) {
+    backsolve(
+      Sigma_w_root,
+      forwardsolve(Sigma_w_sroot, right_hand_side)
+    )
+  }
   mu_w <- -as.numeric(A %*% mean_pd)
 
-  cond.dens.W <- function(W, S_tot) {
+  target_state <- function(W, S_tot) {
     S <- S_tot[1:n_loc]
     S_re_list <- if (n_re > 0) lapply(seq_len(n_re), function(i) S_tot[ind_re[[i]]]) else NULL
 
@@ -2255,47 +2735,39 @@ laplace_sampling_mcmc <- function(y,
 
     if (family == "poisson") {
       mu_vec <- inv_link(eta)
-      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) stop("invlink must return positive means for Poisson.")
+      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) return(NULL)
       llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
-    } else {
-      p <- inv_link(eta)
-      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) stop("invlink must return values in (0,1) for Binomial.")
-      llik <- sum(y * log(pmax(p, .Machine$double.eps)) +
-                    (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
-    }
-    diff_w <- W - mu_w
-    as.numeric(-0.5 * crossprod(diff_w, Sigma_w_inv %*% diff_w) + llik)
-  }
-
-  lang.grad <- function(W, S_tot) {
-    S <- S_tot[1:n_loc]
-    S_re_list <- if (n_re > 0) lapply(seq_len(n_re), function(i) S_tot[ind_re[[i]]]) else NULL
-
-    eta <- mu + S[ID_coords]
-    if (n_re > 0) for (i in seq_len(n_re)) eta <- eta + S_re_list[[i]][ID_re[, i]]
-
-    if (family == "poisson") {
-      mu_vec <- inv_link(eta)
-      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) stop("invlink must return positive means for Poisson.")
       mu1 <- inv1(eta)
       g_eta <- (y - units_m * mu_vec) * (mu1 / mu_vec)
     } else {
       p <- inv_link(eta)
-      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) stop("invlink must return values in (0,1) for Binomial.")
+      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) return(NULL)
+      llik <- sum(y * log(pmax(p, .Machine$double.eps)) +
+                    (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
       p1 <- inv1(eta)
-      den <- p * (1 - p)
-      g_eta <- (y - units_m * p) * (p1 / den)
+      g_eta <- (y - units_m * p) * (p1 / (p * (1 - p)))
     }
+    diff_w <- W - mu_w
+    prior_solution <- solve_w_covariance(diff_w)
 
     grad_S_tot <- numeric(n_tot)
-    grad_S_tot[1:n_loc] <- sum_by_group(g_eta, ID_coords, n_loc)
+    grad_S_tot[1:n_loc] <- as.numeric(coordinate_aggregation %*% g_eta)
     if (n_re > 0) {
       for (j in seq_len(n_re)) {
-        grad_S_tot[ind_re[[j]]] <- sum_by_group(g_eta, ID_re[, j], n_dim_re[j])
+        grad_S_tot[ind_re[[j]]] <- as.numeric(
+          re_aggregation[[j]] %*% g_eta
+        )
       }
     }
 
-    as.numeric(-Sigma_w_inv %*% (W - mu_w) + t(Sigma_pd_sroot) %*% grad_S_tot)
+    list(
+      log_density = as.numeric(
+        -0.5 * crossprod(diff_w, prior_solution) + llik
+      ),
+      gradient = as.numeric(
+        -prior_solution + Sigma_pd_root %*% grad_S_tot
+      )
+    )
   }
 
   # ---------- MALA tuning ----------
@@ -2307,8 +2779,12 @@ laplace_sampling_mcmc <- function(y,
 
   W_curr <- rep(0, n_tot)
   S_tot_curr <- as.numeric(Sigma_pd_sroot %*% W_curr + mean_pd)
-  mean_curr <- as.numeric(W_curr + (h^2/2) * lang.grad(W_curr, S_tot_curr))
-  lp_curr <- cond.dens.W(W_curr, S_tot_curr)
+  state_curr <- target_state(W_curr, S_tot_curr)
+  if (is.null(state_curr)) {
+    stop("The initial state has a non-finite target density or gradient.")
+  }
+  mean_curr <- as.numeric(W_curr + (h^2 / 2) * state_curr$gradient)
+  lp_curr <- state_curr$log_density
   acc <- 0L
   n_samples <- floor((n_sim - burnin) / thin)   # was: (n_sim - burnin) / thin
   sim <- matrix(NA_real_, nrow = n_samples, ncol = n_tot)
@@ -2323,24 +2799,41 @@ laplace_sampling_mcmc <- function(y,
 
   h.vec <- rep(NA_real_, n_sim)
   acc_prob <- rep(NA_real_, n_sim)
+  accepted <- rep(FALSE, n_sim)
 
   for (i in seq_len(n_sim)) {
     W_prop <- mean_curr + h * rnorm(n_tot)
     S_tot_prop <- as.numeric(Sigma_pd_sroot %*% W_prop + mean_pd)
-    mean_prop <- as.numeric(W_prop + (h^2/2) * lang.grad(W_prop, S_tot_prop))
-    lp_prop <- cond.dens.W(W_prop, S_tot_prop)
+    proposal <- tryCatch({
+      state_prop <- target_state(W_prop, S_tot_prop)
+      if (is.null(state_prop)) {
+        NULL
+      } else {
+        mean_prop <- as.numeric(
+          W_prop + (h^2 / 2) * state_prop$gradient
+        )
+        lp_prop <- state_prop$log_density
+        if (any(!is.finite(mean_prop)) || !is.finite(lp_prop)) {
+          NULL
+        } else {
+          dprop_curr <- -sum((W_prop - mean_curr)^2) / (2 * h^2)
+          dprop_prop <- -sum((W_curr - mean_prop)^2) / (2 * h^2)
+          list(mean = mean_prop,
+               log_prob = lp_prop + dprop_prop - lp_curr - dprop_curr,
+               state = state_prop)
+        }
+      }
+    }, error = function(e) NULL)
 
-    dprop_curr <- -sum((W_prop - mean_curr)^2) / (2 * h^2)
-    dprop_prop <- -sum((W_curr - mean_prop)^2) / (2 * h^2)
-
-    log_prob <- lp_prop + dprop_prop - lp_curr - dprop_curr
-
-    if (log(runif(1)) < log_prob) {
+    if (!is.null(proposal) && is.finite(proposal$log_prob) &&
+        log(runif(1)) < proposal$log_prob) {
       acc <- acc + 1L
+      accepted[i] <- TRUE
       W_curr <- W_prop
       S_tot_curr <- S_tot_prop
-      lp_curr <- lp_prop
-      mean_curr <- mean_prop
+      state_curr <- proposal$state
+      lp_curr <- state_curr$log_density
+      mean_curr <- proposal$mean
     }
 
     if (i > burnin && (i - burnin) %% thin == 0) {
@@ -2349,7 +2842,18 @@ laplace_sampling_mcmc <- function(y,
     }
 
     acc_prob[i] <- acc / i
-    h <- max(1e-19, h + c1.h * i^(-c2.h) * (acc / i - 0.57))
+    # Adapt only during burn-in so retained draws use a fixed Markov kernel.
+    # Updating log(h) keeps the step size positive; the diminishing gain is a
+    # Robbins-Monro update targeting the standard MALA acceptance rate.
+    if (i <= burnin) {
+      log_h <- log(h) + c1.h * i^(-c2.h) * (accepted[i] - 0.574)
+      h <- exp(log_h)
+      # The Langevin mean depends on h. Recompute it for the next iteration
+      # after every warm-up update, including when the proposal was rejected.
+      mean_curr <- as.numeric(
+        W_curr + (h^2 / 2) * state_curr$gradient
+      )
+    }
     h.vec[i] <- h
 
     if (messages) {
@@ -2376,6 +2880,11 @@ laplace_sampling_mcmc <- function(y,
   }
   out_sim$tuning_par <- h.vec
   out_sim$acceptance_prob <- acc_prob
+  out_sim$acceptance <- accepted
+  out_sim$acceptance_rate <- c(
+    burnin = if (burnin > 0L) mean(accepted[seq_len(burnin)]) else NA_real_,
+    sampling = mean(accepted[seq.int(burnin + 1L, n_sim)])
+  )
   out_sim$invlink_used <- linkf$name
   class(out_sim) <- "RiskMap_mcmc"
   out_sim
@@ -2459,9 +2968,11 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 ##' @param n_sim Integer. The total number of simulations to run. Default is 12000.
 ##' @param burnin Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.
 ##' @param thin Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.
-##' @param h Numeric. An optional parameter for Langevin MCMC. Must be non-negative if specified.
-##' @param c1.h Numeric. A control parameter for Langevin MCMC. Must be positive. Default is 0.01.
-##' @param c2.h Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.
+##' @param h Numeric. An optional positive step size for Langevin MCMC.
+##' @param c1.h Numeric. Positive scale for the burn-in Robbins-Monro step-size
+##'   adaptation. Default is 1.
+##' @param c2.h Numeric. Exponent controlling the diminishing adaptation gain.
+##'   Must be larger than 0.5 and no larger than 1. Default is 0.6.
 ##' @param seed Integer. Optional value passed to `set.seed` to control random number generation for
 ##' generating chains and make results reproducible. Defaults to `NULL`.
 ##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
@@ -2488,8 +2999,8 @@ set_control_mcmc <- function(n_sim = 12000,
                             burnin = 2000,
                             thin = 10,
                             h = NULL,
-                            c1.h = 0.01,
-                            c2.h = 1e-04,
+                            c1.h = 1,
+                            c2.h = 0.6,
                             seed = NULL,
                             linear_model = FALSE){
 
@@ -2514,8 +3025,12 @@ set_control_mcmc <- function(n_sim = 12000,
   # =============================================================================
 
   # Validate MCMC parameters
-  if (n_sim < burnin) {
-    stop("n_sim cannot be smaller than burnin.")
+  check_positive_integer(n_sim, "n_sim")
+  check_positive_integer(burnin, "burnin", allow_zero = TRUE)
+  check_positive_integer(thin, "thin")
+
+  if (n_sim <= burnin) {
+    stop("n_sim must be larger than burnin.")
   }
 
   if (thin <= 0) {
@@ -2526,15 +3041,20 @@ set_control_mcmc <- function(n_sim = 12000,
     stop("thin must be a divisor of (n_sim - burnin)")
   }
 
-  if (!is.null(h) && h < 0) {
-    stop("h must be non-negative.")
+  if (!is.null(h) && (!is.numeric(h) || length(h) != 1L ||
+                      !is.finite(h) || h <= 0)) {
+    stop("h must be a positive finite number.")
   }
 
-  if (c1.h <= 0) {
-    stop("c1.h must be positive.")
+  if (!is.numeric(c1.h) || length(c1.h) != 1L ||
+      !is.finite(c1.h) || c1.h <= 0) {
+    stop("c1.h must be a positive finite number.")
   }
 
   check_zero_one(c2.h, "c2.h")
+  if (c2.h <= 0.5) {
+    stop("c2.h must be larger than 0.5 and no larger than 1.")
+  }
 
   res <- list(
     n_sim = n_sim,
@@ -2554,12 +3074,12 @@ set_control_mcmc <- function(n_sim = 12000,
 ##' @importFrom Matrix Matrix forceSymmetric
 glgpm_nong <-
   function(y, D, coords, units_m, kappa,
-           par0, cov_offset,
+           reference_pars, cov_offset,
            ID_coords, ID_re, s_unique, re_unique,
            fix_tau2, family, return_samples,
-           start_beta, invlink,
-           start_cov_pars,
+           invlink,
            control_mcmc,
+           min_relative_ess = 0,
            messages = TRUE) {
 
     stopifnot(family %in% c("poisson", "binomial"))
@@ -2613,13 +3133,13 @@ glgpm_nong <-
     }
 
     # --- setup ---
-    beta0   <- par0$beta
+    beta0   <- reference_pars$beta
     mu0     <- as.numeric(D %*% beta0 + cov_offset)
-    sigma2_0 <- par0$sigma2
-    phi0    <- par0$phi
-    tau2_0  <- par0$tau2
+    sigma2_0 <- reference_pars$sigma2
+    phi0    <- reference_pars$phi
+    tau2_0  <- reference_pars$tau2
     if (is.null(tau2_0)) tau2_0 <- fix_tau2
-    sigma2_re_0 <- par0$sigma2_re
+    sigma2_re_0 <- reference_pars$sigma2_re
 
     n_loc <- nrow(coords)
     n_re  <- length(sigma2_re_0)
@@ -2653,22 +3173,15 @@ glgpm_nong <-
 
     S_tot_samples <- simulation$samples$S
 
-    p <- ncol(D)
-    ind_beta   <- 1:p
-    ind_sigma2 <- p + 1
-    ind_phi    <- p + 2
-
-    if (!isTRUE(fix_tau2)) {
-      if (n_re > 0) {
-        ind_sigma2_re <- (p + 3):(p + 2 + n_re)
-        n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
-      }
-    } else {
-      ind_nu2 <- p + 3
-      if (n_re > 0) {
-        ind_sigma2_re <- (p + 4):(p + 3 + n_re)
-        n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
-      }
+    p      <- ncol(D)
+    layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = FALSE, n_re = n_re)
+    ind_beta   <- layout$index$beta
+    ind_sigma2 <- layout$index$sigma2
+    ind_phi    <- layout$index$phi
+    if (!is.null(layout$index$nu2))       ind_nu2       <- layout$index$nu2
+    if (!is.null(layout$index$sigma2_re)) ind_sigma2_re <- layout$index$sigma2_re
+    if (n_re > 0) {
+      n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
     }
 
     if (n_re > 0) {
@@ -2832,11 +3345,21 @@ glgpm_nong <-
       -0.5 * (spatial_quadratic + random_quadratic) + likelihood
     }
 
-    par0_vec <- c(par0$beta, log(c(par0$sigma2, par0$phi)))
-    if (isTRUE(fix_tau2)) par0_vec <- c(par0_vec, log(par0$tau2 / par0$sigma2))
-    if (n_re > 0) par0_vec <- c(par0_vec, log(par0$sigma2_re))
+    reference_vec <- c(
+      reference_pars$beta,
+      log(c(reference_pars$sigma2, reference_pars$phi))
+    )
+    if (isTRUE(fix_tau2)) {
+      reference_vec <- c(
+        reference_vec,
+        log(reference_pars$tau2 / reference_pars$sigma2)
+      )
+    }
+    if (n_re > 0) {
+      reference_vec <- c(reference_vec, log(reference_pars$sigma2_re))
+    }
 
-    log_f_tilde <- compute_log_f(par0_vec)
+    log_f_tilde <- compute_log_f(reference_vec)
 
     mc_log_lik <- function(par) {
       log_mean_exp(compute_log_f(par) - log_f_tilde)
@@ -3048,8 +3571,10 @@ glgpm_nong <-
     }
 
     # --- optimization ---
-    start_cov_pars[-(1:2)] <- start_cov_pars[-(1:2)] / start_cov_pars[1]
-    start_par <- c(start_beta, log(start_cov_pars))
+    # Each MCML optimisation must begin at the parameter value whose latent
+    # posterior generated the current importance sample. In particular, an
+    # iterative update must not restart from the original model defaults.
+    start_par <- reference_vec
 
     out <- list()
     objective <- safe_optimizer_objective(function(x) -mc_log_lik(x))
@@ -3059,6 +3584,15 @@ glgpm_nong <-
                     function(x) -hess_mc_log_lik(x),
                     control = list(trace = 1 * messages))
 
+    proposal_gradient <- grad_mc_log_lik(estim$par)
+    proposal_information <- -hess_mc_log_lik(estim$par)
+
+    supported_step <- supported_importance_step(
+      reference = reference_vec,
+      proposal = estim$par,
+      log_weight_function = function(par) compute_log_f(par) - log_f_tilde,
+      min_relative_ess = min_relative_ess
+    )
     out$estimate <- structure_estimate(
       estim$par,
       beta_names = colnames(D),
@@ -3066,9 +3600,8 @@ glgpm_nong <-
       sigma2_me  = FALSE,
       re_names   = if (n_re > 0) names(ID_re) else NULL
     )
-    out$grad_MLE <- grad_mc_log_lik(estim$par)
-    hess_MLE <- hess_mc_log_lik(estim$par)
-    information <- -hess_MLE
+    out$grad_MLE <- proposal_gradient
+    information <- proposal_information
     information_root <- factor_covariance(
       information,
       "observed information matrix"
@@ -3088,23 +3621,44 @@ glgpm_nong <-
       estim, objective, out$grad_MLE, information, information_root
     )
     warn_unconverged_optimizer(optimizer_diagnostics)
-    final_weights <- normalise_log_weights(
-      compute_log_f(estim$par) - log_f_tilde
+    optimizer_diagnostics$proposed_estimate <- structure_estimate(
+      estim$par,
+      beta_names = colnames(D),
+      fix_tau2 = fix_tau2,
+      sigma2_me = FALSE,
+      re_names = if (n_re > 0) names(ID_re) else NULL
     )
-    optimizer_diagnostics$importance_ess <-
-      importance_effective_sample_size(final_weights)
+    optimizer_diagnostics$supported_estimate <- structure_estimate(
+      supported_step$parameters,
+      beta_names = colnames(D),
+      fix_tau2 = fix_tau2,
+      sigma2_me = FALSE,
+      re_names = if (n_re > 0) names(ID_re) else NULL
+    )
+    optimizer_diagnostics$step_fraction <- supported_step$step_fraction
+    optimizer_diagnostics$importance_ess <- supported_step$importance_ess
     optimizer_diagnostics$relative_importance_ess <-
-      optimizer_diagnostics$importance_ess / length(final_weights)
-    if (messages && optimizer_diagnostics$relative_importance_ess < 0.1) {
+      supported_step$relative_importance_ess
+    optimizer_diagnostics$proposal_relative_importance_ess <-
+      supported_step$proposal_relative_importance_ess
+    optimizer_diagnostics$supported_log_likelihood_ratio <-
+      supported_step$log_likelihood_ratio
+    optimizer_diagnostics$max_importance_weight <-
+      supported_step$max_importance_weight
+    if (messages && supported_step$step_fraction < 1) {
       warning(
-        "The importance-sampling effective sample size is only ",
-        format(100 * optimizer_diagnostics$relative_importance_ess,
-               digits = 3),
-        "% of the retained samples; consider improving the proposal or ",
-        "increasing the MCMC sample size.",
+        "The unrestricted MCML update had a relative importance ESS of ",
+        format(100 * supported_step$proposal_relative_importance_ess,
+               digits = 3), "% and was shortened to ",
+        format(100 * supported_step$step_fraction, digits = 3),
+        "% of the proposed parameter change to retain adequate overlap.",
         call. = FALSE
       )
     }
+    attr(out, "mcmc") <- simulation[c(
+      "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
+      "invlink_used"
+    )]
     attr(out, "optimizer") <- optimizer_diagnostics
     class(out) <- "RiskMap"
     return(out)

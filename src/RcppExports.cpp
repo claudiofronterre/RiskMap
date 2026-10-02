@@ -33,6 +33,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cpp_binned_semivariances
+NumericMatrix cpp_binned_semivariances(const NumericMatrix permuted_values, const IntegerVector first_index, const IntegerVector second_index, const IntegerVector bin_index, const int number_bins);
+RcppExport SEXP _RiskMap_cpp_binned_semivariances(SEXP permuted_valuesSEXP, SEXP first_indexSEXP, SEXP second_indexSEXP, SEXP bin_indexSEXP, SEXP number_binsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix >::type permuted_values(permuted_valuesSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector >::type first_index(first_indexSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector >::type second_index(second_indexSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector >::type bin_index(bin_indexSEXP);
+    Rcpp::traits::input_parameter< const int >::type number_bins(number_binsSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_binned_semivariances(permuted_values, first_index, second_index, bin_index, number_bins));
+    return rcpp_result_gen;
+END_RCPP
+}
 // cpp_half_integer_matern
 NumericVector cpp_half_integer_matern(const NumericVector distances, const double phi, const double kappa);
 RcppExport SEXP _RiskMap_cpp_half_integer_matern(SEXP distancesSEXP, SEXP phiSEXP, SEXP kappaSEXP) {
@@ -50,6 +65,7 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_RiskMap_cpp_pairwise_distances", (DL_FUNC) &_RiskMap_cpp_pairwise_distances, 1},
     {"_RiskMap_cpp_cross_distances", (DL_FUNC) &_RiskMap_cpp_cross_distances, 2},
+    {"_RiskMap_cpp_binned_semivariances", (DL_FUNC) &_RiskMap_cpp_binned_semivariances, 5},
     {"_RiskMap_cpp_half_integer_matern", (DL_FUNC) &_RiskMap_cpp_half_integer_matern, 3},
     {NULL, NULL, 0}
 };

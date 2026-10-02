@@ -108,6 +108,68 @@ NumericMatrix cpp_cross_distances(const NumericMatrix first,
 }
 
 // [[Rcpp::export]]
+NumericMatrix cpp_binned_semivariances(const NumericMatrix permuted_values,
+                                       const IntegerVector first_index,
+                                       const IntegerVector second_index,
+                                       const IntegerVector bin_index,
+                                       const int number_bins) {
+  const int number_values = permuted_values.nrow();
+  const int number_pairs = first_index.length();
+
+  if (second_index.length() != number_pairs ||
+      bin_index.length() != number_pairs) {
+    stop("Pair and bin index vectors must have equal lengths.");
+  }
+  if (number_bins < 1) {
+    stop("`number_bins` must be positive.");
+  }
+
+  for (R_xlen_t i = 0; i < permuted_values.length(); ++i) {
+    if (!R_finite(permuted_values[i])) {
+      stop("`permuted_values` must contain only finite numbers.");
+    }
+  }
+
+  IntegerVector bin_counts(number_bins);
+  for (int pair = 0; pair < number_pairs; ++pair) {
+    if (first_index[pair] < 0 || first_index[pair] >= number_values ||
+        second_index[pair] < 0 || second_index[pair] >= number_values) {
+      stop("Pair indices are outside the range of `values`.");
+    }
+    if (bin_index[pair] < 0 || bin_index[pair] >= number_bins) {
+      stop("Bin indices are outside the requested number of bins.");
+    }
+    ++bin_counts[bin_index[pair]];
+  }
+
+  NumericMatrix semivariances(number_bins, permuted_values.ncol());
+  const double* values_pointer = permuted_values.begin();
+  const int* first_pointer = first_index.begin();
+  const int* second_pointer = second_index.begin();
+  const int* bin_pointer = bin_index.begin();
+  for (int permutation = 0; permutation < permuted_values.ncol(); ++permutation) {
+    const double* values_column = values_pointer +
+      static_cast<R_xlen_t>(permutation) * number_values;
+    double* output_column = semivariances.begin() +
+      static_cast<R_xlen_t>(permutation) * number_bins;
+    for (int pair = 0; pair < number_pairs; ++pair) {
+      const double difference = values_column[first_pointer[pair]] -
+        values_column[second_pointer[pair]];
+      output_column[bin_pointer[pair]] += 0.5 * difference * difference;
+    }
+  }
+
+  for (int bin = 0; bin < number_bins; ++bin) {
+    for (int permutation = 0; permutation < permuted_values.ncol(); ++permutation) {
+      semivariances(bin, permutation) = bin_counts[bin] == 0 ? NA_REAL :
+        semivariances(bin, permutation) / bin_counts[bin];
+    }
+  }
+
+  return semivariances;
+}
+
+// [[Rcpp::export]]
 NumericVector cpp_half_integer_matern(const NumericVector distances,
                                       const double phi,
                                       const double kappa) {

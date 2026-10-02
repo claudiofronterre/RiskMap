@@ -2,7 +2,7 @@
 % Please edit documentation in R/exploratory_analysis.R
 \name{variogram}
 \alias{variogram}
-\title{Empirical variogram}
+\title{Empirical variogram with a global permutation envelope}
 \usage{
 variogram(
   data,
@@ -10,7 +10,9 @@ variogram(
   breaks = NULL,
   n_bins = 14L,
   max_dist = NULL,
-  n_permutations = 1000,
+  n_permutations = 999L,
+  level = 0.95,
+  seed = NULL,
   distance_crs = NULL,
   distance_units = c("m", "km")
 )
@@ -32,10 +34,15 @@ the breakpoints are generated as \code{seq(0, max_dist, length.out = n_bins + 1)
 By default \code{max_dist = NULL} and the upper lag distance is set to \code{d_max/3},
 where \code{d_max} is the maximum observed distance in the data.}
 
-\item{n_permutations}{a positive integer indicating the number of permutations
-used to compute the 95\% confidence level envelope under the assumption of spatial
-independence. By default \code{n_permutations=1000} but if set to zero then no
-envelope is generated. Values between 2 and 100 will raise a warning.}
+\item{n_permutations}{a non-negative integer indicating the number of random
+permutations used with the observed curve to construct the global envelope.
+By default \code{n_permutations = 999}; set it to zero to omit the envelope.}
+
+\item{level}{the simultaneous coverage probability of the global envelope.
+By default \code{level = 0.95}.}
+
+\item{seed}{an optional non-negative integer seed for the permutations. The
+caller's random-number state is restored before the function returns.}
 
 \item{distance_crs}{\code{NULL} to retain an existing projected CRS, or
 automatically reproject longitude/latitude data to an appropriate UTM CRS
@@ -51,21 +58,35 @@ an object of class \code{RiskMap_variogram} which is a list containing the follo
 \describe{
 \item{variogram}{a data-frame containing the following columns:
 \describe{
-\item{mid_points}{the middle points of the classes of distance provided by \code{breaks}}
-\item{obs_vari}{the values of the observed variogram}
-\item{n_obs}{the number of pairs}}
+\item{distance}{the mean pair distance within each lag class}
+\item{semivariance}{the observed empirical semivariance}
+\item{n_pairs}{the number of pairs in the lag class}}
 If \code{n_permutations > 0}, the data-frame also contains the following columns:
 .  \describe{
-\item{lower_bound}{the lower bound of the 95\% confidence interval}
-\item{upper_bound}{the upper bound of the 95\% confidence interval}
+\item{lower_envelope}{the lower bound of the simultaneous envelope}
+\item{upper_envelope}{the upper bound of the simultaneous envelope}
 }}
 \item{distance_units}{the value passed to \code{distance_units}}
 \item{n_permutations}{the number of permutations}
 \item{breaks}{the calculated breaks}
+\item{level}{the simultaneous coverage probability}
+\item{envelope_method}{\code{"global_extreme_rank_length"}, or
+\code{NULL} if no permutations were requested}
 }
 }
 \description{
-Computes the empirical variogram using lag-distance breakpoints.
+Computes the empirical semivariogram using lag-distance
+breakpoints and, optionally, an extreme-rank-length global envelope for
+spatial independence.
+}
+\details{
+The observed variogram is included among the permuted curves so
+that they are exchangeable under the null hypothesis of spatial
+independence. Curves are ordered by their extreme-rank-length ordering.
+Unlike separate pointwise intervals, the resulting envelope controls the
+probability that the variogram leaves the envelope anywhere across the lag
+distances. The envelope is intended as an exploratory diagnostic rather
+than a formal hypothesis test.
 }
 \examples{
 data(italy_sim)
@@ -74,7 +95,8 @@ italy_variogram <- variogram(
                      data = italy_sim[1:200,],
                      variable = "y",
                      n_bins = 10,
-                     n_permutations = 100)
+                     n_permutations = 199,
+                     seed = 123)
 
 plot_variogram(italy_variogram,
                plot_envelope = TRUE)
