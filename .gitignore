@@ -10,3 +10,5 @@ src/*.so
 src/*.dll
 src/*-win.def
 src/*.rds
+vignettes/*.html
+vignettes/*_files/
