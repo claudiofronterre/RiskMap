@@ -2275,13 +2275,17 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @param obj_sim Output from [simulate_glgpm()] with both data and surface.
 ##'   The current assessment interface supports generating models without
 ##'   grouped `re()` effects or custom inverse links.
-##' @param models A named list of models to be evaluated.
+##' @param models A named list of fitted `RiskMap` models. Each object defines
+##'   a candidate model specification and is refitted to every simulated
+##'   dataset; its estimated parameter values are not reused.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
 ##'   to compute both from a single fit-and-predict pass over the simulations.
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
-##' @param f_grid_target A function for processing grid-level predictions.
-##' @param f_area_target A function for processing area-level predictions.
+##' @param target_transform A function that converts linear predictors to the
+##'   scientific target assessed at grid cells (for example, `plogis`).
+##' @param area_summary A function that combines grid-cell targets within an
+##'   area. Required only when `spatial_scale` includes `"area"`.
 ##' @param boundaries An `sf` object containing only POLYGON or MULTIPOLYGON geometries, required if `spatial_scale` includes `"area"`.
 ##' @param col_names Column name in `boundaries` containing unique region names. If `NULL`, defaults to `"region"`.
 ##' @param pred_objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
@@ -2297,8 +2301,8 @@ assess_simulation <- function(obj_sim,
                        control_mcmc = set_control_mcmc(),
                        spatial_scale,
                        messages = TRUE,
-                       f_grid_target = NULL,
-                       f_area_target = NULL,
+                       target_transform = NULL,
+                       area_summary = NULL,
                        boundaries = NULL,
                        col_names = NULL,
                        pred_objective = c("mse", "classify"),
@@ -2323,6 +2327,13 @@ assess_simulation <- function(obj_sim,
   want_mse <- "mse" %in% pred_objective
   want_classify <- "classify" %in% pred_objective
 
+  if (!is.list(models) || !length(models) ||
+      is.null(names(models)) || any(!nzchar(names(models))) ||
+      anyDuplicated(names(models)) ||
+      !all(vapply(models, inherits, logical(1), "RiskMap"))) {
+    stop("'models' must be a non-empty, uniquely named list of fitted RiskMap models.")
+  }
+
   if (want_area) {
     if (is.null(boundaries)) {
       stop("if spatial_scale includes 'area' then an sf object of the area(s) must be passed to
@@ -2332,8 +2343,8 @@ assess_simulation <- function(obj_sim,
   }
 
   obj_sim <- simulation_assessment_data(obj_sim)
-  if (!is.function(f_grid_target)) {
-    stop("Provide 'f_grid_target' to define the target on the linear-predictor scale.")
+  if (!is.function(target_transform)) {
+    stop("'target_transform' must be a function that transforms the linear predictor.")
   }
 
   if (want_classify) {
@@ -2347,8 +2358,8 @@ assess_simulation <- function(obj_sim,
   n_sim <- length(obj_sim$data_sim)
   n_models <- length(models)
 
-  if(want_area && is.null(f_area_target)) {
-    stop("If 'spatial_scale' includes 'area', then 'f_area_target' must be provided")
+  if(want_area && !is.function(area_summary)) {
+    stop("'area_summary' must be a function when 'spatial_scale' includes 'area'.")
   }
   model_names <- names(models)
 
@@ -2440,7 +2451,7 @@ assess_simulation <- function(obj_sim,
   lp_true_sim <- as.matrix(st_drop_geometry(obj_sim$lp_grid_sim[, grepl("^lp_sim_[0-9]+$",
                                                                        names(obj_sim$lp_grid_sim))]))
 
-  true_target_grid_sim <- f_grid_target(lp_true_sim)
+  true_target_grid_sim <- target_transform(lp_true_sim)
 
   if(want_area) {
     true_target_area_sim <- matrix(NA, nrow = n_reg, ncol = n_sim)
@@ -2451,7 +2462,7 @@ assess_simulation <- function(obj_sim,
                         "and no predictions are carried out for this area"))
           no_comp <- c(no_comp, i)
         } else {
-          true_target_area_sim[i,j] <- f_area_target(true_target_grid_sim[inter[[i]],j])
+          true_target_area_sim[i,j] <- area_summary(true_target_grid_sim[inter[[i]],j])
         }
       }
     }
@@ -2460,10 +2471,15 @@ assess_simulation <- function(obj_sim,
   for(i in 1:n_models) {
     if (messages) message("Model: ", model_names[i], "\n")
 
-    if_i <- interpret_formula(models[[i]])
+    template_i <- models[[i]]
+    if (template_i$family != obj_sim$family) {
+      stop("Model '", model_names[i], "' uses family '", template_i$family,
+           "', but the simulations use family '", obj_sim$family, "'.")
+    }
+    if_i <- interpret_formula(template_i$formula)
     rhs_terms <- attr(terms(if_i$pf), "term.labels")
     predictors_i <- if (length(rhs_terms) == 0) NULL else obj_sim$lp_grid_sim
-    f_i <- update(models[[i]], y ~ .)
+    f_i <- update(template_i$formula, y ~ .)
 
     for(j in 1:n_sim) {
       if (messages) message("Processing simulation no. ", j)
@@ -2472,15 +2488,9 @@ assess_simulation <- function(obj_sim,
       # these objects local avoids retaining every fit and posterior sample
       # matrix until the complete assessment has finished.
       if (messages) message("Estimation")
-      refit_args <- list(
-        formula = f_i,
-        family = obj_sim$family,
-        data = obj_sim$data_sim[[j]],
-        distance_units = obj_sim$distance_units,
-        control_mcmc = control_mcmc,
-        messages = FALSE
+      refit_args <- assessment_refit_args(
+        template_i, f_i, obj_sim$data_sim[[j]], control_mcmc
       )
-      if (obj_sim$family != "gaussian") refit_args$denominator <- quote(units_m)
       fit_ij <- do.call(glgpm, refit_args)
 
       if (messages) message("Prediction over the grid")
@@ -2552,7 +2562,7 @@ assess_simulation <- function(obj_sim,
       # Grid-cell-level target samples are shared by both scales: grid
       # objectives use them directly, area objectives aggregate them by
       # region below.
-      target_samples_ij <- f_grid_target(lp_samples_ij)
+      target_samples_ij <- target_transform(lp_samples_ij)
 
       if(want_grid) {
         mean_target_grid_ij <- apply(target_samples_ij, 1, mean)
@@ -2575,7 +2585,7 @@ assess_simulation <- function(obj_sim,
           if(length(inter[[h]]) > 0) {
             ind_grid_h <- inter[[h]]
             target_area_samples_ij[h,] <-  apply(target_samples_ij[ind_grid_h,], 2,
-                                                 f_area_target)
+                                                 area_summary)
             mean_target_area_ij[h] <- mean(target_area_samples_ij[h,])
           }
         }
@@ -2600,6 +2610,32 @@ assess_simulation <- function(obj_sim,
   out$spatial_scale <- spatial_scale
   class(out) <- "RiskMap_assess_simulation"
   return(out)
+}
+
+##' Build a refit call from a fitted assessment-model template
+##'
+##' The fitted coefficients are intentionally excluded. Data-dependent inputs
+##' are resolved against each simulated dataset rather than copied as vectors
+##' from the original fit.
+##' @noRd
+assessment_refit_args <- function(template, formula, data, control_mcmc) {
+  args <- list(
+    formula = formula,
+    family = template$family,
+    data = data,
+    distance_units = template$distance_units,
+    control_mcmc = control_mcmc,
+    control_mcml = attr(template, "control_mcml") %||% set_control_mcml(),
+    fix_var_me = template$fix_var_me,
+    messages = FALSE
+  )
+  if (template$family != "gaussian") {
+    args$denominator <- quote(units_m)
+    if (identical(template$link_function$name, "custom")) {
+      args$invlink <- template$link_function[c("inv", "d1", "d2")]
+    }
+  }
+  args
 }
 
 ##' Classification metrics for one simulated dataset
