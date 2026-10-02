@@ -14,7 +14,7 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `compute_ID_coords` | `create_ids` |
 | `convex_hull_sf` | `create_convex_hull` |
 | `glgpm_sim` | `simulate_glgpm` |
-| `Laplace_sampling_MCMC` | `laplace_sampling_mcmc` |
+| `Laplace_sampling_MCMC` | Removed; the replacement is internal |
 | `matern.grad.phi` | `matern_gradient_phi ` |
 | `matern.hessian.phi` | `matern_hessian_phi` |
 | `matern_cor` | `matern_correlation` |
@@ -58,7 +58,7 @@ native linear units rather than assuming metres.
   permutations plus the observed curve. The returned columns are now `distance`,
   `semivariance`, `n_pairs`, `lower_envelope` and `upper_envelope`. A `seed` can
   be supplied without changing the caller's random-number state.
-  `plot_variogram()` continues to show the envelope by default and warns when it
+  `plot_variogram()` now shows the envelope by default and warns when it
   was omitted with `n_permutations = 0`.
 - `create_grid()` no longer raises an error when `boundaries` is in
 longitude/latitude; like `glgpm()`, it now automatically reprojects to an
