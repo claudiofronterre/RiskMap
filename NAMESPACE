@@ -17,14 +17,13 @@ export(create_ids)
 export(elogit)
 export(glgpm)
 export(gp)
-export(laplace_sampling_mcmc)
 export(matern_correlation)
 export(matern_gradient_phi)
 export(matern_hessian_phi)
 export(maxim_integrand)
 export(plot_AnPIT)
 export(plot_mcmc)
-export(plot_score)
+export(plot_metric)
 export(plot_sim_surf)
 export(plot_variogram)
 export(predict_areal_target)
@@ -32,6 +31,7 @@ export(predict_grid_target)
 export(propose_utm)
 export(re)
 export(set_control_mcmc)
+export(set_control_mcml)
 export(setup_prediction)
 export(simulate_glgpm)
 export(simulated_data)
@@ -52,6 +52,7 @@ importFrom(Matrix,
   solve,
   sparseMatrix
 )
+importFrom(Rcpp,evalCpp)
 importFrom(dplyr,
   "%>%",
   first,
@@ -87,3 +88,4 @@ importFrom(terra,
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)
 importFrom(utils,flush.console)
+useDynLib(RiskMap, .registration = TRUE)

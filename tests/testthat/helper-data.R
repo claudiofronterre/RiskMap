@@ -7,7 +7,8 @@ data <- data.frame(x = coords[,1],
                    cov = rnorm(n),
                    denominator =  sample(5:20, n, replace = TRUE),
                    offset = rnorm(n),
-                   i = rep(1:(n/2), each = 2))
+                   i = rep(1:(n/2), each = 2),
+                   j = rep(1:2, each = n/2))
 
 sigma2 <- 1
 phi <- 2
@@ -70,3 +71,12 @@ hull <- create_convex_hull(gaussian_data)
 grid <- create_grid(hull, 3)
 squares <- st_make_grid(hull, n = c(2, 2))
 areal <- st_sf(geometry = squares)
+
+cross_validation <- assess_prediction(
+  list(model_a = gaussian_model,
+       model_b = gaussian_offset_model),
+  method = "cluster",
+  fold = 2,
+  plot_fold = FALSE,
+  messages = FALSE
+)

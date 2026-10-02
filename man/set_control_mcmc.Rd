@@ -9,8 +9,8 @@ set_control_mcmc(
   burnin = 2000,
   thin = 10,
   h = NULL,
-  c1.h = 0.01,
-  c2.h = 1e-04,
+  c1.h = 1,
+  c2.h = 0.6,
   seed = NULL,
   linear_model = FALSE
 )
@@ -22,11 +22,13 @@ set_control_mcmc(
 
 \item{thin}{Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.}
 
-\item{h}{Numeric. An optional parameter for Langevin MCMC. Must be non-negative if specified.}
+\item{h}{Numeric. An optional positive step size for Langevin MCMC.}
 
-\item{c1.h}{Numeric. A control parameter for Langevin MCMC. Must be positive. Default is 0.01.}
+\item{c1.h}{Numeric. Positive scale for the burn-in Robbins-Monro step-size
+adaptation. Default is 1.}
 
-\item{c2.h}{Numeric. Another control parameter for Langevin MCMC. Must be between 0 and 1. Default is 1e-04.}
+\item{c2.h}{Numeric. Exponent controlling the diminishing adaptation gain.
+Must be larger than 0.5 and no larger than 1. Default is 0.6.}
 
 \item{seed}{Integer. Optional value passed to \code{set.seed} to control random number generation for
 generating chains and make results reproducible. Defaults to \code{NULL}.}

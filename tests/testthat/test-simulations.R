@@ -127,6 +127,22 @@ test_that("new locations preserve factor coding without observed responses", {
 
 test_that("assess_simulation validates area boundaries", {
   obj_sim <- structure(list(), class = "RiskMap_simulation")
+  expect_error(
+    assess_simulation(obj_sim, models = list(model = y ~ 1),
+                      spatial_scale = character(), f_grid_target = identity),
+    "'spatial_scale' must be set"
+  )
+  expect_error(
+    assess_simulation(obj_sim, models = list(model = y ~ 1),
+                      spatial_scale = c("grid", "grid"), f_grid_target = identity),
+    "'spatial_scale' must be set"
+  )
+  expect_error(
+    assess_simulation(obj_sim, models = list(model = y ~ 1),
+                      spatial_scale = "grid", pred_objective = character(),
+                      f_grid_target = identity),
+    "'pred_objective' must be either"
+  )
   expect_error(assess_simulation(obj_sim, models = list(model = y ~ 1),
                                  spatial_scale = "area", boundaries = gaussian_data,
                                  f_area_target = mean),
@@ -141,6 +157,81 @@ test_that("joint output feeds the existing grid assessment", {
                               control_mcmc = control_mcmc, spatial_scale = "grid",
                               f_grid_target = identity, pred_objective = "mse",
                               messages = FALSE)
-  expect_equal(dim(result$pred_objective$mse), c(1L, 2L))
-  expect_true(all(is.finite(result$pred_objective$mse)))
+  expect_equal(dim(result$pred_objective$grid$mse), c(1L, 2L))
+  expect_true(all(is.finite(result$pred_objective$grid$mse)))
+})
+
+test_that("assess_simulation computes grid and area objectives in one combined run #109", {
+  boundaries <- create_convex_hull(gaussian_data)
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = gaussian_data, seed = 2)
+
+  combined <- assess_simulation(sim, models = list(intercept = y ~ gp()),
+                                control_mcmc = control_mcmc,
+                                spatial_scale = c("grid", "area"),
+                                f_grid_target = identity, f_area_target = mean,
+                                boundaries = boundaries, pred_objective = "mse",
+                                messages = FALSE)
+
+  expect_setequal(names(combined$pred_objective), c("grid", "area"))
+  expect_equal(dim(combined$pred_objective$grid$mse), c(1L, 2L))
+  expect_equal(dim(combined$pred_objective$area$mse), c(1L, 2L))
+  expect_true(all(is.finite(combined$pred_objective$grid$mse)))
+  expect_true(all(is.finite(combined$pred_objective$area$mse)))
+
+  grid_only <- assess_simulation(sim, models = list(intercept = y ~ gp()),
+                                 control_mcmc = control_mcmc, spatial_scale = "grid",
+                                 f_grid_target = identity, pred_objective = "mse",
+                                 messages = FALSE)
+  area_only <- assess_simulation(sim, models = list(intercept = y ~ gp()),
+                                 control_mcmc = control_mcmc, spatial_scale = "area",
+                                 f_grid_target = identity, f_area_target = mean,
+                                 boundaries = boundaries, pred_objective = "mse",
+                                 messages = FALSE)
+
+  # Area-level results are computed identically whether or not 'grid' is
+  # also requested: both paths use the same (joint-type) prediction, so
+  # under the shared control_mcmc seed the two runs must agree exactly.
+  expect_equal(combined$pred_objective$area$mse, area_only$pred_objective$area$mse)
+
+  # A standalone grid-only run instead uses cheaper marginal-type sampling,
+  # since it doesn't need spatially correlated draws across the grid; a
+  # combined run always uses joint-type sampling so one prediction can serve
+  # both scales. The two are therefore consistent estimates of the same
+  # quantity, not bitwise-identical draws.
+  expect_equal(combined$pred_objective$grid$mse, grid_only$pred_objective$grid$mse,
+               tolerance = 0.05)
+
+  s <- summary(combined)
+  expect_setequal(names(s), c("grid", "area"))
+  expect_s3_class(s, "summary.RiskMap_assess_simulation")
+  expect_output(print(s), "Grid-level results")
+  expect_output(print(s), "Area-level results")
+
+  combined_classify <- assess_simulation(sim, models = list(intercept = y ~ gp()),
+                                         control_mcmc = control_mcmc,
+                                         spatial_scale = c("grid", "area"),
+                                         f_grid_target = identity, f_area_target = mean,
+                                         boundaries = boundaries,
+                                         pred_objective = c("mse", "classify"),
+                                         categories = c(-3, -1, 0, 1, 3),
+                                         messages = FALSE)
+
+  expect_length(combined_classify$pred_objective$grid$classify$intercept$by_cat, 2L)
+  expect_length(combined_classify$pred_objective$area$classify$intercept$by_cat, 2L)
+  expected_classes <- c("(-3,-1]", "(-1,0]", "(0,1]", "(1,3]")
+  expect_identical(
+    levels(combined_classify$pred_objective$grid$classify$Class),
+    expected_classes
+  )
+
+  expect_error(
+    assess_simulation(sim, models = list(intercept = y ~ gp()),
+                      control_mcmc = control_mcmc,
+                      spatial_scale = "grid", f_grid_target = identity,
+                      pred_objective = "classify", categories = c(-1, 0, 0),
+                      messages = FALSE),
+    "unique, strictly increasing"
+  )
 })

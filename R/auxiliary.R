@@ -149,15 +149,23 @@ propose_utm <- function (data) {
 ##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
 ##' @export
 matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+  input_dimensions <- if (is.matrix(u)) dim(u) else NULL
   if (is.vector(u))
     names(u) <- NULL
   if (is.matrix(u))
     dimnames(u) <- list(NULL, NULL)
-  uphi <- u / phi
-  uphi <- ifelse(u > 0, (((2^(-(kappa - 1)))/ifelse(0, Inf,
-                                                    gamma(kappa))) * (uphi^kappa) * besselK(x = uphi, nu = kappa)),
-                 1)
-  uphi[u > 600 * phi] <- 0
+  if (kappa %in% c(0.5, 1.5, 2.5)) {
+    uphi <- cpp_half_integer_matern(as.numeric(u), phi, kappa)
+    if (!is.null(input_dimensions)) {
+      dim(uphi) <- input_dimensions
+    }
+  } else {
+    uphi <- u / phi
+    uphi <- ifelse(u > 0, (((2^(-(kappa - 1)))/ifelse(0, Inf,
+                                                      gamma(kappa))) * (uphi^kappa) * besselK(x = uphi, nu = kappa)),
+                   1)
+    uphi[u > 600 * phi] <- 0
+  }
 
   if(return_sym_matrix) {
     n <- (1 + sqrt(1 + 8 * length(uphi))) / 2
@@ -928,7 +936,7 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   model_names <- names(object$model)
   n_models <- length(model_names)
 
-  metric_names <- names(object$model[[1]]$score)
+  metric_names <- names(object$model[[1]]$metric)
   if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_prediction'")
   n_metrics <- length(metric_names)
 
@@ -938,15 +946,15 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
 
   test_set_means <- list()
 
-  n_subs <- length(object$model[[1]]$score[[1]])
-  w <- unlist(lapply(object$model[[1]]$score[[1]], length))
+  n_subs <- length(object$model[[1]]$metric[[1]])
+  w <- unlist(lapply(object$model[[1]]$metric[[1]], length))
 
   for (i in 1:n_models) {
     model_scores <- list()
     for (j in 1:n_metrics) {
       score_j <- rep(NA, n_subs)
       for (h in 1:n_subs) {
-        score_j[h] <- mean(object$model[[i]]$score[[j]][[h]])
+        score_j[h] <- mean(object$model[[i]]$metric[[j]][[h]])
       }
       model_scores[[j]] <- score_j
       res[i, j] <- sum(w * score_j) / sum(w)
@@ -1175,56 +1183,63 @@ plot_AnPIT <- function(object,
 }
 
 
-##' @title Plot Spatial Scores for a Specific Model and Metric
+##' @title Plot a Predictive Performance Metric for a Specific Model
 ##'
-##' @description This function visualizes spatial scores for a specified model and metric.
-##' It combines test set data, handles duplicate locations by averaging scores,
-##' and creates a customizable map using ggplot2.
+##' @description This function visualizes a predictive performance metric, from
+##' `assess_prediction()`, for a specified model. It combines test set data,
+##' handles duplicate locations by averaging, and creates a customizable map
+##' using ggplot2.
 ##'
 ##' @param object A list containing test sets and model scores. The structure should include
-##'   `object$test_set` (list of sf objects) and `object$model[[which_model]]$score[[which_score]]`.
-##' @param which_score A string specifying the score to visualize. Must match a score computed in the model.
-##' @param which_model A string specifying the model whose scores to visualize.
+##'   `object$test_set` (list of sf objects) and `object$model[[model]]$metric[[metric]]`.
+##' @param metric A string specifying which metric to visualize. Must be one of the
+##' values passed to `metrics` in the `assess_prediction()` call that produced `object`.
+##' @param model A string specifying the model whose scores to visualize.
 ##' @param ... Additional arguments to customize ggplot, such as `scale_color_gradient` or `scale_color_manual`.
-##' @return A ggplot object visualizing the spatial distribution of the specified score.
+##' @return A ggplot object visualizing the spatial distribution of the specified metric.
 ##' @export
-plot_score <- function(object, which_score, which_model, ...) {
+plot_metric <- function(object, metric, model, ...) {
 
-  # Check if "which_score" exists
-  if (!which_score %in% names(object$model[[which_model]]$score)) {
-    stop(paste("Error: The score", shQuote(which_score), "was not computed for model", shQuote(which_model)))
+  if (!model %in% names(object$model)) {
+    stop(paste("'model'", shQuote(model, type = "sh"), "was not found in 'object'"))
+  }
+
+  if (!metric %in% names(object$model[[model]]$metric)) {
+    stop(paste("'metric'", shQuote(metric, type = "sh"), "was not computed for model", shQuote(model, type = "sh")))
   }
 
   # Extract the test sets and number of test sets
   test_sets <- object$test_set
   n_test <- length(test_sets)
 
-  # Combine the data and add the score variable
+  # Combine the data and add the metric variable
   data_full <- st_as_sf(test_sets[[1]])
-  data_full$score <- object$model[[which_model]]$score[[which_score]][[1]]
+  data_full$value <- object$model[[model]]$metric[[metric]][[1]]
 
   if (n_test > 1) {
-    for (i in 1:n_test) {
-      test_sets[[i]]$score <- object$model[[which_model]]$score[[which_score]][[i]]
+    for (i in 2:n_test) {
+      test_sets[[i]]$value <- object$model[[model]]$metric[[metric]][[i]]
       data_full <- rbind(data_full, test_sets[[i]])
     }
   }
 
-  # Check for duplicate locations and average the score
+  # Check for duplicate locations and average the metric
   data_full <- data_full %>%
     mutate(geom_id = st_as_text(.data$geometry)) %>%
     group_by(.data$geom_id) %>%
-    summarize(score = mean(.data$score, na.rm = TRUE),
+    summarize(value = mean(.data$value, na.rm = TRUE),
               geometry = first(.data$geometry), .groups = "drop") %>%
     st_as_sf()
 
 
   # Create the base plot
   out <- ggplot(data = data_full) +
-    geom_sf(aes(color = .data$score), size = 2) +
-    ggtitle(paste("Visualizing", which_score, "for model", which_model)) +
+    geom_sf(aes(color = .data$value), size = 2) +
+    ggtitle(paste("Visualizing", metric, "for model", model)) +
     theme_minimal()
 
+  # Layer on any additional ggplot components passed via ...
+  out <- Reduce(`+`, list(...), out)
 
   return(out)
 }
@@ -1409,8 +1424,66 @@ check_positive_number <- function(x, type = "starting ") {
   # extract name, removing any list
   name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
 
-  if (!is.numeric(x) || length(x) != 1 || x <= 0 || is.na(x)) {
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
+      !is.finite(x) || x <= 0) {
     stop("The ", type, "value for '", name, "' must be a single positive number")
+  }
+
+  invisible(TRUE)
+}
+
+#' Check that a numeric value belongs to a range
+#'
+#' @param x The value to check.
+#' @param min Lower endpoint.
+#' @param max Upper endpoint.
+#' @param allow_equal Whether either endpoint is allowed.
+#' @param name The argument name to use in the error message. Defaults to the
+#'   expression supplied as `x`.
+#' @return `TRUE` invisibly when valid; otherwise raises an error.
+#' @noRd
+check_range <- function(x, min = -Inf, max = Inf, allow_equal = TRUE,
+                        name = deparse(substitute(x))) {
+  valid_number <- is.numeric(x) && length(x) == 1L && !is.na(x) &&
+    is.finite(x)
+  outside <- if (!valid_number) {
+    TRUE
+  } else if (allow_equal) {
+    x < min || x > max
+  } else {
+    x <= min || x >= max
+  }
+  invalid <- !valid_number || outside
+  if (invalid) {
+    interval <- if (allow_equal) "between" else "strictly between"
+    stop("'", name, "' must be a single finite number ", interval, " ",
+         min, " and ", max,
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+#' Check that a value belongs to the closed unit interval
+#' @noRd
+check_zero_one <- function(x, name = deparse(substitute(x))) {
+  check_range(x, min = 0, max = 1, name = name)
+}
+
+
+#' @title check_logical
+#' @description
+#'
+#' Check that a value is a single, non-missing logical (`TRUE` or `FALSE`)
+#' and error if not
+#' @param x the value to check
+#' @return TRUE if x is valid. Raise an error if not.
+#' @noRd
+#'
+check_logical <- function(x) {
+  name <- deparse(substitute(x))
+
+  if (!isTRUE(x) && !isFALSE(x)) {
+    stop("'", name, "' must be either TRUE or FALSE", call. = FALSE)
   }
 
   invisible(TRUE)
