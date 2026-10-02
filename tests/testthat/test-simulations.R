@@ -235,3 +235,83 @@ test_that("assess_simulation computes grid and area objectives in one combined r
     "unique, strictly increasing"
   )
 })
+
+test_that("classification metrics retain fixed categories and compute accuracy #108", {
+  samples <- rbind(
+    rep(0.25, 4),
+    rep(0.25, 4),
+    rep(0.75, 4),
+    rep(0.75, 4)
+  )
+  metrics <- simulation_classification_metrics(
+    true_values = c(0.25, 0.25, 0.25, 0.75),
+    samples = samples,
+    breaks = c(0, 0.5, 1),
+    labels = c("low", "high")
+  )
+
+  expect_identical(metrics$by_cat$Class, c("low", "high"))
+  expect_equal(metrics$by_cat$Sensitivity, c(2 / 3, 1))
+  expect_equal(metrics$by_cat$CC, c(3 / 4, 3 / 4))
+  expect_equal(metrics$overall_cc, 3 / 4)
+
+  no_high_predictions <- simulation_classification_metrics(
+    true_values = c(0.25, 0.75),
+    samples = matrix(0.25, nrow = 2, ncol = 4),
+    breaks = c(0, 0.5, 1),
+    labels = c("low", "high")
+  )
+  expect_identical(no_high_predictions$by_cat$Class, c("low", "high"))
+  expect_true(is.na(no_high_predictions$by_cat$PPV[2]))
+})
+
+test_that("classification summaries handle one simulation and metric-wise missingness #108", {
+  one_result <- data.frame(
+    Class = c("low", "high"),
+    Sensitivity = c(0.5, NA),
+    Specificity = c(NA, 0.75),
+    PPV = c(0.4, NA),
+    NPV = c(NA, 0.8),
+    CC = c(0.6, 0.7)
+  )
+  one_simulation <- structure(
+    list(
+      pred_objective = list(
+        grid = list(
+          classify = list(
+            model = list(by_cat = list(one_result), CC = 0.65),
+            Class = factor(c("low", "high"), levels = c("low", "high"))
+          )
+        )
+      ),
+      n_sim = 1L,
+      spatial_scale = "grid"
+    ),
+    class = "RiskMap_assess_simulation"
+  )
+
+  expect_warning(summary_one <- summary(one_simulation), "one simulation")
+  model_one <- summary_one$grid$classify$model
+  expect_equal(model_one$classify_res$Sensitivity, c(0.5, NA))
+  expect_equal(model_one$n_valid$Sensitivity, c(1L, 0L))
+  expect_equal(model_one$cc_summary$mean, 0.65)
+  expect_true(is.na(model_one$cc_summary$sd))
+  expect_true(is.na(model_one$cc_summary$lower))
+  expect_output(print(summary_one), "uncertainty unavailable")
+
+  second_result <- one_result
+  second_result$Sensitivity <- c(NA, 0.25)
+  second_result$Specificity <- c(0.5, NA)
+  two_simulations <- one_simulation
+  two_simulations$n_sim <- 2L
+  two_simulations$pred_objective$grid$classify$model$by_cat <-
+    list(one_result, second_result)
+  two_simulations$pred_objective$grid$classify$model$CC <- c(0.65, 0.75)
+
+  summary_two <- summary(two_simulations)$grid$classify$model
+  expect_equal(summary_two$classify_res$Sensitivity, c(0.5, 0.25))
+  expect_equal(summary_two$n_valid$Sensitivity, c(1L, 1L))
+  expect_equal(summary_two$n_valid$Specificity, c(1L, 1L))
+  expect_equal(summary_two$cc_summary$n_valid, 2L)
+  expect_equal(summary_two$cc_summary$n_sim, 2L)
+})

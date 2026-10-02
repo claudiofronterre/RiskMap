@@ -250,6 +250,35 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_length(fit_re2$re, 2)
 })
 
+test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
+  # replicating locations gives more than three observations per latent
+  # effect, so glgpm_lm should not fall back to glgpm_lm_direct
+  set.seed(2)
+  replicated_data <- do.call(rbind, replicate(5, gaussian_data, simplify = FALSE))
+  replicated_data$y <- replicated_data$y + rnorm(nrow(replicated_data), sd = 0.3)
+
+  formulas <- list(y ~ cov + gp(), y ~ cov + gp() + re(i))
+  for (formula in formulas) {
+    woodbury_fit <- with_mocked_bindings(
+      glgpm(formula, data = replicated_data, family = "gaussian",
+            messages = FALSE),
+      glgpm_lm_direct = function(...) stop("direct path used")
+    )
+    direct_fit <- with_mocked_bindings(
+      glgpm(formula, data = replicated_data, family = "gaussian",
+            messages = FALSE),
+      use_direct_gaussian_covariance = function(...) TRUE
+    )
+
+    expect_s3_class(woodbury_fit, "RiskMap")
+    expect_setequal(names(woodbury_fit), expected_output)
+    expect_equal(woodbury_fit$estimate, direct_fit$estimate, tolerance = 1e-6)
+    expect_equal(woodbury_fit$log_lik, direct_fit$log_lik, tolerance = 1e-6)
+    expect_equal(woodbury_fit$covariance, direct_fit$covariance,
+                 tolerance = 1e-4)
+  }
+})
+
 test_that("glgpm fits gaussian models combining re() with a fixed measurement error variance #117", {
 
   fit <- glgpm(y ~ cov + gp() + re(i),
