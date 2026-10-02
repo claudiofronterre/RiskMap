@@ -10,8 +10,8 @@ assess_simulation(
   control_mcmc = set_control_mcmc(),
   spatial_scale,
   messages = TRUE,
-  f_grid_target = NULL,
-  f_area_target = NULL,
+  target_transform = NULL,
+  area_summary = NULL,
   boundaries = NULL,
   col_names = NULL,
   pred_objective = c("mse", "classify"),
@@ -23,7 +23,9 @@ assess_simulation(
 The current assessment interface supports generating models without
 grouped \code{re()} effects or custom inverse links.}
 
-\item{models}{A named list of models to be evaluated.}
+\item{models}{A named list of fitted \code{RiskMap} models. Each object defines
+a candidate model specification and is refitted to every simulated
+dataset; its estimated parameter values are not reused.}
 
 \item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
 
@@ -32,9 +34,11 @@ to compute both from a single fit-and-predict pass over the simulations.}
 
 \item{messages}{Logical, if \code{TRUE} messages will be displayed during processing. Default is \code{TRUE}.}
 
-\item{f_grid_target}{A function for processing grid-level predictions.}
+\item{target_transform}{A function that converts linear predictors to the
+scientific target assessed at grid cells (for example, \code{plogis}).}
 
-\item{f_area_target}{A function for processing area-level predictions.}
+\item{area_summary}{A function that combines grid-cell targets within an
+area. Required only when \code{spatial_scale} includes \code{"area"}.}
 
 \item{boundaries}{An \code{sf} object containing only POLYGON or MULTIPOLYGON geometries, required if \code{spatial_scale} includes \code{"area"}.}
 
