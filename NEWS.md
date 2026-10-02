@@ -14,7 +14,7 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `compute_ID_coords` | `create_ids` |
 | `convex_hull_sf` | `create_convex_hull` |
 | `glgpm_sim` | `simulate_glgpm` |
-| `Laplace_sampling_MCMC` | `laplace_sampling_mcmc` |
+| `Laplace_sampling_MCMC` | Removed; the replacement is internal |
 | `matern.grad.phi` | `matern_gradient_phi ` |
 | `matern.hessian.phi` | `matern_hessian_phi` |
 | `matern_cor` | `matern_correlation` |
@@ -51,9 +51,15 @@ already-projected CRS is retained as-is, longitude/latitude data is automaticall
 reprojected to an appropriate UTM zone with a message, and an explicitly supplied
 `distance_crs` must be projected. Distances now correctly account for the CRS's
 native linear units rather than assuming metres.
-- `plot_variogram()`'s `plot_envelope` now defaults to `TRUE`; if `n_permutations`
-was 0 or 1 in the `variogram()` call, a warning is raised and the envelope is
-skipped instead of erroring.
+- `variogram()` now uses a simultaneous extreme-rank-length permutation envelope
+  instead of separate pointwise intervals. It remains an exploratory diagnostic
+  and does not report a hypothesis-test p-value. Its pairwise permutation engine
+  is compiled, distances and lag bins are computed once, and the default is 999
+  permutations plus the observed curve. The returned columns are now `distance`,
+  `semivariance`, `n_pairs`, `lower_envelope` and `upper_envelope`. A `seed` can
+  be supplied without changing the caller's random-number state.
+  `plot_variogram()` now shows the envelope by default and warns when it
+  was omitted with `n_permutations = 0`.
 - `create_grid()` no longer raises an error when `boundaries` is in
 longitude/latitude; like `glgpm()`, it now automatically reprojects to an
 appropriate UTM zone and reports the conversion with a message.
@@ -70,7 +76,7 @@ named `boundaries`.
 with `iter` and `fold`) and `which_metric` has been renamed to `metrics`.
 Parameters have also been reordered: mandatory arguments first, then those
 required per `method` (in the order `"cluster"`, `"regularized"`, `"user"`),
-then the remaining optional arguments. 
+then the remaining optional arguments.
 - `assess_prediction()` now honours a `seed` set on its `control_mcmc` argument
 to make the random splits generated for `method = "cluster"` or `"regularized"`
 reproducible.

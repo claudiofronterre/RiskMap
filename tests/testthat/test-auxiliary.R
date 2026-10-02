@@ -239,11 +239,11 @@ test_that("check_zero_one validates the closed unit interval", {
   expect_no_error(check_zero_one(0.5, "a"))
   expect_no_error(check_zero_one(1, "a"))
 
-  expect_error(check_zero_one(-0.1, "a"), "between zero and one")
-  expect_error(check_zero_one(1.1, "a"), "between zero and one")
-  expect_error(check_zero_one(c(0, 1), "a"), "between zero and one")
-  expect_error(check_zero_one(NA, "a"), "between zero and one")
-  expect_error(check_zero_one(Inf, "a"), "between zero and one")
+  expect_error(check_zero_one(-0.1, "a"), "between 0 and 1")
+  expect_error(check_zero_one(1.1, "a"), "between 0 and 1")
+  expect_error(check_zero_one(c(0, 1), "a"), "between 0 and 1")
+  expect_error(check_zero_one(NA, "a"), "between 0 and 1")
+  expect_error(check_zero_one(Inf, "a"), "between 0 and 1")
 })
 
 test_that("plot_metric validates model before metric (#156)", {

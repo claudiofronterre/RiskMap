@@ -14,7 +14,6 @@ glgpm(
   distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
   control_mcml = set_control_mcml(),
-  par0 = NULL,
   return_samples = FALSE,
   messages = TRUE,
   fix_var_me = NULL,
@@ -57,8 +56,6 @@ Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\lin
 \item{control_mcml}{Control parameters for repeated Monte Carlo maximum
 likelihood updates. Must be returned by \code{\link[=set_control_mcml]{set_control_mcml()}}. The default
 performs one update, preserving the usual single-stage fit.}
-
-\item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
 
 \item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
 Defaults to \code{FALSE}.}
@@ -162,8 +159,9 @@ For non-Gaussian models, \code{control_mcml} can request repeated MCML updates.
 Each update draws a new importance sample around the preceding estimate and
 uses a distinct reproducible seed when \code{control_mcmc$seed} is set.
 
-The \code{start_pars} argument allows for specifying starting values for the model parameters.
-If not provided, default starting values are used.
+The \code{start_pars} argument allows starting values to be supplied explicitly.
+Otherwise, binomial and Poisson models compare two automatic candidates
+and use the one with the better Laplace approximation.
 }
 \examples{
 

@@ -1432,21 +1432,41 @@ check_positive_number <- function(x, type = "starting ") {
   invisible(TRUE)
 }
 
-#' Check that a value belongs to the closed unit interval
+#' Check that a numeric value belongs to a range
 #'
 #' @param x The value to check.
+#' @param min Lower endpoint.
+#' @param max Upper endpoint.
+#' @param allow_equal Whether either endpoint is allowed.
 #' @param name The argument name to use in the error message. Defaults to the
 #'   expression supplied as `x`.
 #' @return `TRUE` invisibly when valid; otherwise raises an error.
 #' @noRd
-check_zero_one <- function(x, name = deparse(substitute(x))) {
-  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
-    !is.finite(x) || x < 0 || x > 1
+check_range <- function(x, min = -Inf, max = Inf, allow_equal = TRUE,
+                        name = deparse(substitute(x))) {
+  valid_number <- is.numeric(x) && length(x) == 1L && !is.na(x) &&
+    is.finite(x)
+  outside <- if (!valid_number) {
+    TRUE
+  } else if (allow_equal) {
+    x < min || x > max
+  } else {
+    x <= min || x >= max
+  }
+  invalid <- !valid_number || outside
   if (invalid) {
-    stop("'", name, "' must be a single number between zero and one",
+    interval <- if (allow_equal) "between" else "strictly between"
+    stop("'", name, "' must be a single finite number ", interval, " ",
+         min, " and ", max,
          call. = FALSE)
   }
   invisible(TRUE)
+}
+
+#' Check that a value belongs to the closed unit interval
+#' @noRd
+check_zero_one <- function(x, name = deparse(substitute(x))) {
+  check_range(x, min = 0, max = 1, name = name)
 }
 
 

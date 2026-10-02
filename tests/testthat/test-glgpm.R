@@ -1,6 +1,10 @@
 test_that("glgpm produces errors", {
-
-  # par0 is not checked
+  expect_error(
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          start_pars = list(beta = c(0, 1), unknown = 1)),
+    "'unknown' is not a valid starting parameter",
+    fixed = TRUE
+  )
 
   expect_error(
     glgpm("not formula", data = gaussian_data, family = "gaussian"),
@@ -102,12 +106,6 @@ test_that("glgpm produces errors", {
   )
 
   expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", par0 = 1),
-    "'par0' cannot be provided when 'family' is 'gaussian'"
-  )
-
-
-  expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(invalid = 1), messages = FALSE),
     "'invalid' is not a valid starting parameter"
@@ -134,7 +132,7 @@ test_that("glgpm produces errors", {
   expect_error(set_control_mcml(max_iterations = 0), "positive integer")
   expect_error(set_control_mcml(tolerance = 0), "positive number")
   expect_error(set_control_mcml(tolerance = Inf), "positive number")
-  expect_error(set_control_mcml(min_relative_ess = 2), "between zero and one")
+  expect_error(set_control_mcml(min_relative_ess = 2), "between 0 and 1")
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
@@ -343,6 +341,11 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "binomial")
+  starting_values <- attr(fit_no_re, "starting_values")
+  expect_true(starting_values$selected %in%
+                c("current", "transformed_gaussian"))
+  expect_true(is.finite(starting_values$current_laplace))
+  expect_true(is.finite(starting_values$transformed_laplace))
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = binomial_data,
@@ -354,6 +357,86 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "binomial")
+  re_starting_values <- attr(fit_re, "starting_values")
+  expect_true(re_starting_values$selected %in%
+                c("current", "transformed_gaussian"))
+  expect_false(identical(
+    re_starting_values$fallback_reason,
+    "additional random effects are not yet supported by the transformed initializer"
+  ))
+  expect_true(
+    is.finite(re_starting_values$transformed_laplace) ||
+      grepl("invalid starting values|non-finite Laplace",
+            re_starting_values$fallback_reason)
+  )
+})
+
+test_that("transformed starts preserve an estimated nugget", {
+  fit <- glgpm(
+    y ~ cov + gp(nugget = TRUE), data = binomial_data,
+    family = "binomial", denominator = denominator,
+    control_mcmc = control_mcmc, messages = FALSE
+  )
+
+  diagnostics <- attr(fit, "starting_values")
+  expect_true(diagnostics$selected %in%
+                c("current", "transformed_gaussian"))
+  expect_true(is.finite(diagnostics$current_laplace))
+  expect_true(is.finite(diagnostics$transformed_laplace))
+  expect_true(is.finite(fit$estimate$nu2))
+})
+
+test_that("explicit non-Gaussian starts remain authoritative", {
+  data_frame <- sf::st_drop_geometry(binomial_data)
+  glm_start <- glm(
+    cbind(y, denominator - y) ~ cov,
+    data = data_frame,
+    family = binomial
+  )
+  start_pars <- list(
+    beta = coef(glm_start),
+    sigma2 = 1,
+    phi = quantile(
+      pairwise_distances(coordinates_in_units(binomial_data, "km")),
+      0.1
+    )
+  )
+
+  explicit_fit_2 <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    start_pars = start_pars, messages = FALSE
+  )
+  explicit_fit <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    start_pars = start_pars, messages = FALSE
+  )
+
+  expect_equal(attr(explicit_fit, "starting_values")$selected, "user")
+  expect_equal(explicit_fit$estimate, explicit_fit_2$estimate)
+  expect_equal(explicit_fit$log_lik, explicit_fit_2$log_lik)
+})
+
+test_that("custom inverse links retain the current automatic start", {
+  custom_link <- list(
+    inv = plogis,
+    d1 = function(x) plogis(x) * (1 - plogis(x)),
+    d2 = function(x) {
+      probability <- plogis(x)
+      probability * (1 - probability) * (1 - 2 * probability)
+    }
+  )
+  fit <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    invlink = custom_link,
+    messages = FALSE
+  )
+
+  diagnostics <- attr(fit, "starting_values")
+  expect_equal(diagnostics$selected, "current")
+  expect_match(diagnostics$fallback_reason, "custom inverse links")
 })
 
 test_that("glgpm produces expected output for poisson models", {
