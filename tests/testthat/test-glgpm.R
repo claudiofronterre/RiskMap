@@ -524,7 +524,7 @@ test_that("iterative MCML updates its reference and records reproducible history
     vapply(fit$mcml_history, `[[`, numeric(1), "seed"),
     c(control_mcmc$seed, control_mcmc$seed + 1L)
   )
-  expect_lte(fit$mcml_history[[2]]$max_parameter_change,
+  expect_lte(fit$mcml_history[[2]]$max_standardized_change,
              iterative_control$tolerance)
   expect_true(is.finite(
     fit$mcml_history[[2]]$log_likelihood_ratio_gain
@@ -533,6 +533,19 @@ test_that("iterative MCML updates its reference and records reproducible history
     fit$mcml_history[[2]]$max_standardized_change
   ))
   expect_equal(fit$mcml_history[[2]]$estimate, fit$estimate)
+  expect_true("reference_update" %in% names(fit$mcml_history[[2]]))
+  expect_equal(attr(fit, "optimizer")$proposed_estimate, fit$estimate)
+})
+
+test_that("MCML overlap safeguard does not relabel a reference bridge as a fit", {
+  diagnostics <- attr(binomial_model, "optimizer")
+
+  expect_lt(diagnostics$step_fraction, 1)
+  expect_equal(diagnostics$proposed_estimate, binomial_model$estimate)
+  expect_false(isTRUE(all.equal(
+    diagnostics$reference_update,
+    binomial_model$estimate
+  )))
 })
 
 

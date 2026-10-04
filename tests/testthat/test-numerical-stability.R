@@ -133,7 +133,7 @@ test_that("Gaussian covariance backend selection preserves correctness overrides
   expect_true(use_direct_gaussian_covariance(500, 50, 0.2, 0.4))
 })
 
-test_that("MCML convergence requires stable parameters and adequate overlap", {
+test_that("MCML convergence requires small standardised change and overlap", {
   control <- set_control_mcml(
     max_iterations = 3,
     tolerance = 0.05,
