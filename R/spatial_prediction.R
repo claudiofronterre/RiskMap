@@ -2814,6 +2814,20 @@ print.summary.RiskMap_assess_simulation <- function(x, ...) {
   invisible(x)
 }
 
+##' Print a data frame as plain text
+##'
+##' Mirrors `print.data.frame()` but prints the formatted character matrix
+##' directly, so RStudio notebooks keep the table inline with the surrounding
+##' `cat()` output instead of rendering it as a separate data frame widget.
+##'
+##' @param df A data frame.
+##' @return Invisibly returns `df`.
+##' @noRd
+print_text_table <- function(df) {
+  print(as.matrix(format(df)), quote = FALSE, right = TRUE)
+  invisible(df)
+}
+
 ##' Print one spatial scale's `mse`/`classify` summary
 ##'
 ##' @param x An element of a `summary.RiskMap_assess_simulation` object, as
@@ -2823,7 +2837,7 @@ print.summary.RiskMap_assess_simulation <- function(x, ...) {
 print_pred_objective <- function(x) {
   if (!is.null(x$mse)) {
     cat("Mean Squared Error (MSE):\n")
-    print(x$mse)
+    print_text_table(x$mse)
     cat("\n")
   }
 
@@ -2837,11 +2851,11 @@ print_pred_objective <- function(x) {
       cat(sprintf("\nModel: %s\n", model_name))
 
       cat("\nAverages across simulations by Category:\n")
-      print(model_data$classify_res)
+      print_text_table(model_data$classify_res)
 
       cat("\nNumber of valid simulations by Category and metric ",
           sprintf("(out of %d):\n", model_data$n_sim), sep = "")
-      print(model_data$n_valid)
+      print_text_table(model_data$n_valid)
 
       cat("\nProportion of Correct Classification (CC) across categories:\n")
       cc_summary <- model_data$cc_summary
