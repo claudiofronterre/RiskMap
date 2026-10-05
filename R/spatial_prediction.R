@@ -2301,14 +2301,33 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##'   `classify` per the requested `pred_objective`.
 ##'
 ##' @examples
-##' # Transform linear predictors to prevalence while preserving the matrix.
-##' linear_predictor <- matrix(c(-1, 0, 1, 2), nrow = 2)
-##' target_transform <- plogis
-##' prevalence <- target_transform(linear_predictor)
-##'
-##' # Reduce the grid-cell prevalence from one simulation to an area mean.
-##' area_summary <- mean
-##' area_summary(prevalence[, 1])
+##' library(sf)
+##' data(italy_sim)
+##' italy_subset <- italy_sim[1:30, ]
+##' italy_grid <- italy_subset[!duplicated(st_coordinates(italy_subset)), ]
+##' model <- specify_glgpm(
+##'   y ~ pop_dens + gp(), italy_subset, family = "gaussian",
+##'   parameters = list(beta = c(1, 0.001), sigma2 = 1, phi = 20,
+##'                     sigma2_me = 0.1)
+##' )
+##' simulations <- simulate_glgpm(
+##'   model, nsim = 1, what = c("data", "surface"),
+##'   prediction_grid = italy_grid, seed = 1
+##' )
+##' boundary <- st_sf(
+##'   region = "study_area",
+##'   geometry = st_convex_hull(st_union(italy_grid))
+##' )
+##' assessment <- assess_simulation(
+##'   simulations,
+##'   models = list(candidate = model),
+##'   spatial_scale = c("grid", "area"),
+##'   target_transform = exp,
+##'   area_summary = mean,
+##'   boundaries = boundary,
+##'   pred_objective = "mse",
+##'   messages = FALSE
+##' )
 ##'
 ##' @export
 assess_simulation <- function(obj_sim,
@@ -2345,7 +2364,10 @@ assess_simulation <- function(obj_sim,
   if (!is.list(models) || !length(models) ||
       is.null(names(models)) || any(!nzchar(names(models))) ||
       anyDuplicated(names(models)) ||
-      !all(vapply(models, inherits, logical(1), "RiskMap"))) {
+      !all(vapply(models, function(model) {
+        inherits(model, "RiskMap") ||
+          inherits(model, "RiskMap_simulation_model")
+      }, logical(1)))) {
     stop("'models' must be a non-empty, uniquely named list of objects returned by glgpm() or specify_glgpm().")
   }
 
@@ -2686,20 +2708,27 @@ assess_simulation <- function(obj_sim,
 ##' from the original fit.
 ##' @noRd
 assessment_refit_args <- function(template, formula, data, control_mcmc) {
+  fitted_template <- inherits(template, "RiskMap")
   args <- list(
     formula = formula,
     family = template$family,
     data = data,
     distance_units = template$distance_units,
     control_mcmc = control_mcmc,
-    control_mcml = attr(template, "control_mcml") %||% set_control_mcml(),
-    fix_var_me = template$fix_var_me,
+    control_mcml = if (fitted_template) {
+      attr(template, "control_mcml") %||% set_control_mcml()
+    } else {
+      set_control_mcml()
+    },
+    fix_var_me = if (fitted_template) template$fix_var_me else NULL,
     messages = FALSE
   )
   if (template$family != "gaussian") {
     args$denominator <- quote(units_m)
-    if (identical(template$link_function$name, "custom")) {
+    if (fitted_template && identical(template$link_function$name, "custom")) {
       args$invlink <- template$link_function[c("inv", "d1", "d2")]
+    } else if (!fitted_template && isTRUE(template$custom_link)) {
+      args$invlink <- template$invlink
     }
   }
   args

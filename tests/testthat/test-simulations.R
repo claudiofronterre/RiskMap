@@ -170,6 +170,34 @@ test_that("assessment refits use fitted templates without reusing estimates #108
   expect_false("estimate" %in% names(args))
 })
 
+test_that("assessment refits accept specify_glgpm templates #108", {
+  template <- specify_glgpm(
+    y ~ cov + gp(), gaussian_data, "gaussian",
+    parameters = list(beta = c(1, 0.5), sigma2 = 1, phi = 2,
+                      sigma2_me = 0.1)
+  )
+  formula <- update(template$formula, y ~ .)
+  args <- assessment_refit_args(
+    template, formula, gaussian_data, control_mcmc
+  )
+
+  expect_identical(args$formula, formula)
+  expect_identical(args$family, "gaussian")
+  expect_identical(args$data, gaussian_data)
+  expect_null(args$fix_var_me)
+  expect_false("start_pars" %in% names(args))
+
+  sim <- simulate_glgpm(
+    template, nsim = 1, what = c("data", "surface"),
+    prediction_grid = gaussian_data, seed = 2
+  )
+  result <- assess_simulation(
+    sim, models = list(candidate = template), spatial_scale = "grid",
+    target_transform = identity, pred_objective = "mse", messages = FALSE
+  )
+  expect_equal(dim(result$pred_objective$grid$mse), c(1L, 1L))
+})
+
 test_that("joint output feeds the existing grid assessment", {
   sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
                         what = c("data", "surface"),
