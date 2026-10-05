@@ -5,6 +5,9 @@ vignette: >
   %\VignetteEngine{quarto::html}
   %\VignetteEncoding{UTF-8}
 author: Simon Smart
+format:
+  html:
+    embed-resources: true
 ---
 
 **RiskMap** contains functions for model based geostatistics (MBG).
