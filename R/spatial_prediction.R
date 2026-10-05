@@ -2275,17 +2275,22 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @param obj_sim Output from [simulate_glgpm()] with both data and surface.
 ##'   The current assessment interface supports generating models without
 ##'   grouped `re()` effects or custom inverse links.
-##' @param models A named list of fitted `RiskMap` models. Each object defines
-##'   a candidate model specification and is refitted to every simulated
-##'   dataset; its estimated parameter values are not reused.
+##' @param models A named list of fitted models returned by [glgpm()] or model
+##'   specifications returned by [specify_glgpm()]. Each object defines a
+##'   candidate model specification and is refitted to every simulated dataset;
+##'   its estimated parameter values are not reused.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
 ##'   to compute both from a single fit-and-predict pass over the simulations.
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
-##' @param target_transform A function that converts linear predictors to the
-##'   scientific target assessed at grid cells (for example, `plogis`).
-##' @param area_summary A function that combines grid-cell targets within an
-##'   area. Required only when `spatial_scale` includes `"area"`.
+##' @param target_transform A function that converts a numeric matrix of linear
+##'   predictors to a numeric matrix of scientific targets with the same
+##'   dimensions. For example, use [plogis()] for prevalence from a binomial
+##'   logit model or [exp()] for the mean of a Poisson log-link model.
+##' @param area_summary A function that combines a numeric vector of grid-cell
+##'   targets within one area and returns one finite numeric value, such as
+##'   [base::mean()] or [base::sum()]. Required only when `spatial_scale`
+##'   includes `"area"`.
 ##' @param boundaries An `sf` object containing only POLYGON or MULTIPOLYGON geometries, required if `spatial_scale` includes `"area"`.
 ##' @param col_names Column name in `boundaries` containing unique region names. If `NULL`, defaults to `"region"`.
 ##' @param pred_objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
@@ -2294,6 +2299,16 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @return A list of class `RiskMap_assess_simulation`. `pred_objective` holds one element per
 ##'   requested `spatial_scale` (`"grid"` and/or `"area"`), each in turn holding `mse` and/or
 ##'   `classify` per the requested `pred_objective`.
+##'
+##' @examples
+##' # Transform linear predictors to prevalence while preserving the matrix.
+##' linear_predictor <- matrix(c(-1, 0, 1, 2), nrow = 2)
+##' target_transform <- plogis
+##' prevalence <- target_transform(linear_predictor)
+##'
+##' # Reduce the grid-cell prevalence from one simulation to an area mean.
+##' area_summary <- mean
+##' area_summary(prevalence[, 1])
 ##'
 ##' @export
 assess_simulation <- function(obj_sim,
@@ -2331,7 +2346,7 @@ assess_simulation <- function(obj_sim,
       is.null(names(models)) || any(!nzchar(names(models))) ||
       anyDuplicated(names(models)) ||
       !all(vapply(models, inherits, logical(1), "RiskMap"))) {
-    stop("'models' must be a non-empty, uniquely named list of fitted RiskMap models.")
+    stop("'models' must be a non-empty, uniquely named list of objects returned by glgpm() or specify_glgpm().")
   }
 
   if (want_area) {
@@ -2347,6 +2362,23 @@ assess_simulation <- function(obj_sim,
     stop("'target_transform' must be a function that transforms the linear predictor.")
   }
 
+  apply_target_transform <- function(x, context) {
+    result <- tryCatch(
+      target_transform(x),
+      error = function(e) {
+        stop("'target_transform' failed for ", context, ": ",
+             conditionMessage(e), call. = FALSE)
+      }
+    )
+    if (!is.numeric(result) || !is.matrix(result) ||
+        !identical(dim(result), dim(x)) || anyNA(result) ||
+        any(!is.finite(result))) {
+      stop("'target_transform' must return a finite numeric matrix with the same dimensions as its input (failed for ",
+           context, ").", call. = FALSE)
+    }
+    result
+  }
+
   if (want_classify) {
     if (is.null(categories)) stop("if 'pred_objective' is 'classify', a value for 'categories' must be specified")
     if (!is.numeric(categories) || length(categories) < 3 ||
@@ -2360,6 +2392,22 @@ assess_simulation <- function(obj_sim,
 
   if(want_area && !is.function(area_summary)) {
     stop("'area_summary' must be a function when 'spatial_scale' includes 'area'.")
+  }
+
+  apply_area_summary <- function(x, context) {
+    result <- tryCatch(
+      area_summary(x),
+      error = function(e) {
+        stop("'area_summary' failed for ", context, ": ",
+             conditionMessage(e), call. = FALSE)
+      }
+    )
+    if (!is.numeric(result) || length(result) != 1L || is.na(result) ||
+        !is.finite(result)) {
+      stop("'area_summary' must return one finite numeric value (failed for ",
+           context, ").", call. = FALSE)
+    }
+    as.numeric(result)
   }
   model_names <- names(models)
 
@@ -2451,7 +2499,9 @@ assess_simulation <- function(obj_sim,
   lp_true_sim <- as.matrix(st_drop_geometry(obj_sim$lp_grid_sim[, grepl("^lp_sim_[0-9]+$",
                                                                        names(obj_sim$lp_grid_sim))]))
 
-  true_target_grid_sim <- target_transform(lp_true_sim)
+  true_target_grid_sim <- apply_target_transform(
+    lp_true_sim, "the simulated true surface"
+  )
 
   if(want_area) {
     true_target_area_sim <- matrix(NA, nrow = n_reg, ncol = n_sim)
@@ -2462,7 +2512,11 @@ assess_simulation <- function(obj_sim,
                         "and no predictions are carried out for this area"))
           no_comp <- c(no_comp, i)
         } else {
-          true_target_area_sim[i,j] <- area_summary(true_target_grid_sim[inter[[i]],j])
+          true_target_area_sim[i,j] <- apply_area_summary(
+            true_target_grid_sim[inter[[i]], j],
+            paste0("area '", boundaries[[col_names]][i],
+                   "' in true simulation ", j)
+          )
         }
       }
     }
@@ -2562,7 +2616,10 @@ assess_simulation <- function(obj_sim,
       # Grid-cell-level target samples are shared by both scales: grid
       # objectives use them directly, area objectives aggregate them by
       # region below.
-      target_samples_ij <- target_transform(lp_samples_ij)
+      target_samples_ij <- apply_target_transform(
+        lp_samples_ij,
+        paste0("model '", model_names[i], "', simulation ", j)
+      )
 
       if(want_grid) {
         mean_target_grid_ij <- apply(target_samples_ij, 1, mean)
@@ -2584,8 +2641,18 @@ assess_simulation <- function(obj_sim,
         for(h in 1:n_reg) {
           if(length(inter[[h]]) > 0) {
             ind_grid_h <- inter[[h]]
-            target_area_samples_ij[h,] <-  apply(target_samples_ij[ind_grid_h,], 2,
-                                                 area_summary)
+            target_area_samples_ij[h,] <- vapply(
+              seq_len(n_samples),
+              function(sample_index) {
+                apply_area_summary(
+                  target_samples_ij[ind_grid_h, sample_index],
+                  paste0("area '", boundaries[[col_names]][h], "', model '",
+                         model_names[i], "', simulation ", j,
+                         ", predictive sample ", sample_index)
+                )
+              },
+              numeric(1)
+            )
             mean_target_area_ij[h] <- mean(target_area_samples_ij[h,])
           }
         }

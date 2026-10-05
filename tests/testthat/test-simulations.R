@@ -130,7 +130,7 @@ test_that("assess_simulation validates area boundaries", {
   expect_error(
     assess_simulation(obj_sim, models = list(model = y ~ gp()),
                       spatial_scale = "grid", target_transform = identity),
-    "fitted RiskMap models"
+    "glgpm\\(\\) or specify_glgpm\\(\\)"
   )
   expect_error(
     assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
@@ -180,6 +180,51 @@ test_that("joint output feeds the existing grid assessment", {
                               messages = FALSE)
   expect_equal(dim(result$pred_objective$grid$mse), c(1L, 2L))
   expect_true(all(is.finite(result$pred_objective$grid$mse)))
+})
+
+test_that("assess_simulation validates target and area function outputs #171", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = gaussian_data, seed = 2)
+
+  expect_error(
+    assess_simulation(
+      sim,
+      models = list(intercept = gaussian_intercept_model),
+      spatial_scale = "grid",
+      target_transform = mean,
+      pred_objective = "mse",
+      messages = FALSE
+    ),
+    "same dimensions as its input"
+  )
+
+  expect_error(
+    assess_simulation(
+      sim,
+      models = list(intercept = gaussian_intercept_model),
+      spatial_scale = "grid",
+      target_transform = function(x) x * NA_real_,
+      pred_objective = "mse",
+      messages = FALSE
+    ),
+    "finite numeric matrix"
+  )
+
+  boundaries <- create_convex_hull(gaussian_data)
+  expect_error(
+    assess_simulation(
+      sim,
+      models = list(intercept = gaussian_intercept_model),
+      spatial_scale = "area",
+      target_transform = identity,
+      area_summary = identity,
+      boundaries = boundaries,
+      pred_objective = "mse",
+      messages = FALSE
+    ),
+    "one finite numeric value"
+  )
 })
 
 test_that("assess_simulation computes grid and area objectives in one combined run #109", {

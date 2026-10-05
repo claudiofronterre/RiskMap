@@ -23,9 +23,10 @@ assess_simulation(
 The current assessment interface supports generating models without
 grouped \code{re()} effects or custom inverse links.}
 
-\item{models}{A named list of fitted \code{RiskMap} models. Each object defines
-a candidate model specification and is refitted to every simulated
-dataset; its estimated parameter values are not reused.}
+\item{models}{A named list of fitted models returned by \code{\link[=glgpm]{glgpm()}} or model
+specifications returned by \code{\link[=specify_glgpm]{specify_glgpm()}}. Each object defines a
+candidate model specification and is refitted to every simulated dataset;
+its estimated parameter values are not reused.}
 
 \item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
 
@@ -34,11 +35,15 @@ to compute both from a single fit-and-predict pass over the simulations.}
 
 \item{messages}{Logical, if \code{TRUE} messages will be displayed during processing. Default is \code{TRUE}.}
 
-\item{target_transform}{A function that converts linear predictors to the
-scientific target assessed at grid cells (for example, \code{plogis}).}
+\item{target_transform}{A function that converts a numeric matrix of linear
+predictors to a numeric matrix of scientific targets with the same
+dimensions. For example, use \code{\link[=plogis]{plogis()}} for prevalence from a binomial
+logit model or \code{\link[=exp]{exp()}} for the mean of a Poisson log-link model.}
 
-\item{area_summary}{A function that combines grid-cell targets within an
-area. Required only when \code{spatial_scale} includes \code{"area"}.}
+\item{area_summary}{A function that combines a numeric vector of grid-cell
+targets within one area and returns one finite numeric value, such as
+\code{\link[base:mean]{base::mean()}} or \code{\link[base:sum]{base::sum()}}. Required only when \code{spatial_scale}
+includes \code{"area"}.}
 
 \item{boundaries}{An \code{sf} object containing only POLYGON or MULTIPOLYGON geometries, required if \code{spatial_scale} includes \code{"area"}.}
 
@@ -55,4 +60,15 @@ requested \code{spatial_scale} (\code{"grid"} and/or \code{"area"}), each in tur
 }
 \description{
 Evaluates models using joint data and surface simulations.
+}
+\examples{
+# Transform linear predictors to prevalence while preserving the matrix.
+linear_predictor <- matrix(c(-1, 0, 1, 2), nrow = 2)
+target_transform <- plogis
+prevalence <- target_transform(linear_predictor)
+
+# Reduce the grid-cell prevalence from one simulation to an area mean.
+area_summary <- mean
+area_summary(prevalence[, 1])
+
 }
