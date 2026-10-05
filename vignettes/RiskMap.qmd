@@ -10,9 +10,9 @@ format:
     embed-resources: true
 ---
 
-**RiskMap** contains functions for model based geostatistics (MBG).
-MBG takes point based observations and generates predictions across the entire area of interest.
-A comprehensive guide to using the package and MBG in general is available at <https://www.mbgr.org/> but this vignette provides a basic overview of the package's functionality.
+**RiskMap** contains functions for model based geostatistics (MBG) which takes point based observations and generates predictions across the entire area of interest.
+This vignette provides a basic overview of the package's functionality, but a comprehensive guide to using the package and MBG in general is given in *Model-based geostatistics for global public health using R* written by the authors and available at <https://www.mbgr.org/>. 
+Relevant sections of the book are also linked to here at the start of each section.
 
 ## Installation and loading
 
@@ -64,6 +64,8 @@ For more information on the datasets use `help(<dataset>)`
 
 ## Loading data
 
+*For more information see [Importing and standardising spatial data](https://www.mbgr.org/02_handling-spatial-data.html#importing-and-standardising-spatial-data)*
+
 Datasets need transforming into a simple features (sf) object prior to analysis. With the exception of `liberia`, the datasets are already converted to this format. To convert a dataframe to a suitable format, use `st_as_sf()` from the sf package, supplying the names of the columns containing the spatial coordinates and the coordinate reference system for the coordinates:
 
 ```{r}
@@ -83,6 +85,8 @@ plot(data["npos"], axes = TRUE)
 
 ## Exploratory data analysis
 
+*For more information see [Exploring residual spatial correlation](https://www.mbgr.org/03_model-fitting.html#sec-expl-spatial)*
+
 The distances between data points can be summarised with `summarise_distance()`. By default, coordinates are converted to a projected coordinate reference system and reported in kilometers, but these can be overridden.
 
 ```{r}
@@ -100,6 +104,8 @@ plot_variogram(variogram)
 ```
 
 ## Model fitting
+
+*For more information see [Generalized linear geostatistical models](https://www.mbgr.org/03_model-fitting.html#generalized-linear-geostatistical-models)*
 
 `glpgm()` fits generalised linear Gaussian process models for either Gaussia, binomial or Poisson responses. Every model must include `gp()` which automatically includes a spatial term based on the coordinates contained in the data. To estimate the nugget effect include `gp(nugget = TRUE)`. Optionally, you can specify random effects with `re()` and offsets with `offset()`. 
 
@@ -140,6 +146,8 @@ plot_mcmc(model)
 ```
 
 ## Generating predictions
+
+*For more information see [Spatial prediction using geostatistical models](https://www.mbgr.org/04_geostatistical-prediction.html#sec-spat-pred-target)*
 
 To generate predictions from the model, we first need to generate locations where we wish to generate predictions for. Often, this involves obtaining boundary data for the region of interest, for which we can use the `geobounds` package and then generating a grid of points at a specified `spacing` inside it using `create_grid()`:
 
@@ -214,6 +222,8 @@ plot(areal_prediction)
 
 ## Assessing predictions
 
+*For more information see [Assessing the predictive performance of geostatistical models with cross-validation](https://www.mbgr.org/04_geostatistical-prediction.html#sec-compare-pp)*
+
 To assess the predictive performance of models, perform cross validation using `assess_prediction()`. Multiple models can be supplied and compared, so fit another model to the data, omitting the elevation covariate. By default, the test set of the data is plotted and three metrics are calculated; `AnPIT` - the Average nonrandomized Probability Integral Transform (or PIT for Gaussian models), `CRPS` - the Continuous Ranked Probability Score and `SRCPS` - the scaled version of CRPS.
 
 ```{r}
@@ -251,6 +261,8 @@ plot_metric(cross_validation,
 ```
 
 ## Simulations
+
+*For more information see [Simulation-based assessment of predictive performance](https://www.mbgr.org/04_geostatistical-prediction.html#simulation-based-assessment-of-predictive-performance)*
 
 Simulation studies can be run using `simulate_glgpm()` which depending on what is specified in `what` can generate simulated values for data, the spatial surface or both. Models can also be generated with `specify_glgpm()` but in this example we will reuse the model from earlier. The `prediction_grid` requires data for each variable in the model, so first, copy the elevation data into `liberia_grid`.
 
