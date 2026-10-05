@@ -14,7 +14,7 @@ glgpm(
   distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
   control_mcml = set_control_mcml(),
-  return_samples = FALSE,
+  return_samples = TRUE,
   messages = TRUE,
   fix_var_me = NULL,
   start_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, sigma2_me =
@@ -57,8 +57,13 @@ Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\lin
 likelihood updates. Must be returned by \code{\link[=set_control_mcml]{set_control_mcml()}}. The default
 performs one update, preserving the usual single-stage fit.}
 
-\item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
-Defaults to \code{FALSE}.}
+\item{return_samples}{Logical indicating whether to retain final-parameter
+conditional MCMC samples when fitting a Binomial or Poisson model. If
+\code{TRUE}, a fresh sample is drawn after estimation, returned, and used to
+compute fitted values. This sample is distinct from the importance sample
+used internally by MCML. If \code{FALSE}, this additional sampling stage is
+skipped and Monte Carlo fitted values are not computed. Defaults to \code{TRUE}.
+Ignored for Gaussian models, whose fitted values are computed analytically.}
 
 \item{messages}{Logical indicating whether to print progress messages. Defaults to \code{TRUE}.}
 
@@ -110,7 +115,19 @@ its rows/columns are named to match \code{unlist(estimate)}.}
 \item{units_m}{Distribution offset if \code{family} is \code{binomial} or \code{poisson}}
 \item{cov_offset}{Covariate offset}
 \item{call}{Matched call}
-\item{S_samples}{MCMC samples if \code{return_samples} is \code{TRUE}}
+\item{S_samples}{For non-Gaussian models, fresh conditional MCMC samples
+evaluated at the fitted parameters when \code{return_samples} is \code{TRUE}. These
+are not the reference samples used for MCML estimation. The first block is
+the location-level Gaussian effect (including the nugget when present),
+followed by any unstructured random-effect blocks.}
+\item{linear.predictors}{Conditional fitted linear predictors. For
+non-Gaussian models these are Monte Carlo means over the final-parameter
+latent samples and are \code{NULL} when \code{return_samples = FALSE}; for Gaussian
+models they use the conditional latent mean.}
+\item{fitted.values}{Conditional fitted response means. Binomial models
+return probabilities; Poisson models return expected counts and therefore
+include any supplied exposure in \code{denominator}. These are \code{NULL} for
+non-Gaussian models when \code{return_samples = FALSE}.}
 \item{mcml_history}{For non-Gaussian models, one entry per MCML update,
 containing its fitted estimate, reference-distribution update, likelihood,
 parameter change, importance-sampling
