@@ -112,10 +112,14 @@ its rows/columns are named to match \code{unlist(estimate)}.}
 \item{call}{Matched call}
 \item{S_samples}{MCMC samples if \code{return_samples} is \code{TRUE}}
 \item{mcml_history}{For non-Gaussian models, one entry per MCML update,
-containing its estimates, likelihood, parameter change, importance-sampling
+containing its fitted estimate, reference-distribution update, likelihood,
+parameter change, importance-sampling
 effective sample size, and seed. The likelihood-ratio gain is measured
 relative to the reference parameter used to generate that update's sample;
 it is therefore zero at the reference rather than an absolute likelihood.
+When overlap is inadequate, the reference update may be shortened towards
+the fitted estimate before the next importance sample is drawn; it is not
+itself reported as the fitted estimate.
 Both working-scale parameter change and change relative to the current
 standard errors are reported. Estimates use the same parameterisation as
 \code{estimate}, with regression coefficients and spatial range restored to the
@@ -156,8 +160,11 @@ as \code{phi}) are expressed in kilometers (\code{"km"}, the default) or meters 
 The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.
 This argument must be an object returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.
 For non-Gaussian models, \code{control_mcml} can request repeated MCML updates.
-Each update draws a new importance sample around the preceding estimate and
-uses a distinct reproducible seed when \code{control_mcmc$seed} is set.
+Each update draws a new importance sample around the preceding reference
+update. This equals the fitted estimate when importance-sampling overlap is
+adequate; otherwise it is shortened towards that estimate before the next
+sample is drawn. A distinct reproducible seed is used for each update when
+\code{control_mcmc$seed} is set.
 
 The \code{start_pars} argument allows starting values to be supplied explicitly.
 Otherwise, binomial and Poisson models compare two automatic candidates

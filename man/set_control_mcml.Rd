@@ -10,9 +10,9 @@ set_control_mcml(max_iterations = 1L, tolerance = 0.05, min_relative_ess = 0.1)
 \item{max_iterations}{Positive integer giving the maximum number of MCML
 updates. Defaults to one.}
 
-\item{tolerance}{Positive numeric tolerance for the maximum absolute change
-in the internally standardised regression coefficients and log covariance
-parameters. It is evaluated from the second update onwards.}
+\item{tolerance}{Positive numeric tolerance for the largest parameter change
+divided by its current standard error. It is evaluated from the second
+update onwards.}
 
 \item{min_relative_ess}{Number between zero and one giving the minimum
 effective sample size, as a proportion of retained importance samples,
@@ -23,8 +23,10 @@ A control object of class \code{RiskMap_control_mcml}.
 }
 \description{
 Repeated Monte Carlo maximum likelihood (MCML) updates regenerate the
-importance sample around the estimate from the preceding update. A single
-update reproduces the standard RiskMap fitting procedure.
+importance sample around the reference update from the preceding iteration.
+When importance-sampling overlap is adequate this is the fitted estimate;
+otherwise it is a shortened step towards that estimate. A single update
+reproduces the standard RiskMap fitting procedure.
 }
 \examples{
 control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.05)

@@ -70,8 +70,11 @@
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
 ##' This argument must be an object returned by [set_control_mcmc()].
 ##' For non-Gaussian models, `control_mcml` can request repeated MCML updates.
-##' Each update draws a new importance sample around the preceding estimate and
-##' uses a distinct reproducible seed when `control_mcmc$seed` is set.
+##' Each update draws a new importance sample around the preceding reference
+##' update. This equals the fitted estimate when importance-sampling overlap is
+##' adequate; otherwise it is shortened towards that estimate before the next
+##' sample is drawn. A distinct reproducible seed is used for each update when
+##' `control_mcmc$seed` is set.
 ##'
 ##' The `start_pars` argument allows starting values to be supplied explicitly.
 ##' Otherwise, binomial and Poisson models compare two automatic candidates
@@ -112,10 +115,14 @@
 ##' \item{call}{Matched call}
 ##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
 ##' \item{mcml_history}{For non-Gaussian models, one entry per MCML update,
-##' containing its estimates, likelihood, parameter change, importance-sampling
+##' containing its fitted estimate, reference-distribution update, likelihood,
+##' parameter change, importance-sampling
 ##' effective sample size, and seed. The likelihood-ratio gain is measured
 ##' relative to the reference parameter used to generate that update's sample;
 ##' it is therefore zero at the reference rather than an absolute likelihood.
+##' When overlap is inadequate, the reference update may be shortened towards
+##' the fitted estimate before the next importance sample is drawn; it is not
+##' itself reported as the fitted estimate.
 ##' Both working-scale parameter change and change relative to the current
 ##' standard errors are reported. Estimates use the same parameterisation as
 ##' `estimate`, with regression coefficients and spatial range restored to the
@@ -505,8 +512,11 @@ glgpm <- function(formula,
                         messages = messages)
 
       optimizer <- attr(res, "optimizer")
-      supported_estimate <- optimizer$supported_estimate
-      working_estimate <- unlist(supported_estimate, use.names = TRUE)
+      # The optimiser proposal is the fitted MCML estimate. When its
+      # importance weights have poor overlap, move the reference distribution
+      # only part-way towards it before drawing the next iteration's sample.
+      reference_update <- optimizer$reference_update
+      working_estimate <- unlist(reference_update, use.names = TRUE)
       change <- if (is.null(previous_estimate)) NA_real_ else
         max(abs(working_estimate - previous_estimate))
       standard_error <- sqrt(pmax(diag(res$covariance), 0))
@@ -515,8 +525,8 @@ glgpm <- function(formula,
               pmax(standard_error, sqrt(.Machine$double.eps)))
       mcml_history[[iteration]] <- list(
         iteration = iteration,
-        estimate = supported_estimate,
-        proposed_estimate = res$estimate,
+        estimate = res$estimate,
+        reference_update = reference_update,
         log_likelihood_ratio_gain =
           optimizer$supported_log_likelihood_ratio,
         max_parameter_change = change,
@@ -530,7 +540,7 @@ glgpm <- function(formula,
       )
 
       if (mcml_update_converged(
-        change, optimizer$relative_importance_ess, control_mcml
+        standardized_change, optimizer$relative_importance_ess, control_mcml
       ) && optimizer$step_fraction == 1) {
         converged <- TRUE
         mcml_history <- mcml_history[seq_len(iteration)]
@@ -538,7 +548,7 @@ glgpm <- function(formula,
       }
       previous_estimate <- working_estimate
       fitting_reference <-
-        estimate_to_mcml_reference(supported_estimate, fix_tau2)
+        estimate_to_mcml_reference(reference_update, fix_tau2)
     }
     if (control_mcml$max_iterations > 1L && !isTRUE(converged)) {
       warning(
@@ -558,6 +568,13 @@ glgpm <- function(formula,
   if (!is.null(res$mcml_history)) {
     res$mcml_history <- restore_mcml_history_scale(
       res$mcml_history,
+      design_scaling$coefficient_transform,
+      spatial_scaling$distance_scale
+    )
+  }
+  if (not_gaussian) {
+    attr(res, "optimizer") <- restore_mcml_optimizer_scale(
+      attr(res, "optimizer"),
       design_scaling$coefficient_transform,
       spatial_scaling$distance_scale
     )
@@ -940,7 +957,7 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
 restore_mcml_history_scale <- function(history, coefficient_transform,
                                        distance_scale) {
   lapply(history, function(entry) {
-    for (field in intersect(c("estimate", "proposed_estimate"), names(entry))) {
+    for (field in intersect(c("estimate", "reference_update"), names(entry))) {
       entry[[field]]$beta <- as.numeric(
         coefficient_transform %*% entry[[field]]$beta
       )
@@ -949,6 +966,23 @@ restore_mcml_history_scale <- function(history, coefficient_transform,
     }
     entry
   })
+}
+
+##' Restore MCML optimiser parameter diagnostics to user-facing scales
+##' @noRd
+restore_mcml_optimizer_scale <- function(diagnostics, coefficient_transform,
+                                         distance_scale) {
+  for (field in c("proposed_estimate", "reference_update")) {
+    if (!is.null(diagnostics[[field]])) {
+      diagnostics[[field]]$beta <- as.numeric(
+        coefficient_transform %*% diagnostics[[field]]$beta
+      )
+      names(diagnostics[[field]]$beta) <- colnames(coefficient_transform)
+      diagnostics[[field]]$phi <- diagnostics[[field]]$phi +
+        log(distance_scale)
+    }
+  }
+  diagnostics
 }
 
 ##' Wrap an optimiser objective with controlled invalid-trial handling
@@ -2892,14 +2926,16 @@ laplace_sampling_mcmc <- function(y,
 ##' Set control parameters for iterative MCML estimation
 ##'
 ##' Repeated Monte Carlo maximum likelihood (MCML) updates regenerate the
-##' importance sample around the estimate from the preceding update. A single
-##' update reproduces the standard RiskMap fitting procedure.
+##' importance sample around the reference update from the preceding iteration.
+##' When importance-sampling overlap is adequate this is the fitted estimate;
+##' otherwise it is a shortened step towards that estimate. A single update
+##' reproduces the standard RiskMap fitting procedure.
 ##'
 ##' @param max_iterations Positive integer giving the maximum number of MCML
 ##' updates. Defaults to one.
-##' @param tolerance Positive numeric tolerance for the maximum absolute change
-##' in the internally standardised regression coefficients and log covariance
-##' parameters. It is evaluated from the second update onwards.
+##' @param tolerance Positive numeric tolerance for the largest parameter change
+##' divided by its current standard error. It is evaluated from the second
+##' update onwards.
 ##' @param min_relative_ess Number between zero and one giving the minimum
 ##' effective sample size, as a proportion of retained importance samples,
 ##' required before an update can be declared converged. Defaults to 0.1.
@@ -2934,10 +2970,10 @@ mcml_iteration_control <- function(control_mcmc, iteration) {
 
 ##' Assess both numerical stability and importance-sampling overlap
 ##' @noRd
-mcml_update_converged <- function(parameter_change, relative_ess,
+mcml_update_converged <- function(standardized_change, relative_ess,
                                   control_mcml) {
-  !is.na(parameter_change) &&
-    parameter_change <= control_mcml$tolerance &&
+  !is.na(standardized_change) &&
+    standardized_change <= control_mcml$tolerance &&
     relative_ess >= control_mcml$min_relative_ess
 }
 
@@ -3628,7 +3664,7 @@ glgpm_nong <-
       sigma2_me = FALSE,
       re_names = if (n_re > 0) names(ID_re) else NULL
     )
-    optimizer_diagnostics$supported_estimate <- structure_estimate(
+    optimizer_diagnostics$reference_update <- structure_estimate(
       supported_step$parameters,
       beta_names = colnames(D),
       fix_tau2 = fix_tau2,
@@ -3651,7 +3687,8 @@ glgpm_nong <-
         format(100 * supported_step$proposal_relative_importance_ess,
                digits = 3), "% and was shortened to ",
         format(100 * supported_step$step_fraction, digits = 3),
-        "% of the proposed parameter change to retain adequate overlap.",
+        "% of the proposed parameter change when updating the reference ",
+        "distribution for the next MCML iteration.",
         call. = FALSE
       )
     }
