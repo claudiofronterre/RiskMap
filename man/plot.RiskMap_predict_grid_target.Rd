@@ -4,7 +4,17 @@
 \alias{plot.RiskMap_predict_grid_target}
 \title{Plot Method for RiskMap_predict_grid_target Objects}
 \usage{
-\method{plot}{RiskMap_predict_grid_target}(x, target = NULL, summary = "mean", ...)
+\method{plot}{RiskMap_predict_grid_target}(
+  x,
+  target = NULL,
+  summary = "mean",
+  palette = "viridis",
+  reverse_palette = FALSE,
+  north_arrow = TRUE,
+  scale_bar = TRUE,
+  limits = "shared",
+  ...
+)
 }
 \arguments{
 \item{x}{An object of class 'RiskMap_predict_grid_target'.}
@@ -15,19 +25,44 @@ one of \code{x$f_target}. If \code{NULL} (the default), the first target is used
 \item{summary}{Character string specifying which summary statistic to plot
 (e.g., "mean", "sd"), one of \code{x$pd_summary}. Defaults to \code{"mean"}.}
 
-\item{...}{Additional arguments passed to the \code{\link[terra]{plot}} function of the \code{terra} package.}
+\item{palette}{Either the name of a palette from \code{\link[grDevices:hcl.pals]{grDevices::hcl.pals()}}
+(e.g. \code{"viridis"}, \code{"Blues"}, \code{"Spectral"}) or a character vector of two or
+more colours to interpolate between. Defaults to \code{"viridis"}.}
+
+\item{reverse_palette}{Logical; if \code{TRUE}, reverse the order of the palette
+colours. Defaults to \code{FALSE}.}
+
+\item{north_arrow}{Logical; if \code{TRUE} (the default), add a north arrow to the map.}
+
+\item{scale_bar}{Logical; if \code{TRUE} (the default), add a scale bar to the map.}
+
+\item{limits}{Range of the colour scale: \code{"shared"} (the default),
+\code{"independent"} or a numeric vector of length two giving custom limits.
+For grid maps, \code{"shared"} and \code{"independent"} both use the range of the
+plotted values; this is the range that
+\code{\link[=plot.RiskMap_predict_areal_target]{plot.RiskMap_predict_areal_target()}} shares by default.}
+
+\item{...}{Additional arguments passed to \code{\link[ggplot2:scale_fill_gradientn]{ggplot2::scale_fill_gradientn()}},
+e.g. \code{name} or \code{breaks}.}
 }
 \value{
 A \code{ggplot} object representing the specified prediction target or summary statistic over the spatial grid.
 }
 \description{
-Generates a plot of the predicted values or summaries over the regular spatial grid
+Generates a map of the predicted values or summaries over the regular spatial grid
 from an object of class 'RiskMap_predict_grid_target'.
 }
 \details{
-This function requires the 'terra' package for spatial data manipulation and plotting.
-It plots the values or summaries over a regular spatial grid, allowing for visual examination of spatial patterns.
+The grid cells are drawn with \code{\link[ggplot2:geom_tile]{ggplot2::geom_tile()}} in the coordinate
+reference system of the prediction grid, with axes labelled in longitude
+and latitude. Tiles are used rather than a raster so that grids with
+missing rows or columns, or that are not exactly regular (e.g. after
+reprojection), are drawn at their true locations. When the north arrow or
+scale bar is shown, space is added above or below the data so that they do
+not cover it. The styling matches \code{\link[=plot.RiskMap_predict_areal_target]{plot.RiskMap_predict_areal_target()}}.
+The returned object can be modified further with standard \pkg{ggplot2}
+functions.
 }
 \seealso{
-\code{\link{predict_grid_target}}
+\code{\link{predict_grid_target}}, \code{\link{plot.RiskMap_predict_areal_target}}
 }
