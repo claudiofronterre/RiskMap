@@ -311,11 +311,11 @@ The results of the simulations can be assessed using `assess_simulation()` and p
 ```{r}
 
 simulation_assessment <- assess_simulation(simulation,
-                  models = list(elevation  = npos ~ log(elevation) + gp(),
-                                no_elevation = npos ~ gp()),
+                  models = list(elevation  = model,
+                                no_elevation = no_elevation),
                   spatial_scale = c("grid", "area"),
-                  f_grid_target = f_target$prev,
-                  f_area_target = mean,
+                  target_transform = f_target$prev,
+                  area_summary = mean,
                   boundaries = squares,
                   pred_objective = "mse",
                   messages = FALSE)
