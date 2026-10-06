@@ -57,13 +57,10 @@ Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\lin
 likelihood updates. Must be returned by \code{\link[=set_control_mcml]{set_control_mcml()}}. The default
 performs one update, preserving the usual single-stage fit.}
 
-\item{return_samples}{Logical indicating whether to retain final-parameter
-conditional MCMC samples when fitting a Binomial or Poisson model. If
-\code{TRUE}, a fresh sample is drawn after estimation, returned, and used to
-compute fitted values. This sample is distinct from the importance sample
-used internally by MCML. If \code{FALSE}, this additional sampling stage is
-skipped and Monte Carlo fitted values are not computed. Defaults to \code{TRUE}.
-Ignored for Gaussian models, whose fitted values are computed analytically.}
+\item{return_samples}{Logical indicating whether to draw and retain
+conditional samples at the fitted parameters. These samples are used to
+compute fitted values. If \code{FALSE}, final sampling is skipped and fitted
+values are not computed. Defaults to \code{TRUE}. Ignored for Gaussian models.}
 
 \item{messages}{Logical indicating whether to print progress messages. Defaults to \code{TRUE}.}
 
@@ -120,11 +117,11 @@ evaluated at the fitted parameters when \code{return_samples} is \code{TRUE}. Th
 are not the reference samples used for MCML estimation. The first block is
 the location-level Gaussian effect (including the nugget when present),
 followed by any unstructured random-effect blocks.}
-\item{linear.predictors}{Conditional fitted linear predictors. For
+\item{linear_predictors}{Conditional fitted linear predictors. For
 non-Gaussian models these are Monte Carlo means over the final-parameter
 latent samples and are \code{NULL} when \code{return_samples = FALSE}; for Gaussian
 models they use the conditional latent mean.}
-\item{fitted.values}{Conditional fitted response means. Binomial models
+\item{fitted_values}{Conditional fitted response means. Binomial models
 return probabilities; Poisson models return expected counts and therefore
 include any supplied exposure in \code{denominator}. These are \code{NULL} for
 non-Gaussian models when \code{return_samples = FALSE}.}

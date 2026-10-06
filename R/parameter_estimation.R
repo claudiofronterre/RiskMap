@@ -28,13 +28,10 @@
 ##' @param control_mcml Control parameters for repeated Monte Carlo maximum
 ##' likelihood updates. Must be returned by [set_control_mcml()]. The default
 ##' performs one update, preserving the usual single-stage fit.
-##' @param return_samples Logical indicating whether to retain final-parameter
-##' conditional MCMC samples when fitting a Binomial or Poisson model. If
-##' `TRUE`, a fresh sample is drawn after estimation, returned, and used to
-##' compute fitted values. This sample is distinct from the importance sample
-##' used internally by MCML. If `FALSE`, this additional sampling stage is
-##' skipped and Monte Carlo fitted values are not computed. Defaults to `TRUE`.
-##' Ignored for Gaussian models, whose fitted values are computed analytically.
+##' @param return_samples Logical indicating whether to draw and retain
+##' conditional samples at the fitted parameters. These samples are used to
+##' compute fitted values. If `FALSE`, final sampling is skipped and fitted
+##' values are not computed. Defaults to `TRUE`. Ignored for Gaussian models.
 ##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
 ##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
 ##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
@@ -123,11 +120,11 @@
 ##' are not the reference samples used for MCML estimation. The first block is
 ##' the location-level Gaussian effect (including the nugget when present),
 ##' followed by any unstructured random-effect blocks.}
-##' \item{linear.predictors}{Conditional fitted linear predictors. For
+##' \item{linear_predictors}{Conditional fitted linear predictors. For
 ##' non-Gaussian models these are Monte Carlo means over the final-parameter
 ##' latent samples and are `NULL` when `return_samples = FALSE`; for Gaussian
 ##' models they use the conditional latent mean.}
-##' \item{fitted.values}{Conditional fitted response means. Binomial models
+##' \item{fitted_values}{Conditional fitted response means. Binomial models
 ##' return probabilities; Poisson models return expected counts and therefore
 ##' include any supplied exposure in `denominator`. These are `NULL` for
 ##' non-Gaussian models when `return_samples = FALSE`.}
@@ -595,19 +592,19 @@ glgpm <- function(formula,
         ID_re = ID_re,
         fix_tau2 = fix_tau2,
         family = family,
-        invlink = invlink,
+        inverse_link = res$link_function$inv,
         kappa = kappa,
         control_mcmc = final_control_mcmc,
         messages = messages
       )
-      res$linear.predictors <- final_draw$linear_predictors
-      res$fitted.values <- final_draw$fitted_values
+      res$linear_predictors <- final_draw$linear_predictors
+      res$fitted_values <- final_draw$fitted_values
       res$S_samples <- final_draw$samples
       attr(res, "mcmc") <- final_draw$diagnostics
     } else {
       res["S_samples"] <- list(NULL)
-      res["linear.predictors"] <- list(NULL)
-      res["fitted.values"] <- list(NULL)
+      res["linear_predictors"] <- list(NULL)
+      res["fitted_values"] <- list(NULL)
     }
   }
 
@@ -665,8 +662,8 @@ glgpm <- function(formula,
   res$call <- match.call()
   if (!not_gaussian) {
     gaussian_fitted <- gaussian_conditional_fitted(res)
-    res$linear.predictors <- gaussian_fitted
-    res$fitted.values <- gaussian_fitted
+    res$linear_predictors <- gaussian_fitted
+    res$fitted_values <- gaussian_fitted
   }
   return(res)
 }
@@ -3107,7 +3104,7 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 ##' @noRd
 sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
                                       cov_offset, ID_coords, ID_re,
-                                      fix_tau2, family, invlink, kappa,
+                                      fix_tau2, family, inverse_link, kappa,
                                       control_mcmc, messages) {
   fitted_pars <- estimate_to_mcml_reference(estimate, fix_tau2)
   mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
@@ -3122,7 +3119,7 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     y = y, units_m = units_m, mu = mu, Sigma = Sigma,
     ID_coords = ID_coords, ID_re = ID_re,
     sigma2_re = fitted_pars$sigma2_re,
-    family = family, invlink = invlink,
+    family = family, invlink = inverse_link,
     control_mcmc = control_mcmc, messages = messages
   )
 
@@ -3137,17 +3134,9 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     }
   }
 
-  inv <- if (is.null(invlink)) {
-    if (family == "binomial") plogis else exp
-  } else if (is.function(invlink)) {
-    invlink
-  } else {
-    invlink$inv %||% invlink$inv_link %||% invlink$invlink
-  }
-
   sample_blocks <- simulation$samples
   response_mean <- colMeans(
-    matrix(inv(as.numeric(eta)), nrow = nrow(eta))
+    matrix(inverse_link(as.numeric(eta)), nrow = nrow(eta))
   )
   if (family == "poisson") response_mean <- units_m * response_mean
 

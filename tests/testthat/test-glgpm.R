@@ -195,7 +195,7 @@ expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "fix_var_me", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function", "mcml_history",
-                     "mcml_converged", "linear.predictors", "fitted.values")
+                     "mcml_converged", "linear_predictors", "fitted_values")
 
 test_that("glgpm produces expected output for gaussian models", {
 
@@ -209,7 +209,9 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_setequal(names(fit_no_re), expected_output)
   expect_null(fit_no_re$mcml_history)
   expect_length(fitted(fit_no_re), nrow(gaussian_data))
-  expect_equal(fitted(fit_no_re), fit_no_re$linear.predictors)
+  expect_equal(fitted(fit_no_re), fit_no_re$fitted_values)
+  expect_equal(fitted(fit_no_re, type = "link"),
+               fit_no_re$linear_predictors)
   expect_null(fit_no_re$mcml_converged)
   expect_equal(fit_no_re$family, "gaussian")
   expect_equal(fit_no_re$coords[,1], data$x)
@@ -374,7 +376,7 @@ test_that("glgpm produces expected output for binomial models", {
   expect_equal(fit_no_re$family, "binomial")
   expect_length(fitted(fit_no_re), nrow(binomial_data))
   expect_true(all(fitted(fit_no_re) >= 0 & fitted(fit_no_re) <= 1))
-  expect_length(fit_no_re$linear.predictors, nrow(binomial_data))
+  expect_length(fit_no_re$linear_predictors, nrow(binomial_data))
   expect_false(is.null(fit_no_re$S_samples))
   starting_values <- attr(fit_no_re, "starting_values")
   expect_true(starting_values$selected %in%
@@ -402,7 +404,7 @@ test_that("glgpm produces expected output for binomial models", {
   eta_samples <- eta_samples +
     re_samples[, fit_re$ID_re[[1]], drop = FALSE]
   expect_equal(fitted(fit_re), colMeans(plogis(eta_samples)))
-  expect_equal(fit_re$linear.predictors, colMeans(eta_samples))
+  expect_equal(fit_re$linear_predictors, colMeans(eta_samples))
   re_starting_values <- attr(fit_re, "starting_values")
   expect_true(re_starting_values$selected %in%
                 c("current", "transformed_gaussian"))
@@ -648,7 +650,7 @@ test_that("plot_mcmc produces errors as expected", {
     return_samples = FALSE, messages = FALSE
   )
   expect_null(binomial_without_samples$S_samples)
-  expect_null(binomial_without_samples$linear.predictors)
+  expect_null(binomial_without_samples$linear_predictors)
   expect_null(fitted(binomial_without_samples))
   expect_error(
     plot_mcmc(binomial_without_samples),
