@@ -128,37 +128,131 @@ test_that("new locations preserve factor coding without observed responses", {
 test_that("assess_simulation validates area boundaries", {
   obj_sim <- structure(list(), class = "RiskMap_simulation")
   expect_error(
-    assess_simulation(obj_sim, models = list(model = y ~ 1),
-                      spatial_scale = character(), f_grid_target = identity),
+    assess_simulation(obj_sim, models = list(model = y ~ gp()),
+                      spatial_scale = "grid", target_transform = identity),
+    "glgpm\\(\\) or specify_glgpm\\(\\)"
+  )
+  expect_error(
+    assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
+                      spatial_scale = character(), target_transform = identity),
     "'spatial_scale' must be set"
   )
   expect_error(
-    assess_simulation(obj_sim, models = list(model = y ~ 1),
-                      spatial_scale = c("grid", "grid"), f_grid_target = identity),
+    assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
+                      spatial_scale = c("grid", "grid"), target_transform = identity),
     "'spatial_scale' must be set"
   )
   expect_error(
-    assess_simulation(obj_sim, models = list(model = y ~ 1),
+    assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
                       spatial_scale = "grid", pred_objective = character(),
-                      f_grid_target = identity),
+                      target_transform = identity),
     "'pred_objective' must be either"
   )
-  expect_error(assess_simulation(obj_sim, models = list(model = y ~ 1),
+  expect_error(assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
                                  spatial_scale = "area", boundaries = gaussian_data,
-                                 f_area_target = mean),
+                                 area_summary = mean),
                "'boundaries' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+})
+
+test_that("assessment refits use fitted templates without reusing estimates #108", {
+  simulated <- binomial_data
+  simulated$y <- rev(binomial_data$y)
+  simulated$units_m <- rev(binomial_data$denominator)
+  formula <- update(binomial_model$formula, y ~ .)
+  args <- assessment_refit_args(binomial_model, formula, simulated, control_mcmc)
+
+  expect_identical(args$formula, formula)
+  expect_identical(args$family, "binomial")
+  expect_identical(args$data, simulated)
+  expect_identical(args$denominator, quote(units_m))
+  expect_identical(args$control_mcmc, control_mcmc)
+  expect_false("start_pars" %in% names(args))
+  expect_false("estimate" %in% names(args))
+})
+
+test_that("assessment refits accept specify_glgpm templates #108", {
+  template <- specify_glgpm(
+    y ~ cov + gp(), gaussian_data, "gaussian",
+    parameters = list(beta = c(1, 0.5), sigma2 = 1, phi = 2,
+                      sigma2_me = 0.1)
+  )
+  formula <- update(template$formula, y ~ .)
+  args <- assessment_refit_args(
+    template, formula, gaussian_data, control_mcmc
+  )
+
+  expect_identical(args$formula, formula)
+  expect_identical(args$family, "gaussian")
+  expect_identical(args$data, gaussian_data)
+  expect_null(args$fix_var_me)
+  expect_false("start_pars" %in% names(args))
+
+  sim <- simulate_glgpm(
+    template, nsim = 1, what = c("data", "surface"),
+    prediction_grid = gaussian_data, seed = 2
+  )
+  result <- assess_simulation(
+    sim, models = list(candidate = template), spatial_scale = "grid",
+    target_transform = identity, pred_objective = "mse", messages = FALSE
+  )
+  expect_equal(dim(result$pred_objective$grid$mse), c(1L, 1L))
 })
 
 test_that("joint output feeds the existing grid assessment", {
   sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
                         what = c("data", "surface"),
                         prediction_grid = gaussian_data, seed = 2)
-  result <- assess_simulation(sim, models = list(intercept = y ~ gp()),
+  result <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                               control_mcmc = control_mcmc, spatial_scale = "grid",
-                              f_grid_target = identity, pred_objective = "mse",
+                              target_transform = identity, pred_objective = "mse",
                               messages = FALSE)
   expect_equal(dim(result$pred_objective$grid$mse), c(1L, 2L))
   expect_true(all(is.finite(result$pred_objective$grid$mse)))
+})
+
+test_that("assess_simulation validates target and area function outputs #171", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = gaussian_data, seed = 2)
+
+  expect_error(
+    assess_simulation(
+      sim,
+      models = list(intercept = gaussian_intercept_model),
+      spatial_scale = "grid",
+      target_transform = mean,
+      pred_objective = "mse",
+      messages = FALSE
+    ),
+    "same dimensions as its input"
+  )
+
+  expect_error(
+    assess_simulation(
+      sim,
+      models = list(intercept = gaussian_intercept_model),
+      spatial_scale = "grid",
+      target_transform = function(x) x * NA_real_,
+      pred_objective = "mse",
+      messages = FALSE
+    ),
+    "finite numeric matrix"
+  )
+
+  boundaries <- create_convex_hull(gaussian_data)
+  expect_error(
+    assess_simulation(
+      sim,
+      models = list(intercept = gaussian_intercept_model),
+      spatial_scale = "area",
+      target_transform = identity,
+      area_summary = identity,
+      boundaries = boundaries,
+      pred_objective = "mse",
+      messages = FALSE
+    ),
+    "one finite numeric value"
+  )
 })
 
 test_that("assess_simulation computes grid and area objectives in one combined run #109", {
@@ -167,10 +261,10 @@ test_that("assess_simulation computes grid and area objectives in one combined r
                         what = c("data", "surface"),
                         prediction_grid = gaussian_data, seed = 2)
 
-  combined <- assess_simulation(sim, models = list(intercept = y ~ gp()),
+  combined <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                 control_mcmc = control_mcmc,
                                 spatial_scale = c("grid", "area"),
-                                f_grid_target = identity, f_area_target = mean,
+                                target_transform = identity, area_summary = mean,
                                 boundaries = boundaries, pred_objective = "mse",
                                 messages = FALSE)
 
@@ -180,13 +274,13 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   expect_true(all(is.finite(combined$pred_objective$grid$mse)))
   expect_true(all(is.finite(combined$pred_objective$area$mse)))
 
-  grid_only <- assess_simulation(sim, models = list(intercept = y ~ gp()),
+  grid_only <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                  control_mcmc = control_mcmc, spatial_scale = "grid",
-                                 f_grid_target = identity, pred_objective = "mse",
+                                 target_transform = identity, pred_objective = "mse",
                                  messages = FALSE)
-  area_only <- assess_simulation(sim, models = list(intercept = y ~ gp()),
+  area_only <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                  control_mcmc = control_mcmc, spatial_scale = "area",
-                                 f_grid_target = identity, f_area_target = mean,
+                                 target_transform = identity, area_summary = mean,
                                  boundaries = boundaries, pred_objective = "mse",
                                  messages = FALSE)
 
@@ -209,10 +303,10 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   expect_output(print(s), "Grid-level results")
   expect_output(print(s), "Area-level results")
 
-  combined_classify <- assess_simulation(sim, models = list(intercept = y ~ gp()),
+  combined_classify <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                          control_mcmc = control_mcmc,
                                          spatial_scale = c("grid", "area"),
-                                         f_grid_target = identity, f_area_target = mean,
+                                         target_transform = identity, area_summary = mean,
                                          boundaries = boundaries,
                                          pred_objective = c("mse", "classify"),
                                          categories = c(-3, -1, 0, 1, 3),
@@ -227,9 +321,9 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   )
 
   expect_error(
-    assess_simulation(sim, models = list(intercept = y ~ gp()),
+    assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                       control_mcmc = control_mcmc,
-                      spatial_scale = "grid", f_grid_target = identity,
+                      spatial_scale = "grid", target_transform = identity,
                       pred_objective = "classify", categories = c(-1, 0, 0),
                       messages = FALSE),
     "unique, strictly increasing"
