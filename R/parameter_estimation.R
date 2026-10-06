@@ -28,8 +28,10 @@
 ##' @param control_mcml Control parameters for repeated Monte Carlo maximum
 ##' likelihood updates. Must be returned by [set_control_mcml()]. The default
 ##' performs one update, preserving the usual single-stage fit.
-##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
-##' Defaults to `FALSE`.
+##' @param return_samples Logical indicating whether to draw and retain
+##' conditional samples at the fitted parameters. These samples are used to
+##' compute fitted values. If `FALSE`, final sampling is skipped and fitted
+##' values are not computed. Defaults to `TRUE`. Ignored for Gaussian models.
 ##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
 ##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
 ##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
@@ -113,7 +115,19 @@
 ##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
 ##' \item{cov_offset}{Covariate offset}
 ##' \item{call}{Matched call}
-##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
+##' \item{S_samples}{For non-Gaussian models, fresh conditional MCMC samples
+##' evaluated at the fitted parameters when `return_samples` is `TRUE`. These
+##' are not the reference samples used for MCML estimation. The first block is
+##' the location-level Gaussian effect (including the nugget when present),
+##' followed by any unstructured random-effect blocks.}
+##' \item{linear_predictors}{Conditional fitted linear predictors. For
+##' non-Gaussian models these are Monte Carlo means over the final-parameter
+##' latent samples and are `NULL` when `return_samples = FALSE`; for Gaussian
+##' models they use the conditional latent mean.}
+##' \item{fitted_values}{Conditional fitted response means. Binomial models
+##' return probabilities; Poisson models return expected counts and therefore
+##' include any supplied exposure in `denominator`. These are `NULL` for
+##' non-Gaussian models when `return_samples = FALSE`.}
 ##' \item{mcml_history}{For non-Gaussian models, one entry per MCML update,
 ##' containing its fitted estimate, reference-distribution update, likelihood,
 ##' parameter change, importance-sampling
@@ -186,7 +200,7 @@ glgpm <- function(formula,
                  distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
                  control_mcml = set_control_mcml(),
-                 return_samples = FALSE,
+                 return_samples = TRUE,
                  messages = TRUE,
                  fix_var_me = NULL,
                  start_pars = list(beta = NULL,
@@ -215,7 +229,6 @@ glgpm <- function(formula,
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
               "'denominator' cannot be provided when 'family' is 'gaussian'" = is.null(denominator),
-              "'return_samples' cannot be TRUE when 'family' is 'gaussian'" = !return_samples,
               "'fix_var_me' must be NULL or a single positive value or zero" =
                 is.null(fix_var_me) ||
                 (length(fix_var_me) == 1 && is.numeric(fix_var_me) && fix_var_me >= 0))
@@ -504,7 +517,7 @@ glgpm <- function(formula,
                         kappa = inter_f$gp_spec$kappa,
                         ID_coords, ID_re, s_unique, re_unique,
                         fix_tau2, family = family, invlink = invlink,
-                        return_samples = return_samples,
+                        return_samples = FALSE,
                         reference_pars = fitting_reference,
                         cov_offset = cov_offset,
                         control_mcmc = iteration_mcmc,
@@ -559,6 +572,40 @@ glgpm <- function(formula,
     }
     res$mcml_history <- mcml_history
     res$mcml_converged <- converged
+
+    if (return_samples) {
+      # The samples used by MCML target the current reference distribution,
+      # not necessarily the fitted parameters. When requested, draw once more
+      # at the final estimate and use that draw for fitted values as well as
+      # user-facing diagnostics.
+      final_control_mcmc <- mcml_iteration_control(
+        control_mcmc, length(mcml_history) + 1L
+      )
+      final_draw <- sample_at_nongaussian_fit(
+        estimate = res$estimate,
+        y = y,
+        units_m = units_m,
+        D = D,
+        coords = fitting_coords,
+        cov_offset = cov_offset,
+        ID_coords = ID_coords,
+        ID_re = ID_re,
+        fix_tau2 = fix_tau2,
+        family = family,
+        inverse_link = res$link_function$inv,
+        kappa = kappa,
+        control_mcmc = final_control_mcmc,
+        messages = messages
+      )
+      res$linear_predictors <- final_draw$linear_predictors
+      res$fitted_values <- final_draw$fitted_values
+      res$S_samples <- final_draw$samples
+      attr(res, "mcmc") <- final_draw$diagnostics
+    } else {
+      res["S_samples"] <- list(NULL)
+      res["linear_predictors"] <- list(NULL)
+      res["fitted_values"] <- list(NULL)
+    }
   }
 
   res <- restore_fixed_effect_scale(
@@ -616,7 +663,57 @@ glgpm <- function(formula,
   if(not_gaussian) res$units_m <- units_m
   res$cov_offset <- cov_offset
   res$call <- match.call()
+  if (!not_gaussian) {
+    gaussian_fitted <- gaussian_conditional_fitted(res)
+    res$linear_predictors <- gaussian_fitted
+    res$fitted_values <- gaussian_fitted
+  }
   return(res)
+}
+
+##' Conditional fitted mean for a Gaussian RiskMap model
+##' @noRd
+gaussian_conditional_fitted <- function(object) {
+  pars <- coef(object)
+  n <- length(object$y)
+  n_loc <- nrow(object$coords)
+  spatial_design <- matrix(0, n, n_loc)
+  spatial_design[cbind(seq_len(n), object$ID_coords)] <- 1
+
+  correlation <- matern_correlation(
+    pairwise_distances(object$coords), phi = pars$phi,
+    kappa = object$kappa, return_sym_matrix = TRUE
+  )
+  tau2 <- pars$tau2 %||%
+    if (is.numeric(object$fix_tau2)) object$fix_tau2 else 0
+  spatial_covariance <- pars$sigma2 * correlation
+  diag(spatial_covariance) <- diag(spatial_covariance) + tau2
+
+  latent_designs <- list(spatial_design)
+  latent_covariances <- list(spatial_covariance)
+  if (!is.null(object$ID_re)) {
+    ID_re <- as.matrix(object$ID_re)
+    for (j in seq_len(ncol(ID_re))) {
+      design <- matrix(0, n, max(ID_re[, j]))
+      design[cbind(seq_len(n), ID_re[, j])] <- 1
+      latent_designs[[j + 1L]] <- design
+      latent_covariances[[j + 1L]] <- diag(
+        pars$sigma2_re[j], nrow = ncol(design)
+      )
+    }
+  }
+
+  Z <- do.call(cbind, latent_designs)
+  G <- as.matrix(Matrix::bdiag(latent_covariances))
+  measurement_variance <- pars$sigma2_me %||% object$fix_var_me %||% 0
+  observed_covariance <- Z %*% G %*% t(Z)
+  diag(observed_covariance) <- diag(observed_covariance) +
+    measurement_variance
+  root <- factor_covariance(observed_covariance, "Gaussian fitted covariance")
+  fixed <- as.numeric(object$D %*% pars$beta + object$cov_offset)
+  latent_mean <- G %*% t(Z) %*%
+    solve_from_cholesky(root, object$y - fixed)
+  as.numeric(fixed + Z %*% latent_mean)
 }
 
 
@@ -2997,6 +3094,64 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
     out$sigma2_re <- exp(estimate$sigma2_re)
   }
   out
+}
+
+##' Draw latent effects and fitted values at a non-Gaussian fitted estimate
+##'
+##' MCML samples belong to its importance-sampling reference distribution.
+##' This helper deliberately makes a separate draw at the fitted parameters.
+##' The first block is the location-level Gaussian effect; when a nugget is
+##' present it is included in that block. Subsequent blocks are unstructured
+##' random effects, in the same layout historically used by `S_samples`.
+##'
+##' @noRd
+sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
+                                      cov_offset, ID_coords, ID_re,
+                                      fix_tau2, family, inverse_link, kappa,
+                                      control_mcmc, messages) {
+  fitted_pars <- estimate_to_mcml_reference(estimate, fix_tau2)
+  mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
+  distances <- pairwise_distances(coords)
+  Sigma <- fitted_pars$sigma2 * matern_correlation(
+    distances, phi = fitted_pars$phi, kappa = kappa,
+    return_sym_matrix = TRUE
+  )
+  diag(Sigma) <- diag(Sigma) + fitted_pars$tau2
+
+  simulation <- laplace_sampling_mcmc(
+    y = y, units_m = units_m, mu = mu, Sigma = Sigma,
+    ID_coords = ID_coords, ID_re = ID_re,
+    sigma2_re = fitted_pars$sigma2_re,
+    family = family, invlink = inverse_link,
+    control_mcmc = control_mcmc, messages = messages
+  )
+
+  eta <- sweep(
+    simulation$samples$S[, ID_coords, drop = FALSE],
+    2L, mu, "+"
+  )
+  if (!is.null(ID_re)) {
+    ID_re <- as.matrix(ID_re)
+    for (j in seq_len(ncol(ID_re))) {
+      eta <- eta + simulation$samples[[j + 1L]][, ID_re[, j], drop = FALSE]
+    }
+  }
+
+  sample_blocks <- simulation$samples
+  response_mean <- colMeans(
+    matrix(inverse_link(as.numeric(eta)), nrow = nrow(eta))
+  )
+  if (family == "poisson") response_mean <- units_m * response_mean
+
+  list(
+    samples = do.call(cbind, sample_blocks),
+    linear_predictors = colMeans(eta),
+    fitted_values = response_mean,
+    diagnostics = simulation[c(
+      "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
+      "invlink_used"
+    )]
+  )
 }
 
 ##' Set Control Parameters for Simulation

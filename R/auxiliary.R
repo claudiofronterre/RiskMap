@@ -541,6 +541,20 @@ coef.RiskMap <- function(object, ...) {
   return(res)
 }
 
+##' Extract fitted values from a RiskMap model
+##'
+##' @param object A fitted `RiskMap` object.
+##' @param type Whether to return fitted values on the response or link scale.
+##' @param ... Additional arguments, currently unused.
+##' @return A numeric vector, or `NULL` when final conditional sampling was
+##' skipped for a non-Gaussian model.
+##' @method fitted RiskMap
+##' @export
+fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
+  type <- match.arg(type)
+  if (type == "response") object$fitted_values else object$linear_predictors
+}
+
 ##' @title Summarize Model Fits
 ##' @description Provides a \code{summary} method for the "RiskMap" class that
 ##'   computes standard errors and confidence intervals for likelihood-based

@@ -195,7 +195,7 @@ expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "fix_var_me", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function", "mcml_history",
-                     "mcml_converged")
+                     "mcml_converged", "linear_predictors", "fitted_values")
 
 test_that("glgpm produces expected output for gaussian models", {
 
@@ -208,6 +208,10 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_null(fit_no_re$mcml_history)
+  expect_length(fitted(fit_no_re), nrow(gaussian_data))
+  expect_equal(fitted(fit_no_re), fit_no_re$fitted_values)
+  expect_equal(fitted(fit_no_re, type = "link"),
+               fit_no_re$linear_predictors)
   expect_null(fit_no_re$mcml_converged)
   expect_equal(fit_no_re$family, "gaussian")
   expect_equal(fit_no_re$coords[,1], data$x)
@@ -370,6 +374,10 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "binomial")
+  expect_length(fitted(fit_no_re), nrow(binomial_data))
+  expect_true(all(fitted(fit_no_re) >= 0 & fitted(fit_no_re) <= 1))
+  expect_length(fit_no_re$linear_predictors, nrow(binomial_data))
+  expect_false(is.null(fit_no_re$S_samples))
   starting_values <- attr(fit_no_re, "starting_values")
   expect_true(starting_values$selected %in%
                 c("current", "transformed_gaussian"))
@@ -386,6 +394,17 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "binomial")
+  eta_samples <- sweep(
+    fit_re$S_samples[, fit_re$ID_coords, drop = FALSE], 2,
+    as.numeric(fit_re$D %*% fit_re$estimate$beta + fit_re$cov_offset), "+"
+  )
+  n_locations <- nrow(fit_re$coords)
+  re_samples <- fit_re$S_samples[, n_locations + seq_along(fit_re$re[[1]]),
+                                 drop = FALSE]
+  eta_samples <- eta_samples +
+    re_samples[, fit_re$ID_re[[1]], drop = FALSE]
+  expect_equal(fitted(fit_re), colMeans(plogis(eta_samples)))
+  expect_equal(fit_re$linear_predictors, colMeans(eta_samples))
   re_starting_values <- attr(fit_re, "starting_values")
   expect_true(re_starting_values$selected %in%
                 c("current", "transformed_gaussian"))
@@ -447,6 +466,21 @@ test_that("explicit non-Gaussian starts remain authoritative", {
   expect_equal(explicit_fit$log_lik, explicit_fit_2$log_lik)
 })
 
+test_that("final fitted samples support a nugget model", {
+  fit <- glgpm(
+    y ~ cov + gp(nugget = 0.1),
+    data = binomial_data,
+    family = "binomial",
+    denominator = denominator,
+    control_mcmc = control_mcmc,
+    messages = FALSE
+  )
+
+  expect_equal(ncol(fit$S_samples), nrow(fit$coords))
+  expect_length(fitted(fit), nrow(binomial_data))
+  expect_true(all(is.finite(fitted(fit))))
+})
+
 test_that("custom inverse links retain the current automatic start", {
   custom_link <- list(
     inv = plogis,
@@ -479,6 +513,8 @@ test_that("glgpm produces expected output for poisson models", {
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "poisson")
+  expect_length(fitted(fit_no_re), nrow(poisson_data))
+  expect_true(all(fitted(fit_no_re) > 0))
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = poisson_data,
@@ -500,6 +536,7 @@ test_that("glgpm produces expected output for poisson models", {
   expect_s3_class(fit_re_den, "RiskMap")
   expect_setequal(names(fit_re_den), expected_output)
   expect_equal(fit_re_den$family, "poisson")
+  expect_true(all(fitted(fit_re_den) > 0))
 })
 
 test_that("iterative MCML updates its reference and records reproducible history", {
@@ -607,8 +644,16 @@ test_that("plot_mcmc produces errors as expected", {
     plot_mcmc(gaussian_model),
     "'object' is a gaussian model")
 
+  binomial_without_samples <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    return_samples = FALSE, messages = FALSE
+  )
+  expect_null(binomial_without_samples$S_samples)
+  expect_null(binomial_without_samples$linear_predictors)
+  expect_null(fitted(binomial_without_samples))
   expect_error(
-    plot_mcmc(binomial_model),
+    plot_mcmc(binomial_without_samples),
     "'object' does not contain any MCMC chains")
 
   expect_warning(
