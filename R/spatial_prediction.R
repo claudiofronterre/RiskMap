@@ -1,3 +1,335 @@
+##' Spatial prediction from a fitted GLGPM
+##'
+##' Predicts the latent spatial process, linear predictor and response-scale
+##' distribution at observed or new locations. New locations and every variable
+##' required by the fitted model are supplied together in one `sf` object,
+##' keeping their rows aligned.
+##'
+##' @param object A fitted `RiskMap` object returned by [glgpm()].
+##' @param newdata An `sf` object with point geometries and the variables needed
+##'   by the fitted model. When `NULL`, predictions are made at the observed
+##'   locations.
+##' @param prediction Character string specifying `"marginal"` or `"joint"`
+##'   prediction. Marginal prediction is the default and is sufficient for
+##'   location-specific maps. Joint prediction preserves dependence among
+##'   prediction locations and is needed for nonlinear areal summaries.
+##' @param components Character vector specifying the latent components used in
+##'   the complete linear predictor and response. `"fixed"` and `"spatial"`
+##'   are required. Add `"random_effects"` for conditional predictions at known
+##'   groups or `"nugget"` for observation-level predictive variation.
+##' @param summaries Character vector naming the summaries calculated from each
+##'   predictive distribution. Supported values are `"mean"`, `"median"`,
+##'   `"sd"`, `"cv"`, `"lower"`, and `"upper"`. The coefficient of variation
+##'   is calculated only on the response scale and should be interpreted only
+##'   for outcomes whose predictive mean is positive.
+##' @param level Number strictly between zero and one giving the probability
+##'   covered by the `"lower"` and `"upper"` interval limits.
+##' @param control_mcmc Optional output from [set_control_mcmc()]. When omitted,
+##'   conditional samples stored in a non-Gaussian fit are reused. Supplying a
+##'   control object requests a fresh conditional run.
+##' @param keep_samples Logical. If `TRUE`, retain the minimal latent samples
+##'   needed for custom post-processing. Predictive samples are generated to
+##'   calculate summaries regardless of this setting, but are discarded by
+##'   default to limit memory use.
+##' @param messages Logical. Display progress messages.
+##'
+##' @details
+##' The default prediction represents the underlying epidemiological surface,
+##' with linear predictor
+##' \deqn{d(x)^T \hat\beta + S(x) + \mathrm{offset}(x).}
+##' The offset is included automatically when it was specified in the fitted
+##' model. Nugget and unstructured random effects are excluded unless requested
+##' explicitly because they generally represent observation-level or
+##' group-specific variation rather than the underlying spatial surface.
+##'
+##' For non-Gaussian fits, stored final-parameter conditional samples are reused
+##' when `control_mcmc = NULL`. If the model was fitted with
+##' `return_samples = FALSE`, the function draws a new conditional sample using
+##' [set_control_mcmc()] defaults. Supplying `control_mcmc` always requests a
+##' fresh conditional run. For Gaussian models, prediction is based on their
+##' exact conditional Gaussian distribution.
+##'
+##' Output columns use `<quantity>_<summary>` names. For example,
+##' `response_mean`, `response_lower`, and `response_upper` describe the
+##' response-scale prediction, while the corresponding `spatial_*` and
+##' `link_*` columns describe the spatial process and complete linear
+##' predictor. `fixed` is the estimated fixed-effects contribution and
+##' `offset` is reported separately. Binomial response predictions are
+##' probabilities and Poisson response predictions are rates per unit exposure.
+##'
+##' @return A `RiskMap_prediction` object containing:
+##' \describe{
+##'   \item{data}{The aligned prediction `sf` object with `fixed`, `offset`,
+##'     and the requested `spatial_*`, `link_*`, and `response_*` summaries.}
+##'   \item{samples}{`NULL` when `keep_samples = FALSE`; otherwise a list
+##'     containing spatial samples and any requested random-effect or nugget
+##'     samples. Derived link and response matrices are not duplicated.}
+##'   \item{components}{Components included in the link and response.}
+##'   \item{summaries}{Names of the calculated summaries.}
+##'   \item{level}{Probability covered by the interval limits.}
+##'   \item{prediction}{Whether prediction was marginal or joint.}
+##'   \item{family}{The fitted response family.}
+##'   \item{observed_locations}{Whether `newdata` was omitted.}
+##' }
+##'
+##' @examples
+##' data(italy_sim)
+##' example_data <- italy_sim[1:50, ]
+##' fit <- glgpm(y ~ pop_dens + gp(), data = example_data, family = "gaussian",
+##'              messages = FALSE)
+##' prediction <- predict_glgpm(fit, newdata = example_data[1:5, ],
+##'                             messages = FALSE)
+##' prediction$data
+##'
+##' @seealso [glgpm()], [fitted()], [set_control_mcmc()]
+##' @export
+predict_glgpm <- function(
+    object,
+    newdata = NULL,
+    prediction = c("marginal", "joint"),
+    components = c("fixed", "spatial"),
+    summaries = c("mean", "lower", "upper"),
+    level = 0.95,
+    control_mcmc = NULL,
+    keep_samples = FALSE,
+    messages = TRUE) {
+
+  prediction <- validate_prediction_options(
+    object, prediction, components, summaries, level, control_mcmc,
+    keep_samples, messages
+  )
+  observed_locations <- is.null(newdata)
+  prediction_data <- validate_prediction_data(object, newdata)
+  prediction_setup <- prepare_prediction(
+    object, prediction_data, prediction, components, control_mcmc, messages
+  )
+  sample_components <- build_prediction_components(
+    object, prediction_setup, components
+  )
+  output_data <- prediction_data
+  output_data$fixed <- sample_components$fixed
+  output_data$offset <- sample_components$offset
+  component_summaries <- c(
+    summarise_prediction_matrix(
+      sample_components$spatial, "spatial", setdiff(summaries, "cv"), level
+    ),
+    summarise_prediction_matrix(
+      sample_components$link, "link", setdiff(summaries, "cv"), level
+    ),
+    summarise_prediction_matrix(
+      sample_components$response, "response", summaries, level
+    )
+  )
+  for (name in names(component_summaries)) {
+    output_data[[name]] <- component_summaries[[name]]
+  }
+  samples <- if (keep_samples) {
+    retained <- sample_components[c("spatial", "random_effects", "nugget")]
+    retained[!vapply(retained, is.null, logical(1))]
+  } else {
+    NULL
+  }
+  out <- list(
+    data = output_data,
+    samples = samples,
+    components = components,
+    summaries = summaries,
+    level = level,
+    prediction = prediction,
+    family = object$family,
+    observed_locations = observed_locations
+  )
+  class(out) <- "RiskMap_prediction"
+  out
+}
+
+#' Validate the unified prediction options
+#' @noRd
+validate_prediction_options <- function(object, prediction, components,
+                                        summaries, level, control_mcmc,
+                                        keep_samples, messages) {
+  if (!inherits(object, "RiskMap")) {
+    stop("'object' must be a fitted RiskMap model", call. = FALSE)
+  }
+  prediction <- match.arg(prediction, c("marginal", "joint"))
+  allowed_components <- c("fixed", "spatial", "random_effects", "nugget")
+  if (!is.character(components) || !length(components) || anyNA(components) ||
+      any(!components %in% allowed_components) || anyDuplicated(components)) {
+    stop("'components' must contain unique values chosen from: ",
+         paste(shQuote(allowed_components), collapse = ", "), call. = FALSE)
+  }
+  if (!all(c("fixed", "spatial") %in% components)) {
+    stop("'components' must include both 'fixed' and 'spatial'", call. = FALSE)
+  }
+  allowed_summaries <- c("mean", "median", "sd", "cv", "lower", "upper")
+  if (!is.character(summaries) || !length(summaries) || anyNA(summaries) ||
+      any(!summaries %in% allowed_summaries) || anyDuplicated(summaries)) {
+    stop("'summaries' must contain unique values chosen from: ",
+         paste(shQuote(allowed_summaries), collapse = ", "), call. = FALSE)
+  }
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
+  if (!is.null(control_mcmc) &&
+      !inherits(control_mcmc, "RiskMap_control_mcmc")) {
+    stop("'control_mcmc' must be NULL or an output from set_control_mcmc()",
+         call. = FALSE)
+  }
+  check_logical(keep_samples)
+  check_logical(messages)
+  prediction
+}
+
+#' Validate and align prediction locations
+#' @noRd
+validate_prediction_data <- function(object, newdata) {
+  prediction_data <- if (is.null(newdata)) object$data else newdata
+  check_data(prediction_data, geometry = "point", type = "sf")
+  if (!isTRUE(st_crs(prediction_data) == st_crs(object$data))) {
+    stop("The CRS of 'newdata' must match the CRS used to fit 'object'. ",
+         "Transform it explicitly with sf::st_transform().", call. = FALSE)
+  }
+  prediction_data
+}
+
+#' Run the conditional-prediction engine from aligned sf data
+#' @noRd
+prepare_prediction <- function(object, prediction_data, prediction, components,
+                               control_mcmc, messages) {
+  plain_data <- as.data.frame(st_drop_geometry(prediction_data))
+  inter_f <- interpret_formula(object$formula)
+  arguments <- list(
+    object = object,
+    grid_pred = st_geometry(prediction_data),
+    predictors = plain_data,
+    type = prediction,
+    messages = messages
+  )
+  if (!is.null(inter_f$offset)) {
+    if (!inter_f$offset %in% names(plain_data)) {
+      stop("'newdata' is missing offset column '", inter_f$offset, "'",
+           call. = FALSE)
+    }
+    arguments$pred_cov_offset <- plain_data[[inter_f$offset]]
+  }
+  if ("random_effects" %in% components) {
+    random_names <- colnames(object$ID_re)
+    if (!length(random_names)) {
+      stop("The fitted model does not contain unstructured random effects",
+           call. = FALSE)
+    }
+    if (prediction != "joint") {
+      stop("Random-effect prediction requires 'prediction = \"joint\"'",
+           call. = FALSE)
+    }
+    prepare_random_effects(plain_data, random_names)
+    arguments$re_predictors <- plain_data[random_names]
+  }
+  if (!is.null(control_mcmc)) arguments$control_mcmc <- control_mcmc
+  do.call(prediction_samples, arguments)
+}
+
+#' Construct link and response samples from prediction components
+#' @noRd
+build_prediction_components <- function(object, prediction_setup, components) {
+  spatial <- prediction_setup$S_samples
+  if (!is.matrix(spatial)) {
+    spatial <- matrix(spatial, nrow = nrow(prediction_setup$grid_pred))
+  }
+  n_locations <- nrow(spatial)
+  n_samples <- ncol(spatial)
+  fixed <- rep(prediction_setup$mu_pred, length.out = n_locations)
+  offset <- rep(prediction_setup$cov_offset, length.out = n_locations)
+  random_effects <- prediction_random_effect_samples(
+    prediction_setup, n_locations, n_samples,
+    include = "random_effects" %in% components
+  )
+  nugget <- prediction_nugget_samples(
+    prediction_setup, n_locations, n_samples,
+    include = "nugget" %in% components
+  )
+  link <- sweep(spatial, 1L, fixed + offset, "+")
+  if (!is.null(random_effects)) link <- link + random_effects
+  if (!is.null(nugget)) link <- link + nugget
+  response <- if (object$family == "gaussian") {
+    link
+  } else {
+    matrix(object$link_function$inv(as.numeric(link)), nrow = n_locations)
+  }
+  list(fixed = fixed, offset = offset, spatial = spatial,
+       random_effects = random_effects, nugget = nugget,
+       link = link, response = response)
+}
+
+#' Assemble prediction-location random-effect samples
+#' @noRd
+prediction_random_effect_samples <- function(prediction_setup, n_locations,
+                                             n_samples, include) {
+  if (!include) return(NULL)
+  result <- matrix(0, nrow = n_locations, ncol = n_samples)
+  for (term in seq_along(prediction_setup$re$samples)) {
+    term_samples <- prediction_setup$re$samples[[term]]
+    for (group in seq_along(term_samples)) {
+      result <- result + outer(
+        prediction_setup$re$D_pred[[term]][, group], term_samples[[group]]
+      )
+    }
+  }
+  result
+}
+
+#' Draw an optional prediction-location nugget component
+#' @noRd
+prediction_nugget_samples <- function(prediction_setup, n_locations,
+                                      n_samples, include) {
+  if (!include) return(NULL)
+  tau2 <- prediction_setup$par_hat$tau2
+  if (is.null(tau2) || !is.finite(tau2) || tau2 <= 0) {
+    stop("The fitted model does not contain a positive nugget variance",
+         call. = FALSE)
+  }
+  sample_independent_gaussian(
+    mean = rep(0, n_locations),
+    standard_deviation = rep(sqrt(tau2), n_locations),
+    n_samples = n_samples
+  )
+}
+
+#' Summarise a location-by-sample prediction matrix
+#' @noRd
+summarise_prediction_matrix <- function(values, quantity, summaries, level) {
+  alpha <- (1 - level) / 2
+  summary_functions <- list(
+    mean = mean,
+    median = stats::median,
+    sd = stats::sd,
+    cv = function(x) stats::sd(x) / mean(x),
+    lower = function(x) stats::quantile(x, alpha, names = FALSE),
+    upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE)
+  )
+  result <- lapply(summaries, function(name) {
+    apply(values, 1L, summary_functions[[name]])
+  })
+  names(result) <- paste(quantity, summaries, sep = "_")
+  result
+}
+
+#' Restore the block structure of stored fitted conditional samples
+#' @noRd
+stored_conditioning_sample <- function(object) {
+  block_sizes <- c(nrow(object$coords), lengths(object$re))
+  if (ncol(object$S_samples) != sum(block_sizes)) {
+    stop("Stored conditional samples are inconsistent with the fitted model",
+         call. = FALSE)
+  }
+  block_ends <- cumsum(block_sizes)
+  block_starts <- c(1L, utils::head(block_ends, -1L) + 1L)
+  blocks <- Map(
+    function(first, last) object$S_samples[, first:last, drop = FALSE],
+    block_starts, block_ends
+  )
+  names(blocks) <- c("S", names(object$re))
+  list(samples = blocks)
+}
+
 ##' @title Prediction of the random effects components and covariates effects over a spatial grid
 ##' @description Computes predictions over a spatial grid using a fitted model from
 ##'   \code{\link{glgpm}}.
@@ -14,6 +346,9 @@
 ##' @param pred_cov_offset Optional numeric vector containing covariate offsets at prediction locations.
 ##' Must be provided if there is an offset included in the model and not supported if `grid_pred` is a list.
 ##' @param control_mcmc Control parameters from \code{\link{set_control_mcmc}}.
+##' For a non-Gaussian model, omitting this argument reuses final-parameter
+##' conditional samples stored in \code{object}, when available. Supplying it
+##' explicitly requests a fresh conditional run.
 ##' @param type Whether the predictions are `"marginal"` or `"joint"`. `"marginal"` predictions are less
 ##' computationally expensive than `"joint"` predictions but cannot be used to predict areal targets.
 ##' If `grid_pred` is a list or random effects are included, must be set to `"joint"`. Defaults to `"marginal"`.
@@ -87,6 +422,34 @@ setup_prediction <- function(object,
                            control_mcmc = set_control_mcmc(),
                            type = "marginal",
                            messages = TRUE) {
+
+  arguments <- list(
+    object = object,
+    grid_pred = grid_pred,
+    predictors = predictors,
+    re_predictors = re_predictors,
+    pred_cov_offset = pred_cov_offset,
+    type = type,
+    messages = messages
+  )
+  if (!missing(control_mcmc)) arguments$control_mcmc <- control_mcmc
+  do.call(prediction_samples, arguments)
+}
+
+#' Generate conditional spatial-process samples
+#'
+#' Shared numerical engine for the legacy and unified prediction interfaces.
+#' @noRd
+prediction_samples <- function(object,
+                               grid_pred = NULL,
+                               predictors = NULL,
+                               re_predictors = NULL,
+                               pred_cov_offset = NULL,
+                               control_mcmc = set_control_mcmc(),
+                               type = "marginal",
+                               messages = TRUE) {
+
+  control_mcmc_supplied <- !missing(control_mcmc)
 
   # ---------------------------------------------------------------------------
   # validate inputs
@@ -378,7 +741,15 @@ setup_prediction <- function(object,
 
   mu <- as.numeric(object$D %*% par_hat$beta)
 
-  n_samples <- if (control_mcmc$linear_model) control_mcmc$n_sim else (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
+  reuse_fitted_samples <- object$family != "gaussian" &&
+    !control_mcmc_supplied && !is.null(object$S_samples)
+  n_samples <- if (reuse_fitted_samples) {
+    nrow(object$S_samples)
+  } else if (control_mcmc$linear_model) {
+    control_mcmc$n_sim
+  } else {
+    (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
+  }
 
   # ---------------------------------------------------------------------------
   # FIX 2: nu2 / nugget
@@ -412,11 +783,20 @@ setup_prediction <- function(object,
       }
     }
 
-    simulation <- laplace_sampling_mcmc(
-      y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
-      sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
-      ID_coords = object$ID_coords, ID_re = object$ID_re,
-      family = object$family, control_mcmc = control_mcmc, messages = messages)
+    if (reuse_fitted_samples) {
+      simulation <- stored_conditioning_sample(object)
+      if (messages) {
+        message("Reusing conditional samples stored in the fitted model")
+      }
+    } else {
+      simulation <- laplace_sampling_mcmc(
+        y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
+        sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
+        ID_coords = object$ID_coords, ID_re = object$ID_re,
+        family = object$family, control_mcmc = control_mcmc,
+        messages = messages
+      )
+    }
 
     if (obs_loc) {
       out$S_samples <- t(simulation$samples$S)

@@ -33,7 +33,10 @@ Not supported if \code{grid_pred} is a list.}
 \item{pred_cov_offset}{Optional numeric vector containing covariate offsets at prediction locations.
 Must be provided if there is an offset included in the model and not supported if \code{grid_pred} is a list.}
 
-\item{control_mcmc}{Control parameters from \code{\link{set_control_mcmc}}.}
+\item{control_mcmc}{Control parameters from \code{\link{set_control_mcmc}}.
+For a non-Gaussian model, omitting this argument reuses final-parameter
+conditional samples stored in \code{object}, when available. Supplying it
+explicitly requests a fresh conditional run.}
 
 \item{type}{Whether the predictions are \code{"marginal"} or \code{"joint"}. \code{"marginal"} predictions are less
 computationally expensive than \code{"joint"} predictions but cannot be used to predict areal targets.
