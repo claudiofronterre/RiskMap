@@ -83,6 +83,12 @@ reproducible.
 - `assess_prediction()`'s `plot_fold = TRUE` plots are now consistent across
 `method`s: `"cluster"` is unchanged (`spatialsample::autoplot()`), while
 `"user"` and `"regularized"` now plot the testing and training datasets.
+- `assess_simulation()` now takes fitted objects returned by `glgpm()` or
+  model specifications returned by `specify_glgpm()` as its `models`
+  templates. `f_grid_target` and `f_area_target` have been renamed to
+  `target_transform` and `area_summary`; their returned values are now checked
+  before they are used. Grid- and area-level objectives can be requested
+  together in one run with `spatial_scale = c("grid", "area")`.
 - In `plot.RiskMap_predict_grid_target()` and `plot.RiskMap_predict_areal_target()`,
 `which_target`/`which_summary` have been renamed to `target`/`summary`, for
 consistency elsewhere in the package. `target` now defaults to `NULL`, which
