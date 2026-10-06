@@ -71,21 +71,29 @@ Datasets need transforming into a simple features (sf) object prior to analysis.
 ```{r}
 library(RiskMap)
 data(liberia)
-data <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = sf::st_crs(4326))
+data <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 head(data)
 ```
 
-When the coordinates are in latitute and longitude, the functions will automatically reproject them to meters (or kilometers) using an appropriate coordinate reference system (CRS) and print a message detailing the conversion. To handle this manually, `propose_utm()` can be used to suggest a CRS to use and passed to `sf::st_transform()`:
+When the coordinates are in latitute and longitude, the functions will automatically reproject them to meters (or kilometers) using an appropriate coordinate reference system (CRS) and print a message detailing the conversion. To handle this manually, use `propose_utm()` to suggest a CRS to use and passed to `sf::st_transform()`:
 
 ```{r}
 suggested_crs <- propose_utm(data)
 data <- sf::st_transform(data, suggested_crs)
-plot(data["npos"], axes = TRUE)
 ```
 
 ## Exploratory data analysis
 
 *For more information see [Exploring residual spatial correlation](https://www.mbgr.org/03_model-fitting.html#sec-expl-spatial)*
+
+First we calculate the prevalence from the total number of tests and the number of positive tests and plot this along with log elevation:
+
+```{r}
+#| layout-ncol: 2
+data$prevalence <- data$npos / data$ntest
+plot(data["prevalence"], axes = TRUE)
+plot(data["log_elevation"], axes = TRUE)
+```
 
 The distances between data points can be summarised with `summarise_distance()`. By default, coordinates are converted to a projected coordinate reference system and reported in kilometers, but these can be overridden.
 
