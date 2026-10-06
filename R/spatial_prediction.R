@@ -2275,13 +2275,22 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##' @param obj_sim Output from [simulate_glgpm()] with both data and surface.
 ##'   The current assessment interface supports generating models without
 ##'   grouped `re()` effects or custom inverse links.
-##' @param models A named list of models to be evaluated.
+##' @param models A named list of fitted models returned by [glgpm()] or model
+##'   specifications returned by [specify_glgpm()]. Each object defines a
+##'   candidate model specification and is refitted to every simulated dataset;
+##'   its estimated parameter values are not reused.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
 ##'   to compute both from a single fit-and-predict pass over the simulations.
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
-##' @param f_grid_target A function for processing grid-level predictions.
-##' @param f_area_target A function for processing area-level predictions.
+##' @param target_transform A function that converts a numeric matrix of linear
+##'   predictors to a numeric matrix of scientific targets with the same
+##'   dimensions. For example, use [plogis()] for prevalence from a binomial
+##'   logit model or [exp()] for the mean of a Poisson log-link model.
+##' @param area_summary A function that combines a numeric vector of grid-cell
+##'   targets within one area and returns one finite numeric value, such as
+##'   [base::mean()] or [base::sum()]. Required only when `spatial_scale`
+##'   includes `"area"`.
 ##' @param boundaries An `sf` object containing only POLYGON or MULTIPOLYGON geometries, required if `spatial_scale` includes `"area"`.
 ##' @param col_names Column name in `boundaries` containing unique region names. If `NULL`, defaults to `"region"`.
 ##' @param pred_objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
@@ -2291,14 +2300,43 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
 ##'   requested `spatial_scale` (`"grid"` and/or `"area"`), each in turn holding `mse` and/or
 ##'   `classify` per the requested `pred_objective`.
 ##'
+##' @examples
+##' library(sf)
+##' data(italy_sim)
+##' italy_subset <- italy_sim[1:30, ]
+##' italy_grid <- italy_subset[!duplicated(st_coordinates(italy_subset)), ]
+##' model <- specify_glgpm(
+##'   y ~ pop_dens + gp(), italy_subset, family = "gaussian",
+##'   parameters = list(beta = c(1, 0.001), sigma2 = 1, phi = 20,
+##'                     sigma2_me = 0.1)
+##' )
+##' simulations <- simulate_glgpm(
+##'   model, nsim = 1, what = c("data", "surface"),
+##'   prediction_grid = italy_grid, seed = 1
+##' )
+##' boundary <- st_sf(
+##'   region = "study_area",
+##'   geometry = st_convex_hull(st_union(italy_grid))
+##' )
+##' assessment <- assess_simulation(
+##'   simulations,
+##'   models = list(candidate = model),
+##'   spatial_scale = c("grid", "area"),
+##'   target_transform = exp,
+##'   area_summary = mean,
+##'   boundaries = boundary,
+##'   pred_objective = "mse",
+##'   messages = FALSE
+##' )
+##'
 ##' @export
 assess_simulation <- function(obj_sim,
                        models,
                        control_mcmc = set_control_mcmc(),
                        spatial_scale,
                        messages = TRUE,
-                       f_grid_target = NULL,
-                       f_area_target = NULL,
+                       target_transform = NULL,
+                       area_summary = NULL,
                        boundaries = NULL,
                        col_names = NULL,
                        pred_objective = c("mse", "classify"),
@@ -2323,6 +2361,16 @@ assess_simulation <- function(obj_sim,
   want_mse <- "mse" %in% pred_objective
   want_classify <- "classify" %in% pred_objective
 
+  if (!is.list(models) || !length(models) ||
+      is.null(names(models)) || any(!nzchar(names(models))) ||
+      anyDuplicated(names(models)) ||
+      !all(vapply(models, function(model) {
+        inherits(model, "RiskMap") ||
+          inherits(model, "RiskMap_simulation_model")
+      }, logical(1)))) {
+    stop("'models' must be a non-empty, uniquely named list of objects returned by glgpm() or specify_glgpm().")
+  }
+
   if (want_area) {
     if (is.null(boundaries)) {
       stop("if spatial_scale includes 'area' then an sf object of the area(s) must be passed to
@@ -2332,8 +2380,25 @@ assess_simulation <- function(obj_sim,
   }
 
   obj_sim <- simulation_assessment_data(obj_sim)
-  if (!is.function(f_grid_target)) {
-    stop("Provide 'f_grid_target' to define the target on the linear-predictor scale.")
+  if (!is.function(target_transform)) {
+    stop("'target_transform' must be a function that transforms the linear predictor.")
+  }
+
+  apply_target_transform <- function(x, context) {
+    result <- tryCatch(
+      target_transform(x),
+      error = function(e) {
+        stop("'target_transform' failed for ", context, ": ",
+             conditionMessage(e), call. = FALSE)
+      }
+    )
+    if (!is.numeric(result) || !is.matrix(result) ||
+        !identical(dim(result), dim(x)) || anyNA(result) ||
+        any(!is.finite(result))) {
+      stop("'target_transform' must return a finite numeric matrix with the same dimensions as its input (failed for ",
+           context, ").", call. = FALSE)
+    }
+    result
   }
 
   if (want_classify) {
@@ -2347,8 +2412,24 @@ assess_simulation <- function(obj_sim,
   n_sim <- length(obj_sim$data_sim)
   n_models <- length(models)
 
-  if(want_area && is.null(f_area_target)) {
-    stop("If 'spatial_scale' includes 'area', then 'f_area_target' must be provided")
+  if(want_area && !is.function(area_summary)) {
+    stop("'area_summary' must be a function when 'spatial_scale' includes 'area'.")
+  }
+
+  apply_area_summary <- function(x, context) {
+    result <- tryCatch(
+      area_summary(x),
+      error = function(e) {
+        stop("'area_summary' failed for ", context, ": ",
+             conditionMessage(e), call. = FALSE)
+      }
+    )
+    if (!is.numeric(result) || length(result) != 1L || is.na(result) ||
+        !is.finite(result)) {
+      stop("'area_summary' must return one finite numeric value (failed for ",
+           context, ").", call. = FALSE)
+    }
+    as.numeric(result)
   }
   model_names <- names(models)
 
@@ -2440,7 +2521,9 @@ assess_simulation <- function(obj_sim,
   lp_true_sim <- as.matrix(st_drop_geometry(obj_sim$lp_grid_sim[, grepl("^lp_sim_[0-9]+$",
                                                                        names(obj_sim$lp_grid_sim))]))
 
-  true_target_grid_sim <- f_grid_target(lp_true_sim)
+  true_target_grid_sim <- apply_target_transform(
+    lp_true_sim, "the simulated true surface"
+  )
 
   if(want_area) {
     true_target_area_sim <- matrix(NA, nrow = n_reg, ncol = n_sim)
@@ -2451,7 +2534,11 @@ assess_simulation <- function(obj_sim,
                         "and no predictions are carried out for this area"))
           no_comp <- c(no_comp, i)
         } else {
-          true_target_area_sim[i,j] <- f_area_target(true_target_grid_sim[inter[[i]],j])
+          true_target_area_sim[i,j] <- apply_area_summary(
+            true_target_grid_sim[inter[[i]], j],
+            paste0("area '", boundaries[[col_names]][i],
+                   "' in true simulation ", j)
+          )
         }
       }
     }
@@ -2460,10 +2547,15 @@ assess_simulation <- function(obj_sim,
   for(i in 1:n_models) {
     if (messages) message("Model: ", model_names[i], "\n")
 
-    if_i <- interpret_formula(models[[i]])
+    template_i <- models[[i]]
+    if (template_i$family != obj_sim$family) {
+      stop("Model '", model_names[i], "' uses family '", template_i$family,
+           "', but the simulations use family '", obj_sim$family, "'.")
+    }
+    if_i <- interpret_formula(template_i$formula)
     rhs_terms <- attr(terms(if_i$pf), "term.labels")
     predictors_i <- if (length(rhs_terms) == 0) NULL else obj_sim$lp_grid_sim
-    f_i <- update(models[[i]], y ~ .)
+    f_i <- update(template_i$formula, y ~ .)
 
     for(j in 1:n_sim) {
       if (messages) message("Processing simulation no. ", j)
@@ -2472,15 +2564,9 @@ assess_simulation <- function(obj_sim,
       # these objects local avoids retaining every fit and posterior sample
       # matrix until the complete assessment has finished.
       if (messages) message("Estimation")
-      refit_args <- list(
-        formula = f_i,
-        family = obj_sim$family,
-        data = obj_sim$data_sim[[j]],
-        distance_units = obj_sim$distance_units,
-        control_mcmc = control_mcmc,
-        messages = FALSE
+      refit_args <- assessment_refit_args(
+        template_i, f_i, obj_sim$data_sim[[j]], control_mcmc
       )
-      if (obj_sim$family != "gaussian") refit_args$denominator <- quote(units_m)
       fit_ij <- do.call(glgpm, refit_args)
 
       if (messages) message("Prediction over the grid")
@@ -2552,7 +2638,10 @@ assess_simulation <- function(obj_sim,
       # Grid-cell-level target samples are shared by both scales: grid
       # objectives use them directly, area objectives aggregate them by
       # region below.
-      target_samples_ij <- f_grid_target(lp_samples_ij)
+      target_samples_ij <- apply_target_transform(
+        lp_samples_ij,
+        paste0("model '", model_names[i], "', simulation ", j)
+      )
 
       if(want_grid) {
         mean_target_grid_ij <- apply(target_samples_ij, 1, mean)
@@ -2574,8 +2663,18 @@ assess_simulation <- function(obj_sim,
         for(h in 1:n_reg) {
           if(length(inter[[h]]) > 0) {
             ind_grid_h <- inter[[h]]
-            target_area_samples_ij[h,] <-  apply(target_samples_ij[ind_grid_h,], 2,
-                                                 f_area_target)
+            target_area_samples_ij[h,] <- vapply(
+              seq_len(n_samples),
+              function(sample_index) {
+                apply_area_summary(
+                  target_samples_ij[ind_grid_h, sample_index],
+                  paste0("area '", boundaries[[col_names]][h], "', model '",
+                         model_names[i], "', simulation ", j,
+                         ", predictive sample ", sample_index)
+                )
+              },
+              numeric(1)
+            )
             mean_target_area_ij[h] <- mean(target_area_samples_ij[h,])
           }
         }
@@ -2600,6 +2699,39 @@ assess_simulation <- function(obj_sim,
   out$spatial_scale <- spatial_scale
   class(out) <- "RiskMap_assess_simulation"
   return(out)
+}
+
+##' Build a refit call from a fitted assessment-model template
+##'
+##' The fitted coefficients are intentionally excluded. Data-dependent inputs
+##' are resolved against each simulated dataset rather than copied as vectors
+##' from the original fit.
+##' @noRd
+assessment_refit_args <- function(template, formula, data, control_mcmc) {
+  fitted_template <- inherits(template, "RiskMap")
+  args <- list(
+    formula = formula,
+    family = template$family,
+    data = data,
+    distance_units = template$distance_units,
+    control_mcmc = control_mcmc,
+    control_mcml = if (fitted_template) {
+      attr(template, "control_mcml") %||% set_control_mcml()
+    } else {
+      set_control_mcml()
+    },
+    fix_var_me = if (fitted_template) template$fix_var_me else NULL,
+    messages = FALSE
+  )
+  if (template$family != "gaussian") {
+    args$denominator <- quote(units_m)
+    if (fitted_template && identical(template$link_function$name, "custom")) {
+      args$invlink <- template$link_function[c("inv", "d1", "d2")]
+    } else if (!fitted_template && isTRUE(template$custom_link)) {
+      args$invlink <- template$invlink
+    }
+  }
+  args
 }
 
 ##' Classification metrics for one simulated dataset

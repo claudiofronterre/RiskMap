@@ -607,6 +607,9 @@ glgpm <- function(formula,
   res$formula <- formula
   res$family <- family
   res$distance_units <- distance_units
+  # Retain fitting controls as metadata so a fitted object can serve as a
+  # complete specification when refitted to simulated or held-out data.
+  attr(res, "control_mcml") <- control_mcml
   res$data <- data
   res$input_crs <- input_crs
   res$kappa <- kappa
