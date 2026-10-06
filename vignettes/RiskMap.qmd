@@ -52,7 +52,7 @@ For more information on the datasets use `help(<dataset>)`
 | `galicia` | Heavy metal biomonitoring in Galicia | `lead` | | Gaussian |
 | `infect_sma` | PCR-tested mosquito pools in the Sacramento Metropolitan Area | `wnv_pos` | | Binomial |
 | `italy_sim` | Simulated dataset on the Italian peninsula | `y` | | Gaussian |
-| `liberia` | Counts of riverblindness in Liberia | `npos` | `ntest` | Binomial |
+| `liberia` | Counts of river blindness in Liberia | `npos` | `ntest` | Binomial |
 | `loaloa` | Prevalence of Loa loa (eyeworm) in West Africa | `NO_INF` | `NO_EXAM` | Binomial |
 | `malkenya` | Surveys of malaria in Kenya | `RDT` | | Binomial |
 | `malnutrition` | Malnutrition in Ghana | `HAZ` | | Gaussian |
