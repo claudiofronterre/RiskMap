@@ -27,6 +27,7 @@ Imports:
     Deriv,
     dplyr,
     ggplot2,
+    ggspatial,
     gridExtra,
     knitr,
     Matrix,

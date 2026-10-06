@@ -1,6 +1,7 @@
 test_that("predict_areal_target produces expected output with default arguments", {
 
-  expected_output <- c("lp_samples", "target", "boundaries", "f_target", "pd_summary", "grid_pred")
+  expected_output <- c("lp_samples", "target", "boundaries", "f_target", "pd_summary", "grid_pred",
+                       "grid_summary_range")
 
   gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
   gaussian_offset_grid <- setup_prediction(gaussian_offset_model, type = "joint")
@@ -105,8 +106,8 @@ test_that("plot.RiskMap_predict_areal_target defaults to the first target and va
   gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
   result <- predict_areal_target(gaussian_grid, areal, messages = FALSE)
 
-  expect_no_error(plot(result))
-  expect_no_error(plot(result, target = result$f_target[1]))
+  expect_no_error(ggplot2::ggplot_build(plot(result)))
+  expect_no_error(ggplot2::ggplot_build(plot(result, target = result$f_target[1])))
 
   expect_error(
     plot(result, target = "not_a_target"),
@@ -116,4 +117,113 @@ test_that("plot.RiskMap_predict_areal_target defaults to the first target and va
     plot(result, summary = "not_a_summary"),
     "'summary' must be one of"
   )
+})
+
+test_that("plot.RiskMap_predict_areal_target shares palette and map annotations with the grid plot #149", {
+
+  gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
+  result <- predict_areal_target(gaussian_grid, areal, messages = FALSE)
+
+  out <- plot(result)
+  expect_s3_class(out, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(out))
+  layer_classes <- vapply(out$layers, function(layer) class(layer$geom)[1], character(1))
+  expect_true("GeomSf" %in% layer_classes)
+  expect_true("GeomNorthArrow" %in% layer_classes)
+  expect_true("GeomScaleBar" %in% layer_classes)
+  expect_equal(out$labels$fill, "linear_target_mean")
+
+  out_plain <- plot(result, north_arrow = FALSE, scale_bar = FALSE)
+  plain_classes <- vapply(out_plain$layers, function(layer) class(layer$geom)[1], character(1))
+  expect_equal(unname(plain_classes), "GeomSf")
+
+  expect_no_error(ggplot2::ggplot_build(plot(result, palette = "Spectral",
+                                             reverse_palette = TRUE)))
+  expect_error(plot(result, palette = "not_a_palette"), "'palette' must be one of")
+})
+
+test_that("plot.RiskMap_predict_areal_target errors informatively without boundaries #149", {
+
+  gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
+  result <- predict_areal_target(gaussian_grid, areal, return_boundaries = FALSE,
+                                 messages = FALSE)
+
+  expect_error(plot(result), "return_boundaries = TRUE")
+})
+
+test_that("plot.RiskMap_predict_areal_target shares its colour range with the grid plot by default #149", {
+
+  gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
+  grid_result <- predict_grid_target(gaussian_grid)
+  areal_result <- predict_areal_target(gaussian_grid, areal, messages = FALSE)
+
+  fill_limits <- function(map) {
+    ggplot2::ggplot_build(map)$plot$scales$get_scales("fill")$get_limits()
+  }
+
+  expect_equal(areal_result$grid_summary_range$linear_target$mean,
+               range(grid_result$target$linear_target$mean))
+  expect_equal(areal_result$grid_summary_range$linear_target$sd,
+               range(grid_result$target$linear_target$sd))
+  expect_equal(fill_limits(plot(areal_result)), fill_limits(plot(grid_result)))
+
+  # areal sd is smaller than cell-level sd, so the range must still cover it
+  sd_limits <- fill_limits(plot(areal_result, summary = "sd"))
+  expect_true(all(areal_result$boundaries$linear_target_sd >= sd_limits[1] &
+                    areal_result$boundaries$linear_target_sd <= sd_limits[2]))
+
+  expect_equal(fill_limits(plot(areal_result, limits = "shared")), fill_limits(plot(areal_result)))
+})
+
+test_that("prediction maps accept independent and custom colour limits #149", {
+
+  gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
+  grid_result <- predict_grid_target(gaussian_grid)
+  areal_result <- predict_areal_target(gaussian_grid, areal, messages = FALSE)
+
+  fill_limits <- function(map) {
+    ggplot2::ggplot_build(map)$plot$scales$get_scales("fill")$get_limits()
+  }
+
+  expect_equal(fill_limits(plot(areal_result, limits = "independent")),
+               range(areal_result$boundaries$linear_target_mean))
+  expect_equal(fill_limits(plot(grid_result, limits = "independent")),
+               range(grid_result$target$linear_target$mean))
+  expect_equal(fill_limits(plot(grid_result, limits = "shared")),
+               range(grid_result$target$linear_target$mean))
+
+  expect_equal(fill_limits(plot(areal_result, limits = c(-10, 10))), c(-10, 10))
+  expect_equal(fill_limits(plot(grid_result, limits = c(-10, 10))), c(-10, 10))
+
+  for (result in list(areal_result, grid_result)) {
+    expect_error(plot(result, limits = "other"),
+                 "'limits' must be \"shared\", \"independent\" or a numeric vector of length two")
+    expect_error(plot(result, limits = NULL),
+                 "'limits' must be \"shared\", \"independent\" or a numeric vector of length two")
+    expect_error(plot(result, limits = 1), "Custom 'limits' must be a numeric vector of length two")
+    expect_error(plot(result, limits = c(0, NA)), "Custom 'limits' must be a numeric vector of length two")
+  }
+})
+
+test_that("prediction maps add space for the north arrow and scale bar only when shown #149", {
+
+  gaussian_grid <- setup_prediction(gaussian_model, type = "joint")
+  areal_result <- predict_areal_target(gaussian_grid, areal, messages = FALSE)
+  grid_result <- predict_grid_target(gaussian_grid)
+
+  y_range <- function(map) ggplot2::ggplot_build(map)$layout$panel_params[[1]]$y_range
+
+  for (result in list(areal_result, grid_result)) {
+    plain <- y_range(plot(result, north_arrow = FALSE, scale_bar = FALSE))
+    arrow_only <- y_range(plot(result, north_arrow = TRUE, scale_bar = FALSE))
+    scale_only <- y_range(plot(result, north_arrow = FALSE, scale_bar = TRUE))
+
+    expect_gt(arrow_only[2], plain[2])
+    expect_lt(scale_only[1], plain[1])
+  }
+
+  extent <- c(xmin = 0, xmax = 10, ymin = 0, ymax = 100)
+  expect_equal(pad_map_extent(extent, north_arrow = FALSE, scale_bar = FALSE), c(0, 100))
+  expect_equal(pad_map_extent(extent, north_arrow = TRUE, scale_bar = FALSE), c(0, 115))
+  expect_equal(pad_map_extent(extent, north_arrow = FALSE, scale_bar = TRUE), c(-8, 100))
 })

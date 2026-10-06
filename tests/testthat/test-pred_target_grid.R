@@ -135,8 +135,8 @@ test_that("plot.RiskMap_predict_grid_target defaults to the first target and val
                                   type = "joint")
   result <- predict_grid_target(gaussian_grid)
 
-  expect_no_error(plot(result))
-  expect_no_error(plot(result, target = result$f_target[1]))
+  expect_no_error(ggplot2::ggplot_build(plot(result)))
+  expect_no_error(ggplot2::ggplot_build(plot(result, target = result$f_target[1])))
 
   expect_error(
     plot(result, target = "not_a_target"),
@@ -148,3 +148,67 @@ test_that("plot.RiskMap_predict_grid_target defaults to the first target and val
   )
 })
 
+test_that("plot.RiskMap_predict_grid_target draws tiles with lat/lon axes, legend and map annotations #149", {
+
+  gaussian_grid <- setup_prediction(gaussian_model, grid_pred = grid,
+                                    predictors = data.frame(cov = rnorm(nrow(grid))),
+                                    type = "joint")
+  result <- predict_grid_target(gaussian_grid)
+
+  out <- plot(result)
+  expect_s3_class(out, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(out))
+  layer_classes <- vapply(out$layers, function(layer) class(layer$geom)[1], character(1))
+  expect_true("GeomTile" %in% layer_classes)
+  expect_true("GeomNorthArrow" %in% layer_classes)
+  expect_true("GeomScaleBar" %in% layer_classes)
+  expect_s3_class(out$coordinates, "CoordSf")
+  expect_equal(out$labels$fill, "linear_target_mean")
+
+  out_plain <- plot(result, north_arrow = FALSE, scale_bar = FALSE)
+  plain_classes <- vapply(out_plain$layers, function(layer) class(layer$geom)[1], character(1))
+  expect_equal(unname(plain_classes), "GeomTile")
+})
+
+test_that("plot.RiskMap_predict_grid_target accepts named palettes, colour vectors and scale arguments #149", {
+
+  gaussian_grid <- setup_prediction(gaussian_model, grid_pred = grid,
+                                    predictors = data.frame(cov = rnorm(nrow(grid))),
+                                    type = "joint")
+  result <- predict_grid_target(gaussian_grid)
+
+  expect_no_error(ggplot2::ggplot_build(plot(result, palette = "Blues")))
+  expect_no_error(ggplot2::ggplot_build(plot(result, palette = c("white", "darkred"),
+                                             name = "Custom title")))
+
+  forward <- ggplot2::ggplot_build(plot(result, palette = c("white", "black")))
+  reverse <- ggplot2::ggplot_build(plot(result, palette = c("white", "black"),
+                                        reverse_palette = TRUE))
+  lowest <- which.min(result$target$linear_target$mean)
+  expect_equal(toupper(forward$data[[1]]$fill[lowest]), "#FFFFFF")
+  expect_equal(toupper(reverse$data[[1]]$fill[lowest]), "#000000")
+
+  expect_error(plot(result, palette = "not_a_palette"), "'palette' must be one of")
+  expect_error(plot(result, palette = c("white", "not_a_colour")), "invalid colours")
+  expect_error(plot(result, palette = 1), "'palette' must be a character vector")
+  expect_error(plot(result, north_arrow = "yes"), "'north_arrow' must be either TRUE or FALSE")
+  expect_error(plot(result, scale_bar = NA), "'scale_bar' must be either TRUE or FALSE")
+  expect_error(plot(result, reverse_palette = 1), "'reverse_palette' must be either TRUE or FALSE")
+})
+
+test_that("plot.RiskMap_predict_grid_target handles grids with missing columns without warning #149", {
+
+  # regular 1 km grid with a whole column removed
+  grid_coordinates <- expand.grid(x = c(0, 1000, 3000, 4000), y = c(0, 1000, 2000))
+  gappy_grid <- st_as_sf(grid_coordinates, coords = c("x", "y"), crs = 32637)
+  result <- structure(
+    list(target = list(linear_target = list(mean = seq_len(nrow(gappy_grid)))),
+         grid_pred = gappy_grid,
+         f_target = "linear_target",
+         pd_summary = "mean"),
+    class = "RiskMap_predict_grid_target"
+  )
+
+  expect_no_warning(built <- ggplot2::ggplot_build(plot(result)))
+  expect_equal(unique(built$data[[1]]$xmax - built$data[[1]]$xmin), 1000)
+})

@@ -80,7 +80,6 @@ importFrom(spatialsample,
 importFrom(terra,
   as.data.frame,
   match,
-  plot,
   rast,
   rasterize,
   vect
