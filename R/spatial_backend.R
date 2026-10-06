@@ -145,7 +145,7 @@ factor_covariance <- function(covariance, context = "covariance matrix",
 
 #' Solve a positive-definite system from its Cholesky factor
 #'
-#' @param root Upper-triangular factor returned by [factor_covariance()].
+#' @param root Upper-triangular factor returned by factor_covariance().
 #' @param right_hand_side Numeric vector or matrix.
 #' @return Solution to `crossprod(root) %*% x = right_hand_side`.
 #' @noRd
@@ -155,7 +155,7 @@ solve_from_cholesky <- function(root, right_hand_side) {
 
 #' Compute a positive-definite log determinant from its Cholesky factor
 #'
-#' @param root Upper-triangular factor returned by [factor_covariance()].
+#' @param root Upper-triangular factor returned by factor_covariance().
 #' @return Log determinant of the original covariance matrix.
 #' @noRd
 log_determinant_from_cholesky <- function(root) {

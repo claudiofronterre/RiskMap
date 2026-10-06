@@ -16,3 +16,4 @@ cpp_binned_semivariances <- function(permuted_values, first_index, second_index,
 cpp_half_integer_matern <- function(distances, phi, kappa) {
     .Call(`_RiskMap_cpp_half_integer_matern`, distances, phi, kappa)
 }
+
