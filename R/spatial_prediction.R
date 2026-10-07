@@ -1718,7 +1718,7 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##'   }
 ##' }
 ##'
-##' @seealso \code{\link{plot_AnPIT}}
+##' @seealso \code{\link{plot.RiskMap_cross_validation}}
 ##'
 ##' @references
 ##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of

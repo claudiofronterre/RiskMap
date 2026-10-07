@@ -19,7 +19,7 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `matern.hessian.phi` | `matern_hessian_phi` |
 | `matern_cor` | `matern_correlation` |
 | `maxim.integrand` | `maxim_integrand` |
-| `plot_score` | `plot_metric` |
+| `plot_score` / `plot_AnPIT` | `plot.RiskMap_cross_validation` (the two are merged; by default it draws every plot the `RiskMap_cross_validation` object has data for) |
 | `plot_s_variogram` | `plot_variogram` |
 | `pred_over_grid` | `setup_prediction` |
 | `pred_target_grid` | `predict_grid_target` |
@@ -116,3 +116,12 @@ outputs reproducible.
 - Gaussian prediction uses a stable reduced covariance solve, avoiding cancellation
 with small measurement-error variances while retaining the same conditional model.
 - Test coverage has been increased from 0 to 70 %.
+- `plot_metric()` and `plot_AnPIT()` have been merged into a single
+  `plot.RiskMap_cross_validation()` method. `metric` and `model` now default
+  to every metric/model available rather than being required, so
+  `plot(cv_result)` alone produces every plot the object has data for.
+  `metric` accepts `"AnPIT"` as well as `"CRPS"`/`"SCRPS"`/`"AnPIT_area"` to
+  select the calibration curve. Each metric gets its own plot (or, with more
+  than one model, its own small grid with one panel per model); with more
+  than one metric, each one is drawn in turn and the full set is returned
+  invisibly as a named list.
