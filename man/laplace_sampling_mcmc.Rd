@@ -60,7 +60,7 @@ or \code{"poisson"}.}
 \item{invlink}{Optional inverse-link function. If \code{NULL}, defaults are used:
 \code{identity} (gaussian), \code{plogis} (binomial), and \code{exp} (poisson).}
 
-\item{Sigma_pd}{Optional precision matrix used in the Laplace approximation.
+\item{Sigma_pd}{Optional covariance matrix used in the Laplace approximation.
 If \code{NULL}, it is obtained internally at the current mode.}
 
 \item{mean_pd}{Optional mean vector used in the Laplace approximation.
@@ -75,7 +75,10 @@ An object of class \code{"RiskMap_mcmc"} with components:
 \code{$S} (latent spatial field). If \code{ID_re} is supplied,
 each unstructured RE is returned under \code{$<re_name>}.}
 \item{tuning_par}{Numeric vector of step sizes (\code{h}) used over iterations.}
-\item{acceptance_prob}{Numeric vector of Metropolis–Hastings acceptance probabilities.}
+\item{acceptance_prob}{Numeric vector of cumulative Metropolis–Hastings acceptance rates.}
+\item{acceptance}{Logical vector recording whether each proposal was accepted.}
+\item{acceptance_rate}{Named vector giving acceptance rates during burn-in
+and retained-sample iterations.}
 }
 }
 \description{

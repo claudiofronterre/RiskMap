@@ -1,6 +1,10 @@
 test_that("glgpm produces errors", {
-
-  # par0 is not checked
+  expect_error(
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          start_pars = list(beta = c(0, 1), unknown = 1)),
+    "'unknown' is not a valid starting parameter",
+    fixed = TRUE
+  )
 
   expect_error(
     glgpm("not formula", data = gaussian_data, family = "gaussian"),
@@ -10,6 +14,14 @@ test_that("glgpm produces errors", {
   expect_error(
     glgpm(y ~ cov + gp(nugget = TRUE), data = gaussian_data, family = "gaussian", messages = FALSE),
     "When there is only one observation per location"
+  )
+
+  saturated_data <- gaussian_data
+  saturated_data$row_id <- seq_len(nrow(saturated_data))
+
+  expect_error(
+    glgpm(y ~ cov + gp() + re(row_id), data = saturated_data, family = "gaussian", messages = FALSE),
+    "have one level per observation.*'gaussian'"
   )
 
   expect_error(
@@ -94,12 +106,6 @@ test_that("glgpm produces errors", {
   )
 
   expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", par0 = 1),
-    "'par0' cannot be provided when 'family' is 'gaussian'"
-  )
-
-
-  expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(invalid = 1), messages = FALSE),
     "'invalid' is not a valid starting parameter"
@@ -116,6 +122,17 @@ test_that("glgpm produces errors", {
           start_pars = list(beta = 1), messages = FALSE),
     "number of starting values provided for 'beta' do not match"
   )
+
+  expect_error(
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          control_mcml = list(max_iterations = 2), messages = FALSE),
+    "set_control_mcml"
+  )
+
+  expect_error(set_control_mcml(max_iterations = 0), "positive integer")
+  expect_error(set_control_mcml(tolerance = 0), "positive number")
+  expect_error(set_control_mcml(tolerance = Inf), "positive number")
+  expect_error(set_control_mcml(min_relative_ess = 2), "between 0 and 1")
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
@@ -177,7 +194,8 @@ expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
                      "fix_var_me", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
-                     "S_samples", "link_function")
+                     "S_samples", "link_function", "mcml_history",
+                     "mcml_converged", "linear_predictors", "fitted_values")
 
 test_that("glgpm produces expected output for gaussian models", {
 
@@ -189,11 +207,33 @@ test_that("glgpm produces expected output for gaussian models", {
 
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
+  expect_null(fit_no_re$mcml_history)
+  expect_length(fitted(fit_no_re), nrow(gaussian_data))
+  expect_equal(fitted(fit_no_re), fit_no_re$fitted_values)
+  expect_equal(fitted(fit_no_re, type = "link"),
+               fit_no_re$linear_predictors)
+  expect_null(fit_no_re$mcml_converged)
   expect_equal(fit_no_re$family, "gaussian")
   expect_equal(fit_no_re$coords[,1], data$x)
   expect_equal(fit_no_re$coords[,2], data$z)
   expect_equal(fit_no_re$y, gaussian_data$y)
   expect_equal(unname(fit_no_re$D[,2]), gaussian_data$cov)
+  optimizer <- attr(fit_no_re, "optimizer")
+  expect_named(
+    optimizer,
+    c("convergence", "message", "evaluations", "invalid_evaluations",
+      "max_abs_gradient", "stationary", "information_rcond",
+      "information_jitter")
+  )
+  expect_true(is.logical(optimizer$stationary))
+  expect_true(optimizer$information_rcond >= 0)
+
+  fit_re_fixed_me <- glgpm(y ~ cov + gp() + re(i),
+                           data = gaussian_data,
+                           family = "gaussian",
+                           fix_var_me = 0.1,
+                           messages = FALSE)
+  expect_true(is.finite(coef(fit_re_fixed_me)$sigma2_re[["i"]]))
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = gaussian_data,
@@ -204,6 +244,122 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "gaussian")
   expect_length(fit_re$re, 1)
+
+  fit_re2 <- glgpm(y ~ cov + gp() + re(i, j),
+                  data = gaussian_data,
+                  family = "gaussian",
+                  messages = FALSE)
+
+  expect_s3_class(fit_re2, "RiskMap")
+  expect_length(fit_re2$re, 2)
+})
+
+test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
+  # replicating locations gives more than three observations per latent
+  # effect, so glgpm_lm should not fall back to glgpm_lm_direct
+  set.seed(2)
+  replicated_data <- do.call(rbind, replicate(5, gaussian_data, simplify = FALSE))
+  replicated_data$y <- replicated_data$y + rnorm(nrow(replicated_data), sd = 0.3)
+
+  formulas <- list(y ~ cov + gp(), y ~ cov + gp() + re(i))
+  for (formula in formulas) {
+    woodbury_fit <- with_mocked_bindings(
+      glgpm(formula, data = replicated_data, family = "gaussian",
+            messages = FALSE),
+      glgpm_lm_direct = function(...) stop("direct path used")
+    )
+    direct_fit <- with_mocked_bindings(
+      glgpm(formula, data = replicated_data, family = "gaussian",
+            messages = FALSE),
+      use_direct_gaussian_covariance = function(...) TRUE
+    )
+
+    expect_s3_class(woodbury_fit, "RiskMap")
+    expect_setequal(names(woodbury_fit), expected_output)
+    expect_equal(woodbury_fit$estimate, direct_fit$estimate, tolerance = 1e-6)
+    expect_equal(woodbury_fit$log_lik, direct_fit$log_lik, tolerance = 1e-6)
+    expect_equal(woodbury_fit$covariance, direct_fit$covariance,
+                 tolerance = 1e-4)
+  }
+})
+
+test_that("glgpm fits gaussian models combining re() with a fixed measurement error variance #117", {
+
+  fit <- glgpm(y ~ cov + gp() + re(i),
+              data = gaussian_data,
+              family = "gaussian",
+              fix_var_me = 0.1,
+              messages = FALSE)
+
+  expect_s3_class(fit, "RiskMap")
+  expect_setequal(names(fit), expected_output)
+  expect_true(all(is.finite(unlist(fit$estimate))))
+
+  fit_nugget <- glgpm(y ~ cov + gp(nugget = TRUE) + re(i),
+                      data = gaussian_data,
+                      family = "gaussian",
+                      fix_var_me = 0.1,
+                      messages = FALSE)
+
+  expect_s3_class(fit_nugget, "RiskMap")
+  expect_true(all(is.finite(unlist(fit_nugget$estimate))))
+})
+
+
+test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provided", {
+  saturated_data <- gaussian_data
+  saturated_data$row_id <- seq_len(nrow(saturated_data))
+
+  fit <- glgpm(formula = y ~ cov + gp() + re(row_id), data = saturated_data,
+               family = "gaussian", messages = FALSE, fix_var_me = 0.1)
+
+  expect_s3_class(fit, "RiskMap")
+  expect_setequal(names(fit$estimate), c("beta", "sigma2", "phi", "sigma2_re"))
+
+  expect_error(
+    glgpm(formula = y ~ cov + gp(nugget = TRUE) + re(row_id),
+          data = saturated_data,
+          family = "gaussian",
+          messages = FALSE,
+          fix_var_me = 0.1),
+    "cannot be distinguished from the nugget"
+  )
+})
+
+test_that("glgpm is invariant to fixed-effect covariate scale", {
+  scaled_data <- gaussian_data
+  scaled_data$cov_large <- scaled_data$cov * 1e6
+
+  ordinary_fit <- glgpm(
+    y ~ cov + gp(),
+    data = scaled_data,
+    family = "gaussian",
+    messages = FALSE
+  )
+  scaled_fit <- glgpm(
+    y ~ cov_large + gp(),
+    data = scaled_data,
+    family = "gaussian",
+    messages = FALSE
+  )
+
+  expect_equal(ordinary_fit$log_lik, scaled_fit$log_lik,
+               tolerance = 1e-7)
+  expect_equal(
+    as.numeric(ordinary_fit$D %*% ordinary_fit$estimate$beta),
+    as.numeric(scaled_fit$D %*% scaled_fit$estimate$beta),
+    tolerance = 1e-7
+  )
+  expect_equal(
+    unname(ordinary_fit$estimate$beta[["cov"]]),
+    unname(scaled_fit$estimate$beta[["cov_large"]]) * 1e6,
+    tolerance = 1e-7
+  )
+  expect_equal(
+    unname(diag(ordinary_fit$covariance)[1:2]),
+    unname(diag(scaled_fit$covariance)[1:2]) * c(1, 1e12),
+    tolerance = 1e-6
+  )
 })
 
 test_that("glgpm produces expected output for binomial models", {
@@ -218,6 +374,15 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "binomial")
+  expect_length(fitted(fit_no_re), nrow(binomial_data))
+  expect_true(all(fitted(fit_no_re) >= 0 & fitted(fit_no_re) <= 1))
+  expect_length(fit_no_re$linear_predictors, nrow(binomial_data))
+  expect_false(is.null(fit_no_re$S_samples))
+  starting_values <- attr(fit_no_re, "starting_values")
+  expect_true(starting_values$selected %in%
+                c("current", "transformed_gaussian"))
+  expect_true(is.finite(starting_values$current_laplace))
+  expect_true(is.finite(starting_values$transformed_laplace))
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = binomial_data,
@@ -229,6 +394,112 @@ test_that("glgpm produces expected output for binomial models", {
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_equal(fit_re$family, "binomial")
+  eta_samples <- sweep(
+    fit_re$S_samples[, fit_re$ID_coords, drop = FALSE], 2,
+    as.numeric(fit_re$D %*% fit_re$estimate$beta + fit_re$cov_offset), "+"
+  )
+  n_locations <- nrow(fit_re$coords)
+  re_samples <- fit_re$S_samples[, n_locations + seq_along(fit_re$re[[1]]),
+                                 drop = FALSE]
+  eta_samples <- eta_samples +
+    re_samples[, fit_re$ID_re[[1]], drop = FALSE]
+  expect_equal(fitted(fit_re), colMeans(plogis(eta_samples)))
+  expect_equal(fit_re$linear_predictors, colMeans(eta_samples))
+  re_starting_values <- attr(fit_re, "starting_values")
+  expect_true(re_starting_values$selected %in%
+                c("current", "transformed_gaussian"))
+  expect_false(identical(
+    re_starting_values$fallback_reason,
+    "additional random effects are not yet supported by the transformed initializer"
+  ))
+  expect_true(
+    is.finite(re_starting_values$transformed_laplace) ||
+      grepl("invalid starting values|non-finite Laplace",
+            re_starting_values$fallback_reason)
+  )
+})
+
+test_that("transformed starts preserve an estimated nugget", {
+  fit <- glgpm(
+    y ~ cov + gp(nugget = TRUE), data = binomial_data,
+    family = "binomial", denominator = denominator,
+    control_mcmc = control_mcmc, messages = FALSE
+  )
+
+  diagnostics <- attr(fit, "starting_values")
+  expect_true(diagnostics$selected %in%
+                c("current", "transformed_gaussian"))
+  expect_true(is.finite(diagnostics$current_laplace))
+  expect_true(is.finite(diagnostics$transformed_laplace))
+  expect_true(is.finite(fit$estimate$nu2))
+})
+
+test_that("explicit non-Gaussian starts remain authoritative", {
+  data_frame <- sf::st_drop_geometry(binomial_data)
+  glm_start <- glm(
+    cbind(y, denominator - y) ~ cov,
+    data = data_frame,
+    family = binomial
+  )
+  start_pars <- list(
+    beta = coef(glm_start),
+    sigma2 = 1,
+    phi = quantile(
+      pairwise_distances(coordinates_in_units(binomial_data, "km")),
+      0.1
+    )
+  )
+
+  explicit_fit_2 <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    start_pars = start_pars, messages = FALSE
+  )
+  explicit_fit <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    start_pars = start_pars, messages = FALSE
+  )
+
+  expect_equal(attr(explicit_fit, "starting_values")$selected, "user")
+  expect_equal(explicit_fit$estimate, explicit_fit_2$estimate)
+  expect_equal(explicit_fit$log_lik, explicit_fit_2$log_lik)
+})
+
+test_that("final fitted samples support a nugget model", {
+  fit <- glgpm(
+    y ~ cov + gp(nugget = 0.1),
+    data = binomial_data,
+    family = "binomial",
+    denominator = denominator,
+    control_mcmc = control_mcmc,
+    messages = FALSE
+  )
+
+  expect_equal(ncol(fit$S_samples), nrow(fit$coords))
+  expect_length(fitted(fit), nrow(binomial_data))
+  expect_true(all(is.finite(fitted(fit))))
+})
+
+test_that("custom inverse links retain the current automatic start", {
+  custom_link <- list(
+    inv = plogis,
+    d1 = function(x) plogis(x) * (1 - plogis(x)),
+    d2 = function(x) {
+      probability <- plogis(x)
+      probability * (1 - probability) * (1 - 2 * probability)
+    }
+  )
+  fit <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    invlink = custom_link,
+    messages = FALSE
+  )
+
+  diagnostics <- attr(fit, "starting_values")
+  expect_equal(diagnostics$selected, "current")
+  expect_match(diagnostics$fallback_reason, "custom inverse links")
 })
 
 test_that("glgpm produces expected output for poisson models", {
@@ -242,6 +513,8 @@ test_that("glgpm produces expected output for poisson models", {
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
   expect_equal(fit_no_re$family, "poisson")
+  expect_length(fitted(fit_no_re), nrow(poisson_data))
+  expect_true(all(fitted(fit_no_re) > 0))
 
   fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = poisson_data,
@@ -263,6 +536,53 @@ test_that("glgpm produces expected output for poisson models", {
   expect_s3_class(fit_re_den, "RiskMap")
   expect_setequal(names(fit_re_den), expected_output)
   expect_equal(fit_re_den$family, "poisson")
+  expect_true(all(fitted(fit_re_den) > 0))
+})
+
+test_that("iterative MCML updates its reference and records reproducible history", {
+  iterative_control <- set_control_mcml(
+    max_iterations = 2,
+    tolerance = 1e6,
+    min_relative_ess = 0
+  )
+  fit <- glgpm(
+    y ~ cov + gp(),
+    data = binomial_data,
+    family = "binomial",
+    denominator = denominator,
+    control_mcmc = control_mcmc,
+    control_mcml = iterative_control,
+    messages = FALSE
+  )
+
+  expect_true(fit$mcml_converged)
+  expect_length(fit$mcml_history, 2)
+  expect_equal(
+    vapply(fit$mcml_history, `[[`, numeric(1), "seed"),
+    c(control_mcmc$seed, control_mcmc$seed + 1L)
+  )
+  expect_lte(fit$mcml_history[[2]]$max_standardized_change,
+             iterative_control$tolerance)
+  expect_true(is.finite(
+    fit$mcml_history[[2]]$log_likelihood_ratio_gain
+  ))
+  expect_true(is.finite(
+    fit$mcml_history[[2]]$max_standardized_change
+  ))
+  expect_equal(fit$mcml_history[[2]]$estimate, fit$estimate)
+  expect_true("reference_update" %in% names(fit$mcml_history[[2]]))
+  expect_equal(attr(fit, "optimizer")$proposed_estimate, fit$estimate)
+})
+
+test_that("MCML overlap safeguard does not relabel a reference bridge as a fit", {
+  diagnostics <- attr(binomial_model, "optimizer")
+
+  expect_lt(diagnostics$step_fraction, 1)
+  expect_equal(diagnostics$proposed_estimate, binomial_model$estimate)
+  expect_false(isTRUE(all.equal(
+    diagnostics$reference_update,
+    binomial_model$estimate
+  )))
 })
 
 
@@ -324,8 +644,16 @@ test_that("plot_mcmc produces errors as expected", {
     plot_mcmc(gaussian_model),
     "'object' is a gaussian model")
 
+  binomial_without_samples <- glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    return_samples = FALSE, messages = FALSE
+  )
+  expect_null(binomial_without_samples$S_samples)
+  expect_null(binomial_without_samples$linear_predictors)
+  expect_null(fitted(binomial_without_samples))
   expect_error(
-    plot_mcmc(binomial_model),
+    plot_mcmc(binomial_without_samples),
     "'object' does not contain any MCMC chains")
 
   expect_warning(

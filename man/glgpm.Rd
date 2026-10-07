@@ -13,8 +13,8 @@ glgpm(
   model_crs = NULL,
   distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
-  par0 = NULL,
-  return_samples = FALSE,
+  control_mcml = set_control_mcml(),
+  return_samples = TRUE,
   messages = TRUE,
   fix_var_me = NULL,
   start_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, sigma2_me =
@@ -53,10 +53,14 @@ Defaults to \code{"km"}.}
 \item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
 Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.}
 
-\item{par0}{Optional list of initial parameter values for the MCMC algorithm.}
+\item{control_mcml}{Control parameters for repeated Monte Carlo maximum
+likelihood updates. Must be returned by \code{\link[=set_control_mcml]{set_control_mcml()}}. The default
+performs one update, preserving the usual single-stage fit.}
 
-\item{return_samples}{Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
-Defaults to \code{FALSE}.}
+\item{return_samples}{Logical indicating whether to draw and retain
+conditional samples at the fitted parameters. These samples are used to
+compute fitted values. If \code{FALSE}, final sampling is skipped and fitted
+values are not computed. Defaults to \code{TRUE}. Ignored for Gaussian models.}
 
 \item{messages}{Logical indicating whether to print progress messages. Defaults to \code{TRUE}.}
 
@@ -77,8 +81,8 @@ the \code{nugget} term in \code{\link[=gp]{gp()}} is also set to \code{TRUE}.}
 \value{
 An object of class \code{RiskMap} containing the fitted model and relevant information:
 
-\item{estimate}{Estimated parameters, on their internal (working) scale, as
-a named list: \code{beta} (named regression coefficients), \code{sigma2},
+\item{estimate}{Estimated parameters as a named list: \code{beta} (named
+regression coefficients on the scale of the supplied covariates), \code{sigma2},
 \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
 estimated, \code{sigma2_me} for Gaussian models with an estimated
 measurement error variance, and \code{sigma2_re} (a named vector, one
@@ -108,7 +112,35 @@ its rows/columns are named to match \code{unlist(estimate)}.}
 \item{units_m}{Distribution offset if \code{family} is \code{binomial} or \code{poisson}}
 \item{cov_offset}{Covariate offset}
 \item{call}{Matched call}
-\item{S_samples}{MCMC samples if \code{return_samples} is \code{TRUE}}
+\item{S_samples}{For non-Gaussian models, fresh conditional MCMC samples
+evaluated at the fitted parameters when \code{return_samples} is \code{TRUE}. These
+are not the reference samples used for MCML estimation. The first block is
+the location-level Gaussian effect (including the nugget when present),
+followed by any unstructured random-effect blocks.}
+\item{linear_predictors}{Conditional fitted linear predictors. For
+non-Gaussian models these are Monte Carlo means over the final-parameter
+latent samples and are \code{NULL} when \code{return_samples = FALSE}; for Gaussian
+models they use the conditional latent mean.}
+\item{fitted_values}{Conditional fitted response means. Binomial models
+return probabilities; Poisson models return expected counts and therefore
+include any supplied exposure in \code{denominator}. These are \code{NULL} for
+non-Gaussian models when \code{return_samples = FALSE}.}
+\item{mcml_history}{For non-Gaussian models, one entry per MCML update,
+containing its fitted estimate, reference-distribution update, likelihood,
+parameter change, importance-sampling
+effective sample size, and seed. The likelihood-ratio gain is measured
+relative to the reference parameter used to generate that update's sample;
+it is therefore zero at the reference rather than an absolute likelihood.
+When overlap is inadequate, the reference update may be shortened towards
+the fitted estimate before the next importance sample is drawn; it is not
+itself reported as the fitted estimate.
+Both working-scale parameter change and change relative to the current
+standard errors are reported. Estimates use the same parameterisation as
+\code{estimate}, with regression coefficients and spatial range restored to the
+supplied covariate and distance units. \code{NULL} for Gaussian models.}
+\item{mcml_converged}{Whether repeated MCML updates met the requested
+tolerance. \code{NA} when only one update was requested and \code{NULL} for Gaussian
+models.}
 }
 \description{
 Fits generalized linear Gaussian process models to spatial data,
@@ -141,9 +173,16 @@ as \code{phi}) are expressed in kilometers (\code{"km"}, the default) or meters 
 
 The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.
 This argument must be an object returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.
+For non-Gaussian models, \code{control_mcml} can request repeated MCML updates.
+Each update draws a new importance sample around the preceding reference
+update. This equals the fitted estimate when importance-sampling overlap is
+adequate; otherwise it is shortened towards that estimate before the next
+sample is drawn. A distinct reproducible seed is used for each update when
+\code{control_mcmc$seed} is set.
 
-The \code{start_pars} argument allows for specifying starting values for the model parameters.
-If not provided, default starting values are used.
+The \code{start_pars} argument allows starting values to be supplied explicitly.
+Otherwise, binomial and Poisson models compare two automatic candidates
+and use the one with the better Laplace approximation.
 }
 \examples{
 
@@ -190,5 +229,6 @@ summary(fit)
 
 }
 \seealso{
-\code{\link{set_control_mcmc}}, \code{\link{summary.RiskMap}}, \code{\link{to_table}}
+\code{\link[=set_control_mcmc]{set_control_mcmc()}}, \code{\link[=set_control_mcml]{set_control_mcml()}},
+\code{\link{summary.RiskMap}}, \code{\link{to_table}}
 }

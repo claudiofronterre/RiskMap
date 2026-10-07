@@ -1,0 +1,181 @@
+test_that("MALA adaptation stops after burn-in", {
+  control <- set_control_mcmc(
+    n_sim = 80, burnin = 40, thin = 2, h = 0.5,
+    seed = 918
+  )
+
+  fit <- laplace_sampling_mcmc(
+    y = 3, units_m = 8, mu = 0, Sigma = matrix(0.7),
+    ID_coords = 1L, family = "binomial", control_mcmc = control,
+    messages = FALSE
+  )
+
+  expect_equal(nrow(fit$samples$S), 20)
+  expect_true(all(fit$tuning_par[41:80] == fit$tuning_par[40]))
+  expect_length(fit$acceptance, 80)
+  expect_named(fit$acceptance_rate, c("burnin", "sampling"))
+})
+
+test_that("MALA warm-up recovers from poor initial step sizes", {
+  run_with_h <- function(h, seed) {
+    laplace_sampling_mcmc(
+      y = 3, units_m = 8, mu = 0, Sigma = matrix(0.7),
+      ID_coords = 1L, family = "binomial",
+      control_mcmc = set_control_mcmc(
+        n_sim = 1200, burnin = 1000, thin = 1, h = h, seed = seed
+      ),
+      messages = FALSE
+    )
+  }
+  from_small <- run_with_h(0.05, 711)
+  from_large <- run_with_h(5, 712)
+
+  expect_true(
+    tail(from_small$tuning_par, 1) > 0.2 &&
+      tail(from_large$tuning_par, 1) < 2 &&
+      all(c(from_small$acceptance_rate["sampling"],
+            from_large$acceptance_rate["sampling"]) > 0.2) &&
+      all(c(from_small$acceptance_rate["sampling"],
+            from_large$acceptance_rate["sampling"]) < 0.9)
+  )
+})
+
+test_that("one-dimensional binomial samples reproduce exact posterior moments", {
+  control <- set_control_mcmc(
+    n_sim = 7000, burnin = 1000, thin = 1, h = 0.8,
+    seed = 2718
+  )
+  sigma2 <- 0.9
+  y <- 4
+  m <- 10
+
+  fit <- laplace_sampling_mcmc(
+    y = y, units_m = m, mu = 0, Sigma = matrix(sigma2),
+    ID_coords = 1L, family = "binomial", control_mcmc = control,
+    messages = FALSE
+  )
+
+  log_kernel <- function(s) {
+    dbinom(y, size = m, prob = plogis(s), log = TRUE) +
+      dnorm(s, sd = sqrt(sigma2), log = TRUE)
+  }
+  normalizer <- integrate(function(s) exp(log_kernel(s)), -Inf, Inf)$value
+  exact_mean <- integrate(
+    function(s) s * exp(log_kernel(s)), -Inf, Inf
+  )$value / normalizer
+  exact_second <- integrate(
+    function(s) s^2 * exp(log_kernel(s)), -Inf, Inf
+  )$value / normalizer
+
+  expect_equal(
+    c(mean = mean(fit$samples$S), variance = var(as.numeric(fit$samples$S))),
+    c(mean = exact_mean, variance = exact_second - exact_mean^2),
+    tolerance = 0.06
+  )
+})
+
+test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
+  control <- set_control_mcmc(
+    n_sim = 7000, burnin = 1000, thin = 1, h = 0.75,
+    seed = 3141
+  )
+  sigma2 <- 0.8
+  y <- 5
+  exposure <- 1.4
+
+  fit <- laplace_sampling_mcmc(
+    y = y, units_m = exposure, mu = 0, Sigma = matrix(sigma2),
+    ID_coords = 1L, family = "poisson", control_mcmc = control,
+    messages = FALSE
+  )
+
+  log_kernel <- function(s) {
+    dpois(y, lambda = exposure * exp(s), log = TRUE) +
+      dnorm(s, sd = sqrt(sigma2), log = TRUE)
+  }
+  normalizer <- integrate(function(s) exp(log_kernel(s)), -Inf, Inf)$value
+  exact_mean <- integrate(
+    function(s) s * exp(log_kernel(s)), -Inf, Inf
+  )$value / normalizer
+  exact_second <- integrate(
+    function(s) s^2 * exp(log_kernel(s)), -Inf, Inf
+  )$value / normalizer
+
+  expect_equal(
+    c(mean = mean(fit$samples$S), variance = var(as.numeric(fit$samples$S))),
+    c(mean = exact_mean, variance = exact_second - exact_mean^2),
+    tolerance = 0.06
+  )
+})
+
+test_that("correlated binomial samples reproduce grid-integrated moments", {
+  control <- set_control_mcmc(
+    n_sim = 12000, burnin = 2000, thin = 1, h = 0.65,
+    seed = 1618
+  )
+  Sigma <- matrix(c(0.9, 0.45, 0.45, 0.8), 2, 2)
+  y <- c(2, 7)
+  m <- c(8, 9)
+
+  fit <- laplace_sampling_mcmc(
+    y = y, units_m = m, mu = c(0, 0), Sigma = Sigma,
+    ID_coords = 1:2, family = "binomial", control_mcmc = control,
+    messages = FALSE
+  )
+
+  # A dense deterministic grid provides an independent reference calculation.
+  axis <- seq(-4.5, 4.5, length.out = 401)
+  grid <- expand.grid(s1 = axis, s2 = axis)
+  Sigma_inv <- solve(Sigma)
+  prior_quadratic <- rowSums((as.matrix(grid) %*% Sigma_inv) * grid)
+  log_weights <- dbinom(y[1], m[1], plogis(grid$s1), log = TRUE) +
+    dbinom(y[2], m[2], plogis(grid$s2), log = TRUE) -
+    prior_quadratic / 2
+  weights <- exp(log_weights - max(log_weights))
+  weights <- weights / sum(weights)
+  exact_mean <- colSums(as.matrix(grid) * weights)
+  centred <- sweep(as.matrix(grid), 2, exact_mean)
+  exact_cov <- crossprod(centred, centred * weights)
+
+  expect_equal(
+    c(unname(colMeans(fit$samples$S)), unname(cov(fit$samples$S))),
+    c(unname(exact_mean), unname(exact_cov)),
+    tolerance = 0.07
+  )
+})
+
+test_that("sampler controls and location indices are validated", {
+  expect_error(
+    set_control_mcmc(n_sim = 100, burnin = 100),
+    "larger than burnin"
+  )
+  expect_error(set_control_mcmc(h = 0), "positive finite")
+  expect_error(set_control_mcmc(c2.h = 0.5), "larger than 0.5")
+
+  control <- set_control_mcmc(n_sim = 20, burnin = 10, thin = 1)
+  expect_error(
+    laplace_sampling_mcmc(
+      y = c(1, 2), units_m = c(4, 4), mu = 0,
+      Sigma = matrix(1), ID_coords = c(1, 2), family = "binomial",
+      control_mcmc = control, messages = FALSE
+    ),
+    "valid integer location index"
+  )
+
+  expect_error(
+    laplace_sampling_mcmc(
+      y = 5, units_m = 4, mu = 0, Sigma = matrix(1),
+      ID_coords = 1L, family = "binomial", control_mcmc = control,
+      messages = FALSE
+    ),
+    "cannot exceed"
+  )
+  expect_error(
+    laplace_sampling_mcmc(
+      y = c(1, 2), units_m = c(4, 4), mu = 0, Sigma = matrix(1),
+      ID_coords = c(1, 1), ID_re = matrix(c(1, 3)), sigma2_re = 1,
+      family = "binomial", control_mcmc = control, messages = FALSE
+    ),
+    "consecutive indices"
+  )
+})

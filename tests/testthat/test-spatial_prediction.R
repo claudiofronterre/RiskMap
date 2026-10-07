@@ -131,6 +131,16 @@ test_that("setup_prediction produces errors as expected", {
     "The column names in 'predictors' do not match the variables in the model formula"
   )
 
+  missing_cov <- data.frame(cov = rnorm(nrow(grid)))
+  missing_cov$cov[3] <- NA
+
+  expect_error(
+    setup_prediction(gaussian_model,
+                   grid,
+                   predictors = missing_cov),
+    "'predictors' contains rows with missing data - check or remove them"
+  )
+
   expect_error(
     setup_prediction(gaussian_model,
                    grid_pred = list(grid, grid),
@@ -228,6 +238,22 @@ test_that("setup_prediction produces expected output", {
                            type = "joint")
   expect_setequal(names(result), expected_output)
 
+})
 
+test_that("joint prediction supports repeated observations at fitted locations", {
+  repeated_model <- gaussian_intercept_model
+  repeated_index <- rep(seq_len(nrow(repeated_model$data)), each = 2)
+  repeated_model$data <- repeated_model$data[repeated_index, ]
+  repeated_model$y <- repeated_model$y[repeated_index]
+  repeated_model$D <- repeated_model$D[repeated_index, , drop = FALSE]
+  repeated_model$ID_coords <- rep(
+    seq_len(nrow(repeated_model$coords)), each = 2
+  )
+  repeated_model$cov_offset <- repeated_model$cov_offset[repeated_index]
 
+  result <- setup_prediction(
+    repeated_model, type = "joint", messages = FALSE
+  )
+
+  expect_equal(nrow(result$S_samples), nrow(repeated_model$coords))
 })

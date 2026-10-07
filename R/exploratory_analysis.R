@@ -37,7 +37,7 @@ extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
   }
   coords <- coordinates_in_units(data, distance_units)
   if (dedupe) coords <- unique(coords)
-  as.numeric(dist(coords))
+  as.numeric(pairwise_distances(coords))
 }
 
 ##' @title Summaries of the distances
@@ -84,9 +84,51 @@ summarise_distance <- function(data,
   return(out)
 }
 
+#' Construct an extreme-rank-length global envelope
+#'
+#' @param curves Matrix with distance classes in rows and curves in columns;
+#'   the observed curve must be the first column.
+#' @param level Simultaneous coverage probability.
+#' @return The envelope bounds.
+#' @noRd
+global_rank_envelope <- function(curves, level) {
+  number_curves <- ncol(curves)
 
-##' @title Empirical variogram
-##' @description Computes the empirical variogram using lag-distance breakpoints.
+  # A curve is globally extreme when its sorted vector of two-sided pointwise
+  # ranks is lexicographically small. ERL resolves most ties left by the
+  # minimum-rank measure while preserving the exchangeability of the curves.
+  pointwise_ranks <- apply(curves, 1L, function(values) {
+    pmin(rank(values, ties.method = "average"),
+         rank(-values, ties.method = "average"))
+  })
+  if (is.null(dim(pointwise_ranks))) {
+    pointwise_ranks <- matrix(pointwise_ranks, ncol = 1L)
+  }
+  sorted_ranks <- t(apply(pointwise_ranks, 1L, sort))
+  ordering <- do.call(order, c(as.data.frame(sorted_ranks),
+                               list(method = "radix")))
+  ordered_ranks <- sorted_ranks[ordering, , drop = FALSE]
+
+  tied_with_previous <- c(FALSE, apply(ordered_ranks[-1L, , drop = FALSE] ==
+                                        ordered_ranks[-number_curves, , drop = FALSE],
+                                      1L, all))
+  group <- cumsum(!tied_with_previous)
+  ordered_upper_position <- ave(seq_len(number_curves), group, FUN = max)
+  upper_position <- integer(number_curves)
+  upper_position[ordering] <- ordered_upper_position
+
+  number_excluded <- floor((1 - level) * number_curves)
+  retained <- upper_position > number_excluded
+
+  list(lower = apply(curves[, retained, drop = FALSE], 1L, min),
+       upper = apply(curves[, retained, drop = FALSE], 1L, max))
+}
+
+
+##' @title Empirical variogram with a global permutation envelope
+##' @description Computes the empirical semivariogram using lag-distance
+##' breakpoints and, optionally, an extreme-rank-length global envelope for
+##' spatial independence.
 ##' @param data an object of class \code{sf} containing the variable for which the variogram
 ##' is to be computed and the coordinates
 ##' @param variable a character indicating the name of variable for which the variogram is to be computed.
@@ -98,10 +140,13 @@ summarise_distance <- function(data,
 ##' the breakpoints are generated as \code{seq(0, max_dist, length.out = n_bins + 1)}.
 ##' By default \code{max_dist = NULL} and the upper lag distance is set to \code{d_max/3},
 ##' where \code{d_max} is the maximum observed distance in the data.
-##' @param n_permutations a positive integer indicating the number of permutations
-##' used to compute the 95% confidence level envelope under the assumption of spatial
-##' independence. By default \code{n_permutations=1000} but if set to zero then no
-##' envelope is generated. Values between 2 and 100 will raise a warning.
+##' @param n_permutations a non-negative integer indicating the number of random
+##' permutations used with the observed curve to construct the global envelope.
+##' By default \code{n_permutations = 999}; set it to zero to omit the envelope.
+##' @param level the simultaneous coverage probability of the global envelope.
+##' By default \code{level = 0.95}.
+##' @param seed an optional non-negative integer seed for the permutations. The
+##' caller's random-number state is restored before the function returns.
 ##' @param distance_crs `NULL` to retain an existing projected CRS, or
 ##' automatically reproject longitude/latitude data to an appropriate UTM CRS
 ##' (with a message reporting the choice). Alternatively, a CRS to reproject
@@ -109,22 +154,32 @@ summarise_distance <- function(data,
 ##' @param distance_units Character string, either \code{"km"} or \code{"m"}, indicating whether
 ##' the distances used in the variogram are expressed in kilometers or meters.
 ##' By default \code{distance_units = "m"}
+##' @details The observed variogram is included among the permuted curves so
+##' that they are exchangeable under the null hypothesis of spatial
+##' independence. Curves are ordered by their extreme-rank-length ordering.
+##' Unlike separate pointwise intervals, the resulting envelope controls the
+##' probability that the variogram leaves the envelope anywhere across the lag
+##' distances. The envelope is intended as an exploratory diagnostic rather
+##' than a formal hypothesis test.
 ##'
 ##' @return an object of class `RiskMap_variogram` which is a list containing the following components:
 ##'   \describe{
 ##'   \item{variogram}{a data-frame containing the following columns:
 ##'   \describe{
-##'     \item{mid_points}{the middle points of the classes of distance provided by \code{breaks}}
-##'     \item{obs_vari}{the values of the observed variogram}
-##'     \item{n_obs}{the number of pairs}}
+##'     \item{distance}{the mean pair distance within each lag class}
+##'     \item{semivariance}{the observed empirical semivariance}
+##'     \item{n_pairs}{the number of pairs in the lag class}}
 ##'   If \code{n_permutations > 0}, the data-frame also contains the following columns:
 ##'.  \describe{
-##'     \item{lower_bound}{the lower bound of the 95% confidence interval}
-##'     \item{upper_bound}{the upper bound of the 95% confidence interval}
+##'     \item{lower_envelope}{the lower bound of the simultaneous envelope}
+##'     \item{upper_envelope}{the upper bound of the simultaneous envelope}
 ##'   }}
 ##'   \item{distance_units}{the value passed to \code{distance_units}}
 ##'   \item{n_permutations}{the number of permutations}
 ##'   \item{breaks}{the calculated breaks}
+##'   \item{level}{the simultaneous coverage probability}
+##'   \item{envelope_method}{\code{"global_extreme_rank_length"}, or
+##'   \code{NULL} if no permutations were requested}
 ##'   }
 ##'
 ##' @examples
@@ -134,25 +189,28 @@ summarise_distance <- function(data,
 ##'                      data = italy_sim[1:200,],
 ##'                      variable = "y",
 ##'                      n_bins = 10,
-##'                      n_permutations = 100)
+##'                      n_permutations = 199,
+##'                      seed = 123)
 ##'
 ##' plot_variogram(italy_variogram,
 ##'                plot_envelope = TRUE)
 ##'
 ##' @export
-##'
 variogram <- function(data,
                       variable,
                       breaks = NULL,
                       n_bins = 14L,
                       max_dist = NULL,
-                      n_permutations = 1000,
+                      n_permutations = 999L,
+                      level = 0.95,
+                      seed = NULL,
                       distance_crs = NULL,
                       distance_units = c("m", "km")) {
 
   check_data(data)
 
-  if (!inherits(variable, "character") | length(variable) > 1){
+  if (!is.character(variable) || length(variable) != 1L ||
+      is.na(variable) || !nzchar(variable)) {
     stop("'variable' must be a single object of class 'character'")
   }
   if (!variable %in% names(data)){
@@ -164,35 +222,42 @@ variogram <- function(data,
   if (!is.null(breaks) && !missing(max_dist)){
     stop("'breaks' and 'max_dist' cannot both be supplied")
   }
-  if (length(n_bins) != 1 || !is.numeric(n_bins) || n_bins < 1 || n_bins != round(n_bins)) {
-    stop("'n_bins' must be a positive integer")
+  values <- data[[variable]]
+  if (!is.numeric(values) || any(!is.finite(values))) {
+    stop("'variable' must contain only finite numeric values", call. = FALSE)
   }
-  if (!is.null(max_dist) && (length(max_dist) != 1 || !is.numeric(max_dist) || max_dist <= 0)) {
-    stop("'max_dist' must be a positive numeric value")
+  if (nrow(data) < 2L) {
+    stop("'data' must contain at least two locations", call. = FALSE)
   }
-  if (n_permutations < 0 | n_permutations != round(n_permutations)){
-    stop("'n_permutations' must be a positive integer number")
+
+  check_positive_integer(n_bins, "n_bins")
+  if (!is.null(max_dist)) {
+    check_range(max_dist, min = 0, max = Inf, allow_equal = FALSE,
+                name = "max_dist")
   }
-  if (n_permutations == 2){
-    stop("'n_permutations' must be greater than 2")
+  check_positive_integer(n_permutations, "n_permutations", allow_zero = TRUE)
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
+  if (n_permutations > 0L &&
+      n_permutations + 1L < ceiling(1 / (1 - level))) {
+    stop("'n_permutations' is too small to construct a global envelope at ",
+         "the requested 'level'", call. = FALSE)
   }
-  if (n_permutations != 0 & n_permutations < 100){
-    warning("'n_permutations' is set very low - consider increasing it")
-  }
+  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
   stopifnot("'distance_units' must be either 'km' or 'm'" =
               is.character(distance_units) && all(distance_units %in% c("km", "m")))
   distance_units <- match.arg(distance_units)
 
   d <- extract_distances(data, distance_crs, "distance_crs", "computing distances",
                         distance_units)
-  v <- (as.numeric(dist(data[[variable]])) ^ 2) / 2
-  vario_df <- data.frame(d=d, v=v)
+  if (!length(d) || !is.finite(max(d)) || max(d) <= 0) {
+    stop("'data' must contain at least two distinct locations", call. = FALSE)
+  }
 
   if (is.null(breaks)) {
     upper_dist <- ifelse(is.null(max_dist), max(d) / 3, max_dist)
     breaks <- seq(0, upper_dist, length.out = n_bins + 1)
   } else {
-    if (!is.numeric(breaks) || length(breaks) < 2) {
+    if (!is.numeric(breaks) || length(breaks) < 2L || any(!is.finite(breaks))) {
       stop("'breaks' must be a numeric vector with at least two values")
     }
     if (any(diff(breaks) <= 0)) {
@@ -206,46 +271,81 @@ variogram <- function(data,
   if (upper_dist > max(d)){
     stop("the provided lag distances go beyond the maximum observed distance")
   }
-  mid_points <- (breaks[-1] + breaks[-length(breaks)]) / 2
-
-  vario_df <- vario_df[vario_df$d <= upper_dist,]
-  if (nrow(vario_df) == 0){
+  distance_class <- as.integer(cut(d, breaks = breaks,
+                                   include.lowest = TRUE, right = TRUE))
+  included <- !is.na(distance_class)
+  if (!any(included)) {
     stop("the provided lag distances do not match the
           scale of the observed distances; consider setting distance_units = 'km'")
   }
-  vario_df$dist_class <- cut(vario_df$d, breaks = breaks,
-                             include.lowest = TRUE, right = TRUE)
-  variogram <- data.frame(mid_points = mid_points)
-  variogram$obs_vari <- tapply(vario_df$v, vario_df$dist_class, mean)
-  variogram$n_obs <- tapply(vario_df$v, vario_df$dist_class, length)
-  variogram$n_obs[is.na(variogram$n_obs)] <- 0
-  if (n_permutations > 0) {
-    v_perm <- matrix(NA, nrow=length(variogram$obs_vari),
-                     ncol = n_permutations)
-    n <- nrow(data)
-    ind_perm <- sample(1:n)
-    obs_are <- variogram$n_obs>0
-    for (i in 1:n_permutations) {
-      ind_perm <- sample(1:n)
-      v_i <- (as.numeric(dist(data[[variable]][ind_perm])) ^ 2) / 2
 
-      vario_df_i <- data.frame(d=d, v=v_i)
-      vario_df_i <- vario_df_i[vario_df_i$d <= upper_dist,]
-      vario_df_i$dist_class <- vario_df$dist_class
+  d <- d[included]
+  distance_class <- distance_class[included]
+  number_bins <- length(breaks) - 1L
+  number_pairs <- length(d)
+  n_pairs <- tabulate(distance_class, nbins = number_bins)
+  distance_sum <- numeric(number_bins)
+  summed_distances <- rowsum(d, distance_class, reorder = FALSE)
+  distance_sum[as.integer(rownames(summed_distances))] <- summed_distances[, 1L]
+  mean_distance <- distance_sum / n_pairs
+  mean_distance[n_pairs == 0L] <- NA_real_
 
-      v_perm[,i] <- tapply(vario_df_i$v, vario_df_i$dist_class, mean)
-    }
-    variogram$lower_bound <- NA
-    variogram$lower_bound[obs_are] <- apply(v_perm[obs_are,], 1,
-                                            function(x) quantile(x, 0.025))
-    variogram$upper_bound <- NA
-    variogram$upper_bound[obs_are] <- apply(v_perm[obs_are,], 1,
-                                            function(x) quantile(x, 0.975))
+  n <- nrow(data)
+  first_index <- integer(n * (n - 1L) / 2L)
+  second_index <- integer(length(first_index))
+  position <- 1L
+  for (second in seq_len(n - 1L)) {
+    length_block <- n - second
+    indices <- position:(position + length_block - 1L)
+    first_index[indices] <- (second + 1L):n
+    second_index[indices] <- second
+    position <- position + length_block
   }
-  result <- list(variogram = variogram)
-  result$distance_units <- distance_units
-  result$n_permutations <- n_permutations
-  result$breaks <- breaks
+
+  first_index <- first_index[included] - 1L
+  second_index <- second_index[included] - 1L
+  bin_index <- distance_class - 1L
+
+  if (!is.null(seed)) {
+    restore_seed <- preserve_random_seed()
+    on.exit(restore_seed(), add = TRUE)
+    set.seed(seed)
+  }
+  permutations <- matrix(seq_len(n), ncol = 1L)
+  if (n_permutations > 0L) {
+    permutations <- cbind(
+      permutations,
+      replicate(n_permutations, sample.int(n), simplify = "matrix")
+    )
+  }
+  permuted_values <- matrix(values[permutations], nrow = n)
+  curves <- cpp_binned_semivariances(permuted_values, first_index,
+                                     second_index, bin_index, number_bins)
+
+  variogram_data <- data.frame(
+    distance = mean_distance,
+    semivariance = curves[, 1L],
+    n_pairs = n_pairs
+  )
+  envelope_method <- NULL
+  if (n_permutations > 0L) {
+    nonempty <- n_pairs > 0L
+    envelope <- global_rank_envelope(curves[nonempty, , drop = FALSE], level)
+    variogram_data$lower_envelope <- NA_real_
+    variogram_data$upper_envelope <- NA_real_
+    variogram_data$lower_envelope[nonempty] <- envelope$lower
+    variogram_data$upper_envelope[nonempty] <- envelope$upper
+    envelope_method <- "global_extreme_rank_length"
+  }
+
+  result <- list(
+    variogram = variogram_data,
+    distance_units = distance_units,
+    n_permutations = n_permutations,
+    breaks = breaks,
+    level = level,
+    envelope_method = envelope_method
+  )
 
   class(result) <- "RiskMap_variogram"
   return(result)
@@ -254,14 +354,14 @@ variogram <- function(data,
 ##' @title Plotting the empirical variogram
 ##' @description Plots the empirical variogram generated by \code{\link{variogram}}
 ##' @param variogram_output The output generated by the function \code{\link{variogram}}.
-##' @param plot_envelope A logical value indicating if the envelope of spatial independence
+##' @param plot_envelope A logical value indicating if the global envelope of spatial independence
 ##' generated using the permutation test must be displayed (\code{plot_envelope = TRUE}) or not
 ##' (\code{plot_envelope = FALSE}). By default \code{plot_envelope = TRUE}. Note: if
-##' \code{n_permutations} was 1 or 0 when running \code{\link{variogram}}, no envelope
+##' \code{n_permutations} was 0 when running \code{\link{variogram}}, no envelope
 ##' can be generated; a warning is raised and the envelope is skipped.
 ##' @param color If \code{plot_envelope = TRUE}, it sets the colour of the envelope; run \code{vignette("ggplot2-specs")} for more details on this argument.
 ##' @return A \code{ggplot} object representing the empirical variogram plot, optionally including the envelope of spatial independence.
-##' @details This function plots the empirical variogram, which shows the spatial dependence structure of the data. If \code{plot_envelope} is set to \code{TRUE}, the plot will also include an envelope indicating the range of values under spatial independence, based on a permutation test.
+##' @details This function plots the empirical variogram, which shows the spatial dependence structure of the data. If \code{plot_envelope} is set to \code{TRUE}, the plot also includes a simultaneous extreme-rank-length envelope for spatial independence.
 ##' @seealso \code{\link{variogram}}
 ##' @export
 plot_variogram <- function(variogram_output,
@@ -272,7 +372,7 @@ plot_variogram <- function(variogram_output,
     stop("'variogram' must be an object of class 'RiskMap_variogram'")
   }
 
-  if (plot_envelope && variogram_output$n_permutations <= 1){
+  if (plot_envelope && variogram_output$n_permutations == 0L){
     warning("No envelope for spatial independence can be plotted because 'n_permutations' ",
             "was ", variogram_output$n_permutations, " when 'variogram()' was run; ",
             "plotting without the envelope. Increase 'n_permutations' or set ",
@@ -281,18 +381,18 @@ plot_variogram <- function(variogram_output,
   }
 
   basic_plot <- ggplot(data = variogram_output$variogram,
-                  aes(x = .data$mid_points, y = .data$obs_vari)) +
-                  geom_point() +
-                  geom_line()
+                       aes(x = .data$distance, y = .data$semivariance))
 
   if (plot_envelope) {
     basic_plot <- basic_plot +
-      geom_ribbon(aes(ymin = variogram_output$variogram$lower_bound,
-                      ymax = variogram_output$variogram$upper_bound),
+      geom_ribbon(aes(ymin = .data$lower_envelope,
+                      ymax = .data$upper_envelope),
                   fill = color, alpha = 0.3)
   }
 
+  basic_plot <- basic_plot + geom_point() + geom_line()
+
   x_label <- sprintf("Distance (%s)", variogram_output$distance_units)
 
-  basic_plot + labs(x = x_label, y = "Variogram")
+  basic_plot + labs(x = x_label, y = "Semivariance")
 }

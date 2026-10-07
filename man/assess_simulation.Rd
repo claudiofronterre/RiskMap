@@ -10,8 +10,8 @@ assess_simulation(
   control_mcmc = set_control_mcmc(),
   spatial_scale,
   messages = TRUE,
-  f_grid_target = NULL,
-  f_area_target = NULL,
+  target_transform = NULL,
+  area_summary = NULL,
   boundaries = NULL,
   col_names = NULL,
   pred_objective = c("mse", "classify"),
@@ -23,19 +23,29 @@ assess_simulation(
 The current assessment interface supports generating models without
 grouped \code{re()} effects or custom inverse links.}
 
-\item{models}{A named list of models to be evaluated.}
+\item{models}{A named list of fitted models returned by \code{\link[=glgpm]{glgpm()}} or model
+specifications returned by \code{\link[=specify_glgpm]{specify_glgpm()}}. Each object defines a
+candidate model specification and is refitted to every simulated dataset;
+its estimated parameter values are not reused.}
 
 \item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
 
-\item{spatial_scale}{The scale at which predictions are assessed, either \code{"grid"} or \code{"area"}.}
+\item{spatial_scale}{The scale(s) at which predictions are assessed: \code{"grid"}, \code{"area"}, or \code{c("grid", "area")}
+to compute both from a single fit-and-predict pass over the simulations.}
 
 \item{messages}{Logical, if \code{TRUE} messages will be displayed during processing. Default is \code{TRUE}.}
 
-\item{f_grid_target}{A function for processing grid-level predictions.}
+\item{target_transform}{A function that converts a numeric matrix of linear
+predictors to a numeric matrix of scientific targets with the same
+dimensions. For example, use \code{\link[=plogis]{plogis()}} for prevalence from a binomial
+logit model or \code{\link[=exp]{exp()}} for the mean of a Poisson log-link model.}
 
-\item{f_area_target}{A function for processing area-level predictions.}
+\item{area_summary}{A function that combines a numeric vector of grid-cell
+targets within one area and returns one finite numeric value, such as
+\code{\link[base:mean]{base::mean()}} or \code{\link[base:sum]{base::sum()}}. Required only when \code{spatial_scale}
+includes \code{"area"}.}
 
-\item{boundaries}{An \code{sf} object containing only POLYGON or MULTIPOLYGON geometries, required if \code{spatial_scale = "area"}.}
+\item{boundaries}{An \code{sf} object containing only POLYGON or MULTIPOLYGON geometries, required if \code{spatial_scale} includes \code{"area"}.}
 
 \item{col_names}{Column name in \code{boundaries} containing unique region names. If \code{NULL}, defaults to \code{"region"}.}
 
@@ -44,8 +54,40 @@ grouped \code{re()} effects or custom inverse links.}
 \item{categories}{A numeric vector of thresholds defining categories for classification. Required if \code{pred_objective = "classify"}.}
 }
 \value{
-A list of class \code{RiskMap_assess_simulation} containing model evaluation results.
+A list of class \code{RiskMap_assess_simulation}. \code{pred_objective} holds one element per
+requested \code{spatial_scale} (\code{"grid"} and/or \code{"area"}), each in turn holding \code{mse} and/or
+\code{classify} per the requested \code{pred_objective}.
 }
 \description{
 Evaluates models using joint data and surface simulations.
+}
+\examples{
+library(sf)
+data(italy_sim)
+italy_subset <- italy_sim[1:30, ]
+italy_grid <- italy_subset[!duplicated(st_coordinates(italy_subset)), ]
+model <- specify_glgpm(
+  y ~ pop_dens + gp(), italy_subset, family = "gaussian",
+  parameters = list(beta = c(1, 0.001), sigma2 = 1, phi = 20,
+                    sigma2_me = 0.1)
+)
+simulations <- simulate_glgpm(
+  model, nsim = 1, what = c("data", "surface"),
+  prediction_grid = italy_grid, seed = 1
+)
+boundary <- st_sf(
+  region = "study_area",
+  geometry = st_convex_hull(st_union(italy_grid))
+)
+assessment <- assess_simulation(
+  simulations,
+  models = list(candidate = model),
+  spatial_scale = c("grid", "area"),
+  target_transform = exp,
+  area_summary = mean,
+  boundaries = boundary,
+  pred_objective = "mse",
+  messages = FALSE
+)
+
 }
