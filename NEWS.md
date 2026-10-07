@@ -20,7 +20,7 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `matern_cor` | `matern_correlation` |
 | `maxim.integrand` | `maxim_integrand` |
 | `plot_score` / `plot_AnPIT` | `plot.RiskMap_cross_validation` (the two are merged; by default it draws every plot the `RiskMap_cross_validation` object has data for) |
-| `plot_s_variogram` | `plot_variogram` |
+| `plot_s_variogram` | `plot.RiskMap_variogram` |
 | `pred_over_grid` | `setup_prediction` |
 | `pred_target_grid` | `predict_grid_target` |
 | `pred_target_shp` | `predict_areal_target` |
@@ -58,8 +58,8 @@ native linear units rather than assuming metres.
   permutations plus the observed curve. The returned columns are now `distance`,
   `semivariance`, `n_pairs`, `lower_envelope` and `upper_envelope`. A `seed` can
   be supplied without changing the caller's random-number state.
-  `plot_variogram()` now shows the envelope by default and warns when it
-  was omitted with `n_permutations = 0`.
+  `plot_variogram()` (now `plot.RiskMap_variogram()`) shows the envelope by
+  default and warns when it was omitted with `n_permutations = 0`.
 - `create_grid()` no longer raises an error when `boundaries` is in
 longitude/latitude; like `glgpm()`, it now automatically reprojects to an
 appropriate UTM zone and reports the conversion with a message.
@@ -125,3 +125,5 @@ with small measurement-error variances while retaining the same conditional mode
   than one model, its own small grid with one panel per model); with more
   than one metric, each one is drawn in turn and the full set is returned
   invisibly as a named list.
+- `plot_variogram()` is now `plot.RiskMap_variogram()`, a method rather than
+  a standalone function; call it as `plot(variogram_result)`.
