@@ -127,3 +127,5 @@ with small measurement-error variances while retaining the same conditional mode
   invisibly as a named list.
 - `plot_variogram()` is now `plot.RiskMap_variogram()`, a method rather than
   a standalone function; call it as `plot(variogram_result)`.
+- `plot_sim_surf()` is now `plot.RiskMap_simulation()`; call it as
+  `plot(sim_result, sim = ...)`.

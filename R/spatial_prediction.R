@@ -2222,12 +2222,12 @@ assess_prediction <- function(object,
   return(out)
 }
 
-##' Plot simulated surface data for a given simulation
-##'
+##' @title Plot Method for RiskMap_simulation Objects
+##' @description
 ##' Plots the linear predictor from [simulate_glgpm()] on a regular grid,
 ##' with sampling locations overlaid when replicated data are available.
 ##'
-##' @param surf_obj Output from [simulate_glgpm()] including a surface.
+##' @param x Output from [simulate_glgpm()] including a surface.
 ##' @param sim The simulation index to plot.
 ##' @param ... Additional graphical parameters to be passed to the plotting function of the `terra` package.
 ##'
@@ -2235,10 +2235,11 @@ assess_prediction <- function(object,
 ##'
 ##' @importFrom terra rast rasterize vect
 ##'
+##' @method plot RiskMap_simulation
 ##' @export
-plot_sim_surf <-  function(surf_obj, sim, ...) {
+plot.RiskMap_simulation <- function(x, sim, ...) {
 
-  sf_object <- simulated_surface(surf_obj, sim)
+  sf_object <- simulated_surface(x, sim)
 
   # Points are assumed to fall on a regular lattice (e.g. from create_grid());
   # infer its cell size from the smallest gap between distinct coordinates,
@@ -2257,8 +2258,8 @@ plot_sim_surf <-  function(surf_obj, sim, ...) {
   r <- rasterize(vect(sf_object), template, field = "linear_predictor")
 
   plot(r, main = paste("Simulation no.", sim), ...)
-  if (!is.null(surf_obj$locations$data)) {
-    points(st_coordinates(surf_obj$locations$data), pch = 20)
+  if (!is.null(x$locations$data)) {
+    points(st_coordinates(x$locations$data), pch = 20)
   }
 
 }

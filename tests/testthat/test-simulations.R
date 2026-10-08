@@ -409,3 +409,12 @@ test_that("classification summaries handle one simulation and metric-wise missin
   expect_equal(summary_two$cc_summary$n_valid, 2L)
   expect_equal(summary_two$cc_summary$n_sim, 2L)
 })
+
+test_that("plot.RiskMap_simulation plots the simulated surface (#87)", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = grid, seed = 1)
+
+  expect_s3_class(sim, "RiskMap_simulation")
+  expect_error(plot(sim, sim = 3), "must select valid simulation numbers")
+})
