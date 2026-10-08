@@ -192,8 +192,7 @@ global_rank_envelope <- function(curves, level) {
 ##'                      n_permutations = 199,
 ##'                      seed = 123)
 ##'
-##' plot(italy_variogram,
-##'     plot_envelope = TRUE)
+##' plot(italy_variogram)
 ##'
 ##' @export
 variogram <- function(data,
