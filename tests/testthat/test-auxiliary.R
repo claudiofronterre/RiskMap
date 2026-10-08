@@ -315,3 +315,18 @@ test_that("plot.RiskMap_cross_validation can select only the calibration curve",
   expect_s3_class(p, "ggplot")
   expect_no_error(ggplot2::ggplot_build(p))
 })
+
+test_that("plot.RiskMap_cross_validation's calibration curve actually filters to the requested test_set", {
+
+  p1 <- plot(cross_validation, metric = "AnPIT", model = "model_a",
+            mode = "single", test_set = 1)
+  p2 <- plot(cross_validation, metric = "AnPIT", model = "model_a",
+            mode = "single", test_set = 2)
+
+  expect_false(identical(p1$data$value, p2$data$value))
+  expect_error(
+    plot(cross_validation, metric = "AnPIT", model = "model_a",
+        mode = "single", test_set = 99),
+    "No data for test_set 99"
+  )
+})

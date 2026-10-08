@@ -1185,7 +1185,7 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
                 single  = {
                   if (is.null(test_set))
                     stop("Provide `test_set` when mode = 'single'.")
-                  df_ts <- dplyr::filter(df_model, test_set == test_set)
+                  df_ts <- df_model[df_model$test_set == test_set,]
                   if (nrow(df_ts) == 0)
                     stop("No data for test_set ", test_set, " in model ", mname)
                   build_plot(df_ts,
