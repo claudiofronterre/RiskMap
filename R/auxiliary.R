@@ -1314,7 +1314,10 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
   }), ordered_metrics)
 
   if (length(groups) == 1) {
-    return(groups[[1]])
+    if (inherits(groups[[1]], "ggplot")) {
+      return(groups[[1]])
+    }
+    return(invisible(groups[[1]]))
   }
 
   # draw each metric as its own figure rather than
