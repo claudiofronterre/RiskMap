@@ -436,24 +436,24 @@ test_that("a variogram seed is reproducible without changing the caller RNG", {
   expect_equal(first, second)
 })
 
-test_that("plot_variogram defaults to plotting the envelope when available", {
+test_that("plot.RiskMap_variogram defaults to plotting the envelope when available", {
 
   result <- variogram(gaussian_data, variable = "y", n_bins = 10,
                       n_permutations = 99, seed = 123)
 
-  expect_no_warning(p <- plot_variogram(result))
+  expect_no_warning(p <- plot(result))
   expect_true("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
 })
 
-test_that("plot_variogram warns and skips the envelope when n_permutations <= 1", {
+test_that("plot.RiskMap_variogram warns and skips the envelope when n_permutations <= 1", {
 
   result <- variogram(gaussian_data, variable = "y", n_bins = 10, n_permutations = 0)
 
   expect_warning(
-    p <- plot_variogram(result),
+    p <- plot(result),
     "'n_permutations' was 0"
   )
   expect_false("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
 
-  expect_no_warning(plot_variogram(result, plot_envelope = FALSE))
+  expect_no_warning(plot(result, plot_envelope = FALSE))
 })
