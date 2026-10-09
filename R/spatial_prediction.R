@@ -1242,8 +1242,6 @@ pad_map_extent <- function(extent, north_arrow, scale_bar) {
 ##'
 ##' @seealso \code{\link{setup_prediction}}, \code{\link{predict_grid_target}}
 ##'
-##' @importFrom terra rast as.data.frame
-##'
 ##' @examples
 ##' library(sf)
 ##' data(italy_sim)
@@ -2006,7 +2004,6 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' tropical disease prevalence. *Journal of the Royal Statistical Society Series
 ##' A: Statistics in Society*.\doi{10.1093/jrsssa/qnag100}.
 ##'
-##' @importFrom terra match
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
 ##'

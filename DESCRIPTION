@@ -38,7 +38,6 @@ Imports:
     sns,
     spatialEco,
     spatialsample,
-    terra,
     tibble,
     units
 LinkingTo:
