@@ -27,6 +27,7 @@ Imports:
     Deriv,
     dplyr,
     ggplot2,
+    ggspatial,
     gridExtra,
     knitr,
     Matrix,
@@ -37,7 +38,6 @@ Imports:
     sns,
     spatialEco,
     spatialsample,
-    terra,
     tibble,
     units
 LinkingTo:

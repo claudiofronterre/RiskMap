@@ -72,6 +72,10 @@ a \code{data.frame}/matrix of raw samples for each named target in \code{f_targe
 if \code{return_target_samples = TRUE}.
 \item \code{boundaries}: (optional) the input \code{sf} object with appended summary columns,
 included if \code{return_boundaries = TRUE}.
+\item \code{grid_summary_range}: nested \code{list} giving, for each target and
+summary, the range of the same summary computed for each grid cell. Used by
+\code{\link[=plot.RiskMap_predict_areal_target]{plot.RiskMap_predict_areal_target()}} so that its colour scale matches
+\code{\link[=plot.RiskMap_predict_grid_target]{plot.RiskMap_predict_grid_target()}}.
 \item \code{f_target}, \code{pd_summary}, \code{grid_pred}: inputs echoed for reproducibility.
 }
 }

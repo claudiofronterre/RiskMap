@@ -928,7 +928,7 @@ predict_grid_target <- function(object,
 
 ##' Plot Method for RiskMap_predict_grid_target Objects
 ##'
-##' Generates a plot of the predicted values or summaries over the regular spatial grid
+##' Generates a map of the predicted values or summaries over the regular spatial grid
 ##' from an object of class 'RiskMap_predict_grid_target'.
 ##'
 ##' @param x An object of class 'RiskMap_predict_grid_target'.
@@ -936,20 +936,135 @@ predict_grid_target <- function(object,
 ##' one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.
 ##' @param summary Character string specifying which summary statistic to plot
 ##' (e.g., "mean", "sd"), one of \code{x$pd_summary}. Defaults to \code{"mean"}.
-##' @param ... Additional arguments passed to the \code{\link[terra]{plot}} function of the \code{terra} package.
+##' @param palette Either the name of a palette from [grDevices::hcl.pals()]
+##' (e.g. `"viridis"`, `"Blues"`, `"Spectral"`) or a character vector of two or
+##' more colours to interpolate between. Defaults to `"viridis"`.
+##' @param reverse_palette Logical; if `TRUE`, reverse the order of the palette
+##' colours. Defaults to `FALSE`.
+##' @param north_arrow Logical; if `TRUE` (the default), add a north arrow to the map.
+##' @param scale_bar Logical; if `TRUE` (the default), add a scale bar to the map.
+##' @param limits Range of the colour scale: `"shared"` (the default),
+##' `"independent"` or a numeric vector of length two giving custom limits.
+##' For grid maps, `"shared"` and `"independent"` both use the range of the
+##' plotted values; this is the range that
+##' [plot.RiskMap_predict_areal_target()] shares by default.
+##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()],
+##' e.g. `name` or `breaks`.
 ##' @return A \code{ggplot} object representing the specified prediction target or summary statistic over the spatial grid.
 ##' @details
-##' This function requires the 'terra' package for spatial data manipulation and plotting.
-##' It plots the values or summaries over a regular spatial grid, allowing for visual examination of spatial patterns.
+##' The grid cells are drawn with [ggplot2::geom_tile()] in the coordinate
+##' reference system of the prediction grid, with axes labelled in longitude
+##' and latitude. Tiles are used rather than a raster so that grids with
+##' missing rows or columns, or that are not exactly regular (e.g. after
+##' reprojection), are drawn at their true locations. When the north arrow or
+##' scale bar is shown, space is added above or below the data so that they do
+##' not cover it. The styling matches [plot.RiskMap_predict_areal_target()].
+##' The returned object can be modified further with standard \pkg{ggplot2}
+##' functions.
 ##'
-##' @seealso \code{\link{predict_grid_target}}
+##' @seealso \code{\link{predict_grid_target}}, \code{\link{plot.RiskMap_predict_areal_target}}
 ##'
-##' @importFrom terra as.data.frame rast plot
 ##' @method plot RiskMap_predict_grid_target
 ##' @export
 ##'
 ##'
-plot.RiskMap_predict_grid_target <- function(x, target = NULL, summary = "mean", ...) {
+plot.RiskMap_predict_grid_target <- function(x, target = NULL, summary = "mean",
+                                             palette = "viridis",
+                                             reverse_palette = FALSE,
+                                             north_arrow = TRUE,
+                                             scale_bar = TRUE,
+                                             limits = "shared", ...) {
+  stopifnot("'x' must be of class RiskMap_predict_grid_target" =
+              inherits(x, "RiskMap_predict_grid_target"))
+  if (inherits(x$grid_pred, "list")) {
+    stop("Plotting is not supported when 'grid_pred' is a list of grids")
+  }
+  target <- check_plot_target(x, target, summary)
+
+  plot_grid(x$grid_pred,
+            values = x$target[[target]][[summary]],
+            legend_title = paste0(target, "_", summary),
+            palette = palette,
+            reverse_palette = reverse_palette,
+            limits = resolve_colour_limits(limits),
+            north_arrow = north_arrow,
+            scale_bar = scale_bar,
+            ...)
+}
+
+##' Map values over a regular grid of points
+##'
+##' Draws each grid point as a tile, styled with `add_map_layers()`. Shared by
+##' the plot methods for grid predictions and simulated surfaces.
+##'
+##' @param grid An `sf` or `sfc` object of points on a regular grid.
+##' @param values Numeric vector of values to map, one per point in `grid`.
+##' @param legend_title Character string used as the fill legend title.
+##' @param palette,reverse_palette,limits,north_arrow,scale_bar,... Passed to
+##' `add_map_layers()`.
+##' @return A `ggplot` object.
+##' @noRd
+plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
+                      limits, north_arrow, scale_bar, ...) {
+  grid_coordinates <- st_coordinates(grid)
+  plot_data <- data.frame(x = grid_coordinates[, 1],
+                          y = grid_coordinates[, 2],
+                          value = values)
+
+  tile_width <- grid_spacing(plot_data$x)
+  tile_height <- grid_spacing(plot_data$y)
+  # a single row or column has no spacing of its own, so borrow the other
+  # axis's to keep the tiles square
+  if (is.na(tile_width) && is.na(tile_height)) {
+    tile_width <- tile_height <- 1
+  } else if (is.na(tile_width)) {
+    tile_width <- tile_height
+  } else if (is.na(tile_height)) {
+    tile_height <- tile_width
+  }
+
+  # extent of the tiles, not just their centres
+  extent <- c(xmin = min(plot_data$x) - tile_width / 2,
+              xmax = max(plot_data$x) + tile_width / 2,
+              ymin = min(plot_data$y) - tile_height / 2,
+              ymax = max(plot_data$y) + tile_height / 2)
+
+  out <- ggplot(plot_data) +
+    geom_tile(aes(x = .data$x, y = .data$y, fill = .data$value),
+              width = tile_width, height = tile_height)
+
+  add_map_layers(out,
+                 extent = extent,
+                 crs = st_crs(grid),
+                 legend_title = legend_title,
+                 palette = palette,
+                 reverse_palette = reverse_palette,
+                 limits = limits,
+                 north_arrow = north_arrow,
+                 scale_bar = scale_bar,
+                 ...)
+}
+
+##' Spacing between the points of a regular grid along one axis
+##'
+##' @param coordinates Numeric vector of coordinates along one axis.
+##' @return The smallest gap between distinct coordinates, or `NA` when they
+##' all share one value.
+##' @noRd
+grid_spacing <- function(coordinates) {
+  if (length(unique(coordinates)) < 2) return(NA_real_)
+  resolution(coordinates, zero = FALSE)
+}
+
+##' Validate the target and summary requested from a prediction object
+##'
+##' @param x An object of class 'RiskMap_predict_grid_target' or
+##' 'RiskMap_predict_areal_target'.
+##' @param target Character string naming the target, or `NULL` for the first.
+##' @param summary Character string naming the summary statistic.
+##' @return The name of the target to plot.
+##' @noRd
+check_plot_target <- function(x, target, summary) {
   if (is.null(target)) {
     target <- x$f_target[1]
   } else if (!target %in% x$f_target) {
@@ -958,14 +1073,117 @@ plot.RiskMap_predict_grid_target <- function(x, target = NULL, summary = "mean",
   if (!summary %in% x$pd_summary) {
     stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
   }
+  target
+}
 
-  t_data.frame <-
-    terra::as.data.frame(cbind(st_coordinates(x$grid_pred),
-                               x$target[[target]][[summary]]),
-                         xy = TRUE)
-  raster_out <- rast(t_data.frame, crs = st_crs(x$grid_pred)$wkt)
+##' Convert a palette specification into a vector of colours
+##'
+##' @param palette Either the name of a palette in [grDevices::hcl.pals()] or a
+##' character vector of two or more valid colours.
+##' @param reverse_palette Logical; reverse the order of the colours.
+##' @return A character vector of colours.
+##' @noRd
+palette_colours <- function(palette, reverse_palette = FALSE) {
+  stopifnot("'palette' must be a character vector" = is.character(palette))
+  check_logical(reverse_palette)
 
-  terra::plot(raster_out, ...)
+  if (length(palette) == 1) {
+    # hcl.colors() ignores case, spaces and punctuation in palette names
+    normalise_name <- function(name) tolower(gsub("[^[:alnum:]]", "", name))
+    if (!normalise_name(palette) %in% normalise_name(grDevices::hcl.pals())) {
+      stop("'palette' must be one of grDevices::hcl.pals() or a vector of two or more colours")
+    }
+    colours <- grDevices::hcl.colors(256, palette = palette)
+  } else {
+    valid_colour <- vapply(palette, function(colour) {
+      !inherits(try(grDevices::col2rgb(colour), silent = TRUE), "try-error")
+    }, logical(1))
+    if (!all(valid_colour)) {
+      stop("'palette' contains invalid colours: ",
+           paste(shQuote(palette[!valid_colour]), collapse = ", "))
+    }
+    colours <- palette
+  }
+  if (reverse_palette) colours <- rev(colours)
+  colours
+}
+
+##' Add the fill scale, map extent, north arrow and scale bar shared by the
+##' prediction maps
+##'
+##' @param map A `ggplot` object.
+##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`) giving
+##' the extent of the data in `crs`.
+##' @param crs The coordinate reference system of the data.
+##' @param legend_title Character string used as the fill legend title.
+##' @param palette,reverse_palette Passed to `palette_colours()`.
+##' @param limits `NULL` or a numeric vector of length two for the colour scale.
+##' @param north_arrow,scale_bar Logical; whether to add each annotation.
+##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()].
+##' @return The `ggplot` object with the layers added.
+##' @noRd
+add_map_layers <- function(map, extent, crs, legend_title, palette,
+                           reverse_palette, limits, north_arrow, scale_bar, ...) {
+  check_logical(north_arrow)
+  check_logical(scale_bar)
+  map <- map +
+    scale_fill_gradientn(colours = palette_colours(palette, reverse_palette),
+                         limits = limits, ...) +
+    coord_sf(crs = crs,
+             xlim = as.numeric(extent[c("xmin", "xmax")]),
+             ylim = pad_map_extent(extent, north_arrow, scale_bar)) +
+    labs(x = NULL, y = NULL, fill = legend_title)
+
+  if (north_arrow) {
+    map <- map +
+      ggspatial::annotation_north_arrow(location = "tr", which_north = "true",
+                                        height = unit(1, "cm"),
+                                        width = unit(1, "cm"))
+  }
+  if (scale_bar) {
+    map <- map + ggspatial::annotation_scale(location = "bl")
+  }
+  map
+}
+
+##' Resolve the colour scale limits requested for a prediction map
+##'
+##' @param limits `"shared"`, `"independent"` or a numeric vector of length two.
+##' @param shared_range Numeric values whose range defines the `"shared"`
+##' limits, or `NULL` to use the range of the plotted values.
+##' @return `NULL` (use the range of the plotted values) or a numeric vector of
+##' length two.
+##' @noRd
+resolve_colour_limits <- function(limits, shared_range = NULL) {
+  if (is.numeric(limits)) {
+    if (length(limits) != 2 || anyNA(limits)) {
+      stop("Custom 'limits' must be a numeric vector of length two")
+    }
+    return(limits)
+  }
+  if (!(is.character(limits) && length(limits) == 1 &&
+        limits %in% c("shared", "independent"))) {
+    stop("'limits' must be \"shared\", \"independent\" or a numeric vector of length two")
+  }
+  if (limits == "shared" && !is.null(shared_range)) {
+    return(range(shared_range, na.rm = TRUE))
+  }
+  NULL
+}
+
+##' Extend the vertical extent of a map to make room for annotations
+##'
+##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`).
+##' @param north_arrow Logical; add space above the data for a north arrow.
+##' @param scale_bar Logical; add space below the data for a scale bar.
+##' @return Numeric vector of length two giving the padded y limits.
+##' @noRd
+pad_map_extent <- function(extent, north_arrow, scale_bar) {
+  height <- unname(extent["ymax"] - extent["ymin"])
+  # roughly the height of each annotation on a typical map
+  top_padding <- if (north_arrow) 0.15 * height else 0
+  bottom_padding <- if (scale_bar) 0.08 * height else 0
+  unname(c(extent["ymin"] - bottom_padding, extent["ymax"] + top_padding))
 }
 
 ##' @title Predictive Targets over Boundaries (grid-aggregated)
@@ -1015,12 +1233,14 @@ plot.RiskMap_predict_grid_target <- function(x, target = NULL, summary = "mean",
 ##'         if \code{return_target_samples = TRUE}.
 ##'   \item \code{boundaries}: (optional) the input \code{sf} object with appended summary columns,
 ##'         included if \code{return_boundaries = TRUE}.
+##'   \item \code{grid_summary_range}: nested \code{list} giving, for each target and
+##'         summary, the range of the same summary computed for each grid cell. Used by
+##'         [plot.RiskMap_predict_areal_target()] so that its colour scale matches
+##'         [plot.RiskMap_predict_grid_target()].
 ##'   \item \code{f_target}, \code{pd_summary}, \code{grid_pred}: inputs echoed for reproducibility.
 ##' }
 ##'
 ##' @seealso \code{\link{setup_prediction}}, \code{\link{predict_grid_target}}
-##'
-##' @importFrom terra rast as.data.frame
 ##'
 ##' @examples
 ##' library(sf)
@@ -1401,13 +1621,38 @@ predict_areal_target <- function(object,
   out$f_target <- names(f_target)
   out$pd_summary <- names(pd_summary)
   out$grid_pred <- object$grid_pred
+  out$grid_summary_range <- summarise_grid_range(out$lp_samples, f_target, pd_summary)
   class(out) <- "RiskMap_predict_areal_target"
   return(out)
 }
 
+
+##' Range of grid-cell summaries for each predictive target
+##'
+##' Computes each summary in `pd_summary` for every grid cell and returns its
+##' range, so that areal maps can share a colour scale with grid maps.
+##'
+##' @param lp_samples Matrix of linear predictor samples (cells by samples), or
+##' a list of such matrices.
+##' @param f_target Named list of target functions.
+##' @param pd_summary Named list of summary functions.
+##' @return A nested list indexed by target then summary, each a numeric
+##' vector of length two.
+##' @noRd
+summarise_grid_range <- function(lp_samples, f_target, pd_summary) {
+  if (is.list(lp_samples)) lp_samples <- do.call(rbind, lp_samples)
+  lapply(f_target, function(target_function) {
+    target_samples <- as.matrix(target_function(lp_samples))
+    lapply(pd_summary, function(summary_function) {
+      cell_summaries <- apply(target_samples, 1, summary_function)
+      range(as.numeric(cell_summaries), na.rm = TRUE)
+    })
+  })
+}
+
 ##' Plot Method for RiskMap_predict_areal_target Objects
 ##'
-##' Generates a plot of predictive target values or summaries over boundaries.
+##' Generates a map of predictive target values or summaries over boundaries.
 ##'
 ##' @param x An object of class 'RiskMap_predict_areal_target' containing computed targets,
 ##' summaries, and associated spatial data.
@@ -1415,28 +1660,57 @@ predict_areal_target <- function(object,
 ##' one of \code{x$f_target}. If \code{NULL} (the default), the first target is used.
 ##' @param summary Character indicating the summary type to plot (e.g., "mean", "sd"),
 ##' one of \code{x$pd_summary}. Defaults to \code{"mean"}.
-##' @param ... Additional arguments passed to 'scale_fill_distiller' in 'ggplot2'.
+##' @inheritParams plot.RiskMap_predict_grid_target
 ##' @return A \code{ggplot} object showing the plot of the specified predictive target or summary.
+##' @param limits Range of the colour scale. One of:
+##' - `"shared"` (the default): covers both the areal values and the same
+##'   summary computed for each grid cell, so that colours match those of
+##'   [plot.RiskMap_predict_grid_target()] for the same target and summary.
+##' - `"independent"`: the range of the areal values only.
+##' - a numeric vector of length two giving custom limits.
+##' @details
+##' The styling matches [plot.RiskMap_predict_grid_target()]. The returned
+##' object can be modified further with standard \pkg{ggplot2} functions.
 ##' @seealso
-##' \code{\link{predict_areal_target}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
-##' \code{\link[ggplot2]{aes}}, \code{\link[ggplot2]{scale_fill_distiller}}
+##' \code{\link{predict_areal_target}}, \code{\link{plot.RiskMap_predict_grid_target}},
+##' \code{\link[ggplot2]{geom_sf}}, \code{\link[ggplot2]{scale_fill_gradientn}}
 ##'
 ##' @method plot RiskMap_predict_areal_target
 ##' @export
-plot.RiskMap_predict_areal_target <- function(x, target = NULL, summary = "mean", ...) {
-  if (is.null(target)) {
-    target <- x$f_target[1]
-  } else if (!target %in% x$f_target) {
-    stop("'target' must be one of: ", paste(shQuote(x$f_target), collapse = ", "))
+plot.RiskMap_predict_areal_target <- function(x, target = NULL, summary = "mean",
+                                              palette = "viridis",
+                                              reverse_palette = FALSE,
+                                              north_arrow = TRUE,
+                                              scale_bar = TRUE,
+                                              limits = "shared", ...) {
+  stopifnot("'x' must be of class RiskMap_predict_areal_target" =
+              inherits(x, "RiskMap_predict_areal_target"))
+  if (is.null(x$boundaries)) {
+    stop("'x' does not contain boundaries; rerun predict_areal_target() with 'return_boundaries = TRUE'")
   }
-  if (!summary %in% x$pd_summary) {
-    stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
-  }
+  target <- check_plot_target(x, target, summary)
+
   col_boundaries_name <- paste(target, "_", summary, sep = "")
+  # "shared" covers the grid-level map of the same quantity as well
+  limits <- resolve_colour_limits(
+    limits,
+    shared_range = c(x$boundaries[[col_boundaries_name]],
+                     x$grid_summary_range[[target]][[summary]])
+  )
+
   out <- ggplot(x$boundaries) +
-    geom_sf(aes(fill = .data[[col_boundaries_name]])) +
-    scale_fill_distiller(...)
-  return(out)
+    geom_sf(aes(fill = .data[[col_boundaries_name]]))
+
+  add_map_layers(out,
+                 extent = st_bbox(x$boundaries),
+                 crs = st_crs(x$boundaries),
+                 legend_title = col_boundaries_name,
+                 palette = palette,
+                 reverse_palette = reverse_palette,
+                 limits = limits,
+                 north_arrow = north_arrow,
+                 scale_bar = scale_bar,
+                 ...)
 }
 
 ##' @title Update Predictors for a RiskMap Prediction Object
@@ -1691,9 +1965,10 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##'     indices of the dataset to use as the test set, or a list with components
 ##'     \code{in_id} (training indices) and \code{out_id} (test indices).
 ##' @param iter Integer; number of times to repeat the cross-validation. Defaults to `1`.
-##' @param metrics Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"AnPIT"`,
-##' to specify the predictive performance metrics to compute. When `"AnPIT"` is requested,
-##' the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation
+##' @param metrics Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"PIT"`,
+##' to specify the predictive performance metrics to compute. `"PIT"` computes
+##' the PIT for Gaussian models or the AnPIT curve for discrete models, and
+##' also the scalar score `"PIT_area"`, the integrated absolute deviation
 ##' between the PIT/AnPIT curve and the reference line. Defaults to all metrics.
 ##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
 ##' or re-estimate for each fold. Defaults to `TRUE`.
@@ -1711,9 +1986,9 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##'   \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
 ##'   \item{model}{A named list, one per model, each containing:
 ##'     \describe{
-##'       \item{metric}{A list with CRPS, SCRPS, and/or AnPIT_area metrics for each fold if requested.}
-##'       \item{PIT}{(if `family = "gaussian"` and `metrics` includes `"AnPIT"`) A list of PIT values for test data.}
-##'       \item{AnPIT}{(if `family` is discrete and `metrics` includes `"AnPIT"`) A list of AnPIT curves for test data.}
+##'       \item{metric}{A list with CRPS, SCRPS, and/or PIT_area metrics for each fold if requested.}
+##'       \item{PIT}{(if `family = "gaussian"` and `metrics` includes `"PIT"`) A list of PIT values for test data.}
+##'       \item{AnPIT}{(if `family` is discrete and `metrics` includes `"PIT"`) A list of AnPIT curves for test data.}
 ##'     }
 ##'   }
 ##' }
@@ -1729,7 +2004,6 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' tropical disease prevalence. *Journal of the Royal Statistical Society Series
 ##' A: Statistics in Society*.\doi{10.1093/jrsssa/qnag100}.
 ##'
-##' @importFrom terra match
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
 ##'
@@ -1796,7 +2070,7 @@ assess_prediction <- function(object,
                               size = NULL,
                               user_split = NULL,
                               iter = 1,
-                              metrics = c("AnPIT", "CRPS", "SCRPS"),
+                              metrics = c("PIT", "CRPS", "SCRPS"),
                               keep_par_fixed = TRUE,
                               control_mcmc = set_control_mcmc(),
                               plot_fold = TRUE,
@@ -1827,8 +2101,8 @@ assess_prediction <- function(object,
   if (!is_list_of_riskmap(object))
     stop("'object' must be a list of fitted models of class 'RiskMap'.")
 
-  if (!all(metrics %in% c("CRPS", "SCRPS", "AnPIT")))
-    stop("'metrics' must only contain 'CRPS', 'SCRPS' or 'AnPIT'")
+  if (!all(metrics %in% c("CRPS", "SCRPS", "PIT")))
+    stop("'metrics' must only contain 'CRPS', 'SCRPS' or 'PIT'")
 
   if (!method %in% c("cluster", "regularized", "user"))
     stop("'method' must be either 'cluster', 'regularized' or 'user'")
@@ -1862,7 +2136,7 @@ assess_prediction <- function(object,
 
   get_CRPS  <- "CRPS"  %in% metrics
   get_SCRPS <- "SCRPS" %in% metrics
-  get_AnPIT <- "AnPIT" %in% metrics
+  get_PIT <- "PIT" %in% metrics
 
   ## ───────────────────────────── data & splits ───────────────────────────── ##
 
@@ -2046,8 +2320,8 @@ assess_prediction <- function(object,
     ## containers for this model
     if (get_CRPS)   CRPS  <- vector("list", n_iter)
     if (get_SCRPS) { y_CRPS <- vector("list", n_iter); SCRPS <- vector("list", n_iter) }
-    if (get_AnPIT) {
-      AnPIT_area <- vector("list", n_iter)
+    if (get_PIT) {
+      PIT_area <- vector("list", n_iter)
       if (fam == "gaussian") PIT <- vector("list", n_iter) else AnPIT <- vector("list", n_iter)
     }
 
@@ -2146,7 +2420,7 @@ assess_prediction <- function(object,
       if (get_CRPS)   CRPS [[i]] <- numeric(n_pred)
       if (get_SCRPS) { y_CRPS[[i]] <- numeric(n_pred); SCRPS[[i]] <- numeric(n_pred) }
 
-      if (get_AnPIT) {
+      if (get_PIT) {
         if (fam == "gaussian") {
           PIT_i <- numeric(n_pred)
         } else {
@@ -2172,7 +2446,7 @@ assess_prediction <- function(object,
             y_CRPS[[i]][j] <- sd_j / sqrt(pi)
             SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
           }
-          if (get_AnPIT) PIT_i[j] <- pnorm(y_i[j], mean = mu_j, sd = sd_j)
+          if (get_PIT) PIT_i[j] <- pnorm(y_i[j], mean = mu_j, sd = sd_j)
         } else {
           if (fam == "binomial") {
             y_samp  <- rbinom(n_draw, size = units_m_i[j], prob = mu_samp[j, ])
@@ -2189,19 +2463,19 @@ assess_prediction <- function(object,
             y_CRPS[[i]][j] <- exp_crps_discrete(Fk, pk)
             SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
           }
-          if (get_AnPIT) {
+          if (get_PIT) {
             AnPIT_i[, j] <- vapply(u_val, npit_fun, numeric(1), y = y_i[j], Fk = Fk)
           }
         }
       }
 
-      if (get_AnPIT) {
+      if (get_PIT) {
         if (fam == "gaussian") {
           PIT[[i]] <- PIT_i
-          AnPIT_area[[i]] <- .anpit_area(ecdf(PIT_i)(u_val), u_val)
+          PIT_area[[i]] <- .anpit_area(ecdf(PIT_i)(u_val), u_val)
         } else {
           AnPIT[[i]] <- rowMeans(AnPIT_i)
-          AnPIT_area[[i]] <- .anpit_area(AnPIT[[i]], u_val)
+          PIT_area[[i]] <- .anpit_area(AnPIT[[i]], u_val)
         }
       }
 
@@ -2211,8 +2485,8 @@ assess_prediction <- function(object,
     out$model[[model_names[h]]] <- list(metric = list())
     if (get_CRPS)  out$model[[model_names[h]]]$metric$CRPS  <- CRPS
     if (get_SCRPS) out$model[[model_names[h]]]$metric$SCRPS <- SCRPS
-    if (get_AnPIT) {
-      out$model[[model_names[h]]]$metric$AnPIT_area <- AnPIT_area
+    if (get_PIT) {
+      out$model[[model_names[h]]]$metric$PIT_area <- PIT_area
       if (fam == "gaussian") out$model[[model_names[h]]]$PIT <- PIT else out$model[[model_names[h]]]$AnPIT <- AnPIT
     }
 
@@ -2224,44 +2498,80 @@ assess_prediction <- function(object,
 
 ##' @title Plot Method for RiskMap_simulation Objects
 ##' @description
-##' Plots the linear predictor from [simulate_glgpm()] on a regular grid,
-##' with sampling locations overlaid when replicated data are available.
+##' Maps the linear predictor of one simulation from [simulate_glgpm()] over
+##' its prediction grid, with the sampling locations overlaid when data were
+##' also simulated.
 ##'
 ##' @param x Output from [simulate_glgpm()] including a surface.
-##' @param sim The simulation index to plot.
-##' @param ... Additional graphical parameters to be passed to the plotting function of the `terra` package.
+##' @param simulation A single simulation number to plot, defaulting to one.
+##' @inheritParams plot.RiskMap_simulated_surface
 ##'
-##' @return A plot of the simulation results.
+##' @return A \code{ggplot} object.
+##' @details
+##' The styling matches [plot.RiskMap_predict_grid_target()], without the
+##' north arrow and scale bar. The returned object can be modified further
+##' with standard \pkg{ggplot2} functions.
 ##'
-##' @importFrom terra rast rasterize vect
-##'
+##' @seealso [simulated_surface()], [plot.RiskMap_simulated_surface()]
 ##' @method plot RiskMap_simulation
 ##' @export
-plot.RiskMap_simulation <- function(x, sim, ...) {
+plot.RiskMap_simulation <- function(x, simulation = 1, palette = "viridis",
+                                    reverse_palette = FALSE, ...) {
+  out <- plot(simulated_surface(x, simulation),
+              palette = palette,
+              reverse_palette = reverse_palette,
+              ...) +
+    ggtitle(paste("Simulation", simulation))
 
-  sf_object <- simulated_surface(x, sim)
-
-  # Points are assumed to fall on a regular lattice (e.g. from create_grid());
-  # infer its cell size from the smallest gap between distinct coordinates,
-  # and pad the extent by half a cell so points land at cell centres.
-  coords <- st_coordinates(sf_object)
-  cellsize <- c(min(diff(sort(unique(coords[, "X"])))),
-               min(diff(sort(unique(coords[, "Y"])))))
-  template <- rast(
-    xmin = min(coords[, "X"]) - cellsize[1] / 2,
-    xmax = max(coords[, "X"]) + cellsize[1] / 2,
-    ymin = min(coords[, "Y"]) - cellsize[2] / 2,
-    ymax = max(coords[, "Y"]) + cellsize[2] / 2,
-    resolution = cellsize,
-    crs = st_crs(sf_object)$wkt
-  )
-  r <- rasterize(vect(sf_object), template, field = "linear_predictor")
-
-  plot(r, main = paste("Simulation no.", sim), ...)
   if (!is.null(x$locations$data)) {
-    points(st_coordinates(x$locations$data), pch = 20)
+    # geom_point() rather than geom_sf(), which would replace the map's coord_sf()
+    sample_coordinates <- st_coordinates(st_transform(x$locations$data,
+                                                      st_crs(x$locations$surface)))
+    out <- out + geom_point(data = data.frame(x = sample_coordinates[, 1],
+                                              y = sample_coordinates[, 2]),
+                            aes(x = .data$x, y = .data$y),
+                            inherit.aes = FALSE, size = 1)
   }
+  out
+}
 
+##' @title Plot Method for RiskMap_simulated_surface Objects
+##' @description
+##' Maps the linear predictor of a surface extracted with
+##' [simulated_surface()] over its prediction grid.
+##'
+##' @param x Output from [simulated_surface()].
+##' @param palette Either the name of a palette from [grDevices::hcl.pals()]
+##' (e.g. `"viridis"`, `"Blues"`, `"Spectral"`) or a character vector of two or
+##' more colours to interpolate between. Defaults to `"viridis"`.
+##' @param reverse_palette Logical; if `TRUE`, reverse the order of the palette
+##' colours. Defaults to `FALSE`.
+##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()],
+##' e.g. `name`, `breaks` or `limits`.
+##'
+##' @return A \code{ggplot} object.
+##' @details
+##' The styling matches [plot.RiskMap_predict_grid_target()], without the
+##' north arrow and scale bar. The returned object can be modified further
+##' with standard \pkg{ggplot2} functions.
+##'
+##' @seealso [simulated_surface()], [plot.RiskMap_simulation()]
+##' @method plot RiskMap_simulated_surface
+##' @export
+plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
+                                           reverse_palette = FALSE, ...) {
+  stopifnot("'x' must be of class RiskMap_simulated_surface" =
+              inherits(x, "RiskMap_simulated_surface"))
+
+  plot_grid(x,
+            values = x$linear_predictor,
+            legend_title = "linear_predictor",
+            palette = palette,
+            reverse_palette = reverse_palette,
+            limits = NULL,
+            north_arrow = FALSE,
+            scale_bar = FALSE,
+            ...)
 }
 
 ##' @title Assess Simulations

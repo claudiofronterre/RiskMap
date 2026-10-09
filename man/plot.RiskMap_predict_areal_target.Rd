@@ -4,7 +4,17 @@
 \alias{plot.RiskMap_predict_areal_target}
 \title{Plot Method for RiskMap_predict_areal_target Objects}
 \usage{
-\method{plot}{RiskMap_predict_areal_target}(x, target = NULL, summary = "mean", ...)
+\method{plot}{RiskMap_predict_areal_target}(
+  x,
+  target = NULL,
+  summary = "mean",
+  palette = "viridis",
+  reverse_palette = FALSE,
+  north_arrow = TRUE,
+  scale_bar = TRUE,
+  limits = "shared",
+  ...
+)
 }
 \arguments{
 \item{x}{An object of class 'RiskMap_predict_areal_target' containing computed targets,
@@ -16,15 +26,40 @@ one of \code{x$f_target}. If \code{NULL} (the default), the first target is used
 \item{summary}{Character indicating the summary type to plot (e.g., "mean", "sd"),
 one of \code{x$pd_summary}. Defaults to \code{"mean"}.}
 
-\item{...}{Additional arguments passed to 'scale_fill_distiller' in 'ggplot2'.}
+\item{palette}{Either the name of a palette from \code{\link[grDevices:hcl.pals]{grDevices::hcl.pals()}}
+(e.g. \code{"viridis"}, \code{"Blues"}, \code{"Spectral"}) or a character vector of two or
+more colours to interpolate between. Defaults to \code{"viridis"}.}
+
+\item{reverse_palette}{Logical; if \code{TRUE}, reverse the order of the palette
+colours. Defaults to \code{FALSE}.}
+
+\item{north_arrow}{Logical; if \code{TRUE} (the default), add a north arrow to the map.}
+
+\item{scale_bar}{Logical; if \code{TRUE} (the default), add a scale bar to the map.}
+
+\item{limits}{Range of the colour scale. One of:
+\itemize{
+\item \code{"shared"} (the default): covers both the areal values and the same
+summary computed for each grid cell, so that colours match those of
+\code{\link[=plot.RiskMap_predict_grid_target]{plot.RiskMap_predict_grid_target()}} for the same target and summary.
+\item \code{"independent"}: the range of the areal values only.
+\item a numeric vector of length two giving custom limits.
+}}
+
+\item{...}{Additional arguments passed to \code{\link[ggplot2:scale_fill_gradientn]{ggplot2::scale_fill_gradientn()}},
+e.g. \code{name} or \code{breaks}.}
 }
 \value{
 A \code{ggplot} object showing the plot of the specified predictive target or summary.
 }
 \description{
-Generates a plot of predictive target values or summaries over boundaries.
+Generates a map of predictive target values or summaries over boundaries.
+}
+\details{
+The styling matches \code{\link[=plot.RiskMap_predict_grid_target]{plot.RiskMap_predict_grid_target()}}. The returned
+object can be modified further with standard \pkg{ggplot2} functions.
 }
 \seealso{
-\code{\link{predict_areal_target}}, \code{\link[ggplot2]{ggplot}}, \code{\link[ggplot2]{geom_sf}},
-\code{\link[ggplot2]{aes}}, \code{\link[ggplot2]{scale_fill_distiller}}
+\code{\link{predict_areal_target}}, \code{\link{plot.RiskMap_predict_grid_target}},
+\code{\link[ggplot2]{geom_sf}}, \code{\link[ggplot2]{scale_fill_gradientn}}
 }
