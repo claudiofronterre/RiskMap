@@ -416,5 +416,50 @@ test_that("plot.RiskMap_simulation plots the simulated surface (#87)", {
                         prediction_grid = grid, seed = 1)
 
   expect_s3_class(sim, "RiskMap_simulation")
-  expect_error(plot(sim, sim = 3), "must select valid simulation numbers")
+  expect_error(plot(sim, simulation = 3), "must select valid simulation numbers")
+  expect_no_error(plot(sim, simulation = 2))
+
+  p <- plot(sim)
+  expect_s3_class(p, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(p))
+  expect_equal(p$labels$title, "Simulation 1")
+  expect_equal(p$labels$fill, "linear_predictor")
+  expect_equal(p$data$value,
+               as.numeric(sim$samples$surface[, 1, "linear_predictor"]))
+  # sample locations are overlaid when data were simulated
+  expect_length(p$layers, 2)
+  expect_equal(nrow(p$layers[[2]]$data), nrow(sim$locations$data))
+
+  p2 <- plot(sim, simulation = 2)
+  expect_equal(p2$labels$title, "Simulation 2")
+  expect_equal(p2$data$value,
+               as.numeric(sim$samples$surface[, 2, "linear_predictor"]))
 })
+
+test_that("plot.RiskMap_simulation omits points when only a surface was simulated (#183)", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 1, what = "surface",
+                        prediction_grid = grid, seed = 1)
+
+  p <- plot(sim)
+  expect_length(p$layers, 1)
+  expect_no_error(ggplot2::ggplot_build(p))
+})
+
+test_that("simulated_surface() output has a plot method matching plot.RiskMap_simulation (#183)", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = grid, seed = 1)
+  surface <- simulated_surface(sim, 2)
+
+  expect_s3_class(surface, c("RiskMap_simulated_surface", "sf"))
+  p <- plot(surface, palette = "Blues", reverse_palette = TRUE)
+  expect_s3_class(p, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(p))
+  expect_equal(p$data$value, surface$linear_predictor)
+  expect_equal(p$labels$fill, "linear_predictor")
+  expect_identical(ggplot2::ggplot_build(p)$data[[1]]$fill,
+                   ggplot2::ggplot_build(plot(sim, simulation = 2, palette = "Blues",
+                                              reverse_palette = TRUE))$data[[1]]$fill)
+  expect_error(plot.RiskMap_simulated_surface(sim), "must be of class RiskMap_simulated_surface")
+})
+

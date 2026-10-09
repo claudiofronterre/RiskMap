@@ -120,7 +120,7 @@ with small measurement-error variances while retaining the same conditional mode
   `plot.RiskMap_cross_validation()` method. `metric` and `model` now default
   to every metric/model available rather than being required, so
   `plot(cv_result)` alone produces every plot the object has data for.
-  `metric` accepts `"AnPIT"` as well as `"CRPS"`/`"SCRPS"`/`"AnPIT_area"` to
+  `metric` accepts `"PIT"` as well as `"CRPS"`/`"SCRPS"`/`"PIT_area"` to
   select the calibration curve. Each metric gets its own plot (or, with more
   than one model, its own small grid with one panel per model); with more
   than one metric, each one is drawn in turn and the full set is returned
@@ -128,4 +128,12 @@ with small measurement-error variances while retaining the same conditional mode
 - `plot_variogram()` is now `plot.RiskMap_variogram()`, a method rather than
   a standalone function; call it as `plot(variogram_result)`.
 - `plot_sim_surf()` is now `plot.RiskMap_simulation()`; call it as
-  `plot(sim_result, sim = ...)`.
+  `plot(sim_result, simulation = ...)`. It now draws a `ggplot` map matching
+  `plot.RiskMap_predict_grid_target()`, with `palette` and `reverse_palette`
+  arguments. `simulated_surface()` returns an object of class
+  `RiskMap_simulated_surface` with a matching `plot()` method.
+- In `assess_prediction()`, the `"AnPIT"` metric is now `"PIT"` and the
+  `AnPIT_area` score is now `PIT_area`, for every family.
+- In `plot.RiskMap_cross_validation()`, the calibration-curve arguments `mode`,
+  `test_set` and `combine_panels` are now `pit_mode`, `pit_test_set` and
+  `combine_pit`. 

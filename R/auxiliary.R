@@ -1042,6 +1042,24 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
   }
 }
 
+##' Name a predictive-performance metric as it should appear on a plot
+##'
+##' The calibration metrics are stored as `"PIT"` and `"PIT_area"` for every
+##' family, but are labelled AnPIT for discrete families.
+##'
+##' @param object A `RiskMap_cross_validation` object.
+##' @param metric Character string naming the metric.
+##' @param model Character string naming the model.
+##' @return Character string.
+##' @noRd
+.metric_label <- function(object, metric, model) {
+  pit_label <- if (is.null(object$model[[model]]$AnPIT)) "PIT" else "AnPIT"
+  switch(metric,
+         PIT = pit_label,
+         PIT_area = paste0(pit_label, "_area"),
+         metric)
+}
+
 ##' Build one spatial map of a predictive-performance metric
 ##'
 ##' @noRd
@@ -1079,9 +1097,11 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
     st_as_sf()
 
   # Create the base plot
+  metric_label <- .metric_label(object, metric, model)
   out <- ggplot(data = data_full) +
     geom_sf(aes(color = .data$value), size = 2) +
-    ggtitle(paste("Visualizing", metric, "for model", model)) +
+    labs(title = paste0("Model ", model, ": ", metric_label),
+         colour = metric_label) +
     theme_minimal()
 
   # Layer on any additional ggplot components passed via ...
@@ -1097,11 +1117,11 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 ##' indicates perfect calibration.
 ##'
 ##' @return A named list of ggplot objects, one per `model` - or, when
-##'   `mode == "average"` and `combine_panels` is `TRUE`, a single-element
+##'   `pit_mode == "average"` and `combine_pit` is `TRUE`, a single-element
 ##'   list holding one combined plot.
 ##' @noRd
-.plot_calibration_curve <- function(object, mode, test_set, model,
-                                    combine_panels) {
+.plot_calibration_curve <- function(object, pit_mode, pit_test_set, model,
+                                    combine_pit) {
 
   make_df <- function(mname) {
     m <- object$model[[mname]]
@@ -1146,7 +1166,7 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
   id_line <- geom_abline(intercept = 0, slope = 1,
                          linetype = "dashed", colour = "red")
 
-  if (mode == "average" && combine_panels) {
+  if (pit_mode == "average" && combine_pit) {
     avg <- plot_data %>%
       dplyr::group_by(.data$model, .data$u_val) %>%
       dplyr::summarize(value = mean(.data$value), .groups = "drop")
@@ -1163,7 +1183,7 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 
   build_plot <- function(df, title_suffix = "") {
     ggplot(df, aes(.data$u_val, .data$value,
-                   colour = if (mode == "all") as.factor(test_set) else NULL)) +
+                   colour = if (pit_mode == "all") as.factor(test_set) else NULL)) +
       geom_line() + id_line +
       labs(title = title_suffix, x = "", y = unique(df$type)) +
       theme_minimal() +
@@ -1174,26 +1194,27 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
   for (mname in model) {
     df_model <- dplyr::filter(plot_data, .data$model == mname)
 
-    p <- switch(mode,
+    title <- paste0("Model ", mname, ": ", unique(df_model$type))
+    p <- switch(pit_mode,
                 average = {
                   avg <- df_model %>%
                     dplyr::group_by(.data$u_val) %>%
                     dplyr::summarize(value = mean(.data$value), .groups = "drop")
                   avg$type <- unique(df_model$type)
-                  build_plot(avg, paste("Model", mname, ": average"))
+                  build_plot(avg, paste(title, "(average)"))
                 },
                 single  = {
-                  if (is.null(test_set))
-                    stop("Provide `test_set` when mode = 'single'.")
-                  df_ts <- df_model[df_model$test_set == test_set,]
+                  if (is.null(pit_test_set))
+                    stop("Provide `pit_test_set` when pit_mode = 'single'.")
+                  df_ts <- df_model[df_model$test_set == pit_test_set,]
                   if (nrow(df_ts) == 0)
-                    stop("No data for test_set ", test_set, " in model ", mname)
+                    stop("No data for test set ", pit_test_set, " in model ", mname)
                   build_plot(df_ts,
-                             paste("Model", mname, "- test set", test_set))
+                             paste0(title, " (test set ", pit_test_set, ")"))
                 },
                 all     = build_plot(df_model,
-                                     paste("Model", mname, "- all test sets")),
-                stop("Invalid `mode`. Use 'average', 'single' or 'all'.")
+                                     paste(title, "(all test sets)")),
+                stop("Invalid `pit_mode`. Use 'average', 'single' or 'all'.")
     )
 
     plots[[mname]] <- p
@@ -1223,11 +1244,12 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 ##' Plots whatever predictive-performance output is available in a
 ##' \code{RiskMap_cross_validation} object returned by
 ##' \code{\link{assess_prediction}}: a spatial map for each per-location
-##' metric (\code{"CRPS"}, \code{"SCRPS"}, \code{"AnPIT_area"}) that was
+##' metric (\code{"CRPS"}, \code{"SCRPS"}, \code{"PIT_area"}) that was
 ##' requested via \code{metrics} in that call, and/or a calibration curve
-##' (\code{"AnPIT"}) - the Aggregated normalised Probability Integral
-##' Transform curve for discrete families, or the empirical PIT curve for
-##' Gaussian models - when that was requested. By default every available
+##' (\code{"PIT"}) - the Aggregated normalised Probability Integral
+##' Transform (AnPIT) curve for discrete families, or the empirical PIT curve
+##' for Gaussian models - when that was requested. Plot titles and legends
+##' use AnPIT or PIT according to each model's family. By default every available
 ##' plot is produced, one per requested model, so you don't need to know in
 ##' advance which metrics were computed. Each metric gets its own plot
 ##' (or, with more than one model, its own small grid of one panel per
@@ -1235,8 +1257,8 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 ##'
 ##' @param x A \code{RiskMap_cross_validation} object.
 ##' @param metric Character vector restricting which plot(s) to produce;
-##'   one or more of \code{"CRPS"}, \code{"SCRPS"}, \code{"AnPIT_area"} (a
-##'   spatial map of that score) and \code{"AnPIT"} (the calibration
+##'   one or more of \code{"CRPS"}, \code{"SCRPS"}, \code{"PIT_area"} (a
+##'   spatial map of that score) and \code{"PIT"} (the calibration
 ##'   curve). Defaults to every metric available in \code{x}.
 ##' @param model Character vector of model names to include. Defaults to
 ##'   every model in \code{x$model}.
@@ -1244,11 +1266,11 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 ##'   \code{scale_color_gradient()}), layered onto every spatial-map plot.
 ##'   Must be passed by position only after `model`, since the remaining
 ##'   arguments must be named.
-##' @param mode For the calibration curve only: one of \code{"average"}
+##' @param pit_mode For the calibration curve only: one of \code{"average"}
 ##'   (average curve across test sets, the default), \code{"single"} (one
 ##'   specific test set) or \code{"all"} (every test set separately).
-##' @param test_set Integer; required when \code{mode = "single"}.
-##' @param combine_panels Logical; when \code{mode = "average"}, draw the
+##' @param pit_test_set Integer; required when \code{pit_mode = "single"}.
+##' @param combine_pit Logical; when \code{pit_mode = "average"}, draw the
 ##'   calibration curves for every model in a single panel (\code{TRUE})
 ##'   rather than one panel per model (\code{FALSE}, default).
 ##'
@@ -1264,8 +1286,8 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 ##' @importFrom dplyr group_by summarize %>%
 ##' @export
 plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
-                                          mode = "average", test_set = NULL,
-                                          combine_panels = FALSE) {
+                                          pit_mode = "average", pit_test_set = NULL,
+                                          combine_pit = FALSE) {
 
   all_models <- names(x$model)
   if (is.null(model)) {
@@ -1278,12 +1300,12 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
   }
 
   spatial_metrics <- intersect(
-    c("CRPS", "SCRPS", "AnPIT_area"),
+    c("CRPS", "SCRPS", "PIT_area"),
     names(x$model[[model[1]]]$metric)
   )
   has_calibration <- !is.null(x$model[[model[1]]]$PIT) ||
     !is.null(x$model[[model[1]]]$AnPIT)
-  available_metrics <- c(if (has_calibration) "AnPIT", spatial_metrics)
+  available_metrics <- c(if (has_calibration) "PIT", spatial_metrics)
 
   if (is.null(metric)) {
     metric <- available_metrics
@@ -1298,12 +1320,12 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
   # Calibration curve first, then the spatial-map metrics in a fixed order,
   # so metrics are plotted in a stable, predictable order regardless of how
   # `metric`/the object's own field ordering happen to be arranged.
-  ordered_metrics <- intersect(c("AnPIT", "CRPS", "SCRPS", "AnPIT_area"), metric)
+  ordered_metrics <- intersect(c("PIT", "CRPS", "SCRPS", "PIT_area"), metric)
 
   groups <- stats::setNames(lapply(ordered_metrics, function(m) {
-    group_plots <- if (identical(m, "AnPIT")) {
-      .plot_calibration_curve(x, mode = mode, test_set = test_set,
-                              model = model, combine_panels = combine_panels)
+    group_plots <- if (identical(m, "PIT")) {
+      .plot_calibration_curve(x, pit_mode = pit_mode, pit_test_set = pit_test_set,
+                              model = model, combine_pit = combine_pit)
     } else {
       stats::setNames(
         lapply(model, function(mod) .plot_metric_map(x, metric = m, model = mod, ...)),

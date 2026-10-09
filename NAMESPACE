@@ -5,6 +5,7 @@ S3method(fitted,RiskMap)
 S3method(plot,RiskMap_cross_validation)
 S3method(plot,RiskMap_predict_areal_target)
 S3method(plot,RiskMap_predict_grid_target)
+S3method(plot,RiskMap_simulated_surface)
 S3method(plot,RiskMap_simulation)
 S3method(plot,RiskMap_variogram)
 S3method(print,summary.RiskMap)
@@ -80,9 +81,7 @@ importFrom(spatialsample,
 importFrom(terra,
   as.data.frame,
   match,
-  rast,
-  rasterize,
-  vect
+  rast
 )
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)

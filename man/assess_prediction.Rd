@@ -12,7 +12,7 @@ assess_prediction(
   size = NULL,
   user_split = NULL,
   iter = 1,
-  metrics = c("AnPIT", "CRPS", "SCRPS"),
+  metrics = c("PIT", "CRPS", "SCRPS"),
   keep_par_fixed = TRUE,
   control_mcmc = set_control_mcmc(),
   plot_fold = TRUE,
@@ -55,9 +55,10 @@ indices of the dataset to use as the test set, or a list with components
 
 \item{iter}{Integer; number of times to repeat the cross-validation. Defaults to \code{1}.}
 
-\item{metrics}{Character vector; one or more of \code{"CRPS"}, \code{"SCRPS"} and \code{"AnPIT"},
-to specify the predictive performance metrics to compute. When \code{"AnPIT"} is requested,
-the scalar score \code{"AnPIT_area"} is also computed as the integrated absolute deviation
+\item{metrics}{Character vector; one or more of \code{"CRPS"}, \code{"SCRPS"} and \code{"PIT"},
+to specify the predictive performance metrics to compute. \code{"PIT"} computes
+the PIT for Gaussian models or the AnPIT curve for discrete models, and
+also the scalar score \code{"PIT_area"}, the integrated absolute deviation
 between the PIT/AnPIT curve and the reference line. Defaults to all metrics.}
 
 \item{keep_par_fixed}{Logical; whether to keep parameters fixed across folds,
@@ -81,9 +82,9 @@ A list of class \code{RiskMap_cross_validation}, containing:
 \item{test_set}{A list of test sets used for validation, each of class \code{'sf'}.}
 \item{model}{A named list, one per model, each containing:
 \describe{
-\item{metric}{A list with CRPS, SCRPS, and/or AnPIT_area metrics for each fold if requested.}
-\item{PIT}{(if \code{family = "gaussian"} and \code{metrics} includes \code{"AnPIT"}) A list of PIT values for test data.}
-\item{AnPIT}{(if \code{family} is discrete and \code{metrics} includes \code{"AnPIT"}) A list of AnPIT curves for test data.}
+\item{metric}{A list with CRPS, SCRPS, and/or PIT_area metrics for each fold if requested.}
+\item{PIT}{(if \code{family = "gaussian"} and \code{metrics} includes \code{"PIT"}) A list of PIT values for test data.}
+\item{AnPIT}{(if \code{family} is discrete and \code{metrics} includes \code{"PIT"}) A list of AnPIT curves for test data.}
 }
 }
 }
