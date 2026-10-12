@@ -1,7 +1,7 @@
 Package: RiskMap
 Version: 2.0.0
 Title: Geostatistical Modeling of Spatially Referenced Data
-Description: Geostatistical analysis of continuous and count data.
+Description: Geostatistical analysis of continuous and count point data.
   Implements stationary Gaussian processes with Matérn correlation for spatial prediction,
   as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7). An accompanying book
   by Giorgi and Fronterre describes how the package can be used for model-based
