@@ -467,8 +467,11 @@ dast <- function(formula,
 ##' Monte Carlo maximum likelihood fitting engine for dast()
 ##'
 ##' Analogous to glgpm_nong() for the standard GLGPM models: performs the
-##' Laplace approximation and MCMC sampling via Laplace_sampling_MCMC_dast(),
-##' then the Monte Carlo maximum likelihood optimisation, for a DAST model.
+##' Laplace approximation and MCMC sampling via the shared
+##' maxim_integrand()/laplace_sampling_mcmc() backend (dast's modified
+##' binomial probability, mda_effect * plogis(eta), is expressed as a
+##' custom invlink), then the Monte Carlo maximum likelihood optimisation
+##' for a DAST model.
 ##' @noRd
 dast_fit <-
   function(y, D, coords, time, units_m, kappa, penalty,
@@ -527,25 +530,39 @@ dast_fit <-
 
     mda_effect0 <- compute_mda_effect(survey_times_data, mda_times, int_mat,
                                       alpha0, gamma0, kappa = power_val)
+
+    # dast's binomial probability is mda_effect * plogis(eta) - a fixed
+    # (at this trial parameter vector) multiple of the canonical link, so it
+    # can be expressed as a custom invlink for the shared glgpm backend
+    # (maxim_integrand()/laplace_sampling_mcmc()) rather than dast's own
+    # hand-rolled equivalents.
+    # clamped like dast's own cond.dens.W()/lang.grad(): mda_effect0 can be
+    # exactly 0 once alpha saturates near 1, which would otherwise make the
+    # generic backend reject every state as having an invalid probability.
+    mda_eps <- .Machine$double.eps
+    mda_invlink0 <- list(
+      inv = function(eta) pmin(pmax(mda_effect0 * plogis(eta), mda_eps), 1 - mda_eps),
+      d1  = function(eta) { ps <- plogis(eta); mda_effect0 * ps * (1 - ps) },
+      d2  = function(eta) { ps <- plogis(eta); d <- ps * (1 - ps); mda_effect0 * d * (1 - 2 * ps) }
+    )
+
     if(messages) message("\n - Obtaining covariance matrix and mean for the proposal distribution of the MCMC \n")
     out_maxim <-
-      maxim.integrand.dast(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
-                           mda_effect = mda_effect0,
-                           ID_coords = ID_coords, ID_re = ID_re,
-                           sigma2_re = sigma2_re_0,
-                           hessian = FALSE, gradient = TRUE)
+      maxim_integrand(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
+                      ID_coords = ID_coords, ID_re = ID_re,
+                      family = "binomial", sigma2_re = sigma2_re_0,
+                      hessian = FALSE, gradient = TRUE, invlink = mda_invlink0)
 
     Sigma_pd <- out_maxim$Sigma.tilde
     mean_pd <- out_maxim$mode
 
     simulation <-
-      Laplace_sampling_MCMC_dast(y = y, units_m = units_m, mu = mu0,
-                                 mda_effect = mda_effect0, Sigma = Sigma0,
-                                 sigma2_re = sigma2_re_0,
-                                 ID_coords = ID_coords, ID_re = ID_re,
-                                 control_mcmc = control_mcmc,
-                                 Sigma_pd = Sigma_pd, mean_pd = mean_pd,
-                                 messages = messages)
+      laplace_sampling_mcmc(y = y, units_m = units_m, mu = mu0,
+                            Sigma = Sigma0, ID_coords = ID_coords, ID_re = ID_re,
+                            sigma2_re = sigma2_re_0, family = "binomial",
+                            control_mcmc = control_mcmc, invlink = mda_invlink0,
+                            Sigma_pd = Sigma_pd, mean_pd = mean_pd,
+                            messages = messages)
 
     S_tot_samples <- simulation$samples$S
 
@@ -1185,443 +1202,6 @@ dast_fit <-
     return(out)
   }
 
-
-maxim.integrand.dast <- function(y,units_m,mu,Sigma,ID_coords, ID_re = NULL,
-                                 mda_effect,
-                                 sigma2_re = NULL,
-                                 hessian=FALSE, gradient=FALSE) {
-  # Sigma <- Sigma0
-  # mda_effect <- mda_effect0
-  # mu <- mu0
-  Sigma.inv <- solve(Sigma)
-  n_loc <- nrow(Sigma)
-  n <- length(y)
-  if((!is.null(ID_re) & is.null(sigma2_re)) | (is.null(ID_re) & !is.null(sigma2_re))) {
-    stop("To introduce unstructured random effects both `ID_re` and `sigma2_re`
-           must be provided.")
-  }
-  n_re <- length(sigma2_re)
-  if(n_re > 0) {
-    n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[,i])))
-    ind_re <- list()
-    add_i <- 0
-    for(i in 1:n_re) {
-      ind_re[[i]] <- (add_i+n_loc+1):(add_i+n_loc+n_dim_re[i])
-      if(i < n_re) add_i <- sum(n_dim_re[1:i])
-    }
-  }
-  n_tot <- n_loc
-  if(n_re > 0) n_tot <- n_tot + sum(n_dim_re)
-
-  integrand <- function(S_tot) {
-    S <- S_tot[1:n_loc]
-
-    q.f_S <- as.numeric(t(S)%*%Sigma.inv%*%(S))
-
-    q.f_re <- 0
-    if(n_re > 0) {
-      S_re <- NULL
-      S_re_list <- list()
-      for(i in 1:n_re) {
-        S_re_list[[i]] <- S_tot[ind_re[[i]]]
-        q.f_re <- q.f_re + sum(S_re_list[[i]]^2)/sigma2_re[i]
-      }
-    }
-
-    eta <- mu + S[ID_coords]
-    if(n_re > 0) {
-      for(i in 1:n_re) {
-        eta <- eta + S_re_list[[i]][ID_re[,i]]
-      }
-    }
-    prob_star <- 1/(1+exp(-eta))
-    prob <- mda_effect*prob_star
-
-    llik <- sum(y*log(prob)+(units_m-y)*log(1-prob))
-
-
-    out <- -0.5*q.f_S-0.5*q.f_re+llik
-    return(out)
-  }
-
-
-  C_S <- t(sapply(1:n_loc,function(i) ID_coords==i))
-
-  if(n_re>0) {
-    C_re <- list()
-    C_S_re <- list()
-    C_re_re <- list()
-    for(j in 1:n_re){
-      C_S_re[[j]] <- array(FALSE,dim = c(n_loc, n_dim_re[j], n))
-      C_re[[j]] <- t(sapply(1:n_dim_re[j],function(i) ID_re[,j]==i))
-      for(l in 1:n_dim_re[j]) {
-        for(k in 1:n_loc) {
-          ind_kl <- which(ID_coords==k & ID_re[,j]==l)
-          if(length(ind_kl) > 0) {
-            C_S_re[[j]][k,l,ind_kl] <- TRUE
-          }
-        }
-      }
-
-      if(j < n_re) {
-        C_re_re[[j]] <- list()
-        counter <- 0
-        for(w in (j+1):n_re) {
-          counter <- counter+1
-          C_re_re[[j]][[counter]] <- array(FALSE,dim = c(n_dim_re[j], n_dim_re[w], n))
-          for(l in 1:n_dim_re[j]) {
-            for(k in 1:n_dim_re[w]) {
-              ind_lk <- which(ID_re[,j]==l & ID_re[,w]==k)
-              if(length(ind_kl) > 0) {
-                C_re_re[[j]][[counter]][l,k,ind_lk] <- TRUE
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  grad.integrand <- function(S_tot) {
-    S <- S_tot[1:n_loc]
-
-    if(n_re > 0) {
-      S_re_list <- list()
-      for(i in 1:n_re) {
-        S_re_list[[i]] <- S_tot[ind_re[[i]]]
-      }
-    }
-
-    eta <- mu + S[ID_coords]
-    if(n_re > 0) {
-      for(i in 1:n_re) {
-        eta <- eta + S_re_list[[i]][ID_re[,i]]
-      }
-    }
-
-    prob_star <- 1 / (1 + exp(-eta))
-    prob <- mda_effect * prob_star
-
-    # Compute derivative of log-likelihood with respect to eta
-    d_S <- (y/prob - (units_m-y)/(1-prob))*mda_effect*prob_star/(1+exp(eta))
-    d_S <- as.numeric(d_S)
-
-    out <- rep(NA,n_tot)
-    out[1:n_loc] <- as.numeric(-Sigma.inv%*%S+
-                                 sapply(1:n_loc,function(i) sum(d_S[C_S[i,]])))
-    if(n_re>0) {
-      for(j in 1:n_re) {
-        out[ind_re[[j]]] <- as.numeric(-S_re_list[[j]]/sigma2_re[[j]]+
-                                         sapply(1:n_dim_re[[j]],
-                                                function(x) sum(d_S[C_re[[j]][x,]])))
-      }
-    }
-    return(out)
-  }
-
-
-  hessian.integrand <- function(S_tot) {
-    S <- S_tot[1:n_loc]
-
-
-    if(n_re > 0) {
-      S_re <- NULL
-      S_re_list <- list()
-      for(i in 1:n_re) {
-        S_re_list[[i]] <- S_tot[ind_re[[i]]]
-      }
-    }
-
-    eta <- mu + S[ID_coords]
-    if(n_re > 0) {
-      for(i in 1:n_re) {
-        eta <- eta + S_re_list[[i]][ID_re[,i]]
-      }
-    }
-
-    prob_star <- 1 / (1 + exp(-eta))
-    prob <- mda_effect * prob_star
-
-    # Compute derivative of log-likelihood with respect to eta
-    d2_S <- (-y/prob^2 - (units_m-y)/((1-prob)^2))*(mda_effect*prob_star/(1+exp(eta)))^2+
-      (y/prob - (units_m-y)/(1-prob))*mda_effect*exp(eta)*(1-exp(2*eta))/((1+exp(eta))^4)
-    d2_S <- as.numeric(d2_S)
-    out <- matrix(0,nrow = n_tot, ncol = n_tot)
-
-    out[1:n_loc, 1:n_loc] <-  -Sigma.inv
-    diag(out[1:n_loc, 1:n_loc]) <- diag(out[1:n_loc, 1:n_loc])+
-      sapply(1:n_loc,function(i) sum(d2_S[C_S[i,]]))
-    if(n_re>0) {
-      for(j in 1:n_re) {
-        diag(out[ind_re[[j]], ind_re[[j]]]) <- -1/sigma2_re[j]
-        diag(out[ind_re[[j]], ind_re[[j]]]) <- diag(out[ind_re[[j]], ind_re[[j]]])+
-          sapply(1:n_dim_re[j],function(i) sum(d2_S[C_re[[j]][i,]]))
-
-        out[1:n_loc,ind_re[[j]]]
-
-        for(k in 1:n_dim_re[[j]]) {
-          out[1:n_loc, ind_re[[j]]][,k] <- -sapply(1:n_loc,function(i) sum(d2_S[C_S_re[[j]][i,k,]]))
-          out[ind_re[[j]], 1:n_loc][k,] <- out[1:n_loc,ind_re[[j]]][,k]
-        }
-
-        if(j < n_re) {
-          counter <- 0
-          for(w in (j+1):n_re) {
-            counter <- counter + 1
-            for(k in 1:n_dim_re[[w]]) {
-              out[ind_re[[j]], ind_re[[w]]][,k] <- -sapply(1:n_dim_re[j],function(i) sum(d2_S[C_re_re[[j]][[counter]][i,k,]]))
-              out[ind_re[[w]], ind_re[[j]]][k,] <- out[ind_re[[j]], ind_re[[w]]][,k]
-            }
-          }
-        }
-      }
-    }
-    return(out)
-  }
-
-  estim <- nlminb(rep(0,n_tot),
-                  function(x) -integrand(x),
-                  function(x) -grad.integrand(x),
-                  function(x) -hessian.integrand(x))
-
-
-  out <- list()
-  out$mode <- estim$par
-  if(hessian) {
-    out$hessian <- hessian.integrand(out$mode)
-  } else {
-    out$Sigma.tilde <- solve(-hessian.integrand(out$mode))
-  }
-
-  if(gradient) {
-    out$gradient <- grad.integrand(out$mode)
-  }
-
-  return(out)
-}
-Laplace_sampling_MCMC_dast <- function(y, units_m, mu, mda_effect, Sigma, ID_coords, ID_re = NULL,
-                                       sigma2_re = NULL, control_mcmc,
-                                       Sigma_pd = NULL, mean_pd = NULL, messages = TRUE) {
-
-  # Precompute values that will not change
-  Sigma.inv <- solve(Sigma)
-  n_loc <- nrow(Sigma)
-  n <- length(y)
-
-  if ((!is.null(ID_re) & is.null(sigma2_re)) | (is.null(ID_re) & !is.null(sigma2_re))) {
-    stop("To introduce unstructured random effects both `ID_re` and `sigma2_re` must be provided.")
-  }
-
-  n_re <- length(sigma2_re)
-  n_tot <- if (n_re > 0) n_loc + sum(sapply(1:n_re, function(i) length(unique(ID_re[, i])))) else n_loc
-
-  # Precompute the matrices
-  C_S <- t(sapply(1:n_loc, function(i) ID_coords == i))
-
-  if (n_re > 0) {
-    ind_re <- vector("list", n_re)
-    add_i <- 0
-    n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
-
-    for (i in 1:n_re) {
-      ind_re[[i]] <- (add_i + n_loc + 1):(add_i + n_loc + n_dim_re[i])
-      if (i < n_re) add_i <- sum(n_dim_re[1:i])
-    }
-
-    C_re <- vector("list", n_re)
-    C_S_re <- vector("list", n_re)
-    C_re_re <- vector("list", n_re)
-
-    for (j in 1:n_re) {
-      C_S_re[[j]] <- array(FALSE, dim = c(n_loc, n_dim_re[j], n))
-      C_re[[j]] <- t(sapply(1:n_dim_re[j], function(i) ID_re[, j] == i))
-      for (l in 1:n_dim_re[j]) {
-        for (k in 1:n_loc) {
-          ind_kl <- which(ID_coords == k & ID_re[, j] == l)
-          if (length(ind_kl) > 0) C_S_re[[j]][k, l, ind_kl] <- TRUE
-        }
-      }
-
-      if (j < n_re) {
-        C_re_re[[j]] <- vector("list", n_re - j)
-        counter <- 0
-        for (w in (j + 1):n_re) {
-          counter <- counter + 1
-          C_re_re[[j]][[counter]] <- array(FALSE, dim = c(n_dim_re[j], n_dim_re[w], n))
-          for (l in 1:n_dim_re[j]) {
-            for (k in 1:n_dim_re[w]) {
-              ind_lk <- which(ID_re[, j] == l & ID_re[, w] == k)
-              if (length(ind_lk) > 0) {
-                C_re_re[[j]][[counter]][l, k, ind_lk] <- TRUE
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  if (is.null(Sigma_pd) | is.null(mean_pd)) {
-    out_maxim <- maxim.integrand.dast(y = y, units_m = units_m, Sigma = Sigma, mu = mu,
-                                      mda_effect = mda_effect, ID_coords = ID_coords,
-                                      ID_re = ID_re, sigma2_re = sigma2_re,
-                                      hessian = FALSE, gradient = TRUE)
-
-    if (is.null(Sigma_pd)) Sigma_pd <- out_maxim$Sigma.tilde
-    if (is.null(mean_pd)) mean_pd <- out_maxim$mode
-  }
-
-  n_sim  <- control_mcmc$n_sim
-  burnin <- control_mcmc$burnin
-  thin   <- control_mcmc$thin
-  h      <- control_mcmc$h %||% (1.65 / (n_tot^(1 / 6)))  # Default if not provided
-  c1.h   <- control_mcmc$c1.h
-  c2.h   <- control_mcmc$c2.h
-
-  Sigma_pd_sroot <- t(chol(Sigma_pd))
-  A <- solve(Sigma_pd_sroot)
-
-  # Construct total covariance matrix (Sigma_tot)
-  Sigma_tot <- if (n_re == 0) Sigma else {
-    Sigma_tot <- matrix(0, n_tot, n_tot)
-    Sigma_tot[1:n_loc, 1:n_loc] <- Sigma
-    for (i in 1:n_re) diag(Sigma_tot)[ind_re[[i]]] <- sigma2_re[i]
-    Sigma_tot
-  }
-
-  Sigma_w_inv <- solve(A %*% Sigma_tot %*% t(A))
-  mu_w <- -as.numeric(A %*% mean_pd)
-
-  cond.dens.W <- function(W, S_tot) {
-    S <- S_tot[1:n_loc]
-
-    eta <- mu + S[ID_coords]
-    if (n_re > 0) {
-      for (i in 1:n_re) {
-        eta <- eta + S_tot[ind_re[[i]]][ID_re[, i]]
-      }
-    }
-
-    prob_star <- plogis(eta)             # in (0,1)
-    prob <- mda_effect * prob_star              # expected in (0,1)
-    eps <- .Machine$double.eps
-    prob <- pmin(pmax(prob, eps), 1 - eps)      # clamp for numerical stability
-
-    llik <- sum(y * log(prob) + (units_m - y) * log(1 - prob))
-    diff_w <- W - mu_w
-
-    as.numeric(-0.5 * crossprod(diff_w, Sigma_w_inv %*% diff_w) + llik)
-  }
-
-  lang.grad <- function(W, S_tot) {
-    S <- S_tot[1:n_loc]
-
-    eta <- mu + S[ID_coords]
-    if (n_re > 0) {
-      for (i in 1:n_re) {
-        eta <- eta + S_tot[ind_re[[i]]][ID_re[, i]]
-      }
-    }
-
-    prob_star <- plogis(eta)
-    prob <- mda_effect * prob_star
-    eps <- .Machine$double.eps
-    prob <- pmin(pmax(prob, eps), 1 - eps)
-
-    # derivative wrt eta
-    # d/deta prob = mda_effect * prob_star * (1 - prob_star)
-    dprob_deta <- mda_effect * prob_star * (1 - prob_star)
-    d_llik_deta <- (y / prob - (units_m - y) / (1 - prob)) * dprob_deta
-
-    grad_S_tot_r <- rep(NA_real_, n_tot)
-    # contributions to S (size n_loc)
-    grad_S_tot_r[1:n_loc] <- as.numeric(sapply(1:n_loc, function(i) sum(d_llik_deta[C_S[i, ]])))
-
-    if (n_re > 0) {
-      for (j in 1:n_re) {
-        # random effect prior term and likelihood term
-        grad_like_re <- sapply(1:n_dim_re[[j]], function(x) sum(d_llik_deta[C_re[[j]][x, ]]))
-        grad_S_tot_r[ind_re[[j]]] <- as.numeric(-S_tot[ind_re[[j]]] / sigma2_re[[j]] + grad_like_re)
-      }
-    }
-
-    as.numeric(-Sigma_w_inv %*% (W - mu_w) + t(Sigma_pd_sroot) %*% grad_S_tot_r)
-  }
-
-  # MCMC loop
-  W_curr <- rep(0, n_tot)
-  S_tot_curr <- as.numeric(Sigma_pd_sroot %*% W_curr + mean_pd)
-  mean_curr <- as.numeric(W_curr + (h^2 / 2) * lang.grad(W_curr, S_tot_curr))
-  lp_curr <- cond.dens.W(W_curr, S_tot_curr)
-
-  acc <- 0L
-  n_samples <- floor((n_sim - burnin) / thin)
-  sim <- matrix(NA_real_, nrow = n_samples, ncol = n_tot)
-
-  if (messages) message("\n - Conditional simulation (burnin=", burnin, ", thin=", thin, "):")
-  pb <- NULL
-  if (messages && interactive()) {
-    pb <- utils::txtProgressBar(min = 0, max = n_sim, style = 3)
-    on.exit(try(close(pb), silent = TRUE), add = TRUE)
-  }
-
-  h.vec <- rep(NA_real_, n_sim)
-  acc_prob <- rep(NA_real_, n_sim)
-
-  for (i in 1:n_sim) {
-    W_prop <- mean_curr + h * rnorm(n_tot)
-    S_tot_prop <- as.numeric(Sigma_pd_sroot %*% W_prop + mean_pd)
-    mean_prop <- as.numeric(W_prop + (h^2 / 2) * lang.grad(W_prop, S_tot_prop))
-    lp_prop <- cond.dens.W(W_prop, S_tot_prop)
-
-    dprop_curr <- -sum((W_prop - mean_curr)^2) / (2 * (h^2))
-    dprop_prop <- -sum((W_curr - mean_prop)^2) / (2 * (h^2))
-
-    log_prob <- lp_prop + dprop_prop - lp_curr - dprop_curr
-
-    if (log(runif(1)) < log_prob) {
-      acc <- acc + 1L
-      W_curr <- W_prop
-      S_tot_curr <- S_tot_prop
-      lp_curr <- lp_prop
-      mean_curr <- mean_prop
-    }
-
-    if (i > burnin && (i - burnin) %% thin == 0) {
-      cnt <- (i - burnin) %/% thin
-      sim[cnt, ] <- S_tot_curr
-    }
-
-    acc_prob[i] <- acc / i
-    h <- max(1e-19, h + c1.h * i^(-c2.h) * (acc / i - 0.57))  # actually update h
-    h.vec[i] <- h
-
-    if (messages) {
-      if (!is.null(pb)) {
-        utils::setTxtProgressBar(pb, i)
-      } else if (i %% max(1, floor(n_sim/20)) == 0) {
-        message(sprintf("   %3d%%", round(100 * i / n_sim)))
-      }
-    }
-  }
-
-  if (!is.null(pb)) close(pb)
-  if (messages) message(" done.\n")
-
-  out_sim <- list(samples = list(S = sim[, 1:n_loc, drop = FALSE]))
-  if (n_re > 0) {
-    re_names <- if (!is.null(colnames(ID_re))) colnames(ID_re) else paste0("re", seq_len(n_re))
-    for (i in 1:n_re) {
-      out_sim$samples[[re_names[i]]] <- sim[, ind_re[[i]], drop = FALSE]
-    }
-  }
-
-  out_sim$tuning_par <- h.vec
-  out_sim$acceptance_prob <- acc_prob
-  class(out_sim) <- "RiskMap_mcmc"
-
-  return(out_sim)
-}
 
 ##' @title Extract Parameter Estimates from a "RiskMap_dast" Model Fit
 ##' @description \code{coef} method for \code{dast()} fits; extends
