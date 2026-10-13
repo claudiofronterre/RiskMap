@@ -7,17 +7,16 @@
 dast(
   formula,
   data,
-  den = NULL,
+  denominator = NULL,
   time,
   mda_times,
   int_mat,
   penalty = NULL,
   drop = NULL,
   power_val,
-  convert_to_crs = NULL,
-  scale_to_km = TRUE,
+  model_crs = NULL,
+  distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
-  par0 = NULL,
   S_samples = NULL,
   return_samples = TRUE,
   messages = TRUE,
@@ -30,7 +29,7 @@ dast(
 
 \item{data}{An \code{sf} object containing the dataset.}
 
-\item{den}{The denominator for binomial models.}
+\item{denominator}{The denominator for binomial models.}
 
 \item{time}{A variable in \code{data} giving the survey times of observations (required).}
 
@@ -50,13 +49,11 @@ for that parameter.}
 
 \item{power_val}{Value expressing the power of the MDA impact function.}
 
-\item{convert_to_crs}{CRS to which spatial data should be converted.}
+\item{model_crs}{CRS to which spatial data should be converted.}
 
-\item{scale_to_km}{Logical; whether to scale distances to kilometers (default: \code{TRUE}).}
+\item{distance_units}{Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.}
 
 \item{control_mcmc}{A list of MCMC control parameters, typically from \code{set_control_mcmc()}.}
-
-\item{par0}{Optional list of initial parameter values.}
 
 \item{S_samples}{Number of posterior samples to retain.}
 
@@ -74,7 +71,7 @@ A list containing model estimates, posterior samples, and metadata, including:
 \item \code{coords}: Unique spatial coordinates.
 \item \code{mda_times}: MDA time points.
 \item \code{survey_times_data}: Survey time data from the \code{time} argument.
-\item \code{time}: GP temporal index if specified in \code{gp(x,y,t_gp)}.
+\item \code{time}: GP temporal index if specified in \code{gp(t_gp)}.
 \item \code{int_mat}: Intervention matrix.
 \item \code{ID_coords}: Indices of spatial locations (and time if spatio-temporal GP).
 \item \code{re}: Random effects levels (if applicable).
@@ -84,7 +81,7 @@ A list containing model estimates, posterior samples, and metadata, including:
 \item \code{fix_alpha}: Fixed alpha value (if applicable).
 \item \code{formula}: Model formula.
 \item \code{crs}: Coordinate reference system.
-\item \code{scale_to_km}: Indicator of distance scaling.
+\item \code{distance_units}: Units used for distance computations.
 \item \code{data_sf}: Processed spatial dataset.
 \item \code{family}: Model family (e.g., "binomial").
 \item \code{sst}: Logical indicator of whether a spatio-temporal GP was used.
@@ -103,8 +100,9 @@ to the impact of mass drug administration (MDA). The function requires the full 
 
 Spatial and spatio-temporal dependence is specified through the \code{gp()} term in the model formula:
 \itemize{
-\item \code{gp(x, y)} fits a purely spatial Gaussian process.
-\item \code{gp(x, y, t_gp)} fits a spatio-temporal Gaussian process, where \code{t_gp} is used as the GP temporal index.
+\item \code{gp()} fits a purely spatial Gaussian process, using the coordinates of \code{data}.
+\item \code{gp(t_gp)} fits a spatio-temporal Gaussian process, where \code{t_gp} is a column of
+\code{data} used as the GP temporal index.
 }
 In all cases, the \code{time} argument must be specified separately and provides the observation-level survey times used
 in modelling MDA impact. These survey times may differ from the GP temporal index.

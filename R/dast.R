@@ -161,15 +161,16 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##'
 ##' Spatial and spatio-temporal dependence is specified through the \code{gp()} term in the model formula:
 ##' \itemize{
-##'   \item \code{gp(x, y)} fits a purely spatial Gaussian process.
-##'   \item \code{gp(x, y, t_gp)} fits a spatio-temporal Gaussian process, where \code{t_gp} is used as the GP temporal index.
+##'   \item \code{gp()} fits a purely spatial Gaussian process, using the coordinates of \code{data}.
+##'   \item \code{gp(t_gp)} fits a spatio-temporal Gaussian process, where \code{t_gp} is a column of
+##'   \code{data} used as the GP temporal index.
 ##' }
 ##' In all cases, the \code{time} argument must be specified separately and provides the observation-level survey times used
 ##' in modelling MDA impact. These survey times may differ from the GP temporal index.
 ##'
 ##' @param formula A model formula specifying the response variable, predictors, and the GP structure through \code{gp()}.
 ##' @param data An \code{sf} object containing the dataset.
-##' @param den The denominator for binomial models.
+##' @param denominator The denominator for binomial models.
 ##' @param time A variable in \code{data} giving the survey times of observations (required).
 ##' @param mda_times A vector specifying the mass drug administration (MDA) times.
 ##' @param int_mat Intervention matrix specifying the timing and coverage of MDA; the dimension of the matrix
@@ -182,10 +183,9 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##'   for that parameter.
 ##' @param drop Optional value used for fixing the "drop" parameter of the MDA impact function.
 ##' @param power_val Value expressing the power of the MDA impact function.
-##' @param convert_to_crs CRS to which spatial data should be converted.
-##' @param scale_to_km Logical; whether to scale distances to kilometers (default: \code{TRUE}).
+##' @param model_crs CRS to which spatial data should be converted.
+##' @param distance_units Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.
 ##' @param control_mcmc A list of MCMC control parameters, typically from \code{set_control_mcmc()}.
-##' @param par0 Optional list of initial parameter values.
 ##' @param S_samples Number of posterior samples to retain.
 ##' @param return_samples Logical; whether to return posterior samples (default: \code{TRUE}).
 ##' @param messages Logical; whether to print messages (default: \code{TRUE}).
@@ -198,7 +198,7 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##'   \item \code{coords}: Unique spatial coordinates.
 ##'   \item \code{mda_times}: MDA time points.
 ##'   \item \code{survey_times_data}: Survey time data from the \code{time} argument.
-##'   \item \code{time}: GP temporal index if specified in \code{gp(x,y,t_gp)}.
+##'   \item \code{time}: GP temporal index if specified in \code{gp(t_gp)}.
 ##'   \item \code{int_mat}: Intervention matrix.
 ##'   \item \code{ID_coords}: Indices of spatial locations (and time if spatio-temporal GP).
 ##'   \item \code{re}: Random effects levels (if applicable).
@@ -208,7 +208,7 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##'   \item \code{fix_alpha}: Fixed alpha value (if applicable).
 ##'   \item \code{formula}: Model formula.
 ##'   \item \code{crs}: Coordinate reference system.
-##'   \item \code{scale_to_km}: Indicator of distance scaling.
+##'   \item \code{distance_units}: Units used for distance computations.
 ##'   \item \code{data_sf}: Processed spatial dataset.
 ##'   \item \code{family}: Model family (e.g., "binomial").
 ##'   \item \code{sst}: Logical indicator of whether a spatio-temporal GP was used.
@@ -226,15 +226,15 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
 ##' @export
 dast <- function(formula,
                  data,
-                 den = NULL,
+                 denominator = NULL,
                  time,
-                 mda_times, int_mat,
+                 mda_times,
+                 int_mat,
                  penalty = NULL,
                  drop = NULL, power_val,
-                 convert_to_crs = NULL,
-                 scale_to_km = TRUE,
+                 model_crs = NULL,
+                 distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
-                 par0=NULL,
                  S_samples = NULL,
                  return_samples = TRUE,
                  messages = TRUE,
@@ -247,41 +247,40 @@ dast <- function(formula,
                                    gamma = NULL,
                                    alpha = NULL)) {
 
-  nong <- TRUE
+  # only pass generic start_pars
+  dast_start_pars <- start_pars[intersect(names(start_pars), c("gamma", "alpha", "psi"))]
+  standard_start_pars <- start_pars[intersect(names(start_pars), c("beta", "sigma2", "tau2", "phi", "sigma2_re"))]
 
-  check_data(data)
+  prepared <- prepare_data(
+    formula = formula, data = data, family = "binomial",
+    denominator = substitute(denominator), model_crs = model_crs,
+    distance_units = distance_units, control_mcmc = control_mcmc,
+    return_samples = return_samples, messages = messages,
+    start_pars = standard_start_pars
+  )
+  list2env(prepared, environment())
+  start_pars[names(dast_start_pars)] <- dast_start_pars
 
-  if(!inherits(formula,
-               what = "formula", which = FALSE)) {
-    stop("'formula' must be a 'formula'
-         object indicating the variables of the
-         model to be fitted")
-  }
+  # --- dast-specific preparation: not handled by prepare_data() ---
 
-  inter_f <- interpret_formula(formula)
-
-  # --- NEW: gp/time interpretation ---
   gp_terms <- inter_f$gp_spec$term
   gp_dim   <- inter_f$gp_spec$dim
 
   # time= (required) -> survey_times_data
   time_name <- deparse(substitute(time))
-  if (time_name == "NULL") stop("You must supply a time column via the `time` argument.")
-  if (!time_name %in% names(data)) stop("`time` column not found in 'data'.")
+  if (time_name == "NULL") stop("You must supply a time column via the 'time' argument")
+  if (!time_name %in% names(data)) stop("'time' column not found in 'data'")
   survey_times_data <- data[[time_name]]
 
-  # GP temporal index (optional, only if gp has 3 terms)
   sst <- FALSE
   gp_time_obs <- NULL
   if (length(gp_terms) == 1 && gp_terms[1] == "sf") {
     sst <- FALSE
-  } else if (gp_dim == 3) {
+  } else if (gp_dim == 1) {
     sst <- TRUE
-    gp_time_obs <- data[[gp_terms[3]]]   # may differ from survey_times_data
-  } else if (gp_dim == 2) {
-    sst <- FALSE
+    gp_time_obs <- data[[gp_terms[1]]]   # may differ from survey_times_data
   } else {
-    stop("Specify gp(x, y), gp(x, y, t), or gp(sf).")
+    stop("Specify gp() for a purely spatial model, or gp(t) for a spatio-temporal model, where 't' is the GP time index column.")
   }
 
   # Build default no-penalty list.
@@ -302,14 +301,6 @@ dast <- function(formula,
            "and penalty/d1/d2 for gamma (elements 4-6).")
   }
 
-  kappa <- inter_f$gp_spec$kappa
-  if(kappa < 0) stop("kappa must be positive.")
-
-
-  mf <- model.frame(inter_f$pf,data=data, na.action = na.fail)
-
-  # Extract outcome data
-  y <- as.numeric(model.response(mf))
   n <- length(y)
 
   if(is.null(int_mat)) stop("'int_mat' must be provided")
@@ -319,119 +310,26 @@ dast <- function(formula,
   if(ncol(int_mat) != length(mda_times))
     stop(sprintf("'int_mat' must have %d columns", length(mda_times)))
 
-  # Extract covariates matrix
-  D <- as.matrix(model.matrix(attr(mf,"terms"),data=data))
-
-  if(is.null(inter_f$offset)) {
-    cov_offset <- rep(0, nrow(data))
-  } else {
-    cov_offset <- data[[inter_f$offset]]
-  }
-
-  # Define denominators for Binomial and Poisson distributions
-
-  # units_m <- data$m
-  if(nong) {
-    do_name <- deparse(substitute(den))
-    if(do_name=="NULL") {
-      units_m <- rep(1, nrow(data))
-      warning("'den' is assumed to be 1 for all observations \n")
-    } else {
-      units_m <- data[[do_name]]
-    }
-    if(is.integer(units_m)) units_m <- as.numeric(units_m)
-    if(!is.numeric(units_m)) stop("the variable passed to `den` must be numeric")
-    if(any(y > units_m)) stop("The counts identified by the outcome variable cannot be larger
-                              than `den` in the case of a Binomial distribution")
-    if(!inherits(control_mcmc,
-                 what = "RiskMap_control_mcmc", which = FALSE)) {
-      stop ("the argument passed to 'control_mcmc' must be an output
-                                                  from the function set_control_mcmc; see ?set_control_mcmc
-                                                  for more details")
-
-    }
-
-  }
-
-  # survey_times_data already set from 'time' argument above
-
-  hr_re <- if (length(inter_f$re_spec) > 0L) {
-    inter_f$re_spec$term
-  } else {
-    NULL
-  }
   if(!is.null(drop)) {
     fix_alpha <- drop
   } else {
     fix_alpha <- NULL
   }
 
-  random_effects <- prepare_random_effects(data, hr_re)
-  n_re <- random_effects$n_re
-  names_re <- random_effects$names_re
-  ID_re <- random_effects$ID_re
-  if (!is.null(ID_re)) {
-    ID_re <- as.data.frame(ID_re)
-  }
-  re_unique <- random_effects$re_unique
-  re_unique_f <- random_effects$re_unique_f
-
-
-  # Extract coordinates
-  if(!is.null(convert_to_crs)) {
-    if(!is.numeric(convert_to_crs)) stop("'convert_to_utm' must be a numeric object")
-    data <- st_transform(data, crs = convert_to_crs)
-    crs <- convert_to_crs
-  }
-
-  if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
-
-  coords_o <- st_coordinates(data)
-  if(sst) {
+  # deduplicate on x,y,t
+  if (sst) {
+    coords_o <- coordinates_in_units(data, distance_units)
     coords_time <- unique(cbind(coords_o, gp_time_obs))
-    coords <- coords_time[,1:2, drop = FALSE]
-    time_gp <- coords_time[,3]
+    coords <- coords_time[, 1:2, drop = FALSE]
+    time_gp <- coords_time[, 3]
+    m <- nrow(coords_o)
+    ID_coords <- sapply(seq_len(m), function(i)
+      which(coords_o[i, 1] == coords[, 1] &
+              coords_o[i, 2] == coords[, 2] &
+              gp_time_obs[i] == time_gp))
+    s_unique <- unique(ID_coords)
   } else {
-    coords <- unique(coords_o)
     time_gp <- NULL
-  }
-
-  m <- nrow(coords_o)
-  if(sst) {
-    ID_coords <- sapply(1:m, function(i)
-      which(coords_o[i,1]==coords[,1] &
-              coords_o[i,2]==coords[,2] &
-              gp_time_obs[i]==time_gp))
-  } else {
-    ID_coords <- sapply(1:m, function(i)
-      which(coords_o[i,1]==coords[,1] &
-              coords_o[i,2]==coords[,2]))
-  }
-  s_unique <- unique(ID_coords)
-
-  fix_tau2 <- inter_f$gp_spec$nugget
-
-
-  if(scale_to_km) {
-    coords_o <- coords_o/1000
-    coords <- coords/1000
-    if(messages) message("Distances between locations are computed in kilometers ")
-  } else {
-    if(messages) message("Distances between locations are computed in meters ")
-  }
-
-  if(is.null(start_pars) & !is.null(par0)) {
-    start_pars <- par0
-    if(length(par0$beta)!=ncol(D)) stop("the values passed to `beta` in par0 do not match the
-                                        variables specified in the formula")
-  }
-
-  if(is.null(start_pars$beta)) {
-    aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
-    if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
-    glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
-                      data = aux_data, family = binomial)
-    start_pars$beta <- coef(glm_fitted)
   }
 
   if(is.null(start_pars$gamma) | (is.null(drop) & is.null(start_pars$alpha)) ) {
@@ -443,32 +341,8 @@ dast <- function(formula,
       start_pars$alpha <- dast_i$alpha
     }
     start_pars$gamma <- dast_i$gamma
-  } else {
-    if(length(start_pars$beta)!=ncol(D)) stop("number of starting values provided
-                                              for 'beta' do not match the number of
-                                              covariates specified in the model,
-                                              including the intercept")
   }
 
-  if(is.null(start_pars$sigma2)) {
-    start_pars$sigma2 <- 1
-  } else {
-    if(start_pars$sigma2<0) stop("the starting value for sigma2 must be positive")
-  }
-
-  if(is.null(start_pars$phi)) {
-    start_pars$phi <- quantile(dist(coords),0.1)
-  } else {
-    if(start_pars$phi<0) stop("the starting value for phi must be positive")
-  }
-
-  if(is.null(fix_tau2)) {
-    if(is.null(start_pars$tau2)) {
-      start_pars$tau2 <- 1
-    } else {
-      if(start_pars$tau2<0) stop("the starting value for tau2 must be positive")
-    }
-  }
   if(sst) {
     if(is.null(start_pars$psi)) {
       # base distances from GP time index (not survey time)
@@ -483,33 +357,17 @@ dast <- function(formula,
     }
   }
 
-  if(n_re > 0) {
-    if(is.null(start_pars$sigma2_re)) {
-      start_pars$sigma2_re <- rep(1,n_re)
-    } else {
-      if(length(start_pars$sigma2_re)!=n_re) stop("starting values for 'sigma2_re' do not
-                                       match the number of specified unstructured
-                                       random effects")
-      if(any(start_pars$sigma2_re<0)) stop("all the starting values for sigma2_re must be positive")
-    }
-  }
-
-
-
-  if(is.null(par0)) {
-    par0 <- start_pars
-  }
   res <- dast_fit(y = y, D = D, coords = coords, time = time_gp,
                   units_m = units_m,
                   mda_times = mda_times, survey_times_data = survey_times_data,
                   sst = sst,
                   int_mat = int_mat,
-                  kappa = inter_f$gp_spec$kappa,
+                  kappa = kappa,
                   penalty = penalty,
                   ID_coords = ID_coords, ID_re = ID_re, s_unique = s_unique, re_unique = re_unique,
                   fix_tau2 = fix_tau2, fix_alpha = fix_alpha,
                   return_samples = return_samples,
-                  par0 = par0, cov_offset = cov_offset,
+                  par0 = start_pars, cov_offset = cov_offset,
                   power_val = power_val,
                   start_beta = start_pars$beta,
                   start_alpha = start_pars$alpha,
@@ -525,7 +383,7 @@ dast <- function(formula,
 
 
   res$y <- y
-  res$D <- D
+  res$D <- original_D
   res$coords <- coords
   res$sst <- sst
   if(sst) res$time <- time_gp
@@ -542,22 +400,18 @@ dast <- function(formula,
   res$fix_tau2 <- fix_tau2
   res$fix_alpha <- fix_alpha
   res$formula <- formula
-  if(!is.null(convert_to_crs)) {
-    crs <- convert_to_crs
-  } else {
-    crs <- st_crs(data)$input
-  }
   if(no_penalty) {
     res$penalty <- NULL
   } else {
     res$penalty <- penalty
   }
-  res$crs <- crs
-  res$scale_to_km <- scale_to_km
+  res$crs <- st_crs(data)$input
+  res$input_crs <- input_crs
+  res$distance_units <- distance_units
   res$data_sf <- data
   res$family <- "binomial"
   res$kappa <- kappa
-  if(nong) res$units_m <- units_m
+  res$units_m <- units_m
   res$cov_offset <- cov_offset
   res$call <- match.call()
 
