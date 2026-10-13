@@ -1163,13 +1163,25 @@ dast_fit <-
       control   = list(trace=1*messages)
     )
 
-    out$estimate <- estim$par
+    out$estimate <- list(beta   = setNames(estim$par[ind_beta], colnames(D)),
+                         sigma2 = unname(estim$par[ind_sigma2]),
+                         phi    = unname(estim$par[ind_phi]))
+    if (is.null(fix_tau2)) out$estimate$nu2 <- unname(estim$par[ind_nu2])
+    if (n_re > 0) {
+      sigma2_re <- unname(estim$par[ind_sigma2_re])
+      names(sigma2_re) <- colnames(ID_re)
+      out$estimate$sigma2_re <- sigma2_re
+    }
+    if (is.null(fix_alpha)) out$estimate$alpha <- unname(estim$par[ind_alpha])
+    out$estimate$gamma <- unname(estim$par[ind_gamma])
+    if (sst) out$estimate$psi <- unname(estim$par[ind_psi])
+
     out$grad.MLE <- grad.MC.log.lik(estim$par)
     hess.MLE <- hess.MC.log.lik(estim$par)
     out$covariance <- solve(-hess.MLE)
     out$log.lik <- -estim$objective
     if(return_samples) out$S_samples <- S_tot_samples
-    class(out) <- "RiskMap"
+    class(out) <- c("RiskMap_dast", "RiskMap")
     return(out)
   }
 
