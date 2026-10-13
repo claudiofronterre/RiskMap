@@ -1664,24 +1664,29 @@ summary.RiskMap_dast <- function(object, ..., conf_level = 0.95) {
 
   mda_rows <- list()
   if ("alpha" %in% names(estimate)) {
-    est <- estimate[["alpha"]]; se <- se_par[["alpha"]]
-    mda_rows[["Drop (alpha)"]] <-
-      c(Estimate = plogis(est), "Lower limit" = plogis(est - z_crit * se),
-        "Upper limit" = plogis(est + z_crit * se))
+    est <- estimate[["alpha"]]
+    se <- se_par[["alpha"]]
+    mda_rows[["Drop (alpha)"]] <- c("Estimate" = plogis(est),
+                                    "Lower limit" = plogis(est - z_crit * se),
+                                    "Upper limit" = plogis(est + z_crit * se))
   }
-  est <- estimate[["gamma"]]; se <- se_par[["gamma"]]
-  mda_rows[["Scale of the decay (gamma)"]] <-
-    c(Estimate = exp(est), "Lower limit" = exp(est - z_crit * se),
-      "Upper limit" = exp(est + z_crit * se))
-  if ("psi" %in% names(estimate)) {
-    est <- estimate[["psi"]]; se <- se_par[["psi"]]
-    mda_rows[["Temporal corr. scale (psi)"]] <-
-      c(Estimate = exp(est), "Lower limit" = exp(est - z_crit * se),
-        "Upper limit" = exp(est + z_crit * se))
-  }
+  est <- estimate[["gamma"]]
+  se <- se_par[["gamma"]]
+  mda_rows[["Scale of the decay (gamma)"]] <- c("Estimate" = exp(est),
+                                                "Lower limit" = exp(est - z_crit * se),
+                                                "Upper limit" = exp(est + z_crit * se))
   res$mda       <- do.call(rbind, mda_rows)
   res$fix_alpha <- object$fix_alpha
   res$power_val <- object$power_val
+
+  if ("psi" %in% names(estimate)) {
+    est <- estimate[["psi"]]
+    se <- se_par[["psi"]]
+    psi_row <- c("Estimate" = exp(est),
+                 "Lower limit" = exp(est - z_crit * se),
+                 "Upper limit" = exp(est + z_crit * se))
+    res$sp <- rbind(res$sp, "Temporal corr. scale (psi)" = psi_row)
+  }
 
   class(res) <- c("summary.RiskMap_dast", "summary.RiskMap")
   res
