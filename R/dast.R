@@ -1176,10 +1176,10 @@ dast_fit <-
     out$estimate$gamma <- unname(estim$par[ind_gamma])
     if (sst) out$estimate$psi <- unname(estim$par[ind_psi])
 
-    out$grad.MLE <- grad.MC.log.lik(estim$par)
+    out$grad_MLE <- grad.MC.log.lik(estim$par)
     hess.MLE <- hess.MC.log.lik(estim$par)
     out$covariance <- solve(-hess.MLE)
-    out$log.lik <- -estim$objective
+    out$log_lik <- -estim$objective
     if(return_samples) out$S_samples <- S_tot_samples
     class(out) <- c("RiskMap_dast", "RiskMap")
     return(out)
@@ -1621,4 +1621,88 @@ Laplace_sampling_MCMC_dast <- function(y, units_m, mu, mda_effect, Sigma, ID_coo
   class(out_sim) <- "RiskMap_mcmc"
 
   return(out_sim)
+}
+
+##' @title Extract Parameter Estimates from a "RiskMap_dast" Model Fit
+##' @description \code{coef} method for \code{dast()} fits; extends
+##' \code{coef.RiskMap()} with the MDA decay parameters.
+##' @param object A fitted \code{dast()} object.
+##' @param ... other parameters, passed on to \code{coef.RiskMap()}.
+##' @return A list as for \code{coef.RiskMap()}, plus \code{alpha} (unless
+##' fixed via \code{drop}), \code{gamma}, and \code{psi} (if spatio-temporal).
+##' @seealso \code{\link{dast}}, \code{\link{coef.RiskMap}}
+##' @method coef RiskMap_dast
+##' @export
+coef.RiskMap_dast <- function(object, ...) {
+  res <- NextMethod()
+  estimate <- object$estimate
+
+  if (!is.null(estimate$alpha)) res$alpha <- plogis(estimate$alpha)
+  res$gamma <- exp(estimate$gamma)
+  if (!is.null(estimate$psi)) res$psi <- exp(estimate$psi)
+
+  res
+}
+
+##' @title Summarize dast() Model Fits
+##' @description \code{summary} method for \code{dast()} fits; extends
+##' \code{summary.RiskMap()} with the MDA decay parameters.
+##' @param object A fitted \code{dast()} object.
+##' @param ... other parameters, passed on to \code{summary.RiskMap()}.
+##' @param conf_level Confidence level for intervals (default 0.95).
+##' @return A list of class \code{c("summary.RiskMap_dast", "summary.RiskMap")}
+##' with an additional \code{mda} matrix of MDA decay parameter estimates/CIs.
+##' @seealso \code{\link{dast}}, \code{\link{summary.RiskMap}}
+##' @method summary RiskMap_dast
+##' @export
+summary.RiskMap_dast <- function(object, ..., conf_level = 0.95) {
+  res <- NextMethod()
+
+  z_crit   <- qnorm(1 - (1 - conf_level) / 2)
+  estimate <- unlist(object$estimate)
+  se_par   <- setNames(sqrt(diag(object$covariance)), names(estimate))
+
+  mda_rows <- list()
+  if ("alpha" %in% names(estimate)) {
+    est <- estimate[["alpha"]]; se <- se_par[["alpha"]]
+    mda_rows[["Drop (alpha)"]] <-
+      c(Estimate = plogis(est), "Lower limit" = plogis(est - z_crit * se),
+        "Upper limit" = plogis(est + z_crit * se))
+  }
+  est <- estimate[["gamma"]]; se <- se_par[["gamma"]]
+  mda_rows[["Scale of the decay (gamma)"]] <-
+    c(Estimate = exp(est), "Lower limit" = exp(est - z_crit * se),
+      "Upper limit" = exp(est + z_crit * se))
+  if ("psi" %in% names(estimate)) {
+    est <- estimate[["psi"]]; se <- se_par[["psi"]]
+    mda_rows[["Temporal corr. scale (psi)"]] <-
+      c(Estimate = exp(est), "Lower limit" = exp(est - z_crit * se),
+        "Upper limit" = exp(est + z_crit * se))
+  }
+  res$mda       <- do.call(rbind, mda_rows)
+  res$fix_alpha <- object$fix_alpha
+  res$power_val <- object$power_val
+
+  class(res) <- c("summary.RiskMap_dast", "summary.RiskMap")
+  res
+}
+
+##' @title Print Summary of dast() Model Fits
+##' @description Print method for \code{"summary.RiskMap_dast"} objects;
+##' extends \code{print.summary.RiskMap()} with the MDA decay parameters.
+##' @param x An object of class \code{"summary.RiskMap_dast"}.
+##' @param ... other parameters.
+##' @return Invisibly returns \code{x}.
+##' @method print summary.RiskMap_dast
+##' @export
+print.summary.RiskMap_dast <- function(x, ...) {
+  NextMethod()
+
+  cat("\nMDA impact function\n")
+  cat("f(v) = alpha * exp(-(v/gamma)^delta),  delta fixed at ", x$power_val, "\n", sep = "")
+  printCoefmat(x$mda, P.values = FALSE, has.Pvalue = FALSE)
+  if (!is.null(x$fix_alpha))
+    cat("Drop (alpha) fixed at ", x$fix_alpha, "\n", sep = "")
+
+  invisible(x)
 }
