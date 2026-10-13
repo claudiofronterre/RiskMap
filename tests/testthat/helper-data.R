@@ -80,3 +80,12 @@ cross_validation <- assess_prediction(
   plot_fold = FALSE,
   messages = FALSE
 )
+
+dast_mda_times <- c(1, 3)
+dast_int_mat <- matrix(rbinom(n * length(dast_mda_times), 1, 0.7), nrow = n)
+dast_data <- data.frame(x = coords[,1],
+                        z = coords[,2],
+                        survey_time = runif(n, 4, 6),
+                        denominator = data$denominator)
+dast_data$y <- rbinom(n, dast_data$denominator, 0.3)
+dast_data <- st_as_sf(dast_data, coords = c("x", "z"), crs = 32637)
