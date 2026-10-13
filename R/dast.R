@@ -152,6 +152,53 @@ dast_initial_value <- function(y, D, units_m, int_mat, survey_times_data,
   return(est)
 }
 
+##' @title Check that dast()-specific arguments are valid
+##' @description Validates the arguments to \code{dast()} that are not
+##' already covered by \code{prepare_data()}/\code{check_formula()}: the
+##' GP structure (purely spatial \code{gp()}, or spatio-temporal
+##' \code{gp(t)}), the \code{time} column, the dimensions of
+##' \code{int_mat}, the shape of \code{penalty}, and the starting value
+##' for \code{psi}.
+##' @param formula,data,mda_times,int_mat,penalty,start_pars Identical to
+##' the corresponding arguments of \code{dast()}.
+##' @param time The caller's substituted \code{time} expression, e.g.
+##' \code{substitute(time)} from \code{dast()}.
+##' @return \code{TRUE} if the dast()-specific arguments are valid, or
+##' raises an error if not.
+##' @noRd
+check_dast <- function(formula, data, time, mda_times, int_mat, penalty, start_pars) {
+
+  inter_f <- interpret_formula(formula)
+  gp_terms <- inter_f$gp_spec$term
+  gp_dim   <- inter_f$gp_spec$dim
+
+  if (!(length(gp_terms) == 1 && gp_terms[1] == "sf") && gp_dim != 1) {
+    stop("Specify gp() for a purely spatial model, or gp(t) for a spatio-temporal model, where 't' is the GP time index column.")
+  }
+
+  time_name <- deparse(time)
+  if (time_name == "NULL") stop("You must supply a time column via the 'time' argument")
+  if (!time_name %in% names(data)) stop("'time' column not found in 'data'")
+
+  if (is.null(int_mat)) stop("'int_mat' must be provided")
+  n <- nrow(data)
+  if (nrow(as.matrix(int_mat)) != n)
+    stop(sprintf("'int_mat' must have %d rows", n))
+  if (ncol(as.matrix(int_mat)) != length(mda_times))
+    stop(sprintf("'int_mat' must have %d columns", length(mda_times)))
+
+  if (!is.null(penalty)) {
+    if (!is.list(penalty) || length(penalty) != 6 ||
+        !all(vapply(penalty, is.function, logical(1))))
+      stop("'penalty' must be a list of 6 functions: penalty/d1/d2 for alpha (elements 1-3) ",
+           "and penalty/d1/d2 for gamma (elements 4-6).")
+  }
+
+  if (!is.null(start_pars[["psi"]])) check_positive_number(start_pars[["psi"]])
+
+  invisible(TRUE)
+}
+
 ##' @title Fitting of decay-adjusted spatio-temporal (DAST) model
 ##'
 ##' @description
@@ -261,26 +308,25 @@ dast <- function(formula,
   list2env(prepared, environment())
   start_pars[names(dast_start_pars)] <- dast_start_pars
 
+  check_dast(formula = formula, data = data, time = substitute(time),
+             mda_times = mda_times, int_mat = int_mat, penalty = penalty,
+             start_pars = start_pars)
+
   # --- dast-specific preparation: not handled by prepare_data() ---
 
   gp_terms <- inter_f$gp_spec$term
   gp_dim   <- inter_f$gp_spec$dim
 
-  # time= (required) -> survey_times_data
+  # time= (required, checked by check_dast() above) -> survey_times_data
   time_name <- deparse(substitute(time))
-  if (time_name == "NULL") stop("You must supply a time column via the 'time' argument")
-  if (!time_name %in% names(data)) stop("'time' column not found in 'data'")
   survey_times_data <- data[[time_name]]
 
+  # check_dast() already enforced gp() or gp(t) above.
   sst <- FALSE
   gp_time_obs <- NULL
-  if (length(gp_terms) == 1 && gp_terms[1] == "sf") {
-    sst <- FALSE
-  } else if (gp_dim == 1) {
+  if (gp_dim == 1) {
     sst <- TRUE
     gp_time_obs <- data[[gp_terms[1]]]   # may differ from survey_times_data
-  } else {
-    stop("Specify gp() for a purely spatial model, or gp(t) for a spatio-temporal model, where 't' is the GP time index column.")
   }
 
   # Build default no-penalty list.
@@ -296,19 +342,10 @@ dast <- function(formula,
                     pn_gamma_d2 = function(x) return(0))
   } else {
     no_penalty <- FALSE
-    if(length(penalty) != 6)
-      stop("'penalty' must be a list of length 6: penalty/d1/d2 for alpha (elements 1-3) ",
-           "and penalty/d1/d2 for gamma (elements 4-6).")
   }
 
   n <- length(y)
-
-  if(is.null(int_mat)) stop("'int_mat' must be provided")
   int_mat <- as.matrix(int_mat)
-  if(nrow(int_mat) != n)
-    stop(sprintf("'int_mat' must have %d rows", n))
-  if(ncol(int_mat) != length(mda_times))
-    stop(sprintf("'int_mat' must have %d columns", length(mda_times)))
 
   if(!is.null(drop)) {
     fix_alpha <- drop
@@ -352,8 +389,6 @@ dast <- function(formula,
       } else {
         start_pars$psi <- 1
       }
-    } else {
-      if(start_pars$psi<0) stop("the starting value for psi must be positive")
     }
   }
 
