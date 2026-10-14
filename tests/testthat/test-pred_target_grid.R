@@ -103,8 +103,8 @@ test_that("predict_grid_target handles one-pixel groups in list mode", {
       matrix(c(1, 2, 3), nrow = 1),
       matrix(c(1, 2, 3, 4, 5, 6), nrow = 2, byrow = TRUE)
     ),
-    mu_pred = list(c(0), c(0, 0)),
-    cov_offset = list(c(0), c(0, 0)),
+    mu_pred = list(0, c(0, 0)),
+    cov_offset = list(0, c(0, 0)),
     re = list(samples = list()),
     par_hat = list(),
     family = "gaussian"
