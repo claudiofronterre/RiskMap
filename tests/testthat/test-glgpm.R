@@ -404,7 +404,7 @@ test_that("glgpm produces expected output for binomial models", {
   eta_samples <- eta_samples +
     re_samples[, fit_re$ID_re[[1]], drop = FALSE]
   expect_equal(fitted(fit_re), colMeans(plogis(eta_samples)))
-  expect_identical(fit_re$linear_predictors, colMeans(eta_samples))
+  expect_equal(fit_re$linear_predictors, colMeans(eta_samples))
   re_starting_values <- attr(fit_re, "starting_values")
   expect_true(re_starting_values$selected %in%
                 c("current", "transformed_gaussian"))

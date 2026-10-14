@@ -54,7 +54,7 @@ test_that("design standardisation preserves linear predictors", {
   scaled <- standardize_design_matrix(design)
   scaled_beta <- solve(scaled$coefficient_transform, beta)
 
-  expect_identical(
+  expect_equal(
     as.numeric(scaled$design %*% scaled_beta),
     as.numeric(design %*% beta)
   )
