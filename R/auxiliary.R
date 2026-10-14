@@ -294,11 +294,10 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
     for (i in 1:d) term[i] <- attr(terms(reformulate(term[i])),
                                    "term.labels")
   }
-  full.call <- paste("gp(", term[1], sep = "")
+  full.call <- paste0("gp(", term[1])
   if (d > 1)
-    for (i in 2:d) full.call <- paste(full.call, ",", term[i],
-                                      sep = "")
-  label <- gsub("sf", "", paste(full.call, ")", sep = ""))
+    for (i in 2:d) full.call <- paste(full.call, term[i], sep = ",")
+  label <- gsub("sf", "", paste0(full.call, ")"))
   ret <- list(term = term, kappa = kappa, nugget = nugget, dim = d,
               label = label)
   class(ret) <- "RiskMap_gp_spec"
@@ -330,11 +329,10 @@ re <- function (...) {
     for (i in 1:d) term[i] <- attr(terms(reformulate(term[i])),
                                    "term.labels")
   }
-  full.call <- paste("re(", term[1], sep = "")
+  full.call <- paste0("re(", term[1])
   if (d > 1)
-    for (i in 2:d) full.call <- paste(full.call, ",", term[i],
-                                      sep = "")
-  label <- gsub("sf", "", paste(full.call, ")", sep = ""))
+    for (i in 2:d) full.call <- paste0(full.call, ",", term[i])
+  label <- gsub("sf", "", paste0(full.call, ")"))
   ret <- list(term = term, dim = d, label = label)
   class(ret) <- "RiskMap_re_spec"
   ret
@@ -389,7 +387,7 @@ interpret_formula <- function(formula) {
   }
 
   if (attr(tf, "intercept") == 0) {
-    pf <- paste(pf, "-1", sep = "")
+    pf <- paste0(pf, "-1")
   }
 
   ret <- list(
