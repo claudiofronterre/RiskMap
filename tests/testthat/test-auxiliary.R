@@ -139,7 +139,7 @@ test_that("gp functions correctly", {
   expect_equal(default_result$label, "gp()")
 
   true_result <- gp(nugget = TRUE)
-  expect_equal(true_result$nugget, TRUE)
+  expect_true(true_result$nugget)
 
   custom_result <- gp(a, b, kappa = 2, nugget = 3)
   expect_equal(custom_result$term, c("a", "b"))

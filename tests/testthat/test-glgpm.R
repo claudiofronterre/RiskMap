@@ -225,8 +225,8 @@ test_that("glgpm produces expected output for gaussian models", {
       "max_abs_gradient", "stationary", "information_rcond",
       "information_jitter")
   )
-  expect_true(is.logical(optimizer$stationary))
-  expect_true(optimizer$information_rcond >= 0)
+  expect_type(optimizer$stationary, "logical")
+  expect_gte(optimizer$information_rcond, 0)
 
   fit_re_fixed_me <- glgpm(y ~ cov + gp() + re(i),
                            data = gaussian_data,

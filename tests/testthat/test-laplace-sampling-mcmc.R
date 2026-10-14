@@ -30,14 +30,12 @@ test_that("MALA warm-up recovers from poor initial step sizes", {
   from_small <- run_with_h(0.05, 711)
   from_large <- run_with_h(5, 712)
 
-  expect_true(
-    tail(from_small$tuning_par, 1) > 0.2 &&
-      tail(from_large$tuning_par, 1) < 2 &&
-      all(c(from_small$acceptance_rate["sampling"],
-            from_large$acceptance_rate["sampling"]) > 0.2) &&
-      all(c(from_small$acceptance_rate["sampling"],
-            from_large$acceptance_rate["sampling"]) < 0.9)
-  )
+  expect_gt(tail(from_small$tuning_par, 1), 0.2)
+  expect_lt(tail(from_large$tuning_par, 1), 2)
+  expect_gt(from_small$acceptance_rate["sampling"], 0.2)
+  expect_gt(from_large$acceptance_rate["sampling"], 0.2)
+  expect_lt(from_small$acceptance_rate["sampling"], 0.9)
+  expect_lt(from_large$acceptance_rate["sampling"], 0.9)
 })
 
 test_that("one-dimensional binomial samples reproduce exact posterior moments", {

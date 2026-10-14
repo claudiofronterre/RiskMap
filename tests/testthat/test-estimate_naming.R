@@ -19,9 +19,9 @@ test_that("estimate is a list with numeric beta/sigma2/phi for every model confi
 
   for (fit in fits) {
     expect_type(fit$estimate, "list")
-    expect_true(is.numeric(fit$estimate$beta))
-    expect_true(is.numeric(fit$estimate$sigma2))
-    expect_true(is.numeric(fit$estimate$phi))
+    expect_type(fit$estimate$beta, "double")
+    expect_type(fit$estimate$sigma2, "double")
+    expect_type(fit$estimate$phi, "double")
   }
 })
 
@@ -45,7 +45,7 @@ test_that("estimate reproduces coef.RiskMap() for a model with random effects (n
   expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
   expect_equal(exp(est$sigma2_me), co$sigma2_me, ignore_attr = TRUE)
   expect_equal(exp(est$sigma2_re), co$sigma2_re, ignore_attr = TRUE)
-  expect_equal(names(co$sigma2_re), "i")
+  expect_named(co$sigma2_re, "i")
 })
 
 test_that("estimate reproduces coef.RiskMap() for an intercept-only model", {
@@ -76,8 +76,8 @@ test_that("coef.RiskMap() does not mislabel a single covariate as the intercept 
               messages = FALSE)
 
   expect_equal(colnames(fit$D), "cov")
-  expect_equal(names(fit$estimate$beta), "cov")
-  expect_equal(names(coef(fit)$beta), "cov")
+  expect_named(fit$estimate$beta, "cov")
+  expect_named(coef(fit)$beta, "cov")
   expect_equal(rownames(summary(fit)$reg_coef), "cov")
 })
 
@@ -102,7 +102,7 @@ test_that("estimate reproduces coef.RiskMap() for binomial and poisson models wi
     expect_equal(exp(est$sigma2), co$sigma2, ignore_attr = TRUE)
     expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
     expect_equal(exp(est$sigma2_re), co$sigma2_re, ignore_attr = TRUE)
-    expect_equal(names(co$sigma2_re), "i")
+    expect_named(co$sigma2_re, "i")
   }
 })
 
