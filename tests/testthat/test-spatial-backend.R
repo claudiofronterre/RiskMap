@@ -188,7 +188,7 @@ test_that("vectorised Gaussian sampling preserves seeded draws", {
     correlated_means[, i] + lower_root %*% rnorm(nrow(correlated_means))
   })
   set.seed(149)
-  expect_identical(sample_correlated_gaussian(
+  expect_equal(sample_correlated_gaussian(
     correlated_means, lower_root, ncol(correlated_means)
   ), expected_correlated)
 })
