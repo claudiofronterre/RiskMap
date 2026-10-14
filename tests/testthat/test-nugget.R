@@ -13,7 +13,7 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
   zero_error_fit <- glgpm(
     z ~ gp(), gaussian_data, "gaussian", fix_var_me = 0, messages = FALSE
   )
-  expect_equal(zero_error_fit$fix_var_me, 0)
+  expect_identical(zero_error_fit$fix_var_me, 0)
   expect_lt(max(abs(zero_error_fit$grad_MLE)), 0.001)
   expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "binomial", denominator = denominator, messages = FALSE))
 
@@ -39,14 +39,14 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
   expect_true("tau2" %in% names(coef(result)))
 
   result <- glgpm(z ~ gp(nugget = 1), gaussian_data, "gaussian", messages = FALSE)
-  expect_equal(summary(result)$tau2, 1)
+  expect_identical(summary(result)$tau2, 1)
   expect_lt(max(abs(result$grad_MLE)), 0.001)
 
 })
 
 test_that("nugget_ratio distinguishes estimated and fixed nuggets", {
-  expect_equal(nugget_ratio(FALSE, sigma2 = 2), 0)
-  expect_equal(nugget_ratio(0.6, sigma2 = 2), 0.3)
+  expect_identical(nugget_ratio(FALSE, sigma2 = 2), 0)
+  expect_identical(nugget_ratio(0.6, sigma2 = 2), 0.3)
   expect_equal(nugget_ratio(TRUE, sigma2 = 2, log_nu2 = log(0.3)), 0.3)
   expect_error(
     nugget_ratio(TRUE, sigma2 = 2),

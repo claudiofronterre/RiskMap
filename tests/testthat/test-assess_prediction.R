@@ -459,7 +459,7 @@ test_that("assess_prediction splits test data correctly", {
   combined <- do.call(rbind, result$test_set)
   expect_true(all(!duplicated(combined)))
 
-  size <- 4
+  size <- 4L
 
   result <- assess_prediction(
     list(intercept_only = gaussian_intercept_model,
@@ -470,7 +470,7 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, 1)
-  expect_equal(nrow(result$test_set[[1]]), size)
+  expect_identical(nrow(result$test_set[[1]]), size)
 
 
   result <- assess_prediction(
@@ -491,7 +491,7 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, 1)
-  expect_equal(nrow(result$test_set[[1]]), 2)
+  expect_identical(nrow(result$test_set[[1]]), 2L)
 
   result <- assess_prediction(
     list(gaussian_model),
@@ -500,7 +500,7 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, 1)
-  expect_equal(nrow(result$test_set[[1]]), 2)
+  expect_identical(nrow(result$test_set[[1]]), 2L)
 
 })
 
@@ -578,7 +578,7 @@ test_that("assess_prediction's control_mcmc seed makes regularized/cluster split
 test_that("AnPIT area computes trapezoidal absolute distance", {
   u <- seq(0, 1, length.out = 1001)
 
-  expect_equal(.anpit_area(u, u), 0)
+  expect_identical(.anpit_area(u, u), 0)
   expect_equal(.anpit_area(rep(0, length(u)), u), 0.5)
   expect_equal(.anpit_area(u^2, u), 1 / 6, tolerance = 1e-6)
 })
@@ -622,7 +622,7 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
 
   summary_out <- summary(out)
   expect_true("AnPIT_area" %in% colnames(summary_out))
-  expect_equal(summary_out["model_x1", "AnPIT_area"],
+  expect_identical(summary_out["model_x1", "AnPIT_area"],
                out$model$model_x1$metric$AnPIT_area[[1]])
 })
 
@@ -637,7 +637,7 @@ test_that("plot_folds() plots every observation, coloured by training/test set (
   expect_s3_class(p, "ggplot")
 
   built <- ggplot2::ggplot_build(p)
-  expect_equal(nrow(built$data[[1]]), 2 * n)
+  expect_identical(nrow(built$data[[1]]), 2L * n)
   expect_length(unique(built$data[[1]]$PANEL), 2)
   expect_length(unique(built$data[[1]]$colour), 2)
 })
@@ -650,7 +650,7 @@ test_that("plot_folds() doesn't facet when there is only one iteration", {
   p <- plot_folds(data_split)
   built <- ggplot2::ggplot_build(p)
   expect_length(unique(built$data[[1]]$PANEL), 1)
-  expect_equal(nrow(built$data[[1]]), nrow(gaussian_data))
+  expect_identical(nrow(built$data[[1]]), nrow(gaussian_data))
 })
 
 test_that("assess_prediction(plot_fold = TRUE) uses plot_folds() for 'user' and 'regularized', autoplot() for 'cluster' (#157)", {

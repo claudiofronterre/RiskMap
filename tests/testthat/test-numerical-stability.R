@@ -5,7 +5,7 @@ test_that("log_mean_exp is stable and translation equivariant", {
   large <- c(1000, 1001, 1002)
   expect_true(is.finite(log_mean_exp(large)))
   expect_equal(log_mean_exp(large) - 1000, log_mean_exp(large - 1000))
-  expect_equal(log_mean_exp(rep(-Inf, 3)), -Inf)
+  expect_identical(log_mean_exp(rep(-Inf, 3)), -Inf)
 })
 
 test_that("normalise_log_weights remains finite on extreme scales", {
@@ -14,21 +14,21 @@ test_that("normalise_log_weights remains finite on extreme scales", {
 
   expect_true(all(is.finite(weights)))
   expect_equal(sum(weights), 1)
-  expect_equal(weights, exp(log_weights - 1002) / sum(exp(log_weights - 1002)))
+  expect_identical(weights, exp(log_weights - 1002) / sum(exp(log_weights - 1002)))
   expect_error(
     normalise_log_weights(rep(-Inf, 3)),
     "All Monte Carlo importance weights are non-finite"
   )
-  expect_equal(importance_effective_sample_size(rep(0.25, 4)), 4)
-  expect_equal(importance_effective_sample_size(c(1, 0, 0, 0)), 1)
+  expect_identical(importance_effective_sample_size(rep(0.25, 4)), 4)
+  expect_identical(importance_effective_sample_size(c(1, 0, 0, 0)), 1)
 })
 
 test_that("softplus is stable in both tails", {
   ordinary <- c(-2, 0, 3)
-  expect_equal(softplus(ordinary), log1p(exp(ordinary)))
+  expect_identical(softplus(ordinary), log1p(exp(ordinary)))
 
-  expect_equal(softplus(1000), 1000)
-  expect_equal(softplus(-1000), 0)
+  expect_identical(softplus(1000), 1000)
+  expect_identical(softplus(-1000), 0)
   expect_true(all(is.finite(softplus(c(-1000, 1000)))))
 })
 
@@ -36,7 +36,7 @@ test_that("linear_start_values uses a rank-aware least-squares solve", {
   design <- cbind(1, c(-1, 0, 1))
   response <- c(0, 1, 4)
 
-  expect_equal(linear_start_values(design, response),
+  expect_identical(linear_start_values(design, response),
                unname(coef(lm(response ~ design[, 2]))))
   expect_error(
     linear_start_values(cbind(1, 1:3, 2 * (1:3)), response),
@@ -54,7 +54,7 @@ test_that("design standardisation preserves linear predictors", {
   scaled <- standardize_design_matrix(design)
   scaled_beta <- solve(scaled$coefficient_transform, beta)
 
-  expect_equal(
+  expect_identical(
     as.numeric(scaled$design %*% scaled_beta),
     as.numeric(design %*% beta)
   )
@@ -64,7 +64,7 @@ test_that("design standardisation preserves linear predictors", {
 
   no_intercept <- design[, -1, drop = FALSE]
   scaled_no_intercept <- standardize_design_matrix(no_intercept)
-  expect_equal(unname(scaled_no_intercept$center), c(0, 0))
+  expect_identical(unname(scaled_no_intercept$center), c(0, 0))
   expect_equal(
     as.numeric(scaled_no_intercept$design %*%
                  solve(scaled_no_intercept$coefficient_transform, beta[-1])),
@@ -72,14 +72,14 @@ test_that("design standardisation preserves linear predictors", {
   )
 
   intercept_only <- standardize_design_matrix(design[, 1, drop = FALSE])
-  expect_equal(intercept_only$design, design[, 1, drop = FALSE])
-  expect_equal(unname(intercept_only$coefficient_transform), diag(1))
+  expect_identical(intercept_only$design, design[, 1, drop = FALSE])
+  expect_identical(unname(intercept_only$coefficient_transform), diag(1))
 
   expect_error(
     standardize_design_matrix(cbind("(Intercept)" = 1, constant = 2)),
     "constant.*constant"
   )
-  expect_equal(
+  expect_identical(
     sd(standardize_design_matrix(
       cbind("(Intercept)" = 1, tiny = (1:4) * 1e-12)
     )$design[, "tiny"]),
@@ -105,11 +105,11 @@ test_that("fixed-effect results are restored with the full Jacobian", {
 
   restored <- restore_fixed_effect_scale(result, transform)
 
-  expect_equal(unname(restored$estimate$beta),
+  expect_identical(unname(restored$estimate$beta),
                as.numeric(transform %*% c(3, 4)))
-  expect_equal(unname(restored$covariance),
+  expect_identical(unname(restored$covariance),
                jacobian %*% working_covariance %*% t(jacobian))
-  expect_equal(unname(restored$grad_MLE),
+  expect_identical(unname(restored$grad_MLE),
                as.numeric(solve(t(jacobian), result$grad_MLE)))
 })
 
@@ -120,10 +120,10 @@ test_that("safe_optimizer_objective penalises and counts invalid trials", {
     x^2
   })
 
-  expect_equal(objective(2), 4)
+  expect_identical(objective(2), 4)
   expect_true(is.finite(objective(-1)))
   expect_true(is.finite(objective(0)))
-  expect_equal(attr(objective, "diagnostics")$invalid_evaluations, 2L)
+  expect_identical(attr(objective, "diagnostics")$invalid_evaluations, 2L)
 })
 
 test_that("Gaussian covariance backend selection preserves correctness overrides", {

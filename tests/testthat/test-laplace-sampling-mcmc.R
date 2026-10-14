@@ -10,7 +10,7 @@ test_that("MALA adaptation stops after burn-in", {
     messages = FALSE
   )
 
-  expect_equal(nrow(fit$samples$S), 20)
+  expect_identical(nrow(fit$samples$S), 20L)
   expect_true(all(fit$tuning_par[41:80] == fit$tuning_par[40]))
   expect_length(fit$acceptance, 80)
   expect_named(fit$acceptance_rate, c("burnin", "sampling"))

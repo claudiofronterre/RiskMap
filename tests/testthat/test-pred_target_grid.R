@@ -117,13 +117,13 @@ test_that("predict_grid_target handles one-pixel groups in list mode", {
     pd_summary = list(mean = mean, sd = sd)
   )
 
-  expect_equal(out$target$group_one$identity_target$mean, 2)
-  expect_equal(out$target$group_one$identity_target$sd, sd(c(1, 2, 3)))
-  expect_equal(out$target$group_two$identity_target$mean, c(2, 5))
-  expect_equal(out$target$group_two$identity_target$sd, c(sd(c(1, 2, 3)),
+  expect_identical(out$target$group_one$identity_target$mean, 2)
+  expect_identical(out$target$group_one$identity_target$sd, sd(c(1, 2, 3)))
+  expect_identical(out$target$group_two$identity_target$mean, c(2, 5))
+  expect_identical(out$target$group_two$identity_target$sd, c(sd(c(1, 2, 3)),
                                                           sd(c(4, 5, 6))))
-  expect_equal(dim(out$lp_samples[[1]]), c(1, 3))
-  expect_equal(dim(out$lp_samples[[2]]), c(2, 3))
+  expect_identical(dim(out$lp_samples[[1]]), c(1L, 3L))
+  expect_identical(dim(out$lp_samples[[2]]), c(2L, 3L))
 })
 
 test_that("plot.RiskMap_predict_grid_target defaults to the first target and validates target/summary #143", {

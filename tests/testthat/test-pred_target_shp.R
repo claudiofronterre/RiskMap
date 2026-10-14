@@ -60,8 +60,8 @@ test_that("predict_areal_target preserves posterior samples for one-pixel list-m
     messages = FALSE
   )
 
-  expect_equal(out$target_samples$group_one$identity_target, c(0.01, 0.02, 0.03))
-  expect_equal(out$target$group_one$identity_target$mean, 0.02)
+  expect_identical(out$target_samples$group_one$identity_target, c(0.01, 0.02, 0.03))
+  expect_identical(out$target$group_one$identity_target$mean, 0.02)
   expect_equal(out$target_samples$group_two$identity_target, rep(0.325, 3))
   expect_false("boundaries" %in% names(out))
 })

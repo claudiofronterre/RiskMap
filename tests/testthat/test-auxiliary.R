@@ -132,21 +132,21 @@ test_that("gp functions correctly", {
   default_result <- gp()
 
   expect_setequal(names(default_result), expected_output)
-  expect_equal(default_result$term, "sf")
-  expect_equal(default_result$kappa, 0.5)
-  expect_equal(default_result$nugget, 0)
-  expect_equal(default_result$dim, 0)
-  expect_equal(default_result$label, "gp()")
+  expect_identical(default_result$term, "sf")
+  expect_identical(default_result$kappa, 0.5)
+  expect_identical(default_result$nugget, 0)
+  expect_identical(default_result$dim, 0L)
+  expect_identical(default_result$label, "gp()")
 
   true_result <- gp(nugget = TRUE)
   expect_true(true_result$nugget)
 
   custom_result <- gp(a, b, kappa = 2, nugget = 3)
-  expect_equal(custom_result$term, c("a", "b"))
-  expect_equal(custom_result$kappa, 2)
-  expect_equal(custom_result$nugget, 3)
-  expect_equal(custom_result$dim, 2)
-  expect_equal(custom_result$label, "gp(a,b)")
+  expect_identical(custom_result$term, c("a", "b"))
+  expect_identical(custom_result$kappa, 2)
+  expect_identical(custom_result$nugget, 3)
+  expect_identical(custom_result$dim, 2L)
+  expect_identical(custom_result$label, "gp(a,b)")
 
 })
 
