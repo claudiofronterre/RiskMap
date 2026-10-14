@@ -246,33 +246,87 @@ test_that("check_zero_one validates the closed unit interval", {
   expect_error(check_zero_one(Inf, "a"), "between 0 and 1")
 })
 
-test_that("plot_metric validates model before metric (#156)", {
+test_that("plot.RiskMap_cross_validation validates model before metric (#156)", {
   ## an invalid model should be reported even when the metric is also invalid -
   ## previously this incorrectly complained about the metric first
   expect_error(
-    plot_metric(cross_validation, metric = "not_a_metric", model = "not_a_model"),
+    plot(cross_validation, metric = "not_a_metric", model = "not_a_model"),
     "'model' 'not_a_model' was not found"
   )
 
   expect_error(
-    plot_metric(cross_validation, metric = "not_a_metric", model = "model_a"),
+    plot(cross_validation, metric = "not_a_metric", model = "model_a"),
     "'metric' 'not_a_metric' was not computed for model 'model_a'"
   )
 })
 
-test_that("plot_metric plots the requested metric for the requested model", {
-  p <- plot_metric(cross_validation, metric = "SCRPS", model = "model_b")
+test_that("plot.RiskMap_cross_validation plots the requested metric for the requested model", {
+  p <- plot(cross_validation, metric = "SCRPS", model = "model_b")
 
   expect_s3_class(p, "ggplot")
   expect_no_error(ggplot2::ggplot_build(p))
 })
 
-test_that("plot_metric applies extra ggplot components passed via ...", {
-  p_plain <- plot_metric(cross_validation, metric = "CRPS", model = "model_a")
+test_that("plot.RiskMap_cross_validation applies extra ggplot components passed via ...", {
+  p_plain <- plot(cross_validation, metric = "CRPS", model = "model_a")
   expect_length(p_plain$scales$scales, 0)
 
-  p_custom <- plot_metric(cross_validation, metric = "CRPS", model = "model_a",
-                          ggplot2::scale_color_gradient(low = "yellow", high = "red"))
+  p_custom <- plot(cross_validation, metric = "CRPS", model = "model_a",
+                   ggplot2::scale_color_gradient(low = "yellow", high = "red"))
   expect_length(p_custom$scales$scales, 1)
   expect_no_error(ggplot2::ggplot_build(p_custom))
+})
+
+test_that("plot.RiskMap_cross_validation plots each metric separately rather than one combined grid (#87)", {
+  ## the fixture was fit with the default metrics = c("AnPIT", "CRPS", "SCRPS"),
+  ## and "AnPIT" also computes the scalar "AnPIT_area" score, so there are 4
+  ## metrics here. With more than one metric, each gets its own plot/grid
+  ## (printed in turn as a side effect) instead of everything being squeezed
+  ## into one combined grid; the list returned invisibly has one entry per
+  ## metric.
+  groups <- plot(cross_validation)
+
+  expect_type(groups, "list")
+  expect_named(groups, c("AnPIT", "CRPS", "SCRPS", "AnPIT_area"))
+  for (g in groups) {
+    expect_s3_class(g, "gtable")
+    expect_equal(length(g$grobs), 2) # one panel per model, no padding
+  }
+})
+
+test_that("plot.RiskMap_cross_validation sizes each metric's grid from its own models only (#87)", {
+  ## 3 models, 2 metrics - each metric's grid should be sized from its own
+  ## 3 models, independent of the other metric (no cross-metric padding)
+  cv3 <- cross_validation
+  cv3$model$model_c <- cv3$model$model_a
+
+  groups <- plot(cv3, metric = c("AnPIT", "CRPS"))
+
+  expect_named(groups, c("AnPIT", "CRPS"))
+  for (g in groups) {
+    expect_s3_class(g, "gtable")
+    expect_equal(length(g$grobs), 3)
+  }
+})
+
+test_that("plot.RiskMap_cross_validation can select only the calibration curve", {
+  p <- plot(cross_validation, metric = "AnPIT", model = "model_a")
+
+  expect_s3_class(p, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(p))
+})
+
+test_that("plot.RiskMap_cross_validation's calibration curve actually filters to the requested test_set", {
+
+  p1 <- plot(cross_validation, metric = "AnPIT", model = "model_a",
+            mode = "single", test_set = 1)
+  p2 <- plot(cross_validation, metric = "AnPIT", model = "model_a",
+            mode = "single", test_set = 2)
+
+  expect_false(identical(p1$data$value, p2$data$value))
+  expect_error(
+    plot(cross_validation, metric = "AnPIT", model = "model_a",
+        mode = "single", test_set = 99),
+    "No data for test_set 99"
+  )
 })

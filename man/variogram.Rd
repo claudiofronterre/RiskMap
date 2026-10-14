@@ -98,7 +98,6 @@ italy_variogram <- variogram(
                      n_permutations = 199,
                      seed = 123)
 
-plot_variogram(italy_variogram,
-               plot_envelope = TRUE)
+plot(italy_variogram)
 
 }
