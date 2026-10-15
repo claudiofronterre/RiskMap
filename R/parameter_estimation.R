@@ -1,3 +1,304 @@
+##' Validate inputs and prepare model-fitting data for glgpm()
+##'
+##' Performs every validation, parsing and derived-quantity step `glgpm()`
+##' needs before fitting: formula/family/argument checks, extracting the
+##' response and covariate matrix, resolving the denominator, preparing
+##' random effects, reprojecting and indexing coordinates, and defaulting/
+##' validating `start_pars`. Returns its results as a list rather than
+##' assigning them directly into the caller; callers unpack the elements
+##' they need explicitly (e.g. `y <- prepared$y`) so that R CMD check can
+##' see where each variable is defined.
+##'
+##' @param formula,data,family,invlink,model_crs,control_mcmc,control_mcml,return_samples,messages,fix_var_me,start_pars
+##' Identical to the corresponding arguments of glgpm(). Defaults match
+##' `glgpm()`'s own, so a direct call (e.g. from a test exercising input
+##' validation alone) only needs to supply whatever it's varying.
+##' @param distance_units Identical to the corresponding argument of
+##' [glgpm()], with the same default - needed so that `match.arg()` below,
+##' which reads its choices from its own calling function's formal default,
+##' continues to work now that this validation has moved out of `glgpm()`.
+##' @param denominator The caller's substituted `denominator` expression -
+##' i.e. `substitute(denominator)` as evaluated by `glgpm()`, not by this
+##' function (`substitute()` on this function's own `denominator` parameter
+##' would only see `glgpm()`'s call to `prepare_data()`, not the original
+##' top-level call). A direct call outside `glgpm()` - e.g. from a test -
+##' needs to pass this already-quoted, such as `quote(my_column)` rather
+##' than a bare `my_column`, to exercise the same "unquoted column name"
+##' behaviour; an ordinary value (`NULL`, or a non-symbol like `1`) behaves
+##' identically either way.
+##' @return A list with the prepared quantities `glgpm()` needs after this
+##' step: `not_gaussian`, `inter_f`, `kappa`, `y`, `D`, `original_D`,
+##' `cov_offset`, `units_m` (`NULL` for Gaussian models), `n_re`,
+##' `names_re`, `ID_re`, `re_unique`, `re_unique_f`, `input_crs`, `data`
+##' (reprojected if necessary), `coords`, `ID_coords`, `s_unique`,
+##' `fix_tau2`, `user_supplied_start`, `start_pars` (defaulted/validated)
+##' and `distance_units` (resolved by `match.arg()`).
+##' @noRd
+prepare_data <- function(formula, data, family, invlink = NULL,
+                         denominator = NULL, model_crs = NULL,
+                         distance_units = c("km", "m"),
+                         control_mcmc = set_control_mcmc(),
+                         control_mcml = set_control_mcml(),
+                         return_samples = TRUE, messages = TRUE,
+                         fix_var_me = NULL,
+                         start_pars = list(beta = NULL,
+                                           sigma2 = NULL,
+                                           tau2 = NULL,
+                                           phi = NULL,
+                                           sigma2_me = NULL,
+                                           sigma2_re = NULL)) {
+
+  check_data(data)
+  check_formula(formula, data)
+  if(!family %in% c("gaussian", "binomial", "poisson"))
+    stop("'family' must be either 'gaussian', 'binomial' or 'poisson'")
+  not_gaussian <- family != "gaussian"
+
+  stopifnot("'distance_units' must be either 'km' or 'm'" =
+              is.character(distance_units) && all(distance_units %in% c("km", "m")),
+            "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
+            "'messages' must be either TRUE or FALSE" = is.logical(messages))
+  distance_units <- match.arg(distance_units)
+  if (!inherits(control_mcml, "RiskMap_control_mcml")) {
+    stop("the argument passed to 'control_mcml' must be an output from ",
+         "the function set_control_mcml; see ?set_control_mcml for details")
+  }
+
+  if (family == "gaussian"){
+    stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
+              "'denominator' cannot be provided when 'family' is 'gaussian'" = is.null(denominator),
+              "'fix_var_me' must be NULL or a single positive value or zero" =
+                is.null(fix_var_me) ||
+                (length(fix_var_me) == 1 && is.numeric(fix_var_me) && fix_var_me >= 0))
+  } else {
+    if (!is.null(fix_var_me)) stop("'fix_var_me' cannot be provided when 'family' is '", family, "'")
+  }
+
+  inter_f <- interpret_formula(formula)
+  kappa <- inter_f$gp_spec$kappa
+  mf <- model.frame(inter_f$pf, data = data, na.action = na.fail)
+
+  # Extract outcome data
+  y <- as.numeric(model.response(mf))
+  n <- length(y)
+
+  # Extract covariates matrix
+  D <- as.matrix(model.matrix(attr(mf, "terms"), data = data))
+  original_D <- D
+
+  if(is.null(inter_f$offset)) {
+    cov_offset <- rep(0, nrow(data))
+  } else {
+    cov_offset <- data[[inter_f$offset]]
+  }
+
+  # Define denominators for Binomial and Poisson distributions
+  if (not_gaussian) {
+    if (is.null(denominator)){
+      units_m <- rep(1, nrow(data))
+      if (family == "binomial") warning("'denominator' is assumed to be 1 for all observations")
+    } else {
+      if (!is.symbol(denominator)){
+        stop("'denominator' must be provided as an unquoted column name for a column in 'data'")
+      }
+      do_name <- deparse(denominator)
+      if (!do_name %in% names(data)){
+        stop("the variable provided to 'denominator' is not present in 'data'")
+      }
+      units_m <- data[[do_name]]
+    }
+    if (family == "binomial") check_binomial(y, units_m)
+    if(is.integer(units_m)) units_m <- as.numeric(units_m)
+    if(!is.numeric(units_m)) stop("the variable passed to 'denominator' must be numeric")
+    if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
+      stop("the argument passed to 'control_mcmc' must be an output
+           from the function set_control_mcmc; see ?set_control_mcmc for more details")
+    }
+  } else {
+    units_m <- NULL
+  }
+
+  if (length(inter_f$re_spec) > 0L) {
+    hr_re <- inter_f$re_spec$term
+  } else {
+    hr_re <- NULL
+  }
+
+  random_effects <- prepare_random_effects(data, hr_re)
+  n_re <- random_effects$n_re
+  names_re <- random_effects$names_re
+  ID_re <- random_effects$ID_re
+  if (!is.null(ID_re)) {
+    ID_re <- as.data.frame(ID_re)
+  }
+  re_unique <- random_effects$re_unique
+  re_unique_f <- random_effects$re_unique_f
+
+
+  # transform crs and extract coordinates
+  input_crs <- st_crs(data)
+  if(!is.null(model_crs)) {
+    check_crs(model_crs)
+    data <- st_transform(data, crs = model_crs)
+    if(st_is_longlat(data)) {
+      stop("'model_crs' must be a projected CRS, not longitude/latitude")
+    }
+  } else if(st_is_longlat(data)) {
+    auto_crs <- propose_utm(data)
+    data <- st_transform(data, crs = auto_crs)
+    message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
+            "automatically reprojecting to EPSG:", auto_crs,
+            " for model fitting. Set 'model_crs' to override.")
+  }
+  if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
+
+  coords_o <- coordinates_in_units(data, distance_units)
+  coordinate_index <- index_coordinate_rows(coords_o)
+  coords <- coordinate_index$coordinates
+  ID_coords <- coordinate_index$index
+
+  m <- nrow(coords_o)
+  s_unique <- unique(ID_coords)
+
+  fix_tau2 <- inter_f$gp_spec$nugget
+
+  if(all(table(ID_coords) == 1) &&
+     family == "gaussian" &&
+     isTRUE(fix_tau2) &&
+     is.null(fix_var_me)){
+    stop("When there is only one observation per location, both the nugget and measurement error cannot
+         be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
+  }
+
+  # For the Gaussian family, an observation-level random effect is perfectly
+  # confounded with an estimated measurement-error variance. When there is
+  # only one observation per location, it is also confounded with an estimated
+  # nugget. Fixed variance components do not create this identifiability issue.
+  if (family == "gaussian" && n_re > 0) {
+    n_levels_re <- vapply(re_unique, length, integer(1))
+    is_saturated_re <- n_levels_re == n
+    confounded_with_me <- is.null(fix_var_me)
+    confounded_with_nugget <- isTRUE(fix_tau2) && all(table(ID_coords) == 1)
+
+    if (any(is_saturated_re) && (confounded_with_me || confounded_with_nugget)) {
+      confounded_component <- if (confounded_with_me && confounded_with_nugget) {
+        "the measurement error and nugget"
+      } else if (confounded_with_me) {
+        "the measurement error"
+      } else {
+        "the nugget"
+      }
+      stop("The random effect(s) '",
+           paste(names_re[is_saturated_re], collapse = "', '"),
+           "' have one level per observation, which cannot be distinguished ",
+           "from ", confounded_component, " when 'family' is 'gaussian'. ",
+           "Drop the random effect or fix the confounded variance component(s).")
+    }
+  }
+
+  if(messages) message("Distances between locations are computed in ", distance_units, " ")
+
+  valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
+  invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
+  if (length(invalid)) {
+    stop("'", paste(invalid, collapse = "', '"), "' is not a valid starting parameter")
+  }
+  user_supplied_start <- any(vapply(
+    start_pars,
+    function(value) !is.null(value),
+    logical(1)
+  ))
+
+  if(is.null(start_pars[["beta"]])) {
+    if(family=="gaussian") {
+      start_pars[["beta"]] <- linear_start_values(D, y)
+    } else if(family=="binomial") {
+      aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
+      if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
+      glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
+                        data = aux_data, family = binomial)
+      start_pars[["beta"]] <- coef(glm_fitted)
+    } else if(family=="poisson") {
+      pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
+      data_aux <- data
+      data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
+      glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
+      start_pars[["beta"]] <- coef(glm_fitted)
+    }
+  } else {
+    if(length(start_pars[["beta"]]) != ncol(D))
+      stop("The number of starting values provided for 'beta' do not match the number of
+      covariates specified in the model, including the intercept")
+    if (any(!is.numeric(start_pars[["beta"]]))){
+      stop("The starting values for 'beta' must be numeric")
+    }
+  }
+
+  if(is.null(start_pars[["sigma2"]])) {
+    start_pars[["sigma2"]] <- 1
+  } else {
+    check_positive_number(start_pars[["sigma2"]])
+  }
+
+  if(is.null(start_pars[["phi"]])) {
+    start_pars[["phi"]] <- quantile(pairwise_distances(coords), 0.1)
+  } else {
+    check_positive_number(start_pars[["phi"]])
+  }
+
+  if(isTRUE(fix_tau2)) {
+    if(is.null(start_pars[["tau2"]])) {
+      start_pars[["tau2"]] <- 1
+    } else {
+      check_positive_number(start_pars[["tau2"]])
+    }
+  } else {
+    if(!is.null(start_pars[["tau2"]]))
+      stop("The starting value for 'tau2' cannot be provided when 'nugget' in 'gp()' is FALSE")
+  }
+
+  if(n_re > 0) {
+    if(is.null(start_pars[["sigma2_re"]])) {
+      start_pars[["sigma2_re"]] <- rep(1,n_re)
+    } else {
+      if(length(start_pars[["sigma2_re"]]) != n_re)
+        stop("The starting values for 'sigma2_re' do not match the number
+             of specified unstructured random effects")
+      if(any(start_pars[["sigma2_re"]] < 0))
+        stop("All the starting values for 'sigma2_re' must be positive")
+    }
+  } else {
+    if(!is.null(start_pars[["sigma2_re"]])) {
+      stop("Starting values for 'sigma2_re' cannot be provided when no random effects are included in the model")
+    }
+  }
+
+  list(
+    not_gaussian = not_gaussian,
+    inter_f = inter_f,
+    kappa = kappa,
+    y = y,
+    D = D,
+    original_D = original_D,
+    cov_offset = cov_offset,
+    units_m = units_m,
+    n_re = n_re,
+    names_re = names_re,
+    ID_re = ID_re,
+    re_unique = re_unique,
+    re_unique_f = re_unique_f,
+    input_crs = input_crs,
+    data = data,
+    coords = coords,
+    ID_coords = ID_coords,
+    s_unique = s_unique,
+    fix_tau2 = fix_tau2,
+    user_supplied_start = user_supplied_start,
+    start_pars = start_pars,
+    distance_units = distance_units
+  )
+}
+
 ##' @title Estimation of Generalized Linear Gaussian Process Models
 ##' @description Fits generalized linear Gaussian process models to spatial data,
 ##' incorporating spatial Gaussian processes with a Matern correlation function.
@@ -210,229 +511,35 @@ glgpm <- function(formula,
                                    sigma2_me = NULL,
                                    sigma2_re = NULL)) {
 
-  check_data(data)
-  check_formula(formula, data)
-  if(!family %in% c("gaussian", "binomial", "poisson"))
-    stop("'family' must be either 'gaussian', 'binomial' or 'poisson'")
-  not_gaussian <- family != "gaussian"
-
-  stopifnot("'distance_units' must be either 'km' or 'm'" =
-              is.character(distance_units) && all(distance_units %in% c("km", "m")),
-            "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
-            "'messages' must be either TRUE or FALSE" = is.logical(messages))
-  distance_units <- match.arg(distance_units)
-  if (!inherits(control_mcml, "RiskMap_control_mcml")) {
-    stop("the argument passed to 'control_mcml' must be an output from ",
-         "the function set_control_mcml; see ?set_control_mcml for details")
-  }
-
-  if (family == "gaussian"){
-    stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
-              "'denominator' cannot be provided when 'family' is 'gaussian'" = is.null(denominator),
-              "'fix_var_me' must be NULL or a single positive value or zero" =
-                is.null(fix_var_me) ||
-                (length(fix_var_me) == 1 && is.numeric(fix_var_me) && fix_var_me >= 0))
-  } else {
-    if (!is.null(fix_var_me)) stop("'fix_var_me' cannot be provided when 'family' is '", family, "'")
-  }
-
-  inter_f <- interpret_formula(formula)
-  kappa <- inter_f$gp_spec$kappa
-  mf <- model.frame(inter_f$pf, data = data, na.action = na.fail)
-
-  # Extract outcome data
-  y <- as.numeric(model.response(mf))
-  n <- length(y)
-
-  # Extract covariates matrix
-  D <- as.matrix(model.matrix(attr(mf, "terms"), data = data))
-  original_D <- D
-
-  if(is.null(inter_f$offset)) {
-    cov_offset <- rep(0, nrow(data))
-  } else {
-    cov_offset <- data[[inter_f$offset]]
-  }
-
-  # Define denominators for Binomial and Poisson distributions
-  if (not_gaussian) {
-    sub_den <- substitute(denominator)
-    if (is.null(sub_den)){
-      units_m <- rep(1, nrow(data))
-      if (family == "binomial") warning("'denominator' is assumed to be 1 for all observations")
-    } else {
-      if (!is.symbol(sub_den)){
-        stop("'denominator' must be provided as an unquoted column name for a column in 'data'")
-      }
-      do_name <- deparse(sub_den)
-      if (!do_name %in% names(data)){
-        stop("the variable provided to 'denominator' is not present in 'data'")
-      }
-      units_m <- data[[do_name]]
-    }
-    if (family == "binomial") check_binomial(y, units_m)
-    if(is.integer(units_m)) units_m <- as.numeric(units_m)
-    if(!is.numeric(units_m)) stop("the variable passed to 'denominator' must be numeric")
-    if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
-      stop("the argument passed to 'control_mcmc' must be an output
-           from the function set_control_mcmc; see ?set_control_mcmc for more details")
-    }
-  }
-
-  if (length(inter_f$re_spec) > 0L) {
-    hr_re <- inter_f$re_spec$term
-  } else {
-    hr_re <- NULL
-  }
-
-  random_effects <- prepare_random_effects(data, hr_re)
-  n_re <- random_effects$n_re
-  names_re <- random_effects$names_re
-  ID_re <- random_effects$ID_re
-  if (!is.null(ID_re)) {
-    ID_re <- as.data.frame(ID_re)
-  }
-  re_unique <- random_effects$re_unique
-  re_unique_f <- random_effects$re_unique_f
-
-
-  # transform crs and extract coordinates
-  input_crs <- st_crs(data)
-  if(!is.null(model_crs)) {
-    check_crs(model_crs)
-    data <- st_transform(data, crs = model_crs)
-    if(st_is_longlat(data)) {
-      stop("'model_crs' must be a projected CRS, not longitude/latitude")
-    }
-  } else if(st_is_longlat(data)) {
-    auto_crs <- propose_utm(data)
-    data <- st_transform(data, crs = auto_crs)
-    message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
-            "automatically reprojecting to EPSG:", auto_crs,
-            " for model fitting. Set 'model_crs' to override.")
-  }
-  if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
-
-  coords_o <- coordinates_in_units(data, distance_units)
-  coordinate_index <- index_coordinate_rows(coords_o)
-  coords <- coordinate_index$coordinates
-  ID_coords <- coordinate_index$index
-
-  m <- nrow(coords_o)
-  s_unique <- unique(ID_coords)
-
-  fix_tau2 <- inter_f$gp_spec$nugget
-
-  if(all(table(ID_coords) == 1) &&
-     family == "gaussian" &&
-     isTRUE(fix_tau2) &&
-     is.null(fix_var_me)){
-    stop("When there is only one observation per location, both the nugget and measurement error cannot
-         be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
-  }
-
-  # For the Gaussian family, an observation-level random effect is perfectly
-  # confounded with an estimated measurement-error variance. When there is
-  # only one observation per location, it is also confounded with an estimated
-  # nugget. Fixed variance components do not create this identifiability issue.
-  if (family == "gaussian" && n_re > 0) {
-    n_levels_re <- vapply(re_unique, length, integer(1))
-    is_saturated_re <- n_levels_re == n
-    confounded_with_me <- is.null(fix_var_me)
-    confounded_with_nugget <- isTRUE(fix_tau2) && all(table(ID_coords) == 1)
-
-    if (any(is_saturated_re) && (confounded_with_me || confounded_with_nugget)) {
-      confounded_component <- if (confounded_with_me && confounded_with_nugget) {
-        "the measurement error and nugget"
-      } else if (confounded_with_me) {
-        "the measurement error"
-      } else {
-        "the nugget"
-      }
-      stop("The random effect(s) '",
-           paste(names_re[is_saturated_re], collapse = "', '"),
-           "' have one level per observation, which cannot be distinguished ",
-           "from ", confounded_component, " when 'family' is 'gaussian'. ",
-           "Drop the random effect or fix the confounded variance component(s).")
-    }
-  }
-
-  if(messages) message("Distances between locations are computed in ", distance_units, " ")
-
-  valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
-  invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
-  if (length(invalid)) {
-    stop("'", paste(invalid, collapse = "', '"), "' is not a valid starting parameter")
-  }
-  user_supplied_start <- any(vapply(
-    start_pars,
-    function(value) !is.null(value),
-    logical(1)
-  ))
-
-  if(is.null(start_pars[["beta"]])) {
-    if(family=="gaussian") {
-      start_pars[["beta"]] <- linear_start_values(D, y)
-    } else if(family=="binomial") {
-      aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
-      if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
-      glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
-                        data = aux_data, family = binomial)
-      start_pars[["beta"]] <- coef(glm_fitted)
-    } else if(family=="poisson") {
-      pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
-      data_aux <- data
-      data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
-      glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
-      start_pars[["beta"]] <- coef(glm_fitted)
-    }
-  } else {
-    if(length(start_pars[["beta"]]) != ncol(D))
-      stop("The number of starting values provided for 'beta' do not match the number of
-      covariates specified in the model, including the intercept")
-    if (any(!is.numeric(start_pars[["beta"]]))){
-      stop("The starting values for 'beta' must be numeric")
-    }
-  }
-
-  if(is.null(start_pars[["sigma2"]])) {
-    start_pars[["sigma2"]] <- 1
-  } else {
-    check_positive_number(start_pars[["sigma2"]])
-  }
-
-  if(is.null(start_pars[["phi"]])) {
-    start_pars[["phi"]] <- quantile(pairwise_distances(coords), 0.1)
-  } else {
-    check_positive_number(start_pars[["phi"]])
-  }
-
-  if(isTRUE(fix_tau2)) {
-    if(is.null(start_pars[["tau2"]])) {
-      start_pars[["tau2"]] <- 1
-    } else {
-      check_positive_number(start_pars[["tau2"]])
-    }
-  } else {
-    if(!is.null(start_pars[["tau2"]]))
-      stop("The starting value for 'tau2' cannot be provided when 'nugget' in 'gp()' is FALSE")
-  }
-
-  if(n_re > 0) {
-    if(is.null(start_pars[["sigma2_re"]])) {
-      start_pars[["sigma2_re"]] <- rep(1,n_re)
-    } else {
-      if(length(start_pars[["sigma2_re"]]) != n_re)
-        stop("The starting values for 'sigma2_re' do not match the number
-             of specified unstructured random effects")
-      if(any(start_pars[["sigma2_re"]] < 0))
-        stop("All the starting values for 'sigma2_re' must be positive")
-    }
-  } else {
-    if(!is.null(start_pars[["sigma2_re"]])) {
-      stop("Starting values for 'sigma2_re' cannot be provided when no random effects are included in the model")
-    }
-  }
+  prepared <- prepare_data(
+    formula = formula, data = data, family = family, invlink = invlink,
+    denominator = substitute(denominator), model_crs = model_crs,
+    distance_units = distance_units, control_mcmc = control_mcmc,
+    control_mcml = control_mcml, return_samples = return_samples,
+    messages = messages, fix_var_me = fix_var_me, start_pars = start_pars
+  )
+  not_gaussian <- prepared$not_gaussian
+  inter_f <- prepared$inter_f
+  kappa <- prepared$kappa
+  y <- prepared$y
+  D <- prepared$D
+  original_D <- prepared$original_D
+  cov_offset <- prepared$cov_offset
+  units_m <- prepared$units_m
+  n_re <- prepared$n_re
+  names_re <- prepared$names_re
+  ID_re <- prepared$ID_re
+  re_unique <- prepared$re_unique
+  re_unique_f <- prepared$re_unique_f
+  input_crs <- prepared$input_crs
+  data <- prepared$data
+  coords <- prepared$coords
+  ID_coords <- prepared$ID_coords
+  s_unique <- prepared$s_unique
+  fix_tau2 <- prepared$fix_tau2
+  user_supplied_start <- prepared$user_supplied_start
+  start_pars <- prepared$start_pars
+  distance_units <- prepared$distance_units
 
   starting_diagnostics <- list(
     selected = if (user_supplied_start) "user" else "current",
