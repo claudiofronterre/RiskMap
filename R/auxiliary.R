@@ -264,6 +264,19 @@ matern_hessian_phi <- function(U, phi, kappa) {
 ##' \item{nugget}{The nugget effect.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the GP model.}
+##' @examples
+##' # this function is not intended for use by itself
+##' gp()
+##' gp(nugget = TRUE)
+##'
+##' # use in a model formula
+##' data(italy_sim)
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
 ##' @export
 gp <- function (..., kappa = 0.5, nugget = FALSE) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -294,11 +307,10 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
     for (i in 1:d) term[i] <- attr(terms(reformulate(term[i])),
                                    "term.labels")
   }
-  full.call <- paste("gp(", term[1], sep = "")
+  full.call <- paste0("gp(", term[1])
   if (d > 1)
-    for (i in 2:d) full.call <- paste(full.call, ",", term[i],
-                                      sep = "")
-  label <- gsub("sf", "", paste(full.call, ")", sep = ""))
+    for (i in 2:d) full.call <- paste(full.call, term[i], sep = ",")
+  label <- gsub("sf", "", paste0(full.call, ")"))
   ret <- list(term = term, kappa = kappa, nugget = nugget, dim = d,
               label = label)
   class(ret) <- "RiskMap_gp_spec"
@@ -313,6 +325,20 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the random effect model.}
 ##' @note At least one variable must be provided as input.
+##'
+##' @examples
+##' # this function is not intended for use by itself
+##' re(province)
+##'
+##' # use in a model formula
+##' data(italy_sim)
+##' fit <- glgpm(
+##'   formula = y ~ gp() + re(province),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
 ##' @export
 re <- function (...) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -330,11 +356,10 @@ re <- function (...) {
     for (i in 1:d) term[i] <- attr(terms(reformulate(term[i])),
                                    "term.labels")
   }
-  full.call <- paste("re(", term[1], sep = "")
+  full.call <- paste0("re(", term[1])
   if (d > 1)
-    for (i in 2:d) full.call <- paste(full.call, ",", term[i],
-                                      sep = "")
-  label <- gsub("sf", "", paste(full.call, ")", sep = ""))
+    for (i in 2:d) full.call <- paste0(full.call, ",", term[i])
+  label <- gsub("sf", "", paste0(full.call, ")"))
   ret <- list(term = term, dim = d, label = label)
   class(ret) <- "RiskMap_re_spec"
   ret
@@ -389,7 +414,7 @@ interpret_formula <- function(formula) {
   }
 
   if (attr(tf, "intercept") == 0) {
-    pf <- paste(pf, "-1", sep = "")
+    pf <- paste0(pf, "-1")
   }
 
   ret <- list(
@@ -814,10 +839,16 @@ print.summary.RiskMap <- function(x, ...) {
 ##' @export
 ##' @seealso \code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
 ##' @examples
-##' \dontrun{
-##' fit <- glgpm(y ~ x + gp(), data = example_data)
-##' to_table(fit, digits = 3)
-##' }
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##' to_table(fit)
+##' to_table(fit, digits = 1)
 to_table <- function(object, digits = 3, ...) {
   check_positive_integer(digits, "digits", allow_zero = TRUE)
 
@@ -881,7 +912,7 @@ to_table <- function(object, digits = 3, ...) {
 ##' and assigns an identifier to each coordinate occurrence. It returns a list
 ##' containing the identifiers for each row and a vector of unique identifiers.
 ##'
-##' @param data_sf An `sf` object containing geometrical data from which coordinates are extracted.
+##' @param data An `sf` object containing geometrical data from which coordinates are extracted.
 ##'
 ##' @return A list with the following elements:
 ##' \describe{
@@ -895,22 +926,21 @@ to_table <- function(object, digits = 3, ...) {
 ##' coordinates. It then assigns each row in the input data an identifier corresponding
 ##' to the unique coordinate it matches.
 ##'
+##' @examples
+##' data(italy_sim)
+##'
+##' create_ids(italy_sim)
+##'
 ##' @export
-##'
-##'
-create_ids <- function(data_sf) {
-  if(!inherits(data_sf,
-               what = c("sfc","sf"), which = FALSE)) {
-    stop("The object passed to 'grid_pred' must be an object
-         of class 'sfc'")
-  }
-  coords_o <- st_coordinates(data_sf)
+create_ids <- function(data) {
+  check_data(data)
+  coords_o <- st_coordinates(data)
   coords <- unique(coords_o)
 
   m <- nrow(coords_o)
   ID_coords <- sapply(1:m, function(i)
-    which(coords_o[i,1]==coords[,1] &
-            coords_o[i,2]==coords[,2]))
+    which(coords_o[i,1] == coords[,1] &
+            coords_o[i,2] == coords[,2]))
   out <- list()
   out$ID_coords <- ID_coords
   out$s_unique <- unique(ID_coords)

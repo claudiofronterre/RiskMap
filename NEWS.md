@@ -115,4 +115,5 @@ outputs reproducible.
   extract results.
 - Gaussian prediction uses a stable reduced covariance solve, avoiding cancellation
 with small measurement-error variances while retaining the same conditional model.
-- Test coverage has been increased from 0 to 70 %.
+- The `data_sf` parameter in `create_ids` is now `data`.
+- Test coverage has been increased from 0 to 85 %.

@@ -2,7 +2,7 @@ test_that("elogit matches the empirical logit formula", {
   y <- c(0, 5, 10)
   m <- c(10, 10, 10)
 
-  expect_equal(elogit(y, m), log((y + 0.5) / (m - y + 0.5)))
+  expect_identical(elogit(y, m), log((y + 0.5) / (m - y + 0.5)))
   expect_true(all(is.finite(elogit(c(0, 10), c(10, 10)))))
 })
 

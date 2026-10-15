@@ -1476,6 +1476,7 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
 }
 
 ##' @importFrom Matrix Matrix forceSymmetric
+##' @noRd
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
 
@@ -2742,7 +2743,7 @@ maxim_integrand <- function(
 ##' and exponential (poisson). Supply \code{invlink} to override.
 ##'
 ##' @seealso \code{\link{maxim_integrand}}
-##'
+##' @noRd
 laplace_sampling_mcmc <- function(y,
                                   units_m,
                                   mu,
@@ -3351,6 +3352,7 @@ set_control_mcmc <- function(n_sim = 12000,
 }
 
 ##' @importFrom Matrix Matrix forceSymmetric
+##' @noRd
 glgpm_nong <-
   function(y, D, coords, units_m, kappa,
            reference_pars, cov_offset,

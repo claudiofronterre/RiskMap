@@ -4,10 +4,10 @@
 \alias{create_ids}
 \title{Compute Unique Coordinate Identifiers}
 \usage{
-create_ids(data_sf)
+create_ids(data)
 }
 \arguments{
-\item{data_sf}{An \code{sf} object containing geometrical data from which coordinates are extracted.}
+\item{data}{An \code{sf} object containing geometrical data from which coordinates are extracted.}
 }
 \value{
 A list with the following elements:
@@ -26,4 +26,10 @@ containing the identifiers for each row and a vector of unique identifiers.
 The function extracts the coordinate pairs from the \code{sf} object and determines the unique
 coordinates. It then assigns each row in the input data an identifier corresponding
 to the unique coordinate it matches.
+}
+\examples{
+data(italy_sim)
+
+create_ids(italy_sim)
+
 }

@@ -25,28 +25,28 @@ test_that("create_grid functions correctly", {
 
   result <- create_grid(st_transform(sf_polygon, 32638), 10)
   expect_s3_class(result, "sf")
-  expect_equal(as.character(unique(st_geometry_type(result))), "POINT")
+  expect_identical(as.character(unique(st_geometry_type(result))), "POINT")
 
   square <- st_polygon(list(matrix(square_coords * 1000, ncol = 2, byrow = TRUE)))
   sf_square <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
   result <- create_grid(sf_square, 10)
-  expect_equal(nrow(result), 1)
+  expect_identical(nrow(result), 1L)
 
   result <- create_grid(sf_square, 5)
-  expect_equal(nrow(result), 4)
+  expect_identical(nrow(result), 4L)
 
   result <- create_grid(sf_square, 1)
-  expect_equal(nrow(result), 100)
+  expect_identical(nrow(result), 100L)
 
   result <- create_grid(sf_square, 2.5)
-  expect_equal(nrow(result), 16)
+  expect_identical(nrow(result), 16L)
 
   # confirm for sf with multiple polygons
   square2 <- st_polygon(list(matrix((square_coords + 10) * 1000, ncol = 2, byrow = TRUE)))
   sf_square2 <- st_sf(geometry = st_sfc(square2), crs = st_crs(32638))
   sf_combined <- rbind(sf_square, sf_square2)
   result <- create_grid(sf_combined, 10)
-  expect_equal(nrow(result), 2)
+  expect_identical(nrow(result), 2L)
 
 })
 
@@ -57,7 +57,7 @@ test_that("create_grid converts longitude/latitude data automatically, like glgp
   )
   expect_s3_class(result, "sf")
   expect_false(st_is_longlat(result))
-  expect_equal(as.character(unique(st_geometry_type(result))), "POINT")
+  expect_identical(as.character(unique(st_geometry_type(result))), "POINT")
   expect_gt(nrow(result), 0)
 })
 
