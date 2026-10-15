@@ -313,7 +313,26 @@ dast <- function(formula,
     return_samples = return_samples, messages = messages,
     start_pars = standard_start_pars
   )
-  list2env(prepared, environment())
+  inter_f <- prepared$inter_f
+  kappa <- prepared$kappa
+  y <- prepared$y
+  D <- prepared$D
+  original_D <- prepared$original_D
+  cov_offset <- prepared$cov_offset
+  units_m <- prepared$units_m
+  n_re <- prepared$n_re
+  names_re <- prepared$names_re
+  ID_re <- prepared$ID_re
+  re_unique <- prepared$re_unique
+  re_unique_f <- prepared$re_unique_f
+  input_crs <- prepared$input_crs
+  data <- prepared$data
+  coords <- prepared$coords
+  ID_coords <- prepared$ID_coords
+  s_unique <- prepared$s_unique
+  fix_tau2 <- prepared$fix_tau2
+  start_pars <- prepared$start_pars
+  distance_units <- prepared$distance_units
   start_pars[names(dast_start_pars)] <- dast_start_pars
 
   check_dast(formula = formula, data = data, time = substitute(time),
