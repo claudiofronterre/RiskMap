@@ -215,13 +215,17 @@ check_dast <- function(formula, data, time, mda_times, int_mat, penalty, start_p
 ##' In all cases, the \code{time} argument must be specified separately and provides the observation-level survey times used
 ##' in modelling MDA impact. These survey times may differ from the GP temporal index.
 ##'
-##' @param formula A model formula specifying the response variable, predictors, and the GP structure through \code{gp()}.
-##' @param data An \code{sf} object containing the dataset.
+##' @param formula A formula object specifying the model to be fitted.
+##' The formula should include fixed effects and spatial effects specified using
+##' [gp()] and optionally, random effects specified using [re()]. To include a
+##' spatiotemporal process, add the time variable to `gp()`
+##' @param data An sf object containing the variables in the model.
 ##' @param denominator The denominator for binomial models.
 ##' @param time A variable in \code{data} giving the survey times of observations (required).
 ##' @param mda_times A vector specifying the mass drug administration (MDA) times.
 ##' @param int_mat Intervention matrix specifying the timing and coverage of MDA; the dimension of the matrix
 ##' must be \code{n * n_mda}, where \code{n} is the number of rows of \code{data} and \code{n_mda} is the length of \code{mda_times}.
+##' @param power_val Value expressing the power of the MDA impact function.
 ##' @param penalty Optional list of length 6 specifying penalty functions for regularization.
 ##'   Elements \code{[[1]]}, \code{[[2]]}, \code{[[3]]} are the penalty, its first and second
 ##'   derivative with respect to \code{alpha}. Elements \code{[[4]]}, \code{[[5]]}, \code{[[6]]}
@@ -229,9 +233,12 @@ check_dast <- function(formula, data, time, mda_times, int_mat, penalty, start_p
 ##'   Any of these six elements may be set to \code{function(x) 0} to suppress penalisation
 ##'   for that parameter.
 ##' @param drop Optional value used for fixing the "drop" parameter of the MDA impact function.
-##' @param power_val Value expressing the power of the MDA impact function.
-##' @param model_crs CRS to which spatial data should be converted.
-##' @param distance_units Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.
+##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for model fitting.
+##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
+##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
+##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
+##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
+##' ##' @param distance_units Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.
 ##' @param control_mcmc A list of MCMC control parameters, typically from \code{set_control_mcmc()}.
 ##' @param S_samples Number of posterior samples to retain.
 ##' @param return_samples Logical; whether to return posterior samples (default: \code{TRUE}).
@@ -277,8 +284,9 @@ dast <- function(formula,
                  time,
                  mda_times,
                  int_mat,
+                 power_val,
                  penalty = NULL,
-                 drop = NULL, power_val,
+                 drop = NULL,
                  model_crs = NULL,
                  distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
@@ -321,12 +329,12 @@ dast <- function(formula,
   time_name <- deparse(substitute(time))
   survey_times_data <- data[[time_name]]
 
-  # check_dast() already enforced gp() or gp(t) above.
-  sst <- FALSE
   gp_time_obs <- NULL
   if (gp_dim == 1) {
     sst <- TRUE
     gp_time_obs <- data[[gp_terms[1]]]   # may differ from survey_times_data
+  } else {
+    sst <- FALSE
   }
 
   # Build default no-penalty list.

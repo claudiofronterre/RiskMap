@@ -11,9 +11,9 @@ dast(
   time,
   mda_times,
   int_mat,
+  power_val,
   penalty = NULL,
   drop = NULL,
-  power_val,
   model_crs = NULL,
   distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
@@ -25,9 +25,12 @@ dast(
 )
 }
 \arguments{
-\item{formula}{A model formula specifying the response variable, predictors, and the GP structure through \code{gp()}.}
+\item{formula}{A formula object specifying the model to be fitted.
+The formula should include fixed effects and spatial effects specified using
+\code{\link[=gp]{gp()}} and optionally, random effects specified using \code{\link[=re]{re()}}. To include a
+spatiotemporal process, add the time variable to \code{gp()}}
 
-\item{data}{An \code{sf} object containing the dataset.}
+\item{data}{An sf object containing the variables in the model.}
 
 \item{denominator}{The denominator for binomial models.}
 
@@ -38,6 +41,8 @@ dast(
 \item{int_mat}{Intervention matrix specifying the timing and coverage of MDA; the dimension of the matrix
 must be \code{n * n_mda}, where \code{n} is the number of rows of \code{data} and \code{n_mda} is the length of \code{mda_times}.}
 
+\item{power_val}{Value expressing the power of the MDA impact function.}
+
 \item{penalty}{Optional list of length 6 specifying penalty functions for regularization.
 Elements \code{[[1]]}, \code{[[2]]}, \code{[[3]]} are the penalty, its first and second
 derivative with respect to \code{alpha}. Elements \code{[[4]]}, \code{[[5]]}, \code{[[6]]}
@@ -47,11 +52,12 @@ for that parameter.}
 
 \item{drop}{Optional value used for fixing the "drop" parameter of the MDA impact function.}
 
-\item{power_val}{Value expressing the power of the MDA impact function.}
-
-\item{model_crs}{CRS to which spatial data should be converted.}
-
-\item{distance_units}{Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.}
+\item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
+If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
+If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
+reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
+If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.
+##' @param distance_units Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.}
 
 \item{control_mcmc}{A list of MCMC control parameters, typically from \code{set_control_mcmc()}.}
 
