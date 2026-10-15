@@ -439,10 +439,10 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, n_folds)
-  expect_equal(sum(unlist(lapply(result$test_set, nrow))), n)
+  expect_identical(sum(unlist(lapply(result$test_set, nrow))), n)
 
   combined <- do.call(rbind, result$test_set)
-  expect_true(all(!duplicated(combined)))
+  expect_true(!all(duplicated(combined)))
 
   n_folds <- 3
 
@@ -454,10 +454,10 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, n_folds)
-  expect_equal(sum(unlist(lapply(result$test_set, nrow))), n)
+  expect_identical(sum(unlist(lapply(result$test_set, nrow))), n)
 
   combined <- do.call(rbind, result$test_set)
-  expect_true(all(!duplicated(combined)))
+  expect_true(!all(duplicated(combined)))
 
   size <- 4L
 
@@ -482,7 +482,7 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, 1)
-  expect_equal(nrow(result$test_set[[1]]), n/2)
+  expect_identical(nrow(result$test_set[[1]]), as.integer(n/2))
 
   result <- assess_prediction(
     list(gaussian_model),

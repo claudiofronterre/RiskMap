@@ -1,7 +1,7 @@
 test_that("summarise_distance produces errors", {
 
   test_that("data must be an object of class 'sf'", {
-    df <- data.frame(x = 1:5, y = 1:5, y = rnorm(5))
+    df <- data.frame(x = 1:5, y = 1:5)
     expect_error(
       summarise_distance(df),
       "'data' must be of class 'sf'"
@@ -97,7 +97,7 @@ test_that("summarise_distance derives distance units from a non-metre CRS", {
 test_that("variogram produces errors", {
 
   test_that("data must be an object of class 'sf'", {
-    df <- data.frame(x = 1:5, y = 1:5, y = rnorm(5))
+    df <- data.frame(x = 1:5, y = 1:5)
     expect_error(
       variogram(df, variable = "y"),
       "'data' must be of class 'sf'"
