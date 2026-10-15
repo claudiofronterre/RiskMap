@@ -1,5 +1,5 @@
 set.seed(1)
-n <- 10
+n <- 10L
 coords <- cbind(runif(n, 0, 10000), runif(n, 0, 10000))
 
 data <- data.frame(x = coords[,1],

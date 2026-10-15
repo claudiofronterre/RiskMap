@@ -24,3 +24,17 @@ The function constructs a list that includes the specified terms for the random 
 \note{
 At least one variable must be provided as input.
 }
+\examples{
+# this function is not intended for use by itself
+re(province)
+
+# use in a model formula
+data(italy_sim)
+fit <- glgpm(
+  formula = y ~ gp() + re(province),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+}

@@ -5,8 +5,9 @@
 ##' response and covariate matrix, resolving the denominator, preparing
 ##' random effects, reprojecting and indexing coordinates, and defaulting/
 ##' validating `start_pars`. Returns its results as a list rather than
-##' assigning them directly into the caller, so `glgpm()` can bring them
-##' into its own environment with `list2env()`.
+##' assigning them directly into the caller; callers unpack the elements
+##' they need explicitly (e.g. `y <- prepared$y`) so that R CMD check can
+##' see where each variable is defined.
 ##'
 ##' @param formula,data,family,invlink,model_crs,control_mcmc,control_mcml,return_samples,messages,fix_var_me,start_pars
 ##' Identical to the corresponding arguments of glgpm(). Defaults match
@@ -517,7 +518,29 @@ glgpm <- function(formula,
     control_mcml = control_mcml, return_samples = return_samples,
     messages = messages, fix_var_me = fix_var_me, start_pars = start_pars
   )
-  list2env(prepared, environment())
+
+  not_gaussian <- prepared$not_gaussian
+  inter_f <- prepared$inter_f
+  kappa <- prepared$kappa
+  y <- prepared$y
+  D <- prepared$D
+  original_D <- prepared$original_D
+  cov_offset <- prepared$cov_offset
+  units_m <- prepared$units_m
+  n_re <- prepared$n_re
+  names_re <- prepared$names_re
+  ID_re <- prepared$ID_re
+  re_unique <- prepared$re_unique
+  re_unique_f <- prepared$re_unique_f
+  input_crs <- prepared$input_crs
+  data <- prepared$data
+  coords <- prepared$coords
+  ID_coords <- prepared$ID_coords
+  s_unique <- prepared$s_unique
+  fix_tau2 <- prepared$fix_tau2
+  user_supplied_start <- prepared$user_supplied_start
+  start_pars <- prepared$start_pars
+  distance_units <- prepared$distance_units
 
   starting_diagnostics <- list(
     selected = if (user_supplied_start) "user" else "current",
@@ -1476,6 +1499,7 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
 }
 
 ##' @importFrom Matrix Matrix forceSymmetric
+##' @noRd
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
 
@@ -2742,7 +2766,7 @@ maxim_integrand <- function(
 ##' and exponential (poisson). Supply \code{invlink} to override.
 ##'
 ##' @seealso \code{\link{maxim_integrand}}
-##'
+##' @noRd
 laplace_sampling_mcmc <- function(y,
                                   units_m,
                                   mu,
@@ -3351,6 +3375,7 @@ set_control_mcmc <- function(n_sim = 12000,
 }
 
 ##' @importFrom Matrix Matrix forceSymmetric
+##' @noRd
 glgpm_nong <-
   function(y, D, coords, units_m, kappa,
            reference_pars, cov_offset,

@@ -218,15 +218,15 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_setequal(names(fit_no_re), expected_output)
   expect_null(fit_no_re$mcml_history)
   expect_length(fitted(fit_no_re), nrow(gaussian_data))
-  expect_equal(fitted(fit_no_re), fit_no_re$fitted_values)
-  expect_equal(fitted(fit_no_re, type = "link"),
+  expect_identical(fitted(fit_no_re), fit_no_re$fitted_values)
+  expect_identical(fitted(fit_no_re, type = "link"),
                fit_no_re$linear_predictors)
   expect_null(fit_no_re$mcml_converged)
-  expect_equal(fit_no_re$family, "gaussian")
-  expect_equal(fit_no_re$coords[,1], data$x)
-  expect_equal(fit_no_re$coords[,2], data$z)
-  expect_equal(fit_no_re$y, gaussian_data$y)
-  expect_equal(unname(fit_no_re$D[,2]), gaussian_data$cov)
+  expect_identical(fit_no_re$family, "gaussian")
+  expect_identical(fit_no_re$coords[,1], data$x)
+  expect_identical(fit_no_re$coords[,2], data$z)
+  expect_identical(fit_no_re$y, gaussian_data$y)
+  expect_identical(unname(fit_no_re$D[,2]), gaussian_data$cov)
   optimizer <- attr(fit_no_re, "optimizer")
   expect_named(
     optimizer,
@@ -234,8 +234,8 @@ test_that("glgpm produces expected output for gaussian models", {
       "max_abs_gradient", "stationary", "information_rcond",
       "information_jitter")
   )
-  expect_true(is.logical(optimizer$stationary))
-  expect_true(optimizer$information_rcond >= 0)
+  expect_type(optimizer$stationary, "logical")
+  expect_gte(optimizer$information_rcond, 0)
 
   fit_re_fixed_me <- glgpm(y ~ cov + gp() + re(i),
                            data = gaussian_data,
@@ -251,7 +251,7 @@ test_that("glgpm produces expected output for gaussian models", {
 
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
-  expect_equal(fit_re$family, "gaussian")
+  expect_identical(fit_re$family, "gaussian")
   expect_length(fit_re$re, 1)
 
   fit_re2 <- glgpm(y ~ cov + gp() + re(i, j),
@@ -382,7 +382,7 @@ test_that("glgpm produces expected output for binomial models", {
 
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
-  expect_equal(fit_no_re$family, "binomial")
+  expect_identical(fit_no_re$family, "binomial")
   expect_length(fitted(fit_no_re), nrow(binomial_data))
   expect_true(all(fitted(fit_no_re) >= 0 & fitted(fit_no_re) <= 1))
   expect_length(fit_no_re$linear_predictors, nrow(binomial_data))
@@ -402,7 +402,7 @@ test_that("glgpm produces expected output for binomial models", {
 
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
-  expect_equal(fit_re$family, "binomial")
+  expect_identical(fit_re$family, "binomial")
   eta_samples <- sweep(
     fit_re$S_samples[, fit_re$ID_coords, drop = FALSE], 2,
     as.numeric(fit_re$D %*% fit_re$estimate$beta + fit_re$cov_offset), "+"
@@ -470,9 +470,9 @@ test_that("explicit non-Gaussian starts remain authoritative", {
     start_pars = start_pars, messages = FALSE
   )
 
-  expect_equal(attr(explicit_fit, "starting_values")$selected, "user")
-  expect_equal(explicit_fit$estimate, explicit_fit_2$estimate)
-  expect_equal(explicit_fit$log_lik, explicit_fit_2$log_lik)
+  expect_identical(attr(explicit_fit, "starting_values")$selected, "user")
+  expect_identical(explicit_fit$estimate, explicit_fit_2$estimate)
+  expect_identical(explicit_fit$log_lik, explicit_fit_2$log_lik)
 })
 
 test_that("final fitted samples support a nugget model", {
@@ -485,7 +485,7 @@ test_that("final fitted samples support a nugget model", {
     messages = FALSE
   )
 
-  expect_equal(ncol(fit$S_samples), nrow(fit$coords))
+  expect_identical(ncol(fit$S_samples), nrow(fit$coords))
   expect_length(fitted(fit), nrow(binomial_data))
   expect_true(all(is.finite(fitted(fit))))
 })
@@ -507,7 +507,7 @@ test_that("custom inverse links retain the current automatic start", {
   )
 
   diagnostics <- attr(fit, "starting_values")
-  expect_equal(diagnostics$selected, "current")
+  expect_identical(diagnostics$selected, "current")
   expect_match(diagnostics$fallback_reason, "custom inverse links")
 })
 
@@ -521,7 +521,7 @@ test_that("glgpm produces expected output for poisson models", {
 
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
-  expect_equal(fit_no_re$family, "poisson")
+  expect_identical(fit_no_re$family, "poisson")
   expect_length(fitted(fit_no_re), nrow(poisson_data))
   expect_true(all(fitted(fit_no_re) > 0))
 
@@ -533,7 +533,7 @@ test_that("glgpm produces expected output for poisson models", {
 
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
-  expect_equal(fit_re$family, "poisson")
+  expect_identical(fit_re$family, "poisson")
 
   fit_re_den <- glgpm(y ~ cov + gp() + re(i),
                       data = poisson_data,
@@ -544,7 +544,7 @@ test_that("glgpm produces expected output for poisson models", {
 
   expect_s3_class(fit_re_den, "RiskMap")
   expect_setequal(names(fit_re_den), expected_output)
-  expect_equal(fit_re_den$family, "poisson")
+  expect_identical(fit_re_den$family, "poisson")
   expect_true(all(fitted(fit_re_den) > 0))
 })
 
@@ -566,7 +566,7 @@ test_that("iterative MCML updates its reference and records reproducible history
 
   expect_true(fit$mcml_converged)
   expect_length(fit$mcml_history, 2)
-  expect_equal(
+  expect_identical(
     vapply(fit$mcml_history, `[[`, numeric(1), "seed"),
     c(control_mcmc$seed, control_mcmc$seed + 1L)
   )
@@ -578,16 +578,16 @@ test_that("iterative MCML updates its reference and records reproducible history
   expect_true(is.finite(
     fit$mcml_history[[2]]$max_standardized_change
   ))
-  expect_equal(fit$mcml_history[[2]]$estimate, fit$estimate)
+  expect_identical(fit$mcml_history[[2]]$estimate, fit$estimate)
   expect_true("reference_update" %in% names(fit$mcml_history[[2]]))
-  expect_equal(attr(fit, "optimizer")$proposed_estimate, fit$estimate)
+  expect_identical(attr(fit, "optimizer")$proposed_estimate, fit$estimate)
 })
 
 test_that("MCML overlap safeguard does not relabel a reference bridge as a fit", {
   diagnostics <- attr(binomial_model, "optimizer")
 
   expect_lt(diagnostics$step_fraction, 1)
-  expect_equal(diagnostics$proposed_estimate, binomial_model$estimate)
+  expect_identical(diagnostics$proposed_estimate, binomial_model$estimate)
   expect_false(isTRUE(all.equal(
     diagnostics$reference_update,
     binomial_model$estimate
@@ -612,9 +612,9 @@ test_that("glgpm correctly reprojects to new CRS", {
     "automatically reprojecting to EPSG"
   )
 
-  expect_equal(fit$input_crs, st_crs(latlon))
-  expect_equal(fit$coords, scaled_coords)
-  expect_equal(st_crs(fit$data), st_crs(suggested_crs))
+  expect_identical(fit$input_crs, st_crs(latlon))
+  expect_identical(fit$coords, scaled_coords)
+  expect_identical(st_crs(fit$data), st_crs(suggested_crs))
 })
 
 test_that("glgpm honours an explicitly supplied projected model_crs", {
@@ -628,8 +628,8 @@ test_that("glgpm honours an explicitly supplied projected model_crs", {
                distance_units = "m",
                messages = FALSE)
 
-  expect_equal(st_crs(fit$data), st_crs(32637))
-  expect_equal(fit$coords, coordinates_in_units(fit$data, "m"))
+  expect_identical(st_crs(fit$data), st_crs(32637))
+  expect_identical(fit$coords, coordinates_in_units(fit$data, "m"))
 })
 
 test_that("coordinates_in_units converts projected CRS units", {
@@ -637,9 +637,9 @@ test_that("coordinates_in_units converts projected CRS units", {
   metre_data <- gaussian_data
   foot_data <- st_transform(gaussian_data, 2263)
 
-  expect_equal(coordinates_in_units(metre_data, "km"),
+  expect_identical(coordinates_in_units(metre_data, "km"),
                st_coordinates(metre_data) / 1000)
-  expect_equal(coordinates_in_units(foot_data, "m"),
+  expect_identical(coordinates_in_units(foot_data, "m"),
                st_coordinates(foot_data) * 0.3048006096012192)
 })
 
