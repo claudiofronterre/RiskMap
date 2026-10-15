@@ -382,14 +382,18 @@ interpret_formula <- function(formula) {
   off <- attr(tf, "offset")
   vtab <- attr(tf, "factors")
 
-  for (i in seq_along(gp)) {
-    ind <- (1:nt)[as.logical(vtab[gp[i], ])]
-    gp[i] <- ind
+  if (length(gp) > 0) {
+    for (i in 1:length(gp)) {
+      ind <- (1:nt)[as.logical(vtab[gp[i], ])]
+      gp[i] <- ind
+    }
   }
 
-  for (i in seq_along(re)) {
-    ind <- (1:nt)[as.logical(vtab[re[i], ])]
-    re[i] <- ind
+  if (length(re) > 0) {
+    for (i in 1:length(re)) {
+      ind <- (1:nt)[as.logical(vtab[re[i], ])]
+      re[i] <- ind
+    }
   }
 
   len.gp <- length(gp)
