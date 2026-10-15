@@ -238,7 +238,7 @@ check_dast <- function(formula, data, time, mda_times, int_mat, penalty, start_p
 ##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
 ##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
 ##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
-##' ##' @param distance_units Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.
+##' @param distance_units Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.
 ##' @param control_mcmc A list of MCMC control parameters, typically from \code{set_control_mcmc()}.
 ##' @param S_samples Number of posterior samples to retain.
 ##' @param return_samples Logical; whether to return posterior samples (default: \code{TRUE}).

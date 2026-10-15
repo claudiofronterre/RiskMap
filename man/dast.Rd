@@ -56,8 +56,9 @@ for that parameter.}
 If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
 If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
 reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
-If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.
-##' @param distance_units Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.}
+If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
+
+\item{distance_units}{Units in which to compute distances; either \code{"km"} (default) or \code{"m"}.}
 
 \item{control_mcmc}{A list of MCMC control parameters, typically from \code{set_control_mcmc()}.}
 
