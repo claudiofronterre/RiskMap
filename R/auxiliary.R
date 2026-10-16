@@ -29,7 +29,7 @@
 create_convex_hull <- function(sf_object) {
   # Check if the input is an sf object
   if (!inherits(sf_object, "sf")) {
-    stop("`sf_object` must be an sf object")
+    stop("'sf_object' must be an sf object")
   }
 
   # Get the geometry from the sf object
@@ -94,11 +94,9 @@ elogit <- function(y, m) {
 ##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 ##' @return An integer indicating the EPSG code of the UTM zone.
 ##' @export
-propose_utm <- function (data) {
-  if (!inherits(data, "sf"))
-    stop("'data' must be an object of class sf")
-  if (is.na(st_crs(data)))
-    stop("the CRS of the data is missing and must be specified; see ?st_crs")
+propose_utm <- function(data) {
+
+  check_data(data, geometry = "any")
 
   # Transform to WGS84 (EPSG:4326) to ensure coordinates are in lon/lat
   data <- st_transform(data, crs = 4326)
@@ -120,7 +118,7 @@ propose_utm <- function (data) {
   ns_u <- unique(ns)
 
   if (length(ns_u) > 1) {
-    tab_ns <- table(ns_u)
+    tab_ns <- table(ns)
     if (all(diff(tab_ns) == 0))
       warning("An equal amount of locations falls north and south of the Equator")
     ns_u <- as.numeric(names(which.max(tab_ns)))
@@ -346,7 +344,7 @@ re <- function (...) {
   term <- NULL
 
   if (d == 0) {
-    stop("You need to provide at least one variable.")
+    stop("You need to provide at least one variable to re()")
   } else {
     if (d > 0) {
       for (i in 1:d) {
@@ -371,11 +369,7 @@ interpret_formula <- function(formula) {
   terms <- attr(tf, "term.labels")
   nt <- length(terms)
 
-  if (attr(tf, "response") > 0) {
-    response <- as.character(attr(tf, "variables")[2])
-  } else {
-    response <- NULL
-  }
+  response <- as.character(attr(tf, "variables")[2])
 
   gp <- attr(tf, "specials")$gp
   re <- attr(tf, "specials")$re
@@ -489,6 +483,10 @@ check_formula <- function(formula, data, response_required = TRUE){
     stop("'formula' must be a 'formula'
          object indicating the variables of the
          model to be fitted", call. = FALSE)
+  }
+
+  if (length(formula) != 3L) {
+    stop("The 'formula' must specify a response on the left-hand side, e.g. 'y ~ gp()'", call. = FALSE)
   }
 
   formula_terms <- unique(get_formula_terms(formula))
@@ -1320,15 +1318,15 @@ check_binomial <- function(y, den){
 #' If CRS == 4326 it also checks that the coordinates are possible (i.e. not
 #' latitudes > 90)
 #' @param data the data to check
-#' @param geometry whether to check that the data contains `"point"` (default) or
-#' `"polygon"` (covering both polygons and multipolygons)
+#' @param geometry whether to check that the data contains `"point"` (default),
+#' `"polygon"` (covering both polygons and multipolygons) or `"any"` to not check
 #' @param type whether to check that the data is `"sf"` (default) or
 #' `"sfc"` (either sf or sfc)
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
 check_data <- function(data, geometry = "point", type = "sf"){
-  stopifnot("'geometry' must be either 'point' or 'polygon'" = geometry %in% c("point", "polygon"))
+  stopifnot("'geometry' must be either 'point', 'polygon' or 'any'" = geometry %in% c("point", "polygon", "any"))
   stopifnot("'type' must be either 'sf' or 'sfc'" = type %in% c("sf", "sfc"))
 
   # extract name passed to function
@@ -1340,25 +1338,27 @@ check_data <- function(data, geometry = "point", type = "sf"){
 
   if (type == "sf"){
     if (!inherits(data, "sf"))
-      stop(paste(data_type, "must be of class 'sf'"), call. = FALSE)
+      stop(data_type, " must be of class 'sf'", call. = FALSE)
   } else {
     if (!inherits(data, c("sf", "sfc")))
-      stop(paste(data_type, "must be of class 'sf' or 'sfc'"), call. = FALSE)
+      stop(data_type, " must be of class 'sf' or 'sfc'", call. = FALSE)
   }
 
   if (is.na(st_crs(data)))
-    stop(paste(data_type, "must contain a coordinate reference system"), call. = FALSE)
+    stop(data_type, " must contain a coordinate reference system", call. = FALSE)
 
-  all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
-  if (!all_valid_geometry)
-    stop(paste(data_type, "can only contain", geometry_type, "geometry"), call. = FALSE)
+  if (geometry != "any"){
+    all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
+    if (!all_valid_geometry)
+      stop(data_type, " can only contain ", geometry_type, " geometry", call. = FALSE)
+  }
 
   if (st_crs(data) == st_crs(4326)){
     tryCatch(
       st_is_longlat(data$geometry),
       warning = function(w) {
-        stop(paste(data_type, "contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data"), call. = FALSE)
+        stop(data_type, " contains impossible latitude or longitude values -
+             check you have specified the columns correctly when converting the data", call. = FALSE)
       }
     )
   }

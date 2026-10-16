@@ -16,6 +16,9 @@ test_that("check_formula functions correctly", {
   expect_no_error(check_formula(y ~ log(c) + gp(), data))
 
   expect_error(check_formula("not formula", data), "'formula' must be a 'formula'")
+  expect_error(check_formula(~ gp(), data), "The 'formula' must specify a response")
+  expect_error(check_formula(~ gp(), data, response_required = FALSE),
+               "The 'formula' must specify a response")
   expect_error(check_formula(y ~ c, data), "The 'formula' must contain a Gaussian Process term")
   expect_error(check_formula(y ~ gp, data), "The 'formula' must contain a Gaussian Process term")
   expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
@@ -81,7 +84,7 @@ test_that("check_data functions correctly", {
   sf_multipolygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(multipolygon), crs = sf::st_crs(4326))
   sf_merged <- rbind(gaussian_data, sf_polygon)
 
-  expect_error(check_data(gaussian_data, geometry = "n"), "'geometry' must be either 'point' or 'polygon'")
+  expect_error(check_data(gaussian_data, geometry = "n"), "'geometry' must be either 'point', 'polygon' or 'any'")
   expect_error(check_data(gaussian_data, type = "n"), "'type' must be either 'sf' or 'sfc'")
 
   expect_no_error(check_data(gaussian_data))
@@ -276,3 +279,75 @@ test_that("plot_metric applies extra ggplot components passed via ...", {
   expect_length(p_custom$scales$scales, 1)
   expect_no_error(ggplot2::ggplot_build(p_custom))
 })
+
+test_that("create_convex_hull generates errors", {
+  expect_error(create_convex_hull("a"), "'sf_object' must be an sf object")
+})
+
+test_that("create_convex_hull functions correctly", {
+  result <- create_convex_hull(gaussian_data)
+  expect_s3_class(result, "sf")
+  expect_identical(nrow(result), 1L)
+
+  intersect <- unlist(st_intersects(gaussian_data, result))
+  expect_identical(intersect, rep(1L, 10))
+})
+
+test_that("propose_utm generates errors", {
+  expect_error(propose_utm("a"), "'data' must be of class 'sf'")
+})
+
+test_that("propose_utm handles both polygons and points", {
+  expect_no_error(propose_utm(areal))
+  expect_no_error(propose_utm(gaussian_data))
+})
+
+test_that("propose_utm warns when locations are split equally", {
+  lonlat_points <- function(lon, lat) {
+    st_as_sf(data.frame(lon = lon, lat = lat), coords = c("lon", "lat"), crs = 4326)
+  }
+
+  # longitudes 33 and 39 fall in UTM zones 36 and 37
+  expect_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 39), lat = c(5, 5))),
+    "An equal amount of locations falls in different UTM zones"
+  )
+  # default to min
+  expect_identical(epsg, 32636)
+
+  expect_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 33), lat = c(5, -5))),
+    "An equal amount of locations falls north and south of the Equator"
+  )
+  # default to south
+  expect_identical(epsg, 32736)
+
+  expect_no_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 39), lat = c(5, 5, 5)))
+  )
+  expect_identical(epsg, 32636)
+
+  expect_no_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 33, 33), lat = c(5, 6, 7, -5)))
+  )
+  expect_identical(epsg, 32636)
+})
+
+test_that("re errors when no variables are provided",{
+  expect_error(re(), "You need to provide at least one variable to re")
+})
+
+test_that("re produces expected output", {
+  result <- re(variable)
+  expect_s3_class(result, "RiskMap_re_spec")
+  expect_identical(result$term, "variable")
+  expect_identical(result$dim, 1L)
+  expect_identical(result$label, "re(variable)")
+
+  result <- re(variable, region)
+  expect_s3_class(result, "RiskMap_re_spec")
+  expect_identical(result$term, c("variable", "region"))
+  expect_identical(result$dim, 2L)
+  expect_identical(result$label, "re(variable,region)")
+})
+

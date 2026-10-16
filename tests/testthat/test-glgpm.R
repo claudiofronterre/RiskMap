@@ -12,8 +12,18 @@ test_that("glgpm produces errors", {
   )
 
   expect_error(
+    glgpm(~ cov + gp(), data = gaussian_data, family = "gaussian", messages = FALSE),
+    "The 'formula' must specify a response"
+  )
+
+  expect_error(
     glgpm(y ~ cov + gp(nugget = TRUE), data = gaussian_data, family = "gaussian", messages = FALSE),
     "When there is only one observation per location"
+  )
+
+  expect_error(
+    glgpm(y ~ cov + gp() + re(), data = gaussian_data, family = "gaussian", messages = FALSE),
+    "You need to provide at least one variable to re"
   )
 
   saturated_data <- gaussian_data
@@ -252,16 +262,29 @@ test_that("glgpm produces expected output for gaussian models", {
 
   expect_s3_class(fit_re2, "RiskMap")
   expect_length(fit_re2$re, 2)
+
+  fit_kappa <- glgpm(y ~ cov + gp(kappa = 0.4),
+                     data = gaussian_data,
+                     family = "gaussian",
+                     distance_units = "m",
+                     messages = FALSE)
+
+  expect_s3_class(fit_kappa, "RiskMap")
+  expect_false(identical(coef(fit_no_re)[["sigma2"]], coef(fit_kappa)[["sigma2"]]))
+  expect_false(identical(coef(fit_no_re)[["phi"]], coef(fit_kappa)[["phi"]]))
 })
 
 test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
   # replicating locations gives more than three observations per latent
-  # effect, so glgpm_lm should not fall back to glgpm_lm_direct
+  # effect, so glgpm_lm should not fall back to glgpm_lm_direct; six copies
+  # are needed for re(i, j), which has 10 + 5 + 2 = 17 latent effects
   set.seed(2)
-  replicated_data <- do.call(rbind, replicate(5, gaussian_data, simplify = FALSE))
+  replicated_data <- do.call(rbind, replicate(6, gaussian_data, simplify = FALSE))
   replicated_data$y <- replicated_data$y + rnorm(nrow(replicated_data), sd = 0.3)
 
-  formulas <- list(y ~ cov + gp(), y ~ cov + gp() + re(i))
+  # re(i, j) exercises the cross-terms between random effects in the Hessian
+  formulas <- list(y ~ cov + gp(), y ~ cov + gp() + re(i),
+                   y ~ cov + gp() + re(i, j))
   for (formula in formulas) {
     woodbury_fit <- with_mocked_bindings(
       glgpm(formula, data = replicated_data, family = "gaussian",
@@ -281,6 +304,35 @@ test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
     expect_equal(woodbury_fit$covariance, direct_fit$covariance,
                  tolerance = 1e-4)
   }
+})
+
+test_that("glgpm estimates a nugget in replicated gaussian models with the Woodbury path", {
+  # replicated locations separate the nugget from the measurement error, and
+  # give enough observations per latent effect to avoid glgpm_lm_direct
+  set.seed(2)
+  replicated_data <- do.call(rbind, replicate(5, gaussian_data, simplify = FALSE))
+  replicated_data$y <- replicated_data$y + rnorm(nrow(replicated_data), sd = 0.3)
+
+  woodbury_fit <- with_mocked_bindings(
+    glgpm(y ~ cov + gp(nugget = TRUE), data = replicated_data,
+          family = "gaussian", messages = FALSE),
+    glgpm_lm_direct = function(...) stop("direct path used")
+  )
+  direct_fit <- with_mocked_bindings(
+    glgpm(y ~ cov + gp(nugget = TRUE), data = replicated_data,
+          family = "gaussian", messages = FALSE),
+    use_direct_gaussian_covariance = function(...) TRUE
+  )
+
+  expect_s3_class(woodbury_fit, "RiskMap")
+  expect_setequal(names(woodbury_fit$estimate),
+                  c("beta", "sigma2", "phi", "nu2", "sigma2_me"))
+  expect_true(all(is.finite(unlist(woodbury_fit$estimate))))
+  expect_equal(woodbury_fit$estimate, direct_fit$estimate, tolerance = 1e-6)
+  expect_equal(woodbury_fit$log_lik, direct_fit$log_lik, tolerance = 1e-6)
+  # the analytical Hessian (including its nu2 rows/columns) gives the covariance
+  expect_equal(woodbury_fit$covariance, direct_fit$covariance,
+               tolerance = 1e-4)
 })
 
 test_that("glgpm fits gaussian models combining re() with a fixed measurement error variance #117", {

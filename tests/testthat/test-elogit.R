@@ -7,8 +7,14 @@ test_that("elogit matches the empirical logit formula", {
 })
 
 test_that("elogit validates binomial inputs", {
+  expect_error(elogit("a", 10), "'y' and 'm' must be numeric")
+  expect_error(elogit(NaN, 10), "'y' and 'm' cannot contain missing values")
   expect_error(elogit(11, 10), "'y' must be less than or equal to 'm'")
   expect_error(elogit(-1, 10), "'y' must contain only non-negative values")
   expect_error(elogit(1, 0), "'m' must contain only positive values")
   expect_error(elogit(c(1, 2), c(10, 10, 10)), "compatible lengths")
+})
+
+test_that("elogit returns zero for zero length", {
+  expect_identical(elogit(integer(0), double(0)), numeric(0))
 })
