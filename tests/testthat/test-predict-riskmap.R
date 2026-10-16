@@ -81,25 +81,50 @@ test_that("optional random-effect and nugget components are explicit", {
   conditional <- predict(
     binomial_model,
     prediction = "joint",
-    components = c("fixed", "spatial", "random_effects"),
+    include = "random_effects",
     keep_samples = TRUE,
     messages = FALSE
   )
   expect_equal(dim(conditional$samples$random_effects),
                dim(conditional$samples$spatial))
+  expect_true(all(c(
+    "random_effects_mean", "random_effects_lower", "random_effects_upper"
+  ) %in% names(conditional$data)))
 
   observation_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2, seed = 43
   )
   observation <- predict(
     gaussian_offset_model,
-    components = c("fixed", "spatial", "nugget"),
+    include = "nugget",
     control_mcmc = observation_control,
     keep_samples = TRUE,
     messages = FALSE
   )
   expect_equal(dim(observation$samples$nugget),
                dim(observation$samples$spatial))
+  expect_true(all(c("nugget_mean", "nugget_lower", "nugget_upper") %in%
+                    names(observation$data)))
+})
+
+test_that("prediction distinguishes estimated and fixed nugget variances", {
+  expect_equal(
+    fitted_nugget_variance(gaussian_offset_model),
+    coef(gaussian_offset_model)$tau2
+  )
+
+  fixed_nugget_model <- gaussian_model
+  fixed_nugget_model$fix_tau2 <- 0.25
+  fixed_nugget_model$estimate$nu2 <- NULL
+  expect_equal(fitted_nugget_variance(fixed_nugget_model), 0.25)
+
+  setup <- list(par_hat = coef(fixed_nugget_model))
+  set.seed(430)
+  samples <- prediction_nugget_samples(
+    fixed_nugget_model, setup, n_locations = 2000, n_samples = 20,
+    include = TRUE
+  )
+  expect_equal(stats::sd(as.numeric(samples)), 0.5, tolerance = 0.01)
 })
 
 test_that("predict.RiskMap validates its concise public interface", {
@@ -107,8 +132,8 @@ test_that("predict.RiskMap validates its concise public interface", {
   prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
 
   expect_error(
-    predict(gaussian_model, prediction_data, components = "spatial"),
-    "must include both 'fixed' and 'spatial'"
+    predict(gaussian_model, prediction_data, include = "spatial"),
+    "'include' must contain unique values"
   )
   expect_error(
     predict(gaussian_model, prediction_data, summaries = "mode"),
@@ -117,6 +142,15 @@ test_that("predict.RiskMap validates its concise public interface", {
   expect_error(
     predict(gaussian_model, prediction_data, level = 1),
     "strictly between 0 and 1"
+  )
+
+  prediction_data$i <- -1L
+  expect_error(
+    predict(
+      gaussian_model, prediction_data, prediction = "joint",
+      include = "random_effects", messages = FALSE
+    ),
+    "unknown levels for random effect 'i'"
   )
 })
 
@@ -260,4 +294,142 @@ test_that("polygon blocks share one non-Gaussian conditioning run", {
   )
 
   expect_identical(sampler_calls, 1L)
+})
+
+test_that("non-Gaussian boundary predictions reuse shared random effects", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  prediction_data$i <- rep(binomial_model$re[[1]], length.out = nrow(prediction_data))
+
+  result <- predict(
+    binomial_model,
+    newdata = prediction_data,
+    boundaries = areal,
+    include = "random_effects",
+    keep_samples = TRUE,
+    messages = FALSE
+  )
+
+  expect_true(all(c(
+    "random_effects_mean", "random_effects_lower", "random_effects_upper"
+  ) %in% names(result$data)))
+  expect_equal(nrow(result$samples$random_effects), nrow(areal))
+})
+
+test_that("Gaussian boundary predictions retain one shared random-effect draw", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  prediction_data$i <- rep(gaussian_model$re[[1]],
+                           length.out = nrow(prediction_data))
+  prediction_control <- set_control_mcmc(
+    n_sim = 40, burnin = 20, thin = 2
+  )
+
+  result <- predict(
+    gaussian_model,
+    newdata = prediction_data,
+    boundaries = areal,
+    include = "random_effects",
+    control_mcmc = prediction_control,
+    seed = 50,
+    keep_samples = TRUE,
+    messages = FALSE
+  )
+
+  expect_true(all(c(
+    "random_effects_mean", "random_effects_lower", "random_effects_upper"
+  ) %in% names(result$data)))
+  expect_equal(nrow(result$samples$random_effects), nrow(areal))
+})
+
+test_that("Gaussian block conditioning matches direct multivariate conditioning", {
+  model <- gaussian_model
+  model$estimate$sigma2_re[] <- log(0.35)
+  model$estimate$sigma2_me <- log(0.2)
+  pars <- coef(model)
+  distance_scale <- attr(model, "distance_scale") %||% 1
+  fitted_coords <- model$coords / distance_scale
+  fitted_phi <- pars$phi / distance_scale
+  spatial_covariance <- pars$sigma2 * matern_correlation(
+    pairwise_distances(fitted_coords), phi = fitted_phi,
+    kappa = model$kappa, return_sym_matrix = TRUE
+  )
+  diag(spatial_covariance) <- diag(spatial_covariance) +
+    (pars$tau2 %||% model$fix_tau2 %||% 0)
+
+  spatial_design <- matrix(0, nrow(model$data), nrow(spatial_covariance))
+  spatial_design[cbind(seq_len(nrow(model$data)), model$ID_coords)] <- 1
+  random_design <- matrix(0, nrow(model$data), length(model$re[[1]]))
+  random_design[cbind(seq_len(nrow(model$data)), model$ID_re[, 1])] <- 1
+  incidence <- cbind(spatial_design, random_design)
+  random_covariance <- diag(pars$sigma2_re[[1]], ncol(random_design))
+  latent_covariance <- as.matrix(Matrix::bdiag(
+    spatial_covariance, random_covariance
+  ))
+  residual <- model$y -
+    as.numeric(model$D %*% pars$beta + model$cov_offset)
+  observation_covariance <- incidence %*% latent_covariance %*% t(incidence) +
+    diag(pars$sigma2_me, nrow(incidence))
+  direct_gain <- latent_covariance %*% t(incidence) %*%
+    solve(observation_covariance)
+  expected_mean <- as.numeric(direct_gain %*% residual)
+  expected_covariance <- latent_covariance -
+    direct_gain %*% incidence %*% latent_covariance
+
+  conditioned <- gaussian_conditioning_distribution(
+    model, spatial_covariance, pars, residual
+  )
+  expect_equal(conditioned$mean, expected_mean, tolerance = 1e-9)
+  expect_equal(conditioned$covariance, expected_covariance, tolerance = 1e-9)
+
+  prediction_coords <- coordinates_in_units(
+    st_geometry(grid[1:2, ]), model$distance_units
+  ) / distance_scale
+  cross_covariance <- pars$sigma2 * matern_correlation(
+    cross_distances(prediction_coords, fitted_coords), phi = fitted_phi,
+    kappa = model$kappa
+  )
+  prediction_covariance <- pars$sigma2 * matern_correlation(
+    pairwise_distances(prediction_coords), phi = fitted_phi,
+    kappa = model$kappa, return_sym_matrix = TRUE
+  )
+  spatial_weights <- cross_covariance %*% solve(spatial_covariance)
+  n_spatial <- nrow(spatial_covariance)
+  spatial_rows <- seq_len(n_spatial)
+  random_rows <- n_spatial + seq_len(ncol(random_design))
+  block_mean <- c(
+    as.numeric(spatial_weights %*% conditioned$mean[spatial_rows]),
+    conditioned$mean[random_rows]
+  )
+  block_covariance <- rbind(
+    cbind(
+      prediction_covariance - spatial_weights %*% t(cross_covariance) +
+        spatial_weights %*%
+        conditioned$covariance[spatial_rows, spatial_rows] %*%
+        t(spatial_weights),
+      spatial_weights %*%
+        conditioned$covariance[spatial_rows, random_rows, drop = FALSE]
+    ),
+    cbind(
+      conditioned$covariance[random_rows, spatial_rows, drop = FALSE] %*%
+        t(spatial_weights),
+      conditioned$covariance[random_rows, random_rows, drop = FALSE]
+    )
+  )
+  target_to_latent <- as.matrix(Matrix::bdiag(
+    cross_covariance, random_covariance
+  ))
+  target_covariance <- as.matrix(Matrix::bdiag(
+    prediction_covariance, random_covariance
+  ))
+  target_to_observation <- target_to_latent %*% t(incidence)
+  direct_target_gain <- target_to_observation %*%
+    solve(observation_covariance)
+  expect_equal(block_mean,
+               as.numeric(direct_target_gain %*% residual), tolerance = 1e-9)
+  expect_equal(
+    block_covariance,
+    target_covariance - direct_target_gain %*% t(target_to_observation),
+    tolerance = 1e-9
+  )
 })

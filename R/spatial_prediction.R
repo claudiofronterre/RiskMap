@@ -15,10 +15,11 @@
 ##' @param prediction Character string specifying `"auto"`, `"marginal"`, or
 ##'   `"joint"` prediction. `"auto"` uses marginal prediction for locations and
 ##'   joint prediction when `boundaries` are supplied.
-##' @param components Character vector specifying the latent components used in
-##'   the complete linear predictor and response. `"fixed"` and `"spatial"`
-##'   are required. Add `"random_effects"` for conditional predictions at known
-##'   groups or `"nugget"` for observation-level predictive variation.
+##' @param include Character vector specifying optional components to add to the
+##'   complete linear predictor and response. Supported values are
+##'   `"random_effects"`, for conditional predictions at known groups, and
+##'   `"nugget"`, for observation-level predictive variation. Fixed effects,
+##'   the spatial process and any offset are always returned separately.
 ##' @param summaries Character vector naming the summaries calculated from each
 ##'   predictive distribution. Supported values are `"mean"`, `"median"`,
 ##'   `"sd"`, `"cv"`, `"lower"`, and `"upper"`. The coefficient of variation
@@ -63,11 +64,13 @@
 ##' CRS. Rows with missing required predictors are retained with `NA`
 ##' predictions and an informative warning.
 ##'
-##' When `boundaries` are supplied, the non-Gaussian conditioning sample is
-##' generated once. Prediction locations are then grouped by polygon and joint
-##' samples are generated within each group using the shared conditioning
-##' sample and covariance factorisation. This preserves the distribution of
-##' each polygon summary but is not intended for joint contrasts between
+##' When `boundaries` are supplied, the conditioned latent state is generated
+##' once and shared by every polygon. Prediction locations are then grouped by
+##' polygon, joint samples are generated within each group, and the requested
+##' summaries are aggregated. The same random-effect draws are therefore used
+##' wherever a group occurs, without constructing a full joint covariance over
+##' all prediction locations. Blockwise samples preserve each polygon's
+##' predictive distribution but are not meant for joint contrasts between
 ##' different polygons. Locations outside all polygons are reported and do not
 ##' contribute; polygons with no usable locations remain in the output with
 ##' `NA` summaries.
@@ -77,20 +80,24 @@
 ##' response-scale prediction, while the corresponding `spatial_*` and
 ##' `link_*` columns describe the spatial process and complete linear
 ##' predictor. `fixed` is the estimated fixed-effects contribution and
-##' `offset` is reported separately. Binomial response predictions are
-##' probabilities and Poisson response predictions are rates per unit exposure.
+##' `offset` is reported separately. When requested through `include`,
+##' `random_effects_*` and `nugget_*` report those contributions separately as
+##' well as incorporating them into `link_*` and `response_*`. Binomial
+##' response predictions are probabilities and Poisson response predictions
+##' are rates per unit exposure.
 ##'
 ##' @return A `RiskMap_prediction` object containing:
 ##' \describe{
 ##'   \item{data}{The aligned prediction points, or the original polygons when
 ##'     `boundaries` are supplied, with `fixed`, `offset`, and the requested
-##'     `spatial_*`, `link_*`, and `response_*` summaries.}
+##'     `spatial_*`, optional `random_effects_*` and `nugget_*`, `link_*`, and
+##'     `response_*` summaries.}
 ##'   \item{samples}{`NULL` when `keep_samples = FALSE`; otherwise a list
 ##'     containing spatial samples and any requested random-effect or nugget
 ##'     samples for location-level prediction. For polygon aggregation it
 ##'     contains the area-level spatial, link and response samples needed for
 ##'     subsequent areal summaries.}
-##'   \item{components}{Components included in the link and response.}
+##'   \item{include}{Optional components included in the link and response.}
 ##'   \item{summaries}{Names of the calculated summaries.}
 ##'   \item{level}{Probability covered by the interval limits.}
 ##'   \item{prediction}{Whether prediction was marginal or joint.}
@@ -115,7 +122,7 @@ predict.RiskMap <- function(
     newdata = NULL,
     boundaries = NULL,
     prediction = c("auto", "marginal", "joint"),
-    components = c("fixed", "spatial"),
+    include = character(),
     summaries = c("mean", "lower", "upper"),
     level = 0.95,
     weights = NULL,
@@ -128,7 +135,7 @@ predict.RiskMap <- function(
   prediction <- validate_prediction_options(
     object = object,
     prediction = prediction,
-    components = components,
+    include = include,
     boundaries = boundaries,
     summaries = summaries,
     level = level,
@@ -146,7 +153,7 @@ predict.RiskMap <- function(
   }
   observed_locations <- is.null(newdata)
   prediction_input <- validate_prediction_data(
-    object, newdata, components, messages
+    object, newdata, include, messages
   )
   if (!is.null(boundaries)) {
     if (observed_locations) {
@@ -157,7 +164,7 @@ predict.RiskMap <- function(
       object = object,
       prediction_input = prediction_input,
       boundaries = boundaries,
-      components = components,
+      include = include,
       summaries = summaries,
       level = level,
       weights = weights,
@@ -174,6 +181,10 @@ predict.RiskMap <- function(
     output_data$offset <- NA_real_
     requested_names <- c(
       paste("spatial", setdiff(summaries, "cv"), sep = "_"),
+      if ("random_effects" %in% include)
+        paste("random_effects", setdiff(summaries, "cv"), sep = "_"),
+      if ("nugget" %in% include)
+        paste("nugget", setdiff(summaries, "cv"), sep = "_"),
       paste("link", setdiff(summaries, "cv"), sep = "_"),
       paste("response", summaries, sep = "_")
     )
@@ -181,7 +192,7 @@ predict.RiskMap <- function(
     out <- list(
       data = output_data,
       samples = NULL,
-      components = components,
+      include = include,
       summaries = summaries,
       level = level,
       prediction = prediction,
@@ -192,11 +203,11 @@ predict.RiskMap <- function(
     return(out)
   }
   prediction_setup <- prepare_prediction(
-    object, prediction_data, prediction, components, control_mcmc, messages,
+    object, prediction_data, prediction, include, control_mcmc, messages,
     observed_locations
   )
   sample_components <- build_prediction_components(
-    object, prediction_setup, components
+    object, prediction_setup, include
   )
   output_data <- prediction_input$output_data
   valid_rows <- prediction_input$valid_rows
@@ -208,6 +219,16 @@ predict.RiskMap <- function(
     summarise_prediction_matrix(
       sample_components$spatial, "spatial", setdiff(summaries, "cv"), level
     ),
+    if (!is.null(sample_components$random_effects))
+      summarise_prediction_matrix(
+        sample_components$random_effects, "random_effects",
+        setdiff(summaries, "cv"), level
+      ),
+    if (!is.null(sample_components$nugget))
+      summarise_prediction_matrix(
+        sample_components$nugget, "nugget",
+        setdiff(summaries, "cv"), level
+      ),
     summarise_prediction_matrix(
       sample_components$link, "link", setdiff(summaries, "cv"), level
     ),
@@ -230,7 +251,7 @@ predict.RiskMap <- function(
   out <- list(
     data = output_data,
     samples = samples,
-    components = components,
+    include = include,
     summaries = summaries,
     level = level,
     prediction = prediction,
@@ -243,7 +264,7 @@ predict.RiskMap <- function(
 
 #' Validate the unified prediction options
 #' @noRd
-validate_prediction_options <- function(object, prediction, components,
+validate_prediction_options <- function(object, prediction, include,
                                         boundaries, summaries, level, weights,
                                         control_mcmc, seed, keep_samples,
                                         messages) {
@@ -260,14 +281,11 @@ validate_prediction_options <- function(object, prediction, components,
   } else if (prediction == "auto") {
     prediction <- "marginal"
   }
-  allowed_components <- c("fixed", "spatial", "random_effects", "nugget")
-  if (!is.character(components) || !length(components) || anyNA(components) ||
-      any(!components %in% allowed_components) || anyDuplicated(components)) {
-    stop("'components' must contain unique values chosen from: ",
-         paste(shQuote(allowed_components), collapse = ", "), call. = FALSE)
-  }
-  if (!all(c("fixed", "spatial") %in% components)) {
-    stop("'components' must include both 'fixed' and 'spatial'", call. = FALSE)
+  allowed_include <- c("random_effects", "nugget")
+  if (!is.character(include) || anyNA(include) ||
+      any(!include %in% allowed_include) || anyDuplicated(include)) {
+    stop("'include' must contain unique values chosen from: ",
+         paste(shQuote(allowed_include), collapse = ", "), call. = FALSE)
   }
   allowed_summaries <- c("mean", "median", "sd", "cv", "lower", "upper")
   if (!is.character(summaries) || !length(summaries) || anyNA(summaries) ||
@@ -299,7 +317,7 @@ validate_prediction_options <- function(object, prediction, components,
 
 #' Validate and align prediction locations
 #' @noRd
-validate_prediction_data <- function(object, newdata, components, messages) {
+validate_prediction_data <- function(object, newdata, include, messages) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
   check_data(prediction_data, geometry = "point", type = "sf")
   output_data <- prediction_data
@@ -312,13 +330,25 @@ validate_prediction_data <- function(object, newdata, components, messages) {
   inter_f <- interpret_formula(object$formula)
   response <- as.character(object$formula[[2]])
   required <- setdiff(get_formula_terms(object$formula), response)
-  if (!"random_effects" %in% components) {
+  if (!"random_effects" %in% include) {
     required <- setdiff(required, names(object$re))
   }
   missing_columns <- setdiff(required, names(prediction_data))
   if (length(missing_columns)) {
     stop("'newdata' is missing required column", if (length(missing_columns) > 1L) "s" else "",
          ": ", paste(shQuote(missing_columns), collapse = ", "), call. = FALSE)
+  }
+  if ("random_effects" %in% include) {
+    for (name in names(object$re)) {
+      supplied <- prediction_data[[name]]
+      unknown <- unique(supplied[!is.na(supplied) &
+                                   !supplied %in% object$re[[name]]])
+      if (length(unknown)) {
+        stop("'newdata' contains unknown levels for random effect ",
+             shQuote(name), ": ", paste(shQuote(unknown), collapse = ", "),
+             call. = FALSE)
+      }
+    }
   }
   valid_rows <- if (length(required)) {
     stats::complete.cases(st_drop_geometry(prediction_data)[required])
@@ -350,13 +380,9 @@ restore_prediction_rows <- function(values, valid_rows, n_rows) {
 #' Predict and aggregate jointly within polygon boundaries
 #' @noRd
 predict_over_boundaries <- function(object, prediction_input, boundaries,
-                                    components, summaries, level, weights,
+                                    include, summaries, level, weights,
                                     control_mcmc, seed, keep_samples,
                                     messages) {
-  if ("random_effects" %in% components) {
-    stop("Polygon aggregation with 'random_effects' is not yet supported",
-         call. = FALSE)
-  }
   model_data <- prediction_input$model_data
   output_boundaries <- boundaries
   if (!isTRUE(st_crs(boundaries) == st_crs(object$data))) {
@@ -427,6 +453,10 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   output_boundaries$offset <- NA_real_
   requested_names <- c(
     paste("spatial", setdiff(summaries, "cv"), sep = "_"),
+    if ("random_effects" %in% include)
+      paste("random_effects", setdiff(summaries, "cv"), sep = "_"),
+    if ("nugget" %in% include)
+      paste("nugget", setdiff(summaries, "cv"), sep = "_"),
     paste("link", setdiff(summaries, "cv"), sep = "_"),
     paste("response", summaries, sep = "_")
   )
@@ -436,7 +466,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     out <- list(
       data = output_boundaries,
       samples = NULL,
-      components = components,
+      include = include,
       summaries = summaries,
       level = level,
       prediction = "joint",
@@ -468,6 +498,16 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       area_indices, function(index) plain_data[[offset_name]][index]
     )
   }
+  if ("random_effects" %in% include) {
+    random_names <- colnames(object$ID_re)
+    if (!length(random_names)) {
+      stop("The fitted model does not contain unstructured random effects",
+           call. = FALSE)
+    }
+    arguments$re_predictors <- lapply(area_indices, function(index) {
+      plain_data[index, random_names, drop = FALSE]
+    })
+  }
   if (!is.null(control_mcmc)) arguments$control_mcmc <- control_mcmc
   prediction_setup <- do.call(prediction_samples, arguments)
 
@@ -485,8 +525,13 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     } else {
       rep(prediction_setup$cov_offset, length(index))
     }
+    if (!is.null(prediction_setup$re$D_pred) &&
+        is.list(prediction_setup$re$D_pred[[1L]]) &&
+        !is.matrix(prediction_setup$re$D_pred[[1L]])) {
+      group_setup$re$D_pred <- prediction_setup$re$D_pred[[group]]
+    }
     group_components <- build_prediction_components(
-      object, group_setup, components
+      object, group_setup, include
     )
     group_weights <- weight_values[index]
     group_weights <- group_weights / sum(group_weights)
@@ -494,12 +539,24 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       matrix(as.numeric(crossprod(group_weights, values)), nrow = 1L)
     }
     spatial <- aggregate_samples(group_components$spatial)
+    random_effects <- if (!is.null(group_components$random_effects))
+      aggregate_samples(group_components$random_effects)
+    nugget <- if (!is.null(group_components$nugget))
+      aggregate_samples(group_components$nugget)
     link <- aggregate_samples(group_components$link)
     response <- aggregate_samples(group_components$response)
     output_boundaries$fixed[area] <- sum(group_weights * group_components$fixed)
     output_boundaries$offset[area] <- sum(group_weights * group_components$offset)
     area_summaries <- c(
       summarise_prediction_matrix(spatial, "spatial", setdiff(summaries, "cv"), level),
+      if (!is.null(random_effects))
+        summarise_prediction_matrix(
+          random_effects, "random_effects", setdiff(summaries, "cv"), level
+        ),
+      if (!is.null(nugget))
+        summarise_prediction_matrix(
+          nugget, "nugget", setdiff(summaries, "cv"), level
+        ),
       summarise_prediction_matrix(link, "link", setdiff(summaries, "cv"), level),
       summarise_prediction_matrix(response, "response", summaries, level)
     )
@@ -516,6 +573,22 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
         )
       }
       retained$spatial[area, ] <- spatial
+      if (!is.null(random_effects)) {
+        if (is.null(retained$random_effects)) {
+          retained$random_effects <- matrix(
+            NA_real_, nrow = n_areas, ncol = n_samples
+          )
+        }
+        retained$random_effects[area, ] <- random_effects
+      }
+      if (!is.null(nugget)) {
+        if (is.null(retained$nugget)) {
+          retained$nugget <- matrix(
+            NA_real_, nrow = n_areas, ncol = n_samples
+          )
+        }
+        retained$nugget[area, ] <- nugget
+      }
       retained$link[area, ] <- link
       retained$response[area, ] <- response
     }
@@ -524,7 +597,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   out <- list(
     data = output_boundaries,
     samples = retained,
-    components = components,
+    include = include,
     summaries = summaries,
     level = level,
     prediction = "joint",
@@ -538,7 +611,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
 
 #' Run the conditional-prediction engine from aligned sf data
 #' @noRd
-prepare_prediction <- function(object, prediction_data, prediction, components,
+prepare_prediction <- function(object, prediction_data, prediction, include,
                                control_mcmc, messages,
                                observed_locations = FALSE) {
   plain_data <- as.data.frame(st_drop_geometry(prediction_data))
@@ -559,7 +632,7 @@ prepare_prediction <- function(object, prediction_data, prediction, components,
     }
     arguments$pred_cov_offset <- plain_data[[inter_f$offset]]
   }
-  if ("random_effects" %in% components) {
+  if ("random_effects" %in% include) {
     random_names <- colnames(object$ID_re)
     if (!length(random_names)) {
       stop("The fitted model does not contain unstructured random effects",
@@ -578,7 +651,7 @@ prepare_prediction <- function(object, prediction_data, prediction, components,
 
 #' Construct link and response samples from prediction components
 #' @noRd
-build_prediction_components <- function(object, prediction_setup, components) {
+build_prediction_components <- function(object, prediction_setup, include) {
   spatial <- prediction_setup$S_samples
   if (!is.matrix(spatial)) {
     spatial <- matrix(spatial, nrow = nrow(prediction_setup$grid_pred))
@@ -589,11 +662,11 @@ build_prediction_components <- function(object, prediction_setup, components) {
   offset <- rep(prediction_setup$cov_offset, length.out = n_locations)
   random_effects <- prediction_random_effect_samples(
     prediction_setup, n_locations, n_samples,
-    include = "random_effects" %in% components
+    include = "random_effects" %in% include
   )
   nugget <- prediction_nugget_samples(
-    prediction_setup, n_locations, n_samples,
-    include = "nugget" %in% components
+    object, prediction_setup, n_locations, n_samples,
+    include = "nugget" %in% include
   )
   link <- sweep(spatial, 1L, fixed + offset, "+")
   if (!is.null(random_effects)) link <- link + random_effects
@@ -627,10 +700,12 @@ prediction_random_effect_samples <- function(prediction_setup, n_locations,
 
 #' Draw an optional prediction-location nugget component
 #' @noRd
-prediction_nugget_samples <- function(prediction_setup, n_locations,
+prediction_nugget_samples <- function(object, prediction_setup, n_locations,
                                       n_samples, include) {
   if (!include) return(NULL)
-  tau2 <- prediction_setup$par_hat$tau2
+  tau2 <- fitted_nugget_variance(
+    object, prediction_setup$par_hat
+  )
   if (is.null(tau2) || !is.finite(tau2) || tau2 <= 0) {
     stop("The fitted model does not contain a positive nugget variance",
          call. = FALSE)
@@ -640,6 +715,16 @@ prediction_nugget_samples <- function(prediction_setup, n_locations,
     standard_deviation = rep(sqrt(tau2), n_locations),
     n_samples = n_samples
   )
+}
+
+#' Obtain the fitted or fixed nugget variance
+#' @noRd
+fitted_nugget_variance <- function(object, par_hat = coef(object)) {
+  if (!is.null(par_hat$tau2)) return(as.numeric(par_hat$tau2))
+  if (is.numeric(object$fix_tau2) && !isTRUE(object$fix_tau2)) {
+    return(as.numeric(object$fix_tau2))
+  }
+  0
 }
 
 #' Summarise a location-by-sample prediction matrix
@@ -783,6 +868,82 @@ setup_prediction <- function(object,
   )
   if (!missing(control_mcmc)) arguments$control_mcmc <- control_mcmc
   do.call(prediction_samples, arguments)
+}
+
+#' Exact conditional distribution of the fitted Gaussian latent state
+#'
+#' If `u` stacks the spatial state at fitted locations and every unstructured
+#' random effect, the Gaussian model is `y = mu + H u + e`, with
+#' `u ~ N(0, G)` and `e ~ N(0, omega2 I)`.
+#' @noRd
+gaussian_conditioning_distribution <- function(object, spatial_covariance,
+                                               par_hat, residual) {
+  n_observations <- length(object$y)
+  n_spatial <- nrow(spatial_covariance)
+  random_ids <- as.matrix(object$ID_re)
+  n_random_terms <- if (is.null(object$ID_re)) 0L else ncol(random_ids)
+
+  spatial_design <- matrix(0, nrow = n_observations, ncol = n_spatial)
+  spatial_design[cbind(seq_len(n_observations), object$ID_coords)] <- 1
+  designs <- list(spatial_design)
+  covariances <- list(spatial_covariance)
+  if (n_random_terms) {
+    for (term in seq_len(n_random_terms)) {
+      design <- matrix(0, nrow = n_observations,
+                       ncol = length(object$re[[term]]))
+      design[cbind(seq_len(n_observations), random_ids[, term])] <- 1
+      designs[[term + 1L]] <- design
+      covariances[[term + 1L]] <- diag(
+        par_hat$sigma2_re[[term]], nrow = ncol(design)
+      )
+    }
+  }
+
+  incidence <- do.call(cbind, designs)
+  latent_covariance <- as.matrix(Matrix::bdiag(covariances))
+  measurement_variance <- par_hat$sigma2_me %||% object$fix_var_me %||% 0
+  ids <- as.matrix(cbind(object$ID_coords, object$ID_re))
+  prediction_weights <- gaussian_prediction_weights(
+    Matrix::Matrix(incidence, sparse = TRUE), latent_covariance, ids,
+    measurement_variance
+  )
+  cross_covariance <- latent_covariance %*% t(incidence)
+  gain <- prediction_weights(cross_covariance)
+  conditional_mean <- as.numeric(gain %*% residual)
+  conditional_covariance <- latent_covariance -
+    gain %*% incidence %*% latent_covariance
+  random_rows <- if (n_random_terms) {
+    split(seq.int(n_spatial + 1L, nrow(latent_covariance)),
+          rep(seq_len(n_random_terms), lengths(object$re)))
+  } else {
+    list()
+  }
+  list(mean = conditional_mean, covariance = conditional_covariance,
+       spatial_rows = seq_len(n_spatial), random_rows = random_rows)
+}
+
+#' Draw the fitted latent state for an exact Gaussian model
+#'
+#' The shared columns are reused by every prediction block, preserving the
+#' posterior dependence between the fitted spatial state and group effects.
+#' @noRd
+gaussian_conditioning_samples <- function(object, spatial_covariance,
+                                          par_hat, residual, n_samples) {
+  distribution <- gaussian_conditioning_distribution(
+    object, spatial_covariance, par_hat, residual
+  )
+  conditional_root <- factor_covariance(
+    distribution$covariance, "Gaussian fitted latent-state covariance"
+  )
+  samples <- sample_correlated_gaussian(
+    distribution$mean, t(conditional_root), n_samples
+  )
+  list(
+    spatial = samples[distribution$spatial_rows, , drop = FALSE],
+    random_effects = lapply(distribution$random_rows, function(rows) {
+      samples[rows, , drop = FALSE]
+    })
+  )
 }
 
 #' Generate conditional spatial-process samples
@@ -957,10 +1118,6 @@ prediction_samples <- function(object,
   if (n_re > 0 && type == "marginal" && !is.null(re_predictors))
     stop("Random effect predictions require 'type' to be set to 'joint'")
 
-  if (!is.null(re_predictors) && list_mode)
-    stop("Prediction of random effects with a list of prediction grids ('grid_pred') is ",
-         "not yet supported - supply a single 'grid_pred' or omit 're_predictors'")
-
   # ---------------------------------------------------------------------------
   # Build mu_pred (fixed-effects linear predictor at prediction locations)
   # ---------------------------------------------------------------------------
@@ -1009,7 +1166,19 @@ prediction_samples <- function(object,
     n_dim_re_tot <- sapply(seq_len(n_re + 1), function(i) length(unique(ID_g[, i])))
 
     if (!is.null(re_predictors)) {
-      if (any(is.na(re_predictors))) {
+      if (list_mode) {
+        if (!is.list(re_predictors) || length(re_predictors) != length(n_pred)) {
+          stop("'re_predictors' must contain one data frame per prediction group")
+        }
+        valid_re <- Map(function(value, expected) {
+          is.data.frame(value) && nrow(value) == expected &&
+            ncol(value) == n_re && !anyNA(value)
+        }, re_predictors, n_pred)
+        if (!all(unlist(valid_re))) {
+          stop("Each element of 're_predictors' must be a complete data frame ",
+               "matching its prediction group and the fitted random effects")
+        }
+      } else if (any(is.na(re_predictors))) {
         warning("Missing values in 're_predictors'; removing affected locations")
         ind_c       <- complete.cases(re_predictors)
         re_predictors <- re_predictors[ind_c, , drop = FALSE]
@@ -1022,17 +1191,27 @@ prediction_samples <- function(object,
         }
         n_pred      <- if (list_mode) vapply(grp, nrow, integer(1)) else nrow(grp)
       }
-      if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
-      if (nrow(re_predictors) != n_pred)  stop("'re_predictors' rows do not match 'grid_pred'")
-      if (ncol(re_predictors) != n_re)    stop("'re_predictors' columns do not match number of random effects")
+      if (!list_mode) {
+        if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
+        if (nrow(re_predictors) != n_pred)  stop("'re_predictors' rows do not match 'grid_pred'")
+        if (ncol(re_predictors) != n_re)    stop("'re_predictors' columns do not match number of random effects")
+      }
 
       n_dim_re <- sapply(seq_len(n_re), function(i) length(unique(object$ID_re[, i])))
-      D_re_pred <- lapply(seq_len(n_re), function(i) {
-        mat <- matrix(0, nrow = n_pred, ncol = n_dim_re[i])
-        for (j in seq_along(object$re[[i]]))
-          mat[re_predictors[, i] == object$re[[i]][j], j] <- 1
-        mat
-      })
+      build_re_design <- function(values, size) {
+        lapply(seq_len(n_re), function(i) {
+          mat <- matrix(0, nrow = size, ncol = n_dim_re[i])
+          for (j in seq_along(object$re[[i]])) {
+            mat[values[, i] == object$re[[i]][j], j] <- 1
+          }
+          mat
+        })
+      }
+      D_re_pred <- if (list_mode) {
+        Map(build_re_design, re_predictors, n_pred)
+      } else {
+        build_re_design(re_predictors, n_pred)
+      }
     } else {
       D_re_pred <- NULL
     }
@@ -1098,7 +1277,7 @@ prediction_samples <- function(object,
 
   n_pred_spatial <- if (obs_loc) nrow(object$coords) else n_pred
 
-  mu <- as.numeric(object$D %*% par_hat$beta)
+  mu <- as.numeric(object$D %*% par_hat$beta + object$cov_offset)
 
   reuse_fitted_samples <- object$family != "gaussian" &&
     !control_mcmc_supplied && !is.null(object$S_samples)
@@ -1116,11 +1295,13 @@ prediction_samples <- function(object,
   # LF:  tau2 may be estimated -> use it
   # glgpm: existing behaviour
   # ---------------------------------------------------------------------------
-  nu2 <- if (!is.null(object$fix_tau2)) object$fix_tau2 / par_hat$sigma2 else par_hat$tau2 / par_hat$sigma2
+  tau2 <- fitted_nugget_variance(object, par_hat)
+  nu2 <- tau2 / par_hat$sigma2
   if (nu2 == 0) nu2 <- 1e-10
   diag(R) <- diag(R) + nu2
 
   diff.y <- if (object$family == "gaussian") object$y - mu else NULL
+  shared_gaussian_re_samples <- NULL
 
   # ===========================================================================
   # NON-GAUSSIAN MODELS
@@ -1207,7 +1388,39 @@ prediction_samples <- function(object,
     # =========================================================================
     # GAUSSIAN MODEL
     # =========================================================================
-    if (!is.null(object$fix_var_me) && object$fix_var_me > 0 || is.null(object$fix_var_me)) {
+    blockwise_random_effects <- list_mode && !is.null(re_predictors)
+    if (blockwise_random_effects) {
+      spatial_covariance <- par_hat$sigma2 * R
+      latent_samples <- gaussian_conditioning_samples(
+        object = object,
+        spatial_covariance = spatial_covariance,
+        par_hat = par_hat,
+        residual = diff.y,
+        n_samples = n_samples
+      )
+      spatial_root <- factor_covariance(
+        spatial_covariance, "Gaussian fitted spatial covariance"
+      )
+      spatial_weights <- lapply(C, function(cross_covariance) {
+        cholesky_prediction_weights(cross_covariance, spatial_root)
+      })
+      out$S_samples <- lapply(seq_along(spatial_weights), function(i) {
+        conditional_mean <- spatial_weights[[i]] %*% latent_samples$spatial
+        prediction_covariance <- par_hat$sigma2 * matern_correlation(
+          pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
+          kappa = object$kappa, return_sym_matrix = TRUE
+        )
+        conditional_covariance <- prediction_covariance -
+          spatial_weights[[i]] %*% t(C[[i]])
+        conditional_root <- factor_covariance(
+          conditional_covariance, "conditional prediction covariance"
+        )
+        sample_correlated_gaussian(
+          conditional_mean, t(conditional_root), n_samples
+        )
+      })
+      shared_gaussian_re_samples <- latent_samples$random_effects
+    } else if (!is.null(object$fix_var_me) && object$fix_var_me > 0 || is.null(object$fix_var_me)) {
       m        <- length(object$y)
       s_unique <- unique(object$ID_coords)
       ID_g     <- as.matrix(cbind(object$ID_coords, object$ID_re))
@@ -1259,7 +1472,9 @@ prediction_samples <- function(object,
       }
     }
 
-    if (batch_marginal) {
+    if (blockwise_random_effects) {
+      # Samples were generated above from one shared fitted latent state.
+    } else if (batch_marginal) {
       out$S_samples <- batched_marginal_prediction(
         fitting_grp, conditioning_coords, prediction_weights, diff.y,
         par_hat$sigma2, fitting_phi, object$kappa, n_samples,
@@ -1334,7 +1549,9 @@ prediction_samples <- function(object,
     out$re$D_pred   <- D_re_pred
     out$re$samples  <- list()
     re_names        <- colnames(object$ID_re)
-    if (object$family == "gaussian") {
+    if (object$family == "gaussian" && !is.null(shared_gaussian_re_samples)) {
+      re_samples <- do.call(rbind, shared_gaussian_re_samples)
+    } else if (object$family == "gaussian") {
       C_Z  <- C_g[, -(seq_len(n_dim_re_tot[1]))]
       add  <- 0
       for (i in seq_along(n_dim_re_tot[-1])) {
@@ -1359,7 +1576,8 @@ prediction_samples <- function(object,
       re_samples <- matrix(0, nrow = sum(n_dim_re_tot[-1]), ncol = n_samples)
       add <- 0
       for (i in seq_len(n_re)) {
-        re_samples[seq_len(n_dim_re_tot[i+1]), ] <- t(simulation$samples[[i+1]])
+        rows <- add + seq_len(n_dim_re_tot[i + 1])
+        re_samples[rows, ] <- t(simulation$samples[[i + 1]])
         add <- add + n_dim_re_tot[i+1]
       }
     }

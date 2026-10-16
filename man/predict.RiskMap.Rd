@@ -9,7 +9,7 @@
   newdata = NULL,
   boundaries = NULL,
   prediction = c("auto", "marginal", "joint"),
-  components = c("fixed", "spatial"),
+  include = character(),
   summaries = c("mean", "lower", "upper"),
   level = 0.95,
   weights = NULL,
@@ -35,10 +35,11 @@ within each polygon.}
 \code{"joint"} prediction. \code{"auto"} uses marginal prediction for locations and
 joint prediction when \code{boundaries} are supplied.}
 
-\item{components}{Character vector specifying the latent components used in
-the complete linear predictor and response. \code{"fixed"} and \code{"spatial"}
-are required. Add \code{"random_effects"} for conditional predictions at known
-groups or \code{"nugget"} for observation-level predictive variation.}
+\item{include}{Character vector specifying optional components to add to the
+complete linear predictor and response. Supported values are
+\code{"random_effects"}, for conditional predictions at known groups, and
+\code{"nugget"}, for observation-level predictive variation. Fixed effects,
+the spatial process and any offset are always returned separately.}
 
 \item{summaries}{Character vector naming the summaries calculated from each
 predictive distribution. Supported values are \code{"mean"}, \code{"median"},
@@ -75,13 +76,14 @@ A \code{RiskMap_prediction} object containing:
 \describe{
 \item{data}{The aligned prediction points, or the original polygons when
 \code{boundaries} are supplied, with \code{fixed}, \code{offset}, and the requested
-\verb{spatial_*}, \verb{link_*}, and \verb{response_*} summaries.}
+\verb{spatial_*}, optional \verb{random_effects_*} and \verb{nugget_*}, \verb{link_*}, and
+\verb{response_*} summaries.}
 \item{samples}{\code{NULL} when \code{keep_samples = FALSE}; otherwise a list
 containing spatial samples and any requested random-effect or nugget
 samples for location-level prediction. For polygon aggregation it
 contains the area-level spatial, link and response samples needed for
 subsequent areal summaries.}
-\item{components}{Components included in the link and response.}
+\item{include}{Optional components included in the link and response.}
 \item{summaries}{Names of the calculated summaries.}
 \item{level}{Probability covered by the interval limits.}
 \item{prediction}{Whether prediction was marginal or joint.}
@@ -116,11 +118,13 @@ CRS without changing row order; returned geometries remain in their input
 CRS. Rows with missing required predictors are retained with \code{NA}
 predictions and an informative warning.
 
-When \code{boundaries} are supplied, the non-Gaussian conditioning sample is
-generated once. Prediction locations are then grouped by polygon and joint
-samples are generated within each group using the shared conditioning
-sample and covariance factorisation. This preserves the distribution of
-each polygon summary but is not intended for joint contrasts between
+When \code{boundaries} are supplied, the conditioned latent state is generated
+once and shared by every polygon. Prediction locations are then grouped by
+polygon, joint samples are generated within each group, and the requested
+summaries are aggregated. The same random-effect draws are therefore used
+wherever a group occurs, without constructing a full joint covariance over
+all prediction locations. Blockwise samples preserve each polygon's
+predictive distribution but are not meant for joint contrasts between
 different polygons. Locations outside all polygons are reported and do not
 contribute; polygons with no usable locations remain in the output with
 \code{NA} summaries.
@@ -130,8 +134,11 @@ Output columns use \verb{<quantity>_<summary>} names. For example,
 response-scale prediction, while the corresponding \verb{spatial_*} and
 \verb{link_*} columns describe the spatial process and complete linear
 predictor. \code{fixed} is the estimated fixed-effects contribution and
-\code{offset} is reported separately. Binomial response predictions are
-probabilities and Poisson response predictions are rates per unit exposure.
+\code{offset} is reported separately. When requested through \code{include},
+\verb{random_effects_*} and \verb{nugget_*} report those contributions separately as
+well as incorporating them into \verb{link_*} and \verb{response_*}. Binomial
+response predictions are probabilities and Poisson response predictions
+are rates per unit exposure.
 }
 \examples{
 data(italy_sim)

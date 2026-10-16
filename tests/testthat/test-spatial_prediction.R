@@ -141,15 +141,15 @@ test_that("setup_prediction produces errors as expected", {
     "'predictors' contains rows with missing data - check or remove them"
   )
 
-  expect_error(
+  expect_s3_class(
     setup_prediction(gaussian_model,
-                   grid_pred = list(grid, grid),
-                   predictors = list(data.frame(cov = rnorm(nrow(grid))),
-                                     data.frame(cov = rnorm(nrow(grid)))),
-                   re_predictors = list(data.frame(i = 1:5),
-                                        data.frame(i = 1:5)),
-                   type = "joint"),
-    "Prediction of random effects with a list of prediction"
+                     grid_pred = list(grid, grid),
+                     predictors = list(data.frame(cov = rnorm(nrow(grid))),
+                                       data.frame(cov = rnorm(nrow(grid)))),
+                     re_predictors = list(data.frame(i = 1:5),
+                                          data.frame(i = 1:5)),
+                     type = "joint"),
+    "RiskMap_pred"
   )
 
   expect_error(
