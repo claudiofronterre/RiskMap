@@ -2835,7 +2835,8 @@ summarize_pred_objective <- function(pred_objective) {
         n_sim = ncol(mse_data),
         n_valid = n_valid,
         MSE_mean = apply(mse_data, 1, finite_mean),
-        MSE_sd = apply(mse_data, 1, finite_sd)
+        MSE_sd = apply(mse_data, 1, finite_sd),
+        row.names = NULL
       )
 
       results$mse <- mse_summary

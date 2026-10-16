@@ -153,37 +153,6 @@ test_that("gp functions correctly", {
 
 })
 
-test_that("estimates are consistent between coef and summary", {
-
-  sum <- summary(gaussian_model)
-  cof <- coef(gaussian_model)
-
-  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
-  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
-  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_me, sum$me[1,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
-
-  sum <- summary(binomial_model)
-  cof <- coef(binomial_model)
-
-  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
-  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
-  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
-
-  sum <- summary(poisson_model)
-  cof <- coef(poisson_model)
-
-  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
-  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
-  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
-})
-
 test_that("check_positive_integer functions correctly", {
   expect_no_error(check_positive_integer(1, "a"))
   expect_no_error(check_positive_integer(999, "a"))

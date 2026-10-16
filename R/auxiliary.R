@@ -609,12 +609,11 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
   link_name <- NULL
   inv_expr  <- NULL
-  if (!is.null(object$linkf) && is.list(object$linkf) &&
-      is.function(object$linkf$inv)) {
-    link_name <- object$linkf$name %||% "custom"
+  if (identical(object$link_function$name, "custom")) {
+    link_name <- "custom"
     inv_expr  <- tryCatch(
       paste0("Inverse link function = ",
-             paste(deparse(body(object$linkf$inv), width.cutoff = 500L),
+             paste(deparse(body(object$link_function$inv), width.cutoff = 500L),
                    collapse = " ")),
       error = function(e) "Inverse link function = <user-supplied function>"
     )
@@ -1029,8 +1028,7 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
 ##' printing it to the console. It provides a clear view of the cross-validation performance
 ##' metrics across different spatial models.
 ##'
-##' @return This function is used for its side effect of printing to the console. It does not
-##'         return a value.
+##' @return Invisibly returns \code{x}.
 ##' @export
 ##' @method print summary.RiskMap_cross_validation
 print.summary.RiskMap_cross_validation <- function(x, ...) {
@@ -1069,6 +1067,8 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
     }
     cat("\n")
   }
+
+  invisible(x)
 }
 
 
