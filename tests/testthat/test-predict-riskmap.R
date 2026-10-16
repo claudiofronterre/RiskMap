@@ -230,6 +230,7 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
     gaussian_model,
     newdata = prediction_data,
     boundaries = boundaries,
+    aggregate = c("mean", "sum", "min", "max"),
     weights = "population",
     control_mcmc = prediction_control,
     seed = 47,
@@ -243,8 +244,62 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
   expect_identical(st_geometry(result$data), st_geometry(boundaries))
   expect_identical(result$data$district, boundaries$district)
   expect_equal(nrow(result$data), nrow(boundaries))
-  expect_equal(nrow(result$samples$response), nrow(boundaries))
-  expect_true(any(is.finite(result$data$response_mean)))
+  expect_true(all(c(
+    "boundary_id", "aggregate", "quantity", "summary", "threshold", "value"
+  ) %in% names(result$summary)))
+  expect_equal(nrow(result$samples$mean$response), nrow(boundaries))
+  expect_true(any(is.finite(result$summary$value)))
+})
+
+test_that("polygon aggregation applies weights on the correct scale", {
+  values <- matrix(c(1, 3, 2, 6), nrow = 2)
+  weights <- c(1, 3)
+
+  expect_equal(
+    aggregate_prediction_values(values, "mean", weights),
+    matrix(c(2.5, 5), nrow = 1)
+  )
+  expect_equal(
+    aggregate_prediction_values(values, "sum", weights),
+    matrix(c(10, 20), nrow = 1)
+  )
+  expect_equal(
+    aggregate_prediction_values(values, "min", weights),
+    matrix(c(1, 2), nrow = 1)
+  )
+  expect_equal(
+    aggregate_prediction_values(values, "max", weights),
+    matrix(c(3, 6), nrow = 1)
+  )
+})
+
+test_that("areal exceedance summaries are tidy and threshold-specific", {
+  summaries <- tidy_prediction_summaries(
+    values = matrix(c(0.1, 0.2, 0.4, 0.8), nrow = 1),
+    boundary_id = 2L,
+    aggregate = "mean",
+    quantity = "response",
+    summaries = c("mean", "exceedance"),
+    thresholds = c(0.15, 0.5),
+    level = 0.95
+  )
+
+  expect_equal(summaries$summary, c("mean", "exceedance", "exceedance"))
+  expect_equal(summaries$threshold, c(NA, 0.15, 0.5))
+  expect_equal(summaries$value, c(0.375, 0.75, 0.25))
+})
+
+test_that("areal aggregation must be chosen explicitly", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+
+  expect_error(
+    predict(
+      gaussian_model, newdata = prediction_data, boundaries = areal,
+      messages = FALSE
+    ),
+    "'aggregate' must be supplied"
+  )
 })
 
 test_that("prediction seed makes generated samples reproducible", {
@@ -288,6 +343,7 @@ test_that("polygon blocks share one non-Gaussian conditioning run", {
     model_without_samples,
     newdata = prediction_data,
     boundaries = areal,
+    aggregate = "mean",
     control_mcmc = prediction_control,
     seed = 49,
     messages = FALSE
@@ -305,15 +361,17 @@ test_that("non-Gaussian boundary predictions reuse shared random effects", {
     binomial_model,
     newdata = prediction_data,
     boundaries = areal,
+    aggregate = "mean",
     include = "random_effects",
     keep_samples = TRUE,
     messages = FALSE
   )
 
-  expect_true(all(c(
-    "random_effects_mean", "random_effects_lower", "random_effects_upper"
-  ) %in% names(result$data)))
-  expect_equal(nrow(result$samples$random_effects), nrow(areal))
+  expect_true(all(c("mean", "lower", "upper") %in%
+                    result$summary$summary[
+                      result$summary$quantity == "random_effects"
+                    ]))
+  expect_equal(nrow(result$samples$mean$random_effects), nrow(areal))
 })
 
 test_that("Gaussian boundary predictions retain one shared random-effect draw", {
@@ -329,6 +387,7 @@ test_that("Gaussian boundary predictions retain one shared random-effect draw", 
     gaussian_model,
     newdata = prediction_data,
     boundaries = areal,
+    aggregate = "mean",
     include = "random_effects",
     control_mcmc = prediction_control,
     seed = 50,
@@ -336,10 +395,11 @@ test_that("Gaussian boundary predictions retain one shared random-effect draw", 
     messages = FALSE
   )
 
-  expect_true(all(c(
-    "random_effects_mean", "random_effects_lower", "random_effects_upper"
-  ) %in% names(result$data)))
-  expect_equal(nrow(result$samples$random_effects), nrow(areal))
+  expect_true(all(c("mean", "lower", "upper") %in%
+                    result$summary$summary[
+                      result$summary$quantity == "random_effects"
+                    ]))
+  expect_equal(nrow(result$samples$mean$random_effects), nrow(areal))
 })
 
 test_that("Gaussian block conditioning matches direct multivariate conditioning", {

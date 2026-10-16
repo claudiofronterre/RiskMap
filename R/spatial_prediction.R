@@ -12,6 +12,10 @@
 ##' @param boundaries Optional `sf` polygon object. When supplied, prediction
 ##'   locations are assigned to polygons and their joint samples are aggregated
 ##'   within each polygon.
+##' @param aggregate Character vector naming one or more within-polygon
+##'   operations: `"mean"`, `"sum"`, `"min"`, or `"max"`. It must be supplied
+##'   when `boundaries` is used. Several operations reuse the same joint
+##'   predictive samples.
 ##' @param prediction Character string specifying `"auto"`, `"marginal"`, or
 ##'   `"joint"` prediction. `"auto"` uses marginal prediction for locations and
 ##'   joint prediction when `boundaries` are supplied.
@@ -22,14 +26,18 @@
 ##'   the spatial process and any offset are always returned separately.
 ##' @param summaries Character vector naming the summaries calculated from each
 ##'   predictive distribution. Supported values are `"mean"`, `"median"`,
-##'   `"sd"`, `"cv"`, `"lower"`, and `"upper"`. The coefficient of variation
-##'   is calculated only on the response scale and should be interpreted only
-##'   for outcomes whose predictive mean is positive.
+##'   `"sd"`, `"cv"`, `"lower"`, `"upper"`, and `"exceedance"`. The coefficient
+##'   of variation is calculated only on the response scale and should be
+##'   interpreted only for outcomes whose predictive mean is positive.
+##' @param thresholds Numeric thresholds used when `summaries` includes
+##'   `"exceedance"`. One exceedance probability is returned for each threshold.
 ##' @param level Number strictly between zero and one giving the probability
 ##'   covered by the `"lower"` and `"upper"` interval limits.
 ##' @param weights `NULL` for equally weighted polygon summaries, or the name of
 ##'   a numeric column in `newdata` containing non-negative location weights.
-##'   Weights are normalized separately within each polygon.
+##'   For `aggregate = "mean"`, weights are normalized separately within each
+##'   polygon. For `aggregate = "sum"`, their original scale is retained.
+##'   Weights do not affect `"min"` or `"max"`.
 ##' @param control_mcmc Optional output from [set_control_mcmc()]. When omitted,
 ##'   conditional samples stored in a non-Gaussian fit are reused. Supplying a
 ##'   control object requests a fresh conditional run.
@@ -66,20 +74,30 @@
 ##'
 ##' When `boundaries` are supplied, the conditioned latent state is generated
 ##' once and shared by every polygon. Prediction locations are then grouped by
-##' polygon, joint samples are generated within each group, and the requested
-##' summaries are aggregated. The same random-effect draws are therefore used
-##' wherever a group occurs, without constructing a full joint covariance over
-##' all prediction locations. Blockwise samples preserve each polygon's
-##' predictive distribution but are not meant for joint contrasts between
-##' different polygons. Locations outside all polygons are reported and do not
-##' contribute; polygons with no usable locations remain in the output with
-##' `NA` summaries.
+##' polygon, joint samples are generated within each group, and each requested
+##' aggregation is applied to the same samples. The same random-effect draws
+##' are therefore used wherever a group occurs, without constructing a full
+##' joint covariance over all prediction locations. Blockwise samples preserve
+##' each polygon's predictive distribution but are not meant for joint
+##' contrasts between different polygons. Locations outside all polygons are
+##' reported and do not contribute; polygons with no usable locations remain
+##' in the output with `NA` summaries.
 ##'
-##' Output columns use `<quantity>_<summary>` names. For example,
-##' `response_mean`, `response_lower`, and `response_upper` describe the
-##' response-scale prediction, while the corresponding `spatial_*` and
-##' `link_*` columns describe the spatial process and complete linear
-##' predictor. `fixed` is the estimated fixed-effects contribution and
+##' With location weights \eqn{w_i}, `"mean"` computes
+##' \deqn{\sum_i w_i T_i / \sum_i w_i,}
+##' so population values are converted internally to within-polygon fractions.
+##' `"sum"` instead computes \eqn{\sum_i w_i T_i} and never normalizes the
+##' weights. Thus, a prevalence prediction weighted by population counts gives
+##' population-weighted prevalence under `"mean"` and expected cases under
+##' `"sum"`. Population densities must first be multiplied by the represented
+##' cell areas. Because `newdata` contains points rather than raster-cell
+##' polygons, geometric boundary-overlap fractions are not inferred.
+##'
+##' For location-level prediction, output columns use `<quantity>_<summary>`
+##' names. For example, `response_mean`, `response_lower`, and `response_upper`
+##' describe the response-scale prediction, while the corresponding
+##' `spatial_*` and `link_*` columns describe the spatial process and complete
+##' linear predictor. `fixed` is the estimated fixed-effects contribution and
 ##' `offset` is reported separately. When requested through `include`,
 ##' `random_effects_*` and `nugget_*` report those contributions separately as
 ##' well as incorporating them into `link_*` and `response_*`. Binomial
@@ -88,17 +106,20 @@
 ##'
 ##' @return A `RiskMap_prediction` object containing:
 ##' \describe{
-##'   \item{data}{The aligned prediction points, or the original polygons when
-##'     `boundaries` are supplied, with `fixed`, `offset`, and the requested
-##'     `spatial_*`, optional `random_effects_*` and `nugget_*`, `link_*`, and
-##'     `response_*` summaries.}
+##'   \item{data}{The aligned prediction points with their summaries, or the
+##'     original polygons when `boundaries` are supplied.}
+##'   \item{summary}{For polygon prediction, a tidy table with one row per
+##'     boundary, aggregation, component, summary and threshold. `boundary_id`
+##'     is the row number of the corresponding polygon in `data`.}
 ##'   \item{samples}{`NULL` when `keep_samples = FALSE`; otherwise a list
 ##'     containing spatial samples and any requested random-effect or nugget
 ##'     samples for location-level prediction. For polygon aggregation it
-##'     contains the area-level spatial, link and response samples needed for
-##'     subsequent areal summaries.}
+##'     is nested first by aggregation and then by component, with one matrix
+##'     row per polygon.}
 ##'   \item{include}{Optional components included in the link and response.}
+##'   \item{aggregate}{Names of the within-polygon aggregations.}
 ##'   \item{summaries}{Names of the calculated summaries.}
+##'   \item{thresholds}{Thresholds used for exceedance probabilities.}
 ##'   \item{level}{Probability covered by the interval limits.}
 ##'   \item{prediction}{Whether prediction was marginal or joint.}
 ##'   \item{family}{The fitted response family.}
@@ -121,9 +142,11 @@ predict.RiskMap <- function(
     object,
     newdata = NULL,
     boundaries = NULL,
+    aggregate = NULL,
     prediction = c("auto", "marginal", "joint"),
     include = character(),
     summaries = c("mean", "lower", "upper"),
+    thresholds = NULL,
     level = 0.95,
     weights = NULL,
     control_mcmc = NULL,
@@ -137,7 +160,9 @@ predict.RiskMap <- function(
     prediction = prediction,
     include = include,
     boundaries = boundaries,
+    aggregate = aggregate,
     summaries = summaries,
+    thresholds = thresholds,
     level = level,
     weights = weights,
     control_mcmc = control_mcmc,
@@ -164,8 +189,10 @@ predict.RiskMap <- function(
       object = object,
       prediction_input = prediction_input,
       boundaries = boundaries,
+      aggregate = aggregate,
       include = include,
       summaries = summaries,
+      thresholds = thresholds,
       level = level,
       weights = weights,
       control_mcmc = control_mcmc,
@@ -265,7 +292,8 @@ predict.RiskMap <- function(
 #' Validate the unified prediction options
 #' @noRd
 validate_prediction_options <- function(object, prediction, include,
-                                        boundaries, summaries, level, weights,
+                                        boundaries, aggregate, summaries,
+                                        thresholds, level, weights,
                                         control_mcmc, seed, keep_samples,
                                         messages) {
   if (!inherits(object, "RiskMap")) {
@@ -278,8 +306,22 @@ validate_prediction_options <- function(object, prediction, include,
       stop("Polygon aggregation requires joint prediction", call. = FALSE)
     }
     prediction <- "joint"
-  } else if (prediction == "auto") {
-    prediction <- "marginal"
+    allowed_aggregates <- c("mean", "sum", "min", "max")
+    if (is.null(aggregate)) {
+      stop("'aggregate' must be supplied when 'boundaries' is used; choose one or more of: ",
+           paste(shQuote(allowed_aggregates), collapse = ", "), call. = FALSE)
+    }
+    if (!is.character(aggregate) || !length(aggregate) || anyNA(aggregate) ||
+        any(!aggregate %in% allowed_aggregates) || anyDuplicated(aggregate)) {
+      stop("'aggregate' must contain unique values chosen from: ",
+           paste(shQuote(allowed_aggregates), collapse = ", "), call. = FALSE)
+    }
+  } else {
+    if (!is.null(aggregate)) {
+      stop("'aggregate' is used only when 'boundaries' are supplied",
+           call. = FALSE)
+    }
+    if (prediction == "auto") prediction <- "marginal"
   }
   allowed_include <- c("random_effects", "nugget")
   if (!is.character(include) || anyNA(include) ||
@@ -287,11 +329,27 @@ validate_prediction_options <- function(object, prediction, include,
     stop("'include' must contain unique values chosen from: ",
          paste(shQuote(allowed_include), collapse = ", "), call. = FALSE)
   }
-  allowed_summaries <- c("mean", "median", "sd", "cv", "lower", "upper")
+  allowed_summaries <- c(
+    "mean", "median", "sd", "cv", "lower", "upper", "exceedance"
+  )
   if (!is.character(summaries) || !length(summaries) || anyNA(summaries) ||
       any(!summaries %in% allowed_summaries) || anyDuplicated(summaries)) {
     stop("'summaries' must contain unique values chosen from: ",
          paste(shQuote(allowed_summaries), collapse = ", "), call. = FALSE)
+  }
+  if ("exceedance" %in% summaries) {
+    if (is.null(boundaries)) {
+      stop("'exceedance' summaries currently require 'boundaries'",
+           call. = FALSE)
+    }
+    if (!is.numeric(thresholds) || !length(thresholds) || anyNA(thresholds) ||
+        any(!is.finite(thresholds)) || anyDuplicated(thresholds)) {
+      stop("'thresholds' must contain unique, finite numeric values when ",
+           "'summaries' includes 'exceedance'", call. = FALSE)
+    }
+  } else if (!is.null(thresholds)) {
+    stop("'thresholds' is used only when 'summaries' includes 'exceedance'",
+         call. = FALSE)
   }
   check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
   if (!is.null(control_mcmc) &&
@@ -380,7 +438,8 @@ restore_prediction_rows <- function(values, valid_rows, n_rows) {
 #' Predict and aggregate jointly within polygon boundaries
 #' @noRd
 predict_over_boundaries <- function(object, prediction_input, boundaries,
-                                    include, summaries, level, weights,
+                                    aggregate, include, summaries, thresholds,
+                                    level, weights,
                                     control_mcmc, seed, keep_samples,
                                     messages) {
   model_data <- prediction_input$model_data
@@ -440,34 +499,23 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   zero_weight <- vapply(area_indices, function(index) {
     sum(weight_values[index]) <= 0
   }, logical(1))
-  if (any(zero_weight)) {
+  weighted_operations <- aggregate %in% c("mean", "sum")
+  if (!is.null(weights) && any(weighted_operations) && any(zero_weight)) {
     warning(sum(zero_weight), " polygon",
             if (sum(zero_weight) == 1L) " has" else "s have",
-            " zero total weight and will receive NA summaries", call. = FALSE)
+            " zero total weight and will receive NA summaries for weighted ",
+            "means and sums", call. = FALSE)
   }
-  usable <- !zero_weight
-  area_indices <- area_indices[usable]
-  nonempty_areas <- nonempty_areas[usable]
-
-  output_boundaries$fixed <- NA_real_
-  output_boundaries$offset <- NA_real_
-  requested_names <- c(
-    paste("spatial", setdiff(summaries, "cv"), sep = "_"),
-    if ("random_effects" %in% include)
-      paste("random_effects", setdiff(summaries, "cv"), sep = "_"),
-    if ("nugget" %in% include)
-      paste("nugget", setdiff(summaries, "cv"), sep = "_"),
-    paste("link", setdiff(summaries, "cv"), sep = "_"),
-    paste("response", summaries, sep = "_")
-  )
-  for (name in requested_names) output_boundaries[[name]] <- NA_real_
 
   if (!length(area_indices)) {
     out <- list(
       data = output_boundaries,
+      summary = empty_prediction_summary(),
       samples = NULL,
       include = include,
+      aggregate = aggregate,
       summaries = summaries,
+      thresholds = thresholds,
       level = level,
       prediction = "joint",
       family = object$family,
@@ -513,6 +561,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
 
   n_areas <- nrow(output_boundaries)
   retained <- NULL
+  summary_rows <- list()
+  row_number <- 0L
   for (group in seq_along(area_indices)) {
     index <- area_indices[[group]]
     area <- nonempty_areas[[group]]
@@ -534,71 +584,103 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       object, group_setup, include
     )
     group_weights <- weight_values[index]
-    group_weights <- group_weights / sum(group_weights)
-    aggregate_samples <- function(values) {
-      matrix(as.numeric(crossprod(group_weights, values)), nrow = 1L)
-    }
-    spatial <- aggregate_samples(group_components$spatial)
-    random_effects <- if (!is.null(group_components$random_effects))
-      aggregate_samples(group_components$random_effects)
-    nugget <- if (!is.null(group_components$nugget))
-      aggregate_samples(group_components$nugget)
-    link <- aggregate_samples(group_components$link)
-    response <- aggregate_samples(group_components$response)
-    output_boundaries$fixed[area] <- sum(group_weights * group_components$fixed)
-    output_boundaries$offset[area] <- sum(group_weights * group_components$offset)
-    area_summaries <- c(
-      summarise_prediction_matrix(spatial, "spatial", setdiff(summaries, "cv"), level),
-      if (!is.null(random_effects))
-        summarise_prediction_matrix(
-          random_effects, "random_effects", setdiff(summaries, "cv"), level
-        ),
-      if (!is.null(nugget))
-        summarise_prediction_matrix(
-          nugget, "nugget", setdiff(summaries, "cv"), level
-        ),
-      summarise_prediction_matrix(link, "link", setdiff(summaries, "cv"), level),
-      summarise_prediction_matrix(response, "response", summaries, level)
+    components <- list(
+      fixed = matrix(group_components$fixed, ncol = 1L),
+      offset = matrix(group_components$offset, ncol = 1L),
+      spatial = group_components$spatial,
+      random_effects = group_components$random_effects,
+      nugget = group_components$nugget,
+      link = group_components$link,
+      response = group_components$response
     )
-    for (name in names(area_summaries)) {
-      output_boundaries[[name]][area] <- area_summaries[[name]]
+    components <- components[!vapply(components, is.null, logical(1))]
+
+    for (operation in aggregate) {
+      aggregated <- lapply(
+        components, aggregate_prediction_values,
+        operation = operation, weights = group_weights
+      )
+      for (quantity in names(aggregated)) {
+        values <- aggregated[[quantity]]
+        row_number <- row_number + 1L
+        summary_rows[[row_number]] <- if (quantity %in% c("fixed", "offset")) {
+          data.frame(
+            boundary_id = area,
+            aggregate = operation,
+            quantity = quantity,
+            summary = "estimate",
+            threshold = NA_real_,
+            value = values[[1L]],
+            stringsAsFactors = FALSE
+          )
+        } else {
+          tidy_prediction_summaries(
+            values = values,
+            boundary_id = area,
+            aggregate = operation,
+            quantity = quantity,
+            summaries = if (quantity == "response") summaries else
+              setdiff(summaries, c("cv", "exceedance")),
+            thresholds = if (quantity == "response") thresholds else NULL,
+            level = level
+          )
+        }
+      }
+      if (keep_samples) {
+        if (is.null(retained[[operation]])) retained[[operation]] <- list()
+        for (quantity in setdiff(names(aggregated), c("fixed", "offset"))) {
+          if (is.null(retained[[operation]][[quantity]])) {
+            retained[[operation]][[quantity]] <- matrix(
+              NA_real_, nrow = n_areas, ncol = ncol(aggregated[[quantity]])
+            )
+          }
+          retained[[operation]][[quantity]][area, ] <- aggregated[[quantity]]
+        }
+      }
     }
-    if (keep_samples) {
-      if (is.null(retained)) {
-        n_samples <- ncol(spatial)
-        retained <- list(
-          spatial = matrix(NA_real_, nrow = n_areas, ncol = n_samples),
-          link = matrix(NA_real_, nrow = n_areas, ncol = n_samples),
-          response = matrix(NA_real_, nrow = n_areas, ncol = n_samples)
-        )
-      }
-      retained$spatial[area, ] <- spatial
-      if (!is.null(random_effects)) {
-        if (is.null(retained$random_effects)) {
-          retained$random_effects <- matrix(
-            NA_real_, nrow = n_areas, ncol = n_samples
-          )
+  }
+  missing_areas <- setdiff(seq_len(n_areas), nonempty_areas)
+  if (length(missing_areas)) {
+    quantities <- c(
+      "fixed", "offset", "spatial",
+      if ("random_effects" %in% include) "random_effects",
+      if ("nugget" %in% include) "nugget",
+      "link", "response"
+    )
+    for (area in missing_areas) {
+      for (operation in aggregate) {
+        for (quantity in quantities) {
+          row_number <- row_number + 1L
+          if (quantity %in% c("fixed", "offset")) {
+            summary_rows[[row_number]] <- data.frame(
+              boundary_id = area, aggregate = operation, quantity = quantity,
+              summary = "estimate", threshold = NA_real_, value = NA_real_,
+              stringsAsFactors = FALSE
+            )
+          } else {
+            requested <- if (quantity == "response") summaries else
+              setdiff(summaries, c("cv", "exceedance"))
+            summary_rows[[row_number]] <- missing_prediction_summaries(
+              boundary_id = area,
+              aggregate = operation,
+              quantity = quantity,
+              summaries = requested,
+              thresholds = if (quantity == "response") thresholds else NULL
+            )
+          }
         }
-        retained$random_effects[area, ] <- random_effects
       }
-      if (!is.null(nugget)) {
-        if (is.null(retained$nugget)) {
-          retained$nugget <- matrix(
-            NA_real_, nrow = n_areas, ncol = n_samples
-          )
-        }
-        retained$nugget[area, ] <- nugget
-      }
-      retained$link[area, ] <- link
-      retained$response[area, ] <- response
     }
   }
 
   out <- list(
     data = output_boundaries,
+    summary = do.call(rbind, summary_rows),
     samples = retained,
     include = include,
+    aggregate = aggregate,
     summaries = summaries,
+    thresholds = thresholds,
     level = level,
     prediction = "joint",
     family = object$family,
@@ -725,6 +807,109 @@ fitted_nugget_variance <- function(object, par_hat = coef(object)) {
     return(as.numeric(object$fix_tau2))
   }
   0
+}
+
+#' Aggregate a location-by-sample matrix within one polygon
+#' @noRd
+aggregate_prediction_values <- function(values, operation, weights) {
+  if (!is.matrix(values)) values <- as.matrix(values)
+  if (operation == "mean") {
+    total_weight <- sum(weights)
+    if (total_weight <= 0) {
+      return(matrix(NA_real_, nrow = 1L, ncol = ncol(values)))
+    }
+    return(matrix(
+      as.numeric(crossprod(weights / total_weight, values)), nrow = 1L
+    ))
+  }
+  if (operation == "sum") {
+    if (sum(weights) <= 0) {
+      return(matrix(NA_real_, nrow = 1L, ncol = ncol(values)))
+    }
+    return(matrix(as.numeric(crossprod(weights, values)), nrow = 1L))
+  }
+  reducer <- if (operation == "min") min else max
+  matrix(apply(values, 2L, reducer), nrow = 1L)
+}
+
+#' Return tidy summaries for one aggregated predictive distribution
+#' @noRd
+tidy_prediction_summaries <- function(values, boundary_id, aggregate,
+                                      quantity, summaries, thresholds, level) {
+  alpha <- (1 - level) / 2
+  summary_functions <- list(
+    mean = mean,
+    median = stats::median,
+    sd = stats::sd,
+    cv = function(x) stats::sd(x) / mean(x),
+    lower = function(x) stats::quantile(x, alpha, names = FALSE),
+    upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE)
+  )
+  draws <- as.numeric(values)
+  ordinary <- setdiff(summaries, "exceedance")
+  rows <- lapply(ordinary, function(name) {
+    data.frame(
+      boundary_id = boundary_id,
+      aggregate = aggregate,
+      quantity = quantity,
+      summary = name,
+      threshold = NA_real_,
+      value = summary_functions[[name]](draws),
+      stringsAsFactors = FALSE
+    )
+  })
+  if ("exceedance" %in% summaries) {
+    rows <- c(rows, lapply(thresholds, function(threshold) {
+      data.frame(
+        boundary_id = boundary_id,
+        aggregate = aggregate,
+        quantity = quantity,
+        summary = "exceedance",
+        threshold = threshold,
+        value = mean(draws > threshold),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }
+  do.call(rbind, rows)
+}
+
+#' Empty tidy polygon-prediction summary
+#' @noRd
+empty_prediction_summary <- function() {
+  data.frame(
+    boundary_id = integer(),
+    aggregate = character(),
+    quantity = character(),
+    summary = character(),
+    threshold = numeric(),
+    value = numeric(),
+    stringsAsFactors = FALSE
+  )
+}
+
+#' Return tidy missing summaries for a polygon without usable locations
+#' @noRd
+missing_prediction_summaries <- function(boundary_id, aggregate, quantity,
+                                         summaries, thresholds) {
+  ordinary <- setdiff(summaries, "exceedance")
+  rows <- lapply(ordinary, function(name) {
+    data.frame(
+      boundary_id = boundary_id, aggregate = aggregate, quantity = quantity,
+      summary = name, threshold = NA_real_, value = NA_real_,
+      stringsAsFactors = FALSE
+    )
+  })
+  if ("exceedance" %in% summaries) {
+    rows <- c(rows, lapply(thresholds, function(threshold) {
+      data.frame(
+        boundary_id = boundary_id, aggregate = aggregate, quantity = quantity,
+        summary = "exceedance", threshold = threshold, value = NA_real_,
+        stringsAsFactors = FALSE
+      )
+    }))
+  }
+  do.call(rbind, rows)
 }
 
 #' Summarise a location-by-sample prediction matrix

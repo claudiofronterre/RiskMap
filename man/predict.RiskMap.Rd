@@ -8,9 +8,11 @@
   object,
   newdata = NULL,
   boundaries = NULL,
+  aggregate = NULL,
   prediction = c("auto", "marginal", "joint"),
   include = character(),
   summaries = c("mean", "lower", "upper"),
+  thresholds = NULL,
   level = 0.95,
   weights = NULL,
   control_mcmc = NULL,
@@ -31,6 +33,11 @@ locations.}
 locations are assigned to polygons and their joint samples are aggregated
 within each polygon.}
 
+\item{aggregate}{Character vector naming one or more within-polygon
+operations: \code{"mean"}, \code{"sum"}, \code{"min"}, or \code{"max"}. It must be supplied
+when \code{boundaries} is used. Several operations reuse the same joint
+predictive samples.}
+
 \item{prediction}{Character string specifying \code{"auto"}, \code{"marginal"}, or
 \code{"joint"} prediction. \code{"auto"} uses marginal prediction for locations and
 joint prediction when \code{boundaries} are supplied.}
@@ -43,16 +50,21 @@ the spatial process and any offset are always returned separately.}
 
 \item{summaries}{Character vector naming the summaries calculated from each
 predictive distribution. Supported values are \code{"mean"}, \code{"median"},
-\code{"sd"}, \code{"cv"}, \code{"lower"}, and \code{"upper"}. The coefficient of variation
-is calculated only on the response scale and should be interpreted only
-for outcomes whose predictive mean is positive.}
+\code{"sd"}, \code{"cv"}, \code{"lower"}, \code{"upper"}, and \code{"exceedance"}. The coefficient
+of variation is calculated only on the response scale and should be
+interpreted only for outcomes whose predictive mean is positive.}
+
+\item{thresholds}{Numeric thresholds used when \code{summaries} includes
+\code{"exceedance"}. One exceedance probability is returned for each threshold.}
 
 \item{level}{Number strictly between zero and one giving the probability
 covered by the \code{"lower"} and \code{"upper"} interval limits.}
 
 \item{weights}{\code{NULL} for equally weighted polygon summaries, or the name of
 a numeric column in \code{newdata} containing non-negative location weights.
-Weights are normalized separately within each polygon.}
+For \code{aggregate = "mean"}, weights are normalized separately within each
+polygon. For \code{aggregate = "sum"}, their original scale is retained.
+Weights do not affect \code{"min"} or \code{"max"}.}
 
 \item{control_mcmc}{Optional output from \code{\link[=set_control_mcmc]{set_control_mcmc()}}. When omitted,
 conditional samples stored in a non-Gaussian fit are reused. Supplying a
@@ -74,17 +86,20 @@ default to limit memory use.}
 \value{
 A \code{RiskMap_prediction} object containing:
 \describe{
-\item{data}{The aligned prediction points, or the original polygons when
-\code{boundaries} are supplied, with \code{fixed}, \code{offset}, and the requested
-\verb{spatial_*}, optional \verb{random_effects_*} and \verb{nugget_*}, \verb{link_*}, and
-\verb{response_*} summaries.}
+\item{data}{The aligned prediction points with their summaries, or the
+original polygons when \code{boundaries} are supplied.}
+\item{summary}{For polygon prediction, a tidy table with one row per
+boundary, aggregation, component, summary and threshold. \code{boundary_id}
+is the row number of the corresponding polygon in \code{data}.}
 \item{samples}{\code{NULL} when \code{keep_samples = FALSE}; otherwise a list
 containing spatial samples and any requested random-effect or nugget
 samples for location-level prediction. For polygon aggregation it
-contains the area-level spatial, link and response samples needed for
-subsequent areal summaries.}
+is nested first by aggregation and then by component, with one matrix
+row per polygon.}
 \item{include}{Optional components included in the link and response.}
+\item{aggregate}{Names of the within-polygon aggregations.}
 \item{summaries}{Names of the calculated summaries.}
+\item{thresholds}{Thresholds used for exceedance probabilities.}
 \item{level}{Probability covered by the interval limits.}
 \item{prediction}{Whether prediction was marginal or joint.}
 \item{family}{The fitted response family.}
@@ -120,20 +135,30 @@ predictions and an informative warning.
 
 When \code{boundaries} are supplied, the conditioned latent state is generated
 once and shared by every polygon. Prediction locations are then grouped by
-polygon, joint samples are generated within each group, and the requested
-summaries are aggregated. The same random-effect draws are therefore used
-wherever a group occurs, without constructing a full joint covariance over
-all prediction locations. Blockwise samples preserve each polygon's
-predictive distribution but are not meant for joint contrasts between
-different polygons. Locations outside all polygons are reported and do not
-contribute; polygons with no usable locations remain in the output with
-\code{NA} summaries.
+polygon, joint samples are generated within each group, and each requested
+aggregation is applied to the same samples. The same random-effect draws
+are therefore used wherever a group occurs, without constructing a full
+joint covariance over all prediction locations. Blockwise samples preserve
+each polygon's predictive distribution but are not meant for joint
+contrasts between different polygons. Locations outside all polygons are
+reported and do not contribute; polygons with no usable locations remain
+in the output with \code{NA} summaries.
 
-Output columns use \verb{<quantity>_<summary>} names. For example,
-\code{response_mean}, \code{response_lower}, and \code{response_upper} describe the
-response-scale prediction, while the corresponding \verb{spatial_*} and
-\verb{link_*} columns describe the spatial process and complete linear
-predictor. \code{fixed} is the estimated fixed-effects contribution and
+With location weights \eqn{w_i}, \code{"mean"} computes
+\deqn{\sum_i w_i T_i / \sum_i w_i,}
+so population values are converted internally to within-polygon fractions.
+\code{"sum"} instead computes \eqn{\sum_i w_i T_i} and never normalizes the
+weights. Thus, a prevalence prediction weighted by population counts gives
+population-weighted prevalence under \code{"mean"} and expected cases under
+\code{"sum"}. Population densities must first be multiplied by the represented
+cell areas. Because \code{newdata} contains points rather than raster-cell
+polygons, geometric boundary-overlap fractions are not inferred.
+
+For location-level prediction, output columns use \verb{<quantity>_<summary>}
+names. For example, \code{response_mean}, \code{response_lower}, and \code{response_upper}
+describe the response-scale prediction, while the corresponding
+\verb{spatial_*} and \verb{link_*} columns describe the spatial process and complete
+linear predictor. \code{fixed} is the estimated fixed-effects contribution and
 \code{offset} is reported separately. When requested through \code{include},
 \verb{random_effects_*} and \verb{nugget_*} report those contributions separately as
 well as incorporating them into \verb{link_*} and \verb{response_*}. Binomial
