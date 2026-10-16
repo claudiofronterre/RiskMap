@@ -93,7 +93,7 @@ test_that("setup_prediction produces errors as expected", {
                                      data.frame(cov = rnorm(nrow(grid)))),
                    pred_cov_offset = rnorm(nrow(grid) - 1),
                    type = "joint"),
-    "Predictions including covariate offsets"
+    "must contain one numeric vector per prediction group"
   )
 
   expect_error(
