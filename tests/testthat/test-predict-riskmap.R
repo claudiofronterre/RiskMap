@@ -619,6 +619,91 @@ test_that("derived targets validate names and returned dimensions", {
   )
 })
 
+test_that("prediction standardizes over an equally weighted reference population", {
+  prediction_data <- grid
+  reference <- data.frame(cov = c(-1, 0.5, 2))
+
+  result <- predict(
+    binomial_model,
+    newdata = prediction_data,
+    standardize = reference,
+    keep_samples = TRUE,
+    messages = FALSE
+  )
+
+  spatial <- result$samples$spatial
+  beta <- coef(binomial_model)$beta
+  expected <- Reduce(`+`, lapply(reference$cov, function(value) {
+    plogis(spatial + beta[[1L]] + beta[[2L]] * value)
+  })) / nrow(reference)
+
+  expect_true(result$standardized)
+  expect_equal(result$data$response_mean, rowMeans(expected))
+  expect_equal(result$data$fixed,
+               rep(beta[[1L]] + beta[[2L]] * mean(reference$cov),
+                   nrow(prediction_data)))
+})
+
+test_that("standardization supports population weights and derived targets", {
+  prediction_data <- grid
+  reference <- data.frame(cov = c(-1, 2), .weight = c(1, 3))
+
+  result <- predict(
+    binomial_model,
+    newdata = prediction_data,
+    standardize = reference,
+    transform = list(risk = plogis),
+    keep_samples = TRUE,
+    messages = FALSE
+  )
+
+  spatial <- result$samples$spatial
+  beta <- coef(binomial_model)$beta
+  first <- plogis(spatial + beta[[1L]] - beta[[2L]])
+  second <- plogis(spatial + beta[[1L]] + 2 * beta[[2L]])
+  expected <- 0.25 * first + 0.75 * second
+
+  expect_equal(result$data$response_mean, rowMeans(expected))
+  expect_equal(result$data$risk_mean, rowMeans(expected))
+})
+
+test_that("standardization is available before polygon aggregation", {
+  prediction_data <- grid
+  reference <- data.frame(cov = c(-1, 1))
+
+  result <- predict(
+    binomial_model,
+    newdata = prediction_data,
+    boundaries = areal,
+    aggregate = "mean",
+    standardize = reference,
+    summaries = "mean",
+    messages = FALSE
+  )
+
+  expect_true(result$standardized)
+  expect_true(any(result$summary$quantity == "response"))
+})
+
+test_that("standardization validates reference predictors and weights", {
+  expect_error(
+    predict(gaussian_model, grid, standardize = data.frame(),
+            messages = FALSE),
+    "non-empty data frame"
+  )
+  expect_error(
+    predict(gaussian_model, grid,
+            standardize = data.frame(unknown = 1), messages = FALSE),
+    "invalid column"
+  )
+  expect_error(
+    predict(gaussian_model, grid,
+            standardize = data.frame(cov = 1, .weight = -1),
+            messages = FALSE),
+    "finite, non-negative"
+  )
+})
+
 test_that("Gaussian block conditioning matches direct multivariate conditioning", {
   model <- gaussian_model
   model$estimate$sigma2_re[] <- log(0.35)

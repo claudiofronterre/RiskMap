@@ -12,6 +12,7 @@
   prediction = c("auto", "marginal", "joint"),
   include = character(),
   transform = NULL,
+  standardize = NULL,
   summaries = c("mean", "lower", "upper"),
   thresholds = NULL,
   level = 0.95,
@@ -61,6 +62,14 @@ location-by-draw matrix and must return a numeric matrix with the same
 dimensions. The ordinary response-scale prediction is always calculated,
 so this argument is needed only for additional scientific targets, for
 example \code{list(stunting = function(link) pnorm((-2 - link) / sd_child))}.}
+
+\item{standardize}{Optional data frame describing a common reference
+population over which response-scale predictions are averaged. Its columns
+must be fixed-effect predictors from the fitted model and override the
+corresponding columns in \code{newdata}. Rows receive equal weight unless an
+optional numeric \code{.weight} column is supplied. Predictor values kept
+together on each row are standardized jointly, preserving their empirical
+association.}
 
 \item{summaries}{Character vector naming the summaries calculated from each
 predictive distribution. Supported values are \code{"mean"}, \code{"median"},
@@ -119,6 +128,8 @@ is nested first by aggregation and then by component, with one matrix
 row per polygon.}
 \item{include}{Optional components included in the link and response.}
 \item{transform}{Names of additional derived predictive targets.}
+\item{standardized}{Whether response predictions were averaged over a
+reference population supplied through \code{standardize}.}
 \item{aggregate}{Names of the within-polygon aggregations.}
 \item{summaries}{Names of the calculated summaries.}
 \item{thresholds}{Thresholds used for exceedance probabilities.}
@@ -198,6 +209,15 @@ the target name as the quantity prefix. With multiple thresholds,
 location-level exceedance columns are named, for example,
 \code{response_exceedance_0.2} and \code{response_exceedance_0.5}; polygon output
 stores thresholds in the tidy \code{threshold} column.
+
+When \code{standardize} is supplied, every conditional spatial draw is reused
+across all rows of the reference population. The response and any derived
+targets are evaluated for each reference profile and then averaged using
+\code{.weight}. This is direct standardization (empirical or counterfactual
+averaging), not simulation of uncertain predictors. The reported \code{fixed}
+and \verb{link_*} quantities use the weighted mean fixed-effect contribution;
+with a nonlinear link, transforming that mean is not the same as the
+standardized \verb{response_*} quantity.
 }
 \examples{
 data(italy_sim)

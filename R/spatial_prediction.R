@@ -36,6 +36,13 @@
 ##'   dimensions. The ordinary response-scale prediction is always calculated,
 ##'   so this argument is needed only for additional scientific targets, for
 ##'   example `list(stunting = function(link) pnorm((-2 - link) / sd_child))`.
+##' @param standardize Optional data frame describing a common reference
+##'   population over which response-scale predictions are averaged. Its columns
+##'   must be fixed-effect predictors from the fitted model and override the
+##'   corresponding columns in `newdata`. Rows receive equal weight unless an
+##'   optional numeric `.weight` column is supplied. Predictor values kept
+##'   together on each row are standardized jointly, preserving their empirical
+##'   association.
 ##' @param summaries Character vector naming the summaries calculated from each
 ##'   predictive distribution. Supported values are `"mean"`, `"median"`,
 ##'   `"sd"`, `"cv"`, `"lower"`, `"upper"`, `"interval_width"`, and
@@ -133,6 +140,15 @@
 ##' `response_exceedance_0.2` and `response_exceedance_0.5`; polygon output
 ##' stores thresholds in the tidy `threshold` column.
 ##'
+##' When `standardize` is supplied, every conditional spatial draw is reused
+##' across all rows of the reference population. The response and any derived
+##' targets are evaluated for each reference profile and then averaged using
+##' `.weight`. This is direct standardization (empirical or counterfactual
+##' averaging), not simulation of uncertain predictors. The reported `fixed`
+##' and `link_*` quantities use the weighted mean fixed-effect contribution;
+##' with a nonlinear link, transforming that mean is not the same as the
+##' standardized `response_*` quantity.
+##'
 ##' @return A `RiskMap_prediction` object containing:
 ##' \describe{
 ##'   \item{data}{The aligned prediction points with their summaries, or the
@@ -147,6 +163,8 @@
 ##'     row per polygon.}
 ##'   \item{include}{Optional components included in the link and response.}
 ##'   \item{transform}{Names of additional derived predictive targets.}
+##'   \item{standardized}{Whether response predictions were averaged over a
+##'     reference population supplied through `standardize`.}
 ##'   \item{aggregate}{Names of the within-polygon aggregations.}
 ##'   \item{summaries}{Names of the calculated summaries.}
 ##'   \item{thresholds}{Thresholds used for exceedance probabilities.}
@@ -178,6 +196,7 @@ predict.RiskMap <- function(
     prediction = c("auto", "marginal", "joint"),
     include = character(),
     transform = NULL,
+    standardize = NULL,
     summaries = c("mean", "lower", "upper"),
     thresholds = NULL,
     level = 0.95,
@@ -199,6 +218,7 @@ predict.RiskMap <- function(
     "summaries"
   )
   transform <- normalise_prediction_transforms(transform)
+  standardize <- validate_prediction_standardize(object, standardize)
 
   prediction <- validate_prediction_options(
     object = object,
@@ -223,7 +243,7 @@ predict.RiskMap <- function(
   }
   observed_locations <- is.null(newdata)
   prediction_input <- validate_prediction_data(
-    object, newdata, include, messages
+    object, newdata, include, messages, standardize
   )
   if (!is.null(boundaries)) {
     if (observed_locations) {
@@ -237,6 +257,7 @@ predict.RiskMap <- function(
       aggregate = aggregate,
       include = include,
       transform = transform,
+      standardize = standardize,
       summaries = summaries,
       thresholds = thresholds,
       level = level,
@@ -270,6 +291,7 @@ predict.RiskMap <- function(
       samples = NULL,
       include = include,
       transform = names(transform),
+      standardized = !is.null(standardize),
       summaries = names(summaries),
       thresholds = thresholds,
       level = level,
@@ -285,7 +307,9 @@ predict.RiskMap <- function(
     observed_locations
   )
   sample_components <- build_prediction_components(
-    object, prediction_setup, include, transform
+    object, prediction_setup, include, transform,
+    standardize = standardize,
+    prediction_data = prediction_data
   )
   output_data <- prediction_input$output_data
   valid_rows <- prediction_input$valid_rows
@@ -339,6 +363,7 @@ predict.RiskMap <- function(
     samples = samples,
     include = include,
     transform = names(transform),
+    standardized = !is.null(standardize),
     summaries = names(summaries),
     thresholds = thresholds,
     level = level,
@@ -479,6 +504,56 @@ normalise_prediction_transforms <- function(transform) {
   transform
 }
 
+#' Validate a reference population for direct standardization
+#' @noRd
+validate_prediction_standardize <- function(object, standardize) {
+  if (is.null(standardize)) return(NULL)
+  if (!is.data.frame(standardize) || inherits(standardize, "sf") ||
+      !nrow(standardize)) {
+    stop("'standardize' must be a non-empty data frame without geometry",
+         call. = FALSE)
+  }
+  if (anyDuplicated(names(standardize)) || anyNA(names(standardize)) ||
+      any(!nzchar(names(standardize)))) {
+    stop("'standardize' must have unique, non-empty column names",
+         call. = FALSE)
+  }
+  reference_names <- setdiff(names(standardize), ".weight")
+  response <- as.character(object$formula[[2L]])
+  inter_f <- interpret_formula(object$formula)
+  offset_names <- inter_f$offset %||% character()
+  fixed_names <- setdiff(
+    get_formula_terms(object$formula),
+    c(response, names(object$re), offset_names)
+  )
+  if (!length(reference_names) || any(!reference_names %in% fixed_names)) {
+    invalid <- setdiff(reference_names, fixed_names)
+    stop("'standardize' must contain one or more fixed-effect predictors",
+         if (length(invalid)) paste0("; invalid column",
+           if (length(invalid) > 1L) "s" else "", ": ",
+           paste(shQuote(invalid), collapse = ", ")) else "",
+         call. = FALSE)
+  }
+  if (!all(stats::complete.cases(standardize[reference_names]))) {
+    stop("'standardize' contains missing predictor values", call. = FALSE)
+  }
+  weights <- if (".weight" %in% names(standardize)) {
+    standardize$.weight
+  } else {
+    rep(1, nrow(standardize))
+  }
+  if (!is.numeric(weights) || anyNA(weights) || any(!is.finite(weights)) ||
+      any(weights < 0) || sum(weights) <= 0) {
+    stop("'.weight' in 'standardize' must contain finite, non-negative values with a positive total",
+         call. = FALSE)
+  }
+  list(
+    data = standardize,
+    weights = weights / sum(weights),
+    predictors = reference_names
+  )
+}
+
 #' Remove named prediction operations
 #' @noRd
 drop_prediction_operations <- function(operations, built_ins) {
@@ -498,7 +573,8 @@ prediction_operation_requested <- function(operations, built_in) {
 
 #' Validate and align prediction locations
 #' @noRd
-validate_prediction_data <- function(object, newdata, include, messages) {
+validate_prediction_data <- function(object, newdata, include, messages,
+                                     standardize = NULL) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
   check_data(prediction_data, geometry = "point", type = "sf")
   output_data <- prediction_data
@@ -514,10 +590,18 @@ validate_prediction_data <- function(object, newdata, include, messages) {
   if (!"random_effects" %in% include) {
     required <- setdiff(required, names(object$re))
   }
+  standardized_names <- if (is.null(standardize)) character() else
+    setdiff(names(standardize$data), ".weight")
+  required <- setdiff(required, standardized_names)
   missing_columns <- setdiff(required, names(prediction_data))
   if (length(missing_columns)) {
     stop("'newdata' is missing required column", if (length(missing_columns) > 1L) "s" else "",
          ": ", paste(shQuote(missing_columns), collapse = ", "), call. = FALSE)
+  }
+  if (length(standardized_names)) {
+    for (name in standardized_names) {
+      prediction_data[[name]] <- standardize$data[[name]][1L]
+    }
   }
   if ("random_effects" %in% include) {
     for (name in names(object$re)) {
@@ -662,7 +746,8 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
 #' Predict and aggregate jointly within polygon boundaries
 #' @noRd
 predict_over_boundaries <- function(object, prediction_input, boundaries,
-                                    aggregate, include, transform, summaries,
+                                    aggregate, include, transform, standardize,
+                                    summaries,
                                     thresholds,
                                     level, weights,
                                     control_mcmc, seed, keep_samples,
@@ -728,6 +813,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       samples = NULL,
       include = include,
       transform = names(transform),
+      standardized = !is.null(standardize),
       aggregate = names(aggregate),
       summaries = names(summaries),
       thresholds = thresholds,
@@ -797,7 +883,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       group_setup$re$D_pred <- prediction_setup$re$D_pred[[group]]
     }
     group_components <- build_prediction_components(
-      object, group_setup, include, transform
+      object, group_setup, include, transform,
+      standardize = standardize,
+      prediction_data = assigned_data[index, , drop = FALSE]
     )
     group_weights <- weight_values[index]
     components <- list(
@@ -906,6 +994,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     samples = retained,
     include = include,
     transform = names(transform),
+    standardized = !is.null(standardize),
     aggregate = names(aggregate),
     summaries = names(summaries),
     thresholds = thresholds,
@@ -963,7 +1052,8 @@ prepare_prediction <- function(object, prediction_data, prediction, include,
 #' Construct link and response samples from prediction components
 #' @noRd
 build_prediction_components <- function(object, prediction_setup, include,
-                                        transform = list()) {
+                                        transform = list(), standardize = NULL,
+                                        prediction_data = NULL) {
   spatial <- prediction_setup$S_samples
   if (!is.matrix(spatial)) {
     spatial <- matrix(spatial, nrow = nrow(prediction_setup$grid_pred))
@@ -999,9 +1089,125 @@ build_prediction_components <- function(object, prediction_setup, include,
     values
   })
   names(transformed) <- names(transform)
+  if (!is.null(standardize)) {
+    standardized <- standardize_prediction_targets(
+      object = object,
+      prediction_data = prediction_data,
+      standardize = standardize,
+      spatial = spatial,
+      offset = offset,
+      random_effects = random_effects,
+      nugget = nugget,
+      transform = transform,
+      beta = prediction_setup$par_hat$beta
+    )
+    fixed <- standardized$fixed
+    link <- standardized$link
+    response <- standardized$response
+    transformed <- standardized$transformed
+  }
   list(fixed = fixed, offset = offset, spatial = spatial,
        random_effects = random_effects, nugget = nugget,
        link = link, response = response, transformed = transformed)
+}
+
+#' Average predictive targets over a common reference population
+#' @noRd
+standardize_prediction_targets <- function(object, prediction_data,
+                                           standardize, spatial, offset,
+                                           random_effects, nugget, transform,
+                                           beta) {
+  if (is.null(prediction_data)) {
+    stop("Internal error: prediction data are required for standardization",
+         call. = FALSE)
+  }
+  plain_data <- as.data.frame(st_drop_geometry(prediction_data))
+  n_locations <- nrow(spatial)
+  n_samples <- ncol(spatial)
+  base_link <- sweep(spatial, 1L, offset, "+")
+  if (!is.null(random_effects)) base_link <- base_link + random_effects
+  if (!is.null(nugget)) base_link <- base_link + nugget
+
+  fixed <- numeric(n_locations)
+  response <- matrix(0, nrow = n_locations, ncol = n_samples)
+  transformed <- lapply(transform, function(x) {
+    matrix(0, nrow = n_locations, ncol = n_samples)
+  })
+  # Construct model matrices in bounded batches. This retains vectorised formula
+  # evaluation (including transformed terms and interactions) without creating
+  # the potentially enormous location-by-reference-population cross-product.
+  profiles_per_batch <- max(1L, floor(250000 / n_locations))
+  batches <- split(
+    seq_len(nrow(standardize$data)),
+    ceiling(seq_len(nrow(standardize$data)) / profiles_per_batch)
+  )
+  for (batch in batches) {
+    profile_data <- plain_data[rep(seq_len(n_locations), times = length(batch)),
+                               , drop = FALSE]
+    for (name in standardize$predictors) {
+      profile_data[[name]] <- rep(standardize$data[[name]][batch],
+                                  each = n_locations)
+    }
+    batch_fixed <- matrix(
+      prediction_fixed_effect(object, profile_data, beta = beta),
+      nrow = n_locations, ncol = length(batch)
+    )
+    for (column in seq_along(batch)) {
+      profile <- batch[[column]]
+      profile_fixed <- batch_fixed[, column]
+      profile_link <- sweep(base_link, 1L, profile_fixed, "+")
+      weight <- standardize$weights[[profile]]
+      fixed <- fixed + weight * profile_fixed
+      profile_response <- if (object$family == "gaussian") {
+        profile_link
+      } else {
+        matrix(object$link_function$inv(as.numeric(profile_link)),
+               nrow = n_locations)
+      }
+      response <- response + weight * profile_response
+      for (name in names(transform)) {
+        values <- transform[[name]](profile_link)
+        if (!is.numeric(values) || !is.matrix(values) ||
+            !identical(dim(values), dim(profile_link))) {
+          stop("Transformation ", shQuote(name),
+               " must return a numeric matrix with the same dimensions as its input",
+               call. = FALSE)
+        }
+        transformed[[name]] <- transformed[[name]] + weight * values
+      }
+    }
+  }
+  # This is the expected linear predictor over the reference population. For
+  # nonlinear links, its inverse is intentionally not used as the standardized
+  # response; response averaging occurs above on the scientifically relevant
+  # response scale.
+  link <- sweep(base_link, 1L, fixed, "+")
+  list(fixed = fixed, link = link, response = response,
+       transformed = transformed)
+}
+
+#' Build the fixed-effect contribution for prediction data
+#' @noRd
+prediction_fixed_effect <- function(object, predictors, beta = coef(object)$beta) {
+  inter_f <- interpret_formula(object$formula)
+  fixed_formula <- update(inter_f$pf, NULL ~ .)
+  fitted_frame <- model.frame(fixed_formula, data = object$data,
+                              na.action = na.fail)
+  fixed_terms <- attr(fitted_frame, "terms")
+  model_frame <- model.frame(
+    fixed_terms, data = predictors, na.action = na.fail,
+    xlev = stats::.getXlevels(fixed_terms, fitted_frame)
+  )
+  design <- as.matrix(model.matrix(
+    fixed_terms, data = model_frame,
+    contrasts.arg = attr(object$D, "contrasts")
+  ))
+  if (!identical(colnames(design), colnames(object$D)) ||
+      ncol(design) != length(beta)) {
+    stop("The reference population produces a model matrix that does not match the fitted model",
+         call. = FALSE)
+  }
+  as.numeric(design %*% beta)
 }
 
 #' Assemble prediction-location random-effect samples
