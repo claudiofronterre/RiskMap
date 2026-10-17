@@ -36,7 +36,11 @@ within each polygon.}
 \item{aggregate}{Character vector naming one or more within-polygon
 operations: \code{"mean"}, \code{"sum"}, \code{"min"}, or \code{"max"}. It must be supplied
 when \code{boundaries} is used. Several operations reuse the same joint
-predictive samples.}
+predictive samples. Custom operations can be supplied in a named list,
+optionally mixed with built-ins, for example
+\code{list(mean = "mean", q90 = function(values, weights) ...)}. A custom
+function receives a location-by-draw matrix and the location weights and
+must return one numeric value per draw.}
 
 \item{prediction}{Character string specifying \code{"auto"}, \code{"marginal"}, or
 \code{"joint"} prediction. \code{"auto"} uses marginal prediction for locations and
@@ -52,7 +56,10 @@ the spatial process and any offset are always returned separately.}
 predictive distribution. Supported values are \code{"mean"}, \code{"median"},
 \code{"sd"}, \code{"cv"}, \code{"lower"}, \code{"upper"}, and \code{"exceedance"}. The coefficient
 of variation is calculated only on the response scale and should be
-interpreted only for outcomes whose predictive mean is positive.}
+interpreted only for outcomes whose predictive mean is positive. Custom
+summaries can be supplied in a named list, optionally mixed with
+built-ins, for example \code{list(mean = "mean", iqr = IQR)}. Each custom
+function receives the predictive draws and must return one numeric value.}
 
 \item{thresholds}{Numeric thresholds used when \code{summaries} includes
 \code{"exceedance"}. One exceedance probability is returned for each threshold.}

@@ -15,7 +15,11 @@
 ##' @param aggregate Character vector naming one or more within-polygon
 ##'   operations: `"mean"`, `"sum"`, `"min"`, or `"max"`. It must be supplied
 ##'   when `boundaries` is used. Several operations reuse the same joint
-##'   predictive samples.
+##'   predictive samples. Custom operations can be supplied in a named list,
+##'   optionally mixed with built-ins, for example
+##'   `list(mean = "mean", q90 = function(values, weights) ...)`. A custom
+##'   function receives a location-by-draw matrix and the location weights and
+##'   must return one numeric value per draw.
 ##' @param prediction Character string specifying `"auto"`, `"marginal"`, or
 ##'   `"joint"` prediction. `"auto"` uses marginal prediction for locations and
 ##'   joint prediction when `boundaries` are supplied.
@@ -28,7 +32,10 @@
 ##'   predictive distribution. Supported values are `"mean"`, `"median"`,
 ##'   `"sd"`, `"cv"`, `"lower"`, `"upper"`, and `"exceedance"`. The coefficient
 ##'   of variation is calculated only on the response scale and should be
-##'   interpreted only for outcomes whose predictive mean is positive.
+##'   interpreted only for outcomes whose predictive mean is positive. Custom
+##'   summaries can be supplied in a named list, optionally mixed with
+##'   built-ins, for example `list(mean = "mean", iqr = IQR)`. Each custom
+##'   function receives the predictive draws and must return one numeric value.
 ##' @param thresholds Numeric thresholds used when `summaries` includes
 ##'   `"exceedance"`. One exceedance probability is returned for each threshold.
 ##' @param level Number strictly between zero and one giving the probability
@@ -155,6 +162,16 @@ predict.RiskMap <- function(
     messages = TRUE,
     ...) {
 
+  aggregate <- normalise_prediction_operations(
+    aggregate, c("mean", "sum", "min", "max"), "aggregate",
+    allow_null = TRUE
+  )
+  summaries <- normalise_prediction_operations(
+    summaries,
+    c("mean", "median", "sd", "cv", "lower", "upper", "exceedance"),
+    "summaries"
+  )
+
   prediction <- validate_prediction_options(
     object = object,
     prediction = prediction,
@@ -207,20 +224,20 @@ predict.RiskMap <- function(
     output_data$fixed <- NA_real_
     output_data$offset <- NA_real_
     requested_names <- c(
-      paste("spatial", setdiff(summaries, "cv"), sep = "_"),
+      paste("spatial", setdiff(names(summaries), "cv"), sep = "_"),
       if ("random_effects" %in% include)
-        paste("random_effects", setdiff(summaries, "cv"), sep = "_"),
+        paste("random_effects", setdiff(names(summaries), "cv"), sep = "_"),
       if ("nugget" %in% include)
-        paste("nugget", setdiff(summaries, "cv"), sep = "_"),
-      paste("link", setdiff(summaries, "cv"), sep = "_"),
-      paste("response", summaries, sep = "_")
+        paste("nugget", setdiff(names(summaries), "cv"), sep = "_"),
+      paste("link", setdiff(names(summaries), "cv"), sep = "_"),
+      paste("response", names(summaries), sep = "_")
     )
     for (name in requested_names) output_data[[name]] <- NA_real_
     out <- list(
       data = output_data,
       samples = NULL,
       include = include,
-      summaries = summaries,
+      summaries = names(summaries),
       level = level,
       prediction = prediction,
       family = object$family,
@@ -244,20 +261,21 @@ predict.RiskMap <- function(
   output_data$offset[valid_rows] <- sample_components$offset
   component_summaries <- c(
     summarise_prediction_matrix(
-      sample_components$spatial, "spatial", setdiff(summaries, "cv"), level
+      sample_components$spatial, "spatial",
+      drop_prediction_operations(summaries, "cv"), level
     ),
     if (!is.null(sample_components$random_effects))
       summarise_prediction_matrix(
         sample_components$random_effects, "random_effects",
-        setdiff(summaries, "cv"), level
+        drop_prediction_operations(summaries, "cv"), level
       ),
     if (!is.null(sample_components$nugget))
       summarise_prediction_matrix(
         sample_components$nugget, "nugget",
-        setdiff(summaries, "cv"), level
+        drop_prediction_operations(summaries, "cv"), level
       ),
     summarise_prediction_matrix(
-      sample_components$link, "link", setdiff(summaries, "cv"), level
+      sample_components$link, "link", drop_prediction_operations(summaries, "cv"), level
     ),
     summarise_prediction_matrix(
       sample_components$response, "response", summaries, level
@@ -279,7 +297,7 @@ predict.RiskMap <- function(
     data = output_data,
     samples = samples,
     include = include,
-    summaries = summaries,
+    summaries = names(summaries),
     level = level,
     prediction = prediction,
     family = object$family,
@@ -306,15 +324,10 @@ validate_prediction_options <- function(object, prediction, include,
       stop("Polygon aggregation requires joint prediction", call. = FALSE)
     }
     prediction <- "joint"
-    allowed_aggregates <- c("mean", "sum", "min", "max")
     if (is.null(aggregate)) {
       stop("'aggregate' must be supplied when 'boundaries' is used; choose one or more of: ",
-           paste(shQuote(allowed_aggregates), collapse = ", "), call. = FALSE)
-    }
-    if (!is.character(aggregate) || !length(aggregate) || anyNA(aggregate) ||
-        any(!aggregate %in% allowed_aggregates) || anyDuplicated(aggregate)) {
-      stop("'aggregate' must contain unique values chosen from: ",
-           paste(shQuote(allowed_aggregates), collapse = ", "), call. = FALSE)
+           paste(shQuote(c("mean", "sum", "min", "max")), collapse = ", "),
+           call. = FALSE)
     }
   } else {
     if (!is.null(aggregate)) {
@@ -329,15 +342,7 @@ validate_prediction_options <- function(object, prediction, include,
     stop("'include' must contain unique values chosen from: ",
          paste(shQuote(allowed_include), collapse = ", "), call. = FALSE)
   }
-  allowed_summaries <- c(
-    "mean", "median", "sd", "cv", "lower", "upper", "exceedance"
-  )
-  if (!is.character(summaries) || !length(summaries) || anyNA(summaries) ||
-      any(!summaries %in% allowed_summaries) || anyDuplicated(summaries)) {
-    stop("'summaries' must contain unique values chosen from: ",
-         paste(shQuote(allowed_summaries), collapse = ", "), call. = FALSE)
-  }
-  if ("exceedance" %in% summaries) {
+  if (prediction_operation_requested(summaries, "exceedance")) {
     if (is.null(boundaries)) {
       stop("'exceedance' summaries currently require 'boundaries'",
            call. = FALSE)
@@ -371,6 +376,63 @@ validate_prediction_options <- function(object, prediction, include,
   check_logical(keep_samples)
   check_logical(messages)
   prediction
+}
+
+#' Normalise built-in and custom prediction operations
+#' @noRd
+normalise_prediction_operations <- function(x, allowed, argument,
+                                            allow_null = FALSE) {
+  if (is.null(x)) {
+    if (allow_null) return(NULL)
+    stop("'", argument, "' cannot be NULL", call. = FALSE)
+  }
+  if (is.character(x)) {
+    if (!length(x) || anyNA(x) || any(!x %in% allowed) || anyDuplicated(x)) {
+      stop("'", argument, "' must contain unique values chosen from: ",
+           paste(shQuote(allowed), collapse = ", "),
+           ", or named custom functions", call. = FALSE)
+    }
+    out <- as.list(x)
+    names(out) <- x
+    return(out)
+  }
+  if (!is.list(x) || !length(x)) {
+    stop("'", argument, "' must be a character vector or a named list of ",
+         "built-ins and functions", call. = FALSE)
+  }
+  operation_names <- names(x)
+  if (is.null(operation_names) || anyNA(operation_names) ||
+      any(!nzchar(operation_names)) || anyDuplicated(operation_names)) {
+    stop("Every entry in '", argument,
+         "' must have a unique, non-empty name", call. = FALSE)
+  }
+  valid <- vapply(x, function(operation) {
+    is.function(operation) ||
+      (is.character(operation) && length(operation) == 1L &&
+         !is.na(operation) && operation %in% allowed)
+  }, logical(1))
+  if (!all(valid)) {
+    stop("Each entry in '", argument, "' must be a function or one of: ",
+         paste(shQuote(allowed), collapse = ", "), call. = FALSE)
+  }
+  x
+}
+
+#' Remove named prediction operations
+#' @noRd
+drop_prediction_operations <- function(operations, built_ins) {
+  keep <- !vapply(operations, function(operation) {
+    is.character(operation) && operation %in% built_ins
+  }, logical(1))
+  operations[keep]
+}
+
+#' Check whether a built-in prediction operation was requested
+#' @noRd
+prediction_operation_requested <- function(operations, built_in) {
+  any(vapply(operations, function(operation) {
+    is.character(operation) && identical(operation, built_in)
+  }, logical(1)))
 }
 
 #' Validate and align prediction locations
@@ -499,7 +561,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   zero_weight <- vapply(area_indices, function(index) {
     sum(weight_values[index]) <= 0
   }, logical(1))
-  weighted_operations <- aggregate %in% c("mean", "sum")
+  weighted_operations <- vapply(aggregate, function(operation) {
+    is.character(operation) && operation %in% c("mean", "sum")
+  }, logical(1))
   if (!is.null(weights) && any(weighted_operations) && any(zero_weight)) {
     warning(sum(zero_weight), " polygon",
             if (sum(zero_weight) == 1L) " has" else "s have",
@@ -513,8 +577,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       summary = empty_prediction_summary(),
       samples = NULL,
       include = include,
-      aggregate = aggregate,
-      summaries = summaries,
+      aggregate = names(aggregate),
+      summaries = names(summaries),
       thresholds = thresholds,
       level = level,
       prediction = "joint",
@@ -595,7 +659,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     )
     components <- components[!vapply(components, is.null, logical(1))]
 
-    for (operation in aggregate) {
+    for (operation_name in names(aggregate)) {
+      operation <- aggregate[[operation_name]]
       aggregated <- lapply(
         components, aggregate_prediction_values,
         operation = operation, weights = group_weights
@@ -606,7 +671,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
         summary_rows[[row_number]] <- if (quantity %in% c("fixed", "offset")) {
           data.frame(
             boundary_id = area,
-            aggregate = operation,
+            aggregate = operation_name,
             quantity = quantity,
             summary = "estimate",
             threshold = NA_real_,
@@ -617,24 +682,27 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
           tidy_prediction_summaries(
             values = values,
             boundary_id = area,
-            aggregate = operation,
+            aggregate = operation_name,
             quantity = quantity,
             summaries = if (quantity == "response") summaries else
-              setdiff(summaries, c("cv", "exceedance")),
+              drop_prediction_operations(summaries, c("cv", "exceedance")),
             thresholds = if (quantity == "response") thresholds else NULL,
             level = level
           )
         }
       }
       if (keep_samples) {
-        if (is.null(retained[[operation]])) retained[[operation]] <- list()
+        if (is.null(retained[[operation_name]])) {
+          retained[[operation_name]] <- list()
+        }
         for (quantity in setdiff(names(aggregated), c("fixed", "offset"))) {
-          if (is.null(retained[[operation]][[quantity]])) {
-            retained[[operation]][[quantity]] <- matrix(
+          if (is.null(retained[[operation_name]][[quantity]])) {
+            retained[[operation_name]][[quantity]] <- matrix(
               NA_real_, nrow = n_areas, ncol = ncol(aggregated[[quantity]])
             )
           }
-          retained[[operation]][[quantity]][area, ] <- aggregated[[quantity]]
+          retained[[operation_name]][[quantity]][area, ] <-
+            aggregated[[quantity]]
         }
       }
     }
@@ -648,21 +716,22 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       "link", "response"
     )
     for (area in missing_areas) {
-      for (operation in aggregate) {
+      for (operation_name in names(aggregate)) {
         for (quantity in quantities) {
           row_number <- row_number + 1L
           if (quantity %in% c("fixed", "offset")) {
             summary_rows[[row_number]] <- data.frame(
-              boundary_id = area, aggregate = operation, quantity = quantity,
+              boundary_id = area, aggregate = operation_name,
+              quantity = quantity,
               summary = "estimate", threshold = NA_real_, value = NA_real_,
               stringsAsFactors = FALSE
             )
           } else {
             requested <- if (quantity == "response") summaries else
-              setdiff(summaries, c("cv", "exceedance"))
+              drop_prediction_operations(summaries, c("cv", "exceedance"))
             summary_rows[[row_number]] <- missing_prediction_summaries(
               boundary_id = area,
-              aggregate = operation,
+              aggregate = operation_name,
               quantity = quantity,
               summaries = requested,
               thresholds = if (quantity == "response") thresholds else NULL
@@ -678,8 +747,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     summary = do.call(rbind, summary_rows),
     samples = retained,
     include = include,
-    aggregate = aggregate,
-    summaries = summaries,
+    aggregate = names(aggregate),
+    summaries = names(summaries),
     thresholds = thresholds,
     level = level,
     prediction = "joint",
@@ -813,6 +882,14 @@ fitted_nugget_variance <- function(object, par_hat = coef(object)) {
 #' @noRd
 aggregate_prediction_values <- function(values, operation, weights) {
   if (!is.matrix(values)) values <- as.matrix(values)
+  if (is.function(operation)) {
+    result <- operation(values, weights)
+    if (!is.numeric(result) || length(result) != ncol(values)) {
+      stop("A custom aggregation function must return one numeric value per ",
+           "predictive draw", call. = FALSE)
+    }
+    return(matrix(as.numeric(result), nrow = 1L))
+  }
   if (operation == "mean") {
     total_weight <- sum(weights)
     if (total_weight <= 0) {
@@ -846,19 +923,29 @@ tidy_prediction_summaries <- function(values, boundary_id, aggregate,
     upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE)
   )
   draws <- as.numeric(values)
-  ordinary <- setdiff(summaries, "exceedance")
-  rows <- lapply(ordinary, function(name) {
+  ordinary <- drop_prediction_operations(summaries, "exceedance")
+  rows <- lapply(names(ordinary), function(name) {
+    operation <- ordinary[[name]]
+    value <- if (is.function(operation)) {
+      operation(draws)
+    } else {
+      summary_functions[[operation]](draws)
+    }
+    if (!is.numeric(value) || length(value) != 1L) {
+      stop("Custom summary ", shQuote(name),
+           " must return exactly one numeric value", call. = FALSE)
+    }
     data.frame(
       boundary_id = boundary_id,
       aggregate = aggregate,
       quantity = quantity,
       summary = name,
       threshold = NA_real_,
-      value = summary_functions[[name]](draws),
+      value = as.numeric(value),
       stringsAsFactors = FALSE
     )
   })
-  if ("exceedance" %in% summaries) {
+  if (prediction_operation_requested(summaries, "exceedance")) {
     rows <- c(rows, lapply(thresholds, function(threshold) {
       data.frame(
         boundary_id = boundary_id,
@@ -892,15 +979,15 @@ empty_prediction_summary <- function() {
 #' @noRd
 missing_prediction_summaries <- function(boundary_id, aggregate, quantity,
                                          summaries, thresholds) {
-  ordinary <- setdiff(summaries, "exceedance")
-  rows <- lapply(ordinary, function(name) {
+  ordinary <- drop_prediction_operations(summaries, "exceedance")
+  rows <- lapply(names(ordinary), function(name) {
     data.frame(
       boundary_id = boundary_id, aggregate = aggregate, quantity = quantity,
       summary = name, threshold = NA_real_, value = NA_real_,
       stringsAsFactors = FALSE
     )
   })
-  if ("exceedance" %in% summaries) {
+  if (prediction_operation_requested(summaries, "exceedance")) {
     rows <- c(rows, lapply(thresholds, function(threshold) {
       data.frame(
         boundary_id = boundary_id, aggregate = aggregate, quantity = quantity,
@@ -924,10 +1011,20 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level) {
     lower = function(x) stats::quantile(x, alpha, names = FALSE),
     upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE)
   )
-  result <- lapply(summaries, function(name) {
-    apply(values, 1L, summary_functions[[name]])
+  result <- lapply(names(summaries), function(name) {
+    operation <- summaries[[name]]
+    value <- if (is.function(operation)) {
+      apply(values, 1L, operation)
+    } else {
+      apply(values, 1L, summary_functions[[operation]])
+    }
+    if (!is.numeric(value) || length(value) != nrow(values)) {
+      stop("Custom summary ", shQuote(name),
+           " must return exactly one numeric value", call. = FALSE)
+    }
+    as.numeric(value)
   })
-  names(result) <- paste(quantity, summaries, sep = "_")
+  names(result) <- paste(quantity, names(summaries), sep = "_")
   result
 }
 

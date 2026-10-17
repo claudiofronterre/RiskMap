@@ -274,12 +274,17 @@ test_that("polygon aggregation applies weights on the correct scale", {
 })
 
 test_that("areal exceedance summaries are tidy and threshold-specific", {
+  summary_operations <- normalise_prediction_operations(
+    c("mean", "exceedance"),
+    c("mean", "median", "sd", "cv", "lower", "upper", "exceedance"),
+    "summaries"
+  )
   summaries <- tidy_prediction_summaries(
     values = matrix(c(0.1, 0.2, 0.4, 0.8), nrow = 1),
     boundary_id = 2L,
     aggregate = "mean",
     quantity = "response",
-    summaries = c("mean", "exceedance"),
+    summaries = summary_operations,
     thresholds = c(0.15, 0.5),
     level = 0.95
   )
@@ -287,6 +292,56 @@ test_that("areal exceedance summaries are tidy and threshold-specific", {
   expect_equal(summaries$summary, c("mean", "exceedance", "exceedance"))
   expect_equal(summaries$threshold, c(NA, 0.15, 0.5))
   expect_equal(summaries$value, c(0.375, 0.75, 0.25))
+})
+
+test_that("built-in and custom aggregation and summary functions can be mixed", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  prediction_data$population <- seq_len(nrow(prediction_data))
+  prediction_control <- set_control_mcmc(
+    n_sim = 40, burnin = 20, thin = 2
+  )
+
+  result <- predict(
+    gaussian_model,
+    newdata = prediction_data,
+    boundaries = areal,
+    aggregate = list(
+      mean = "mean",
+      range = function(values, weights) {
+        apply(values, 2L, max) - apply(values, 2L, min)
+      }
+    ),
+    summaries = list(mean = "mean", iqr = stats::IQR),
+    weights = "population",
+    control_mcmc = prediction_control,
+    seed = 471,
+    messages = FALSE
+  )
+
+  expect_equal(sort(unique(result$summary$aggregate)), c("mean", "range"))
+  expect_true(all(c("mean", "iqr") %in%
+                    result$summary$summary[
+                      result$summary$quantity == "response"
+                    ]))
+  expect_identical(result$aggregate, c("mean", "range"))
+  expect_identical(result$summaries, c("mean", "iqr"))
+})
+
+test_that("custom prediction operations have strict output contracts", {
+  expect_error(
+    aggregate_prediction_values(
+      matrix(1:6, nrow = 2), function(values, weights) 1, c(1, 1)
+    ),
+    "one numeric value per predictive draw"
+  )
+  expect_error(
+    normalise_prediction_operations(
+      list(function(values, weights) colMeans(values)),
+      c("mean", "sum"), "aggregate"
+    ),
+    "unique, non-empty name"
+  )
 })
 
 test_that("areal aggregation must be chosen explicitly", {
