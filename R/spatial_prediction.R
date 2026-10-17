@@ -13,10 +13,10 @@
 ##'   locations are assigned to polygons and their joint samples are aggregated
 ##'   within each polygon.
 ##' @param aggregate Character vector naming one or more within-polygon
-##'   operations: `"mean"`, `"sum"`, `"min"`, or `"max"`. It must be supplied
-##'   when `boundaries` is used. Several operations reuse the same joint
-##'   predictive samples. Custom operations can be supplied in a named list,
-##'   optionally mixed with built-ins, for example
+##'   operations: `"mean"`, `"median"`, `"sum"`, `"min"`, or `"max"`. It must
+##'   be supplied when `boundaries` is used. Several operations reuse the same
+##'   joint predictive samples. Custom operations can be supplied in a named
+##'   list, optionally mixed with built-ins, for example
 ##'   `list(mean = "mean", q90 = function(values, weights) ...)`. A custom
 ##'   function receives a location-by-draw matrix and the location weights and
 ##'   must return one numeric value per draw.
@@ -30,7 +30,8 @@
 ##'   the spatial process and any offset are always returned separately.
 ##' @param summaries Character vector naming the summaries calculated from each
 ##'   predictive distribution. Supported values are `"mean"`, `"median"`,
-##'   `"sd"`, `"cv"`, `"lower"`, `"upper"`, and `"exceedance"`. The coefficient
+##'   `"sd"`, `"cv"`, `"lower"`, `"upper"`, `"interval_width"`, and
+##'   `"exceedance"`. The coefficient
 ##'   of variation is calculated only on the response scale and should be
 ##'   interpreted only for outcomes whose predictive mean is positive. Custom
 ##'   summaries can be supplied in a named list, optionally mixed with
@@ -39,12 +40,14 @@
 ##' @param thresholds Numeric thresholds used when `summaries` includes
 ##'   `"exceedance"`. One exceedance probability is returned for each threshold.
 ##' @param level Number strictly between zero and one giving the probability
-##'   covered by the `"lower"` and `"upper"` interval limits.
+##'   covered by the `"lower"` and `"upper"` interval limits and used to
+##'   calculate `"interval_width"`.
 ##' @param weights `NULL` for equally weighted polygon summaries, or the name of
 ##'   a numeric column in `newdata` containing non-negative location weights.
-##'   For `aggregate = "mean"`, weights are normalized separately within each
-##'   polygon. For `aggregate = "sum"`, their original scale is retained.
-##'   Weights do not affect `"min"` or `"max"`.
+##'   For `aggregate = "mean"` or `"median"`, weights are interpreted within
+##'   each polygon. A weighted median is returned when weights are supplied.
+##'   For `aggregate = "sum"`, their original scale is retained. Weights do not
+##'   affect `"min"` or `"max"`.
 ##' @param control_mcmc Optional output from [set_control_mcmc()]. When omitted,
 ##'   conditional samples stored in a non-Gaussian fit are reused. Supplying a
 ##'   control object requests a fresh conditional run.
@@ -163,12 +166,13 @@ predict.RiskMap <- function(
     ...) {
 
   aggregate <- normalise_prediction_operations(
-    aggregate, c("mean", "sum", "min", "max"), "aggregate",
+    aggregate, c("mean", "median", "sum", "min", "max"), "aggregate",
     allow_null = TRUE
   )
   summaries <- normalise_prediction_operations(
     summaries,
-    c("mean", "median", "sd", "cv", "lower", "upper", "exceedance"),
+    c("mean", "median", "sd", "cv", "lower", "upper", "interval_width",
+      "exceedance"),
     "summaries"
   )
 
@@ -326,7 +330,8 @@ validate_prediction_options <- function(object, prediction, include,
     prediction <- "joint"
     if (is.null(aggregate)) {
       stop("'aggregate' must be supplied when 'boundaries' is used; choose one or more of: ",
-           paste(shQuote(c("mean", "sum", "min", "max")), collapse = ", "),
+           paste(shQuote(c("mean", "median", "sum", "min", "max")),
+                 collapse = ", "),
            call. = FALSE)
     }
   } else {
@@ -562,13 +567,13 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     sum(weight_values[index]) <= 0
   }, logical(1))
   weighted_operations <- vapply(aggregate, function(operation) {
-    is.character(operation) && operation %in% c("mean", "sum")
+    is.character(operation) && operation %in% c("mean", "median", "sum")
   }, logical(1))
   if (!is.null(weights) && any(weighted_operations) && any(zero_weight)) {
     warning(sum(zero_weight), " polygon",
             if (sum(zero_weight) == 1L) " has" else "s have",
             " zero total weight and will receive NA summaries for weighted ",
-            "means and sums", call. = FALSE)
+            "means, medians and sums", call. = FALSE)
   }
 
   if (!length(area_indices)) {
@@ -905,8 +910,34 @@ aggregate_prediction_values <- function(values, operation, weights) {
     }
     return(matrix(as.numeric(crossprod(weights, values)), nrow = 1L))
   }
+  if (operation == "median") {
+    if (sum(weights) <= 0) {
+      return(matrix(NA_real_, nrow = 1L, ncol = ncol(values)))
+    }
+    return(matrix(
+      apply(values, 2L, weighted_prediction_median, weights = weights),
+      nrow = 1L
+    ))
+  }
   reducer <- if (operation == "min") min else max
   matrix(apply(values, 2L, reducer), nrow = 1L)
+}
+
+#' Calculate a deterministic weighted median for one predictive draw
+#' @noRd
+weighted_prediction_median <- function(values, weights) {
+  keep <- weights > 0
+  values <- values[keep]
+  weights <- weights[keep]
+  ordering <- order(values)
+  values <- values[ordering]
+  cumulative <- cumsum(weights[ordering]) / sum(weights)
+  index <- which(cumulative >= 0.5)[1L]
+  at_midpoint <- abs(cumulative[index] - 0.5) <= sqrt(.Machine$double.eps)
+  if (at_midpoint && index < length(values)) {
+    return(mean(values[c(index, index + 1L)]))
+  }
+  values[index]
 }
 
 #' Return tidy summaries for one aggregated predictive distribution
@@ -920,7 +951,10 @@ tidy_prediction_summaries <- function(values, boundary_id, aggregate,
     sd = stats::sd,
     cv = function(x) stats::sd(x) / mean(x),
     lower = function(x) stats::quantile(x, alpha, names = FALSE),
-    upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE)
+    upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE),
+    interval_width = function(x) {
+      diff(stats::quantile(x, c(alpha, 1 - alpha), names = FALSE))
+    }
   )
   draws <- as.numeric(values)
   ordinary <- drop_prediction_operations(summaries, "exceedance")
@@ -1009,7 +1043,10 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level) {
     sd = stats::sd,
     cv = function(x) stats::sd(x) / mean(x),
     lower = function(x) stats::quantile(x, alpha, names = FALSE),
-    upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE)
+    upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE),
+    interval_width = function(x) {
+      diff(stats::quantile(x, c(alpha, 1 - alpha), names = FALSE))
+    }
   )
   result <- lapply(names(summaries), function(name) {
     operation <- summaries[[name]]

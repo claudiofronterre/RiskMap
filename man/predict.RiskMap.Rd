@@ -34,10 +34,10 @@ locations are assigned to polygons and their joint samples are aggregated
 within each polygon.}
 
 \item{aggregate}{Character vector naming one or more within-polygon
-operations: \code{"mean"}, \code{"sum"}, \code{"min"}, or \code{"max"}. It must be supplied
-when \code{boundaries} is used. Several operations reuse the same joint
-predictive samples. Custom operations can be supplied in a named list,
-optionally mixed with built-ins, for example
+operations: \code{"mean"}, \code{"median"}, \code{"sum"}, \code{"min"}, or \code{"max"}. It must
+be supplied when \code{boundaries} is used. Several operations reuse the same
+joint predictive samples. Custom operations can be supplied in a named
+list, optionally mixed with built-ins, for example
 \code{list(mean = "mean", q90 = function(values, weights) ...)}. A custom
 function receives a location-by-draw matrix and the location weights and
 must return one numeric value per draw.}
@@ -54,7 +54,8 @@ the spatial process and any offset are always returned separately.}
 
 \item{summaries}{Character vector naming the summaries calculated from each
 predictive distribution. Supported values are \code{"mean"}, \code{"median"},
-\code{"sd"}, \code{"cv"}, \code{"lower"}, \code{"upper"}, and \code{"exceedance"}. The coefficient
+\code{"sd"}, \code{"cv"}, \code{"lower"}, \code{"upper"}, \code{"interval_width"}, and
+\code{"exceedance"}. The coefficient
 of variation is calculated only on the response scale and should be
 interpreted only for outcomes whose predictive mean is positive. Custom
 summaries can be supplied in a named list, optionally mixed with
@@ -65,13 +66,15 @@ function receives the predictive draws and must return one numeric value.}
 \code{"exceedance"}. One exceedance probability is returned for each threshold.}
 
 \item{level}{Number strictly between zero and one giving the probability
-covered by the \code{"lower"} and \code{"upper"} interval limits.}
+covered by the \code{"lower"} and \code{"upper"} interval limits and used to
+calculate \code{"interval_width"}.}
 
 \item{weights}{\code{NULL} for equally weighted polygon summaries, or the name of
 a numeric column in \code{newdata} containing non-negative location weights.
-For \code{aggregate = "mean"}, weights are normalized separately within each
-polygon. For \code{aggregate = "sum"}, their original scale is retained.
-Weights do not affect \code{"min"} or \code{"max"}.}
+For \code{aggregate = "mean"} or \code{"median"}, weights are interpreted within
+each polygon. A weighted median is returned when weights are supplied.
+For \code{aggregate = "sum"}, their original scale is retained. Weights do not
+affect \code{"min"} or \code{"max"}.}
 
 \item{control_mcmc}{Optional output from \code{\link[=set_control_mcmc]{set_control_mcmc()}}. When omitted,
 conditional samples stored in a non-Gaussian fit are reused. Supplying a

@@ -230,7 +230,7 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
     gaussian_model,
     newdata = prediction_data,
     boundaries = boundaries,
-    aggregate = c("mean", "sum", "min", "max"),
+    aggregate = c("mean", "median", "sum", "min", "max"),
     weights = "population",
     control_mcmc = prediction_control,
     seed = 47,
@@ -264,6 +264,14 @@ test_that("polygon aggregation applies weights on the correct scale", {
     matrix(c(10, 20), nrow = 1)
   )
   expect_equal(
+    aggregate_prediction_values(values, "median", weights),
+    matrix(c(3, 6), nrow = 1)
+  )
+  expect_equal(
+    aggregate_prediction_values(values, "median", rep(1, 2)),
+    matrix(c(2, 4), nrow = 1)
+  )
+  expect_equal(
     aggregate_prediction_values(values, "min", weights),
     matrix(c(1, 2), nrow = 1)
   )
@@ -292,6 +300,21 @@ test_that("areal exceedance summaries are tidy and threshold-specific", {
   expect_equal(summaries$summary, c("mean", "exceedance", "exceedance"))
   expect_equal(summaries$threshold, c(NA, 0.15, 0.5))
   expect_equal(summaries$value, c(0.375, 0.75, 0.25))
+})
+
+test_that("prediction interval width uses the requested probability level", {
+  summary_operations <- normalise_prediction_operations(
+    c("lower", "upper", "interval_width"),
+    c("mean", "median", "sd", "cv", "lower", "upper", "interval_width",
+      "exceedance"),
+    "summaries"
+  )
+  result <- tidy_prediction_summaries(
+    matrix(1:100, nrow = 1), 1L, "mean", "response",
+    summary_operations, NULL, 0.8
+  )
+
+  expect_equal(result$value[3], result$value[2] - result$value[1])
 })
 
 test_that("built-in and custom aggregation and summary functions can be mixed", {
