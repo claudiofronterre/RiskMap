@@ -551,6 +551,74 @@ test_that("Gaussian boundary predictions retain one shared random-effect draw", 
   expect_equal(nrow(result$samples$mean$random_effects), nrow(areal))
 })
 
+test_that("location predictions report exceedance probabilities", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  result <- predict(
+    gaussian_model,
+    newdata = prediction_data,
+    summaries = c("mean", "exceedance"),
+    thresholds = c(0, 1),
+    keep_samples = TRUE,
+    seed = 501,
+    messages = FALSE
+  )
+  link <- prediction_link_samples(result)
+
+  expect_equal(result$data$response_exceedance_0, rowMeans(link > 0))
+  expect_equal(result$data$response_exceedance_1, rowMeans(link > 1))
+  expect_equal(result$thresholds, c(0, 1))
+})
+
+test_that("derived targets are transformed before summarising and aggregating", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  location_result <- predict(
+    gaussian_model,
+    newdata = prediction_data,
+    transform = list(square = function(link) link^2),
+    summaries = c("mean", "exceedance"),
+    thresholds = 1,
+    keep_samples = TRUE,
+    seed = 502,
+    messages = FALSE
+  )
+  link <- prediction_link_samples(location_result)
+  expect_equal(location_result$data$square_mean, rowMeans(link^2))
+  expect_equal(location_result$data$square_exceedance_1,
+               rowMeans(link^2 > 1))
+
+  area_result <- predict(
+    gaussian_model,
+    newdata = prediction_data,
+    boundaries = areal,
+    aggregate = "mean",
+    transform = list(square = function(link) link^2),
+    summaries = "mean",
+    seed = 503,
+    messages = FALSE
+  )
+  expect_true("square" %in% area_result$summary$quantity)
+})
+
+test_that("derived targets validate names and returned dimensions", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+
+  expect_error(
+    predict(gaussian_model, prediction_data,
+            transform = list(response = function(link) link),
+            messages = FALSE),
+    "reserved prediction quantities"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data,
+            transform = list(bad = function(link) rowMeans(link)),
+            messages = FALSE),
+    "same dimensions"
+  )
+})
+
 test_that("Gaussian block conditioning matches direct multivariate conditioning", {
   model <- gaussian_model
   model$estimate$sigma2_re[] <- log(0.35)

@@ -68,6 +68,8 @@ appropriate UTM zone and reports the conversion with a message.
   variables and weights are supplied together in one `sf` object. Supplying
   `boundaries` requests blockwise joint prediction and areal aggregation;
   grids created by `create_grid()` use exact fractional cell coverage.
+  Location- and area-level predictions support exceedance probabilities and
+  named draw-by-draw transformations for additional scientific targets.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - `"user"` has been added as an option to `method` the parameter of
 `assess_prediction()` replacing the previous behaviour where providing the

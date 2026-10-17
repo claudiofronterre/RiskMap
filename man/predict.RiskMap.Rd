@@ -11,6 +11,7 @@
   aggregate = NULL,
   prediction = c("auto", "marginal", "joint"),
   include = character(),
+  transform = NULL,
   summaries = c("mean", "lower", "upper"),
   thresholds = NULL,
   level = 0.95,
@@ -54,6 +55,13 @@ complete linear predictor and response. Supported values are
 \code{"nugget"}, for observation-level predictive variation. Fixed effects,
 the spatial process and any offset are always returned separately.}
 
+\item{transform}{Optional named list of functions defining derived predictive
+targets from the complete linear-predictor draws. Each function receives a
+location-by-draw matrix and must return a numeric matrix with the same
+dimensions. The ordinary response-scale prediction is always calculated,
+so this argument is needed only for additional scientific targets, for
+example \code{list(stunting = function(link) pnorm((-2 - link) / sd_child))}.}
+
 \item{summaries}{Character vector naming the summaries calculated from each
 predictive distribution. Supported values are \code{"mean"}, \code{"median"},
 \code{"sd"}, \code{"cv"}, \code{"lower"}, \code{"upper"}, \code{"interval_width"}, and
@@ -65,7 +73,8 @@ built-ins, for example \code{list(mean = "mean", iqr = IQR)}. Each custom
 function receives the predictive draws and must return one numeric value.}
 
 \item{thresholds}{Numeric thresholds used when \code{summaries} includes
-\code{"exceedance"}. One exceedance probability is returned for each threshold.}
+\code{"exceedance"}. One exceedance probability is returned for each threshold
+on the response scale and for every target supplied through \code{transform}.}
 
 \item{level}{Number strictly between zero and one giving the probability
 covered by the \code{"lower"} and \code{"upper"} interval limits and used to
@@ -109,6 +118,7 @@ samples for location-level prediction. For polygon aggregation it
 is nested first by aggregation and then by component, with one matrix
 row per polygon.}
 \item{include}{Optional components included in the link and response.}
+\item{transform}{Names of additional derived predictive targets.}
 \item{aggregate}{Names of the within-polygon aggregations.}
 \item{summaries}{Names of the calculated summaries.}
 \item{thresholds}{Thresholds used for exceedance probabilities.}
@@ -181,6 +191,13 @@ linear predictor. \code{fixed} is the estimated fixed-effects contribution and
 well as incorporating them into \verb{link_*} and \verb{response_*}. Binomial
 response predictions are probabilities and Poisson response predictions
 are rates per unit exposure.
+
+Derived targets supplied through \code{transform} are evaluated draw by draw
+before any location-level summary or polygon aggregation. Their output uses
+the target name as the quantity prefix. With multiple thresholds,
+location-level exceedance columns are named, for example,
+\code{response_exceedance_0.2} and \code{response_exceedance_0.5}; polygon output
+stores thresholds in the tidy \code{threshold} column.
 }
 \examples{
 data(italy_sim)

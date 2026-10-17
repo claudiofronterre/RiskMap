@@ -30,6 +30,12 @@
 ##'   `"random_effects"`, for conditional predictions at known groups, and
 ##'   `"nugget"`, for observation-level predictive variation. Fixed effects,
 ##'   the spatial process and any offset are always returned separately.
+##' @param transform Optional named list of functions defining derived predictive
+##'   targets from the complete linear-predictor draws. Each function receives a
+##'   location-by-draw matrix and must return a numeric matrix with the same
+##'   dimensions. The ordinary response-scale prediction is always calculated,
+##'   so this argument is needed only for additional scientific targets, for
+##'   example `list(stunting = function(link) pnorm((-2 - link) / sd_child))`.
 ##' @param summaries Character vector naming the summaries calculated from each
 ##'   predictive distribution. Supported values are `"mean"`, `"median"`,
 ##'   `"sd"`, `"cv"`, `"lower"`, `"upper"`, `"interval_width"`, and
@@ -40,7 +46,8 @@
 ##'   built-ins, for example `list(mean = "mean", iqr = IQR)`. Each custom
 ##'   function receives the predictive draws and must return one numeric value.
 ##' @param thresholds Numeric thresholds used when `summaries` includes
-##'   `"exceedance"`. One exceedance probability is returned for each threshold.
+##'   `"exceedance"`. One exceedance probability is returned for each threshold
+##'   on the response scale and for every target supplied through `transform`.
 ##' @param level Number strictly between zero and one giving the probability
 ##'   covered by the `"lower"` and `"upper"` interval limits and used to
 ##'   calculate `"interval_width"`.
@@ -119,6 +126,13 @@
 ##' response predictions are probabilities and Poisson response predictions
 ##' are rates per unit exposure.
 ##'
+##' Derived targets supplied through `transform` are evaluated draw by draw
+##' before any location-level summary or polygon aggregation. Their output uses
+##' the target name as the quantity prefix. With multiple thresholds,
+##' location-level exceedance columns are named, for example,
+##' `response_exceedance_0.2` and `response_exceedance_0.5`; polygon output
+##' stores thresholds in the tidy `threshold` column.
+##'
 ##' @return A `RiskMap_prediction` object containing:
 ##' \describe{
 ##'   \item{data}{The aligned prediction points with their summaries, or the
@@ -132,6 +146,7 @@
 ##'     is nested first by aggregation and then by component, with one matrix
 ##'     row per polygon.}
 ##'   \item{include}{Optional components included in the link and response.}
+##'   \item{transform}{Names of additional derived predictive targets.}
 ##'   \item{aggregate}{Names of the within-polygon aggregations.}
 ##'   \item{summaries}{Names of the calculated summaries.}
 ##'   \item{thresholds}{Thresholds used for exceedance probabilities.}
@@ -162,6 +177,7 @@ predict.RiskMap <- function(
     aggregate = NULL,
     prediction = c("auto", "marginal", "joint"),
     include = character(),
+    transform = NULL,
     summaries = c("mean", "lower", "upper"),
     thresholds = NULL,
     level = 0.95,
@@ -182,6 +198,7 @@ predict.RiskMap <- function(
       "exceedance"),
     "summaries"
   )
+  transform <- normalise_prediction_transforms(transform)
 
   prediction <- validate_prediction_options(
     object = object,
@@ -219,6 +236,7 @@ predict.RiskMap <- function(
       boundaries = boundaries,
       aggregate = aggregate,
       include = include,
+      transform = transform,
       summaries = summaries,
       thresholds = thresholds,
       level = level,
@@ -235,20 +253,25 @@ predict.RiskMap <- function(
     output_data$fixed <- NA_real_
     output_data$offset <- NA_real_
     requested_names <- c(
-      paste("spatial", setdiff(names(summaries), "cv"), sep = "_"),
+      paste("spatial", setdiff(names(summaries), c("cv", "exceedance")), sep = "_"),
       if ("random_effects" %in% include)
-        paste("random_effects", setdiff(names(summaries), "cv"), sep = "_"),
+        paste("random_effects", setdiff(names(summaries), c("cv", "exceedance")), sep = "_"),
       if ("nugget" %in% include)
-        paste("nugget", setdiff(names(summaries), "cv"), sep = "_"),
-      paste("link", setdiff(names(summaries), "cv"), sep = "_"),
-      paste("response", names(summaries), sep = "_")
+        paste("nugget", setdiff(names(summaries), c("cv", "exceedance")), sep = "_"),
+      paste("link", setdiff(names(summaries), c("cv", "exceedance")), sep = "_"),
+      prediction_summary_names("response", summaries, thresholds),
+      unlist(lapply(names(transform), prediction_summary_names,
+                    summaries = summaries, thresholds = thresholds),
+             use.names = FALSE)
     )
     for (name in requested_names) output_data[[name]] <- NA_real_
     out <- list(
       data = output_data,
       samples = NULL,
       include = include,
+      transform = names(transform),
       summaries = names(summaries),
+      thresholds = thresholds,
       level = level,
       prediction = prediction,
       family = object$family,
@@ -262,7 +285,7 @@ predict.RiskMap <- function(
     observed_locations
   )
   sample_components <- build_prediction_components(
-    object, prediction_setup, include
+    object, prediction_setup, include, transform
   )
   output_data <- prediction_input$output_data
   valid_rows <- prediction_input$valid_rows
@@ -273,24 +296,31 @@ predict.RiskMap <- function(
   component_summaries <- c(
     summarise_prediction_matrix(
       sample_components$spatial, "spatial",
-      drop_prediction_operations(summaries, "cv"), level
+      drop_prediction_operations(summaries, c("cv", "exceedance")), level
     ),
     if (!is.null(sample_components$random_effects))
       summarise_prediction_matrix(
         sample_components$random_effects, "random_effects",
-        drop_prediction_operations(summaries, "cv"), level
+        drop_prediction_operations(summaries, c("cv", "exceedance")), level
       ),
     if (!is.null(sample_components$nugget))
       summarise_prediction_matrix(
         sample_components$nugget, "nugget",
-        drop_prediction_operations(summaries, "cv"), level
+        drop_prediction_operations(summaries, c("cv", "exceedance")), level
       ),
     summarise_prediction_matrix(
-      sample_components$link, "link", drop_prediction_operations(summaries, "cv"), level
+      sample_components$link, "link",
+      drop_prediction_operations(summaries, c("cv", "exceedance")), level
     ),
     summarise_prediction_matrix(
-      sample_components$response, "response", summaries, level
-    )
+      sample_components$response, "response", summaries, level, thresholds
+    ),
+    unlist(lapply(names(transform), function(name) {
+      summarise_prediction_matrix(
+        sample_components$transformed[[name]], name, summaries, level,
+        thresholds
+      )
+    }), recursive = FALSE)
   )
   for (name in names(component_summaries)) {
     output_data[[name]] <- NA_real_
@@ -308,7 +338,9 @@ predict.RiskMap <- function(
     data = output_data,
     samples = samples,
     include = include,
+    transform = names(transform),
     summaries = names(summaries),
+    thresholds = thresholds,
     level = level,
     prediction = prediction,
     family = object$family,
@@ -355,10 +387,6 @@ validate_prediction_options <- function(object, prediction, include,
          paste(shQuote(allowed_include), collapse = ", "), call. = FALSE)
   }
   if (prediction_operation_requested(summaries, "exceedance")) {
-    if (is.null(boundaries)) {
-      stop("'exceedance' summaries currently require 'boundaries'",
-           call. = FALSE)
-    }
     if (!is.numeric(thresholds) || !length(thresholds) || anyNA(thresholds) ||
         any(!is.finite(thresholds)) || anyDuplicated(thresholds)) {
       stop("'thresholds' must contain unique, finite numeric values when ",
@@ -428,6 +456,27 @@ normalise_prediction_operations <- function(x, allowed, argument,
          paste(shQuote(allowed), collapse = ", "), call. = FALSE)
   }
   x
+}
+
+#' Validate derived predictive targets
+#' @noRd
+normalise_prediction_transforms <- function(transform) {
+  if (is.null(transform)) return(list())
+  valid_names <- !is.null(names(transform)) && !anyNA(names(transform)) &&
+    all(nzchar(names(transform))) && !anyDuplicated(names(transform))
+  if (!is.list(transform) || !length(transform) || !valid_names ||
+      any(!vapply(transform, is.function, logical(1)))) {
+    stop("'transform' must be NULL or a named list of functions with unique, non-empty names",
+         call. = FALSE)
+  }
+  reserved <- c("fixed", "offset", "spatial", "random_effects", "nugget",
+                "link", "response")
+  conflicts <- intersect(names(transform), reserved)
+  if (length(conflicts)) {
+    stop("Names in 'transform' cannot use reserved prediction quantities: ",
+         paste(shQuote(conflicts), collapse = ", "), call. = FALSE)
+  }
+  transform
 }
 
 #' Remove named prediction operations
@@ -613,7 +662,8 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
 #' Predict and aggregate jointly within polygon boundaries
 #' @noRd
 predict_over_boundaries <- function(object, prediction_input, boundaries,
-                                    aggregate, include, summaries, thresholds,
+                                    aggregate, include, transform, summaries,
+                                    thresholds,
                                     level, weights,
                                     control_mcmc, seed, keep_samples,
                                     messages) {
@@ -677,6 +727,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       summary = empty_prediction_summary(),
       samples = NULL,
       include = include,
+      transform = names(transform),
       aggregate = names(aggregate),
       summaries = names(summaries),
       thresholds = thresholds,
@@ -746,7 +797,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       group_setup$re$D_pred <- prediction_setup$re$D_pred[[group]]
     }
     group_components <- build_prediction_components(
-      object, group_setup, include
+      object, group_setup, include, transform
     )
     group_weights <- weight_values[index]
     components <- list(
@@ -758,6 +809,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       link = group_components$link,
       response = group_components$response
     )
+    components <- c(components, group_components$transformed)
     components <- components[!vapply(components, is.null, logical(1))]
 
     for (operation_name in names(aggregate)) {
@@ -785,9 +837,11 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
             boundary_id = area,
             aggregate = operation_name,
             quantity = quantity,
-            summaries = if (quantity == "response") summaries else
+            summaries = if (quantity %in%
+                              c("response", names(transform))) summaries else
               drop_prediction_operations(summaries, c("cv", "exceedance")),
-            thresholds = if (quantity == "response") thresholds else NULL,
+            thresholds = if (quantity %in%
+                               c("response", names(transform))) thresholds else NULL,
             level = level
           )
         }
@@ -816,6 +870,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       if ("nugget" %in% include) "nugget",
       "link", "response"
     )
+    quantities <- c(quantities, names(transform))
     for (area in missing_areas) {
       for (operation_name in names(aggregate)) {
         for (quantity in quantities) {
@@ -828,14 +883,16 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
               stringsAsFactors = FALSE
             )
           } else {
-            requested <- if (quantity == "response") summaries else
+            requested <- if (quantity %in%
+                               c("response", names(transform))) summaries else
               drop_prediction_operations(summaries, c("cv", "exceedance"))
             summary_rows[[row_number]] <- missing_prediction_summaries(
               boundary_id = area,
               aggregate = operation_name,
               quantity = quantity,
               summaries = requested,
-              thresholds = if (quantity == "response") thresholds else NULL
+              thresholds = if (quantity %in%
+                                 c("response", names(transform))) thresholds else NULL
             )
           }
         }
@@ -848,6 +905,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     summary = do.call(rbind, summary_rows),
     samples = retained,
     include = include,
+    transform = names(transform),
     aggregate = names(aggregate),
     summaries = names(summaries),
     thresholds = thresholds,
@@ -904,7 +962,8 @@ prepare_prediction <- function(object, prediction_data, prediction, include,
 
 #' Construct link and response samples from prediction components
 #' @noRd
-build_prediction_components <- function(object, prediction_setup, include) {
+build_prediction_components <- function(object, prediction_setup, include,
+                                        transform = list()) {
   spatial <- prediction_setup$S_samples
   if (!is.matrix(spatial)) {
     spatial <- matrix(spatial, nrow = nrow(prediction_setup$grid_pred))
@@ -929,9 +988,20 @@ build_prediction_components <- function(object, prediction_setup, include) {
   } else {
     matrix(object$link_function$inv(as.numeric(link)), nrow = n_locations)
   }
+  transformed <- lapply(names(transform), function(name) {
+    values <- transform[[name]](link)
+    if (!is.numeric(values) || !is.matrix(values) ||
+        !identical(dim(values), dim(link))) {
+      stop("Transformation ", shQuote(name),
+           " must return a numeric matrix with the same dimensions as its input",
+           call. = FALSE)
+    }
+    values
+  })
+  names(transformed) <- names(transform)
   list(fixed = fixed, offset = offset, spatial = spatial,
        random_effects = random_effects, nugget = nugget,
-       link = link, response = response)
+       link = link, response = response, transformed = transformed)
 }
 
 #' Assemble prediction-location random-effect samples
@@ -1132,7 +1202,8 @@ missing_prediction_summaries <- function(boundary_id, aggregate, quantity,
 
 #' Summarise a location-by-sample prediction matrix
 #' @noRd
-summarise_prediction_matrix <- function(values, quantity, summaries, level) {
+summarise_prediction_matrix <- function(values, quantity, summaries, level,
+                                        thresholds = NULL) {
   alpha <- (1 - level) / 2
   summary_functions <- list(
     mean = mean,
@@ -1145,8 +1216,9 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level) {
       diff(stats::quantile(x, c(alpha, 1 - alpha), names = FALSE))
     }
   )
-  result <- lapply(names(summaries), function(name) {
-    operation <- summaries[[name]]
+  ordinary <- drop_prediction_operations(summaries, "exceedance")
+  result <- lapply(names(ordinary), function(name) {
+    operation <- ordinary[[name]]
     value <- if (is.function(operation)) {
       apply(values, 1L, operation)
     } else {
@@ -1158,8 +1230,36 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level) {
     }
     as.numeric(value)
   })
-  names(result) <- paste(quantity, names(summaries), sep = "_")
+  names(result) <- paste(quantity, names(ordinary), sep = "_")
+  if (prediction_operation_requested(summaries, "exceedance")) {
+    exceedance <- lapply(thresholds, function(threshold) {
+      rowMeans(values > threshold)
+    })
+    names(exceedance) <- paste(
+      quantity, "exceedance", prediction_threshold_label(thresholds), sep = "_"
+    )
+    result <- c(result, exceedance)
+  }
   result
+}
+
+#' Construct location-level prediction column names
+#' @noRd
+prediction_summary_names <- function(quantity, summaries, thresholds = NULL) {
+  ordinary <- names(drop_prediction_operations(summaries, "exceedance"))
+  result <- paste(quantity, ordinary, sep = "_")
+  if (prediction_operation_requested(summaries, "exceedance")) {
+    result <- c(result, paste(
+      quantity, "exceedance", prediction_threshold_label(thresholds), sep = "_"
+    ))
+  }
+  result
+}
+
+#' Format thresholds for stable column names
+#' @noRd
+prediction_threshold_label <- function(thresholds) {
+  format(thresholds, scientific = FALSE, trim = TRUE)
 }
 
 #' Restore the block structure of stored fitted conditional samples
