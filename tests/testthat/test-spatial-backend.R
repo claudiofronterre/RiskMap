@@ -8,7 +8,7 @@ test_that("compiled pairwise distances match stats::dist", {
   expected <- dist(coordinates)
 
   expect_equal(as.numeric(observed), as.numeric(expected), tolerance = 1e-14)
-  expect_equal(attr(observed, "Size"), attr(expected, "Size"))
+  expect_identical(attr(observed, "Size"), attr(expected, "Size"))
 })
 
 test_that("compiled cross-distances match direct Euclidean distances", {
@@ -58,7 +58,7 @@ test_that("compiled Matérn kernels preserve cross-covariance dimensions", {
 
   observed <- matern_correlation(distances, phi = 0.7, kappa = 1.5)
 
-  expect_equal(dim(observed), dim(distances))
+  expect_identical(dim(observed), dim(distances))
 })
 
 test_that("distance scaling leaves Matérn correlations unchanged", {
@@ -75,7 +75,7 @@ test_that("distance scaling leaves Matérn correlations unchanged", {
   )
 
   expect_equal(scaled_correlation, original_correlation, tolerance = 5e-14)
-  expect_equal(restore_spatial_range(scaled$phi, scaled$distance_scale), phi)
+  expect_identical(restore_spatial_range(scaled$phi, scaled$distance_scale), phi)
 })
 
 test_that("distance scaling rejects coincident observed locations", {
@@ -95,7 +95,7 @@ test_that("fitted spatial ranges remain in the requested distance units", {
                tolerance = 1e-6)
   expect_equal(model_metres$log_lik, gaussian_model$log_lik,
                tolerance = 1e-8)
-  expect_equal(attr(model_metres, "distance_scale"),
+  expect_identical(attr(model_metres, "distance_scale"),
                max(pairwise_distances(model_metres$coords)))
 })
 
@@ -105,24 +105,26 @@ test_that("prediction scaling preserves draws at fixed fitted parameters", {
   attr(unscaled_model, "distance_scale") <- NULL
 
   set.seed(712)
-  scaled_prediction <- setup_prediction(
+  scaled_prediction <- predict(
     scaled_model,
-    grid_pred = st_geometry(gaussian_data),
-    type = "joint",
+    newdata = gaussian_data,
+    prediction = "joint",
     control_mcmc = control_mcmc,
+    keep_samples = TRUE,
     messages = FALSE
   )
   set.seed(712)
-  unscaled_prediction <- setup_prediction(
+  unscaled_prediction <- predict(
     unscaled_model,
-    grid_pred = st_geometry(gaussian_data),
-    type = "joint",
+    newdata = gaussian_data,
+    prediction = "joint",
     control_mcmc = control_mcmc,
+    keep_samples = TRUE,
     messages = FALSE
   )
 
-  expect_equal(scaled_prediction$S_samples,
-               unscaled_prediction$S_samples,
+  expect_equal(scaled_prediction$samples$spatial,
+               unscaled_prediction$samples$spatial,
                tolerance = 1e-12)
 })
 
@@ -143,7 +145,7 @@ test_that("coordinate rows are indexed in first-occurrence order", {
   coordinates <- rbind(c(3, 4), c(1, 2), c(3, 4), c(-1, 2), c(1, 2))
   indexed <- index_coordinate_rows(coordinates)
 
-  expect_equal(indexed$coordinates,
+  expect_identical(indexed$coordinates,
                rbind(c(3, 4), c(1, 2), c(-1, 2)))
   expect_identical(indexed$index, c(1L, 2L, 1L, 3L, 2L))
   expect_error(index_coordinate_rows(matrix(1:9, ncol = 3)),
@@ -160,7 +162,7 @@ test_that("adaptive jitter is reported and conditional variances are guarded", {
                  "required diagonal jitter")
   expect_gt(attr(root, "jitter"), 0)
 
-  expect_equal(conditional_variances(1, matrix(c(1, 0)),
+  expect_identical(conditional_variances(1, matrix(c(1, 0)),
                                      matrix(c(1 + 1e-15, 0))),
                c(0, 1))
   expect_error(conditional_variances(1, matrix(c(1, 0)),
@@ -177,7 +179,7 @@ test_that("vectorised Gaussian sampling preserves seeded draws", {
     means[, i] + standard_deviation * rnorm(nrow(means))
   })
   set.seed(148)
-  expect_equal(sample_independent_gaussian(
+  expect_identical(sample_independent_gaussian(
     means, standard_deviation, ncol(means)
   ), expected_independent)
 
@@ -222,7 +224,7 @@ test_that("automatic marginal batching preserves unbatched predictions", {
     prediction, conditioning, weight_function, signal, 1, 0.3, 1.5,
     ncol(signal), batch_size = 3
   )
-  expect_equal(dim(actual), c(nrow(prediction), ncol(signal)))
+  expect_identical(dim(actual), c(nrow(prediction), ncol(signal)))
   expect_equal(actual, expected, tolerance = 1e-14)
 
   vector_signal <- signal[, 1]
@@ -236,9 +238,9 @@ test_that("automatic marginal batching preserves unbatched predictions", {
     prediction, conditioning, weight_function, vector_signal, 1, 0.3, 1.5,
     n_samples = 4, batch_size = 3
   )
-  expect_equal(dim(actual_vector), c(nrow(prediction), 4L))
+  expect_identical(dim(actual_vector), c(nrow(prediction), 4L))
   expect_equal(actual_vector, expected_vector, tolerance = 1e-14)
 
-  expect_equal(marginal_prediction_batch_size(10, 5), 10)
+  expect_identical(marginal_prediction_batch_size(10, 5), 10)
   expect_lt(marginal_prediction_batch_size(1e6, 1000), 1e6)
 })
