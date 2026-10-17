@@ -31,3 +31,17 @@ Specifies the terms, smoothness, and nugget effect for a Gaussian Process (GP) m
 The function constructs a list that includes the specified terms (spatial coordinates or covariates),
 the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
 }
+\examples{
+# this function is not intended for use by itself
+gp()
+gp(nugget = TRUE)
+
+# use in a model formula
+data(italy_sim)
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+}

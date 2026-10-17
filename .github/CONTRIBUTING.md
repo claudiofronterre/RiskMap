@@ -27,7 +27,8 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 
 - Code should be written defensively so that users are provided with informative errors.
 - Start each exported function by checking that objects are of the correct class using `stopifnot(inherits())`.
-- If objects must be of a certain value i.e. one of certain strings or numbers within certain bounds, check those next. 
+- If objects must be of a certain value i.e. one of certain strings or numbers within certain bounds, check those next.
+- There are various `check_*` functions to help with this - use or adapt those rather than adding large chunks of checking code to functions.
 
 ## Debugging
 

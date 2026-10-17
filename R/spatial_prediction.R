@@ -2548,7 +2548,7 @@ predict_areal_target <- function(object,
 
   n_reg <- nrow(boundaries)
   if(is.null(col_names)) {
-    boundaries$region <- paste("reg", 1:n_reg, sep = "")
+    boundaries$region <- paste0("reg", 1:n_reg)
     col_names <- "region"
     names_reg <- boundaries$region
   } else {
@@ -2664,7 +2664,7 @@ predict_areal_target <- function(object,
     }
     for(i in 1:n_f) {
       for(j in 1:n_summaries) {
-        name_ij <- paste(names_f[i], "_", paste(names_s[j]), sep = "")
+        name_ij <- paste0(names_f[i], "_", paste(names_s[j]))
         boundaries[[name_ij]] <- rep(NA, n_reg)
         for(h in ind_reg) {
           which_reg <- which(boundaries[[col_names]] == names_reg[h])
@@ -2711,7 +2711,7 @@ plot.RiskMap_predict_areal_target <- function(x, target = NULL, summary = "mean"
   if (!summary %in% x$pd_summary) {
     stop("'summary' must be one of: ", paste(shQuote(x$pd_summary), collapse = ", "))
   }
-  col_boundaries_name <- paste(target, "_", summary, sep = "")
+  col_boundaries_name <- paste0(target, "_", summary)
   out <- ggplot(x$boundaries) +
     geom_sf(aes(fill = .data[[col_boundaries_name]])) +
     scale_fill_distiller(...)
@@ -3725,7 +3725,7 @@ assess_simulation <- function(obj_sim,
     n_reg <- nrow(boundaries)
 
     if(is.null(col_names)) {
-      boundaries$region <- paste("reg",1:n_reg, sep="")
+      boundaries$region <- paste0("reg", 1:n_reg)
       col_names <- "region"
       names_reg <- boundaries$region
     } else {
@@ -4111,7 +4111,8 @@ summarize_pred_objective <- function(pred_objective) {
         n_sim = ncol(mse_data),
         n_valid = n_valid,
         MSE_mean = apply(mse_data, 1, finite_mean),
-        MSE_sd = apply(mse_data, 1, finite_sd)
+        MSE_sd = apply(mse_data, 1, finite_sd),
+        row.names = NULL
       )
 
       results$mse <- mse_summary

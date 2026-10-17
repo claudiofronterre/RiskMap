@@ -255,5 +255,5 @@ test_that("joint prediction supports repeated observations at fitted locations",
     repeated_model, type = "joint", messages = FALSE
   )
 
-  expect_equal(nrow(result$S_samples), nrow(repeated_model$coords))
+  expect_identical(nrow(result$S_samples), nrow(repeated_model$coords))
 })

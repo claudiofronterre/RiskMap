@@ -29,7 +29,7 @@
 create_convex_hull <- function(sf_object) {
   # Check if the input is an sf object
   if (!inherits(sf_object, "sf")) {
-    stop("`sf_object` must be an sf object")
+    stop("'sf_object' must be an sf object")
   }
 
   # Get the geometry from the sf object
@@ -94,11 +94,9 @@ elogit <- function(y, m) {
 ##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 ##' @return An integer indicating the EPSG code of the UTM zone.
 ##' @export
-propose_utm <- function (data) {
-  if (!inherits(data, "sf"))
-    stop("'data' must be an object of class sf")
-  if (is.na(st_crs(data)))
-    stop("the CRS of the data is missing and must be specified; see ?st_crs")
+propose_utm <- function(data) {
+
+  check_data(data, geometry = "any")
 
   # Transform to WGS84 (EPSG:4326) to ensure coordinates are in lon/lat
   data <- st_transform(data, crs = 4326)
@@ -120,7 +118,7 @@ propose_utm <- function (data) {
   ns_u <- unique(ns)
 
   if (length(ns_u) > 1) {
-    tab_ns <- table(ns_u)
+    tab_ns <- table(ns)
     if (all(diff(tab_ns) == 0))
       warning("An equal amount of locations falls north and south of the Equator")
     ns_u <- as.numeric(names(which.max(tab_ns)))
@@ -264,6 +262,19 @@ matern_hessian_phi <- function(U, phi, kappa) {
 ##' \item{nugget}{The nugget effect.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the GP model.}
+##' @examples
+##' # this function is not intended for use by itself
+##' gp()
+##' gp(nugget = TRUE)
+##'
+##' # use in a model formula
+##' data(italy_sim)
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
 ##' @export
 gp <- function (..., kappa = 0.5, nugget = FALSE) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -294,11 +305,10 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
     for (i in 1:d) term[i] <- attr(terms(reformulate(term[i])),
                                    "term.labels")
   }
-  full.call <- paste("gp(", term[1], sep = "")
+  full.call <- paste0("gp(", term[1])
   if (d > 1)
-    for (i in 2:d) full.call <- paste(full.call, ",", term[i],
-                                      sep = "")
-  label <- gsub("sf", "", paste(full.call, ")", sep = ""))
+    for (i in 2:d) full.call <- paste(full.call, term[i], sep = ",")
+  label <- gsub("sf", "", paste0(full.call, ")"))
   ret <- list(term = term, kappa = kappa, nugget = nugget, dim = d,
               label = label)
   class(ret) <- "RiskMap_gp_spec"
@@ -313,6 +323,20 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the random effect model.}
 ##' @note At least one variable must be provided as input.
+##'
+##' @examples
+##' # this function is not intended for use by itself
+##' re(province)
+##'
+##' # use in a model formula
+##' data(italy_sim)
+##' fit <- glgpm(
+##'   formula = y ~ gp() + re(province),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
 ##' @export
 re <- function (...) {
   vars <- as.list(substitute(list(...)))[-1]
@@ -320,7 +344,7 @@ re <- function (...) {
   term <- NULL
 
   if (d == 0) {
-    stop("You need to provide at least one variable.")
+    stop("You need to provide at least one variable to re()")
   } else {
     if (d > 0) {
       for (i in 1:d) {
@@ -330,11 +354,10 @@ re <- function (...) {
     for (i in 1:d) term[i] <- attr(terms(reformulate(term[i])),
                                    "term.labels")
   }
-  full.call <- paste("re(", term[1], sep = "")
+  full.call <- paste0("re(", term[1])
   if (d > 1)
-    for (i in 2:d) full.call <- paste(full.call, ",", term[i],
-                                      sep = "")
-  label <- gsub("sf", "", paste(full.call, ")", sep = ""))
+    for (i in 2:d) full.call <- paste0(full.call, ",", term[i])
+  label <- gsub("sf", "", paste0(full.call, ")"))
   ret <- list(term = term, dim = d, label = label)
   class(ret) <- "RiskMap_re_spec"
   ret
@@ -346,11 +369,7 @@ interpret_formula <- function(formula) {
   terms <- attr(tf, "term.labels")
   nt <- length(terms)
 
-  if (attr(tf, "response") > 0) {
-    response <- as.character(attr(tf, "variables")[2])
-  } else {
-    response <- NULL
-  }
+  response <- as.character(attr(tf, "variables")[2])
 
   gp <- attr(tf, "specials")$gp
   re <- attr(tf, "specials")$re
@@ -389,7 +408,7 @@ interpret_formula <- function(formula) {
   }
 
   if (attr(tf, "intercept") == 0) {
-    pf <- paste(pf, "-1", sep = "")
+    pf <- paste0(pf, "-1")
   }
 
   ret <- list(
@@ -464,6 +483,10 @@ check_formula <- function(formula, data, response_required = TRUE){
     stop("'formula' must be a 'formula'
          object indicating the variables of the
          model to be fitted", call. = FALSE)
+  }
+
+  if (length(formula) != 3L) {
+    stop("The 'formula' must specify a response on the left-hand side, e.g. 'y ~ gp()'", call. = FALSE)
   }
 
   formula_terms <- unique(get_formula_terms(formula))
@@ -586,12 +609,11 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
 
   link_name <- NULL
   inv_expr  <- NULL
-  if (!is.null(object$linkf) && is.list(object$linkf) &&
-      is.function(object$linkf$inv)) {
-    link_name <- object$linkf$name %||% "custom"
+  if (identical(object$link_function$name, "custom")) {
+    link_name <- "custom"
     inv_expr  <- tryCatch(
       paste0("Inverse link function = ",
-             paste(deparse(body(object$linkf$inv), width.cutoff = 500L),
+             paste(deparse(body(object$link_function$inv), width.cutoff = 500L),
                    collapse = " ")),
       error = function(e) "Inverse link function = <user-supplied function>"
     )
@@ -814,10 +836,16 @@ print.summary.RiskMap <- function(x, ...) {
 ##' @export
 ##' @seealso \code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
 ##' @examples
-##' \dontrun{
-##' fit <- glgpm(y ~ x + gp(), data = example_data)
-##' to_table(fit, digits = 3)
-##' }
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##' to_table(fit)
+##' to_table(fit, digits = 1)
 to_table <- function(object, digits = 3, ...) {
   check_positive_integer(digits, "digits", allow_zero = TRUE)
 
@@ -881,7 +909,7 @@ to_table <- function(object, digits = 3, ...) {
 ##' and assigns an identifier to each coordinate occurrence. It returns a list
 ##' containing the identifiers for each row and a vector of unique identifiers.
 ##'
-##' @param data_sf An `sf` object containing geometrical data from which coordinates are extracted.
+##' @param data An `sf` object containing geometrical data from which coordinates are extracted.
 ##'
 ##' @return A list with the following elements:
 ##' \describe{
@@ -895,22 +923,21 @@ to_table <- function(object, digits = 3, ...) {
 ##' coordinates. It then assigns each row in the input data an identifier corresponding
 ##' to the unique coordinate it matches.
 ##'
+##' @examples
+##' data(italy_sim)
+##'
+##' create_ids(italy_sim)
+##'
 ##' @export
-##'
-##'
-create_ids <- function(data_sf) {
-  if(!inherits(data_sf,
-               what = c("sfc","sf"), which = FALSE)) {
-    stop("The object passed to 'grid_pred' must be an object
-         of class 'sfc'")
-  }
-  coords_o <- st_coordinates(data_sf)
+create_ids <- function(data) {
+  check_data(data)
+  coords_o <- st_coordinates(data)
   coords <- unique(coords_o)
 
   m <- nrow(coords_o)
   ID_coords <- sapply(1:m, function(i)
-    which(coords_o[i,1]==coords[,1] &
-            coords_o[i,2]==coords[,2]))
+    which(coords_o[i,1] == coords[,1] &
+            coords_o[i,2] == coords[,2]))
   out <- list()
   out$ID_coords <- ID_coords
   out$s_unique <- unique(ID_coords)
@@ -1001,8 +1028,7 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
 ##' printing it to the console. It provides a clear view of the cross-validation performance
 ##' metrics across different spatial models.
 ##'
-##' @return This function is used for its side effect of printing to the console. It does not
-##'         return a value.
+##' @return Invisibly returns \code{x}.
 ##' @export
 ##' @method print summary.RiskMap_cross_validation
 print.summary.RiskMap_cross_validation <- function(x, ...) {
@@ -1041,6 +1067,8 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
     }
     cat("\n")
   }
+
+  invisible(x)
 }
 
 
@@ -1290,15 +1318,15 @@ check_binomial <- function(y, den){
 #' If CRS == 4326 it also checks that the coordinates are possible (i.e. not
 #' latitudes > 90)
 #' @param data the data to check
-#' @param geometry whether to check that the data contains `"point"` (default) or
-#' `"polygon"` (covering both polygons and multipolygons)
+#' @param geometry whether to check that the data contains `"point"` (default),
+#' `"polygon"` (covering both polygons and multipolygons) or `"any"` to not check
 #' @param type whether to check that the data is `"sf"` (default) or
 #' `"sfc"` (either sf or sfc)
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
 check_data <- function(data, geometry = "point", type = "sf"){
-  stopifnot("'geometry' must be either 'point' or 'polygon'" = geometry %in% c("point", "polygon"))
+  stopifnot("'geometry' must be either 'point', 'polygon' or 'any'" = geometry %in% c("point", "polygon", "any"))
   stopifnot("'type' must be either 'sf' or 'sfc'" = type %in% c("sf", "sfc"))
 
   # extract name passed to function
@@ -1310,25 +1338,27 @@ check_data <- function(data, geometry = "point", type = "sf"){
 
   if (type == "sf"){
     if (!inherits(data, "sf"))
-      stop(paste(data_type, "must be of class 'sf'"), call. = FALSE)
+      stop(data_type, " must be of class 'sf'", call. = FALSE)
   } else {
     if (!inherits(data, c("sf", "sfc")))
-      stop(paste(data_type, "must be of class 'sf' or 'sfc'"), call. = FALSE)
+      stop(data_type, " must be of class 'sf' or 'sfc'", call. = FALSE)
   }
 
   if (is.na(st_crs(data)))
-    stop(paste(data_type, "must contain a coordinate reference system"), call. = FALSE)
+    stop(data_type, " must contain a coordinate reference system", call. = FALSE)
 
-  all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
-  if (!all_valid_geometry)
-    stop(paste(data_type, "can only contain", geometry_type, "geometry"), call. = FALSE)
+  if (geometry != "any"){
+    all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
+    if (!all_valid_geometry)
+      stop(data_type, " can only contain ", geometry_type, " geometry", call. = FALSE)
+  }
 
   if (st_crs(data) == st_crs(4326)){
     tryCatch(
       st_is_longlat(data$geometry),
       warning = function(w) {
-        stop(paste(data_type, "contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data"), call. = FALSE)
+        stop(data_type, " contains impossible latitude or longitude values -
+             check you have specified the columns correctly when converting the data", call. = FALSE)
       }
     )
   }
