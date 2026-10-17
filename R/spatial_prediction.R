@@ -1180,6 +1180,36 @@ stored_conditioning_sample <- function(object) {
   list(samples = blocks)
 }
 
+#' Reconstruct linear-predictor draws from a prediction object
+#'
+#' The public prediction object keeps deterministic contributions in `data`
+#' and stochastic contributions in `samples`. Keeping that representation
+#' compact avoids duplicating large matrices, while this helper gives internal
+#' assessment routines the complete draws they need.
+#' @noRd
+prediction_link_samples <- function(prediction, include_fixed = TRUE,
+                                    include_offset = TRUE) {
+  samples <- prediction$samples
+  if (is.null(samples) || is.null(samples$spatial)) {
+    stop("Prediction samples were not retained", call. = FALSE)
+  }
+
+  link <- samples$spatial
+  if (include_fixed) {
+    link <- sweep(link, 1L, prediction$data$fixed, `+`)
+  }
+  if (include_offset) {
+    link <- sweep(link, 1L, prediction$data$offset, `+`)
+  }
+  if (!is.null(samples$random_effects)) {
+    link <- link + samples$random_effects
+  }
+  if (!is.null(samples$nugget)) {
+    link <- link + samples$nugget
+  }
+  link
+}
+
 ##' @title Prediction of the random effects components and covariates effects over a spatial grid
 ##' @description Computes predictions over a spatial grid using a fitted model from
 ##'   \code{\link{glgpm}}.
@@ -3486,31 +3516,22 @@ assess_prediction <- function(object,
       out_id_i <- out_id[keep_test]
       if (h == 1) out$test_set[[i]] <- data_test_i
 
-      pred_coff_i <- if (is.null(fit0$cov_offset) || all(fit0$cov_offset == 0)) {
-        NULL
-      } else {
-        fit0$cov_offset[out_id_i]
-      }
-
       if (messages) message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
 
       ## ----- prediction over test set -----
-      pred_S <- setup_prediction(
-        object          = refit_i,
-        grid_pred       = st_as_sfc(data_test_i),
-        control_mcmc     = control_mcmc,
-        predictors      = data_test_i,
-        pred_cov_offset = pred_coff_i,
-        type            = "marginal",
-        messages        = FALSE
+      included_components <- if (
+        is.null(refit_i$fix_tau2) || refit_i$fix_tau2 != 0
+      ) "nugget" else character()
+      prediction_i <- predict(
+        refit_i,
+        newdata = data_test_i,
+        prediction = "marginal",
+        include = included_components,
+        control_mcmc = control_mcmc,
+        keep_samples = TRUE,
+        messages = FALSE
       )
-
-      pred_lp  <- predict_grid_target(
-        pred_S,
-        include_nugget     = is.null(refit_i$fix_tau2) || refit_i$fix_tau2 != 0,
-        include_cov_offset = !all(refit_i$cov_offset == 0)
-      )
-      eta_samp <- pred_lp$lp_samples
+      eta_samp <- prediction_link_samples(prediction_i)
       if (fam == "gaussian") {
         sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
         eta_samp <- eta_samp + sqrt(sigma2_me) * rnorm(length(eta_samp))
@@ -3925,9 +3946,6 @@ assess_simulation <- function(obj_sim,
       stop("Model '", model_names[i], "' uses family '", template_i$family,
            "', but the simulations use family '", obj_sim$family, "'.")
     }
-    if_i <- interpret_formula(template_i$formula)
-    rhs_terms <- attr(terms(if_i$pf), "term.labels")
-    predictors_i <- if (length(rhs_terms) == 0) NULL else obj_sim$lp_grid_sim
     f_i <- update(template_i$formula, y ~ .)
 
     for(j in 1:n_sim) {
@@ -3943,70 +3961,21 @@ assess_simulation <- function(obj_sim,
       fit_ij <- do.call(glgpm, refit_args)
 
       if (messages) message("Prediction over the grid")
-      obj_pred_ij <- setup_prediction(
+      prediction_ij <- predict(
         fit_ij,
-        grid_pred = st_as_sfc(obj_sim$lp_grid_sim),
-        predictors = predictors_i,
-        pred_cov_offset = if (is.null(if_i$offset)) NULL else
-          obj_sim$lp_grid_sim[[if_i$offset]],
+        newdata = obj_sim$lp_grid_sim,
+        prediction = type,
+        include = if (include_nugget) "nugget" else character(),
         control_mcmc = control_mcmc,
-        type = type,
+        keep_samples = TRUE,
         messages = FALSE
       )
-
-      if(length(obj_pred_ij$mu_pred) == 1 && obj_pred_ij$mu_pred == 0 &&
-         include_covariates) {
-        stop("Covariates have not been provided; re-run setup_prediction
-         and provide the covariates through the argument 'predictors'")
-      }
-
-
-      if(!include_covariates) {
-        mu_target <- 0
-      } else {
-
-        if(is.null(obj_pred_ij$mu_pred)) stop("the output obtained from 'setup_prediction' does not
-                                     contain any covariates; if including covariates
-                                     in the predictive target these should be included
-                                     when running 'setup_prediction'")
-        mu_target <- obj_pred_ij$mu_pred
-      }
-
-      if(!include_cov_offset) {
-        cov_offset <- 0
-      } else {
-        if(length(obj_pred_ij$cov_offset) == 1) {
-          stop("No covariate offset was included in the model;
-           set include_cov_offset = FALSE, or refit the model and include
-           the covariate offset")
-        }
-        cov_offset <- obj_pred_ij$cov_offset
-      }
-
-      if(include_nugget) {
-        if(is.null(obj_pred_ij$par_hat$tau2)) stop("'include_nugget' cannot be
-                                                   set to TRUE if this has not been included
-                                                   in the fit of the model")
-        n_samples <- ncol(obj_pred_ij$S_samples)
-        Z_sim <- matrix(rnorm(n_samples*n_pred,
-                              sd = sqrt(obj_pred_ij$par_hat$tau2)),
-                        ncol = n_samples)
-        obj_pred_ij$S_samples <- obj_pred_ij$S_samples+Z_sim
-      }
-
-      n_samples <- ncol(obj_pred_ij$S_samples)
-
-      if(is.matrix(mu_target)) {
-        lp_samples_ij <- sapply(1:n_samples,
-                                function(h)
-                                  mu_target[,h] + cov_offset +
-                                  obj_pred_ij$S_samples[,h])
-      } else {
-        lp_samples_ij <- sapply(1:n_samples,
-                                function(h)
-                                  mu_target + cov_offset +
-                                  obj_pred_ij$S_samples[,h])
-      }
+      lp_samples_ij <- prediction_link_samples(
+        prediction_ij,
+        include_fixed = include_covariates,
+        include_offset = include_cov_offset
+      )
+      n_samples <- ncol(lp_samples_ij)
 
       # Grid-cell-level target samples are shared by both scales: grid
       # objectives use them directly, area objectives aggregate them by

@@ -331,13 +331,13 @@ test_that("assess_prediction uses each model's own data for held-out predictors"
 
   seen_predictors <- list()
   local_mocked_bindings(
-    setup_prediction = function(object, grid_pred, predictors, ...) {
-      seen_predictors[[object$model_id]] <<- names(predictors)
-      list(predictors = predictors)
-    },
-    predict_grid_target = function(object, ...) {
-      list(lp_samples = matrix(rep(1, nrow(object$predictors) * 2),
-                               nrow = nrow(object$predictors)))
+    predict.RiskMap = function(object, newdata, ...) {
+      seen_predictors[[object$model_id]] <<- names(newdata)
+      n <- nrow(newdata)
+      structure(list(
+        data = transform(newdata, fixed = 0, offset = 0),
+        samples = list(spatial = matrix(rep(1, n * 2), nrow = n))
+      ), class = "RiskMap_prediction")
     },
     .package = "RiskMap"
   )
@@ -593,12 +593,14 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
   data <- st_sf(y = c(0, 0, 0), x1 = c(10, 20, 30), geometry = geom)
 
   testthat::local_mocked_bindings(
-    setup_prediction = function(object, grid_pred, predictors, ...) {
-      list(predictors = predictors)
-    },
-    predict_grid_target = function(object, ...) {
-      n <- nrow(object$predictors)
-      list(lp_samples = matrix(rep(c(-1, 0, 1), each = n), nrow = n))
+    predict.RiskMap = function(object, newdata, ...) {
+      n <- nrow(newdata)
+      structure(list(
+        data = transform(newdata, fixed = 0, offset = 0),
+        samples = list(
+          spatial = matrix(rep(c(-1, 0, 1), each = n), nrow = n)
+        )
+      ), class = "RiskMap_prediction")
     },
     .package = "RiskMap"
   )
