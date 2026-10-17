@@ -126,7 +126,7 @@ specify_glgpm <- function(formula, data, family, parameters,
 #' The spatial process is drawn jointly at the union of the requested locations
 #' using the model's Matern covariance. There is no nearest-grid approximation
 #' and no conditioning on the observed responses. This differs from conditional
-#' spatial prediction with [setup_prediction()].
+#' spatial prediction with [predict.RiskMap()].
 #'
 #' The returned components distinguish the spatial effect `S`, the nugget and
 #' grouped effects, the full linear predictor (including offsets), its

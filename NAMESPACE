@@ -2,8 +2,8 @@
 
 S3method(coef,RiskMap)
 S3method(fitted,RiskMap)
-S3method(plot,RiskMap_predict_areal_target)
-S3method(plot,RiskMap_predict_grid_target)
+S3method(plot,RiskMap_prediction)
+S3method(predict,RiskMap)
 S3method(print,summary.RiskMap)
 S3method(print,summary.RiskMap_assess_simulation)
 S3method(print,summary.RiskMap_cross_validation)
@@ -27,13 +27,10 @@ export(plot_mcmc)
 export(plot_metric)
 export(plot_sim_surf)
 export(plot_variogram)
-export(predict_areal_target)
-export(predict_grid_target)
 export(propose_utm)
 export(re)
 export(set_control_mcmc)
 export(set_control_mcml)
-export(setup_prediction)
 export(simulate_glgpm)
 export(simulated_data)
 export(simulated_surface)
@@ -41,7 +38,6 @@ export(simulated_values)
 export(specify_glgpm)
 export(summarise_distance)
 export(to_table)
-export(update_predictors)
 export(variogram)
 import(ggplot2)
 import(sf)
@@ -50,7 +46,6 @@ importFrom(Deriv,Deriv)
 importFrom(Matrix,
   Matrix,
   forceSymmetric,
-  solve,
   sparseMatrix
 )
 importFrom(Rcpp,evalCpp)
@@ -61,10 +56,15 @@ importFrom(dplyr,
   mutate,
   summarize
 )
+importFrom(ggspatial,
+  annotation_north_arrow,
+  annotation_scale
+)
 importFrom(graphics,
   par,
   points
 )
+importFrom(grid,unit)
 importFrom(gridExtra,grid.arrange)
 importFrom(knitr,kable)
 importFrom(numDeriv,
@@ -79,9 +79,7 @@ importFrom(spatialsample,
   spatial_clustering_cv
 )
 importFrom(terra,
-  as.data.frame,
   match,
-  plot,
   rast,
   rasterize,
   vect

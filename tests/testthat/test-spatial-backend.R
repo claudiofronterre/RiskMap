@@ -105,24 +105,26 @@ test_that("prediction scaling preserves draws at fixed fitted parameters", {
   attr(unscaled_model, "distance_scale") <- NULL
 
   set.seed(712)
-  scaled_prediction <- setup_prediction(
+  scaled_prediction <- predict(
     scaled_model,
-    grid_pred = st_geometry(gaussian_data),
-    type = "joint",
+    newdata = gaussian_data,
+    prediction = "joint",
     control_mcmc = control_mcmc,
+    keep_samples = TRUE,
     messages = FALSE
   )
   set.seed(712)
-  unscaled_prediction <- setup_prediction(
+  unscaled_prediction <- predict(
     unscaled_model,
-    grid_pred = st_geometry(gaussian_data),
-    type = "joint",
+    newdata = gaussian_data,
+    prediction = "joint",
     control_mcmc = control_mcmc,
+    keep_samples = TRUE,
     messages = FALSE
   )
 
-  expect_equal(scaled_prediction$S_samples,
-               unscaled_prediction$S_samples,
+  expect_equal(scaled_prediction$samples$spatial,
+               unscaled_prediction$samples$spatial,
                tolerance = 1e-12)
 })
 

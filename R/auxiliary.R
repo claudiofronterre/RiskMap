@@ -454,8 +454,7 @@ get_formula_terms <- function(formula) {
 ##' @title Check that select columns of the data contain no missing values
 ##' @description Checks that the specified columns are complete, ignoring
 ##' missing values elsewhere in `data`. The error message names the argument
-##' as passed by the caller (e.g. `predictors` from `setup_prediction()`,
-##' `data` from `check_formula()`).
+##' as passed by the caller (for example, `data` from `check_formula()`).
 ##' @param data The data to check.
 ##' @param columns The column names to check for missing data.
 ##' @return TRUE if there is no missing data, or raise an error if not.

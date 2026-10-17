@@ -49,7 +49,7 @@ data checks and simulation studies with a known spatial surface.
 The spatial process is drawn jointly at the union of the requested locations
 using the model's Matern covariance. There is no nearest-grid approximation
 and no conditioning on the observed responses. This differs from conditional
-spatial prediction with \code{\link[=setup_prediction]{setup_prediction()}}.
+spatial prediction with \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
 
 The returned components distinguish the spatial effect \code{S}, the nugget and
 grouped effects, the full linear predictor (including offsets), its
