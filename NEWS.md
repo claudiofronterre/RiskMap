@@ -21,9 +21,9 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `maxim.integrand` | `maxim_integrand` |
 | `plot_score` | `plot_metric` |
 | `plot_s_variogram` | `plot_variogram` |
-| `pred_over_grid` | `setup_prediction` |
-| `pred_target_grid` | `predict_grid_target` |
-| `pred_target_shp` | `predict_areal_target` |
+| `pred_over_grid` | `predict` |
+| `pred_target_grid` | `predict` |
+| `pred_target_shp` | `predict` with `boundaries` |
 | `set_control_sim` | `set_control_mcmc` |
 | `surf_sim` | `simulate_glgpm` |
 | `s_variogram` | `variogram` |
@@ -38,7 +38,7 @@ as they are included automatically.
 If `data` are in longitude/latitude and `model_crs` is not supplied, the
 coordinates are now automatically reprojected to an appropriate UTM zone;
 providing `model_crs` in longitude/latitude now raises an error.
-`setup_prediction()`, `simulate_glgpm()` and `assess_prediction()` have
+`predict()`, `simulate_glgpm()` and `assess_prediction()` have
 been updated to match; `simulate_glgpm()`'s own `convert_to_crs`/`scale_to_km`
 arguments have likewise been replaced with `model_crs`/`distance_units`.
 - In `summarise_distance()` and `variogram()`, `scale_to_km` has similarly been
@@ -63,11 +63,11 @@ native linear units rather than assuming metres.
 - `create_grid()` no longer raises an error when `boundaries` is in
 longitude/latitude; like `glgpm()`, it now automatically reprojects to an
 appropriate UTM zone and reports the conversion with a message.
-- The `shp` parameter has been renamed to `boundaries` in `create_grid()`,
-`predict_areal_target()` and `assess_simulation()`; `shp_target` and `return_shp`
-in `predict_areal_target()` have similarly been renamed to `areal_target` and
-`return_boundaries`. `predict_areal_target()`'s returned `shp` component is now
-named `boundaries`.
+- The old three-stage prediction interface has been replaced by
+  `predict.RiskMap()`. Prediction locations, predictors, offsets, grouping
+  variables and weights are supplied together in one `sf` object. Supplying
+  `boundaries` requests blockwise joint prediction and areal aggregation;
+  grids created by `create_grid()` use exact fractional cell coverage.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - `"user"` has been added as an option to `method` the parameter of
 `assess_prediction()` replacing the previous behaviour where providing the
@@ -89,11 +89,6 @@ reproducible.
   `target_transform` and `area_summary`; their returned values are now checked
   before they are used. Grid- and area-level objectives can be requested
   together in one run with `spatial_scale = c("grid", "area")`.
-- In `plot.RiskMap_predict_grid_target()` and `plot.RiskMap_predict_areal_target()`,
-`which_target`/`which_summary` have been renamed to `target`/`summary`, for
-consistency elsewhere in the package. `target` now defaults to `NULL`, which
-plots the first available target; an unrecognised `target` or `summary` now
-raises an informative error instead of a blank plot.
 - In `plot_metric()`; its `which_score`/`which_model`
 parameters have been renamed to `metric`/`model`.
 - The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to

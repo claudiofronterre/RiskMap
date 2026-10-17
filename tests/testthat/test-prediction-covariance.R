@@ -20,12 +20,15 @@ test_that("Gaussian predictions remain finite with tiny measurement error", {
   for (variance in c(1e-10, 1e-12)) {
     model$estimate$sigma2_me <- log(variance)
     for (type in c("marginal", "joint")) {
-      expect_warning(prediction <- setup_prediction(model,
-                                                    grid_pred = st_geometry(gaussian_data),
-                                                    type = type,
-                                                    control_mcmc = control_mcmc,
-                                                    messages = FALSE), NA)
-      expect_true(all(is.finite(prediction$S_samples)))
+      expect_warning(prediction <- predict(
+        model,
+        newdata = gaussian_data,
+        prediction = type,
+        control_mcmc = control_mcmc,
+        keep_samples = TRUE,
+        messages = FALSE
+      ), NA)
+      expect_true(all(is.finite(prediction$samples$spatial)))
     }
   }
 })
