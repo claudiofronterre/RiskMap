@@ -2,6 +2,7 @@
 
 S3method(coef,RiskMap)
 S3method(fitted,RiskMap)
+S3method(plot,RiskMap_prediction)
 S3method(predict,RiskMap)
 S3method(print,summary.RiskMap)
 S3method(print,summary.RiskMap_assess_simulation)
@@ -55,10 +56,15 @@ importFrom(dplyr,
   mutate,
   summarize
 )
+importFrom(ggspatial,
+  annotation_north_arrow,
+  annotation_scale
+)
 importFrom(graphics,
   par,
   points
 )
+importFrom(grid,unit)
 importFrom(gridExtra,grid.arrange)
 importFrom(knitr,kable)
 importFrom(numDeriv,
