@@ -31,7 +31,9 @@ locations.}
 
 \item{boundaries}{Optional \code{sf} polygon object. When supplied, prediction
 locations are assigned to polygons and their joint samples are aggregated
-within each polygon.}
+within each polygon. Grids returned by \code{\link[=create_grid]{create_grid()}} use exact
+fractional cell coverage; other point objects use point-in-polygon
+assignment.}
 
 \item{aggregate}{Character vector naming one or more within-polygon
 operations: \code{"mean"}, \code{"median"}, \code{"sum"}, \code{"min"}, or \code{"max"}. It must
@@ -114,6 +116,8 @@ row per polygon.}
 \item{prediction}{Whether prediction was marginal or joint.}
 \item{family}{The fitted response family.}
 \item{observed_locations}{Whether \code{newdata} was omitted.}
+\item{coverage}{For polygon prediction, \code{"exact"} when fractional grid-cell
+coverage was used and \code{"point"} for point-in-polygon assignment.}
 }
 }
 \description{
@@ -161,8 +165,11 @@ so population values are converted internally to within-polygon fractions.
 weights. Thus, a prevalence prediction weighted by population counts gives
 population-weighted prevalence under \code{"mean"} and expected cases under
 \code{"sum"}. Population densities must first be multiplied by the represented
-cell areas. Because \code{newdata} contains points rather than raster-cell
-polygons, geometric boundary-overlap fractions are not inferred.
+cell areas. When \code{newdata} was created by \code{\link[=create_grid]{create_grid()}}, each supplied
+weight is multiplied by the exact fraction of its square cell covered by
+each polygon. Cells crossing a boundary can therefore contribute to more
+than one polygon. For an arbitrary \code{sf} point object, cell footprints cannot
+be inferred safely and each point is assigned to the polygon containing it.
 
 For location-level prediction, output columns use \verb{<quantity>_<summary>}
 names. For example, \code{response_mean}, \code{response_lower}, and \code{response_upper}

@@ -241,6 +241,7 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
   expect_s3_class(result, "RiskMap_prediction")
   expect_true(result$aggregated)
   expect_identical(result$prediction, "joint")
+  expect_identical(result$coverage, "exact")
   expect_identical(st_geometry(result$data), st_geometry(boundaries))
   expect_identical(result$data$district, boundaries$district)
   expect_equal(nrow(result$data), nrow(boundaries))
@@ -279,6 +280,76 @@ test_that("polygon aggregation applies weights on the correct scale", {
     aggregate_prediction_values(values, "max", weights),
     matrix(c(3, 6), nrow = 1)
   )
+})
+
+test_that("RiskMap grids use exact fractional polygon coverage", {
+  outer <- st_sf(
+    geometry = st_sfc(st_polygon(list(matrix(
+      c(0, 0, 2, 0, 2, 2, 0, 2, 0, 0), ncol = 2, byrow = TRUE
+    )))),
+    crs = 32631
+  )
+  prediction_grid <- create_grid(outer, spacing = 1, distance_units = "m")
+  boundaries <- st_sf(
+    area = c("left", "right"),
+    geometry = st_sfc(
+      st_polygon(list(matrix(
+        c(0, 0, 0.75, 0, 0.75, 2, 0, 2, 0, 0),
+        ncol = 2, byrow = TRUE
+      ))),
+      st_polygon(list(matrix(
+        c(0.75, 0, 2, 0, 2, 2, 0.75, 2, 0.75, 0),
+        ncol = 2, byrow = TRUE
+      )))
+    ),
+    crs = 32631
+  )
+
+  assignment <- assign_prediction_locations(prediction_grid, boundaries)
+
+  expect_identical(assignment$method, "exact")
+  expect_length(assignment$area_id, 6)
+  expect_equal(
+    as.numeric(tapply(assignment$coverage, assignment$area_id, sum)),
+    c(1.5, 2.5),
+    tolerance = 1e-6
+  )
+  expect_length(unique(assignment$data$grid_id), 4)
+
+  transformed_assignment <- assign_prediction_locations(
+    st_transform(prediction_grid, 4326), st_transform(boundaries, 4326)
+  )
+  expect_identical(transformed_assignment$method, "exact")
+  expect_equal(
+    as.numeric(tapply(
+      transformed_assignment$coverage,
+      transformed_assignment$area_id,
+      sum
+    )),
+    c(1.5, 2.5),
+    tolerance = 1e-6
+  )
+})
+
+test_that("ordinary sf points retain point-in-polygon assignment", {
+  points <- st_sf(
+    value = 1:2,
+    geometry = st_sfc(st_point(c(0.25, 0.5)), st_point(c(1.25, 0.5))),
+    crs = 32631
+  )
+  boundaries <- st_sf(
+    geometry = st_sfc(st_polygon(list(matrix(
+      c(0, 0, 1, 0, 1, 1, 0, 1, 0, 0), ncol = 2, byrow = TRUE
+    )))),
+    crs = 32631
+  )
+
+  assignment <- assign_prediction_locations(points, boundaries)
+
+  expect_identical(assignment$method, "point")
+  expect_identical(assignment$data$value, 1L)
+  expect_identical(assignment$coverage, 1)
+  expect_identical(assignment$outside, 2L)
 })
 
 test_that("areal exceedance summaries are tidy and threshold-specific", {

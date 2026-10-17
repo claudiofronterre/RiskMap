@@ -11,7 +11,9 @@
 ##'   locations.
 ##' @param boundaries Optional `sf` polygon object. When supplied, prediction
 ##'   locations are assigned to polygons and their joint samples are aggregated
-##'   within each polygon.
+##'   within each polygon. Grids returned by [create_grid()] use exact
+##'   fractional cell coverage; other point objects use point-in-polygon
+##'   assignment.
 ##' @param aggregate Character vector naming one or more within-polygon
 ##'   operations: `"mean"`, `"median"`, `"sum"`, `"min"`, or `"max"`. It must
 ##'   be supplied when `boundaries` is used. Several operations reuse the same
@@ -100,8 +102,11 @@
 ##' weights. Thus, a prevalence prediction weighted by population counts gives
 ##' population-weighted prevalence under `"mean"` and expected cases under
 ##' `"sum"`. Population densities must first be multiplied by the represented
-##' cell areas. Because `newdata` contains points rather than raster-cell
-##' polygons, geometric boundary-overlap fractions are not inferred.
+##' cell areas. When `newdata` was created by [create_grid()], each supplied
+##' weight is multiplied by the exact fraction of its square cell covered by
+##' each polygon. Cells crossing a boundary can therefore contribute to more
+##' than one polygon. For an arbitrary `sf` point object, cell footprints cannot
+##' be inferred safely and each point is assigned to the polygon containing it.
 ##'
 ##' For location-level prediction, output columns use `<quantity>_<summary>`
 ##' names. For example, `response_mean`, `response_lower`, and `response_upper`
@@ -134,6 +139,8 @@
 ##'   \item{prediction}{Whether prediction was marginal or joint.}
 ##'   \item{family}{The fitted response family.}
 ##'   \item{observed_locations}{Whether `newdata` was omitted.}
+##'   \item{coverage}{For polygon prediction, `"exact"` when fractional grid-cell
+##'     coverage was used and `"point"` for point-in-polygon assignment.}
 ##' }
 ##'
 ##' @examples
@@ -502,20 +509,12 @@ restore_prediction_rows <- function(values, valid_rows, n_rows) {
   out
 }
 
-#' Predict and aggregate jointly within polygon boundaries
+#' Assign prediction support to polygon boundaries
 #' @noRd
-predict_over_boundaries <- function(object, prediction_input, boundaries,
-                                    aggregate, include, summaries, thresholds,
-                                    level, weights,
-                                    control_mcmc, seed, keep_samples,
-                                    messages) {
-  model_data <- prediction_input$model_data
-  output_boundaries <- boundaries
-  if (!isTRUE(st_crs(boundaries) == st_crs(object$data))) {
-    if (messages) {
-      message("Transforming 'boundaries' to the fitted model CRS for aggregation")
-    }
-    boundaries <- st_transform(boundaries, st_crs(object$data))
+assign_prediction_locations <- function(model_data, boundaries) {
+  metadata <- attr(model_data, "grid_metadata", exact = TRUE)
+  if (inherits(model_data, "RiskMap_grid") && !is.null(metadata)) {
+    return(assign_prediction_grid_cells(model_data, boundaries, metadata))
   }
 
   membership <- st_within(model_data, boundaries)
@@ -535,30 +534,126 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     )
     membership_count <- lengths(membership)
   }
-  if (any(membership_count == 0L)) {
-    warning(sum(membership_count == 0L), " prediction location",
-            if (sum(membership_count == 0L) == 1L) " lies" else "s lie",
+  assigned <- membership_count == 1L
+  list(
+    data = model_data[assigned, , drop = FALSE],
+    area_id = vapply(membership[assigned], `[[`, integer(1), 1L),
+    coverage = rep(1, sum(assigned)),
+    outside = which(!assigned),
+    method = "point"
+  )
+}
+
+#' Calculate exact polygon coverage for cells created by create_grid
+#' @noRd
+assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
+  if (!identical(metadata$cell_shape, "square") ||
+      !is.numeric(metadata$cellsize) || length(metadata$cellsize) != 1L ||
+      !is.finite(metadata$cellsize) || metadata$cellsize <= 0 ||
+      is.null(metadata$grid_crs)) {
+    stop("'newdata' contains invalid RiskMap grid metadata", call. = FALSE)
+  }
+  if (!nrow(model_data)) {
+    return(list(
+      data = model_data,
+      area_id = integer(),
+      coverage = numeric(),
+      outside = integer(),
+      method = "exact"
+    ))
+  }
+  grid_crs <- st_crs(metadata$grid_crs)
+  grid_boundaries <- st_transform(boundaries, grid_crs)
+  overlaps <- st_overlaps(grid_boundaries)
+  if (any(lengths(overlaps) > 0L)) {
+    stop("'boundaries' contains overlapping polygons", call. = FALSE)
+  }
+
+  grid_points <- st_transform(model_data, grid_crs)
+  coordinates <- st_coordinates(grid_points)
+  half_cell <- metadata$cellsize / 2
+  x_limits <- range(coordinates[, 1]) + c(-half_cell, half_cell)
+  y_limits <- range(coordinates[, 2]) + c(-half_cell, half_cell)
+  n_columns <- round(diff(x_limits) / metadata$cellsize)
+  n_rows <- round(diff(y_limits) / metadata$cellsize)
+  # Reconstruct the original lattice, leaving cells absent from newdata empty.
+  cell_raster <- terra::rast(
+    nrows = n_rows, ncols = n_columns,
+    xmin = x_limits[1], xmax = x_limits[2],
+    ymin = y_limits[1], ymax = y_limits[2],
+    crs = grid_crs$wkt
+  )
+  raster_cells <- terra::cellFromXY(cell_raster, coordinates)
+  if (anyDuplicated(raster_cells)) {
+    stop("'newdata' contains duplicate RiskMap grid cells", call. = FALSE)
+  }
+  raster_values <- rep(NA_real_, terra::ncell(cell_raster))
+  raster_values[raster_cells] <- seq_len(nrow(model_data))
+  terra::values(cell_raster) <- raster_values
+  names(cell_raster) <- "prediction_row"
+
+  overlap <- terra::extract(
+    cell_raster,
+    terra::vect(grid_boundaries),
+    cells = TRUE,
+    exact = TRUE
+  )
+  keep <- !is.na(overlap$prediction_row) & overlap$fraction > 0
+  overlap <- overlap[keep, , drop = FALSE]
+  prediction_row <- as.integer(overlap$prediction_row)
+  list(
+    data = model_data[prediction_row, , drop = FALSE],
+    area_id = as.integer(overlap$ID),
+    coverage = as.numeric(overlap$fraction),
+    outside = setdiff(seq_len(nrow(model_data)), unique(prediction_row)),
+    method = "exact"
+  )
+}
+
+#' Predict and aggregate jointly within polygon boundaries
+#' @noRd
+predict_over_boundaries <- function(object, prediction_input, boundaries,
+                                    aggregate, include, summaries, thresholds,
+                                    level, weights,
+                                    control_mcmc, seed, keep_samples,
+                                    messages) {
+  model_data <- prediction_input$model_data
+  output_boundaries <- boundaries
+  if (!isTRUE(st_crs(boundaries) == st_crs(object$data))) {
+    if (messages) {
+      message("Transforming 'boundaries' to the fitted model CRS for aggregation")
+    }
+    boundaries <- st_transform(boundaries, st_crs(object$data))
+  }
+
+  assignment <- assign_prediction_locations(model_data, boundaries)
+  assigned_data <- assignment$data
+  area_id <- assignment$area_id
+  coverage <- assignment$coverage
+  if (length(assignment$outside)) {
+    warning(length(assignment$outside), " prediction ",
+            if (assignment$method == "exact") "cell" else "location",
+            if (length(assignment$outside) == 1L) " lies" else "s lie",
             " outside all polygons and will not contribute to areal summaries",
             call. = FALSE)
   }
-  assigned <- membership_count == 1L
-  area_id <- vapply(membership[assigned], `[[`, integer(1), 1L)
-  assigned_data <- model_data[assigned, , drop = FALSE]
 
   if (is.null(weights)) {
-    weight_values <- rep(1, nrow(assigned_data))
+    weight_values <- coverage
   } else {
     if (!weights %in% names(assigned_data)) {
       stop("'newdata' does not contain the weights column ", shQuote(weights),
            call. = FALSE)
     }
-    weight_values <- assigned_data[[weights]]
-    if (!is.numeric(weight_values) || anyNA(weight_values) ||
-        any(!is.finite(weight_values)) || any(weight_values < 0)) {
+    supplied_weights <- assigned_data[[weights]]
+    if (!is.numeric(supplied_weights) || anyNA(supplied_weights) ||
+        any(!is.finite(supplied_weights)) || any(supplied_weights < 0)) {
       stop("The weights column ", shQuote(weights),
            " must contain finite, non-negative values without missing values",
            call. = FALSE)
     }
+    # Allocate each cell's supplied weight in proportion to polygon coverage.
+    weight_values <- supplied_weights * coverage
   }
 
   area_indices <- split(seq_len(nrow(assigned_data)), area_id)
@@ -589,7 +684,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       prediction = "joint",
       family = object$family,
       observed_locations = FALSE,
-      aggregated = TRUE
+      aggregated = TRUE,
+      coverage = assignment$method
     )
     class(out) <- "RiskMap_prediction"
     return(out)
@@ -759,7 +855,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     prediction = "joint",
     family = object$family,
     observed_locations = FALSE,
-    aggregated = TRUE
+    aggregated = TRUE,
+    coverage = assignment$method
   )
   class(out) <- "RiskMap_prediction"
   out
