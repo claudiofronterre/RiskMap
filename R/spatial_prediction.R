@@ -28,8 +28,9 @@
 ##' @param include Character vector specifying optional components to add to the
 ##'   complete linear predictor and response. Supported values are
 ##'   `"random_effects"`, for conditional predictions at known groups, and
-##'   `"nugget"`, for observation-level predictive variation. Fixed effects,
-##'   the spatial process and any offset are always returned separately.
+##'   `"nugget"`, for a new realization of observation-level predictive
+##'   variation at locations supplied through `newdata`. Fixed effects, the
+##'   spatial process and any offset are always returned separately.
 ##' @param transform Optional named list of functions defining derived predictive
 ##'   targets from the complete linear-predictor draws. Each function receives a
 ##'   location-by-draw matrix and must return a numeric matrix with the same
@@ -42,7 +43,9 @@
 ##'   corresponding columns in `newdata`. Rows receive equal weight unless an
 ##'   optional numeric `.weight` column is supplied. Predictor values kept
 ##'   together on each row are standardized jointly, preserving their empirical
-##'   association.
+##'   association. This answers what would be predicted if every location had
+##'   the same reference-population distribution. `.weight` weights reference
+##'   people or profiles and is distinct from the polygon `weights` argument.
 ##' @param summaries Character vector naming the summaries calculated from each
 ##'   predictive distribution. Supported values are `"mean"`, `"median"`,
 ##'   `"sd"`, `"cv"`, `"lower"`, `"upper"`, `"interval_width"`, and
@@ -1198,6 +1201,13 @@ standardize_prediction_targets <- function(object, prediction_data,
 #' Build the fixed-effect contribution for prediction data
 #' @noRd
 prediction_fixed_effect <- function(object, predictors, beta = coef(object)$beta) {
+  design <- prediction_design_matrix(object, predictors)
+  as.numeric(design %*% beta)
+}
+
+#' Build a prediction design matrix using the fitted factor structure
+#' @noRd
+prediction_design_matrix <- function(object, predictors) {
   inter_f <- interpret_formula(object$formula)
   fixed_formula <- update(inter_f$pf, NULL ~ .)
   fitted_frame <- model.frame(fixed_formula, data = object$data,
@@ -1212,11 +1222,11 @@ prediction_fixed_effect <- function(object, predictors, beta = coef(object)$beta
     contrasts.arg = attr(object$D, "contrasts")
   ))
   if (!identical(colnames(design), colnames(object$D)) ||
-      ncol(design) != length(beta)) {
-    stop("The reference population produces a model matrix that does not match the fitted model",
+      ncol(design) != ncol(object$D)) {
+    stop("The prediction data produce a model matrix that does not match the fitted model",
          call. = FALSE)
   }
-  as.numeric(design %*% beta)
+  design
 }
 
 #' Assemble prediction-location random-effect samples
@@ -1758,8 +1768,6 @@ prediction_samples <- function(object,
 
   par_hat <- coef(object)
   inter_f      <- interpret_formula(object$formula)
-  inter_lt_f   <- inter_f
-  inter_lt_f$pf <- update(inter_lt_f$pf, NULL ~.)
 
   intercept_only <- if (p == 1) prod(object$D[, 1] == 1) == 1 else FALSE
 
@@ -1788,8 +1796,7 @@ prediction_samples <- function(object,
         stop(if (is.null(index)) "The number of rows in 'predictors' does not match the number of locations in 'grid_pred'"
              else sprintf("The number of rows in of 'predictors[[%d]]' does not match the number of locations in 'grid_pred[[%d]]'", index, index))
       check_complete_data(predictors, model_predictors)
-      mf <- model.frame(inter_lt_f$pf, data = predictors, na.action = na.fail)
-      as.matrix(model.matrix(attr(mf, "terms"), data = predictors))
+      prediction_design_matrix(object, predictors)
     }
 
     if (list_mode) {

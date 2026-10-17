@@ -53,8 +53,9 @@ joint prediction when \code{boundaries} are supplied.}
 \item{include}{Character vector specifying optional components to add to the
 complete linear predictor and response. Supported values are
 \code{"random_effects"}, for conditional predictions at known groups, and
-\code{"nugget"}, for observation-level predictive variation. Fixed effects,
-the spatial process and any offset are always returned separately.}
+\code{"nugget"}, for a new realization of observation-level predictive
+variation at locations supplied through \code{newdata}. Fixed effects, the
+spatial process and any offset are always returned separately.}
 
 \item{transform}{Optional named list of functions defining derived predictive
 targets from the complete linear-predictor draws. Each function receives a
@@ -69,7 +70,9 @@ must be fixed-effect predictors from the fitted model and override the
 corresponding columns in \code{newdata}. Rows receive equal weight unless an
 optional numeric \code{.weight} column is supplied. Predictor values kept
 together on each row are standardized jointly, preserving their empirical
-association.}
+association. This answers what would be predicted if every location had
+the same reference-population distribution. \code{.weight} weights reference
+people or profiles and is distinct from the polygon \code{weights} argument.}
 
 \item{summaries}{Character vector naming the summaries calculated from each
 predictive distribution. Supported values are \code{"mean"}, \code{"median"},
