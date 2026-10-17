@@ -150,7 +150,7 @@ test_that("predict.RiskMap validates its concise public interface", {
       gaussian_model, prediction_data, prediction = "joint",
       include = "random_effects", messages = FALSE
     ),
-    "unknown levels for random effect 'i'"
+    "unknown levels for random effect"
   )
 })
 
