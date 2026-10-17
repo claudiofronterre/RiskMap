@@ -24,8 +24,19 @@ test_that("create_grid produces errors", {
 test_that("create_grid functions correctly", {
 
   result <- create_grid(st_transform(sf_polygon, 32638), 10)
+  expect_s3_class(result, "RiskMap_grid")
   expect_s3_class(result, "sf")
   expect_identical(as.character(unique(st_geometry_type(result))), "POINT")
+  expect_identical(result$grid_id, seq_len(nrow(result)))
+
+  metadata <- attr(result, "grid_metadata")
+  expect_identical(metadata$spacing, 10)
+  expect_identical(metadata$distance_units, "km")
+  expect_equal(metadata$cellsize, 10000)
+  expect_equal(metadata$cell_area, 1e8)
+  expect_identical(metadata$cell_shape, "square")
+  expect_identical(metadata$grid_crs, st_crs(result))
+  expect_length(metadata$origin, 2)
 
   square <- st_polygon(list(matrix(square_coords * 1000, ncol = 2, byrow = TRUE)))
   sf_square <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
@@ -85,5 +96,30 @@ test_that("create_grid converts spacing to the projected CRS units", {
     as.numeric(st_distance(grid_ft[1, ], grid_ft[2, ])),
     2500 / 0.304800609601219,
     tolerance = 1e-4
+  )
+  expect_equal(
+    attr(grid_ft, "grid_metadata")$cellsize,
+    2500 / 0.304800609601219,
+    tolerance = 1e-4
+  )
+})
+
+test_that("RiskMap grid metadata survives common point operations", {
+  square <- st_polygon(list(matrix(square_coords * 1000,
+                                   ncol = 2, byrow = TRUE)))
+  square_m <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
+  grid <- create_grid(square_m, spacing = 2.5)
+
+  subset_grid <- grid[c(4, 1), ]
+  transformed_grid <- st_transform(grid, 4326)
+
+  expect_s3_class(subset_grid, "RiskMap_grid")
+  expect_identical(subset_grid$grid_id, c(4L, 1L))
+  expect_identical(
+    attr(subset_grid, "grid_metadata"), attr(grid, "grid_metadata")
+  )
+  expect_s3_class(transformed_grid, "RiskMap_grid")
+  expect_identical(
+    attr(transformed_grid, "grid_metadata"), attr(grid, "grid_metadata")
   )
 })
