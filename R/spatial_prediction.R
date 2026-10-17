@@ -78,13 +78,14 @@
 ##' @param ... Additional arguments reserved for future prediction methods.
 ##'
 ##' @details
-##' The default prediction represents the underlying epidemiological surface,
-##' with linear predictor
+##' At new locations, the default prediction represents the underlying
+##' epidemiological surface, with linear predictor
 ##' \deqn{d(x)^T \hat\beta + S(x) + \mathrm{offset}(x).}
 ##' The offset is included automatically when it was specified in the fitted
 ##' model. Nugget and unstructured random effects are excluded unless requested
 ##' explicitly because they generally represent observation-level or
-##' group-specific variation rather than the underlying spatial surface.
+##' group-specific variation rather than the underlying spatial surface. The
+##' observed-location distinction for a fitted nugget is described below.
 ##'
 ##' For non-Gaussian fits, stored final-parameter conditional samples are reused
 ##' when `control_mcmc = NULL`. If the model was fitted with
@@ -92,6 +93,10 @@
 ##' [set_control_mcmc()] defaults. Supplying `control_mcmc` always requests a
 ##' fresh conditional run. For Gaussian models, prediction is based on their
 ##' exact conditional Gaussian distribution.
+##' At the observed locations, the conditioned location-level Gaussian effect
+##' already includes the fitted nugget when the model has one. Consequently,
+##' `include = "nugget"` is available only for predictions supplied through
+##' `newdata`, where it represents a new independent nugget realization.
 ##'
 ##' `newdata` and `boundaries` are transformed internally to the fitted model
 ##' CRS without changing row order; returned geometries remain in their input
@@ -242,6 +247,10 @@ predict.RiskMap <- function(
     set.seed(seed)
   }
   observed_locations <- is.null(newdata)
+  if (observed_locations && "nugget" %in% include) {
+    stop("At observed locations the conditioned location-level effect already includes the nugget; do not request include = \"nugget\"",
+         call. = FALSE)
+  }
   prediction_input <- validate_prediction_data(
     object, newdata, include, messages, standardize
   )

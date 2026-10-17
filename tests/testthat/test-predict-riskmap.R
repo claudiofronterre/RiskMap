@@ -96,6 +96,7 @@ test_that("optional random-effect and nugget components are explicit", {
   )
   observation <- predict(
     gaussian_offset_model,
+    newdata = gaussian_offset_model$data,
     include = "nugget",
     control_mcmc = observation_control,
     keep_samples = TRUE,
@@ -105,6 +106,17 @@ test_that("optional random-effect and nugget components are explicit", {
                dim(observation$samples$spatial))
   expect_true(all(c("nugget_mean", "nugget_lower", "nugget_upper") %in%
                     names(observation$data)))
+})
+
+test_that("the fitted nugget is not counted twice at observed locations", {
+  expect_error(
+    predict(
+      gaussian_offset_model,
+      include = "nugget",
+      messages = FALSE
+    ),
+    "already includes the nugget"
+  )
 })
 
 test_that("prediction distinguishes estimated and fixed nugget variances", {

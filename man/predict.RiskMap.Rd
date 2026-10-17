@@ -148,13 +148,14 @@ required by the fitted model are supplied together in one \code{sf} object,
 keeping their rows aligned.
 }
 \details{
-The default prediction represents the underlying epidemiological surface,
-with linear predictor
+At new locations, the default prediction represents the underlying
+epidemiological surface, with linear predictor
 \deqn{d(x)^T \hat\beta + S(x) + \mathrm{offset}(x).}
 The offset is included automatically when it was specified in the fitted
 model. Nugget and unstructured random effects are excluded unless requested
 explicitly because they generally represent observation-level or
-group-specific variation rather than the underlying spatial surface.
+group-specific variation rather than the underlying spatial surface. The
+observed-location distinction for a fitted nugget is described below.
 
 For non-Gaussian fits, stored final-parameter conditional samples are reused
 when \code{control_mcmc = NULL}. If the model was fitted with
@@ -162,6 +163,11 @@ when \code{control_mcmc = NULL}. If the model was fitted with
 \code{\link[=set_control_mcmc]{set_control_mcmc()}} defaults. Supplying \code{control_mcmc} always requests a
 fresh conditional run. For Gaussian models, prediction is based on their
 exact conditional Gaussian distribution.
+
+At the observed locations, the conditioned location-level Gaussian effect
+already includes the fitted nugget when the model has one. Consequently,
+\code{include = "nugget"} is available only for predictions supplied through
+\code{newdata}, where it represents a new independent nugget realization.
 
 \code{newdata} and \code{boundaries} are transformed internally to the fitted model
 CRS without changing row order; returned geometries remain in their input
