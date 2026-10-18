@@ -2317,6 +2317,85 @@ differentiate <- function(f, ncheck) {
   function(eta) vapply(eta, function(z) numDeriv::grad(f, z), numeric(1))
 }
 
+##' Validate and construct inverse-link functions
+##'
+##' This is the single internal representation used by the conditional-mode,
+##' sampling and non-Gaussian likelihood code. Keeping the validation and
+##' derivative construction here prevents those paths from interpreting a
+##' user-supplied link differently.
+##'
+##' @noRd
+make_inverse_link_functions <- function(family, invlink, ncheck,
+                                        second_derivative = TRUE) {
+  validate <- function(f, name) {
+    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
+    x <- rep(0, ncheck)
+    out <- tryCatch(f(x), error = function(e) e)
+    if (inherits(out, "error")) {
+      stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
+    }
+    if (!is.numeric(out)) {
+      stop(sprintf("`%s` must return a numeric vector.", name))
+    }
+    if (length(out) != length(x)) {
+      stop(sprintf(
+        "`%s` must return a vector of the same length as its input.", name
+      ))
+    }
+    if (!all(is.finite(out))) {
+      stop(sprintf("`%s` returns non-finite values.", name))
+    }
+    invisible(TRUE)
+  }
+
+  if (is.null(invlink)) {
+    if (family == "poisson") {
+      inv <- function(x) exp(x)
+      d1 <- function(x) exp(x)
+      d2 <- if (second_derivative) function(x) exp(x) else NULL
+    } else {
+      inv <- function(x) plogis(x)
+      d1 <- function(x) {
+        probability <- inv(x)
+        probability * (1 - probability)
+      }
+      d2 <- if (second_derivative) function(x) {
+        probability <- inv(x)
+        derivative <- probability * (1 - probability)
+        derivative * (1 - 2 * probability)
+      } else NULL
+    }
+    validate(inv, "canonical invlink")
+    validate(d1, "canonical invlink_prime")
+    if (second_derivative) validate(d2, "canonical invlink_second")
+    return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical"))
+  }
+
+  if (is.function(invlink)) {
+    inv <- invlink
+    d1 <- NULL
+    d2 <- NULL
+  } else if (is.list(invlink)) {
+    inv <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
+    d1 <- invlink$d1 %||% invlink$inv_link_prime %||% invlink$mu_eta
+    d2 <- invlink$d2 %||% invlink$inv_link_second
+  } else {
+    stop("'invlink' must be NULL, a function, or a list with inverse-link functions.")
+  }
+
+  validate(inv, "invlink")
+  if (is.null(d1)) d1 <- differentiate(inv, ncheck)
+  validate(d1, "invlink_prime")
+  if (second_derivative) {
+    if (is.null(d2)) d2 <- differentiate(d1, ncheck)
+    validate(d2, "invlink_second")
+  } else {
+    d2 <- NULL
+  }
+
+  list(inv = inv, d1 = d1, d2 = d2, name = "custom")
+}
+
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
 ##'
 ##' Maximizes the integrand function for Generalized Linear Gaussian Process Models (GLGPMs), which involves the evaluation of likelihood functions with spatially correlated random effects.
@@ -2347,17 +2426,6 @@ maxim_integrand <- function(
   stopifnot(family %in% c("poisson", "binomial"))
 
   # ---------- utilities ----------
-  check_vec_fun <- function(f, n, name) {
-    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
-    x <- rep(0, n)
-    out <- tryCatch(f(x), error = function(e) e)
-    if (inherits(out, "error")) stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
-    if (!is.numeric(out)) stop(sprintf("`%s` must return a numeric vector.", name))
-    if (length(out) != length(x)) stop(sprintf("`%s` must return a vector of the same length as its input.", name))
-    if (!all(is.finite(out))) stop(sprintf("`%s` returns non-finite values.", name))
-    invisible(TRUE)
-  }
-
   sum_by_group <- function(v, grp, nlev) {
     sums <- rowsum(v, grp, reorder = FALSE)
     out <- numeric(nlev)
@@ -2397,51 +2465,7 @@ maxim_integrand <- function(
   }
   n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
 
-  make_link_funs <- function(family, invlink, ncheck) {
-    # Canonical defaults
-    if (is.null(invlink)) {
-      if (family == "poisson") {
-        inv <- function(x) exp(x)
-        d1  <- function(x) exp(x)
-        d2  <- function(x) exp(x)
-      } else {
-        inv <- function(x) plogis(x)
-        d1  <- function(x) { p <- inv(x); p * (1 - p) }
-        d2  <- function(x) { p <- inv(x); d <- p * (1 - p); d * (1 - 2 * p) }
-      }
-      check_vec_fun(inv, ncheck, "canonical invlink")
-      check_vec_fun(d1,  ncheck, "canonical invlink_prime")
-      check_vec_fun(d2,  ncheck, "canonical invlink_second")
-      return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical"))
-    }
-
-    # If a bare function is given, treat it as the inverse link
-    if (is.function(invlink)) {
-      inv_user <- invlink
-      d1_user <- NULL
-      d2_user <- NULL
-    } else if (is.list(invlink)) {
-      inv_user <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
-      d1_user  <- invlink$d1 %||% invlink$inv_link_prime %||% invlink$mu_eta
-      d2_user  <- invlink$d2 %||% invlink$inv_link_second
-    } else {
-      stop("'invlink' must be NULL, a function, or a list with components inv, d1, d2")
-    }
-
-    # Validate the inverse link
-    check_vec_fun(inv_user, ncheck, "invlink")
-
-    # Obtain missing derivatives once
-    if (is.null(d1_user)) d1_user <- differentiate(inv_user, ncheck)
-    check_vec_fun(d1_user, ncheck, "invlink_prime")
-
-    if (is.null(d2_user)) d2_user <- differentiate(d1_user, ncheck)
-    check_vec_fun(d2_user, ncheck, "invlink_second")
-
-    list(inv = inv_user, d1 = d1_user, d2 = d2_user, name = "custom")
-  }
-
-  linkf <- make_link_funs(family, invlink, n)
+  linkf <- make_inverse_link_functions(family, invlink, n)
   inv_link <- linkf$inv
   inv1     <- linkf$d1
   inv2     <- linkf$d2
@@ -2711,18 +2735,6 @@ laplace_sampling_mcmc <- function(y,
     set.seed(control_mcmc$seed)
   }
 
-  # ---------- utilities ----------
-  check_vec_fun <- function(f, n, name) {
-    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
-    x <- rep(0, n)
-    out <- tryCatch(f(x), error = function(e) e)
-    if (inherits(out, "error")) stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
-    if (!is.numeric(out)) stop(sprintf("`%s` must return a numeric vector.", name))
-    if (length(out) != length(x)) stop(sprintf("`%s` must return a vector of the same length as its input.", name))
-    if (!all(is.finite(out))) stop(sprintf("`%s` returns non-finite values.", name))
-    invisible(TRUE)
-  }
-
   # ---------- dimensions ----------
   if (( !is.null(ID_re) && is.null(sigma2_re)) ||
       (  is.null(ID_re) && !is.null(sigma2_re))) {
@@ -2778,39 +2790,9 @@ laplace_sampling_mcmc <- function(y,
   }
 
   # ---------- inverse link handling (inv, d1) ----------
-  make_invlink_funs <- function(family, invlink, ncheck) {
-    if (is.null(invlink)) {
-      if (family == "poisson") {
-        inv <- function(x) exp(x)
-        d1  <- function(x) exp(x)
-      } else {
-        inv <- function(x) plogis(x)
-        d1  <- function(x) { p <- inv(x); p * (1 - p) }
-      }
-      check_vec_fun(inv, ncheck, "canonical invlink")
-      check_vec_fun(d1,  ncheck, "canonical invlink_prime")
-      return(list(inv = inv, d1 = d1, name = "canonical"))
-    }
-
-    if (is.function(invlink)) {
-      inv_user <- invlink
-      d1_user  <- NULL
-    } else if (is.list(invlink)) {
-      inv_user <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
-      d1_user  <- invlink$d1  %||% invlink$inv_link_prime %||% invlink$mu_eta
-    } else {
-      stop("'invlink' must be NULL, a function, or a list with components inv and d1.")
-    }
-
-    check_vec_fun(inv_user, ncheck, "invlink")
-
-    if (is.null(d1_user)) d1_user <- differentiate(inv_user, ncheck)
-    check_vec_fun(d1_user, ncheck, "invlink_prime")
-
-    list(inv = inv_user, d1 = d1_user, name = "custom")
-  }
-
-  linkf <- make_invlink_funs(family, invlink, n)
+  linkf <- make_inverse_link_functions(
+    family, invlink, n, second_derivative = FALSE
+  )
   inv_link <- linkf$inv
   inv1     <- linkf$d1
 
@@ -3280,54 +3262,6 @@ glgpm_nong <-
 
     stopifnot(family %in% c("poisson", "binomial"))
 
-    # --- helpers for inverse link handling (vector-in, vector-out) ---
-    check_vec_fun <- function(f, n, name) {
-      if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
-      x <- rep(0, n)
-      out <- tryCatch(f(x), error = function(e) e)
-      if (inherits(out, "error")) stop(sprintf("`%s` failed on numeric vector: %s", name, out$message))
-      if (!is.numeric(out)) stop(sprintf("`%s` must return numeric vector.", name))
-      if (length(out) != length(x)) stop(sprintf("`%s` must have same length as input.", name))
-      if (!all(is.finite(out))) stop(sprintf("`%s` returns non-finite values.", name))
-      invisible(TRUE)
-    }
-
-    make_invlink_funs <- function(family, invlink, ncheck) {
-      if (is.null(invlink)) {
-        if (family == "poisson") {
-          inv <- function(x) exp(x)
-          d1  <- function(x) exp(x)
-          d2  <- function(x) exp(x)
-        } else {
-          inv <- function(x) plogis(x)
-          d1  <- function(x) { p <- inv(x); p*(1-p) }
-          d2  <- function(x) { p <- inv(x); d <- p*(1-p); d*(1-2*p) }
-        }
-        check_vec_fun(inv, ncheck, "canonical invlink")
-        check_vec_fun(d1,  ncheck, "canonical invlink_prime")
-        check_vec_fun(d2,  ncheck, "canonical invlink_second")
-        return(list(inv=inv, d1=d1, d2=d2, name="canonical"))
-      }
-
-      if (is.function(invlink)) {
-        inv_user <- invlink; d1_user <- NULL; d2_user <- NULL
-      } else if (is.list(invlink)) {
-        inv_user <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
-        d1_user  <- invlink$d1  %||% invlink$inv_link_prime %||% invlink$mu_eta
-        d2_user  <- invlink$d2  %||% invlink$inv_link_second
-      } else stop("'invlink' must be NULL, a function, or a list with inv[, d1, d2].")
-
-      check_vec_fun(inv_user, ncheck, "invlink")
-
-      if (is.null(d1_user)) d1_user <- differentiate(inv_user, ncheck)
-      check_vec_fun(d1_user, ncheck, "invlink_prime")
-
-      if (is.null(d2_user)) d2_user <- differentiate(d1_user, ncheck)
-      check_vec_fun(d2_user, ncheck, "invlink_second")
-
-      list(inv=inv_user, d1=d1_user, d2=d2_user, name="custom")
-    }
-
     # --- setup ---
     beta0   <- reference_pars$beta
     mu0     <- as.numeric(D %*% beta0 + cov_offset)
@@ -3342,7 +3276,7 @@ glgpm_nong <-
     n     <- length(y)
     n_samples <- (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
 
-    linkf  <- make_invlink_funs(family, invlink, n)
+    linkf  <- make_inverse_link_functions(family, invlink, n)
     inv_fn <- linkf$inv
     inv1   <- linkf$d1
     inv2   <- linkf$d2
