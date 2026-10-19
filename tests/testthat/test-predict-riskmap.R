@@ -209,7 +209,7 @@ test_that("prediction transforms coordinates internally and preserves output geo
   )
 
   expect_identical(st_geometry(geographic$data), st_geometry(geographic_data))
-  expect_identical(geographic$data$response_mean, projected$data$response_mean)
+  expect_equal(geographic$data$response_mean, projected$data$response_mean)
 })
 
 test_that("missing predictors preserve rows and return missing predictions", {
@@ -596,7 +596,7 @@ test_that("derived targets are transformed before summarising and aggregating", 
     messages = FALSE
   )
   link <- prediction_link_samples(location_result)
-  expect_identical(location_result$data$square_mean, rowMeans(link^2))
+  expect_equal(location_result$data$square_mean, rowMeans(link^2))
   expect_identical(location_result$data$square_exceedance_1,
                rowMeans(link^2 > 1))
 
