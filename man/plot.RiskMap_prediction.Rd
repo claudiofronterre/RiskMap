@@ -8,7 +8,6 @@
   x,
   quantity = "response",
   summary = "mean",
-  support = c("auto", "predictions", "boundaries"),
   aggregate = NULL,
   threshold = NULL,
   palette = NULL,
@@ -27,12 +26,10 @@
 \item{summary}{Summary to display, such as \code{"mean"}, \code{"lower"}, \code{"upper"},
 \code{"interval_width"}, or \code{"exceedance"}.}
 
-\item{support}{Spatial support to display: \code{"auto"}, \code{"predictions"}, or
-\code{"boundaries"}. \code{"auto"} displays polygons when boundary summaries are
-available and otherwise displays prediction locations or grid cells.}
-
 \item{aggregate}{For polygon predictions, the within-polygon aggregation to
-display. It may be omitted when the object contains only one aggregation.}
+display. When \code{NULL} (the default), the location-level predictions are
+displayed. Supplying an aggregation displays the corresponding boundary
+summaries.}
 
 \item{threshold}{For an exceedance map, the response-scale threshold to
 display. It may be omitted when only one threshold was calculated.}

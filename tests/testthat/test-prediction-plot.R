@@ -51,17 +51,18 @@ test_that("polygon prediction maps select tidy summaries without reordering", {
     class = "RiskMap_prediction"
   )
 
-  expect_error(plot(prediction), "aggregate.*must be supplied")
+  point_map <- plot(prediction)
   map <- plot(prediction, aggregate = "mean", limits = c(0, 1))
 
+  expect_s3_class(point_map, "ggplot")
+  expect_no_error(ggplot_build(point_map))
   expect_s3_class(map, "ggplot")
   expect_no_error(ggplot_build(map))
   expect_equal(map$layers[[1L]]$data$.prediction_value, c(0.2, 0.7))
   expect_equal(map$scales$scales[[1L]]$limits, c(0, 1))
 
-  point_map <- plot(prediction, support = "predictions")
-  expect_s3_class(point_map, "ggplot")
-  expect_no_error(ggplot_build(point_map))
+  expect_error(plot(prediction, aggregate = "median"),
+               "must be one of: mean, sum")
 })
 
 test_that("plot arguments reject unavailable or ambiguous requests", {
@@ -76,6 +77,8 @@ test_that("plot arguments reject unavailable or ambiguous requests", {
                           class = "RiskMap_prediction")
 
   expect_error(plot(prediction, quantity = "spatial"), "not available")
+  expect_error(plot(prediction, aggregate = "mean"),
+               "does not contain boundary summaries")
   expect_error(plot(prediction, summary = "exceedance"),
                "threshold.*must be supplied")
   expect_error(plot(prediction, limits = c(1, 0)), "increasing")

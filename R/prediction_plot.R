@@ -8,11 +8,10 @@
 ##'   `"spatial"`, or `"link"`.
 ##' @param summary Summary to display, such as `"mean"`, `"lower"`, `"upper"`,
 ##'   `"interval_width"`, or `"exceedance"`.
-##' @param support Spatial support to display: `"auto"`, `"predictions"`, or
-##'   `"boundaries"`. `"auto"` displays polygons when boundary summaries are
-##'   available and otherwise displays prediction locations or grid cells.
 ##' @param aggregate For polygon predictions, the within-polygon aggregation to
-##'   display. It may be omitted when the object contains only one aggregation.
+##'   display. When `NULL` (the default), the location-level predictions are
+##'   displayed. Supplying an aggregation displays the corresponding boundary
+##'   summaries.
 ##' @param threshold For an exceedance map, the response-scale threshold to
 ##'   display. It may be omitted when only one threshold was calculated.
 ##' @param palette Colour palette. `NULL` selects a suitable default: the
@@ -45,7 +44,6 @@ plot.RiskMap_prediction <- function(
     x,
     quantity = "response",
     summary = "mean",
-    support = c("auto", "predictions", "boundaries"),
     aggregate = NULL,
     threshold = NULL,
     palette = NULL,
@@ -60,7 +58,7 @@ plot.RiskMap_prediction <- function(
   check_plot_flag(scale_bar, "scale_bar")
 
   plot_data <- prediction_plot_data(
-    x, quantity, summary, support, aggregate, threshold
+    x, quantity, summary, aggregate, threshold
   )
   is_exceedance <- identical(summary, "exceedance")
   if (is_exceedance && !is.null(limits) && !identical(as.numeric(limits), c(0, 1))) {
@@ -135,7 +133,7 @@ plot.RiskMap_prediction <- function(
 
 #' Select and align the values requested from a prediction object
 #' @noRd
-prediction_plot_data <- function(x, quantity, summary, support, aggregate,
+prediction_plot_data <- function(x, quantity, summary, aggregate,
                                  threshold) {
   if (!is.character(quantity) || length(quantity) != 1L || is.na(quantity) ||
       !nzchar(quantity)) {
@@ -146,13 +144,8 @@ prediction_plot_data <- function(x, quantity, summary, support, aggregate,
     stop("'summary' must be one non-empty character string", call. = FALSE)
   }
 
-  support <- match.arg(support, c("auto", "predictions", "boundaries"))
   has_boundaries <- !is.null(x$boundaries) && !is.null(x$boundary_summary)
-  if (support == "auto") {
-    support <- if (has_boundaries) "boundaries" else "predictions"
-  }
-
-  if (support == "boundaries") {
+  if (!is.null(aggregate)) {
     if (!has_boundaries) {
       stop("This prediction object does not contain boundary summaries",
            call. = FALSE)
@@ -185,9 +178,6 @@ prediction_plot_data <- function(x, quantity, summary, support, aggregate,
     return(list(data = data, polygon = TRUE))
   }
 
-  if (!is.null(aggregate)) {
-    stop("'aggregate' is used only for polygon predictions", call. = FALSE)
-  }
   column <- if (identical(summary, "exceedance")) {
     available <- grep(
       paste0("^", quantity, "_exceedance_"), names(x$predictions), value = TRUE
