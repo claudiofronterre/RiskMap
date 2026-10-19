@@ -839,38 +839,31 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     return(out)
   }
 
-  plain_data <- as.data.frame(st_drop_geometry(assigned_data))
-  grid_list <- lapply(area_indices, function(index) {
-    st_geometry(assigned_data[index, , drop = FALSE])
-  })
-  predictor_list <- lapply(area_indices, function(index) {
-    plain_data[index, , drop = FALSE]
-  })
-  arguments <- list(
+  prediction_setup <- prepare_prediction(
     object = object,
-    grid_pred = grid_list,
-    predictors = predictor_list,
-    type = "joint",
-    messages = messages
+    prediction_data = assigned_data,
+    prediction = "joint",
+    include = include,
+    control_mcmc = control_mcmc,
+    messages = messages,
+    groups = area_id
   )
-  offset_name <- interpret_formula(object$formula)$offset
-  if (!is.null(offset_name)) {
-    arguments$pred_cov_offset <- lapply(
-      area_indices, function(index) plain_data[[offset_name]][index]
-    )
-  }
-  if ("random_effects" %in% include) {
-    random_names <- colnames(object$ID_re)
-    if (!length(random_names)) {
-      stop("The fitted model does not contain unstructured random effects",
-           call. = FALSE)
-    }
-    arguments$re_predictors <- lapply(area_indices, function(index) {
-      plain_data[index, random_names, drop = FALSE]
-    })
-  }
-  if (!is.null(control_mcmc)) arguments$control_mcmc <- control_mcmc
-  prediction_setup <- do.call(prediction_samples, arguments)
+  sample_components <- build_prediction_components(
+    object, prediction_setup, include, transform,
+    standardize = standardize,
+    prediction_data = assigned_data
+  )
+  components <- list(
+    fixed = matrix(sample_components$fixed, ncol = 1L),
+    offset = matrix(sample_components$offset, ncol = 1L),
+    spatial = sample_components$spatial,
+    random_effects = sample_components$random_effects,
+    nugget = sample_components$nugget,
+    link = sample_components$link,
+    response = sample_components$response
+  )
+  components <- c(components, sample_components$transformed)
+  components <- components[!vapply(components, is.null, logical(1))]
 
   n_areas <- nrow(output_boundaries)
   retained <- NULL
@@ -879,42 +872,15 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   for (group in seq_along(area_indices)) {
     index <- area_indices[[group]]
     area <- nonempty_areas[[group]]
-    group_setup <- prediction_setup
-    group_setup$S_samples <- prediction_setup$S_samples[[group]]
-    group_setup$mu_pred <- prediction_setup$mu_pred[[group]]
-    group_setup$grid_pred <- prediction_setup$grid_pred[[group]]
-    group_setup$cov_offset <- if (is.list(prediction_setup$cov_offset)) {
-      prediction_setup$cov_offset[[group]]
-    } else {
-      rep(prediction_setup$cov_offset, length(index))
-    }
-    if (!is.null(prediction_setup$re$D_pred) &&
-        is.list(prediction_setup$re$D_pred[[1L]]) &&
-        !is.matrix(prediction_setup$re$D_pred[[1L]])) {
-      group_setup$re$D_pred <- prediction_setup$re$D_pred[[group]]
-    }
-    group_components <- build_prediction_components(
-      object, group_setup, include, transform,
-      standardize = standardize,
-      prediction_data = assigned_data[index, , drop = FALSE]
-    )
     group_weights <- weight_values[index]
-    components <- list(
-      fixed = matrix(group_components$fixed, ncol = 1L),
-      offset = matrix(group_components$offset, ncol = 1L),
-      spatial = group_components$spatial,
-      random_effects = group_components$random_effects,
-      nugget = group_components$nugget,
-      link = group_components$link,
-      response = group_components$response
+    group_components <- lapply(
+      components, function(values) values[index, , drop = FALSE]
     )
-    components <- c(components, group_components$transformed)
-    components <- components[!vapply(components, is.null, logical(1))]
 
     for (operation_name in names(aggregate)) {
       operation <- aggregate[[operation_name]]
       aggregated <- lapply(
-        components, aggregate_prediction_values,
+        group_components, aggregate_prediction_values,
         operation = operation, weights = group_weights
       )
       for (quantity in names(aggregated)) {
@@ -1024,40 +990,17 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
 #' @noRd
 prepare_prediction <- function(object, prediction_data, prediction, include,
                                control_mcmc, messages,
-                               observed_locations = FALSE) {
-  plain_data <- as.data.frame(st_drop_geometry(prediction_data))
-  inter_f <- interpret_formula(object$formula)
-  arguments <- list(
+                               observed_locations = FALSE, groups = NULL) {
+  draw_prediction_samples(
     object = object,
-    type = prediction,
+    prediction_data = prediction_data,
+    prediction = prediction,
+    include = include,
+    control_mcmc = control_mcmc,
+    groups = groups,
+    observed_locations = observed_locations,
     messages = messages
   )
-  if (!observed_locations) {
-    arguments$grid_pred <- st_geometry(prediction_data)
-    arguments$predictors <- plain_data
-  }
-  if (!observed_locations && !is.null(inter_f$offset)) {
-    if (!inter_f$offset %in% names(plain_data)) {
-      stop("'newdata' is missing offset column '", inter_f$offset, "'",
-           call. = FALSE)
-    }
-    arguments$pred_cov_offset <- plain_data[[inter_f$offset]]
-  }
-  if ("random_effects" %in% include) {
-    random_names <- colnames(object$ID_re)
-    if (!length(random_names)) {
-      stop("The fitted model does not contain unstructured random effects",
-           call. = FALSE)
-    }
-    if (prediction != "joint") {
-      stop("Random-effect prediction requires 'prediction = \"joint\"'",
-           call. = FALSE)
-    }
-    prepare_random_effects(plain_data, random_names)
-    arguments$re_predictors <- plain_data[random_names]
-  }
-  if (!is.null(control_mcmc)) arguments$control_mcmc <- control_mcmc
-  do.call(prediction_samples, arguments)
 }
 
 #' Construct link and response samples from prediction components
@@ -1606,27 +1549,53 @@ gaussian_conditioning_samples <- function(object, spatial_covariance,
   )
 }
 
-#' Generate conditional spatial-process samples
+#' Generate conditional spatial-process samples from aligned prediction data
 #'
-#' Shared numerical engine for the legacy and unified prediction interfaces.
+#' Prediction variables and geometry remain in one row-aligned `sf` object.
+#' For areal predictions, `groups` defines the independent joint covariance
+#' blocks without splitting the data into parallel lists.
 #' @noRd
-prediction_samples <- function(object,
-                               grid_pred = NULL,
-                               predictors = NULL,
-                               re_predictors = NULL,
-                               pred_cov_offset = NULL,
-                               control_mcmc = set_control_mcmc(),
-                               type = "marginal",
-                               messages = TRUE) {
+draw_prediction_samples <- function(object, prediction_data, prediction,
+                                    include, control_mcmc = NULL,
+                                    groups = NULL,
+                                    observed_locations = FALSE,
+                                    messages = TRUE) {
 
-  control_mcmc_supplied <- !missing(control_mcmc)
+  control_mcmc_supplied <- !is.null(control_mcmc)
+  if (is.null(control_mcmc)) control_mcmc <- set_control_mcmc()
+  type <- prediction
+  plain_data <- as.data.frame(st_drop_geometry(prediction_data))
+  grid_pred <- if (observed_locations) NULL else st_geometry(prediction_data)
+  predictors <- if (observed_locations) NULL else plain_data
+  inter_f <- interpret_formula(object$formula)
+  pred_cov_offset <- NULL
+  if (!observed_locations && !is.null(inter_f$offset)) {
+    if (!inter_f$offset %in% names(plain_data)) {
+      stop("'newdata' is missing offset column '", inter_f$offset, "'",
+           call. = FALSE)
+    }
+    pred_cov_offset <- plain_data[[inter_f$offset]]
+  }
+  re_predictors <- NULL
+  if ("random_effects" %in% include) {
+    random_names <- colnames(object$ID_re)
+    if (!length(random_names)) {
+      stop("The fitted model does not contain unstructured random effects",
+           call. = FALSE)
+    }
+    if (prediction != "joint") {
+      stop("Random-effect prediction requires 'prediction = \"joint\"'",
+           call. = FALSE)
+    }
+    prepare_random_effects(plain_data, random_names)
+    re_predictors <- plain_data[random_names]
+  }
 
   # ---------------------------------------------------------------------------
   # validate inputs
   # ---------------------------------------------------------------------------
   stopifnot("'object' must be of class RiskMap" = inherits(object, "RiskMap"))
 
-  list_mode <- inherits(grid_pred, "list")
   model_crs <- st_crs(object$data)
 
   if (is.na(model_crs)) {
@@ -1636,66 +1605,20 @@ prediction_samples <- function(object,
     )
   }
 
-  validate_grid_element <- function(x, index) {
-    tryCatch(
-      check_data(x, type = "sfc"),
-      error = function(e) {
-        reason <- sub("^'[^']+' ", "", conditionMessage(e))
-        stop(sprintf("'grid_pred[[%d]]' %s", index, reason), call. = FALSE)
-      }
-    )
-  }
-
   crs_label <- function(x) {
     x_crs <- st_crs(x)
     if (!is.na(x_crs$epsg)) paste0("EPSG:", x_crs$epsg) else x_crs$input
   }
 
-  if (list_mode) {
-    if (type != "joint") {
-      stop("When 'grid_pred' is a list, 'type' must be 'joint'")
-    }
-    if (length(grid_pred) == 0L) {
-      stop("'grid_pred' is a list but has length 0")
-    }
-    invisible(Map(validate_grid_element, grid_pred, seq_along(grid_pred)))
-    crs_mismatch <- vapply(
-      grid_pred,
-      function(x) !isTRUE(st_crs(x) == model_crs),
-      logical(1)
-    )
-    if (any(crs_mismatch)) {
-      mismatch_indices <- which(crs_mismatch)
-      mismatch_labels <- vapply(
-        grid_pred[mismatch_indices],
-        crs_label,
-        character(1)
-      )
-      mismatch_details <- paste0(
-        mismatch_indices,
-        " (",
-        mismatch_labels,
-        ")",
-        collapse = ", "
-      )
+  if (!is.null(grid_pred)) {
+    check_data(grid_pred, type = "sfc")
+    if (!isTRUE(st_crs(grid_pred) == model_crs)) {
       stop(
-        "The CRS of every element of 'grid_pred' must match the fitted model CRS (",
-        crs_label(model_crs), "). Mismatches: ", mismatch_details,
-        ". Transform these elements explicitly with sf::st_transform().",
+        "The CRS of 'grid_pred' (", crs_label(grid_pred),
+        ") must match the fitted model CRS (", crs_label(model_crs),
+        "). Transform 'grid_pred' explicitly with sf::st_transform().",
         call. = FALSE
       )
-    }
-  } else {
-    if (!is.null(grid_pred)) {
-      check_data(grid_pred, type = "sfc")
-      if (!isTRUE(st_crs(grid_pred) == model_crs)) {
-        stop(
-          "The CRS of 'grid_pred' (", crs_label(grid_pred),
-          ") must match the fitted model CRS (", crs_label(model_crs),
-          "). Transform 'grid_pred' explicitly with sf::st_transform().",
-          call. = FALSE
-        )
-      }
     }
   }
 
@@ -1711,6 +1634,24 @@ prediction_samples <- function(object,
   if (!type %in% c("marginal", "joint"))
     stop("'type' must be either 'marginal' or 'joint'")
 
+  grouped_joint <- !is.null(groups)
+  if (grouped_joint) {
+    if (type != "joint") {
+      stop("Grouped prediction requires 'type = \"joint\"'", call. = FALSE)
+    }
+    if (is.null(grid_pred) || length(groups) != length(grid_pred) ||
+        anyNA(groups)) {
+      stop("'groups' must identify every prediction location", call. = FALSE)
+    }
+    group_indices <- unname(split(seq_along(groups), groups))
+  } else {
+    group_indices <- list(seq_len(if (is.null(grid_pred)) {
+      nrow(object$coords)
+    } else {
+      length(grid_pred)
+    }))
+  }
+
   if (!is.null(grid_pred) && is.null(predictors) && ncol(object$D) > 1)
     stop("'predictors' must be supplied if 'grid_pred' is supplied")
 
@@ -1722,14 +1663,8 @@ prediction_samples <- function(object,
     grid_pred  <- st_as_sfc(object$data)
   }
 
-  if (list_mode) {
-    grp    <- lapply(grid_pred, coordinates_in_units,
-                     distance_units = object$distance_units)
-    n_pred <- vapply(grp, nrow, integer(1))
-  } else {
-    grp    <- coordinates_in_units(grid_pred, object$distance_units)
-    n_pred <- nrow(grp)
-  }
+  grp <- coordinates_in_units(grid_pred, object$distance_units)
+  n_pred <- nrow(grp)
 
   object$D <- as.matrix(object$D)
   p <- ncol(object$D)
@@ -1740,22 +1675,10 @@ prediction_samples <- function(object,
     } else {
       if (is.null(pred_cov_offset))
         stop("'pred_cov_offset' must be specified at each prediction location")
-      if (list_mode) {
-        if (!is.list(pred_cov_offset) || length(pred_cov_offset) != length(n_pred)) {
-          stop("'pred_cov_offset' must contain one numeric vector per prediction group")
-        }
-        valid_offsets <- Map(function(value, expected) {
-          is.numeric(value) && length(value) == expected && !anyNA(value)
-        }, pred_cov_offset, n_pred)
-        if (!all(unlist(valid_offsets))) {
-          stop("Each element of 'pred_cov_offset' must be a complete numeric vector matching its prediction group")
-        }
-      } else {
-        if (!inherits(pred_cov_offset, "numeric"))
-          stop("'pred_cov_offset' must be a numeric vector")
-        if (length(pred_cov_offset) != n_pred)
-          stop("The length of 'pred_cov_offset' does not match the number of prediction locations")
-      }
+      if (!inherits(pred_cov_offset, "numeric"))
+        stop("'pred_cov_offset' must be a numeric vector")
+      if (length(pred_cov_offset) != n_pred)
+        stop("The length of 'pred_cov_offset' does not match the number of prediction locations")
     }
   } else {
     if (!is.null(pred_cov_offset))
@@ -1782,34 +1705,27 @@ prediction_samples <- function(object,
 
   if (!is.null(predictors)) {
 
-    .build_D_pred <- function(predictors, n_predictors, index = NULL) {
+    .build_D_pred <- function(predictors, n_predictors) {
       response <- as.character(object$formula[[2]])
       re_names <- names(object$re)
       offset_names <- names(object$cov_offset)
       model_predictors <- setdiff(get_formula_terms(object$formula), c(response, re_names, offset_names))
 
       if (!is.data.frame(predictors))
-        stop(if (is.null(index)) "'predictors' must be a data.frame"
-             else sprintf("'predictors[[%d]]' must be a data.frame", index))
+        stop("'predictors' must be a data.frame")
       if (!all(model_predictors %in% names(predictors)))
         stop("The column names in 'predictors' do not match the variables in the model formula")
       if (nrow(predictors) != n_predictors)
-        stop(if (is.null(index)) "The number of rows in 'predictors' does not match the number of locations in 'grid_pred'"
-             else sprintf("The number of rows in of 'predictors[[%d]]' does not match the number of locations in 'grid_pred[[%d]]'", index, index))
+        stop("The number of rows in 'predictors' does not match the number of locations in 'grid_pred'")
       check_complete_data(predictors, model_predictors)
       prediction_design_matrix(object, predictors)
     }
 
-    if (list_mode) {
-      D_pred  <- mapply(.build_D_pred, predictors, n_pred, seq_along(predictors), SIMPLIFY = FALSE)
-      mu_pred <- lapply(D_pred, function(D) as.numeric(D %*% par_hat$beta))
-    } else {
-      D_pred  <- .build_D_pred(predictors, n_pred)
-      mu_pred <- as.numeric(D_pred %*% par_hat$beta)
-    }
+    D_pred <- .build_D_pred(predictors, n_pred)
+    mu_pred <- as.numeric(D_pred %*% par_hat$beta)
 
   } else if (intercept_only) {
-    mu_pred <- if (list_mode) lapply(n_pred, function(n) rep(par_hat$beta, n)) else par_hat$beta
+    mu_pred <- par_hat$beta
   } else {
     mu_pred <- 0
   }
@@ -1823,36 +1739,17 @@ prediction_samples <- function(object,
     n_dim_re_tot <- sapply(seq_len(n_re + 1), function(i) length(unique(ID_g[, i])))
 
     if (!is.null(re_predictors)) {
-      if (list_mode) {
-        if (!is.list(re_predictors) || length(re_predictors) != length(n_pred)) {
-          stop("'re_predictors' must contain one data frame per prediction group")
-        }
-        valid_re <- Map(function(value, expected) {
-          is.data.frame(value) && nrow(value) == expected &&
-            ncol(value) == n_re && !anyNA(value)
-        }, re_predictors, n_pred)
-        if (!all(unlist(valid_re))) {
-          stop("Each element of 're_predictors' must be a complete data frame ",
-               "matching its prediction group and the fitted random effects")
-        }
-      } else if (any(is.na(re_predictors))) {
+      if (any(is.na(re_predictors))) {
         warning("Missing values in 're_predictors'; removing affected locations")
         ind_c       <- complete.cases(re_predictors)
         re_predictors <- re_predictors[ind_c, , drop = FALSE]
-        grid_pred   <- if (list_mode) lapply(grid_pred, `[`, ind_c) else grid_pred[ind_c]
-        grp         <- if (list_mode) {
-          lapply(grid_pred, coordinates_in_units,
-                 distance_units = object$distance_units)
-        } else {
-          coordinates_in_units(grid_pred, object$distance_units)
-        }
-        n_pred      <- if (list_mode) vapply(grp, nrow, integer(1)) else nrow(grp)
+        grid_pred <- grid_pred[ind_c]
+        grp <- coordinates_in_units(grid_pred, object$distance_units)
+        n_pred <- nrow(grp)
       }
-      if (!list_mode) {
-        if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
-        if (nrow(re_predictors) != n_pred)  stop("'re_predictors' rows do not match 'grid_pred'")
-        if (ncol(re_predictors) != n_re)    stop("'re_predictors' columns do not match number of random effects")
-      }
+      if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
+      if (nrow(re_predictors) != n_pred)  stop("'re_predictors' rows do not match 'grid_pred'")
+      if (ncol(re_predictors) != n_re)    stop("'re_predictors' columns do not match number of random effects")
 
       n_dim_re <- sapply(seq_len(n_re), function(i) length(unique(object$ID_re[, i])))
       build_re_design <- function(values, size) {
@@ -1864,11 +1761,7 @@ prediction_samples <- function(object,
           mat
         })
       }
-      D_re_pred <- if (list_mode) {
-        Map(build_re_design, re_predictors, n_pred)
-      } else {
-        build_re_design(re_predictors, n_pred)
-      }
+      D_re_pred <- build_re_design(re_predictors, n_pred)
     } else {
       D_re_pred <- NULL
     }
@@ -1883,38 +1776,27 @@ prediction_samples <- function(object,
   distance_scale <- attr(object, "distance_scale") %||% 1
   fitting_coords <- object$coords / distance_scale
   fitting_phi <- par_hat$phi / distance_scale
-  fitting_grp <- if (list_mode) {
-    lapply(grp, `/`, distance_scale)
-  } else {
-    grp / distance_scale
-  }
+  fitting_grp <- grp / distance_scale
 
   conditioning_coords <- if (object$family == "gaussian") {
     fitting_coords[object$ID_coords, , drop = FALSE]
   } else {
     fitting_coords
   }
-  marginal_batch_size <- if (!list_mode && !obs_loc && type == "marginal") {
+  marginal_batch_size <- if (!obs_loc && type == "marginal") {
     marginal_prediction_batch_size(n_pred, nrow(conditioning_coords))
   } else {
     n_pred
   }
-  batch_marginal <- !list_mode && !obs_loc && type == "marginal" &&
+  batch_marginal <- !obs_loc && type == "marginal" &&
     marginal_batch_size < n_pred
 
-  if (object$family != "gaussian" && !obs_loc && !batch_marginal) {
-    if (list_mode) {
-      U_pred <- lapply(fitting_grp, cross_distances, second = fitting_coords)
-    } else {
-      U_pred <- cross_distances(fitting_grp, fitting_coords)
-    }
-  } else if (object$family == "gaussian" && !obs_loc && !batch_marginal) {
-    if (list_mode) {
-      U_pred <- lapply(fitting_grp, cross_distances,
-                       second = conditioning_coords)
-    } else {
-      U_pred <- cross_distances(fitting_grp, conditioning_coords)
-    }
+  if (object$family != "gaussian" && !obs_loc && !batch_marginal &&
+      !grouped_joint) {
+    U_pred <- cross_distances(fitting_grp, fitting_coords)
+  } else if (object$family == "gaussian" && !obs_loc && !batch_marginal &&
+             !grouped_joint) {
+    U_pred <- cross_distances(fitting_grp, conditioning_coords)
   }
 
   U <- pairwise_distances(fitting_coords)
@@ -1925,11 +1807,10 @@ prediction_samples <- function(object,
     C <- par_hat$sigma2 * R[, object$ID_coords]
     grp <- object$coords
     fitting_grp <- fitting_coords
-  } else if (!batch_marginal) {
-    C <- if (list_mode)
-      lapply(U_pred, function(u) par_hat$sigma2 * matern_correlation(u, phi = fitting_phi, kappa = object$kappa))
-    else
-      par_hat$sigma2 * matern_correlation(U_pred, phi = fitting_phi, kappa = object$kappa)
+  } else if (!batch_marginal && !grouped_joint) {
+    C <- par_hat$sigma2 * matern_correlation(
+      U_pred, phi = fitting_phi, kappa = object$kappa
+    )
   }
 
   n_pred_spatial <- if (obs_loc) nrow(object$coords) else n_pred
@@ -1972,12 +1853,8 @@ prediction_samples <- function(object,
       cholesky_prediction_weights(cross_covariance, Sigma_root)
     }
 
-    if (!obs_loc && !batch_marginal) {
-      A <- if (list_mode) {
-        lapply(C, prediction_weights)
-      } else {
-        prediction_weights(C)
-      }
+    if (!obs_loc && !batch_marginal && !grouped_joint) {
+      A <- prediction_weights(C)
     }
 
     if (reuse_fitted_samples) {
@@ -2003,11 +1880,20 @@ prediction_samples <- function(object,
         t(simulation$samples$S), par_hat$sigma2, fitting_phi,
         object$kappa, n_samples, marginal_batch_size
       )
+    } else if (grouped_joint) {
+      out$S_samples <- grouped_joint_prediction(
+        prediction_coordinates = fitting_grp,
+        conditioning_coordinates = conditioning_coords,
+        group_indices = group_indices,
+        weight_function = prediction_weights,
+        conditional_signal = t(simulation$samples$S),
+        marginal_variance = par_hat$sigma2,
+        phi = fitting_phi,
+        kappa = object$kappa,
+        n_samples = n_samples
+      )
     } else {
-      mu_cond_S <- if (list_mode)
-        lapply(A, function(Ai) Ai %*% t(simulation$samples$S))
-      else
-        A %*% t(simulation$samples$S)
+      mu_cond_S <- A %*% t(simulation$samples$S)
 
       if (type == "marginal") {
         sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
@@ -2016,28 +1902,16 @@ prediction_samples <- function(object,
         )
 
       } else {
-        if (list_mode) {
-          out$S_samples <- lapply(seq_along(mu_cond_S), function(i) {
-            Sp    <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
-                                                 kappa = object$kappa, return_sym_matrix = TRUE)
-            Sc    <- Sp - A[[i]] %*% t(C[[i]])
-            Scr   <- t(factor_covariance(
-              Sc, "conditional prediction covariance"
-            ))
-            sample_correlated_gaussian(mu_cond_S[[i]], Scr, n_samples)
-          })
-        } else {
-          Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
-                                             kappa = object$kappa, return_sym_matrix = TRUE)
-          Sc  <- Sp - A %*% t(C)
-          Sc_root <- factor_covariance(
-            Sc, "conditional prediction covariance"
-          )
-          Scr <- t(Sc_root)
-          out$S_samples <- sample_correlated_gaussian(
-            mu_cond_S, Scr, n_samples
-          )
-        }
+        Sp  <- par_hat$sigma2 * matern_correlation(pairwise_distances(fitting_grp), phi = fitting_phi,
+                                           kappa = object$kappa, return_sym_matrix = TRUE)
+        Sc  <- Sp - A %*% t(C)
+        Sc_root <- factor_covariance(
+          Sc, "conditional prediction covariance"
+        )
+        Scr <- t(Sc_root)
+        out$S_samples <- sample_correlated_gaussian(
+          mu_cond_S, Scr, n_samples
+        )
       }
     }
 
@@ -2045,7 +1919,7 @@ prediction_samples <- function(object,
     # =========================================================================
     # GAUSSIAN MODEL
     # =========================================================================
-    blockwise_random_effects <- list_mode && !is.null(re_predictors)
+    blockwise_random_effects <- grouped_joint && !is.null(re_predictors)
     if (blockwise_random_effects) {
       spatial_covariance <- par_hat$sigma2 * R
       latent_samples <- gaussian_conditioning_samples(
@@ -2058,24 +1932,20 @@ prediction_samples <- function(object,
       spatial_root <- factor_covariance(
         spatial_covariance, "Gaussian fitted spatial covariance"
       )
-      spatial_weights <- lapply(C, function(cross_covariance) {
+      spatial_weights <- function(cross_covariance) {
         cholesky_prediction_weights(cross_covariance, spatial_root)
-      })
-      out$S_samples <- lapply(seq_along(spatial_weights), function(i) {
-        conditional_mean <- spatial_weights[[i]] %*% latent_samples$spatial
-        prediction_covariance <- par_hat$sigma2 * matern_correlation(
-          pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
-          kappa = object$kappa, return_sym_matrix = TRUE
-        )
-        conditional_covariance <- prediction_covariance -
-          spatial_weights[[i]] %*% t(C[[i]])
-        conditional_root <- factor_covariance(
-          conditional_covariance, "conditional prediction covariance"
-        )
-        sample_correlated_gaussian(
-          conditional_mean, t(conditional_root), n_samples
-        )
-      })
+      }
+      out$S_samples <- grouped_joint_prediction(
+        prediction_coordinates = fitting_grp,
+        conditioning_coordinates = fitting_coords,
+        group_indices = group_indices,
+        weight_function = spatial_weights,
+        conditional_signal = latent_samples$spatial,
+        marginal_variance = par_hat$sigma2,
+        phi = fitting_phi,
+        kappa = object$kappa,
+        n_samples = n_samples
+      )
       shared_gaussian_re_samples <- latent_samples$random_effects
     } else if (!is.null(object$fix_var_me) && object$fix_var_me > 0 || is.null(object$fix_var_me)) {
       m        <- length(object$y)
@@ -2107,12 +1977,8 @@ prediction_samples <- function(object,
       }
       prediction_weights <- gaussian_prediction_weights(C_g, Sigma_g, ID_g,
                                                          par_hat$sigma2_me)
-      if (!batch_marginal) {
-        A <- if (list_mode) {
-          lapply(C, prediction_weights)
-        } else {
-          prediction_weights(C)
-        }
+      if (!batch_marginal && !grouped_joint) {
+        A <- prediction_weights(C)
       }
     } else {
       Sigma     <- par_hat$sigma2 * R
@@ -2120,12 +1986,8 @@ prediction_samples <- function(object,
       prediction_weights <- function(cross_covariance) {
         cholesky_prediction_weights(cross_covariance, Sigma_root)
       }
-      if (!batch_marginal) {
-        A <- if (list_mode) {
-          lapply(C, prediction_weights)
-        } else {
-          prediction_weights(C)
-        }
+      if (!batch_marginal && !grouped_joint) {
+        A <- prediction_weights(C)
       }
     }
 
@@ -2137,62 +1999,39 @@ prediction_samples <- function(object,
         par_hat$sigma2, fitting_phi, object$kappa, n_samples,
         marginal_batch_size
       )
+    } else if (grouped_joint) {
+      out$S_samples <- grouped_joint_prediction(
+        prediction_coordinates = fitting_grp,
+        conditioning_coordinates = conditioning_coords,
+        group_indices = group_indices,
+        weight_function = prediction_weights,
+        conditional_signal = diff.y,
+        marginal_variance = par_hat$sigma2,
+        phi = fitting_phi,
+        kappa = object$kappa,
+        n_samples = n_samples
+      )
     } else {
-      mu_cond_S <- if (list_mode) {
-        lapply(A, function(single_grid_A) {
-          as.numeric(single_grid_A %*% diff.y)
-        })
-      } else {
-        as.numeric(A %*% diff.y)
-      }
+      mu_cond_S <- as.numeric(A %*% diff.y)
 
       if (type == "marginal") {
-        if (list_mode) {
-          out$S_samples <- lapply(seq_along(A), function(i) {
-            sd_cond_S_i <- sqrt(conditional_variances(
-              par_hat$sigma2, A[[i]], C[[i]]
-            ))
-            sample_independent_gaussian(
-              mu_cond_S[[i]], sd_cond_S_i, n_samples
-            )
-          })
-        } else {
-          sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
-          out$S_samples <- sample_independent_gaussian(
-            mu_cond_S, sd_cond_S, n_samples
-          )
-        }
+        sd_cond_S <- sqrt(conditional_variances(par_hat$sigma2, A, C))
+        out$S_samples <- sample_independent_gaussian(
+          mu_cond_S, sd_cond_S, n_samples
+        )
       } else {
-        if (list_mode) {
-          out$S_samples <- lapply(seq_along(A), function(i) {
-            spatial_covariance_i <- par_hat$sigma2 * matern_correlation(
-              pairwise_distances(fitting_grp[[i]]), phi = fitting_phi,
-              kappa = object$kappa, return_sym_matrix = TRUE
-            )
-            conditional_covariance_i <- spatial_covariance_i -
-              A[[i]] %*% t(C[[i]])
-            cholesky_root_i <- t(factor_covariance(
-              conditional_covariance_i,
-              "conditional prediction covariance"
-            ))
-            sample_correlated_gaussian(
-              mu_cond_S[[i]], cholesky_root_i, n_samples
-            )
-          })
-        } else {
-          Sp <- par_hat$sigma2 * matern_correlation(
-            pairwise_distances(fitting_grp), phi = fitting_phi,
-            kappa = object$kappa, return_sym_matrix = TRUE
-          )
-          Sc <- Sp - A %*% t(C)
-          Sc_root <- factor_covariance(
-            Sc, "conditional prediction covariance"
-          )
-          Scr <- t(Sc_root)
-          out$S_samples <- sample_correlated_gaussian(
-            mu_cond_S, Scr, n_samples
-          )
-        }
+        Sp <- par_hat$sigma2 * matern_correlation(
+          pairwise_distances(fitting_grp), phi = fitting_phi,
+          kappa = object$kappa, return_sym_matrix = TRUE
+        )
+        Sc <- Sp - A %*% t(C)
+        Sc_root <- factor_covariance(
+          Sc, "conditional prediction covariance"
+        )
+        Scr <- t(Sc_root)
+        out$S_samples <- sample_correlated_gaussian(
+          mu_cond_S, Scr, n_samples
+        )
       }
     }
   }
