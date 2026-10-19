@@ -370,6 +370,34 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
   expect_true(any(is.finite(result$boundary_summary$value)))
 })
 
+test_that("one prediction sample bank serves locations and boundaries", {
+  original_prepare_prediction <- prepare_prediction
+  n_preparations <- 0L
+  local_mocked_bindings(
+    prepare_prediction = function(...) {
+      n_preparations <<- n_preparations + 1L
+      original_prepare_prediction(...)
+    },
+    .package = "RiskMap"
+  )
+
+  result <- predict(
+    gaussian_model,
+    newdata = prediction_data,
+    boundaries = areal,
+    aggregate = "mean",
+    control_mcmc = set_control_mcmc(
+      n_sim = 40, burnin = 20, thin = 2, seed = 48
+    ),
+    keep_samples = TRUE,
+    messages = FALSE
+  )
+
+  expect_identical(n_preparations, 1L)
+  expect_identical(nrow(result$predictions), nrow(prediction_data))
+  expect_identical(nrow(result$samples$mean$response), nrow(areal))
+})
+
 test_that("polygon aggregation applies weights on the correct scale", {
   values <- matrix(c(1, 3, 2, 6), nrow = 2)
   weights <- c(1, 3)
