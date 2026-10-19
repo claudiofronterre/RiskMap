@@ -25,8 +25,8 @@
 ##' @param prediction Character string specifying `"auto"`, `"marginal"`, or
 ##'   `"joint"` prediction. `"auto"` uses marginal prediction for locations and
 ##'   joint prediction when `boundaries` are supplied.
-##' @param include Character vector specifying optional components to add to the
-##'   complete linear predictor and response. Supported values are
+##' @param include `NULL`, or a character vector specifying optional components
+##'   to add to the complete linear predictor and response. Supported values are
 ##'   `"random_effects"`, for conditional predictions at known groups, and
 ##'   `"nugget"`, for a new realization of observation-level predictive
 ##'   variation at locations supplied through `newdata`. Fixed effects, the
@@ -49,9 +49,9 @@
 ##' @param summaries Character vector naming the summaries calculated from each
 ##'   predictive distribution. Supported values are `"mean"`, `"median"`,
 ##'   `"sd"`, `"cv"`, `"lower"`, `"upper"`, `"interval_width"`, and
-##'   `"exceedance"`. The coefficient
-##'   of variation is calculated only on the response scale and should be
-##'   interpreted only for outcomes whose predictive mean is positive. Custom
+##'   `"exceedance"`. The coefficient of variation is calculated only on the
+##'   response scale and is returned as `NA` when the predictive mean is
+##'   non-positive or numerically too close to zero for a stable ratio. Custom
 ##'   summaries can be supplied in a named list, optionally mixed with
 ##'   built-ins, for example `list(mean = "mean", iqr = IQR)`. Each custom
 ##'   function receives the predictive draws and must return one numeric value.
@@ -81,8 +81,8 @@
 ##' @param ... Additional arguments reserved for future prediction methods.
 ##'
 ##' @details
-##' At new locations, the default prediction represents the underlying
-##' epidemiological surface, with linear predictor
+##' At new locations, the default prediction represents the underlying spatial
+##' surface, with linear predictor
 ##' \deqn{d(x)^T \hat\beta + S(x) + \mathrm{offset}(x).}
 ##' The offset is included automatically when it was specified in the fitted
 ##' model. Nugget and unstructured random effects are excluded unless requested
@@ -189,9 +189,39 @@
 ##' example_data <- italy_sim[1:50, ]
 ##' fit <- glgpm(y ~ pop_dens + gp(), data = example_data, family = "gaussian",
 ##'              messages = FALSE)
-##' prediction <- predict(fit, newdata = example_data[1:5, ],
-##'                       messages = FALSE)
+##'
+##' # Calculate an additional predictive target from every linear-predictor draw
+##' prediction <- predict(
+##'   fit,
+##'   newdata = example_data[1:5, ],
+##'   transform = list(squared_link = function(link) link^2),
+##'   messages = FALSE
+##' )
 ##' prediction$data
+##'
+##' # Use the same reference distribution of population density at each location
+##' reference_population <- data.frame(pop_dens = example_data$pop_dens)
+##' standardized_prediction <- predict(
+##'   fit,
+##'   newdata = example_data[1:5, ],
+##'   standardize = reference_population,
+##'   messages = FALSE
+##' )
+##' standardized_prediction$data
+##'
+##' # Aggregate joint predictions within two example areas
+##' areas <- st_sf(
+##'   area = 1:2,
+##'   geometry = st_make_grid(example_data, n = c(2, 1))
+##' )
+##' areal_prediction <- predict(
+##'   fit,
+##'   newdata = example_data,
+##'   boundaries = areas,
+##'   aggregate = "mean",
+##'   messages = FALSE
+##' )
+##' areal_prediction$summary
 ##'
 ##' @seealso [glgpm()], [fitted()], [set_control_mcmc()]
 ##' @method predict RiskMap
@@ -202,7 +232,7 @@ predict.RiskMap <- function(
     boundaries = NULL,
     aggregate = NULL,
     prediction = c("auto", "marginal", "joint"),
-    include = character(),
+    include = NULL,
     transform = NULL,
     standardize = NULL,
     summaries = c("mean", "lower", "upper"),
@@ -215,15 +245,17 @@ predict.RiskMap <- function(
     messages = TRUE,
     ...) {
 
+  if (is.null(include)) include <- character()
   aggregate <- normalise_prediction_operations(
-    aggregate, c("mean", "median", "sum", "min", "max"), "aggregate",
+    aggregate, c("mean", "median", "sum", "min", "max"),
+    argument_name = "aggregate",
     allow_null = TRUE
   )
   summaries <- normalise_prediction_operations(
     summaries,
     c("mean", "median", "sd", "cv", "lower", "upper", "interval_width",
       "exceedance"),
-    "summaries"
+    argument_name = "summaries"
   )
   transform <- normalise_prediction_transforms(transform)
   standardize <- validate_prediction_standardize(object, standardize)
@@ -255,7 +287,7 @@ predict.RiskMap <- function(
          call. = FALSE)
   }
   prediction_input <- validate_prediction_data(
-    object, newdata, include, messages, standardize
+    object, newdata, include, standardize
   )
   if (!is.null(boundaries)) {
     if (observed_locations) {
@@ -394,14 +426,12 @@ validate_prediction_options <- function(object, prediction, include,
                                         thresholds, level, weights,
                                         control_mcmc, seed, keep_samples,
                                         messages) {
-  if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a fitted RiskMap model", call. = FALSE)
-  }
   prediction <- match.arg(prediction, c("auto", "marginal", "joint"))
   if (!is.null(boundaries)) {
     check_data(boundaries, geometry = "polygon", type = "sf")
     if (prediction == "marginal") {
-      stop("Polygon aggregation requires joint prediction", call. = FALSE)
+      stop("When 'boundaries' are provided, 'prediction' must be \"joint\"",
+           call. = FALSE)
     }
     prediction <- "joint"
     if (is.null(aggregate)) {
@@ -457,15 +487,15 @@ validate_prediction_options <- function(object, prediction, include,
 
 #' Normalise built-in and custom prediction operations
 #' @noRd
-normalise_prediction_operations <- function(x, allowed, argument,
+normalise_prediction_operations <- function(x, allowed, argument_name,
                                             allow_null = FALSE) {
   if (is.null(x)) {
     if (allow_null) return(NULL)
-    stop("'", argument, "' cannot be NULL", call. = FALSE)
+    stop("'", argument_name, "' cannot be NULL", call. = FALSE)
   }
   if (is.character(x)) {
     if (!length(x) || anyNA(x) || any(!x %in% allowed) || anyDuplicated(x)) {
-      stop("'", argument, "' must contain unique values chosen from: ",
+      stop("'", argument_name, "' must contain unique values chosen from: ",
            paste(shQuote(allowed), collapse = ", "),
            ", or named custom functions", call. = FALSE)
     }
@@ -474,13 +504,13 @@ normalise_prediction_operations <- function(x, allowed, argument,
     return(out)
   }
   if (!is.list(x) || !length(x)) {
-    stop("'", argument, "' must be a character vector or a named list of ",
+    stop("'", argument_name, "' must be a character vector or a named list of ",
          "built-ins and functions", call. = FALSE)
   }
   operation_names <- names(x)
   if (is.null(operation_names) || anyNA(operation_names) ||
       any(!nzchar(operation_names)) || anyDuplicated(operation_names)) {
-    stop("Every entry in '", argument,
+    stop("Every entry in '", argument_name,
          "' must have a unique, non-empty name", call. = FALSE)
   }
   valid <- vapply(x, function(operation) {
@@ -489,7 +519,7 @@ normalise_prediction_operations <- function(x, allowed, argument,
          !is.na(operation) && operation %in% allowed)
   }, logical(1))
   if (!all(valid)) {
-    stop("Each entry in '", argument, "' must be a function or one of: ",
+    stop("Each entry in '", argument_name, "' must be a function or one of: ",
          paste(shQuote(allowed), collapse = ", "), call. = FALSE)
   }
   x
@@ -546,7 +576,7 @@ validate_prediction_standardize <- function(object, standardize) {
            paste(shQuote(invalid), collapse = ", ")) else "",
          call. = FALSE)
   }
-  if (!all(stats::complete.cases(standardize[reference_names]))) {
+  if (!all(complete.cases(standardize[reference_names]))) {
     stop("'standardize' contains missing predictor values", call. = FALSE)
   }
   weights <- if (".weight" %in% names(standardize)) {
@@ -585,15 +615,13 @@ prediction_operation_requested <- function(operations, built_in) {
 
 #' Validate and align prediction locations
 #' @noRd
-validate_prediction_data <- function(object, newdata, include, messages,
+validate_prediction_data <- function(object, newdata, include,
                                      standardize = NULL) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
   check_data(prediction_data, geometry = "point", type = "sf")
   output_data <- prediction_data
   if (!isTRUE(st_crs(prediction_data) == st_crs(object$data))) {
-    if (messages) {
-      message("Transforming 'newdata' to the fitted model CRS for prediction")
-    }
+    message("Transforming 'newdata' to the fitted model CRS for prediction")
     prediction_data <- st_transform(prediction_data, st_crs(object$data))
   }
   inter_f <- interpret_formula(object$formula)
@@ -626,7 +654,7 @@ validate_prediction_data <- function(object, newdata, include, messages,
     }
   }
   valid_rows <- if (length(required) > 0L) {
-    stats::complete.cases(st_drop_geometry(prediction_data)[required])
+    complete.cases(st_drop_geometry(prediction_data)[required])
   } else {
     rep(TRUE, nrow(prediction_data))
   }
@@ -766,9 +794,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   model_data <- prediction_input$model_data
   output_boundaries <- boundaries
   if (!isTRUE(st_crs(boundaries) == st_crs(object$data))) {
-    if (messages) {
-      message("Transforming 'boundaries' to the fitted model CRS for aggregation")
-    }
+    message("Transforming 'boundaries' to the fitted model CRS for aggregation")
     boundaries <- st_transform(boundaries, st_crs(object$data))
   }
 
@@ -1274,6 +1300,19 @@ weighted_prediction_median <- function(values, weights) {
   values[index]
 }
 
+#' Calculate a stable coefficient of variation
+#' @noRd
+prediction_coefficient_of_variation <- function(values) {
+  predictive_mean <- mean(values)
+  numerical_tolerance <- sqrt(.Machine$double.eps) *
+    max(1, max(abs(values)))
+  if (!is.finite(predictive_mean) ||
+      predictive_mean <= numerical_tolerance) {
+    return(NA_real_)
+  }
+  sd(values) / predictive_mean
+}
+
 #' Return tidy summaries for one aggregated predictive distribution
 #' @noRd
 tidy_prediction_summaries <- function(values, boundary_id, aggregate,
@@ -1281,13 +1320,13 @@ tidy_prediction_summaries <- function(values, boundary_id, aggregate,
   alpha <- (1 - level) / 2
   summary_functions <- list(
     mean = mean,
-    median = stats::median,
-    sd = stats::sd,
-    cv = function(x) stats::sd(x) / mean(x),
-    lower = function(x) stats::quantile(x, alpha, names = FALSE),
-    upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE),
+    median = median,
+    sd = sd,
+    cv = prediction_coefficient_of_variation,
+    lower = function(x) quantile(x, alpha, names = FALSE),
+    upper = function(x) quantile(x, 1 - alpha, names = FALSE),
     interval_width = function(x) {
-      diff(stats::quantile(x, c(alpha, 1 - alpha), names = FALSE))
+      diff(quantile(x, c(alpha, 1 - alpha), names = FALSE))
     }
   )
   draws <- as.numeric(values)
@@ -1376,13 +1415,13 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level,
   alpha <- (1 - level) / 2
   summary_functions <- list(
     mean = mean,
-    median = stats::median,
-    sd = stats::sd,
-    cv = function(x) stats::sd(x) / mean(x),
-    lower = function(x) stats::quantile(x, alpha, names = FALSE),
-    upper = function(x) stats::quantile(x, 1 - alpha, names = FALSE),
+    median = median,
+    sd = sd,
+    cv = prediction_coefficient_of_variation,
+    lower = function(x) quantile(x, alpha, names = FALSE),
+    upper = function(x) quantile(x, 1 - alpha, names = FALSE),
     interval_width = function(x) {
-      diff(stats::quantile(x, c(alpha, 1 - alpha), names = FALSE))
+      diff(quantile(x, c(alpha, 1 - alpha), names = FALSE))
     }
   )
   ordinary <- drop_prediction_operations(summaries, "exceedance")
@@ -3337,7 +3376,7 @@ finite_mean <- function(x) {
 ##' @noRd
 finite_sd <- function(x) {
   x <- x[is.finite(x)]
-  if (length(x) >= 2L) stats::sd(x) else NA_real_
+  if (length(x) >= 2L) sd(x) else NA_real_
 }
 
 ##' @noRd
@@ -3346,9 +3385,9 @@ summarize_simulation_metric <- function(x, n_sim = length(x)) {
   n_valid <- length(x)
   list(
     mean = if (n_valid) mean(x) else NA_real_,
-    sd = if (n_valid >= 2L) stats::sd(x) else NA_real_,
-    lower = if (n_valid >= 2L) unname(stats::quantile(x, 0.025)) else NA_real_,
-    upper = if (n_valid >= 2L) unname(stats::quantile(x, 0.975)) else NA_real_,
+    sd = if (n_valid >= 2L) sd(x) else NA_real_,
+    lower = if (n_valid >= 2L) unname(quantile(x, 0.025)) else NA_real_,
+    upper = if (n_valid >= 2L) unname(quantile(x, 0.975)) else NA_real_,
     n_valid = n_valid,
     n_sim = n_sim
   )

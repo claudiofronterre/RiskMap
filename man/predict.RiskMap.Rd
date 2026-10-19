@@ -10,7 +10,7 @@
   boundaries = NULL,
   aggregate = NULL,
   prediction = c("auto", "marginal", "joint"),
-  include = character(),
+  include = NULL,
   transform = NULL,
   standardize = NULL,
   summaries = c("mean", "lower", "upper"),
@@ -50,8 +50,8 @@ must return one numeric value per draw.}
 \code{"joint"} prediction. \code{"auto"} uses marginal prediction for locations and
 joint prediction when \code{boundaries} are supplied.}
 
-\item{include}{Character vector specifying optional components to add to the
-complete linear predictor and response. Supported values are
+\item{include}{\code{NULL}, or a character vector specifying optional components
+to add to the complete linear predictor and response. Supported values are
 \code{"random_effects"}, for conditional predictions at known groups, and
 \code{"nugget"}, for a new realization of observation-level predictive
 variation at locations supplied through \code{newdata}. Fixed effects, the
@@ -77,9 +77,9 @@ people or profiles and is distinct from the polygon \code{weights} argument.}
 \item{summaries}{Character vector naming the summaries calculated from each
 predictive distribution. Supported values are \code{"mean"}, \code{"median"},
 \code{"sd"}, \code{"cv"}, \code{"lower"}, \code{"upper"}, \code{"interval_width"}, and
-\code{"exceedance"}. The coefficient
-of variation is calculated only on the response scale and should be
-interpreted only for outcomes whose predictive mean is positive. Custom
+\code{"exceedance"}. The coefficient of variation is calculated only on the
+response scale and is returned as \code{NA} when the predictive mean is
+non-positive or numerically too close to zero for a stable ratio. Custom
 summaries can be supplied in a named list, optionally mixed with
 built-ins, for example \code{list(mean = "mean", iqr = IQR)}. Each custom
 function receives the predictive draws and must return one numeric value.}
@@ -151,8 +151,8 @@ required by the fitted model are supplied together in one \code{sf} object,
 keeping their rows aligned.
 }
 \details{
-At new locations, the default prediction represents the underlying
-epidemiological surface, with linear predictor
+At new locations, the default prediction represents the underlying spatial
+surface, with linear predictor
 \deqn{d(x)^T \hat\beta + S(x) + \mathrm{offset}(x).}
 The offset is included automatically when it was specified in the fitted
 model. Nugget and unstructured random effects are excluded unless requested
@@ -166,7 +166,6 @@ when \code{control_mcmc = NULL}. If the model was fitted with
 \code{\link[=set_control_mcmc]{set_control_mcmc()}} defaults. Supplying \code{control_mcmc} always requests a
 fresh conditional run. For Gaussian models, prediction is based on their
 exact conditional Gaussian distribution.
-
 At the observed locations, the conditioned location-level Gaussian effect
 already includes the fitted nugget when the model has one. Consequently,
 \code{include = "nugget"} is available only for predictions supplied through
@@ -233,9 +232,39 @@ data(italy_sim)
 example_data <- italy_sim[1:50, ]
 fit <- glgpm(y ~ pop_dens + gp(), data = example_data, family = "gaussian",
              messages = FALSE)
-prediction <- predict(fit, newdata = example_data[1:5, ],
-                      messages = FALSE)
+
+# Calculate an additional predictive target from every linear-predictor draw
+prediction <- predict(
+  fit,
+  newdata = example_data[1:5, ],
+  transform = list(squared_link = function(link) link^2),
+  messages = FALSE
+)
 prediction$data
+
+# Use the same reference distribution of population density at each location
+reference_population <- data.frame(pop_dens = example_data$pop_dens)
+standardized_prediction <- predict(
+  fit,
+  newdata = example_data[1:5, ],
+  standardize = reference_population,
+  messages = FALSE
+)
+standardized_prediction$data
+
+# Aggregate joint predictions within two example areas
+areas <- st_sf(
+  area = 1:2,
+  geometry = st_make_grid(example_data, n = c(2, 1))
+)
+areal_prediction <- predict(
+  fit,
+  newdata = example_data,
+  boundaries = areas,
+  aggregate = "mean",
+  messages = FALSE
+)
+areal_prediction$summary
 
 }
 \seealso{

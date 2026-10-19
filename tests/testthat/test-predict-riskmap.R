@@ -176,7 +176,7 @@ test_that("predict.RiskMap validates its concise public interface", {
       gaussian_model, prediction_data, boundaries = areal,
       aggregate = "mean", prediction = "marginal", messages = FALSE
     ),
-    "requires joint prediction"
+    "'prediction' must be \"joint\""
   )
   expect_error(
     predict(gaussian_model, prediction_data, aggregate = "mean",
@@ -259,6 +259,18 @@ test_that("prediction validates required offset and optional components", {
 })
 
 test_that("coefficient of variation is reported only where interpretable", {
+  positive_draws <- c(1, 2, 3)
+  expect_equal(
+    prediction_coefficient_of_variation(positive_draws),
+    sd(positive_draws) / mean(positive_draws)
+  )
+  expect_identical(
+    prediction_coefficient_of_variation(c(-3, -2, -1)), NA_real_
+  )
+  expect_identical(
+    prediction_coefficient_of_variation(c(-1, 1 + 1e-12)), NA_real_
+  )
+
   prediction_data <- grid
   prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_control <- set_control_mcmc(
