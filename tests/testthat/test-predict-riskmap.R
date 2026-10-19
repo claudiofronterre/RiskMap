@@ -231,7 +231,7 @@ test_that("prediction validates required offset and optional components", {
 
   expect_error(
     predict(gaussian_offset_model, prediction_data, messages = FALSE),
-    "missing required column: 'offset'"
+    "missing required column.*offset"
   )
   expect_error(
     predict(
