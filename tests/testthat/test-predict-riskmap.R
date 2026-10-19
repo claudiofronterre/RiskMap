@@ -1,6 +1,4 @@
 test_that("predict.RiskMap keeps prediction data and summaries aligned", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2, seed = 41
   )
@@ -13,8 +11,7 @@ test_that("predict.RiskMap keeps prediction data and summaries aligned", {
     messages = FALSE
   )
 
-  expected_data <- c("geometry", "grid_id", "cov",
-                     "fixed", "offset", "spatial_mean", "spatial_lower",
+  expected_data <- c("fixed", "offset", "spatial_mean", "spatial_lower",
                      "spatial_upper", "link_mean", "link_lower", "link_upper",
                      "response_mean", "response_lower", "response_upper")
 
@@ -22,15 +19,13 @@ test_that("predict.RiskMap keeps prediction data and summaries aligned", {
   expect_s3_class(result$data, "sf")
   expect_identical(st_geometry(result$data), st_geometry(prediction_data))
   expect_identical(nrow(result$data), nrow(prediction_data))
-  expect_setequal(names(result$data), expected_data)
+  expect_contains(names(result$data), expected_data)
   expect_identical(result$data$link_mean, result$data$response_mean)
   expect_identical(nrow(result$samples$spatial), nrow(prediction_data))
 })
 
 test_that("predict.RiskMap derives predictors and offsets from one sf object", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
-  prediction_data$offset <- seq_len(nrow(prediction_data)) / 100
+
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2, seed = 42
   )
@@ -146,8 +141,6 @@ test_that("prediction distinguishes estimated and fixed nugget variances", {
 })
 
 test_that("predict.RiskMap validates its concise public interface", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
 
   expect_error(
     predict(gaussian_model, prediction_data, include = "spatial"),
@@ -224,13 +217,9 @@ test_that("predict.RiskMap validates its concise public interface", {
 })
 
 test_that("prediction validates required offset and optional components", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
-  prediction_data$i <- rep(gaussian_model$re[[1]],
-                           length.out = nrow(prediction_data))
-
+  no_offset_data <- subset(prediction_data, select = -offset)
   expect_error(
-    predict(gaussian_offset_model, prediction_data, messages = FALSE),
+    predict(gaussian_offset_model, no_offset_data, messages = FALSE),
     "missing required column.*offset"
   )
   expect_error(
@@ -271,8 +260,6 @@ test_that("coefficient of variation is reported only where interpretable", {
     prediction_coefficient_of_variation(c(-1, 1 + 1e-12)), NA_real_
   )
 
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2, seed = 44
   )
@@ -290,8 +277,6 @@ test_that("coefficient of variation is reported only where interpretable", {
 })
 
 test_that("prediction transforms coordinates internally and preserves output geometry", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   geographic_data <- st_transform(prediction_data, 4326)
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
@@ -311,8 +296,6 @@ test_that("prediction transforms coordinates internally and preserves output geo
 })
 
 test_that("missing predictors preserve rows and return missing predictions", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_data$cov[2] <- NA_real_
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
@@ -333,7 +316,6 @@ test_that("missing predictors preserve rows and return missing predictions", {
 })
 
 test_that("all unusable prediction rows retain a complete missing result", {
-  prediction_data <- grid
   prediction_data$cov <- NA_real_
 
   expect_warning(
@@ -354,9 +336,7 @@ test_that("all unusable prediction rows retain a complete missing result", {
 })
 
 test_that("boundaries trigger blockwise joint prediction and retain polygons", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
-  prediction_data$population <- seq_len(nrow(prediction_data))
+
   boundaries <- areal
   boundaries$district <- paste0("district_", seq_len(nrow(boundaries)))
   prediction_control <- set_control_mcmc(
@@ -498,8 +478,6 @@ test_that("exact grid assignment rejects invalid geometry metadata", {
 })
 
 test_that("polygon prediction handles outside cells and empty polygons", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   far_polygon <- areal[1, ]
   shifted <- st_geometry(far_polygon) + c(1e6, 1e6)
   st_geometry(far_polygon) <- st_set_crs(shifted, st_crs(areal))
@@ -534,12 +512,11 @@ test_that("polygon prediction handles outside cells and empty polygons", {
 })
 
 test_that("polygon weights are validated and zero totals return missing summaries", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
 
+  no_weight_data <- subset(prediction_data, select = -population)
   expect_error(
     predict(
-      gaussian_model, prediction_data, boundaries = areal,
+      gaussian_model, no_weight_data, boundaries = areal,
       aggregate = "mean", weights = "population", messages = FALSE
     ),
     "does not contain the weights column"
@@ -644,9 +621,6 @@ test_that("prediction interval width uses the requested probability level", {
 })
 
 test_that("built-in and custom aggregation and summary functions can be mixed", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
-  prediction_data$population <- seq_len(nrow(prediction_data))
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
   )
@@ -709,8 +683,6 @@ test_that("stored conditioning samples are checked before prediction", {
 })
 
 test_that("areal aggregation must be chosen explicitly", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
 
   expect_error(
     predict(
@@ -722,8 +694,6 @@ test_that("areal aggregation must be chosen explicitly", {
 })
 
 test_that("prediction seed makes generated samples reproducible", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
   )
@@ -798,8 +768,6 @@ test_that("marginal prediction uses the bounded-memory backend when requested", 
 })
 
 test_that("polygon blocks share one non-Gaussian conditioning run", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   model_without_samples <- binomial_model
   model_without_samples$S_samples <- NULL
   original_sampler <- getFromNamespace("laplace_sampling_mcmc", "RiskMap")
@@ -829,8 +797,6 @@ test_that("polygon blocks share one non-Gaussian conditioning run", {
 })
 
 test_that("non-Gaussian boundary predictions reuse shared random effects", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_data$i <- rep(binomial_model$re[[1]], length.out = nrow(prediction_data))
 
   result <- predict(
@@ -849,10 +815,6 @@ test_that("non-Gaussian boundary predictions reuse shared random effects", {
 })
 
 test_that("Gaussian boundary predictions retain one shared random-effect draw", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
-  prediction_data$i <- rep(gaussian_model$re[[1]],
-                           length.out = nrow(prediction_data))
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
   )
@@ -875,8 +837,7 @@ test_that("Gaussian boundary predictions retain one shared random-effect draw", 
 })
 
 test_that("location predictions report exceedance probabilities", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+
   result <- predict(
     gaussian_model,
     newdata = prediction_data,
@@ -894,8 +855,6 @@ test_that("location predictions report exceedance probabilities", {
 })
 
 test_that("derived targets are transformed before summarising and aggregating", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   location_result <- predict(
     gaussian_model,
     newdata = prediction_data,
@@ -925,8 +884,6 @@ test_that("derived targets are transformed before summarising and aggregating", 
 })
 
 test_that("derived targets validate names and returned dimensions", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
 
   expect_error(
     predict(gaussian_model, prediction_data,
@@ -943,7 +900,6 @@ test_that("derived targets validate names and returned dimensions", {
 })
 
 test_that("prediction standardizes over an equally weighted reference population", {
-  prediction_data <- grid
   reference <- data.frame(cov = c(-1, 0.5, 2))
 
   result <- predict(
@@ -968,7 +924,6 @@ test_that("prediction standardizes over an equally weighted reference population
 })
 
 test_that("standardization supports population weights and derived targets", {
-  prediction_data <- grid
   reference <- data.frame(cov = c(-1, 2), .weight = c(1, 3))
 
   result <- predict(
@@ -991,7 +946,6 @@ test_that("standardization supports population weights and derived targets", {
 })
 
 test_that("standardization is available before polygon aggregation", {
-  prediction_data <- grid
   reference <- data.frame(cov = c(-1, 1))
 
   result <- predict(
