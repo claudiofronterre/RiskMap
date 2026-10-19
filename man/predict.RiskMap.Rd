@@ -142,8 +142,10 @@ reference population supplied through \code{standardize}.}
 \item{type}{Whether prediction was marginal or joint.}
 \item{family}{The fitted response family.}
 \item{observed_locations}{Whether \code{newdata} was omitted.}
-\item{coverage}{For polygon prediction, \code{"exact"} when fractional grid-cell
-coverage was used and \code{"point"} for point-in-polygon assignment.}
+\item{coverage}{\code{NULL} for location-only prediction. For polygon
+aggregation, \code{"exact"} when fractional grid-cell coverage was used and
+\code{"point"} for point-in-polygon assignment. This is output metadata, not
+a user-supplied argument.}
 }
 }
 \description{

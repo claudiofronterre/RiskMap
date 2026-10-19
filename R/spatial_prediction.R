@@ -182,8 +182,10 @@
 ##'   \item{type}{Whether prediction was marginal or joint.}
 ##'   \item{family}{The fitted response family.}
 ##'   \item{observed_locations}{Whether `newdata` was omitted.}
-##'   \item{coverage}{For polygon prediction, `"exact"` when fractional grid-cell
-##'     coverage was used and `"point"` for point-in-polygon assignment.}
+##'   \item{coverage}{`NULL` for location-only prediction. For polygon
+##'     aggregation, `"exact"` when fractional grid-cell coverage was used and
+##'     `"point"` for point-in-polygon assignment. This is output metadata, not
+##'     a user-supplied argument.}
 ##' }
 ##'
 ##' @examples
@@ -327,12 +329,14 @@ predict.RiskMap <- function(
       include = include,
       transform = names(transform),
       standardized = !is.null(standardize),
+      aggregate = NULL,
       summaries = names(summaries),
       thresholds = thresholds,
       level = level,
       type = type,
       family = object$family,
-      observed_locations = observed_locations
+      observed_locations = observed_locations,
+      coverage = NULL
     )
     class(out) <- "RiskMap_prediction"
     return(out)
@@ -367,12 +371,14 @@ predict.RiskMap <- function(
     include = include,
     transform = names(transform),
     standardized = !is.null(standardize),
+    aggregate = NULL,
     summaries = names(summaries),
     thresholds = thresholds,
     level = level,
     type = type,
     family = object$family,
-    observed_locations = observed_locations
+    observed_locations = observed_locations,
+    coverage = NULL
   )
   class(out) <- "RiskMap_prediction"
   out
@@ -856,7 +862,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       standardized = !is.null(standardize), aggregate = names(aggregate),
       summaries = names(summaries), thresholds = thresholds, level = level,
       type = "joint", family = object$family, observed_locations = FALSE,
-      aggregated = TRUE, coverage = assignment$method
+      coverage = assignment$method
     )
     class(out) <- "RiskMap_prediction"
     return(out)
@@ -1012,7 +1018,6 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     type = "joint",
     family = object$family,
     observed_locations = FALSE,
-    aggregated = TRUE,
     coverage = assignment$method
   )
   class(out) <- "RiskMap_prediction"

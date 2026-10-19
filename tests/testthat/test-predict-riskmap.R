@@ -24,6 +24,34 @@ test_that("predict.RiskMap keeps prediction data and summaries aligned", {
   expect_identical(nrow(result$samples$spatial), nrow(prediction_data))
 })
 
+test_that("prediction objects use one stable output schema", {
+  expected_output <- c(
+    "predictions", "boundaries", "boundary_summary", "samples", "include",
+    "transform", "standardized", "aggregate", "summaries", "thresholds",
+    "level", "type", "family", "observed_locations", "coverage"
+  )
+
+  observed <- predict(gaussian_model, messages = FALSE)
+  locations <- predict(gaussian_model, prediction_data, messages = FALSE)
+  polygons <- predict(
+    gaussian_model, prediction_data, areal, "mean", messages = FALSE
+  )
+
+  expect_setequal(names(observed), expected_output)
+  expect_setequal(names(locations), expected_output)
+  expect_setequal(names(polygons), expected_output)
+  expect_identical(
+    observed[c("aggregate", "coverage")],
+    list(aggregate = NULL, coverage = NULL)
+  )
+  expect_identical(
+    locations[c("aggregate", "coverage")],
+    list(aggregate = NULL, coverage = NULL)
+  )
+  expect_identical(polygons$aggregate, "mean")
+  expect_identical(polygons$coverage, "exact")
+})
+
 test_that("predict.RiskMap derives predictors and offsets from one sf object", {
 
   prediction_control <- set_control_mcmc(
@@ -356,7 +384,8 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
   )
 
   expect_s3_class(result, "RiskMap_prediction")
-  expect_true(result$aggregated)
+  expect_identical(result$aggregate,
+                   c("mean", "median", "sum", "min", "max"))
   expect_identical(result$type, "joint")
   expect_identical(result$coverage, "exact")
   expect_identical(st_geometry(result$predictions), st_geometry(prediction_data))
