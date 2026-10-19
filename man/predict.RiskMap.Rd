@@ -253,9 +253,9 @@ standardized_prediction <- predict(
 standardized_prediction$data
 
 # Aggregate joint predictions within two example areas
-areas <- st_sf(
+areas <- sf::st_sf(
   area = 1:2,
-  geometry = st_make_grid(example_data, n = c(2, 1))
+  geometry = sf::st_make_grid(example_data, n = c(2, 1))
 )
 areal_prediction <- predict(
   fit,
