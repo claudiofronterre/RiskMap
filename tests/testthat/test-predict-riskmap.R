@@ -170,6 +170,92 @@ test_that("predict.RiskMap validates its concise public interface", {
     ),
     "unknown levels for random effect"
   )
+
+  expect_error(
+    predict(
+      gaussian_model, prediction_data, boundaries = areal,
+      aggregate = "mean", prediction = "marginal", messages = FALSE
+    ),
+    "requires joint prediction"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, aggregate = "mean",
+            messages = FALSE),
+    "only when 'boundaries' are supplied"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data,
+            summaries = "exceedance", messages = FALSE),
+    "'thresholds' must contain"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data,
+            summaries = "mean", thresholds = 0.2, messages = FALSE),
+    "used only when 'summaries' includes 'exceedance'"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, control_mcmc = list(),
+            messages = FALSE),
+    "output from set_control_mcmc"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, seed = 0, messages = FALSE),
+    "positive integer"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, weights = 1,
+            messages = FALSE),
+    "name of one column"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, weights = "population",
+            messages = FALSE),
+    "only when 'boundaries' are supplied"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, keep_samples = NA,
+            messages = FALSE),
+    "either TRUE or FALSE"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, messages = NA),
+    "either TRUE or FALSE"
+  )
+})
+
+test_that("prediction validates required offset and optional components", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  prediction_data$i <- rep(gaussian_model$re[[1]],
+                           length.out = nrow(prediction_data))
+
+  expect_error(
+    predict(gaussian_offset_model, prediction_data, messages = FALSE),
+    "missing required column: 'offset'"
+  )
+  expect_error(
+    predict(
+      gaussian_model, prediction_data, prediction = "marginal",
+      include = "random_effects", messages = FALSE
+    ),
+    "requires 'prediction = \"joint\"'"
+  )
+  complete_offset_data <- prediction_data
+  complete_offset_data$offset <- 0
+  expect_error(
+    predict(
+      gaussian_offset_model, complete_offset_data, prediction = "joint",
+      include = "random_effects", messages = FALSE
+    ),
+    "does not contain unstructured random effects"
+  )
+  expect_error(
+    predict(
+      gaussian_model, prediction_data, include = "nugget",
+      messages = FALSE
+    ),
+    "does not contain a positive nugget variance"
+  )
 })
 
 test_that("coefficient of variation is reported only where interpretable", {
@@ -232,6 +318,27 @@ test_that("missing predictors preserve rows and return missing predictions", {
   expect_true(is.na(result$data$response_mean[2]))
   expect_true(all(is.na(result$samples$spatial[2, ])))
   expect_true(all(is.finite(result$data$response_mean[-2])))
+})
+
+test_that("all unusable prediction rows retain a complete missing result", {
+  prediction_data <- grid
+  prediction_data$cov <- NA_real_
+
+  expect_warning(
+    result <- predict(
+      gaussian_model, prediction_data,
+      summaries = c("mean", "exceedance"), thresholds = 0,
+      keep_samples = TRUE, seed = 460, messages = FALSE
+    ),
+    "prediction rows"
+  )
+
+  expect_identical(nrow(result$data), nrow(prediction_data))
+  expect_null(result$samples)
+  expect_true(all(is.na(result$data$response_mean)))
+  expect_true(all(is.na(result$data$response_exceedance_0)))
+  expect_true(all(is.na(result$data$fixed)))
+  expect_false(result$observed_locations)
 })
 
 test_that("boundaries trigger blockwise joint prediction and retain polygons", {
@@ -349,6 +456,124 @@ test_that("RiskMap grids use exact fractional polygon coverage", {
   )
 })
 
+test_that("exact grid assignment rejects invalid geometry metadata", {
+  metadata <- attr(grid, "grid_metadata")
+  invalid_metadata <- metadata
+  invalid_metadata$cellsize <- -1
+
+  expect_error(
+    assign_prediction_grid_cells(grid, areal, invalid_metadata),
+    "invalid RiskMap grid metadata"
+  )
+
+  overlapping <- rbind(areal[1, ], areal[1, ])
+  expect_error(
+    assign_prediction_grid_cells(grid, overlapping, metadata),
+    "overlapping polygons"
+  )
+
+  duplicated <- rbind(grid[1, ], grid[1, ])
+  attr(duplicated, "grid_metadata") <- metadata
+  expect_error(
+    assign_prediction_grid_cells(duplicated, areal, metadata),
+    "duplicate RiskMap grid cells"
+  )
+
+  empty <- assign_prediction_grid_cells(grid[0, ], areal, metadata)
+  expect_identical(empty$method, "exact")
+  expect_identical(empty$area_id, integer())
+  expect_identical(empty$coverage, numeric())
+})
+
+test_that("polygon prediction handles outside cells and empty polygons", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  far_polygon <- areal[1, ]
+  shifted <- st_geometry(far_polygon) + c(1e6, 1e6)
+  st_geometry(far_polygon) <- st_set_crs(shifted, st_crs(areal))
+  mixed_boundaries <- rbind(areal[1, ], far_polygon)
+
+  expect_warning(
+    result <- predict(
+      gaussian_model, prediction_data,
+      boundaries = mixed_boundaries, aggregate = "mean",
+      summaries = c("mean", "exceedance"), thresholds = 0,
+      keep_samples = TRUE, seed = 472, messages = FALSE
+    ),
+    "outside all polygons"
+  )
+
+  missing <- result$summary$boundary_id == 2L
+  expect_true(any(missing))
+  expect_true(all(is.na(result$summary$value[missing])))
+  expect_true(all(is.na(result$samples$mean$response[2, ])))
+
+  expect_warning(
+    empty <- predict(
+      gaussian_model, prediction_data,
+      boundaries = far_polygon, aggregate = "mean",
+      seed = 473, messages = FALSE
+    ),
+    "outside all polygons"
+  )
+  expect_identical(nrow(empty$summary), 0L)
+  expect_null(empty$samples)
+  expect_identical(nrow(empty$data), 1L)
+})
+
+test_that("polygon weights are validated and zero totals return missing summaries", {
+  prediction_data <- grid
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+
+  expect_error(
+    predict(
+      gaussian_model, prediction_data, boundaries = areal,
+      aggregate = "mean", weights = "population", messages = FALSE
+    ),
+    "does not contain the weights column"
+  )
+
+  invalid_weights <- prediction_data
+  invalid_weights$population <- "many"
+  expect_error(
+    predict(
+      gaussian_model, invalid_weights, boundaries = areal,
+      aggregate = "mean", weights = "population", messages = FALSE
+    ),
+    "finite, non-negative"
+  )
+
+  invalid_weights$population <- 1
+  invalid_weights$population[1] <- NA_real_
+  expect_error(
+    predict(
+      gaussian_model, invalid_weights, boundaries = areal,
+      aggregate = "mean", weights = "population", messages = FALSE
+    ),
+    "finite, non-negative"
+  )
+
+  zero_weights <- prediction_data
+  zero_weights$population <- 0
+  expect_warning(
+    zero <- predict(
+      gaussian_model, zero_weights, boundaries = areal,
+      aggregate = c("mean", "median", "sum"), weights = "population",
+      seed = 474, messages = FALSE
+    ),
+    "zero total weight"
+  )
+  weighted <- zero$summary$aggregate %in% c("mean", "median", "sum")
+  expect_true(all(is.na(zero$summary$value[weighted])))
+
+  values <- matrix(1:6, nrow = 2)
+  for (operation in c("mean", "median", "sum")) {
+    expect_true(all(is.na(
+      aggregate_prediction_values(values, operation, c(0, 0))
+    )))
+  }
+})
+
 test_that("ordinary sf points retain point-in-polygon assignment", {
   points <- st_sf(
     value = 1:2,
@@ -452,6 +677,23 @@ test_that("custom prediction operations have strict output contracts", {
     ),
     "unique, non-empty name"
   )
+  expect_error(
+    summarise_prediction_matrix(
+      matrix(1:6, nrow = 2), "response",
+      list(bad = function(values) c(1, 2)), 0.95
+    ),
+    "must return exactly one numeric value"
+  )
+})
+
+test_that("stored conditioning samples are checked before prediction", {
+  inconsistent <- binomial_model
+  inconsistent$S_samples <- inconsistent$S_samples[, -1, drop = FALSE]
+
+  expect_error(
+    predict(inconsistent, keep_samples = TRUE, messages = FALSE),
+    "inconsistent with the fitted model"
+  )
 })
 
 test_that("areal aggregation must be chosen explicitly", {
@@ -484,6 +726,179 @@ test_that("prediction seed makes generated samples reproducible", {
   )
 
   expect_identical(first, second)
+})
+
+test_that("joint location prediction covers Gaussian and non-Gaussian engines", {
+  prediction_data <- grid[seq_len(min(3L, nrow(grid))), ]
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  prediction_data$i <- rep(gaussian_model$re[[1]],
+                           length.out = nrow(prediction_data))
+  prediction_control <- set_control_mcmc(
+    n_sim = 40, burnin = 20, thin = 2
+  )
+
+  gaussian <- predict(
+    gaussian_model, prediction_data, prediction = "joint",
+    include = "random_effects", control_mcmc = prediction_control,
+    keep_samples = TRUE, seed = 481, messages = FALSE
+  )
+  expect_identical(dim(gaussian$samples$random_effects),
+                   dim(gaussian$samples$spatial))
+  expect_true(all(is.finite(gaussian$samples$spatial)))
+
+  expect_message(
+    binomial <- predict(
+      binomial_model, prediction_data, prediction = "joint",
+      keep_samples = TRUE, seed = 482, messages = TRUE
+    ),
+    "Reusing conditional samples stored"
+  )
+  expect_identical(nrow(binomial$samples$spatial), nrow(prediction_data))
+  expect_true(all(binomial$data$response_mean >= 0 &
+                    binomial$data$response_mean <= 1))
+})
+
+test_that("marginal prediction uses the bounded-memory backend when requested", {
+  prediction_data <- grid[seq_len(min(3L, nrow(grid))), ]
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  prediction_control <- set_control_mcmc(
+    n_sim = 40, burnin = 20, thin = 2
+  )
+  local_mocked_bindings(
+    marginal_prediction_batch_size = function(...) 1L,
+    .package = "RiskMap"
+  )
+
+  gaussian <- predict(
+    gaussian_model, prediction_data,
+    control_mcmc = prediction_control, keep_samples = TRUE,
+    seed = 483, messages = FALSE
+  )
+  binomial <- predict(
+    binomial_model, prediction_data,
+    keep_samples = TRUE, seed = 484, messages = FALSE
+  )
+
+  expect_identical(nrow(gaussian$samples$spatial), nrow(prediction_data))
+  expect_identical(nrow(binomial$samples$spatial), nrow(prediction_data))
+  expect_true(all(is.finite(gaussian$samples$spatial)))
+  expect_true(all(is.finite(binomial$samples$spatial)))
+})
+
+test_that("the shared sampling engine validates grouped prediction inputs", {
+  grid_geometry <- st_geometry(grid[1:2, ])
+  predictors <- data.frame(cov = c(0.1, 0.2))
+
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = list(grid_geometry),
+      predictors = list(predictors), type = "marginal", messages = FALSE
+    ),
+    "must be 'joint'"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = list(), predictors = list(),
+      type = "joint", messages = FALSE
+    ),
+    "length 0"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = list(data.frame(x = 1)),
+      predictors = list(predictors), type = "joint", messages = FALSE
+    ),
+    "grid_pred\\[\\[1\\]\\]"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_model,
+      grid_pred = list(st_transform(grid_geometry, 4326)),
+      predictors = list(predictors), type = "joint", messages = FALSE
+    ),
+    "Mismatches: 1"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = grid_geometry,
+      type = "joint", messages = FALSE
+    ),
+    "'predictors' must be supplied"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = grid_geometry,
+      predictors = predictors, control_mcmc = list(), messages = FALSE
+    ),
+    "output from 'set_control_mcmc"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = grid_geometry,
+      predictors = predictors, type = "other", messages = FALSE
+    ),
+    "either 'marginal' or 'joint'"
+  )
+})
+
+test_that("the shared sampling engine validates predictors, offsets and groups", {
+  grid_geometry <- st_geometry(grid[1:2, ])
+  predictors <- data.frame(cov = c(0.1, 0.2))
+  offsets <- c(0.1, 0.2)
+
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = grid_geometry,
+      predictors = as.matrix(predictors), messages = FALSE
+    ),
+    "must be a data.frame"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = grid_geometry,
+      predictors = data.frame(other = 1:2), messages = FALSE
+    ),
+    "do not match the variables"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = grid_geometry,
+      predictors = predictors[1, , drop = FALSE], messages = FALSE
+    ),
+    "does not match the number of locations"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_offset_model, grid_pred = grid_geometry,
+      predictors = predictors, type = "joint", messages = FALSE
+    ),
+    "pred_cov_offset.*specified"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_offset_model, grid_pred = grid_geometry,
+      predictors = predictors, pred_cov_offset = "bad",
+      type = "joint", messages = FALSE
+    ),
+    "numeric vector"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_offset_model, grid_pred = list(grid_geometry),
+      predictors = list(predictors), pred_cov_offset = offsets,
+      type = "joint", messages = FALSE
+    ),
+    "one numeric vector per prediction group"
+  )
+  expect_error(
+    prediction_samples(
+      gaussian_model, grid_pred = list(grid_geometry),
+      predictors = list(predictors),
+      re_predictors = data.frame(i = gaussian_model$re[[1]][1:2]),
+      type = "joint", messages = FALSE
+    ),
+    "complete data frame"
+  )
 })
 
 test_that("polygon blocks share one non-Gaussian conditioning run", {

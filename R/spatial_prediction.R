@@ -710,7 +710,8 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
   grid_crs <- st_crs(metadata$grid_crs)
   grid_boundaries <- st_transform(boundaries, grid_crs)
   overlaps <- st_overlaps(grid_boundaries)
-  if (any(lengths(overlaps) > 0L)) {
+  duplicates <- st_equals(grid_boundaries)
+  if (any(lengths(overlaps) > 0L) || any(lengths(duplicates) > 1L)) {
     stop("'boundaries' contains overlapping polygons", call. = FALSE)
   }
 
@@ -1352,7 +1353,9 @@ tidy_prediction_summaries <- function(values, boundary_id, aggregate,
   ordinary <- drop_prediction_operations(summaries, "exceedance")
   rows <- lapply(names(ordinary), function(name) {
     operation <- ordinary[[name]]
-    value <- if (is.function(operation)) {
+    value <- if (all(is.na(draws))) {
+      NA_real_
+    } else if (is.function(operation)) {
       operation(draws)
     } else {
       summary_functions[[operation]](draws)
