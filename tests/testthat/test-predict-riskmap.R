@@ -13,17 +13,18 @@ test_that("predict.RiskMap keeps prediction data and summaries aligned", {
     messages = FALSE
   )
 
+  expected_data <- c("geometry", "grid_id", "cov",
+                     "fixed", "offset", "spatial_mean", "spatial_lower",
+                     "spatial_upper", "link_mean", "link_lower", "link_upper",
+                     "response_mean", "response_lower", "response_upper")
+
   expect_s3_class(result, "RiskMap_prediction")
   expect_s3_class(result$data, "sf")
   expect_identical(st_geometry(result$data), st_geometry(prediction_data))
-  expect_equal(nrow(result$data), nrow(prediction_data))
-  expect_true(all(c(
-    "fixed", "offset", "spatial_mean", "spatial_lower", "spatial_upper",
-    "link_mean", "link_lower", "link_upper", "response_mean",
-    "response_lower", "response_upper"
-  ) %in% names(result$data)))
-  expect_equal(result$data$link_mean, result$data$response_mean)
-  expect_equal(nrow(result$samples$spatial), nrow(prediction_data))
+  expect_identical(nrow(result$data), nrow(prediction_data))
+  expect_setequal(names(result$data), expected_data)
+  expect_identical(result$data$link_mean, result$data$response_mean)
+  expect_identical(nrow(result$samples$spatial), nrow(prediction_data))
 })
 
 test_that("predict.RiskMap derives predictors and offsets from one sf object", {
@@ -41,8 +42,8 @@ test_that("predict.RiskMap derives predictors and offsets from one sf object", {
     messages = FALSE
   )
 
-  expect_equal(result$data$offset, prediction_data$offset)
-  expect_equal(result$data$fixed,
+  expect_identical(result$data$offset, prediction_data$offset)
+  expect_identical(result$data$fixed,
                as.numeric(cbind(1, prediction_data$cov) %*%
                             coef(gaussian_offset_model)$beta))
 })
@@ -55,7 +56,7 @@ test_that("stored final samples are reused when MCMC controls are omitted", {
   )
   spatial_columns <- seq_len(nrow(binomial_model$coords))
 
-  expect_equal(
+  expect_identical(
     prediction$samples$spatial,
     t(binomial_model$S_samples[, spatial_columns, drop = FALSE])
   )
@@ -70,9 +71,9 @@ test_that("newdata NULL returns aligned predictions at observed rows", {
   )
 
   expect_true(result$observed_locations)
-  expect_equal(nrow(result$data), nrow(binomial_model$data))
+  expect_identical(nrow(result$data), nrow(binomial_model$data))
   expect_identical(st_geometry(result$data), st_geometry(binomial_model$data))
-  expect_equal(nrow(result$samples$spatial), nrow(binomial_model$data))
+  expect_identical(nrow(result$samples$spatial), nrow(binomial_model$data))
   expect_true(all(result$data$response_mean >= 0 &
                     result$data$response_mean <= 1))
 })
@@ -85,11 +86,13 @@ test_that("optional random-effect and nugget components are explicit", {
     keep_samples = TRUE,
     messages = FALSE
   )
-  expect_equal(dim(conditional$samples$random_effects),
-               dim(conditional$samples$spatial))
-  expect_true(all(c(
-    "random_effects_mean", "random_effects_lower", "random_effects_upper"
-  ) %in% names(conditional$data)))
+  expect_identical(dim(conditional$samples$random_effects),
+                   dim(conditional$samples$spatial))
+
+  expect_contains(names(conditional$data),
+                  c("random_effects_mean",
+                    "random_effects_lower",
+                    "random_effects_upper"))
 
   observation_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2, seed = 43
@@ -102,10 +105,13 @@ test_that("optional random-effect and nugget components are explicit", {
     keep_samples = TRUE,
     messages = FALSE
   )
-  expect_equal(dim(observation$samples$nugget),
-               dim(observation$samples$spatial))
-  expect_true(all(c("nugget_mean", "nugget_lower", "nugget_upper") %in%
-                    names(observation$data)))
+  expect_identical(dim(observation$samples$nugget),
+                   dim(observation$samples$spatial))
+
+  expect_contains(names(observation$data),
+                  c("nugget_mean",
+                    "nugget_lower",
+                    "nugget_upper"))
 })
 
 test_that("the fitted nugget is not counted twice at observed locations", {
@@ -120,7 +126,7 @@ test_that("the fitted nugget is not counted twice at observed locations", {
 })
 
 test_that("prediction distinguishes estimated and fixed nugget variances", {
-  expect_equal(
+  expect_identical(
     fitted_nugget_variance(gaussian_offset_model),
     coef(gaussian_offset_model)$tau2
   )
@@ -128,7 +134,7 @@ test_that("prediction distinguishes estimated and fixed nugget variances", {
   fixed_nugget_model <- gaussian_model
   fixed_nugget_model$fix_tau2 <- 0.25
   fixed_nugget_model$estimate$nu2 <- NULL
-  expect_equal(fitted_nugget_variance(fixed_nugget_model), 0.25)
+  expect_identical(fitted_nugget_variance(fixed_nugget_model), 0.25)
 
   setup <- list(par_hat = coef(fixed_nugget_model))
   set.seed(430)
@@ -181,8 +187,8 @@ test_that("coefficient of variation is reported only where interpretable", {
     messages = FALSE
   )
 
-  expect_true("response_cv" %in% names(result$data))
-  expect_false(any(c("spatial_cv", "link_cv") %in% names(result$data)))
+  expect_contains(names(result$data), "response_cv")
+  expect_disjoint(names(result$data), c("spatial_cv", "link_cv"))
 })
 
 test_that("prediction transforms coordinates internally and preserves output geometry", {
@@ -203,7 +209,7 @@ test_that("prediction transforms coordinates internally and preserves output geo
   )
 
   expect_identical(st_geometry(geographic$data), st_geometry(geographic_data))
-  expect_equal(geographic$data$response_mean, projected$data$response_mean)
+  expect_identical(geographic$data$response_mean, projected$data$response_mean)
 })
 
 test_that("missing predictors preserve rows and return missing predictions", {
@@ -222,7 +228,7 @@ test_that("missing predictors preserve rows and return missing predictions", {
     "1 prediction row"
   )
 
-  expect_equal(nrow(result$data), nrow(prediction_data))
+  expect_identical(nrow(result$data), nrow(prediction_data))
   expect_true(is.na(result$data$response_mean[2]))
   expect_true(all(is.na(result$samples$spatial[2, ])))
   expect_true(all(is.finite(result$data$response_mean[-2])))
@@ -256,11 +262,11 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
   expect_identical(result$coverage, "exact")
   expect_identical(st_geometry(result$data), st_geometry(boundaries))
   expect_identical(result$data$district, boundaries$district)
-  expect_equal(nrow(result$data), nrow(boundaries))
-  expect_true(all(c(
-    "boundary_id", "aggregate", "quantity", "summary", "threshold", "value"
-  ) %in% names(result$summary)))
-  expect_equal(nrow(result$samples$mean$response), nrow(boundaries))
+  expect_identical(nrow(result$data), nrow(boundaries))
+  expect_contains(names(result$summary),
+                  c("boundary_id", "aggregate", "quantity",
+                    "summary", "threshold", "value"))
+  expect_identical(nrow(result$samples$mean$response), nrow(boundaries))
   expect_true(any(is.finite(result$summary$value)))
 })
 
@@ -268,27 +274,27 @@ test_that("polygon aggregation applies weights on the correct scale", {
   values <- matrix(c(1, 3, 2, 6), nrow = 2)
   weights <- c(1, 3)
 
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "mean", weights),
     matrix(c(2.5, 5), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "sum", weights),
     matrix(c(10, 20), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "median", weights),
     matrix(c(3, 6), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "median", rep(1, 2)),
     matrix(c(2, 4), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "min", weights),
     matrix(c(1, 2), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "max", weights),
     matrix(c(3, 6), nrow = 1)
   )
@@ -380,9 +386,9 @@ test_that("areal exceedance summaries are tidy and threshold-specific", {
     level = 0.95
   )
 
-  expect_equal(summaries$summary, c("mean", "exceedance", "exceedance"))
-  expect_equal(summaries$threshold, c(NA, 0.15, 0.5))
-  expect_equal(summaries$value, c(0.375, 0.75, 0.25))
+  expect_identical(summaries$summary, c("mean", "exceedance", "exceedance"))
+  expect_identical(summaries$threshold, c(NA, 0.15, 0.5))
+  expect_identical(summaries$value, c(0.375, 0.75, 0.25))
 })
 
 test_that("prediction interval width uses the requested probability level", {
@@ -397,7 +403,7 @@ test_that("prediction interval width uses the requested probability level", {
     summary_operations, NULL, 0.8
   )
 
-  expect_equal(result$value[3], result$value[2] - result$value[1])
+  expect_identical(result$value[3], result$value[2] - result$value[1])
 })
 
 test_that("built-in and custom aggregation and summary functions can be mixed", {
@@ -425,11 +431,9 @@ test_that("built-in and custom aggregation and summary functions can be mixed", 
     messages = FALSE
   )
 
-  expect_equal(sort(unique(result$summary$aggregate)), c("mean", "range"))
-  expect_true(all(c("mean", "iqr") %in%
-                    result$summary$summary[
-                      result$summary$quantity == "response"
-                    ]))
+  expect_identical(unique(result$summary$aggregate), c("mean", "range"))
+  response_summary <- result$summary$summary[result$summary$quantity == "response"]
+  expect_contains(response_summary, c("mean", "iqr"))
   expect_identical(result$aggregate, c("mean", "range"))
   expect_identical(result$summaries, c("mean", "iqr"))
 })
@@ -479,7 +483,7 @@ test_that("prediction seed makes generated samples reproducible", {
     seed = 48, keep_samples = TRUE, messages = FALSE
   )
 
-  expect_equal(first$samples$spatial, second$samples$spatial)
+  expect_identical(first, second)
 })
 
 test_that("polygon blocks share one non-Gaussian conditioning run", {
@@ -528,11 +532,9 @@ test_that("non-Gaussian boundary predictions reuse shared random effects", {
     messages = FALSE
   )
 
-  expect_true(all(c("mean", "lower", "upper") %in%
-                    result$summary$summary[
-                      result$summary$quantity == "random_effects"
-                    ]))
-  expect_equal(nrow(result$samples$mean$random_effects), nrow(areal))
+  random_summary <-  result$summary$summary[result$summary$quantity == "random_effects"]
+  expect_contains(random_summary, c("mean", "lower", "upper"))
+  expect_identical(nrow(result$samples$mean$random_effects), nrow(areal))
 })
 
 test_that("Gaussian boundary predictions retain one shared random-effect draw", {
@@ -556,11 +558,9 @@ test_that("Gaussian boundary predictions retain one shared random-effect draw", 
     messages = FALSE
   )
 
-  expect_true(all(c("mean", "lower", "upper") %in%
-                    result$summary$summary[
-                      result$summary$quantity == "random_effects"
-                    ]))
-  expect_equal(nrow(result$samples$mean$random_effects), nrow(areal))
+  random_summary <-  result$summary$summary[result$summary$quantity == "random_effects"]
+  expect_contains(random_summary, c("mean", "lower", "upper"))
+  expect_identical(nrow(result$samples$mean$random_effects), nrow(areal))
 })
 
 test_that("location predictions report exceedance probabilities", {
@@ -577,9 +577,9 @@ test_that("location predictions report exceedance probabilities", {
   )
   link <- prediction_link_samples(result)
 
-  expect_equal(result$data$response_exceedance_0, rowMeans(link > 0))
-  expect_equal(result$data$response_exceedance_1, rowMeans(link > 1))
-  expect_equal(result$thresholds, c(0, 1))
+  expect_identical(result$data$response_exceedance_0, rowMeans(link > 0))
+  expect_identical(result$data$response_exceedance_1, rowMeans(link > 1))
+  expect_identical(result$thresholds, c(0, 1))
 })
 
 test_that("derived targets are transformed before summarising and aggregating", {
@@ -596,8 +596,8 @@ test_that("derived targets are transformed before summarising and aggregating", 
     messages = FALSE
   )
   link <- prediction_link_samples(location_result)
-  expect_equal(location_result$data$square_mean, rowMeans(link^2))
-  expect_equal(location_result$data$square_exceedance_1,
+  expect_identical(location_result$data$square_mean, rowMeans(link^2))
+  expect_identical(location_result$data$square_exceedance_1,
                rowMeans(link^2 > 1))
 
   area_result <- predict(
@@ -610,7 +610,7 @@ test_that("derived targets are transformed before summarising and aggregating", 
     seed = 503,
     messages = FALSE
   )
-  expect_true("square" %in% area_result$summary$quantity)
+  expect_contains(area_result$summary$quantity, "square")
 })
 
 test_that("derived targets validate names and returned dimensions", {
@@ -694,7 +694,7 @@ test_that("standardization is available before polygon aggregation", {
   )
 
   expect_true(result$standardized)
-  expect_true(any(result$summary$quantity == "response"))
+  expect_contains(result$summary$quantity, "response")
 })
 
 test_that("standardization validates reference predictors and weights", {
