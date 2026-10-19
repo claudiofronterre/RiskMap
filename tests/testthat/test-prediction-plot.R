@@ -6,7 +6,8 @@ test_that("location predictions produce an adaptable prediction map", {
       st_point(c(0, 0)), st_point(c(1, 0)), st_point(c(2, 0)), crs = 32631
     )
   )
-  prediction <- structure(list(data = points, aggregated = FALSE),
+  prediction <- structure(list(predictions = points, boundaries = NULL,
+                               boundary_summary = NULL),
                           class = "RiskMap_prediction")
 
   map <- plot(prediction)
@@ -38,8 +39,15 @@ test_that("polygon prediction maps select tidy summaries without reordering", {
     quantity = "response", summary = "mean", threshold = NA_real_,
     value = c(0.2, 0.7, 20, 70)
   )
+  point_predictions <- st_sf(
+    response_mean = c(0.25, 0.65),
+    geometry = st_centroid(st_geometry(polygons))
+  )
   prediction <- structure(
-    list(data = polygons, summary = summaries, aggregated = TRUE),
+    list(
+      predictions = point_predictions, boundaries = polygons,
+      boundary_summary = summaries
+    ),
     class = "RiskMap_prediction"
   )
 
@@ -50,6 +58,10 @@ test_that("polygon prediction maps select tidy summaries without reordering", {
   expect_no_error(ggplot_build(map))
   expect_equal(map$layers[[1L]]$data$.prediction_value, c(0.2, 0.7))
   expect_equal(map$scales$scales[[1L]]$limits, c(0, 1))
+
+  point_map <- plot(prediction, support = "predictions")
+  expect_s3_class(point_map, "ggplot")
+  expect_no_error(ggplot_build(point_map))
 })
 
 test_that("plot arguments reject unavailable or ambiguous requests", {
@@ -59,7 +71,8 @@ test_that("plot arguments reject unavailable or ambiguous requests", {
     response_exceedance_0.5 = 0.2,
     geometry = st_sfc(st_point(c(0, 0)), crs = 32631)
   )
-  prediction <- structure(list(data = points, aggregated = FALSE),
+  prediction <- structure(list(predictions = points, boundaries = NULL,
+                               boundary_summary = NULL),
                           class = "RiskMap_prediction")
 
   expect_error(plot(prediction, quantity = "spatial"), "not available")

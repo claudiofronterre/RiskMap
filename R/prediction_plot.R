@@ -8,6 +8,9 @@
 ##'   `"spatial"`, or `"link"`.
 ##' @param summary Summary to display, such as `"mean"`, `"lower"`, `"upper"`,
 ##'   `"interval_width"`, or `"exceedance"`.
+##' @param support Spatial support to display: `"auto"`, `"predictions"`, or
+##'   `"boundaries"`. `"auto"` displays polygons when boundary summaries are
+##'   available and otherwise displays prediction locations or grid cells.
 ##' @param aggregate For polygon predictions, the within-polygon aggregation to
 ##'   display. It may be omitted when the object contains only one aggregation.
 ##' @param threshold For an exceedance map, the response-scale threshold to
@@ -42,6 +45,7 @@ plot.RiskMap_prediction <- function(
     x,
     quantity = "response",
     summary = "mean",
+    support = c("auto", "predictions", "boundaries"),
     aggregate = NULL,
     threshold = NULL,
     palette = NULL,
@@ -56,7 +60,7 @@ plot.RiskMap_prediction <- function(
   check_plot_flag(scale_bar, "scale_bar")
 
   plot_data <- prediction_plot_data(
-    x, quantity, summary, aggregate, threshold
+    x, quantity, summary, support, aggregate, threshold
   )
   is_exceedance <- identical(summary, "exceedance")
   if (is_exceedance && !is.null(limits) && !identical(as.numeric(limits), c(0, 1))) {
@@ -131,7 +135,8 @@ plot.RiskMap_prediction <- function(
 
 #' Select and align the values requested from a prediction object
 #' @noRd
-prediction_plot_data <- function(x, quantity, summary, aggregate, threshold) {
+prediction_plot_data <- function(x, quantity, summary, support, aggregate,
+                                 threshold) {
   if (!is.character(quantity) || length(quantity) != 1L || is.na(quantity) ||
       !nzchar(quantity)) {
     stop("'quantity' must be one non-empty character string", call. = FALSE)
@@ -141,14 +146,24 @@ prediction_plot_data <- function(x, quantity, summary, aggregate, threshold) {
     stop("'summary' must be one non-empty character string", call. = FALSE)
   }
 
-  if (isTRUE(x$aggregated)) {
+  support <- match.arg(support, c("auto", "predictions", "boundaries"))
+  has_boundaries <- !is.null(x$boundaries) && !is.null(x$boundary_summary)
+  if (support == "auto") {
+    support <- if (has_boundaries) "boundaries" else "predictions"
+  }
+
+  if (support == "boundaries") {
+    if (!has_boundaries) {
+      stop("This prediction object does not contain boundary summaries",
+           call. = FALSE)
+    }
     aggregate <- select_prediction_plot_value(
-      aggregate, unique(x$summary$aggregate), "aggregate"
+      aggregate, unique(x$boundary_summary$aggregate), "aggregate"
     )
-    candidates <- x$summary[
-      x$summary$aggregate == aggregate &
-        x$summary$quantity == quantity &
-        x$summary$summary == summary, , drop = FALSE
+    candidates <- x$boundary_summary[
+      x$boundary_summary$aggregate == aggregate &
+        x$boundary_summary$quantity == quantity &
+        x$boundary_summary$summary == summary, , drop = FALSE
     ]
     if (!nrow(candidates)) {
       stop("The requested quantity, summary and aggregation are not available",
@@ -163,9 +178,9 @@ prediction_plot_data <- function(x, quantity, summary, aggregate, threshold) {
       stop("'threshold' is used only when summary = \"exceedance\"",
            call. = FALSE)
     }
-    values <- rep(NA_real_, nrow(x$data))
+    values <- rep(NA_real_, nrow(x$boundaries))
     values[candidates$boundary_id] <- candidates$value
-    data <- x$data
+    data <- x$boundaries
     data$.prediction_value <- values
     return(list(data = data, polygon = TRUE))
   }
@@ -175,7 +190,7 @@ prediction_plot_data <- function(x, quantity, summary, aggregate, threshold) {
   }
   column <- if (identical(summary, "exceedance")) {
     available <- grep(
-      paste0("^", quantity, "_exceedance_"), names(x$data), value = TRUE
+      paste0("^", quantity, "_exceedance_"), names(x$predictions), value = TRUE
     )
     if (!length(available)) {
       stop("The requested exceedance quantity is not available", call. = FALSE)
@@ -194,11 +209,11 @@ prediction_plot_data <- function(x, quantity, summary, aggregate, threshold) {
     }
     paste(quantity, summary, sep = "_")
   }
-  if (!column %in% names(x$data)) {
+  if (!column %in% names(x$predictions)) {
     stop("Prediction column ", shQuote(column), " is not available",
          call. = FALSE)
   }
-  data <- x$data
+  data <- x$predictions
   data$.prediction_value <- data[[column]]
   list(data = data, polygon = FALSE)
 }
