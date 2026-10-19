@@ -23,7 +23,7 @@ test_that("Gaussian predictions remain finite with tiny measurement error", {
       expect_warning(prediction <- predict(
         model,
         newdata = gaussian_data,
-        prediction = type,
+        type = type,
         control_mcmc = control_mcmc,
         keep_samples = TRUE,
         messages = FALSE

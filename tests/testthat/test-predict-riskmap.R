@@ -1,6 +1,4 @@
 test_that("predict.RiskMap keeps prediction data and summaries aligned", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2, seed = 41
   )
@@ -13,23 +11,21 @@ test_that("predict.RiskMap keeps prediction data and summaries aligned", {
     messages = FALSE
   )
 
+  expected_data <- c("fixed", "offset", "spatial_mean", "spatial_lower",
+                     "spatial_upper", "link_mean", "link_lower", "link_upper",
+                     "response_mean", "response_lower", "response_upper")
+
   expect_s3_class(result, "RiskMap_prediction")
-  expect_s3_class(result$data, "sf")
-  expect_identical(st_geometry(result$data), st_geometry(prediction_data))
-  expect_equal(nrow(result$data), nrow(prediction_data))
-  expect_true(all(c(
-    "fixed", "offset", "spatial_mean", "spatial_lower", "spatial_upper",
-    "link_mean", "link_lower", "link_upper", "response_mean",
-    "response_lower", "response_upper"
-  ) %in% names(result$data)))
-  expect_equal(result$data$link_mean, result$data$response_mean)
-  expect_equal(nrow(result$samples$spatial), nrow(prediction_data))
+  expect_s3_class(result$predictions, "sf")
+  expect_identical(st_geometry(result$predictions), st_geometry(prediction_data))
+  expect_identical(nrow(result$predictions), nrow(prediction_data))
+  expect_contains(names(result$predictions), expected_data)
+  expect_identical(result$predictions$link_mean, result$predictions$response_mean)
+  expect_identical(nrow(result$samples$spatial), nrow(prediction_data))
 })
 
 test_that("predict.RiskMap derives predictors and offsets from one sf object", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
-  prediction_data$offset <- seq_len(nrow(prediction_data)) / 100
+
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2, seed = 42
   )
@@ -41,8 +37,8 @@ test_that("predict.RiskMap derives predictors and offsets from one sf object", {
     messages = FALSE
   )
 
-  expect_equal(result$data$offset, prediction_data$offset)
-  expect_equal(result$data$fixed,
+  expect_identical(result$predictions$offset, prediction_data$offset)
+  expect_identical(result$predictions$fixed,
                as.numeric(cbind(1, prediction_data$cov) %*%
                             coef(gaussian_offset_model)$beta))
 })
@@ -55,7 +51,7 @@ test_that("stored final samples are reused when MCMC controls are omitted", {
   )
   spatial_columns <- seq_len(nrow(binomial_model$coords))
 
-  expect_equal(
+  expect_identical(
     prediction$samples$spatial,
     t(binomial_model$S_samples[, spatial_columns, drop = FALSE])
   )
@@ -70,26 +66,28 @@ test_that("newdata NULL returns aligned predictions at observed rows", {
   )
 
   expect_true(result$observed_locations)
-  expect_equal(nrow(result$data), nrow(binomial_model$data))
-  expect_identical(st_geometry(result$data), st_geometry(binomial_model$data))
-  expect_equal(nrow(result$samples$spatial), nrow(binomial_model$data))
-  expect_true(all(result$data$response_mean >= 0 &
-                    result$data$response_mean <= 1))
+  expect_identical(nrow(result$predictions), nrow(binomial_model$data))
+  expect_identical(st_geometry(result$predictions), st_geometry(binomial_model$data))
+  expect_identical(nrow(result$samples$spatial), nrow(binomial_model$data))
+  expect_true(all(result$predictions$response_mean >= 0 &
+                    result$predictions$response_mean <= 1))
 })
 
 test_that("optional random-effect and nugget components are explicit", {
   conditional <- predict(
     binomial_model,
-    prediction = "joint",
+    type = "joint",
     include = "random_effects",
     keep_samples = TRUE,
     messages = FALSE
   )
-  expect_equal(dim(conditional$samples$random_effects),
-               dim(conditional$samples$spatial))
-  expect_true(all(c(
-    "random_effects_mean", "random_effects_lower", "random_effects_upper"
-  ) %in% names(conditional$data)))
+  expect_identical(dim(conditional$samples$random_effects),
+                   dim(conditional$samples$spatial))
+
+  expect_contains(names(conditional$predictions),
+                  c("random_effects_mean",
+                    "random_effects_lower",
+                    "random_effects_upper"))
 
   observation_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2, seed = 43
@@ -102,10 +100,13 @@ test_that("optional random-effect and nugget components are explicit", {
     keep_samples = TRUE,
     messages = FALSE
   )
-  expect_equal(dim(observation$samples$nugget),
-               dim(observation$samples$spatial))
-  expect_true(all(c("nugget_mean", "nugget_lower", "nugget_upper") %in%
-                    names(observation$data)))
+  expect_identical(dim(observation$samples$nugget),
+                   dim(observation$samples$spatial))
+
+  expect_contains(names(observation$predictions),
+                  c("nugget_mean",
+                    "nugget_lower",
+                    "nugget_upper"))
 })
 
 test_that("the fitted nugget is not counted twice at observed locations", {
@@ -120,7 +121,7 @@ test_that("the fitted nugget is not counted twice at observed locations", {
 })
 
 test_that("prediction distinguishes estimated and fixed nugget variances", {
-  expect_equal(
+  expect_identical(
     fitted_nugget_variance(gaussian_offset_model),
     coef(gaussian_offset_model)$tau2
   )
@@ -128,7 +129,7 @@ test_that("prediction distinguishes estimated and fixed nugget variances", {
   fixed_nugget_model <- gaussian_model
   fixed_nugget_model$fix_tau2 <- 0.25
   fixed_nugget_model$estimate$nu2 <- NULL
-  expect_equal(fitted_nugget_variance(fixed_nugget_model), 0.25)
+  expect_identical(fitted_nugget_variance(fixed_nugget_model), 0.25)
 
   setup <- list(par_hat = coef(fixed_nugget_model))
   set.seed(430)
@@ -140,8 +141,6 @@ test_that("prediction distinguishes estimated and fixed nugget variances", {
 })
 
 test_that("predict.RiskMap validates its concise public interface", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
 
   expect_error(
     predict(gaussian_model, prediction_data, include = "spatial"),
@@ -159,16 +158,108 @@ test_that("predict.RiskMap validates its concise public interface", {
   prediction_data$i <- -1L
   expect_error(
     predict(
-      gaussian_model, prediction_data, prediction = "joint",
+      gaussian_model, prediction_data, type = "joint",
       include = "random_effects", messages = FALSE
     ),
     "unknown levels for random effect"
   )
+
+  expect_error(
+    predict(
+      gaussian_model, prediction_data, boundaries = areal,
+      aggregate = "mean", type = "marginal", messages = FALSE
+    ),
+    "'type' must be \"joint\""
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, aggregate = "mean",
+            messages = FALSE),
+    "only when 'boundaries' are supplied"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data,
+            summaries = "exceedance", messages = FALSE),
+    "'thresholds' must contain"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data,
+            summaries = "mean", thresholds = 0.2, messages = FALSE),
+    "used only when 'summaries' includes 'exceedance'"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, control_mcmc = list(),
+            messages = FALSE),
+    "output from set_control_mcmc"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, seed = 0, messages = FALSE),
+    "positive integer"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, weights = 1,
+            messages = FALSE),
+    "name of one column"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, weights = "population",
+            messages = FALSE),
+    "only when 'boundaries' are supplied"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, keep_samples = NA,
+            messages = FALSE),
+    "either TRUE or FALSE"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, messages = NA),
+    "either TRUE or FALSE"
+  )
+})
+
+test_that("prediction validates required offset and optional components", {
+  no_offset_data <- subset(prediction_data, select = -offset)
+  expect_error(
+    predict(gaussian_offset_model, no_offset_data, messages = FALSE),
+    "missing required column.*offset"
+  )
+  expect_error(
+    predict(
+      gaussian_model, prediction_data, type = "marginal",
+      include = "random_effects", messages = FALSE
+    ),
+    "requires 'type = \"joint\"'"
+  )
+  complete_offset_data <- prediction_data
+  complete_offset_data$offset <- 0
+  expect_error(
+    predict(
+      gaussian_offset_model, complete_offset_data, type = "joint",
+      include = "random_effects", messages = FALSE
+    ),
+    "does not contain unstructured random effects"
+  )
+  expect_error(
+    predict(
+      gaussian_model, prediction_data, include = "nugget",
+      messages = FALSE
+    ),
+    "does not contain a positive nugget variance"
+  )
 })
 
 test_that("coefficient of variation is reported only where interpretable", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  positive_draws <- c(1, 2, 3)
+  expect_equal(
+    prediction_coefficient_of_variation(positive_draws),
+    sd(positive_draws) / mean(positive_draws)
+  )
+  expect_identical(
+    prediction_coefficient_of_variation(c(-3, -2, -1)), NA_real_
+  )
+  expect_identical(
+    prediction_coefficient_of_variation(c(-1, 1 + 1e-12)), NA_real_
+  )
+
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2, seed = 44
   )
@@ -181,13 +272,11 @@ test_that("coefficient of variation is reported only where interpretable", {
     messages = FALSE
   )
 
-  expect_true("response_cv" %in% names(result$data))
-  expect_false(any(c("spatial_cv", "link_cv") %in% names(result$data)))
+  expect_contains(names(result$predictions), "response_cv")
+  expect_disjoint(names(result$predictions), c("spatial_cv", "link_cv"))
 })
 
 test_that("prediction transforms coordinates internally and preserves output geometry", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   geographic_data <- st_transform(prediction_data, 4326)
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
@@ -202,13 +291,11 @@ test_that("prediction transforms coordinates internally and preserves output geo
     seed = 45, messages = FALSE
   )
 
-  expect_identical(st_geometry(geographic$data), st_geometry(geographic_data))
-  expect_equal(geographic$data$response_mean, projected$data$response_mean)
+  expect_identical(st_geometry(geographic$predictions), st_geometry(geographic_data))
+  expect_equal(geographic$predictions$response_mean, projected$predictions$response_mean)
 })
 
 test_that("missing predictors preserve rows and return missing predictions", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_data$cov[2] <- NA_real_
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
@@ -222,16 +309,34 @@ test_that("missing predictors preserve rows and return missing predictions", {
     "1 prediction row"
   )
 
-  expect_equal(nrow(result$data), nrow(prediction_data))
-  expect_true(is.na(result$data$response_mean[2]))
+  expect_identical(nrow(result$predictions), nrow(prediction_data))
+  expect_true(is.na(result$predictions$response_mean[2]))
   expect_true(all(is.na(result$samples$spatial[2, ])))
-  expect_true(all(is.finite(result$data$response_mean[-2])))
+  expect_true(all(is.finite(result$predictions$response_mean[-2])))
+})
+
+test_that("all unusable prediction rows retain a complete missing result", {
+  prediction_data$cov <- NA_real_
+
+  expect_warning(
+    result <- predict(
+      gaussian_model, prediction_data,
+      summaries = c("mean", "exceedance"), thresholds = 0,
+      keep_samples = TRUE, seed = 460, messages = FALSE
+    ),
+    "prediction rows"
+  )
+
+  expect_identical(nrow(result$predictions), nrow(prediction_data))
+  expect_null(result$samples)
+  expect_true(all(is.na(result$predictions$response_mean)))
+  expect_true(all(is.na(result$predictions$response_exceedance_0)))
+  expect_true(all(is.na(result$predictions$fixed)))
+  expect_false(result$observed_locations)
 })
 
 test_that("boundaries trigger blockwise joint prediction and retain polygons", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
-  prediction_data$population <- seq_len(nrow(prediction_data))
+
   boundaries <- areal
   boundaries$district <- paste0("district_", seq_len(nrow(boundaries)))
   prediction_control <- set_control_mcmc(
@@ -252,43 +357,44 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
 
   expect_s3_class(result, "RiskMap_prediction")
   expect_true(result$aggregated)
-  expect_identical(result$prediction, "joint")
+  expect_identical(result$type, "joint")
   expect_identical(result$coverage, "exact")
-  expect_identical(st_geometry(result$data), st_geometry(boundaries))
-  expect_identical(result$data$district, boundaries$district)
-  expect_equal(nrow(result$data), nrow(boundaries))
-  expect_true(all(c(
-    "boundary_id", "aggregate", "quantity", "summary", "threshold", "value"
-  ) %in% names(result$summary)))
-  expect_equal(nrow(result$samples$mean$response), nrow(boundaries))
-  expect_true(any(is.finite(result$summary$value)))
+  expect_identical(st_geometry(result$predictions), st_geometry(prediction_data))
+  expect_identical(st_geometry(result$boundaries), st_geometry(boundaries))
+  expect_identical(result$boundaries$district, boundaries$district)
+  expect_identical(nrow(result$boundaries), nrow(boundaries))
+  expect_contains(names(result$boundary_summary),
+                  c("boundary_id", "aggregate", "quantity",
+                    "summary", "threshold", "value"))
+  expect_identical(nrow(result$samples$mean$response), nrow(boundaries))
+  expect_true(any(is.finite(result$boundary_summary$value)))
 })
 
 test_that("polygon aggregation applies weights on the correct scale", {
   values <- matrix(c(1, 3, 2, 6), nrow = 2)
   weights <- c(1, 3)
 
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "mean", weights),
     matrix(c(2.5, 5), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "sum", weights),
     matrix(c(10, 20), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "median", weights),
     matrix(c(3, 6), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "median", rep(1, 2)),
     matrix(c(2, 4), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "min", weights),
     matrix(c(1, 2), nrow = 1)
   )
-  expect_equal(
+  expect_identical(
     aggregate_prediction_values(values, "max", weights),
     matrix(c(3, 6), nrow = 1)
   )
@@ -343,6 +449,134 @@ test_that("RiskMap grids use exact fractional polygon coverage", {
   )
 })
 
+test_that("shared fractional cells join the affected prediction blocks", {
+  assignment <- list(
+    prediction_row = c(1L, 1L, 2L, 3L),
+    area_id = c(1L, 2L, 2L, 3L)
+  )
+
+  groups <- prediction_boundary_groups(assignment, n_locations = 4L)
+
+  expect_identical(groups[[1L]], groups[[2L]])
+  expect_disjoint(groups[1:2], groups[3:4])
+  expect_length(unique(groups), 3L)
+})
+
+test_that("exact grid assignment rejects invalid geometry metadata", {
+  metadata <- attr(grid, "grid_metadata")
+  invalid_metadata <- metadata
+  invalid_metadata$cellsize <- -1
+
+  expect_error(
+    assign_prediction_grid_cells(grid, areal, invalid_metadata),
+    "invalid RiskMap grid metadata"
+  )
+
+  overlapping <- rbind(areal[1, ], areal[1, ])
+  expect_error(
+    assign_prediction_grid_cells(grid, overlapping, metadata),
+    "overlapping polygons"
+  )
+
+  duplicated <- rbind(grid[1, ], grid[1, ])
+  attr(duplicated, "grid_metadata") <- metadata
+  expect_error(
+    assign_prediction_grid_cells(duplicated, areal, metadata),
+    "duplicate RiskMap grid cells"
+  )
+
+  empty <- assign_prediction_grid_cells(grid[0, ], areal, metadata)
+  expect_identical(empty$method, "exact")
+  expect_identical(empty$area_id, integer())
+  expect_identical(empty$coverage, numeric())
+})
+
+test_that("polygon prediction handles outside cells and empty polygons", {
+  far_polygon <- areal[1, ]
+  shifted <- st_geometry(far_polygon) + c(1e6, 1e6)
+  st_geometry(far_polygon) <- st_set_crs(shifted, st_crs(areal))
+  mixed_boundaries <- rbind(areal[1, ], far_polygon)
+
+  expect_warning(
+    result <- predict(
+      gaussian_model, prediction_data,
+      boundaries = mixed_boundaries, aggregate = "mean",
+      summaries = c("mean", "exceedance"), thresholds = 0,
+      keep_samples = TRUE, seed = 472, messages = FALSE
+    ),
+    "outside all polygons"
+  )
+
+  missing <- result$boundary_summary$boundary_id == 2L
+  expect_true(any(missing))
+  expect_true(all(is.na(result$boundary_summary$value[missing])))
+  expect_true(all(is.na(result$samples$mean$response[2, ])))
+
+  expect_warning(
+    empty <- predict(
+      gaussian_model, prediction_data,
+      boundaries = far_polygon, aggregate = "mean",
+      seed = 473, messages = FALSE
+    ),
+    "outside all polygons"
+  )
+  expect_true(all(is.na(empty$boundary_summary$value)))
+  expect_null(empty$samples)
+  expect_identical(nrow(empty$boundaries), 1L)
+})
+
+test_that("polygon weights are validated and zero totals return missing summaries", {
+
+  no_weight_data <- subset(prediction_data, select = -population)
+  expect_error(
+    predict(
+      gaussian_model, no_weight_data, boundaries = areal,
+      aggregate = "mean", weights = "population", messages = FALSE
+    ),
+    "does not contain the weights column"
+  )
+
+  invalid_weights <- prediction_data
+  invalid_weights$population <- "many"
+  expect_error(
+    predict(
+      gaussian_model, invalid_weights, boundaries = areal,
+      aggregate = "mean", weights = "population", messages = FALSE
+    ),
+    "finite, non-negative"
+  )
+
+  invalid_weights$population <- 1
+  invalid_weights$population[1] <- NA_real_
+  expect_error(
+    predict(
+      gaussian_model, invalid_weights, boundaries = areal,
+      aggregate = "mean", weights = "population", messages = FALSE
+    ),
+    "finite, non-negative"
+  )
+
+  zero_weights <- prediction_data
+  zero_weights$population <- 0
+  expect_warning(
+    zero <- predict(
+      gaussian_model, zero_weights, boundaries = areal,
+      aggregate = c("mean", "median", "sum"), weights = "population",
+      seed = 474, messages = FALSE
+    ),
+    "zero total weight"
+  )
+  weighted <- zero$boundary_summary$aggregate %in% c("mean", "median", "sum")
+  expect_true(all(is.na(zero$boundary_summary$value[weighted])))
+
+  values <- matrix(1:6, nrow = 2)
+  for (operation in c("mean", "median", "sum")) {
+    expect_true(all(is.na(
+      aggregate_prediction_values(values, operation, c(0, 0))
+    )))
+  }
+})
+
 test_that("ordinary sf points retain point-in-polygon assignment", {
   points <- st_sf(
     value = 1:2,
@@ -380,9 +614,9 @@ test_that("areal exceedance summaries are tidy and threshold-specific", {
     level = 0.95
   )
 
-  expect_equal(summaries$summary, c("mean", "exceedance", "exceedance"))
-  expect_equal(summaries$threshold, c(NA, 0.15, 0.5))
-  expect_equal(summaries$value, c(0.375, 0.75, 0.25))
+  expect_identical(summaries$summary, c("mean", "exceedance", "exceedance"))
+  expect_identical(summaries$threshold, c(NA, 0.15, 0.5))
+  expect_identical(summaries$value, c(0.375, 0.75, 0.25))
 })
 
 test_that("prediction interval width uses the requested probability level", {
@@ -397,13 +631,10 @@ test_that("prediction interval width uses the requested probability level", {
     summary_operations, NULL, 0.8
   )
 
-  expect_equal(result$value[3], result$value[2] - result$value[1])
+  expect_identical(result$value[3], result$value[2] - result$value[1])
 })
 
 test_that("built-in and custom aggregation and summary functions can be mixed", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
-  prediction_data$population <- seq_len(nrow(prediction_data))
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
   )
@@ -425,11 +656,9 @@ test_that("built-in and custom aggregation and summary functions can be mixed", 
     messages = FALSE
   )
 
-  expect_equal(sort(unique(result$summary$aggregate)), c("mean", "range"))
-  expect_true(all(c("mean", "iqr") %in%
-                    result$summary$summary[
-                      result$summary$quantity == "response"
-                    ]))
+  expect_identical(unique(result$boundary_summary$aggregate), c("mean", "range"))
+  response_summary <- result$boundary_summary$summary[result$boundary_summary$quantity == "response"]
+  expect_contains(response_summary, c("mean", "iqr"))
   expect_identical(result$aggregate, c("mean", "range"))
   expect_identical(result$summaries, c("mean", "iqr"))
 })
@@ -448,11 +677,26 @@ test_that("custom prediction operations have strict output contracts", {
     ),
     "unique, non-empty name"
   )
+  expect_error(
+    summarise_prediction_matrix(
+      matrix(1:6, nrow = 2), "response",
+      list(bad = function(values) c(1, 2)), 0.95
+    ),
+    "must return exactly one numeric value"
+  )
+})
+
+test_that("stored conditioning samples are checked before prediction", {
+  inconsistent <- binomial_model
+  inconsistent$S_samples <- inconsistent$S_samples[, -1, drop = FALSE]
+
+  expect_error(
+    predict(inconsistent, keep_samples = TRUE, messages = FALSE),
+    "inconsistent with the fitted model"
+  )
 })
 
 test_that("areal aggregation must be chosen explicitly", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
 
   expect_error(
     predict(
@@ -464,8 +708,6 @@ test_that("areal aggregation must be chosen explicitly", {
 })
 
 test_that("prediction seed makes generated samples reproducible", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
   )
@@ -479,12 +721,67 @@ test_that("prediction seed makes generated samples reproducible", {
     seed = 48, keep_samples = TRUE, messages = FALSE
   )
 
-  expect_equal(first$samples$spatial, second$samples$spatial)
+  expect_identical(first, second)
+})
+
+test_that("joint location prediction covers Gaussian and non-Gaussian engines", {
+  prediction_data <- grid[seq_len(min(3L, nrow(grid))), ]
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  prediction_data$i <- rep(gaussian_model$re[[1]],
+                           length.out = nrow(prediction_data))
+  prediction_control <- set_control_mcmc(
+    n_sim = 40, burnin = 20, thin = 2
+  )
+
+  gaussian <- predict(
+    gaussian_model, prediction_data, type = "joint",
+    include = "random_effects", control_mcmc = prediction_control,
+    keep_samples = TRUE, seed = 481, messages = FALSE
+  )
+  expect_identical(dim(gaussian$samples$random_effects),
+                   dim(gaussian$samples$spatial))
+  expect_true(all(is.finite(gaussian$samples$spatial)))
+
+  expect_message(
+    binomial <- predict(
+      binomial_model, prediction_data, type = "joint",
+      keep_samples = TRUE, seed = 482, messages = TRUE
+    ),
+    "Reusing conditional samples stored"
+  )
+  expect_identical(nrow(binomial$samples$spatial), nrow(prediction_data))
+  expect_true(all(binomial$predictions$response_mean >= 0 &
+                    binomial$predictions$response_mean <= 1))
+})
+
+test_that("marginal prediction uses the bounded-memory backend when requested", {
+  prediction_data <- grid[seq_len(min(3L, nrow(grid))), ]
+  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+  prediction_control <- set_control_mcmc(
+    n_sim = 40, burnin = 20, thin = 2
+  )
+  local_mocked_bindings(
+    marginal_prediction_batch_size = function(...) 1L,
+    .package = "RiskMap"
+  )
+
+  gaussian <- predict(
+    gaussian_model, prediction_data,
+    control_mcmc = prediction_control, keep_samples = TRUE,
+    seed = 483, messages = FALSE
+  )
+  binomial <- predict(
+    binomial_model, prediction_data,
+    keep_samples = TRUE, seed = 484, messages = FALSE
+  )
+
+  expect_identical(nrow(gaussian$samples$spatial), nrow(prediction_data))
+  expect_identical(nrow(binomial$samples$spatial), nrow(prediction_data))
+  expect_true(all(is.finite(gaussian$samples$spatial)))
+  expect_true(all(is.finite(binomial$samples$spatial)))
 })
 
 test_that("polygon blocks share one non-Gaussian conditioning run", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   model_without_samples <- binomial_model
   model_without_samples$S_samples <- NULL
   original_sampler <- getFromNamespace("laplace_sampling_mcmc", "RiskMap")
@@ -514,8 +811,6 @@ test_that("polygon blocks share one non-Gaussian conditioning run", {
 })
 
 test_that("non-Gaussian boundary predictions reuse shared random effects", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_data$i <- rep(binomial_model$re[[1]], length.out = nrow(prediction_data))
 
   result <- predict(
@@ -528,18 +823,12 @@ test_that("non-Gaussian boundary predictions reuse shared random effects", {
     messages = FALSE
   )
 
-  expect_true(all(c("mean", "lower", "upper") %in%
-                    result$summary$summary[
-                      result$summary$quantity == "random_effects"
-                    ]))
-  expect_equal(nrow(result$samples$mean$random_effects), nrow(areal))
+  random_summary <-  result$boundary_summary$summary[result$boundary_summary$quantity == "random_effects"]
+  expect_contains(random_summary, c("mean", "lower", "upper"))
+  expect_identical(nrow(result$samples$mean$random_effects), nrow(areal))
 })
 
 test_that("Gaussian boundary predictions retain one shared random-effect draw", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
-  prediction_data$i <- rep(gaussian_model$re[[1]],
-                           length.out = nrow(prediction_data))
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
   )
@@ -556,16 +845,13 @@ test_that("Gaussian boundary predictions retain one shared random-effect draw", 
     messages = FALSE
   )
 
-  expect_true(all(c("mean", "lower", "upper") %in%
-                    result$summary$summary[
-                      result$summary$quantity == "random_effects"
-                    ]))
-  expect_equal(nrow(result$samples$mean$random_effects), nrow(areal))
+  random_summary <-  result$boundary_summary$summary[result$boundary_summary$quantity == "random_effects"]
+  expect_contains(random_summary, c("mean", "lower", "upper"))
+  expect_identical(nrow(result$samples$mean$random_effects), nrow(areal))
 })
 
 test_that("location predictions report exceedance probabilities", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+
   result <- predict(
     gaussian_model,
     newdata = prediction_data,
@@ -577,14 +863,12 @@ test_that("location predictions report exceedance probabilities", {
   )
   link <- prediction_link_samples(result)
 
-  expect_equal(result$data$response_exceedance_0, rowMeans(link > 0))
-  expect_equal(result$data$response_exceedance_1, rowMeans(link > 1))
-  expect_equal(result$thresholds, c(0, 1))
+  expect_identical(result$predictions$response_exceedance_0, rowMeans(link > 0))
+  expect_identical(result$predictions$response_exceedance_1, rowMeans(link > 1))
+  expect_identical(result$thresholds, c(0, 1))
 })
 
 test_that("derived targets are transformed before summarising and aggregating", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   location_result <- predict(
     gaussian_model,
     newdata = prediction_data,
@@ -596,8 +880,8 @@ test_that("derived targets are transformed before summarising and aggregating", 
     messages = FALSE
   )
   link <- prediction_link_samples(location_result)
-  expect_equal(location_result$data$square_mean, rowMeans(link^2))
-  expect_equal(location_result$data$square_exceedance_1,
+  expect_equal(location_result$predictions$square_mean, rowMeans(link^2))
+  expect_identical(location_result$predictions$square_exceedance_1,
                rowMeans(link^2 > 1))
 
   area_result <- predict(
@@ -610,12 +894,10 @@ test_that("derived targets are transformed before summarising and aggregating", 
     seed = 503,
     messages = FALSE
   )
-  expect_true("square" %in% area_result$summary$quantity)
+  expect_contains(area_result$boundary_summary$quantity, "square")
 })
 
 test_that("derived targets validate names and returned dimensions", {
-  prediction_data <- grid
-  prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
 
   expect_error(
     predict(gaussian_model, prediction_data,
@@ -632,7 +914,6 @@ test_that("derived targets validate names and returned dimensions", {
 })
 
 test_that("prediction standardizes over an equally weighted reference population", {
-  prediction_data <- grid
   reference <- data.frame(cov = c(-1, 0.5, 2))
 
   result <- predict(
@@ -650,14 +931,13 @@ test_that("prediction standardizes over an equally weighted reference population
   })) / nrow(reference)
 
   expect_true(result$standardized)
-  expect_equal(result$data$response_mean, rowMeans(expected))
-  expect_equal(result$data$fixed,
+  expect_equal(result$predictions$response_mean, rowMeans(expected))
+  expect_equal(result$predictions$fixed,
                rep(beta[[1L]] + beta[[2L]] * mean(reference$cov),
                    nrow(prediction_data)))
 })
 
 test_that("standardization supports population weights and derived targets", {
-  prediction_data <- grid
   reference <- data.frame(cov = c(-1, 2), .weight = c(1, 3))
 
   result <- predict(
@@ -675,12 +955,11 @@ test_that("standardization supports population weights and derived targets", {
   second <- plogis(spatial + beta[[1L]] + 2 * beta[[2L]])
   expected <- 0.25 * first + 0.75 * second
 
-  expect_equal(result$data$response_mean, rowMeans(expected))
-  expect_equal(result$data$risk_mean, rowMeans(expected))
+  expect_equal(result$predictions$response_mean, rowMeans(expected))
+  expect_equal(result$predictions$risk_mean, rowMeans(expected))
 })
 
 test_that("standardization is available before polygon aggregation", {
-  prediction_data <- grid
   reference <- data.frame(cov = c(-1, 1))
 
   result <- predict(
@@ -694,7 +973,7 @@ test_that("standardization is available before polygon aggregation", {
   )
 
   expect_true(result$standardized)
-  expect_true(any(result$summary$quantity == "response"))
+  expect_contains(result$boundary_summary$quantity, "response")
 })
 
 test_that("standardization validates reference predictors and weights", {

@@ -72,6 +72,13 @@ grid <- create_grid(hull, 3)
 squares <- st_make_grid(hull, n = c(2, 2))
 areal <- st_sf(geometry = squares)
 
+prediction_data <- grid
+prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
+prediction_data$offset <- seq_len(nrow(prediction_data)) / 100
+prediction_data$i <- rep(gaussian_model$re[[1]],
+                         length.out = nrow(prediction_data))
+prediction_data$population <- seq_len(nrow(prediction_data))
+
 cross_validation <- assess_prediction(
   list(model_a = gaussian_model,
        model_b = gaussian_offset_model),
