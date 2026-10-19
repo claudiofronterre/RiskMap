@@ -606,28 +606,26 @@ validate_prediction_data <- function(object, newdata, include, messages,
     setdiff(names(standardize$data), ".weight")
   required <- setdiff(required, standardized_names)
   missing_columns <- setdiff(required, names(prediction_data))
-  if (length(missing_columns)) {
+  if (length(missing_columns) > 0L) {
     stop("'newdata' is missing required column", if (length(missing_columns) > 1L) "s" else "",
          ": ", paste(shQuote(missing_columns), collapse = ", "), call. = FALSE)
   }
-  if (length(standardized_names)) {
-    for (name in standardized_names) {
-      prediction_data[[name]] <- standardize$data[[name]][1L]
-    }
+  for (name in standardized_names) {
+    prediction_data[[name]] <- standardize$data[[name]][1L]
   }
   if ("random_effects" %in% include) {
     for (name in names(object$re)) {
       supplied <- prediction_data[[name]]
       unknown <- unique(supplied[!is.na(supplied) &
                                    !supplied %in% object$re[[name]]])
-      if (length(unknown)) {
+      if (length(unknown) > 0L) {
         stop("'newdata' contains unknown levels for random effect ",
              shQuote(name), ": ", paste(shQuote(unknown), collapse = ", "),
              call. = FALSE)
       }
     }
   }
-  valid_rows <- if (length(required)) {
+  valid_rows <- if (length(required) > 0L) {
     stats::complete.cases(st_drop_geometry(prediction_data)[required])
   } else {
     rep(TRUE, nrow(prediction_data))
