@@ -335,7 +335,7 @@ test_that("assess_prediction uses each model's own data for held-out predictors"
       seen_predictors[[object$model_id]] <<- names(newdata)
       n <- nrow(newdata)
       structure(list(
-        data = transform(newdata, fixed = 0, offset = 0),
+        predictions = transform(newdata, fixed = 0, offset = 0),
         samples = list(spatial = matrix(rep(1, n * 2), nrow = n))
       ), class = "RiskMap_prediction")
     },
@@ -596,7 +596,7 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
     predict.RiskMap = function(object, newdata, ...) {
       n <- nrow(newdata)
       structure(list(
-        data = transform(newdata, fixed = 0, offset = 0),
+        predictions = transform(newdata, fixed = 0, offset = 0),
         samples = list(
           spatial = matrix(rep(c(-1, 0, 1), each = n), nrow = n)
         )

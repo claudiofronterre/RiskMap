@@ -22,7 +22,7 @@
 ##'   `list(mean = "mean", q90 = function(values, weights) ...)`. A custom
 ##'   function receives a location-by-draw matrix and the location weights and
 ##'   must return one numeric value per draw.
-##' @param prediction Character string specifying `"auto"`, `"marginal"`, or
+##' @param type Character string specifying `"auto"`, `"marginal"`, or
 ##'   `"joint"` prediction. `"auto"` uses marginal prediction for locations and
 ##'   joint prediction when `boundaries` are supplied.
 ##' @param include `NULL`, or a character vector specifying optional components
@@ -106,16 +106,16 @@
 ##' CRS. Rows with missing required predictors are retained with `NA`
 ##' predictions and an informative warning.
 ##'
-##' When `boundaries` are supplied, the conditioned latent state is generated
-##' once and shared by every polygon. Prediction locations are then grouped by
-##' polygon, joint samples are generated within each group, and each requested
-##' aggregation is applied to the same samples. The same random-effect draws
-##' are therefore used wherever a group occurs, without constructing a full
-##' joint covariance over all prediction locations. Blockwise samples preserve
-##' each polygon's predictive distribution but are not meant for joint
-##' contrasts between different polygons. Locations outside all polygons are
-##' reported and do not contribute; polygons with no usable locations remain
-##' in the output with `NA` summaries.
+##' When `boundaries` are supplied, one prediction run produces both the
+##' location-level output in `predictions` and the areal output in
+##' `boundary_summary`. Joint samples are generated in the smallest independent
+##' blocks that preserve dependence within every polygon. Polygons sharing a
+##' fractionally covered grid cell are placed in the same block so that the
+##' cell's draw is reused rather than simulated twice. This avoids constructing
+##' a full joint covariance over unrelated prediction locations. Locations
+##' outside all polygons remain in `predictions` but do not contribute to areal
+##' aggregation; polygons with no usable locations remain in `boundaries` with
+##' `NA` summaries.
 ##'
 ##' With location weights \eqn{w_i}, `"mean"` computes
 ##' \deqn{\sum_i w_i T_i / \sum_i w_i,}
@@ -159,11 +159,13 @@
 ##'
 ##' @return A `RiskMap_prediction` object containing:
 ##' \describe{
-##'   \item{data}{The aligned prediction points with their summaries, or the
-##'     original polygons when `boundaries` are supplied.}
-##'   \item{summary}{For polygon prediction, a tidy table with one row per
+##'   \item{predictions}{The aligned prediction points or grid cells with their
+##'     summaries.}
+##'   \item{boundaries}{The supplied polygons, or `NULL` when no polygon
+##'     aggregation was requested.}
+##'   \item{boundary_summary}{For polygon prediction, a tidy table with one row per
 ##'     boundary, aggregation, component, summary and threshold. `boundary_id`
-##'     is the row number of the corresponding polygon in `data`.}
+##'     is the row number of the corresponding polygon in `boundaries`.}
 ##'   \item{samples}{`NULL` when `keep_samples = FALSE`; otherwise a list
 ##'     containing spatial samples and any requested random-effect or nugget
 ##'     samples for location-level prediction. For polygon aggregation it
@@ -177,7 +179,7 @@
 ##'   \item{summaries}{Names of the calculated summaries.}
 ##'   \item{thresholds}{Thresholds used for exceedance probabilities.}
 ##'   \item{level}{Probability covered by the interval limits.}
-##'   \item{prediction}{Whether prediction was marginal or joint.}
+##'   \item{type}{Whether prediction was marginal or joint.}
 ##'   \item{family}{The fitted response family.}
 ##'   \item{observed_locations}{Whether `newdata` was omitted.}
 ##'   \item{coverage}{For polygon prediction, `"exact"` when fractional grid-cell
@@ -197,7 +199,7 @@
 ##'   transform = list(squared_link = function(link) link^2),
 ##'   messages = FALSE
 ##' )
-##' prediction$data
+##' prediction$predictions
 ##'
 ##' # Use the same reference distribution of population density at each location
 ##' reference_population <- data.frame(pop_dens = example_data$pop_dens)
@@ -207,7 +209,7 @@
 ##'   standardize = reference_population,
 ##'   messages = FALSE
 ##' )
-##' standardized_prediction$data
+##' standardized_prediction$predictions
 ##'
 ##' # Aggregate joint predictions within two example areas
 ##' areas <- sf::st_sf(
@@ -221,7 +223,7 @@
 ##'   aggregate = "mean",
 ##'   messages = FALSE
 ##' )
-##' areal_prediction$summary
+##' areal_prediction$boundary_summary
 ##'
 ##' @seealso [glgpm()], [fitted()], [set_control_mcmc()]
 ##' @method predict RiskMap
@@ -231,7 +233,7 @@ predict.RiskMap <- function(
     newdata = NULL,
     boundaries = NULL,
     aggregate = NULL,
-    prediction = c("auto", "marginal", "joint"),
+    type = c("auto", "marginal", "joint"),
     include = NULL,
     transform = NULL,
     standardize = NULL,
@@ -260,9 +262,9 @@ predict.RiskMap <- function(
   transform <- normalise_prediction_transforms(transform)
   standardize <- validate_prediction_standardize(object, standardize)
 
-  prediction <- validate_prediction_options(
+  type <- validate_prediction_options(
     object = object,
-    prediction = prediction,
+    type = type,
     include = include,
     boundaries = boundaries,
     aggregate = aggregate,
@@ -314,24 +316,13 @@ predict.RiskMap <- function(
   }
   prediction_data <- prediction_input$model_data
   if (!nrow(prediction_data)) {
-    output_data <- prediction_input$output_data
-    output_data$fixed <- NA_real_
-    output_data$offset <- NA_real_
-    requested_names <- c(
-      paste("spatial", setdiff(names(summaries), c("cv", "exceedance")), sep = "_"),
-      if ("random_effects" %in% include)
-        paste("random_effects", setdiff(names(summaries), c("cv", "exceedance")), sep = "_"),
-      if ("nugget" %in% include)
-        paste("nugget", setdiff(names(summaries), c("cv", "exceedance")), sep = "_"),
-      paste("link", setdiff(names(summaries), c("cv", "exceedance")), sep = "_"),
-      prediction_summary_names("response", summaries, thresholds),
-      unlist(lapply(names(transform), prediction_summary_names,
-                    summaries = summaries, thresholds = thresholds),
-             use.names = FALSE)
+    output_data <- format_missing_location_predictions(
+      prediction_input, include, transform, summaries, thresholds
     )
-    for (name in requested_names) output_data[[name]] <- NA_real_
     out <- list(
-      data = output_data,
+      predictions = output_data,
+      boundaries = NULL,
+      boundary_summary = NULL,
       samples = NULL,
       include = include,
       transform = names(transform),
@@ -339,7 +330,7 @@ predict.RiskMap <- function(
       summaries = names(summaries),
       thresholds = thresholds,
       level = level,
-      prediction = prediction,
+      type = type,
       family = object$family,
       observed_locations = observed_locations
     )
@@ -347,7 +338,7 @@ predict.RiskMap <- function(
     return(out)
   }
   prediction_setup <- prepare_prediction(
-    object, prediction_data, prediction, include, control_mcmc, messages,
+    object, prediction_data, type, include, control_mcmc, messages,
     observed_locations
   )
   sample_components <- build_prediction_components(
@@ -355,45 +346,11 @@ predict.RiskMap <- function(
     standardize = standardize,
     prediction_data = prediction_data
   )
-  output_data <- prediction_input$output_data
-  valid_rows <- prediction_input$valid_rows
-  output_data$fixed <- NA_real_
-  output_data$offset <- NA_real_
-  output_data$fixed[valid_rows] <- sample_components$fixed
-  output_data$offset[valid_rows] <- sample_components$offset
-  component_summaries <- c(
-    summarise_prediction_matrix(
-      sample_components$spatial, "spatial",
-      drop_prediction_operations(summaries, c("cv", "exceedance")), level
-    ),
-    if (!is.null(sample_components$random_effects))
-      summarise_prediction_matrix(
-        sample_components$random_effects, "random_effects",
-        drop_prediction_operations(summaries, c("cv", "exceedance")), level
-      ),
-    if (!is.null(sample_components$nugget))
-      summarise_prediction_matrix(
-        sample_components$nugget, "nugget",
-        drop_prediction_operations(summaries, c("cv", "exceedance")), level
-      ),
-    summarise_prediction_matrix(
-      sample_components$link, "link",
-      drop_prediction_operations(summaries, c("cv", "exceedance")), level
-    ),
-    summarise_prediction_matrix(
-      sample_components$response, "response", summaries, level, thresholds
-    ),
-    unlist(lapply(names(transform), function(name) {
-      summarise_prediction_matrix(
-        sample_components$transformed[[name]], name, summaries, level,
-        thresholds
-      )
-    }), recursive = FALSE)
+  output_data <- format_location_predictions(
+    prediction_input, sample_components, include, transform, summaries,
+    thresholds, level
   )
-  for (name in names(component_summaries)) {
-    output_data[[name]] <- NA_real_
-    output_data[[name]][valid_rows] <- component_summaries[[name]]
-  }
+  valid_rows <- prediction_input$valid_rows
   samples <- if (keep_samples) {
     retained <- sample_components[c("spatial", "random_effects", "nugget")]
     retained <- retained[!vapply(retained, is.null, logical(1))]
@@ -403,7 +360,9 @@ predict.RiskMap <- function(
     NULL
   }
   out <- list(
-    data = output_data,
+    predictions = output_data,
+    boundaries = NULL,
+    boundary_summary = NULL,
     samples = samples,
     include = include,
     transform = names(transform),
@@ -411,7 +370,7 @@ predict.RiskMap <- function(
     summaries = names(summaries),
     thresholds = thresholds,
     level = level,
-    prediction = prediction,
+    type = type,
     family = object$family,
     observed_locations = observed_locations
   )
@@ -421,19 +380,19 @@ predict.RiskMap <- function(
 
 #' Validate the unified prediction options
 #' @noRd
-validate_prediction_options <- function(object, prediction, include,
+validate_prediction_options <- function(object, type, include,
                                         boundaries, aggregate, summaries,
                                         thresholds, level, weights,
                                         control_mcmc, seed, keep_samples,
                                         messages) {
-  prediction <- match.arg(prediction, c("auto", "marginal", "joint"))
+  type <- match.arg(type, c("auto", "marginal", "joint"))
   if (!is.null(boundaries)) {
     check_data(boundaries, geometry = "polygon", type = "sf")
-    if (prediction == "marginal") {
-      stop("When 'boundaries' are provided, 'prediction' must be \"joint\"",
+    if (type == "marginal") {
+      stop("When 'boundaries' are provided, 'type' must be \"joint\"",
            call. = FALSE)
     }
-    prediction <- "joint"
+    type <- "joint"
     if (is.null(aggregate)) {
       stop("'aggregate' must be supplied when 'boundaries' is used; choose one or more of: ",
            paste(shQuote(c("mean", "median", "sum", "min", "max")),
@@ -445,7 +404,7 @@ validate_prediction_options <- function(object, prediction, include,
       stop("'aggregate' is used only when 'boundaries' are supplied",
            call. = FALSE)
     }
-    if (prediction == "auto") prediction <- "marginal"
+    if (type == "auto") type <- "marginal"
   }
   allowed_include <- c("random_effects", "nugget")
   if (!is.character(include) || anyNA(include) ||
@@ -482,7 +441,7 @@ validate_prediction_options <- function(object, prediction, include,
   }
   check_logical(keep_samples)
   check_logical(messages)
-  prediction
+  type
 }
 
 #' Normalise built-in and custom prediction operations
@@ -706,8 +665,10 @@ assign_prediction_locations <- function(model_data, boundaries) {
     membership_count <- lengths(membership)
   }
   assigned <- membership_count == 1L
+  prediction_row <- which(assigned)
   list(
-    data = model_data[assigned, , drop = FALSE],
+    data = model_data[prediction_row, , drop = FALSE],
+    prediction_row = prediction_row,
     area_id = vapply(membership[assigned], `[[`, integer(1), 1L),
     coverage = rep(1, sum(assigned)),
     outside = which(!assigned),
@@ -727,6 +688,7 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
   if (!nrow(model_data)) {
     return(list(
       data = model_data,
+      prediction_row = integer(),
       area_id = integer(),
       coverage = numeric(),
       outside = integer(),
@@ -775,11 +737,48 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
   prediction_row <- as.integer(overlap$prediction_row)
   list(
     data = model_data[prediction_row, , drop = FALSE],
+    prediction_row = prediction_row,
     area_id = as.integer(overlap$ID),
     coverage = as.numeric(overlap$fraction),
     outside = setdiff(seq_len(nrow(model_data)), unique(prediction_row)),
     method = "exact"
   )
+}
+
+#' Construct independent joint-prediction blocks for polygon aggregation
+#' @noRd
+prediction_boundary_groups <- function(assignment, n_locations) {
+  prediction_row <- assignment$prediction_row
+  area_id <- assignment$area_id
+  areas <- sort(unique(area_id))
+  parent <- seq_len(max(c(areas, 0L)))
+  find_root <- function(x) {
+    while (parent[[x]] != x) x <- parent[[x]]
+    x
+  }
+  if (length(areas)) {
+    shared <- split(area_id, prediction_row)
+    for (members in shared) {
+      members <- unique(members)
+      if (length(members) > 1L) {
+        root <- find_root(members[[1L]])
+        for (member in members[-1L]) parent[[find_root(member)]] <- root
+      }
+    }
+  }
+  groups <- rep(NA_integer_, n_locations)
+  if (length(prediction_row)) {
+    location_areas <- split(area_id, prediction_row)
+    rows <- as.integer(names(location_areas))
+    groups[rows] <- vapply(
+      location_areas, function(x) find_root(x[[1L]]), integer(1)
+    )
+  }
+  outside <- which(is.na(groups))
+  if (length(outside)) {
+    groups[outside] <- max(c(groups, 0L), na.rm = TRUE) + seq_along(outside)
+  }
+  match(groups, unique(groups))
 }
 
 #' Predict and aggregate jointly within polygon boundaries
@@ -843,41 +842,46 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
             "means, medians and sums", call. = FALSE)
   }
 
-  if (!length(area_indices)) {
+  if (!nrow(model_data)) {
     out <- list(
-      data = output_boundaries,
-      summary = empty_prediction_summary(),
-      samples = NULL,
-      include = include,
-      transform = names(transform),
-      standardized = !is.null(standardize),
-      aggregate = names(aggregate),
-      summaries = names(summaries),
-      thresholds = thresholds,
-      level = level,
-      prediction = "joint",
-      family = object$family,
-      observed_locations = FALSE,
-      aggregated = TRUE,
-      coverage = assignment$method
+      predictions = format_missing_location_predictions(
+        prediction_input, include, transform, summaries, thresholds
+      ),
+      boundaries = output_boundaries,
+      boundary_summary = missing_boundary_summaries(
+        nrow(output_boundaries), names(aggregate), include, names(transform),
+        summaries, thresholds
+      ),
+      samples = NULL, include = include, transform = names(transform),
+      standardized = !is.null(standardize), aggregate = names(aggregate),
+      summaries = names(summaries), thresholds = thresholds, level = level,
+      type = "joint", family = object$family, observed_locations = FALSE,
+      aggregated = TRUE, coverage = assignment$method
     )
     class(out) <- "RiskMap_prediction"
     return(out)
   }
 
+  prediction_groups <- prediction_boundary_groups(
+    assignment, nrow(model_data)
+  )
   prediction_setup <- prepare_prediction(
     object = object,
-    prediction_data = assigned_data,
+    prediction_data = model_data,
     prediction = "joint",
     include = include,
     control_mcmc = control_mcmc,
     messages = messages,
-    groups = area_id
+    groups = prediction_groups
   )
   sample_components <- build_prediction_components(
     object, prediction_setup, include, transform,
     standardize = standardize,
-    prediction_data = assigned_data
+    prediction_data = model_data
+  )
+  predictions <- format_location_predictions(
+    prediction_input, sample_components, include, transform, summaries,
+    thresholds, level
   )
   components <- list(
     fixed = matrix(sample_components$fixed, ncol = 1L),
@@ -899,8 +903,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     index <- area_indices[[group]]
     area <- nonempty_areas[[group]]
     group_weights <- weight_values[index]
+    prediction_rows <- assignment$prediction_row[index]
     group_components <- lapply(
-      components, function(values) values[index, , drop = FALSE]
+      components, function(values) values[prediction_rows, , drop = FALSE]
     )
 
     for (operation_name in names(aggregate)) {
@@ -992,8 +997,10 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   }
 
   out <- list(
-    data = output_boundaries,
-    summary = do.call(rbind, summary_rows),
+    predictions = predictions,
+    boundaries = output_boundaries,
+    boundary_summary = if (length(summary_rows))
+      do.call(rbind, summary_rows) else empty_prediction_summary(),
     samples = retained,
     include = include,
     transform = names(transform),
@@ -1002,7 +1009,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     summaries = names(summaries),
     thresholds = thresholds,
     level = level,
-    prediction = "joint",
+    type = "joint",
     family = object$family,
     observed_locations = FALSE,
     aggregated = TRUE,
@@ -1384,6 +1391,77 @@ empty_prediction_summary <- function() {
   )
 }
 
+#' Add requested missing summaries when no prediction row is usable
+#' @noRd
+format_missing_location_predictions <- function(prediction_input, include,
+                                                transform, summaries,
+                                                thresholds) {
+  predictions <- prediction_input$output_data
+  predictions$fixed <- NA_real_
+  predictions$offset <- NA_real_
+  ordinary <- setdiff(names(summaries), c("cv", "exceedance"))
+  requested_names <- c(
+    paste("spatial", ordinary, sep = "_"),
+    if ("random_effects" %in% include)
+      paste("random_effects", ordinary, sep = "_"),
+    if ("nugget" %in% include) paste("nugget", ordinary, sep = "_"),
+    paste("link", ordinary, sep = "_"),
+    prediction_summary_names("response", summaries, thresholds),
+    unlist(lapply(names(transform), prediction_summary_names,
+                  summaries = summaries, thresholds = thresholds),
+           use.names = FALSE)
+  )
+  for (name in requested_names) predictions[[name]] <- NA_real_
+  predictions
+}
+
+#' Add location-level summaries to the original prediction support
+#' @noRd
+format_location_predictions <- function(prediction_input, sample_components,
+                                        include, transform, summaries,
+                                        thresholds, level) {
+  predictions <- prediction_input$output_data
+  valid_rows <- prediction_input$valid_rows
+  predictions$fixed <- NA_real_
+  predictions$offset <- NA_real_
+  predictions$fixed[valid_rows] <- sample_components$fixed
+  predictions$offset[valid_rows] <- sample_components$offset
+  component_summaries <- c(
+    summarise_prediction_matrix(
+      sample_components$spatial, "spatial",
+      drop_prediction_operations(summaries, c("cv", "exceedance")), level
+    ),
+    if (!is.null(sample_components$random_effects))
+      summarise_prediction_matrix(
+        sample_components$random_effects, "random_effects",
+        drop_prediction_operations(summaries, c("cv", "exceedance")), level
+      ),
+    if (!is.null(sample_components$nugget))
+      summarise_prediction_matrix(
+        sample_components$nugget, "nugget",
+        drop_prediction_operations(summaries, c("cv", "exceedance")), level
+      ),
+    summarise_prediction_matrix(
+      sample_components$link, "link",
+      drop_prediction_operations(summaries, c("cv", "exceedance")), level
+    ),
+    summarise_prediction_matrix(
+      sample_components$response, "response", summaries, level, thresholds
+    ),
+    unlist(lapply(names(transform), function(name) {
+      summarise_prediction_matrix(
+        sample_components$transformed[[name]], name, summaries, level,
+        thresholds
+      )
+    }), recursive = FALSE)
+  )
+  for (name in names(component_summaries)) {
+    predictions[[name]] <- NA_real_
+    predictions[[name]][valid_rows] <- component_summaries[[name]]
+  }
+  predictions
+}
+
 #' Return tidy missing summaries for a polygon without usable locations
 #' @noRd
 missing_prediction_summaries <- function(boundary_id, aggregate, quantity,
@@ -1406,6 +1484,42 @@ missing_prediction_summaries <- function(boundary_id, aggregate, quantity,
     }))
   }
   do.call(rbind, rows)
+}
+
+#' Return missing summaries for boundaries without usable prediction rows
+#' @noRd
+missing_boundary_summaries <- function(n_boundaries, aggregate, include,
+                                       transform, summaries, thresholds) {
+  rows <- list()
+  row_number <- 0L
+  quantities <- c(
+    "fixed", "offset", "spatial",
+    if ("random_effects" %in% include) "random_effects",
+    if ("nugget" %in% include) "nugget",
+    "link", "response", transform
+  )
+  for (boundary_id in seq_len(n_boundaries)) {
+    for (operation in aggregate) {
+      for (quantity in quantities) {
+        row_number <- row_number + 1L
+        rows[[row_number]] <- if (quantity %in% c("fixed", "offset")) {
+          data.frame(
+            boundary_id = boundary_id, aggregate = operation,
+            quantity = quantity, summary = "estimate", threshold = NA_real_,
+            value = NA_real_, stringsAsFactors = FALSE
+          )
+        } else {
+          requested <- if (quantity %in% c("response", transform)) summaries else
+            drop_prediction_operations(summaries, c("cv", "exceedance"))
+          missing_prediction_summaries(
+            boundary_id, operation, quantity, requested,
+            if (quantity %in% c("response", transform)) thresholds else NULL
+          )
+        }
+      }
+    }
+  }
+  if (length(rows)) do.call(rbind, rows) else empty_prediction_summary()
 }
 
 #' Summarise a location-by-sample prediction matrix
@@ -1490,7 +1604,7 @@ stored_conditioning_sample <- function(object) {
 
 #' Reconstruct linear-predictor draws from a prediction object
 #'
-#' The public prediction object keeps deterministic contributions in `data`
+#' The public prediction object keeps deterministic contributions in `predictions`
 #' and stochastic contributions in `samples`. Keeping that representation
 #' compact avoids duplicating large matrices, while this helper gives internal
 #' assessment routines the complete draws they need.
@@ -1504,10 +1618,10 @@ prediction_link_samples <- function(prediction, include_fixed = TRUE,
 
   link <- samples$spatial
   if (include_fixed) {
-    link <- sweep(link, 1L, prediction$data$fixed, `+`)
+    link <- sweep(link, 1L, prediction$predictions$fixed, `+`)
   }
   if (include_offset) {
-    link <- sweep(link, 1L, prediction$data$offset, `+`)
+    link <- sweep(link, 1L, prediction$predictions$offset, `+`)
   }
   if (!is.null(samples$random_effects)) {
     link <- link + samples$random_effects
@@ -1623,7 +1737,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
            call. = FALSE)
     }
     if (prediction != "joint") {
-      stop("Random-effect prediction requires 'prediction = \"joint\"'",
+      stop("Random-effect prediction requires 'type = \"joint\"'",
            call. = FALSE)
     }
     prepare_random_effects(plain_data, random_names)
@@ -2665,7 +2779,7 @@ assess_prediction <- function(object,
       prediction_i <- predict(
         refit_i,
         newdata = data_test_i,
-        prediction = "marginal",
+        type = "marginal",
         include = included_components,
         control_mcmc = control_mcmc,
         keep_samples = TRUE,
@@ -3104,7 +3218,7 @@ assess_simulation <- function(obj_sim,
       prediction_ij <- predict(
         fit_ij,
         newdata = obj_sim$lp_grid_sim,
-        prediction = type,
+        type = type,
         include = if (include_nugget) "nugget" else character(),
         control_mcmc = control_mcmc,
         keep_samples = TRUE,

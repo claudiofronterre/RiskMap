@@ -9,7 +9,7 @@
   newdata = NULL,
   boundaries = NULL,
   aggregate = NULL,
-  prediction = c("auto", "marginal", "joint"),
+  type = c("auto", "marginal", "joint"),
   include = NULL,
   transform = NULL,
   standardize = NULL,
@@ -46,7 +46,7 @@ list, optionally mixed with built-ins, for example
 function receives a location-by-draw matrix and the location weights and
 must return one numeric value per draw.}
 
-\item{prediction}{Character string specifying \code{"auto"}, \code{"marginal"}, or
+\item{type}{Character string specifying \code{"auto"}, \code{"marginal"}, or
 \code{"joint"} prediction. \code{"auto"} uses marginal prediction for locations and
 joint prediction when \code{boundaries} are supplied.}
 
@@ -119,11 +119,13 @@ default to limit memory use.}
 \value{
 A \code{RiskMap_prediction} object containing:
 \describe{
-\item{data}{The aligned prediction points with their summaries, or the
-original polygons when \code{boundaries} are supplied.}
-\item{summary}{For polygon prediction, a tidy table with one row per
+\item{predictions}{The aligned prediction points or grid cells with their
+summaries.}
+\item{boundaries}{The supplied polygons, or \code{NULL} when no polygon
+aggregation was requested.}
+\item{boundary_summary}{For polygon prediction, a tidy table with one row per
 boundary, aggregation, component, summary and threshold. \code{boundary_id}
-is the row number of the corresponding polygon in \code{data}.}
+is the row number of the corresponding polygon in \code{boundaries}.}
 \item{samples}{\code{NULL} when \code{keep_samples = FALSE}; otherwise a list
 containing spatial samples and any requested random-effect or nugget
 samples for location-level prediction. For polygon aggregation it
@@ -137,7 +139,7 @@ reference population supplied through \code{standardize}.}
 \item{summaries}{Names of the calculated summaries.}
 \item{thresholds}{Thresholds used for exceedance probabilities.}
 \item{level}{Probability covered by the interval limits.}
-\item{prediction}{Whether prediction was marginal or joint.}
+\item{type}{Whether prediction was marginal or joint.}
 \item{family}{The fitted response family.}
 \item{observed_locations}{Whether \code{newdata} was omitted.}
 \item{coverage}{For polygon prediction, \code{"exact"} when fractional grid-cell
@@ -176,16 +178,16 @@ CRS without changing row order; returned geometries remain in their input
 CRS. Rows with missing required predictors are retained with \code{NA}
 predictions and an informative warning.
 
-When \code{boundaries} are supplied, the conditioned latent state is generated
-once and shared by every polygon. Prediction locations are then grouped by
-polygon, joint samples are generated within each group, and each requested
-aggregation is applied to the same samples. The same random-effect draws
-are therefore used wherever a group occurs, without constructing a full
-joint covariance over all prediction locations. Blockwise samples preserve
-each polygon's predictive distribution but are not meant for joint
-contrasts between different polygons. Locations outside all polygons are
-reported and do not contribute; polygons with no usable locations remain
-in the output with \code{NA} summaries.
+When \code{boundaries} are supplied, one prediction run produces both the
+location-level output in \code{predictions} and the areal output in
+\code{boundary_summary}. Joint samples are generated in the smallest independent
+blocks that preserve dependence within every polygon. Polygons sharing a
+fractionally covered grid cell are placed in the same block so that the
+cell's draw is reused rather than simulated twice. This avoids constructing
+a full joint covariance over unrelated prediction locations. Locations
+outside all polygons remain in \code{predictions} but do not contribute to areal
+aggregation; polygons with no usable locations remain in \code{boundaries} with
+\code{NA} summaries.
 
 With location weights \eqn{w_i}, \code{"mean"} computes
 \deqn{\sum_i w_i T_i / \sum_i w_i,}
@@ -240,7 +242,7 @@ prediction <- predict(
   transform = list(squared_link = function(link) link^2),
   messages = FALSE
 )
-prediction$data
+prediction$predictions
 
 # Use the same reference distribution of population density at each location
 reference_population <- data.frame(pop_dens = example_data$pop_dens)
@@ -250,7 +252,7 @@ standardized_prediction <- predict(
   standardize = reference_population,
   messages = FALSE
 )
-standardized_prediction$data
+standardized_prediction$predictions
 
 # Aggregate joint predictions within two example areas
 areas <- sf::st_sf(
@@ -264,7 +266,7 @@ areal_prediction <- predict(
   aggregate = "mean",
   messages = FALSE
 )
-areal_prediction$summary
+areal_prediction$boundary_summary
 
 }
 \seealso{

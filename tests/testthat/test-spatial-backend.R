@@ -108,7 +108,7 @@ test_that("prediction scaling preserves draws at fixed fitted parameters", {
   scaled_prediction <- predict(
     scaled_model,
     newdata = gaussian_data,
-    prediction = "joint",
+    type = "joint",
     control_mcmc = control_mcmc,
     keep_samples = TRUE,
     messages = FALSE
@@ -117,7 +117,7 @@ test_that("prediction scaling preserves draws at fixed fitted parameters", {
   unscaled_prediction <- predict(
     unscaled_model,
     newdata = gaussian_data,
-    prediction = "joint",
+    type = "joint",
     control_mcmc = control_mcmc,
     keep_samples = TRUE,
     messages = FALSE
