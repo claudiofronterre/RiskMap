@@ -11,16 +11,13 @@ use the general R implementation.
 integrand when the objective, gradient, and Hessian are evaluated at identical
 parameters, avoiding a repeated likelihood calculation.
 
-- Non-Gaussian models now perform up to 12 MCML updates by default and stop
-early once both the standardized parameter-change and importance-sampling
-criteria are satisfied. If the iteration limit is reached after an unsupported
-shortened step, the latest fully supported fit is returned and identified by
-`mcml_selected_iteration`.
-
-- The default standardized parameter-change tolerance for iterative MCML
-updates is now `0.1`. Calibration against independent Monte Carlo banks showed
-that the previous `0.05` threshold caused unnecessary additional updates
-without a material improvement in the fitted likelihood.
+- Non-Gaussian models now use automatically validated local-Laplace MCML.
+Independent fitting and validation banks must contain at least 100 effective
+draws, have acceptable importance-weight tails, agree on the score, and keep
+Monte Carlo standard error below 10% of statistical standard error in every
+parameter direction. Bank size increases only when those diagnostics require
+it. The defaults were frozen after a 1,200-dataset simulation study and 120
+independent high-accuracy adjudications; see #194.
 
 - This version introduces many breaking changes from v1. The package should not
 be considered stable, but further breaking changes will be handled gracefully.
