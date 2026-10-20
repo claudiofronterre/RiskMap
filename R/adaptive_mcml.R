@@ -274,6 +274,133 @@ adaptive_mcml_pathwise_score <- function(
   )
 }
 
+##' Identify variance parameters estimated as effectively zero
+##'
+##' `linked_index` is a list named by variance index giving parameters that
+##' are not identifiable when that variance is zero.
+##'
+##' Variance components are optimised on the log scale, so a component whose
+##' maximum likelihood estimate is zero drifts towards the lower bound along an
+##' almost flat direction. Such components are held at the boundary when Monte
+##' Carlo precision is assessed, instead of being treated as Monte Carlo error.
+##' @noRd
+adaptive_boundary_parameters <- function(estimate, variance_index,
+                                         boundary_log_variance,
+                                         linked_index = list()) {
+  boundary <- variance_index[estimate[variance_index] <= boundary_log_variance]
+  # A parameter that only acts through a zero variance (the spatial range when
+  # the spatial variance is zero) is not identifiable and is held with it.
+  linked <- unlist(linked_index[as.character(boundary)], use.names = FALSE)
+  sort(unique(c(boundary, linked)))
+}
+
+##' Re-optimise once from an interior value of boundary variance components
+##'
+##' A local optimiser that reaches a variance boundary from one start may have
+##' missed an interior maximum. One restart from a moderate value (a quarter of
+##' the reference scale) on the same common-random-number bank resolves this;
+##' the better objective is retained, so the restart can never worsen a fit.
+##' @noRd
+restart_from_interior <- function(objective, fit, variance_index,
+                                  boundary_log_variance, lower, upper) {
+  boundary <- adaptive_boundary_parameters(
+    fit$par, variance_index, boundary_log_variance
+  )
+  if (!length(boundary)) return(list(fit = fit, restarted = FALSE))
+  interior <- fit$par
+  interior[boundary] <- log(0.25)
+  restart <- tryCatch(
+    nlminb(interior, objective, lower = lower, upper = upper,
+           control = list(eval.max = 150, iter.max = 100,
+                          rel.tol = 1e-8, x.tol = 1e-6)),
+    error = function(error) NULL
+  )
+  improved <- !is.null(restart) && is.finite(restart$objective) &&
+    restart$objective < fit$objective - 1e-6
+  list(fit = if (improved) restart else fit, restarted = TRUE,
+       restart_improved = improved)
+}
+
+##' Monte Carlo precision of the free parameters
+##'
+##' Parameters on a variance boundary are held fixed, so the observed
+##' information, the worst-direction MCSE ratio and the independent score
+##' comparison are computed over the remaining (free) parameters only.
+##' @noRd
+adaptive_precision_diagnostics <- function(engine, estimate, fit_bank,
+                                           validation_bank, free,
+                                           score_agreement_probability) {
+  out <- list(
+    information = NULL, covariance = NULL, information_singular = TRUE,
+    fit_pathwise_score = NULL, validation_pathwise_score = NULL,
+    parameter_mcse_ratio = Inf, score_agreement_statistic = Inf,
+    score_agreement_limit = stats::qchisq(score_agreement_probability,
+                                          df = length(free)),
+    timing = list(information = 0, fit_pathwise_score = 0,
+                  validation_pathwise_score = 0)
+  )
+  started <- proc.time()[["elapsed"]]
+  out$information <- tryCatch(
+    numDeriv::hessian(function(parameters) -engine(parameters, fit_bank),
+                      estimate),
+    error = function(error) NULL
+  )
+  out$timing$information <- proc.time()[["elapsed"]] - started
+  if (is.null(out$information)) return(out)
+  information_root <- tryCatch(
+    factor_covariance(out$information[free, free, drop = FALSE],
+                      "adaptive MCML observed information",
+                      allow_jitter = FALSE),
+    error = function(error) NULL
+  )
+  if (is.null(information_root)) return(out)
+  out$information_singular <- FALSE
+  free_covariance <- chol2inv(information_root)
+  out$covariance <- matrix(NA_real_, length(estimate), length(estimate))
+  out$covariance[free, free] <- free_covariance
+
+  started <- proc.time()[["elapsed"]]
+  out$fit_pathwise_score <- adaptive_mcml_pathwise_score(
+    engine, estimate, fit_bank
+  )
+  out$timing$fit_pathwise_score <- proc.time()[["elapsed"]] - started
+  started <- proc.time()[["elapsed"]]
+  out$validation_pathwise_score <- adaptive_mcml_pathwise_score(
+    engine, estimate, validation_bank
+  )
+  out$timing$validation_pathwise_score <- proc.time()[["elapsed"]] - started
+
+  parameter_ratio <- function(score_mc_covariance) {
+    parameter_mc_covariance <- free_covariance %*%
+      score_mc_covariance[free, free, drop = FALSE] %*% free_covariance
+    relative_covariance <- information_root %*%
+      parameter_mc_covariance %*% t(information_root)
+    relative_covariance <- (relative_covariance + t(relative_covariance)) / 2
+    sqrt(max(eigen(relative_covariance, symmetric = TRUE,
+                   only.values = TRUE)$values))
+  }
+  out$parameter_mcse_ratio <- max(
+    parameter_ratio(out$fit_pathwise_score$covariance),
+    parameter_ratio(out$validation_pathwise_score$covariance)
+  )
+  score_difference <- (out$fit_pathwise_score$score -
+                         out$validation_pathwise_score$score)[free]
+  score_root <- tryCatch(
+    factor_covariance(
+      (out$fit_pathwise_score$covariance +
+         out$validation_pathwise_score$covariance)[free, free, drop = FALSE],
+      "adaptive MCML score-difference covariance"
+    ),
+    error = function(error) NULL
+  )
+  if (!is.null(score_root)) {
+    out$score_agreement_statistic <- sum(
+      forwardsolve(t(score_root), score_difference)^2
+    )
+  }
+  out
+}
+
 ##' Fit and independently validate adaptive local-Laplace MCML
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, latent_dimension,
@@ -284,7 +411,10 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
                             max_pareto_k = 0.7,
                             max_parameter_mcse_ratio = 0.1,
                             score_agreement_probability = 0.99,
-                            lower = NULL, upper = NULL) {
+                            lower = NULL, upper = NULL,
+                            variance_index = integer(),
+                            linked_index = list(),
+                            boundary_log_variance = -9) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   if (!is.null(min_absolute_ess)) {
@@ -314,6 +444,19 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
       control = list(eval.max = 150, iter.max = 100,
                      rel.tol = 1e-8, x.tol = 1e-6)
     )
+    restart <- if (stage == 1L && length(variance_index)) {
+      restart_from_interior(
+        function(parameters) -engine(parameters, fit_bank), fit,
+        variance_index, boundary_log_variance, lower, upper
+      )
+    } else {
+      list(fit = fit, restarted = FALSE)
+    }
+    fit <- restart$fit
+    boundary <- adaptive_boundary_parameters(
+      fit$par, variance_index, boundary_log_variance, linked_index
+    )
+    free <- setdiff(seq_along(fit$par), boundary)
     optimizer_seconds <- proc.time()[["elapsed"]] - optimizer_started
     fit_diagnostics_started <- proc.time()[["elapsed"]]
     fit_diagnostics <- engine(fit$par, fit_bank, diagnostics = TRUE)
@@ -372,80 +515,35 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
       fit_diagnostics$pareto_k <= max_pareto_k &&
       validation_diagnostics$pareto_k <= max_pareto_k
     )
-    information <- NULL
-    covariance <- NULL
-    fit_pathwise_score <- NULL
-    validation_pathwise_score <- NULL
-    parameter_mcse_ratio <- Inf
-    score_agreement_statistic <- Inf
-    information_seconds <- fit_score_seconds <-
-      validation_score_seconds <- 0
-    score_agreement_limit <- stats::qchisq(
-      score_agreement_probability, df = length(start)
-    )
-    if (preliminary_pass) {
-      information_started <- proc.time()[["elapsed"]]
-      information <- tryCatch(
-        numDeriv::hessian(
-          function(parameters) -engine(parameters, fit_bank), fit$par
-        ),
-        error = function(error) NULL
+    precision <- if (preliminary_pass) {
+      adaptive_precision_diagnostics(
+        engine, fit$par, fit_bank, validation_bank, free,
+        score_agreement_probability
       )
-      information_seconds <- proc.time()[["elapsed"]] - information_started
-      information_root <- if (is.null(information)) NULL else tryCatch(
-        factor_covariance(
-          information, "experimental hybrid observed information",
-          allow_jitter = FALSE
-        ),
-        error = function(error) NULL
-      )
-      if (!is.null(information_root)) {
-        covariance <- chol2inv(information_root)
-        fit_score_started <- proc.time()[["elapsed"]]
-        fit_pathwise_score <- adaptive_mcml_pathwise_score(
-          engine, fit$par, fit_bank
-        )
-        fit_score_seconds <- proc.time()[["elapsed"]] - fit_score_started
-        validation_score_started <- proc.time()[["elapsed"]]
-        validation_pathwise_score <- adaptive_mcml_pathwise_score(
-          engine, fit$par, validation_bank
-        )
-        validation_score_seconds <-
-          proc.time()[["elapsed"]] - validation_score_started
-        parameter_ratio <- function(score_mc_covariance) {
-          parameter_mc_covariance <- covariance %*%
-            score_mc_covariance %*% covariance
-          relative_covariance <- information_root %*%
-            parameter_mc_covariance %*% t(information_root)
-          relative_covariance <-
-            (relative_covariance + t(relative_covariance)) / 2
-          sqrt(max(eigen(
-            relative_covariance, symmetric = TRUE, only.values = TRUE
-          )$values))
-        }
-        parameter_mcse_ratio <- max(
-          parameter_ratio(fit_pathwise_score$covariance),
-          parameter_ratio(validation_pathwise_score$covariance)
-        )
-        score_difference <- fit_pathwise_score$score -
-          validation_pathwise_score$score
-        score_difference_covariance <-
-          fit_pathwise_score$covariance +
-          validation_pathwise_score$covariance
-        score_root <- tryCatch(
-          factor_covariance(
-            score_difference_covariance,
-            "experimental hybrid score-difference covariance"
-          ),
-          error = function(error) NULL
-        )
-        if (!is.null(score_root)) {
-          score_agreement_statistic <- sum(
-            forwardsolve(t(score_root), score_difference)^2
-          )
-        }
-      }
+    } else {
+      list(information = NULL, covariance = NULL,
+           information_singular = NA,
+           fit_pathwise_score = NULL, validation_pathwise_score = NULL,
+           parameter_mcse_ratio = Inf, score_agreement_statistic = Inf,
+           score_agreement_limit = stats::qchisq(
+             score_agreement_probability, df = length(free)
+           ),
+           timing = list(information = 0, fit_pathwise_score = 0,
+                         validation_pathwise_score = 0))
     }
+    information <- precision$information
+    covariance <- precision$covariance
+    fit_pathwise_score <- precision$fit_pathwise_score
+    validation_pathwise_score <- precision$validation_pathwise_score
+    parameter_mcse_ratio <- precision$parameter_mcse_ratio
+    score_agreement_statistic <- precision$score_agreement_statistic
+    score_agreement_limit <- precision$score_agreement_limit
+    information_seconds <- precision$timing$information
+    fit_score_seconds <- precision$timing$fit_pathwise_score
+    validation_score_seconds <- precision$timing$validation_pathwise_score
+    # A singular information matrix over the free parameters is a property of
+    # the data and model (weak identification), not of the Monte Carlo sample.
+    identifiability_failure <- isTRUE(precision$information_singular)
     accepted <- preliminary_pass && is.finite(parameter_mcse_ratio) &&
       parameter_mcse_ratio <= max_parameter_mcse_ratio &&
       score_agreement_statistic <= score_agreement_limit
@@ -468,6 +566,10 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
       max_parameter_mcse_ratio = parameter_mcse_ratio,
       score_agreement_statistic = score_agreement_statistic,
       score_agreement_limit = score_agreement_limit,
+      boundary_parameters = boundary,
+      restarted = restart$restarted,
+      restart_improved = isTRUE(restart$restart_improved),
+      identifiability_failure = identifiability_failure,
       accepted = accepted,
       timing = list(
         optimizer = optimizer_seconds,
@@ -481,6 +583,11 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
     )
     current <- fit$par
     if (accepted) break
+    # More draws cannot repair a non-identifiable information matrix.
+    if (identifiability_failure) {
+      history[[stage]]$budget_reason <- "singular observed information"
+      break
+    }
 
     if (dynamic_budget) {
       # Independent-importance MCSE decreases approximately with sqrt(N).
@@ -542,25 +649,51 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
                         current),
       error = function(error) NULL
     )
+    free <- setdiff(seq_along(current), last$boundary_parameters)
     information_root <- if (is.null(information)) NULL else tryCatch(
       factor_covariance(
-        information, "adaptive MCML observed information",
+        information[free, free, drop = FALSE],
+        "adaptive MCML observed information",
         allow_jitter = FALSE
       ),
       error = function(error) NULL
     )
-    if (!is.null(information_root)) covariance <- chol2inv(information_root)
+    if (!is.null(information_root)) {
+      covariance <- matrix(NA_real_, length(current), length(current))
+      covariance[free, free] <- chol2inv(information_root)
+    }
   }
 
   list(
     estimate = current,
     accepted = isTRUE(last$accepted),
     budget = last$budget,
+    boundary_parameters = last$boundary_parameters,
+    identifiability_failure = isTRUE(last$identifiability_failure),
     history = history,
     covariance = covariance,
     information = information,
     elapsed_seconds = proc.time()[["elapsed"]] - total_started
   )
+}
+
+##' Describe variance parameters for user-facing messages
+##' @noRd
+describe_variance_parameters <- function(index, layout, re_names = NULL) {
+  if (!length(index)) return(character())
+  labels <- character()
+  labels[as.character(layout$index$sigma2)] <- "spatial variance (sigma2)"
+  labels[as.character(layout$index$phi)] <-
+    "spatial range (phi), which has no meaning without spatial variation"
+  if (!is.null(layout$index$nu2)) {
+    labels[as.character(layout$index$nu2)] <- "nugget variance (tau2)"
+  }
+  if (!is.null(layout$index$sigma2_re)) {
+    labels[as.character(layout$index$sigma2_re)] <- paste0(
+      "random-effect variance for '", re_names, "'"
+    )
+  }
+  unname(labels[as.character(index)])
 }
 
 ##' Retain user-facing adaptive diagnostics without derivative workspaces
@@ -635,7 +768,13 @@ glgpm_nong_adaptive <- function(
     max_pareto_k = control_mcml$max_pareto_k,
     max_parameter_mcse_ratio = control_mcml$max_mcse_ratio,
     score_agreement_probability = control_mcml$score_probability,
-    lower = lower, upper = upper
+    lower = lower, upper = upper,
+    variance_index = unlist(engine$layout$index[c("sigma2", "nu2",
+                                                  "sigma2_re")],
+                            use.names = FALSE),
+    linked_index = stats::setNames(
+      list(engine$layout$index$phi), engine$layout$index$sigma2
+    )
   )
   last <- fit$history[[length(fit$history)]]
   public_history <- compact_adaptive_mcml_history(fit$history)
@@ -669,7 +808,33 @@ glgpm_nong_adaptive <- function(
     error = function(error) rep(NA_real_, length(fit$estimate))
   )
 
-  if (!fit$accepted) {
+  boundary_names <- describe_variance_parameters(
+    fit$boundary_parameters, engine$layout,
+    re_names = if (is.null(ID_re)) NULL else colnames(ID_re)
+  )
+  if (length(boundary_names)) {
+    warning(
+      "The ", paste(boundary_names, collapse = ", "), " ",
+      if (length(boundary_names) == 1L) "was" else "were",
+      " estimated as effectively zero. ",
+      if (length(boundary_names) == 1L) "This component" else "These components",
+      " cannot be distinguished from zero with these data, so ",
+      if (length(boundary_names) == 1L) "its standard error is" else
+        "their standard errors are",
+      " not reported. Consider refitting without ",
+      if (length(boundary_names) == 1L) "it." else "them.",
+      call. = FALSE
+    )
+  }
+  if (fit$identifiability_failure) {
+    warning(
+      "The observed information matrix is singular, so some parameters ",
+      "(often the spatial range when spatial correlation is weak) are not ",
+      "identifiable from these data. The estimate is returned without ",
+      "standard errors; consider a simpler model or fixing the range.",
+      call. = FALSE
+    )
+  } else if (!fit$accepted) {
     warning(
       "Adaptive MCML reached its stopping limit without meeting all ",
       "Monte Carlo precision and independent-validation criteria. The best ",
@@ -703,6 +868,8 @@ glgpm_nong_adaptive <- function(
       rcond(fit$information),
     information_jitter = 0,
     mcml_supported = fit$accepted,
+    mcml_boundary = boundary_names,
+    mcml_identifiability_failure = fit$identifiability_failure,
     mcml_budget = fit$budget,
     mcml_stages = length(fit$history),
     mcml_history = public_history,
