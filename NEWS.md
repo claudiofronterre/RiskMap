@@ -1,6 +1,12 @@
 RiskMap 2.0.0
 =============
 
+- Canonical binomial and Poisson models now use compiled likelihood and MALA
+kernels. The implementation retains the existing sampler, including support
+for nugget effects and multiple unstructured random effects, while avoiding
+the main interpreted-R bottlenecks. Custom inverse-link functions continue to
+use the general R implementation.
+
 - Non-Gaussian optimisation now reuses the sample-wise Monte Carlo log
 integrand when the objective, gradient, and Hessian are evaluated at identical
 parameters, avoiding a repeated likelihood calculation.

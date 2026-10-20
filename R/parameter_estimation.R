@@ -2650,8 +2650,8 @@ maxim_integrand <- function(
 ##'   for \code{family = "poisson"} counts, and for \code{family = "gaussian"} real values.
 ##' @param units_m Numeric vector giving the binomial totals (number of trials)
 ##'   when \code{family = "binomial"}; ignored for other families (can be \code{NULL}).
-##' @param mu Numeric vector of length equal to the number of unique locations
-##'   providing the mean of the latent spatial process on the link scale.
+##' @param mu Numeric vector of length \eqn{n} providing the fixed part of the
+##'   linear predictor for each observation.
 ##' @param Sigma Numeric positive-definite covariance matrix for the latent spatial
 ##'   process \eqn{S} at the unique locations referenced by \code{ID_coords}.
 ##' @param ID_coords Integer vector of length \eqn{n} mapping each response in
@@ -2751,8 +2751,8 @@ laplace_sampling_mcmc <- function(y,
       n_loc != ncol(Sigma) || n_loc < 1L) {
     stop("'Sigma' must be a non-empty square numeric matrix.")
   }
-  if (length(mu) != n_loc || any(!is.finite(mu))) {
-    stop("'mu' must contain one finite value for each row of 'Sigma'.")
+  if (!is.numeric(mu) || length(mu) != n || any(!is.finite(mu))) {
+    stop("'mu' must contain one finite value per response.")
   }
   if (length(ID_coords) != n || anyNA(ID_coords) ||
       any(ID_coords != as.integer(ID_coords)) ||
@@ -2874,6 +2874,61 @@ laplace_sampling_mcmc <- function(y,
     )
   }
   mu_w <- -as.numeric(A %*% mean_pd)
+
+  # Canonical binomial and Poisson models use the compiled transition kernel.
+  # Custom inverse links retain the general R implementation below.
+  if (linkf$name == "canonical") {
+    compiled <- cpp_canonical_mala(
+      y_r = y,
+      units_r = units_m,
+      mu_r = mu,
+      proposal_lower_r = Sigma_pd_sroot,
+      proposal_upper_r = Sigma_pd_root,
+      prior_lower_r = Sigma_w_sroot,
+      prior_upper_r = Sigma_w_root,
+      transformed_prior_mean_r = mu_w,
+      proposal_mean_r = mean_pd,
+      location_id_r = as.integer(ID_coords),
+      n_locations = n_loc,
+      random_effect_id_r = if (n_re > 0) {
+        matrix(as.integer(ID_re), nrow = nrow(ID_re),
+               dimnames = dimnames(ID_re))
+      } else {
+        matrix(integer(), nrow = n, ncol = 0L)
+      },
+      family = family,
+      n_sim = control_mcmc$n_sim,
+      burnin = control_mcmc$burnin,
+      thin = control_mcmc$thin,
+      step_size = control_mcmc$h %||% (1.65 / n_tot^(1 / 6)),
+      adaptation_scale = control_mcmc$c1.h,
+      adaptation_exponent = control_mcmc$c2.h
+    )
+    out_sim <- list(samples = list(
+      S = compiled$samples[, seq_len(n_loc), drop = FALSE]
+    ))
+    if (n_re > 0) {
+      re_names <- colnames(ID_re) %||% paste0("re", seq_len(n_re))
+      for (i in seq_len(n_re)) {
+        out_sim$samples[[re_names[i]]] <-
+          compiled$samples[, ind_re[[i]], drop = FALSE]
+      }
+    }
+    out_sim$tuning_par <- compiled$tuning
+    out_sim$acceptance_prob <- compiled$cumulative_acceptance
+    out_sim$acceptance <- as.logical(compiled$acceptance)
+    out_sim$acceptance_rate <- c(
+      burnin = if (control_mcmc$burnin > 0L) {
+        mean(out_sim$acceptance[seq_len(control_mcmc$burnin)])
+      } else NA_real_,
+      sampling = mean(out_sim$acceptance[seq.int(
+        control_mcmc$burnin + 1L, control_mcmc$n_sim
+      )])
+    )
+    out_sim$invlink_used <- linkf$name
+    class(out_sim) <- "RiskMap_mcmc"
+    return(out_sim)
+  }
 
   target_state <- function(W, S_tot) {
     S <- S_tot[1:n_loc]
@@ -3389,25 +3444,8 @@ glgpm_nong <-
         }
       }
 
-      if (linkf$name == "canonical" && family == "poisson") {
-        mean <- exp(eta)
-        log_likelihood <- rowSums(sweep(eta, 2L, y, "*") -
-                                    sweep(mean, 2L, units_m, "*"))
-        score <- sweep(mean, 2L, units_m, "*")
-        score <- sweep(score, 2L, y, function(x, y) y - x)
-        curvature <- sweep(mean, 2L, units_m, "*")
-      } else if (linkf$name == "canonical") {
-        probability <- plogis(eta)
-        log_likelihood <- rowSums(sweep(eta, 2L, y, "*") -
-                                    sweep(softplus(eta), 2L, units_m, "*"))
-        score <- sweep(probability, 2L, units_m, "*")
-        score <- sweep(score, 2L, y, function(x, y) y - x)
-        curvature <- sweep(
-          probability * (1 - probability),
-          2L,
-          units_m,
-          "*"
-        )
+      if (linkf$name == "canonical") {
+        return(cpp_canonical_likelihood(eta, y, units_m, family))
       } else if (family == "poisson") {
         mean <- matrix(inv_fn(as.vector(eta)), nrow = n_samples)
         if (any(!is.finite(mean)) || any(mean <= 0)) {

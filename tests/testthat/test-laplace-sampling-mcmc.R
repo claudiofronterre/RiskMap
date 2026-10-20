@@ -153,7 +153,7 @@ test_that("sampler controls and location indices are validated", {
   control <- set_control_mcmc(n_sim = 20, burnin = 10, thin = 1)
   expect_error(
     laplace_sampling_mcmc(
-      y = c(1, 2), units_m = c(4, 4), mu = 0,
+      y = c(1, 2), units_m = c(4, 4), mu = c(0, 0),
       Sigma = matrix(1), ID_coords = c(1, 2), family = "binomial",
       control_mcmc = control, messages = FALSE
     ),
@@ -170,7 +170,7 @@ test_that("sampler controls and location indices are validated", {
   )
   expect_error(
     laplace_sampling_mcmc(
-      y = c(1, 2), units_m = c(4, 4), mu = 0, Sigma = matrix(1),
+      y = c(1, 2), units_m = c(4, 4), mu = c(0, 0), Sigma = matrix(1),
       ID_coords = c(1, 1), ID_re = matrix(c(1, 3)), sigma2_re = 1,
       family = "binomial", control_mcmc = control, messages = FALSE
     ),
