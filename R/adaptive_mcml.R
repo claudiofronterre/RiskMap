@@ -716,6 +716,65 @@ compact_adaptive_mcml_history <- function(history) {
   })
 }
 
+##' Maximise the Laplace approximation from several starting values
+##'
+##' With a single standard-normal draw at zero the adaptive engine evaluates
+##' the Laplace approximation to the marginal log-likelihood exactly. The
+##' Laplace optimum is cheap to compute, is usually close to the MCML optimum,
+##' and optimising it from several candidates guards against local optima and
+##' spurious variance boundaries before any Monte Carlo work is done.
+##' @noRd
+laplace_multistart <- function(engine, candidates, latent_dimension,
+                               lower, upper) {
+  zero <- matrix(0, nrow = 1L, ncol = latent_dimension)
+  objective <- function(parameters) {
+    value <- engine(parameters, zero)
+    if (is.finite(value)) -value else 1e100
+  }
+  fits <- lapply(candidates, function(candidate) {
+    tryCatch(
+      nlminb(pmin(pmax(candidate, lower), upper), objective,
+             lower = lower, upper = upper,
+             control = list(eval.max = 200, iter.max = 150,
+                            rel.tol = 1e-8, x.tol = 1e-6)),
+      error = function(error) NULL
+    )
+  })
+  values <- vapply(fits, function(fit) {
+    if (is.null(fit)) Inf else fit$objective
+  }, numeric(1))
+  if (!any(is.finite(values))) return(NULL)
+  best <- which.min(values)
+  list(estimate = fits[[best]]$par, log_likelihood = -values[[best]],
+       candidate = names(candidates)[best],
+       candidate_log_likelihoods = -values)
+}
+
+##' Candidate starting values for the Laplace multistart
+##'
+##' The supplied start is always included. Alternatives replace the range by a
+##' data-based value (a third of the median inter-location distance) and move
+##' every variance component to a moderate interior value, so that a start in
+##' the basin of a zero-variance boundary does not determine the fit.
+##' @noRd
+laplace_start_candidates <- function(start, layout, distances) {
+  candidates <- list(supplied = start)
+  median_distance <- stats::median(distances[upper.tri(distances)])
+  if (is.finite(median_distance) && median_distance > 0) {
+    data_range <- start
+    data_range[layout$index$phi] <- log(median_distance / 3)
+    candidates$data_range <- data_range
+  }
+  interior <- start
+  interior[layout$index$sigma2] <- max(start[layout$index$sigma2], log(0.25))
+  if (!is.null(layout$index$nu2)) interior[layout$index$nu2] <- log(0.25)
+  if (!is.null(layout$index$sigma2_re)) {
+    interior[layout$index$sigma2_re] <- log(0.25)
+  }
+  candidates$interior_variances <- interior
+  candidates
+}
+
 ##' Fit a non-Gaussian geostatistical model by adaptive validated MCML
 ##' @noRd
 glgpm_nong_adaptive <- function(
@@ -757,6 +816,15 @@ glgpm_nong_adaptive <- function(
              rep(-20, length(start) - ncol(D) - 2L))
   upper <- c(rep(30, ncol(D)), 20, 10,
              rep(20, length(start) - ncol(D) - 2L))
+  laplace <- NULL
+  if (isTRUE(control_mcml$laplace_start)) {
+    laplace <- laplace_multistart(
+      engine$evaluate,
+      laplace_start_candidates(unname(start), engine$layout, distances),
+      engine$latent_dimension, lower, upper
+    )
+    if (!is.null(laplace)) start <- laplace$estimate
+  }
   fit <- fit_adaptive_mcml(
     engine = engine$evaluate, start = unname(start),
     latent_dimension = engine$latent_dimension,
@@ -868,6 +936,12 @@ glgpm_nong_adaptive <- function(
       rcond(fit$information),
     information_jitter = 0,
     mcml_supported = fit$accepted,
+    laplace_start = if (is.null(laplace)) NULL else list(
+      estimate = laplace$estimate,
+      log_likelihood = laplace$log_likelihood,
+      candidate = laplace$candidate,
+      candidate_log_likelihoods = laplace$candidate_log_likelihoods
+    ),
     mcml_boundary = boundary_names,
     mcml_identifiability_failure = fit$identifiability_failure,
     mcml_budget = fit$budget,
