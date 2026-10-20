@@ -40,16 +40,24 @@ test_that("prediction objects use one stable output schema", {
   expect_setequal(names(observed), expected_output)
   expect_setequal(names(locations), expected_output)
   expect_setequal(names(polygons), expected_output)
-  expect_identical(
-    observed[c("aggregate", "coverage")],
-    list(aggregate = NULL, coverage = NULL)
-  )
-  expect_identical(
-    locations[c("aggregate", "coverage")],
-    list(aggregate = NULL, coverage = NULL)
-  )
+
+  expect_null(observed$aggregate)
+  expect_null(observed$boundaries)
+  expect_null(observed$boundary_summary)
+  expect_null(observed$coverage)
+  expect_true(observed$observed_locations)
+
+  expect_null(locations$aggregate)
+  expect_null(locations$boundaries)
+  expect_null(locations$boundary_summary)
+  expect_null(locations$coverage)
+  expect_false(locations$observed_locations)
+
   expect_identical(polygons$aggregate, "mean")
+  expect_s3_class(polygons$boundaries, "sf")
+  expect_s3_class(polygons$boundary_summary, "data.frame")
   expect_identical(polygons$coverage, "exact")
+  expect_false(polygons$observed_locations)
 })
 
 test_that("predict.RiskMap derives predictors and offsets from one sf object", {
