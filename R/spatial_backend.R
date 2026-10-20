@@ -145,7 +145,7 @@ factor_covariance <- function(covariance, context = "covariance matrix",
 
 #' Solve a positive-definite system from its Cholesky factor
 #'
-#' @param root Upper-triangular factor returned by [factor_covariance()].
+#' @param root Upper-triangular factor returned by factor_covariance().
 #' @param right_hand_side Numeric vector or matrix.
 #' @return Solution to `crossprod(root) %*% x = right_hand_side`.
 #' @noRd
@@ -155,7 +155,7 @@ solve_from_cholesky <- function(root, right_hand_side) {
 
 #' Compute a positive-definite log determinant from its Cholesky factor
 #'
-#' @param root Upper-triangular factor returned by [factor_covariance()].
+#' @param root Upper-triangular factor returned by factor_covariance().
 #' @return Log determinant of the original covariance matrix.
 #' @noRd
 log_determinant_from_cholesky <- function(root) {
@@ -217,6 +217,61 @@ sample_correlated_gaussian <- function(mean, lower_root, n_samples) {
   n_prediction <- nrow(lower_root)
   noise <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
   mean + lower_root %*% noise
+}
+
+#' Draw joint predictions independently within spatial groups
+#'
+#' The conditioning calculation is shared across groups, while each group gets
+#' its own conditional covariance factorisation. Results are written into one
+#' preallocated matrix in the original row order, avoiding list-valued
+#' prediction data and a potentially much larger all-location covariance.
+#'
+#' @param prediction_coordinates Coordinates for all prediction locations.
+#' @param conditioning_coordinates Coordinates for the conditioning process.
+#' @param group_indices List of integer row indices, one per joint block.
+#' @param weight_function Function mapping cross-covariances to prediction
+#'   weights.
+#' @param conditional_signal Vector or matrix multiplied by those weights.
+#' @param marginal_variance Unconditional spatial variance.
+#' @param phi Matérn range on the internal coordinate scale.
+#' @param kappa Matérn smoothness.
+#' @param n_samples Number of predictive draws.
+#' @return Matrix with prediction locations in rows and samples in columns.
+#' @noRd
+grouped_joint_prediction <- function(
+    prediction_coordinates, conditioning_coordinates, group_indices,
+    weight_function, conditional_signal, marginal_variance, phi, kappa,
+    n_samples) {
+  samples <- matrix(
+    NA_real_, nrow = nrow(prediction_coordinates), ncol = n_samples
+  )
+
+  for (index in group_indices) {
+    block_coordinates <- prediction_coordinates[index, , drop = FALSE]
+    distance <- cross_distances(block_coordinates, conditioning_coordinates)
+    cross_covariance <- marginal_variance * matern_correlation(
+      distance, phi = phi, kappa = kappa
+    )
+    weights <- weight_function(cross_covariance)
+    conditional_mean <- weights %*% conditional_signal
+    if (is.null(dim(conditional_signal))) {
+      conditional_mean <- as.numeric(conditional_mean)
+    }
+    prediction_covariance <- marginal_variance * matern_correlation(
+      pairwise_distances(block_coordinates), phi = phi, kappa = kappa,
+      return_sym_matrix = TRUE
+    )
+    conditional_covariance <- prediction_covariance -
+      weights %*% t(cross_covariance)
+    root <- factor_covariance(
+      conditional_covariance, "conditional prediction covariance"
+    )
+    samples[index, ] <- sample_correlated_gaussian(
+      conditional_mean, t(root), n_samples
+    )
+  }
+
+  samples
 }
 
 #' Select an internal marginal-prediction batch size

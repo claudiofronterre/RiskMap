@@ -25,11 +25,12 @@
 ##' Defaults to `"km"`.
 ##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
 ##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
-##' @param control_mcml Control parameters for repeated Monte Carlo maximum
-##' likelihood updates. Must be returned by [set_control_mcml()]. The default
-##' performs one update, preserving the usual single-stage fit.
-##' @param return_samples Logical indicating whether to return MCMC samples when fitting a Binomial or Poisson model.
-##' Defaults to `FALSE`.
+##' @param control_mcml Control parameters for adaptive Monte Carlo maximum
+##' likelihood estimation. Must be returned by [set_control_mcml()].
+##' @param return_samples Logical indicating whether to draw and retain
+##' conditional samples at the fitted parameters. These samples are used to
+##' compute fitted values. If `FALSE`, final sampling is skipped and fitted
+##' values are not computed. Defaults to `TRUE`. Ignored for Gaussian models.
 ##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
 ##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
 ##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
@@ -69,12 +70,13 @@
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
 ##' This argument must be an object returned by [set_control_mcmc()].
-##' For non-Gaussian models, `control_mcml` can request repeated MCML updates.
-##' Each update draws a new importance sample around the preceding reference
-##' update. This equals the fitted estimate when importance-sampling overlap is
-##' adequate; otherwise it is shortened towards that estimate before the next
-##' sample is drawn. A distinct reproducible seed is used for each update when
-##' `control_mcmc$seed` is set.
+##' For non-Gaussian models, adaptive MCML starts with independent fitting and
+##' validation importance samples. It increases their size only when direct
+##' parameter-scale Monte Carlo error, importance-tail diagnostics, or
+##' independent score agreement show that more information is needed. The
+##' algorithm records every stage and warns if its precision criteria are not
+##' met before the configured limits. `control_mcmc$seed` makes both estimation
+##' banks and final conditional sampling reproducible.
 ##'
 ##' The `start_pars` argument allows starting values to be supplied explicitly.
 ##' Otherwise, binomial and Poisson models compare two automatic candidates
@@ -113,23 +115,31 @@
 ##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
 ##' \item{cov_offset}{Covariate offset}
 ##' \item{call}{Matched call}
-##' \item{S_samples}{MCMC samples if `return_samples` is `TRUE`}
-##' \item{mcml_history}{For non-Gaussian models, one entry per MCML update,
-##' containing its fitted estimate, reference-distribution update, likelihood,
-##' parameter change, importance-sampling
-##' effective sample size, and seed. The likelihood-ratio gain is measured
-##' relative to the reference parameter used to generate that update's sample;
-##' it is therefore zero at the reference rather than an absolute likelihood.
-##' When overlap is inadequate, the reference update may be shortened towards
-##' the fitted estimate before the next importance sample is drawn; it is not
-##' itself reported as the fitted estimate.
-##' Both working-scale parameter change and change relative to the current
-##' standard errors are reported. Estimates use the same parameterisation as
+##' \item{S_samples}{For non-Gaussian models, fresh conditional MCMC samples
+##' evaluated at the fitted parameters when `return_samples` is `TRUE`. These
+##' are not the reference samples used for MCML estimation. The first block is
+##' the location-level Gaussian effect (including the nugget when present),
+##' followed by any unstructured random-effect blocks.}
+##' \item{linear_predictors}{Conditional fitted linear predictors. For
+##' non-Gaussian models these are Monte Carlo means over the final-parameter
+##' latent samples and are `NULL` when `return_samples = FALSE`; for Gaussian
+##' models they use the conditional latent mean.}
+##' \item{fitted_values}{Conditional fitted response means. Binomial models
+##' return probabilities; Poisson models return expected counts and therefore
+##' include any supplied exposure in `denominator`. These are `NULL` for
+##' non-Gaussian models when `return_samples = FALSE`.}
+##' \item{mcml_history}{For non-Gaussian models, one entry per adaptive stage,
+##' containing the bank size, estimate, optimizer result, effective sample
+##' sizes, Pareto tail diagnostics, parameter Monte Carlo error,
+##' independent-score agreement, timing, stopping decision, and the reason for
+##' any increase in sample size. Estimates use the same parameterisation as
 ##' `estimate`, with regression coefficients and spatial range restored to the
 ##' supplied covariate and distance units. `NULL` for Gaussian models.}
-##' \item{mcml_converged}{Whether repeated MCML updates met the requested
-##' tolerance. `NA` when only one update was requested and `NULL` for Gaussian
+##' \item{mcml_converged}{Whether the final adaptive stage met every Monte
+##' Carlo precision and independent-validation criterion. `NULL` for Gaussian
 ##' models.}
+##' \item{mcml_selected_iteration}{The adaptive stage whose estimate is
+##' returned. `NULL` for Gaussian models.}
 ##'
 ##' @examples
 ##'
@@ -186,7 +196,7 @@ glgpm <- function(formula,
                  distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
                  control_mcml = set_control_mcml(),
-                 return_samples = FALSE,
+                 return_samples = TRUE,
                  messages = TRUE,
                  fix_var_me = NULL,
                  start_pars = list(beta = NULL,
@@ -215,7 +225,6 @@ glgpm <- function(formula,
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
               "'denominator' cannot be provided when 'family' is 'gaussian'" = is.null(denominator),
-              "'return_samples' cannot be TRUE when 'family' is 'gaussian'" = !return_samples,
               "'fix_var_me' must be NULL or a single positive value or zero" =
                 is.null(fix_var_me) ||
                 (length(fix_var_me) == 1 && is.numeric(fix_var_me) && fix_var_me >= 0))
@@ -484,81 +493,57 @@ glgpm <- function(formula,
             messages = messages)
     res["mcml_history"] <- list(NULL)
     res["mcml_converged"] <- list(NULL)
+    res["mcml_selected_iteration"] <- list(NULL)
   } else if(not_gaussian) {
-    # For MCML, the starting parameters also define the posterior reference
-    # distribution used for the first importance sample. Later references are
-    # updated internally and are not a separate user-facing choice.
     fitting_reference <- start_pars
     fitting_reference$phi <- fitting_start_phi
-    mcml_history <- vector("list", control_mcml$max_iterations)
-    previous_estimate <- NULL
-    converged <- if (control_mcml$max_iterations == 1L) NA else FALSE
-    for (iteration in seq_len(control_mcml$max_iterations)) {
-      iteration_mcmc <- mcml_iteration_control(control_mcmc, iteration)
-      if (messages && control_mcml$max_iterations > 1L) {
-        message("\nMCML update ", iteration, " of ",
-                control_mcml$max_iterations)
-      }
-
-      res <- glgpm_nong(y = y, D, fitting_coords, units_m,
-                        kappa = inter_f$gp_spec$kappa,
-                        ID_coords, ID_re, s_unique, re_unique,
-                        fix_tau2, family = family, invlink = invlink,
-                        return_samples = return_samples,
-                        reference_pars = fitting_reference,
-                        cov_offset = cov_offset,
-                        control_mcmc = iteration_mcmc,
-                        min_relative_ess = control_mcml$min_relative_ess,
-                        messages = messages)
-
-      optimizer <- attr(res, "optimizer")
-      # The optimiser proposal is the fitted MCML estimate. When its
-      # importance weights have poor overlap, move the reference distribution
-      # only part-way towards it before drawing the next iteration's sample.
-      reference_update <- optimizer$reference_update
-      working_estimate <- unlist(reference_update, use.names = TRUE)
-      change <- if (is.null(previous_estimate)) NA_real_ else
-        max(abs(working_estimate - previous_estimate))
-      standard_error <- sqrt(pmax(diag(res$covariance), 0))
-      standardized_change <- if (is.null(previous_estimate)) NA_real_ else
-        max(abs(working_estimate - previous_estimate) /
-              pmax(standard_error, sqrt(.Machine$double.eps)))
-      mcml_history[[iteration]] <- list(
-        iteration = iteration,
-        estimate = res$estimate,
-        reference_update = reference_update,
-        log_likelihood_ratio_gain =
-          optimizer$supported_log_likelihood_ratio,
-        max_parameter_change = change,
-        max_standardized_change = standardized_change,
-        importance_ess = optimizer$importance_ess,
-        relative_importance_ess = optimizer$relative_importance_ess,
-        proposed_relative_importance_ess =
-          optimizer$proposal_relative_importance_ess,
-        step_fraction = optimizer$step_fraction,
-        seed = iteration_mcmc$seed
-      )
-
-      if (mcml_update_converged(
-        standardized_change, optimizer$relative_importance_ess, control_mcml
-      ) && optimizer$step_fraction == 1) {
-        converged <- TRUE
-        mcml_history <- mcml_history[seq_len(iteration)]
-        break
-      }
-      previous_estimate <- working_estimate
-      fitting_reference <-
-        estimate_to_mcml_reference(reference_update, fix_tau2)
-    }
-    if (control_mcml$max_iterations > 1L && !isTRUE(converged)) {
-      warning(
-        "MCML updates reached 'max_iterations' without satisfying both the ",
-        "parameter-change tolerance and minimum relative importance ESS.",
-        call. = FALSE
-      )
-    }
+    res <- glgpm_nong_adaptive(
+      y = y, D = D, coords = fitting_coords, units_m = units_m,
+      kappa = inter_f$gp_spec$kappa, reference_pars = fitting_reference,
+      cov_offset = cov_offset, ID_coords = ID_coords, ID_re = ID_re,
+      fix_tau2 = fix_tau2, family = family, invlink = invlink,
+      control_mcml = control_mcml, seed = control_mcmc$seed,
+      messages = messages
+    )
+    optimizer <- attr(res, "optimizer")
+    mcml_history <- optimizer$mcml_history
     res$mcml_history <- mcml_history
-    res$mcml_converged <- converged
+    res$mcml_converged <- optimizer$mcml_supported
+    res$mcml_selected_iteration <- length(mcml_history)
+
+    if (return_samples) {
+      # The samples used by MCML target the current reference distribution,
+      # not necessarily the fitted parameters. When requested, draw once more
+      # at the final estimate and use that draw for fitted values as well as
+      # user-facing diagnostics.
+      final_control_mcmc <- final_sampling_control(
+        control_mcmc, length(mcml_history)
+      )
+      final_draw <- sample_at_nongaussian_fit(
+        estimate = res$estimate,
+        y = y,
+        units_m = units_m,
+        D = D,
+        coords = fitting_coords,
+        cov_offset = cov_offset,
+        ID_coords = ID_coords,
+        ID_re = ID_re,
+        fix_tau2 = fix_tau2,
+        family = family,
+        inverse_link = res$link_function$inv,
+        kappa = kappa,
+        control_mcmc = final_control_mcmc,
+        messages = messages
+      )
+      res$linear_predictors <- final_draw$linear_predictors
+      res$fitted_values <- final_draw$fitted_values
+      res$S_samples <- final_draw$samples
+      attr(res, "mcmc") <- final_draw$diagnostics
+    } else {
+      res["S_samples"] <- list(NULL)
+      res["linear_predictors"] <- list(NULL)
+      res["fitted_values"] <- list(NULL)
+    }
   }
 
   res <- restore_fixed_effect_scale(
@@ -572,14 +557,6 @@ glgpm <- function(formula,
       spatial_scaling$distance_scale
     )
   }
-  if (not_gaussian) {
-    attr(res, "optimizer") <- restore_mcml_optimizer_scale(
-      attr(res, "optimizer"),
-      design_scaling$coefficient_transform,
-      spatial_scaling$distance_scale
-    )
-  }
-
   # The fitting engines optimise log(phi) on scaled coordinates. An additive
   # shift restores the original distance units without changing its Hessian.
   res$estimate$phi <- res$estimate$phi +
@@ -616,14 +593,64 @@ glgpm <- function(formula,
   if(not_gaussian) res$units_m <- units_m
   res$cov_offset <- cov_offset
   res$call <- match.call()
+  if (!not_gaussian) {
+    gaussian_fitted <- gaussian_conditional_fitted(res)
+    res$linear_predictors <- gaussian_fitted
+    res$fitted_values <- gaussian_fitted
+  }
   return(res)
+}
+
+##' Conditional fitted mean for a Gaussian RiskMap model
+##' @noRd
+gaussian_conditional_fitted <- function(object) {
+  pars <- coef(object)
+  n <- length(object$y)
+  n_loc <- nrow(object$coords)
+  spatial_design <- matrix(0, n, n_loc)
+  spatial_design[cbind(seq_len(n), object$ID_coords)] <- 1
+
+  correlation <- matern_correlation(
+    pairwise_distances(object$coords), phi = pars$phi,
+    kappa = object$kappa, return_sym_matrix = TRUE
+  )
+  tau2 <- pars$tau2 %||%
+    if (is.numeric(object$fix_tau2)) object$fix_tau2 else 0
+  spatial_covariance <- pars$sigma2 * correlation
+  diag(spatial_covariance) <- diag(spatial_covariance) + tau2
+
+  latent_designs <- list(spatial_design)
+  latent_covariances <- list(spatial_covariance)
+  if (!is.null(object$ID_re)) {
+    ID_re <- as.matrix(object$ID_re)
+    for (j in seq_len(ncol(ID_re))) {
+      design <- matrix(0, n, max(ID_re[, j]))
+      design[cbind(seq_len(n), ID_re[, j])] <- 1
+      latent_designs[[j + 1L]] <- design
+      latent_covariances[[j + 1L]] <- diag(
+        pars$sigma2_re[j], nrow = ncol(design)
+      )
+    }
+  }
+
+  Z <- do.call(cbind, latent_designs)
+  G <- as.matrix(Matrix::bdiag(latent_covariances))
+  measurement_variance <- pars$sigma2_me %||% object$fix_var_me %||% 0
+  observed_covariance <- Z %*% G %*% t(Z)
+  diag(observed_covariance) <- diag(observed_covariance) +
+    measurement_variance
+  root <- factor_covariance(observed_covariance, "Gaussian fitted covariance")
+  fixed <- as.numeric(object$D %*% pars$beta + object$cov_offset)
+  latent_mean <- G %*% t(Z) %*%
+    solve_from_cholesky(root, object$y - fixed)
+  as.numeric(fixed + Z %*% latent_mean)
 }
 
 
 ##' Canonical working-scale covariance-parameter layout
 ##'
 ##' Single source of truth for where each non-beta parameter sits in the flat
-##' numeric vector `glgpm_lm()`/`glgpm_nong()` optimise over: `sigma2`, `phi`,
+##' numeric vector used by the fitting engines: `sigma2`, `phi`,
 ##' optionally `nu2` (only when the nugget is estimated), optionally
 ##' `sigma2_me` (Gaussian models only, when the measurement error variance is
 ##' not fixed), and finally one entry per unstructured random effect.
@@ -686,7 +713,7 @@ pack_cov_pars <- function(layout, sigma2, phi, nu2 = NULL, sigma2_me = NULL, sig
 ##' Structure the raw parameter vector returned by the optimizer
 ##'
 ##' Splits the working-scale (i.e. not yet exponentiated) vector of estimates
-##' returned by `glgpm_lm()`/`glgpm_nong()` into a named list, using the same
+##' returned by the fitting engines into a named list, using the same
 ##' `cov_par_layout()` those fitting engines build their `ind_*` positions
 ##' from, so this can never drift out of step with them (see #135/#117).
 ##'
@@ -780,62 +807,6 @@ normalise_log_weights <- function(log_weights) {
 ##' @noRd
 importance_effective_sample_size <- function(weights) {
   1 / sum(weights^2)
-}
-
-##' Limit an MCML update to the region supported by its importance sample
-##'
-##' The optimiser may propose a parameter vector far from the reference used
-##' to generate the importance sample. This routine follows the straight line
-##' from the reference to that proposal and returns the largest prefix for
-##' which the relative weight ESS remains above the requested threshold.
-##'
-##' @noRd
-supported_importance_step <- function(reference, proposal,
-                                      log_weight_function,
-                                      min_relative_ess,
-                                      max_bisections = 30L) {
-  evaluate <- function(fraction) {
-    parameters <- reference + fraction * (proposal - reference)
-    log_weights <- log_weight_function(parameters)
-    weights <- normalise_log_weights(log_weights)
-    list(
-      parameters = parameters,
-      weights = weights,
-      log_likelihood_ratio = log_mean_exp(log_weights),
-      importance_ess = importance_effective_sample_size(weights),
-      relative_importance_ess =
-        importance_effective_sample_size(weights) / length(weights),
-      max_importance_weight = max(weights)
-    )
-  }
-
-  proposed <- evaluate(1)
-  if (min_relative_ess <= 0 ||
-      proposed$relative_importance_ess >= min_relative_ess) {
-    proposed$step_fraction <- 1
-    proposed$proposal_relative_importance_ess <-
-      proposed$relative_importance_ess
-    return(proposed)
-  }
-
-  lower <- 0
-  upper <- 1
-  accepted <- evaluate(lower)
-  for (i in seq_len(max_bisections)) {
-    middle <- (lower + upper) / 2
-    candidate <- evaluate(middle)
-    if (candidate$relative_importance_ess >= min_relative_ess) {
-      lower <- middle
-      accepted <- candidate
-    } else {
-      upper <- middle
-    }
-  }
-
-  accepted$step_fraction <- lower
-  accepted$proposal_relative_importance_ess <-
-    proposed$relative_importance_ess
-  accepted
 }
 
 ##' Obtain stable Gaussian regression starting values
@@ -960,32 +931,24 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
 restore_mcml_history_scale <- function(history, coefficient_transform,
                                        distance_scale) {
   lapply(history, function(entry) {
-    for (field in intersect(c("estimate", "reference_update"), names(entry))) {
-      entry[[field]]$beta <- as.numeric(
-        coefficient_transform %*% entry[[field]]$beta
-      )
-      names(entry[[field]]$beta) <- colnames(coefficient_transform)
-      entry[[field]]$phi <- entry[[field]]$phi + log(distance_scale)
+    for (field in intersect("estimate", names(entry))) {
+      if (is.list(entry[[field]])) {
+        entry[[field]]$beta <- as.numeric(
+          coefficient_transform %*% entry[[field]]$beta
+        )
+        names(entry[[field]]$beta) <- colnames(coefficient_transform)
+        entry[[field]]$phi <- entry[[field]]$phi + log(distance_scale)
+      } else {
+        p <- ncol(coefficient_transform)
+        entry[[field]][seq_len(p)] <- as.numeric(
+          coefficient_transform %*% entry[[field]][seq_len(p)]
+        )
+        entry[[field]][p + 2L] <-
+          entry[[field]][p + 2L] + log(distance_scale)
+      }
     }
     entry
   })
-}
-
-##' Restore MCML optimiser parameter diagnostics to user-facing scales
-##' @noRd
-restore_mcml_optimizer_scale <- function(diagnostics, coefficient_transform,
-                                         distance_scale) {
-  for (field in c("proposed_estimate", "reference_update")) {
-    if (!is.null(diagnostics[[field]])) {
-      diagnostics[[field]]$beta <- as.numeric(
-        coefficient_transform %*% diagnostics[[field]]$beta
-      )
-      names(diagnostics[[field]]$beta) <- colnames(coefficient_transform)
-      diagnostics[[field]]$phi <- diagnostics[[field]]$phi +
-        log(distance_scale)
-    }
-  }
-  diagnostics
 }
 
 ##' Wrap an optimiser objective with controlled invalid-trial handling
@@ -1294,6 +1257,7 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
 }
 
 ##' @importFrom Matrix Matrix forceSymmetric
+##' @noRd
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
 
@@ -2219,6 +2183,85 @@ differentiate <- function(f, ncheck) {
   function(eta) vapply(eta, function(z) numDeriv::grad(f, z), numeric(1))
 }
 
+##' Validate and construct inverse-link functions
+##'
+##' This is the single internal representation used by the conditional-mode,
+##' sampling and non-Gaussian likelihood code. Keeping the validation and
+##' derivative construction here prevents those paths from interpreting a
+##' user-supplied link differently.
+##'
+##' @noRd
+make_inverse_link_functions <- function(family, invlink, ncheck,
+                                        second_derivative = TRUE) {
+  validate <- function(f, name) {
+    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
+    x <- rep(0, ncheck)
+    out <- tryCatch(f(x), error = function(e) e)
+    if (inherits(out, "error")) {
+      stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
+    }
+    if (!is.numeric(out)) {
+      stop(sprintf("`%s` must return a numeric vector.", name))
+    }
+    if (length(out) != length(x)) {
+      stop(sprintf(
+        "`%s` must return a vector of the same length as its input.", name
+      ))
+    }
+    if (!all(is.finite(out))) {
+      stop(sprintf("`%s` returns non-finite values.", name))
+    }
+    invisible(TRUE)
+  }
+
+  if (is.null(invlink)) {
+    if (family == "poisson") {
+      inv <- function(x) exp(x)
+      d1 <- function(x) exp(x)
+      d2 <- if (second_derivative) function(x) exp(x) else NULL
+    } else {
+      inv <- function(x) plogis(x)
+      d1 <- function(x) {
+        probability <- inv(x)
+        probability * (1 - probability)
+      }
+      d2 <- if (second_derivative) function(x) {
+        probability <- inv(x)
+        derivative <- probability * (1 - probability)
+        derivative * (1 - 2 * probability)
+      } else NULL
+    }
+    validate(inv, "canonical invlink")
+    validate(d1, "canonical invlink_prime")
+    if (second_derivative) validate(d2, "canonical invlink_second")
+    return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical"))
+  }
+
+  if (is.function(invlink)) {
+    inv <- invlink
+    d1 <- NULL
+    d2 <- NULL
+  } else if (is.list(invlink)) {
+    inv <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
+    d1 <- invlink$d1 %||% invlink$inv_link_prime %||% invlink$mu_eta
+    d2 <- invlink$d2 %||% invlink$inv_link_second
+  } else {
+    stop("'invlink' must be NULL, a function, or a list with inverse-link functions.")
+  }
+
+  validate(inv, "invlink")
+  if (is.null(d1)) d1 <- differentiate(inv, ncheck)
+  validate(d1, "invlink_prime")
+  if (second_derivative) {
+    if (is.null(d2)) d2 <- differentiate(d1, ncheck)
+    validate(d2, "invlink_second")
+  } else {
+    d2 <- NULL
+  }
+
+  list(inv = inv, d1 = d1, d2 = d2, name = "custom")
+}
+
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
 ##'
 ##' Maximizes the integrand function for Generalized Linear Gaussian Process Models (GLGPMs), which involves the evaluation of likelihood functions with spatially correlated random effects.
@@ -2249,17 +2292,6 @@ maxim_integrand <- function(
   stopifnot(family %in% c("poisson", "binomial"))
 
   # ---------- utilities ----------
-  check_vec_fun <- function(f, n, name) {
-    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
-    x <- rep(0, n)
-    out <- tryCatch(f(x), error = function(e) e)
-    if (inherits(out, "error")) stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
-    if (!is.numeric(out)) stop(sprintf("`%s` must return a numeric vector.", name))
-    if (length(out) != length(x)) stop(sprintf("`%s` must return a vector of the same length as its input.", name))
-    if (!all(is.finite(out))) stop(sprintf("`%s` returns non-finite values.", name))
-    invisible(TRUE)
-  }
-
   sum_by_group <- function(v, grp, nlev) {
     sums <- rowsum(v, grp, reorder = FALSE)
     out <- numeric(nlev)
@@ -2299,51 +2331,7 @@ maxim_integrand <- function(
   }
   n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
 
-  make_link_funs <- function(family, invlink, ncheck) {
-    # Canonical defaults
-    if (is.null(invlink)) {
-      if (family == "poisson") {
-        inv <- function(x) exp(x)
-        d1  <- function(x) exp(x)
-        d2  <- function(x) exp(x)
-      } else {
-        inv <- function(x) plogis(x)
-        d1  <- function(x) { p <- inv(x); p * (1 - p) }
-        d2  <- function(x) { p <- inv(x); d <- p * (1 - p); d * (1 - 2 * p) }
-      }
-      check_vec_fun(inv, ncheck, "canonical invlink")
-      check_vec_fun(d1,  ncheck, "canonical invlink_prime")
-      check_vec_fun(d2,  ncheck, "canonical invlink_second")
-      return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical"))
-    }
-
-    # If a bare function is given, treat it as the inverse link
-    if (is.function(invlink)) {
-      inv_user <- invlink
-      d1_user <- NULL
-      d2_user <- NULL
-    } else if (is.list(invlink)) {
-      inv_user <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
-      d1_user  <- invlink$d1 %||% invlink$inv_link_prime %||% invlink$mu_eta
-      d2_user  <- invlink$d2 %||% invlink$inv_link_second
-    } else {
-      stop("'invlink' must be NULL, a function, or a list with components inv, d1, d2")
-    }
-
-    # Validate the inverse link
-    check_vec_fun(inv_user, ncheck, "invlink")
-
-    # Obtain missing derivatives once
-    if (is.null(d1_user)) d1_user <- differentiate(inv_user, ncheck)
-    check_vec_fun(d1_user, ncheck, "invlink_prime")
-
-    if (is.null(d2_user)) d2_user <- differentiate(d1_user, ncheck)
-    check_vec_fun(d2_user, ncheck, "invlink_second")
-
-    list(inv = inv_user, d1 = d1_user, d2 = d2_user, name = "custom")
-  }
-
-  linkf <- make_link_funs(family, invlink, n)
+  linkf <- make_inverse_link_functions(family, invlink, n)
   inv_link <- linkf$inv
   inv1     <- linkf$d1
   inv2     <- linkf$d2
@@ -2496,8 +2484,8 @@ maxim_integrand <- function(
 ##'   for \code{family = "poisson"} counts, and for \code{family = "gaussian"} real values.
 ##' @param units_m Numeric vector giving the binomial totals (number of trials)
 ##'   when \code{family = "binomial"}; ignored for other families (can be \code{NULL}).
-##' @param mu Numeric vector of length equal to the number of unique locations
-##'   providing the mean of the latent spatial process on the link scale.
+##' @param mu Numeric vector of length \eqn{n} providing the fixed part of the
+##'   linear predictor for each observation.
 ##' @param Sigma Numeric positive-definite covariance matrix for the latent spatial
 ##'   process \eqn{S} at the unique locations referenced by \code{ID_coords}.
 ##' @param ID_coords Integer vector of length \eqn{n} mapping each response in
@@ -2560,7 +2548,7 @@ maxim_integrand <- function(
 ##' and exponential (poisson). Supply \code{invlink} to override.
 ##'
 ##' @seealso \code{\link{maxim_integrand}}
-##'
+##' @noRd
 laplace_sampling_mcmc <- function(y,
                                   units_m,
                                   mu,
@@ -2597,8 +2585,8 @@ laplace_sampling_mcmc <- function(y,
       n_loc != ncol(Sigma) || n_loc < 1L) {
     stop("'Sigma' must be a non-empty square numeric matrix.")
   }
-  if (length(mu) != n_loc || any(!is.finite(mu))) {
-    stop("'mu' must contain one finite value for each row of 'Sigma'.")
+  if (!is.numeric(mu) || length(mu) != n || any(!is.finite(mu))) {
+    stop("'mu' must contain one finite value per response.")
   }
   if (length(ID_coords) != n || anyNA(ID_coords) ||
       any(ID_coords != as.integer(ID_coords)) ||
@@ -2611,18 +2599,6 @@ laplace_sampling_mcmc <- function(y,
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
     set.seed(control_mcmc$seed)
-  }
-
-  # ---------- utilities ----------
-  check_vec_fun <- function(f, n, name) {
-    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
-    x <- rep(0, n)
-    out <- tryCatch(f(x), error = function(e) e)
-    if (inherits(out, "error")) stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
-    if (!is.numeric(out)) stop(sprintf("`%s` must return a numeric vector.", name))
-    if (length(out) != length(x)) stop(sprintf("`%s` must return a vector of the same length as its input.", name))
-    if (!all(is.finite(out))) stop(sprintf("`%s` returns non-finite values.", name))
-    invisible(TRUE)
   }
 
   # ---------- dimensions ----------
@@ -2680,39 +2656,9 @@ laplace_sampling_mcmc <- function(y,
   }
 
   # ---------- inverse link handling (inv, d1) ----------
-  make_invlink_funs <- function(family, invlink, ncheck) {
-    if (is.null(invlink)) {
-      if (family == "poisson") {
-        inv <- function(x) exp(x)
-        d1  <- function(x) exp(x)
-      } else {
-        inv <- function(x) plogis(x)
-        d1  <- function(x) { p <- inv(x); p * (1 - p) }
-      }
-      check_vec_fun(inv, ncheck, "canonical invlink")
-      check_vec_fun(d1,  ncheck, "canonical invlink_prime")
-      return(list(inv = inv, d1 = d1, name = "canonical"))
-    }
-
-    if (is.function(invlink)) {
-      inv_user <- invlink
-      d1_user  <- NULL
-    } else if (is.list(invlink)) {
-      inv_user <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
-      d1_user  <- invlink$d1  %||% invlink$inv_link_prime %||% invlink$mu_eta
-    } else {
-      stop("'invlink' must be NULL, a function, or a list with components inv and d1.")
-    }
-
-    check_vec_fun(inv_user, ncheck, "invlink")
-
-    if (is.null(d1_user)) d1_user <- differentiate(inv_user, ncheck)
-    check_vec_fun(d1_user, ncheck, "invlink_prime")
-
-    list(inv = inv_user, d1 = d1_user, name = "custom")
-  }
-
-  linkf <- make_invlink_funs(family, invlink, n)
+  linkf <- make_inverse_link_functions(
+    family, invlink, n, second_derivative = FALSE
+  )
   inv_link <- linkf$inv
   inv1     <- linkf$d1
 
@@ -2762,6 +2708,61 @@ laplace_sampling_mcmc <- function(y,
     )
   }
   mu_w <- -as.numeric(A %*% mean_pd)
+
+  # Canonical binomial and Poisson models use the compiled transition kernel.
+  # Custom inverse links retain the general R implementation below.
+  if (linkf$name == "canonical") {
+    compiled <- cpp_canonical_mala(
+      y_r = y,
+      units_r = units_m,
+      mu_r = mu,
+      proposal_lower_r = Sigma_pd_sroot,
+      proposal_upper_r = Sigma_pd_root,
+      prior_lower_r = Sigma_w_sroot,
+      prior_upper_r = Sigma_w_root,
+      transformed_prior_mean_r = mu_w,
+      proposal_mean_r = mean_pd,
+      location_id_r = as.integer(ID_coords),
+      n_locations = n_loc,
+      random_effect_id_r = if (n_re > 0) {
+        matrix(as.integer(ID_re), nrow = nrow(ID_re),
+               dimnames = dimnames(ID_re))
+      } else {
+        matrix(integer(), nrow = n, ncol = 0L)
+      },
+      family = family,
+      n_sim = control_mcmc$n_sim,
+      burnin = control_mcmc$burnin,
+      thin = control_mcmc$thin,
+      step_size = control_mcmc$h %||% (1.65 / n_tot^(1 / 6)),
+      adaptation_scale = control_mcmc$c1.h,
+      adaptation_exponent = control_mcmc$c2.h
+    )
+    out_sim <- list(samples = list(
+      S = compiled$samples[, seq_len(n_loc), drop = FALSE]
+    ))
+    if (n_re > 0) {
+      re_names <- colnames(ID_re) %||% paste0("re", seq_len(n_re))
+      for (i in seq_len(n_re)) {
+        out_sim$samples[[re_names[i]]] <-
+          compiled$samples[, ind_re[[i]], drop = FALSE]
+      }
+    }
+    out_sim$tuning_par <- compiled$tuning
+    out_sim$acceptance_prob <- compiled$cumulative_acceptance
+    out_sim$acceptance <- as.logical(compiled$acceptance)
+    out_sim$acceptance_rate <- c(
+      burnin = if (control_mcmc$burnin > 0L) {
+        mean(out_sim$acceptance[seq_len(control_mcmc$burnin)])
+      } else NA_real_,
+      sampling = mean(out_sim$acceptance[seq.int(
+        control_mcmc$burnin + 1L, control_mcmc$n_sim
+      )])
+    )
+    out_sim$invlink_used <- linkf$name
+    class(out_sim) <- "RiskMap_mcmc"
+    return(out_sim)
+  }
 
   target_state <- function(W, S_tot) {
     S <- S_tot[1:n_loc]
@@ -2926,58 +2927,84 @@ laplace_sampling_mcmc <- function(y,
   class(out_sim) <- "RiskMap_mcmc"
   out_sim
 }
-##' Set control parameters for iterative MCML estimation
+##' Set control parameters for adaptive MCML estimation
 ##'
-##' Repeated Monte Carlo maximum likelihood (MCML) updates regenerate the
-##' importance sample around the reference update from the preceding iteration.
-##' When importance-sampling overlap is adequate this is the fitted estimate;
-##' otherwise it is a shortened step towards that estimate. A single update
-##' reproduces the standard RiskMap fitting procedure.
+##' Non-Gaussian models use independent fitting and validation importance
+##' samples. Sampling stops automatically only when the importance samples are
+##' regular enough to estimate Monte Carlo uncertainty, that uncertainty is
+##' small relative to the model's statistical uncertainty, and both samples
+##' give compatible score vectors.
 ##'
-##' @param max_iterations Positive integer giving the maximum number of MCML
-##' updates. Defaults to one.
-##' @param tolerance Positive numeric tolerance for the largest parameter change
-##' divided by its current standard error. It is evaluated from the second
-##' update onwards.
-##' @param min_relative_ess Number between zero and one giving the minimum
-##' effective sample size, as a proportion of retained importance samples,
-##' required before an update can be declared converged. Defaults to 0.1.
+##' @param initial_samples Positive integer giving the number of draws in each
+##' fitting and validation bank at the first stage. Defaults to 1,000.
+##' @param max_samples Positive integer giving the largest permitted bank.
+##' Defaults to 20,000.
+##' @param max_stages Positive integer giving the maximum number of adaptive
+##' stages. Defaults to 5.
+##' @param min_effective_samples Positive integer giving the minimum effective
+##' number of importance draws required in both banks before Monte Carlo
+##' uncertainty is interpreted. Defaults to 100.
+##' @param max_pareto_k Positive upper limit for the Pareto tail-shape
+##' diagnostic. Defaults to 0.7.
+##' @param max_mcse_ratio Number between zero and one giving the largest allowed
+##' ratio of Monte Carlo standard error to ordinary statistical standard error,
+##' over all linear combinations of fitted parameters. Defaults to 0.1.
+##' @param score_probability Number strictly between zero and one used for the
+##' independent-bank score-agreement limit. Defaults to 0.99.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
-##' control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.05)
+##' control_mcml <- set_control_mcml(max_samples = 10000)
 ##' @seealso [glgpm()], [set_control_mcmc()]
 ##' @export
-set_control_mcml <- function(max_iterations = 1L, tolerance = 0.05,
-                             min_relative_ess = 0.1) {
-  check_positive_integer(max_iterations, "max_iterations")
-  check_positive_number(tolerance, "")
-  check_zero_one(min_relative_ess, "min_relative_ess")
+set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
+                             max_stages = 5L,
+                             min_effective_samples = 100L,
+                             max_pareto_k = 0.7,
+                             max_mcse_ratio = 0.1,
+                             score_probability = 0.99) {
+  check_positive_integer(initial_samples, "initial_samples")
+  check_positive_integer(max_samples, "max_samples")
+  check_positive_integer(max_stages, "max_stages")
+  check_positive_integer(min_effective_samples, "min_effective_samples")
+  check_positive_number(max_pareto_k, "")
+  check_range(max_mcse_ratio, 0, 1, allow_equal = FALSE,
+              name = "max_mcse_ratio")
+  check_range(score_probability, 0, 1, allow_equal = FALSE,
+              name = "score_probability")
+  if (max_samples < initial_samples) {
+    stop("'max_samples' must be at least 'initial_samples'.", call. = FALSE)
+  }
+  if (min_effective_samples > max_samples) {
+    stop("'min_effective_samples' cannot exceed 'max_samples'.",
+         call. = FALSE)
+  }
 
   structure(
-    list(max_iterations = as.integer(max_iterations), tolerance = tolerance,
-         min_relative_ess = min_relative_ess),
+    list(
+      initial_samples = as.integer(initial_samples),
+      max_samples = as.integer(max_samples),
+      max_stages = as.integer(max_stages),
+      min_effective_samples = as.integer(min_effective_samples),
+      max_pareto_k = max_pareto_k,
+      max_mcse_ratio = max_mcse_ratio,
+      score_probability = score_probability
+    ),
     class = "RiskMap_control_mcml"
   )
 }
 
-##' Use a distinct reproducible MCMC stream for each MCML update
+##' Use a distinct reproducible stream for final conditional sampling
 ##' @noRd
-mcml_iteration_control <- function(control_mcmc, iteration) {
+final_sampling_control <- function(control_mcmc, mcml_stages) {
   out <- control_mcmc
-  if (!is.null(out$seed) && iteration > 1L) {
+  if (!is.null(out$seed)) {
     integer_max <- .Machine$integer.max
-    out$seed <- as.integer(((out$seed - 1 + iteration - 1) %% integer_max) + 1)
+    # Each adaptive stage consumes two independent streams: fitting and
+    # validation. Final fitted-value sampling starts after both.
+    offset <- 2L * mcml_stages + 1L
+    out$seed <- as.integer(((out$seed - 1 + offset) %% integer_max) + 1)
   }
   out
-}
-
-##' Assess both numerical stability and importance-sampling overlap
-##' @noRd
-mcml_update_converged <- function(standardized_change, relative_ess,
-                                  control_mcml) {
-  !is.na(standardized_change) &&
-    standardized_change <= control_mcml$tolerance &&
-    relative_ess >= control_mcml$min_relative_ess
 }
 
 ##' Convert a working-scale estimate into the next MCML reference point
@@ -2997,6 +3024,64 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
     out$sigma2_re <- exp(estimate$sigma2_re)
   }
   out
+}
+
+##' Draw latent effects and fitted values at a non-Gaussian fitted estimate
+##'
+##' MCML samples belong to its importance-sampling reference distribution.
+##' This helper deliberately makes a separate draw at the fitted parameters.
+##' The first block is the location-level Gaussian effect; when a nugget is
+##' present it is included in that block. Subsequent blocks are unstructured
+##' random effects, in the same layout historically used by `S_samples`.
+##'
+##' @noRd
+sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
+                                      cov_offset, ID_coords, ID_re,
+                                      fix_tau2, family, inverse_link, kappa,
+                                      control_mcmc, messages) {
+  fitted_pars <- estimate_to_mcml_reference(estimate, fix_tau2)
+  mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
+  distances <- pairwise_distances(coords)
+  Sigma <- fitted_pars$sigma2 * matern_correlation(
+    distances, phi = fitted_pars$phi, kappa = kappa,
+    return_sym_matrix = TRUE
+  )
+  diag(Sigma) <- diag(Sigma) + fitted_pars$tau2
+
+  simulation <- laplace_sampling_mcmc(
+    y = y, units_m = units_m, mu = mu, Sigma = Sigma,
+    ID_coords = ID_coords, ID_re = ID_re,
+    sigma2_re = fitted_pars$sigma2_re,
+    family = family, invlink = inverse_link,
+    control_mcmc = control_mcmc, messages = messages
+  )
+
+  eta <- sweep(
+    simulation$samples$S[, ID_coords, drop = FALSE],
+    2L, mu, "+"
+  )
+  if (!is.null(ID_re)) {
+    ID_re <- as.matrix(ID_re)
+    for (j in seq_len(ncol(ID_re))) {
+      eta <- eta + simulation$samples[[j + 1L]][, ID_re[, j], drop = FALSE]
+    }
+  }
+
+  sample_blocks <- simulation$samples
+  response_mean <- colMeans(
+    matrix(inverse_link(as.numeric(eta)), nrow = nrow(eta))
+  )
+  if (family == "poisson") response_mean <- units_m * response_mean
+
+  list(
+    samples = do.call(cbind, sample_blocks),
+    linear_predictors = colMeans(eta),
+    fitted_values = response_mean,
+    diagnostics = simulation[c(
+      "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
+      "invlink_used"
+    )]
+  )
 }
 
 ##' Set Control Parameters for Simulation
@@ -3110,610 +3195,14 @@ set_control_mcmc <- function(n_sim = 12000,
   return(res)
 }
 
-##' @importFrom Matrix Matrix forceSymmetric
-glgpm_nong <-
-  function(y, D, coords, units_m, kappa,
-           reference_pars, cov_offset,
-           ID_coords, ID_re, s_unique, re_unique,
-           fix_tau2, family, return_samples,
-           invlink,
-           control_mcmc,
-           min_relative_ess = 0,
-           messages = TRUE) {
-
-    stopifnot(family %in% c("poisson", "binomial"))
-
-    # --- helpers for inverse link handling (vector-in, vector-out) ---
-    check_vec_fun <- function(f, n, name) {
-      if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
-      x <- rep(0, n)
-      out <- tryCatch(f(x), error = function(e) e)
-      if (inherits(out, "error")) stop(sprintf("`%s` failed on numeric vector: %s", name, out$message))
-      if (!is.numeric(out)) stop(sprintf("`%s` must return numeric vector.", name))
-      if (length(out) != length(x)) stop(sprintf("`%s` must have same length as input.", name))
-      if (!all(is.finite(out))) stop(sprintf("`%s` returns non-finite values.", name))
-      invisible(TRUE)
-    }
-
-    make_invlink_funs <- function(family, invlink, ncheck) {
-      if (is.null(invlink)) {
-        if (family == "poisson") {
-          inv <- function(x) exp(x)
-          d1  <- function(x) exp(x)
-          d2  <- function(x) exp(x)
-        } else {
-          inv <- function(x) plogis(x)
-          d1  <- function(x) { p <- inv(x); p*(1-p) }
-          d2  <- function(x) { p <- inv(x); d <- p*(1-p); d*(1-2*p) }
-        }
-        check_vec_fun(inv, ncheck, "canonical invlink")
-        check_vec_fun(d1,  ncheck, "canonical invlink_prime")
-        check_vec_fun(d2,  ncheck, "canonical invlink_second")
-        return(list(inv=inv, d1=d1, d2=d2, name="canonical"))
-      }
-
-      if (is.function(invlink)) {
-        inv_user <- invlink; d1_user <- NULL; d2_user <- NULL
-      } else if (is.list(invlink)) {
-        inv_user <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
-        d1_user  <- invlink$d1  %||% invlink$inv_link_prime %||% invlink$mu_eta
-        d2_user  <- invlink$d2  %||% invlink$inv_link_second
-      } else stop("'invlink' must be NULL, a function, or a list with inv[, d1, d2].")
-
-      check_vec_fun(inv_user, ncheck, "invlink")
-
-      if (is.null(d1_user)) d1_user <- differentiate(inv_user, ncheck)
-      check_vec_fun(d1_user, ncheck, "invlink_prime")
-
-      if (is.null(d2_user)) d2_user <- differentiate(d1_user, ncheck)
-      check_vec_fun(d2_user, ncheck, "invlink_second")
-
-      list(inv=inv_user, d1=d1_user, d2=d2_user, name="custom")
-    }
-
-    # --- setup ---
-    beta0   <- reference_pars$beta
-    mu0     <- as.numeric(D %*% beta0 + cov_offset)
-    sigma2_0 <- reference_pars$sigma2
-    phi0    <- reference_pars$phi
-    tau2_0  <- reference_pars$tau2
-    if (is.null(tau2_0)) tau2_0 <- fix_tau2
-    sigma2_re_0 <- reference_pars$sigma2_re
-
-    n_loc <- nrow(coords)
-    n_re  <- length(sigma2_re_0)
-    n     <- length(y)
-    n_samples <- (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
-
-    linkf  <- make_invlink_funs(family, invlink, n)
-    inv_fn <- linkf$inv
-    inv1   <- linkf$d1
-    inv2   <- linkf$d2
-
-    u <- pairwise_distances(coords)
-    Sigma0 <- sigma2_0 * matern_correlation(u = u, phi = phi0, kappa = kappa, return_sym_matrix = TRUE)
-    diag(Sigma0) <- diag(Sigma0) + tau2_0
-
-    if (messages) message("\n - Obtaining proposal mean/covariance via Laplace\n")
-    out_maxim <- maxim_integrand(y = y, units_m = units_m, Sigma = Sigma0, mu = mu0,
-                                 ID_coords = ID_coords, ID_re = ID_re,
-                                 sigma2_re = sigma2_re_0,
-                                 family = family, invlink = invlink)
-
-    Sigma_pd <- out_maxim$Sigma.tilde
-    mean_pd  <- out_maxim$mode
-
-    simulation <- laplace_sampling_mcmc(y = y, units_m = units_m, mu = mu0, Sigma = Sigma0,
-                                        sigma2_re = sigma2_re_0, invlink = invlink,
-                                        ID_coords = ID_coords, ID_re = ID_re,
-                                        family = family, control_mcmc = control_mcmc,
-                                        Sigma_pd = Sigma_pd, mean_pd = mean_pd,
-                                        messages = messages)
-
-    S_tot_samples <- simulation$samples$S
-
-    p      <- ncol(D)
-    layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = FALSE, n_re = n_re)
-    ind_beta   <- layout$index$beta
-    ind_sigma2 <- layout$index$sigma2
-    ind_phi    <- layout$index$phi
-    if (!is.null(layout$index$nu2))       ind_nu2       <- layout$index$nu2
-    if (!is.null(layout$index$sigma2_re)) ind_sigma2_re <- layout$index$sigma2_re
-    if (n_re > 0) {
-      n_dim_re <- sapply(1:n_re, function(i) length(unique(ID_re[, i])))
-    }
-
-    if (n_re > 0) {
-      for (i in 1:n_re) {
-        S_tot_samples <- cbind(S_tot_samples, simulation$samples[[i + 1]])
-      }
-      ind_re <- vector("list", n_re)
-      add_i <- 0L
-      for (i in 1:n_re) {
-        ind_re[[i]] <- (add_i + n_loc + 1):(add_i + n_loc + n_dim_re[i])
-        if (i < n_re) add_i <- sum(n_dim_re[1:i])
-      }
-    }
-
-    spatial_samples <- S_tot_samples[, seq_len(n_loc), drop = FALSE]
-
-    sample_likelihood_state <- function(mu, include_curvature = FALSE) {
-      eta <- sweep(spatial_samples[, ID_coords, drop = FALSE], 2L, mu, "+")
-      if (n_re > 0) {
-        for (j in seq_len(n_re)) {
-          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
-          eta <- eta + random_samples[, ID_re[, j], drop = FALSE]
-        }
-      }
-
-      if (linkf$name == "canonical" && family == "poisson") {
-        mean <- exp(eta)
-        log_likelihood <- rowSums(sweep(eta, 2L, y, "*") -
-                                    sweep(mean, 2L, units_m, "*"))
-        score <- sweep(mean, 2L, units_m, "*")
-        score <- sweep(score, 2L, y, function(x, y) y - x)
-        curvature <- sweep(mean, 2L, units_m, "*")
-      } else if (linkf$name == "canonical") {
-        probability <- plogis(eta)
-        log_likelihood <- rowSums(sweep(eta, 2L, y, "*") -
-                                    sweep(softplus(eta), 2L, units_m, "*"))
-        score <- sweep(probability, 2L, units_m, "*")
-        score <- sweep(score, 2L, y, function(x, y) y - x)
-        curvature <- sweep(
-          probability * (1 - probability),
-          2L,
-          units_m,
-          "*"
-        )
-      } else if (family == "poisson") {
-        mean <- matrix(inv_fn(as.vector(eta)), nrow = n_samples)
-        if (any(!is.finite(mean)) || any(mean <= 0)) {
-          stop("invlink must return positive means (Poisson).")
-        }
-        first <- matrix(inv1(as.vector(eta)), nrow = n_samples)
-        log_likelihood <- rowSums(sweep(log(mean), 2L, y, "*") -
-                                    sweep(mean, 2L, units_m, "*"))
-        score <- sweep(mean, 2L, units_m, "*")
-        score <- sweep(score, 2L, y, function(x, y) y - x) * first / mean
-        if (include_curvature) {
-          second <- matrix(inv2(as.vector(eta)), nrow = n_samples)
-          mean_residual <- sweep(1 / mean, 2L, y, "*")
-          mean_residual <- sweep(mean_residual, 2L, units_m, "-")
-          curvature <- sweep(first^2 / mean^2, 2L, y, "*") -
-            second * mean_residual
-        }
-      } else {
-        probability <- matrix(inv_fn(as.vector(eta)), nrow = n_samples)
-        if (any(!is.finite(probability)) ||
-            any(probability <= 0 | probability >= 1)) {
-          stop("invlink must return values in (0,1) (Binomial).")
-        }
-        first <- matrix(inv1(as.vector(eta)), nrow = n_samples)
-        denominator <- probability * (1 - probability)
-        log_likelihood <- rowSums(
-          sweep(log(probability), 2L, y, "*") +
-            sweep(log1p(-probability), 2L, units_m - y, "*")
-        )
-        score <- sweep(probability, 2L, units_m, "*")
-        score <- sweep(score, 2L, y, function(x, y) y - x) *
-          first / denominator
-        if (include_curvature) {
-          second <- matrix(inv2(as.vector(eta)), nrow = n_samples)
-          residual <- sweep(probability, 2L, units_m, "*")
-          residual <- sweep(residual, 2L, y, function(x, y) y - x)
-          curvature <- sweep(first^2 / denominator, 2L, units_m, "*") -
-            residual * (second / denominator -
-                          first^2 * (1 - 2 * probability) / denominator^2)
-        }
-      }
-
-      list(
-        log_likelihood = log_likelihood,
-        score = score,
-        curvature = if (include_curvature) curvature else NULL
-      )
-    }
-
-    # nlminb commonly requests the objective, score and Hessian at the same
-    # parameter vector. Cache their shared covariance decomposition so that it
-    # is built only once at each distinct trial point.
-    covariance_cache <- new.env(parent = emptyenv())
-    covariance_state <- function(par) {
-      if (exists("par", covariance_cache, inherits = FALSE) &&
-          identical(par, covariance_cache$par)) {
-        return(covariance_cache$state)
-      }
-
-      sigma2 <- exp(par[ind_sigma2])
-      nu2 <- nugget_ratio(
-        fix_tau2,
-        sigma2,
-        if (isTRUE(fix_tau2)) par[ind_nu2] else NULL
-      )
-      phi <- exp(par[ind_phi])
-      correlation <- matern_correlation(
-        u,
-        phi = phi,
-        kappa = kappa,
-        return_sym_matrix = TRUE
-      )
-      diag(correlation) <- diag(correlation) + nu2
-      root <- factor_covariance(
-        correlation,
-        "spatial correlation matrix",
-        allow_jitter = FALSE
-      )
-
-      state <- list(
-        sigma2 = sigma2,
-        nu2 = nu2,
-        phi = phi,
-        correlation = correlation,
-        root = root,
-        inverse = chol2inv(root),
-        log_determinant = log_determinant_from_cholesky(root)
-      )
-      covariance_cache$par <- par
-      covariance_cache$state <- state
-      state
-    }
-
-    # --- 1) Monte Carlo log integrand ---
-    compute_log_f <- function(par) {
-      beta   <- par[ind_beta]
-      covariance <- covariance_state(par)
-      mu <- as.numeric(D %*% beta) + cov_offset
-      likelihood <- sample_likelihood_state(mu)$log_likelihood
-      precision_samples <- spatial_samples %*% covariance$inverse
-      spatial_quadratic <- rowSums(spatial_samples * precision_samples)
-
-      random_quadratic <- numeric(n_samples)
-      if (n_re > 0) {
-        sigma2_re <- exp(par[ind_sigma2_re])
-        for (j in seq_len(n_re)) {
-          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
-          random_quadratic <- random_quadratic +
-            n_dim_re[j] * log(sigma2_re[j]) +
-            rowSums(random_samples^2) / sigma2_re[j]
-        }
-      }
-
-      spatial_quadratic <- n_loc * log(covariance$sigma2) +
-        covariance$log_determinant +
-        spatial_quadratic / covariance$sigma2
-      -0.5 * (spatial_quadratic + random_quadratic) + likelihood
-    }
-
-    reference_vec <- c(
-      reference_pars$beta,
-      log(c(reference_pars$sigma2, reference_pars$phi))
-    )
-    if (isTRUE(fix_tau2)) {
-      reference_vec <- c(
-        reference_vec,
-        log(reference_pars$tau2 / reference_pars$sigma2)
-      )
-    }
-    if (n_re > 0) {
-      reference_vec <- c(reference_vec, log(reference_pars$sigma2_re))
-    }
-
-    log_f_tilde <- compute_log_f(reference_vec)
-
-    mc_log_lik <- function(par) {
-      log_mean_exp(compute_log_f(par) - log_f_tilde)
-    }
-
-    # --- 2) Monte Carlo score, generalized link ---
-    grad_mc_log_lik <- function(par) {
-      beta   <- par[ind_beta]; mu <- as.numeric(D %*% beta) + cov_offset
-      covariance <- covariance_state(par)
-      sigma2 <- covariance$sigma2
-      nu2 <- covariance$nu2
-      phi <- covariance$phi
-      if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
-
-      R.inv <- covariance$inverse
-
-      importance_weights <- normalise_log_weights(
-        compute_log_f(par) - log_f_tilde
-      )
-
-      R1.phi <- matern_gradient_phi(u, phi, kappa)
-      m1.phi <- R.inv %*% R1.phi
-      t1.phi <- -0.5 * sum(diag(m1.phi))
-      m2.phi <- m1.phi %*% R.inv; rm(m1.phi)
-
-      if (isTRUE(fix_tau2)) {
-        t1.nu2 <- -0.5 * sum(diag(R.inv))
-        m2.nu2 <- R.inv %*% R.inv
-      }
-
-      score <- sample_likelihood_state(mu)$score
-      q_f_S <- rowSums((spatial_samples %*% R.inv) * spatial_samples)
-      q_phi <- rowSums((spatial_samples %*% m2.phi) * spatial_samples)
-      sample_gradients <- cbind(
-        score %*% D,
-        (-n_loc / (2 * sigma2) + 0.5 * q_f_S / sigma2^2) * sigma2,
-        (t1.phi + 0.5 * q_phi / sigma2) * phi
-      )
-
-      if (isTRUE(fix_tau2)) {
-        q_nu2 <- rowSums((spatial_samples %*% m2.nu2) * spatial_samples)
-        sample_gradients <- cbind(
-          sample_gradients,
-          (t1.nu2 + 0.5 * q_nu2 / sigma2) * nu2
-        )
-      }
-
-      if (n_re > 0) {
-        for (j in seq_len(n_re)) {
-          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
-          sample_gradients <- cbind(
-            sample_gradients,
-            (-n_dim_re[j] / (2 * sigma2_re[j]) +
-               0.5 * rowSums(random_samples^2) / sigma2_re[j]^2) *
-              sigma2_re[j]
-          )
-        }
-      }
-
-      colSums(sweep(sample_gradients, 1L, importance_weights, "*"))
-    }
-
-    # --- 3) Monte Carlo Hessian, generalized link ---
-    hess_mc_log_lik <- function(par) {
-      ## Unpack parameters
-      beta   <- par[ind_beta]
-      mu     <- as.numeric(D %*% beta) + cov_offset
-      covariance <- covariance_state(par)
-      sigma2 <- covariance$sigma2
-      nu2 <- covariance$nu2
-      phi <- covariance$phi
-      if (n_re > 0) sigma2_re <- exp(par[ind_sigma2_re])
-
-      ## Build R(φ, ν²) and precision via Cholesky (fast solves)
-      root <- covariance$root
-
-      A   <- covariance$inverse           # R^{-1} (explicit once)
-      trA <- sum(diag(A))
-      t2.nu2 <- 0.5 * sum(A * A)          # 0.5 tr(A^2)
-
-      ## MC weights for the importance average
-      importance_weights <- normalise_log_weights(
-        compute_log_f(par) - log_f_tilde
-      )
-
-      ## φ in log space: R_u = dR/d(log φ), R_uu = d²R/d(log φ)²
-      R1.phi <- matern_gradient_phi(u, phi, kappa)                 # ∂R/∂φ
-      R2.phi <- matern_hessian_phi(u, phi, kappa)              # ∂²R/∂φ²
-      R_u  <- phi * R1.phi
-      R_uu <- phi^2 * R2.phi + phi * R1.phi
-
-      t1.u <- -0.5 * sum(diag(A %*% R_u))                      # -1/2 tr(A R_u)
-
-      ## Precompute traces used in φ block
-      ARu      <- A %*% R_u
-      t_ARuu   <- sum(diag(A %*% R_uu))
-      t_ARuARu <- sum((ARu %*% A) * R_u)                       # = tr(A R_u A R_u)
-      t2.u     <- -0.5 * (t_ARuu - t_ARuARu)                   # -1/2 tr(A R_uu - A R_u A R_u)
-
-      ## -------- Batched precomputes across ALL samples (no heavy ops in loop) --------
-      S_sp <- t(S_tot_samples[, 1:n_loc, drop = FALSE])        # n_loc x n_samples
-
-      AS  <- solve_from_cholesky(root, S_sp)                    # A S
-      qS  <- colSums(S_sp * AS)                                # S' A S
-
-      A2S <- solve_from_cholesky(root, AS)                      # A^2 S
-      q2  <- colSums(S_sp * A2S)                               # S' A^2 S
-      q3  <- colSums(AS * A2S)                                 # S' A^3 S (= (AS)·(A2S))
-
-      RuAS <- R_u %*% AS
-      qMu  <- colSums(AS * RuAS)                               # S' (A R_u A) S
-
-      ## Speedups for φ–ν² path:
-      MuA     <- solve_from_cholesky(root, R_u)                 # M_{uA} = A R_u  (one wide solve)
-      Ku      <- MuA %*% AS                                    # A R_u A S
-      ARuA2S  <- MuA %*% A2S                                   # A R_u A^2 S
-      NuS     <- 2 * (MuA %*% Ku) -
-        solve_from_cholesky(root, R_uu %*% AS)                  # A(2 R_u A R_u - R_uu)A S
-      qNu     <- colSums(S_sp * NuS)                           # S' N_u S
-
-      ## >>> FIX: include A·Ku term in qNuv
-      AKu     <- A %*% Ku                                      # A^2 R_u A S
-      qNuv    <- colSums(S_sp * (AKu + ARuA2S))                # S' A(R_u A + A R_u)A S
-
-      tr_ARuA <- sum((A %*% R_u) * A)                          # tr(A R_u A)
-
-      likelihood <- sample_likelihood_state(mu, include_curvature = TRUE)
-      sample_gradients <- cbind(
-        likelihood$score %*% D,
-        (-n_loc / (2 * sigma2) + 0.5 * qS / sigma2^2) * sigma2,
-        t1.u + 0.5 * qMu / sigma2
-      )
-      if (isTRUE(fix_tau2)) {
-        sample_gradients <- cbind(
-          sample_gradients,
-          (-0.5 * trA + 0.5 * q2 / sigma2) * nu2
-        )
-      }
-      if (n_re > 0) {
-        for (j in seq_len(n_re)) {
-          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
-          sample_gradients <- cbind(
-            sample_gradients,
-            (-n_dim_re[j] / (2 * sigma2_re[j]) +
-               0.5 * rowSums(random_samples^2) / sigma2_re[j]^2) *
-              sigma2_re[j]
-          )
-        }
-      }
-
-      conditional_hessian <- matrix(0, nrow = length(par), ncol = length(par))
-      mean_curvature <- colSums(
-        sweep(likelihood$curvature, 1L, importance_weights, "*")
-      )
-      conditional_hessian[ind_beta, ind_beta] <-
-        -crossprod(D, D * mean_curvature)
-      conditional_hessian[ind_sigma2, ind_sigma2] <- sum(
-        importance_weights *
-          ((n_loc / (2 * sigma2^2) - qS / sigma2^3) * sigma2^2 +
-             sample_gradients[, ind_sigma2])
-      )
-      conditional_hessian[ind_phi, ind_phi] <- sum(
-        importance_weights * (t2.u - 0.5 * qNu / sigma2)
-      )
-      conditional_hessian[ind_sigma2, ind_phi] <-
-        conditional_hessian[ind_phi, ind_sigma2] <-
-        sum(importance_weights * (-0.5 * qMu / sigma2))
-
-      if (isTRUE(fix_tau2)) {
-        conditional_hessian[ind_nu2, ind_nu2] <- sum(
-          importance_weights *
-            ((t2.nu2 - q3 / sigma2) * nu2^2 +
-               sample_gradients[, ind_nu2])
-        )
-        conditional_hessian[ind_phi, ind_nu2] <-
-          conditional_hessian[ind_nu2, ind_phi] <- sum(
-            importance_weights *
-              (0.5 * nu2 * tr_ARuA - 0.5 * nu2 * qNuv / sigma2)
-          )
-        conditional_hessian[ind_sigma2, ind_nu2] <-
-          conditional_hessian[ind_nu2, ind_sigma2] <-
-          sum(importance_weights * (-0.5 * nu2 * q2 / sigma2))
-      }
-
-      if (n_re > 0) {
-        for (j in seq_len(n_re)) {
-          random_samples <- S_tot_samples[, ind_re[[j]], drop = FALSE]
-          sum_squares <- rowSums(random_samples^2)
-          conditional_hessian[ind_sigma2_re[j], ind_sigma2_re[j]] <- sum(
-            importance_weights *
-              ((n_dim_re[j] / (2 * sigma2_re[j]^2) -
-                  sum_squares / sigma2_re[j]^3) * sigma2_re[j]^2 +
-                 sample_gradients[, ind_sigma2_re[j]])
-          )
-        }
-      }
-
-      weighted_gradients <- sweep(
-        sample_gradients,
-        1L,
-        sqrt(importance_weights),
-        "*"
-      )
-      mean_gradient <- colSums(
-        sweep(sample_gradients, 1L, importance_weights, "*")
-      )
-      crossprod(weighted_gradients) + conditional_hessian -
-        tcrossprod(mean_gradient)
-    }
-
-    # --- optimization ---
-    # Each MCML optimisation must begin at the parameter value whose latent
-    # posterior generated the current importance sample. In particular, an
-    # iterative update must not restart from the original model defaults.
-    start_par <- reference_vec
-
-    out <- list()
-    objective <- safe_optimizer_objective(function(x) -mc_log_lik(x))
-    estim <- nlminb(start_par,
-                    objective,
-                    function(x) -grad_mc_log_lik(x),
-                    function(x) -hess_mc_log_lik(x),
-                    control = list(trace = 1 * messages))
-
-    proposal_gradient <- grad_mc_log_lik(estim$par)
-    proposal_information <- -hess_mc_log_lik(estim$par)
-
-    supported_step <- supported_importance_step(
-      reference = reference_vec,
-      proposal = estim$par,
-      log_weight_function = function(par) compute_log_f(par) - log_f_tilde,
-      min_relative_ess = min_relative_ess
-    )
-    out$estimate <- structure_estimate(
-      estim$par,
-      beta_names = colnames(D),
-      fix_tau2   = fix_tau2,
-      sigma2_me  = FALSE,
-      re_names   = if (n_re > 0) names(ID_re) else NULL
-    )
-    out$grad_MLE <- proposal_gradient
-    information <- proposal_information
-    information_root <- factor_covariance(
-      information,
-      "observed information matrix"
-    )
-    out$covariance <- chol2inv(information_root)
-    flat_names <- names(unlist(out$estimate))
-    dimnames(out$covariance) <- list(flat_names, flat_names)
-    out$log_lik <- -estim$objective
-    if (return_samples){
-      out$S_samples <- S_tot_samples
-    } else {
-      out["S_samples"] <- list(NULL)
-    }
-
-    out$link_function <- linkf
-    optimizer_diagnostics <- collect_optimizer_diagnostics(
-      estim, objective, out$grad_MLE, information, information_root
-    )
-    warn_unconverged_optimizer(optimizer_diagnostics)
-    optimizer_diagnostics$proposed_estimate <- structure_estimate(
-      estim$par,
-      beta_names = colnames(D),
-      fix_tau2 = fix_tau2,
-      sigma2_me = FALSE,
-      re_names = if (n_re > 0) names(ID_re) else NULL
-    )
-    optimizer_diagnostics$reference_update <- structure_estimate(
-      supported_step$parameters,
-      beta_names = colnames(D),
-      fix_tau2 = fix_tau2,
-      sigma2_me = FALSE,
-      re_names = if (n_re > 0) names(ID_re) else NULL
-    )
-    optimizer_diagnostics$step_fraction <- supported_step$step_fraction
-    optimizer_diagnostics$importance_ess <- supported_step$importance_ess
-    optimizer_diagnostics$relative_importance_ess <-
-      supported_step$relative_importance_ess
-    optimizer_diagnostics$proposal_relative_importance_ess <-
-      supported_step$proposal_relative_importance_ess
-    optimizer_diagnostics$supported_log_likelihood_ratio <-
-      supported_step$log_likelihood_ratio
-    optimizer_diagnostics$max_importance_weight <-
-      supported_step$max_importance_weight
-    if (messages && supported_step$step_fraction < 1) {
-      warning(
-        "The unrestricted MCML update had a relative importance ESS of ",
-        format(100 * supported_step$proposal_relative_importance_ess,
-               digits = 3), "% and was shortened to ",
-        format(100 * supported_step$step_fraction, digits = 3),
-        "% of the proposed parameter change when updating the reference ",
-        "distribution for the next MCML iteration.",
-        call. = FALSE
-      )
-    }
-    attr(out, "mcmc") <- simulation[c(
-      "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
-      "invlink_used"
-    )]
-    attr(out, "optimizer") <- optimizer_diagnostics
-    class(out) <- "RiskMap"
-    return(out)
-}
-
 ##' Check MCMC Convergence for Spatial Random Effects
 ##'
 ##' This function checks the Markov Chain Monte Carlo (MCMC) convergence of spatial random effects
-##' for either a \code{RiskMap} or \code{RiskMap_pred} object.
+##' for a fitted \code{RiskMap} object.
 ##' It plots the trace plot and autocorrelation function (ACF) for the MCMC chain
 ##' and calculates the effective sample size (ESS).
 ##'
-##' @param object An object of class \code{RiskMap} or \code{RiskMap_pred}.
-##'  \code{RiskMap} is the output from \code{\link{glgpm}} function, and
-##'  \code{RiskMap_pred} is obtained from the \code{\link{setup_prediction}} function.
+##' @param object A fitted \code{RiskMap} object returned by \code{\link{glgpm}}.
 ##' @param check_mean Logical. If \code{TRUE}, checks the MCMC chain for the mean of the spatial random effects.
 ##'  If \code{FALSE}, checks the chain for a specific component of the random effects vector.
 ##' @param component Integer. The index of the spatial random effects component to check when \code{check_mean = FALSE}.
@@ -3721,7 +3210,7 @@ glgpm_nong <-
 ##' @param ... Additional arguments passed to the \code{\link[stats]{acf}} function for customizing the ACF plot.
 ##'
 ##' @details
-##' The function first checks that the input object is either of class \code{RiskMap} or \code{RiskMap_pred}.
+##' The function first checks that the input is a fitted \code{RiskMap} object.
 ##' Depending on the value of \code{check_mean}, it either calculates the mean of the spatial random effects
 ##' across all locations for each iteration or uses the specified component.
 ##' It then generates two plots:
@@ -3742,11 +3231,9 @@ glgpm_nong <-
 ##' @export
 plot_mcmc <- function(object, check_mean = TRUE,
                        component = NULL, ...) {
-  if(!inherits(object, "RiskMap") &
-     !inherits(object, "RiskMap_pred")) {
-    stop("'object' must be either:
-           a 'RiskMap' object obtained as an output from 'glgpm';
-           a 'RiskMap_pred' object obtained as an output from 'setup_prediction'")
+  if (!inherits(object, "RiskMap")) {
+    stop("'object' must be a 'RiskMap' object returned by 'glgpm'",
+         call. = FALSE)
   }
 
   if (object$family == "gaussian")
@@ -3755,11 +3242,7 @@ plot_mcmc <- function(object, check_mean = TRUE,
   if (is.null(object$S_samples))
     stop("'object' does not contain any MCMC chains - rerun 'glgpm' with 'return_samples' = TRUE")
 
-  if(inherits(object, "RiskMap")) {
-    S_samples <- object$S_samples
-  } else if (inherits(object, "RiskMap_pred")) {
-    S_samples <- t(object$S_samples)
-  }
+  S_samples <- object$S_samples
 
   if(check_mean & !is.null(component)) {
     warning("if check_mean = TRUE, the value passed to 'component' is ignored;

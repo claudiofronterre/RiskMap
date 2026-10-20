@@ -13,8 +13,7 @@
 \item{...}{Additional arguments passed to or from other methods.}
 }
 \value{
-This function is used for its side effect of printing to the console. It does not
-return a value.
+Invisibly returns \code{x}.
 }
 \description{
 This function prints the matrix of cross-validation scores produced by

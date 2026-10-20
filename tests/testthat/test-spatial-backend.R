@@ -8,7 +8,7 @@ test_that("compiled pairwise distances match stats::dist", {
   expected <- dist(coordinates)
 
   expect_equal(as.numeric(observed), as.numeric(expected), tolerance = 1e-14)
-  expect_equal(attr(observed, "Size"), attr(expected, "Size"))
+  expect_identical(attr(observed, "Size"), attr(expected, "Size"))
 })
 
 test_that("compiled cross-distances match direct Euclidean distances", {
@@ -33,8 +33,37 @@ test_that("compiled distances reject invalid coordinate matrices", {
                "same number of columns")
 })
 
+test_that("compiled distances handle coordinates that are not two-dimensional", {
+  for (n_columns in c(1L, 3L)) {
+    first <- matrix(c(0, 3, -2, 7, 1, 4, 5, -6, 2)[seq_len(3L * n_columns)],
+                    ncol = n_columns)
+    second <- matrix(c(1, 8, -1, 2, 0, 3)[seq_len(2L * n_columns)],
+                     ncol = n_columns)
+
+    expect_equal(as.numeric(pairwise_distances(first)),
+                 as.numeric(dist(first)), tolerance = 1e-14)
+    expect_equal(cross_distances(first, second),
+                 as.matrix(dist(rbind(first, second)))[1:3, 4:5,
+                                                         drop = FALSE],
+                 tolerance = 1e-14, ignore_attr = TRUE)
+  }
+})
+
+test_that("Matérn correlations reject invalid ranges and distances", {
+  for (kappa in c(0.5, 1)) {
+    for (phi in c(0, -1, NA, Inf)) {
+      expect_error(matern_correlation(c(0, 1), phi = phi, kappa = kappa),
+                   "'phi' must be a single finite number strictly between 0 and Inf")
+    }
+    for (distance in c(-1, NA, Inf)) {
+      expect_error(matern_correlation(c(0, distance), phi = 1, kappa = kappa),
+                   "'u' must contain only finite, non-negative distances")
+    }
+  }
+})
+
 test_that("half-integer Matérn kernels agree with the general definition", {
-  distances <- c(0, 1e-8, 0.1, 1, 10, 1000)
+  distances <- c(0, 1e-8, 0.1, 1, 10, 1000, 2000)
   phi <- 2.3
 
   general_matern <- function(kappa) {
@@ -58,7 +87,7 @@ test_that("compiled Matérn kernels preserve cross-covariance dimensions", {
 
   observed <- matern_correlation(distances, phi = 0.7, kappa = 1.5)
 
-  expect_equal(dim(observed), dim(distances))
+  expect_identical(dim(observed), dim(distances))
 })
 
 test_that("distance scaling leaves Matérn correlations unchanged", {
@@ -75,7 +104,7 @@ test_that("distance scaling leaves Matérn correlations unchanged", {
   )
 
   expect_equal(scaled_correlation, original_correlation, tolerance = 5e-14)
-  expect_equal(restore_spatial_range(scaled$phi, scaled$distance_scale), phi)
+  expect_identical(restore_spatial_range(scaled$phi, scaled$distance_scale), phi)
 })
 
 test_that("distance scaling rejects coincident observed locations", {
@@ -95,7 +124,7 @@ test_that("fitted spatial ranges remain in the requested distance units", {
                tolerance = 1e-6)
   expect_equal(model_metres$log_lik, gaussian_model$log_lik,
                tolerance = 1e-8)
-  expect_equal(attr(model_metres, "distance_scale"),
+  expect_identical(attr(model_metres, "distance_scale"),
                max(pairwise_distances(model_metres$coords)))
 })
 
@@ -105,24 +134,26 @@ test_that("prediction scaling preserves draws at fixed fitted parameters", {
   attr(unscaled_model, "distance_scale") <- NULL
 
   set.seed(712)
-  scaled_prediction <- setup_prediction(
+  scaled_prediction <- predict(
     scaled_model,
-    grid_pred = st_geometry(gaussian_data),
+    newdata = gaussian_data,
     type = "joint",
     control_mcmc = control_mcmc,
+    keep_samples = TRUE,
     messages = FALSE
   )
   set.seed(712)
-  unscaled_prediction <- setup_prediction(
+  unscaled_prediction <- predict(
     unscaled_model,
-    grid_pred = st_geometry(gaussian_data),
+    newdata = gaussian_data,
     type = "joint",
     control_mcmc = control_mcmc,
+    keep_samples = TRUE,
     messages = FALSE
   )
 
-  expect_equal(scaled_prediction$S_samples,
-               unscaled_prediction$S_samples,
+  expect_equal(scaled_prediction$samples$spatial,
+               unscaled_prediction$samples$spatial,
                tolerance = 1e-12)
 })
 
@@ -143,7 +174,7 @@ test_that("coordinate rows are indexed in first-occurrence order", {
   coordinates <- rbind(c(3, 4), c(1, 2), c(3, 4), c(-1, 2), c(1, 2))
   indexed <- index_coordinate_rows(coordinates)
 
-  expect_equal(indexed$coordinates,
+  expect_identical(indexed$coordinates,
                rbind(c(3, 4), c(1, 2), c(-1, 2)))
   expect_identical(indexed$index, c(1L, 2L, 1L, 3L, 2L))
   expect_error(index_coordinate_rows(matrix(1:9, ncol = 3)),
@@ -160,7 +191,7 @@ test_that("adaptive jitter is reported and conditional variances are guarded", {
                  "required diagonal jitter")
   expect_gt(attr(root, "jitter"), 0)
 
-  expect_equal(conditional_variances(1, matrix(c(1, 0)),
+  expect_identical(conditional_variances(1, matrix(c(1, 0)),
                                      matrix(c(1 + 1e-15, 0))),
                c(0, 1))
   expect_error(conditional_variances(1, matrix(c(1, 0)),
@@ -177,7 +208,7 @@ test_that("vectorised Gaussian sampling preserves seeded draws", {
     means[, i] + standard_deviation * rnorm(nrow(means))
   })
   set.seed(148)
-  expect_equal(sample_independent_gaussian(
+  expect_identical(sample_independent_gaussian(
     means, standard_deviation, ncol(means)
   ), expected_independent)
 
@@ -222,7 +253,7 @@ test_that("automatic marginal batching preserves unbatched predictions", {
     prediction, conditioning, weight_function, signal, 1, 0.3, 1.5,
     ncol(signal), batch_size = 3
   )
-  expect_equal(dim(actual), c(nrow(prediction), ncol(signal)))
+  expect_identical(dim(actual), c(nrow(prediction), ncol(signal)))
   expect_equal(actual, expected, tolerance = 1e-14)
 
   vector_signal <- signal[, 1]
@@ -236,9 +267,52 @@ test_that("automatic marginal batching preserves unbatched predictions", {
     prediction, conditioning, weight_function, vector_signal, 1, 0.3, 1.5,
     n_samples = 4, batch_size = 3
   )
-  expect_equal(dim(actual_vector), c(nrow(prediction), 4L))
+  expect_identical(dim(actual_vector), c(nrow(prediction), 4L))
   expect_equal(actual_vector, expected_vector, tolerance = 1e-14)
 
-  expect_equal(marginal_prediction_batch_size(10, 5), 10)
+  expect_identical(marginal_prediction_batch_size(10, 5), 10)
   expect_lt(marginal_prediction_batch_size(1e6, 1000), 1e6)
+})
+
+test_that("grouped joint prediction writes independent blocks in row order", {
+  prediction <- cbind(c(0.1, 0.8, 0.2, 0.9), 0)
+  conditioning <- cbind(c(0, 0.5, 1), 0)
+  covariance <- matern_correlation(
+    pairwise_distances(conditioning), phi = 0.4, kappa = 1.5,
+    return_sym_matrix = TRUE
+  )
+  diag(covariance) <- diag(covariance) + 0.1
+  root <- factor_covariance(covariance)
+  weight_function <- function(x) cholesky_prediction_weights(x, root)
+  signal <- matrix(seq_len(15) / 10, nrow = 3)
+  groups <- list(c(1L, 3L), c(2L, 4L))
+
+  draw_block <- function(index) {
+    block <- prediction[index, , drop = FALSE]
+    cross_covariance <- matern_correlation(
+      cross_distances(block, conditioning), phi = 0.4, kappa = 1.5
+    )
+    weights <- weight_function(cross_covariance)
+    mean <- weights %*% signal
+    conditional_covariance <- matern_correlation(
+      pairwise_distances(block), phi = 0.4, kappa = 1.5,
+      return_sym_matrix = TRUE
+    ) - weights %*% t(cross_covariance)
+    sample_correlated_gaussian(
+      mean, t(factor_covariance(conditional_covariance)), ncol(signal)
+    )
+  }
+
+  expected <- matrix(NA_real_, nrow = 4, ncol = ncol(signal))
+  set.seed(152)
+  for (index in groups) expected[index, ] <- draw_block(index)
+  set.seed(152)
+  actual <- grouped_joint_prediction(
+    prediction, conditioning, groups, weight_function, signal,
+    marginal_variance = 1, phi = 0.4, kappa = 1.5,
+    n_samples = ncol(signal)
+  )
+
+  expect_identical(dim(actual), c(4L, ncol(signal)))
+  expect_equal(actual, expected, tolerance = 1e-14)
 })

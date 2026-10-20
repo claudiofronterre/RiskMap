@@ -2,34 +2,54 @@
 % Please edit documentation in R/parameter_estimation.R
 \name{set_control_mcml}
 \alias{set_control_mcml}
-\title{Set control parameters for iterative MCML estimation}
+\title{Set control parameters for adaptive MCML estimation}
 \usage{
-set_control_mcml(max_iterations = 1L, tolerance = 0.05, min_relative_ess = 0.1)
+set_control_mcml(
+  initial_samples = 1000L,
+  max_samples = 20000L,
+  max_stages = 5L,
+  min_effective_samples = 100L,
+  max_pareto_k = 0.7,
+  max_mcse_ratio = 0.1,
+  score_probability = 0.99
+)
 }
 \arguments{
-\item{max_iterations}{Positive integer giving the maximum number of MCML
-updates. Defaults to one.}
+\item{initial_samples}{Positive integer giving the number of draws in each
+fitting and validation bank at the first stage. Defaults to 1,000.}
 
-\item{tolerance}{Positive numeric tolerance for the largest parameter change
-divided by its current standard error. It is evaluated from the second
-update onwards.}
+\item{max_samples}{Positive integer giving the largest permitted bank.
+Defaults to 20,000.}
 
-\item{min_relative_ess}{Number between zero and one giving the minimum
-effective sample size, as a proportion of retained importance samples,
-required before an update can be declared converged. Defaults to 0.1.}
+\item{max_stages}{Positive integer giving the maximum number of adaptive
+stages. Defaults to 5.}
+
+\item{min_effective_samples}{Positive integer giving the minimum effective
+number of importance draws required in both banks before Monte Carlo
+uncertainty is interpreted. Defaults to 100.}
+
+\item{max_pareto_k}{Positive upper limit for the Pareto tail-shape
+diagnostic. Defaults to 0.7.}
+
+\item{max_mcse_ratio}{Number between zero and one giving the largest allowed
+ratio of Monte Carlo standard error to ordinary statistical standard error,
+over all linear combinations of fitted parameters. Defaults to 0.1.}
+
+\item{score_probability}{Number strictly between zero and one used for the
+independent-bank score-agreement limit. Defaults to 0.99.}
 }
 \value{
 A control object of class \code{RiskMap_control_mcml}.
 }
 \description{
-Repeated Monte Carlo maximum likelihood (MCML) updates regenerate the
-importance sample around the reference update from the preceding iteration.
-When importance-sampling overlap is adequate this is the fitted estimate;
-otherwise it is a shortened step towards that estimate. A single update
-reproduces the standard RiskMap fitting procedure.
+Non-Gaussian models use independent fitting and validation importance
+samples. Sampling stops automatically only when the importance samples are
+regular enough to estimate Monte Carlo uncertainty, that uncertainty is
+small relative to the model's statistical uncertainty, and both samples
+give compatible score vectors.
 }
 \examples{
-control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.05)
+control_mcml <- set_control_mcml(max_samples = 10000)
 }
 \seealso{
 \code{\link[=glgpm]{glgpm()}}, \code{\link[=set_control_mcmc]{set_control_mcmc()}}

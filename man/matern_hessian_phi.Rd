@@ -4,18 +4,26 @@
 \alias{matern_hessian_phi}
 \title{Second Derivative with Respect to \eqn{\phi}}
 \usage{
-matern_hessian_phi(U, phi, kappa)
+matern_hessian_phi(u, phi, kappa)
 }
 \arguments{
-\item{U}{A vector of distances between pairs of data locations.}
+\item{u}{A distance matrix returned from \code{\link[stats:dist]{stats::dist()}}}
 
 \item{phi}{The scale parameter \eqn{\phi}.}
 
 \item{kappa}{The smoothness parameter \eqn{\kappa}.}
 }
 \value{
-A matrix with the values of the second derivative of the Matern function with respect to \eqn{\phi} for the given distances.
+A matrix with the values of the second derivative of the
+Matern function with respect to \eqn{\phi} for the given distances.
 }
 \description{
-Computes the second derivative of the Matern correlation function with respect to \eqn{\phi}.
+Computes the second derivative of the Matern correlation
+function with respect to \eqn{\phi}.
+}
+\examples{
+x <- matrix(rnorm(20), nrow = 5)
+u <- dist(x)
+matern_hessian_phi(u, phi = 1, kappa = 0.8)
+
 }

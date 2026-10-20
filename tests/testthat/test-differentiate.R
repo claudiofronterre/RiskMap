@@ -52,9 +52,10 @@ test_that("a custom invlink that Deriv cannot differentiate still fits via the n
   af <- approxfun(c(-50, 50), c(0.01, 0.99), rule = 2)
   invlink <- list(inv = function(eta) af(eta))
 
-  fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+  fit <- suppressWarnings(glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
               denominator = denominator, invlink = invlink, control_mcmc = control_mcmc,
-              messages = FALSE)
+                     control_mcml = fixture_control_mcml,
+              messages = FALSE))
 
   expect_s3_class(fit, "RiskMap")
   expect_true(all(is.finite(unlist(fit$estimate))))

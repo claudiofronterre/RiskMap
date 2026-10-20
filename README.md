@@ -1,6 +1,3 @@
-
-<!-- README.md is generated from README.Rmd. Please edit that file -->
-
 # RiskMap
 
 <!-- badges: start -->
@@ -47,8 +44,8 @@ install.packages("RiskMap")
 Install the development version from GitHub:
 
 ``` r
-# install.packages("devtools")
-devtools::install_github("claudiofronterre/RiskMap")
+# install.packages("remotes")
+remotes::install_github("claudiofronterre/RiskMap")
 ```
 
 ## Quickstart
@@ -66,7 +63,6 @@ fit <- glgpm(
   formula = y ~ gp(x1, x2),
   data = italy_sim,
   family = "gaussian",
-  crs = 32634,
   messages = FALSE
 )
 

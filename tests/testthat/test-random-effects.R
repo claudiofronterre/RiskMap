@@ -25,19 +25,19 @@ test_that("random effects are encoded consistently across data containers", {
     c("region", "province")
   )
 
-  expect_equal(
+  expect_identical(
     prepare_random_effects(tibble_data, c("region", "province")),
     expected
   )
-  expect_equal(
+  expect_identical(
     prepare_random_effects(gaussian_data, c("region", "province")),
     expected
   )
-  expect_equal(
+  expect_identical(
     prepare_random_effects(sf_tibble, c("region", "province")),
     expected
   )
-  expect_equal(
+  expect_identical(
     expected$ID_re,
     matrix(
       c(1L, 2L, 1L, 2L, 1L, 2L, 1L, 3L),
@@ -45,10 +45,10 @@ test_that("random effects are encoded consistently across data containers", {
       dimnames = list(NULL, c("region", "province"))
     )
   )
-  expect_equal(expected$re_unique$region, seq_len(2))
-  expect_equal(expected$re_unique_f$region, c("north", "south"))
-  expect_equal(expected$re_unique$province, seq_len(3))
-  expect_equal(expected$re_unique_f$province, c(10, 30, 20))
+  expect_identical(expected$re_unique$region, seq_len(2))
+  expect_identical(expected$re_unique_f$region, c("north", "south"))
+  expect_identical(expected$re_unique$province, seq_len(3))
+  expect_identical(expected$re_unique_f$province, c(10, 30, 20))
 })
 
 test_that("supported random-effect types retain their labels and ordering", {
@@ -66,15 +66,15 @@ test_that("supported random-effect types retain their labels and ordering", {
     c("ordered_group", "character_group", "integer_group")
   )
 
-  expect_equal(result$ID_re[, "ordered_group"], c(2L, 1L, 3L))
-  expect_equal(
+  expect_identical(result$ID_re[, "ordered_group"], c(2L, 1L, 3L))
+  expect_identical(
     result$re_unique_f$ordered_group,
     c("low", "medium", "high")
   )
-  expect_equal(result$ID_re[, "character_group"], c(1L, 2L, 1L))
-  expect_equal(result$re_unique_f$character_group, c("beta", "alpha"))
-  expect_equal(result$ID_re[, "integer_group"], c(1L, 2L, 1L))
-  expect_equal(result$re_unique_f$integer_group, c(20L, 10L))
+  expect_identical(result$ID_re[, "character_group"], c(1L, 2L, 1L))
+  expect_identical(result$re_unique_f$character_group, c("beta", "alpha"))
+  expect_identical(result$ID_re[, "integer_group"], c(1L, 2L, 1L))
+  expect_identical(result$re_unique_f$integer_group, c(20L, 10L))
 })
 
 test_that("a single random effect retains a matrix index", {
@@ -83,9 +83,9 @@ test_that("a single random effect retains a matrix index", {
     "group"
   )
 
-  expect_equal(dim(result$ID_re), c(3L, 1L))
-  expect_equal(colnames(result$ID_re), "group")
-  expect_equal(result$ID_re[, 1], c(1L, 2L, 1L))
+  expect_identical(dim(result$ID_re), c(3L, 1L))
+  expect_identical(colnames(result$ID_re), "group")
+  expect_identical(result$ID_re[, 1], c(1L, 2L, 1L))
 })
 
 test_that("one-row data retain all random-effect columns", {
@@ -97,15 +97,15 @@ test_that("one-row data retain all random-effect columns", {
     c("region", "province")
   )
 
-  expect_equal(dim(result$ID_re), c(1L, 2L))
-  expect_equal(colnames(result$ID_re), c("region", "province"))
-  expect_equal(result$ID_re[1, ], c(region = 1L, province = 1L))
+  expect_identical(dim(result$ID_re), c(1L, 2L))
+  expect_identical(colnames(result$ID_re), c("region", "province"))
+  expect_identical(result$ID_re[1, ], c(region = 1L, province = 1L))
 })
 
 test_that("no random effects return the established null representation", {
   result <- prepare_random_effects(data.frame(value = 1:3), NULL)
 
-  expect_equal(result$n_re, 0L)
+  expect_identical(result$n_re, 0L)
   expect_null(result$names_re)
   expect_null(result$ID_re)
   expect_null(result$re_unique)
@@ -157,7 +157,7 @@ test_that("glgpm simulations support random effects in tibble-backed sf data", {
                          list(beta = 0, sigma2 = 1, phi = 1,
                               sigma2_me = 0.1, sigma2_re = 0.2))
   result <- simulate_glgpm(model, nsim = 2, seed = 1)
-  expect_equal(result$samples$data[1, , "group_effect"],
+  expect_identical(result$samples$data[1, , "group_effect"],
                result$samples$data[2, , "group_effect"])
-  expect_equal(unname(result$model$parameters$sigma2_re), 0.2)
+  expect_identical(unname(result$model$parameters$sigma2_re), 0.2)
 })

@@ -19,9 +19,9 @@ test_that("estimate is a list with numeric beta/sigma2/phi for every model confi
 
   for (fit in fits) {
     expect_type(fit$estimate, "list")
-    expect_true(is.numeric(fit$estimate$beta))
-    expect_true(is.numeric(fit$estimate$sigma2))
-    expect_true(is.numeric(fit$estimate$phi))
+    expect_type(fit$estimate$beta, "double")
+    expect_type(fit$estimate$sigma2, "double")
+    expect_type(fit$estimate$phi, "double")
   }
 })
 
@@ -31,7 +31,7 @@ test_that("covariance is named to match unlist(estimate) on both dimensions", {
 
   for (fit in fits) {
     flat_names <- names(unlist(fit$estimate))
-    expect_equal(dimnames(fit$covariance), list(flat_names, flat_names))
+    expect_identical(dimnames(fit$covariance), list(flat_names, flat_names))
   }
 })
 
@@ -45,7 +45,7 @@ test_that("estimate reproduces coef.RiskMap() for a model with random effects (n
   expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
   expect_equal(exp(est$sigma2_me), co$sigma2_me, ignore_attr = TRUE)
   expect_equal(exp(est$sigma2_re), co$sigma2_re, ignore_attr = TRUE)
-  expect_equal(names(co$sigma2_re), "i")
+  expect_named(co$sigma2_re, "i")
 })
 
 test_that("estimate reproduces coef.RiskMap() for an intercept-only model", {
@@ -75,10 +75,10 @@ test_that("coef.RiskMap() does not mislabel a single covariate as the intercept 
   fit <- glgpm(y ~ 0 + cov + gp(), data = gaussian_data, family = "gaussian",
               messages = FALSE)
 
-  expect_equal(colnames(fit$D), "cov")
-  expect_equal(names(fit$estimate$beta), "cov")
-  expect_equal(names(coef(fit)$beta), "cov")
-  expect_equal(rownames(summary(fit)$reg_coef), "cov")
+  expect_identical(colnames(fit$D), "cov")
+  expect_named(fit$estimate$beta, "cov")
+  expect_named(coef(fit)$beta, "cov")
+  expect_identical(rownames(summary(fit)$reg_coef), "cov")
 })
 
 test_that("estimate reproduces coef.RiskMap() for a model with an estimated nugget and fix_var_me", {
@@ -102,7 +102,7 @@ test_that("estimate reproduces coef.RiskMap() for binomial and poisson models wi
     expect_equal(exp(est$sigma2), co$sigma2, ignore_attr = TRUE)
     expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
     expect_equal(exp(est$sigma2_re), co$sigma2_re, ignore_attr = TRUE)
-    expect_equal(names(co$sigma2_re), "i")
+    expect_named(co$sigma2_re, "i")
   }
 })
 
@@ -150,8 +150,8 @@ test_that("a covariate named after a parameter no longer corrupts estimates (#92
   co_clash <- coef(fit_clash)
   co_ref   <- coef(fit_ref)
 
-  expect_equal(co_clash$sigma2, co_ref$sigma2)
-  expect_equal(co_clash$phi, co_ref$phi)
+  expect_identical(co_clash$sigma2, co_ref$sigma2)
+  expect_identical(co_clash$phi, co_ref$phi)
   expect_equal(co_clash$beta, co_ref$beta, ignore_attr = TRUE)
   expect_equal(co_clash$sigma2_re, co_ref$sigma2_re, ignore_attr = TRUE)
 
@@ -163,12 +163,12 @@ test_that("a covariate named after a parameter no longer corrupts estimates (#92
 test_that("cov_par_layout() places sigma2_me before sigma2_re, consistently", {
   layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, sigma2_me = TRUE, n_re = 2)
 
-  expect_equal(layout$index$beta, 1:2)
-  expect_equal(layout$index$sigma2, 3)
-  expect_equal(layout$index$phi, 4)
-  expect_equal(layout$index$sigma2_me, 5)
-  expect_equal(layout$index$sigma2_re, c(6, 7))
-  expect_equal(layout$length, 7)
+  expect_identical(layout$index$beta, 1:2)
+  expect_identical(layout$index$sigma2, 3)
+  expect_identical(layout$index$phi, 4)
+  expect_identical(layout$index$sigma2_me, 5)
+  expect_identical(layout$index$sigma2_re, c(6, 7))
+  expect_identical(layout$length, 7)
   expect_null(layout$index$nu2)
 })
 
@@ -177,12 +177,12 @@ test_that("cov_par_layout() omits slots that don't apply", {
   expect_null(no_re$index$nu2)
   expect_null(no_re$index$sigma2_me)
   expect_null(no_re$index$sigma2_re)
-  expect_equal(no_re$length, 3)
+  expect_identical(no_re$length, 3)
 
   with_nugget <- cov_par_layout(p = 1, fix_tau2 = TRUE, sigma2_me = TRUE, n_re = 1)
-  expect_equal(with_nugget$index$nu2, 4)
-  expect_equal(with_nugget$index$sigma2_me, 5)
-  expect_equal(with_nugget$index$sigma2_re, 6)
+  expect_identical(with_nugget$index$nu2, 4)
+  expect_identical(with_nugget$index$sigma2_me, 5)
+  expect_identical(with_nugget$index$sigma2_re, 6)
 })
 
 test_that("pack_cov_pars() places deliberately different sigma2_re and sigma2_me at the layout's own positions (#135/#117)", {
@@ -194,10 +194,10 @@ test_that("pack_cov_pars() places deliberately different sigma2_re and sigma2_me
   ## pack_cov_pars() returns the non-beta parameters only (start_cov_pars's
   ## existing contract), so positions are offset by p = 2
   p <- length(layout$index$beta)
-  expect_equal(packed[layout$index$sigma2 - p], 1)
-  expect_equal(packed[layout$index$phi - p], 2)
-  expect_equal(packed[layout$index$sigma2_me - p], 999)
-  expect_equal(packed[layout$index$sigma2_re - p], c(100, 200))
+  expect_identical(packed[layout$index$sigma2 - p], 1)
+  expect_identical(packed[layout$index$phi - p], 2)
+  expect_identical(packed[layout$index$sigma2_me - p], 999)
+  expect_identical(packed[layout$index$sigma2_re - p], c(100, 200))
 
   ## the specific bug: before the fix, reading this same vector back with the
   ## *indexing* order (sigma2_me before sigma2_re) would have returned the
@@ -222,8 +222,8 @@ test_that("structure_estimate() and the fitting engines' indices agree on sigma2
                             fix_tau2 = FALSE, sigma2_me = TRUE,
                             re_names = c("i", "j"))
 
-  expect_equal(est$sigma2_me, 999)
-  expect_equal(unname(est$sigma2_re), c(100, 200))
+  expect_identical(est$sigma2_me, 999)
+  expect_identical(unname(est$sigma2_re), c(100, 200))
 })
 
 test_that("glgpm fits gaussian re() + estimated measurement error with deliberately different sigma2_re/sigma2_me starting values (#135/#117)", {

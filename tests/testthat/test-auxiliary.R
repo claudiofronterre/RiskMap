@@ -16,6 +16,9 @@ test_that("check_formula functions correctly", {
   expect_no_error(check_formula(y ~ log(c) + gp(), data))
 
   expect_error(check_formula("not formula", data), "'formula' must be a 'formula'")
+  expect_error(check_formula(~ gp(), data), "The 'formula' must specify a response")
+  expect_error(check_formula(~ gp(), data, response_required = FALSE),
+               "The 'formula' must specify a response")
   expect_error(check_formula(y ~ c, data), "The 'formula' must contain a Gaussian Process term")
   expect_error(check_formula(y ~ gp, data), "The 'formula' must contain a Gaussian Process term")
   expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
@@ -81,7 +84,7 @@ test_that("check_data functions correctly", {
   sf_multipolygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(multipolygon), crs = sf::st_crs(4326))
   sf_merged <- rbind(gaussian_data, sf_polygon)
 
-  expect_error(check_data(gaussian_data, geometry = "n"), "'geometry' must be either 'point' or 'polygon'")
+  expect_error(check_data(gaussian_data, geometry = "n"), "'geometry' must be either 'point', 'polygon' or 'any'")
   expect_error(check_data(gaussian_data, type = "n"), "'type' must be either 'sf' or 'sfc'")
 
   expect_no_error(check_data(gaussian_data))
@@ -132,53 +135,22 @@ test_that("gp functions correctly", {
   default_result <- gp()
 
   expect_setequal(names(default_result), expected_output)
-  expect_equal(default_result$term, "sf")
-  expect_equal(default_result$kappa, 0.5)
-  expect_equal(default_result$nugget, 0)
-  expect_equal(default_result$dim, 0)
-  expect_equal(default_result$label, "gp()")
+  expect_identical(default_result$term, "sf")
+  expect_identical(default_result$kappa, 0.5)
+  expect_identical(default_result$nugget, 0)
+  expect_identical(default_result$dim, 0L)
+  expect_identical(default_result$label, "gp()")
 
   true_result <- gp(nugget = TRUE)
-  expect_equal(true_result$nugget, TRUE)
+  expect_true(true_result$nugget)
 
   custom_result <- gp(a, b, kappa = 2, nugget = 3)
-  expect_equal(custom_result$term, c("a", "b"))
-  expect_equal(custom_result$kappa, 2)
-  expect_equal(custom_result$nugget, 3)
-  expect_equal(custom_result$dim, 2)
-  expect_equal(custom_result$label, "gp(a,b)")
+  expect_identical(custom_result$term, c("a", "b"))
+  expect_identical(custom_result$kappa, 2)
+  expect_identical(custom_result$nugget, 3)
+  expect_identical(custom_result$dim, 2L)
+  expect_identical(custom_result$label, "gp(a,b)")
 
-})
-
-test_that("estimates are consistent between coef and summary", {
-
-  sum <- summary(gaussian_model)
-  cof <- coef(gaussian_model)
-
-  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
-  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
-  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_me, sum$me[1,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
-
-  sum <- summary(binomial_model)
-  cof <- coef(binomial_model)
-
-  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
-  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
-  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
-
-  sum <- summary(poisson_model)
-  cof <- coef(poisson_model)
-
-  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
-  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
-  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
 })
 
 test_that("check_positive_integer functions correctly", {
@@ -275,4 +247,140 @@ test_that("plot_metric applies extra ggplot components passed via ...", {
                           ggplot2::scale_color_gradient(low = "yellow", high = "red"))
   expect_length(p_custom$scales$scales, 1)
   expect_no_error(ggplot2::ggplot_build(p_custom))
+})
+
+test_that("create_convex_hull generates errors", {
+  expect_error(create_convex_hull("a"), "'sf_object' must be an sf object")
+})
+
+test_that("create_convex_hull functions correctly", {
+  result <- create_convex_hull(gaussian_data)
+  expect_s3_class(result, "sf")
+  expect_identical(nrow(result), 1L)
+
+  intersect <- unlist(st_intersects(gaussian_data, result))
+  expect_identical(intersect, rep(1L, 10))
+})
+
+test_that("propose_utm generates errors", {
+  expect_error(propose_utm("a"), "'data' must be of class 'sf'")
+})
+
+test_that("propose_utm handles both polygons and points", {
+  expect_no_error(propose_utm(areal))
+  expect_no_error(propose_utm(gaussian_data))
+})
+
+test_that("propose_utm warns when locations are split equally", {
+  lonlat_points <- function(lon, lat) {
+    st_as_sf(data.frame(lon = lon, lat = lat), coords = c("lon", "lat"), crs = 4326)
+  }
+
+  # longitudes 33 and 39 fall in UTM zones 36 and 37
+  expect_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 39), lat = c(5, 5))),
+    "An equal amount of locations falls in different UTM zones"
+  )
+  # default to min
+  expect_identical(epsg, 32636)
+
+  expect_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 33), lat = c(5, -5))),
+    "An equal amount of locations falls north and south of the Equator"
+  )
+  # default to south
+  expect_identical(epsg, 32736)
+
+  expect_no_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 39), lat = c(5, 5, 5)))
+  )
+  expect_identical(epsg, 32636)
+
+  expect_no_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 33, 33), lat = c(5, 6, 7, -5)))
+  )
+  expect_identical(epsg, 32636)
+})
+
+test_that("re errors when no variables are provided",{
+  expect_error(re(), "You need to provide at least one variable to re")
+})
+
+test_that("re produces expected output", {
+  result <- re(variable)
+  expect_s3_class(result, "RiskMap_re_spec")
+  expect_identical(result$term, "variable")
+  expect_identical(result$dim, 1L)
+  expect_identical(result$label, "re(variable)")
+
+  result <- re(variable, region)
+  expect_s3_class(result, "RiskMap_re_spec")
+  expect_identical(result$term, c("variable", "region"))
+  expect_identical(result$dim, 2L)
+  expect_identical(result$label, "re(variable,region)")
+})
+
+
+test_that("matern_correlation returns output matching the shape of u", {
+  u <- dist(st_coordinates(gaussian_data))
+  n <- nrow(gaussian_data)
+
+  expect_error(
+    matern_correlation("a", 0.5, 0.5),
+    "'u' must contain only finite, non-negative distances"
+  )
+
+  expect_error(
+    matern_correlation(u, -0.5, 0.5),
+    "must be a single finite number"
+  )
+
+  for (kappa in c(0.5, 0.8)) {
+    vector_output <- matern_correlation(as.numeric(u), phi = 1, kappa = kappa)
+    expect_type(vector_output, "double")
+    expect_null(dim(vector_output))
+    expect_length(vector_output, length(u))
+
+    matrix_input <- as.matrix(u)[1:3, ]
+    matrix_output <- matern_correlation(matrix_input, phi = 1, kappa = kappa)
+    expect_true(is.matrix(matrix_output))
+    expect_type(matrix_output, "double")
+    expect_identical(dim(matrix_output), dim(matrix_input))
+
+    sym_output <- matern_correlation(u, phi = 1, kappa = kappa,
+                                     return_sym_matrix = TRUE)
+    expect_true(is.matrix(sym_output))
+    expect_type(sym_output, "double")
+    expect_identical(dim(sym_output), c(n, n))
+    expect_true(isSymmetric(sym_output))
+    expect_identical(diag(sym_output), rep(1, n))
+  }
+})
+
+test_that("matern_gradient_phi and matern_hessian_phi return symmetric n x n matrices", {
+  u <- dist(st_coordinates(gaussian_data))
+  n <- nrow(gaussian_data)
+
+  # kappa = 0.5 uses the closed form, other values use the Bessel form
+  for (kappa in c(0.5, 0.8)) {
+    for (derivative in list(matern_gradient_phi, matern_hessian_phi)) {
+
+      expect_error(
+        derivative("u", 0.5, 0.5),
+        "'u' must be an output from 'stats::dist"
+      )
+
+      expect_error(
+        derivative(u, -0.5, 0.5),
+        "must be a single finite number"
+      )
+
+      output <- derivative(u, phi = 1, kappa = kappa)
+      expect_true(is.matrix(output))
+      expect_type(output, "double")
+      expect_identical(dim(output), c(n, n))
+      expect_true(isSymmetric(output))
+      expect_true(all(is.finite(output)))
+    }
+  }
 })
