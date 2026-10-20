@@ -4,7 +4,7 @@
 \alias{set_control_mcml}
 \title{Set control parameters for iterative MCML estimation}
 \usage{
-set_control_mcml(max_iterations = 1L, tolerance = 0.05, min_relative_ess = 0.1)
+set_control_mcml(max_iterations = 1L, tolerance = 0.1, min_relative_ess = 0.1)
 }
 \arguments{
 \item{max_iterations}{Positive integer giving the maximum number of MCML
@@ -29,7 +29,7 @@ otherwise it is a shortened step towards that estimate. A single update
 reproduces the standard RiskMap fitting procedure.
 }
 \examples{
-control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.05)
+control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.1)
 }
 \seealso{
 \code{\link[=glgpm]{glgpm()}}, \code{\link[=set_control_mcmc]{set_control_mcmc()}}

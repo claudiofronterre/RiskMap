@@ -3024,10 +3024,10 @@ laplace_sampling_mcmc <- function(y,
 ##' required before an update can be declared converged. Defaults to 0.1.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
-##' control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.05)
+##' control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.1)
 ##' @seealso [glgpm()], [set_control_mcmc()]
 ##' @export
-set_control_mcml <- function(max_iterations = 1L, tolerance = 0.05,
+set_control_mcml <- function(max_iterations = 1L, tolerance = 0.1,
                              min_relative_ess = 0.1) {
   check_positive_integer(max_iterations, "max_iterations")
   check_positive_number(tolerance, "")

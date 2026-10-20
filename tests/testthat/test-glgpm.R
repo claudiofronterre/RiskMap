@@ -637,6 +637,13 @@ test_that("MCML overlap safeguard does not relabel a reference bridge as a fit",
   )))
 })
 
+test_that("MCML control uses the calibrated default stopping tolerance", {
+  control <- set_control_mcml()
+
+  expect_identical(control$tolerance, 0.1)
+  expect_identical(control$min_relative_ess, 0.1)
+})
+
 
 test_that("glgpm correctly reprojects to new CRS", {
 

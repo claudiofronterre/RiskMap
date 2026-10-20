@@ -1,6 +1,11 @@
 RiskMap 2.0.0
 =============
 
+- The default standardized parameter-change tolerance for iterative MCML
+updates is now `0.1`. Calibration against independent Monte Carlo banks showed
+that the previous `0.05` threshold caused unnecessary additional updates
+without a material improvement in the fitted likelihood.
+
 - This version introduces many breaking changes from v1. The package should not
 be considered stable, but further breaking changes will be handled gracefully.
 - `dast()` has been removed.
