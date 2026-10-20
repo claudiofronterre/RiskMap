@@ -40,16 +40,24 @@ test_that("prediction objects use one stable output schema", {
   expect_setequal(names(observed), expected_output)
   expect_setequal(names(locations), expected_output)
   expect_setequal(names(polygons), expected_output)
-  expect_identical(
-    observed[c("aggregate", "coverage")],
-    list(aggregate = NULL, coverage = NULL)
-  )
-  expect_identical(
-    locations[c("aggregate", "coverage")],
-    list(aggregate = NULL, coverage = NULL)
-  )
+
+  expect_null(observed$aggregate)
+  expect_null(observed$boundaries)
+  expect_null(observed$boundary_summary)
+  expect_null(observed$coverage)
+  expect_true(observed$observed_locations)
+
+  expect_null(locations$aggregate)
+  expect_null(locations$boundaries)
+  expect_null(locations$boundary_summary)
+  expect_null(locations$coverage)
+  expect_false(locations$observed_locations)
+
   expect_identical(polygons$aggregate, "mean")
+  expect_s3_class(polygons$boundaries, "sf")
+  expect_s3_class(polygons$boundary_summary, "data.frame")
   expect_identical(polygons$coverage, "exact")
+  expect_false(polygons$observed_locations)
 })
 
 test_that("predict.RiskMap derives predictors and offsets from one sf object", {
@@ -580,6 +588,43 @@ test_that("polygon prediction handles outside cells and empty polygons", {
   expect_true(all(is.na(empty$boundary_summary$value)))
   expect_null(empty$samples)
   expect_identical(nrow(empty$boundaries), 1L)
+})
+
+test_that("polygons containing a single prediction location trigger a warning", {
+  # Place a set number of plain points near the centre of each square in
+  # 'areal', so every point lies inside exactly one polygon
+  points_in_squares <- function(counts) {
+    centres <- st_coordinates(st_centroid(st_geometry(areal)))
+    square <- rep(seq_along(counts), counts)
+    offset <- sequence(counts) * 100
+    coordinates <- centres[square, , drop = FALSE] + offset
+    points <- st_as_sf(data.frame(x = coordinates[, 1], y = coordinates[, 2]),
+                       coords = c("x", "y"), crs = st_crs(areal))
+    points$cov <- seq_len(nrow(points)) / 10
+    points$i <- rep(gaussian_model$re[[1]], length.out = nrow(points))
+    points
+  }
+
+  expect_warning(
+    predict(
+      gaussian_model, points_in_squares(c(1, 1, 2, 2)), boundaries = areal,
+      aggregate = "mean", seed = 475, messages = FALSE
+    ),
+    "2 polygons contain only one prediction location; their areal summaries"
+  )
+  expect_warning(
+    predict(
+      gaussian_model, points_in_squares(c(1, 2)), boundaries = areal[1:2, ],
+      aggregate = "mean", seed = 476, messages = FALSE
+    ),
+    "1 polygon contains only one prediction location; its areal summaries"
+  )
+  expect_no_warning(
+    predict(
+      gaussian_model, points_in_squares(c(2, 2, 2, 2)), boundaries = areal,
+      aggregate = "mean", seed = 477, messages = FALSE
+    )
+  )
 })
 
 test_that("polygon weights are validated and zero totals return missing summaries", {
