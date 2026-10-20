@@ -33,8 +33,37 @@ test_that("compiled distances reject invalid coordinate matrices", {
                "same number of columns")
 })
 
+test_that("compiled distances handle coordinates that are not two-dimensional", {
+  for (n_columns in c(1L, 3L)) {
+    first <- matrix(c(0, 3, -2, 7, 1, 4, 5, -6, 2)[seq_len(3L * n_columns)],
+                    ncol = n_columns)
+    second <- matrix(c(1, 8, -1, 2, 0, 3)[seq_len(2L * n_columns)],
+                     ncol = n_columns)
+
+    expect_equal(as.numeric(pairwise_distances(first)),
+                 as.numeric(dist(first)), tolerance = 1e-14)
+    expect_equal(cross_distances(first, second),
+                 as.matrix(dist(rbind(first, second)))[1:3, 4:5,
+                                                         drop = FALSE],
+                 tolerance = 1e-14, ignore_attr = TRUE)
+  }
+})
+
+test_that("Matérn correlations reject invalid ranges and distances", {
+  for (kappa in c(0.5, 1)) {
+    for (phi in c(0, -1, NA, Inf)) {
+      expect_error(matern_correlation(c(0, 1), phi = phi, kappa = kappa),
+                   "'phi' must be a single finite number strictly between 0 and Inf")
+    }
+    for (distance in c(-1, NA, Inf)) {
+      expect_error(matern_correlation(c(0, distance), phi = 1, kappa = kappa),
+                   "'u' must contain only finite, non-negative distances")
+    }
+  }
+})
+
 test_that("half-integer Matérn kernels agree with the general definition", {
-  distances <- c(0, 1e-8, 0.1, 1, 10, 1000)
+  distances <- c(0, 1e-8, 0.1, 1, 10, 1000, 2000)
   phi <- 2.3
 
   general_matern <- function(kappa) {

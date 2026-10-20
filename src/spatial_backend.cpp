@@ -6,10 +6,6 @@ using namespace Rcpp;
 namespace {
 
 void check_coordinates(const NumericMatrix& coordinates) {
-  if (coordinates.ncol() < 1) {
-    stop("`coordinates` must contain at least one column.");
-  }
-
   for (R_xlen_t i = 0; i < coordinates.length(); ++i) {
     if (!R_finite(coordinates[i])) {
       stop("`coordinates` must contain only finite values.");
@@ -113,32 +109,13 @@ NumericMatrix cpp_binned_semivariances(const NumericMatrix permuted_values,
                                        const IntegerVector second_index,
                                        const IntegerVector bin_index,
                                        const int number_bins) {
+  // The only caller, variogram(), validates the values and builds zero-based
+  // pair and bin indices of equal length, so they are not rechecked here
   const int number_values = permuted_values.nrow();
   const int number_pairs = first_index.length();
 
-  if (second_index.length() != number_pairs ||
-      bin_index.length() != number_pairs) {
-    stop("Pair and bin index vectors must have equal lengths.");
-  }
-  if (number_bins < 1) {
-    stop("`number_bins` must be positive.");
-  }
-
-  for (R_xlen_t i = 0; i < permuted_values.length(); ++i) {
-    if (!R_finite(permuted_values[i])) {
-      stop("`permuted_values` must contain only finite numbers.");
-    }
-  }
-
   IntegerVector bin_counts(number_bins);
   for (int pair = 0; pair < number_pairs; ++pair) {
-    if (first_index[pair] < 0 || first_index[pair] >= number_values ||
-        second_index[pair] < 0 || second_index[pair] >= number_values) {
-      stop("Pair indices are outside the range of `values`.");
-    }
-    if (bin_index[pair] < 0 || bin_index[pair] >= number_bins) {
-      stop("Bin indices are outside the requested number of bins.");
-    }
     ++bin_counts[bin_index[pair]];
   }
 
@@ -173,18 +150,12 @@ NumericMatrix cpp_binned_semivariances(const NumericMatrix permuted_values,
 NumericVector cpp_half_integer_matern(const NumericVector distances,
                                       const double phi,
                                       const double kappa) {
-  if (!R_finite(phi) || phi <= 0.0) {
-    stop("`phi` must be a finite positive number.");
-  }
-
+  // matern_correlation() checks that phi is positive and the distances are
+  // finite and non-negative before calling this kernel
   NumericVector correlation(distances.length());
 
   for (R_xlen_t i = 0; i < distances.length(); ++i) {
     const double distance = distances[i];
-
-    if (!R_finite(distance) || distance < 0.0) {
-      stop("Distances must be finite and non-negative.");
-    }
 
     if (distance == 0.0) {
       correlation[i] = 1.0;
@@ -200,12 +171,11 @@ NumericVector cpp_half_integer_matern(const NumericVector distances,
     } else if (kappa == 1.5) {
       correlation[i] = (1.0 + scaled_distance) *
         std::exp(-scaled_distance);
-    } else if (kappa == 2.5) {
+    } else {
+      // matern_correlation() only calls this kernel for kappa = 0.5, 1.5 or 2.5
       correlation[i] = (1.0 + scaled_distance +
         scaled_distance * scaled_distance / 3.0) *
         std::exp(-scaled_distance);
-    } else {
-      stop("The compiled Matérn kernel only supports kappa = 0.5, 1.5 or 2.5.");
     }
   }
 

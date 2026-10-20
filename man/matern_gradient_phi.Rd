@@ -4,10 +4,10 @@
 \alias{matern_gradient_phi}
 \title{First Derivative with Respect to \eqn{\phi}}
 \usage{
-matern_gradient_phi(U, phi, kappa)
+matern_gradient_phi(u, phi, kappa)
 }
 \arguments{
-\item{U}{A vector of distances between pairs of data locations.}
+\item{u}{A distance matrix returned from \code{\link[stats:dist]{stats::dist()}}}
 
 \item{phi}{The scale parameter \eqn{\phi}.}
 
@@ -18,4 +18,10 @@ A matrix with the values of the first derivative of the Matern function with res
 }
 \description{
 Computes the first derivative of the Matern correlation function with respect to \eqn{\phi}.
+}
+\examples{
+x <- matrix(rnorm(20), nrow = 5)
+u <- dist(x)
+matern_gradient_phi(u, phi = 1, kappa = 0.8)
+
 }

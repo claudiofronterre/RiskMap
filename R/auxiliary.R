@@ -137,16 +137,25 @@ propose_utm <- function(data) {
 
 ##' @title Matern Correlation Function
 ##' @description Computes the Matern correlation function.
-##' @param u A vector of distances between pairs of data locations.
+##' @param u A vector or matrix of distances between pairs of data locations.
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @param return_sym_matrix A logical value indicating whether to return a symmetric correlation matrix. Defaults to \code{FALSE}.
 ##' @details The Matern correlation function is defined as
 ##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
-##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
+##' @return A vector or matrix of the same shape as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
+##' @examples
+##' u <- c(10, 20, 30)
+##' matern_correlation(u, phi = 1, kappa = 0.8)
+##'
 ##' @export
 matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+  if (any(!is.finite(u) | u < 0)) {
+    stop("'u' must contain only finite, non-negative distances", call. = FALSE)
+  }
+  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+
   input_dimensions <- if (is.matrix(u)) dim(u) else NULL
   if (is.vector(u))
     names(u) <- NULL
@@ -181,12 +190,22 @@ matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 
 ##' @title First Derivative with Respect to \eqn{\phi}
 ##' @description Computes the first derivative of the Matern correlation function with respect to \eqn{\phi}.
-##' @param U A vector of distances between pairs of data locations.
+##' @param u A distance matrix returned from [stats::dist()]
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the first derivative of the Matern function with respect to \eqn{\phi} for the given distances.
+##' @examples
+##' x <- matrix(rnorm(20), nrow = 5)
+##' u <- dist(x)
+##' matern_gradient_phi(u, phi = 1, kappa = 0.8)
+##'
 ##' @export
-matern_gradient_phi <- function(U, phi, kappa) {
+##'
+matern_gradient_phi <- function(u, phi, kappa) {
+
+  stopifnot("'u' must be an output from 'stats::dist()'" = inherits(u, "dist"))
+  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+
   der.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {
@@ -200,10 +219,10 @@ matern_gradient_phi <- function(U, phi, kappa) {
     out
   }
 
-  n <- attr(U, "Size")
+  n <- attr(u, "Size")
   grad.phi.mat <- matrix(NA, nrow = n, ncol = n)
   ind <- lower.tri(grad.phi.mat)
-  grad.phi <- der.phi(as.numeric(U), phi, kappa)
+  grad.phi <- der.phi(as.numeric(u), phi, kappa)
   grad.phi.mat[ind] <-  grad.phi
   grad.phi.mat <- t(grad.phi.mat)
   grad.phi.mat[ind] <-  grad.phi
@@ -212,13 +231,24 @@ matern_gradient_phi <- function(U, phi, kappa) {
 }
 
 ##' @title Second Derivative with Respect to \eqn{\phi}
-##' @description Computes the second derivative of the Matern correlation function with respect to \eqn{\phi}.
-##' @param U A vector of distances between pairs of data locations.
+##' @description Computes the second derivative of the Matern correlation
+##' function with respect to \eqn{\phi}.
+##' @param u A distance matrix returned from [stats::dist()]
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
-##' @return A matrix with the values of the second derivative of the Matern function with respect to \eqn{\phi} for the given distances.
+##' @return A matrix with the values of the second derivative of the
+##' Matern function with respect to \eqn{\phi} for the given distances.
+##' @examples
+##' x <- matrix(rnorm(20), nrow = 5)
+##' u <- dist(x)
+##' matern_hessian_phi(u, phi = 1, kappa = 0.8)
+##'
 ##' @export
-matern_hessian_phi <- function(U, phi, kappa) {
+matern_hessian_phi <- function(u, phi, kappa) {
+
+  stopifnot("'u' must be an output from 'stats::dist()'" = inherits(u, "dist"))
+  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+
   der2.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {
@@ -236,10 +266,10 @@ matern_hessian_phi <- function(U, phi, kappa) {
     }
     out
   }
-  n <- attr(U, "Size")
+  n <- attr(u, "Size")
   hess.phi.mat <- matrix(NA, nrow = n, ncol = n)
   ind <- lower.tri(hess.phi.mat)
-  hess.phi <- der2.phi(as.numeric(U), phi, kappa)
+  hess.phi <- der2.phi(as.numeric(u), phi, kappa)
   hess.phi.mat[ind] <-  hess.phi
   hess.phi.mat <- t(hess.phi.mat)
   hess.phi.mat[ind] <-  hess.phi
