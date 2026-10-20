@@ -2735,6 +2735,8 @@ assess_prediction <- function(object,
           model_crs      = model_crs,
           distance_units = fit0$distance_units,
           control_mcmc   = control_mcmc,
+          control_mcml   = attr(fit0, "control_mcml") %||%
+            set_control_mcml(),
           fix_var_me     = fit0$fix_var_me,
           messages       = FALSE,
           start_pars     = par_hat

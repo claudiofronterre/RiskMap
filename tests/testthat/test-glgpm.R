@@ -135,14 +135,18 @@ test_that("glgpm produces errors", {
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
-          control_mcml = list(max_iterations = 2), messages = FALSE),
+          control_mcml = list(max_stages = 2), messages = FALSE),
     "set_control_mcml"
   )
 
-  expect_error(set_control_mcml(max_iterations = 0), "positive integer")
-  expect_error(set_control_mcml(tolerance = 0), "positive number")
-  expect_error(set_control_mcml(tolerance = Inf), "positive number")
-  expect_error(set_control_mcml(min_relative_ess = 2), "between 0 and 1")
+  expect_error(set_control_mcml(initial_samples = 0), "positive integer")
+  expect_error(set_control_mcml(max_stages = 0), "positive integer")
+  expect_error(set_control_mcml(max_mcse_ratio = 0), "strictly between")
+  expect_error(set_control_mcml(score_probability = 1), "strictly between")
+  expect_error(
+    set_control_mcml(initial_samples = 1000, max_samples = 500),
+    "at least 'initial_samples'"
+  )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
@@ -205,7 +209,8 @@ expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "fix_var_me", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function", "mcml_history",
-                     "mcml_converged", "linear_predictors", "fitted_values")
+                     "mcml_converged", "mcml_selected_iteration",
+                     "linear_predictors", "fitted_values")
 
 test_that("glgpm produces expected output for gaussian models", {
 
@@ -223,6 +228,7 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_identical(fitted(fit_no_re, type = "link"),
                fit_no_re$linear_predictors)
   expect_null(fit_no_re$mcml_converged)
+  expect_null(fit_no_re$mcml_selected_iteration)
   expect_identical(fit_no_re$family, "gaussian")
   expect_identical(fit_no_re$coords[,1], data$x)
   expect_identical(fit_no_re$coords[,2], data$z)
@@ -421,6 +427,7 @@ test_that("glgpm produces expected output for binomial models", {
                      family = "binomial",
                      denominator = denominator,
                      control_mcmc = control_mcmc,
+                     control_mcml = fixture_control_mcml,
                      messages = FALSE)
 
   expect_s3_class(fit_no_re, "RiskMap")
@@ -436,12 +443,13 @@ test_that("glgpm produces expected output for binomial models", {
   expect_true(is.finite(starting_values$current_laplace))
   expect_true(is.finite(starting_values$transformed_laplace))
 
-  fit_re <- glgpm(y ~ cov + gp() + re(i),
+  fit_re <- suppressWarnings(glgpm(y ~ cov + gp() + re(i),
                   data = binomial_data,
                   family = "binomial",
                   denominator = denominator,
                   control_mcmc = control_mcmc,
-                  messages = FALSE)
+                     control_mcml = fixture_control_mcml,
+                  messages = FALSE))
 
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
@@ -475,7 +483,8 @@ test_that("transformed starts preserve an estimated nugget", {
   fit <- glgpm(
     y ~ cov + gp(nugget = TRUE), data = binomial_data,
     family = "binomial", denominator = denominator,
-    control_mcmc = control_mcmc, messages = FALSE
+    control_mcmc = control_mcmc,
+    control_mcml = fixture_control_mcml, messages = FALSE
   )
 
   diagnostics <- attr(fit, "starting_values")
@@ -505,11 +514,13 @@ test_that("explicit non-Gaussian starts remain authoritative", {
   explicit_fit_2 <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
+                     control_mcml = fixture_control_mcml,
     start_pars = start_pars, messages = FALSE
   )
   explicit_fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
+                     control_mcml = fixture_control_mcml,
     start_pars = start_pars, messages = FALSE
   )
 
@@ -525,6 +536,7 @@ test_that("final fitted samples support a nugget model", {
     family = "binomial",
     denominator = denominator,
     control_mcmc = control_mcmc,
+                     control_mcml = fixture_control_mcml,
     messages = FALSE
   )
 
@@ -545,6 +557,7 @@ test_that("custom inverse links retain the current automatic start", {
   fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
+                     control_mcml = fixture_control_mcml,
     invlink = custom_link,
     messages = FALSE
   )
@@ -560,6 +573,7 @@ test_that("glgpm produces expected output for poisson models", {
                      data = poisson_data,
                      family = "poisson",
                      control_mcmc = control_mcmc,
+                     control_mcml = fixture_control_mcml,
                      messages = FALSE)
 
   expect_s3_class(fit_no_re, "RiskMap")
@@ -568,22 +582,24 @@ test_that("glgpm produces expected output for poisson models", {
   expect_length(fitted(fit_no_re), nrow(poisson_data))
   expect_true(all(fitted(fit_no_re) > 0))
 
-  fit_re <- glgpm(y ~ cov + gp() + re(i),
+  fit_re <- suppressWarnings(glgpm(y ~ cov + gp() + re(i),
                   data = poisson_data,
                   family = "poisson",
                   control_mcmc = control_mcmc,
-                  messages = FALSE)
+                     control_mcml = fixture_control_mcml,
+                  messages = FALSE))
 
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_identical(fit_re$family, "poisson")
 
-  fit_re_den <- glgpm(y ~ cov + gp() + re(i),
+  fit_re_den <- suppressWarnings(glgpm(y ~ cov + gp() + re(i),
                       data = poisson_data,
                       denominator = denominator,
                       family = "poisson",
                       control_mcmc = control_mcmc,
-                      messages = FALSE)
+                     control_mcml = fixture_control_mcml,
+                      messages = FALSE))
 
   expect_s3_class(fit_re_den, "RiskMap")
   expect_setequal(names(fit_re_den), expected_output)
@@ -591,50 +607,41 @@ test_that("glgpm produces expected output for poisson models", {
   expect_true(all(fitted(fit_re_den) > 0))
 })
 
-test_that("iterative MCML updates its reference and records reproducible history", {
-  iterative_control <- set_control_mcml(
-    max_iterations = 2,
-    tolerance = 1e6,
-    min_relative_ess = 0
-  )
-  fit <- glgpm(
-    y ~ cov + gp(),
-    data = binomial_data,
-    family = "binomial",
-    denominator = denominator,
-    control_mcmc = control_mcmc,
-    control_mcml = iterative_control,
-    messages = FALSE
-  )
+test_that("adaptive MCML records independent precision diagnostics", {
+  set.seed(9917)
+  caller_seed <- .Random.seed
+  fit <- suppressWarnings(glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    control_mcml = fixture_control_mcml, messages = FALSE
+  ))
+  stage <- fit$mcml_history[[1L]]
+  diagnostics <- attr(fit, "optimizer")
 
-  expect_true(fit$mcml_converged)
-  expect_length(fit$mcml_history, 2)
-  expect_identical(
-    vapply(fit$mcml_history, `[[`, numeric(1), "seed"),
-    c(control_mcmc$seed, control_mcmc$seed + 1L)
-  )
-  expect_lte(fit$mcml_history[[2]]$max_standardized_change,
-             iterative_control$tolerance)
-  expect_true(is.finite(
-    fit$mcml_history[[2]]$log_likelihood_ratio_gain
-  ))
-  expect_true(is.finite(
-    fit$mcml_history[[2]]$max_standardized_change
-  ))
-  expect_identical(fit$mcml_history[[2]]$estimate, fit$estimate)
-  expect_true("reference_update" %in% names(fit$mcml_history[[2]]))
-  expect_identical(attr(fit, "optimizer")$proposed_estimate, fit$estimate)
+  expect_identical(fit$mcml_selected_iteration, 1L)
+  expect_length(fit$mcml_history, 1L)
+  expect_identical(stage$budget, 500L)
+  expect_true(all(c(
+    "fit_effective_samples", "validation_effective_samples",
+    "max_parameter_mcse_ratio", "score_agreement_statistic",
+    "score_agreement_limit", "accepted", "timing"
+  ) %in% names(stage)))
+  expect_identical(diagnostics$mcml_budget, 500L)
+  expect_identical(diagnostics$mcml_stages, 1L)
+  expect_identical(diagnostics$mcml_supported, fit$mcml_converged)
+  expect_identical(.Random.seed, caller_seed)
 })
 
-test_that("MCML overlap safeguard does not relabel a reference bridge as a fit", {
-  diagnostics <- attr(binomial_model, "optimizer")
+test_that("MCML control uses the calibrated precision defaults", {
+  control <- set_control_mcml()
 
-  expect_lt(diagnostics$step_fraction, 1)
-  expect_identical(diagnostics$proposed_estimate, binomial_model$estimate)
-  expect_false(isTRUE(all.equal(
-    diagnostics$reference_update,
-    binomial_model$estimate
-  )))
+  expect_identical(control$initial_samples, 1000L)
+  expect_identical(control$max_samples, 20000L)
+  expect_identical(control$max_stages, 5L)
+  expect_identical(control$min_effective_samples, 100L)
+  expect_identical(control$max_pareto_k, 0.7)
+  expect_identical(control$max_mcse_ratio, 0.1)
+  expect_identical(control$score_probability, 0.99)
 })
 
 
@@ -699,6 +706,7 @@ test_that("plot_mcmc produces errors as expected", {
   binomial_without_samples <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
+                     control_mcml = fixture_control_mcml,
     return_samples = FALSE, messages = FALSE
   )
   expect_null(binomial_without_samples$S_samples)

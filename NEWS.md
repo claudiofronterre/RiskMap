@@ -1,6 +1,24 @@
 RiskMap 2.0.0
 =============
 
+- Canonical binomial and Poisson models now use compiled likelihood and MALA
+kernels. The implementation retains the existing sampler, including support
+for nugget effects and multiple unstructured random effects, while avoiding
+the main interpreted-R bottlenecks. Custom inverse-link functions continue to
+use the general R implementation.
+
+- Non-Gaussian optimisation now reuses the sample-wise Monte Carlo log
+integrand when the objective, gradient, and Hessian are evaluated at identical
+parameters, avoiding a repeated likelihood calculation.
+
+- Non-Gaussian models now use automatically validated local-Laplace MCML.
+Independent fitting and validation banks must contain at least 100 effective
+draws, have acceptable importance-weight tails, agree on the score, and keep
+Monte Carlo standard error below 10% of statistical standard error in every
+parameter direction. Bank size increases only when those diagnostics require
+it. The defaults were frozen after a 1,200-dataset simulation study and 120
+independent high-accuracy adjudications; see #194.
+
 - This version introduces many breaking changes from v1. The package should not
 be considered stable, but further breaking changes will be handled gracefully.
 - `dast()` has been removed.

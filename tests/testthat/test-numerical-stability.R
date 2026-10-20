@@ -133,28 +133,14 @@ test_that("Gaussian covariance backend selection preserves correctness overrides
   expect_true(use_direct_gaussian_covariance(500, 50, 0.2, 0.4))
 })
 
-test_that("MCML convergence requires small standardised change and overlap", {
-  control <- set_control_mcml(
-    max_iterations = 3,
-    tolerance = 0.05,
-    min_relative_ess = 0.1
+test_that("importance ESS is stable for concentrated log weights", {
+  weights <- normalise_log_weights(c(1000, 999, 998))
+
+  expect_equal(sum(weights), 1, tolerance = 1e-15)
+  expect_true(all(is.finite(weights)))
+  expect_equal(
+    importance_effective_sample_size(weights),
+    1 / sum(weights^2),
+    tolerance = 1e-15
   )
-
-  expect_true(mcml_update_converged(0.04, 0.2, control))
-  expect_false(mcml_update_converged(0.06, 0.2, control))
-  expect_false(mcml_update_converged(0.04, 0.05, control))
-  expect_false(mcml_update_converged(NA_real_, 0.2, control))
-})
-
-test_that("MCML steps are shortened when the proposal lacks overlap", {
-  result <- supported_importance_step(
-    reference = 0,
-    proposal = 1,
-    log_weight_function = function(parameter) c(0, -20 * parameter),
-    min_relative_ess = 0.75
-  )
-
-  expect_lt(result$step_fraction, 1)
-  expect_gte(result$relative_importance_ess, 0.75)
-  expect_lt(result$proposal_relative_importance_ess, 0.75)
 })

@@ -320,3 +320,67 @@ test_that("re produces expected output", {
   expect_identical(result$label, "re(variable,region)")
 })
 
+
+test_that("matern_correlation returns output matching the shape of u", {
+  u <- dist(st_coordinates(gaussian_data))
+  n <- nrow(gaussian_data)
+
+  expect_error(
+    matern_correlation("a", 0.5, 0.5),
+    "'u' must contain only finite, non-negative distances"
+  )
+
+  expect_error(
+    matern_correlation(u, -0.5, 0.5),
+    "must be a single finite number"
+  )
+
+  for (kappa in c(0.5, 0.8)) {
+    vector_output <- matern_correlation(as.numeric(u), phi = 1, kappa = kappa)
+    expect_type(vector_output, "double")
+    expect_null(dim(vector_output))
+    expect_length(vector_output, length(u))
+
+    matrix_input <- as.matrix(u)[1:3, ]
+    matrix_output <- matern_correlation(matrix_input, phi = 1, kappa = kappa)
+    expect_true(is.matrix(matrix_output))
+    expect_type(matrix_output, "double")
+    expect_identical(dim(matrix_output), dim(matrix_input))
+
+    sym_output <- matern_correlation(u, phi = 1, kappa = kappa,
+                                     return_sym_matrix = TRUE)
+    expect_true(is.matrix(sym_output))
+    expect_type(sym_output, "double")
+    expect_identical(dim(sym_output), c(n, n))
+    expect_true(isSymmetric(sym_output))
+    expect_identical(diag(sym_output), rep(1, n))
+  }
+})
+
+test_that("matern_gradient_phi and matern_hessian_phi return symmetric n x n matrices", {
+  u <- dist(st_coordinates(gaussian_data))
+  n <- nrow(gaussian_data)
+
+  # kappa = 0.5 uses the closed form, other values use the Bessel form
+  for (kappa in c(0.5, 0.8)) {
+    for (derivative in list(matern_gradient_phi, matern_hessian_phi)) {
+
+      expect_error(
+        derivative("u", 0.5, 0.5),
+        "'u' must be an output from 'stats::dist"
+      )
+
+      expect_error(
+        derivative(u, -0.5, 0.5),
+        "must be a single finite number"
+      )
+
+      output <- derivative(u, phi = 1, kappa = kappa)
+      expect_true(is.matrix(output))
+      expect_type(output, "double")
+      expect_identical(dim(output), c(n, n))
+      expect_true(isSymmetric(output))
+      expect_true(all(is.finite(output)))
+    }
+  }
+})
