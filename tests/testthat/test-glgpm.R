@@ -205,7 +205,8 @@ expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "fix_var_me", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function", "mcml_history",
-                     "mcml_converged", "linear_predictors", "fitted_values")
+                     "mcml_converged", "mcml_selected_iteration",
+                     "linear_predictors", "fitted_values")
 
 test_that("glgpm produces expected output for gaussian models", {
 
@@ -223,6 +224,7 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_identical(fitted(fit_no_re, type = "link"),
                fit_no_re$linear_predictors)
   expect_null(fit_no_re$mcml_converged)
+  expect_null(fit_no_re$mcml_selected_iteration)
   expect_identical(fit_no_re$family, "gaussian")
   expect_identical(fit_no_re$coords[,1], data$x)
   expect_identical(fit_no_re$coords[,2], data$z)
@@ -608,6 +610,7 @@ test_that("iterative MCML updates its reference and records reproducible history
   )
 
   expect_true(fit$mcml_converged)
+  expect_identical(fit$mcml_selected_iteration, 2L)
   expect_length(fit$mcml_history, 2)
   expect_identical(
     vapply(fit$mcml_history, `[[`, numeric(1), "seed"),
@@ -627,19 +630,42 @@ test_that("iterative MCML updates its reference and records reproducible history
 })
 
 test_that("MCML overlap safeguard does not relabel a reference bridge as a fit", {
-  diagnostics <- attr(binomial_model, "optimizer")
+  single_update <- glgpm(
+    y ~ cov + gp() + re(i),
+    data = binomial_data,
+    family = "binomial",
+    denominator = denominator,
+    control_mcmc = control_mcmc,
+    control_mcml = set_control_mcml(max_iterations = 1),
+    messages = FALSE
+  )
+  diagnostics <- attr(single_update, "optimizer")
 
   expect_lt(diagnostics$step_fraction, 1)
-  expect_identical(diagnostics$proposed_estimate, binomial_model$estimate)
+  expect_identical(diagnostics$proposed_estimate, single_update$estimate)
   expect_false(isTRUE(all.equal(
     diagnostics$reference_update,
-    binomial_model$estimate
+    single_update$estimate
   )))
+})
+
+test_that("MCML limit selects the latest fully supported result", {
+  current <- list(label = "unsupported final proposal")
+  supported <- list(label = "fully supported proposal")
+
+  fallback <- select_mcml_result(current, supported, 12L, 8L, 0.5)
+  final <- select_mcml_result(current, supported, 12L, 8L, 1)
+
+  expect_identical(fallback$result, supported)
+  expect_identical(fallback$iteration, 8L)
+  expect_identical(final$result, current)
+  expect_identical(final$iteration, 12L)
 })
 
 test_that("MCML control uses the calibrated default stopping tolerance", {
   control <- set_control_mcml()
 
+  expect_identical(control$max_iterations, 12L)
   expect_identical(control$tolerance, 0.1)
   expect_identical(control$min_relative_ess, 0.1)
 })

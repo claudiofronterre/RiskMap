@@ -144,6 +144,10 @@
 ##' \item{mcml_converged}{Whether repeated MCML updates met the requested
 ##' tolerance. `NA` when only one update was requested and `NULL` for Gaussian
 ##' models.}
+##' \item{mcml_selected_iteration}{The MCML iteration whose estimate is
+##' returned. If the final update has inadequate importance-sampling overlap,
+##' the most recent fully supported estimate is returned instead. `NULL` for
+##' Gaussian models.}
 ##'
 ##' @examples
 ##'
@@ -497,6 +501,7 @@ glgpm <- function(formula,
             messages = messages)
     res["mcml_history"] <- list(NULL)
     res["mcml_converged"] <- list(NULL)
+    res["mcml_selected_iteration"] <- list(NULL)
   } else if(not_gaussian) {
     # For MCML, the starting parameters also define the posterior reference
     # distribution used for the first importance sample. Later references are
@@ -506,6 +511,9 @@ glgpm <- function(formula,
     mcml_history <- vector("list", control_mcml$max_iterations)
     previous_estimate <- NULL
     converged <- if (control_mcml$max_iterations == 1L) NA else FALSE
+    last_supported_result <- NULL
+    last_supported_iteration <- NA_integer_
+    selected_iteration <- NA_integer_
     for (iteration in seq_len(control_mcml$max_iterations)) {
       iteration_mcmc <- mcml_iteration_control(control_mcmc, iteration)
       if (messages && control_mcml$max_iterations > 1L) {
@@ -552,10 +560,20 @@ glgpm <- function(formula,
         seed = iteration_mcmc$seed
       )
 
+      # A full step means the importance sample supports the fitted estimate.
+      # Retain that complete fitted object so a later poorly supported update
+      # cannot replace a reliable result merely because the iteration limit is
+      # reached.
+      if (optimizer$step_fraction == 1) {
+        last_supported_result <- res
+        last_supported_iteration <- iteration
+      }
+
       if (mcml_update_converged(
         standardized_change, optimizer$relative_importance_ess, control_mcml
       ) && optimizer$step_fraction == 1) {
         converged <- TRUE
+        selected_iteration <- iteration
         mcml_history <- mcml_history[seq_len(iteration)]
         break
       }
@@ -564,14 +582,28 @@ glgpm <- function(formula,
         estimate_to_mcml_reference(reference_update, fix_tau2)
     }
     if (control_mcml$max_iterations > 1L && !isTRUE(converged)) {
+      selection <- select_mcml_result(
+        current_result = res,
+        last_supported_result = last_supported_result,
+        current_iteration = length(mcml_history),
+        last_supported_iteration = last_supported_iteration,
+        final_step_fraction = mcml_history[[length(mcml_history)]]$step_fraction
+      )
+      res <- selection$result
+      selected_iteration <- selection$iteration
       warning(
         "MCML updates reached 'max_iterations' without satisfying both the ",
-        "parameter-change tolerance and minimum relative importance ESS.",
+        "parameter-change tolerance and minimum relative importance ESS. ",
+        "Returning iteration ", selected_iteration, ".",
         call. = FALSE
       )
     }
+    if (control_mcml$max_iterations == 1L) {
+      selected_iteration <- 1L
+    }
     res$mcml_history <- mcml_history
     res$mcml_converged <- converged
+    res$mcml_selected_iteration <- selected_iteration
 
     if (return_samples) {
       # The samples used by MCML target the current reference distribution,
@@ -3015,7 +3047,8 @@ laplace_sampling_mcmc <- function(y,
 ##' reproduces the standard RiskMap fitting procedure.
 ##'
 ##' @param max_iterations Positive integer giving the maximum number of MCML
-##' updates. Defaults to one.
+##' updates. Defaults to 12; fitting stops earlier when the convergence and
+##' importance-sampling criteria are both satisfied.
 ##' @param tolerance Positive numeric tolerance for the largest parameter change
 ##' divided by its current standard error. It is evaluated from the second
 ##' update onwards.
@@ -3027,7 +3060,7 @@ laplace_sampling_mcmc <- function(y,
 ##' control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.1)
 ##' @seealso [glgpm()], [set_control_mcmc()]
 ##' @export
-set_control_mcml <- function(max_iterations = 1L, tolerance = 0.1,
+set_control_mcml <- function(max_iterations = 12L, tolerance = 0.1,
                              min_relative_ess = 0.1) {
   check_positive_integer(max_iterations, "max_iterations")
   check_positive_number(tolerance, "")
@@ -3049,6 +3082,25 @@ mcml_iteration_control <- function(control_mcmc, iteration) {
     out$seed <- as.integer(((out$seed - 1 + iteration - 1) %% integer_max) + 1)
   }
   out
+}
+
+##' Select the estimate returned when iterative MCML reaches its limit
+##'
+##' A shortened reference step is evidence that the current importance sample
+##' does not adequately support the optimiser proposal. Prefer the latest
+##' proposal supported by a full step when one is available.
+##' @noRd
+select_mcml_result <- function(current_result, last_supported_result,
+                               current_iteration, last_supported_iteration,
+                               final_step_fraction) {
+  if (final_step_fraction < 1 && !is.null(last_supported_result)) {
+    return(list(
+      result = last_supported_result,
+      iteration = as.integer(last_supported_iteration)
+    ))
+  }
+
+  list(result = current_result, iteration = as.integer(current_iteration))
 }
 
 ##' Assess both numerical stability and importance-sampling overlap

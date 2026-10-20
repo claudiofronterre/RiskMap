@@ -141,6 +141,10 @@ supplied covariate and distance units. \code{NULL} for Gaussian models.}
 \item{mcml_converged}{Whether repeated MCML updates met the requested
 tolerance. \code{NA} when only one update was requested and \code{NULL} for Gaussian
 models.}
+\item{mcml_selected_iteration}{The MCML iteration whose estimate is
+returned. If the final update has inadequate importance-sampling overlap,
+the most recent fully supported estimate is returned instead. \code{NULL} for
+Gaussian models.}
 }
 \description{
 Fits generalized linear Gaussian process models to spatial data,

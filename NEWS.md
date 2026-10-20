@@ -1,6 +1,12 @@
 RiskMap 2.0.0
 =============
 
+- Non-Gaussian models now perform up to 12 MCML updates by default and stop
+early once both the standardized parameter-change and importance-sampling
+criteria are satisfied. If the iteration limit is reached after an unsupported
+shortened step, the latest fully supported fit is returned and identified by
+`mcml_selected_iteration`.
+
 - The default standardized parameter-change tolerance for iterative MCML
 updates is now `0.1`. Calibration against independent Monte Carlo banks showed
 that the previous `0.05` threshold caused unnecessary additional updates

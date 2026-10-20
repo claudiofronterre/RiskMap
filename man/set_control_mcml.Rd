@@ -4,11 +4,12 @@
 \alias{set_control_mcml}
 \title{Set control parameters for iterative MCML estimation}
 \usage{
-set_control_mcml(max_iterations = 1L, tolerance = 0.1, min_relative_ess = 0.1)
+set_control_mcml(max_iterations = 12L, tolerance = 0.1, min_relative_ess = 0.1)
 }
 \arguments{
 \item{max_iterations}{Positive integer giving the maximum number of MCML
-updates. Defaults to one.}
+updates. Defaults to 12; fitting stops earlier when the convergence and
+importance-sampling criteria are both satisfied.}
 
 \item{tolerance}{Positive numeric tolerance for the largest parameter change
 divided by its current standard error. It is evaluated from the second
