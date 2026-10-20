@@ -99,7 +99,10 @@ test_that("compiled MALA reproduces the general R transition", {
   )
 
   expect_identical(compiled$acceptance, r_reference$acceptance)
-  expect_identical(compiled$tuning_par, r_reference$tuning_par)
+  # Equivalent floating-point update orders differ at machine precision on
+  # some BLAS/platform combinations.
+  expect_equal(compiled$tuning_par, r_reference$tuning_par,
+               tolerance = 1e-14)
   # The two paths use algebraically equivalent derivative calculations.
   expect_equal(compiled$samples$S, r_reference$samples$S, tolerance = 5e-5)
 })
