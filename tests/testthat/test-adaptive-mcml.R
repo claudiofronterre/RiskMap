@@ -160,6 +160,12 @@ test_that("set_control_mcml validates laplace_start", {
   expect_error(set_control_mcml(laplace_start = "yes"), "laplace_start")
 })
 
+test_that("set_control_mcml validates hold_short_range", {
+  expect_true(set_control_mcml()$hold_short_range)
+  expect_false(set_control_mcml(hold_short_range = FALSE)$hold_short_range)
+  expect_error(set_control_mcml(hold_short_range = NA), "hold_short_range")
+})
+
 test_that("median nearest-neighbour distance ignores duplicate locations", {
   distances <- as.matrix(dist(c(0, 0, 1, 3)))
   expect_identical(median_nearest_neighbour_distance(distances), 1)

@@ -2956,6 +2956,11 @@ laplace_sampling_mcmc <- function(y,
 ##' maximum likelihood starts from the best Laplace estimate. Defaults to
 ##' `FALSE`: in validation this changed which local maximum was reached about as
 ##' often for the worse as for the better, at extra computational cost.
+##' @param hold_short_range Logical. If `TRUE` (the default), a spatial range
+##' estimated below the median distance between neighbouring locations is held
+##' at that distance, because spatial correlation on a shorter scale cannot be
+##' distinguished from unstructured variation; a warning is issued. Set to
+##' `FALSE` to obtain the unconstrained maximum likelihood estimate.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
 ##' control_mcml <- set_control_mcml(max_samples = 10000)
@@ -2967,7 +2972,8 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
                              max_pareto_k = 0.7,
                              max_mcse_ratio = 0.1,
                              score_probability = 0.99,
-                             laplace_start = FALSE) {
+                             laplace_start = FALSE,
+                             hold_short_range = TRUE) {
   check_positive_integer(initial_samples, "initial_samples")
   check_positive_integer(max_samples, "max_samples")
   check_positive_integer(max_stages, "max_stages")
@@ -2980,6 +2986,10 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
   if (!is.logical(laplace_start) || length(laplace_start) != 1L ||
       is.na(laplace_start)) {
     stop("'laplace_start' must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (!is.logical(hold_short_range) || length(hold_short_range) != 1L ||
+      is.na(hold_short_range)) {
+    stop("'hold_short_range' must be TRUE or FALSE.", call. = FALSE)
   }
   if (max_samples < initial_samples) {
     stop("'max_samples' must be at least 'initial_samples'.", call. = FALSE)
@@ -2998,7 +3008,8 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
       max_pareto_k = max_pareto_k,
       max_mcse_ratio = max_mcse_ratio,
       score_probability = score_probability,
-      laplace_start = laplace_start
+      laplace_start = laplace_start,
+      hold_short_range = hold_short_range
     ),
     class = "RiskMap_control_mcml"
   )

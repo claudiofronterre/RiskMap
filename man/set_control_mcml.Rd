@@ -12,7 +12,8 @@ set_control_mcml(
   max_pareto_k = 0.7,
   max_mcse_ratio = 0.1,
   score_probability = 0.99,
-  laplace_start = FALSE
+  laplace_start = FALSE,
+  hold_short_range = TRUE
 )
 }
 \arguments{
@@ -44,6 +45,12 @@ likelihood is first maximised from several starting values and Monte Carlo
 maximum likelihood starts from the best Laplace estimate. Defaults to
 \code{FALSE}: in validation this changed which local maximum was reached about as
 often for the worse as for the better, at extra computational cost.}
+
+\item{hold_short_range}{Logical. If \code{TRUE} (the default), a spatial range
+estimated below the median distance between neighbouring locations is held
+at that distance, because spatial correlation on a shorter scale cannot be
+distinguished from unstructured variation; a warning is issued. Set to
+\code{FALSE} to obtain the unconstrained maximum likelihood estimate.}
 }
 \value{
 A control object of class \code{RiskMap_control_mcml}.

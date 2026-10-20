@@ -903,7 +903,8 @@ glgpm_nong_adaptive <- function(
       list(engine$layout$index$phi), engine$layout$index$sigma2
     ),
     range_index = engine$layout$index$phi,
-    minimum_log_range = log(median_nearest_neighbour_distance(distances))
+    minimum_log_range = if (isFALSE(control_mcml$hold_short_range)) -Inf else
+      log(median_nearest_neighbour_distance(distances))
   )
   last <- fit$history[[length(fit$history)]]
   public_history <- compact_adaptive_mcml_history(fit$history)
