@@ -134,24 +134,26 @@ test_that("prediction scaling preserves draws at fixed fitted parameters", {
   attr(unscaled_model, "distance_scale") <- NULL
 
   set.seed(712)
-  scaled_prediction <- setup_prediction(
+  scaled_prediction <- predict(
     scaled_model,
-    grid_pred = st_geometry(gaussian_data),
+    newdata = gaussian_data,
     type = "joint",
     control_mcmc = control_mcmc,
+    keep_samples = TRUE,
     messages = FALSE
   )
   set.seed(712)
-  unscaled_prediction <- setup_prediction(
+  unscaled_prediction <- predict(
     unscaled_model,
-    grid_pred = st_geometry(gaussian_data),
+    newdata = gaussian_data,
     type = "joint",
     control_mcmc = control_mcmc,
+    keep_samples = TRUE,
     messages = FALSE
   )
 
-  expect_equal(scaled_prediction$S_samples,
-               unscaled_prediction$S_samples,
+  expect_equal(scaled_prediction$samples$spatial,
+               unscaled_prediction$samples$spatial,
                tolerance = 1e-12)
 })
 
@@ -270,4 +272,47 @@ test_that("automatic marginal batching preserves unbatched predictions", {
 
   expect_identical(marginal_prediction_batch_size(10, 5), 10)
   expect_lt(marginal_prediction_batch_size(1e6, 1000), 1e6)
+})
+
+test_that("grouped joint prediction writes independent blocks in row order", {
+  prediction <- cbind(c(0.1, 0.8, 0.2, 0.9), 0)
+  conditioning <- cbind(c(0, 0.5, 1), 0)
+  covariance <- matern_correlation(
+    pairwise_distances(conditioning), phi = 0.4, kappa = 1.5,
+    return_sym_matrix = TRUE
+  )
+  diag(covariance) <- diag(covariance) + 0.1
+  root <- factor_covariance(covariance)
+  weight_function <- function(x) cholesky_prediction_weights(x, root)
+  signal <- matrix(seq_len(15) / 10, nrow = 3)
+  groups <- list(c(1L, 3L), c(2L, 4L))
+
+  draw_block <- function(index) {
+    block <- prediction[index, , drop = FALSE]
+    cross_covariance <- matern_correlation(
+      cross_distances(block, conditioning), phi = 0.4, kappa = 1.5
+    )
+    weights <- weight_function(cross_covariance)
+    mean <- weights %*% signal
+    conditional_covariance <- matern_correlation(
+      pairwise_distances(block), phi = 0.4, kappa = 1.5,
+      return_sym_matrix = TRUE
+    ) - weights %*% t(cross_covariance)
+    sample_correlated_gaussian(
+      mean, t(factor_covariance(conditional_covariance)), ncol(signal)
+    )
+  }
+
+  expected <- matrix(NA_real_, nrow = 4, ncol = ncol(signal))
+  set.seed(152)
+  for (index in groups) expected[index, ] <- draw_block(index)
+  set.seed(152)
+  actual <- grouped_joint_prediction(
+    prediction, conditioning, groups, weight_function, signal,
+    marginal_variance = 1, phi = 0.4, kappa = 1.5,
+    n_samples = ncol(signal)
+  )
+
+  expect_identical(dim(actual), c(4L, ncol(signal)))
+  expect_equal(actual, expected, tolerance = 1e-14)
 })

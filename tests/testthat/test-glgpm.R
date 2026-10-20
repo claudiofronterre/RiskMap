@@ -697,7 +697,7 @@ test_that("plot_mcmc produces errors as expected", {
 
   expect_error(
     plot_mcmc("not risk"),
-    "'object' must be either")
+    "'object' must be a 'RiskMap'")
 
   expect_error(
     plot_mcmc(gaussian_model),
@@ -757,15 +757,6 @@ test_that("plot_mcmc produces errors as expected", {
 
   expect_no_error(
     plot_mcmc(poisson_model, check_mean = FALSE, component = 10)
-  )
-
-  poisson_grid <- setup_prediction(poisson_model, control_mcmc = control_mcmc)
-  expect_no_error(
-    plot_mcmc(poisson_grid)
-  )
-
-  expect_no_error(
-    plot_mcmc(poisson_grid, check_mean = FALSE, component = 10)
   )
 
 })

@@ -3198,13 +3198,11 @@ set_control_mcmc <- function(n_sim = 12000,
 ##' Check MCMC Convergence for Spatial Random Effects
 ##'
 ##' This function checks the Markov Chain Monte Carlo (MCMC) convergence of spatial random effects
-##' for either a \code{RiskMap} or \code{RiskMap_pred} object.
+##' for a fitted \code{RiskMap} object.
 ##' It plots the trace plot and autocorrelation function (ACF) for the MCMC chain
 ##' and calculates the effective sample size (ESS).
 ##'
-##' @param object An object of class \code{RiskMap} or \code{RiskMap_pred}.
-##'  \code{RiskMap} is the output from \code{\link{glgpm}} function, and
-##'  \code{RiskMap_pred} is obtained from the \code{\link{setup_prediction}} function.
+##' @param object A fitted \code{RiskMap} object returned by \code{\link{glgpm}}.
 ##' @param check_mean Logical. If \code{TRUE}, checks the MCMC chain for the mean of the spatial random effects.
 ##'  If \code{FALSE}, checks the chain for a specific component of the random effects vector.
 ##' @param component Integer. The index of the spatial random effects component to check when \code{check_mean = FALSE}.
@@ -3212,7 +3210,7 @@ set_control_mcmc <- function(n_sim = 12000,
 ##' @param ... Additional arguments passed to the \code{\link[stats]{acf}} function for customizing the ACF plot.
 ##'
 ##' @details
-##' The function first checks that the input object is either of class \code{RiskMap} or \code{RiskMap_pred}.
+##' The function first checks that the input is a fitted \code{RiskMap} object.
 ##' Depending on the value of \code{check_mean}, it either calculates the mean of the spatial random effects
 ##' across all locations for each iteration or uses the specified component.
 ##' It then generates two plots:
@@ -3233,11 +3231,9 @@ set_control_mcmc <- function(n_sim = 12000,
 ##' @export
 plot_mcmc <- function(object, check_mean = TRUE,
                        component = NULL, ...) {
-  if(!inherits(object, "RiskMap") &
-     !inherits(object, "RiskMap_pred")) {
-    stop("'object' must be either:
-           a 'RiskMap' object obtained as an output from 'glgpm';
-           a 'RiskMap_pred' object obtained as an output from 'setup_prediction'")
+  if (!inherits(object, "RiskMap")) {
+    stop("'object' must be a 'RiskMap' object returned by 'glgpm'",
+         call. = FALSE)
   }
 
   if (object$family == "gaussian")
@@ -3246,11 +3242,7 @@ plot_mcmc <- function(object, check_mean = TRUE,
   if (is.null(object$S_samples))
     stop("'object' does not contain any MCMC chains - rerun 'glgpm' with 'return_samples' = TRUE")
 
-  if(inherits(object, "RiskMap")) {
-    S_samples <- object$S_samples
-  } else if (inherits(object, "RiskMap_pred")) {
-    S_samples <- t(object$S_samples)
-  }
+  S_samples <- object$S_samples
 
   if(check_mean & !is.null(component)) {
     warning("if check_mean = TRUE, the value passed to 'component' is ignored;
