@@ -1,11 +1,12 @@
 Package: RiskMap
 Version: 2.0.0
 Title: Geostatistical Modeling of Spatially Referenced Data
-Description: Geostatistical analysis of continuous and count data.
+Description: Geostatistical analysis of continuous and count point data.
   Implements stationary Gaussian processes with Matérn correlation for spatial prediction,
   as described in Diggle and Giorgi (2019, ISBN: 978-1-138-06102-7). An accompanying book
   by Giorgi and Fronterre describes how the package can be used for model-based
-  geostatistics in public health: <https://www.mbgr.org/>.
+  geostatistics in public health: <https://www.mbgr.org/>. It is a successor 
+  to 'PrevMap'.
 Authors@R: 
   c(person(given = "Emanuele",
            family = "Giorgi",
@@ -30,6 +31,7 @@ Imports:
     ggspatial,
     gridExtra,
     knitr,
+    loo,
     Matrix,
     numDeriv,
     Rcpp,
@@ -41,7 +43,8 @@ Imports:
     tibble,
     units
 LinkingTo:
-    Rcpp
+    Rcpp,
+    RcppEigen
 Suggests:
     testthat (>= 3.0.0)
 License: MIT + file LICENSE
@@ -50,5 +53,5 @@ LazyData: true
 URL: https://claudiofronterre.github.io/RiskMap/
 BugReports: https://github.com/claudiofronterre/RiskMap/issues
 Config/testthat/edition: 3
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1
 Config/roxygen2/markdown: TRUE

@@ -1,7 +1,7 @@
 test_that("summarise_distance produces errors", {
 
   test_that("data must be an object of class 'sf'", {
-    df <- data.frame(x = 1:5, y = 1:5, y = rnorm(5))
+    df <- data.frame(x = 1:5, y = 1:5)
     expect_error(
       summarise_distance(df),
       "'data' must be of class 'sf'"
@@ -43,10 +43,10 @@ test_that("summarise_distance produces correct output", {
   result <- summarise_distance(square_sf, distance_units = "m")
   expect_length(result, 4)
   expect_setequal(names(result), c("min", "max", "mean", "median"))
-  expect_equal(result[["min"]], 1)
-  expect_equal(result[["max"]], sqrt(2))
-  expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6)
-  expect_equal(result[["median"]], 1)
+  expect_identical(result[["min"]], 1)
+  expect_identical(result[["max"]], sqrt(2))
+  expect_identical(result[["mean"]], (4 + (2*sqrt(2))) / 6)
+  expect_identical(result[["median"]], 1)
 
   # reprojected to an explicit distance_crs (tolerance to account for round trip)
   result <- summarise_distance(square_sf, distance_crs = 3857, distance_units = "m")
@@ -57,10 +57,10 @@ test_that("summarise_distance produces correct output", {
 
   # scaled (default distance_units = "km")
   result <- summarise_distance(square_sf)
-  expect_equal(result[["min"]], 0.001)
+  expect_identical(result[["min"]], 0.001)
   expect_equal(result[["max"]], sqrt(2) / 1000)
-  expect_equal(result[["mean"]], (4 + (2*sqrt(2))) / 6000)
-  expect_equal(result[["median"]], 0.001)
+  expect_identical(result[["mean"]], (4 + (2*sqrt(2))) / 6000)
+  expect_identical(result[["median"]], 0.001)
 
 })
 
@@ -73,7 +73,7 @@ test_that("summarise_distance follows the glgpm() CRS convention", {
     result <- summarise_distance(latlon, distance_units = "m"),
     "automatically reprojecting to EPSG"
   )
-  expect_equal(result, summarise_distance(st_transform(latlon, suggested_crs),
+  expect_identical(result, summarise_distance(st_transform(latlon, suggested_crs),
                                           distance_units = "m"))
 
   # an already-projected CRS is retained as-is, with no message
@@ -81,7 +81,7 @@ test_that("summarise_distance follows the glgpm() CRS convention", {
 
   # an explicit distance_crs is honoured
   result <- summarise_distance(gaussian_data, distance_crs = 32637, distance_units = "m")
-  expect_equal(result, summarise_distance(gaussian_data, distance_units = "m"))
+  expect_identical(result, summarise_distance(gaussian_data, distance_units = "m"))
 })
 
 test_that("summarise_distance derives distance units from a non-metre CRS", {
@@ -90,14 +90,14 @@ test_that("summarise_distance derives distance units from a non-metre CRS", {
   coords <- coordinates_in_units(foot_data, "m")
 
   result <- summarise_distance(foot_data, distance_units = "m")
-  expect_equal(result[["max"]], max(dist(unique(coords))))
+  expect_identical(result[["max"]], max(dist(unique(coords))))
 })
 
 
 test_that("variogram produces errors", {
 
   test_that("data must be an object of class 'sf'", {
-    df <- data.frame(x = 1:5, y = 1:5, y = rnorm(5))
+    df <- data.frame(x = 1:5, y = 1:5)
     expect_error(
       variogram(df, variable = "y"),
       "'data' must be of class 'sf'"
@@ -333,12 +333,12 @@ test_that("variogram produces expected output", {
   expect_s3_class(result, "RiskMap_variogram")
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
-  expect_equal(nrow(result$variogram), 10)
-  expect_equal(result$distance_units, "m")
-  expect_equal(result$n_permutations, 99)
+  expect_identical(nrow(result$variogram), 10L)
+  expect_identical(result$distance_units, "m")
+  expect_identical(result$n_permutations, 99)
   expect_length(result$breaks, 10 + 1)
-  expect_equal(result$level, 0.95)
-  expect_equal(result$envelope_method, "global_extreme_rank_length")
+  expect_identical(result$level, 0.95)
+  expect_identical(result$envelope_method, "global_extreme_rank_length")
 
   breaks <- seq(0, 9000, 1000)
   result <- variogram(gaussian_data, variable = "y", breaks = breaks,
@@ -346,18 +346,18 @@ test_that("variogram produces expected output", {
   expect_s3_class(result, "RiskMap_variogram")
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
-  expect_equal(result$distance_units, "m")
-  expect_equal(result$n_permutations, 99)
-  expect_equal(nrow(result$variogram), length(breaks) - 1)
-  expect_equal(result$breaks, breaks)
+  expect_identical(result$distance_units, "m")
+  expect_identical(result$n_permutations, 99)
+  expect_identical(nrow(result$variogram), length(breaks) - 1L)
+  expect_identical(result$breaks, breaks)
 
   result <- variogram(gaussian_data, variable = "y", n_bins = 10, n_permutations = 0)
   expect_s3_class(result, "RiskMap_variogram")
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns_zero)
-  expect_equal(nrow(result$variogram), 10)
-  expect_equal(result$distance_units, "m")
-  expect_equal(result$n_permutations, 0)
+  expect_identical(nrow(result$variogram), 10L)
+  expect_identical(result$distance_units, "m")
+  expect_identical(result$n_permutations, 0)
   expect_length(result$breaks, 10 + 1)
   expect_null(result$envelope_method)
 })
@@ -384,16 +384,16 @@ test_that("variogram values are correct for a simple dataset", {
                       n_permutations = 119,
                       seed = 12)
 
-  expect_equal(sum(result$variogram$n_pairs), 6)
+  expect_identical(sum(result$variogram$n_pairs), 6L)
 
   bin1 <- result$variogram$n_pairs == 4
   bin2 <- result$variogram$n_pairs == 2
 
-  expect_equal(result$variogram$distance[bin1], 1)
-  expect_equal(result$variogram$distance[bin2], sqrt(2))
+  expect_identical(result$variogram$distance[bin1], 1)
+  expect_identical(result$variogram$distance[bin2], sqrt(2))
 
-  expect_equal(result$variogram$semivariance[bin1], manual_observed[1])
-  expect_equal(result$variogram$semivariance[bin2], manual_observed[2])
+  expect_identical(result$variogram$semivariance[bin1], manual_observed[1])
+  expect_identical(result$variogram$semivariance[bin2], manual_observed[2])
 })
 
 test_that("compiled binned semivariances agree with a direct calculation", {
@@ -422,8 +422,8 @@ test_that("global rank envelope uses the whole curve and handles ties conservati
 
   envelope <- global_rank_envelope(curves, level = 0.8)
 
-  expect_equal(envelope$lower, c(0, 0))
-  expect_equal(envelope$upper, c(10, 10))
+  expect_identical(envelope$lower, c(0, 0))
+  expect_identical(envelope$upper, c(10, 10))
 })
 
 test_that("a variogram seed is reproducible without changing the caller RNG", {
@@ -433,7 +433,7 @@ test_that("a variogram seed is reproducible without changing the caller RNG", {
   expect_identical(.Random.seed, state_before)
   second <- variogram(gaussian_data, "y", n_permutations = 99, seed = 5)
 
-  expect_equal(first, second)
+  expect_identical(first, second)
 })
 
 test_that("plot.RiskMap_variogram defaults to plotting the envelope when available", {

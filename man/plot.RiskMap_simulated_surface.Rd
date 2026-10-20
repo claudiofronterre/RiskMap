@@ -27,8 +27,7 @@ Maps the linear predictor of a surface extracted with
 \code{\link[=simulated_surface]{simulated_surface()}} over its prediction grid.
 }
 \details{
-The styling matches \code{\link[=plot.RiskMap_predict_grid_target]{plot.RiskMap_predict_grid_target()}}, without the
-north arrow and scale bar. The returned object can be modified further
+The returned object can be modified further
 with standard \pkg{ggplot2} functions.
 }
 \seealso{

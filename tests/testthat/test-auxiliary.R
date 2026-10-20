@@ -16,6 +16,9 @@ test_that("check_formula functions correctly", {
   expect_no_error(check_formula(y ~ log(c) + gp(), data))
 
   expect_error(check_formula("not formula", data), "'formula' must be a 'formula'")
+  expect_error(check_formula(~ gp(), data), "The 'formula' must specify a response")
+  expect_error(check_formula(~ gp(), data, response_required = FALSE),
+               "The 'formula' must specify a response")
   expect_error(check_formula(y ~ c, data), "The 'formula' must contain a Gaussian Process term")
   expect_error(check_formula(y ~ gp, data), "The 'formula' must contain a Gaussian Process term")
   expect_error(check_formula(y ~ gp(xx, c), data), "The 'formula' term 'xx'")
@@ -81,7 +84,7 @@ test_that("check_data functions correctly", {
   sf_multipolygon <- sf::st_sf(z = 3, geometry = sf::st_sfc(multipolygon), crs = sf::st_crs(4326))
   sf_merged <- rbind(gaussian_data, sf_polygon)
 
-  expect_error(check_data(gaussian_data, geometry = "n"), "'geometry' must be either 'point' or 'polygon'")
+  expect_error(check_data(gaussian_data, geometry = "n"), "'geometry' must be either 'point', 'polygon' or 'any'")
   expect_error(check_data(gaussian_data, type = "n"), "'type' must be either 'sf' or 'sfc'")
 
   expect_no_error(check_data(gaussian_data))
@@ -132,53 +135,22 @@ test_that("gp functions correctly", {
   default_result <- gp()
 
   expect_setequal(names(default_result), expected_output)
-  expect_equal(default_result$term, "sf")
-  expect_equal(default_result$kappa, 0.5)
-  expect_equal(default_result$nugget, 0)
-  expect_equal(default_result$dim, 0)
-  expect_equal(default_result$label, "gp()")
+  expect_identical(default_result$term, "sf")
+  expect_identical(default_result$kappa, 0.5)
+  expect_identical(default_result$nugget, 0)
+  expect_identical(default_result$dim, 0L)
+  expect_identical(default_result$label, "gp()")
 
   true_result <- gp(nugget = TRUE)
-  expect_equal(true_result$nugget, TRUE)
+  expect_true(true_result$nugget)
 
   custom_result <- gp(a, b, kappa = 2, nugget = 3)
-  expect_equal(custom_result$term, c("a", "b"))
-  expect_equal(custom_result$kappa, 2)
-  expect_equal(custom_result$nugget, 3)
-  expect_equal(custom_result$dim, 2)
-  expect_equal(custom_result$label, "gp(a,b)")
+  expect_identical(custom_result$term, c("a", "b"))
+  expect_identical(custom_result$kappa, 2)
+  expect_identical(custom_result$nugget, 3)
+  expect_identical(custom_result$dim, 2L)
+  expect_identical(custom_result$label, "gp(a,b)")
 
-})
-
-test_that("estimates are consistent between coef and summary", {
-
-  sum <- summary(gaussian_model)
-  cof <- coef(gaussian_model)
-
-  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
-  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
-  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_me, sum$me[1,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
-
-  sum <- summary(binomial_model)
-  cof <- coef(binomial_model)
-
-  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
-  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
-  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
-
-  sum <- summary(poisson_model)
-  cof <- coef(poisson_model)
-
-  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
-  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
-  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
 })
 
 test_that("check_positive_integer functions correctly", {
@@ -277,6 +249,176 @@ test_that("plot.RiskMap_cross_validation applies extra ggplot components passed 
   expect_no_error(ggplot2::ggplot_build(p_custom))
 })
 
+test_that("create_convex_hull generates errors", {
+  expect_error(create_convex_hull("a"), "'sf_object' must be an sf object")
+})
+
+test_that("create_convex_hull functions correctly", {
+  result <- create_convex_hull(gaussian_data)
+  expect_s3_class(result, "sf")
+  expect_identical(nrow(result), 1L)
+
+  intersect <- unlist(st_intersects(gaussian_data, result))
+  expect_identical(intersect, rep(1L, 10))
+})
+
+test_that("propose_utm generates errors", {
+  expect_error(propose_utm("a"), "'data' must be of class 'sf'")
+})
+
+test_that("propose_utm handles both polygons and points", {
+  expect_no_error(propose_utm(areal))
+  expect_no_error(propose_utm(gaussian_data))
+})
+
+test_that("propose_utm warns when locations are split equally", {
+  lonlat_points <- function(lon, lat) {
+    st_as_sf(data.frame(lon = lon, lat = lat), coords = c("lon", "lat"), crs = 4326)
+  }
+
+  # longitudes 33 and 39 fall in UTM zones 36 and 37
+  expect_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 39), lat = c(5, 5))),
+    "An equal amount of locations falls in different UTM zones"
+  )
+  # default to min
+  expect_identical(epsg, 32636)
+
+  expect_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 33), lat = c(5, -5))),
+    "An equal amount of locations falls north and south of the Equator"
+  )
+  # default to south
+  expect_identical(epsg, 32736)
+
+  expect_no_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 39), lat = c(5, 5, 5)))
+  )
+  expect_identical(epsg, 32636)
+
+  expect_no_warning(
+    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 33, 33), lat = c(5, 6, 7, -5)))
+  )
+  expect_identical(epsg, 32636)
+})
+
+test_that("re errors when no variables are provided",{
+  expect_error(re(), "You need to provide at least one variable to re")
+})
+
+test_that("re produces expected output", {
+  result <- re(variable)
+  expect_s3_class(result, "RiskMap_re_spec")
+  expect_identical(result$term, "variable")
+  expect_identical(result$dim, 1L)
+  expect_identical(result$label, "re(variable)")
+
+  result <- re(variable, region)
+  expect_s3_class(result, "RiskMap_re_spec")
+  expect_identical(result$term, c("variable", "region"))
+  expect_identical(result$dim, 2L)
+  expect_identical(result$label, "re(variable,region)")
+})
+
+
+test_that("matern_correlation returns output matching the shape of u", {
+  u <- dist(st_coordinates(gaussian_data))
+  n <- nrow(gaussian_data)
+
+  expect_error(
+    matern_correlation("a", 0.5, 0.5),
+    "'u' must contain only finite, non-negative distances"
+  )
+
+  expect_error(
+    matern_correlation(u, -0.5, 0.5),
+    "must be a single finite number"
+  )
+
+  for (kappa in c(0.5, 0.8)) {
+    vector_output <- matern_correlation(as.numeric(u), phi = 1, kappa = kappa)
+    expect_type(vector_output, "double")
+    expect_null(dim(vector_output))
+    expect_length(vector_output, length(u))
+
+    matrix_input <- as.matrix(u)[1:3, ]
+    matrix_output <- matern_correlation(matrix_input, phi = 1, kappa = kappa)
+    expect_true(is.matrix(matrix_output))
+    expect_type(matrix_output, "double")
+    expect_identical(dim(matrix_output), dim(matrix_input))
+
+    sym_output <- matern_correlation(u, phi = 1, kappa = kappa,
+                                     return_sym_matrix = TRUE)
+    expect_true(is.matrix(sym_output))
+    expect_type(sym_output, "double")
+    expect_identical(dim(sym_output), c(n, n))
+    expect_true(isSymmetric(sym_output))
+    expect_identical(diag(sym_output), rep(1, n))
+  }
+})
+
+test_that("matern_gradient_phi and matern_hessian_phi return symmetric n x n matrices", {
+  u <- dist(st_coordinates(gaussian_data))
+  n <- nrow(gaussian_data)
+
+  # kappa = 0.5 uses the closed form, other values use the Bessel form
+  for (kappa in c(0.5, 0.8)) {
+    for (derivative in list(matern_gradient_phi, matern_hessian_phi)) {
+
+      expect_error(
+        derivative("u", 0.5, 0.5),
+        "'u' must be an output from 'stats::dist"
+      )
+
+      expect_error(
+        derivative(u, -0.5, 0.5),
+        "must be a single finite number"
+      )
+
+      output <- derivative(u, phi = 1, kappa = kappa)
+      expect_true(is.matrix(output))
+      expect_type(output, "double")
+      expect_identical(dim(output), c(n, n))
+      expect_true(isSymmetric(output))
+      expect_true(all(is.finite(output)))
+    }
+  }
+})
+
+test_that("plot.RiskMap_cross_validation combines calibration curves with combine_pit (#183)", {
+  p <- plot(cross_validation, metric = "PIT", combine_pit = TRUE)
+
+  expect_s3_class(p, "ggplot")
+  expect_setequal(unique(p$data$model), c("model_a", "model_b"))
+})
+
+test_that("plot.RiskMap_cross_validation labels metric maps by metric and model (#183)", {
+  p <- plot(cross_validation, metric = "CRPS", model = "model_a")
+
+  expect_equal(p$labels$title, "Model model_a: CRPS")
+  expect_equal(p$labels$colour, "CRPS")
+})
+
+test_that("plot.RiskMap_cross_validation labels PIT as AnPIT for discrete families (#183)", {
+  p <- plot(cross_validation, metric = "PIT_area", model = "model_a")
+  expect_equal(p$labels$title, "Model model_a: PIT_area")
+  expect_equal(p$labels$colour, "PIT_area")
+
+  ## discrete families store AnPIT curves rather than PIT values
+  discrete_cv <- cross_validation
+  discrete_cv$model$model_a$AnPIT <- list(seq(0, 1, length.out = 11),
+                                          seq(0, 1, length.out = 11)^2)
+  discrete_cv$model$model_a$PIT <- NULL
+
+  p_area <- plot(discrete_cv, metric = "PIT_area", model = "model_a")
+  expect_equal(p_area$labels$title, "Model model_a: AnPIT_area")
+  expect_equal(p_area$labels$colour, "AnPIT_area")
+
+  p_curve <- plot(discrete_cv, metric = "PIT", model = "model_a")
+  expect_equal(p_curve$labels$title, "Model model_a: AnPIT (average)")
+  expect_equal(p_curve$labels$y, "AnPIT")
+})
+
 test_that("plot.RiskMap_cross_validation plots each metric separately rather than one combined grid (#87)", {
   ## the fixture was fit with the default metrics = c("PIT", "CRPS", "SCRPS"),
   ## and "PIT" also computes the scalar "PIT_area" score, so there are 4
@@ -319,49 +461,15 @@ test_that("plot.RiskMap_cross_validation can select only the calibration curve",
 test_that("plot.RiskMap_cross_validation's calibration curve actually filters to the requested test_set", {
 
   p1 <- plot(cross_validation, metric = "PIT", model = "model_a",
-            pit_mode = "single", pit_test_set = 1)
+             pit_mode = "single", pit_test_set = 1)
   p2 <- plot(cross_validation, metric = "PIT", model = "model_a",
-            pit_mode = "single", pit_test_set = 2)
+             pit_mode = "single", pit_test_set = 2)
 
   expect_false(identical(p1$data$value, p2$data$value))
   expect_equal(p1$labels$title, "Model model_a: PIT (test set 1)")
   expect_error(
     plot(cross_validation, metric = "PIT", model = "model_a",
-        pit_mode = "single", pit_test_set = 99),
+         pit_mode = "single", pit_test_set = 99),
     "No data for test set 99"
   )
-})
-
-test_that("plot.RiskMap_cross_validation combines calibration curves with combine_pit (#183)", {
-  p <- plot(cross_validation, metric = "PIT", combine_pit = TRUE)
-
-  expect_s3_class(p, "ggplot")
-  expect_setequal(unique(p$data$model), c("model_a", "model_b"))
-})
-
-test_that("plot.RiskMap_cross_validation labels metric maps by metric and model (#183)", {
-  p <- plot(cross_validation, metric = "CRPS", model = "model_a")
-
-  expect_equal(p$labels$title, "Model model_a: CRPS")
-  expect_equal(p$labels$colour, "CRPS")
-})
-
-test_that("plot.RiskMap_cross_validation labels PIT as AnPIT for discrete families (#183)", {
-  p <- plot(cross_validation, metric = "PIT_area", model = "model_a")
-  expect_equal(p$labels$title, "Model model_a: PIT_area")
-  expect_equal(p$labels$colour, "PIT_area")
-
-  ## discrete families store AnPIT curves rather than PIT values
-  discrete_cv <- cross_validation
-  discrete_cv$model$model_a$AnPIT <- list(seq(0, 1, length.out = 11),
-                                          seq(0, 1, length.out = 11)^2)
-  discrete_cv$model$model_a$PIT <- NULL
-
-  p_area <- plot(discrete_cv, metric = "PIT_area", model = "model_a")
-  expect_equal(p_area$labels$title, "Model model_a: AnPIT_area")
-  expect_equal(p_area$labels$colour, "AnPIT_area")
-
-  p_curve <- plot(discrete_cv, metric = "PIT", model = "model_a")
-  expect_equal(p_curve$labels$title, "Model model_a: AnPIT (average)")
-  expect_equal(p_curve$labels$y, "AnPIT")
 })

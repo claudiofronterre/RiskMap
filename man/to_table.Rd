@@ -47,10 +47,16 @@ When the input is a cross-validation summary object ("summary.RiskMap_cross_vali
 }
 }
 \examples{
-\dontrun{
-fit <- glgpm(y ~ x + gp(), data = example_data)
-to_table(fit, digits = 3)
-}
+data(italy_sim)
+
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+to_table(fit)
+to_table(fit, digits = 1)
 }
 \seealso{
 \code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}

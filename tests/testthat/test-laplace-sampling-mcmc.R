@@ -10,7 +10,7 @@ test_that("MALA adaptation stops after burn-in", {
     messages = FALSE
   )
 
-  expect_equal(nrow(fit$samples$S), 20)
+  expect_identical(nrow(fit$samples$S), 20L)
   expect_true(all(fit$tuning_par[41:80] == fit$tuning_par[40]))
   expect_length(fit$acceptance, 80)
   expect_named(fit$acceptance_rate, c("burnin", "sampling"))
@@ -30,14 +30,12 @@ test_that("MALA warm-up recovers from poor initial step sizes", {
   from_small <- run_with_h(0.05, 711)
   from_large <- run_with_h(5, 712)
 
-  expect_true(
-    tail(from_small$tuning_par, 1) > 0.2 &&
-      tail(from_large$tuning_par, 1) < 2 &&
-      all(c(from_small$acceptance_rate["sampling"],
-            from_large$acceptance_rate["sampling"]) > 0.2) &&
-      all(c(from_small$acceptance_rate["sampling"],
-            from_large$acceptance_rate["sampling"]) < 0.9)
-  )
+  expect_gt(tail(from_small$tuning_par, 1), 0.2)
+  expect_lt(tail(from_large$tuning_par, 1), 2)
+  expect_gt(from_small$acceptance_rate["sampling"], 0.2)
+  expect_gt(from_large$acceptance_rate["sampling"], 0.2)
+  expect_lt(from_small$acceptance_rate["sampling"], 0.9)
+  expect_lt(from_large$acceptance_rate["sampling"], 0.9)
 })
 
 test_that("one-dimensional binomial samples reproduce exact posterior moments", {
@@ -155,7 +153,7 @@ test_that("sampler controls and location indices are validated", {
   control <- set_control_mcmc(n_sim = 20, burnin = 10, thin = 1)
   expect_error(
     laplace_sampling_mcmc(
-      y = c(1, 2), units_m = c(4, 4), mu = 0,
+      y = c(1, 2), units_m = c(4, 4), mu = c(0, 0),
       Sigma = matrix(1), ID_coords = c(1, 2), family = "binomial",
       control_mcmc = control, messages = FALSE
     ),
@@ -172,7 +170,7 @@ test_that("sampler controls and location indices are validated", {
   )
   expect_error(
     laplace_sampling_mcmc(
-      y = c(1, 2), units_m = c(4, 4), mu = 0, Sigma = matrix(1),
+      y = c(1, 2), units_m = c(4, 4), mu = c(0, 0), Sigma = matrix(1),
       ID_coords = c(1, 1), ID_re = matrix(c(1, 3)), sigma2_re = 1,
       family = "binomial", control_mcmc = control, messages = FALSE
     ),
