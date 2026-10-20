@@ -331,13 +331,13 @@ test_that("assess_prediction uses each model's own data for held-out predictors"
 
   seen_predictors <- list()
   local_mocked_bindings(
-    setup_prediction = function(object, grid_pred, predictors, ...) {
-      seen_predictors[[object$model_id]] <<- names(predictors)
-      list(predictors = predictors)
-    },
-    predict_grid_target = function(object, ...) {
-      list(lp_samples = matrix(rep(1, nrow(object$predictors) * 2),
-                               nrow = nrow(object$predictors)))
+    predict.RiskMap = function(object, newdata, ...) {
+      seen_predictors[[object$model_id]] <<- names(newdata)
+      n <- nrow(newdata)
+      structure(list(
+        predictions = transform(newdata, fixed = 0, offset = 0),
+        samples = list(spatial = matrix(rep(1, n * 2), nrow = n))
+      ), class = "RiskMap_prediction")
     },
     .package = "RiskMap"
   )
@@ -439,10 +439,10 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, n_folds)
-  expect_equal(sum(unlist(lapply(result$test_set, nrow))), n)
+  expect_identical(sum(unlist(lapply(result$test_set, nrow))), n)
 
   combined <- do.call(rbind, result$test_set)
-  expect_true(all(!duplicated(combined)))
+  expect_true(!all(duplicated(combined)))
 
   n_folds <- 3
 
@@ -454,12 +454,12 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, n_folds)
-  expect_equal(sum(unlist(lapply(result$test_set, nrow))), n)
+  expect_identical(sum(unlist(lapply(result$test_set, nrow))), n)
 
   combined <- do.call(rbind, result$test_set)
-  expect_true(all(!duplicated(combined)))
+  expect_true(!all(duplicated(combined)))
 
-  size <- 4
+  size <- 4L
 
   result <- assess_prediction(
     list(intercept_only = gaussian_intercept_model,
@@ -470,7 +470,7 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, 1)
-  expect_equal(nrow(result$test_set[[1]]), size)
+  expect_identical(nrow(result$test_set[[1]]), size)
 
 
   result <- assess_prediction(
@@ -482,7 +482,7 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, 1)
-  expect_equal(nrow(result$test_set[[1]]), n/2)
+  expect_identical(nrow(result$test_set[[1]]), as.integer(n/2))
 
   result <- assess_prediction(
     list(gaussian_model),
@@ -491,7 +491,7 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, 1)
-  expect_equal(nrow(result$test_set[[1]]), 2)
+  expect_identical(nrow(result$test_set[[1]]), 2L)
 
   result <- assess_prediction(
     list(gaussian_model),
@@ -500,7 +500,7 @@ test_that("assess_prediction splits test data correctly", {
     messages = FALSE)
 
   expect_length(result$test_set, 1)
-  expect_equal(nrow(result$test_set[[1]]), 2)
+  expect_identical(nrow(result$test_set[[1]]), 2L)
 
 })
 
@@ -534,14 +534,16 @@ test_that("assess_prediction can refit correctly for all model families", {
 
   expect_setequal(names(result), c("test_set", "model"))
 
-  result <- assess_prediction(
-    list(poisson_model),
-    method = "regularized",
-    min_dist = 1,
-    size = 1,
-    keep_par_fixed = FALSE,
-    control_mcmc = control_mcmc,
-    messages = FALSE)
+  expect_warning(
+    result <- assess_prediction(
+      list(poisson_model),
+      method = "regularized",
+      min_dist = 1,
+      size = 1,
+      keep_par_fixed = FALSE,
+      control_mcmc = control_mcmc,
+      messages = FALSE),
+    "Adaptive MCML reached its stopping limit")
 
   expect_setequal(names(result), c("test_set", "model"))
 
@@ -578,7 +580,7 @@ test_that("assess_prediction's control_mcmc seed makes regularized/cluster split
 test_that("AnPIT area computes trapezoidal absolute distance", {
   u <- seq(0, 1, length.out = 1001)
 
-  expect_equal(.anpit_area(u, u), 0)
+  expect_identical(.anpit_area(u, u), 0)
   expect_equal(.anpit_area(rep(0, length(u)), u), 0.5)
   expect_equal(.anpit_area(u^2, u), 1 / 6, tolerance = 1e-6)
 })
@@ -593,12 +595,14 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
   data <- st_sf(y = c(0, 0, 0), x1 = c(10, 20, 30), geometry = geom)
 
   testthat::local_mocked_bindings(
-    setup_prediction = function(object, grid_pred, predictors, ...) {
-      list(predictors = predictors)
-    },
-    predict_grid_target = function(object, ...) {
-      n <- nrow(object$predictors)
-      list(lp_samples = matrix(rep(c(-1, 0, 1), each = n), nrow = n))
+    predict.RiskMap = function(object, newdata, ...) {
+      n <- nrow(newdata)
+      structure(list(
+        predictions = transform(newdata, fixed = 0, offset = 0),
+        samples = list(
+          spatial = matrix(rep(c(-1, 0, 1), each = n), nrow = n)
+        )
+      ), class = "RiskMap_prediction")
     },
     .package = "RiskMap"
   )
@@ -616,13 +620,13 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
   expect_length(out$model$model_x1$metric$AnPIT_area, 1)
   expect_type(out$model$model_x1$metric$AnPIT_area[[1]], "double")
   expect_true(is.finite(out$model$model_x1$metric$AnPIT_area[[1]]))
-  expect_true(out$model$model_x1$metric$AnPIT_area[[1]] >= 0)
-  expect_true(out$model$model_x1$metric$AnPIT_area[[1]] <= 0.5)
+  expect_gte(out$model$model_x1$metric$AnPIT_area[[1]], 0)
+  expect_lte(out$model$model_x1$metric$AnPIT_area[[1]], 0.5)
   expect_length(out$model$model_x1$PIT[[1]], 2)
 
   summary_out <- summary(out)
   expect_true("AnPIT_area" %in% colnames(summary_out))
-  expect_equal(summary_out["model_x1", "AnPIT_area"],
+  expect_identical(summary_out["model_x1", "AnPIT_area"],
                out$model$model_x1$metric$AnPIT_area[[1]])
 })
 
@@ -637,7 +641,7 @@ test_that("plot_folds() plots every observation, coloured by training/test set (
   expect_s3_class(p, "ggplot")
 
   built <- ggplot2::ggplot_build(p)
-  expect_equal(nrow(built$data[[1]]), 2 * n)
+  expect_identical(nrow(built$data[[1]]), 2L * n)
   expect_length(unique(built$data[[1]]$PANEL), 2)
   expect_length(unique(built$data[[1]]$colour), 2)
 })
@@ -650,7 +654,7 @@ test_that("plot_folds() doesn't facet when there is only one iteration", {
   p <- plot_folds(data_split)
   built <- ggplot2::ggplot_build(p)
   expect_length(unique(built$data[[1]]$PANEL), 1)
-  expect_equal(nrow(built$data[[1]]), nrow(gaussian_data))
+  expect_identical(nrow(built$data[[1]]), nrow(gaussian_data))
 })
 
 test_that("assess_prediction(plot_fold = TRUE) uses plot_folds() for 'user' and 'regularized', autoplot() for 'cluster' (#157)", {

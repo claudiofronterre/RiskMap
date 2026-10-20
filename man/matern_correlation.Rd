@@ -7,7 +7,7 @@
 matern_correlation(u, phi, kappa, return_sym_matrix = FALSE)
 }
 \arguments{
-\item{u}{A vector of distances between pairs of data locations.}
+\item{u}{A vector or matrix of distances between pairs of data locations.}
 
 \item{phi}{The scale parameter \eqn{\phi}.}
 
@@ -16,7 +16,7 @@ matern_correlation(u, phi, kappa, return_sym_matrix = FALSE)
 \item{return_sym_matrix}{A logical value indicating whether to return a symmetric correlation matrix. Defaults to \code{FALSE}.}
 }
 \value{
-A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
+A vector or matrix of the same shape as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
 }
 \description{
 Computes the Matern correlation function.
@@ -25,4 +25,9 @@ Computes the Matern correlation function.
 The Matern correlation function is defined as
 \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
+}
+\examples{
+u <- c(10, 20, 30)
+matern_correlation(u, phi = 1, kappa = 0.8)
+
 }

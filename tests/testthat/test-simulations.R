@@ -7,19 +7,19 @@ test_that("joint simulations share effects at overlapping locations", {
   sim <- simulate_glgpm(model, nsim = 2, what = c("data", "surface"),
                         prediction_grid = data[3:1, ], seed = 10)
   for (component in c("spatial_effect", "nugget", "group_effect", "linear_predictor")) {
-    expect_equal(sim$samples$data[1, , component], sim$samples$data[2, , component])
-    expect_equal(sim$samples$data[, , component], sim$samples$surface[3:1, , component])
+    expect_identical(sim$samples$data[1, , component], sim$samples$data[2, , component])
+    expect_identical(sim$samples$data[, , component], sim$samples$surface[3:1, , component])
   }
   expect_false(identical(sim$samples$data[1, , "response"], sim$samples$data[2, , "response"]))
   expect_false("response" %in% dimnames(sim$samples$surface)[[3]])
-  expect_equal(simulated_data(sim, 2)$y, as.numeric(sim$samples$data[, 2, "response"]))
-  expect_equal(simulated_data(sim, 2)$cov, data$cov)
+  expect_identical(simulated_data(sim, 2)$y, as.numeric(sim$samples$data[, 2, "response"]))
+  expect_identical(simulated_data(sim, 2)$cov, data$cov)
   tidy <- simulated_values(sim, "spatial_effect", simulation = 2)
-  expect_equal(nrow(tidy), 6L)
-  expect_equal(tidy$value, c(sim$samples$data[, 2, "spatial_effect"],
+  expect_identical(nrow(tidy), 6L)
+  expect_identical(tidy$value, c(sim$samples$data[, 2, "spatial_effect"],
                              sim$samples$surface[, 2, "spatial_effect"]))
-  expect_equal(simulated_surface(sim, 1)$mean, as.numeric(sim$samples$surface[, 1, "mean"]))
-  expect_equal(nrow(simulated_values(sim, "response")), 6L)
+  expect_identical(simulated_surface(sim, 1)$mean, as.numeric(sim$samples$surface[, 1, "mean"]))
+  expect_identical(nrow(simulated_values(sim, "response")), 6L)
 })
 
 test_that("simulation model validation remains informative", {
@@ -71,7 +71,7 @@ test_that("fitted models retain offsets, parameters, denominators and links", {
                    x[, , "nugget"] - x[, , "group_effect"],
                  matrix(fixed, nrow(model$data), 2))
     inverse <- if (model$family == "gaussian") identity else model$link_function$inv
-    expect_equal(x[, , "mean"], inverse(x[, , "linear_predictor"]))
+    expect_identical(x[, , "mean"], inverse(x[, , "linear_predictor"]))
     if (model$family == "binomial") {
       expect_true(all(x[, , "response"] >= 0 & x[, , "response"] <= model$units_m))
     }
@@ -120,9 +120,9 @@ test_that("new locations preserve factor coding without observed responses", {
                          list(beta = c(1, 2), sigma2 = 0, phi = 1, sigma2_me = 0))
   new <- data[2, "group", drop = FALSE]
   sim <- simulate_glgpm(model, sample_locations = new, seed = 1)
-  expect_equal(simulated_data(sim)$y, 3)
+  expect_identical(simulated_data(sim)$y, 3)
   surface <- simulate_glgpm(model, what = "surface", prediction_grid = new, seed = 1)
-  expect_equal(simulated_surface(surface)$mean, 3)
+  expect_identical(simulated_surface(surface)$mean, 3)
 })
 
 test_that("assess_simulation validates area boundaries", {
@@ -195,7 +195,7 @@ test_that("assessment refits accept specify_glgpm templates #108", {
     sim, models = list(candidate = template), spatial_scale = "grid",
     target_transform = identity, pred_objective = "mse", messages = FALSE
   )
-  expect_equal(dim(result$pred_objective$grid$mse), c(1L, 1L))
+  expect_identical(dim(result$pred_objective$grid$mse), c(1L, 1L))
 })
 
 test_that("joint output feeds the existing grid assessment", {
@@ -206,7 +206,7 @@ test_that("joint output feeds the existing grid assessment", {
                               control_mcmc = control_mcmc, spatial_scale = "grid",
                               target_transform = identity, pred_objective = "mse",
                               messages = FALSE)
-  expect_equal(dim(result$pred_objective$grid$mse), c(1L, 2L))
+  expect_identical(dim(result$pred_objective$grid$mse), c(1L, 2L))
   expect_true(all(is.finite(result$pred_objective$grid$mse)))
 })
 
@@ -269,8 +269,8 @@ test_that("assess_simulation computes grid and area objectives in one combined r
                                 messages = FALSE)
 
   expect_setequal(names(combined$pred_objective), c("grid", "area"))
-  expect_equal(dim(combined$pred_objective$grid$mse), c(1L, 2L))
-  expect_equal(dim(combined$pred_objective$area$mse), c(1L, 2L))
+  expect_identical(dim(combined$pred_objective$grid$mse), c(1L, 2L))
+  expect_identical(dim(combined$pred_objective$area$mse), c(1L, 2L))
   expect_true(all(is.finite(combined$pred_objective$grid$mse)))
   expect_true(all(is.finite(combined$pred_objective$area$mse)))
 
@@ -287,7 +287,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   # Area-level results are computed identically whether or not 'grid' is
   # also requested: both paths use the same (joint-type) prediction, so
   # under the shared control_mcmc seed the two runs must agree exactly.
-  expect_equal(combined$pred_objective$area$mse, area_only$pred_objective$area$mse)
+  expect_identical(combined$pred_objective$area$mse, area_only$pred_objective$area$mse)
 
   # A standalone grid-only run instead uses cheaper marginal-type sampling,
   # since it doesn't need spatially correlated draws across the grid; a
@@ -345,9 +345,9 @@ test_that("classification metrics retain fixed categories and compute accuracy #
   )
 
   expect_identical(metrics$by_cat$Class, c("low", "high"))
-  expect_equal(metrics$by_cat$Sensitivity, c(2 / 3, 1))
-  expect_equal(metrics$by_cat$CC, c(3 / 4, 3 / 4))
-  expect_equal(metrics$overall_cc, 3 / 4)
+  expect_identical(metrics$by_cat$Sensitivity, c(2 / 3, 1))
+  expect_identical(metrics$by_cat$CC, c(3 / 4, 3 / 4))
+  expect_identical(metrics$overall_cc, 3 / 4)
 
   no_high_predictions <- simulation_classification_metrics(
     true_values = c(0.25, 0.75),
@@ -418,3 +418,4 @@ test_that("plot.RiskMap_simulation plots the simulated surface (#87)", {
   expect_s3_class(sim, "RiskMap_simulation")
   expect_error(plot(sim, sim = 3), "must select valid simulation numbers")
 })
+

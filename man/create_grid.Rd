@@ -14,13 +14,27 @@ create_grid(boundaries, spacing, distance_units = c("km", "m"))
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, giving the units of \code{spacing}. Defaults to \code{"km"}.}
 }
 \value{
-An \code{sf} object containing the generated grid points within the boundaries.
+A \code{RiskMap_grid} and \code{sf} object containing the generated grid points. The
+\code{grid_metadata} attribute records the spacing, units, cell size, cell area,
+cell shape, grid CRS and alignment origin. The \code{grid_id} column provides a
+stable identifier for each retained cell centre.
 }
 \description{
-Generates regularly spaced point centres within a polygon boundary.
+Generates regularly spaced point centres within a polygon boundary and
+retains the information needed to reconstruct their square grid cells.
 }
 \details{
-This function creates point centres within \code{boundaries}; it does not create polygon cells or define an areal prediction target. The CRS is inherited from \code{boundaries}. If \code{boundaries} is in longitude/latitude, it is automatically reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used; transform \code{boundaries} to a projected CRS yourself first to use a different one.
+This function returns point centres rather than polygon cells. The returned
+object has class \code{RiskMap_grid} and carries lightweight metadata describing
+the square cells. This allows other RiskMap functions to reconstruct their
+footprints when exact cell coverage is needed without storing a second copy
+of the grid as polygons.
+
+The CRS is inherited from \code{boundaries}. If \code{boundaries} is in
+longitude/latitude, it is automatically reprojected to an appropriate UTM
+zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used;
+transform \code{boundaries} to a projected CRS yourself first to use a different
+one.
 }
 \examples{
 library(sf)
