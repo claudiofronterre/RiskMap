@@ -590,6 +590,43 @@ test_that("polygon prediction handles outside cells and empty polygons", {
   expect_identical(nrow(empty$boundaries), 1L)
 })
 
+test_that("polygons containing a single prediction location trigger a warning", {
+  # Place a set number of plain points near the centre of each square in
+  # 'areal', so every point lies inside exactly one polygon
+  points_in_squares <- function(counts) {
+    centres <- st_coordinates(st_centroid(st_geometry(areal)))
+    square <- rep(seq_along(counts), counts)
+    offset <- sequence(counts) * 100
+    coordinates <- centres[square, , drop = FALSE] + offset
+    points <- st_as_sf(data.frame(x = coordinates[, 1], y = coordinates[, 2]),
+                       coords = c("x", "y"), crs = st_crs(areal))
+    points$cov <- seq_len(nrow(points)) / 10
+    points$i <- rep(gaussian_model$re[[1]], length.out = nrow(points))
+    points
+  }
+
+  expect_warning(
+    predict(
+      gaussian_model, points_in_squares(c(1, 1, 2, 2)), boundaries = areal,
+      aggregate = "mean", seed = 475, messages = FALSE
+    ),
+    "2 polygons contain only one prediction location; their areal summaries"
+  )
+  expect_warning(
+    predict(
+      gaussian_model, points_in_squares(c(1, 2)), boundaries = areal[1:2, ],
+      aggregate = "mean", seed = 476, messages = FALSE
+    ),
+    "1 polygon contains only one prediction location; its areal summaries"
+  )
+  expect_no_warning(
+    predict(
+      gaussian_model, points_in_squares(c(2, 2, 2, 2)), boundaries = areal,
+      aggregate = "mean", seed = 477, messages = FALSE
+    )
+  )
+})
+
 test_that("polygon weights are validated and zero totals return missing summaries", {
 
   no_weight_data <- subset(prediction_data, select = -population)

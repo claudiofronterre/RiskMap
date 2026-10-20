@@ -835,6 +835,16 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
 
   area_indices <- split(seq_len(nrow(assigned_data)), area_id)
   nonempty_areas <- as.integer(names(area_indices))
+  single_location <- lengths(area_indices) == 1L
+  if (any(single_location)) {
+    warning(sum(single_location), " polygon",
+            if (sum(single_location) == 1L) " contains" else "s contain",
+            " only one prediction ",
+            if (assignment$method == "exact") "cell" else "location",
+            "; ", if (sum(single_location) == 1L) "its" else "their",
+            " areal summaries are based on a single value",
+            call. = FALSE)
+  }
   zero_weight <- vapply(area_indices, function(index) {
     sum(weight_values[index]) <= 0
   }, logical(1))
