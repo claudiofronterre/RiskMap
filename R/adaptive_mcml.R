@@ -683,8 +683,6 @@ describe_variance_parameters <- function(index, layout, re_names = NULL) {
   if (!length(index)) return(character())
   labels <- character()
   labels[as.character(layout$index$sigma2)] <- "spatial variance (sigma2)"
-  labels[as.character(layout$index$phi)] <-
-    "spatial range (phi), which has no meaning without spatial variation"
   if (!is.null(layout$index$nu2)) {
     labels[as.character(layout$index$nu2)] <- "nugget variance (tau2)"
   }
@@ -693,6 +691,9 @@ describe_variance_parameters <- function(index, layout, re_names = NULL) {
       "random-effect variance for '", re_names, "'"
     )
   }
+  # The range is held only because the spatial variance is zero; it is
+  # explained separately rather than listed as a variance component.
+  index <- setdiff(index, layout$index$phi)
   unname(labels[as.character(index)])
 }
 
@@ -882,14 +883,21 @@ glgpm_nong_adaptive <- function(
   )
   if (length(boundary_names)) {
     warning(
-      "The ", paste(boundary_names, collapse = ", "), " ",
+      "The ", if (length(boundary_names) == 1L) boundary_names else paste(
+        paste(boundary_names[-length(boundary_names)], collapse = ", "),
+        "and the", boundary_names[length(boundary_names)]
+      ), " ",
       if (length(boundary_names) == 1L) "was" else "were",
       " estimated as effectively zero. ",
       if (length(boundary_names) == 1L) "This component" else "These components",
       " cannot be distinguished from zero with these data, so ",
       if (length(boundary_names) == 1L) "its standard error is" else
         "their standard errors are",
-      " not reported. Consider refitting without ",
+      " not reported",
+      if (engine$layout$index$sigma2 %in% fit$boundary_parameters) {
+        ", and the spatial range cannot be estimated"
+      },
+      ". Consider refitting without ",
       if (length(boundary_names) == 1L) "it." else "them.",
       call. = FALSE
     )
