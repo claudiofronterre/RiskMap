@@ -414,7 +414,10 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
                             lower = NULL, upper = NULL,
                             variance_index = integer(),
                             linked_index = list(),
-                            boundary_log_variance = -9) {
+                            boundary_log_variance = -9,
+                            range_index = NULL,
+                            minimum_log_range = -Inf,
+                            near_zero_log_variance = -4) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   if (!is.null(min_absolute_ess)) {
@@ -456,6 +459,29 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
     boundary <- adaptive_boundary_parameters(
       fit$par, variance_index, boundary_log_variance, linked_index
     )
+    # A range shorter than the spacing between locations cannot be
+    # distinguished from unstructured variation. Unless the spatial variance is
+    # already zero (when the range is meaningless anyway), the range is held at
+    # that spacing and the remaining parameters are re-optimised.
+    if (!is.null(range_index) && !(range_index %in% boundary) &&
+        fit$par[range_index] < minimum_log_range) {
+      lower[range_index] <- minimum_log_range
+      held <- tryCatch(
+        nlminb(pmax(fit$par, lower),
+               function(parameters) -engine(parameters, fit_bank),
+               lower = lower, upper = upper,
+               control = list(eval.max = 150, iter.max = 100,
+                              rel.tol = 1e-8, x.tol = 1e-6)),
+        error = function(error) NULL
+      )
+      if (!is.null(held)) fit <- held
+      boundary <- adaptive_boundary_parameters(
+        fit$par, variance_index, boundary_log_variance, linked_index
+      )
+    }
+    range_held <- !is.null(range_index) && !(range_index %in% boundary) &&
+      fit$par[range_index] <= minimum_log_range + 1e-6
+    if (range_held) boundary <- sort(c(boundary, range_index))
     free <- setdiff(seq_along(fit$par), boundary)
     optimizer_seconds <- proc.time()[["elapsed"]] - optimizer_started
     fit_diagnostics_started <- proc.time()[["elapsed"]]
@@ -531,6 +557,25 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
            timing = list(information = 0, fit_pathwise_score = 0,
                          validation_pathwise_score = 0))
     }
+    # If the information is singular over the free parameters, variance
+    # components that are small but not exactly zero are the usual cause. Hold
+    # them as well before concluding that the model is not identifiable.
+    near_zero <- setdiff(
+      variance_index[fit$par[variance_index] <= near_zero_log_variance],
+      boundary
+    )
+    if (preliminary_pass && isTRUE(precision$information_singular) &&
+        length(near_zero)) {
+      boundary <- sort(unique(c(
+        boundary, near_zero,
+        unlist(linked_index[as.character(near_zero)], use.names = FALSE)
+      )))
+      free <- setdiff(seq_along(fit$par), boundary)
+      precision <- adaptive_precision_diagnostics(
+        engine, fit$par, fit_bank, validation_bank, free,
+        score_agreement_probability
+      )
+    }
     information <- precision$information
     covariance <- precision$covariance
     fit_pathwise_score <- precision$fit_pathwise_score
@@ -567,6 +612,7 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
       score_agreement_statistic = score_agreement_statistic,
       score_agreement_limit = score_agreement_limit,
       boundary_parameters = boundary,
+      range_held = range_held,
       restarted = restart$restarted,
       restart_improved = isTRUE(restart$restart_improved),
       identifiability_failure = identifiability_failure,
@@ -669,12 +715,24 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
     accepted = isTRUE(last$accepted),
     budget = last$budget,
     boundary_parameters = last$boundary_parameters,
+    range_held = isTRUE(last$range_held),
     identifiability_failure = isTRUE(last$identifiability_failure),
     history = history,
     covariance = covariance,
     information = information,
     elapsed_seconds = proc.time()[["elapsed"]] - total_started
   )
+}
+
+##' Median distance from each location to its nearest distinct neighbour
+##' @noRd
+median_nearest_neighbour_distance <- function(distances) {
+  distances <- as.matrix(distances)
+  distances[distances <= 0] <- Inf
+  nearest <- apply(distances, 1L, min)
+  nearest <- nearest[is.finite(nearest)]
+  if (!length(nearest)) return(0)
+  stats::median(nearest)
 }
 
 ##' Describe variance parameters for user-facing messages
@@ -843,7 +901,9 @@ glgpm_nong_adaptive <- function(
                             use.names = FALSE),
     linked_index = stats::setNames(
       list(engine$layout$index$phi), engine$layout$index$sigma2
-    )
+    ),
+    range_index = engine$layout$index$phi,
+    minimum_log_range = log(median_nearest_neighbour_distance(distances))
   )
   last <- fit$history[[length(fit$history)]]
   public_history <- compact_adaptive_mcml_history(fit$history)
@@ -902,6 +962,17 @@ glgpm_nong_adaptive <- function(
       call. = FALSE
     )
   }
+  if (fit$range_held) {
+    warning(
+      "The estimated spatial range is shorter than the typical distance ",
+      "between neighbouring locations, so spatial correlation cannot be ",
+      "distinguished from unstructured variation with these data. The range ",
+      "was held at the median nearest-neighbour distance and its standard ",
+      "error is not reported. Consider a model with a nugget (unstructured) ",
+      "effect instead, or fixing the range from external knowledge.",
+      call. = FALSE
+    )
+  }
   if (fit$identifiability_failure) {
     warning(
       "The observed information matrix is singular, so some parameters ",
@@ -944,6 +1015,7 @@ glgpm_nong_adaptive <- function(
       rcond(fit$information),
     information_jitter = 0,
     mcml_supported = fit$accepted,
+    mcml_range_held = fit$range_held,
     laplace_start = if (is.null(laplace)) NULL else list(
       estimate = laplace$estimate,
       log_likelihood = laplace$log_likelihood,

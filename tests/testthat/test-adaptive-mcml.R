@@ -154,8 +154,43 @@ test_that("a zero spatial variance is held at the boundary without escalation", 
 })
 
 test_that("set_control_mcml validates laplace_start", {
-  expect_true(set_control_mcml()$laplace_start)
-  expect_false(set_control_mcml(laplace_start = FALSE)$laplace_start)
+  expect_false(set_control_mcml()$laplace_start)
+  expect_true(set_control_mcml(laplace_start = TRUE)$laplace_start)
   expect_error(set_control_mcml(laplace_start = NA), "laplace_start")
   expect_error(set_control_mcml(laplace_start = "yes"), "laplace_start")
+})
+
+test_that("median nearest-neighbour distance ignores duplicate locations", {
+  distances <- as.matrix(dist(c(0, 0, 1, 3)))
+  expect_identical(median_nearest_neighbour_distance(distances), 1)
+})
+
+test_that("a range shorter than the location spacing is held at the spacing", {
+  set.seed(7)
+  coordinate <- seq(0, 10, length.out = 60)
+  covariate <- rnorm(60)
+  trials <- rep(20, 60)
+  # Independent location effects give a short unconstrained range (about
+  # 0.3 here). A minimum of 1 forces the hold, which is what is tested.
+  y <- rbinom(60, trials, plogis(-0.3 + 0.5 * covariate + rnorm(60, sd = 0.8)))
+  distances <- as.matrix(dist(coordinate))
+  minimum <- log(1)
+  engine <- make_adaptive_mcml_engine(
+    D = cbind(1, covariate), y = y, units_m = trials,
+    distances = distances, family = "binomial"
+  )
+  fit <- fit_adaptive_mcml(
+    engine = engine$evaluate, start = c(-0.3, 0.5, log(0.5), log(0.01)),
+    latent_dimension = 60, initial_budget = 1000, maximum_budget = 4000,
+    maximum_stages = 3, min_absolute_ess = 100, seed = 5,
+    lower = c(-10, -10, -20, -20), upper = c(10, 10, 4, 4),
+    variance_index = 3L, linked_index = list(`3` = 4L),
+    range_index = 4L, minimum_log_range = minimum
+  )
+
+  expect_true(fit$range_held)
+  expect_equal(fit$estimate[4L], minimum, tolerance = 1e-6)
+  expect_contains(fit$boundary_parameters, 4L)
+  expect_true(is.na(fit$covariance[4L, 4L]))
+  expect_true(all(is.finite(diag(fit$covariance)[1:3])))
 })

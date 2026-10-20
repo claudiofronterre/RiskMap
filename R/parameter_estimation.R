@@ -2951,11 +2951,11 @@ laplace_sampling_mcmc <- function(y,
 ##' over all linear combinations of fitted parameters. Defaults to 0.1.
 ##' @param score_probability Number strictly between zero and one used for the
 ##' independent-bank score-agreement limit. Defaults to 0.99.
-##' @param laplace_start Logical. If `TRUE` (the default), the Laplace
-##' approximation to the likelihood is first maximised from several starting
-##' values and Monte Carlo maximum likelihood starts from the best Laplace
-##' estimate. This is fast, reduces sensitivity to starting values and avoids
-##' spurious zero-variance solutions.
+##' @param laplace_start Logical. If `TRUE`, the Laplace approximation to the
+##' likelihood is first maximised from several starting values and Monte Carlo
+##' maximum likelihood starts from the best Laplace estimate. Defaults to
+##' `FALSE`: in validation this changed which local maximum was reached about as
+##' often for the worse as for the better, at extra computational cost.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
 ##' control_mcml <- set_control_mcml(max_samples = 10000)
@@ -2967,7 +2967,7 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
                              max_pareto_k = 0.7,
                              max_mcse_ratio = 0.1,
                              score_probability = 0.99,
-                             laplace_start = TRUE) {
+                             laplace_start = FALSE) {
   check_positive_integer(initial_samples, "initial_samples")
   check_positive_integer(max_samples, "max_samples")
   check_positive_integer(max_stages, "max_stages")

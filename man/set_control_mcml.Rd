@@ -12,7 +12,7 @@ set_control_mcml(
   max_pareto_k = 0.7,
   max_mcse_ratio = 0.1,
   score_probability = 0.99,
-  laplace_start = TRUE
+  laplace_start = FALSE
 )
 }
 \arguments{
@@ -39,11 +39,11 @@ over all linear combinations of fitted parameters. Defaults to 0.1.}
 \item{score_probability}{Number strictly between zero and one used for the
 independent-bank score-agreement limit. Defaults to 0.99.}
 
-\item{laplace_start}{Logical. If \code{TRUE} (the default), the Laplace
-approximation to the likelihood is first maximised from several starting
-values and Monte Carlo maximum likelihood starts from the best Laplace
-estimate. This is fast, reduces sensitivity to starting values and avoids
-spurious zero-variance solutions.}
+\item{laplace_start}{Logical. If \code{TRUE}, the Laplace approximation to the
+likelihood is first maximised from several starting values and Monte Carlo
+maximum likelihood starts from the best Laplace estimate. Defaults to
+\code{FALSE}: in validation this changed which local maximum was reached about as
+often for the worse as for the better, at extra computational cost.}
 }
 \value{
 A control object of class \code{RiskMap_control_mcml}.
