@@ -534,14 +534,16 @@ test_that("assess_prediction can refit correctly for all model families", {
 
   expect_setequal(names(result), c("test_set", "model"))
 
-  result <- assess_prediction(
-    list(poisson_model),
-    method = "regularized",
-    min_dist = 1,
-    size = 1,
-    keep_par_fixed = FALSE,
-    control_mcmc = control_mcmc,
-    messages = FALSE)
+  expect_warning(
+    result <- assess_prediction(
+      list(poisson_model),
+      method = "regularized",
+      min_dist = 1,
+      size = 1,
+      keep_par_fixed = FALSE,
+      control_mcmc = control_mcmc,
+      messages = FALSE),
+    "Adaptive MCML reached its stopping limit")
 
   expect_setequal(names(result), c("test_set", "model"))
 

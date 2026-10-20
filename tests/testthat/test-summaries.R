@@ -79,6 +79,7 @@ test_that("summary.RiskMap reports a custom inverse link", {
   )
   fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
                denominator = denominator, control_mcmc = control_mcmc,
+                     control_mcml = fixture_control_mcml,
                invlink = custom_link, messages = FALSE)
 
   fit_summary <- summary(fit)
@@ -128,8 +129,8 @@ test_that("summary.RiskMap computes standard errors and confidence intervals", {
 })
 
 test_that("summary.RiskMap respects conf_level", {
-  default_summary <- summary(binomial_model)
-  narrow_summary <- summary(binomial_model, conf_level = 0.9)
+  default_summary <- summary(gaussian_model)
+  narrow_summary <- summary(gaussian_model, conf_level = 0.9)
 
   expect_identical(narrow_summary$conf_level, 0.9)
   expect_equal(narrow_summary$reg_coef[, "Estimate"],
