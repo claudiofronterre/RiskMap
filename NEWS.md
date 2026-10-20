@@ -1,6 +1,10 @@
 RiskMap 2.0.0
 =============
 
+- Non-Gaussian optimisation now reuses the sample-wise Monte Carlo log
+integrand when the objective, gradient, and Hessian are evaluated at identical
+parameters, avoiding a repeated likelihood calculation.
+
 - Non-Gaussian models now perform up to 12 MCML updates by default and stop
 early once both the standardized parameter-change and importance-sampling
 criteria are satisfied. If the iteration limit is reached after an unsupported

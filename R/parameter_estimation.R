@@ -3501,8 +3501,18 @@ glgpm_nong <-
       state
     }
 
+    # The objective, gradient and Hessian are commonly requested consecutively
+    # at the same trial parameters. Cache the sample-wise log integrand so the
+    # large sample-by-observation likelihood calculation is performed once.
+    log_f_cache <- new.env(parent = emptyenv())
+
     # --- 1) Monte Carlo log integrand ---
     compute_log_f <- function(par) {
+      if (exists("par", log_f_cache, inherits = FALSE) &&
+          identical(par, log_f_cache$par)) {
+        return(log_f_cache$value)
+      }
+
       beta   <- par[ind_beta]
       covariance <- covariance_state(par)
       mu <- as.numeric(D %*% beta) + cov_offset
@@ -3524,7 +3534,10 @@ glgpm_nong <-
       spatial_quadratic <- n_loc * log(covariance$sigma2) +
         covariance$log_determinant +
         spatial_quadratic / covariance$sigma2
-      -0.5 * (spatial_quadratic + random_quadratic) + likelihood
+      value <- -0.5 * (spatial_quadratic + random_quadratic) + likelihood
+      log_f_cache$par <- par
+      log_f_cache$value <- value
+      value
     }
 
     reference_vec <- c(
