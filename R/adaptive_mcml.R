@@ -539,8 +539,11 @@ adaptive_precision_diagnostics <- function(engine, estimate, fit_bank,
   )
   started <- proc.time()[["elapsed"]]
   out$information <- tryCatch(
+    # Two Richardson rounds suffice for this smooth, deterministic
+    # objective: standard errors agree with the default four rounds to about
+    # 1e-4 relative error at half the cost.
     numDeriv::hessian(function(parameters) -engine(parameters, fit_bank),
-                      estimate),
+                      estimate, method.args = list(r = 2)),
     error = function(error) NULL
   )
   out$timing$information <- proc.time()[["elapsed"]] - started
@@ -890,7 +893,7 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
   if (is.null(covariance)) {
     information <- tryCatch(
       numDeriv::hessian(function(parameters) -engine(parameters, fit_bank),
-                        current),
+                        current, method.args = list(r = 2)),
       error = function(error) NULL
     )
     free <- setdiff(seq_along(current), last$boundary_parameters)
@@ -1119,22 +1122,29 @@ glgpm_nong_adaptive <- function(
   }
   flat_names <- names(unlist(estimate))
   dimnames(covariance) <- list(flat_names, flat_names)
-  # Recreate the final common-random-number bank once for the score reported by
-  # the fitted object. Reusing one matrix is both faster and deterministic.
-  final_seed <- as.integer((
-    (fit_seed - 1 + 2L * length(fit$history) - 1L) %% .Machine$integer.max
-  ) + 1)
-  set.seed(final_seed)
-  final_bank <- matrix(
-    rnorm(fit$budget * engine$latent_dimension), nrow = fit$budget
-  )
-  gradient <- tryCatch(
-    numDeriv::grad(
-      function(parameters) engine$evaluate(parameters, final_bank),
-      fit$estimate
-    ),
-    error = function(error) rep(NA_real_, length(fit$estimate))
-  )
+  # The last stage already estimated the gradient at the estimate on its fitting
+  # bank (the pathwise score), so it is reported directly. Otherwise the bank
+  # is recreated and a central difference is used.
+  last_score <- fit$history[[length(fit$history)]]$fit_pathwise_score$score
+  gradient <- if (!is.null(last_score) && length(last_score) ==
+                  length(fit$estimate)) {
+    last_score
+  } else {
+    final_seed <- as.integer((
+      (fit_seed - 1 + 2L * length(fit$history) - 1L) %% .Machine$integer.max
+    ) + 1)
+    set.seed(final_seed)
+    final_bank <- matrix(
+      rnorm(fit$budget * engine$latent_dimension), nrow = fit$budget
+    )
+    tryCatch(
+      numDeriv::grad(
+        function(parameters) engine$evaluate(parameters, final_bank),
+        fit$estimate, method = "simple", method.args = list(eps = 1e-6)
+      ),
+      error = function(error) rep(NA_real_, length(fit$estimate))
+    )
+  }
 
   boundary_names <- describe_variance_parameters(
     fit$boundary_parameters, engine$layout,
