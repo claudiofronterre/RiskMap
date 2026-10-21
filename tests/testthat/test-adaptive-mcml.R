@@ -246,7 +246,10 @@ test_that("set_control_mcml validates the PC prior options", {
   expect_false(set_control_mcml()$pc_prior)
   control <- set_control_mcml(pc_prior = TRUE, pc_range_threshold = 5)
   expect_true(control$pc_prior)
+  expect_null(control$pc_sigma_threshold)
   expect_identical(control$pc_range_threshold, 5)
+  expect_error(set_control_mcml(pc_sigma_threshold = -1),
+               "pc_sigma_threshold")
   expect_error(set_control_mcml(pc_prior = NA), "pc_prior")
   expect_error(set_control_mcml(pc_sigma_probability = 1),
                "pc_sigma_probability")
@@ -264,6 +267,34 @@ test_that("glgpm fits with the PC prior and reports the unpenalised likelihood",
     messages = FALSE
   ))
   expect_true(attr(fit, "optimizer")$mcml_pc_prior)
+  thresholds <- attr(fit, "optimizer")$mcml_pc_thresholds
+  expect_named(thresholds, c("sigma", "range"))
+  expect_gte(thresholds[["sigma"]], 1)
   expect_true(all(is.finite(unlist(fit$estimate))))
   expect_true(is.finite(fit$log_lik))
+})
+
+test_that("the data-based sigma threshold tracks the extra variation", {
+  set.seed(11)
+  n <- 400
+  covariate <- rnorm(n)
+  D <- cbind(1, covariate)
+  trials <- rep(200, n)
+  # Extra-binomial variation with standard deviation 2 on the logit scale.
+  eta <- -0.5 + 0.4 * covariate + rnorm(n, sd = 2)
+  y <- rbinom(n, trials, plogis(eta))
+  expect_equal(pc_sigma_threshold_from_data(y, trials, D, "binomial"), 2,
+               tolerance = 0.15)
+  # Little extra variation: the threshold stays at 1.
+  y_small <- rbinom(n, trials, plogis(-0.5 + 0.4 * covariate +
+                                        rnorm(n, sd = 0.3)))
+  expect_identical(pc_sigma_threshold_from_data(y_small, trials, D,
+                                                "binomial"), 1)
+  # Bernoulli responses carry no information on the variance.
+  expect_identical(pc_sigma_threshold_from_data(rbinom(n, 1, 0.4), rep(1, n),
+                                                D, "binomial"), 1)
+  exposure <- runif(n, 50, 150)
+  counts <- rpois(n, exposure * exp(-1 + 0.4 * covariate + rnorm(n, sd = 1.5)))
+  expect_equal(pc_sigma_threshold_from_data(counts, exposure, D, "poisson"),
+               1.5, tolerance = 0.15)
 })

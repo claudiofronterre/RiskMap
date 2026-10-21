@@ -1062,6 +1062,43 @@ make_pc_penalty <- function(layout, range_threshold,
   }
 }
 
+##' Data-based threshold for the PC penalty on the spatial standard deviation
+##'
+##' A moment estimate of the standard deviation of the extra-binomial or
+##' extra-Poisson variation on the scale of the linear predictor: the variance
+##' of the empirical logit (or log) residuals from a fixed-effects GLM minus
+##' their average sampling variance. This total variation includes the spatial
+##' component, so it is a natural upper value for sigma. The threshold is never
+##' below 1, and is 1 for Bernoulli data, whose empirical logits carry no
+##' information on the variance.
+##' @noRd
+pc_sigma_threshold_from_data <- function(y, units_m, D, family,
+                                         cov_offset = 0) {
+  offset <- if (length(cov_offset)) rep_len(cov_offset, length(y)) else 0
+  if (family == "binomial") {
+    if (all(units_m <= 1)) return(1)
+    model <- suppressWarnings(stats::glm.fit(
+      D, cbind(y, units_m - y), family = stats::binomial(), offset = offset
+    ))
+    empirical <- log((y + 0.5) / (units_m - y + 0.5))
+    sampling_variance <- 1 / (y + 0.5) + 1 / (units_m - y + 0.5)
+  } else {
+    model <- suppressWarnings(stats::glm.fit(
+      D, y, family = stats::poisson(), offset = offset + log(units_m)
+    ))
+    empirical <- log((y + 0.5) / units_m)
+    sampling_variance <- 1 / (y + 0.5)
+  }
+  residual <- empirical - (model$linear.predictors -
+                             if (family == "poisson") log(units_m) else 0)
+  # Centred, because the GLM intercept absorbs the mean shift caused by the
+  # extra variation (sigma^2 / 2 on the log scale for Poisson counts).
+  extra_variance <- mean((residual - mean(residual))^2) -
+    mean(sampling_variance)
+  if (!is.finite(extra_variance)) return(1)
+  max(1, sqrt(max(extra_variance, 0)))
+}
+
 ##' Add a penalty to an adaptive MCML engine
 ##'
 ##' The penalty depends only on the parameters, so it is the same for every
@@ -1127,6 +1164,7 @@ glgpm_nong_adaptive <- function(
   # hold of short ranges at the location spacing.
   pc_prior <- isTRUE(control_mcml$pc_prior)
   penalty <- NULL
+  pc_thresholds <- NULL
   objective_engine <- engine$evaluate
   if (pc_prior) {
     range_threshold <- if (is.null(control_mcml$pc_range_threshold)) {
@@ -1134,9 +1172,16 @@ glgpm_nong_adaptive <- function(
     } else {
       control_mcml$pc_range_threshold / distance_scale
     }
+    sigma_threshold <- if (is.null(control_mcml$pc_sigma_threshold)) {
+      pc_sigma_threshold_from_data(y, units_m, D, family, cov_offset)
+    } else {
+      control_mcml$pc_sigma_threshold
+    }
+    pc_thresholds <- c(sigma = sigma_threshold,
+                       range = range_threshold * distance_scale)
     penalty <- make_pc_penalty(
       engine$layout, range_threshold = range_threshold,
-      sigma_threshold = control_mcml$pc_sigma_threshold,
+      sigma_threshold = sigma_threshold,
       sigma_probability = control_mcml$pc_sigma_probability,
       range_probability = control_mcml$pc_range_probability
     )
@@ -1297,6 +1342,7 @@ glgpm_nong_adaptive <- function(
     information_jitter = 0,
     mcml_supported = fit$accepted,
     mcml_pc_prior = pc_prior,
+    mcml_pc_thresholds = pc_thresholds,
     mcml_range_held = fit$range_held,
     laplace_start = if (is.null(laplace)) NULL else list(
       estimate = laplace$estimate,

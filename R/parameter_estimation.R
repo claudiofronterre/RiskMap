@@ -3001,8 +3001,11 @@ laplace_sampling_mcmc <- function(y,
 ##' ranges. Defaults to `FALSE`.
 ##' @param pc_sigma_threshold,pc_sigma_probability The penalty sets
 ##' P(sigma > `pc_sigma_threshold`) = `pc_sigma_probability`, where sigma is the
-##' spatial standard deviation on the scale of the linear predictor. Default
-##' 1 and 0.05.
+##' spatial standard deviation on the scale of the linear predictor. By default
+##' (`pc_sigma_threshold = NULL`) the threshold is estimated from the data as
+##' the standard deviation of the extra-binomial or extra-Poisson variation
+##' around a fixed-effects GLM, and is never below 1 (it is 1 for Bernoulli
+##' data). The default probability is 0.05.
 ##' @param pc_range_threshold,pc_range_probability The penalty sets
 ##' P(phi < `pc_range_threshold`) = `pc_range_probability`, where phi is the
 ##' range in the units of the coordinates. By default the threshold is the
@@ -3022,7 +3025,7 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
                              laplace_start = FALSE,
                              hold_short_range = TRUE,
                              pc_prior = FALSE,
-                             pc_sigma_threshold = 1,
+                             pc_sigma_threshold = NULL,
                              pc_sigma_probability = 0.05,
                              pc_range_threshold = NULL,
                              pc_range_probability = 0.05) {
@@ -3046,7 +3049,7 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
   if (!is.logical(pc_prior) || length(pc_prior) != 1L || is.na(pc_prior)) {
     stop("'pc_prior' must be TRUE or FALSE.", call. = FALSE)
   }
-  check_positive_number(pc_sigma_threshold, "")
+  if (!is.null(pc_sigma_threshold)) check_positive_number(pc_sigma_threshold, "")
   check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
               name = "pc_sigma_probability")
   if (!is.null(pc_range_threshold)) check_positive_number(pc_range_threshold, "")
