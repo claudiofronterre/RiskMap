@@ -25,6 +25,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cpp_canonical_log_likelihood
+NumericVector cpp_canonical_log_likelihood(const NumericMatrix eta_r, const NumericVector y_r, const NumericVector units_r, const bool poisson);
+RcppExport SEXP _RiskMap_cpp_canonical_log_likelihood(SEXP eta_rSEXP, SEXP y_rSEXP, SEXP units_rSEXP, SEXP poissonSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix >::type eta_r(eta_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type y_r(y_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type units_r(units_rSEXP);
+    Rcpp::traits::input_parameter< const bool >::type poisson(poissonSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_canonical_log_likelihood(eta_r, y_r, units_r, poisson));
+    return rcpp_result_gen;
+END_RCPP
+}
 // cpp_canonical_mala
 List cpp_canonical_mala(const NumericVector y_r, const NumericVector units_r, const NumericVector mu_r, const NumericMatrix proposal_lower_r, const NumericMatrix proposal_upper_r, const NumericMatrix prior_lower_r, const NumericMatrix prior_upper_r, const NumericVector transformed_prior_mean_r, const NumericVector proposal_mean_r, const IntegerVector location_id_r, const int n_locations, const IntegerMatrix random_effect_id_r, const std::string family, const int n_sim, const int burnin, const int thin, double step_size, const double adaptation_scale, const double adaptation_exponent);
 RcppExport SEXP _RiskMap_cpp_canonical_mala(SEXP y_rSEXP, SEXP units_rSEXP, SEXP mu_rSEXP, SEXP proposal_lower_rSEXP, SEXP proposal_upper_rSEXP, SEXP prior_lower_rSEXP, SEXP prior_upper_rSEXP, SEXP transformed_prior_mean_rSEXP, SEXP proposal_mean_rSEXP, SEXP location_id_rSEXP, SEXP n_locationsSEXP, SEXP random_effect_id_rSEXP, SEXP familySEXP, SEXP n_simSEXP, SEXP burninSEXP, SEXP thinSEXP, SEXP step_sizeSEXP, SEXP adaptation_scaleSEXP, SEXP adaptation_exponentSEXP) {
@@ -108,6 +122,7 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_RiskMap_cpp_canonical_likelihood", (DL_FUNC) &_RiskMap_cpp_canonical_likelihood, 4},
+    {"_RiskMap_cpp_canonical_log_likelihood", (DL_FUNC) &_RiskMap_cpp_canonical_log_likelihood, 4},
     {"_RiskMap_cpp_canonical_mala", (DL_FUNC) &_RiskMap_cpp_canonical_mala, 19},
     {"_RiskMap_cpp_pairwise_distances", (DL_FUNC) &_RiskMap_cpp_pairwise_distances, 1},
     {"_RiskMap_cpp_cross_distances", (DL_FUNC) &_RiskMap_cpp_cross_distances, 2},

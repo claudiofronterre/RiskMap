@@ -1,6 +1,7 @@
 // [[Rcpp::depends(RcppEigen)]]
 // [[Rcpp::plugins(cpp14)]]
 #include <RcppEigen.h>
+#include <limits>
 
 using Eigen::LLT;
 using Eigen::Lower;
@@ -75,6 +76,45 @@ List cpp_canonical_likelihood(const NumericMatrix eta_r,
   return List::create(Named("log_likelihood") = log_likelihood,
                       Named("score") = score,
                       Named("curvature") = curvature);
+}
+
+// Log-likelihood only, for every row of eta (draws x observations). The
+// family branch is resolved once, no score or curvature matrices are
+// allocated, and a Poisson mean that overflows gives -Inf for that draw, as in
+// the R implementation.
+// [[Rcpp::export]]
+NumericVector cpp_canonical_log_likelihood(const NumericMatrix eta_r,
+                                           const NumericVector y_r,
+                                           const NumericVector units_r,
+                                           const bool poisson) {
+  const int n_samples = eta_r.nrow();
+  const int n = eta_r.ncol();
+  if (y_r.size() != n || units_r.size() != n)
+    Rcpp::stop("Observation vectors have inconsistent lengths.");
+  NumericVector log_likelihood(n_samples);
+  const double* eta = eta_r.begin();
+  double* total = log_likelihood.begin();
+  for (int observation = 0; observation < n; ++observation) {
+    const double y = y_r[observation];
+    const double units = units_r[observation];
+    const double* column = eta + static_cast<R_xlen_t>(observation) * n_samples;
+    if (poisson) {
+      for (int sample = 0; sample < n_samples; ++sample) {
+        total[sample] += y * column[sample] - units * std::exp(column[sample]);
+      }
+    } else {
+      for (int sample = 0; sample < n_samples; ++sample) {
+        total[sample] += y * column[sample] - units * softplus(column[sample]);
+      }
+    }
+  }
+  if (poisson) {
+    for (int sample = 0; sample < n_samples; ++sample) {
+      if (!std::isfinite(total[sample]))
+        total[sample] = -std::numeric_limits<double>::infinity();
+    }
+  }
+  return log_likelihood;
 }
 
 // Canonical binomial/Poisson MALA. Random effects are represented as additional

@@ -37,45 +37,90 @@ laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
   }
 }
 
+##' Index structure mapping latent variables to observations
+##'
+##' `columns` holds, for each observation, the latent columns that enter its
+##' linear predictor (its location and one level per random effect). The
+##' data part of the Hessian, sum_i w_i a_i a_i', touches only the pairs of
+##' those columns, which are precomputed so that it can be accumulated with a
+##' single `rowsum()` instead of sparse matrix products.
+##' @noRd
+make_latent_map <- function(columns, dimension) {
+  columns <- as.matrix(columns)
+  width <- ncol(columns)
+  pair_rows <- columns[, rep(seq_len(width), each = width), drop = FALSE]
+  pair_cols <- columns[, rep(seq_len(width), times = width), drop = FALSE]
+  linear <- as.vector(pair_rows) + (as.vector(pair_cols) - 1) * dimension
+  list(columns = columns, dimension = dimension,
+       pair_linear = linear,
+       pair_observation = rep(seq_len(nrow(columns)), times = width^2))
+}
+
+latent_linear_predictor <- function(latent_map, latent) {
+  columns <- latent_map$columns
+  eta <- latent[columns[, 1L]]
+  if (ncol(columns) > 1L) {
+    for (j in 2:ncol(columns)) eta <- eta + latent[columns[, j]]
+  }
+  eta
+}
+
+latent_gradient <- function(latent_map, score) {
+  out <- numeric(latent_map$dimension)
+  for (j in seq_len(ncol(latent_map$columns))) {
+    sums <- rowsum(score, latent_map$columns[, j], reorder = FALSE)
+    index <- as.integer(rownames(sums))
+    out[index] <- out[index] + sums[, 1L]
+  }
+  out
+}
+
+latent_data_hessian <- function(latent_map, curvature) {
+  sums <- rowsum(curvature[latent_map$pair_observation],
+                 latent_map$pair_linear, reorder = FALSE)
+  out <- numeric(latent_map$dimension^2)
+  out[as.numeric(rownames(sums))] <- sums[, 1L]
+  dim(out) <- c(latent_map$dimension, latent_map$dimension)
+  out
+}
+
 ##' Conditional mode of the latent field by Newton's method
 ##'
 ##' Maximises log f(y | u) - u' P u / 2, where `precision` is the prior
-##' precision P and `incidence` maps latent variables to observations. Every
+##' precision P and `latent_map` maps latent variables to observations. Every
 ##' linear solve uses a Cholesky factor, and the search starts from `start`
 ##' (the previous mode), so successive calls along an optimisation path need
 ##' very few iterations. The objective is log-concave for canonical links;
 ##' step halving keeps every iteration an ascent step for other links.
 ##' @noRd
-adaptive_laplace_mode <- function(mu, y, units_m, incidence, precision,
+adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
                                   family, linkf, start,
                                   tolerance = 1e-10, maximum_iterations = 100L) {
   objective <- function(latent, terms) {
     terms$log_likelihood - 0.5 * sum(latent * as.numeric(precision %*% latent))
   }
+  terms_at <- function(latent) {
+    laplace_observation_terms(mu + latent_linear_predictor(latent_map, latent),
+                              y, units_m, family, linkf)
+  }
   latent <- start
-  eta <- mu + as.numeric(incidence %*% latent)
-  terms <- laplace_observation_terms(eta, y, units_m, family, linkf)
+  terms <- terms_at(latent)
   if (is.null(terms)) {
     latent <- numeric(length(start))
-    eta <- mu
-    terms <- laplace_observation_terms(eta, y, units_m, family, linkf)
+    terms <- terms_at(latent)
     if (is.null(terms)) stop("Invalid starting linear predictor.", call. = FALSE)
   }
   current <- objective(latent, terms)
   for (iteration in seq_len(maximum_iterations)) {
-    gradient <- as.numeric(Matrix::crossprod(incidence, terms$score)) -
+    gradient <- latent_gradient(latent_map, terms$score) -
       as.numeric(precision %*% latent)
-    hessian <- precision + as.matrix(Matrix::crossprod(
-      incidence, Matrix::Diagonal(x = terms$curvature) %*% incidence))
+    hessian <- precision + latent_data_hessian(latent_map, terms$curvature)
     root <- chol(hessian)
     step <- backsolve(root, forwardsolve(t(root), gradient))
     accepted <- FALSE
     for (halving in 0:30) {
       candidate <- latent + step / 2^halving
-      candidate_eta <- mu + as.numeric(incidence %*% candidate)
-      candidate_terms <- laplace_observation_terms(
-        candidate_eta, y, units_m, family, linkf
-      )
+      candidate_terms <- terms_at(candidate)
       if (is.null(candidate_terms)) next
       value <- objective(candidate, candidate_terms)
       if (is.finite(value) && value >= current - 1e-12 * abs(current)) {
@@ -90,8 +135,7 @@ adaptive_laplace_mode <- function(mu, y, units_m, incidence, precision,
     current <- value
     if (change <= tolerance * max(1, max(abs(latent)))) break
   }
-  hessian <- precision + as.matrix(Matrix::crossprod(
-    incidence, Matrix::Diagonal(x = terms$curvature) %*% incidence))
+  hessian <- precision + latent_data_hessian(latent_map, terms$curvature)
   list(mode = latent, hessian = (hessian + t(hessian)) / 2,
        iterations = iteration)
 }
@@ -153,11 +197,18 @@ make_adaptive_mcml_engine <- function(
     )
   }
 
+  half_integer_kappa <- kappa %in% c(0.5, 1.5, 2.5)
+  distance_values <- as.numeric(distances)
   covariance_at <- function(values) {
-    correlation <- matern_correlation(
-      stats::as.dist(distances), phi = values$phi, kappa = kappa,
-      return_sym_matrix = TRUE
-    )
+    # Evaluate the closed-form half-integer Matern correlation directly on the
+    # stored distance matrix rather than rebuilding it from a dist object.
+    correlation <- if (half_integer_kappa) {
+      matrix(cpp_half_integer_matern(distance_values, values$phi, kappa),
+             n_loc, n_loc)
+    } else {
+      matern_correlation(stats::as.dist(distances), phi = values$phi,
+                         kappa = kappa, return_sym_matrix = TRUE)
+    }
     diag(correlation) <- diag(correlation) + values$nugget_ratio
     values$sigma2 * correlation
   }
@@ -175,15 +226,9 @@ make_adaptive_mcml_engine <- function(
   latent <- latent_layout()
 
   log_observation_likelihood <- function(eta) {
-    if (canonical && family == "binomial") {
-      return(rowSums(sweep(eta, 2L, y, "*") -
-                       sweep(softplus(eta), 2L, units_m, "*")))
-    }
     if (canonical) {
-      mean <- exp(eta)
-      if (any(!is.finite(mean))) return(rep(-Inf, nrow(eta)))
-      return(rowSums(sweep(eta, 2L, y, "*") -
-                       sweep(mean, 2L, units_m, "*")))
+      return(cpp_canonical_log_likelihood(eta, y, units_m,
+                                          poisson = family == "poisson"))
     }
     mean <- matrix(inverse_link(as.vector(eta)), nrow = nrow(eta))
     if (family == "poisson") {
@@ -227,12 +272,11 @@ make_adaptive_mcml_engine <- function(
 
   # Sparse map from latent variables (spatial locations, then random-effect
   # levels) to observations, built once.
-  incidence <- Matrix::sparseMatrix(
-    i = c(seq_len(n), rep(seq_len(n), n_re)),
-    j = c(ID_coords, if (n_re) unlist(lapply(seq_len(n_re), function(j) {
+  latent_map <- make_latent_map(
+    cbind(ID_coords, if (n_re) vapply(seq_len(n_re), function(j) {
       latent$random[[j]][ID_re[, j]]
-    }))),
-    x = 1, dims = c(n, latent$dimension)
+    }, integer(n))),
+    latent$dimension
   )
   # The previous conditional mode is an excellent Newton start for nearby
   # parameter values; the most recent factorisations are reused when the
@@ -248,18 +292,15 @@ make_adaptive_mcml_engine <- function(
     values <- unpack(parameters)
     covariance <- covariance_at(values)
     spatial_root <- factor_covariance(covariance, "adaptive MCML target")
-    precision <- chol2inv(spatial_root)
-    if (n_re) {
-      precision <- as.matrix(Matrix::bdiag(c(
-        list(precision),
-        lapply(seq_len(n_re), function(j) {
-          diag(1 / values$sigma2_re[j], n_dim_re[j])
-        })
-      )))
+    precision <- matrix(0, latent$dimension, latent$dimension)
+    precision[latent$spatial, latent$spatial] <- chol2inv(spatial_root)
+    if (n_re) for (j in seq_len(n_re)) {
+      index <- latent$random[[j]]
+      precision[cbind(index, index)] <- 1 / values$sigma2_re[j]
     }
     mu <- as.numeric(D %*% values$beta + cov_offset)
     approximation <- adaptive_laplace_mode(
-      mu = mu, y = y, units_m = units_m, incidence = incidence,
+      mu = mu, y = y, units_m = units_m, latent_map = latent_map,
       precision = precision, family = family, linkf = linkf,
       start = last_mode
     )
@@ -287,7 +328,8 @@ make_adaptive_mcml_engine <- function(
       proposal_at(proposal_parameters), error = function(error) NULL
     )
     if (is.null(proposal)) return(if (diagnostics) NULL else -1e100)
-    samples <- sweep(z %*% proposal$root, 2L, proposal$mode, "+")
+    samples <- z %*% proposal$root
+    samples <- samples + rep(proposal$mode, each = nrow(samples))
     if (identical(parameters, proposal_parameters)) {
       values <- proposal$values
       covariance <- proposal$covariance
@@ -308,8 +350,8 @@ make_adaptive_mcml_engine <- function(
       n_loc * log(2 * pi) + 2 * sum(log(diag(spatial_root))) +
         colSums(t(spatial_samples) * solved)
     )
-    eta <- sweep(spatial_samples[, ID_coords, drop = FALSE], 2L,
-                 as.numeric(D %*% values$beta + cov_offset), "+")
+    eta <- spatial_samples[, ID_coords, drop = FALSE] +
+      rep(as.numeric(D %*% values$beta + cov_offset), each = nrow(samples))
     if (n_re) for (j in seq_len(n_re)) {
       random_samples <- samples[, latent$random[[j]], drop = FALSE]
       eta <- eta + random_samples[, ID_re[, j], drop = FALSE]
