@@ -57,9 +57,7 @@ specify_glgpm <- function(formula, data, family, parameters,
   family <- match.arg(family, c("gaussian", "binomial", "poisson"))
   custom_link <- !is.null(invlink)
   inter <- interpret_formula(formula)
-  if (is.null(inter$gp_spec)) {
-    stop("'formula' must contain gp().", call. = FALSE)
-  }
+
   sub_denominator <- substitute(denominator)
   denominator_name <- NULL
   if (!is.null(sub_denominator)) {
