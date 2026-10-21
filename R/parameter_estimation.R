@@ -773,19 +773,6 @@ nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
   as.numeric(fix_tau2) / sigma2
 }
 
-##' Evaluate log(mean(exp(x))) without exponentiating large values
-##'
-##' @noRd
-log_mean_exp <- function(x) {
-  shift <- max(x)
-
-  if (!is.finite(shift)) {
-    return(shift)
-  }
-
-  shift + log(mean(exp(x - shift)))
-}
-
 ##' Convert log weights to probabilities without overflow or underflow
 ##'
 ##' The common shift cancels during normalisation, while keeping every
@@ -800,13 +787,6 @@ normalise_log_weights <- function(log_weights) {
 
   weights <- exp(log_weights - shift)
   weights / sum(weights)
-}
-
-##' Effective sample size of normalised importance weights
-##'
-##' @noRd
-importance_effective_sample_size <- function(weights) {
-  1 / sum(weights^2)
 }
 
 ##' Obtain stable Gaussian regression starting values

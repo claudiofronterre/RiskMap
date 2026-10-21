@@ -83,16 +83,6 @@ scale_spatial_coordinates <- function(coordinates, phi = NULL) {
        distance_scale = distance_scale)
 }
 
-#' Restore a spatial range to the original coordinate units
-#'
-#' @param phi_scaled Spatial range expressed on the internally scaled geometry.
-#' @param distance_scale Maximum observed pairwise distance used for scaling.
-#' @return The spatial range in the original coordinate units.
-#' @noRd
-restore_spatial_range <- function(phi_scaled, distance_scale) {
-  phi_scaled * distance_scale
-}
-
 #' Stable Cholesky factorisation
 #'
 #' Symmetrise a covariance matrix and factorise it. Scale-aware diagonal jitter
