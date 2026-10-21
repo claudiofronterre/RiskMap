@@ -2928,6 +2928,155 @@ plot.RiskMap_simulation <- function(x, simulation = 1, palette = "viridis",
   out
 }
 
+##' Map values over a regular grid of points
+##'
+##' Draws each grid point as a tile, styled with `add_map_layers()`. Shared by
+##' the plot methods for grid predictions and simulated surfaces.
+##'
+##' @param grid An `sf` or `sfc` object of points on a regular grid.
+##' @param values Numeric vector of values to map, one per point in `grid`.
+##' @param legend_title Character string used as the fill legend title.
+##' @param palette,reverse_palette,limits,north_arrow,scale_bar,... Passed to
+##' `add_map_layers()`.
+##' @return A `ggplot` object.
+##' @noRd
+plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
+                      limits, north_arrow, scale_bar, ...) {
+  grid_coordinates <- st_coordinates(grid)
+  plot_data <- data.frame(x = grid_coordinates[, 1],
+                          y = grid_coordinates[, 2],
+                          value = values)
+
+  tile_width <- grid_spacing(plot_data$x)
+  tile_height <- grid_spacing(plot_data$y)
+  # a single row or column has no spacing of its own, so borrow the other
+  # axis's to keep the tiles square
+  if (is.na(tile_width) && is.na(tile_height)) {
+    tile_width <- tile_height <- 1
+  } else if (is.na(tile_width)) {
+    tile_width <- tile_height
+  } else if (is.na(tile_height)) {
+    tile_height <- tile_width
+  }
+
+  # extent of the tiles, not just their centres
+  extent <- c(xmin = min(plot_data$x) - tile_width / 2,
+              xmax = max(plot_data$x) + tile_width / 2,
+              ymin = min(plot_data$y) - tile_height / 2,
+              ymax = max(plot_data$y) + tile_height / 2)
+
+  out <- ggplot(plot_data) +
+    geom_tile(aes(x = .data$x, y = .data$y, fill = .data$value),
+              width = tile_width, height = tile_height)
+
+  add_map_layers(out,
+                 extent = extent,
+                 crs = st_crs(grid),
+                 legend_title = legend_title,
+                 palette = palette,
+                 reverse_palette = reverse_palette,
+                 limits = limits,
+                 north_arrow = north_arrow,
+                 scale_bar = scale_bar,
+                 ...)
+}
+
+##' Spacing between the points of a regular grid along one axis
+##'
+##' @param coordinates Numeric vector of coordinates along one axis.
+##' @return The smallest gap between distinct coordinates, or `NA` when they
+##' all share one value.
+##' @noRd
+grid_spacing <- function(coordinates) {
+  if (length(unique(coordinates)) < 2) return(NA_real_)
+  resolution(coordinates, zero = FALSE)
+}
+
+##' Convert a palette specification into a vector of colours
+##'
+##' @param palette Either the name of a palette in [grDevices::hcl.pals()] or a
+##' character vector of two or more valid colours.
+##' @param reverse_palette Logical; reverse the order of the colours.
+##' @return A character vector of colours.
+##' @noRd
+palette_colours <- function(palette, reverse_palette = FALSE) {
+  stopifnot("'palette' must be a character vector" = is.character(palette))
+  check_logical(reverse_palette)
+
+  if (length(palette) == 1) {
+    # hcl.colors() ignores case, spaces and punctuation in palette names
+    normalise_name <- function(name) tolower(gsub("[^[:alnum:]]", "", name))
+    if (!normalise_name(palette) %in% normalise_name(grDevices::hcl.pals())) {
+      stop("'palette' must be one of grDevices::hcl.pals() or a vector of two or more colours")
+    }
+    colours <- grDevices::hcl.colors(256, palette = palette)
+  } else {
+    valid_colour <- vapply(palette, function(colour) {
+      !inherits(try(grDevices::col2rgb(colour), silent = TRUE), "try-error")
+    }, logical(1))
+    if (!all(valid_colour)) {
+      stop("'palette' contains invalid colours: ",
+           paste(shQuote(palette[!valid_colour]), collapse = ", "))
+    }
+    colours <- palette
+  }
+  if (reverse_palette) colours <- rev(colours)
+  colours
+}
+
+##' Add the fill scale, map extent, north arrow and scale bar shared by the
+##' prediction maps
+##'
+##' @param map A `ggplot` object.
+##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`) giving
+##' the extent of the data in `crs`.
+##' @param crs The coordinate reference system of the data.
+##' @param legend_title Character string used as the fill legend title.
+##' @param palette,reverse_palette Passed to `palette_colours()`.
+##' @param limits `NULL` or a numeric vector of length two for the colour scale.
+##' @param north_arrow,scale_bar Logical; whether to add each annotation.
+##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()].
+##' @return The `ggplot` object with the layers added.
+##' @noRd
+add_map_layers <- function(map, extent, crs, legend_title, palette,
+                           reverse_palette, limits, north_arrow, scale_bar, ...) {
+  check_logical(north_arrow)
+  check_logical(scale_bar)
+  map <- map +
+    scale_fill_gradientn(colours = palette_colours(palette, reverse_palette),
+                         limits = limits, ...) +
+    coord_sf(crs = crs,
+             xlim = as.numeric(extent[c("xmin", "xmax")]),
+             ylim = pad_map_extent(extent, north_arrow, scale_bar)) +
+    labs(x = NULL, y = NULL, fill = legend_title)
+
+  if (north_arrow) {
+    map <- map +
+      ggspatial::annotation_north_arrow(location = "tr", which_north = "true",
+                                        height = unit(1, "cm"),
+                                        width = unit(1, "cm"))
+  }
+  if (scale_bar) {
+    map <- map + ggspatial::annotation_scale(location = "bl")
+  }
+  map
+}
+
+##' Extend the vertical extent of a map to make room for annotations
+##'
+##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`).
+##' @param north_arrow Logical; add space above the data for a north arrow.
+##' @param scale_bar Logical; add space below the data for a scale bar.
+##' @return Numeric vector of length two giving the padded y limits.
+##' @noRd
+pad_map_extent <- function(extent, north_arrow, scale_bar) {
+  height <- unname(extent["ymax"] - extent["ymin"])
+  # roughly the height of each annotation on a typical map
+  top_padding <- if (north_arrow) 0.15 * height else 0
+  bottom_padding <- if (scale_bar) 0.08 * height else 0
+  unname(c(extent["ymin"] - bottom_padding, extent["ymax"] + top_padding))
+}
+
 ##' @title Plot Method for RiskMap_simulated_surface Objects
 ##' @description
 ##' Maps the linear predictor of a surface extracted with

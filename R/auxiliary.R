@@ -1240,7 +1240,7 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 
   build_plot <- function(df, title_suffix = "") {
     ggplot(df, aes(.data$u_val, .data$value,
-                   colour = if (pit_mode == "all") as.factor(test_set) else NULL)) +
+                   colour = if (pit_mode == "all") as.factor(.data$test_set) else NULL)) +
       geom_line() + id_line +
       labs(title = title_suffix, x = "", y = unique(df$type)) +
       theme_minimal() +
