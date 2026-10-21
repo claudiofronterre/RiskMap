@@ -111,7 +111,10 @@ they also reflect the uncertainty in the estimated parameters; see
 Details.}
 
 \item{parameter_draws}{Positive integer giving the number of parameter
-values drawn when \code{parameter_uncertainty = TRUE}. Default 50.}
+values drawn when \code{parameter_uncertainty = TRUE}. Default 50. Conditional
+samples stored in the fit are not used in that case, because they
+condition on the estimate only; \code{control_mcmc}, if supplied, sets only
+the total number of predictive draws.}
 
 \item{seed}{Optional integer seed for random draws made during prediction.
 The caller's random-number state is restored on exit. When supplied, this
@@ -198,7 +201,7 @@ latent and the parameter uncertainty. For binomial and Poisson models the
 conditional samples at each parameter value come from a short run of the
 same Langevin (MALA) sampler used for plug-in prediction, in coordinates
 whitened by the Laplace approximation at that value, started at its mode
-and using the step size tuned at the estimate (100 burn-in iterations,
+and using the step size tuned at the estimate (500 burn-in iterations,
 then thinning by 10). The total number of predictive draws equals that of
 plug-in prediction. Parameters
 without a finite positive variance, such as those held at a boundary, keep

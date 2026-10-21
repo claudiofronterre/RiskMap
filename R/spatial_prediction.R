@@ -75,7 +75,10 @@
 ##'   they also reflect the uncertainty in the estimated parameters; see
 ##'   Details.
 ##' @param parameter_draws Positive integer giving the number of parameter
-##'   values drawn when `parameter_uncertainty = TRUE`. Default 50.
+##'   values drawn when `parameter_uncertainty = TRUE`. Default 50. Conditional
+##'   samples stored in the fit are not used in that case, because they
+##'   condition on the estimate only; `control_mcmc`, if supplied, sets only
+##'   the total number of predictive draws.
 ##' @param seed Optional integer seed for random draws made during prediction.
 ##'   The caller's random-number state is restored on exit. When supplied, this
 ##'   seed takes precedence over a seed stored in `control_mcmc` for this call.
