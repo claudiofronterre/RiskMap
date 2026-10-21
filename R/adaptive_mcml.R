@@ -1216,6 +1216,14 @@ glgpm_nong_adaptive <- function(
     )
   }
 
+  # Weak identification of the spatial variance or range is what the PC
+  # penalty addresses, so the warnings below point to it when it is off.
+  pc_advice <- if (pc_prior) "" else paste0(
+    " Alternatively, refit with 'control_mcml = set_control_mcml(pc_prior = ",
+    "TRUE)', which stabilises the spatial variance and range with a mild ",
+    "penalty; this is recommended for small or low-prevalence surveys and ",
+    "makes prediction with 'parameter_uncertainty = TRUE' possible."
+  )
   boundary_names <- describe_variance_parameters(
     fit$boundary_parameters, engine$layout,
     re_names = if (is.null(ID_re)) NULL else colnames(ID_re)
@@ -1238,6 +1246,7 @@ glgpm_nong_adaptive <- function(
       },
       ". Consider refitting without ",
       if (length(boundary_names) == 1L) "it." else "them.",
+      if (engine$layout$index$sigma2 %in% fit$boundary_parameters) pc_advice,
       call. = FALSE
     )
   }
@@ -1249,6 +1258,7 @@ glgpm_nong_adaptive <- function(
       "was held at the median nearest-neighbour distance and its standard ",
       "error is not reported. Consider a model with a nugget (unstructured) ",
       "effect instead, or fixing the range from external knowledge.",
+      pc_advice,
       call. = FALSE
     )
   }
@@ -1258,6 +1268,7 @@ glgpm_nong_adaptive <- function(
       "(often the spatial range when spatial correlation is weak) are not ",
       "identifiable from these data. The estimate is returned without ",
       "standard errors; consider a simpler model or fixing the range.",
+      pc_advice,
       call. = FALSE
     )
   } else if (!fit$accepted) {

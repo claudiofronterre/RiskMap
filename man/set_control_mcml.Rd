@@ -62,7 +62,10 @@ penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
 estimate maximises the penalised likelihood on the log scale of the
 covariance parameters. This shrinks estimates away from degenerate
 solutions in small or sparse datasets and replaces the hold of short
-ranges. Defaults to \code{FALSE}.}
+ranges. It is recommended for small or low-prevalence surveys, especially
+before prediction with \code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
+When the spatial variance is large and well identified, the penalty shrinks
+it somewhat towards zero, so the default is \code{FALSE}.}
 
 \item{pc_sigma_threshold, pc_sigma_probability}{The penalty sets
 P(sigma > \code{pc_sigma_threshold}) = \code{pc_sigma_probability}, where sigma is the
