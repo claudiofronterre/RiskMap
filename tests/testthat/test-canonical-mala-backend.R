@@ -1,4 +1,4 @@
-test_that("compiled canonical likelihood agrees with stable R calculations", {
+test_that("compiled log-likelihood agrees with stable R calculations", {
   eta <- matrix(c(
     -30, -3, 0, 3, 30,
     -12, -1, 0.5, 8, 20
@@ -6,54 +6,27 @@ test_that("compiled canonical likelihood agrees with stable R calculations", {
 
   binomial_y <- c(0, 1, 3, 7, 10)
   binomial_units <- c(1, 4, 6, 9, 10)
-  binomial <- cpp_canonical_likelihood(
-    eta, binomial_y, binomial_units, "binomial"
-  )
-  probability <- plogis(eta)
-  expected_binomial_log_likelihood <- rowSums(
+  expected_binomial <- rowSums(
     sweep(eta, 2, binomial_y, `*`) -
-      sweep(log1p(exp(-abs(eta))) + pmax(eta, 0), 2,
-            binomial_units, `*`)
+      sweep(log1p(exp(-abs(eta))) + pmax(eta, 0), 2, binomial_units, `*`)
   )
-  expected_binomial_score <- sweep(probability, 2, binomial_units, `*`)
-  expected_binomial_score <- sweep(
-    -expected_binomial_score, 2, binomial_y, `+`
-  )
-  expected_binomial_curvature <- sweep(
-    probability * (1 - probability), 2, binomial_units, `*`
-  )
-
   expect_equal(
-    binomial$log_likelihood, expected_binomial_log_likelihood,
-    tolerance = 1e-12
-  )
-  expect_equal(binomial$score, expected_binomial_score, tolerance = 1e-12)
-  expect_equal(
-    binomial$curvature, expected_binomial_curvature, tolerance = 1e-12
+    cpp_canonical_log_likelihood(eta, binomial_y, binomial_units,
+                                 poisson = FALSE),
+    expected_binomial, tolerance = 1e-12
   )
 
   poisson_y <- c(0, 1, 2, 5, 9)
   exposure <- c(0.5, 1, 1.5, 2, 3)
   poisson_eta <- eta / 3
-  poisson <- cpp_canonical_likelihood(
-    poisson_eta, poisson_y, exposure, "poisson"
-  )
-  poisson_mean <- exp(poisson_eta)
-  expected_poisson_log_likelihood <- rowSums(
+  expected_poisson <- rowSums(
     sweep(poisson_eta, 2, poisson_y, `*`) -
-      sweep(poisson_mean, 2, exposure, `*`)
+      sweep(exp(poisson_eta), 2, exposure, `*`)
   )
-  expected_poisson_score <- sweep(poisson_mean, 2, exposure, `*`)
-  expected_poisson_score <- sweep(-expected_poisson_score, 2, poisson_y, `+`)
-  expected_poisson_curvature <- sweep(poisson_mean, 2, exposure, `*`)
-
   expect_equal(
-    poisson$log_likelihood, expected_poisson_log_likelihood,
-    tolerance = 1e-12
-  )
-  expect_equal(poisson$score, expected_poisson_score, tolerance = 1e-12)
-  expect_equal(
-    poisson$curvature, expected_poisson_curvature, tolerance = 1e-12
+    cpp_canonical_log_likelihood(poisson_eta, poisson_y, exposure,
+                                 poisson = TRUE),
+    expected_poisson, tolerance = 1e-12
   )
 })
 
@@ -107,13 +80,14 @@ test_that("compiled MALA reproduces the general R transition", {
   expect_equal(compiled$samples$S, r_reference$samples$S, tolerance = 5e-5)
 })
 
-test_that("compiled likelihood validates its observation contract", {
+test_that("compiled log-likelihood validates inputs and guards overflow", {
   expect_error(
-    cpp_canonical_likelihood(matrix(0, 2, 2), 1, c(1, 1), "binomial"),
+    cpp_canonical_log_likelihood(matrix(0, 2, 2), 1, c(1, 1),
+                                 poisson = FALSE),
     "inconsistent lengths"
   )
-  expect_error(
-    cpp_canonical_likelihood(matrix(0, 1, 1), 0, 1, "gaussian"),
-    "Unsupported family"
+  overflow <- matrix(c(0, 800), nrow = 2)
+  expect_identical(
+    cpp_canonical_log_likelihood(overflow, 1, 1, poisson = TRUE)[2], -Inf
   )
 })

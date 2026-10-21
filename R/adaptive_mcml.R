@@ -270,7 +270,7 @@ make_adaptive_mcml_engine <- function(
     residual * first / (mean * (1 - mean))
   }
 
-  # Sparse map from latent variables (spatial locations, then random-effect
+  # Index map from latent variables (spatial locations, then random-effect
   # levels) to observations, built once.
   latent_map <- make_latent_map(
     cbind(ID_coords, if (n_re) vapply(seq_len(n_re), function(j) {

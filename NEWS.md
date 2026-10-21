@@ -105,6 +105,14 @@ distance (`set_control_mcml(hold_short_range = FALSE)` disables this). If the
 information matrix is still singular, fitting stops instead of drawing more
 samples. Each case produces a plain-language warning.
 
+- `maxim_integrand()` now takes `denominator` instead of `units_m`, matching
+`glgpm()`. Its documentation no longer lists the Gaussian family, which it has
+never supported, and describes the Newton-type optimisation it actually uses.
+
+- Removed unused internal helpers (`log_mean_exp()`,
+`importance_effective_sample_size()`, `restore_spatial_range()`) and the
+compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
+
 - `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
 Laplace approximation from several starting values before MCML.
 

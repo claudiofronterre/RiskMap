@@ -792,19 +792,6 @@ nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
   as.numeric(fix_tau2) / sigma2
 }
 
-##' Evaluate log(mean(exp(x))) without exponentiating large values
-##'
-##' @noRd
-log_mean_exp <- function(x) {
-  shift <- max(x)
-
-  if (!is.finite(shift)) {
-    return(shift)
-  }
-
-  shift + log(mean(exp(x - shift)))
-}
-
 ##' Convert log weights to probabilities without overflow or underflow
 ##'
 ##' The common shift cancels during normalisation, while keeping every
@@ -819,13 +806,6 @@ normalise_log_weights <- function(log_weights) {
 
   weights <- exp(log_weights - shift)
   weights / sum(weights)
-}
-
-##' Effective sample size of normalised importance weights
-##'
-##' @noRd
-importance_effective_sample_size <- function(weights) {
-  1 / sum(weights^2)
 }
 
 ##' Obtain stable Gaussian regression starting values
@@ -1069,7 +1049,7 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
   mu <- as.numeric(D %*% candidate$beta) + cov_offset
   laplace <- maxim_integrand(
     y = y,
-    units_m = units_m,
+    denominator = units_m,
     mu = mu,
     Sigma = covariance,
     ID_coords = ID_coords,
@@ -2283,52 +2263,65 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
 ##'
-##' Maximizes the integrand function for Generalized Linear Gaussian Process
-##' Models (GLGPMs), which involves the evaluation of likelihood functions with
-##' spatially correlated random effects.
+##' Finds the conditional mode of the latent effects in a binomial or Poisson
+##' generalized linear Gaussian process model (GLGPM), that is, the maximiser of
+##' the joint log-density of the responses and the latent spatial and
+##' unstructured random effects, viewed as a function of the latent effects.
 ##'
-##' @param y Response variable vector.
-##' @param units_m Units of measurement for the response variable.
-##' @param mu Mean vector of the response variable.
+##' @param y Response variable vector: numbers of positives for
+##'   `family = "binomial"`, or counts for `family = "poisson"`.
+##' @param denominator Numeric vector with one positive value per response: the
+##'   number of trials for `family = "binomial"`, or the exposure (the expected
+##'   count is `denominator` times the inverse link of the linear predictor) for
+##'   `family = "poisson"`. This is the same quantity as the `denominator`
+##'   argument of [glgpm()].
+##' @param mu Vector of the fixed part of the linear predictor, one value per
+##'   response.
 ##' @param Sigma Covariance matrix of the spatial process.
 ##' @param ID_coords Indices mapping response to locations.
 ##' @param ID_re Indices mapping response to unstructured random effects.
-##' @param family Distribution family for the response variable.
-##' Must be one of `"binomial"`, or `"poisson"`.
+##' @param family Distribution family for the response variable: `"binomial"`
+##'   or `"poisson"`.
 ##' @param sigma2_re Variance of the unstructured random effects.
 ##' @param hessian Logical; if TRUE, compute the Hessian matrix.
 ##' @param gradient Logical; if TRUE, compute the gradient vector.
 ##' @param invlink A function that defines the inverse of the link function for
-##' the distribution of the data given the random effects.
+##'   the distribution of the data given the random effects.
 ##'
 ##' @details
-##' This function maximizes the integrand for GLGPMs using the Nelder-Mead
-##' optimization algorithm. It computes the likelihood function incorporating
-##' spatial covariance and unstructured random effects, if provided.
+##' The mode is found by Newton-type optimisation ([stats::nlminb()]) using the
+##' analytic gradient and Hessian of the integrand. The integrand includes terms
+##' for the spatial process (`Sigma`), the unstructured random effects
+##' (`sigma2_re`), and the log-likelihood of the responses for the specified
+##' family.
 ##'
-##' The integrand includes terms for the spatial process (Sigma), unstructured
-##' random effects (sigma2_re), and the likelihood function (llik) based on the
-##' specified distribution family (``"binomial"`, or `"poisson"`).
-##'
-##' @return A list containing the mode estimate, and optionally, the Hessian
-##' matrix and gradient vector.
+##' @return A list with the mode (`mode`), the name of the inverse link used
+##'   (`invlink_used`) and either the Hessian of the integrand at the mode
+##'   (`hessian`, if `hessian = TRUE`) or the inverse of its negative
+##'   (`Sigma.tilde`, otherwise). If `gradient = TRUE`, the gradient at the mode
+##'   is also returned (`gradient`).
 ##' @examples
-##' y <- c(2, 5, 7)
-##' units_m <- c(10, 10, 10)
-##' mu <- c(0, 0, 0)
-##' Sigma <- matrix(c(1, 0.3, 0.1, 0.3, 1, 0.3, 0.1, 0.3, 1), nrow = 3)
-##'
-##' maxim_integrand(
-##'   y = y, units_m = units_m, mu = mu, Sigma = Sigma,
-##'   ID_coords = 1:3, family = "binomial",
-##'   hessian = FALSE, gradient = TRUE
+##' coords <- cbind(c(0, 1, 2), c(0, 0, 1))
+##' Sigma <- exp(-as.matrix(dist(coords)))
+##' mode <- maxim_integrand(
+##'   y = c(3, 5, 1), denominator = c(10, 10, 10), mu = rep(-0.5, 3),
+##'   Sigma = Sigma, ID_coords = 1:3, family = "binomial"
 ##' )
+##' mode$mode
 ##' @export
 maxim_integrand <- function(
-    y, units_m, mu, Sigma, ID_coords, ID_re = NULL, family,
+    y, denominator, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
 ) {
-  stopifnot(family %in% c("poisson", "binomial"))
+  if (missing(denominator)) {
+    stop("'denominator' must be provided.", call. = FALSE)
+  }
+  if (length(family) != 1L || !family %in% c("binomial", "poisson")) {
+    stop("'family' must be either \"binomial\" or \"poisson\".", call. = FALSE)
+  }
+  # The integrand and its derivatives below refer to the denominator as
+  # `units_m`, the name used by the package's internal fitting functions.
+  units_m <- denominator
 
   # ---------- utilities ----------
   sum_by_group <- function(v, grp, nlev) {
@@ -2518,11 +2511,12 @@ maxim_integrand <- function(
 ##' expansion around the mode, and a Gaussian proposal is used for
 ##' Metropolis–Hastings updates with adaptive step-size tuning.
 ##'
-##' @param y Numeric vector of responses of length \eqn{n}.
-##'   For \code{family = "binomial"} this is the number of successes,
-##'   for \code{family = "poisson"} counts, and for \code{family = "gaussian"} real values.
-##' @param units_m Numeric vector giving the binomial totals (number of trials)
-##'   when \code{family = "binomial"}; ignored for other families (can be \code{NULL}).
+##' @param y Numeric vector of responses of length \eqn{n}: the number of
+##'   positives for \code{family = "binomial"}, or counts for
+##'   \code{family = "poisson"}.
+##' @param units_m Numeric vector of positive values, one per response: the
+##'   number of trials for \code{family = "binomial"}, or the exposure for
+##'   \code{family = "poisson"} (the \code{denominator} of [glgpm()]).
 ##' @param mu Numeric vector of length \eqn{n} providing the fixed part of the
 ##'   linear predictor for each observation.
 ##' @param Sigma Numeric positive-definite covariance matrix for the latent spatial
@@ -2535,8 +2529,7 @@ maxim_integrand <- function(
 ##'   Use \code{NULL} to exclude REs.
 ##' @param sigma2_re Optional named numeric vector of RE variances. Names must
 ##'   match the column names of \code{ID_re}. Ignored if \code{ID_re = NULL}.
-##' @param family Character string: one of \code{"gaussian"}, \code{"binomial"},
-##'   or \code{"poisson"}.
+##' @param family Character string: \code{"binomial"} or \code{"poisson"}.
 ##' @param control_mcmc List of control parameters:
 ##'   \describe{
 ##'     \item{n_sim}{Total number of MCMC iterations (including burn-in).}
@@ -2703,7 +2696,7 @@ laplace_sampling_mcmc <- function(y,
 
   # ---------- default Laplace proposal if missing ----------
   if (is.null(Sigma_pd) || is.null(mean_pd)) {
-    out_maxim <- maxim_integrand(y = y, units_m = units_m, Sigma = Sigma, mu = mu,
+    out_maxim <- maxim_integrand(y = y, denominator = units_m, Sigma = Sigma, mu = mu,
                                  ID_coords = ID_coords, ID_re = ID_re,
                                  sigma2_re = sigma2_re,
                                  family = family, invlink = invlink,

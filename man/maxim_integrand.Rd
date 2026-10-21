@@ -6,7 +6,7 @@
 \usage{
 maxim_integrand(
   y,
-  units_m,
+  denominator,
   mu,
   Sigma,
   ID_coords,
@@ -19,11 +19,17 @@ maxim_integrand(
 )
 }
 \arguments{
-\item{y}{Response variable vector.}
+\item{y}{Response variable vector: numbers of positives for
+\code{family = "binomial"}, or counts for \code{family = "poisson"}.}
 
-\item{units_m}{Units of measurement for the response variable.}
+\item{denominator}{Numeric vector with one positive value per response: the
+number of trials for \code{family = "binomial"}, or the exposure (the expected
+count is \code{denominator} times the inverse link of the linear predictor) for
+\code{family = "poisson"}. This is the same quantity as the \code{denominator}
+argument of \code{\link[=glgpm]{glgpm()}}.}
 
-\item{mu}{Mean vector of the response variable.}
+\item{mu}{Vector of the fixed part of the linear predictor, one value per
+response.}
 
 \item{Sigma}{Covariance matrix of the spatial process.}
 
@@ -31,8 +37,8 @@ maxim_integrand(
 
 \item{ID_re}{Indices mapping response to unstructured random effects.}
 
-\item{family}{Distribution family for the response variable.
-Must be one of \code{"binomial"}, or \code{"poisson"}.}
+\item{family}{Distribution family for the response variable: \code{"binomial"}
+or \code{"poisson"}.}
 
 \item{sigma2_re}{Variance of the unstructured random effects.}
 
@@ -44,32 +50,31 @@ Must be one of \code{"binomial"}, or \code{"poisson"}.}
 the distribution of the data given the random effects.}
 }
 \value{
-A list containing the mode estimate, and optionally, the Hessian
-matrix and gradient vector.
+A list with the mode (\code{mode}), the name of the inverse link used
+(\code{invlink_used}) and either the Hessian of the integrand at the mode
+(\code{hessian}, if \code{hessian = TRUE}) or the inverse of its negative
+(\code{Sigma.tilde}, otherwise). If \code{gradient = TRUE}, the gradient at the mode
+is also returned (\code{gradient}).
 }
 \description{
-Maximizes the integrand function for Generalized Linear Gaussian Process
-Models (GLGPMs), which involves the evaluation of likelihood functions with
-spatially correlated random effects.
+Finds the conditional mode of the latent effects in a binomial or Poisson
+generalized linear Gaussian process model (GLGPM), that is, the maximiser of
+the joint log-density of the responses and the latent spatial and
+unstructured random effects, viewed as a function of the latent effects.
 }
 \details{
-This function maximizes the integrand for GLGPMs using the Nelder-Mead
-optimization algorithm. It computes the likelihood function incorporating
-spatial covariance and unstructured random effects, if provided.
-
-The integrand includes terms for the spatial process (Sigma), unstructured
-random effects (sigma2_re), and the likelihood function (llik) based on the
-specified distribution family (``"binomial"\verb{, or }"poisson"`).
+The mode is found by Newton-type optimisation (\code{\link[stats:nlminb]{stats::nlminb()}}) using the
+analytic gradient and Hessian of the integrand. The integrand includes terms
+for the spatial process (\code{Sigma}), the unstructured random effects
+(\code{sigma2_re}), and the log-likelihood of the responses for the specified
+family.
 }
 \examples{
-y <- c(2, 5, 7)
-units_m <- c(10, 10, 10)
-mu <- c(0, 0, 0)
-Sigma <- matrix(c(1, 0.3, 0.1, 0.3, 1, 0.3, 0.1, 0.3, 1), nrow = 3)
-
-maxim_integrand(
-  y = y, units_m = units_m, mu = mu, Sigma = Sigma,
-  ID_coords = 1:3, family = "binomial",
-  hessian = FALSE, gradient = TRUE
+coords <- cbind(c(0, 1, 2), c(0, 0, 1))
+Sigma <- exp(-as.matrix(dist(coords)))
+mode <- maxim_integrand(
+  y = c(3, 5, 1), denominator = c(10, 10, 10), mu = rep(-0.5, 3),
+  Sigma = Sigma, ID_coords = 1:3, family = "binomial"
 )
+mode$mode
 }
