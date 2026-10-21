@@ -132,6 +132,13 @@ appropriate UTM zone and reports the conversion with a message.
   counterfactual reference population, with optional population weights.
 - Gaussian prediction uses a stable reduced covariance solve, avoiding cancellation
 with small measurement-error variances while retaining the same conditional model.
+- `predict()` gains `parameter_uncertainty` (default `FALSE`) and
+`parameter_draws` (default 50). When requested, parameters are drawn from the
+approximate sampling distribution of the estimate and, for each draw, the
+latent effects are sampled at that value with a short run of the same Langevin
+sampler used for plug-in prediction. The pooled draws give intervals,
+exceedance probabilities and areal summaries that also reflect parameter
+uncertainty, which matters for small or low-prevalence surveys.
 
 ## Cross validation
 

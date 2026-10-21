@@ -70,6 +70,12 @@
 ##' @param control_mcmc Optional output from [set_control_mcmc()]. When omitted,
 ##'   conditional samples stored in a non-Gaussian fit are reused. Supplying a
 ##'   control object requests a fresh conditional run.
+##' @param parameter_uncertainty Logical. If `FALSE` (the default), predictions
+##'   are made at the estimated parameters (plug-in prediction). If `TRUE`,
+##'   they also reflect the uncertainty in the estimated parameters; see
+##'   Details.
+##' @param parameter_draws Positive integer giving the number of parameter
+##'   values drawn when `parameter_uncertainty = TRUE`. Default 50.
 ##' @param seed Optional integer seed for random draws made during prediction.
 ##'   The caller's random-number state is restored on exit. When supplied, this
 ##'   seed takes precedence over a seed stored in `control_mcmc` for this call.
@@ -96,6 +102,30 @@
 ##' [set_control_mcmc()] defaults. Supplying `control_mcmc` always requests a
 ##' fresh conditional run. For Gaussian models, prediction is based on their
 ##' exact conditional Gaussian distribution.
+##'
+##' Plug-in prediction treats the estimated parameters as known, so its
+##' intervals can be too narrow when the parameters, in particular the spatial
+##' variance and range, are poorly estimated, as in small or low-prevalence
+##' surveys. With `parameter_uncertainty = TRUE`, `parameter_draws` parameter
+##' values are drawn from the approximate sampling distribution of the
+##' estimate: a multivariate normal distribution with the estimated covariance
+##' matrix, on the scale on which the model is estimated (log variances and
+##' log range). For each value, conditional samples of the latent effects are
+##' generated at that value and the prediction is repeated; the draws are then
+##' pooled, so every summary, aggregation and derived target reflects both the
+##' latent and the parameter uncertainty. For binomial and Poisson models the
+##' conditional samples at each parameter value come from a short run of the
+##' same Langevin (MALA) sampler used for plug-in prediction, in coordinates
+##' whitened by the Laplace approximation at that value, started at its mode
+##' and using the step size tuned at the estimate (500 burn-in iterations,
+##' then thinning by 10). The total number of predictive draws equals that of
+##' plug-in prediction. Parameters
+##' without a finite positive variance, such as those held at a boundary, keep
+##' their estimated value. When the covariance matrix of the estimates is not
+##' available, an error is returned; refitting with
+##' `set_control_mcml(pc_prior = TRUE)` usually resolves this. The location
+##' column `fixed` then reports the average fixed-effect contribution.
+##'
 ##' At the observed locations, the conditioned location-level Gaussian effect
 ##' already includes the fitted nugget when the model has one. Consequently,
 ##' `include = "nugget"` is available only for predictions supplied through
@@ -168,9 +198,10 @@
 ##'     is the row number of the corresponding polygon in `boundaries`.}
 ##'   \item{samples}{`NULL` when `keep_samples = FALSE`; otherwise a list
 ##'     containing spatial samples and any requested random-effect or nugget
-##'     samples for location-level prediction. For polygon aggregation it
-##'     is nested first by aggregation and then by component, with one matrix
-##'     row per polygon.}
+##'     samples for location-level prediction, and, with parameter
+##'     uncertainty, the fixed-effect contribution of each draw (`fixed`).
+##'     For polygon aggregation it is nested first by aggregation and then by
+##'     component, with one matrix row per polygon.}
 ##'   \item{include}{Optional components included in the link and response.}
 ##'   \item{transform}{Names of additional derived predictive targets.}
 ##'   \item{standardized}{Whether response predictions were averaged over a
@@ -180,6 +211,8 @@
 ##'   \item{thresholds}{Thresholds used for exceedance probabilities.}
 ##'   \item{level}{Probability covered by the interval limits.}
 ##'   \item{type}{Whether prediction was marginal or joint.}
+##'   \item{parameter_draws}{The number of parameter draws when parameter
+##'     uncertainty was propagated, otherwise `NULL`.}
 ##'   \item{family}{The fitted response family.}
 ##'   \item{observed_locations}{Whether `newdata` was omitted.}
 ##'   \item{coverage}{`NULL` for location-only prediction. For polygon
@@ -244,12 +277,24 @@ predict.RiskMap <- function(
     level = 0.95,
     weights = NULL,
     control_mcmc = NULL,
+    parameter_uncertainty = FALSE,
+    parameter_draws = 50L,
     seed = NULL,
     keep_samples = FALSE,
     messages = TRUE,
     ...) {
 
   if (is.null(include)) include <- character()
+  if (!is.logical(parameter_uncertainty) ||
+      length(parameter_uncertainty) != 1L || is.na(parameter_uncertainty)) {
+    stop("'parameter_uncertainty' must be TRUE or FALSE", call. = FALSE)
+  }
+  check_positive_integer(parameter_draws, "parameter_draws")
+  parameter_draws <- if (parameter_uncertainty) {
+    as.integer(parameter_draws)
+  } else {
+    NULL
+  }
   aggregate <- normalise_prediction_operations(
     aggregate, c("mean", "median", "sum", "min", "max"),
     argument_name = "aggregate",
@@ -311,6 +356,7 @@ predict.RiskMap <- function(
       level = level,
       weights = weights,
       control_mcmc = control_mcmc,
+      parameter_draws = parameter_draws,
       seed = seed,
       keep_samples = keep_samples,
       messages = messages
@@ -336,19 +382,16 @@ predict.RiskMap <- function(
       type = type,
       family = object$family,
       observed_locations = observed_locations,
+      parameter_draws = parameter_draws,
       coverage = NULL
     )
     class(out) <- "RiskMap_prediction"
     return(out)
   }
-  prediction_setup <- prepare_prediction(
+  sample_components <- prediction_sample_components(
     object, prediction_data, type, include, control_mcmc, messages,
-    observed_locations
-  )
-  sample_components <- build_prediction_components(
-    object, prediction_setup, include, transform,
-    standardize = standardize,
-    prediction_data = prediction_data
+    observed_locations = observed_locations, transform = transform,
+    standardize = standardize, parameter_draws = parameter_draws
   )
   output_data <- format_location_predictions(
     prediction_input, sample_components, include, transform, summaries,
@@ -357,6 +400,7 @@ predict.RiskMap <- function(
   valid_rows <- prediction_input$valid_rows
   samples <- if (keep_samples) {
     retained <- sample_components[c("spatial", "random_effects", "nugget")]
+    retained$fixed <- sample_components$fixed_samples
     retained <- retained[!vapply(retained, is.null, logical(1))]
     lapply(retained, restore_prediction_rows,
            valid_rows = valid_rows, n_rows = nrow(output_data))
@@ -378,6 +422,7 @@ predict.RiskMap <- function(
     type = type,
     family = object$family,
     observed_locations = observed_locations,
+    parameter_draws = parameter_draws,
     coverage = NULL
   )
   class(out) <- "RiskMap_prediction"
@@ -795,7 +840,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
                                     thresholds,
                                     level, weights,
                                     control_mcmc, seed, keep_samples,
-                                    messages) {
+                                    messages, parameter_draws = NULL) {
   model_data <- prediction_input$model_data
   output_boundaries <- boundaries
   if (!isTRUE(st_crs(boundaries) == st_crs(object$data))) {
@@ -872,6 +917,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       standardized = !is.null(standardize), aggregate = names(aggregate),
       summaries = names(summaries), thresholds = thresholds, level = level,
       type = "joint", family = object$family, observed_locations = FALSE,
+      parameter_draws = parameter_draws,
       coverage = assignment$method
     )
     class(out) <- "RiskMap_prediction"
@@ -881,26 +927,18 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   prediction_groups <- prediction_boundary_groups(
     assignment, nrow(model_data)
   )
-  prediction_setup <- prepare_prediction(
-    object = object,
-    prediction_data = model_data,
-    prediction = "joint",
-    include = include,
-    control_mcmc = control_mcmc,
-    messages = messages,
-    groups = prediction_groups
-  )
-  sample_components <- build_prediction_components(
-    object, prediction_setup, include, transform,
-    standardize = standardize,
-    prediction_data = model_data
+  sample_components <- prediction_sample_components(
+    object, model_data, "joint", include, control_mcmc, messages,
+    groups = prediction_groups, transform = transform,
+    standardize = standardize, parameter_draws = parameter_draws
   )
   predictions <- format_location_predictions(
     prediction_input, sample_components, include, transform, summaries,
     thresholds, level
   )
   components <- list(
-    fixed = matrix(sample_components$fixed, ncol = 1L),
+    fixed = sample_components$fixed_samples %||%
+      matrix(sample_components$fixed, ncol = 1L),
     offset = matrix(sample_components$offset, ncol = 1L),
     spatial = sample_components$spatial,
     random_effects = sample_components$random_effects,
@@ -940,7 +978,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
             quantity = quantity,
             summary = "estimate",
             threshold = NA_real_,
-            value = values[[1L]],
+            # Constant across draws for plug-in prediction; the average over
+            # parameter draws when parameter uncertainty is propagated.
+            value = mean(values),
             stringsAsFactors = FALSE
           )
         } else {
@@ -1028,6 +1068,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     type = "joint",
     family = object$family,
     observed_locations = FALSE,
+    parameter_draws = parameter_draws,
     coverage = assignment$method
   )
   class(out) <- "RiskMap_prediction"
@@ -1111,6 +1152,212 @@ build_prediction_components <- function(object, prediction_setup, include,
   list(fixed = fixed, offset = offset, spatial = spatial,
        random_effects = random_effects, nugget = nugget,
        link = link, response = response, transformed = transformed)
+}
+
+#' Prediction components, optionally averaged over parameter uncertainty
+#'
+#' With `parameter_draws = NULL` this is plug-in prediction at the estimate.
+#' Otherwise the parameters are drawn from the approximate sampling
+#' distribution of the estimate and, for each draw, conditional samples of the
+#' latent effects are generated at that parameter value and passed through the
+#' ordinary prediction machinery. The draws are pooled, so every summary,
+#' aggregation and transformation reflects both sources of uncertainty.
+#' @noRd
+prediction_sample_components <- function(object, prediction_data, prediction,
+                                         include, control_mcmc, messages,
+                                         observed_locations = FALSE,
+                                         groups = NULL, transform = list(),
+                                         standardize = NULL,
+                                         parameter_draws = NULL) {
+  components_at <- function(fit, control) {
+    setup <- prepare_prediction(
+      fit, prediction_data, prediction, include, control, messages = FALSE,
+      observed_locations = observed_locations, groups = groups
+    )
+    build_prediction_components(
+      fit, setup, include, transform, standardize = standardize,
+      prediction_data = prediction_data
+    )
+  }
+  if (is.null(parameter_draws)) {
+    setup <- prepare_prediction(
+      object, prediction_data, prediction, include, control_mcmc, messages,
+      observed_locations = observed_locations, groups = groups
+    )
+    return(build_prediction_components(
+      object, setup, include, transform, standardize = standardize,
+      prediction_data = prediction_data
+    ))
+  }
+
+  n_total <- prediction_sample_size(object, control_mcmc)
+  per_draw <- max(1L, ceiling(n_total / parameter_draws))
+  parameters <- draw_parameter_values(object, parameter_draws)
+  if (messages) {
+    message("Propagating parameter uncertainty over ", parameter_draws,
+            " parameter draws")
+  }
+  sampler <- if (object$family == "gaussian") NULL else
+    parameter_conditioning_sampler(object)
+  pieces <- vector("list", parameter_draws)
+  acceptance <- rep(NA_real_, parameter_draws)
+  for (k in seq_len(parameter_draws)) {
+    fit <- object
+    fit$estimate <- utils::relist(parameters[k, ], skeleton = object$estimate)
+    if (is.null(sampler)) {
+      control <- set_control_mcmc(n_sim = per_draw, linear_model = TRUE)
+    } else {
+      draws <- tryCatch(sampler(fit$estimate, per_draw),
+                        error = function(error) NULL)
+      if (is.null(draws)) next
+      fit$S_samples <- draws$samples
+      acceptance[k] <- draws$acceptance
+      control <- NULL
+    }
+    pieces[[k]] <- tryCatch(components_at(fit, control),
+                            error = function(error) NULL)
+  }
+  pieces <- pieces[!vapply(pieces, is.null, logical(1))]
+  if (length(pieces) < parameter_draws / 2) {
+    stop("Prediction failed for most parameter draws; parameter uncertainty ",
+         "could not be propagated", call. = FALSE)
+  }
+  if (length(pieces) < parameter_draws) {
+    warning(parameter_draws - length(pieces), " of ", parameter_draws,
+            " parameter draws were discarded because prediction failed at ",
+            "those values", call. = FALSE)
+  }
+  if (any(acceptance < 0.1, na.rm = TRUE)) {
+    warning("The Langevin sampler accepted few proposals for some parameter ",
+            "draws; predictive summaries may be noisy", call. = FALSE)
+  }
+  pool_prediction_components(pieces)
+}
+
+#' Pool prediction components drawn at different parameter values
+#'
+#' The fixed-effect contribution differs between parameter draws, so it is
+#' returned both as its average (`fixed`) and draw by draw (`fixed_samples`).
+#' @noRd
+pool_prediction_components <- function(pieces) {
+  bind <- function(name) {
+    values <- lapply(pieces, `[[`, name)
+    if (is.null(values[[1L]])) NULL else do.call(cbind, values)
+  }
+  fixed_samples <- do.call(cbind, lapply(pieces, function(piece) {
+    matrix(piece$fixed, nrow = length(piece$fixed), ncol = ncol(piece$spatial))
+  }))
+  transformed <- lapply(names(pieces[[1L]]$transformed), function(name) {
+    do.call(cbind, lapply(pieces, function(piece) piece$transformed[[name]]))
+  })
+  names(transformed) <- names(pieces[[1L]]$transformed)
+  list(fixed = rowMeans(fixed_samples), fixed_samples = fixed_samples,
+       offset = pieces[[1L]]$offset, spatial = bind("spatial"),
+       random_effects = bind("random_effects"), nugget = bind("nugget"),
+       link = bind("link"), response = bind("response"),
+       transformed = transformed)
+}
+
+#' Number of predictive draws used by plug-in prediction
+#' @noRd
+prediction_sample_size <- function(object, control_mcmc) {
+  if (!is.null(control_mcmc)) {
+    if (isTRUE(control_mcmc$linear_model)) return(control_mcmc$n_sim)
+    return((control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin)
+  }
+  if (object$family != "gaussian" && !is.null(object$S_samples)) {
+    return(nrow(object$S_samples))
+  }
+  control_mcmc <- set_control_mcmc()
+  if (object$family == "gaussian") return(control_mcmc$n_sim)
+  (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
+}
+
+#' Draw parameters from the approximate sampling distribution of the estimate
+#'
+#' Draws are multivariate normal on the scale on which the model is estimated
+#' (log variances and log range), with the covariance matrix of the estimate.
+#' Parameters without a finite positive variance, such as those held at a
+#' boundary, keep their estimated value.
+#' @noRd
+draw_parameter_values <- function(object, n_draws) {
+  estimate <- unlist(object$estimate)
+  covariance <- object$covariance
+  failure <- paste0(
+    "The covariance matrix of the parameter estimates is not available or ",
+    "not positive definite, so parameter uncertainty cannot be propagated. ",
+    "For binomial and Poisson models, refitting with ",
+    "'control_mcml = set_control_mcml(pc_prior = TRUE)' usually resolves this."
+  )
+  if (is.null(covariance)) stop(failure, call. = FALSE)
+  covariance <- as.matrix(covariance)
+  if (!identical(dim(covariance), rep(length(estimate), 2L))) {
+    stop(failure, call. = FALSE)
+  }
+  free <- which(is.finite(diag(covariance)) & diag(covariance) > 0)
+  block <- covariance[free, free, drop = FALSE]
+  root <- if (length(free) && all(is.finite(block))) {
+    tryCatch(chol((block + t(block)) / 2), error = function(error) NULL)
+  }
+  if (is.null(root)) stop(failure, call. = FALSE)
+  draws <- matrix(estimate, nrow = n_draws, ncol = length(estimate),
+                  byrow = TRUE, dimnames = list(NULL, names(estimate)))
+  draws[, free] <- draws[, free, drop = FALSE] +
+    matrix(stats::rnorm(n_draws * length(free)), n_draws) %*% root
+  draws
+}
+
+#' Conditional samples of the latent effects at given parameter values
+#'
+#' Returns a function drawing samples from the conditional distribution of the
+#' latent effects (locations, then random-effect levels) given the data, at
+#' any parameter value, with the same Langevin sampler used for plug-in
+#' prediction. Each short chain runs in the coordinates whitened by the Laplace
+#' approximation at that parameter value, starts at its mode and reuses the
+#' step size tuned at the estimate, so a brief burn-in suffices.
+#' @noRd
+parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
+  distance_scale <- attr(object, "distance_scale") %||% 1
+  coords <- object$coords / distance_scale
+  invlink <- if (identical(object$link_function$name, "canonical")) {
+    NULL
+  } else {
+    object$link_function
+  }
+  design <- as.matrix(object$D)
+  engine <- make_adaptive_mcml_engine(
+    D = design, y = object$y, units_m = object$units_m,
+    distances = as.matrix(pairwise_distances(coords)),
+    family = object$family, kappa = object$kappa,
+    cov_offset = object$cov_offset, ID_coords = object$ID_coords,
+    fix_tau2 = object$fix_tau2, ID_re = object$ID_re, invlink = invlink
+  )
+  phi_index <- engine$layout$index$phi
+  step_size <- utils::tail(attr(object, "mcmc")$tuning_par, 1L)
+  if (!length(step_size) || !is.finite(step_size) || step_size <= 0) {
+    step_size <- NULL
+  }
+  function(estimate, n_samples) {
+    parameters <- unname(unlist(estimate))
+    parameters[phi_index] <- parameters[phi_index] - log(distance_scale)
+    proposal <- engine$proposal_at(parameters)
+    values <- proposal$values
+    simulation <- laplace_sampling_mcmc(
+      y = object$y, units_m = object$units_m,
+      mu = as.numeric(design %*% values$beta + object$cov_offset),
+      Sigma = proposal$covariance, ID_coords = object$ID_coords,
+      ID_re = object$ID_re, sigma2_re = values$sigma2_re,
+      family = object$family,
+      control_mcmc = set_control_mcmc(
+        n_sim = burnin + n_samples * thin, burnin = burnin, thin = thin,
+        h = step_size
+      ),
+      invlink = invlink, Sigma_pd = crossprod(proposal$root),
+      mean_pd = proposal$mode, messages = FALSE
+    )
+    list(samples = do.call(cbind, simulation$samples),
+         acceptance = simulation$acceptance_rate[["sampling"]])
+  }
 }
 
 #' Average predictive targets over a common reference population
@@ -1633,7 +1880,12 @@ prediction_link_samples <- function(prediction, include_fixed = TRUE,
 
   link <- samples$spatial
   if (include_fixed) {
-    link <- sweep(link, 1L, prediction$predictions$fixed, `+`)
+    # With parameter uncertainty the fixed effects differ between draws.
+    link <- if (is.null(samples$fixed)) {
+      sweep(link, 1L, prediction$predictions$fixed, `+`)
+    } else {
+      link + samples$fixed
+    }
   }
   if (include_offset) {
     link <- sweep(link, 1L, prediction$predictions$offset, `+`)
@@ -2033,7 +2285,12 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     } else {
       simulation <- laplace_sampling_mcmc(
         y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
-        sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
+        sigma2_re = par_hat$sigma2_re,
+        invlink = if (identical(object$link_function$name, "canonical")) {
+          NULL
+        } else {
+          object$link_function
+        },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,
         messages = messages
