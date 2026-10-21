@@ -1,6 +1,81 @@
 RiskMap 2.0.0
 =============
 
+- This version introduces many breaking changes from v1. The package should not
+be considered stable, but further breaking changes will be handled gracefully.
+- Test coverage has been increased from 0 to 92 %.
+- Many functions have been renamed or removed:
+
+| v1 | v2 | 
+|----------|----------|
+| `assess_pp` |  `assess_prediction` |
+| `assess_sim` | `assess_simulation` |
+| `check_mcmc` | `plot_mcmc` |
+| `compute_ID_coords` | `create_ids` |
+| `convex_hull_sf` | `create_convex_hull` |
+| `dast()` | Removed; will be replaced in a separate package |
+| `glgpm_sim` | `simulate_glgpm` |
+| `Laplace_sampling_MCMC` | Removed; the replacement is internal |
+| `matern.grad.phi` | `matern_gradient_phi ` |
+| `matern.hessian.phi` | `matern_hessian_phi` |
+| `matern_cor` | `matern_correlation` |
+| `maxim.integrand` | `maxim_integrand` |
+| `plot_score` | `plot_metric` |
+| `plot_s_variogram` | `plot_variogram` |
+| `pred_over_grid` | `predict` |
+| `pred_target_grid` | `predict` |
+| `pred_target_shp` | `predict` with `boundaries` |
+| `set_control_sim` | `set_control_mcmc` |
+| `surf_sim` | `simulate_glgpm` |
+| `s_variogram` | `variogram` |
+
+## Datasets
+- Apart from `liberia`, all datasets are now in an simple features (sf) format.
+
+## Coordinate reference systems
+
+- Datasets must have a coordinate reference system. When coordinates are in
+latitude/longitude and `model_crs` is not supplied, they are now automatically
+reprojected to an appropriate UTM zone. `predict()`, `simulate_glgpm()` and
+`assess_prediction()` have been updated to match; `simulate_glgpm()`'s own 
+`convert_to_crs`/`scale_to_km` arguments have likewise been replaced with
+`model_crs`/`distance_units`.
+- providing `model_crs` in longitude/latitude now raises an error.
+- In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and
+`scale_to_km` has been replaced with `distance_units` (`"km"` or `"m"`).
+
+## Exploratory analysis
+
+- In `summarise_distance()` and `variogram()`, `scale_to_km` has been
+replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`.
+Default behaviour is unchanged (`"km"` for `summarise_distance()`, `"m"` for
+`variogram()`).
+- In `summarise_distance()` and `variogram()`, `convert_to_utm` has been replaced
+with `distance_crs`, matching `glgpm()`'s `model_crs` convention: an
+already-projected CRS is retained as-is, longitude/latitude data is automatically
+reprojected to an appropriate UTM zone with a message, and an explicitly supplied
+`distance_crs` must be projected. Distances now correctly account for the CRS's
+native linear units rather than assuming metres.
+- `variogram()` now uses a simultaneous extreme-rank-length permutation envelope
+  instead of separate pointwise intervals. It remains an exploratory diagnostic
+  and does not report a hypothesis-test p-value. Its pairwise permutation engine
+  is compiled, distances and lag bins are computed once, and the default is 999
+  permutations plus the observed curve. The returned columns are now `distance`,
+  `semivariance`, `n_pairs`, `lower_envelope` and `upper_envelope`. A `seed` can
+  be supplied without changing the caller's random-number state.
+  `plot_variogram()` now shows the envelope by default and warns when it
+  was omitted with `n_permutations = 0`.
+- The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
+
+## Model fitting
+
+- The `den` argument in `glgpm()` has been renamed to `denominator`.
+- `glpgm()` now only accepts data in an sf format. 
+Consequently the locations do not need to be passed to `gp()` when fitting a model
+as they are included automatically.
+- The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to
+`TRUE` to estimate it.
+
 - Canonical binomial and Poisson models now use compiled likelihood and MALA
 kernels. The implementation retains the existing sampler, including support
 for nugget effects and multiple unstructured random effects, while avoiding
@@ -41,65 +116,8 @@ compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
 - `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
 Laplace approximation from several starting values before MCML.
 
-- This version introduces many breaking changes from v1. The package should not
-be considered stable, but further breaking changes will be handled gracefully.
-- `dast()` has been removed.
-- Many functions have been renamed:
+## Predictions
 
-| v1 | v2 | 
-|----------|----------|
-| `assess_pp` |  `assess_prediction` |
-| `assess_sim` | `assess_simulation` |
-| `check_mcmc` | `plot_mcmc` |
-| `compute_ID_coords` | `create_ids` |
-| `convex_hull_sf` | `create_convex_hull` |
-| `glgpm_sim` | `simulate_glgpm` |
-| `Laplace_sampling_MCMC` | Removed; the replacement is internal |
-| `matern.grad.phi` | `matern_gradient_phi ` |
-| `matern.hessian.phi` | `matern_hessian_phi` |
-| `matern_cor` | `matern_correlation` |
-| `maxim.integrand` | `maxim_integrand` |
-| `plot_score` | `plot_metric` |
-| `plot_s_variogram` | `plot_variogram` |
-| `pred_over_grid` | `predict` |
-| `pred_target_grid` | `predict` |
-| `pred_target_shp` | `predict` with `boundaries` |
-| `set_control_sim` | `set_control_mcmc` |
-| `surf_sim` | `simulate_glgpm` |
-| `s_variogram` | `variogram` |
-
-- Apart from `liberia`, all datasets are now in an sf format.
-- The `den` argument in `glgpm()` has been renamed to `denominator`.
-- `glpgm()` now only accepts data in an sf format. 
-Consequently the locations do not need to be passed to `gp()` when fitting a model
-as they are included automatically.
-- In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and
-`scale_to_km` has been replaced with `distance_units` (`"km"` or `"m"`).
-If `data` are in longitude/latitude and `model_crs` is not supplied, the
-coordinates are now automatically reprojected to an appropriate UTM zone;
-providing `model_crs` in longitude/latitude now raises an error.
-`predict()`, `simulate_glgpm()` and `assess_prediction()` have
-been updated to match; `simulate_glgpm()`'s own `convert_to_crs`/`scale_to_km`
-arguments have likewise been replaced with `model_crs`/`distance_units`.
-- In `summarise_distance()` and `variogram()`, `scale_to_km` has similarly been
-replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`.
-Default behaviour is unchanged (`"km"` for `summarise_distance()`, `"m"` for
-`variogram()`).
-- In `summarise_distance()` and `variogram()`, `convert_to_utm` has been replaced
-with `distance_crs`, matching `glgpm()`'s `model_crs` convention: an
-already-projected CRS is retained as-is, longitude/latitude data is automatically
-reprojected to an appropriate UTM zone with a message, and an explicitly supplied
-`distance_crs` must be projected. Distances now correctly account for the CRS's
-native linear units rather than assuming metres.
-- `variogram()` now uses a simultaneous extreme-rank-length permutation envelope
-  instead of separate pointwise intervals. It remains an exploratory diagnostic
-  and does not report a hypothesis-test p-value. Its pairwise permutation engine
-  is compiled, distances and lag bins are computed once, and the default is 999
-  permutations plus the observed curve. The returned columns are now `distance`,
-  `semivariance`, `n_pairs`, `lower_envelope` and `upper_envelope`. A `seed` can
-  be supplied without changing the caller's random-number state.
-  `plot_variogram()` now shows the envelope by default and warns when it
-  was omitted with `n_permutations = 0`.
 - `create_grid()` no longer raises an error when `boundaries` is in
 longitude/latitude; like `glgpm()`, it now automatically reprojects to an
 appropriate UTM zone and reports the conversion with a message.
@@ -112,7 +130,11 @@ appropriate UTM zone and reports the conversion with a message.
   named draw-by-draw transformations for additional scientific targets.
   Response predictions can be standardized over a common empirical or
   counterfactual reference population, with optional population weights.
-- The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
+- Gaussian prediction uses a stable reduced covariance solve, avoiding cancellation
+with small measurement-error variances while retaining the same conditional model.
+
+## Cross validation
+
 - `"user"` has been added as an option to `method` the parameter of
 `assess_prediction()` replacing the previous behaviour where providing the
 `user_split` parameter overrode any provided `method`
@@ -135,14 +157,9 @@ reproducible.
   together in one run with `spatial_scale = c("grid", "area")`.
 - In `plot_metric()`; its `which_score`/`which_model`
 parameters have been renamed to `metric`/`model`.
-- The `nugget` parameter in `gp()` is now `FALSE` by default and should be set to
-`TRUE` to estimate it.
-- A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian
-outputs reproducible.
-- `control_sim` parameters have been renamed to `control_mcmc`.
-- `to_table()` now returns a directly renderable `knitr_kable` table, with an
-  explicit `digits` argument that preserves trailing zeroes. This replaces the
-  previous `xtable` return value.
+
+## Simulations
+
 - `simulate_glgpm()` now accepts a fitted model or `specify_glgpm()` model,
   with `nsim`, `what`, `sample_locations`, `prediction_grid` and `seed`.
   `what = c("data", "surface")` simulates jointly at the exact union of both
@@ -152,7 +169,14 @@ outputs reproducible.
   Poisson responses use exposure times the inverse-link mean.
   Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
   extract results.
-- Gaussian prediction uses a stable reduced covariance solve, avoiding cancellation
-with small measurement-error variances while retaining the same conditional model.
+
+## Other
+
+- A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian
+outputs reproducible.
+- `control_sim` parameters have been renamed to `control_mcmc`.
+- `to_table()` now returns a directly renderable `knitr_kable` table, with an
+  explicit `digits` argument that preserves trailing zeroes. This replaces the
+  previous `xtable` return value.
 - The `data_sf` parameter in `create_ids` is now `data`.
-- Test coverage has been increased from 0 to 85 %.
+- The `conf_level` parameter in `summary.RiskMap` is now `level`

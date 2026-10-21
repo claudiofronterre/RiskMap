@@ -18,3 +18,8 @@ Suggests the EPSG code for the UTM zone where the majority of the data falls.
 \details{
 The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 }
+\examples{
+data("infect_sma")
+propose_utm(infect_sma)
+
+}
