@@ -1,3 +1,117 @@
+##' Observation log-likelihood, score and curvature in the linear predictor
+##'
+##' Uses the same formulas as `maxim_integrand()`, including custom inverse
+##' links. `w` is the negative second derivative of the log-likelihood.
+##' @noRd
+laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
+  if (family == "poisson") {
+    mean <- linkf$inv(eta)
+    if (any(!is.finite(mean)) || any(mean <= 0)) return(NULL)
+    first <- linkf$d1(eta)
+    second <- linkf$d2(eta)
+    residual <- y / mean - units_m
+    list(
+      log_likelihood = sum(y * log(pmax(units_m * mean, .Machine$double.eps)) -
+                             units_m * mean),
+      score = residual * first,
+      curvature = y * first^2 / mean^2 - residual * second
+    )
+  } else {
+    probability <- linkf$inv(eta)
+    if (any(!is.finite(probability)) ||
+        any(probability <= 0 | probability >= 1)) return(NULL)
+    first <- linkf$d1(eta)
+    second <- linkf$d2(eta)
+    variance <- probability * (1 - probability)
+    residual <- y - units_m * probability
+    list(
+      log_likelihood = sum(
+        y * log(pmax(probability, .Machine$double.eps)) +
+          (units_m - y) * log(pmax(1 - probability, .Machine$double.eps))
+      ),
+      score = residual * first / variance,
+      curvature = units_m * first^2 / variance -
+        residual * (second / variance - first^2 * (1 - 2 * probability) /
+                      variance^2)
+    )
+  }
+}
+
+##' Conditional mode of the latent field by Newton's method
+##'
+##' Maximises log f(y | u) - u' P u / 2, where `precision` is the prior
+##' precision P and `incidence` maps latent variables to observations. Every
+##' linear solve uses a Cholesky factor, and the search starts from `start`
+##' (the previous mode), so successive calls along an optimisation path need
+##' very few iterations. The objective is log-concave for canonical links;
+##' step halving keeps every iteration an ascent step for other links.
+##' @noRd
+adaptive_laplace_mode <- function(mu, y, units_m, incidence, precision,
+                                  family, linkf, start,
+                                  tolerance = 1e-10, maximum_iterations = 100L) {
+  objective <- function(latent, terms) {
+    terms$log_likelihood - 0.5 * sum(latent * as.numeric(precision %*% latent))
+  }
+  latent <- start
+  eta <- mu + as.numeric(incidence %*% latent)
+  terms <- laplace_observation_terms(eta, y, units_m, family, linkf)
+  if (is.null(terms)) {
+    latent <- numeric(length(start))
+    eta <- mu
+    terms <- laplace_observation_terms(eta, y, units_m, family, linkf)
+    if (is.null(terms)) stop("Invalid starting linear predictor.", call. = FALSE)
+  }
+  current <- objective(latent, terms)
+  for (iteration in seq_len(maximum_iterations)) {
+    gradient <- as.numeric(Matrix::crossprod(incidence, terms$score)) -
+      as.numeric(precision %*% latent)
+    hessian <- precision + as.matrix(Matrix::crossprod(
+      incidence, Matrix::Diagonal(x = terms$curvature) %*% incidence))
+    root <- chol(hessian)
+    step <- backsolve(root, forwardsolve(t(root), gradient))
+    accepted <- FALSE
+    for (halving in 0:30) {
+      candidate <- latent + step / 2^halving
+      candidate_eta <- mu + as.numeric(incidence %*% candidate)
+      candidate_terms <- laplace_observation_terms(
+        candidate_eta, y, units_m, family, linkf
+      )
+      if (is.null(candidate_terms)) next
+      value <- objective(candidate, candidate_terms)
+      if (is.finite(value) && value >= current - 1e-12 * abs(current)) {
+        accepted <- TRUE
+        break
+      }
+    }
+    if (!accepted) break
+    change <- max(abs(candidate - latent))
+    latent <- candidate
+    terms <- candidate_terms
+    current <- value
+    if (change <= tolerance * max(1, max(abs(latent)))) break
+  }
+  hessian <- precision + as.matrix(Matrix::crossprod(
+    incidence, Matrix::Diagonal(x = terms$curvature) %*% incidence))
+  list(mode = latent, hessian = (hessian + t(hessian)) / 2,
+       iterations = iteration)
+}
+
+##' Upper Cholesky factor of the inverse of a positive-definite matrix
+##'
+##' Returns the same factor as `chol(solve(hessian))` without forming the
+##' inverse: with J the exchange matrix, chol(J H J) = R gives
+##' chol(H^{-1}) = J R^{-T} J. The fixed standard-normal draws are mapped by
+##' this factor, so it must agree with the established construction for
+##' results to be reproduced.
+##' @noRd
+inverse_cholesky_factor <- function(hessian) {
+  dimension <- nrow(hessian)
+  reversed <- dimension:1
+  root <- chol(hessian[reversed, reversed, drop = FALSE])
+  inverse_root <- backsolve(root, diag(dimension))
+  t(inverse_root)[reversed, reversed, drop = FALSE]
+}
+
 ##' Construct the adaptive local-Laplace importance engine
 ##'
 ##' The standard-normal bank is held fixed within a stage, while the local
@@ -111,20 +225,56 @@ make_adaptive_mcml_engine <- function(
     residual * first / (mean * (1 - mean))
   }
 
+  # Sparse map from latent variables (spatial locations, then random-effect
+  # levels) to observations, built once.
+  incidence <- Matrix::sparseMatrix(
+    i = c(seq_len(n), rep(seq_len(n), n_re)),
+    j = c(ID_coords, if (n_re) unlist(lapply(seq_len(n_re), function(j) {
+      latent$random[[j]][ID_re[, j]]
+    }))),
+    x = 1, dims = c(n, latent$dimension)
+  )
+  # The previous conditional mode is an excellent Newton start for nearby
+  # parameter values; the most recent factorisations are reused when the
+  # proposal and target parameters coincide.
+  last_mode <- numeric(latent$dimension)
+  cached_parameters <- NULL
+  cached_proposal <- NULL
+
   proposal_at <- function(parameters) {
+    if (!is.null(cached_parameters) && identical(parameters, cached_parameters)) {
+      return(cached_proposal)
+    }
     values <- unpack(parameters)
     covariance <- covariance_at(values)
-    approximation <- maxim_integrand(
-      y = y, units_m = units_m,
-      mu = as.numeric(D %*% values$beta + cov_offset),
-      Sigma = covariance, ID_coords = ID_coords, ID_re = ID_re,
-      sigma2_re = values$sigma2_re, family = family, invlink = invlink
+    spatial_root <- factor_covariance(covariance, "adaptive MCML target")
+    precision <- chol2inv(spatial_root)
+    if (n_re) {
+      precision <- as.matrix(Matrix::bdiag(c(
+        list(precision),
+        lapply(seq_len(n_re), function(j) {
+          diag(1 / values$sigma2_re[j], n_dim_re[j])
+        })
+      )))
+    }
+    mu <- as.numeric(D %*% values$beta + cov_offset)
+    approximation <- adaptive_laplace_mode(
+      mu = mu, y = y, units_m = units_m, incidence = incidence,
+      precision = precision, family = family, linkf = linkf,
+      start = last_mode
     )
-    list(
-      mode = approximation$mode,
-      root = factor_covariance(approximation$Sigma.tilde,
-                               "adaptive MCML proposal")
+    last_mode <<- approximation$mode
+    root <- tryCatch(
+      inverse_cholesky_factor(approximation$hessian),
+      error = function(error) factor_covariance(
+        solve(approximation$hessian), "adaptive MCML proposal"
+      )
     )
+    proposal <- list(mode = approximation$mode, root = root, values = values,
+                     covariance = covariance, spatial_root = spatial_root)
+    cached_parameters <<- parameters
+    cached_proposal <<- proposal
+    proposal
   }
 
   evaluate <- function(parameters, z, diagnostics = FALSE,
@@ -138,12 +288,18 @@ make_adaptive_mcml_engine <- function(
     )
     if (is.null(proposal)) return(if (diagnostics) NULL else -1e100)
     samples <- sweep(z %*% proposal$root, 2L, proposal$mode, "+")
-    values <- unpack(parameters)
-    covariance <- covariance_at(values)
-    spatial_root <- tryCatch(
-      factor_covariance(covariance, "adaptive MCML target"),
-      error = function(error) NULL
-    )
+    if (identical(parameters, proposal_parameters)) {
+      values <- proposal$values
+      covariance <- proposal$covariance
+      spatial_root <- proposal$spatial_root
+    } else {
+      values <- unpack(parameters)
+      covariance <- covariance_at(values)
+      spatial_root <- tryCatch(
+        factor_covariance(covariance, "adaptive MCML target"),
+        error = function(error) NULL
+      )
+    }
     if (is.null(spatial_root)) return(if (diagnostics) NULL else -1e100)
 
     spatial_samples <- samples[, latent$spatial, drop = FALSE]
@@ -164,11 +320,11 @@ make_adaptive_mcml_engine <- function(
     }
     log_target <- log_prior + log_observation_likelihood(eta)
 
-    centred <- sweep(samples, 2L, proposal$mode, "-")
-    proposal_solved <- forwardsolve(t(proposal$root), t(centred))
+    # The draws are mode + z %*% root, so the proposal's standardised
+    # residuals are exactly z and no triangular solve is needed.
     log_proposal <- -0.5 * (
       latent$dimension * log(2 * pi) + 2 * sum(log(diag(proposal$root))) +
-        colSums(proposal_solved^2)
+        rowSums(z^2)
     )
     log_weights <- log_target - log_proposal
     if (log_weights_only) return(log_weights)
