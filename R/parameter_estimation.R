@@ -164,6 +164,7 @@
 ##' )
 ##'
 ##' summary(fit)
+##'
 ##' # add a random effect
 ##' fit <- glgpm(
 ##'   formula = y ~ gp() + re(province),
@@ -181,6 +182,24 @@
 ##'   family = "gaussian",
 ##'   messages = FALSE
 ##' )
+##'
+##' summary(fit)
+##'
+##' # binomial model
+##' data(loaloa)
+##'
+##' # reduce iterations to speed up fit and add
+##' # seed for reproducibility
+##' control_mcmc <- set_control_mcmc(n_sim = 100,
+##'                                  burnin = 20,
+##'                                  seed = 42)
+##'
+##' fit <- glgpm(NO_INF ~ gp(),
+##'              data = loaloa[1:50,],
+##'              denominator = NO_EXAM,
+##'              family = "binomial",
+##'              control_mcmc = control_mcmc,
+##'              messages = FALSE)
 ##'
 ##' summary(fit)
 ##'
@@ -2264,7 +2283,9 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
 ##'
-##' Maximizes the integrand function for Generalized Linear Gaussian Process Models (GLGPMs), which involves the evaluation of likelihood functions with spatially correlated random effects.
+##' Maximizes the integrand function for Generalized Linear Gaussian Process
+##' Models (GLGPMs), which involves the evaluation of likelihood functions with
+##' spatially correlated random effects.
 ##'
 ##' @param y Response variable vector.
 ##' @param units_m Units of measurement for the response variable.
@@ -2272,18 +2293,36 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' @param Sigma Covariance matrix of the spatial process.
 ##' @param ID_coords Indices mapping response to locations.
 ##' @param ID_re Indices mapping response to unstructured random effects.
-##' @param family Distribution family for the response variable. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
+##' @param family Distribution family for the response variable.
+##' Must be one of `"binomial"`, or `"poisson"`.
 ##' @param sigma2_re Variance of the unstructured random effects.
 ##' @param hessian Logical; if TRUE, compute the Hessian matrix.
 ##' @param gradient Logical; if TRUE, compute the gradient vector.
-##' @param invlink A function that defines the inverse of the link function for the distribution of the data given the random effects.
+##' @param invlink A function that defines the inverse of the link function for
+##' the distribution of the data given the random effects.
 ##'
 ##' @details
-##' This function maximizes the integrand for GLGPMs using the Nelder-Mead optimization algorithm. It computes the likelihood function incorporating spatial covariance and unstructured random effects, if provided.
+##' This function maximizes the integrand for GLGPMs using the Nelder-Mead
+##' optimization algorithm. It computes the likelihood function incorporating
+##' spatial covariance and unstructured random effects, if provided.
 ##'
-##' The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family (`"gaussian"`, `"binomial"`, or `"poisson"`).
+##' The integrand includes terms for the spatial process (Sigma), unstructured
+##' random effects (sigma2_re), and the likelihood function (llik) based on the
+##' specified distribution family (``"binomial"`, or `"poisson"`).
 ##'
-##' @return A list containing the mode estimate, and optionally, the Hessian matrix and gradient vector.
+##' @return A list containing the mode estimate, and optionally, the Hessian
+##' matrix and gradient vector.
+##' @examples
+##' y <- c(2, 5, 7)
+##' units_m <- c(10, 10, 10)
+##' mu <- c(0, 0, 0)
+##' Sigma <- matrix(c(1, 0.3, 0.1, 0.3, 1, 0.3, 0.1, 0.3, 1), nrow = 3)
+##'
+##' maxim_integrand(
+##'   y = y, units_m = units_m, mu = mu, Sigma = Sigma,
+##'   ID_coords = 1:3, family = "binomial",
+##'   hessian = FALSE, gradient = TRUE
+##' )
 ##' @export
 maxim_integrand <- function(
     y, units_m, mu, Sigma, ID_coords, ID_re = NULL, family,

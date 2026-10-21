@@ -31,7 +31,8 @@ maxim_integrand(
 
 \item{ID_re}{Indices mapping response to unstructured random effects.}
 
-\item{family}{Distribution family for the response variable. Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
+\item{family}{Distribution family for the response variable.
+Must be one of \code{"binomial"}, or \code{"poisson"}.}
 
 \item{sigma2_re}{Variance of the unstructured random effects.}
 
@@ -39,16 +40,36 @@ maxim_integrand(
 
 \item{gradient}{Logical; if TRUE, compute the gradient vector.}
 
-\item{invlink}{A function that defines the inverse of the link function for the distribution of the data given the random effects.}
+\item{invlink}{A function that defines the inverse of the link function for
+the distribution of the data given the random effects.}
 }
 \value{
-A list containing the mode estimate, and optionally, the Hessian matrix and gradient vector.
+A list containing the mode estimate, and optionally, the Hessian
+matrix and gradient vector.
 }
 \description{
-Maximizes the integrand function for Generalized Linear Gaussian Process Models (GLGPMs), which involves the evaluation of likelihood functions with spatially correlated random effects.
+Maximizes the integrand function for Generalized Linear Gaussian Process
+Models (GLGPMs), which involves the evaluation of likelihood functions with
+spatially correlated random effects.
 }
 \details{
-This function maximizes the integrand for GLGPMs using the Nelder-Mead optimization algorithm. It computes the likelihood function incorporating spatial covariance and unstructured random effects, if provided.
+This function maximizes the integrand for GLGPMs using the Nelder-Mead
+optimization algorithm. It computes the likelihood function incorporating
+spatial covariance and unstructured random effects, if provided.
 
-The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family (\code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}).
+The integrand includes terms for the spatial process (Sigma), unstructured
+random effects (sigma2_re), and the likelihood function (llik) based on the
+specified distribution family (``"binomial"\verb{, or }"poisson"`).
+}
+\examples{
+y <- c(2, 5, 7)
+units_m <- c(10, 10, 10)
+mu <- c(0, 0, 0)
+Sigma <- matrix(c(1, 0.3, 0.1, 0.3, 1, 0.3, 0.1, 0.3, 1), nrow = 3)
+
+maxim_integrand(
+  y = y, units_m = units_m, mu = mu, Sigma = Sigma,
+  ID_coords = 1:3, family = "binomial",
+  hessian = FALSE, gradient = TRUE
+)
 }

@@ -157,4 +157,4 @@ outputs reproducible.
   explicit `digits` argument that preserves trailing zeroes. This replaces the
   previous `xtable` return value.
 - The `data_sf` parameter in `create_ids` is now `data`.
-
+- The `conf_level` parameter in `summary.RiskMap` is now `level`
