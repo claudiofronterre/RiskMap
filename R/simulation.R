@@ -79,9 +79,7 @@ specify_glgpm <- function(formula, data, family, parameters,
   if (is.null(invlink)) {
     invlink <- switch(family, gaussian = identity, binomial = plogis, poisson = exp)
   }
-  if (!is.function(invlink)) {
-    stop("'invlink' must be a function.", call. = FALSE)
-  }
+  check_invlink(invlink, family)
   fixed_terms <- terms(update(inter$pf, NULL ~ .))
   mf <- model.frame(fixed_terms, data = data, na.action = na.fail)
   design <- model.matrix(fixed_terms, mf)
@@ -270,23 +268,7 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   }
   eta <- spatial + nugget + grouped + unlist(lapply(inputs, `[[`, "fixed"),
                                              use.names = FALSE)
-  mu <- model$invlink(as.numeric(eta))
-  if (!is.numeric(mu) || length(mu) != length(eta)) {
-    stop("'invlink' must return one numeric value per linear predictor.",
-         call. = FALSE)
-  }
-  if (any(!is.finite(mu))) {
-    stop("'invlink' returned non-finite mean values. Check the model parameters and covariates.",
-         call. = FALSE)
-  }
-  if (model$family == "binomial" && any(mu < 0 | mu > 1)) {
-    stop("For a binomial model, 'invlink' must return probabilities between 0 and 1.",
-         call. = FALSE)
-  }
-  if (model$family == "poisson" && any(mu < 0)) {
-    stop("For a Poisson model, 'invlink' must return non-negative mean values.",
-         call. = FALSE)
-  }
+  mu <- check_invlink(model$invlink, model$family, eta)
   mu <- matrix(mu, nrow(eta), nsim)
   samples <- list()
   start <- 0L
