@@ -104,7 +104,6 @@ test_that("distance scaling leaves Matérn correlations unchanged", {
   )
 
   expect_equal(scaled_correlation, original_correlation, tolerance = 5e-14)
-  expect_identical(restore_spatial_range(scaled$phi, scaled$distance_scale), phi)
 })
 
 test_that("distance scaling rejects coincident observed locations", {

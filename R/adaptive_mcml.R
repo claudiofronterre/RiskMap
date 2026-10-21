@@ -1,3 +1,161 @@
+##' Observation log-likelihood, score and curvature in the linear predictor
+##'
+##' Uses the same formulas as `maxim_integrand()`, including custom inverse
+##' links. `w` is the negative second derivative of the log-likelihood.
+##' @noRd
+laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
+  if (family == "poisson") {
+    mean <- linkf$inv(eta)
+    if (any(!is.finite(mean)) || any(mean <= 0)) return(NULL)
+    first <- linkf$d1(eta)
+    second <- linkf$d2(eta)
+    residual <- y / mean - units_m
+    list(
+      log_likelihood = sum(y * log(pmax(units_m * mean, .Machine$double.eps)) -
+                             units_m * mean),
+      score = residual * first,
+      curvature = y * first^2 / mean^2 - residual * second
+    )
+  } else {
+    probability <- linkf$inv(eta)
+    if (any(!is.finite(probability)) ||
+        any(probability <= 0 | probability >= 1)) return(NULL)
+    first <- linkf$d1(eta)
+    second <- linkf$d2(eta)
+    variance <- probability * (1 - probability)
+    residual <- y - units_m * probability
+    list(
+      log_likelihood = sum(
+        y * log(pmax(probability, .Machine$double.eps)) +
+          (units_m - y) * log(pmax(1 - probability, .Machine$double.eps))
+      ),
+      score = residual * first / variance,
+      curvature = units_m * first^2 / variance -
+        residual * (second / variance - first^2 * (1 - 2 * probability) /
+                      variance^2)
+    )
+  }
+}
+
+##' Index structure mapping latent variables to observations
+##'
+##' `columns` holds, for each observation, the latent columns that enter its
+##' linear predictor (its location and one level per random effect). The
+##' data part of the Hessian, sum_i w_i a_i a_i', touches only the pairs of
+##' those columns, which are precomputed so that it can be accumulated with a
+##' single `rowsum()` instead of sparse matrix products.
+##' @noRd
+make_latent_map <- function(columns, dimension) {
+  columns <- as.matrix(columns)
+  width <- ncol(columns)
+  pair_rows <- columns[, rep(seq_len(width), each = width), drop = FALSE]
+  pair_cols <- columns[, rep(seq_len(width), times = width), drop = FALSE]
+  linear <- as.vector(pair_rows) + (as.vector(pair_cols) - 1) * dimension
+  list(columns = columns, dimension = dimension,
+       pair_linear = linear,
+       pair_observation = rep(seq_len(nrow(columns)), times = width^2))
+}
+
+latent_linear_predictor <- function(latent_map, latent) {
+  columns <- latent_map$columns
+  eta <- latent[columns[, 1L]]
+  if (ncol(columns) > 1L) {
+    for (j in 2:ncol(columns)) eta <- eta + latent[columns[, j]]
+  }
+  eta
+}
+
+latent_gradient <- function(latent_map, score) {
+  out <- numeric(latent_map$dimension)
+  for (j in seq_len(ncol(latent_map$columns))) {
+    sums <- rowsum(score, latent_map$columns[, j], reorder = FALSE)
+    index <- as.integer(rownames(sums))
+    out[index] <- out[index] + sums[, 1L]
+  }
+  out
+}
+
+latent_data_hessian <- function(latent_map, curvature) {
+  sums <- rowsum(curvature[latent_map$pair_observation],
+                 latent_map$pair_linear, reorder = FALSE)
+  out <- numeric(latent_map$dimension^2)
+  out[as.numeric(rownames(sums))] <- sums[, 1L]
+  dim(out) <- c(latent_map$dimension, latent_map$dimension)
+  out
+}
+
+##' Conditional mode of the latent field by Newton's method
+##'
+##' Maximises log f(y | u) - u' P u / 2, where `precision` is the prior
+##' precision P and `latent_map` maps latent variables to observations. Every
+##' linear solve uses a Cholesky factor, and the search starts from `start`
+##' (the previous mode), so successive calls along an optimisation path need
+##' very few iterations. The objective is log-concave for canonical links;
+##' step halving keeps every iteration an ascent step for other links.
+##' @noRd
+adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
+                                  family, linkf, start,
+                                  tolerance = 1e-10, maximum_iterations = 100L) {
+  objective <- function(latent, terms) {
+    terms$log_likelihood - 0.5 * sum(latent * as.numeric(precision %*% latent))
+  }
+  terms_at <- function(latent) {
+    laplace_observation_terms(mu + latent_linear_predictor(latent_map, latent),
+                              y, units_m, family, linkf)
+  }
+  latent <- start
+  terms <- terms_at(latent)
+  if (is.null(terms)) {
+    latent <- numeric(length(start))
+    terms <- terms_at(latent)
+    if (is.null(terms)) stop("Invalid starting linear predictor.", call. = FALSE)
+  }
+  current <- objective(latent, terms)
+  for (iteration in seq_len(maximum_iterations)) {
+    gradient <- latent_gradient(latent_map, terms$score) -
+      as.numeric(precision %*% latent)
+    hessian <- precision + latent_data_hessian(latent_map, terms$curvature)
+    root <- chol(hessian)
+    step <- backsolve(root, forwardsolve(t(root), gradient))
+    accepted <- FALSE
+    for (halving in 0:30) {
+      candidate <- latent + step / 2^halving
+      candidate_terms <- terms_at(candidate)
+      if (is.null(candidate_terms)) next
+      value <- objective(candidate, candidate_terms)
+      if (is.finite(value) && value >= current - 1e-12 * abs(current)) {
+        accepted <- TRUE
+        break
+      }
+    }
+    if (!accepted) break
+    change <- max(abs(candidate - latent))
+    latent <- candidate
+    terms <- candidate_terms
+    current <- value
+    if (change <= tolerance * max(1, max(abs(latent)))) break
+  }
+  hessian <- precision + latent_data_hessian(latent_map, terms$curvature)
+  list(mode = latent, hessian = (hessian + t(hessian)) / 2,
+       iterations = iteration)
+}
+
+##' Upper Cholesky factor of the inverse of a positive-definite matrix
+##'
+##' Returns the same factor as `chol(solve(hessian))` without forming the
+##' inverse: with J the exchange matrix, chol(J H J) = R gives
+##' chol(H^{-1}) = J R^{-T} J. The fixed standard-normal draws are mapped by
+##' this factor, so it must agree with the established construction for
+##' results to be reproduced.
+##' @noRd
+inverse_cholesky_factor <- function(hessian) {
+  dimension <- nrow(hessian)
+  reversed <- dimension:1
+  root <- chol(hessian[reversed, reversed, drop = FALSE])
+  inverse_root <- backsolve(root, diag(dimension))
+  t(inverse_root)[reversed, reversed, drop = FALSE]
+}
+
 ##' Construct the adaptive local-Laplace importance engine
 ##'
 ##' The standard-normal bank is held fixed within a stage, while the local
@@ -39,11 +197,18 @@ make_adaptive_mcml_engine <- function(
     )
   }
 
+  half_integer_kappa <- kappa %in% c(0.5, 1.5, 2.5)
+  distance_values <- as.numeric(distances)
   covariance_at <- function(values) {
-    correlation <- matern_correlation(
-      stats::as.dist(distances), phi = values$phi, kappa = kappa,
-      return_sym_matrix = TRUE
-    )
+    # Evaluate the closed-form half-integer Matern correlation directly on the
+    # stored distance matrix rather than rebuilding it from a dist object.
+    correlation <- if (half_integer_kappa) {
+      matrix(cpp_half_integer_matern(distance_values, values$phi, kappa),
+             n_loc, n_loc)
+    } else {
+      matern_correlation(stats::as.dist(distances), phi = values$phi,
+                         kappa = kappa, return_sym_matrix = TRUE)
+    }
     diag(correlation) <- diag(correlation) + values$nugget_ratio
     values$sigma2 * correlation
   }
@@ -61,15 +226,9 @@ make_adaptive_mcml_engine <- function(
   latent <- latent_layout()
 
   log_observation_likelihood <- function(eta) {
-    if (canonical && family == "binomial") {
-      return(rowSums(sweep(eta, 2L, y, "*") -
-                       sweep(softplus(eta), 2L, units_m, "*")))
-    }
     if (canonical) {
-      mean <- exp(eta)
-      if (any(!is.finite(mean))) return(rep(-Inf, nrow(eta)))
-      return(rowSums(sweep(eta, 2L, y, "*") -
-                       sweep(mean, 2L, units_m, "*")))
+      return(cpp_canonical_log_likelihood(eta, y, units_m,
+                                          poisson = family == "poisson"))
     }
     mean <- matrix(inverse_link(as.vector(eta)), nrow = nrow(eta))
     if (family == "poisson") {
@@ -111,20 +270,52 @@ make_adaptive_mcml_engine <- function(
     residual * first / (mean * (1 - mean))
   }
 
+  # Index map from latent variables (spatial locations, then random-effect
+  # levels) to observations, built once.
+  latent_map <- make_latent_map(
+    cbind(ID_coords, if (n_re) vapply(seq_len(n_re), function(j) {
+      latent$random[[j]][ID_re[, j]]
+    }, integer(n))),
+    latent$dimension
+  )
+  # The previous conditional mode is an excellent Newton start for nearby
+  # parameter values; the most recent factorisations are reused when the
+  # proposal and target parameters coincide.
+  last_mode <- numeric(latent$dimension)
+  cached_parameters <- NULL
+  cached_proposal <- NULL
+
   proposal_at <- function(parameters) {
+    if (!is.null(cached_parameters) && identical(parameters, cached_parameters)) {
+      return(cached_proposal)
+    }
     values <- unpack(parameters)
     covariance <- covariance_at(values)
-    approximation <- maxim_integrand(
-      y = y, units_m = units_m,
-      mu = as.numeric(D %*% values$beta + cov_offset),
-      Sigma = covariance, ID_coords = ID_coords, ID_re = ID_re,
-      sigma2_re = values$sigma2_re, family = family, invlink = invlink
+    spatial_root <- factor_covariance(covariance, "adaptive MCML target")
+    precision <- matrix(0, latent$dimension, latent$dimension)
+    precision[latent$spatial, latent$spatial] <- chol2inv(spatial_root)
+    if (n_re) for (j in seq_len(n_re)) {
+      index <- latent$random[[j]]
+      precision[cbind(index, index)] <- 1 / values$sigma2_re[j]
+    }
+    mu <- as.numeric(D %*% values$beta + cov_offset)
+    approximation <- adaptive_laplace_mode(
+      mu = mu, y = y, units_m = units_m, latent_map = latent_map,
+      precision = precision, family = family, linkf = linkf,
+      start = last_mode
     )
-    list(
-      mode = approximation$mode,
-      root = factor_covariance(approximation$Sigma.tilde,
-                               "adaptive MCML proposal")
+    last_mode <<- approximation$mode
+    root <- tryCatch(
+      inverse_cholesky_factor(approximation$hessian),
+      error = function(error) factor_covariance(
+        solve(approximation$hessian), "adaptive MCML proposal"
+      )
     )
+    proposal <- list(mode = approximation$mode, root = root, values = values,
+                     covariance = covariance, spatial_root = spatial_root)
+    cached_parameters <<- parameters
+    cached_proposal <<- proposal
+    proposal
   }
 
   evaluate <- function(parameters, z, diagnostics = FALSE,
@@ -137,13 +328,20 @@ make_adaptive_mcml_engine <- function(
       proposal_at(proposal_parameters), error = function(error) NULL
     )
     if (is.null(proposal)) return(if (diagnostics) NULL else -1e100)
-    samples <- sweep(z %*% proposal$root, 2L, proposal$mode, "+")
-    values <- unpack(parameters)
-    covariance <- covariance_at(values)
-    spatial_root <- tryCatch(
-      factor_covariance(covariance, "adaptive MCML target"),
-      error = function(error) NULL
-    )
+    samples <- z %*% proposal$root
+    samples <- samples + rep(proposal$mode, each = nrow(samples))
+    if (identical(parameters, proposal_parameters)) {
+      values <- proposal$values
+      covariance <- proposal$covariance
+      spatial_root <- proposal$spatial_root
+    } else {
+      values <- unpack(parameters)
+      covariance <- covariance_at(values)
+      spatial_root <- tryCatch(
+        factor_covariance(covariance, "adaptive MCML target"),
+        error = function(error) NULL
+      )
+    }
     if (is.null(spatial_root)) return(if (diagnostics) NULL else -1e100)
 
     spatial_samples <- samples[, latent$spatial, drop = FALSE]
@@ -152,8 +350,8 @@ make_adaptive_mcml_engine <- function(
       n_loc * log(2 * pi) + 2 * sum(log(diag(spatial_root))) +
         colSums(t(spatial_samples) * solved)
     )
-    eta <- sweep(spatial_samples[, ID_coords, drop = FALSE], 2L,
-                 as.numeric(D %*% values$beta + cov_offset), "+")
+    eta <- spatial_samples[, ID_coords, drop = FALSE] +
+      rep(as.numeric(D %*% values$beta + cov_offset), each = nrow(samples))
     if (n_re) for (j in seq_len(n_re)) {
       random_samples <- samples[, latent$random[[j]], drop = FALSE]
       eta <- eta + random_samples[, ID_re[, j], drop = FALSE]
@@ -164,11 +362,11 @@ make_adaptive_mcml_engine <- function(
     }
     log_target <- log_prior + log_observation_likelihood(eta)
 
-    centred <- sweep(samples, 2L, proposal$mode, "-")
-    proposal_solved <- forwardsolve(t(proposal$root), t(centred))
+    # The draws are mode + z %*% root, so the proposal's standardised
+    # residuals are exactly z and no triangular solve is needed.
     log_proposal <- -0.5 * (
       latent$dimension * log(2 * pi) + 2 * sum(log(diag(proposal$root))) +
-        colSums(proposal_solved^2)
+        rowSums(z^2)
     )
     log_weights <- log_target - log_proposal
     if (log_weights_only) return(log_weights)
@@ -274,6 +472,136 @@ adaptive_mcml_pathwise_score <- function(
   )
 }
 
+##' Identify variance parameters estimated as effectively zero
+##'
+##' `linked_index` is a list named by variance index giving parameters that
+##' are not identifiable when that variance is zero.
+##'
+##' Variance components are optimised on the log scale, so a component whose
+##' maximum likelihood estimate is zero drifts towards the lower bound along an
+##' almost flat direction. Such components are held at the boundary when Monte
+##' Carlo precision is assessed, instead of being treated as Monte Carlo error.
+##' @noRd
+adaptive_boundary_parameters <- function(estimate, variance_index,
+                                         boundary_log_variance,
+                                         linked_index = list()) {
+  boundary <- variance_index[estimate[variance_index] <= boundary_log_variance]
+  # A parameter that only acts through a zero variance (the spatial range when
+  # the spatial variance is zero) is not identifiable and is held with it.
+  linked <- unlist(linked_index[as.character(boundary)], use.names = FALSE)
+  sort(unique(c(boundary, linked)))
+}
+
+##' Re-optimise once from an interior value of boundary variance components
+##'
+##' A local optimiser that reaches a variance boundary from one start may have
+##' missed an interior maximum. One restart from a moderate value (a quarter of
+##' the reference scale) on the same common-random-number bank resolves this;
+##' the better objective is retained, so the restart can never worsen a fit.
+##' @noRd
+restart_from_interior <- function(objective, fit, variance_index,
+                                  boundary_log_variance, lower, upper) {
+  boundary <- adaptive_boundary_parameters(
+    fit$par, variance_index, boundary_log_variance
+  )
+  if (!length(boundary)) return(list(fit = fit, restarted = FALSE))
+  interior <- fit$par
+  interior[boundary] <- log(0.25)
+  restart <- tryCatch(
+    nlminb(interior, objective, lower = lower, upper = upper,
+           control = list(eval.max = 150, iter.max = 100,
+                          rel.tol = 1e-8, x.tol = 1e-6)),
+    error = function(error) NULL
+  )
+  improved <- !is.null(restart) && is.finite(restart$objective) &&
+    restart$objective < fit$objective - 1e-6
+  list(fit = if (improved) restart else fit, restarted = TRUE,
+       restart_improved = improved)
+}
+
+##' Monte Carlo precision of the free parameters
+##'
+##' Parameters on a variance boundary are held fixed, so the observed
+##' information, the worst-direction MCSE ratio and the independent score
+##' comparison are computed over the remaining (free) parameters only.
+##' @noRd
+adaptive_precision_diagnostics <- function(engine, estimate, fit_bank,
+                                           validation_bank, free,
+                                           score_agreement_probability) {
+  out <- list(
+    information = NULL, covariance = NULL, information_singular = TRUE,
+    fit_pathwise_score = NULL, validation_pathwise_score = NULL,
+    parameter_mcse_ratio = Inf, score_agreement_statistic = Inf,
+    score_agreement_limit = stats::qchisq(score_agreement_probability,
+                                          df = length(free)),
+    timing = list(information = 0, fit_pathwise_score = 0,
+                  validation_pathwise_score = 0)
+  )
+  started <- proc.time()[["elapsed"]]
+  out$information <- tryCatch(
+    # Two Richardson rounds suffice for this smooth, deterministic
+    # objective: standard errors agree with the default four rounds to about
+    # 1e-4 relative error at half the cost.
+    numDeriv::hessian(function(parameters) -engine(parameters, fit_bank),
+                      estimate, method.args = list(r = 2)),
+    error = function(error) NULL
+  )
+  out$timing$information <- proc.time()[["elapsed"]] - started
+  if (is.null(out$information)) return(out)
+  information_root <- tryCatch(
+    factor_covariance(out$information[free, free, drop = FALSE],
+                      "adaptive MCML observed information",
+                      allow_jitter = FALSE),
+    error = function(error) NULL
+  )
+  if (is.null(information_root)) return(out)
+  out$information_singular <- FALSE
+  free_covariance <- chol2inv(information_root)
+  out$covariance <- matrix(NA_real_, length(estimate), length(estimate))
+  out$covariance[free, free] <- free_covariance
+
+  started <- proc.time()[["elapsed"]]
+  out$fit_pathwise_score <- adaptive_mcml_pathwise_score(
+    engine, estimate, fit_bank
+  )
+  out$timing$fit_pathwise_score <- proc.time()[["elapsed"]] - started
+  started <- proc.time()[["elapsed"]]
+  out$validation_pathwise_score <- adaptive_mcml_pathwise_score(
+    engine, estimate, validation_bank
+  )
+  out$timing$validation_pathwise_score <- proc.time()[["elapsed"]] - started
+
+  parameter_ratio <- function(score_mc_covariance) {
+    parameter_mc_covariance <- free_covariance %*%
+      score_mc_covariance[free, free, drop = FALSE] %*% free_covariance
+    relative_covariance <- information_root %*%
+      parameter_mc_covariance %*% t(information_root)
+    relative_covariance <- (relative_covariance + t(relative_covariance)) / 2
+    sqrt(max(eigen(relative_covariance, symmetric = TRUE,
+                   only.values = TRUE)$values))
+  }
+  out$parameter_mcse_ratio <- max(
+    parameter_ratio(out$fit_pathwise_score$covariance),
+    parameter_ratio(out$validation_pathwise_score$covariance)
+  )
+  score_difference <- (out$fit_pathwise_score$score -
+                         out$validation_pathwise_score$score)[free]
+  score_root <- tryCatch(
+    factor_covariance(
+      (out$fit_pathwise_score$covariance +
+         out$validation_pathwise_score$covariance)[free, free, drop = FALSE],
+      "adaptive MCML score-difference covariance"
+    ),
+    error = function(error) NULL
+  )
+  if (!is.null(score_root)) {
+    out$score_agreement_statistic <- sum(
+      forwardsolve(t(score_root), score_difference)^2
+    )
+  }
+  out
+}
+
 ##' Fit and independently validate adaptive local-Laplace MCML
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, latent_dimension,
@@ -284,7 +612,13 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
                             max_pareto_k = 0.7,
                             max_parameter_mcse_ratio = 0.1,
                             score_agreement_probability = 0.99,
-                            lower = NULL, upper = NULL) {
+                            lower = NULL, upper = NULL,
+                            variance_index = integer(),
+                            linked_index = list(),
+                            boundary_log_variance = -9,
+                            range_index = NULL,
+                            minimum_log_range = -Inf,
+                            near_zero_log_variance = -4) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   if (!is.null(min_absolute_ess)) {
@@ -314,6 +648,42 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
       control = list(eval.max = 150, iter.max = 100,
                      rel.tol = 1e-8, x.tol = 1e-6)
     )
+    restart <- if (stage == 1L && length(variance_index)) {
+      restart_from_interior(
+        function(parameters) -engine(parameters, fit_bank), fit,
+        variance_index, boundary_log_variance, lower, upper
+      )
+    } else {
+      list(fit = fit, restarted = FALSE)
+    }
+    fit <- restart$fit
+    boundary <- adaptive_boundary_parameters(
+      fit$par, variance_index, boundary_log_variance, linked_index
+    )
+    # A range shorter than the spacing between locations cannot be
+    # distinguished from unstructured variation. Unless the spatial variance is
+    # already zero (when the range is meaningless anyway), the range is held at
+    # that spacing and the remaining parameters are re-optimised.
+    if (!is.null(range_index) && !(range_index %in% boundary) &&
+        fit$par[range_index] < minimum_log_range) {
+      lower[range_index] <- minimum_log_range
+      held <- tryCatch(
+        nlminb(pmax(fit$par, lower),
+               function(parameters) -engine(parameters, fit_bank),
+               lower = lower, upper = upper,
+               control = list(eval.max = 150, iter.max = 100,
+                              rel.tol = 1e-8, x.tol = 1e-6)),
+        error = function(error) NULL
+      )
+      if (!is.null(held)) fit <- held
+      boundary <- adaptive_boundary_parameters(
+        fit$par, variance_index, boundary_log_variance, linked_index
+      )
+    }
+    range_held <- !is.null(range_index) && !(range_index %in% boundary) &&
+      fit$par[range_index] <= minimum_log_range + 1e-6
+    if (range_held) boundary <- sort(c(boundary, range_index))
+    free <- setdiff(seq_along(fit$par), boundary)
     optimizer_seconds <- proc.time()[["elapsed"]] - optimizer_started
     fit_diagnostics_started <- proc.time()[["elapsed"]]
     fit_diagnostics <- engine(fit$par, fit_bank, diagnostics = TRUE)
@@ -372,80 +742,54 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
       fit_diagnostics$pareto_k <= max_pareto_k &&
       validation_diagnostics$pareto_k <= max_pareto_k
     )
-    information <- NULL
-    covariance <- NULL
-    fit_pathwise_score <- NULL
-    validation_pathwise_score <- NULL
-    parameter_mcse_ratio <- Inf
-    score_agreement_statistic <- Inf
-    information_seconds <- fit_score_seconds <-
-      validation_score_seconds <- 0
-    score_agreement_limit <- stats::qchisq(
-      score_agreement_probability, df = length(start)
-    )
-    if (preliminary_pass) {
-      information_started <- proc.time()[["elapsed"]]
-      information <- tryCatch(
-        numDeriv::hessian(
-          function(parameters) -engine(parameters, fit_bank), fit$par
-        ),
-        error = function(error) NULL
+    precision <- if (preliminary_pass) {
+      adaptive_precision_diagnostics(
+        engine, fit$par, fit_bank, validation_bank, free,
+        score_agreement_probability
       )
-      information_seconds <- proc.time()[["elapsed"]] - information_started
-      information_root <- if (is.null(information)) NULL else tryCatch(
-        factor_covariance(
-          information, "experimental hybrid observed information",
-          allow_jitter = FALSE
-        ),
-        error = function(error) NULL
-      )
-      if (!is.null(information_root)) {
-        covariance <- chol2inv(information_root)
-        fit_score_started <- proc.time()[["elapsed"]]
-        fit_pathwise_score <- adaptive_mcml_pathwise_score(
-          engine, fit$par, fit_bank
-        )
-        fit_score_seconds <- proc.time()[["elapsed"]] - fit_score_started
-        validation_score_started <- proc.time()[["elapsed"]]
-        validation_pathwise_score <- adaptive_mcml_pathwise_score(
-          engine, fit$par, validation_bank
-        )
-        validation_score_seconds <-
-          proc.time()[["elapsed"]] - validation_score_started
-        parameter_ratio <- function(score_mc_covariance) {
-          parameter_mc_covariance <- covariance %*%
-            score_mc_covariance %*% covariance
-          relative_covariance <- information_root %*%
-            parameter_mc_covariance %*% t(information_root)
-          relative_covariance <-
-            (relative_covariance + t(relative_covariance)) / 2
-          sqrt(max(eigen(
-            relative_covariance, symmetric = TRUE, only.values = TRUE
-          )$values))
-        }
-        parameter_mcse_ratio <- max(
-          parameter_ratio(fit_pathwise_score$covariance),
-          parameter_ratio(validation_pathwise_score$covariance)
-        )
-        score_difference <- fit_pathwise_score$score -
-          validation_pathwise_score$score
-        score_difference_covariance <-
-          fit_pathwise_score$covariance +
-          validation_pathwise_score$covariance
-        score_root <- tryCatch(
-          factor_covariance(
-            score_difference_covariance,
-            "experimental hybrid score-difference covariance"
-          ),
-          error = function(error) NULL
-        )
-        if (!is.null(score_root)) {
-          score_agreement_statistic <- sum(
-            forwardsolve(t(score_root), score_difference)^2
-          )
-        }
-      }
+    } else {
+      list(information = NULL, covariance = NULL,
+           information_singular = NA,
+           fit_pathwise_score = NULL, validation_pathwise_score = NULL,
+           parameter_mcse_ratio = Inf, score_agreement_statistic = Inf,
+           score_agreement_limit = stats::qchisq(
+             score_agreement_probability, df = length(free)
+           ),
+           timing = list(information = 0, fit_pathwise_score = 0,
+                         validation_pathwise_score = 0))
     }
+    # If the information is singular over the free parameters, variance
+    # components that are small but not exactly zero are the usual cause. Hold
+    # them as well before concluding that the model is not identifiable.
+    near_zero <- setdiff(
+      variance_index[fit$par[variance_index] <= near_zero_log_variance],
+      boundary
+    )
+    if (preliminary_pass && isTRUE(precision$information_singular) &&
+        length(near_zero)) {
+      boundary <- sort(unique(c(
+        boundary, near_zero,
+        unlist(linked_index[as.character(near_zero)], use.names = FALSE)
+      )))
+      free <- setdiff(seq_along(fit$par), boundary)
+      precision <- adaptive_precision_diagnostics(
+        engine, fit$par, fit_bank, validation_bank, free,
+        score_agreement_probability
+      )
+    }
+    information <- precision$information
+    covariance <- precision$covariance
+    fit_pathwise_score <- precision$fit_pathwise_score
+    validation_pathwise_score <- precision$validation_pathwise_score
+    parameter_mcse_ratio <- precision$parameter_mcse_ratio
+    score_agreement_statistic <- precision$score_agreement_statistic
+    score_agreement_limit <- precision$score_agreement_limit
+    information_seconds <- precision$timing$information
+    fit_score_seconds <- precision$timing$fit_pathwise_score
+    validation_score_seconds <- precision$timing$validation_pathwise_score
+    # A singular information matrix over the free parameters is a property of
+    # the data and model (weak identification), not of the Monte Carlo sample.
+    identifiability_failure <- isTRUE(precision$information_singular)
     accepted <- preliminary_pass && is.finite(parameter_mcse_ratio) &&
       parameter_mcse_ratio <= max_parameter_mcse_ratio &&
       score_agreement_statistic <= score_agreement_limit
@@ -468,6 +812,11 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
       max_parameter_mcse_ratio = parameter_mcse_ratio,
       score_agreement_statistic = score_agreement_statistic,
       score_agreement_limit = score_agreement_limit,
+      boundary_parameters = boundary,
+      range_held = range_held,
+      restarted = restart$restarted,
+      restart_improved = isTRUE(restart$restart_improved),
+      identifiability_failure = identifiability_failure,
       accepted = accepted,
       timing = list(
         optimizer = optimizer_seconds,
@@ -481,6 +830,11 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
     )
     current <- fit$par
     if (accepted) break
+    # More draws cannot repair a non-identifiable information matrix.
+    if (identifiability_failure) {
+      history[[stage]]$budget_reason <- "singular observed information"
+      break
+    }
 
     if (dynamic_budget) {
       # Independent-importance MCSE decreases approximately with sqrt(N).
@@ -539,28 +893,67 @@ fit_adaptive_mcml <- function(engine, start, latent_dimension,
   if (is.null(covariance)) {
     information <- tryCatch(
       numDeriv::hessian(function(parameters) -engine(parameters, fit_bank),
-                        current),
+                        current, method.args = list(r = 2)),
       error = function(error) NULL
     )
+    free <- setdiff(seq_along(current), last$boundary_parameters)
     information_root <- if (is.null(information)) NULL else tryCatch(
       factor_covariance(
-        information, "adaptive MCML observed information",
+        information[free, free, drop = FALSE],
+        "adaptive MCML observed information",
         allow_jitter = FALSE
       ),
       error = function(error) NULL
     )
-    if (!is.null(information_root)) covariance <- chol2inv(information_root)
+    if (!is.null(information_root)) {
+      covariance <- matrix(NA_real_, length(current), length(current))
+      covariance[free, free] <- chol2inv(information_root)
+    }
   }
 
   list(
     estimate = current,
     accepted = isTRUE(last$accepted),
     budget = last$budget,
+    boundary_parameters = last$boundary_parameters,
+    range_held = isTRUE(last$range_held),
+    identifiability_failure = isTRUE(last$identifiability_failure),
     history = history,
     covariance = covariance,
     information = information,
     elapsed_seconds = proc.time()[["elapsed"]] - total_started
   )
+}
+
+##' Median distance from each location to its nearest distinct neighbour
+##' @noRd
+median_nearest_neighbour_distance <- function(distances) {
+  distances <- as.matrix(distances)
+  distances[distances <= 0] <- Inf
+  nearest <- apply(distances, 1L, min)
+  nearest <- nearest[is.finite(nearest)]
+  if (!length(nearest)) return(0)
+  stats::median(nearest)
+}
+
+##' Describe variance parameters for user-facing messages
+##' @noRd
+describe_variance_parameters <- function(index, layout, re_names = NULL) {
+  if (!length(index)) return(character())
+  labels <- character()
+  labels[as.character(layout$index$sigma2)] <- "spatial variance (sigma2)"
+  if (!is.null(layout$index$nu2)) {
+    labels[as.character(layout$index$nu2)] <- "nugget variance (tau2)"
+  }
+  if (!is.null(layout$index$sigma2_re)) {
+    labels[as.character(layout$index$sigma2_re)] <- paste0(
+      "random-effect variance for '", re_names, "'"
+    )
+  }
+  # The range is held only because the spatial variance is zero; it is
+  # explained separately rather than listed as a variance component.
+  index <- setdiff(index, layout$index$phi)
+  unname(labels[as.character(index)])
 }
 
 ##' Retain user-facing adaptive diagnostics without derivative workspaces
@@ -581,6 +974,65 @@ compact_adaptive_mcml_history <- function(history) {
     stage$validation_pathwise_score <- NULL
     stage
   })
+}
+
+##' Maximise the Laplace approximation from several starting values
+##'
+##' With a single standard-normal draw at zero the adaptive engine evaluates
+##' the Laplace approximation to the marginal log-likelihood exactly. The
+##' Laplace optimum is cheap to compute, is usually close to the MCML optimum,
+##' and optimising it from several candidates guards against local optima and
+##' spurious variance boundaries before any Monte Carlo work is done.
+##' @noRd
+laplace_multistart <- function(engine, candidates, latent_dimension,
+                               lower, upper) {
+  zero <- matrix(0, nrow = 1L, ncol = latent_dimension)
+  objective <- function(parameters) {
+    value <- engine(parameters, zero)
+    if (is.finite(value)) -value else 1e100
+  }
+  fits <- lapply(candidates, function(candidate) {
+    tryCatch(
+      nlminb(pmin(pmax(candidate, lower), upper), objective,
+             lower = lower, upper = upper,
+             control = list(eval.max = 200, iter.max = 150,
+                            rel.tol = 1e-8, x.tol = 1e-6)),
+      error = function(error) NULL
+    )
+  })
+  values <- vapply(fits, function(fit) {
+    if (is.null(fit)) Inf else fit$objective
+  }, numeric(1))
+  if (!any(is.finite(values))) return(NULL)
+  best <- which.min(values)
+  list(estimate = fits[[best]]$par, log_likelihood = -values[[best]],
+       candidate = names(candidates)[best],
+       candidate_log_likelihoods = -values)
+}
+
+##' Candidate starting values for the Laplace multistart
+##'
+##' The supplied start is always included. Alternatives replace the range by a
+##' data-based value (a third of the median inter-location distance) and move
+##' every variance component to a moderate interior value, so that a start in
+##' the basin of a zero-variance boundary does not determine the fit.
+##' @noRd
+laplace_start_candidates <- function(start, layout, distances) {
+  candidates <- list(supplied = start)
+  median_distance <- stats::median(distances[upper.tri(distances)])
+  if (is.finite(median_distance) && median_distance > 0) {
+    data_range <- start
+    data_range[layout$index$phi] <- log(median_distance / 3)
+    candidates$data_range <- data_range
+  }
+  interior <- start
+  interior[layout$index$sigma2] <- max(start[layout$index$sigma2], log(0.25))
+  if (!is.null(layout$index$nu2)) interior[layout$index$nu2] <- log(0.25)
+  if (!is.null(layout$index$sigma2_re)) {
+    interior[layout$index$sigma2_re] <- log(0.25)
+  }
+  candidates$interior_variances <- interior
+  candidates
 }
 
 ##' Fit a non-Gaussian geostatistical model by adaptive validated MCML
@@ -624,6 +1076,15 @@ glgpm_nong_adaptive <- function(
              rep(-20, length(start) - ncol(D) - 2L))
   upper <- c(rep(30, ncol(D)), 20, 10,
              rep(20, length(start) - ncol(D) - 2L))
+  laplace <- NULL
+  if (isTRUE(control_mcml$laplace_start)) {
+    laplace <- laplace_multistart(
+      engine$evaluate,
+      laplace_start_candidates(unname(start), engine$layout, distances),
+      engine$latent_dimension, lower, upper
+    )
+    if (!is.null(laplace)) start <- laplace$estimate
+  }
   fit <- fit_adaptive_mcml(
     engine = engine$evaluate, start = unname(start),
     latent_dimension = engine$latent_dimension,
@@ -635,7 +1096,16 @@ glgpm_nong_adaptive <- function(
     max_pareto_k = control_mcml$max_pareto_k,
     max_parameter_mcse_ratio = control_mcml$max_mcse_ratio,
     score_agreement_probability = control_mcml$score_probability,
-    lower = lower, upper = upper
+    lower = lower, upper = upper,
+    variance_index = unlist(engine$layout$index[c("sigma2", "nu2",
+                                                  "sigma2_re")],
+                            use.names = FALSE),
+    linked_index = stats::setNames(
+      list(engine$layout$index$phi), engine$layout$index$sigma2
+    ),
+    range_index = engine$layout$index$phi,
+    minimum_log_range = if (isFALSE(control_mcml$hold_short_range)) -Inf else
+      log(median_nearest_neighbour_distance(distances))
   )
   last <- fit$history[[length(fit$history)]]
   public_history <- compact_adaptive_mcml_history(fit$history)
@@ -652,24 +1122,75 @@ glgpm_nong_adaptive <- function(
   }
   flat_names <- names(unlist(estimate))
   dimnames(covariance) <- list(flat_names, flat_names)
-  # Recreate the final common-random-number bank once for the score reported by
-  # the fitted object. Reusing one matrix is both faster and deterministic.
-  final_seed <- as.integer((
-    (fit_seed - 1 + 2L * length(fit$history) - 1L) %% .Machine$integer.max
-  ) + 1)
-  set.seed(final_seed)
-  final_bank <- matrix(
-    rnorm(fit$budget * engine$latent_dimension), nrow = fit$budget
-  )
-  gradient <- tryCatch(
-    numDeriv::grad(
-      function(parameters) engine$evaluate(parameters, final_bank),
-      fit$estimate
-    ),
-    error = function(error) rep(NA_real_, length(fit$estimate))
-  )
+  # The last stage already estimated the gradient at the estimate on its fitting
+  # bank (the pathwise score), so it is reported directly. Otherwise the bank
+  # is recreated and a central difference is used.
+  last_score <- fit$history[[length(fit$history)]]$fit_pathwise_score$score
+  gradient <- if (!is.null(last_score) && length(last_score) ==
+                  length(fit$estimate)) {
+    last_score
+  } else {
+    final_seed <- as.integer((
+      (fit_seed - 1 + 2L * length(fit$history) - 1L) %% .Machine$integer.max
+    ) + 1)
+    set.seed(final_seed)
+    final_bank <- matrix(
+      rnorm(fit$budget * engine$latent_dimension), nrow = fit$budget
+    )
+    tryCatch(
+      numDeriv::grad(
+        function(parameters) engine$evaluate(parameters, final_bank),
+        fit$estimate, method = "simple", method.args = list(eps = 1e-6)
+      ),
+      error = function(error) rep(NA_real_, length(fit$estimate))
+    )
+  }
 
-  if (!fit$accepted) {
+  boundary_names <- describe_variance_parameters(
+    fit$boundary_parameters, engine$layout,
+    re_names = if (is.null(ID_re)) NULL else colnames(ID_re)
+  )
+  if (length(boundary_names)) {
+    warning(
+      "The ", if (length(boundary_names) == 1L) boundary_names else paste(
+        paste(boundary_names[-length(boundary_names)], collapse = ", "),
+        "and the", boundary_names[length(boundary_names)]
+      ), " ",
+      if (length(boundary_names) == 1L) "was" else "were",
+      " estimated as effectively zero. ",
+      if (length(boundary_names) == 1L) "This component" else "These components",
+      " cannot be distinguished from zero with these data, so ",
+      if (length(boundary_names) == 1L) "its standard error is" else
+        "their standard errors are",
+      " not reported",
+      if (engine$layout$index$sigma2 %in% fit$boundary_parameters) {
+        ", and the spatial range cannot be estimated"
+      },
+      ". Consider refitting without ",
+      if (length(boundary_names) == 1L) "it." else "them.",
+      call. = FALSE
+    )
+  }
+  if (fit$range_held) {
+    warning(
+      "The estimated spatial range is shorter than the typical distance ",
+      "between neighbouring locations, so spatial correlation cannot be ",
+      "distinguished from unstructured variation with these data. The range ",
+      "was held at the median nearest-neighbour distance and its standard ",
+      "error is not reported. Consider a model with a nugget (unstructured) ",
+      "effect instead, or fixing the range from external knowledge.",
+      call. = FALSE
+    )
+  }
+  if (fit$identifiability_failure) {
+    warning(
+      "The observed information matrix is singular, so some parameters ",
+      "(often the spatial range when spatial correlation is weak) are not ",
+      "identifiable from these data. The estimate is returned without ",
+      "standard errors; consider a simpler model or fixing the range.",
+      call. = FALSE
+    )
+  } else if (!fit$accepted) {
     warning(
       "Adaptive MCML reached its stopping limit without meeting all ",
       "Monte Carlo precision and independent-validation criteria. The best ",
@@ -703,6 +1224,15 @@ glgpm_nong_adaptive <- function(
       rcond(fit$information),
     information_jitter = 0,
     mcml_supported = fit$accepted,
+    mcml_range_held = fit$range_held,
+    laplace_start = if (is.null(laplace)) NULL else list(
+      estimate = laplace$estimate,
+      log_likelihood = laplace$log_likelihood,
+      candidate = laplace$candidate,
+      candidate_log_likelihoods = laplace$candidate_log_likelihoods
+    ),
+    mcml_boundary = boundary_names,
+    mcml_identifiability_failure = fit$identifiability_failure,
     mcml_budget = fit$budget,
     mcml_stages = length(fit$history),
     mcml_history = public_history,
