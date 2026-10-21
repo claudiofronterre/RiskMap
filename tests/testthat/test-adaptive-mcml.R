@@ -200,3 +200,70 @@ test_that("a range shorter than the location spacing is held at the spacing", {
   expect_true(is.na(fit$covariance[4L, 4L]))
   expect_true(all(is.finite(diag(fit$covariance)[1:3])))
 })
+
+test_that("the PC penalty is a proper density on the working scale", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  penalty <- make_pc_penalty(layout, range_threshold = 2,
+                             sigma_threshold = 1, sigma_probability = 0.05,
+                             range_probability = 0.05)
+  at <- function(log_sigma2, log_phi) penalty(c(0, 0, log_sigma2, log_phi))
+  density_sigma <- function(a) exp(vapply(a, at, 0, log_phi = 0))
+  density_range <- function(b) exp(vapply(b, function(x) at(0, x), 0))
+  sigma_total <- integrate(density_sigma, -40, 15)$value
+  range_total <- integrate(density_range, -30, 30)$value
+  # The penalty is separable, log pi = g(log sigma^2) + h(log phi), so it
+  # integrates to one exactly when sigma_total * range_total = exp(g(0) + h(0)).
+  expect_equal(sigma_total * range_total, exp(at(0, 0)), tolerance = 1e-6)
+  # Tail probabilities match the specification.
+  expect_equal(integrate(density_sigma, log(1), 15)$value / sigma_total, 0.05,
+               tolerance = 1e-6)
+  expect_equal(integrate(density_range, -30, log(2))$value / range_total, 0.05,
+               tolerance = 1e-6)
+})
+
+test_that("penalising the engine leaves importance weights unchanged", {
+  coordinate <- seq(0, 1, length.out = 20)
+  covariate <- seq(-1, 1, length.out = 20)
+  trials <- rep(10, 20)
+  y <- round(trials * plogis(-0.2 + 0.3 * covariate))
+  engine <- make_adaptive_mcml_engine(
+    D = cbind(1, covariate), y = y, units_m = trials,
+    distances = as.matrix(dist(coordinate)), family = "binomial"
+  )
+  penalty <- function(parameters) -sum(parameters^2)
+  penalised <- penalise_engine(engine$evaluate, penalty)
+  theta <- c(-0.2, 0.3, log(0.5), log(0.3))
+  set.seed(3)
+  z <- matrix(rnorm(200 * 20), 200)
+  expect_identical(penalised(theta, z, log_weights_only = TRUE),
+                   engine$evaluate(theta, z, log_weights_only = TRUE))
+  expect_equal(penalised(theta, z), engine$evaluate(theta, z) + penalty(theta))
+  expect_equal(penalised(theta, z, diagnostics = TRUE)$value,
+               engine$evaluate(theta, z) + penalty(theta))
+})
+
+test_that("set_control_mcml validates the PC prior options", {
+  expect_false(set_control_mcml()$pc_prior)
+  control <- set_control_mcml(pc_prior = TRUE, pc_range_threshold = 5)
+  expect_true(control$pc_prior)
+  expect_identical(control$pc_range_threshold, 5)
+  expect_error(set_control_mcml(pc_prior = NA), "pc_prior")
+  expect_error(set_control_mcml(pc_sigma_probability = 1),
+               "pc_sigma_probability")
+})
+
+test_that("glgpm fits with the PC prior and reports the unpenalised likelihood", {
+  fit <- suppressWarnings(glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    control_mcml = set_control_mcml(
+      initial_samples = 500, max_samples = 500, max_stages = 1,
+      min_effective_samples = 1, max_pareto_k = 100,
+      max_mcse_ratio = 0.99, score_probability = 0.999999, pc_prior = TRUE
+    ),
+    messages = FALSE
+  ))
+  expect_true(attr(fit, "optimizer")$mcml_pc_prior)
+  expect_true(all(is.finite(unlist(fit$estimate))))
+  expect_true(is.finite(fit$log_lik))
+})

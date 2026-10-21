@@ -503,7 +503,7 @@ glgpm <- function(formula,
       cov_offset = cov_offset, ID_coords = ID_coords, ID_re = ID_re,
       fix_tau2 = fix_tau2, family = family, invlink = invlink,
       control_mcml = control_mcml, seed = control_mcmc$seed,
-      messages = messages
+      messages = messages, distance_scale = spatial_scaling$distance_scale
     )
     optimizer <- attr(res, "optimizer")
     mcml_history <- optimizer$mcml_history
@@ -2974,6 +2974,21 @@ laplace_sampling_mcmc <- function(y,
 ##' at that distance, because spatial correlation on a shorter scale cannot be
 ##' distinguished from unstructured variation; a warning is issued. Set to
 ##' `FALSE` to obtain the unconstrained maximum likelihood estimate.
+##' @param pc_prior Logical. If `TRUE`, the spatial variance and range are
+##' penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
+##' estimate maximises the penalised likelihood on the log scale of the
+##' covariance parameters. This shrinks estimates away from degenerate
+##' solutions in small or sparse datasets and replaces the hold of short
+##' ranges. Defaults to `FALSE`.
+##' @param pc_sigma_threshold,pc_sigma_probability The penalty sets
+##' P(sigma > `pc_sigma_threshold`) = `pc_sigma_probability`, where sigma is the
+##' spatial standard deviation on the scale of the linear predictor. Default
+##' 1 and 0.05.
+##' @param pc_range_threshold,pc_range_probability The penalty sets
+##' P(phi < `pc_range_threshold`) = `pc_range_probability`, where phi is the
+##' range in the units of the coordinates. By default the threshold is the
+##' median distance between neighbouring locations and the probability is
+##' 0.05.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
 ##' control_mcml <- set_control_mcml(max_samples = 10000)
@@ -2986,7 +3001,12 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
                              max_mcse_ratio = 0.1,
                              score_probability = 0.99,
                              laplace_start = FALSE,
-                             hold_short_range = TRUE) {
+                             hold_short_range = TRUE,
+                             pc_prior = FALSE,
+                             pc_sigma_threshold = 1,
+                             pc_sigma_probability = 0.05,
+                             pc_range_threshold = NULL,
+                             pc_range_probability = 0.05) {
   check_positive_integer(initial_samples, "initial_samples")
   check_positive_integer(max_samples, "max_samples")
   check_positive_integer(max_stages, "max_stages")
@@ -3004,6 +3024,15 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
       is.na(hold_short_range)) {
     stop("'hold_short_range' must be TRUE or FALSE.", call. = FALSE)
   }
+  if (!is.logical(pc_prior) || length(pc_prior) != 1L || is.na(pc_prior)) {
+    stop("'pc_prior' must be TRUE or FALSE.", call. = FALSE)
+  }
+  check_positive_number(pc_sigma_threshold, "")
+  check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
+              name = "pc_sigma_probability")
+  if (!is.null(pc_range_threshold)) check_positive_number(pc_range_threshold, "")
+  check_range(pc_range_probability, 0, 1, allow_equal = FALSE,
+              name = "pc_range_probability")
   if (max_samples < initial_samples) {
     stop("'max_samples' must be at least 'initial_samples'.", call. = FALSE)
   }
@@ -3022,7 +3051,12 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
       max_mcse_ratio = max_mcse_ratio,
       score_probability = score_probability,
       laplace_start = laplace_start,
-      hold_short_range = hold_short_range
+      hold_short_range = hold_short_range,
+      pc_prior = pc_prior,
+      pc_sigma_threshold = pc_sigma_threshold,
+      pc_sigma_probability = pc_sigma_probability,
+      pc_range_threshold = pc_range_threshold,
+      pc_range_probability = pc_range_probability
     ),
     class = "RiskMap_control_mcml"
   )
