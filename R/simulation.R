@@ -17,6 +17,22 @@
 #'   follows [glgpm()]: `model_crs` is used when supplied, otherwise
 #'   longitude/latitude data are transformed to an automatically selected UTM
 #'   CRS. A message reports automatic transformations.
+#' @examples
+#' library(sf)
+#' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
+#'                       coords = c("x", "y"), crs = 32629)
+#'
+#' grid <- st_as_sf(data.frame(x = c(500, 1500), y = 500),
+#'                  coords = c("x", "y"), crs = 32629)
+#'
+#' model <- specify_glgpm(response ~ gp(),
+#'                        data = locations,
+#'                        family = "gaussian",
+#'                        parameters = list(beta = 1,
+#'                                          sigma2 = 1,
+#'                                          phi = 2,
+#'                                          sigma2_me = 0.1))
+#'
 #' @export
 specify_glgpm <- function(formula, data, family, parameters,
                          denominator = NULL, model_crs = NULL,
@@ -148,14 +164,26 @@ specify_glgpm <- function(formula, data, family, parameters,
 #' library(sf)
 #' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
 #'                       coords = c("x", "y"), crs = 32629)
+#'
 #' grid <- st_as_sf(data.frame(x = c(500, 1500), y = 500),
 #'                  coords = c("x", "y"), crs = 32629)
-#' model <- specify_glgpm(response ~ gp(), locations, "gaussian",
-#'                        parameters = list(beta = 1, sigma2 = 1, phi = 2,
+#'
+#' model <- specify_glgpm(response ~ gp(),
+#'                        data = locations,
+#'                        family = "gaussian",
+#'                        parameters = list(beta = 1,
+#'                                          sigma2 = 1,
+#'                                          phi = 2,
 #'                                          sigma2_me = 0.1))
-#' sim <- simulate_glgpm(model, nsim = 2, what = c("data", "surface"),
-#'                       prediction_grid = grid, seed = 1)
+#'
+#' sim <- simulate_glgpm(model,
+#'                       nsim = 2,
+#'                       what = c("data", "surface"),
+#'                       prediction_grid = grid,
+#'                       seed = 1)
+#'
 #' simulated_data(sim, simulation = 1)
+#'
 #' simulated_values(sim, component = "spatial_effect")
 #' @export
 simulate_glgpm <- function(object, nsim = 1, what = "data",
@@ -308,6 +336,29 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
 #' @param location_set `"data"`, `"surface"`, or both. Defaults to available sets.
 #' @return A tibble with `simulation`, `location_set`, `location_id`, `component`
 #'   and `value`. Location identifiers refer to rows in `object$locations`.
+#' @examples
+#' library(sf)
+#' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
+#'                       coords = c("x", "y"), crs = 32629)
+#'
+#' grid <- st_as_sf(data.frame(x = c(500, 1500), y = 500),
+#'                  coords = c("x", "y"), crs = 32629)
+#'
+#' model <- specify_glgpm(response ~ gp(),
+#'                        data = locations,
+#'                        family = "gaussian",
+#'                        parameters = list(beta = 1,
+#'                                          sigma2 = 1,
+#'                                          phi = 2,
+#'                                          sigma2_me = 0.1))
+#'
+#' sim <- simulate_glgpm(model,
+#'                       nsim = 2,
+#'                       what = c("data", "surface"),
+#'                       prediction_grid = grid,
+#'                       seed = 1)
+#'
+#' simulated_values(sim, component = "spatial_effect")
 #' @export
 simulated_values <- function(object, component = NULL, simulation = NULL,
                              location_set = NULL) {
@@ -346,6 +397,29 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
 #'   column replaced by the selected simulation, ready for refitting.
 #'   `simulated_surface()` returns the grid `sf` data with columns for the
 #'   spatial effect, nugget, group effect, linear predictor and mean.
+#' @examples
+#' library(sf)
+#' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
+#'                       coords = c("x", "y"), crs = 32629)
+#'
+#' grid <- st_as_sf(data.frame(x = c(500, 1500), y = 500),
+#'                  coords = c("x", "y"), crs = 32629)
+#'
+#' model <- specify_glgpm(response ~ gp(),
+#'                        data = locations,
+#'                        family = "gaussian",
+#'                        parameters = list(beta = 1,
+#'                                          sigma2 = 1,
+#'                                          phi = 2,
+#'                                          sigma2_me = 0.1))
+#'
+#' sim <- simulate_glgpm(model,
+#'                       nsim = 2,
+#'                       what = c("data", "surface"),
+#'                       prediction_grid = grid,
+#'                       seed = 1)
+#'
+#' simulated_data(sim, simulation = 1)
 #' @export
 simulated_data <- function(object, simulation = 1) {
   check_simulation(object, simulation, single = TRUE)
