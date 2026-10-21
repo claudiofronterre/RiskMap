@@ -179,6 +179,18 @@ List cpp_canonical_mala(
                                               dimension);
   Map<const VectorXd> proposal_mean(proposal_mean_r.begin(), dimension);
 
+  // Validate every index once, so the sampling loop needs no bounds checks.
+  for (int observation = 0; observation < n; ++observation) {
+    const int location = location_id_r[observation] - 1;
+    if (location < 0 || location >= n_locations)
+      Rcpp::stop("Location index outside latent dimension.");
+    for (int effect = 0; effect < number_random_effects; ++effect) {
+      if (random_effect_id_r(observation, effect) < 1)
+        Rcpp::stop("Invalid random-effect index.");
+    }
+  }
+  const bool poisson = family == "poisson";
+
   auto evaluate = [&](const VectorXd& w) {
     State state;
     state.latent = proposal_lower * w + proposal_mean;
@@ -186,38 +198,29 @@ List cpp_canonical_mala(
     double log_likelihood = 0.0;
     for (int observation = 0; observation < n; ++observation) {
       const int location = location_id_r[observation] - 1;
-      if (location < 0 || location >= n_locations)
-        Rcpp::stop("Location index outside latent dimension.");
       double eta = mu[observation] + state.latent[location];
       for (int effect = 0; effect < number_random_effects; ++effect) {
-        const int level = random_effect_id_r(observation, effect) - 1;
-        if (level < 0) Rcpp::stop("Invalid random-effect index.");
-        eta += state.latent[random_effect_offsets[effect] + level];
+        eta += state.latent[random_effect_offsets[effect] +
+          random_effect_id_r(observation, effect) - 1];
       }
-      if (family == "binomial") {
-        const double probability = logistic(eta);
-        log_likelihood += y[observation] * eta -
-          units[observation] * softplus(eta);
-        gradient_latent[location] += y[observation] -
-          units[observation] * probability;
-        for (int effect = 0; effect < number_random_effects; ++effect) {
-          const int level = random_effect_id_r(observation, effect) - 1;
-          gradient_latent[random_effect_offsets[effect] + level] +=
-            y[observation] - units[observation] * probability;
-        }
-      } else {
+      double residual;
+      if (poisson) {
         const double mean = std::exp(eta);
         if (!std::isfinite(mean)) {
           state.valid = false;
           return state;
         }
         log_likelihood += y[observation] * eta - units[observation] * mean;
-        gradient_latent[location] += y[observation] - units[observation] * mean;
-        for (int effect = 0; effect < number_random_effects; ++effect) {
-          const int level = random_effect_id_r(observation, effect) - 1;
-          gradient_latent[random_effect_offsets[effect] + level] +=
-            y[observation] - units[observation] * mean;
-        }
+        residual = y[observation] - units[observation] * mean;
+      } else {
+        log_likelihood += y[observation] * eta -
+          units[observation] * softplus(eta);
+        residual = y[observation] - units[observation] * logistic(eta);
+      }
+      gradient_latent[location] += residual;
+      for (int effect = 0; effect < number_random_effects; ++effect) {
+        gradient_latent[random_effect_offsets[effect] +
+          random_effect_id_r(observation, effect) - 1] += residual;
       }
     }
     VectorXd difference = w - transformed_prior_mean;
