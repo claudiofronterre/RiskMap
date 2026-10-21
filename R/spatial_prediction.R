@@ -2033,7 +2033,12 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     } else {
       simulation <- laplace_sampling_mcmc(
         y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
-        sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
+        sigma2_re = par_hat$sigma2_re,
+        invlink = if (identical(object$link_function$name, "canonical")) {
+          NULL
+        } else {
+          object$link_function
+        },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,
         messages = messages

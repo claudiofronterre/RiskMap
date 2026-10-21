@@ -113,6 +113,13 @@ never supported, and describes the Newton-type optimisation it actually uses.
 `importance_effective_sample_size()`, `restore_spatial_range()`) and the
 compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
 
+- The final conditional sampling in `glgpm()` (used for fitted values and
+stored prediction samples) now uses the compiled MALA kernel for canonical
+links, as intended. It previously passed the inverse-link function itself,
+which selected the general R implementation with numerical derivatives; a
+binomial fit to the `liberia` data now takes about 2 s instead of 27 s.
+Fresh conditional runs in `predict()` now honour a custom inverse link.
+
 - `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
 Laplace approximation from several starting values before MCML.
 
