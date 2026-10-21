@@ -543,7 +543,7 @@ test_that("assess_prediction can refit correctly for all model families", {
       keep_par_fixed = FALSE,
       control_mcmc = control_mcmc,
       messages = FALSE),
-    "Adaptive MCML reached its stopping limit")
+    "estimated as effectively zero")
 
   expect_setequal(names(result), c("test_set", "model"))
 

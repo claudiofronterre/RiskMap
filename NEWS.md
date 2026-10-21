@@ -91,8 +91,22 @@ Independent fitting and validation banks must contain at least 100 effective
 draws, have acceptable importance-weight tails, agree on the score, and keep
 Monte Carlo standard error below 10% of statistical standard error in every
 parameter direction. Bank size increases only when those diagnostics require
-it. The defaults were frozen after a 1,200-dataset simulation study and 120
-independent high-accuracy adjudications; see #194.
+it. The defaults were chosen in a 1,200-dataset simulation study and checked
+against exact likelihoods on small datasets, Stan-based likelihood ratios and
+1,200 further datasets simulated with fresh seeds; see #194.
+
+- Adaptive MCML now distinguishes Monte Carlo error from weak
+identification. A variance component estimated as zero (and the spatial range
+when the spatial variance is zero) is held at the boundary, the first stage is
+restarted once from an interior value, and precision is assessed on the
+remaining parameters, which keep their standard errors. A spatial range shorter
+than the median distance between neighbouring locations is held at that
+distance (`set_control_mcml(hold_short_range = FALSE)` disables this). If the
+information matrix is still singular, fitting stops instead of drawing more
+samples. Each case produces a plain-language warning.
+
+- `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
+Laplace approximation from several starting values before MCML.
 
 ## Predictions
 
