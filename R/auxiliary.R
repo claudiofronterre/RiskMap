@@ -93,6 +93,10 @@ elogit <- function(y, m) {
 ##' @param data An object of class \code{sf} containing the coordinates.
 ##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 ##' @return An integer indicating the EPSG code of the UTM zone.
+##' @examples
+##' data("infect_sma")
+##' propose_utm(infect_sma)
+##'
 ##' @export
 propose_utm <- function(data) {
 
@@ -601,6 +605,19 @@ coef.RiskMap <- function(object, ...) {
 ##' @return A numeric vector, or `NULL` when final conditional sampling was
 ##' skipped for a non-Gaussian model.
 ##' @method fitted RiskMap
+##' @examples
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   return_samples = TRUE,
+##'   messages = FALSE
+##' )
+##'
+##' fitted(fit)
+##'
 ##' @export
 fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
   type <- match.arg(type)
@@ -613,14 +630,26 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   model fits
 ##' @param object An object of class "RiskMap" from \code{\link{glgpm}}
 ##' @param ... other parameters.
-##' @param conf_level Confidence level for intervals (default 0.95).
+##' @param level Confidence level for intervals (default 0.95).
 ##' @return A list of class \code{"summary.RiskMap"} with parameter estimates,
 ##'   standard errors, and confidence intervals.
 ##' @method summary RiskMap
+##' @examples
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
+##' summary(fit, level = 0.98)
 ##' @export
-summary.RiskMap <- function(object, ..., conf_level = 0.95) {
+summary.RiskMap <- function(object, ..., level = 0.95) {
 
-  alpha  <- 1 - conf_level
+  alpha  <- 1 - level
   z_crit <- qnorm(1 - alpha / 2)
   res    <- list()
 
@@ -748,7 +777,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     rownames(res$ranef) <- paste0(re_names, " (random eff. var.)")
   }
 
-  res$conf_level      <- conf_level
+  res$level           <- level
   res$family          <- object$family
   res$kappa           <- object$kappa
   res$log_lik         <- object$log_lik
@@ -796,7 +825,7 @@ print.summary.RiskMap <- function(x, ...) {
   if (!is.null(x$invlink_expression)) cat(x$invlink_expression, "\n\n")
 
   cat("'Lower limit' and 'Upper limit' refer to ",
-      x$conf_level * 100, "% confidence intervals\n", sep = "")
+      x$level * 100, "% confidence intervals\n", sep = "")
 
   cat("\nRegression coefficients\n")
   printCoefmat(x$reg_coef, P.values = TRUE, has.Pvalue = TRUE)
