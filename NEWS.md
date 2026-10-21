@@ -113,6 +113,15 @@ never supported, and describes the Newton-type optimisation it actually uses.
 `importance_effective_sample_size()`, `restore_spatial_range()`) and the
 compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
 
+- `set_control_mcml()` gains `pc_prior` (default `FALSE`) and its thresholds
+`pc_sigma_threshold`, `pc_sigma_probability`, `pc_range_threshold` and
+`pc_range_probability`. When `pc_prior = TRUE`, the spatial variance and range
+are penalised by penalised-complexity priors (by default
+P(sigma > 1) = 0.05 and P(range < median nearest-neighbour distance) = 0.05),
+which stabilises estimation in small or low-prevalence surveys. Warnings about
+a spatial variance estimated as zero, a held spatial range or a singular
+information matrix now suggest this option.
+
 - `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
 Laplace approximation from several starting values before MCML.
 

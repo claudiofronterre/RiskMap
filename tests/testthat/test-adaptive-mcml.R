@@ -267,3 +267,31 @@ test_that("glgpm fits with the PC prior and reports the unpenalised likelihood",
   expect_true(all(is.finite(unlist(fit$estimate))))
   expect_true(is.finite(fit$log_lik))
 })
+
+test_that("identification warnings point to the PC penalty only when it is off", {
+  fit_warnings <- function(pc_prior) {
+    warnings <- character()
+    withCallingHandlers(
+      glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+            denominator = denominator, control_mcmc = control_mcmc,
+            control_mcml = set_control_mcml(
+              initial_samples = 500, max_samples = 500, max_stages = 1,
+              min_effective_samples = 1, max_pareto_k = 100,
+              max_mcse_ratio = 0.99, score_probability = 0.999999,
+              pc_prior = pc_prior
+            ),
+            messages = FALSE),
+      warning = function(w) {
+        warnings <<- c(warnings, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    )
+    warnings
+  }
+  unpenalised <- fit_warnings(FALSE)
+  identification <- grepl("effectively zero|shorter than the typical|singular",
+                          unpenalised)
+  skip_if_not(any(identification), "fixture fit is well identified")
+  expect_true(all(grepl("pc_prior = TRUE", unpenalised[identification])))
+  expect_false(any(grepl("pc_prior = TRUE", fit_warnings(TRUE))))
+})

@@ -2998,7 +2998,10 @@ laplace_sampling_mcmc <- function(y,
 ##' estimate maximises the penalised likelihood on the log scale of the
 ##' covariance parameters. This shrinks estimates away from degenerate
 ##' solutions in small or sparse datasets and replaces the hold of short
-##' ranges. Defaults to `FALSE`.
+##' ranges. It is recommended for small or low-prevalence surveys, especially
+##' before prediction with `parameter_uncertainty = TRUE` in [predict.RiskMap()].
+##' When the spatial variance is large and well identified, the penalty shrinks
+##' it somewhat towards zero, so the default is `FALSE`.
 ##' @param pc_sigma_threshold,pc_sigma_probability The penalty sets
 ##' P(sigma > `pc_sigma_threshold`) = `pc_sigma_probability`, where sigma is the
 ##' spatial standard deviation on the scale of the linear predictor. Default
