@@ -114,6 +114,22 @@ never supported, and describes the Newton-type optimisation it actually uses.
 `importance_effective_sample_size()`, `restore_spatial_range()`) and the
 compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
 
+- `set_control_mcml()` gains `pc_prior` (default `FALSE`) and its thresholds
+`pc_sigma_threshold`, `pc_sigma_probability`, `pc_range_threshold` and
+`pc_range_probability`. When `pc_prior = TRUE`, the spatial variance and range
+are penalised by penalised-complexity priors (by default
+P(sigma > 1) = 0.05 and P(range < median nearest-neighbour distance) = 0.05),
+which stabilises estimation in small or low-prevalence surveys. Warnings about
+a spatial variance estimated as zero, a held spatial range or a singular
+information matrix now suggest this option.
+
+- The final conditional sampling in `glgpm()` (used for fitted values and
+stored prediction samples) now uses the compiled MALA kernel for canonical
+links, as intended. It previously passed the inverse-link function itself,
+which selected the general R implementation with numerical derivatives; a
+binomial fit to the `liberia` data now takes about 2 s instead of 27 s.
+Fresh conditional runs in `predict()` now honour a custom inverse link.
+
 - `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
 Laplace approximation from several starting values before MCML.
 
@@ -133,6 +149,13 @@ appropriate UTM zone and reports the conversion with a message.
   counterfactual reference population, with optional population weights.
 - Gaussian prediction uses a stable reduced covariance solve, avoiding cancellation
 with small measurement-error variances while retaining the same conditional model.
+- `predict()` gains `parameter_uncertainty` (default `FALSE`) and
+`parameter_draws` (default 50). When requested, parameters are drawn from the
+approximate sampling distribution of the estimate and, for each draw, the
+latent effects are sampled at that value with a short run of the same Langevin
+sampler used for plug-in prediction. The pooled draws give intervals,
+exceedance probabilities and areal summaries that also reflect parameter
+uncertainty, which matters for small or low-prevalence surveys.
 
 ## Cross validation
 
@@ -173,6 +196,10 @@ parameters have been renamed to `metric`/`model`.
 
 ## Other
 
+- Argument checks in the compiled MALA, likelihood and distance kernels have
+been removed or moved to their R callers, following the contributing guide;
+the R functions already validated everything the MALA and likelihood kernels
+checked.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian
 outputs reproducible.
 - `control_sim` parameters have been renamed to `control_mcmc`.
