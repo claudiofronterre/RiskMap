@@ -239,6 +239,16 @@
 ##' )
 ##' prediction$predictions
 ##'
+##' # Also reflect the uncertainty in the estimated parameters
+##' uncertain_prediction <- predict(
+##'   fit,
+##'   newdata = example_data[1:5, ],
+##'   parameter_uncertainty = TRUE,
+##'   parameter_draws = 20,
+##'   messages = FALSE
+##' )
+##' uncertain_prediction$predictions
+##'
 ##' # Use the same reference distribution of population density at each location
 ##' reference_population <- data.frame(pop_dens = example_data$pop_dens)
 ##' standardized_prediction <- predict(
@@ -288,10 +298,7 @@ predict.RiskMap <- function(
     ...) {
 
   if (is.null(include)) include <- character()
-  if (!is.logical(parameter_uncertainty) ||
-      length(parameter_uncertainty) != 1L || is.na(parameter_uncertainty)) {
-    stop("'parameter_uncertainty' must be TRUE or FALSE", call. = FALSE)
-  }
+  check_logical(parameter_uncertainty)
   check_positive_integer(parameter_draws, "parameter_draws")
   parameter_draws <- if (parameter_uncertainty) {
     as.integer(parameter_draws)
@@ -1325,7 +1332,7 @@ parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
   invlink <- if (identical(object$link_function$name, "canonical")) {
     NULL
   } else {
-    object$link_function
+    object$link_function$inv
   }
   design <- as.matrix(object$D)
   engine <- make_adaptive_mcml_engine(

@@ -286,6 +286,16 @@ prediction <- predict(
 )
 prediction$predictions
 
+# Also reflect the uncertainty in the estimated parameters
+uncertain_prediction <- predict(
+  fit,
+  newdata = example_data[1:5, ],
+  parameter_uncertainty = TRUE,
+  parameter_draws = 20,
+  messages = FALSE
+)
+uncertain_prediction$predictions
+
 # Use the same reference distribution of population density at each location
 reference_population <- data.frame(pop_dens = example_data$pop_dens)
 standardized_prediction <- predict(
