@@ -123,6 +123,13 @@ which stabilises estimation in small or low-prevalence surveys. Warnings about
 a spatial variance estimated as zero, a held spatial range or a singular
 information matrix now suggest this option.
 
+- The final conditional sampling in `glgpm()` (used for fitted values and
+stored prediction samples) now uses the compiled MALA kernel for canonical
+links, as intended. It previously passed the inverse-link function itself,
+which selected the general R implementation with numerical derivatives; a
+binomial fit to the `liberia` data now takes about 2 s instead of 27 s.
+Fresh conditional runs in `predict()` now honour a custom inverse link.
+
 - `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
 Laplace approximation from several starting values before MCML.
 
@@ -182,6 +189,10 @@ parameters have been renamed to `metric`/`model`.
 
 ## Other
 
+- Argument checks in the compiled MALA, likelihood and distance kernels have
+been removed or moved to their R callers, following the contributing guide;
+the R functions already validated everything the MALA and likelihood kernels
+checked.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian
 outputs reproducible.
 - `control_sim` parameters have been renamed to `control_mcmc`.
