@@ -66,3 +66,4 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 - We use [testthat](https://cran.r-project.org/package=testthat) for unit tests. Each function should have unit tests to verify that they function as expected and fail gracefully when incorrect inputs are provided.
 - Test data is included in `tests/testthat/helper-data.R` which is loaded when `devtools::load_all()` is used and available to use in all the tests.
 - Tests affecting a change made should be run locally prior to submitting a PR, but the whole suite will be run whenever changes are pushed.
+- Do not use `suppressWarnings()` in tests or fixtures. If a warning is expected, assert it with `expect_warning()` and its message; if it is not expected, fix whatever is causing it instead of hiding it.

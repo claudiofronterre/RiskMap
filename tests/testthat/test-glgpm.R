@@ -283,7 +283,7 @@ test_that("glgpm produces expected output for gaussian models", {
 test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
   # replicating locations gives more than three observations per latent
   # effect, so glgpm_lm should not fall back to glgpm_lm_direct; six copies
-  # are needed for re(i, j), which has 10 + 5 + 2 = 17 latent effects
+  # are needed for re(i, j), which has 20 + 10 + 2 = 32 latent effects
   set.seed(2)
   replicated_data <- do.call(rbind, replicate(6, gaussian_data, simplify = FALSE))
   replicated_data$y <- replicated_data$y + rnorm(nrow(replicated_data), sd = 0.3)
@@ -305,8 +305,9 @@ test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
 
     expect_s3_class(woodbury_fit, "RiskMap")
     expect_setequal(names(woodbury_fit), expected_output)
-    expect_equal(woodbury_fit$estimate, direct_fit$estimate, tolerance = 1e-6)
-    expect_equal(woodbury_fit$log_lik, direct_fit$log_lik, tolerance = 1e-6)
+    # near-zero sigma2 for re(i, j) makes tiny absolute differences large relative ones
+    expect_equal(woodbury_fit$estimate, direct_fit$estimate, tolerance = 1e-4)
+    expect_equal(woodbury_fit$log_lik, direct_fit$log_lik, tolerance = 1e-4)
     expect_equal(woodbury_fit$covariance, direct_fit$covariance,
                  tolerance = 1e-4)
   }
@@ -384,6 +385,83 @@ test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provi
   )
 })
 
+test_that("glgpm warns when the spatial range cannot be distinguished from unstructured variation (#206)", {
+  # true range (phi) is far shorter than the spacing between locations
+  set.seed(42)
+  n_pts <- 20L
+  coords <- cbind(runif(n_pts, 0, 10000), runif(n_pts, 0, 10000))
+  cov <- rnorm(n_pts)
+  sigma2 <- 1; phi <- 50; kappa <- 1
+  Sigma <- sigma2 * matern_correlation(dist(coords), phi = phi, kappa = kappa,
+                                       return_sym_matrix = TRUE)
+  S <- as.numeric(t(chol(Sigma)) %*% rnorm(n_pts))
+  denom <- sample(10:20, n_pts, replace = TRUE)
+  y <- rbinom(n_pts, denom, plogis(0.2 + 0.3 * cov + S))
+  no_spatial_data <- st_as_sf(
+    data.frame(x = coords[, 1], z = coords[, 2], cov = cov, y = y,
+               denominator = denom),
+    coords = c("x", "z"), crs = 32637
+  )
+
+  expect_warning(
+    fit <- glgpm(y ~ cov + gp(), data = no_spatial_data, family = "binomial",
+                denominator = denominator, control_mcmc = control_mcmc,
+                control_mcml = fixture_control_mcml, messages = FALSE),
+    "spatial correlation cannot be distinguished from unstructured variation"
+  )
+  expect_true(isTRUE(attr(fit, "optimizer")$mcml_range_held))
+})
+
+test_that("glgpm warns when a random-effect variance is estimated as effectively zero (#206)", {
+  # real, well-resolved spatial effect but no random-effect contribution at all
+  set.seed(42)
+  n_pts <- 20L
+  coords <- cbind(runif(n_pts, 0, 10000), runif(n_pts, 0, 10000))
+  i <- rep(seq_len(n_pts / 2L), each = 2)
+  cov <- rnorm(n_pts)
+  sigma2 <- 1; phi <- 5500; kappa <- 1
+  Sigma <- sigma2 * matern_correlation(dist(coords), phi = phi, kappa = kappa,
+                                       return_sym_matrix = TRUE)
+  S <- as.numeric(t(chol(Sigma)) %*% rnorm(n_pts))
+  denom <- sample(10:20, n_pts, replace = TRUE)
+  y <- rbinom(n_pts, denom, plogis(0.2 + 0.3 * cov + S))
+  no_re_data <- st_as_sf(
+    data.frame(x = coords[, 1], z = coords[, 2], cov = cov, y = y,
+               denominator = denom, i = i),
+    coords = c("x", "z"), crs = 32637
+  )
+
+  expect_warning(
+    fit <- glgpm(y ~ cov + gp() + re(i), data = no_re_data, family = "binomial",
+                denominator = denominator, control_mcmc = control_mcmc,
+                control_mcml = fixture_control_mcml, messages = FALSE),
+    "random-effect variance for 'i' was estimated as effectively zero"
+  )
+  expect_true("random-effect variance for 'i'" %in% attr(fit, "optimizer")$mcml_boundary)
+})
+
+test_that("glgpm warns when the observed information matrix is singular (#206)", {
+  # natural singular-information data proved elusive; force the condition on a real fit instead
+  real_fit_adaptive_mcml <- fit_adaptive_mcml
+  singular_fit_adaptive_mcml <- function(...) {
+    fit <- real_fit_adaptive_mcml(...)
+    fit$identifiability_failure <- TRUE
+    fit$boundary_parameters <- integer(0)
+    fit$range_held <- FALSE
+    fit
+  }
+
+  expect_warning(
+    testthat::with_mocked_bindings(
+      glgpm(y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+            denominator = denominator, control_mcmc = control_mcmc,
+            control_mcml = fixture_control_mcml, messages = FALSE),
+      fit_adaptive_mcml = singular_fit_adaptive_mcml
+    ),
+    "observed information matrix is singular"
+  )
+})
+
 test_that("glgpm is invariant to fixed-effect covariate scale", {
   scaled_data <- gaussian_data
   scaled_data$cov_large <- scaled_data$cov * 1e6
@@ -422,13 +500,16 @@ test_that("glgpm is invariant to fixed-effect covariate scale", {
 
 test_that("glgpm produces expected output for binomial models", {
 
-  fit_no_re <- glgpm(y ~ cov + gp(),
-                     data = binomial_data,
-                     family = "binomial",
-                     denominator = denominator,
-                     control_mcmc = control_mcmc,
-                     control_mcml = fixture_control_mcml,
-                     messages = FALSE)
+  expect_warning(
+    fit_no_re <- glgpm(y ~ cov + gp(),
+                       data = binomial_data,
+                       family = "binomial",
+                       denominator = denominator,
+                       control_mcmc = control_mcmc,
+                       control_mcml = fixture_control_mcml,
+                       messages = FALSE),
+    "spatial correlation cannot be distinguished from unstructured variation"
+  )
 
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
@@ -443,13 +524,13 @@ test_that("glgpm produces expected output for binomial models", {
   expect_true(is.finite(starting_values$current_laplace))
   expect_true(is.finite(starting_values$transformed_laplace))
 
-  fit_re <- suppressWarnings(glgpm(y ~ cov + gp() + re(i),
+  fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = binomial_data,
                   family = "binomial",
                   denominator = denominator,
                   control_mcmc = control_mcmc,
                      control_mcml = fixture_control_mcml,
-                  messages = FALSE))
+                  messages = FALSE)
 
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
@@ -480,11 +561,17 @@ test_that("glgpm produces expected output for binomial models", {
 })
 
 test_that("transformed starts preserve an estimated nugget", {
-  fit <- glgpm(
-    y ~ cov + gp(nugget = TRUE), data = binomial_data,
-    family = "binomial", denominator = denominator,
-    control_mcmc = control_mcmc,
-    control_mcml = fixture_control_mcml, messages = FALSE
+  expect_warning(
+    expect_warning(
+      fit <- glgpm(
+        y ~ cov + gp(nugget = TRUE), data = binomial_data,
+        family = "binomial", denominator = denominator,
+        control_mcmc = control_mcmc,
+        control_mcml = fixture_control_mcml, messages = FALSE
+      ),
+      "nugget variance \\(tau2\\) was estimated as effectively zero"
+    ),
+    "spatial correlation cannot be distinguished from unstructured variation"
   )
 
   diagnostics <- attr(fit, "starting_values")
@@ -512,13 +599,13 @@ test_that("explicit non-Gaussian starts remain authoritative", {
   )
 
   explicit_fit_2 <- glgpm(
-    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
                      control_mcml = fixture_control_mcml,
     start_pars = start_pars, messages = FALSE
   )
   explicit_fit <- glgpm(
-    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
                      control_mcml = fixture_control_mcml,
     start_pars = start_pars, messages = FALSE
@@ -530,14 +617,17 @@ test_that("explicit non-Gaussian starts remain authoritative", {
 })
 
 test_that("final fitted samples support a nugget model", {
-  fit <- glgpm(
-    y ~ cov + gp(nugget = 0.1),
-    data = binomial_data,
-    family = "binomial",
-    denominator = denominator,
-    control_mcmc = control_mcmc,
-                     control_mcml = fixture_control_mcml,
-    messages = FALSE
+  expect_warning(
+    fit <- glgpm(
+      y ~ cov + gp(nugget = 0.1),
+      data = binomial_data,
+      family = "binomial",
+      denominator = denominator,
+      control_mcmc = control_mcmc,
+                       control_mcml = fixture_control_mcml,
+      messages = FALSE
+    ),
+    "spatial correlation cannot be distinguished from unstructured variation"
   )
 
   expect_identical(ncol(fit$S_samples), nrow(fit$coords))
@@ -555,7 +645,7 @@ test_that("custom inverse links retain the current automatic start", {
     }
   )
   fit <- glgpm(
-    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
                      control_mcml = fixture_control_mcml,
     invlink = custom_link,
@@ -569,12 +659,15 @@ test_that("custom inverse links retain the current automatic start", {
 
 test_that("glgpm produces expected output for poisson models", {
 
-  fit_no_re <- glgpm(y ~ cov + gp(),
-                     data = poisson_data,
-                     family = "poisson",
-                     control_mcmc = control_mcmc,
-                     control_mcml = fixture_control_mcml,
-                     messages = FALSE)
+  expect_warning(
+    fit_no_re <- glgpm(y ~ cov + gp(),
+                       data = poisson_data,
+                       family = "poisson",
+                       control_mcmc = control_mcmc,
+                       control_mcml = fixture_control_mcml,
+                       messages = FALSE),
+    "spatial correlation cannot be distinguished from unstructured variation"
+  )
 
   expect_s3_class(fit_no_re, "RiskMap")
   expect_setequal(names(fit_no_re), expected_output)
@@ -582,24 +675,24 @@ test_that("glgpm produces expected output for poisson models", {
   expect_length(fitted(fit_no_re), nrow(poisson_data))
   expect_true(all(fitted(fit_no_re) > 0))
 
-  fit_re <- suppressWarnings(glgpm(y ~ cov + gp() + re(i),
+  fit_re <- glgpm(y ~ cov + gp() + re(i),
                   data = poisson_data,
                   family = "poisson",
                   control_mcmc = control_mcmc,
                      control_mcml = fixture_control_mcml,
-                  messages = FALSE))
+                  messages = FALSE)
 
   expect_s3_class(fit_re, "RiskMap")
   expect_setequal(names(fit_re), expected_output)
   expect_identical(fit_re$family, "poisson")
 
-  fit_re_den <- suppressWarnings(glgpm(y ~ cov + gp() + re(i),
+  fit_re_den <- glgpm(y ~ cov + gp() + re(i),
                       data = poisson_data,
                       denominator = denominator,
                       family = "poisson",
                       control_mcmc = control_mcmc,
                      control_mcml = fixture_control_mcml,
-                      messages = FALSE))
+                      messages = FALSE)
 
   expect_s3_class(fit_re_den, "RiskMap")
   expect_setequal(names(fit_re_den), expected_output)
@@ -610,11 +703,14 @@ test_that("glgpm produces expected output for poisson models", {
 test_that("adaptive MCML records independent precision diagnostics", {
   set.seed(9917)
   caller_seed <- .Random.seed
-  fit <- suppressWarnings(glgpm(
-    y ~ cov + gp(), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
-    control_mcml = fixture_control_mcml, messages = FALSE
-  ))
+  expect_warning(
+    fit <- glgpm(
+      y ~ cov + gp(), data = binomial_data, family = "binomial",
+      denominator = denominator, control_mcmc = control_mcmc,
+      control_mcml = fixture_control_mcml, messages = FALSE
+    ),
+    "spatial correlation cannot be distinguished from unstructured variation"
+  )
   stage <- fit$mcml_history[[1L]]
   diagnostics <- attr(fit, "optimizer")
 
@@ -704,7 +800,7 @@ test_that("plot_mcmc produces errors as expected", {
     "'object' is a gaussian model")
 
   binomial_without_samples <- glgpm(
-    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
                      control_mcml = fixture_control_mcml,
     return_samples = FALSE, messages = FALSE
@@ -726,13 +822,9 @@ test_that("plot_mcmc produces errors as expected", {
     "When 'check_mean' = FALSE a component of the"
   )
 
-  #ncol(poisson_model$S_samples) is 15
-  # expect_error(
-  #   plot_mcmc(poisson_model, check_mean = FALSE, component = 11),
-  #   "'component' must be a positive integer"
-  # )
   expect_error(
-    plot_mcmc(poisson_model, check_mean = FALSE, component = 20),
+    plot_mcmc(poisson_model, check_mean = FALSE,
+              component = ncol(poisson_model$S_samples) + 1),
     "'component' must be a single positive integer"
   )
 
