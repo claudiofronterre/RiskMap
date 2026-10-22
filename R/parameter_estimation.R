@@ -2190,29 +2190,8 @@ differentiate <- function(f, ncheck) {
 ##' user-supplied link differently.
 ##'
 ##' @noRd
-make_inverse_link_functions <- function(family, invlink, ncheck,
+make_inverse_link_functions <- function(family, invlink,
                                         second_derivative = TRUE) {
-  validate <- function(f, name) {
-    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
-    x <- rep(0, ncheck)
-    out <- tryCatch(f(x), error = function(e) e)
-    if (inherits(out, "error")) {
-      stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
-    }
-    if (!is.numeric(out)) {
-      stop(sprintf("`%s` must return a numeric vector.", name))
-    }
-    if (length(out) != length(x)) {
-      stop(sprintf(
-        "`%s` must return a vector of the same length as its input.", name
-      ))
-    }
-    if (!all(is.finite(out))) {
-      stop(sprintf("`%s` returns non-finite values.", name))
-    }
-    invisible(TRUE)
-  }
-
   if (is.null(invlink)) {
     if (family == "poisson") {
       inv <- function(x) exp(x)
@@ -2230,31 +2209,21 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
         derivative * (1 - 2 * probability)
       } else NULL
     }
-    validate(inv, "canonical invlink")
-    validate(d1, "canonical invlink_prime")
-    if (second_derivative) validate(d2, "canonical invlink_second")
     return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical"))
-  }
-
-  if (is.function(invlink)) {
+  } else if (is.function(invlink)) {
     inv <- invlink
     d1 <- NULL
     d2 <- NULL
-  } else if (is.list(invlink)) {
-    inv <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
-    d1 <- invlink$d1 %||% invlink$inv_link_prime %||% invlink$mu_eta
-    d2 <- invlink$d2 %||% invlink$inv_link_second
   } else {
-    stop("'invlink' must be NULL, a function, or a list with inverse-link functions.")
+    stop("'invlink' must be NULL or a function")
   }
 
-  validate(inv, "invlink")
-  check_invlink(inv, family)
-  if (is.null(d1)) d1 <- differentiate(inv, ncheck)
-  validate(d1, "invlink_prime")
+  check_invlink(inv, family, name = "invlink")
+  if (is.null(d1)) d1 <- differentiate(inv, 11L)
+  check_invlink(d1, name = "invlink_prime")
   if (second_derivative) {
-    if (is.null(d2)) d2 <- differentiate(d1, ncheck)
-    validate(d2, "invlink_second")
+    if (is.null(d2)) d2 <- differentiate(d1, 11L)
+    check_invlink(d2, name = "invlink_second")
   } else {
     d2 <- NULL
   }
@@ -2364,7 +2333,7 @@ maxim_integrand <- function(
   }
   n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
 
-  linkf <- make_inverse_link_functions(family, invlink, n)
+  linkf <- make_inverse_link_functions(family, invlink)
   inv_link <- linkf$inv
   inv1     <- linkf$d1
   inv2     <- linkf$d2
@@ -2690,7 +2659,7 @@ laplace_sampling_mcmc <- function(y,
 
   # ---------- inverse link handling (inv, d1) ----------
   linkf <- make_inverse_link_functions(
-    family, invlink, n, second_derivative = FALSE
+    family, invlink, second_derivative = FALSE
   )
   inv_link <- linkf$inv
   inv1     <- linkf$d1

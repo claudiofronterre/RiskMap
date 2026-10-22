@@ -1621,36 +1621,49 @@ check_crs <- function(crs, name = deparse(substitute(crs))){
 #' @title check_invlink
 #' @description
 #'
-#' Applies `invlink` to `eta` and checks that the result is a valid mean for
-#' `family`: one finite numeric value per linear predictor, with
-#' probabilities in `[0, 1]` for `"binomial"` and non-negative values for
-#' `"poisson"`.
-#' @param invlink A function mapping the linear predictor to the mean.
-#' @param family One of `"gaussian"`, `"binomial"` or `"poisson"`.
+#' Applies `invlink` to `eta` and checks that the result is one finite
+#' numeric value per linear predictor. If `family` is given, also checks
+#' that the result is a valid mean for it: probabilities in `[0, 1]` for
+#' `"binomial"` and non-negative values for `"poisson"`. Used both to
+#' validate a user-supplied inverse link up front and, with `family = NULL`,
+#' to validate `inv`, `d1` and `d2` inside `make_inverse_link_functions()`.
+#' @param invlink A function mapping the linear predictor to the mean (or one
+#'   of its derivatives).
+#' @param family One of `"gaussian"`, `"binomial"` or `"poisson"`, or `NULL`
+#'   to skip the family-specific mean check (for derivatives).
 #' @param eta Numeric vector of linear predictor values. Defaults to a
 #'   representative spread of values, for checking `invlink` on its own
 #'   before any real linear predictor is available.
-#' @return The computed mean values, `invlink(eta)`. Raises an error if they
-#'   are invalid.
+#' @param name The argument name to use in error messages.
+#' @return The computed values, `invlink(eta)`. Raises an error if they are
+#'   invalid.
 #' @noRd
-check_invlink <- function(invlink, family, eta = seq(-5, 5, length.out = 11)) {
-  if (!is.function(invlink)) stop("'invlink' must be a function.", call. = FALSE)
-  mu <- invlink(as.numeric(eta))
+check_invlink <- function(invlink, family = NULL, eta = seq(-5, 5, length.out = 11),
+                          name = "invlink") {
+  if (!is.function(invlink)) {
+    stop(sprintf("'%s' must be a function.", name), call. = FALSE)
+  }
+  mu <- tryCatch(invlink(as.numeric(eta)), error = function(e) {
+    stop(sprintf("'%s' failed on a numeric vector: %s", name, conditionMessage(e)),
+         call. = FALSE)
+  })
   if (!is.numeric(mu) || length(mu) != length(eta)) {
-    stop("'invlink' must return one numeric value per linear predictor.",
+    stop(sprintf("'%s' must return one numeric value per linear predictor.", name),
          call. = FALSE)
   }
   if (any(!is.finite(mu))) {
-    stop("'invlink' returned non-finite mean values. Check the model parameters and covariates.",
+    stop(sprintf("'%s' returned non-finite mean values. Check the model parameters and covariates.", name),
          call. = FALSE)
   }
-  if (family == "binomial" && any(mu < 0 | mu > 1)) {
-    stop("For a binomial model, 'invlink' must return probabilities between 0 and 1.",
-         call. = FALSE)
-  }
-  if (family == "poisson" && any(mu < 0)) {
-    stop("For a Poisson model, 'invlink' must return non-negative mean values.",
-         call. = FALSE)
+  if (!is.null(family)) {
+    if (family == "binomial" && any(mu < 0 | mu > 1)) {
+      stop("For a binomial model, 'invlink' must return probabilities between 0 and 1.",
+           call. = FALSE)
+    }
+    if (family == "poisson" && any(mu < 0)) {
+      stop("For a Poisson model, 'invlink' must return non-negative mean values.",
+           call. = FALSE)
+    }
   }
   mu
 }
