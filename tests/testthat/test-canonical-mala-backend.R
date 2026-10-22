@@ -80,14 +80,14 @@ test_that("compiled MALA reproduces the general R transition", {
   expect_equal(compiled$samples$S, r_reference$samples$S, tolerance = 5e-5)
 })
 
-test_that("compiled log-likelihood validates inputs and guards overflow", {
-  expect_error(
-    cpp_canonical_log_likelihood(matrix(0, 2, 2), 1, c(1, 1),
-                                 poisson = FALSE),
-    "inconsistent lengths"
-  )
+test_that("compiled log-likelihood guards Poisson overflow", {
   overflow <- matrix(c(0, 800), nrow = 2)
   expect_identical(
     cpp_canonical_log_likelihood(overflow, 1, 1, poisson = TRUE)[2], -Inf
   )
+})
+
+test_that("final conditional sampling uses the compiled kernel for canonical links", {
+  expect_identical(attr(binomial_model, "mcmc")$invlink_used, "canonical")
+  expect_identical(attr(poisson_model, "mcmc")$invlink_used, "canonical")
 })

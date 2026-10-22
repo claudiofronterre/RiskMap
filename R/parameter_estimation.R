@@ -549,7 +549,7 @@ glgpm <- function(formula,
         ID_re = ID_re,
         fix_tau2 = fix_tau2,
         family = family,
-        inverse_link = res$link_function$inv,
+        link_function = res$link_function,
         kappa = kappa,
         control_mcmc = final_control_mcmc,
         messages = messages
@@ -3121,7 +3121,7 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 ##' @noRd
 sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
                                       cov_offset, ID_coords, ID_re,
-                                      fix_tau2, family, inverse_link, kappa,
+                                      fix_tau2, family, link_function, kappa,
                                       control_mcmc, messages) {
   fitted_pars <- estimate_to_mcml_reference(estimate, fix_tau2)
   mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
@@ -3136,7 +3136,14 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     y = y, units_m = units_m, mu = mu, Sigma = Sigma,
     ID_coords = ID_coords, ID_re = ID_re,
     sigma2_re = fitted_pars$sigma2_re,
-    family = family, invlink = inverse_link,
+    family = family,
+    # Canonical links use the compiled sampler, which a supplied function
+    # would bypass; custom links pass the user's inverse-link function.
+    invlink = if (identical(link_function$name, "canonical")) {
+      NULL
+    } else {
+      link_function$inv
+    },
     control_mcmc = control_mcmc, messages = messages
   )
 
@@ -3153,7 +3160,7 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
 
   sample_blocks <- simulation$samples
   response_mean <- colMeans(
-    matrix(inverse_link(as.numeric(eta)), nrow = nrow(eta))
+    matrix(link_function$inv(as.numeric(eta)), nrow = nrow(eta))
   )
   if (family == "poisson") response_mean <- units_m * response_mean
 

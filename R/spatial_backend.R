@@ -8,6 +8,7 @@
 #' @noRd
 pairwise_distances <- function(coordinates) {
   coordinates <- as.matrix(coordinates)
+  check_coordinates(coordinates)
   distances <- cpp_pairwise_distances(coordinates)
 
   structure(distances,
@@ -27,7 +28,29 @@ pairwise_distances <- function(coordinates) {
 #'   location in `second`.
 #' @noRd
 cross_distances <- function(first, second) {
-  cpp_cross_distances(as.matrix(first), as.matrix(second))
+  first <- as.matrix(first)
+  second <- as.matrix(second)
+  check_coordinates(first)
+  check_coordinates(second)
+  if (ncol(first) != ncol(second)) {
+    stop("Coordinate matrices must have the same number of columns.",
+         call. = FALSE)
+  }
+  cpp_cross_distances(first, second)
+}
+
+#' Check that coordinates are a finite numeric matrix
+#'
+#' The compiled distance kernels assume this, as argument checks are made on
+#' the R side.
+#' @param coordinates Numeric matrix with locations in rows.
+#' @return `TRUE`, invisibly. Raises an error otherwise.
+#' @noRd
+check_coordinates <- function(coordinates) {
+  if (!is.numeric(coordinates) || any(!is.finite(coordinates))) {
+    stop("`coordinates` must contain only finite values.", call. = FALSE)
+  }
+  invisible(TRUE)
 }
 
 #' Index repeated two-dimensional coordinates
