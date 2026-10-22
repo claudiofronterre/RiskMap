@@ -3108,12 +3108,12 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     ID_coords = ID_coords, ID_re = ID_re,
     sigma2_re = fitted_pars$sigma2_re,
     family = family,
-    # Canonical links use the compiled sampler; passing the inverse-link
-    # function itself would select the slower general implementation.
+    # Canonical links use the compiled sampler, which a supplied function
+    # would bypass; custom links pass the user's inverse-link function.
     invlink = if (identical(link_function$name, "canonical")) {
       NULL
     } else {
-      link_function
+      link_function$inv
     },
     control_mcmc = control_mcmc, messages = messages
   )
