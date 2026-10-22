@@ -1616,3 +1616,41 @@ check_crs <- function(crs, name = deparse(substitute(crs))){
   )
   invisible(TRUE)
 }
+
+
+#' @title check_invlink
+#' @description
+#'
+#' Applies `invlink` to `eta` and checks that the result is a valid mean for
+#' `family`: one finite numeric value per linear predictor, with
+#' probabilities in `[0, 1]` for `"binomial"` and non-negative values for
+#' `"poisson"`.
+#' @param invlink A function mapping the linear predictor to the mean.
+#' @param family One of `"gaussian"`, `"binomial"` or `"poisson"`.
+#' @param eta Numeric vector of linear predictor values. Defaults to a
+#'   representative spread of values, for checking `invlink` on its own
+#'   before any real linear predictor is available.
+#' @return The computed mean values, `invlink(eta)`. Raises an error if they
+#'   are invalid.
+#' @noRd
+check_invlink <- function(invlink, family, eta = seq(-5, 5, length.out = 11)) {
+  if (!is.function(invlink)) stop("'invlink' must be a function.", call. = FALSE)
+  mu <- invlink(as.numeric(eta))
+  if (!is.numeric(mu) || length(mu) != length(eta)) {
+    stop("'invlink' must return one numeric value per linear predictor.",
+         call. = FALSE)
+  }
+  if (any(!is.finite(mu))) {
+    stop("'invlink' returned non-finite mean values. Check the model parameters and covariates.",
+         call. = FALSE)
+  }
+  if (family == "binomial" && any(mu < 0 | mu > 1)) {
+    stop("For a binomial model, 'invlink' must return probabilities between 0 and 1.",
+         call. = FALSE)
+  }
+  if (family == "poisson" && any(mu < 0)) {
+    stop("For a Poisson model, 'invlink' must return non-negative mean values.",
+         call. = FALSE)
+  }
+  mu
+}
