@@ -4,6 +4,7 @@ RiskMap 2.0.0
 - This version introduces many breaking changes from v1. The package should not
 be considered stable, but further breaking changes will be handled gracefully.
 - Test coverage has been increased from 0 to 92 %.
+- All functions have examples
 - Many functions have been renamed or removed:
 
 | v1 | v2 | 

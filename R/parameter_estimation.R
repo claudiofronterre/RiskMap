@@ -2249,6 +2249,7 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
   }
 
   validate(inv, "invlink")
+  check_invlink(inv, family)
   if (is.null(d1)) d1 <- differentiate(inv, ncheck)
   validate(d1, "invlink_prime")
   if (second_derivative) {
