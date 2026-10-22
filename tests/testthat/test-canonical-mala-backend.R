@@ -91,3 +91,8 @@ test_that("compiled log-likelihood validates inputs and guards overflow", {
     cpp_canonical_log_likelihood(overflow, 1, 1, poisson = TRUE)[2], -Inf
   )
 })
+
+test_that("final conditional sampling uses the compiled kernel for canonical links", {
+  expect_identical(attr(binomial_model, "mcmc")$invlink_used, "canonical")
+  expect_identical(attr(poisson_model, "mcmc")$invlink_used, "canonical")
+})
