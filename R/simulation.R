@@ -596,6 +596,31 @@ simulation_model <- function(object) {
   model
 }
 
+#' Check that every variable the model formula references (covariates,
+#' `gp()`'s explicit coordinate columns, and `re()` grouping variables) is
+#' present in one simulation location set
+#'
+#' @param formula The model formula.
+#' @param data Location data to check.
+#' @param label `"data"` or `"surface"`, naming the location set internally;
+#'   mapped to the corresponding `simulate_glgpm()` argument name for the
+#'   error message.
+#' @return Invisible `TRUE`, or an error naming the missing variable(s).
+#' @noRd
+check_simulation_variables <- function(formula, data, label) {
+  required <- setdiff(unique(get_formula_terms(formula)), all.vars(formula[[2L]]))
+  missing <- setdiff(required, names(data))
+  if (length(missing)) {
+    argument <- switch(label, data = "sample_locations",
+                       surface = "prediction_grid", label)
+    stop("'", paste(missing, collapse = "', '"), "' ",
+         if (length(missing) > 1L) "are" else "is",
+         " present in the model formula but not a column in '", argument, "'.",
+         call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' Construct model inputs at one simulation location set
 #'
 #' @param model A `RiskMap_simulation_model`.
@@ -606,6 +631,7 @@ simulation_model <- function(object) {
 #' @return A list containing fixed linear-predictor values and denominators.
 #' @noRd
 simulation_inputs <- function(model, data, response, label, original = FALSE) {
+  check_simulation_variables(model$formula, data, label)
   mf <- tryCatch(model.frame(model$fixed_terms, data = data, na.action = na.fail,
                              xlev = model$xlevels), error = function(e) {
     stop("Invalid covariates in '", label, "': ", conditionMessage(e), call. = FALSE)
