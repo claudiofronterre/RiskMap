@@ -3039,17 +3039,9 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
               name = "max_mcse_ratio")
   check_range(score_probability, 0, 1, allow_equal = FALSE,
               name = "score_probability")
-  if (!is.logical(laplace_start) || length(laplace_start) != 1L ||
-      is.na(laplace_start)) {
-    stop("'laplace_start' must be TRUE or FALSE.", call. = FALSE)
-  }
-  if (!is.logical(hold_short_range) || length(hold_short_range) != 1L ||
-      is.na(hold_short_range)) {
-    stop("'hold_short_range' must be TRUE or FALSE.", call. = FALSE)
-  }
-  if (!is.logical(pc_prior) || length(pc_prior) != 1L || is.na(pc_prior)) {
-    stop("'pc_prior' must be TRUE or FALSE.", call. = FALSE)
-  }
+  check_logical(laplace_start)
+  check_logical(hold_short_range)
+  check_logical(pc_prior)
   check_positive_number(pc_sigma_threshold, "")
   check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
               name = "pc_sigma_probability")
