@@ -50,7 +50,7 @@ test_that("a custom invlink that Deriv cannot differentiate still fits via the n
   ## optimizer iteration, and re-running approxfun()'s table setup that often
   ## made this test take ~30s.
   af <- approxfun(c(-50, 50), c(0.01, 0.99), rule = 2)
-  invlink <- list(inv = function(eta) af(eta))
+  invlink <- function(eta) af(eta)
 
   fit <- suppressWarnings(glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
               denominator = denominator, invlink = invlink, control_mcmc = control_mcmc,

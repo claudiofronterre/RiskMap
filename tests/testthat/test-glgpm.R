@@ -44,7 +44,6 @@ test_that("glgpm produces errors", {
     "'family' must be either 'gaussian', 'binomial' or 'poisson'"
   )
 
-  # need to document that invlink can be a list
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", invlink = function(x) x),
     "'invlink' cannot be provided when 'family' is 'gaussian'"
@@ -52,7 +51,7 @@ test_that("glgpm produces errors", {
 
   expect_error(
     glgpm(y ~ cov + gp(), data = poisson_data, family = "poisson", invlink = "not func", messages = FALSE),
-    "'invlink' must be NULL, a function, or a list"
+    "'invlink' must be NULL or a function"
   )
 
   expect_error(
@@ -545,27 +544,6 @@ test_that("final fitted samples support a nugget model", {
   expect_true(all(is.finite(fitted(fit))))
 })
 
-test_that("custom inverse links retain the current automatic start", {
-  custom_link <- list(
-    inv = plogis,
-    d1 = function(x) plogis(x) * (1 - plogis(x)),
-    d2 = function(x) {
-      probability <- plogis(x)
-      probability * (1 - probability) * (1 - 2 * probability)
-    }
-  )
-  fit <- glgpm(
-    y ~ cov + gp(), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
-                     control_mcml = fixture_control_mcml,
-    invlink = custom_link,
-    messages = FALSE
-  )
-
-  diagnostics <- attr(fit, "starting_values")
-  expect_identical(diagnostics$selected, "current")
-  expect_match(diagnostics$fallback_reason, "custom inverse links")
-})
 
 test_that("glgpm produces expected output for poisson models", {
 
