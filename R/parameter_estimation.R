@@ -2984,6 +2984,13 @@ laplace_sampling_mcmc <- function(y,
 ##' over all linear combinations of fitted parameters. Defaults to 0.1.
 ##' @param score_probability Number strictly between zero and one used for the
 ##' independent-bank score-agreement limit. Defaults to 0.99.
+##' @param defensive_weight Number in \[0, 1) giving the share of importance
+##' draws taken from the prior distribution of the latent effects instead of
+##' the Laplace approximation. This defensive mixture keeps the variance of the
+##' importance weights finite, which the Gaussian Laplace proposal alone does
+##' not in most spatial datasets, so that Monte Carlo errors and the stopping
+##' rule are valid. Defaults to 0.05. Set to 0 to use the Laplace proposal
+##' alone.
 ##' @param laplace_start Logical. If `TRUE`, the Laplace approximation to the
 ##' likelihood is first maximised from several starting values and Monte Carlo
 ##' maximum likelihood starts from the best Laplace estimate. Defaults to
@@ -3023,6 +3030,7 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
                              max_pareto_k = 0.7,
                              max_mcse_ratio = 0.1,
                              score_probability = 0.99,
+                             defensive_weight = 0.05,
                              laplace_start = FALSE,
                              hold_short_range = TRUE,
                              pc_prior = FALSE,
@@ -3039,6 +3047,12 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
               name = "max_mcse_ratio")
   check_range(score_probability, 0, 1, allow_equal = FALSE,
               name = "score_probability")
+  if (!is.numeric(defensive_weight) || length(defensive_weight) != 1L ||
+      !is.finite(defensive_weight) || defensive_weight < 0 ||
+      defensive_weight >= 1) {
+    stop("'defensive_weight' must be a single number in [0, 1).",
+         call. = FALSE)
+  }
   check_logical(laplace_start)
   check_logical(hold_short_range)
   check_logical(pc_prior)
@@ -3065,6 +3079,7 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
       max_pareto_k = max_pareto_k,
       max_mcse_ratio = max_mcse_ratio,
       score_probability = score_probability,
+      defensive_weight = defensive_weight,
       laplace_start = laplace_start,
       hold_short_range = hold_short_range,
       pc_prior = pc_prior,

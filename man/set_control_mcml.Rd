@@ -12,6 +12,7 @@ set_control_mcml(
   max_pareto_k = 0.7,
   max_mcse_ratio = 0.1,
   score_probability = 0.99,
+  defensive_weight = 0.05,
   laplace_start = FALSE,
   hold_short_range = TRUE,
   pc_prior = FALSE,
@@ -44,6 +45,14 @@ over all linear combinations of fitted parameters. Defaults to 0.1.}
 
 \item{score_probability}{Number strictly between zero and one used for the
 independent-bank score-agreement limit. Defaults to 0.99.}
+
+\item{defensive_weight}{Number in [0, 1) giving the share of importance
+draws taken from the prior distribution of the latent effects instead of
+the Laplace approximation. This defensive mixture keeps the variance of the
+importance weights finite, which the Gaussian Laplace proposal alone does
+not in most spatial datasets, so that Monte Carlo errors and the stopping
+rule are valid. Defaults to 0.05. Set to 0 to use the Laplace proposal
+alone.}
 
 \item{laplace_start}{Logical. If \code{TRUE}, the Laplace approximation to the
 likelihood is first maximised from several starting values and Monte Carlo
