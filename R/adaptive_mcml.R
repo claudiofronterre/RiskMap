@@ -156,17 +156,43 @@ inverse_cholesky_factor <- function(hessian) {
   t(inverse_root)[reversed, reversed, drop = FALSE]
 }
 
+##' Rows of a standard-normal bank drawn from the defensive component
+##'
+##' A share `defensive_weight` of the rows, spread evenly through the bank, is
+##' mapped through the prior covariance instead of the Laplace proposal. The
+##' rows are fixed by their position, so the draws remain smooth functions of
+##' the parameters within a stage. A bank with a single row (the Laplace
+##' approximation) has no defensive rows.
+##' @noRd
+defensive_rows <- function(n_draws, defensive_weight) {
+  draw <- seq_len(n_draws)
+  floor(draw * defensive_weight) > floor((draw - 1) * defensive_weight)
+}
+
 ##' Construct the adaptive local-Laplace importance engine
 ##'
 ##' The standard-normal bank is held fixed within a stage, while the local
 ##' Gaussian map changes smoothly with the trial parameters. This preserves a
 ##' deterministic common-random-number objective without tying the proposal to
 ##' the user's starting values.
+##'
+##' The importance distribution is the defensive mixture
+##' (1 - a) N(mode, H^-1) + a N(mode, Sigma), where H is the curvature of the
+##' Laplace approximation, Sigma the prior covariance of the latent effects and
+##' a = `defensive_weight`. With a Gaussian proposal alone the importance
+##' weights have infinite variance whenever the largest eigenvalue of
+##' Sigma^{1/2} W Sigma^{1/2} exceeds one (W the likelihood curvature), which
+##' holds in practically every spatial dataset (Pitt et al., 2013). The mixture
+##' bounds every moment of the weights, so that the Monte Carlo error estimates
+##' used for stopping are valid, at a small cost in efficiency. Weights use the
+##' full mixture density. With `defensive_weight = 0` the proposal is the
+##' Laplace approximation alone.
 ##' @noRd
 make_adaptive_mcml_engine <- function(
     D, y, units_m, distances, family = c("binomial", "poisson"),
     kappa = 0.5, cov_offset = NULL, ID_coords = NULL,
-    fix_tau2 = FALSE, ID_re = NULL, invlink = NULL) {
+    fix_tau2 = FALSE, ID_re = NULL, invlink = NULL,
+    defensive_weight = 0.05) {
   family <- match.arg(family)
   n <- length(y)
   n_loc <- nrow(distances)
@@ -285,6 +311,73 @@ make_adaptive_mcml_engine <- function(
   cached_parameters <- NULL
   cached_proposal <- NULL
 
+  # Deviations from the mode with the prior covariance of the latent effects:
+  # the spatial block through its Cholesky factor, random-effect levels
+  # scaled by their standard deviations.
+  prior_deviations <- function(z, proposal) {
+    deviations <- matrix(0, nrow(z), ncol(z))
+    deviations[, latent$spatial] <-
+      z[, latent$spatial, drop = FALSE] %*% proposal$spatial_root
+    if (n_re) for (j in seq_len(n_re)) {
+      index <- latent$random[[j]]
+      deviations[, index] <- z[, index, drop = FALSE] *
+        sqrt(proposal$values$sigma2_re[j])
+    }
+    deviations
+  }
+
+  # Squared norms of the draws standardised under each mixture component. A
+  # draw's residual under its own component is its standard-normal vector, so
+  # only the other component needs a triangular solve. For the Laplace draws
+  # the spatial residuals under the prior can be taken from the samples
+  # already standardised for the prior density (standardised_spatial). The
+  # realised share of defensive draws is used as the mixture weight, so the
+  # estimate is unbiased for any bank size.
+  log_mixture_proposal <- function(z, deviations, defensive, proposal,
+                                   standardised_spatial = NULL) {
+    z_norms <- rowSums(z^2)
+    log_normalising <- latent$dimension * log(2 * pi)
+    log_laplace_determinant <- 2 * sum(log(diag(proposal$root)))
+    share <- mean(defensive)
+    if (share == 0) {
+      # The draws are mode + z %*% root, so the residuals are exactly z.
+      return(-0.5 * (log_normalising + log_laplace_determinant + z_norms))
+    }
+    laplace_norms <- z_norms
+    laplace_norms[defensive] <- colSums(forwardsolve(
+      t(proposal$root), t(deviations[defensive, , drop = FALSE])
+    )^2)
+    laplace_draws <- !defensive
+    spatial_norms <- if (is.null(standardised_spatial)) {
+      colSums(forwardsolve(
+        t(proposal$spatial_root),
+        t(deviations[laplace_draws, latent$spatial, drop = FALSE])
+      )^2)
+    } else {
+      colSums((standardised_spatial[, laplace_draws, drop = FALSE] -
+                 as.numeric(forwardsolve(t(proposal$spatial_root),
+                                         proposal$mode[latent$spatial])))^2)
+    }
+    if (n_re) for (j in seq_len(n_re)) {
+      index <- latent$random[[j]]
+      spatial_norms <- spatial_norms +
+        rowSums(deviations[laplace_draws, index, drop = FALSE]^2) /
+        proposal$values$sigma2_re[j]
+    }
+    prior_norms <- z_norms
+    prior_norms[laplace_draws] <- spatial_norms
+    log_prior_determinant <- 2 * sum(log(diag(proposal$spatial_root))) +
+      if (n_re) sum(n_dim_re * log(proposal$values$sigma2_re)) else 0
+    log_laplace <- log1p(-share) - 0.5 * (
+      log_normalising + log_laplace_determinant + laplace_norms
+    )
+    log_defensive <- log(share) - 0.5 * (
+      log_normalising + log_prior_determinant + prior_norms
+    )
+    largest <- pmax(log_laplace, log_defensive)
+    largest + log(exp(log_laplace - largest) + exp(log_defensive - largest))
+  }
+
   proposal_at <- function(parameters) {
     if (!is.null(cached_parameters) && identical(parameters, cached_parameters)) {
       return(cached_proposal)
@@ -328,8 +421,14 @@ make_adaptive_mcml_engine <- function(
       proposal_at(proposal_parameters), error = function(error) NULL
     )
     if (is.null(proposal)) return(if (diagnostics) NULL else -1e100)
-    samples <- z %*% proposal$root
-    samples <- samples + rep(proposal$mode, each = nrow(samples))
+    defensive <- defensive_rows(nrow(z), defensive_weight)
+    deviations <- z %*% proposal$root
+    if (any(defensive)) {
+      deviations[defensive, ] <- prior_deviations(
+        z[defensive, , drop = FALSE], proposal
+      )
+    }
+    samples <- deviations + rep(proposal$mode, each = nrow(deviations))
     if (identical(parameters, proposal_parameters)) {
       values <- proposal$values
       covariance <- proposal$covariance
@@ -345,10 +444,13 @@ make_adaptive_mcml_engine <- function(
     if (is.null(spatial_root)) return(if (diagnostics) NULL else -1e100)
 
     spatial_samples <- samples[, latent$spatial, drop = FALSE]
-    solved <- solve_from_cholesky(spatial_root, t(spatial_samples))
+    # Samples standardised by the prior factor. Their squared norms give the
+    # prior quadratic form and, when the target and proposal parameters
+    # coincide, they also give the residuals under the defensive component.
+    standardised_samples <- forwardsolve(t(spatial_root), t(spatial_samples))
     log_prior <- -0.5 * (
       n_loc * log(2 * pi) + 2 * sum(log(diag(spatial_root))) +
-        colSums(t(spatial_samples) * solved)
+        colSums(standardised_samples^2)
     )
     eta <- spatial_samples[, ID_coords, drop = FALSE] +
       rep(as.numeric(D %*% values$beta + cov_offset), each = nrow(samples))
@@ -362,11 +464,9 @@ make_adaptive_mcml_engine <- function(
     }
     log_target <- log_prior + log_observation_likelihood(eta)
 
-    # The draws are mode + z %*% root, so the proposal's standardised
-    # residuals are exactly z and no triangular solve is needed.
-    log_proposal <- -0.5 * (
-      latent$dimension * log(2 * pi) + 2 * sum(log(diag(proposal$root))) +
-        rowSums(z^2)
+    log_proposal <- log_mixture_proposal(
+      z, deviations, defensive, proposal,
+      if (identical(parameters, proposal_parameters)) standardised_samples
     )
     log_weights <- log_target - log_proposal
     if (log_weights_only) return(log_weights)
@@ -1102,7 +1202,8 @@ glgpm_nong_adaptive <- function(
     D = D, y = y, units_m = units_m, distances = distances,
     family = family, kappa = kappa, cov_offset = cov_offset,
     ID_coords = ID_coords, fix_tau2 = fix_tau2, ID_re = ID_re,
-    invlink = invlink
+    invlink = invlink,
+    defensive_weight = control_mcml$defensive_weight %||% 0.05
   )
   start <- c(
     reference_pars$beta,

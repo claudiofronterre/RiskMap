@@ -295,3 +295,97 @@ test_that("identification warnings point to the PC penalty only when it is off",
   expect_true(all(grepl("pc_prior = TRUE", unpenalised[identification])))
   expect_false(any(grepl("pc_prior = TRUE", fit_warnings(TRUE))))
 })
+
+test_that("defensive rows are spread evenly and absent from a single row", {
+  expect_identical(sum(defensive_rows(1, 0.05)), 0L)
+  expect_identical(sum(defensive_rows(19, 0.05)), 0L)
+  expect_identical(which(defensive_rows(60, 0.05)), c(20L, 40L, 60L))
+  expect_identical(sum(defensive_rows(1000, 0.05)), 50L)
+  expect_false(any(defensive_rows(1000, 0)))
+})
+
+test_that("defensive mixture weights use the full mixture density", {
+  coordinate <- seq(0, 1, length.out = 6)
+  trials <- rep(10, 6)
+  y <- c(1, 3, 2, 6, 4, 5)
+  distances <- as.matrix(dist(coordinate))
+  parameters <- c(-0.3, log(0.7), log(0.3))
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 6), y = y, units_m = trials,
+    distances = distances, family = "binomial", defensive_weight = 0.25
+  )
+  set.seed(31)
+  bank <- matrix(rnorm(8 * 6), nrow = 8)
+  log_weights <- engine$evaluate(parameters, bank, log_weights_only = TRUE)
+
+  proposal <- engine$proposal_at(parameters)
+  laplace_covariance <- crossprod(proposal$root)
+  prior_covariance <- proposal$covariance
+  defensive <- defensive_rows(8, 0.25)
+  draws <- bank %*% proposal$root
+  draws[defensive, ] <- bank[defensive, ] %*% chol(prior_covariance)
+  draws <- sweep(draws, 2L, proposal$mode, "+")
+  log_normal <- function(x, mean, covariance) {
+    root <- chol(covariance)
+    residual <- backsolve(root, x - mean, transpose = TRUE)
+    -0.5 * (length(x) * log(2 * pi) + 2 * sum(log(diag(root))) +
+              sum(residual^2))
+  }
+  expected <- vapply(seq_len(8), function(row) {
+    u <- draws[row, ]
+    # The engine omits the binomial coefficients, which do not depend on the
+    # parameters.
+    linear_predictor <- -0.3 + u
+    log_target <- sum(y * linear_predictor -
+                        trials * softplus(linear_predictor)) +
+      log_normal(u, numeric(6), prior_covariance)
+    log_proposal <- log(
+      0.75 * exp(log_normal(u, proposal$mode, laplace_covariance)) +
+        0.25 * exp(log_normal(u, proposal$mode, prior_covariance))
+    )
+    log_target - log_proposal
+  }, numeric(1))
+
+  expect_equal(log_weights, expected, tolerance = 1e-8)
+})
+
+test_that("defensive mixture keeps the Laplace approximation and the likelihood", {
+  y <- 2
+  trials <- 5
+  beta <- -0.4
+  sigma2 <- 0.8
+  parameters <- c(beta, log(sigma2), log(1))
+  engine_for <- function(weight) {
+    make_adaptive_mcml_engine(
+      D = matrix(1, nrow = 1), y = y, units_m = trials,
+      distances = matrix(0), family = "binomial", defensive_weight = weight
+    )
+  }
+  laplace_only <- engine_for(0)
+  defensive <- engine_for(0.05)
+  exact <- log(integrate(
+    function(spatial_effect) {
+      linear_predictor <- beta + spatial_effect
+      exp(y * linear_predictor - trials * softplus(linear_predictor)) *
+        dnorm(spatial_effect, sd = sqrt(sigma2))
+    },
+    lower = -Inf, upper = Inf, rel.tol = 1e-12
+  )$value)
+
+  zero <- matrix(0, nrow = 1, ncol = 1)
+  expect_identical(defensive$evaluate(parameters, zero),
+                   laplace_only$evaluate(parameters, zero))
+
+  set.seed(8128)
+  bank <- matrix(rnorm(20000), ncol = 1)
+  expect_equal(defensive$evaluate(parameters, bank), exact, tolerance = 0.005)
+})
+
+test_that("set_control_mcml validates the defensive weight", {
+  expect_identical(set_control_mcml()$defensive_weight, 0.05)
+  expect_identical(set_control_mcml(defensive_weight = 0)$defensive_weight, 0)
+  expect_error(set_control_mcml(defensive_weight = 1), "defensive_weight")
+  expect_error(set_control_mcml(defensive_weight = -0.1), "defensive_weight")
+  expect_error(set_control_mcml(defensive_weight = c(0.1, 0.2)),
+               "defensive_weight")
+})
