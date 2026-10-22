@@ -173,6 +173,10 @@ parameters have been renamed to `metric`/`model`.
 
 ## Other
 
+- Argument checks in the compiled MALA, likelihood and distance kernels have
+been removed or moved to their R callers, following the contributing guide;
+the R functions already validated everything the MALA and likelihood kernels
+checked.
 - A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian
 outputs reproducible.
 - `control_sim` parameters have been renamed to `control_mcmc`.
