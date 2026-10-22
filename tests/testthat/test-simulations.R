@@ -190,10 +190,34 @@ test_that("validation is informative and local seeds preserve RNG", {
   )
   expect_identical(st_crs(transformed$locations$data), st_crs(gaussian_model$data))
   expect_error(simulate_glgpm(binomial_model, sample_locations = binomial_data[, "cov"]),
-               "Random-effect|denominator")
+               "'i' is present in the model formula but not a column in 'sample_locations'")
   expect_error(simulated_data(first, 2), "valid simulation")
   expect_error(simulated_surface(first), "No surface")
   expect_error(simulate_glgpm(list(gaussian_model)), "fitted RiskMap")
+})
+
+test_that("missing formula variables in prediction_grid or sample_locations are named clearly (#204)", {
+  surface_missing_cov <- grid
+  expect_error(
+    simulate_glgpm(gaussian_model, what = c("data", "surface"),
+                   prediction_grid = surface_missing_cov,
+                   sample_locations = gaussian_data),
+    "'cov', 'i' are present in the model formula but not a column in 'prediction_grid'"
+  )
+
+  surface_missing_re <- grid
+  surface_missing_re$cov <- rnorm(nrow(grid))
+  expect_error(
+    simulate_glgpm(gaussian_model, what = c("data", "surface"),
+                   prediction_grid = surface_missing_re,
+                   sample_locations = gaussian_data),
+    "'i' is present in the model formula but not a column in 'prediction_grid'"
+  )
+
+  expect_error(
+    simulate_glgpm(gaussian_model, sample_locations = gaussian_data[, "cov"]),
+    "'i' is present in the model formula but not a column in 'sample_locations'"
+  )
 })
 
 test_that("new locations preserve factor coding without observed responses", {
