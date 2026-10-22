@@ -1035,12 +1035,59 @@ laplace_start_candidates <- function(start, layout, distances) {
   candidates
 }
 
+##' Penalised-complexity (PC) prior penalty for the spatial covariance
+##'
+##' Returns log pi(sigma, phi) for the spatial standard deviation sigma and the
+##' range phi of the Matern correlation in two dimensions (Fuglstad et al.,
+##' 2019), expressed on the working parameters (log sigma^2, log phi) and
+##' including the Jacobian of that transformation:
+##' P(sigma > sigma_threshold) = sigma_probability and
+##' P(phi < range_threshold) = range_probability. Fixed effects, nugget and
+##' unstructured random-effect variances are not penalised.
+##' @noRd
+make_pc_penalty <- function(layout, range_threshold,
+                            sigma_threshold = 1, sigma_probability = 0.05,
+                            range_probability = 0.05) {
+  rate_sigma <- -log(sigma_probability) / sigma_threshold
+  rate_range <- -log(range_probability) * range_threshold
+  function(parameters) {
+    log_sigma2 <- parameters[layout$index$sigma2]
+    log_phi <- parameters[layout$index$phi]
+    sigma <- exp(log_sigma2 / 2)
+    phi <- exp(log_phi)
+    # pi(sigma) = rate exp(-rate sigma), with d sigma / d log sigma^2 = sigma/2;
+    # pi(phi) = rate phi^-2 exp(-rate / phi), with d phi / d log phi = phi.
+    (log(rate_sigma) - rate_sigma * sigma + log(sigma / 2)) +
+      (log(rate_range) - log_phi - rate_range / phi)
+  }
+}
+
+##' Add a penalty to an adaptive MCML engine
+##'
+##' The penalty depends only on the parameters, so it is the same for every
+##' draw: importance weights, effective sample sizes and Monte Carlo error are
+##' unchanged, while the objective and its curvature include the penalty.
+##' @noRd
+penalise_engine <- function(evaluate, penalty) {
+  function(parameters, z, diagnostics = FALSE, log_weights_only = FALSE,
+           ...) {
+    out <- evaluate(parameters, z, diagnostics = diagnostics,
+                    log_weights_only = log_weights_only, ...)
+    if (log_weights_only) return(out)
+    if (diagnostics) {
+      if (!is.null(out)) out$value <- out$value + penalty(parameters)
+      return(out)
+    }
+    out + penalty(parameters)
+  }
+}
+
 ##' Fit a non-Gaussian geostatistical model by adaptive validated MCML
 ##' @noRd
 glgpm_nong_adaptive <- function(
     y, D, coords, units_m, kappa, reference_pars, cov_offset,
     ID_coords, ID_re, fix_tau2, family, invlink, control_mcml,
-    seed = NULL, messages = TRUE) {
+    seed = NULL, messages = TRUE, distance_scale = 1) {
   stopifnot(family %in% c("poisson", "binomial"))
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
@@ -1076,17 +1123,37 @@ glgpm_nong_adaptive <- function(
              rep(-20, length(start) - ncol(D) - 2L))
   upper <- c(rep(30, ncol(D)), 20, 10,
              rep(20, length(start) - ncol(D) - 2L))
+  # With the PC prior the range is penalised smoothly, which replaces the hard
+  # hold of short ranges at the location spacing.
+  pc_prior <- isTRUE(control_mcml$pc_prior)
+  penalty <- NULL
+  objective_engine <- engine$evaluate
+  if (pc_prior) {
+    range_threshold <- if (is.null(control_mcml$pc_range_threshold)) {
+      median_nearest_neighbour_distance(distances)
+    } else {
+      control_mcml$pc_range_threshold / distance_scale
+    }
+    penalty <- make_pc_penalty(
+      engine$layout, range_threshold = range_threshold,
+      sigma_threshold = control_mcml$pc_sigma_threshold,
+      sigma_probability = control_mcml$pc_sigma_probability,
+      range_probability = control_mcml$pc_range_probability
+    )
+    objective_engine <- penalise_engine(engine$evaluate, penalty)
+  }
+
   laplace <- NULL
   if (isTRUE(control_mcml$laplace_start)) {
     laplace <- laplace_multistart(
-      engine$evaluate,
+      objective_engine,
       laplace_start_candidates(unname(start), engine$layout, distances),
       engine$latent_dimension, lower, upper
     )
     if (!is.null(laplace)) start <- laplace$estimate
   }
   fit <- fit_adaptive_mcml(
-    engine = engine$evaluate, start = unname(start),
+    engine = objective_engine, start = unname(start),
     latent_dimension = engine$latent_dimension,
     initial_budget = control_mcml$initial_samples,
     maximum_budget = control_mcml$max_samples,
@@ -1104,8 +1171,11 @@ glgpm_nong_adaptive <- function(
       list(engine$layout$index$phi), engine$layout$index$sigma2
     ),
     range_index = engine$layout$index$phi,
-    minimum_log_range = if (isFALSE(control_mcml$hold_short_range)) -Inf else
+    minimum_log_range = if (pc_prior || isFALSE(control_mcml$hold_short_range)) {
+      -Inf
+    } else {
       log(median_nearest_neighbour_distance(distances))
+    }
   )
   last <- fit$history[[length(fit$history)]]
   public_history <- compact_adaptive_mcml_history(fit$history)
@@ -1139,13 +1209,21 @@ glgpm_nong_adaptive <- function(
     )
     tryCatch(
       numDeriv::grad(
-        function(parameters) engine$evaluate(parameters, final_bank),
+        function(parameters) objective_engine(parameters, final_bank),
         fit$estimate, method = "simple", method.args = list(eps = 1e-6)
       ),
       error = function(error) rep(NA_real_, length(fit$estimate))
     )
   }
 
+  # Weak identification of the spatial variance or range is what the PC
+  # penalty addresses, so the warnings below point to it when it is off.
+  pc_advice <- if (pc_prior) "" else paste0(
+    " Alternatively, refit with 'control_mcml = set_control_mcml(pc_prior = ",
+    "TRUE)', which stabilises the spatial variance and range with a mild ",
+    "penalty; this is recommended for small or low-prevalence surveys and ",
+    "makes prediction with 'parameter_uncertainty = TRUE' possible."
+  )
   boundary_names <- describe_variance_parameters(
     fit$boundary_parameters, engine$layout,
     re_names = if (is.null(ID_re)) NULL else colnames(ID_re)
@@ -1168,6 +1246,7 @@ glgpm_nong_adaptive <- function(
       },
       ". Consider refitting without ",
       if (length(boundary_names) == 1L) "it." else "them.",
+      if (engine$layout$index$sigma2 %in% fit$boundary_parameters) pc_advice,
       call. = FALSE
     )
   }
@@ -1179,6 +1258,7 @@ glgpm_nong_adaptive <- function(
       "was held at the median nearest-neighbour distance and its standard ",
       "error is not reported. Consider a model with a nugget (unstructured) ",
       "effect instead, or fixing the range from external knowledge.",
+      pc_advice,
       call. = FALSE
     )
   }
@@ -1188,6 +1268,7 @@ glgpm_nong_adaptive <- function(
       "(often the spatial range when spatial correlation is weak) are not ",
       "identifiable from these data. The estimate is returned without ",
       "standard errors; consider a simpler model or fixing the range.",
+      pc_advice,
       call. = FALSE
     )
   } else if (!fit$accepted) {
@@ -1209,7 +1290,9 @@ glgpm_nong_adaptive <- function(
     estimate = estimate,
     grad_MLE = gradient,
     covariance = covariance,
-    log_lik = last$fit_diagnostics$value,
+    # The reported log-likelihood excludes the PC penalty, if any.
+    log_lik = last$fit_diagnostics$value -
+      if (is.null(penalty)) 0 else penalty(fit$estimate),
     S_samples = NULL,
     link_function = make_inverse_link_functions(family, invlink, length(y))
   )
@@ -1224,6 +1307,7 @@ glgpm_nong_adaptive <- function(
       rcond(fit$information),
     information_jitter = 0,
     mcml_supported = fit$accepted,
+    mcml_pc_prior = pc_prior,
     mcml_range_held = fit$range_held,
     laplace_start = if (is.null(laplace)) NULL else list(
       estimate = laplace$estimate,
