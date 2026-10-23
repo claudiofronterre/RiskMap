@@ -11,7 +11,8 @@
 ##'   `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or `"exceedance"`. When
 ##'   `NULL` (the default), the first summary requested in
 ##'   [predict.RiskMap()] is shown. Several summaries can be supplied; they are
-##'   then arranged in a grid, or one per row when `spatial_scale = "both"`.
+##'   then arranged in two columns, or one per row when
+##'   `spatial_scale = "both"`.
 ##'   Ignored for `"fixed"` and `"offset"`, which have a single value.
 ##' @param spatial_scale Spatial scale to display. `"auto"` (the default) shows
 ##'   the polygon summaries when [predict.RiskMap()] was given `boundaries`,
@@ -122,7 +123,9 @@ plot.RiskMap_prediction <- function(
         north_arrow = north_arrow, scale_bar = scale_bar, ...
       )
     })
-    layout_columns <- if (spatial_scale == "both") 1L else NULL
+    # Maps carry their legend on top, so two columns keep them readable.
+    layout_columns <- if (spatial_scale == "both") 1L else
+      min(2L, length(maps))
     return(patchwork::wrap_plots(maps, ncol = layout_columns))
   }
 
@@ -179,7 +182,7 @@ plot.RiskMap_prediction <- function(
     role,
     evidence = c(0, 1),
     signed = limits %||%
-      c(-1, 1) * max(abs(pretty(range(values, na.rm = TRUE), n = 4))),
+      (c(-1, 1) * max(abs(pretty(range(values, na.rm = TRUE), n = 4)))),
     limits %||% range(pretty(range(values, na.rm = TRUE), n = 4))
   )
   colours <- if (is.null(palette)) prediction_role_palette(role) else
