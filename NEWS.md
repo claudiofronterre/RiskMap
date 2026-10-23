@@ -177,6 +177,9 @@ uncertainty, which matters for small or low-prevalence surveys.
   with `labs(fill = ...)`. `plot()` also maps the fixed-effect contribution
   with `quantity = "fixed"`, several summaries at one scale are arranged in a
   grid, and side-by-side scales no longer carry panel titles.
+- `plot()` now respects `limits` for maps of signed quantities such as the
+  spatial effect, which were previously rescaled, and arranges several
+  summaries in two columns.
 
 ## Cross validation
 

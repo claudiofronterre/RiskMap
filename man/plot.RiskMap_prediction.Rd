@@ -30,7 +30,8 @@ name of a target supplied through \code{transform} in \code{\link[=predict.RiskM
 \code{"upper"}, \code{"sd"}, \code{"cv"}, \code{"interval_width"}, or \code{"exceedance"}. When
 \code{NULL} (the default), the first summary requested in
 \code{\link[=predict.RiskMap]{predict.RiskMap()}} is shown. Several summaries can be supplied; they are
-then arranged in a grid, or one per row when \code{spatial_scale = "both"}.
+then arranged in two columns, or one per row when
+\code{spatial_scale = "both"}.
 Ignored for \code{"fixed"} and \code{"offset"}, which have a single value.}
 
 \item{spatial_scale}{Spatial scale to display. \code{"auto"} (the default) shows

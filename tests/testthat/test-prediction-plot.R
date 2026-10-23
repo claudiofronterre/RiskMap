@@ -283,6 +283,8 @@ test_that("grid maps draw clipped cells and accept extra sf layers", {
   fixed_map <- plot(prediction, quantity = "fixed")
   expect_identical(legend_title(fixed_map), "Fixed effects")
   expect_identical(fixed_map$scales$scales[[1L]]$limits, c(-2, 2))
+  fixed_limited <- plot(prediction, quantity = "fixed", limits = c(-3, 3))
+  expect_identical(fixed_limited$scales$scales[[1L]]$limits, c(-3, 3))
 })
 
 test_that("several summaries at one scale are arranged in a grid", {
@@ -301,5 +303,5 @@ test_that("several summaries at one scale are arranged in a grid", {
     class = "RiskMap_prediction"
   )
   maps <- plot(prediction, summary = c("mean", "cv", "interval_width"))
-  expect_null(maps$patches$layout$ncol)
+  expect_identical(maps$patches$layout$ncol, 2L)
 })
