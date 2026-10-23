@@ -302,7 +302,7 @@ prediction_fill_scale <- function(colours, limits, values, breaks, role,
     scales::label_percent(accuracy = accuracy)
   } else {
     function(value) {
-      sub("^-", "−", format(value, trim = TRUE, drop0trailing = TRUE))
+      sub("^-", "\u2212", format(value, trim = TRUE, drop0trailing = TRUE))
     }
   }
   guide_theme <- theme(

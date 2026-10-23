@@ -123,6 +123,7 @@ test_that("map defaults depend on what the map shows", {
                    c("0%", "25%", "50%", "75%", "100%"))
   expect_identical(cv_scale$get_labels(), c("0.2", "0.3", "0.4", "0.5"))
   expect_identical(spatial_scale$limits, c(-1, 1))
+  expect_identical(spatial_scale$get_labels()[[1L]], "\u22121")
   expect_identical(prediction_plot_role("response", "interval_width"),
                    "uncertainty")
   expect_false(identical(prediction_role_palette("level"),
