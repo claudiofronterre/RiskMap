@@ -46,6 +46,10 @@ LinkingTo:
     Rcpp,
     RcppEigen
 Suggests:
+    elevatr,
+    geobounds,
+    progress,
+    quarto,
     testthat (>= 3.0.0)
 License: MIT + file LICENSE
 Encoding: UTF-8
@@ -55,3 +59,4 @@ BugReports: https://github.com/claudiofronterre/RiskMap/issues
 Config/testthat/edition: 3
 Config/roxygen2/version: 8.1.1
 Config/roxygen2/markdown: TRUE
+VignetteBuilder: quarto

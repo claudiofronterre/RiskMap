@@ -1,0 +1,324 @@
+---
+title: "An introduction to RiskMap"
+vignette: >
+  %\VignetteIndexEntry{An introduction to RiskMap}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+author: Simon Smart
+format:
+  html:
+    embed-resources: true
+---
+
+**RiskMap** contains functions for model based geostatistics (MBG) which takes point based observations and generates predictions across the entire area of interest.
+This vignette provides a basic overview of the package's functionality, but a comprehensive guide to using the package and MBG in general is given in *Model-based geostatistics for global public health using R* written by the authors and available at <https://www.mbgr.org/>. 
+Relevant sections of the book are also linked to here at the start of each section.
+
+## Installation and loading
+
+Install **RiskMap** using:
+
+```r
+install.packages('RiskMap')
+```
+
+or from GitHub using:
+  
+```r
+remotes::install_github("claudiofronterre/RiskMap")
+```
+
+Once installation is complete, load the package with:
+
+```r
+library(RiskMap)
+```
+
+## Datasets
+
+The package contains eleven example datasets. 
+Apart from `liberia` and `tz_covariates`, all are provided in a format ready to analyse. 
+`liberia` needs converting from a dataframe prior to use (detailed below) and `tz_covariates` is for use in predictions on models fitted to `tz_malaria`.
+They can be loaded using `data(<dataset>)` e.g. `data(anopheles)`.
+The table below lists the datasets, the response and denominator columns and an appropriate model family that can be fitted to the data.
+For more information on the datasets use `help(<dataset>)`
+
+| Dataset | Description | Response | Denominator | Family |
+|---------|-------------|----------|-------------|--------|
+| `abund_sma` | Abundance of *Culex pipiens* mosquitos in the Sacramento Metropolitan Area | `total_females` | `trap_nights` | Poisson |
+| `anopheles` | *Anopheles* mosquitoes in Southern Cameroon | `An.gambiae` | | Poisson |
+| | | `An.coluzzii` | | Poisson |
+| | | `Total` | | Poisson |
+| `galicia` | Heavy metal biomonitoring in Galicia | `lead` | | Gaussian |
+| `infect_sma` | PCR-tested mosquito pools in the Sacramento Metropolitan Area | `wnv_pos` | | Binomial |
+| `italy_sim` | Simulated dataset on the Italian peninsula | `y` | | Gaussian |
+| `liberia` | Counts of river blindness in Liberia | `npos` | `ntest` | Binomial |
+| `loaloa` | Prevalence of Loa loa (eyeworm) in West Africa | `NO_INF` | `NO_EXAM` | Binomial |
+| `malkenya` | Surveys of malaria in Kenya | `RDT` | | Binomial |
+| `malnutrition` | Malnutrition in Ghana | `HAZ` | | Gaussian |
+| | | `WAZ` | | Gaussian |
+| `tz_covariates` | Covariates for prediction of malaria in Tanzania | | | |
+| `tz_malaria` | Malaria in Tanzania | `Pf` | `Ex` | Binomial |
+| | | `elogit` | | Gaussian |
+
+
+## Loading data
+
+*For more information see [Importing and standardising spatial data](https://www.mbgr.org/02_handling-spatial-data.html#importing-and-standardising-spatial-data)*
+
+Datasets need transforming into a simple features (sf) object prior to analysis. With the exception of `liberia`, the datasets are already converted to this format. To convert a dataframe to a suitable format, use `st_as_sf()` from the sf package, supplying the names of the columns containing the spatial coordinates and the coordinate reference system for the coordinates:
+
+```{r}
+library(RiskMap)
+data(liberia)
+data <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
+head(data)
+```
+
+When the coordinates are in latitute and longitude, the functions will automatically reproject them to meters (or kilometers) using an appropriate coordinate reference system (CRS) and print a message detailing the conversion. To handle this manually, use `propose_utm()` to suggest a CRS to use and passed to `sf::st_transform()`:
+
+```{r}
+suggested_crs <- propose_utm(data)
+data <- sf::st_transform(data, suggested_crs)
+```
+
+## Exploratory data analysis
+
+*For more information see [Exploring residual spatial correlation](https://www.mbgr.org/03_model-fitting.html#sec-expl-spatial)*
+
+First we calculate the prevalence from the total number of tests and the number of positive tests and plot this along with log elevation:
+
+```{r}
+#| layout-ncol: 2
+data$prevalence <- data$npos / data$ntest
+plot(data["prevalence"], axes = TRUE)
+plot(data["log_elevation"], axes = TRUE)
+```
+
+The distances between data points can be summarised with `summarise_distance()`. By default, coordinates are converted to a projected coordinate reference system and reported in kilometers, but these can be overridden.
+
+```{r}
+summarise_distance(data)
+```
+
+The empirical variogram can be used to assess spatial independence in the data. If any points fall outside the envelope, this suggests that the data is not spatially independent and that it is appropriate to fit a model with a spatial term.
+
+```{r}
+variogram <- variogram(data, 
+                       variable = "npos", 
+                       distance_units = "km")
+
+plot_variogram(variogram)
+```
+
+## Model fitting
+
+*For more information see [Generalized linear geostatistical models](https://www.mbgr.org/03_model-fitting.html#generalized-linear-geostatistical-models)*
+
+`glpgm()` fits generalised linear Gaussian process models for either Gaussia, binomial or Poisson responses. Every model must include `gp()` which automatically includes a spatial term based on the coordinates contained in the data. To estimate the nugget effect include `gp(nugget = TRUE)`. Optionally, you can specify random effects with `re()` and offsets with `offset()`. 
+
+For this dataset consisting of counts of disease incidence (`npos`, the number of positive tests), a binomial model is most appropriate. The `denominator` is `ntest`, the number of tests. To make the results reproducible, set a `seed` value in `set_control_mcmc()`.
+
+```{r}
+model <- glgpm(npos ~ log(elevation) + gp(),
+               denominator = ntest, 
+               data = data,
+               control_mcmc = set_control_mcmc(seed = 2026),
+               return_samples = TRUE,
+               family = "binomial",
+               messages = FALSE)
+```
+
+We can access the model coefficients with `coef()`:
+
+```{r}
+coef(model)
+```
+
+Or summarise the model fit with `summary()`:
+
+```{r}
+summary(model)
+```
+
+The coefficients can also be printed in a format to include in a report with `to_table()`:
+
+```{r}
+to_table(model)
+```
+
+For binomial and Poisson models, we can assess model convergence with `plot_mcmc()`:
+
+```{r}
+plot_mcmc(model)
+```
+
+## Generating predictions
+
+*For more information see [Spatial prediction using geostatistical models](https://www.mbgr.org/04_geostatistical-prediction.html#sec-spat-pred-target)*
+
+To generate predictions from the model, we first need to generate locations where we wish to generate predictions for. Often, this involves obtaining boundary data for the region of interest, for which we can use the `geobounds` package and then generating a grid of points at a specified `spacing` inside it using `create_grid()`:
+
+```{r}
+library(geobounds)
+liberia_boundary <- gb_get_adm0("Liberia")
+liberia_boundary <- sf::st_transform(liberia_boundary, crs = 32629)
+liberia_grid <- create_grid(liberia_boundary, spacing = 50)
+
+plot(sf::st_geometry(liberia_boundary))
+plot(liberia_grid, add = TRUE, col = 'red')
+```
+
+Alternatively, we can use `create_convex_hull()` to generate a boundary encompassing all of the locations in the data and generate a grid from this:
+
+```{r}
+liberia_hull <- create_convex_hull(data)
+liberia_hull <- sf::st_transform(liberia_hull, crs = 32629)
+liberia_hull_grid <- create_grid(liberia_hull, spacing = 50)
+
+plot(sf::st_geometry(liberia_hull))
+plot(liberia_hull_grid, add = TRUE, col = 'red')
+```
+
+After generating a grid, we need to generate a dataframe containing the variables included in the model for the new locations. In this example, we will obtain `elevation` from using the `elevatr` package and then extract values at each of the grid locations:
+
+```{r}
+library(elevatr)
+liberia_elev <- get_elev_raster(locations = liberia_grid, 
+                                z = 6, 
+                                clip = "locations")
+
+new_data <- data.frame(elevation = terra::extract(liberia_elev, liberia_grid))
+```
+
+Use `setup_prediction()` to prepare the data to generate predictions either at the grid locations or for areal targets. You can omit `grid_pred` and `predictors` to only generate predictions at the locations in the data. To be able to generate predictions for areal targets, we need to set `type` to `"joint"`:
+
+```{r}
+prediction_prep <- setup_prediction(model, 
+                                    grid_pred = liberia_grid,
+                                    predictors = new_data,
+                                    type = "joint",
+                                    messages = FALSE)
+```
+
+Generate a prediction over the grid with `predict_target_grid()`. By default, the `f_target` is the linear predictor and to obtain the prevalence prediction, we need to define a custom target. We can visualise the result by passing the result to `plot()`. By default the mean of the first target will be plotted, but if multiple targets are specified, the one to plot can be specified using `target` and the summary statistic with `summary` - see `?plot.RiskMap_predict_grid_target`:
+
+```{r}
+f_target <- list(prev = function(lp) exp(lp)/(1+exp(lp)))
+
+grid_prediction <- predict_grid_target(prediction_prep,
+                                       f_target = f_target)
+
+plot(grid_prediction)
+```
+
+```{r}
+plot(grid_prediction, target = "prev", summary = "lower")
+```
+
+To generate areal predictions, we need to provide `boundaries` to `predict_areal_grid()`. In this example, we generate four squares covering the area of Liberia. To generate the predictions, at least one of the points of the `grid_pred` passed to `setup_prediction()` must fall inside each boundary. As with the grid predictions, we need to define `f_target` and we can visualise the predictions by passing the result to `plot()` - see `?plot.RiskMap_predict_areal_target`.
+
+```{r}
+squares <- sf::st_as_sf(sf::st_make_grid(liberia_boundary, n = c(2, 2)))
+areal_prediction <- predict_areal_target(prediction_prep, 
+                                         boundaries = squares, 
+                                         f_target = f_target,
+                                         messages = FALSE)
+
+plot(areal_prediction)
+```
+
+## Assessing predictions
+
+*For more information see [Assessing the predictive performance of geostatistical models with cross-validation](https://www.mbgr.org/04_geostatistical-prediction.html#sec-compare-pp)*
+
+To assess the predictive performance of models, perform cross validation using `assess_prediction()`. Multiple models can be supplied and compared, so fit another model to the data, omitting the elevation covariate. By default, the test set of the data is plotted and three metrics are calculated; `AnPIT` - the Average nonrandomized Probability Integral Transform (or PIT for Gaussian models), `CRPS` - the Continuous Ranked Probability Score and `SRCPS` - the scaled version of CRPS.
+
+```{r}
+no_elevation <- glgpm(npos ~ gp(),
+               denominator = ntest, 
+               data = data,
+               return_samples = TRUE,
+               family = "binomial",
+               messages = FALSE)
+
+cross_validation <- assess_prediction(list(elevation = model,
+                                           no_elevation = no_elevation),
+                                      method = "cluster",
+                                      fold = 2,
+                                      messages = FALSE)
+
+```
+
+AnPIT plots can be generated by passing the result to `plot_AnPIT()`. The closer the black line is to the dashed red line, the more accurately calibrated the model is:
+
+```{r}
+plot_AnPIT(cross_validation)
+```
+
+Metrics can be plotted by passing the result to `plot_metric()` and specifying the `model` and `metric` to plot:
+
+```{r}
+plot_metric(cross_validation, 
+            metric = "CRPS", 
+            model = "elevation")
+
+plot_metric(cross_validation, 
+            metric = "CRPS", 
+            model = "no_elevation")
+```
+
+## Simulations
+
+*For more information see [Simulation-based assessment of predictive performance](https://www.mbgr.org/04_geostatistical-prediction.html#simulation-based-assessment-of-predictive-performance)*
+
+Simulation studies can be run using `simulate_glgpm()` which depending on what is specified in `what` can generate simulated values for data, the spatial surface or both. Models can also be generated with `specify_glgpm()` but in this example we will reuse the model from earlier. The `prediction_grid` requires data for each variable in the model, so first, copy the elevation data into `liberia_grid`.
+
+```{r}
+liberia_grid$elevation <- new_data$elevation
+
+simulation <- simulate_glgpm(model, 
+                             nsim = 1, 
+                             what = c("data", "surface"), 
+                             prediction_grid = liberia_grid, 
+                             seed = 2026)
+
+```
+
+To extract the data, pass the output to `simulated_data()`:
+
+```{r}
+simulation_data <- simulated_data(simulation)
+plot(simulation_data["npos"], axes = TRUE)
+```
+
+The surface can be visualised by passing the result to `plot_sim_surf()` or extracted, using `simulated_surface()`:
+
+```{r}
+simulation_surface <- simulated_surface(simulation)
+plot_sim_surf(simulation, sim = 1)
+```
+
+All of the simulated values (both for the data and the surface) can be extracted using `simulated_values()`:
+
+```{r}
+simulation_values <- simulated_values(simulation)
+head(simulation_values)
+```
+
+The results of the simulations can be assessed using `assess_simulation()` and passing the output to `summary()`:
+
+```{r}
+
+simulation_assessment <- assess_simulation(simulation,
+                  models = list(elevation  = model,
+                                no_elevation = no_elevation),
+                  spatial_scale = c("grid", "area"),
+                  target_transform = f_target$prev,
+                  area_summary = mean,
+                  boundaries = squares,
+                  pred_objective = "mse",
+                  messages = FALSE)
+                  
+summary(simulation_assessment)
+```
