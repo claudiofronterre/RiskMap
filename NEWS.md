@@ -167,6 +167,16 @@ uncertainty, which matters for small or low-prevalence surveys.
   call, `breaks` gives a binned map, and boundaries supplied to `predict()`
   are outlined automatically. `print()` lists what a prediction contains and
   how to map it. `predict()` output now records `response_name`.
+- `create_grid()` gains `keep`. `keep = "overlap"` keeps every cell that
+  overlaps the boundary, including edge cells whose centre lies outside, so
+  that totals such as population along a coastline are not lost. The grid
+  metadata now also records the study boundary.
+- Prediction maps draw grid cells as squares clipped to the grid's study
+  boundary, so further `sf` layers (for example survey locations) can be added
+  to a map in any coordinate reference system. Legend titles can be replaced
+  with `labs(fill = ...)`. `plot()` also maps the fixed-effect contribution
+  with `quantity = "fixed"`, several summaries at one scale are arranged in a
+  grid, and side-by-side scales no longer carry panel titles.
 
 ## Cross validation
 

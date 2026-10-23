@@ -1,3 +1,5 @@
+legend_title <- function(map) ggplot2::get_labs(map)$fill
+
 test_that("location predictions produce an adaptable prediction map", {
   points <- st_sf(
     response_mean = c(0.1, 0.4, 0.8),
@@ -113,10 +115,13 @@ test_that("map defaults depend on what the map shows", {
                            summary = "exceedance")$scales$scales[[1L]]
   spatial_scale <- plot(prediction, quantity = "spatial")$scales$scales[[1L]]
 
-  expect_identical(mean_scale$name, "Mean prevalence")
-  expect_identical(cv_scale$name, "CV of prevalence")
-  expect_identical(exceedance_scale$name, "Probability prevalence > 20%")
-  expect_identical(spatial_scale$name, "Mean spatial effect")
+  expect_identical(legend_title(plot(prediction)), "Mean prevalence")
+  expect_identical(legend_title(plot(prediction, summary = "cv")),
+                   "CV of prevalence")
+  expect_identical(legend_title(plot(prediction, summary = "exceedance")),
+                   "Probability prevalence > 20%")
+  expect_identical(legend_title(plot(prediction, quantity = "spatial")),
+                   "Mean spatial effect")
   expect_identical(mean_scale$get_labels(), c("0%", "10%", "20%", "30%",
                                               "40%"))
   expect_identical(exceedance_scale$get_labels(),
@@ -193,7 +198,7 @@ test_that("both spatial scales share one colour scale", {
     })),
     c("Locations", "Area mean")
   )
-  expect_identical(plot(prediction, aggregate = "sum")$scales$scales[[1L]]$name,
+  expect_identical(legend_title(plot(prediction, aggregate = "sum")),
                    "Mean prevalence (area sum)")
   expect_error(plot(prediction, spatial_scale = "both", aggregate = "sum"),
                "same scale as the locations")
@@ -236,6 +241,65 @@ test_that("predictions from a fitted model print and plot at both scales", {
 
   expect_identical(prediction$response_name, "y")
   expect_output(print(prediction), "Map with plot\\(x, summary = \"mean\"\\)")
-  expect_identical(plot(prediction)$scales$scales[[1L]]$name, "Mean y")
+  expect_identical(legend_title(plot(prediction)), "Mean y")
   expect_no_error(ggplot_build(plot(prediction, spatial_scale = "both")))
+})
+
+test_that("grid maps draw clipped cells and accept extra sf layers", {
+  boundary <- st_sf(geometry = st_sfc(
+    st_polygon(list(rbind(c(0, 0), c(10, 0), c(10, 10), c(0, 0)))),
+    crs = 32631
+  ))
+  grid <- create_grid(boundary, spacing = 2, distance_units = "m",
+                      keep = "overlap")
+  grid$response_mean <- seq(0.1, 0.9, length.out = nrow(grid))
+  grid$fixed <- seq(-2, -1, length.out = nrow(grid))
+  prediction <- structure(
+    list(predictions = grid, boundaries = NULL, boundary_summary = NULL,
+         family = "binomial", summaries = "mean"),
+    class = "RiskMap_prediction"
+  )
+
+  map <- plot(prediction)
+  cells <- map$layers[[1L]]$data
+  expect_s3_class(map$layers[[1L]]$geom, "GeomSf")
+  expect_true(all(as.numeric(st_area(cells)) <= 4 + 1e-8))
+  expect_true(all(lengths(st_within(cells, st_buffer(boundary, 1e-6))) > 0))
+
+  points <- st_transform(st_sf(geometry = st_sfc(st_point(c(5, 2)),
+                                                 crs = 32631)), 4326)
+  with_points <- map + geom_sf(data = points, inherit.aes = FALSE)
+  built <- ggplot_build(with_points)
+  cell_box <- st_bbox(built$data[[1L]]$geometry)
+  point_box <- st_bbox(built$data[[2L]]$geometry)
+  expect_true(point_box[["xmin"]] >= cell_box[["xmin"]] &&
+                point_box[["xmax"]] <= cell_box[["xmax"]])
+  expect_true(all(st_geometry_type(cells) %in%
+                    c("POLYGON", "MULTIPOLYGON")))
+
+  relabelled <- map + labs(fill = "Prevalence in children")
+  expect_identical(legend_title(relabelled), "Prevalence in children")
+
+  fixed_map <- plot(prediction, quantity = "fixed")
+  expect_identical(legend_title(fixed_map), "Fixed effects")
+  expect_identical(fixed_map$scales$scales[[1L]]$limits, c(-2, 2))
+})
+
+test_that("several summaries at one scale are arranged in a grid", {
+  skip_if_not_installed("patchwork")
+  points <- st_sf(
+    response_mean = c(0.05, 0.2, 0.35),
+    response_cv = c(0.2, 0.3, 0.5),
+    response_interval_width = c(0.1, 0.2, 0.3),
+    geometry = st_sfc(
+      st_point(c(0, 0)), st_point(c(1, 0)), st_point(c(2, 0)), crs = 32631
+    )
+  )
+  prediction <- structure(
+    list(predictions = points, boundaries = NULL, boundary_summary = NULL,
+         family = "binomial", summaries = c("mean", "cv")),
+    class = "RiskMap_prediction"
+  )
+  maps <- plot(prediction, summary = c("mean", "cv", "interval_width"))
+  expect_null(maps$patches$layout$ncol)
 })
