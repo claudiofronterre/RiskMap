@@ -27,3 +27,27 @@ class \code{RiskMap_simulated_surface} so that it can be mapped with
 \description{
 Extract a simulated dataset or surface
 }
+\examples{
+library(sf)
+locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
+                      coords = c("x", "y"), crs = 32629)
+
+grid <- st_as_sf(data.frame(x = c(500, 1500), y = 500),
+                 coords = c("x", "y"), crs = 32629)
+
+model <- specify_glgpm(response ~ gp(),
+                       data = locations,
+                       family = "gaussian",
+                       parameters = list(beta = 1,
+                                         sigma2 = 1,
+                                         phi = 2,
+                                         sigma2_me = 0.1))
+
+sim <- simulate_glgpm(model,
+                      nsim = 2,
+                      what = c("data", "surface"),
+                      prediction_grid = grid,
+                      seed = 1)
+
+simulated_data(sim, simulation = 1)
+}

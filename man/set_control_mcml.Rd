@@ -11,7 +11,14 @@ set_control_mcml(
   min_effective_samples = 100L,
   max_pareto_k = 0.7,
   max_mcse_ratio = 0.1,
-  score_probability = 0.99
+  score_probability = 0.99,
+  laplace_start = FALSE,
+  hold_short_range = TRUE,
+  pc_prior = FALSE,
+  pc_sigma_threshold = 1,
+  pc_sigma_probability = 0.05,
+  pc_range_threshold = NULL,
+  pc_range_probability = 0.05
 )
 }
 \arguments{
@@ -37,6 +44,39 @@ over all linear combinations of fitted parameters. Defaults to 0.1.}
 
 \item{score_probability}{Number strictly between zero and one used for the
 independent-bank score-agreement limit. Defaults to 0.99.}
+
+\item{laplace_start}{Logical. If \code{TRUE}, the Laplace approximation to the
+likelihood is first maximised from several starting values and Monte Carlo
+maximum likelihood starts from the best Laplace estimate. Defaults to
+\code{FALSE}: in validation this changed which local maximum was reached about as
+often for the worse as for the better, at extra computational cost.}
+
+\item{hold_short_range}{Logical. If \code{TRUE} (the default), a spatial range
+estimated below the median distance between neighbouring locations is held
+at that distance, because spatial correlation on a shorter scale cannot be
+distinguished from unstructured variation; a warning is issued. Set to
+\code{FALSE} to obtain the unconstrained maximum likelihood estimate.}
+
+\item{pc_prior}{Logical. If \code{TRUE}, the spatial variance and range are
+penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
+estimate maximises the penalised likelihood on the log scale of the
+covariance parameters. This shrinks estimates away from degenerate
+solutions in small or sparse datasets and replaces the hold of short
+ranges. It is recommended for small or low-prevalence surveys, especially
+before prediction with \code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
+When the spatial variance is large and well identified, the penalty shrinks
+it somewhat towards zero, so the default is \code{FALSE}.}
+
+\item{pc_sigma_threshold, pc_sigma_probability}{The penalty sets
+P(sigma > \code{pc_sigma_threshold}) = \code{pc_sigma_probability}, where sigma is the
+spatial standard deviation on the scale of the linear predictor. Default
+1 and 0.05.}
+
+\item{pc_range_threshold, pc_range_probability}{The penalty sets
+P(phi < \code{pc_range_threshold}) = \code{pc_range_probability}, where phi is the
+range in the units of the coordinates. By default the threshold is the
+median distance between neighbouring locations and the probability is
+0.05.}
 }
 \value{
 A control object of class \code{RiskMap_control_mcml}.

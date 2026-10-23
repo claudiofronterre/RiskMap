@@ -164,6 +164,7 @@
 ##' )
 ##'
 ##' summary(fit)
+##'
 ##' # add a random effect
 ##' fit <- glgpm(
 ##'   formula = y ~ gp() + re(province),
@@ -181,6 +182,24 @@
 ##'   family = "gaussian",
 ##'   messages = FALSE
 ##' )
+##'
+##' summary(fit)
+##'
+##' # binomial model
+##' data(loaloa)
+##'
+##' # reduce iterations to speed up fit and add
+##' # seed for reproducibility
+##' control_mcmc <- set_control_mcmc(n_sim = 100,
+##'                                  burnin = 20,
+##'                                  seed = 42)
+##'
+##' fit <- glgpm(NO_INF ~ gp(),
+##'              data = loaloa[1:50,],
+##'              denominator = NO_EXAM,
+##'              family = "binomial",
+##'              control_mcmc = control_mcmc,
+##'              messages = FALSE)
 ##'
 ##' summary(fit)
 ##'
@@ -503,7 +522,7 @@ glgpm <- function(formula,
       cov_offset = cov_offset, ID_coords = ID_coords, ID_re = ID_re,
       fix_tau2 = fix_tau2, family = family, invlink = invlink,
       control_mcml = control_mcml, seed = control_mcmc$seed,
-      messages = messages
+      messages = messages, distance_scale = spatial_scaling$distance_scale
     )
     optimizer <- attr(res, "optimizer")
     mcml_history <- optimizer$mcml_history
@@ -530,7 +549,7 @@ glgpm <- function(formula,
         ID_re = ID_re,
         fix_tau2 = fix_tau2,
         family = family,
-        inverse_link = res$link_function$inv,
+        link_function = res$link_function,
         kappa = kappa,
         control_mcmc = final_control_mcmc,
         messages = messages
@@ -773,19 +792,6 @@ nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
   as.numeric(fix_tau2) / sigma2
 }
 
-##' Evaluate log(mean(exp(x))) without exponentiating large values
-##'
-##' @noRd
-log_mean_exp <- function(x) {
-  shift <- max(x)
-
-  if (!is.finite(shift)) {
-    return(shift)
-  }
-
-  shift + log(mean(exp(x - shift)))
-}
-
 ##' Convert log weights to probabilities without overflow or underflow
 ##'
 ##' The common shift cancels during normalisation, while keeping every
@@ -800,13 +806,6 @@ normalise_log_weights <- function(log_weights) {
 
   weights <- exp(log_weights - shift)
   weights / sum(weights)
-}
-
-##' Effective sample size of normalised importance weights
-##'
-##' @noRd
-importance_effective_sample_size <- function(weights) {
-  1 / sum(weights^2)
 }
 
 ##' Obtain stable Gaussian regression starting values
@@ -1050,7 +1049,7 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
   mu <- as.numeric(D %*% candidate$beta) + cov_offset
   laplace <- maxim_integrand(
     y = y,
-    units_m = units_m,
+    denominator = units_m,
     mu = mu,
     Sigma = covariance,
     ID_coords = ID_coords,
@@ -2250,6 +2249,7 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
   }
 
   validate(inv, "invlink")
+  check_invlink(inv, family)
   if (is.null(d1)) d1 <- differentiate(inv, ncheck)
   validate(d1, "invlink_prime")
   if (second_derivative) {
@@ -2264,32 +2264,65 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
 ##'
-##' Maximizes the integrand function for Generalized Linear Gaussian Process Models (GLGPMs), which involves the evaluation of likelihood functions with spatially correlated random effects.
+##' Finds the conditional mode of the latent effects in a binomial or Poisson
+##' generalized linear Gaussian process model (GLGPM), that is, the maximiser of
+##' the joint log-density of the responses and the latent spatial and
+##' unstructured random effects, viewed as a function of the latent effects.
 ##'
-##' @param y Response variable vector.
-##' @param units_m Units of measurement for the response variable.
-##' @param mu Mean vector of the response variable.
+##' @param y Response variable vector: numbers of positives for
+##'   `family = "binomial"`, or counts for `family = "poisson"`.
+##' @param denominator Numeric vector with one positive value per response: the
+##'   number of trials for `family = "binomial"`, or the exposure (the expected
+##'   count is `denominator` times the inverse link of the linear predictor) for
+##'   `family = "poisson"`. This is the same quantity as the `denominator`
+##'   argument of [glgpm()].
+##' @param mu Vector of the fixed part of the linear predictor, one value per
+##'   response.
 ##' @param Sigma Covariance matrix of the spatial process.
 ##' @param ID_coords Indices mapping response to locations.
 ##' @param ID_re Indices mapping response to unstructured random effects.
-##' @param family Distribution family for the response variable. Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
+##' @param family Distribution family for the response variable: `"binomial"`
+##'   or `"poisson"`.
 ##' @param sigma2_re Variance of the unstructured random effects.
 ##' @param hessian Logical; if TRUE, compute the Hessian matrix.
 ##' @param gradient Logical; if TRUE, compute the gradient vector.
-##' @param invlink A function that defines the inverse of the link function for the distribution of the data given the random effects.
+##' @param invlink A function that defines the inverse of the link function for
+##'   the distribution of the data given the random effects.
 ##'
 ##' @details
-##' This function maximizes the integrand for GLGPMs using the Nelder-Mead optimization algorithm. It computes the likelihood function incorporating spatial covariance and unstructured random effects, if provided.
+##' The mode is found by Newton-type optimisation ([stats::nlminb()]) using the
+##' analytic gradient and Hessian of the integrand. The integrand includes terms
+##' for the spatial process (`Sigma`), the unstructured random effects
+##' (`sigma2_re`), and the log-likelihood of the responses for the specified
+##' family.
 ##'
-##' The integrand includes terms for the spatial process (Sigma), unstructured random effects (sigma2_re), and the likelihood function (llik) based on the specified distribution family (`"gaussian"`, `"binomial"`, or `"poisson"`).
-##'
-##' @return A list containing the mode estimate, and optionally, the Hessian matrix and gradient vector.
+##' @return A list with the mode (`mode`), the name of the inverse link used
+##'   (`invlink_used`) and either the Hessian of the integrand at the mode
+##'   (`hessian`, if `hessian = TRUE`) or the inverse of its negative
+##'   (`Sigma.tilde`, otherwise). If `gradient = TRUE`, the gradient at the mode
+##'   is also returned (`gradient`).
+##' @examples
+##' coords <- cbind(c(0, 1, 2), c(0, 0, 1))
+##' Sigma <- exp(-as.matrix(dist(coords)))
+##' mode <- maxim_integrand(
+##'   y = c(3, 5, 1), denominator = c(10, 10, 10), mu = rep(-0.5, 3),
+##'   Sigma = Sigma, ID_coords = 1:3, family = "binomial"
+##' )
+##' mode$mode
 ##' @export
 maxim_integrand <- function(
-    y, units_m, mu, Sigma, ID_coords, ID_re = NULL, family,
+    y, denominator, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
 ) {
-  stopifnot(family %in% c("poisson", "binomial"))
+  if (missing(denominator)) {
+    stop("'denominator' must be provided.", call. = FALSE)
+  }
+  if (length(family) != 1L || !family %in% c("binomial", "poisson")) {
+    stop("'family' must be either \"binomial\" or \"poisson\".", call. = FALSE)
+  }
+  # The integrand and its derivatives below refer to the denominator as
+  # `units_m`, the name used by the package's internal fitting functions.
+  units_m <- denominator
 
   # ---------- utilities ----------
   sum_by_group <- function(v, grp, nlev) {
@@ -2479,11 +2512,12 @@ maxim_integrand <- function(
 ##' expansion around the mode, and a Gaussian proposal is used for
 ##' Metropolis–Hastings updates with adaptive step-size tuning.
 ##'
-##' @param y Numeric vector of responses of length \eqn{n}.
-##'   For \code{family = "binomial"} this is the number of successes,
-##'   for \code{family = "poisson"} counts, and for \code{family = "gaussian"} real values.
-##' @param units_m Numeric vector giving the binomial totals (number of trials)
-##'   when \code{family = "binomial"}; ignored for other families (can be \code{NULL}).
+##' @param y Numeric vector of responses of length \eqn{n}: the number of
+##'   positives for \code{family = "binomial"}, or counts for
+##'   \code{family = "poisson"}.
+##' @param units_m Numeric vector of positive values, one per response: the
+##'   number of trials for \code{family = "binomial"}, or the exposure for
+##'   \code{family = "poisson"} (the \code{denominator} of [glgpm()]).
 ##' @param mu Numeric vector of length \eqn{n} providing the fixed part of the
 ##'   linear predictor for each observation.
 ##' @param Sigma Numeric positive-definite covariance matrix for the latent spatial
@@ -2496,8 +2530,7 @@ maxim_integrand <- function(
 ##'   Use \code{NULL} to exclude REs.
 ##' @param sigma2_re Optional named numeric vector of RE variances. Names must
 ##'   match the column names of \code{ID_re}. Ignored if \code{ID_re = NULL}.
-##' @param family Character string: one of \code{"gaussian"}, \code{"binomial"},
-##'   or \code{"poisson"}.
+##' @param family Character string: \code{"binomial"} or \code{"poisson"}.
 ##' @param control_mcmc List of control parameters:
 ##'   \describe{
 ##'     \item{n_sim}{Total number of MCMC iterations (including burn-in).}
@@ -2664,7 +2697,7 @@ laplace_sampling_mcmc <- function(y,
 
   # ---------- default Laplace proposal if missing ----------
   if (is.null(Sigma_pd) || is.null(mean_pd)) {
-    out_maxim <- maxim_integrand(y = y, units_m = units_m, Sigma = Sigma, mu = mu,
+    out_maxim <- maxim_integrand(y = y, denominator = units_m, Sigma = Sigma, mu = mu,
                                  ID_coords = ID_coords, ID_re = ID_re,
                                  sigma2_re = sigma2_re,
                                  family = family, invlink = invlink,
@@ -2951,6 +2984,34 @@ laplace_sampling_mcmc <- function(y,
 ##' over all linear combinations of fitted parameters. Defaults to 0.1.
 ##' @param score_probability Number strictly between zero and one used for the
 ##' independent-bank score-agreement limit. Defaults to 0.99.
+##' @param laplace_start Logical. If `TRUE`, the Laplace approximation to the
+##' likelihood is first maximised from several starting values and Monte Carlo
+##' maximum likelihood starts from the best Laplace estimate. Defaults to
+##' `FALSE`: in validation this changed which local maximum was reached about as
+##' often for the worse as for the better, at extra computational cost.
+##' @param hold_short_range Logical. If `TRUE` (the default), a spatial range
+##' estimated below the median distance between neighbouring locations is held
+##' at that distance, because spatial correlation on a shorter scale cannot be
+##' distinguished from unstructured variation; a warning is issued. Set to
+##' `FALSE` to obtain the unconstrained maximum likelihood estimate.
+##' @param pc_prior Logical. If `TRUE`, the spatial variance and range are
+##' penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
+##' estimate maximises the penalised likelihood on the log scale of the
+##' covariance parameters. This shrinks estimates away from degenerate
+##' solutions in small or sparse datasets and replaces the hold of short
+##' ranges. It is recommended for small or low-prevalence surveys, especially
+##' before prediction with `parameter_uncertainty = TRUE` in [predict.RiskMap()].
+##' When the spatial variance is large and well identified, the penalty shrinks
+##' it somewhat towards zero, so the default is `FALSE`.
+##' @param pc_sigma_threshold,pc_sigma_probability The penalty sets
+##' P(sigma > `pc_sigma_threshold`) = `pc_sigma_probability`, where sigma is the
+##' spatial standard deviation on the scale of the linear predictor. Default
+##' 1 and 0.05.
+##' @param pc_range_threshold,pc_range_probability The penalty sets
+##' P(phi < `pc_range_threshold`) = `pc_range_probability`, where phi is the
+##' range in the units of the coordinates. By default the threshold is the
+##' median distance between neighbouring locations and the probability is
+##' 0.05.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
 ##' control_mcml <- set_control_mcml(max_samples = 10000)
@@ -2961,7 +3022,14 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
                              min_effective_samples = 100L,
                              max_pareto_k = 0.7,
                              max_mcse_ratio = 0.1,
-                             score_probability = 0.99) {
+                             score_probability = 0.99,
+                             laplace_start = FALSE,
+                             hold_short_range = TRUE,
+                             pc_prior = FALSE,
+                             pc_sigma_threshold = 1,
+                             pc_sigma_probability = 0.05,
+                             pc_range_threshold = NULL,
+                             pc_range_probability = 0.05) {
   check_positive_integer(initial_samples, "initial_samples")
   check_positive_integer(max_samples, "max_samples")
   check_positive_integer(max_stages, "max_stages")
@@ -2971,6 +3039,15 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
               name = "max_mcse_ratio")
   check_range(score_probability, 0, 1, allow_equal = FALSE,
               name = "score_probability")
+  check_logical(laplace_start)
+  check_logical(hold_short_range)
+  check_logical(pc_prior)
+  check_positive_number(pc_sigma_threshold, "")
+  check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
+              name = "pc_sigma_probability")
+  if (!is.null(pc_range_threshold)) check_positive_number(pc_range_threshold, "")
+  check_range(pc_range_probability, 0, 1, allow_equal = FALSE,
+              name = "pc_range_probability")
   if (max_samples < initial_samples) {
     stop("'max_samples' must be at least 'initial_samples'.", call. = FALSE)
   }
@@ -2987,7 +3064,14 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
       min_effective_samples = as.integer(min_effective_samples),
       max_pareto_k = max_pareto_k,
       max_mcse_ratio = max_mcse_ratio,
-      score_probability = score_probability
+      score_probability = score_probability,
+      laplace_start = laplace_start,
+      hold_short_range = hold_short_range,
+      pc_prior = pc_prior,
+      pc_sigma_threshold = pc_sigma_threshold,
+      pc_sigma_probability = pc_sigma_probability,
+      pc_range_threshold = pc_range_threshold,
+      pc_range_probability = pc_range_probability
     ),
     class = "RiskMap_control_mcml"
   )
@@ -3037,7 +3121,7 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 ##' @noRd
 sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
                                       cov_offset, ID_coords, ID_re,
-                                      fix_tau2, family, inverse_link, kappa,
+                                      fix_tau2, family, link_function, kappa,
                                       control_mcmc, messages) {
   fitted_pars <- estimate_to_mcml_reference(estimate, fix_tau2)
   mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
@@ -3052,7 +3136,14 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     y = y, units_m = units_m, mu = mu, Sigma = Sigma,
     ID_coords = ID_coords, ID_re = ID_re,
     sigma2_re = fitted_pars$sigma2_re,
-    family = family, invlink = inverse_link,
+    family = family,
+    # Canonical links use the compiled sampler, which a supplied function
+    # would bypass; custom links pass the user's inverse-link function.
+    invlink = if (identical(link_function$name, "canonical")) {
+      NULL
+    } else {
+      link_function$inv
+    },
     control_mcmc = control_mcmc, messages = messages
   )
 
@@ -3069,7 +3160,7 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
 
   sample_blocks <- simulation$samples
   response_mean <- colMeans(
-    matrix(inverse_link(as.numeric(eta)), nrow = nrow(eta))
+    matrix(link_function$inv(as.numeric(eta)), nrow = nrow(eta))
   )
   if (family == "poisson") response_mean <- units_m * response_mean
 
