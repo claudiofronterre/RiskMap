@@ -26,6 +26,11 @@ latlon_data <- st_transform(gaussian_data, crs = 4326)
 control_mcmc <- set_control_mcmc(n_sim = 1000,
                                  burnin = 200,
                                  seed = 12345)
+fixture_control_mcml <- set_control_mcml(
+  initial_samples = 500, max_samples = 500, max_stages = 1,
+  min_effective_samples = 1, max_pareto_k = 100,
+  max_mcse_ratio = 0.99, score_probability = 0.999999
+)
 
 gaussian_model <- glgpm(y ~ cov + gp() + re(i),
                         data = gaussian_data,
@@ -48,24 +53,22 @@ p <- plogis(eta)
 data$y <- rbinom(n, size = data$denominator, prob = p)
 binomial_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
-binomial_model <- glgpm(y ~ cov + gp() + re(i),
-                        data = binomial_data,
-                        family = "binomial",
-                        denominator = denominator,
-                        control_mcmc = control_mcmc,
-                        messages = FALSE)
+binomial_model <- suppressWarnings(glgpm(
+  y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
+  denominator = denominator, control_mcmc = control_mcmc,
+  control_mcml = fixture_control_mcml, messages = FALSE
+))
 
 lambda <- exp(0.1 + 0.2 * data$cov + S)
 data$y <- rpois(n, lambda) + 1
 poisson_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
-poisson_model <- glgpm(y ~ cov + gp() + re(i),
-                       data = poisson_data,
-                       family = "poisson",
-                       denominator = denominator,
-                       control_mcmc = control_mcmc,
-                       return_samples = TRUE,
-                       messages = FALSE)
+poisson_model <- suppressWarnings(glgpm(
+  y ~ cov + gp() + re(i), data = poisson_data, family = "poisson",
+  denominator = denominator, control_mcmc = control_mcmc,
+  control_mcml = fixture_control_mcml, return_samples = TRUE,
+  messages = FALSE
+))
 
 hull <- create_convex_hull(gaussian_data)
 grid <- create_grid(hull, 3)
@@ -87,3 +90,13 @@ cross_validation <- assess_prediction(
   plot_fold = FALSE,
   messages = FALSE
 )
+
+surface <- grid
+surface$cov <- rnorm(nrow(grid))
+surface$i <- rep(1, nrow(grid))
+
+simulation <- simulate_glgpm(gaussian_model,
+                             what = c("data", "surface"),
+                             prediction_grid = surface,
+                             sample_locations = gaussian_data
+                             )

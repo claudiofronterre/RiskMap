@@ -24,6 +24,43 @@ test_that("predict.RiskMap keeps prediction data and summaries aligned", {
   expect_identical(nrow(result$samples$spatial), nrow(prediction_data))
 })
 
+test_that("prediction objects use one stable output schema", {
+  expected_output <- c(
+    "predictions", "boundaries", "boundary_summary", "samples", "include",
+    "transform", "standardized", "aggregate", "summaries", "thresholds",
+    "level", "type", "family", "observed_locations", "parameter_draws",
+    "coverage"
+  )
+
+  observed <- predict(gaussian_model, messages = FALSE)
+  locations <- predict(gaussian_model, prediction_data, messages = FALSE)
+  polygons <- predict(
+    gaussian_model, prediction_data, areal, "mean", messages = FALSE
+  )
+
+  expect_setequal(names(observed), expected_output)
+  expect_setequal(names(locations), expected_output)
+  expect_setequal(names(polygons), expected_output)
+
+  expect_null(observed$aggregate)
+  expect_null(observed$boundaries)
+  expect_null(observed$boundary_summary)
+  expect_null(observed$coverage)
+  expect_true(observed$observed_locations)
+
+  expect_null(locations$aggregate)
+  expect_null(locations$boundaries)
+  expect_null(locations$boundary_summary)
+  expect_null(locations$coverage)
+  expect_false(locations$observed_locations)
+
+  expect_identical(polygons$aggregate, "mean")
+  expect_s3_class(polygons$boundaries, "sf")
+  expect_s3_class(polygons$boundary_summary, "data.frame")
+  expect_identical(polygons$coverage, "exact")
+  expect_false(polygons$observed_locations)
+})
+
 test_that("predict.RiskMap derives predictors and offsets from one sf object", {
 
   prediction_control <- set_control_mcmc(
@@ -356,7 +393,8 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
   )
 
   expect_s3_class(result, "RiskMap_prediction")
-  expect_true(result$aggregated)
+  expect_identical(result$aggregate,
+                   c("mean", "median", "sum", "min", "max"))
   expect_identical(result$type, "joint")
   expect_identical(result$coverage, "exact")
   expect_identical(st_geometry(result$predictions), st_geometry(prediction_data))
@@ -368,6 +406,34 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
                     "summary", "threshold", "value"))
   expect_identical(nrow(result$samples$mean$response), nrow(boundaries))
   expect_true(any(is.finite(result$boundary_summary$value)))
+})
+
+test_that("one prediction sample bank serves locations and boundaries", {
+  original_prepare_prediction <- prepare_prediction
+  n_preparations <- 0L
+  local_mocked_bindings(
+    prepare_prediction = function(...) {
+      n_preparations <<- n_preparations + 1L
+      original_prepare_prediction(...)
+    },
+    .package = "RiskMap"
+  )
+
+  result <- predict(
+    gaussian_model,
+    newdata = prediction_data,
+    boundaries = areal,
+    aggregate = "mean",
+    control_mcmc = set_control_mcmc(
+      n_sim = 40, burnin = 20, thin = 2, seed = 48
+    ),
+    keep_samples = TRUE,
+    messages = FALSE
+  )
+
+  expect_identical(n_preparations, 1L)
+  expect_identical(nrow(result$predictions), nrow(prediction_data))
+  expect_identical(nrow(result$samples$mean$response), nrow(areal))
 })
 
 test_that("polygon aggregation applies weights on the correct scale", {
@@ -523,6 +589,43 @@ test_that("polygon prediction handles outside cells and empty polygons", {
   expect_true(all(is.na(empty$boundary_summary$value)))
   expect_null(empty$samples)
   expect_identical(nrow(empty$boundaries), 1L)
+})
+
+test_that("polygons containing a single prediction location trigger a warning", {
+  # Place a set number of plain points near the centre of each square in
+  # 'areal', so every point lies inside exactly one polygon
+  points_in_squares <- function(counts) {
+    centres <- st_coordinates(st_centroid(st_geometry(areal)))
+    square <- rep(seq_along(counts), counts)
+    offset <- sequence(counts) * 100
+    coordinates <- centres[square, , drop = FALSE] + offset
+    points <- st_as_sf(data.frame(x = coordinates[, 1], y = coordinates[, 2]),
+                       coords = c("x", "y"), crs = st_crs(areal))
+    points$cov <- seq_len(nrow(points)) / 10
+    points$i <- rep(gaussian_model$re[[1]], length.out = nrow(points))
+    points
+  }
+
+  expect_warning(
+    predict(
+      gaussian_model, points_in_squares(c(1, 1, 2, 2)), boundaries = areal,
+      aggregate = "mean", seed = 475, messages = FALSE
+    ),
+    "2 polygons contain only one prediction location; their areal summaries"
+  )
+  expect_warning(
+    predict(
+      gaussian_model, points_in_squares(c(1, 2)), boundaries = areal[1:2, ],
+      aggregate = "mean", seed = 476, messages = FALSE
+    ),
+    "1 polygon contains only one prediction location; its areal summaries"
+  )
+  expect_no_warning(
+    predict(
+      gaussian_model, points_in_squares(c(2, 2, 2, 2)), boundaries = areal,
+      aggregate = "mean", seed = 477, messages = FALSE
+    )
+  )
 })
 
 test_that("polygon weights are validated and zero totals return missing summaries", {
@@ -1085,4 +1188,88 @@ test_that("Gaussian block conditioning matches direct multivariate conditioning"
     target_covariance - direct_target_gain %*% t(target_to_observation),
     tolerance = 1e-9
   )
+})
+
+with_parameter_covariance <- function(fit, variance = 0.01) {
+  names <- names(unlist(fit$estimate))
+  fit$covariance <- diag(variance, length(names))
+  dimnames(fit$covariance) <- list(names, names)
+  fit
+}
+
+test_that("parameter uncertainty options are validated", {
+  expect_error(
+    predict(gaussian_model, parameter_uncertainty = NA, messages = FALSE),
+    "parameter_uncertainty"
+  )
+  expect_error(
+    predict(gaussian_model, parameter_uncertainty = TRUE, parameter_draws = 0,
+            messages = FALSE),
+    "parameter_draws"
+  )
+})
+
+test_that("an unavailable covariance matrix gives an informative error", {
+  expect_true(anyNA(binomial_model$covariance))
+  expect_error(
+    predict(binomial_model, parameter_uncertainty = TRUE, messages = FALSE),
+    "pc_prior = TRUE"
+  )
+})
+
+test_that("parameter uncertainty pools draws over parameter values", {
+  fit <- with_parameter_covariance(binomial_model)
+  plug_in <- predict(fit, seed = 2, messages = FALSE)
+  pooled <- predict(fit, parameter_uncertainty = TRUE, parameter_draws = 20,
+                    seed = 2, keep_samples = TRUE, messages = FALSE)
+  expect_identical(pooled$parameter_draws, 20L)
+  expect_null(plug_in$parameter_draws)
+  expect_identical(names(pooled$predictions), names(plug_in$predictions))
+  expect_identical(dim(pooled$samples$spatial), dim(pooled$samples$fixed))
+  expect_identical(ncol(pooled$samples$spatial), nrow(fit$S_samples))
+  # The fixed-effect contribution varies between parameter draws.
+  expect_gt(min(apply(pooled$samples$fixed, 1L, stats::sd)), 0)
+  link <- prediction_link_samples(pooled)
+  expect_equal(rowMeans(plogis(link)), pooled$predictions$response_mean)
+  expect_equal(pooled$predictions$fixed, rowMeans(pooled$samples$fixed))
+})
+
+test_that("parameter uncertainty is reproducible and works for polygons", {
+  fit <- with_parameter_covariance(binomial_model)
+  first <- predict(fit, newdata = binomial_data[1:4, ],
+                   parameter_uncertainty = TRUE, parameter_draws = 10,
+                   seed = 5, messages = FALSE)
+  second <- predict(fit, newdata = binomial_data[1:4, ],
+                    parameter_uncertainty = TRUE, parameter_draws = 10,
+                    seed = 5, messages = FALSE)
+  expect_identical(first$predictions, second$predictions)
+  areas <- sf::st_sf(area = 1:2,
+                     geometry = sf::st_make_grid(binomial_data, n = c(2, 1)))
+  areal <- predict(fit, newdata = binomial_data, boundaries = areas,
+                   aggregate = "mean", parameter_uncertainty = TRUE,
+                   parameter_draws = 10, seed = 5, messages = FALSE)
+  expect_identical(areal$parameter_draws, 10L)
+  response <- areal$boundary_summary[
+    areal$boundary_summary$quantity == "response", ]
+  expect_true(all(is.finite(response$value)))
+})
+
+test_that("parameter uncertainty works for Gaussian models", {
+  fit <- with_parameter_covariance(gaussian_model)
+  pooled <- predict(fit, parameter_uncertainty = TRUE, parameter_draws = 10,
+                    seed = 1, messages = FALSE)
+  expect_true(all(is.finite(pooled$predictions$response_mean)))
+  expect_true(all(pooled$predictions$response_lower <
+                    pooled$predictions$response_upper))
+})
+
+test_that("the conditional sampler matches MCMC at the estimate", {
+  sampler <- parameter_conditioning_sampler(binomial_model)
+  set.seed(4)
+  draws <- sampler(binomial_model$estimate, 2000L)
+  expect_identical(ncol(draws$samples), ncol(binomial_model$S_samples))
+  expect_gt(draws$acceptance, 0.2)
+  mcmc_mean <- colMeans(binomial_model$S_samples)
+  mcmc_sd <- apply(binomial_model$S_samples, 2L, stats::sd)
+  expect_lt(max(abs(colMeans(draws$samples) - mcmc_mean) / mcmc_sd), 0.5)
 })

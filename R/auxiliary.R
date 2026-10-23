@@ -93,6 +93,10 @@ elogit <- function(y, m) {
 ##' @param data An object of class \code{sf} containing the coordinates.
 ##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 ##' @return An integer indicating the EPSG code of the UTM zone.
+##' @examples
+##' data("infect_sma")
+##' propose_utm(infect_sma)
+##'
 ##' @export
 propose_utm <- function(data) {
 
@@ -137,16 +141,25 @@ propose_utm <- function(data) {
 
 ##' @title Matern Correlation Function
 ##' @description Computes the Matern correlation function.
-##' @param u A vector of distances between pairs of data locations.
+##' @param u A vector or matrix of distances between pairs of data locations.
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @param return_sym_matrix A logical value indicating whether to return a symmetric correlation matrix. Defaults to \code{FALSE}.
 ##' @details The Matern correlation function is defined as
 ##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
-##' @return A vector of the same length as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
+##' @return A vector or matrix of the same shape as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
+##' @examples
+##' u <- c(10, 20, 30)
+##' matern_correlation(u, phi = 1, kappa = 0.8)
+##'
 ##' @export
 matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+  if (any(!is.finite(u) | u < 0)) {
+    stop("'u' must contain only finite, non-negative distances", call. = FALSE)
+  }
+  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+
   input_dimensions <- if (is.matrix(u)) dim(u) else NULL
   if (is.vector(u))
     names(u) <- NULL
@@ -181,12 +194,22 @@ matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 
 ##' @title First Derivative with Respect to \eqn{\phi}
 ##' @description Computes the first derivative of the Matern correlation function with respect to \eqn{\phi}.
-##' @param U A vector of distances between pairs of data locations.
+##' @param u A distance matrix returned from [stats::dist()]
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the first derivative of the Matern function with respect to \eqn{\phi} for the given distances.
+##' @examples
+##' x <- matrix(rnorm(20), nrow = 5)
+##' u <- dist(x)
+##' matern_gradient_phi(u, phi = 1, kappa = 0.8)
+##'
 ##' @export
-matern_gradient_phi <- function(U, phi, kappa) {
+##'
+matern_gradient_phi <- function(u, phi, kappa) {
+
+  stopifnot("'u' must be an output from 'stats::dist()'" = inherits(u, "dist"))
+  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+
   der.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {
@@ -200,10 +223,10 @@ matern_gradient_phi <- function(U, phi, kappa) {
     out
   }
 
-  n <- attr(U, "Size")
+  n <- attr(u, "Size")
   grad.phi.mat <- matrix(NA, nrow = n, ncol = n)
   ind <- lower.tri(grad.phi.mat)
-  grad.phi <- der.phi(as.numeric(U), phi, kappa)
+  grad.phi <- der.phi(as.numeric(u), phi, kappa)
   grad.phi.mat[ind] <-  grad.phi
   grad.phi.mat <- t(grad.phi.mat)
   grad.phi.mat[ind] <-  grad.phi
@@ -212,13 +235,24 @@ matern_gradient_phi <- function(U, phi, kappa) {
 }
 
 ##' @title Second Derivative with Respect to \eqn{\phi}
-##' @description Computes the second derivative of the Matern correlation function with respect to \eqn{\phi}.
-##' @param U A vector of distances between pairs of data locations.
+##' @description Computes the second derivative of the Matern correlation
+##' function with respect to \eqn{\phi}.
+##' @param u A distance matrix returned from [stats::dist()]
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
-##' @return A matrix with the values of the second derivative of the Matern function with respect to \eqn{\phi} for the given distances.
+##' @return A matrix with the values of the second derivative of the
+##' Matern function with respect to \eqn{\phi} for the given distances.
+##' @examples
+##' x <- matrix(rnorm(20), nrow = 5)
+##' u <- dist(x)
+##' matern_hessian_phi(u, phi = 1, kappa = 0.8)
+##'
 ##' @export
-matern_hessian_phi <- function(U, phi, kappa) {
+matern_hessian_phi <- function(u, phi, kappa) {
+
+  stopifnot("'u' must be an output from 'stats::dist()'" = inherits(u, "dist"))
+  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+
   der2.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
     if(kappa == 0.5) {
@@ -236,10 +270,10 @@ matern_hessian_phi <- function(U, phi, kappa) {
     }
     out
   }
-  n <- attr(U, "Size")
+  n <- attr(u, "Size")
   hess.phi.mat <- matrix(NA, nrow = n, ncol = n)
   ind <- lower.tri(hess.phi.mat)
-  hess.phi <- der2.phi(as.numeric(U), phi, kappa)
+  hess.phi <- der2.phi(as.numeric(u), phi, kappa)
   hess.phi.mat[ind] <-  hess.phi
   hess.phi.mat <- t(hess.phi.mat)
   hess.phi.mat[ind] <-  hess.phi
@@ -571,6 +605,19 @@ coef.RiskMap <- function(object, ...) {
 ##' @return A numeric vector, or `NULL` when final conditional sampling was
 ##' skipped for a non-Gaussian model.
 ##' @method fitted RiskMap
+##' @examples
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   return_samples = TRUE,
+##'   messages = FALSE
+##' )
+##'
+##' fitted(fit)
+##'
 ##' @export
 fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
   type <- match.arg(type)
@@ -583,14 +630,26 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   model fits
 ##' @param object An object of class "RiskMap" from \code{\link{glgpm}}
 ##' @param ... other parameters.
-##' @param conf_level Confidence level for intervals (default 0.95).
+##' @param level Confidence level for intervals (default 0.95).
 ##' @return A list of class \code{"summary.RiskMap"} with parameter estimates,
 ##'   standard errors, and confidence intervals.
 ##' @method summary RiskMap
+##' @examples
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
+##' summary(fit, level = 0.98)
 ##' @export
-summary.RiskMap <- function(object, ..., conf_level = 0.95) {
+summary.RiskMap <- function(object, ..., level = 0.95) {
 
-  alpha  <- 1 - conf_level
+  alpha  <- 1 - level
   z_crit <- qnorm(1 - alpha / 2)
   res    <- list()
 
@@ -718,7 +777,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     rownames(res$ranef) <- paste0(re_names, " (random eff. var.)")
   }
 
-  res$conf_level      <- conf_level
+  res$level           <- level
   res$family          <- object$family
   res$kappa           <- object$kappa
   res$log_lik         <- object$log_lik
@@ -766,7 +825,7 @@ print.summary.RiskMap <- function(x, ...) {
   if (!is.null(x$invlink_expression)) cat(x$invlink_expression, "\n\n")
 
   cat("'Lower limit' and 'Upper limit' refer to ",
-      x$conf_level * 100, "% confidence intervals\n", sep = "")
+      x$level * 100, "% confidence intervals\n", sep = "")
 
   cat("\nRegression coefficients\n")
   printCoefmat(x$reg_coef, P.values = TRUE, has.Pvalue = TRUE)
@@ -1556,4 +1615,42 @@ check_crs <- function(crs, name = deparse(substitute(crs))){
     }
   )
   invisible(TRUE)
+}
+
+
+#' @title check_invlink
+#' @description
+#'
+#' Applies `invlink` to `eta` and checks that the result is a valid mean for
+#' `family`: one finite numeric value per linear predictor, with
+#' probabilities in `[0, 1]` for `"binomial"` and non-negative values for
+#' `"poisson"`.
+#' @param invlink A function mapping the linear predictor to the mean.
+#' @param family One of `"gaussian"`, `"binomial"` or `"poisson"`.
+#' @param eta Numeric vector of linear predictor values. Defaults to a
+#'   representative spread of values, for checking `invlink` on its own
+#'   before any real linear predictor is available.
+#' @return The computed mean values, `invlink(eta)`. Raises an error if they
+#'   are invalid.
+#' @noRd
+check_invlink <- function(invlink, family, eta = seq(-5, 5, length.out = 11)) {
+  if (!is.function(invlink)) stop("'invlink' must be a function.", call. = FALSE)
+  mu <- invlink(as.numeric(eta))
+  if (!is.numeric(mu) || length(mu) != length(eta)) {
+    stop("'invlink' must return one numeric value per linear predictor.",
+         call. = FALSE)
+  }
+  if (any(!is.finite(mu))) {
+    stop("'invlink' returned non-finite mean values. Check the model parameters and covariates.",
+         call. = FALSE)
+  }
+  if (family == "binomial" && any(mu < 0 | mu > 1)) {
+    stop("For a binomial model, 'invlink' must return probabilities between 0 and 1.",
+         call. = FALSE)
+  }
+  if (family == "poisson" && any(mu < 0)) {
+    stop("For a Poisson model, 'invlink' must return non-negative mean values.",
+         call. = FALSE)
+  }
+  mu
 }

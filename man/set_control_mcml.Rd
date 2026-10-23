@@ -2,34 +2,94 @@
 % Please edit documentation in R/parameter_estimation.R
 \name{set_control_mcml}
 \alias{set_control_mcml}
-\title{Set control parameters for iterative MCML estimation}
+\title{Set control parameters for adaptive MCML estimation}
 \usage{
-set_control_mcml(max_iterations = 1L, tolerance = 0.05, min_relative_ess = 0.1)
+set_control_mcml(
+  initial_samples = 1000L,
+  max_samples = 20000L,
+  max_stages = 5L,
+  min_effective_samples = 100L,
+  max_pareto_k = 0.7,
+  max_mcse_ratio = 0.1,
+  score_probability = 0.99,
+  laplace_start = FALSE,
+  hold_short_range = TRUE,
+  pc_prior = FALSE,
+  pc_sigma_threshold = 1,
+  pc_sigma_probability = 0.05,
+  pc_range_threshold = NULL,
+  pc_range_probability = 0.05
+)
 }
 \arguments{
-\item{max_iterations}{Positive integer giving the maximum number of MCML
-updates. Defaults to one.}
+\item{initial_samples}{Positive integer giving the number of draws in each
+fitting and validation bank at the first stage. Defaults to 1,000.}
 
-\item{tolerance}{Positive numeric tolerance for the largest parameter change
-divided by its current standard error. It is evaluated from the second
-update onwards.}
+\item{max_samples}{Positive integer giving the largest permitted bank.
+Defaults to 20,000.}
 
-\item{min_relative_ess}{Number between zero and one giving the minimum
-effective sample size, as a proportion of retained importance samples,
-required before an update can be declared converged. Defaults to 0.1.}
+\item{max_stages}{Positive integer giving the maximum number of adaptive
+stages. Defaults to 5.}
+
+\item{min_effective_samples}{Positive integer giving the minimum effective
+number of importance draws required in both banks before Monte Carlo
+uncertainty is interpreted. Defaults to 100.}
+
+\item{max_pareto_k}{Positive upper limit for the Pareto tail-shape
+diagnostic. Defaults to 0.7.}
+
+\item{max_mcse_ratio}{Number between zero and one giving the largest allowed
+ratio of Monte Carlo standard error to ordinary statistical standard error,
+over all linear combinations of fitted parameters. Defaults to 0.1.}
+
+\item{score_probability}{Number strictly between zero and one used for the
+independent-bank score-agreement limit. Defaults to 0.99.}
+
+\item{laplace_start}{Logical. If \code{TRUE}, the Laplace approximation to the
+likelihood is first maximised from several starting values and Monte Carlo
+maximum likelihood starts from the best Laplace estimate. Defaults to
+\code{FALSE}: in validation this changed which local maximum was reached about as
+often for the worse as for the better, at extra computational cost.}
+
+\item{hold_short_range}{Logical. If \code{TRUE} (the default), a spatial range
+estimated below the median distance between neighbouring locations is held
+at that distance, because spatial correlation on a shorter scale cannot be
+distinguished from unstructured variation; a warning is issued. Set to
+\code{FALSE} to obtain the unconstrained maximum likelihood estimate.}
+
+\item{pc_prior}{Logical. If \code{TRUE}, the spatial variance and range are
+penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
+estimate maximises the penalised likelihood on the log scale of the
+covariance parameters. This shrinks estimates away from degenerate
+solutions in small or sparse datasets and replaces the hold of short
+ranges. It is recommended for small or low-prevalence surveys, especially
+before prediction with \code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
+When the spatial variance is large and well identified, the penalty shrinks
+it somewhat towards zero, so the default is \code{FALSE}.}
+
+\item{pc_sigma_threshold, pc_sigma_probability}{The penalty sets
+P(sigma > \code{pc_sigma_threshold}) = \code{pc_sigma_probability}, where sigma is the
+spatial standard deviation on the scale of the linear predictor. Default
+1 and 0.05.}
+
+\item{pc_range_threshold, pc_range_probability}{The penalty sets
+P(phi < \code{pc_range_threshold}) = \code{pc_range_probability}, where phi is the
+range in the units of the coordinates. By default the threshold is the
+median distance between neighbouring locations and the probability is
+0.05.}
 }
 \value{
 A control object of class \code{RiskMap_control_mcml}.
 }
 \description{
-Repeated Monte Carlo maximum likelihood (MCML) updates regenerate the
-importance sample around the reference update from the preceding iteration.
-When importance-sampling overlap is adequate this is the fitted estimate;
-otherwise it is a shortened step towards that estimate. A single update
-reproduces the standard RiskMap fitting procedure.
+Non-Gaussian models use independent fitting and validation importance
+samples. Sampling stops automatically only when the importance samples are
+regular enough to estimate Monte Carlo uncertainty, that uncertainty is
+small relative to the model's statistical uncertainty, and both samples
+give compatible score vectors.
 }
 \examples{
-control_mcml <- set_control_mcml(max_iterations = 3, tolerance = 0.05)
+control_mcml <- set_control_mcml(max_samples = 10000)
 }
 \seealso{
 \code{\link[=glgpm]{glgpm()}}, \code{\link[=set_control_mcmc]{set_control_mcmc()}}
