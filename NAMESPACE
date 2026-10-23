@@ -2,7 +2,11 @@
 
 S3method(coef,RiskMap)
 S3method(fitted,RiskMap)
+S3method(plot,RiskMap_cross_validation)
 S3method(plot,RiskMap_prediction)
+S3method(plot,RiskMap_simulated_surface)
+S3method(plot,RiskMap_simulation)
+S3method(plot,RiskMap_variogram)
 S3method(predict,RiskMap)
 S3method(print,RiskMap_prediction)
 S3method(print,summary.RiskMap)
@@ -23,11 +27,7 @@ export(matern_correlation)
 export(matern_gradient_phi)
 export(matern_hessian_phi)
 export(maxim_integrand)
-export(plot_AnPIT)
 export(plot_mcmc)
-export(plot_metric)
-export(plot_sim_surf)
-export(plot_variogram)
 export(propose_utm)
 export(re)
 export(set_control_mcmc)
@@ -78,12 +78,6 @@ importFrom(spatialEco,subsample.distance)
 importFrom(spatialsample,
   autoplot,
   spatial_clustering_cv
-)
-importFrom(terra,
-  match,
-  rast,
-  rasterize,
-  vect
 )
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)

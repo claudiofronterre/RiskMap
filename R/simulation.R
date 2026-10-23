@@ -376,7 +376,9 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
 #' @return `simulated_data()` returns the sample `sf` data with its response
 #'   column replaced by the selected simulation, ready for refitting.
 #'   `simulated_surface()` returns the grid `sf` data with columns for the
-#'   spatial effect, nugget, group effect, linear predictor and mean.
+#'   spatial effect, nugget, group effect, linear predictor and mean, with
+#'   class `RiskMap_simulated_surface` so that it can be mapped with
+#'   [plot()][plot.RiskMap_simulated_surface()].
 #' @examples
 #' library(sf)
 #' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
@@ -433,6 +435,7 @@ simulated_surface <- function(object, simulation = 1) {
   for (name in components) {
     out[[name]] <- as.numeric(object$samples$surface[, simulation, name])
   }
+  class(out) <- c("RiskMap_simulated_surface", class(out))
   out
 }
 
