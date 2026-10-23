@@ -68,6 +68,23 @@ test_that("summary.RiskMap returns the expected components for each family", {
   expect_null(poisson_summary$aic)
 })
 
+test_that("summary.RiskMap reports a custom inverse link", {
+  custom_link <- function(x) 1 / (1 + exp(-x))
+  fit <- glgpm(y ~ cov + gp(),
+               data = binomial_data,
+               family = "binomial",
+               denominator = denominator,
+               control_mcmc = control_mcmc,
+               control_mcml = fixture_control_mcml,
+               invlink = custom_link,
+               messages = FALSE)
+
+  fit_summary <- summary(fit)
+  expect_identical(fit_summary$link_name, "custom")
+  expect_identical(fit_summary$invlink_expression,
+                   "Inverse link function = 1/(1 + exp(-x))")
+})
+
 test_that("summary.RiskMap computes standard errors and confidence intervals", {
   fit_summary <- summary(binomial_model)
   estimate <- unlist(binomial_model$estimate)

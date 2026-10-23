@@ -545,6 +545,22 @@ test_that("final fitted samples support a nugget model", {
 })
 
 
+test_that("custom inverse links retain the current automatic start", {
+  custom_link <- function(x) plogis(x)
+  fit <- glgpm(y ~ cov + gp(),
+               data = binomial_data,
+               family = "binomial",
+               denominator = denominator,
+               control_mcmc = control_mcmc,
+               control_mcml = fixture_control_mcml,
+               invlink = custom_link,
+               messages = FALSE)
+
+  diagnostics <- attr(fit, "starting_values")
+  expect_identical(diagnostics$selected, "current")
+  expect_match(diagnostics$fallback_reason, "custom inverse links")
+})
+
 test_that("glgpm produces expected output for poisson models", {
 
   fit_no_re <- glgpm(y ~ cov + gp(),

@@ -2161,25 +2161,27 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##'
 ##' @param f Function of a single argument `eta`, returning a numeric vector.
 ##' @param ncheck Length of the probe vector used to validate a candidate
-##' derivative before accepting it.
+##' derivative over the range -5 to 5 before accepting it.
+##' @param name Derivative name to use in validation errors.
 ##' @return A function of `eta` approximating the derivative of `f`.
 ##' @noRd
-differentiate <- function(f, ncheck) {
-  is_valid <- function(d) {
-    out <- tryCatch(d(rep(0, ncheck)), error = function(e) NULL)
-    is.numeric(out) && length(out) == ncheck && all(is.finite(out))
-  }
+differentiate <- function(f, ncheck, name = "derivative") {
+  probe <- seq(-5, 5, length.out = ncheck)
 
   symbolic <- tryCatch({
     wrapped <- function(eta) f(eta)
-    d <- Deriv::Deriv(wrapped, "eta")
-    if (!is_valid(d)) stop("symbolic derivative failed validation")
-    d
+    derivative <- Deriv::Deriv(wrapped, "eta")
+    check_invlink(derivative, eta = probe, name = name)
+    derivative
   }, error = function(e) NULL)
 
   if (!is.null(symbolic)) return(symbolic)
 
-  function(eta) vapply(eta, function(z) numDeriv::grad(f, z), numeric(1))
+  derivative <- function(eta) {
+    vapply(eta, function(z) numDeriv::grad(f, z), numeric(1))
+  }
+  check_invlink(derivative, eta = probe, name = name)
+  derivative
 }
 
 ##' Validate and construct inverse-link functions
@@ -2219,11 +2221,9 @@ make_inverse_link_functions <- function(family, invlink,
   }
 
   check_invlink(inv, family, name = "invlink")
-  if (is.null(d1)) d1 <- differentiate(inv, 11L)
-  check_invlink(d1, name = "invlink_prime")
+  if (is.null(d1)) d1 <- differentiate(inv, 11L, name = "invlink_prime")
   if (second_derivative) {
-    if (is.null(d2)) d2 <- differentiate(d1, 11L)
-    check_invlink(d2, name = "invlink_second")
+    if (is.null(d2)) d2 <- differentiate(d1, 11L, name = "invlink_second")
   } else {
     d2 <- NULL
   }
