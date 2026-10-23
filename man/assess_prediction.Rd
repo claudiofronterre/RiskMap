@@ -173,5 +173,5 @@ tropical disease prevalence. \emph{Journal of the Royal Statistical Society Seri
 A: Statistics in Society}.\doi{10.1093/jrsssa/qnag100}.
 }
 \seealso{
-\code{\link{plot_AnPIT}}
+\code{\link{plot.RiskMap_cross_validation}}
 }
