@@ -4,19 +4,35 @@
 \alias{plot.RiskMap_simulation}
 \title{Plot Method for RiskMap_simulation Objects}
 \usage{
-\method{plot}{RiskMap_simulation}(x, sim, ...)
+\method{plot}{RiskMap_simulation}(x, simulation = 1, palette = "viridis", reverse_palette = FALSE, ...)
 }
 \arguments{
 \item{x}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}} including a surface.}
 
-\item{sim}{The simulation index to plot.}
+\item{simulation}{A single simulation number to plot, defaulting to one.}
 
-\item{...}{Additional graphical parameters to be passed to the plotting function of the \code{terra} package.}
+\item{palette}{Either the name of a palette from \code{\link[grDevices:hcl.pals]{grDevices::hcl.pals()}}
+(e.g. \code{"viridis"}, \code{"Blues"}, \code{"Spectral"}) or a character vector of two or
+more colours to interpolate between. Defaults to \code{"viridis"}.}
+
+\item{reverse_palette}{Logical; if \code{TRUE}, reverse the order of the palette
+colours. Defaults to \code{FALSE}.}
+
+\item{...}{Additional arguments passed to \code{\link[ggplot2:scale_fill_gradientn]{ggplot2::scale_fill_gradientn()}},
+e.g. \code{name}, \code{breaks} or \code{limits}.}
 }
 \value{
-A plot of the simulation results.
+A \code{ggplot} object.
 }
 \description{
-Plots the linear predictor from \code{\link[=simulate_glgpm]{simulate_glgpm()}} on a regular grid,
-with sampling locations overlaid when replicated data are available.
+Maps the linear predictor of one simulation from \code{\link[=simulate_glgpm]{simulate_glgpm()}} over
+its prediction grid, with the sampling locations overlaid when data were
+also simulated.
+}
+\details{
+The returned object can be modified further
+with standard \pkg{ggplot2} functions.
+}
+\seealso{
+\code{\link[=simulated_surface]{simulated_surface()}}, \code{\link[=plot.RiskMap_simulated_surface]{plot.RiskMap_simulated_surface()}}
 }

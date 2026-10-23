@@ -9,17 +9,17 @@
   metric = NULL,
   model = NULL,
   ...,
-  mode = "average",
-  test_set = NULL,
-  combine_panels = FALSE
+  pit_mode = "average",
+  pit_test_set = NULL,
+  combine_pit = FALSE
 )
 }
 \arguments{
 \item{x}{A \code{RiskMap_cross_validation} object.}
 
 \item{metric}{Character vector restricting which plot(s) to produce;
-one or more of \code{"CRPS"}, \code{"SCRPS"}, \code{"AnPIT_area"} (a
-spatial map of that score) and \code{"AnPIT"} (the calibration
+one or more of \code{"CRPS"}, \code{"SCRPS"}, \code{"PIT_area"} (a
+spatial map of that score) and \code{"PIT"} (the calibration
 curve). Defaults to every metric available in \code{x}.}
 
 \item{model}{Character vector of model names to include. Defaults to
@@ -30,13 +30,13 @@ every model in \code{x$model}.}
 Must be passed by position only after \code{model}, since the remaining
 arguments must be named.}
 
-\item{mode}{For the calibration curve only: one of \code{"average"}
+\item{pit_mode}{For the calibration curve only: one of \code{"average"}
 (average curve across test sets, the default), \code{"single"} (one
 specific test set) or \code{"all"} (every test set separately).}
 
-\item{test_set}{Integer; required when \code{mode = "single"}.}
+\item{pit_test_set}{Integer; required when \code{pit_mode = "single"}.}
 
-\item{combine_panels}{Logical; when \code{mode = "average"}, draw the
+\item{combine_pit}{Logical; when \code{pit_mode = "average"}, draw the
 calibration curves for every model in a single panel (\code{TRUE})
 rather than one panel per model (\code{FALSE}, default).}
 }
@@ -52,11 +52,12 @@ returned invisibly for later reuse.
 Plots whatever predictive-performance output is available in a
 \code{RiskMap_cross_validation} object returned by
 \code{\link{assess_prediction}}: a spatial map for each per-location
-metric (\code{"CRPS"}, \code{"SCRPS"}, \code{"AnPIT_area"}) that was
+metric (\code{"CRPS"}, \code{"SCRPS"}, \code{"PIT_area"}) that was
 requested via \code{metrics} in that call, and/or a calibration curve
-(\code{"AnPIT"}) - the Aggregated normalised Probability Integral
-Transform curve for discrete families, or the empirical PIT curve for
-Gaussian models - when that was requested. By default every available
+(\code{"PIT"}) - the Aggregated normalised Probability Integral
+Transform (AnPIT) curve for discrete families, or the empirical PIT curve
+for Gaussian models - when that was requested. Plot titles and legends
+use AnPIT or PIT according to each model's family. By default every available
 plot is produced, one per requested model, so you don't need to know in
 advance which metrics were computed. Each metric gets its own plot
 (or, with more than one model, its own small grid of one panel per

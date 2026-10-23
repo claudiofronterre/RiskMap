@@ -20,7 +20,9 @@ extract multiple simulations in one tidy table.}
 \code{simulated_data()} returns the sample \code{sf} data with its response
 column replaced by the selected simulation, ready for refitting.
 \code{simulated_surface()} returns the grid \code{sf} data with columns for the
-spatial effect, nugget, group effect, linear predictor and mean.
+spatial effect, nugget, group effect, linear predictor and mean, with
+class \code{RiskMap_simulated_surface} so that it can be mapped with
+\link[=plot.RiskMap_simulated_surface]{plot()}.
 }
 \description{
 Extract a simulated dataset or surface
