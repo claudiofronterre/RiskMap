@@ -5,13 +5,14 @@
 ##'
 ##' @param x A `RiskMap_prediction` object.
 ##' @param quantity Predictive quantity to display, such as `"response"`,
-##'   `"spatial"`, `"link"`, or the name of a target supplied through
-##'   `transform` in [predict.RiskMap()].
+##'   `"spatial"`, `"link"`, `"fixed"` (the fixed-effect contribution), or the
+##'   name of a target supplied through `transform` in [predict.RiskMap()].
 ##' @param summary Summary to display, such as `"mean"`, `"median"`, `"lower"`,
 ##'   `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or `"exceedance"`. When
 ##'   `NULL` (the default), the first summary requested in
 ##'   [predict.RiskMap()] is shown. Several summaries can be supplied; they are
-##'   then drawn one per row.
+##'   then arranged in a grid, or one per row when `spatial_scale = "both"`.
+##'   Ignored for `"fixed"` and `"offset"`, which have a single value.
 ##' @param spatial_scale Spatial scale to display. `"auto"` (the default) shows
 ##'   the polygon summaries when [predict.RiskMap()] was given `boundaries`,
 ##'   and the location-level predictions otherwise. `"location"` and `"area"`
@@ -45,10 +46,17 @@
 ##' @details
 ##' The legend title names the mapped quantity and is the only title. For
 ##' binomial models the response is labelled as prevalence and for Poisson
-##' models as a rate. Probabilities are labelled as percentages.
+##' models as a rate. Probabilities are labelled as percentages. The title can
+##' be replaced with `labs(fill = ...)`.
 ##'
-##' When `spatial_scale = "both"`, the two scales share one colour scale so
-##' that colours mean the same in both panels. This requires an aggregation on
+##' Grid cells created by [create_grid()] are drawn as squares clipped to the
+##' grid's study boundary. Maps are ordinary `ggplot` objects drawn with
+##' [ggplot2::geom_sf()], so further `sf` layers, such as survey locations,
+##' can be added in any coordinate reference system.
+##'
+##' When `spatial_scale = "both"`, the two scales are drawn side by side,
+##' locations first, and share one colour scale so that colours mean the same
+##' in both panels. This requires an aggregation on
 ##' the same scale as the locations (`"mean"`, `"median"`, `"min"` or
 ##' `"max"`).
 ##'
@@ -90,7 +98,11 @@ plot.RiskMap_prediction <- function(
   spatial_scale <- match.arg(spatial_scale)
   check_plot_flag(north_arrow, "north_arrow")
   check_plot_flag(scale_bar, "scale_bar")
-  if (is.null(summary)) summary <- default_prediction_summary(x)
+  if (quantity %in% c("fixed", "offset")) {
+    summary <- "estimate"
+  } else if (is.null(summary)) {
+    summary <- default_prediction_summary(x)
+  }
   if (!is.character(summary) || !length(summary) || anyNA(summary) ||
       anyDuplicated(summary)) {
     stop("'summary' must contain unique summary names", call. = FALSE)
@@ -110,7 +122,8 @@ plot.RiskMap_prediction <- function(
         north_arrow = north_arrow, scale_bar = scale_bar, ...
       )
     })
-    return(patchwork::wrap_plots(maps, ncol = 1L))
+    layout_columns <- if (spatial_scale == "both") 1L else NULL
+    return(patchwork::wrap_plots(maps, ncol = layout_columns))
   }
 
   has_areas <- !is.null(x$boundaries) && !is.null(x$boundary_summary)
@@ -180,7 +193,6 @@ plot.RiskMap_prediction <- function(
     map <- add_prediction_layer(map, x, panels[[scale_name]],
                                 facet_labels[[scale_name]], facet_levels)
   }
-  map <- map + coord_sf(crs = st_crs(panels[[1L]]$data), datum = NA)
   if (length(panels) > 1L) {
     map <- map + facet_wrap(~ .spatial_scale, nrow = 1L)
   }
@@ -188,15 +200,18 @@ plot.RiskMap_prediction <- function(
   map <- map + prediction_fill_scale(
     colours = colours, limits = colour_limits, values = values,
     breaks = breaks, role = role, probability = probability,
-    title = prediction_legend_title(x, quantity, summary, threshold,
-                                    if (spatial_scale == "area") aggregate),
     ...
   ) +
+    # Set through labs() so that users can replace it with labs(fill = ...).
+    labs(fill = prediction_legend_title(
+      x, quantity, summary, threshold,
+      if (spatial_scale == "area") aggregate
+    )) +
     theme_void() +
     theme(
       legend.position = "top",
       legend.justification = "center",
-      strip.text = element_text(size = 9, margin = margin(b = 4))
+      strip.text = element_blank()
     )
   if (north_arrow) map <- map + annotation_north_arrow(location = "tr")
   if (scale_bar) map <- map + annotation_scale(location = "bl")
@@ -265,16 +280,9 @@ add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
   }
   metadata <- attr(data, "grid_metadata", exact = TRUE)
   if (!is.null(metadata) && identical(metadata$cell_shape, "square")) {
-    coords <- st_coordinates(data)
-    tiles <- data.frame(
-      x = coords[, 1L], y = coords[, 2L],
-      .prediction_value = data$.prediction_value,
-      .spatial_scale = facet_label
-    )
-    map <- map + geom_tile(
-      data = tiles,
-      aes(x = .data$x, y = .data$y, fill = .data$.prediction_value),
-      width = metadata$cellsize, height = metadata$cellsize
+    map <- map + geom_sf(
+      data = prediction_cells(data, metadata, facet_label),
+      aes(fill = .data$.prediction_value), colour = NA, inherit.aes = FALSE
     )
   } else {
     data$.spatial_scale <- facet_label
@@ -292,10 +300,29 @@ add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
   map
 }
 
+#' Square grid cells as polygons, clipped to the grid's study boundary
+#' @noRd
+prediction_cells <- function(data, metadata, facet_label) {
+  grid_crs <- st_crs(metadata$grid_crs)
+  centres <- st_transform(st_geometry(data), grid_crs)
+  cells <- st_buffer(centres, dist = metadata$cellsize / 2,
+                     endCapStyle = "SQUARE")
+  cells <- st_sf(.prediction_value = data$.prediction_value,
+                 .spatial_scale = facet_label, geometry = cells)
+  if (!is.null(metadata$boundary)) {
+    boundary <- st_transform(metadata$boundary, grid_crs)
+    cells <- suppressWarnings(st_intersection(cells, boundary))
+    # Cells that only touch the boundary leave lines or points; keep areas.
+    cells <- suppressWarnings(st_collection_extract(cells, "POLYGON"))
+    cells <- cells[!st_is_empty(cells), ]
+  }
+  cells
+}
+
 #' Fill scale for a prediction map
 #' @noRd
 prediction_fill_scale <- function(colours, limits, values, breaks, role,
-                                  probability, title, ...) {
+                                  probability, ...) {
   range_values <- limits %||% range(values, na.rm = TRUE)
   labels <- if (probability) {
     accuracy <- if (diff(range_values) >= 0.05) 1 else 0.1
@@ -325,7 +352,7 @@ prediction_fill_scale <- function(colours, limits, values, breaks, role,
                   class_colours[[n_classes]]),
       values = c(0, positions, 1),
       limits = range(breaks), breaks = breaks, labels = labels,
-      oob = scales::oob_squish, name = title, na.value = "grey90",
+      oob = scales::oob_squish, na.value = "grey90",
       guide = guide_coloursteps(title.position = "top",
                                 direction = "horizontal",
                                 theme = guide_theme),
@@ -340,8 +367,7 @@ prediction_fill_scale <- function(colours, limits, values, breaks, role,
   }
   scale_fill_gradientn(
     colours = colours, limits = limits, breaks = scale_breaks,
-    labels = labels, oob = scales::oob_squish, name = title,
-    na.value = "grey90",
+    labels = labels, oob = scales::oob_squish, na.value = "grey90",
     guide = guide_colourbar(title.position = "top", direction = "horizontal",
                             theme = guide_theme),
     ...
@@ -388,7 +414,9 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
     return(list(data = data, polygon = TRUE, threshold = threshold))
   }
 
-  column <- if (identical(summary, "exceedance")) {
+  column <- if (quantity %in% c("fixed", "offset")) {
+    quantity
+  } else if (identical(summary, "exceedance")) {
     available <- grep(
       paste0("^", quantity, "_exceedance_"), names(x$predictions), value = TRUE
     )
@@ -441,7 +469,8 @@ select_prediction_plot_value <- function(value, available, argument) {
 prediction_plot_role <- function(quantity, summary) {
   if (identical(summary, "exceedance")) return("evidence")
   if (summary %in% c("sd", "cv", "interval_width")) return("uncertainty")
-  if (quantity %in% c("spatial", "link", "nugget", "random_effects")) {
+  if (quantity %in% c("spatial", "link", "nugget", "random_effects",
+                      "fixed", "offset")) {
     return("signed")
   }
   "level"
@@ -503,6 +532,8 @@ prediction_quantity_label <- function(x, quantity) {
   }
   switch(quantity,
          spatial = "spatial effect",
+         fixed = "fixed effects",
+         offset = "offset",
          link = "linear predictor",
          nugget = "nugget effect",
          random_effects = "random effects",
@@ -525,6 +556,7 @@ prediction_legend_title <- function(x, quantity, summary, threshold,
   level <- paste0(format(100 * (x$level %||% 0.95)), "%")
   title <- switch(
     summary,
+    estimate = label,
     mean = paste("Mean", label),
     median = paste("Median", label),
     lower = paste("Lower", level, "limit of", label),

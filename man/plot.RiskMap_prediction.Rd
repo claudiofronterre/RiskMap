@@ -23,14 +23,15 @@
 \item{x}{A \code{RiskMap_prediction} object.}
 
 \item{quantity}{Predictive quantity to display, such as \code{"response"},
-\code{"spatial"}, \code{"link"}, or the name of a target supplied through
-\code{transform} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.}
+\code{"spatial"}, \code{"link"}, \code{"fixed"} (the fixed-effect contribution), or the
+name of a target supplied through \code{transform} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.}
 
 \item{summary}{Summary to display, such as \code{"mean"}, \code{"median"}, \code{"lower"},
 \code{"upper"}, \code{"sd"}, \code{"cv"}, \code{"interval_width"}, or \code{"exceedance"}. When
 \code{NULL} (the default), the first summary requested in
 \code{\link[=predict.RiskMap]{predict.RiskMap()}} is shown. Several summaries can be supplied; they are
-then drawn one per row.}
+then arranged in a grid, or one per row when \code{spatial_scale = "both"}.
+Ignored for \code{"fixed"} and \code{"offset"}, which have a single value.}
 
 \item{spatial_scale}{Spatial scale to display. \code{"auto"} (the default) shows
 the polygon summaries when \code{\link[=predict.RiskMap]{predict.RiskMap()}} was given \code{boundaries},
@@ -81,10 +82,17 @@ output returned by \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
 \details{
 The legend title names the mapped quantity and is the only title. For
 binomial models the response is labelled as prevalence and for Poisson
-models as a rate. Probabilities are labelled as percentages.
+models as a rate. Probabilities are labelled as percentages. The title can
+be replaced with \code{labs(fill = ...)}.
 
-When \code{spatial_scale = "both"}, the two scales share one colour scale so
-that colours mean the same in both panels. This requires an aggregation on
+Grid cells created by \code{\link[=create_grid]{create_grid()}} are drawn as squares clipped to the
+grid's study boundary. Maps are ordinary \code{ggplot} objects drawn with
+\code{\link[ggplot2:geom_sf]{ggplot2::geom_sf()}}, so further \code{sf} layers, such as survey locations,
+can be added in any coordinate reference system.
+
+When \code{spatial_scale = "both"}, the two scales are drawn side by side,
+locations first, and share one colour scale so that colours mean the same
+in both panels. This requires an aggregation on
 the same scale as the locations (\code{"mean"}, \code{"median"}, \code{"min"} or
 \code{"max"}).
 
