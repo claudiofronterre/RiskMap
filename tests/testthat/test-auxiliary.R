@@ -282,7 +282,7 @@ test_that("create_convex_hull functions correctly", {
   expect_identical(nrow(result), 1L)
 
   intersect <- unlist(st_intersects(gaussian_data, result))
-  expect_identical(intersect, rep(1L, 10))
+  expect_identical(intersect, rep(1L, nrow(gaussian_data)))
 })
 
 test_that("propose_utm generates errors", {

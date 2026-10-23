@@ -15,11 +15,14 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
   )
   expect_identical(zero_error_fit$fix_var_me, 0)
   expect_lt(max(abs(zero_error_fit$grad_MLE)), 0.001)
-  expect_no_error(suppressWarnings(glgpm(
-    z ~ gp(nugget = TRUE), gaussian_data, "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
-    control_mcml = fixture_control_mcml, messages = FALSE
-  )))
+  expect_warning(
+    expect_no_error(glgpm(
+      z ~ gp(nugget = TRUE), gaussian_data, "binomial",
+      denominator = denominator, control_mcmc = control_mcmc,
+      control_mcml = fixture_control_mcml, messages = FALSE
+    )),
+    "estimated as effectively zero"
+  )
 
   two_location_data <- rbind(data,
                              data.frame(
@@ -63,12 +66,20 @@ test_that("non-Gaussian estimated nugget uses consistent derivatives", {
   n <- 80L
   denominator <- sample(10:50, n, replace = TRUE)
   covariate <- rnorm(n)
+  x <- runif(n, 0, 100000)
+  z <- runif(n, 0, 100000)
+  # real spatial and nugget components, so sigma2 and tau2 are identifiable
+  sigma2 <- 1; phi <- 20000; kappa <- 1
+  Sigma <- sigma2 * matern_correlation(dist(cbind(x, z)), phi = phi, kappa = kappa,
+                                       return_sym_matrix = TRUE)
+  S <- as.numeric(t(chol(Sigma)) %*% rnorm(n))
+  nugget_true <- rnorm(n, sd = 0.6)
   data <- data.frame(
-    y = rbinom(n, denominator, plogis(-0.5 + 0.4 * covariate)),
+    y = rbinom(n, denominator, plogis(-0.5 + 0.4 * covariate + S + nugget_true)),
     covariate = covariate,
     denominator = denominator,
-    x = runif(n, 0, 100000),
-    z = runif(n, 0, 100000)
+    x = x,
+    z = z
   )
   spatial_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32630)
   control <- set_control_mcmc(

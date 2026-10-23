@@ -48,14 +48,23 @@ test_that("a custom invlink that Deriv cannot differentiate still fits via the n
   ## Built once and closed over, rather than rebuilt on every call: the
   ## numeric fallback's Richardson extrapolation calls `inv()` many times per
   ## optimizer iteration, and re-running approxfun()'s table setup that often
-  ## made this test take ~30s.
+  ## made this test slow.
+  ## small sample budget keeps this fast but too small to meet the MCML stopping criteria below
   af <- approxfun(c(-50, 50), c(0.01, 0.99), rule = 2)
   invlink <- list(inv = function(eta) af(eta))
+  small_control_mcml <- set_control_mcml(
+    initial_samples = 100, max_samples = 100, max_stages = 1,
+    min_effective_samples = 1, max_pareto_k = 100,
+    max_mcse_ratio = 0.99, score_probability = 0.999999
+  )
 
-  fit <- suppressWarnings(glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
-              denominator = denominator, invlink = invlink, control_mcmc = control_mcmc,
-                     control_mcml = fixture_control_mcml,
-              messages = FALSE))
+  expect_warning(
+    fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+                denominator = denominator, invlink = invlink, control_mcmc = control_mcmc,
+                       control_mcml = small_control_mcml,
+                messages = FALSE),
+    "reached its stopping limit"
+  )
 
   expect_s3_class(fit, "RiskMap")
   expect_true(all(is.finite(unlist(fit$estimate))))

@@ -119,7 +119,7 @@ test_that("assess_prediction produces errors", {
   )
 
   different_rows <- gaussian_model
-  different_rows$data <- different_rows$data[1:9,]
+  different_rows$data <- different_rows$data[seq_len(n - 1),]
 
   expect_error(
     assess_prediction(list(gaussian_model,
@@ -132,7 +132,8 @@ test_that("assess_prediction produces errors", {
   )
 
   different_order <- gaussian_model
-  different_order$data <- different_order$data[c(6:10, 1:5),]
+  half <- n %/% 2
+  different_order$data <- different_order$data[c((half + 1):n, 1:half),]
 
   expect_error(
     assess_prediction(list(gaussian_model,
@@ -154,7 +155,7 @@ test_that("assess_prediction produces errors", {
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
-                      user_split = matrix(1:20, ncol = 2)),
+                      user_split = matrix(seq_len(n * 2), ncol = 2)),
     "'user_split' matrix must have a number of columns equal to 'iter'"
   )
 
@@ -175,7 +176,7 @@ test_that("assess_prediction produces errors", {
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
-                      user_split = list(sample(10))),
+                      user_split = list(sample(n))),
     "must leave at least one observation for training"
   )
 
@@ -506,12 +507,7 @@ test_that("assess_prediction splits test data correctly", {
 
 test_that("assess_prediction can refit correctly for all model families", {
 
-  # 'regularized' holds out a single random point from the tiny (n = 10)
-  # fixtures; refitting on whichever 9 points remain is occasionally
-  # numerically singular for an unlucky holdout, so a seeded 'control_mcmc'
-  # is used here to keep the test deterministic (was intermittently failing
-  # on CI). control_mcmc's fixture seed (see helper-data.R) is verified
-  # stable for all three families.
+  # seeded control_mcmc keeps the random holdout deterministic (was intermittently failing on CI)
   result <- assess_prediction(
     list(gaussian_model),
     method = "regularized",
@@ -523,27 +519,28 @@ test_that("assess_prediction can refit correctly for all model families", {
 
   expect_setequal(names(result), c("test_set", "model"))
 
-  result <- assess_prediction(
-    list(binomial_model),
-    method = "regularized",
-    min_dist = 1,
-    size = 1,
-    keep_par_fixed = FALSE,
-    control_mcmc = control_mcmc,
-    messages = FALSE)
-
-  expect_setequal(names(result), c("test_set", "model"))
-
   expect_warning(
     result <- assess_prediction(
-      list(poisson_model),
+      list(binomial_model),
       method = "regularized",
       min_dist = 1,
       size = 1,
       keep_par_fixed = FALSE,
       control_mcmc = control_mcmc,
       messages = FALSE),
-    "estimated as effectively zero")
+    "spatial correlation cannot be distinguished from unstructured variation"
+  )
+
+  expect_setequal(names(result), c("test_set", "model"))
+
+  result <- assess_prediction(
+    list(poisson_model),
+    method = "regularized",
+    min_dist = 1,
+    size = 1,
+    keep_par_fixed = FALSE,
+    control_mcmc = control_mcmc,
+    messages = FALSE)
 
   expect_setequal(names(result), c("test_set", "model"))
 
@@ -632,9 +629,13 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
 
 test_that("plot_folds() plots every observation, coloured by training/test set (#157)", {
   n <- nrow(gaussian_data)
+  test1 <- (n - 2):n
+  train1 <- setdiff(seq_len(n), test1)
+  test2 <- (n - 4):(n - 2)
+  train2 <- setdiff(seq_len(n), test2)
   data_split <- list(splits = list(
-    list(data = gaussian_data[1:7, ], data_test = gaussian_data[8:10, ]),
-    list(data = gaussian_data[c(1:5, 9:10), ], data_test = gaussian_data[6:8, ])
+    list(data = gaussian_data[train1, ], data_test = gaussian_data[test1, ]),
+    list(data = gaussian_data[train2, ], data_test = gaussian_data[test2, ])
   ))
 
   p <- plot_folds(data_split)
@@ -647,8 +648,11 @@ test_that("plot_folds() plots every observation, coloured by training/test set (
 })
 
 test_that("plot_folds() doesn't facet when there is only one iteration", {
+  n <- nrow(gaussian_data)
+  test1 <- (n - 2):n
+  train1 <- setdiff(seq_len(n), test1)
   data_split <- list(splits = list(
-    list(data = gaussian_data[1:7, ], data_test = gaussian_data[8:10, ])
+    list(data = gaussian_data[train1, ], data_test = gaussian_data[test1, ])
   ))
 
   p <- plot_folds(data_split)
