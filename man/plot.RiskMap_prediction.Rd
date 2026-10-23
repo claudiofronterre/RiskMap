@@ -7,11 +7,13 @@
 \method{plot}{RiskMap_prediction}(
   x,
   quantity = "response",
-  summary = "mean",
+  summary = NULL,
+  spatial_scale = c("auto", "location", "area", "both"),
   aggregate = NULL,
   threshold = NULL,
   palette = NULL,
   limits = NULL,
+  breaks = NULL,
   north_arrow = FALSE,
   scale_bar = FALSE,
   ...
@@ -21,48 +23,82 @@
 \item{x}{A \code{RiskMap_prediction} object.}
 
 \item{quantity}{Predictive quantity to display, such as \code{"response"},
-\code{"spatial"}, or \code{"link"}.}
+\code{"spatial"}, \code{"link"}, or the name of a target supplied through
+\code{transform} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.}
 
-\item{summary}{Summary to display, such as \code{"mean"}, \code{"lower"}, \code{"upper"},
-\code{"interval_width"}, or \code{"exceedance"}.}
+\item{summary}{Summary to display, such as \code{"mean"}, \code{"median"}, \code{"lower"},
+\code{"upper"}, \code{"sd"}, \code{"cv"}, \code{"interval_width"}, or \code{"exceedance"}. When
+\code{NULL} (the default), the first summary requested in
+\code{\link[=predict.RiskMap]{predict.RiskMap()}} is shown. Several summaries can be supplied; they are
+then drawn one per row.}
 
-\item{aggregate}{For polygon predictions, the within-polygon aggregation to
-display. When \code{NULL} (the default), the location-level predictions are
-displayed. Supplying an aggregation displays the corresponding boundary
-summaries.}
+\item{spatial_scale}{Spatial scale to display. \code{"auto"} (the default) shows
+the polygon summaries when \code{\link[=predict.RiskMap]{predict.RiskMap()}} was given \code{boundaries},
+and the location-level predictions otherwise. \code{"location"} and \code{"area"}
+select one scale, and \code{"both"} draws them side by side with a shared
+colour scale.}
+
+\item{aggregate}{Within-polygon aggregation to display at the area scale,
+such as \code{"mean"} or \code{"sum"}. When \code{NULL}, the first aggregation
+calculated is used.}
 
 \item{threshold}{For an exceedance map, the response-scale threshold to
 display. It may be omitted when only one threshold was calculated.}
 
-\item{palette}{Colour palette. \code{NULL} selects a suitable default: the
-sequential Mist-ember palette for ordinary prediction summaries and a
-blue-to-red palette centred at 0.5 for exceedance probabilities. A
-character vector of colours or the name of an HCL palette accepted by
-\code{\link[grDevices:hcl.colors]{grDevices::hcl.colors()}} can be supplied. Prefix a named palette with
-\code{"-"} to reverse it, for example \code{"-Viridis"}.}
+\item{palette}{Colour palette. \code{NULL} selects a default that depends on
+what the map shows: a calm-to-alarm sequential palette for predicted
+levels, a single-hue palette for uncertainty (\code{"sd"}, \code{"cv"},
+\code{"interval_width"}), a blue-to-red palette centred at 0.5 for exceedance
+probabilities, and a palette centred at zero for signed effects such as
+\code{"spatial"} and \code{"link"}. A character vector of colours or the name of an
+HCL palette accepted by \code{\link[grDevices:hcl.colors]{grDevices::hcl.colors()}} can be supplied. Prefix
+a named palette with \code{"-"} to reverse it, for example \code{"-Viridis"}.}
 
 \item{limits}{Optional two-element numeric vector fixing the colour limits.
-By default, limits adapt to the values in the displayed map. Supply the
-same limits when maps must be compared directly. Exceedance probabilities
+By default, limits adapt to the values displayed. Supply the same limits
+when separate maps must be compared directly. Exceedance probabilities
 always use limits from 0 to 1.}
+
+\item{breaks}{Optional increasing numeric vector of class boundaries. When
+supplied, values are shown in classes, for example programme thresholds
+such as \code{c(0, 0.05, 0.1, 0.2, 1)}.}
 
 \item{north_arrow}{Logical. Add a north arrow. Defaults to \code{FALSE}.}
 
 \item{scale_bar}{Logical. Add a scale bar. Defaults to \code{FALSE}.}
 
-\item{...}{Additional arguments passed to \code{\link[ggplot2:scale_fill_gradientn]{ggplot2::scale_fill_gradientn()}}.}
+\item{...}{Additional arguments passed to the ggplot2 fill scale, for
+example \code{transform = "sqrt"} for skewed values.}
 }
 \value{
-A \code{ggplot} object.
+A \code{ggplot} object. When several summaries are requested, a
+\code{patchwork} object combining one \code{ggplot} per summary.
 }
 \description{
 Draws a publication-ready map from the location-level or polygon-level
 output returned by \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
 }
 \details{
-The default limits emphasize spatial variation within the displayed map;
-colours therefore need not represent the same values in two different maps.
-Use \code{limits} to make maps directly comparable. Exceedance maps are an
-exception: their scale is always fixed from 0 to 1, with 0.5 at the neutral
-midpoint.
+The legend title names the mapped quantity and is the only title. For
+binomial models the response is labelled as prevalence and for Poisson
+models as a rate. Probabilities are labelled as percentages.
+
+When \code{spatial_scale = "both"}, the two scales share one colour scale so
+that colours mean the same in both panels. This requires an aggregation on
+the same scale as the locations (\code{"mean"}, \code{"median"}, \code{"min"} or
+\code{"max"}).
+
+Outlines of the \code{boundaries} supplied to \code{\link[=predict.RiskMap]{predict.RiskMap()}} are drawn
+automatically on location-level maps.
+}
+\examples{
+data(italy_sim)
+example_data <- italy_sim[1:50, ]
+fit <- glgpm(y ~ gp(), data = example_data, family = "gaussian",
+             messages = FALSE)
+areas <- sf::st_sf(geometry = sf::st_make_grid(example_data, n = c(2, 1)))
+prediction <- predict(fit, newdata = example_data, boundaries = areas,
+                      aggregate = "mean", messages = FALSE)
+plot(prediction)
+plot(prediction, spatial_scale = "both")
 }

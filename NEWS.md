@@ -156,6 +156,17 @@ latent effects are sampled at that value with a short run of the same Langevin
 sampler used for plug-in prediction. The pooled draws give intervals,
 exceedance probabilities and areal summaries that also reflect parameter
 uncertainty, which matters for small or low-prevalence surveys.
+- `plot()` maps the output of `predict()`. Default colours depend on what the
+  map shows: a calm-to-alarm palette for predicted levels, a single neutral
+  hue for uncertainty (`sd`, `cv`, `interval_width`), a blue-to-red palette
+  centred at 50% for exceedance probabilities and a palette centred at zero
+  for signed effects. The legend title names the quantity (for example
+  "Mean prevalence" for binomial models) and probabilities are labelled as
+  percentages. `spatial_scale = "both"` draws locations and areas side by
+  side with a shared colour scale, several summaries can be drawn in one
+  call, `breaks` gives a binned map, and boundaries supplied to `predict()`
+  are outlined automatically. `print()` lists what a prediction contains and
+  how to map it. `predict()` output now records `response_name`.
 
 ## Cross validation
 

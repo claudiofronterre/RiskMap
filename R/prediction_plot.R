@@ -5,37 +5,68 @@
 ##'
 ##' @param x A `RiskMap_prediction` object.
 ##' @param quantity Predictive quantity to display, such as `"response"`,
-##'   `"spatial"`, or `"link"`.
-##' @param summary Summary to display, such as `"mean"`, `"lower"`, `"upper"`,
-##'   `"interval_width"`, or `"exceedance"`.
-##' @param aggregate For polygon predictions, the within-polygon aggregation to
-##'   display. When `NULL` (the default), the location-level predictions are
-##'   displayed. Supplying an aggregation displays the corresponding boundary
-##'   summaries.
+##'   `"spatial"`, `"link"`, or the name of a target supplied through
+##'   `transform` in [predict.RiskMap()].
+##' @param summary Summary to display, such as `"mean"`, `"median"`, `"lower"`,
+##'   `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or `"exceedance"`. When
+##'   `NULL` (the default), the first summary requested in
+##'   [predict.RiskMap()] is shown. Several summaries can be supplied; they are
+##'   then drawn one per row.
+##' @param spatial_scale Spatial scale to display. `"auto"` (the default) shows
+##'   the polygon summaries when [predict.RiskMap()] was given `boundaries`,
+##'   and the location-level predictions otherwise. `"location"` and `"area"`
+##'   select one scale, and `"both"` draws them side by side with a shared
+##'   colour scale.
+##' @param aggregate Within-polygon aggregation to display at the area scale,
+##'   such as `"mean"` or `"sum"`. When `NULL`, the first aggregation
+##'   calculated is used.
 ##' @param threshold For an exceedance map, the response-scale threshold to
 ##'   display. It may be omitted when only one threshold was calculated.
-##' @param palette Colour palette. `NULL` selects a suitable default: the
-##'   sequential Mist-ember palette for ordinary prediction summaries and a
-##'   blue-to-red palette centred at 0.5 for exceedance probabilities. A
-##'   character vector of colours or the name of an HCL palette accepted by
-##'   [grDevices::hcl.colors()] can be supplied. Prefix a named palette with
-##'   `"-"` to reverse it, for example `"-Viridis"`.
+##' @param palette Colour palette. `NULL` selects a default that depends on
+##'   what the map shows: a calm-to-alarm sequential palette for predicted
+##'   levels, a single-hue palette for uncertainty (`"sd"`, `"cv"`,
+##'   `"interval_width"`), a blue-to-red palette centred at 0.5 for exceedance
+##'   probabilities, and a palette centred at zero for signed effects such as
+##'   `"spatial"` and `"link"`. A character vector of colours or the name of an
+##'   HCL palette accepted by [grDevices::hcl.colors()] can be supplied. Prefix
+##'   a named palette with `"-"` to reverse it, for example `"-Viridis"`.
 ##' @param limits Optional two-element numeric vector fixing the colour limits.
-##'   By default, limits adapt to the values in the displayed map. Supply the
-##'   same limits when maps must be compared directly. Exceedance probabilities
+##'   By default, limits adapt to the values displayed. Supply the same limits
+##'   when separate maps must be compared directly. Exceedance probabilities
 ##'   always use limits from 0 to 1.
+##' @param breaks Optional increasing numeric vector of class boundaries. When
+##'   supplied, values are shown in classes, for example programme thresholds
+##'   such as `c(0, 0.05, 0.1, 0.2, 1)`.
 ##' @param north_arrow Logical. Add a north arrow. Defaults to `FALSE`.
 ##' @param scale_bar Logical. Add a scale bar. Defaults to `FALSE`.
-##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()].
+##' @param ... Additional arguments passed to the ggplot2 fill scale, for
+##'   example `transform = "sqrt"` for skewed values.
 ##'
 ##' @details
-##' The default limits emphasize spatial variation within the displayed map;
-##' colours therefore need not represent the same values in two different maps.
-##' Use `limits` to make maps directly comparable. Exceedance maps are an
-##' exception: their scale is always fixed from 0 to 1, with 0.5 at the neutral
-##' midpoint.
+##' The legend title names the mapped quantity and is the only title. For
+##' binomial models the response is labelled as prevalence and for Poisson
+##' models as a rate. Probabilities are labelled as percentages.
 ##'
-##' @return A `ggplot` object.
+##' When `spatial_scale = "both"`, the two scales share one colour scale so
+##' that colours mean the same in both panels. This requires an aggregation on
+##' the same scale as the locations (`"mean"`, `"median"`, `"min"` or
+##' `"max"`).
+##'
+##' Outlines of the `boundaries` supplied to [predict.RiskMap()] are drawn
+##' automatically on location-level maps.
+##'
+##' @return A `ggplot` object. When several summaries are requested, a
+##'   `patchwork` object combining one `ggplot` per summary.
+##' @examples
+##' data(italy_sim)
+##' example_data <- italy_sim[1:50, ]
+##' fit <- glgpm(y ~ gp(), data = example_data, family = "gaussian",
+##'              messages = FALSE)
+##' areas <- sf::st_sf(geometry = sf::st_make_grid(example_data, n = c(2, 1)))
+##' prediction <- predict(fit, newdata = example_data, boundaries = areas,
+##'                       aggregate = "mean", messages = FALSE)
+##' plot(prediction)
+##' plot(prediction, spatial_scale = "both")
 ##' @method plot RiskMap_prediction
 ##' @export
 ##' @importFrom ggspatial annotation_north_arrow annotation_scale
@@ -43,92 +74,278 @@
 plot.RiskMap_prediction <- function(
     x,
     quantity = "response",
-    summary = "mean",
+    summary = NULL,
+    spatial_scale = c("auto", "location", "area", "both"),
     aggregate = NULL,
     threshold = NULL,
     palette = NULL,
     limits = NULL,
+    breaks = NULL,
     north_arrow = FALSE,
     scale_bar = FALSE,
     ...) {
   if (!inherits(x, "RiskMap_prediction")) {
     stop("'x' must be a RiskMap_prediction object", call. = FALSE)
   }
+  spatial_scale <- match.arg(spatial_scale)
   check_plot_flag(north_arrow, "north_arrow")
   check_plot_flag(scale_bar, "scale_bar")
+  if (is.null(summary)) summary <- default_prediction_summary(x)
+  if (!is.character(summary) || !length(summary) || anyNA(summary) ||
+      anyDuplicated(summary)) {
+    stop("'summary' must contain unique summary names", call. = FALSE)
+  }
 
-  plot_data <- prediction_plot_data(
-    x, quantity, summary, aggregate, threshold
-  )
-  is_exceedance <- identical(summary, "exceedance")
-  if (is_exceedance && !is.null(limits) && !identical(as.numeric(limits), c(0, 1))) {
+  if (length(summary) > 1L) {
+    if (!requireNamespace("patchwork", quietly = TRUE)) {
+      stop("Plotting several summaries requires the 'patchwork' package",
+           call. = FALSE)
+    }
+    maps <- lapply(summary, function(one_summary) {
+      plot.RiskMap_prediction(
+        x, quantity = quantity, summary = one_summary,
+        spatial_scale = spatial_scale, aggregate = aggregate,
+        threshold = if (identical(one_summary, "exceedance")) threshold,
+        palette = palette, limits = limits, breaks = breaks,
+        north_arrow = north_arrow, scale_bar = scale_bar, ...
+      )
+    })
+    return(patchwork::wrap_plots(maps, ncol = 1L))
+  }
+
+  has_areas <- !is.null(x$boundaries) && !is.null(x$boundary_summary)
+  if (spatial_scale == "auto") {
+    spatial_scale <- if (has_areas || !is.null(aggregate)) "area" else
+      "location"
+  }
+  if (spatial_scale %in% c("area", "both") && !has_areas) {
+    stop("This prediction object does not contain boundary summaries",
+         call. = FALSE)
+  }
+  if (spatial_scale %in% c("area", "both")) {
+    aggregate <- select_prediction_plot_value(
+      aggregate %||% unique(x$boundary_summary$aggregate)[[1L]],
+      unique(x$boundary_summary$aggregate), "aggregate"
+    )
+  }
+  if (spatial_scale == "both" &&
+      !aggregate %in% c("mean", "median", "min", "max")) {
+    stop("spatial_scale = \"both\" needs an aggregation on the same scale as ",
+         "the locations: \"mean\", \"median\", \"min\" or \"max\"",
+         call. = FALSE)
+  }
+
+  panels <- list()
+  if (spatial_scale %in% c("location", "both")) {
+    panels$location <- prediction_plot_data(x, quantity, summary, NULL,
+                                            threshold)
+  }
+  if (spatial_scale %in% c("area", "both")) {
+    panels$area <- prediction_plot_data(x, quantity, summary, aggregate,
+                                        threshold)
+  }
+  threshold <- panels[[1L]]$threshold
+  role <- prediction_plot_role(quantity, summary)
+  probability <- prediction_is_probability(x, quantity, summary) &&
+    (spatial_scale == "location" ||
+       aggregate %in% c("mean", "median", "min", "max") ||
+       identical(summary, "exceedance"))
+
+  values <- unlist(lapply(panels, function(panel) {
+    panel$data$.prediction_value
+  }), use.names = FALSE)
+  if (role == "evidence" && !is.null(limits) &&
+      !identical(as.numeric(limits), c(0, 1))) {
     warning("Exceedance probabilities always use limits from 0 to 1",
             call. = FALSE)
   }
-  colour_limits <- if (is_exceedance) c(0, 1) else check_plot_limits(limits)
-  colours <- prediction_plot_palette(palette, is_exceedance)
-  legend_title <- prediction_legend_title(quantity, summary, threshold)
+  limits <- check_plot_limits(limits)
+  breaks <- check_plot_breaks(breaks)
+  # Default limits end on round values so the legend labels both ends.
+  colour_limits <- switch(
+    role,
+    evidence = c(0, 1),
+    signed = limits %||%
+      c(-1, 1) * max(abs(pretty(range(values, na.rm = TRUE), n = 4))),
+    limits %||% range(pretty(range(values, na.rm = TRUE), n = 4))
+  )
+  colours <- if (is.null(palette)) prediction_role_palette(role) else
+    prediction_plot_palette(palette)
 
+  facet_labels <- c(location = "Locations",
+                    area = paste("Area", aggregate %||% ""))
   map <- ggplot()
-  if (isTRUE(plot_data$polygon)) {
-    map <- map + geom_sf(
-      data = plot_data$data,
-      aes(fill = .data$.prediction_value),
-      colour = "black", linewidth = 0.16
-    )
-  } else {
-    metadata <- attr(plot_data$data, "grid_metadata", exact = TRUE)
-    if (!is.null(metadata) && identical(metadata$cell_shape, "square")) {
-      coords <- st_coordinates(plot_data$data)
-      tile_data <- data.frame(
-        x = coords[, 1L], y = coords[, 2L],
-        .prediction_value = plot_data$data$.prediction_value
-      )
-      map <- map + geom_tile(
-        data = tile_data,
-        aes(x = .data$x, y = .data$y, fill = .data$.prediction_value),
-        width = metadata$cellsize, height = metadata$cellsize
-      ) + coord_sf(crs = st_crs(plot_data$data), datum = NA)
-    } else {
-      map <- map + geom_sf(
-        data = plot_data$data,
-        aes(colour = .data$.prediction_value), size = 1.8
-      )
-    }
+  facet_levels <- unname(facet_labels[names(panels)])
+  for (scale_name in names(panels)) {
+    map <- add_prediction_layer(map, x, panels[[scale_name]],
+                                facet_labels[[scale_name]], facet_levels)
+  }
+  map <- map + coord_sf(crs = st_crs(panels[[1L]]$data), datum = NA)
+  if (length(panels) > 1L) {
+    map <- map + facet_wrap(~ .spatial_scale, nrow = 1L)
   }
 
-  scale_arguments <- c(list(
-    colours = colours,
-    limits = colour_limits,
-    name = legend_title,
-    na.value = "grey90",
-    guide = guide_colourbar(
-      title.position = "top",
-      title.hjust = 0.5,
-      barwidth = unit(72, "pt"),
-      barheight = unit(7, "pt"),
-      ticks.colour = "black",
-      frame.colour = "grey45",
-      frame.linewidth = 0.35
-    )
-  ), list(...))
-  scale_function <- if (isTRUE(plot_data$polygon) ||
-                        !is.null(attr(plot_data$data, "grid_metadata", exact = TRUE))) {
-    scale_fill_gradientn
-  } else {
-    scale_colour_gradientn
-  }
-  map <- map + do.call(scale_function, scale_arguments) +
+  map <- map + prediction_fill_scale(
+    colours = colours, limits = colour_limits, values = values,
+    breaks = breaks, role = role, probability = probability,
+    title = prediction_legend_title(x, quantity, summary, threshold,
+                                    if (spatial_scale == "area") aggregate),
+    ...
+  ) +
     theme_void() +
     theme(
       legend.position = "top",
       legend.justification = "center",
-      legend.title = element_text(hjust = 0.5),
-      plot.title = element_blank()
+      strip.text = element_text(size = 9, margin = margin(b = 4))
     )
   if (north_arrow) map <- map + annotation_north_arrow(location = "tr")
   if (scale_bar) map <- map + annotation_scale(location = "bl")
   map
+}
+
+##' Print a RiskMap prediction
+##'
+##' Lists the predicted quantities, summaries and spatial scales stored in the
+##' object, and how to map them.
+##'
+##' @param x A `RiskMap_prediction` object.
+##' @param ... Not used.
+##' @return `x`, invisibly.
+##' @method print RiskMap_prediction
+##' @export
+print.RiskMap_prediction <- function(x, ...) {
+  locations <- nrow(x$predictions)
+  cat("RiskMap prediction: ", locations, " location",
+      if (locations == 1L) "" else "s", sep = "")
+  if (!is.null(x$boundaries)) {
+    cat(" and", nrow(x$boundaries), "areas")
+  }
+  cat("\n")
+  if (!is.null(x$family)) {
+    cat("Response: ", prediction_quantity_label(x, "response"), " (",
+        x$family, " model)\n", sep = "")
+  }
+  if (!is.null(x$type)) cat("Draws:", x$type, "\n")
+  quantities <- unique(c("response", x$transform, "link", "spatial"))
+  cat("Quantities:", paste(quantities, collapse = ", "), "\n")
+  if (length(x$summaries)) {
+    cat("Summaries:", paste(x$summaries, collapse = ", "), "\n")
+  }
+  if (length(x$thresholds)) {
+    cat("Exceedance thresholds:", paste(x$thresholds, collapse = ", "), "\n")
+  }
+  if (length(x$aggregate)) {
+    cat("Area aggregations:", paste(x$aggregate, collapse = ", "), "\n")
+  }
+  cat("\nMap with plot(x, summary = \"", default_prediction_summary(x), "\")",
+      sep = "")
+  if (!is.null(x$boundaries)) cat(", adding spatial_scale = \"both\"")
+  cat(".\n")
+  invisible(x)
+}
+
+#' First summary requested in predict(), used as the default map
+#' @noRd
+default_prediction_summary <- function(x) {
+  if (length(x$summaries)) return(x$summaries[[1L]])
+  "mean"
+}
+
+#' Add the layer for one spatial scale to a prediction map
+#' @noRd
+add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
+  facet_label <- factor(facet_label, levels = facet_levels)
+  data <- panel$data
+  if (isTRUE(panel$polygon)) {
+    data$.spatial_scale <- facet_label
+    return(map + geom_sf(
+      data = data, aes(fill = .data$.prediction_value),
+      colour = "black", linewidth = 0.16, inherit.aes = FALSE
+    ))
+  }
+  metadata <- attr(data, "grid_metadata", exact = TRUE)
+  if (!is.null(metadata) && identical(metadata$cell_shape, "square")) {
+    coords <- st_coordinates(data)
+    tiles <- data.frame(
+      x = coords[, 1L], y = coords[, 2L],
+      .prediction_value = data$.prediction_value,
+      .spatial_scale = facet_label
+    )
+    map <- map + geom_tile(
+      data = tiles,
+      aes(x = .data$x, y = .data$y, fill = .data$.prediction_value),
+      width = metadata$cellsize, height = metadata$cellsize
+    )
+  } else {
+    data$.spatial_scale <- facet_label
+    map <- map + geom_sf(
+      data = data, aes(fill = .data$.prediction_value),
+      shape = 21, colour = NA, size = 1.8, inherit.aes = FALSE
+    )
+  }
+  if (!is.null(x$boundaries)) {
+    outlines <- st_sf(.spatial_scale = facet_label,
+                      geometry = st_geometry(x$boundaries))
+    map <- map + geom_sf(data = outlines, fill = NA, colour = "black",
+                         linewidth = 0.16, inherit.aes = FALSE)
+  }
+  map
+}
+
+#' Fill scale for a prediction map
+#' @noRd
+prediction_fill_scale <- function(colours, limits, values, breaks, role,
+                                  probability, title, ...) {
+  range_values <- limits %||% range(values, na.rm = TRUE)
+  labels <- if (probability) {
+    accuracy <- if (diff(range_values) >= 0.05) 1 else 0.1
+    scales::label_percent(accuracy = accuracy)
+  } else {
+    function(value) {
+      sub("^-", "−", format(value, trim = TRUE, drop0trailing = TRUE))
+    }
+  }
+  guide_theme <- theme(
+    legend.key.width = unit(105, "pt"),
+    legend.key.height = unit(7, "pt"),
+    legend.ticks = element_blank(),
+    legend.frame = element_rect(colour = "grey45", linewidth = 0.35),
+    legend.title = element_text(hjust = 0.5, size = 9),
+    legend.text = element_text(size = 7.5)
+  )
+
+  if (!is.null(breaks)) {
+    n_classes <- length(breaks) - 1L
+    class_colours <- colours[round(seq(1, length(colours),
+                                       length.out = n_classes))]
+    midpoints <- (utils::head(breaks, -1L) + utils::tail(breaks, -1L)) / 2
+    positions <- (midpoints - breaks[[1L]]) / diff(range(breaks))
+    return(scale_fill_stepsn(
+      colours = c(class_colours[[1L]], class_colours,
+                  class_colours[[n_classes]]),
+      values = c(0, positions, 1),
+      limits = range(breaks), breaks = breaks, labels = labels,
+      oob = scales::oob_squish, name = title, na.value = "grey90",
+      guide = guide_coloursteps(title.position = "top",
+                                direction = "horizontal",
+                                theme = guide_theme),
+      ...
+    ))
+  }
+
+  scale_breaks <- if (role == "evidence") seq(0, 1, by = 0.25) else {
+    candidates <- pretty(range_values, n = 4)
+    candidates[candidates >= range_values[[1L]] &
+                 candidates <= range_values[[2L]]]
+  }
+  scale_fill_gradientn(
+    colours = colours, limits = limits, breaks = scale_breaks,
+    labels = labels, oob = scales::oob_squish, name = title,
+    na.value = "grey90",
+    guide = guide_colourbar(title.position = "top", direction = "horizontal",
+                            theme = guide_theme),
+    ...
+  )
 }
 
 #' Select and align the values requested from a prediction object
@@ -144,15 +361,7 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
     stop("'summary' must be one non-empty character string", call. = FALSE)
   }
 
-  has_boundaries <- !is.null(x$boundaries) && !is.null(x$boundary_summary)
   if (!is.null(aggregate)) {
-    if (!has_boundaries) {
-      stop("This prediction object does not contain boundary summaries",
-           call. = FALSE)
-    }
-    aggregate <- select_prediction_plot_value(
-      aggregate, unique(x$boundary_summary$aggregate), "aggregate"
-    )
     candidates <- x$boundary_summary[
       x$boundary_summary$aggregate == aggregate &
         x$boundary_summary$quantity == quantity &
@@ -166,7 +375,8 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
       threshold <- select_prediction_plot_value(
         threshold, unique(candidates$threshold), "threshold"
       )
-      candidates <- candidates[candidates$threshold == threshold, , drop = FALSE]
+      candidates <- candidates[candidates$threshold == threshold, ,
+                               drop = FALSE]
     } else if (!is.null(threshold)) {
       stop("'threshold' is used only when summary = \"exceedance\"",
            call. = FALSE)
@@ -175,7 +385,7 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
     values[candidates$boundary_id] <- candidates$value
     data <- x$boundaries
     data$.prediction_value <- values
-    return(list(data = data, polygon = TRUE))
+    return(list(data = data, polygon = TRUE, threshold = threshold))
   }
 
   column <- if (identical(summary, "exceedance")) {
@@ -205,7 +415,7 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
   }
   data <- x$predictions
   data$.prediction_value <- data[[column]]
-  list(data = data, polygon = FALSE)
+  list(data = data, polygon = FALSE, threshold = threshold)
 }
 
 #' Choose an unambiguous aggregation or threshold
@@ -226,14 +436,38 @@ select_prediction_plot_value <- function(value, available, argument) {
   value
 }
 
-#' Resolve prediction-map colours
+#' What a map shows, which determines its default colours
 #' @noRd
-prediction_plot_palette <- function(palette, exceedance = FALSE) {
-  if (is.null(palette)) {
-    if (exceedance) return(c("#2166AC", "#F7F7F7", "#B2182B"))
-    # Designed as a perceptually ordered calm-to-alarm prevalence scale.
-    return(.riskmap_mist_ember)
+prediction_plot_role <- function(quantity, summary) {
+  if (identical(summary, "exceedance")) return("evidence")
+  if (summary %in% c("sd", "cv", "interval_width")) return("uncertainty")
+  if (quantity %in% c("spatial", "link", "nugget", "random_effects")) {
+    return("signed")
   }
+  "level"
+}
+
+#' Default colours for each kind of map
+#' @noRd
+prediction_role_palette <- function(role) {
+  neutral <- "#EFEBE4"
+  switch(
+    role,
+    level = .riskmap_mist_ember,
+    evidence = grDevices::colorRampPalette(
+      c("#2166AC", "#8FB3D6", neutral, "#DE9585", "#B2182B")
+    )(256L),
+    uncertainty = rev(grDevices::hcl.colors(256L, "Purples 3"))[24:256],
+    signed = grDevices::colorRampPalette(
+      c("#00857F", "#7DBFB9", neutral, "#D69BC2", "#B5408F")
+    )(256L)
+  )
+}
+
+#' Resolve user-supplied prediction-map colours
+#' @noRd
+prediction_plot_palette <- function(palette) {
+  if (is.null(palette)) return(.riskmap_mist_ember)
   if (!is.character(palette) || !length(palette) || anyNA(palette)) {
     stop("'palette' must be a named HCL palette or a vector of colours",
          call. = FALSE)
@@ -254,14 +488,64 @@ prediction_plot_palette <- function(palette, exceedance = FALSE) {
   if (reverse) rev(colours) else colours
 }
 
-#' Construct a concise legend title without duplicating a plot title
+#' Scientific name of a predicted quantity
 #' @noRd
-prediction_legend_title <- function(quantity, summary, threshold) {
-  quantity <- gsub("_", " ", quantity, fixed = TRUE)
-  if (identical(summary, "exceedance")) {
-    return(paste0("Probability ", quantity, " > ", format(threshold)))
+prediction_quantity_label <- function(x, quantity) {
+  if (identical(quantity, "response")) {
+    family <- x$family %||% ""
+    if (identical(family, "binomial")) return("prevalence")
+    if (identical(family, "poisson")) return("rate")
+    response_name <- x$response_name
+    if (length(response_name) == 1L && !is.na(response_name)) {
+      return(response_name)
+    }
+    return("response")
   }
-  paste(tools::toTitleCase(gsub("_", " ", summary, fixed = TRUE)), quantity)
+  switch(quantity,
+         spatial = "spatial effect",
+         link = "linear predictor",
+         nugget = "nugget effect",
+         random_effects = "random effects",
+         gsub("_", " ", quantity, fixed = TRUE))
+}
+
+#' Whether a summary is a probability, labelled as a percentage
+#' @noRd
+prediction_is_probability <- function(x, quantity, summary) {
+  identical(summary, "exceedance") ||
+    (identical(quantity, "response") && identical(x$family, "binomial") &&
+       !identical(summary, "cv"))
+}
+
+#' Legend title naming the mapped quantity; the map has no other title
+#' @noRd
+prediction_legend_title <- function(x, quantity, summary, threshold,
+                                    aggregate = NULL) {
+  label <- prediction_quantity_label(x, quantity)
+  level <- paste0(format(100 * (x$level %||% 0.95)), "%")
+  title <- switch(
+    summary,
+    mean = paste("Mean", label),
+    median = paste("Median", label),
+    lower = paste("Lower", level, "limit of", label),
+    upper = paste("Upper", level, "limit of", label),
+    sd = paste("SD of", label),
+    cv = paste("CV of", label),
+    interval_width = paste("Width of", level, "interval for", label),
+    exceedance = paste0(
+      "Probability ", label, " > ",
+      if (prediction_is_probability(x, quantity, "mean")) {
+        paste0(format(100 * threshold, drop0trailing = TRUE), "%")
+      } else {
+        format(threshold)
+      }
+    ),
+    paste(summary, label)
+  )
+  if (!is.null(aggregate) && !identical(aggregate, "mean")) {
+    title <- paste0(title, " (area ", aggregate, ")")
+  }
+  paste0(toupper(substring(title, 1L, 1L)), substring(title, 2L))
 }
 
 #' Validate a plot switch
@@ -281,4 +565,16 @@ check_plot_limits <- function(limits) {
     stop("'limits' must contain two increasing finite numbers", call. = FALSE)
   }
   limits
+}
+
+#' Validate class boundaries for a binned map
+#' @noRd
+check_plot_breaks <- function(breaks) {
+  if (is.null(breaks)) return(NULL)
+  if (!is.numeric(breaks) || length(breaks) < 3L || anyNA(breaks) ||
+      any(!is.finite(breaks)) || is.unsorted(breaks, strictly = TRUE)) {
+    stop("'breaks' must contain at least three increasing finite numbers",
+         call. = FALSE)
+  }
+  breaks
 }

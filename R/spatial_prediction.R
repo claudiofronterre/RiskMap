@@ -217,6 +217,8 @@
 ##'   \item{parameter_draws}{The number of parameter draws when parameter
 ##'     uncertainty was propagated, otherwise `NULL`.}
 ##'   \item{family}{The fitted response family.}
+##'   \item{response_name}{Name of the response variable, used to label
+##'     maps of Gaussian predictions.}
 ##'   \item{observed_locations}{Whether `newdata` was omitted.}
 ##'   \item{coverage}{`NULL` for location-only prediction. For polygon
 ##'     aggregation, `"exact"` when fractional grid-cell coverage was used and
@@ -391,6 +393,7 @@ predict.RiskMap <- function(
       level = level,
       type = type,
       family = object$family,
+      response_name = prediction_response_name(object),
       observed_locations = observed_locations,
       parameter_draws = parameter_draws,
       coverage = NULL
@@ -431,6 +434,7 @@ predict.RiskMap <- function(
     level = level,
     type = type,
     family = object$family,
+    response_name = prediction_response_name(object),
     observed_locations = observed_locations,
     parameter_draws = parameter_draws,
     coverage = NULL
@@ -926,7 +930,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       samples = NULL, include = include, transform = names(transform),
       standardized = !is.null(standardize), aggregate = names(aggregate),
       summaries = names(summaries), thresholds = thresholds, level = level,
-      type = "joint", family = object$family, observed_locations = FALSE,
+      type = "joint", family = object$family,
+      response_name = prediction_response_name(object),
+      observed_locations = FALSE,
       parameter_draws = parameter_draws,
       coverage = assignment$method
     )
@@ -1077,6 +1083,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     level = level,
     type = "joint",
     family = object$family,
+    response_name = prediction_response_name(object),
     observed_locations = FALSE,
     parameter_draws = parameter_draws,
     coverage = assignment$method
@@ -3886,4 +3893,11 @@ print_pred_objective <- function(x) {
   }
 
   invisible(x)
+}
+
+#' Name of the response variable, used to label prediction maps
+#' @noRd
+prediction_response_name <- function(object) {
+  response <- all.vars(object$formula[[2L]])
+  if (length(response)) response[[1L]] else NA_character_
 }

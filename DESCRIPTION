@@ -36,6 +36,7 @@ Imports:
     numDeriv,
     Rcpp,
     rlang,
+    scales,
     sf,
     sns,
     spatialEco,
@@ -47,6 +48,7 @@ LinkingTo:
     Rcpp,
     RcppEigen
 Suggests:
+    patchwork,
     testthat (>= 3.0.0)
 License: MIT + file LICENSE
 Encoding: UTF-8
