@@ -157,6 +157,8 @@ reference population supplied through \code{standardize}.}
 \item{parameter_draws}{The number of parameter draws when parameter
 uncertainty was propagated, otherwise \code{NULL}.}
 \item{family}{The fitted response family.}
+\item{response_name}{Name of the response variable, used to label
+maps of Gaussian predictions.}
 \item{observed_locations}{Whether \code{newdata} was omitted.}
 \item{coverage}{\code{NULL} for location-only prediction. For polygon
 aggregation, \code{"exact"} when fractional grid-cell coverage was used and

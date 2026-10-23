@@ -28,8 +28,8 @@ test_that("prediction objects use one stable output schema", {
   expected_output <- c(
     "predictions", "boundaries", "boundary_summary", "samples", "include",
     "transform", "standardized", "aggregate", "summaries", "thresholds",
-    "level", "type", "family", "observed_locations", "parameter_draws",
-    "coverage"
+    "level", "type", "family", "response_name", "observed_locations",
+    "parameter_draws", "coverage"
   )
 
   observed <- predict(gaussian_model, messages = FALSE)
