@@ -1,6 +1,7 @@
 // [[Rcpp::depends(RcppEigen)]]
 // [[Rcpp::plugins(cpp14)]]
 #include <RcppEigen.h>
+#include <limits>
 
 using Eigen::LLT;
 using Eigen::Lower;
@@ -38,43 +39,41 @@ double softplus(const double x) {
 
 }  // namespace
 
+// Log-likelihood only, for every row of eta (draws x observations). The
+// family branch is resolved once, no score or curvature matrices are
+// allocated, and a Poisson mean that overflows gives -Inf for that draw, as in
+// the R implementation.
 // [[Rcpp::export]]
-List cpp_canonical_likelihood(const NumericMatrix eta_r,
-                                       const NumericVector y_r,
-                                       const NumericVector units_r,
-                                       const std::string family) {
+NumericVector cpp_canonical_log_likelihood(const NumericMatrix eta_r,
+                                           const NumericVector y_r,
+                                           const NumericVector units_r,
+                                           const bool poisson) {
   const int n_samples = eta_r.nrow();
   const int n = eta_r.ncol();
-  if (y_r.size() != n || units_r.size() != n)
-    Rcpp::stop("Observation vectors have inconsistent lengths.");
   NumericVector log_likelihood(n_samples);
-  NumericMatrix score(n_samples, n), curvature(n_samples, n);
+  const double* eta = eta_r.begin();
+  double* total = log_likelihood.begin();
   for (int observation = 0; observation < n; ++observation) {
-    for (int sample = 0; sample < n_samples; ++sample) {
-      const double eta = eta_r(sample, observation);
-      if (family == "binomial") {
-        const double probability = logistic(eta);
-        log_likelihood[sample] += y_r[observation] * eta -
-          units_r[observation] * softplus(eta);
-        score(sample, observation) = y_r[observation] -
-          units_r[observation] * probability;
-        curvature(sample, observation) = units_r[observation] * probability *
-          (1.0 - probability);
-      } else if (family == "poisson") {
-        const double mean = std::exp(eta);
-        log_likelihood[sample] += y_r[observation] * eta -
-          units_r[observation] * mean;
-        score(sample, observation) = y_r[observation] -
-          units_r[observation] * mean;
-        curvature(sample, observation) = units_r[observation] * mean;
-      } else {
-        Rcpp::stop("Unsupported family.");
+    const double y = y_r[observation];
+    const double units = units_r[observation];
+    const double* column = eta + static_cast<R_xlen_t>(observation) * n_samples;
+    if (poisson) {
+      for (int sample = 0; sample < n_samples; ++sample) {
+        total[sample] += y * column[sample] - units * std::exp(column[sample]);
+      }
+    } else {
+      for (int sample = 0; sample < n_samples; ++sample) {
+        total[sample] += y * column[sample] - units * softplus(column[sample]);
       }
     }
   }
-  return List::create(Named("log_likelihood") = log_likelihood,
-                      Named("score") = score,
-                      Named("curvature") = curvature);
+  if (poisson) {
+    for (int sample = 0; sample < n_samples; ++sample) {
+      if (!std::isfinite(total[sample]))
+        total[sample] = -std::numeric_limits<double>::infinity();
+    }
+  }
+  return log_likelihood;
 }
 
 // Canonical binomial/Poisson MALA. Random effects are represented as additional
@@ -104,27 +103,19 @@ List cpp_canonical_mala(
   const int n = y_r.size();
   const int dimension = proposal_mean_r.size();
   const int n_samples = (n_sim - burnin) / thin;
-  if (family != "binomial" && family != "poisson")
-    Rcpp::stop("Unsupported family.");
-  if (units_r.size() != n || mu_r.size() != n || location_id_r.size() != n)
-    Rcpp::stop("Observation vectors have inconsistent lengths.");
-  if (random_effect_id_r.nrow() != n)
-    Rcpp::stop("Random-effect indices must have one row per observation.");
+  // Arguments are validated by laplace_sampling_mcmc() on the R side.
   const int number_random_effects = random_effect_id_r.ncol();
   IntegerVector random_effect_offsets(number_random_effects);
-  int expected_dimension = n_locations;
+  int offset = n_locations;
   for (int effect = 0; effect < number_random_effects; ++effect) {
-    random_effect_offsets[effect] = expected_dimension;
+    random_effect_offsets[effect] = offset;
     int maximum_level = 0;
     for (int observation = 0; observation < n; ++observation) {
       maximum_level = std::max(maximum_level,
         random_effect_id_r(observation, effect));
     }
-    if (maximum_level < 1) Rcpp::stop("Invalid random-effect index.");
-    expected_dimension += maximum_level;
+    offset += maximum_level;
   }
-  if (expected_dimension != dimension)
-    Rcpp::stop("Latent dimension does not match random-effect indices.");
 
   Map<const VectorXd> y(y_r.begin(), n);
   Map<const VectorXd> units(units_r.begin(), n);
@@ -139,6 +130,8 @@ List cpp_canonical_mala(
                                               dimension);
   Map<const VectorXd> proposal_mean(proposal_mean_r.begin(), dimension);
 
+  const bool poisson = family == "poisson";
+
   auto evaluate = [&](const VectorXd& w) {
     State state;
     state.latent = proposal_lower * w + proposal_mean;
@@ -146,38 +139,29 @@ List cpp_canonical_mala(
     double log_likelihood = 0.0;
     for (int observation = 0; observation < n; ++observation) {
       const int location = location_id_r[observation] - 1;
-      if (location < 0 || location >= n_locations)
-        Rcpp::stop("Location index outside latent dimension.");
       double eta = mu[observation] + state.latent[location];
       for (int effect = 0; effect < number_random_effects; ++effect) {
-        const int level = random_effect_id_r(observation, effect) - 1;
-        if (level < 0) Rcpp::stop("Invalid random-effect index.");
-        eta += state.latent[random_effect_offsets[effect] + level];
+        eta += state.latent[random_effect_offsets[effect] +
+          random_effect_id_r(observation, effect) - 1];
       }
-      if (family == "binomial") {
-        const double probability = logistic(eta);
-        log_likelihood += y[observation] * eta -
-          units[observation] * softplus(eta);
-        gradient_latent[location] += y[observation] -
-          units[observation] * probability;
-        for (int effect = 0; effect < number_random_effects; ++effect) {
-          const int level = random_effect_id_r(observation, effect) - 1;
-          gradient_latent[random_effect_offsets[effect] + level] +=
-            y[observation] - units[observation] * probability;
-        }
-      } else {
+      double residual;
+      if (poisson) {
         const double mean = std::exp(eta);
         if (!std::isfinite(mean)) {
           state.valid = false;
           return state;
         }
         log_likelihood += y[observation] * eta - units[observation] * mean;
-        gradient_latent[location] += y[observation] - units[observation] * mean;
-        for (int effect = 0; effect < number_random_effects; ++effect) {
-          const int level = random_effect_id_r(observation, effect) - 1;
-          gradient_latent[random_effect_offsets[effect] + level] +=
-            y[observation] - units[observation] * mean;
-        }
+        residual = y[observation] - units[observation] * mean;
+      } else {
+        log_likelihood += y[observation] * eta -
+          units[observation] * softplus(eta);
+        residual = y[observation] - units[observation] * logistic(eta);
+      }
+      gradient_latent[location] += residual;
+      for (int effect = 0; effect < number_random_effects; ++effect) {
+        gradient_latent[random_effect_offsets[effect] +
+          random_effect_id_r(observation, effect) - 1] += residual;
       }
     }
     VectorXd difference = w - transformed_prior_mean;

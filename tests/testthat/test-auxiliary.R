@@ -121,6 +121,29 @@ test_that("check_crs functions correctly", {
   expect_no_error(check_crs(custom_crs))
 })
 
+test_that("check_invlink functions correctly", {
+  expect_error(check_invlink("not a function", "binomial"), "'invlink' must be a function")
+
+  expect_error(check_invlink(function(eta) 1, "binomial"),
+               "'invlink' must return one numeric value per linear predictor")
+  expect_error(check_invlink(function(eta) rep("a", length(eta)), "binomial"),
+               "'invlink' must return one numeric value per linear predictor")
+
+  expect_error(check_invlink(function(eta) rep(Inf, length(eta)), "binomial"),
+               "'invlink' returned non-finite mean values")
+
+  expect_error(check_invlink(identity, "binomial"),
+               "For a binomial model, 'invlink' must return probabilities between 0 and 1")
+
+  expect_error(check_invlink(identity, "poisson"),
+               "For a Poisson model, 'invlink' must return non-negative mean values")
+
+  expect_identical(check_invlink(plogis, "binomial", c(-1, 0, 1)), plogis(c(-1, 0, 1)))
+  expect_identical(check_invlink(exp, "poisson", c(-1, 0, 1)), exp(c(-1, 0, 1)))
+  expect_no_error(check_invlink(plogis, "binomial"))
+  expect_no_error(check_invlink(exp, "poisson"))
+})
+
 test_that("gp functions correctly", {
 
   expected_output <- c("term", "kappa", "nugget", "dim", "label")

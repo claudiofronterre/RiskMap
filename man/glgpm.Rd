@@ -203,6 +203,7 @@ fit <- glgpm(
 )
 
 summary(fit)
+
 # add a random effect
 fit <- glgpm(
   formula = y ~ gp() + re(province),
@@ -220,6 +221,24 @@ fit <- glgpm(
   family = "gaussian",
   messages = FALSE
 )
+
+summary(fit)
+
+# binomial model
+data(loaloa)
+
+# reduce iterations to speed up fit and add
+# seed for reproducibility
+control_mcmc <- set_control_mcmc(n_sim = 100,
+                                 burnin = 20,
+                                 seed = 42)
+
+fit <- glgpm(NO_INF ~ gp(),
+             data = loaloa[1:50,],
+             denominator = NO_EXAM,
+             family = "binomial",
+             control_mcmc = control_mcmc,
+             messages = FALSE)
 
 summary(fit)
 

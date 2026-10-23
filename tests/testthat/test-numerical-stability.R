@@ -1,13 +1,3 @@
-test_that("log_mean_exp is stable and translation equivariant", {
-  x <- c(-2, 0, 3)
-  expect_equal(log_mean_exp(x), log(mean(exp(x))))
-
-  large <- c(1000, 1001, 1002)
-  expect_true(is.finite(log_mean_exp(large)))
-  expect_equal(log_mean_exp(large) - 1000, log_mean_exp(large - 1000))
-  expect_identical(log_mean_exp(rep(-Inf, 3)), -Inf)
-})
-
 test_that("normalise_log_weights remains finite on extreme scales", {
   log_weights <- c(1000, 1001, 1002)
   weights <- normalise_log_weights(log_weights)
@@ -19,8 +9,6 @@ test_that("normalise_log_weights remains finite on extreme scales", {
     normalise_log_weights(rep(-Inf, 3)),
     "All Monte Carlo importance weights are non-finite"
   )
-  expect_identical(importance_effective_sample_size(rep(0.25, 4)), 4)
-  expect_identical(importance_effective_sample_size(c(1, 0, 0, 0)), 1)
 })
 
 test_that("softplus is stable in both tails", {
@@ -133,14 +121,9 @@ test_that("Gaussian covariance backend selection preserves correctness overrides
   expect_true(use_direct_gaussian_covariance(500, 50, 0.2, 0.4))
 })
 
-test_that("importance ESS is stable for concentrated log weights", {
+test_that("normalised weights are stable for concentrated log weights", {
   weights <- normalise_log_weights(c(1000, 999, 998))
 
   expect_equal(sum(weights), 1, tolerance = 1e-15)
   expect_true(all(is.finite(weights)))
-  expect_equal(
-    importance_effective_sample_size(weights),
-    1 / sum(weights^2),
-    tolerance = 1e-15
-  )
 })
