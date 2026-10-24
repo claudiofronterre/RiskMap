@@ -20,7 +20,10 @@ standard_normal_quadrature <- function(number_of_nodes = 20L) {
 ##' log-likelihood that is not linear in the step, together with the slope
 ##' l'(centre). For the canonical binomial and Poisson links the difference is
 ##' written with log1p and expm1 so that nearly equal log-likelihood values are
-##' never subtracted; other links use the direct difference.
+##' never subtracted; other links use the direct difference. For large binomial
+##' steps the logarithms of p and 1 - p are taken directly from the linear
+##' predictor, because p itself rounds to 0 or 1 when the predictor is
+##' extreme.
 ##' @param centre Linear predictor at the expansion point, one per observation.
 ##' @param step Matrix of steps, one row per observation.
 ##' @noRd
@@ -30,11 +33,16 @@ observation_nonlinear_part <- function(centre, step, y, units_m, family,
     probability <- stats::plogis(centre)
     slope <- y - units_m * probability
     # log(1 - p + p exp(step)), switching to log-sum-exp for large steps.
+    log_success <- stats::plogis(centre, log.p = TRUE) + step
+    log_failure <- matrix(
+      stats::plogis(centre, lower.tail = FALSE, log.p = TRUE),
+      nrow(step), ncol(step)
+    )
     log_ratio <- ifelse(
       abs(step) < 20,
       log1p(probability * expm1(step)),
-      pmax(log1p(-probability), log(probability) + step) +
-        log1p(exp(-abs(log1p(-probability) - log(probability) - step)))
+      pmax(log_failure, log_success) +
+        log1p(exp(-abs(log_failure - log_success)))
     )
     nonlinear <- units_m * (probability * step - log_ratio)
     return(list(nonlinear = nonlinear, slope = slope))

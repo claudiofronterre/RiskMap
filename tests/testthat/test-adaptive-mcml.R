@@ -396,6 +396,22 @@ test_that("stable nonlinear parts equal the direct log-likelihood differences", 
   expect_true(all(is.finite(extreme$nonlinear)))
 })
 
+test_that("binomial nonlinear parts stay exact for extreme linear predictors", {
+  # At these centres p rounds to 0 or 1, so log(p) and log(1 - p) must come
+  # from the linear predictor itself.
+  centre <- c(40, -750, 30, -30, 40)
+  step <- matrix(c(-50, 800, -35, 35, -10), ncol = 1)
+  softplus_stable <- function(x) pmax(x, 0) + log1p(exp(-abs(x)))
+  exact <- -softplus_stable(centre + step) + softplus_stable(centre) +
+    step * stats::plogis(centre)
+  stable <- observation_nonlinear_part(
+    centre, step, rep(0, 5), rep(1, 5), "binomial",
+    make_inverse_link_functions("binomial", NULL, 5), canonical = TRUE
+  )
+  expect_equal(stable$nonlinear, exact, tolerance = 1e-10)
+  expect_equal(stable$nonlinear[1:2], c(-10.0000454, -50), tolerance = 1e-7)
+})
+
 test_that("weighted quadratic fits recover exact quadratics and use QR when needed", {
   quadrature <- standard_normal_quadrature()
   nodes <- quadrature$nodes
@@ -532,6 +548,14 @@ test_that("the budget rule targets the tolerance and respects the limit", {
   small <- next_mcml_budgets(1000L, 5000L, certificate = 0.101,
                              tolerance = 0.1, maximum_budget = 16000L)
   expect_identical(small$budget, 1500L)
+  # Certificates far above the tolerance, or not finite, go to the largest
+  # budget instead of overflowing the integer range.
+  for (certificate in c(200, Inf, NaN)) {
+    largest <- next_mcml_budgets(1000L, 5000L, certificate = certificate,
+                                 tolerance = 0.1, maximum_budget = 16000L)
+    expect_identical(largest$budget, 16000L)
+    expect_identical(largest$validation_budget, 80000L)
+  }
 })
 
 test_that("a failed global proposal is counted and the engine can switch", {

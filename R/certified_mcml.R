@@ -397,17 +397,23 @@ check_dispersed_maxima <- function(objective, optimised, fit_bank, lower,
 ##' number of draws, so the next fitting bank is the one predicted to bring it
 ##' to the tolerance, with a safety factor of 1.25 against the variability of
 ##' the current certificate. The validation banks grow in the same proportion.
+##' The arithmetic is in double precision and the cap is applied before
+##' conversion to integers, and a certificate that is not finite moves
+##' straight to the largest budget.
 ##' @noRd
 next_mcml_budgets <- function(budget, validation_budget, certificate,
                               tolerance, maximum_budget) {
-  wanted <- budget * (certificate / tolerance)^2 * 1.25
-  next_budget <- as.integer(500L * ceiling(wanted / 500L))
-  next_budget <- min(max(next_budget, budget + 500L),
-                     as.integer(maximum_budget))
-  next_validation <- as.integer(
-    500L * ceiling(validation_budget * next_budget / budget / 500L)
-  )
-  list(budget = next_budget, validation_budget = next_validation)
+  wanted <- if (is.finite(certificate)) {
+    budget * (certificate / tolerance)^2 * 1.25
+  } else {
+    Inf
+  }
+  next_budget <- min(max(500 * ceiling(wanted / 500), budget + 500),
+                     maximum_budget)
+  next_validation <- 500 * ceiling(validation_budget * next_budget / budget /
+                                     500)
+  list(budget = as.integer(next_budget),
+       validation_budget = as.integer(next_validation))
 }
 
 ##' Fit and certify Monte Carlo maximum likelihood estimates
