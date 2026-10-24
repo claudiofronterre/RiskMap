@@ -169,6 +169,57 @@ defensive_rows <- function(n_draws, defensive_weight) {
   floor(draw * defensive_weight) > floor((draw - 1) * defensive_weight)
 }
 
+##' Centre and precision of the Gaussian proposal at one parameter value
+##'
+##' With `type = "global"` the global approximation (`fit_global_proposal()`)
+##' starts from `anchor`, the converged factors at another parameter value,
+##' if one is given. The factors of the likelihood in the latent linear
+##' predictor s carry over exactly to a new regression part `mu`, as
+##' b - C (mu - mu_anchor) and C, so the iteration starts close to its fixed
+##' point and the conditional mode is not needed. Without an anchor, or if
+##' that start does not converge, the iteration starts from the conditional
+##' mode found by `find_mode()`, and if it fails there the Laplace
+##' approximation at the mode is used. Returns the centre and precision, the
+##' global factors (NULL for the Laplace approximation) and whether the
+##' global fit `failed`.
+##' @noRd
+build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
+                                    precision, family, linkf, canonical,
+                                    anchor, find_mode) {
+  global_from <- function(mode = NULL, initial = NULL) {
+    fit_global_proposal(
+      mode = mode, mu = mu, y = y, units_m = units_m,
+      latent_map = latent_map, precision = precision, family = family,
+      linkf = linkf, canonical = canonical, initial = initial
+    )
+  }
+  approximation <- NULL
+  global <- NULL
+  failed <- FALSE
+  if (identical(type, "global")) {
+    if (!is.null(anchor)) {
+      global <- global_from(initial = list(
+        linear = anchor$linear - anchor$curvature * (mu - anchor$mu),
+        curvature = anchor$curvature
+      ))
+      if (!is.null(global) && !global$converged) global <- NULL
+    }
+    if (is.null(global)) {
+      approximation <- find_mode()
+      global <- global_from(mode = approximation$mode)
+      failed <- is.null(global) || !global$converged
+    }
+  }
+  if (is.null(global)) {
+    if (is.null(approximation)) approximation <- find_mode()
+    return(list(centre = approximation$mode,
+                precision = approximation$hessian, factors = NULL,
+                failed = failed))
+  }
+  list(centre = global$centre, precision = global$precision,
+       factors = global$factors, failed = failed)
+}
+
 ##' Construct the adaptive importance-sampling engine
 ##'
 ##' The standard-normal bank is held fixed within a stage, while the Gaussian
@@ -186,8 +237,7 @@ defensive_rows <- function(n_draws, defensive_weight) {
 ##' conditional mode and the curvature there (the Laplace approximation).
 ##' Failures of the global fit are counted, so that a fit can be repeated with
 ##' the Laplace proposal throughout. With a Gaussian proposal alone the
-##' importance
-##' weights have infinite variance whenever the largest eigenvalue of
+##' importance weights have infinite variance whenever the largest eigenvalue of
 ##' Sigma^{1/2} W Sigma^{1/2} exceeds one (W the likelihood curvature), which
 ##' holds in practically every spatial dataset (Pitt et al., 2013). The mixture
 ##' bounds every moment of the weights, so that the Monte Carlo error estimates
@@ -216,7 +266,6 @@ make_adaptive_mcml_engine <- function(
 
   linkf <- make_inverse_link_functions(family, invlink, n)
   inverse_link <- linkf$inv
-  inverse_derivative <- linkf$d1
   canonical <- identical(linkf$name, "canonical")
 
   unpack <- function(parameters) {
@@ -300,13 +349,13 @@ make_adaptive_mcml_engine <- function(
   # Deviations from the centre with the prior covariance of the latent effects:
   # the spatial block through its Cholesky factor, random-effect levels
   # scaled by their standard deviations.
-  prior_deviations <- function(z, proposal) {
-    deviations <- matrix(0, nrow(z), ncol(z))
+  prior_deviations <- function(draws, proposal) {
+    deviations <- matrix(0, nrow(draws), ncol(draws))
     deviations[, latent$spatial] <-
-      z[, latent$spatial, drop = FALSE] %*% proposal$spatial_root
+      draws[, latent$spatial, drop = FALSE] %*% proposal$spatial_root
     if (n_re) for (j in seq_len(n_re)) {
       index <- latent$random[[j]]
-      deviations[, index] <- z[, index, drop = FALSE] *
+      deviations[, index] <- draws[, index, drop = FALSE] *
         sqrt(proposal$values$sigma2_re[j])
     }
     deviations
@@ -320,17 +369,18 @@ make_adaptive_mcml_engine <- function(
   # realised share of defensive draws is used as the mixture weight, so the
   # estimate is unbiased for any bank size. A bank evaluated in row blocks
   # passes the share of the whole bank.
-  log_mixture_proposal <- function(z, deviations, defensive, proposal,
+  log_mixture_proposal <- function(draws, deviations, defensive, proposal,
                                    standardised_spatial = NULL,
                                    share = mean(defensive)) {
-    z_norms <- rowSums(z^2)
+    draw_norms <- rowSums(draws^2)
     log_normalising <- latent$dimension * log(2 * pi)
     log_laplace_determinant <- 2 * sum(log(diag(proposal$root)))
     if (share == 0) {
-      # The draws are centre + z %*% root, so the residuals are exactly z.
-      return(-0.5 * (log_normalising + log_laplace_determinant + z_norms))
+      # The latent values are centre + draws %*% root, so their standardised
+      # residuals are the draws themselves.
+      return(-0.5 * (log_normalising + log_laplace_determinant + draw_norms))
     }
-    laplace_norms <- z_norms
+    laplace_norms <- draw_norms
     laplace_norms[defensive] <- colSums(forwardsolve(
       t(proposal$root), t(deviations[defensive, , drop = FALSE])
     )^2)
@@ -351,7 +401,7 @@ make_adaptive_mcml_engine <- function(
         rowSums(deviations[laplace_draws, index, drop = FALSE]^2) /
         proposal$values$sigma2_re[j]
     }
-    prior_norms <- z_norms
+    prior_norms <- draw_norms
     prior_norms[laplace_draws] <- spatial_norms
     log_prior_determinant <- 2 * sum(log(diag(proposal$spatial_root))) +
       if (n_re) sum(n_dim_re * log(proposal$values$sigma2_re)) else 0
@@ -381,14 +431,7 @@ make_adaptive_mcml_engine <- function(
       precision[cbind(index, index)] <- 1 / values$sigma2_re[j]
     }
     mu <- as.numeric(D %*% values$beta + cov_offset)
-    global_from <- function(mode = NULL, initial = NULL) {
-      fit_global_proposal(
-        mode = mode, mu = mu, y = y, units_m = units_m,
-        latent_map = latent_map, precision = precision, family = family,
-        linkf = linkf, canonical = canonical, initial = initial
-      )
-    }
-    laplace_mode <- function() {
+    find_mode <- function() {
       approximation <- adaptive_laplace_mode(
         mu = mu, y = y, units_m = units_m, latent_map = latent_map,
         precision = precision, family = family, linkf = linkf,
@@ -397,47 +440,22 @@ make_adaptive_mcml_engine <- function(
       last_mode <<- approximation$mode
       approximation
     }
-    approximation <- NULL
-    global <- NULL
-    if (identical(type, "global")) {
-      # From the anchor, the factors of the likelihood in the latent linear
-      # predictor s carry over exactly to the new regression part mu, as
-      # b - C (mu - mu_anchor) and C, so the iteration starts close to its
-      # fixed point and the conditional mode is not needed. A start that
-      # does not converge is replaced by the start at the conditional mode.
-      if (!is.null(anchor)) {
-        global <- global_from(initial = list(
-          linear = anchor$linear - anchor$curvature * (mu - anchor$mu),
-          curvature = anchor$curvature
-        ))
-        if (!is.null(global) && !global$converged) global <- NULL
-      }
-      if (is.null(global)) {
-        approximation <- laplace_mode()
-        global <- global_from(mode = approximation$mode)
-        if (is.null(global) || !global$converged) {
-          proposal_failures <<- proposal_failures + 1L
-        }
-      }
-    }
-    if (is.null(global)) {
-      if (is.null(approximation)) approximation <- laplace_mode()
-      centre <- approximation$mode
-      proposal_precision <- approximation$hessian
-    } else {
-      centre <- global$centre
-      proposal_precision <- global$precision
-    }
+    gaussian <- build_gaussian_proposal(
+      type, mu, y, units_m, latent_map, precision, family, linkf, canonical,
+      anchor, find_mode
+    )
+    if (gaussian$failed) proposal_failures <<- proposal_failures + 1L
     root <- tryCatch(
-      inverse_cholesky_factor(proposal_precision),
+      inverse_cholesky_factor(gaussian$precision),
       error = function(error) factor_covariance(
-        solve(proposal_precision), "adaptive MCML proposal"
+        solve(gaussian$precision), "adaptive MCML proposal"
       )
     )
-    proposal <- list(centre = centre, root = root, values = values,
+    proposal <- list(centre = gaussian$centre, root = root, values = values,
                      covariance = covariance, spatial_root = spatial_root,
-                     type = if (is.null(global)) "laplace" else "global",
-                     mu = mu, factors = global$factors)
+                     type = if (is.null(gaussian$factors)) "laplace" else
+                       "global",
+                     mu = mu, factors = gaussian$factors)
     cached_parameters <<- parameters
     cached_type <<- type
     cached_proposal <<- proposal
@@ -447,7 +465,7 @@ make_adaptive_mcml_engine <- function(
   # `built_proposal`, if given, is the proposal at `proposal_parameters`, so
   # that a bank evaluated in row blocks builds each proposal once. Such a bank
   # also passes its `defensive` rows and their share of the whole bank.
-  evaluate <- function(parameters, z, log_weights_only = FALSE,
+  evaluate <- function(parameters, draws, log_weights_only = FALSE,
                        proposal_parameters = parameters,
                        proposal_type = default_proposal_type,
                        built_proposal = NULL, defensive = NULL,
@@ -461,15 +479,18 @@ make_adaptive_mcml_engine <- function(
     } else {
       built_proposal
     }
-    if (is.null(proposal)) return(-1e100)
+    # A failed evaluation gives zero weight to every draw, or the penalty
+    # value of the objective.
+    failed <- if (log_weights_only) rep(-Inf, nrow(draws)) else -1e100
+    if (is.null(proposal)) return(failed)
     if (is.null(defensive)) {
-      defensive <- defensive_rows(nrow(z), defensive_weight)
+      defensive <- defensive_rows(nrow(draws), defensive_weight)
     }
     if (is.null(defensive_share)) defensive_share <- mean(defensive)
-    deviations <- z %*% proposal$root
+    deviations <- draws %*% proposal$root
     if (any(defensive)) {
       deviations[defensive, ] <- prior_deviations(
-        z[defensive, , drop = FALSE], proposal
+        draws[defensive, , drop = FALSE], proposal
       )
     }
     samples <- deviations + rep(proposal$centre, each = nrow(deviations))
@@ -485,7 +506,7 @@ make_adaptive_mcml_engine <- function(
         error = function(error) NULL
       )
     }
-    if (is.null(spatial_root)) return(-1e100)
+    if (is.null(spatial_root)) return(failed)
 
     spatial_samples <- samples[, latent$spatial, drop = FALSE]
     # Samples standardised by the prior factor. Their squared norms give the
@@ -509,7 +530,7 @@ make_adaptive_mcml_engine <- function(
     log_target <- log_prior + log_observation_likelihood(eta)
 
     log_proposal <- log_mixture_proposal(
-      z, deviations, defensive, proposal,
+      draws, deviations, defensive, proposal,
       if (identical(parameters, proposal_parameters)) standardised_samples,
       share = defensive_share
     )
@@ -582,7 +603,7 @@ restart_from_interior <- function(objective, fit, variance_index,
   interior[boundary] <- log(0.25)
   restart <- tryCatch(
     nlminb(interior, objective, lower = lower, upper = upper,
-           control = mcml_optimiser_control()),
+           control = make_optimiser_control(abs(fit$objective))),
     error = function(error) NULL
   )
   improved <- !is.null(restart) && is.finite(restart$objective) &&
@@ -660,7 +681,7 @@ maximise_laplace <- function(objective, start, latent_dimension, lower,
   }
   fit <- tryCatch(
     nlminb(pmin(pmax(start, lower), upper), negative, lower = lower,
-           upper = upper, control = mcml_optimiser_control()),
+           upper = upper, control = make_optimiser_control()),
     error = function(error) NULL
   )
   if (is.null(fit) || !is.finite(fit$objective) || fit$objective >= 1e99) {
@@ -684,7 +705,7 @@ maximise_laplace <- function(objective, start, latent_dimension, lower,
 ##' user is told when and why the refit runs, with distances in the model's
 ##' units.
 ##' @noRd
-dispersed_starts <- function(layout, distances, distance_scale = 1,
+make_dispersed_starts <- function(layout, distances, distance_scale = 1,
                              messages = FALSE, trigger_fraction = 0.5) {
   spacing <- median_nearest_neighbour_distance(distances)
   grid <- expand.grid(sigma2 = c(0.25, 4), phi = c(spacing, max(distances) / 2))
@@ -741,10 +762,11 @@ make_pc_penalty <- function(layout, scale_threshold,
 ##' unchanged, while the objective and its curvature include the penalty.
 ##' @noRd
 penalise_engine <- function(evaluate, penalty) {
-  function(parameters, z, log_weights_only = FALSE, ...) {
-    out <- evaluate(parameters, z, log_weights_only = log_weights_only, ...)
-    if (log_weights_only) return(out)
-    out + penalty(parameters)
+  function(parameters, draws, log_weights_only = FALSE, ...) {
+    value <- evaluate(parameters, draws, log_weights_only = log_weights_only,
+                      ...)
+    if (log_weights_only) return(value)
+    value + penalty(parameters)
   }
 }
 
@@ -754,7 +776,7 @@ penalise_engine <- function(evaluate, penalty) {
 ##' the log nugget ratio when the nugget is estimated, and the log
 ##' random-effect variances.
 ##' @noRd
-mcml_working_start <- function(reference_pars, fix_tau2) {
+make_working_start <- function(reference_pars, fix_tau2) {
   start <- c(reference_pars$beta, log(reference_pars$sigma2),
              log(reference_pars$phi))
   if (isTRUE(fix_tau2)) {
@@ -794,7 +816,7 @@ glgpm_nong_adaptive <- function(
     defensive_weight = control_mcml$defensive_weight %||% 0.05,
     proposal = control_mcml$proposal %||% "global"
   )
-  start <- mcml_working_start(reference_pars, fix_tau2)
+  start <- make_working_start(reference_pars, fix_tau2)
   # Coordinates and the initial scale are rescaled before this function is
   # called. These broad bounds prevent overflow without constraining any
   # scientifically plausible fit on the internal scale.
@@ -803,29 +825,17 @@ glgpm_nong_adaptive <- function(
   upper <- c(rep(30, ncol(D)), 20, 10,
              rep(20, length(start) - ncol(D) - 2L))
   pc_prior <- isTRUE(control_mcml$pc_prior)
-  penalty <- NULL
-  objective <- engine$evaluate
-  if (pc_prior) {
-    scale_threshold <- if (is.null(control_mcml$pc_scale_threshold)) {
-      median_nearest_neighbour_distance(distances)
-    } else {
-      control_mcml$pc_scale_threshold / distance_scale
-    }
-    penalty <- make_pc_penalty(
-      engine$layout, scale_threshold = scale_threshold,
-      sigma_threshold = control_mcml$pc_sigma_threshold,
-      sigma_probability = control_mcml$pc_sigma_probability,
-      scale_probability = control_mcml$pc_scale_probability
-    )
-    objective <- penalise_engine(engine$evaluate, penalty)
-  }
+  penalised <- make_mcml_objective(engine, control_mcml, distances,
+                                   distance_scale)
+  objective <- penalised$objective
+  penalty <- penalised$penalty
 
   laplace <- NULL
   start <- unname(start)
   if (isTRUE(control_mcml$laplace_start)) {
     laplace <- maximise_laplace(
-      function(parameters, z) {
-        objective(parameters, z, proposal_type = "laplace")
+      function(parameters, draws) {
+        objective(parameters, draws, proposal_type = "laplace")
       },
       start, engine$latent_dimension, lower, upper
     )
@@ -835,7 +845,7 @@ glgpm_nong_adaptive <- function(
     engine = engine, start = start, objective = objective,
     penalty = penalty,
     dispersed = if (isTRUE(control_mcml$check_maxima %||% TRUE)) {
-      dispersed_starts(engine$layout, distances, distance_scale, messages)
+      make_dispersed_starts(engine$layout, distances, distance_scale, messages)
     },
     initial_budget = control_mcml$initial_samples,
     validation_budget = control_mcml$validation_samples,
@@ -858,21 +868,41 @@ glgpm_nong_adaptive <- function(
   boundary_names <- describe_variance_parameters(
     fit$boundary_parameters, engine$layout, re_names = re_names
   )
-  small_scale <- small_spatial_scale(fit, engine$layout, distances, kappa,
+  small_scale <- detect_small_scale(fit, engine$layout, distances, kappa,
                                      distance_scale)
   report_mcml_outcome(fit, boundary_names, engine$layout, pc_prior,
                       control_mcml$tolerance, messages, small_scale,
                       distance_scale)
-  out <- assemble_mcml_result(fit, laplace, boundary_names, D, fix_tau2,
-                              re_names, family, invlink, length(y), pc_prior,
-                              fit_seed)
-  optimizer <- attr(out, "optimizer")
-  optimizer$mcml_small_scale <- !is.null(small_scale)
-  optimizer$mcml_maxima_check <- fit$maxima_check
-  optimizer$mcml_better_maximum <- fit$better_maximum
-  optimizer$mcml_ambiguous_maxima <- fit$ambiguous_maxima
-  attr(out, "optimizer") <- optimizer
-  out
+  assemble_mcml_result(fit, laplace, boundary_names, D, fix_tau2, re_names,
+                       family, invlink, length(y), pc_prior, fit_seed,
+                       small_scale)
+}
+
+##' The objective of certified MCML, with the PC penalty if requested
+##'
+##' Returns the engine's estimated log-likelihood, or with
+##' `control_mcml$pc_prior` the penalised version (`make_pc_penalty()`), whose
+##' scale threshold defaults to the median nearest-neighbour distance, and
+##' the penalty itself (NULL without the prior).
+##' @noRd
+make_mcml_objective <- function(engine, control_mcml, distances,
+                                distance_scale) {
+  if (!isTRUE(control_mcml$pc_prior)) {
+    return(list(objective = engine$evaluate, penalty = NULL))
+  }
+  scale_threshold <- if (is.null(control_mcml$pc_scale_threshold)) {
+    median_nearest_neighbour_distance(distances)
+  } else {
+    control_mcml$pc_scale_threshold / distance_scale
+  }
+  penalty <- make_pc_penalty(
+    engine$layout, scale_threshold = scale_threshold,
+    sigma_threshold = control_mcml$pc_sigma_threshold,
+    sigma_probability = control_mcml$pc_sigma_probability,
+    scale_probability = control_mcml$pc_scale_probability
+  )
+  list(objective = penalise_engine(engine$evaluate, penalty),
+       penalty = penalty)
 }
 
 ##' A fitted scale smaller than the spacing between locations
@@ -882,14 +912,15 @@ glgpm_nong_adaptive <- function(
 ##' below that distance and the spatial variance is not at zero, and NULL
 ##' otherwise.
 ##' @noRd
-small_spatial_scale <- function(fit, layout, distances, kappa,
+detect_small_scale <- function(fit, layout, distances, kappa,
                                 distance_scale) {
   if (layout$index$sigma2 %in% fit$boundary_parameters) return(NULL)
   spacing <- median_nearest_neighbour_distance(distances)
   scale <- exp(fit$estimate[layout$index$phi])
   if (!(scale < spacing)) return(NULL)
-  c(scale = scale, practical_range = scale * practical_range_factor(kappa),
-    spacing = spacing) * distance_scale
+  practical_range <- scale * compute_practical_range_factor(kappa)
+  c(scale = scale, practical_range = practical_range, spacing = spacing) *
+    distance_scale
 }
 
 ##' Practical range of a Matern correlation in units of its scale
@@ -898,19 +929,21 @@ small_spatial_scale <- function(fit, layout, distances, kappa,
 ##' correlation with smoothness `kappa` falls to `correlation` (about three
 ##' scales for the exponential correlation).
 ##' @noRd
-practical_range_factor <- function(kappa, correlation = 0.05) {
-  matern <- function(x) {
-    2^(1 - kappa) / gamma(kappa) * x^kappa * besselK(x, kappa)
+compute_practical_range_factor <- function(kappa, correlation = 0.05) {
+  matern <- function(scaled_distance) {
+    2^(1 - kappa) / gamma(kappa) * scaled_distance^kappa *
+      besselK(scaled_distance, kappa)
   }
-  stats::uniroot(function(x) matern(x) - correlation, c(1e-6, 100),
-                 tol = 1e-10)$root
+  stats::uniroot(function(scaled_distance) {
+    matern(scaled_distance) - correlation
+  }, c(1e-6, 100), tol = 1e-10)$root
 }
 
 ##' Build the fitted object returned by `glgpm_nong_adaptive()`
 ##' @noRd
 assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
-                                 re_names, family, invlink, n, pc_prior,
-                                 fit_seed) {
+                                 re_names, family, invlink, n_observations,
+                                 pc_prior, fit_seed, small_scale = NULL) {
   last <- fit$history[[length(fit$history)]]
   estimate <- structure_estimate(
     fit$estimate, beta_names = colnames(D), fix_tau2 = fix_tau2,
@@ -930,7 +963,8 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     covariance = covariance,
     log_lik = fit$log_likelihood,
     S_samples = NULL,
-    link_function = make_inverse_link_functions(family, invlink, n)
+    link_function = make_inverse_link_functions(family, invlink,
+                                                n_observations)
   )
   attr(out, "optimizer") <- list(
     convergence = last$convergence,
@@ -958,6 +992,10 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_validation_budget = fit$validation_budget,
     mcml_stages = length(fit$history),
     mcml_history = compact_adaptive_mcml_history(fit$history),
+    mcml_small_scale = !is.null(small_scale),
+    mcml_maxima_check = fit$maxima_check,
+    mcml_better_maximum = fit$better_maximum,
+    mcml_ambiguous_maxima = fit$ambiguous_maxima,
     seed = fit_seed,
     elapsed_seconds = fit$elapsed_seconds
   )
@@ -1002,7 +1040,7 @@ report_maxima_check <- function(fit, layout, distance_scale) {
   if (fit$ambiguous_maxima) {
     warning(
       "The check for other maxima found separate maxima of the likelihood ",
-      "that fit about equally well: they differ by ", difference, ". The ",
+      "that fit about equally well. They differ by ", difference, ". The ",
       "estimate is taken from the higher one, with spatial scale ",
       scale(kept), ". The other has scale ", scale(other), ".",
       profile_advice,
@@ -1091,7 +1129,8 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
   } else if (!fit$certified) {
     warning(
       "The Monte Carlo precision of the estimate could not be established ",
-      "with the largest permitted number of draws (", draws, "). The ",
+      "within the permitted stages and draws (", draws, " at the last ",
+      "stage). The ",
       "approximate 95% bound on its Monte Carlo error is ",
       signif(fit$certificate, 2), " statistical standard errors, above the ",
       "tolerance of ", tolerance, ". Increase 'max_samples' or 'max_stages' ",

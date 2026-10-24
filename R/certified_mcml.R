@@ -10,7 +10,7 @@
 ##' validation score removes most of it. Without a scale the tolerance is
 ##' 1e-10.
 ##' @noRd
-mcml_optimiser_control <- function(objective_scale = NULL) {
+make_optimiser_control <- function(objective_scale = NULL) {
   relative <- if (is.null(objective_scale) || !is.finite(objective_scale) ||
                   objective_scale <= 0) {
     1e-10
@@ -22,7 +22,7 @@ mcml_optimiser_control <- function(objective_scale = NULL) {
 
 ##' Effective sample size and tail diagnostics of importance weights
 ##' @noRd
-importance_diagnostics <- function(log_weights) {
+summarise_importance_weights <- function(log_weights) {
   valid <- is.finite(log_weights)
   if (!any(valid)) {
     return(list(log_likelihood = -Inf, relative_ess = 0, maximum_weight = 1,
@@ -32,12 +32,19 @@ importance_diagnostics <- function(log_weights) {
   relative <- exp(log_weights - largest)
   relative[!valid] <- 0
   weights <- relative / sum(relative)
-  psis_fit <- suppressWarnings(loo::psis(log_weights[valid]))
+  # The Pareto tail diagnostic is only a diagnostic, so a bank too small or
+  # degenerate for it records NA instead of stopping the fit.
+  pareto_k <- tryCatch(
+    as.numeric(loo::pareto_k_values(
+      suppressWarnings(loo::psis(log_weights[valid]))
+    )),
+    error = function(error) NA_real_
+  )
   list(
     log_likelihood = largest + log(mean(relative)),
     relative_ess = 1 / sum(weights^2) / length(weights),
     maximum_weight = max(weights),
-    pareto_k = as.numeric(loo::pareto_k_values(psis_fit))
+    pareto_k = pareto_k
   )
 }
 
@@ -52,17 +59,17 @@ importance_diagnostics <- function(log_weights) {
 ##' parameters does not change the weights, so its gradient is added to the
 ##' score. Returns NULL if a proposal or a derivative cannot be computed.
 ##' @noRd
-validation_score <- function(engine, parameters, free, n_draws, seed,
+score_validation_bank <- function(engine, parameters, free, n_draws, seed,
                              penalty = NULL, block_rows = NULL) {
   started <- proc.time()[["elapsed"]]
   dimension <- engine$latent_dimension
   if (is.null(block_rows)) block_rows <- max(250L, floor(2.5e6 / dimension))
   step <- .Machine$double.eps^(1 / 3) * pmax(1, abs(parameters[free]))
   shifted <- list(parameters)
-  for (j in seq_along(free)) {
+  for (parameter in seq_along(free)) {
     upper <- lower <- parameters
-    upper[free[j]] <- upper[free[j]] + step[j]
-    lower[free[j]] <- lower[free[j]] - step[j]
+    upper[free[parameter]] <- upper[free[parameter]] + step[parameter]
+    lower[free[parameter]] <- lower[free[parameter]] - step[parameter]
     shifted <- c(shifted, list(upper, lower))
   }
   proposals <- lapply(shifted, function(values) {
@@ -76,16 +83,18 @@ validation_score <- function(engine, parameters, free, n_draws, seed,
   set.seed(seed)
   for (first in seq.int(1L, n_draws, by = block_rows)) {
     rows <- first:min(n_draws, first + block_rows - 1L)
-    z <- matrix(stats::rnorm(length(rows) * dimension), nrow = length(rows))
-    weights_at <- function(k) {
-      engine$evaluate(shifted[[k]], z, log_weights_only = TRUE,
-                      built_proposal = proposals[[k]],
+    block <- matrix(stats::rnorm(length(rows) * dimension),
+                    nrow = length(rows))
+    weights_at <- function(variant) {
+      engine$evaluate(shifted[[variant]], block, log_weights_only = TRUE,
+                      built_proposal = proposals[[variant]],
                       defensive = defensive[rows], defensive_share = share)
     }
     log_weights[rows] <- weights_at(1L)
-    for (j in seq_along(free)) {
-      gradients[rows, j] <-
-        (weights_at(2L * j) - weights_at(2L * j + 1L)) / (2 * step[j])
+    for (parameter in seq_along(free)) {
+      gradients[rows, parameter] <- (
+        weights_at(2L * parameter) - weights_at(2L * parameter + 1L)
+      ) / (2 * step[parameter])
     }
   }
   # Draws outside the support of the target carry no weight.
@@ -93,7 +102,7 @@ validation_score <- function(engine, parameters, free, n_draws, seed,
   if (!any(valid)) return(NULL)
   gradients[!valid, ] <- 0
   if (any(!is.finite(gradients))) return(NULL)
-  diagnostics <- importance_diagnostics(log_weights)
+  diagnostics <- summarise_importance_weights(log_weights)
   relative <- exp(log_weights - max(log_weights[valid]))
   relative[!valid] <- 0
   weights <- relative / sum(relative)
@@ -118,7 +127,7 @@ validation_score <- function(engine, parameters, free, n_draws, seed,
 ##' integrand decays too slowly when one weight dominates.
 ##' @param information_root Upper Cholesky factor R of H = R'R.
 ##' @noRd
-validation_radius <- function(information_root, covariance,
+compute_validation_radius <- function(information_root, covariance,
                               probability = 0.95, n_draws = 100000L) {
   lower_root <- t(information_root)
   standardised <- t(forwardsolve(lower_root,
@@ -147,10 +156,10 @@ validation_radius <- function(information_root, covariance,
 ##' about other maxima.
 ##' @param information_root Upper Cholesky factor R of H = R'R.
 ##' @noRd
-mcml_certificate <- function(information_root, score, covariance) {
+certify_estimate <- function(information_root, score, covariance) {
   standardised_score <- forwardsolve(t(information_root), score)
   distance <- sqrt(sum(standardised_score^2))
-  radius <- validation_radius(information_root, covariance)
+  radius <- compute_validation_radius(information_root, covariance)
   list(correction = as.numeric(backsolve(information_root,
                                          standardised_score)),
        distance = distance, radius = radius, bound = distance + radius)
@@ -171,7 +180,7 @@ mcml_certificate <- function(information_root, score, covariance) {
 ##' and the best point reached if a step cannot lower the objective or the
 ##' iterations run out, so that the caller can continue with `nlminb()`.
 ##' @noRd
-newton_on_bank <- function(negative, start, curvature_root, lower, upper,
+run_newton_steps <- function(negative, start, curvature_root, lower, upper,
                            tolerance = 1e-3, maximum_iterations = 20L,
                            relative_step = 1e-5) {
   evaluations <- 0L
@@ -181,10 +190,10 @@ newton_on_bank <- function(negative, start, curvature_root, lower, upper,
   }
   gradient_at <- function(parameters) {
     step <- relative_step * pmax(1, abs(parameters))
-    vapply(seq_along(parameters), function(j) {
-      shift <- replace(numeric(length(parameters)), j, step[j])
+    vapply(seq_along(parameters), function(parameter) {
+      shift <- replace(numeric(length(parameters)), parameter, step[parameter])
       (evaluate(parameters + shift) - evaluate(parameters - shift)) /
-        (2 * step[j])
+        (2 * step[parameter])
     }, numeric(1))
   }
   current <- pmin(pmax(start, lower), upper)
@@ -229,7 +238,7 @@ newton_on_bank <- function(negative, start, curvature_root, lower, upper,
 ##' Maximise the estimated log-likelihood on one fitting bank
 ##'
 ##' With `curvature_root`, the upper Cholesky factor of a known information
-##' matrix, Newton steps (`newton_on_bank()`) move the start close to the
+##' matrix, Newton steps (`run_newton_steps()`) move the start close to the
 ##' maximum first. `nlminb()` then always finishes the optimisation, from the
 ##' Newton end point, so that convergence is judged by the same criterion as
 ##' without the curvature; on a flat or badly scaled surface an old curvature
@@ -241,14 +250,14 @@ optimise_on_bank <- function(objective, start, fit_bank, lower, upper,
                              first_stage, limits, curvature_root = NULL) {
   negative <- function(parameters) -objective(parameters, fit_bank)
   newton <- if (is.null(curvature_root)) NULL else
-    newton_on_bank(negative, start, curvature_root, lower, upper)
+    run_newton_steps(negative, start, curvature_root, lower, upper)
   from <- start
   if (!is.null(newton) && is.finite(newton$objective) &&
       newton$objective < 1e99) {
     from <- newton$par
   }
   fit <- nlminb(from, negative, lower = lower, upper = upper,
-                control = mcml_optimiser_control(abs(negative(from))))
+                control = make_optimiser_control(abs(negative(from))))
   fit$method <- if (is.null(newton)) "nlminb" else "newton, then nlminb"
   if (!is.null(newton)) {
     fit$evaluations[["function"]] <- fit$evaluations[["function"]] +
@@ -270,25 +279,28 @@ optimise_on_bank <- function(objective, start, fit_bank, lower, upper,
 
 ##' Hessian by central differences with one round
 ##'
-##' The formulas of `numDeriv::genD()` without Richardson extrapolation:
-##' 2k + k(k - 1) + 1 evaluations of `f`, against about twice as many with two
-##' rounds, and an error of order step^2.
+##' The formulas of `numDeriv::genD()` without Richardson extrapolation, with
+##' 2k + k(k - 1) + 1 evaluations of `objective` for k parameters, against
+##' about twice as many with two rounds, and an error of order step^2.
 ##' @noRd
-central_hessian <- function(f, x, relative_step = 1e-4) {
-  k <- length(x)
-  step <- relative_step * pmax(1, abs(x))
-  centre <- f(x)
-  hessian <- matrix(0, k, k)
-  for (i in seq_len(k)) {
-    shift <- replace(numeric(k), i, step[i])
-    hessian[i, i] <- (f(x + shift) - 2 * centre + f(x - shift)) / step[i]^2
+compute_central_hessian <- function(objective, point, relative_step = 1e-4) {
+  count <- length(point)
+  step <- relative_step * pmax(1, abs(point))
+  centre <- objective(point)
+  hessian <- matrix(0, count, count)
+  for (row in seq_len(count)) {
+    shift <- replace(numeric(count), row, step[row])
+    hessian[row, row] <- (objective(point + shift) - 2 * centre +
+                            objective(point - shift)) / step[row]^2
   }
-  for (i in seq_len(k)[-1L]) for (j in seq_len(i - 1L)) {
-    shift <- replace(numeric(k), c(i, j), step[c(i, j)])
-    hessian[i, j] <- hessian[j, i] <- (
-      f(x + shift) - 2 * centre + f(x - shift) -
-        hessian[i, i] * step[i]^2 - hessian[j, j] * step[j]^2
-    ) / (2 * step[i] * step[j])
+  for (row in seq_len(count)[-1L]) for (column in seq_len(row - 1L)) {
+    pair <- c(row, column)
+    shift <- replace(numeric(count), pair, step[pair])
+    hessian[row, column] <- hessian[column, row] <- (
+      objective(point + shift) - 2 * centre + objective(point - shift) -
+        hessian[row, row] * step[row]^2 -
+        hessian[column, column] * step[column]^2
+    ) / (2 * step[row] * step[column])
   }
   hessian
 }
@@ -300,15 +312,16 @@ central_hessian <- function(f, x, relative_step = 1e-4) {
 ##' judged weakly identified. `root` is NULL when the information is singular
 ##' over the free parameters.
 ##' @noRd
-observed_information <- function(objective, estimate, fit_bank, boundary,
-                                 limits) {
+compute_observed_information <- function(objective, estimate, fit_bank,
+                                         boundary, limits) {
   information <- tryCatch(
     # One round of central differences suffices for this smooth,
     # deterministic objective: on binomial, Poisson, nugget and cluster
     # models it agreed with four Richardson rounds to about 1e-5 in the
     # metric of the information, closer than two rounds, at half their cost.
-    central_hessian(function(parameters) -objective(parameters, fit_bank),
-                    estimate),
+    compute_central_hessian(function(parameters) {
+      -objective(parameters, fit_bank)
+    }, estimate),
     error = function(error) NULL
   )
   if (!is.null(information) && any(!is.finite(information))) {
@@ -353,7 +366,7 @@ observed_information <- function(objective, estimate, fit_bank, boundary,
 ##' maximum. `curvature_root`, if given, seeds the optimisation with Newton
 ##' steps (`optimise_on_bank()`).
 ##' @noRd
-certified_stage <- function(engine, objective, penalty, start, budget,
+run_certified_stage <- function(engine, objective, penalty, start, budget,
                             validation_budget, seeds, lower, upper,
                             first_stage, limits, curvature_root = NULL) {
   stage_started <- proc.time()[["elapsed"]]
@@ -389,7 +402,7 @@ certified_stage <- function(engine, objective, penalty, start, budget,
     restart_improved = optimised$restart_improved,
     maxima_check = check, separate_maximum = separate,
     ambiguous_maxima = ambiguous,
-    fit_diagnostics = importance_diagnostics(
+    fit_diagnostics = summarise_importance_weights(
       engine$evaluate(fit$par, fit_bank, log_weights_only = TRUE)
     ),
     outcome = "no valid fit", certified = FALSE, certificate = NA_real_,
@@ -406,7 +419,7 @@ certified_stage <- function(engine, objective, penalty, start, budget,
                   "the estimated log-likelihood is not finite at the optimum"))
   }
   started <- proc.time()[["elapsed"]]
-  information <- observed_information(objective, fit$par, fit_bank,
+  information <- compute_observed_information(objective, fit$par, fit_bank,
                                       optimised$boundary, limits)
   record$timing$information <- proc.time()[["elapsed"]] - started
   record$boundary_parameters <- information$boundary
@@ -419,46 +432,59 @@ certified_stage <- function(engine, objective, penalty, start, budget,
     return(finish(record, "weak identification",
                   "singular observed information"))
   }
-  free <- information$free
-  record$free <- free
+  record$free <- information$free
   record$information_root <- information$root
-  first <- validation_score(engine, fit$par, free, validation_budget,
-                            seeds[[2L]], penalty)
-  if (is.null(first)) {
+  certified <- correct_and_certify(engine, penalty, fit$par, information,
+                                   validation_budget, seeds, lower, upper,
+                                   limits$tolerance)
+  if (is.null(certified)) {
     return(finish(record, "no valid fit",
                   "the validation score could not be computed"))
   }
-  correction <- mcml_certificate(information$root, first$score,
+  record[names(certified)] <- certified
+  record$timing$validation <- certified$first_validation$seconds +
+    certified$second_validation$seconds
+  finish(record, if (record$certified) "certified" else "not certified")
+}
+
+##' Correct an estimate with one validation bank and certify it with another
+##'
+##' The estimate is corrected by one Newton step, d = H^-1 S, with the score
+##' S on the first validation bank, and the corrected estimate is certified on
+##' a second, fresh bank drawn at that point (`certify_estimate()`). The
+##' second bank differentiates every parameter, including held ones, so that
+##' the reported gradient is complete. Returns NULL if a validation score
+##' cannot be computed.
+##' @noRd
+correct_and_certify <- function(engine, penalty, estimate, information,
+                                validation_budget, seeds, lower, upper,
+                                tolerance) {
+  free <- information$free
+  first <- score_validation_bank(engine, estimate, free, validation_budget,
+                                 seeds[[2L]], penalty)
+  if (is.null(first)) return(NULL)
+  correction <- certify_estimate(information$root, first$score,
                                  first$covariance)
-  corrected <- fit$par
+  corrected <- estimate
   corrected[free] <- pmin(pmax(corrected[free] + correction$correction,
                                lower[free]), upper[free])
-  # The reported gradient covers every parameter, so the second bank
-  # differentiates the held parameters as well.
-  second <- validation_score(engine, corrected, seq_along(corrected),
-                             validation_budget, seeds[[3L]], penalty)
-  if (is.null(second)) {
-    return(finish(record, "no valid fit",
-                  "the validation score could not be computed"))
-  }
-  certificate <- mcml_certificate(information$root, second$score[free],
+  second <- score_validation_bank(engine, corrected, seq_along(corrected),
+                                  validation_budget, seeds[[3L]], penalty)
+  if (is.null(second)) return(NULL)
+  certificate <- certify_estimate(information$root, second$score[free],
                                   second$covariance[free, free, drop = FALSE])
-  record$estimate <- corrected
-  record$correction_size <- correction$distance
-  record$first_validation <- first
-  record$second_validation <- second
-  record$certificate <- certificate$bound
-  record$certificate_distance <- certificate$distance
-  record$certificate_radius <- certificate$radius
-  record$certified <- certificate$bound <= limits$tolerance
-  record$timing$validation <- first$seconds + second$seconds
-  finish(record, if (record$certified) "certified" else "not certified")
+  list(estimate = corrected, correction_size = correction$distance,
+       first_validation = first, second_validation = second,
+       certificate = certificate$bound,
+       certificate_distance = certificate$distance,
+       certificate_radius = certificate$radius,
+       certified = certificate$bound <= tolerance)
 }
 
 ##' Check for other maxima on the fitting bank
 ##'
 ##' If the fitted spatial scale is below the trigger of `limits$dispersed`
-##' (see `dispersed_starts()`) and the spatial variance is not at zero, the
+##' (see `make_dispersed_starts()`) and the spatial variance is not at zero, the
 ##' estimated log-likelihood is also maximised from the dispersed starts on
 ##' the same bank, with the other parameters at their fitted values, and
 ##' `choose_maximum()` decides which maximum to keep. `n_draws` and `seed`
@@ -480,17 +506,18 @@ check_dispersed_maxima <- function(engine, objective, penalty, optimised,
   if (!is.null(dispersed$announce)) {
     dispersed$announce(estimate[[dispersed$phi_index]])
   }
-  refits <- lapply(seq_along(dispersed$labels), function(i) {
+  refits <- lapply(seq_along(dispersed$labels), function(dispersed_start) {
     start <- estimate
-    start[dispersed$sigma2_index] <- dispersed$log_sigma2[i]
-    start[dispersed$phi_index] <- dispersed$log_phi[i]
+    start[dispersed$sigma2_index] <- dispersed$log_sigma2[dispersed_start]
+    start[dispersed$phi_index] <- dispersed$log_phi[dispersed_start]
     optimise_on_bank(objective, pmin(pmax(start, lower), upper), fit_bank,
                      lower, upper, TRUE, limits)
   })
   candidates <- c(list(optimised), refits)
   information <- tryCatch(
-    central_hessian(function(parameters) -objective(parameters, fit_bank),
-                    estimate),
+    compute_central_hessian(function(parameters) {
+      -objective(parameters, fit_bank)
+    }, estimate),
     error = function(error) NULL
   )
   choice <- choose_maximum(
@@ -540,15 +567,16 @@ choose_maximum <- function(engine, penalty, parameters, values, information,
   }
   representatives <- integer()
   maximum <- integer(length(values))
-  for (i in order(values, decreasing = TRUE)) {
-    near <- vapply(representatives, function(r) {
-      distance(parameters[[i]], parameters[[r]]) <= tolerance
+  for (candidate in order(values, decreasing = TRUE)) {
+    near <- vapply(representatives, function(representative) {
+      distance(parameters[[candidate]], parameters[[representative]]) <=
+        tolerance
     }, logical(1))
     if (any(near)) {
-      maximum[i] <- maximum[representatives[which(near)[1L]]]
+      maximum[candidate] <- maximum[representatives[which(near)[1L]]]
     } else {
-      representatives <- c(representatives, i)
-      maximum[i] <- length(representatives)
+      representatives <- c(representatives, candidate)
+      maximum[candidate] <- length(representatives)
     }
   }
   table <- data.frame(
@@ -568,7 +596,7 @@ choose_maximum <- function(engine, penalty, parameters, values, information,
     chosen <- representatives[judged$top]
     others <- setdiff(seq_along(representatives), judged$top)
     gaps <- judged$values[judged$top] - judged$values[others]
-    ambiguous <- any(gaps <= 2.58 * judged$se[others])
+    ambiguous <- isTRUE(any(gaps <= 2.58 * judged$se[others], na.rm = TRUE))
   }
   table$chosen[chosen] <- TRUE
   list(chosen = chosen, table = table, ambiguous = ambiguous,
@@ -584,23 +612,30 @@ choose_maximum <- function(engine, penalty, parameters, values, information,
 ##' @noRd
 adjudicate_maxima <- function(engine, penalty, parameters, n_draws, seed) {
   set.seed(seed)
-  z <- matrix(stats::rnorm(n_draws * engine$latent_dimension),
-              nrow = n_draws)
+  bank <- matrix(stats::rnorm(n_draws * engine$latent_dimension),
+                 nrow = n_draws)
   log_weights <- lapply(parameters, function(values) {
-    engine$evaluate(values, z, log_weights_only = TRUE)
+    engine$evaluate(values, bank, log_weights_only = TRUE)
   })
+  # A candidate whose weights are all zero has log-likelihood -Inf and an
+  # infinite standard error.
   scaled <- lapply(log_weights, function(weights) {
+    if (!any(is.finite(weights))) return(rep(NA_real_, length(weights)))
     relative <- exp(weights - max(weights))
     relative / mean(relative)
   })
-  values <- vapply(seq_along(parameters), function(i) {
-    largest <- max(log_weights[[i]])
-    largest + log(mean(exp(log_weights[[i]] - largest))) +
-      if (is.null(penalty)) 0 else penalty(parameters[[i]])
+  values <- vapply(seq_along(parameters), function(candidate) {
+    weights <- log_weights[[candidate]]
+    if (!any(is.finite(weights))) return(-Inf)
+    largest <- max(weights)
+    largest + log(mean(exp(weights - largest))) +
+      if (is.null(penalty)) 0 else penalty(parameters[[candidate]])
   }, numeric(1))
   top <- which.max(values)
-  se <- vapply(seq_along(parameters), function(i) {
-    stats::sd(scaled[[top]] - scaled[[i]]) / sqrt(n_draws)
+  se <- vapply(seq_along(parameters), function(candidate) {
+    difference <- scaled[[top]] - scaled[[candidate]]
+    if (any(!is.finite(difference))) return(Inf)
+    stats::sd(difference) / sqrt(n_draws)
   }, numeric(1))
   list(values = values, se = se, top = top)
 }
@@ -611,7 +646,7 @@ adjudicate_maxima <- function(engine, penalty, parameters, n_draws, seed) {
 ##' nearly singular (reciprocal condition number at least 1e-8). Returns
 ##' NULL otherwise.
 ##' @noRd
-curvature_factor <- function(curvature) {
+factor_curvature <- function(curvature) {
   if (is.null(curvature) || any(!is.finite(curvature))) return(NULL)
   curvature <- (curvature + t(curvature)) / 2
   if (rcond(curvature) < 1e-8) return(NULL)
@@ -628,7 +663,7 @@ curvature_factor <- function(curvature) {
 ##' conversion to integers, and a certificate that is not finite moves
 ##' straight to the largest budget.
 ##' @noRd
-next_mcml_budgets <- function(budget, validation_budget, certificate,
+plan_next_budgets <- function(budget, validation_budget, certificate,
                               tolerance, maximum_budget) {
   wanted <- if (is.finite(certificate)) {
     budget * (certificate / tolerance)^2 * 1.25
@@ -650,10 +685,12 @@ next_mcml_budgets <- function(budget, validation_budget, certificate,
 ##' be obtained, or the largest budget is reached. If the global proposal
 ##' fails anywhere within a stage, the stage is repeated with the Laplace
 ##' proposal, which is then kept. Stage s uses the random number streams
-##' 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks) after `seed`.
-##' `dispersed`, from `dispersed_starts()`, turns on the check for other maxima
-##' at the first stage. Each later stage starts its optimisation with Newton
-##' steps on the previous stage's information when every parameter was free.
+##' 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks) after `seed`, and
+##' stream 1000 + s for the independent bank of the check for other maxima.
+##' `dispersed`, from `make_dispersed_starts()`, turns on the check for other
+##' maxima at the first stage. Each later stage starts its optimisation with
+##' Newton steps on the previous stage's information when every parameter was
+##' free.
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               penalty = NULL, dispersed = NULL,
@@ -686,7 +723,7 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
   for (stage in seq_len(maximum_stages)) {
     run_stage <- function() {
       engine$reset_proposal_failures()
-      certified_stage(engine, objective, penalty, current, budget,
+      run_certified_stage(engine, objective, penalty, current, budget,
                       validation_budget,
                       c(stream(3L * stage - 2:0), stream(1000L + stage)),
                       lower, upper, stage == 1L, limits, curvature_root)
@@ -705,11 +742,11 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     history[[stage]] <- record
     current <- record$estimate
     curvature_root <- if (length(record$free) == length(current)) {
-      curvature_factor(record$information)
+      factor_curvature(record$information)
     }
     if (!identical(record$outcome, "not certified") ||
         budget >= maximum_budget || stage == maximum_stages) break
-    budgets <- next_mcml_budgets(budget, validation_budget,
+    budgets <- plan_next_budgets(budget, validation_budget,
                                  record$certificate, tolerance,
                                  maximum_budget)
     history[[stage]]$next_budget <- budgets$budget

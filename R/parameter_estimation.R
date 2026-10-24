@@ -584,6 +584,12 @@ glgpm <- function(formula,
       design_scaling$coefficient_transform,
       spatial_scaling$distance_scale
     )
+    # The optimiser keeps the same table of the check for other maxima.
+    optimizer <- attr(res, "optimizer")
+    if (!is.null(optimizer$mcml_maxima_check)) {
+      optimizer$mcml_maxima_check <- res$mcml_history[[1L]]$maxima_check
+      attr(res, "optimizer") <- optimizer
+    }
   }
   # The fitting engines optimise log(phi) on scaled coordinates. An additive
   # shift restores the original distance units without changing its Hessian.
@@ -954,6 +960,10 @@ restore_mcml_history_scale <- function(history, coefficient_transform,
         entry[[field]][p + 2L] <-
           entry[[field]][p + 2L] + log(distance_scale)
       }
+    }
+    if (!is.null(entry$maxima_check)) {
+      entry$maxima_check$log_phi <- entry$maxima_check$log_phi +
+        log(distance_scale)
     }
     entry
   })
@@ -3025,7 +3035,8 @@ laplace_sampling_mcmc <- function(y,
 ##' estimate maximises the penalised likelihood on the log scale of the
 ##' covariance parameters. This shrinks estimates away from degenerate
 ##' solutions in small or sparse datasets. It is recommended for small or
-##' low-prevalence surveys, especially before prediction with `parameter_uncertainty = TRUE` in [predict.RiskMap()].
+##' low-prevalence surveys, especially before prediction with
+##' `parameter_uncertainty = TRUE` in [predict.RiskMap()].
 ##' When the spatial variance is large and well identified, the penalty shrinks
 ##' it somewhat towards zero, so the default is `FALSE`.
 ##' @param pc_sigma_threshold,pc_sigma_probability The penalty sets
@@ -3034,8 +3045,8 @@ laplace_sampling_mcmc <- function(y,
 ##' 1 and 0.05.
 ##' @param pc_scale_threshold,pc_scale_probability The penalty sets
 ##' P(phi < `pc_scale_threshold`) = `pc_scale_probability`, where phi is the
-##' spatial scale in the units of the coordinates. By default the threshold is the
-##' median distance between neighbouring locations and the probability is
+##' spatial scale in the units of the coordinates. By default the threshold is
+##' the median distance between neighbouring locations and the probability is
 ##' 0.05.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
@@ -3074,7 +3085,9 @@ set_control_mcml <- function(initial_samples = 1000L,
   check_positive_number(pc_sigma_threshold, "")
   check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
               name = "pc_sigma_probability")
-  if (!is.null(pc_scale_threshold)) check_positive_number(pc_scale_threshold, "")
+  if (!is.null(pc_scale_threshold)) {
+    check_positive_number(pc_scale_threshold, "")
+  }
   check_range(pc_scale_probability, 0, 1, allow_equal = FALSE,
               name = "pc_scale_probability")
   if (max_samples < initial_samples) {

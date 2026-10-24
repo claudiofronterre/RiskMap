@@ -72,7 +72,8 @@ penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
 estimate maximises the penalised likelihood on the log scale of the
 covariance parameters. This shrinks estimates away from degenerate
 solutions in small or sparse datasets. It is recommended for small or
-low-prevalence surveys, especially before prediction with \code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
+low-prevalence surveys, especially before prediction with
+\code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
 When the spatial variance is large and well identified, the penalty shrinks
 it somewhat towards zero, so the default is \code{FALSE}.}
 
@@ -83,8 +84,8 @@ spatial standard deviation on the scale of the linear predictor. Default
 
 \item{pc_scale_threshold, pc_scale_probability}{The penalty sets
 P(phi < \code{pc_scale_threshold}) = \code{pc_scale_probability}, where phi is the
-spatial scale in the units of the coordinates. By default the threshold is the
-median distance between neighbouring locations and the probability is
+spatial scale in the units of the coordinates. By default the threshold is
+the median distance between neighbouring locations and the probability is
 0.05.}
 }
 \value{

@@ -4,7 +4,7 @@
 ##' probabilists' Hermite polynomials and the weights the squared first
 ##' components of its eigenvectors, so the weights sum to one.
 ##' @noRd
-standard_normal_quadrature <- function(number_of_nodes = 20L) {
+build_normal_quadrature <- function(number_of_nodes = 20L) {
   index <- seq_len(number_of_nodes - 1L)
   jacobi <- matrix(0, number_of_nodes, number_of_nodes)
   jacobi[cbind(index, index + 1L)] <- sqrt(index)
@@ -27,7 +27,7 @@ standard_normal_quadrature <- function(number_of_nodes = 20L) {
 ##' @param centre Linear predictor at the expansion point, one per observation.
 ##' @param step Matrix of steps, one row per observation.
 ##' @noRd
-observation_nonlinear_part <- function(centre, step, y, units_m, family,
+compute_nonlinear_parts <- function(centre, step, y, units_m, family,
                                        linkf, canonical) {
   if (canonical && family == "binomial") {
     probability <- stats::plogis(centre)
@@ -88,12 +88,13 @@ fit_observation_quadratics <- function(nonlinear, root_weights, nodes,
                                        minimum_condition = 1e-8) {
   weights <- root_weights^2
   moment <- function(power) as.numeric(weights %*% nodes^power)
-  rhs <- function(power) rowSums(weights * nonlinear *
-                                   matrix(nodes^power, nrow(weights),
-                                          length(nodes), byrow = TRUE))
+  right_side <- function(power) {
+    rowSums(weights * nonlinear *
+              matrix(nodes^power, nrow(weights), length(nodes), byrow = TRUE))
+  }
   m00 <- moment(0); m01 <- moment(1); m02 <- -0.5 * moment(2)
   m11 <- moment(2); m12 <- -0.5 * moment(3); m22 <- 0.25 * moment(4)
-  t0 <- rhs(0); t1 <- rhs(1); t2 <- -0.5 * rhs(2)
+  t0 <- right_side(0); t1 <- right_side(1); t2 <- -0.5 * right_side(2)
   # Cofactors of the symmetric 3 x 3 normal matrix.
   c00 <- m11 * m22 - m12^2
   c01 <- -(m01 * m22 - m12 * m02)
@@ -114,9 +115,11 @@ fit_observation_quadratics <- function(nonlinear, root_weights, nodes,
                                 scaled_determinant < minimum_condition |
                                 rowSums(!is.finite(coefficients)) > 0)
   basis <- cbind(1, nodes, -0.5 * nodes^2)
-  for (i in poorly_conditioned) {
-    coefficients[i, ] <- qr.coef(qr(root_weights[i, ] * basis),
-                                 root_weights[i, ] * nonlinear[i, ])
+  for (observation in poorly_conditioned) {
+    coefficients[observation, ] <- qr.coef(
+      qr(root_weights[observation, ] * basis),
+      root_weights[observation, ] * nonlinear[observation, ]
+    )
   }
   coefficients
 }
@@ -133,21 +136,23 @@ fit_observation_quadratics <- function(nonlinear, root_weights, nodes,
 ##' @noRd
 update_observation_factors <- function(marginal_mean, marginal_sd, offset,
                                        y, units_m, family, linkf, canonical,
-                                       linear_factor, curvature_factor,
+                                       current_linear, current_curvature,
                                        quadrature) {
   nodes <- quadrature$nodes
   step <- outer(marginal_sd, nodes)
-  parts <- observation_nonlinear_part(offset + marginal_mean, step, y,
+  parts <- compute_nonlinear_parts(offset + marginal_mean, step, y,
                                       units_m, family, linkf, canonical)
   # Log ratio of the likelihood to its current approximation at each node,
   # up to a constant per observation.
   log_ratio <- parts$nonlinear +
-    (marginal_sd * (parts$slope - linear_factor +
-                      curvature_factor * marginal_mean)) %o% nodes +
-    (0.5 * curvature_factor * marginal_sd^2) %o% nodes^2
+    (marginal_sd * (parts$slope - current_linear +
+                      current_curvature * marginal_mean)) %o% nodes +
+    (0.5 * current_curvature * marginal_sd^2) %o% nodes^2
   log_ratio[!is.finite(log_ratio)] <- -Inf
   largest <- log_ratio[, 1L]
-  for (k in seq_along(nodes)[-1L]) largest <- pmax(largest, log_ratio[, k])
+  for (node in seq_along(nodes)[-1L]) {
+    largest <- pmax(largest, log_ratio[, node])
+  }
   relative <- exp(log_ratio - largest)
   root_weights <- sqrt(sweep(relative, 2L, quadrature$weights, "*"))
   nonlinear <- parts$nonlinear
@@ -170,9 +175,9 @@ update_observation_factors <- function(marginal_mean, marginal_sd, offset,
 refit_global_factors <- function(factors, mu, y, units_m, latent_map,
                                  precision, family, linkf, canonical,
                                  quadrature, floor_curvature) {
-  n <- length(factors) / 2
-  linear <- factors[seq_len(n)]
-  curvature <- factors[n + seq_len(n)]
+  observations <- length(factors) / 2
+  linear <- factors[seq_len(observations)]
+  curvature <- factors[observations + seq_len(observations)]
   proposal_precision <- precision + latent_data_hessian(latent_map, curvature)
   root <- tryCatch(chol(proposal_precision), error = function(error) NULL)
   if (is.null(root)) return(NULL)
@@ -206,7 +211,7 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
 ##' Ni, 2011). With a single column, or collinear residual differences, it is
 ##' the plain step G(x_k).
 ##' @noRd
-anderson_step <- function(residuals, refits) {
+take_anderson_step <- function(residuals, refits) {
   last <- ncol(residuals)
   if (last < 2L) return(refits[, last])
   residual_differences <- residuals[, -1L, drop = FALSE] -
@@ -234,20 +239,20 @@ anderson_step <- function(residuals, refits) {
 ##' The refits are combined by Anderson acceleration with `memory` previous
 ##' iterates, which reaches the fixed point in far fewer refits than plain
 ##' iteration. A combined step that fails or enlarges the residual is replaced
-##' by the plain step. The iteration always starts from the conditional mode
-##' and stops when one refit changes no factor by more than `tolerance`, as
-##' plain iteration does, so the proposal is a deterministic function of the
-##' parameters. Returns NULL if a refit fails or the precision is not positive
-##' definite. An iteration that has not converged still defines a valid
-##' proposal; it is returned with `converged = FALSE` so that the caller can
-##' decide whether to fall back to the Laplace proposal. With `initial`, a
-##' list of starting factors `linear` and `curvature`, the iteration starts
-##' from them instead of the conditional mode, which is then not needed.
+##' by the plain step. The iteration starts from the conditional mode, or from
+##' `initial`, a list of starting factors `linear` and `curvature` (the
+##' engine's anchor), and stops when one refit changes no factor by more than
+##' `tolerance`, as plain iteration does. Given its start, the proposal is
+##' therefore a deterministic function of the parameters. Returns NULL if a
+##' refit fails or the precision is not positive definite. An iteration that
+##' has not converged still defines a valid proposal. It is returned with
+##' `converged = FALSE` so that the caller can decide whether to fall back to
+##' the Laplace proposal.
 ##' @noRd
 fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 family, linkf, canonical,
                                 tolerance = 1e-8, maximum_iterations = 500L,
-                                quadrature = standard_normal_quadrature(),
+                                quadrature = build_normal_quadrature(),
                                 memory = 3L, initial = NULL) {
   if (is.null(initial)) {
     mode_terms <- laplace_observation_terms(
@@ -262,7 +267,8 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
     linear <- initial$linear
     curvature <- initial$curvature
   }
-  n <- length(linear)
+  observations <- length(linear)
+  curvature_part <- observations + seq_len(observations)
   # A lower bound on the factors' curvature that keeps Q positive definite.
   # For C >= c < 0, A' diag(C) A >= c A'A, and by Gershgorin the largest
   # eigenvalue of A'A is at most the number of latent columns per observation
@@ -299,8 +305,8 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
     keep <- max(1L, stored - memory):stored
     residuals <- cbind(residuals, refitted - factors)[, keep, drop = FALSE]
     history <- cbind(history, refitted)[, keep, drop = FALSE]
-    candidate <- anderson_step(residuals, history)
-    candidate[n + seq_len(n)] <- floor_curvature(candidate[n + seq_len(n)])
+    candidate <- take_anderson_step(residuals, history)
+    candidate[curvature_part] <- floor_curvature(candidate[curvature_part])
     next_refit <- refit(candidate)
     refits <- refits + 1L
     if (is.null(next_refit) ||
@@ -314,8 +320,8 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
     factors <- candidate
     refitted <- next_refit
   }
-  linear <- refitted[seq_len(n)]
-  curvature <- refitted[n + seq_len(n)]
+  linear <- refitted[seq_len(observations)]
+  curvature <- refitted[curvature_part]
   proposal_precision <- precision + latent_data_hessian(latent_map, curvature)
   proposal_precision <- (proposal_precision + t(proposal_precision)) / 2
   root <- tryCatch(chol(proposal_precision), error = function(error) NULL)

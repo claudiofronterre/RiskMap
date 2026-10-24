@@ -153,14 +153,14 @@ test_that("a scale smaller than the location spacing is reported, not held", {
               boundary_parameters = integer())
   layout <- cov_par_layout(2L, fix_tau2 = FALSE)
   distances <- as.matrix(dist(seq(0, 10, length.out = 11)))
-  small <- small_spatial_scale(fit, layout, distances, kappa = 0.5,
+  small <- detect_small_scale(fit, layout, distances, kappa = 0.5,
                                distance_scale = 2)
   expect_equal(small, c(scale = 0.6, practical_range = 0.6 * -log(0.05),
                         spacing = 2), tolerance = 1e-8)
   # With the spatial variance at zero the scale is meaningless and is not
   # reported as small.
   fit$boundary_parameters <- 3:4
-  expect_null(small_spatial_scale(fit, layout, distances, 0.5, 2))
+  expect_null(detect_small_scale(fit, layout, distances, 0.5, 2))
 
   outcome <- list(boundary_parameters = integer(), budget = 1000L,
                   validation_budget = 5000L, outcome = "certified",
@@ -174,8 +174,10 @@ test_that("a scale smaller than the location spacing is reported, not held", {
 })
 
 test_that("the practical range factor matches the exponential correlation", {
-  expect_equal(practical_range_factor(0.5), -log(0.05), tolerance = 1e-8)
-  expect_gt(practical_range_factor(1.5), practical_range_factor(0.5))
+  expect_equal(compute_practical_range_factor(0.5), -log(0.05),
+               tolerance = 1e-8)
+  expect_gt(compute_practical_range_factor(1.5),
+            compute_practical_range_factor(0.5))
 })
 
 test_that("the PC penalty is a proper density on the working scale", {
@@ -321,7 +323,7 @@ test_that("defensive mixture weights use the full mixture density", {
   expect_equal(log_weights, expected, tolerance = 1e-8)
 })
 
-test_that("defensive mixture keeps the Laplace approximation and the likelihood", {
+test_that("defensive mixture keeps the Laplace fit and the likelihood", {
   y <- 2
   trials <- 5
   beta <- -0.4
@@ -363,7 +365,7 @@ test_that("set_control_mcml validates the defensive weight", {
                "defensive_weight")
 })
 
-test_that("stable nonlinear parts equal the direct log-likelihood differences", {
+test_that("stable nonlinear parts equal direct likelihood differences", {
   centre <- c(-3, 0.2, 2)
   step <- outer(c(0.5, 1, 2), seq(-3, 3, length.out = 7))
   y <- c(0, 4, 9)
@@ -382,14 +384,14 @@ test_that("stable nonlinear parts equal the direct log-likelihood differences", 
       log_likelihood(centre) - step * terms$score
   }
   for (family in c("binomial", "poisson")) {
-    stable <- observation_nonlinear_part(
+    stable <- compute_nonlinear_parts(
       centre, step, y, units_m, family,
       make_inverse_link_functions(family, NULL, 3), canonical = TRUE
     )
     expect_equal(stable$nonlinear, direct(family), tolerance = 1e-10)
   }
   # Very large steps switch to the log-sum-exp form without overflow.
-  extreme <- observation_nonlinear_part(
+  extreme <- compute_nonlinear_parts(
     0, matrix(c(-800, 800), 1), 1, 10, "binomial",
     make_inverse_link_functions("binomial", NULL, 1), canonical = TRUE
   )
@@ -404,7 +406,7 @@ test_that("binomial nonlinear parts stay exact for extreme linear predictors", {
   softplus_stable <- function(x) pmax(x, 0) + log1p(exp(-abs(x)))
   exact <- -softplus_stable(centre + step) + softplus_stable(centre) +
     step * stats::plogis(centre)
-  stable <- observation_nonlinear_part(
+  stable <- compute_nonlinear_parts(
     centre, step, rep(0, 5), rep(1, 5), "binomial",
     make_inverse_link_functions("binomial", NULL, 5), canonical = TRUE
   )
@@ -412,8 +414,8 @@ test_that("binomial nonlinear parts stay exact for extreme linear predictors", {
   expect_equal(stable$nonlinear[1:2], c(-10.0000454, -50), tolerance = 1e-7)
 })
 
-test_that("weighted quadratic fits recover exact quadratics and use QR when needed", {
-  quadrature <- standard_normal_quadrature()
+test_that("weighted quadratic fits are exact and use QR when needed", {
+  quadrature <- build_normal_quadrature()
   nodes <- quadrature$nodes
   expect_equal(sum(quadrature$weights), 1)
   expect_equal(sum(quadrature$weights * nodes^2), 1)
@@ -438,7 +440,7 @@ test_that("weighted quadratic fits recover exact quadratics and use QR when need
   ))))
 })
 
-test_that("the global proposal keeps more effective draws than the Laplace one", {
+test_that("the global proposal keeps more effective draws than Laplace", {
   # A sparse site: twenty tested and none positive, so the conditional
   # distribution of its latent effect is skewed.
   parameters <- c(-1, log(4), log(1))
@@ -451,7 +453,7 @@ test_that("the global proposal keeps more effective draws than the Laplace one",
   set.seed(5)
   bank <- matrix(rnorm(20000), ncol = 1)
   relative_ess <- function(proposal) {
-    importance_diagnostics(engine_for(proposal)$evaluate(
+    summarise_importance_weights(engine_for(proposal)$evaluate(
       parameters, bank, log_weights_only = TRUE
     ))$relative_ess
   }
@@ -467,7 +469,7 @@ test_that("the global proposal keeps more effective draws than the Laplace one",
                tolerance = 0.005)
 })
 
-test_that("the global proposal works through a latent map with random effects", {
+test_that("the global proposal works through a random-effects latent map", {
   set.seed(12)
   n <- 40
   coordinate <- runif(n)
@@ -489,20 +491,20 @@ test_that("certificate algebra matches its definition", {
   information <- matrix(c(4, 1, 1, 3), 2)
   score <- c(0.2, -0.1)
   covariance <- matrix(c(0.01, 0.002, 0.002, 0.02), 2)
-  certificate <- mcml_certificate(chol(information), score, covariance)
+  certificate <- certify_estimate(chol(information), score, covariance)
   expect_equal(certificate$correction, solve(information, score))
   expect_equal(certificate$distance,
                sqrt(sum(score * solve(information, score))))
   expect_equal(certificate$bound, certificate$distance + certificate$radius)
   # With C = c H the radius is sqrt(c times the 95% point of chi-square(2)).
-  radius <- validation_radius(chol(information), 0.01 * information)
+  radius <- compute_validation_radius(chol(information), 0.01 * information)
   expect_equal(radius, sqrt(0.01 * qchisq(0.95, 2)), tolerance = 0.01)
 })
 
-test_that("the validation radius leaves the caller's random numbers unchanged", {
+test_that("the validation radius leaves the caller's random numbers", {
   set.seed(77)
   before <- .Random.seed
-  validation_radius(chol(diag(2)), diag(2))
+  compute_validation_radius(chol(diag(2)), diag(2))
   expect_identical(.Random.seed, before)
 })
 
@@ -528,30 +530,30 @@ test_that("a bank evaluated in blocks of rows gives the same weights", {
   }), use.names = FALSE)
   expect_equal(blocks, whole)
   # A single block is the bank drawn as one matrix from the same seed.
-  score <- validation_score(engine, parameters, 1:3, 1000, seed = 4,
+  score <- score_validation_bank(engine, parameters, 1:3, 1000, seed = 4,
                             block_rows = 1000)
   expect_equal(score$log_likelihood, engine$evaluate(parameters, bank))
-  blocked <- validation_score(engine, parameters, 1:3, 1000, seed = 4,
+  blocked <- score_validation_bank(engine, parameters, 1:3, 1000, seed = 4,
                               block_rows = 100)
   expect_true(all(is.finite(blocked$score)))
   expect_identical(dim(blocked$covariance), c(3L, 3L))
 })
 
 test_that("the budget rule targets the tolerance and respects the limit", {
-  budgets <- next_mcml_budgets(1000L, 5000L, certificate = 0.2,
+  budgets <- plan_next_budgets(1000L, 5000L, certificate = 0.2,
                                tolerance = 0.1, maximum_budget = 16000L)
   expect_identical(budgets$budget, 5000L)
   expect_identical(budgets$validation_budget, 25000L)
-  capped <- next_mcml_budgets(1000L, 5000L, certificate = 1,
+  capped <- plan_next_budgets(1000L, 5000L, certificate = 1,
                               tolerance = 0.1, maximum_budget = 16000L)
   expect_identical(capped$budget, 16000L)
-  small <- next_mcml_budgets(1000L, 5000L, certificate = 0.101,
+  small <- plan_next_budgets(1000L, 5000L, certificate = 0.101,
                              tolerance = 0.1, maximum_budget = 16000L)
   expect_identical(small$budget, 1500L)
   # Certificates far above the tolerance, or not finite, go to the largest
   # budget instead of overflowing the integer range.
   for (certificate in c(200, Inf, NaN)) {
-    largest <- next_mcml_budgets(1000L, 5000L, certificate = certificate,
+    largest <- plan_next_budgets(1000L, 5000L, certificate = certificate,
                                  tolerance = 0.1, maximum_budget = 16000L)
     expect_identical(largest$budget, 16000L)
     expect_identical(largest$validation_budget, 80000L)
@@ -615,14 +617,14 @@ test_that("the accelerated global iteration reaches the plain fixed point", {
 test_that("dispersed starts span the site spacing and half the extent", {
   layout <- cov_par_layout(2L, fix_tau2 = FALSE)
   distances <- as.matrix(dist(c(0, 1, 2, 3, 10)))
-  dispersed <- dispersed_starts(layout, distances)
+  dispersed <- make_dispersed_starts(layout, distances)
   expect_equal(exp(dispersed$log_phi), c(1, 1, 5, 5))
   expect_equal(exp(dispersed$log_sigma2), c(0.25, 4, 0.25, 4))
   expect_equal(dispersed$trigger, log(0.5))
   expect_identical(dispersed$phi_index, 4L)
 })
 
-test_that("the check for other maxima finds a higher maximum at a longer scale", {
+test_that("the check for maxima finds a higher one at a longer scale", {
   # Two maxima in the log scale: a local one at -3 and a higher one at 2.
   objective <- function(parameters, z) {
     log(exp(-(parameters[2] + 3)^2) + 3 * exp(-(parameters[2] - 2)^2)) -
@@ -703,7 +705,7 @@ test_that("Newton steps with a known curvature reach the maximum", {
   negative <- function(parameters) {
     0.5 * sum((parameters - centre) * (curvature %*% (parameters - centre)))
   }
-  exact <- newton_on_bank(negative, c(0, 0), chol(curvature), c(-5, -5),
+  exact <- run_newton_steps(negative, c(0, 0), chol(curvature), c(-5, -5),
                           c(5, 5))
   expect_true(exact$converged)
   expect_equal(exact$par, centre, tolerance = 1e-6)
@@ -716,7 +718,7 @@ test_that("Newton steps with a known curvature reach the maximum", {
                             curvature_root = chol(diag(c(1, 50))))
   expect_equal(rough$fit$par, centre, tolerance = 1e-5)
   # Steps are kept within the bounds.
-  bounded <- newton_on_bank(negative, c(0, 0), chol(curvature), c(-5, -1),
+  bounded <- run_newton_steps(negative, c(0, 0), chol(curvature), c(-5, -1),
                             c(5, 5))
   expect_gte(min(bounded$par[2]), -1)
   expect_false(bounded$converged)
@@ -740,16 +742,116 @@ test_that("the optimisation finishes with nlminb after Newton steps", {
 })
 
 test_that("curvatures are reused only when well conditioned", {
-  expect_null(curvature_factor(NULL))
-  expect_null(curvature_factor(diag(c(1, 1e-12))))
-  expect_null(curvature_factor(matrix(c(1, 2, 2, 1), 2)))
-  expect_equal(curvature_factor(diag(c(4, 9))), diag(c(2, 3)))
+  expect_null(factor_curvature(NULL))
+  expect_null(factor_curvature(diag(c(1, 1e-12))))
+  expect_null(factor_curvature(matrix(c(1, 2, 2, 1), 2)))
+  expect_equal(factor_curvature(diag(c(4, 9))), diag(c(2, 3)))
 })
 
 test_that("the stopping tolerance is fixed in log-likelihood units", {
-  expect_identical(mcml_optimiser_control()$rel.tol, 1e-10)
-  expect_equal(mcml_optimiser_control(1000)$rel.tol, 1e-7)
-  expect_equal(mcml_optimiser_control(10)$rel.tol, 1e-6)
-  expect_equal(mcml_optimiser_control(1e9)$rel.tol, 1e-12)
-  expect_identical(mcml_optimiser_control(Inf)$rel.tol, 1e-10)
+  expect_identical(make_optimiser_control()$rel.tol, 1e-10)
+  expect_equal(make_optimiser_control(1000)$rel.tol, 1e-7)
+  expect_equal(make_optimiser_control(10)$rel.tol, 1e-6)
+  expect_equal(make_optimiser_control(1e9)$rel.tol, 1e-12)
+  expect_identical(make_optimiser_control(Inf)$rel.tol, 1e-10)
+})
+
+test_that("the one-round central Hessian matches an exact quadratic", {
+  curvature <- matrix(c(3, -1, 0.5, -1, 2, 0.2, 0.5, 0.2, 1), 3)
+  objective <- function(point) {
+    0.5 * sum(point * (curvature %*% point)) + sum(point^3) / 6
+  }
+  point <- c(0.3, -0.4, 1.2)
+  expected <- curvature + diag(point)
+  expect_equal(compute_central_hessian(objective, point), expected,
+               tolerance = 1e-6)
+})
+
+test_that("weight diagnostics survive degenerate banks", {
+  none <- summarise_importance_weights(rep(-Inf, 10))
+  expect_identical(none$log_likelihood, -Inf)
+  expect_identical(none$relative_ess, 0)
+  single <- summarise_importance_weights(c(-Inf, 0))
+  expect_equal(single$log_likelihood, log(0.5))
+  expect_true(is.na(single$pareto_k) || is.finite(single$pareto_k))
+})
+
+test_that("a failed evaluation gives every draw zero weight", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  local_mocked_bindings(factor_covariance = function(...) stop("not positive"))
+  bank <- matrix(rnorm(12), 4)
+  expect_identical(engine$evaluate(c(0, 0, 0), bank, log_weights_only = TRUE),
+                   rep(-Inf, 4))
+  expect_identical(engine$evaluate(c(0, 0, 0), bank), -1e100)
+})
+
+test_that("the anchored start reaches the proposal of the start at the mode", {
+  set.seed(14)
+  coordinate <- runif(30)
+  trials <- rep(20, 30)
+  y <- rbinom(30, trials, plogis(-1.5 + rnorm(30, sd = 0.7)))
+  engine_for <- function() {
+    make_adaptive_mcml_engine(
+      D = matrix(1, nrow = 30), y = y, units_m = trials,
+      distances = as.matrix(dist(coordinate)), family = "binomial"
+    )
+  }
+  anchored <- engine_for()
+  expect_true(anchored$set_anchor(c(-1.4, log(0.5), log(0.2))))
+  plain <- engine_for()
+  parameters <- c(-1.6, log(0.6), log(0.25))
+  expect_equal(anchored$proposal_at(parameters)$centre,
+               plain$proposal_at(parameters)$centre, tolerance = 1e-6)
+  expect_equal(anchored$proposal_at(parameters)$root,
+               plain$proposal_at(parameters)$root, tolerance = 1e-6)
+})
+
+test_that("the check for other maxima reports a move and an ambiguity", {
+  layout <- cov_par_layout(1L, fix_tau2 = FALSE)
+  check <- data.frame(
+    log_likelihood = c(-12, -10), distance_from_fitted = c(0, 3),
+    maximum = 1:2, independent_log_likelihood = c(-12.1, -10.2),
+    independent_se = c(0.05, 0), chosen = c(FALSE, TRUE),
+    start = c("fitted", "a"), log_phi = log(c(0.1, 20))
+  )
+  moved <- list(maxima_check = check, better_maximum = TRUE,
+                ambiguous_maxima = FALSE)
+  expect_warning(report_maxima_check(moved, layout, 1),
+                 "found a separate maximum.*scale 20 instead of 0.1")
+  ambiguous <- moved
+  ambiguous$better_maximum <- FALSE
+  ambiguous$ambiguous_maxima <- TRUE
+  expect_warning(report_maxima_check(ambiguous, layout, 1),
+                 "fit about equally well")
+  quiet <- moved
+  quiet$better_maximum <- FALSE
+  expect_silent(report_maxima_check(quiet, layout, 1))
+})
+
+test_that("the objective carries the PC penalty only when asked", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 4), y = c(0, 1, 2, 1), units_m = rep(5, 4),
+    distances = as.matrix(dist(1:4)), family = "binomial"
+  )
+  plain <- make_mcml_objective(engine, set_control_mcml(),
+                               as.matrix(dist(1:4)), 1)
+  expect_null(plain$penalty)
+  penalised <- make_mcml_objective(engine, set_control_mcml(pc_prior = TRUE),
+                                   as.matrix(dist(1:4)), 1)
+  zero <- matrix(0, 1, 4)
+  parameters <- c(-1, 0, 0)
+  expect_equal(penalised$objective(parameters, zero),
+               engine$evaluate(parameters, zero) +
+                 penalised$penalty(parameters))
+})
+
+test_that("the table of the check for other maxima is restored to user units", {
+  history <- list(list(estimate = c(0, 0, 1, log(2)),
+                       maxima_check = data.frame(log_phi = log(c(0.1, 3)))))
+  restored <- restore_mcml_history_scale(history, diag(2), distance_scale = 10)
+  expect_equal(restored[[1]]$maxima_check$log_phi, log(c(1, 30)))
+  expect_equal(restored[[1]]$estimate[4], log(20))
 })

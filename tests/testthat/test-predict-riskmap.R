@@ -1210,9 +1210,10 @@ test_that("parameter uncertainty options are validated", {
 })
 
 test_that("an unavailable covariance matrix gives an informative error", {
-  expect_true(anyNA(binomial_model$covariance))
+  fit <- binomial_model
+  fit$covariance[] <- NA_real_
   expect_error(
-    predict(binomial_model, parameter_uncertainty = TRUE, messages = FALSE),
+    predict(fit, parameter_uncertainty = TRUE, messages = FALSE),
     "pc_prior = TRUE"
   )
 })

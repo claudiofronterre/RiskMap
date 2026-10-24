@@ -93,9 +93,9 @@ draws, the estimate is corrected by one Newton step with the score from an
 independent validation sample of 5,000 draws, and the corrected estimate is
 certified with a second, fresh validation sample. The certificate is an
 approximate 95% bound, in statistical standard errors, on the Monte Carlo
-error of the estimate at the maximum found. When it exceeds the tolerance (0.1 by
-default), both samples are enlarged to the size predicted to meet it, up to
-`max_samples`. The importance distribution is a Gaussian approximation fitted
+error of the estimate at the maximum found. When it exceeds the tolerance
+(0.1 by default), both samples are enlarged to the size predicted to meet it,
+up to `max_samples`. The importance distribution is a Gaussian approximation fitted
 to the whole conditional distribution of the latent effects (efficient
 importance sampling), which keeps far more draws effective than the Laplace
 approximation in sparse data. Binomial and Poisson models, with or without a
@@ -113,11 +113,11 @@ when the spatial variance is zero) is held at the boundary, the first stage is
 restarted once from an interior value, and precision is assessed on the
 remaining parameters, which keep their standard errors. A spatial scale
 estimated below the median distance between neighbouring locations is reported
-as estimated, with a warning that gives its practical range, explains why such
-a scale is poorly determined and suggests a nugget model, a fixed scale or the
-PC prior. If the
-information matrix is still singular, fitting stops instead of drawing more
-samples. Each case produces a plain-language warning.
+as estimated, with a warning that gives its practical range, explains that
+such a scale may be weakly identified, points to its profile likelihood and
+suggests a nugget model, a fixed scale or the PC prior. If the information
+matrix is still singular, fitting stops instead of drawing more samples. Each
+case produces a plain-language warning.
 
 - `maxim_integrand()` now takes `denominator` instead of `units_m`, matching
 `glgpm()`. Its documentation no longer lists the Gaussian family, which it has
@@ -152,8 +152,11 @@ sparse surveys an optimiser can stop at a maximum with a spatial scale far
 below the spacing between locations while a higher one exists at a longer
 scale. When the fitted scale is below half the median distance between
 neighbouring locations, the fit is repeated from four dispersed starting
-values on the same draws and the highest maximum is kept. A message says when
-and why this happens, and a warning says when it changes the estimate.
+values on the same draws. Candidates within 0.1 standard errors of each other
+are treated as one maximum, and separate maxima are compared on independent
+draws. A message says when and why the check runs, and a warning says when it
+moves the estimate to another maximum or finds two maxima that fit about
+equally well. The check does not prove that no higher maximum exists.
 
 ## Predictions
 
