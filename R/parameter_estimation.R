@@ -3027,8 +3027,8 @@ laplace_sampling_mcmc <- function(y,
 ##' P(sigma > `pc_sigma_threshold`) = `pc_sigma_probability`, where sigma is the
 ##' spatial standard deviation on the scale of the linear predictor. Default
 ##' 1 and 0.05.
-##' @param pc_range_threshold,pc_range_probability The penalty sets
-##' P(phi < `pc_range_threshold`) = `pc_range_probability`, where phi is the
+##' @param pc_scale_threshold,pc_scale_probability The penalty sets
+##' P(phi < `pc_scale_threshold`) = `pc_scale_probability`, where phi is the
 ##' spatial scale in the units of the coordinates. By default the threshold is the
 ##' median distance between neighbouring locations and the probability is
 ##' 0.05.
@@ -3049,8 +3049,8 @@ set_control_mcml <- function(initial_samples = 1000L,
                              pc_prior = FALSE,
                              pc_sigma_threshold = 1,
                              pc_sigma_probability = 0.05,
-                             pc_range_threshold = NULL,
-                             pc_range_probability = 0.05) {
+                             pc_scale_threshold = NULL,
+                             pc_scale_probability = 0.05) {
   check_positive_integer(initial_samples, "initial_samples")
   check_positive_integer(validation_samples, "validation_samples")
   check_positive_integer(max_samples, "max_samples")
@@ -3069,9 +3069,9 @@ set_control_mcml <- function(initial_samples = 1000L,
   check_positive_number(pc_sigma_threshold, "")
   check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
               name = "pc_sigma_probability")
-  if (!is.null(pc_range_threshold)) check_positive_number(pc_range_threshold, "")
-  check_range(pc_range_probability, 0, 1, allow_equal = FALSE,
-              name = "pc_range_probability")
+  if (!is.null(pc_scale_threshold)) check_positive_number(pc_scale_threshold, "")
+  check_range(pc_scale_probability, 0, 1, allow_equal = FALSE,
+              name = "pc_scale_probability")
   if (max_samples < initial_samples) {
     stop("'max_samples' must be at least 'initial_samples'.", call. = FALSE)
   }
@@ -3090,8 +3090,8 @@ set_control_mcml <- function(initial_samples = 1000L,
       pc_prior = pc_prior,
       pc_sigma_threshold = pc_sigma_threshold,
       pc_sigma_probability = pc_sigma_probability,
-      pc_range_threshold = pc_range_threshold,
-      pc_range_probability = pc_range_probability
+      pc_scale_threshold = pc_scale_threshold,
+      pc_scale_probability = pc_scale_probability
     ),
     class = "RiskMap_control_mcml"
   )

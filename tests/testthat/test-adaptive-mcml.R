@@ -180,9 +180,9 @@ test_that("the practical range factor matches the exponential correlation", {
 
 test_that("the PC penalty is a proper density on the working scale", {
   layout <- cov_par_layout(2L, fix_tau2 = FALSE)
-  penalty <- make_pc_penalty(layout, range_threshold = 2,
+  penalty <- make_pc_penalty(layout, scale_threshold = 2,
                              sigma_threshold = 1, sigma_probability = 0.05,
-                             range_probability = 0.05)
+                             scale_probability = 0.05)
   at <- function(log_sigma2, log_phi) penalty(c(0, 0, log_sigma2, log_phi))
   density_sigma <- function(a) exp(vapply(a, at, 0, log_phi = 0))
   density_range <- function(b) exp(vapply(b, function(x) at(0, x), 0))
@@ -219,9 +219,9 @@ test_that("penalising the engine leaves importance weights unchanged", {
 
 test_that("set_control_mcml validates the PC prior options", {
   expect_false(set_control_mcml()$pc_prior)
-  control <- set_control_mcml(pc_prior = TRUE, pc_range_threshold = 5)
+  control <- set_control_mcml(pc_prior = TRUE, pc_scale_threshold = 5)
   expect_true(control$pc_prior)
-  expect_identical(control$pc_range_threshold, 5)
+  expect_identical(control$pc_scale_threshold, 5)
   expect_error(set_control_mcml(pc_prior = NA), "pc_prior")
   expect_error(set_control_mcml(pc_sigma_probability = 1),
                "pc_sigma_probability")

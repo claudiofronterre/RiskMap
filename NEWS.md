@@ -128,8 +128,8 @@ never supported, and describes the Newton-type optimisation it actually uses.
 compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
 
 - `set_control_mcml()` gains `pc_prior` (default `FALSE`) and its thresholds
-`pc_sigma_threshold`, `pc_sigma_probability`, `pc_range_threshold` and
-`pc_range_probability`. When `pc_prior = TRUE`, the spatial variance and scale
+`pc_sigma_threshold`, `pc_sigma_probability`, `pc_scale_threshold` and
+`pc_scale_probability`. When `pc_prior = TRUE`, the spatial variance and scale
 are penalised by penalised-complexity priors (by default
 P(sigma > 1) = 0.05 and P(phi < median nearest-neighbour distance) = 0.05),
 which stabilises estimation in small or low-prevalence surveys. Warnings about

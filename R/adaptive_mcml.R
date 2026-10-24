@@ -676,14 +676,14 @@ dispersed_starts <- function(layout, distances, distance_scale = 1,
 ##' 2019), expressed on the working parameters (log sigma^2, log phi) and
 ##' including the Jacobian of that transformation:
 ##' P(sigma > sigma_threshold) = sigma_probability and
-##' P(phi < range_threshold) = range_probability. Fixed effects, nugget and
+##' P(phi < scale_threshold) = scale_probability. Fixed effects, nugget and
 ##' unstructured random-effect variances are not penalised.
 ##' @noRd
-make_pc_penalty <- function(layout, range_threshold,
+make_pc_penalty <- function(layout, scale_threshold,
                             sigma_threshold = 1, sigma_probability = 0.05,
-                            range_probability = 0.05) {
+                            scale_probability = 0.05) {
   rate_sigma <- -log(sigma_probability) / sigma_threshold
-  rate_range <- -log(range_probability) * range_threshold
+  rate_scale <- -log(scale_probability) * scale_threshold
   function(parameters) {
     log_sigma2 <- parameters[layout$index$sigma2]
     log_phi <- parameters[layout$index$phi]
@@ -692,7 +692,7 @@ make_pc_penalty <- function(layout, range_threshold,
     # pi(sigma) = rate exp(-rate sigma), with d sigma / d log sigma^2 = sigma/2;
     # pi(phi) = rate phi^-2 exp(-rate / phi), with d phi / d log phi = phi.
     (log(rate_sigma) - rate_sigma * sigma + log(sigma / 2)) +
-      (log(rate_range) - log_phi - rate_range / phi)
+      (log(rate_scale) - log_phi - rate_scale / phi)
   }
 }
 
@@ -768,16 +768,16 @@ glgpm_nong_adaptive <- function(
   penalty <- NULL
   objective <- engine$evaluate
   if (pc_prior) {
-    range_threshold <- if (is.null(control_mcml$pc_range_threshold)) {
+    scale_threshold <- if (is.null(control_mcml$pc_scale_threshold)) {
       median_nearest_neighbour_distance(distances)
     } else {
-      control_mcml$pc_range_threshold / distance_scale
+      control_mcml$pc_scale_threshold / distance_scale
     }
     penalty <- make_pc_penalty(
-      engine$layout, range_threshold = range_threshold,
+      engine$layout, scale_threshold = scale_threshold,
       sigma_threshold = control_mcml$pc_sigma_threshold,
       sigma_probability = control_mcml$pc_sigma_probability,
-      range_probability = control_mcml$pc_range_probability
+      scale_probability = control_mcml$pc_scale_probability
     )
     objective <- penalise_engine(engine$evaluate, penalty)
   }

@@ -17,8 +17,8 @@ set_control_mcml(
   pc_prior = FALSE,
   pc_sigma_threshold = 1,
   pc_sigma_probability = 0.05,
-  pc_range_threshold = NULL,
-  pc_range_probability = 0.05
+  pc_scale_threshold = NULL,
+  pc_scale_probability = 0.05
 )
 }
 \arguments{
@@ -81,8 +81,8 @@ P(sigma > \code{pc_sigma_threshold}) = \code{pc_sigma_probability}, where sigma 
 spatial standard deviation on the scale of the linear predictor. Default
 1 and 0.05.}
 
-\item{pc_range_threshold, pc_range_probability}{The penalty sets
-P(phi < \code{pc_range_threshold}) = \code{pc_range_probability}, where phi is the
+\item{pc_scale_threshold, pc_scale_probability}{The penalty sets
+P(phi < \code{pc_scale_threshold}) = \code{pc_scale_probability}, where phi is the
 spatial scale in the units of the coordinates. By default the threshold is the
 median distance between neighbouring locations and the probability is
 0.05.}
