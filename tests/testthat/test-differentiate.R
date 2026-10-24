@@ -41,6 +41,34 @@ test_that("differentiates whichever d1 was actually produced, for d2", {
   expect_equal(d2(eta), analytic_d2, tolerance = 1e-6)
 })
 
+test_that("unstable symbolic inverse-link derivatives use the numerical fallback", {
+  invlink <- function(eta) 1 / (1 + exp(-200 * eta))
+  link <- make_inverse_link_functions("binomial", invlink)
+
+  # The inverse link stays finite, but its symbolic derivative overflows
+  # at negative probe values. Check both derivatives against stable formulas.
+  eta <- c(-0.01, -0.005, 0, 0.005, 0.01)
+  probability <- plogis(200 * eta)
+  expect_identical(link$inv(-5:5), invlink(-5:5))
+  expect_true(all(is.finite(link$d1(-5:5))))
+  expect_true(all(is.finite(link$d2(-5:5))))
+  expect_equal(link$d1(eta),
+               200 * probability * (1 - probability), tolerance = 1e-6)
+  expect_equal(link$d2(eta),
+               200^2 * probability * (1 - probability) * (1 - 2 * probability),
+               tolerance = 1e-5)
+})
+
+test_that("invalid numerical derivatives report the derivative name", {
+  invlink <- function(eta) {
+    if (any(eta != 0)) stop("outside zero")
+    eta
+  }
+
+  expect_error(differentiate(invlink, 11L, name = "invlink_prime"),
+               "'invlink_prime' failed on a numeric vector: outside zero")
+})
+
 test_that("a custom invlink that Deriv cannot differentiate still fits via the numeric fallback", {
   ## approxfun()'s returned closure has no Deriv derivative rule, so this
   ## exercises the same fallback as the unit tests above, end-to-end through
@@ -50,7 +78,7 @@ test_that("a custom invlink that Deriv cannot differentiate still fits via the n
   ## optimizer iteration, and re-running approxfun()'s table setup that often
   ## made this test take ~30s.
   af <- approxfun(c(-50, 50), c(0.01, 0.99), rule = 2)
-  invlink <- list(inv = function(eta) af(eta))
+  invlink <- function(eta) af(eta)
 
   fit <- suppressWarnings(glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
               denominator = denominator, invlink = invlink, control_mcmc = control_mcmc,

@@ -70,6 +70,9 @@ native linear units rather than assuming metres.
 
 ## Model fitting
 
+- Custom inverse-link derivatives fall back to numerical differentiation when
+  their symbolic form is non-finite across the validation range.
+
 - The `den` argument in `glgpm()` has been renamed to `denominator`.
 - `glpgm()` now only accepts data in an sf format. 
 Consequently the locations do not need to be passed to `gp()` when fitting a model

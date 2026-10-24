@@ -179,7 +179,7 @@ make_adaptive_mcml_engine <- function(
   layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
                            sigma2_me = FALSE, n_re = n_re)
 
-  linkf <- make_inverse_link_functions(family, invlink, n)
+  linkf <- make_inverse_link_functions(family, invlink)
   inverse_link <- linkf$inv
   inverse_derivative <- linkf$d1
   canonical <- identical(linkf$name, "canonical")
@@ -1294,7 +1294,7 @@ glgpm_nong_adaptive <- function(
     log_lik = last$fit_diagnostics$value -
       if (is.null(penalty)) 0 else penalty(fit$estimate),
     S_samples = NULL,
-    link_function = make_inverse_link_functions(family, invlink, length(y))
+    link_function = make_inverse_link_functions(family, invlink)
   )
   optimizer <- list(
     convergence = last$convergence,
