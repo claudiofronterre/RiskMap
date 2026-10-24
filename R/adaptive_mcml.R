@@ -290,6 +290,9 @@ make_adaptive_mcml_engine <- function(
   # parameter values; the most recent factorisations are reused when the
   # proposal and target parameters coincide.
   last_mode <- numeric(latent$dimension)
+  # Converged global factors at a fixed parameter value (set by
+  # set_anchor()), used to start the global iteration at other values.
+  anchor <- NULL
   cached_parameters <- NULL
   cached_type <- NULL
   cached_proposal <- NULL
@@ -378,28 +381,52 @@ make_adaptive_mcml_engine <- function(
       precision[cbind(index, index)] <- 1 / values$sigma2_re[j]
     }
     mu <- as.numeric(D %*% values$beta + cov_offset)
-    approximation <- adaptive_laplace_mode(
-      mu = mu, y = y, units_m = units_m, latent_map = latent_map,
-      precision = precision, family = family, linkf = linkf,
-      start = last_mode
-    )
-    last_mode <<- approximation$mode
-    centre <- approximation$mode
-    proposal_precision <- approximation$hessian
+    global_from <- function(mode = NULL, initial = NULL) {
+      fit_global_proposal(
+        mode = mode, mu = mu, y = y, units_m = units_m,
+        latent_map = latent_map, precision = precision, family = family,
+        linkf = linkf, canonical = canonical, initial = initial
+      )
+    }
+    laplace_mode <- function() {
+      approximation <- adaptive_laplace_mode(
+        mu = mu, y = y, units_m = units_m, latent_map = latent_map,
+        precision = precision, family = family, linkf = linkf,
+        start = last_mode
+      )
+      last_mode <<- approximation$mode
+      approximation
+    }
+    approximation <- NULL
     global <- NULL
     if (identical(type, "global")) {
-      global <- fit_global_proposal(
-        mode = approximation$mode, mu = mu, y = y, units_m = units_m,
-        latent_map = latent_map, precision = precision, family = family,
-        linkf = linkf, canonical = canonical
-      )
-      if (is.null(global) || !global$converged) {
-        proposal_failures <<- proposal_failures + 1L
+      # From the anchor, the factors of the likelihood in the latent linear
+      # predictor s carry over exactly to the new regression part mu, as
+      # b - C (mu - mu_anchor) and C, so the iteration starts close to its
+      # fixed point and the conditional mode is not needed. A start that
+      # does not converge is replaced by the start at the conditional mode.
+      if (!is.null(anchor)) {
+        global <- global_from(initial = list(
+          linear = anchor$linear - anchor$curvature * (mu - anchor$mu),
+          curvature = anchor$curvature
+        ))
+        if (!is.null(global) && !global$converged) global <- NULL
       }
-      if (!is.null(global)) {
-        centre <- global$centre
-        proposal_precision <- global$precision
+      if (is.null(global)) {
+        approximation <- laplace_mode()
+        global <- global_from(mode = approximation$mode)
+        if (is.null(global) || !global$converged) {
+          proposal_failures <<- proposal_failures + 1L
+        }
       }
+    }
+    if (is.null(global)) {
+      if (is.null(approximation)) approximation <- laplace_mode()
+      centre <- approximation$mode
+      proposal_precision <- approximation$hessian
+    } else {
+      centre <- global$centre
+      proposal_precision <- global$precision
     }
     root <- tryCatch(
       inverse_cholesky_factor(proposal_precision),
@@ -410,7 +437,7 @@ make_adaptive_mcml_engine <- function(
     proposal <- list(centre = centre, root = root, values = values,
                      covariance = covariance, spatial_root = spatial_root,
                      type = if (is.null(global)) "laplace" else "global",
-                     mode = approximation$mode)
+                     mu = mu, factors = global$factors)
     cached_parameters <<- parameters
     cached_type <<- type
     cached_proposal <<- proposal
@@ -501,6 +528,17 @@ make_adaptive_mcml_engine <- function(
          invisible(NULL)
        },
        proposal_failures = function() proposal_failures,
+       set_anchor = function(parameters) {
+         anchor <<- NULL
+         cached_parameters <<- NULL
+         proposal <- tryCatch(proposal_at(parameters, "global"),
+                              error = function(error) NULL)
+         if (!is.null(proposal$factors)) {
+           anchor <<- c(list(mu = proposal$mu), proposal$factors)
+         }
+         cached_parameters <<- NULL
+         invisible(!is.null(anchor))
+       },
        reset_proposal_failures = function() {
          proposal_failures <<- 0L
          invisible(NULL)

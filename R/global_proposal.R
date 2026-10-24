@@ -232,20 +232,28 @@ anderson_step <- function(residuals, refits) {
 ##' parameters. Returns NULL if a refit fails or the precision is not positive
 ##' definite. An iteration that has not converged still defines a valid
 ##' proposal; it is returned with `converged = FALSE` so that the caller can
-##' decide whether to fall back to the Laplace proposal.
+##' decide whether to fall back to the Laplace proposal. With `initial`, a
+##' list of starting factors `linear` and `curvature`, the iteration starts
+##' from them instead of the conditional mode, which is then not needed.
 ##' @noRd
 fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 family, linkf, canonical,
                                 tolerance = 1e-8, maximum_iterations = 500L,
                                 quadrature = standard_normal_quadrature(),
-                                memory = 3L) {
-  mode_terms <- laplace_observation_terms(
-    mu + latent_linear_predictor(latent_map, mode), y, units_m, family, linkf
-  )
-  if (is.null(mode_terms)) return(NULL)
-  curvature <- mode_terms$curvature
-  linear <- mode_terms$score +
-    curvature * latent_linear_predictor(latent_map, mode)
+                                memory = 3L, initial = NULL) {
+  if (is.null(initial)) {
+    mode_terms <- laplace_observation_terms(
+      mu + latent_linear_predictor(latent_map, mode), y, units_m, family,
+      linkf
+    )
+    if (is.null(mode_terms)) return(NULL)
+    curvature <- mode_terms$curvature
+    linear <- mode_terms$score +
+      curvature * latent_linear_predictor(latent_map, mode)
+  } else {
+    linear <- initial$linear
+    curvature <- initial$curvature
+  }
   n <- length(linear)
   # A lower bound on the factors' curvature that keeps Q positive definite.
   # For C >= c < 0, A' diag(C) A >= c A'A, and by Gershgorin the largest
@@ -308,5 +316,6 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
     t(root), latent_gradient(latent_map, linear)
   )))
   list(centre = centre, precision = proposal_precision, iterations = refits,
-       change = change, converged = change < tolerance)
+       change = change, converged = change < tolerance,
+       factors = list(linear = linear, curvature = curvature))
 }
