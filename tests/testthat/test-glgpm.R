@@ -141,8 +141,7 @@ test_that("glgpm produces errors", {
 
   expect_error(set_control_mcml(initial_samples = 0), "positive integer")
   expect_error(set_control_mcml(max_stages = 0), "positive integer")
-  expect_error(set_control_mcml(max_mcse_ratio = 0), "strictly between")
-  expect_error(set_control_mcml(score_probability = 1), "strictly between")
+  expect_error(set_control_mcml(tolerance = -1), "positive number")
   expect_error(
     set_control_mcml(initial_samples = 1000, max_samples = 500),
     "at least 'initial_samples'"
@@ -607,7 +606,7 @@ test_that("glgpm produces expected output for poisson models", {
   expect_true(all(fitted(fit_re_den) > 0))
 })
 
-test_that("adaptive MCML records independent precision diagnostics", {
+test_that("certified MCML records its certificate and bank diagnostics", {
   set.seed(9917)
   caller_seed <- .Random.seed
   fit <- suppressWarnings(glgpm(
@@ -622,26 +621,17 @@ test_that("adaptive MCML records independent precision diagnostics", {
   expect_length(fit$mcml_history, 1L)
   expect_identical(stage$budget, 500L)
   expect_true(all(c(
-    "fit_effective_samples", "validation_effective_samples",
-    "max_parameter_mcse_ratio", "score_agreement_statistic",
-    "score_agreement_limit", "accepted", "timing"
+    "fit_diagnostics", "first_validation", "second_validation",
+    "certificate", "certificate_distance", "certificate_radius",
+    "correction_size", "certified", "outcome", "timing"
   ) %in% names(stage)))
+  expect_null(stage$information)
   expect_identical(diagnostics$mcml_budget, 500L)
+  expect_identical(diagnostics$mcml_validation_budget, 500L)
   expect_identical(diagnostics$mcml_stages, 1L)
   expect_identical(diagnostics$mcml_supported, fit$mcml_converged)
+  expect_identical(diagnostics$mcml_certificate, stage$certificate)
   expect_identical(.Random.seed, caller_seed)
-})
-
-test_that("MCML control uses the calibrated precision defaults", {
-  control <- set_control_mcml()
-
-  expect_identical(control$initial_samples, 1000L)
-  expect_identical(control$max_samples, 20000L)
-  expect_identical(control$max_stages, 5L)
-  expect_identical(control$min_effective_samples, 100L)
-  expect_identical(control$max_pareto_k, 0.7)
-  expect_identical(control$max_mcse_ratio, 0.1)
-  expect_identical(control$score_probability, 0.99)
 })
 
 

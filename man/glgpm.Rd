@@ -124,18 +124,23 @@ models they use the conditional latent mean.}
 return probabilities; Poisson models return expected counts and therefore
 include any supplied exposure in \code{denominator}. These are \code{NULL} for
 non-Gaussian models when \code{return_samples = FALSE}.}
-\item{mcml_history}{For non-Gaussian models, one entry per adaptive stage,
-containing the bank size, estimate, optimizer result, effective sample
-sizes, Pareto tail diagnostics, parameter Monte Carlo error,
-independent-score agreement, timing, stopping decision, and the reason for
-any increase in sample size. Estimates use the same parameterisation as
-\code{estimate}, with regression coefficients and spatial range restored to the
-supplied covariate and distance units. \code{NULL} for Gaussian models.}
-\item{mcml_converged}{Whether the final adaptive stage met every Monte
-Carlo precision and independent-validation criterion. \code{NULL} for Gaussian
-models.}
-\item{mcml_selected_iteration}{The adaptive stage whose estimate is
-returned. \code{NULL} for Gaussian models.}
+\item{mcml_history}{For non-Gaussian models, one entry per stage of
+certified Monte Carlo maximum likelihood (see \code{\link[=set_control_mcml]{set_control_mcml()}}),
+containing the sizes of the fitting and validation samples, the
+importance distribution used, the optimum of the fitting sample
+(\code{fitted_estimate}) and the corrected estimate (\code{estimate}), the optimizer
+result, the size of the correction, the certificate and its two parts
+(\code{certificate_distance} and \code{certificate_radius}), effective sample sizes
+and Pareto tail diagnostics of each sample, the outcome of the stage and
+its timing. Estimates use the same parameterisation as \code{estimate}, with
+regression coefficients and spatial range restored to the supplied
+covariate and distance units. \code{NULL} for Gaussian models.}
+\item{mcml_converged}{Whether the certificate of the returned estimate is
+within the tolerance, so that its Monte Carlo error is at most \code{tolerance}
+statistical standard errors with probability about 0.95. \code{NULL} for
+Gaussian models.}
+\item{mcml_selected_iteration}{The stage whose estimate is returned.
+\code{NULL} for Gaussian models.}
 }
 \description{
 Fits generalized linear Gaussian process models to spatial data,
@@ -168,13 +173,15 @@ as \code{phi}) are expressed in kilometers (\code{"km"}, the default) or meters 
 
 The \code{control_mcmc} argument specifies the control parameters for MCMC sampling.
 This argument must be an object returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.
-For non-Gaussian models, adaptive MCML starts with independent fitting and
-validation importance samples. It increases their size only when direct
-parameter-scale Monte Carlo error, importance-tail diagnostics, or
-independent score agreement show that more information is needed. The
-algorithm records every stage and warns if its precision criteria are not
-met before the configured limits. \code{control_mcmc$seed} makes both estimation
-banks and final conditional sampling reproducible.
+Non-Gaussian models are fitted by certified Monte Carlo maximum likelihood
+(MCML), controlled by \code{control_mcml} (see \code{\link[=set_control_mcml]{set_control_mcml()}}). The
+estimate is corrected with an independent validation sample and certified
+with a second, fresh one, which bounds its Monte Carlo error in statistical
+standard errors. The samples are enlarged only when the certificate exceeds
+the tolerance. Every stage is recorded in \code{mcml_history}, and a warning is
+issued if the tolerance is not met within the configured limits.
+\code{control_mcmc$seed} makes the estimation samples and the final conditional
+sampling reproducible.
 
 The \code{start_pars} argument allows starting values to be supplied explicitly.
 Otherwise, binomial and Poisson models compare two automatic candidates

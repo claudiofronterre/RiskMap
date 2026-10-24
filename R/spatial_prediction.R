@@ -1347,7 +1347,8 @@ parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
     distances = as.matrix(pairwise_distances(coords)),
     family = object$family, kappa = object$kappa,
     cov_offset = object$cov_offset, ID_coords = object$ID_coords,
-    fix_tau2 = object$fix_tau2, ID_re = object$ID_re, invlink = invlink
+    fix_tau2 = object$fix_tau2, ID_re = object$ID_re, invlink = invlink,
+    proposal = "laplace"
   )
   phi_index <- engine$layout$index$phi
   step_size <- utils::tail(attr(object, "mcmc")$tuning_par, 1L)
@@ -1370,7 +1371,7 @@ parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
         h = step_size
       ),
       invlink = invlink, Sigma_pd = crossprod(proposal$root),
-      mean_pd = proposal$mode, messages = FALSE
+      mean_pd = proposal$centre, messages = FALSE
     )
     list(samples = do.call(cbind, simulation$samples),
          acceptance = simulation$acceptance_rate[["sampling"]])

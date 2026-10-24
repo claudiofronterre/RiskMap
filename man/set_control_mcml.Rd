@@ -2,18 +2,17 @@
 % Please edit documentation in R/parameter_estimation.R
 \name{set_control_mcml}
 \alias{set_control_mcml}
-\title{Set control parameters for adaptive MCML estimation}
+\title{Set control parameters for certified MCML estimation}
 \usage{
 set_control_mcml(
   initial_samples = 1000L,
-  max_samples = 20000L,
-  max_stages = 5L,
-  min_effective_samples = 100L,
-  max_pareto_k = 0.7,
-  max_mcse_ratio = 0.1,
-  score_probability = 0.99,
+  validation_samples = 5000L,
+  max_samples = 16000L,
+  max_stages = 4L,
+  tolerance = 0.1,
+  proposal = c("global", "laplace"),
   defensive_weight = 0.05,
-  laplace_start = FALSE,
+  laplace_start = TRUE,
   hold_short_range = TRUE,
   pc_prior = FALSE,
   pc_sigma_threshold = 1,
@@ -23,42 +22,41 @@ set_control_mcml(
 )
 }
 \arguments{
-\item{initial_samples}{Positive integer giving the number of draws in each
-fitting and validation bank at the first stage. Defaults to 1,000.}
+\item{initial_samples}{Positive integer giving the number of draws in the
+fitting sample at the first stage. Defaults to 1,000.}
 
-\item{max_samples}{Positive integer giving the largest permitted bank.
-Defaults to 20,000.}
+\item{validation_samples}{Positive integer giving the number of draws in
+each validation sample at the first stage. Later stages enlarge the
+validation samples in the same proportion as the fitting sample. Defaults
+to 5,000.}
 
-\item{max_stages}{Positive integer giving the maximum number of adaptive
-stages. Defaults to 5.}
+\item{max_samples}{Positive integer giving the largest permitted fitting
+sample. Defaults to 16,000.}
 
-\item{min_effective_samples}{Positive integer giving the minimum effective
-number of importance draws required in both banks before Monte Carlo
-uncertainty is interpreted. Defaults to 100.}
+\item{max_stages}{Positive integer giving the maximum number of stages.
+Defaults to 4.}
 
-\item{max_pareto_k}{Positive upper limit for the Pareto tail-shape
-diagnostic. Defaults to 0.7.}
+\item{tolerance}{Positive number giving the largest accepted certificate,
+in statistical standard errors. Defaults to 0.1.}
 
-\item{max_mcse_ratio}{Number between zero and one giving the largest allowed
-ratio of Monte Carlo standard error to ordinary statistical standard error,
-over all linear combinations of fitted parameters. Defaults to 0.1.}
-
-\item{score_probability}{Number strictly between zero and one used for the
-independent-bank score-agreement limit. Defaults to 0.99.}
+\item{proposal}{The importance distribution for the latent effects.
+\code{"global"} (the default) fits a Gaussian approximation to the whole
+conditional distribution of the latent effects, which keeps far more of
+the draws effective in sparse data than the Laplace approximation;
+\code{"laplace"} uses the Laplace approximation at the conditional mode. If the
+global approximation cannot be built at some parameter value, the stage is
+repeated with the Laplace approximation.}
 
 \item{defensive_weight}{Number in [0, 1) giving the share of importance
 draws taken from the prior distribution of the latent effects instead of
-the Laplace approximation. This defensive mixture keeps the variance of the
-importance weights finite, which the Gaussian Laplace proposal alone does
-not in most spatial datasets, so that Monte Carlo errors and the stopping
-rule are valid. Defaults to 0.05. Set to 0 to use the Laplace proposal
-alone.}
+the Gaussian approximation. This defensive mixture keeps the variance of
+the importance weights finite, which a Gaussian proposal alone does not in
+most spatial datasets, so that Monte Carlo errors are valid. Defaults to
+0.05. Set to 0 to use the Gaussian approximation alone.}
 
-\item{laplace_start}{Logical. If \code{TRUE}, the Laplace approximation to the
-likelihood is first maximised from several starting values and Monte Carlo
-maximum likelihood starts from the best Laplace estimate. Defaults to
-\code{FALSE}: in validation this changed which local maximum was reached about as
-often for the worse as for the better, at extra computational cost.}
+\item{laplace_start}{Logical. If \code{TRUE} (the default), the Laplace
+approximation to the likelihood is first maximised from the starting
+values, and Monte Carlo maximum likelihood starts from that estimate.}
 
 \item{hold_short_range}{Logical. If \code{TRUE} (the default), a spatial range
 estimated below the median distance between neighbouring locations is held
@@ -91,14 +89,18 @@ median distance between neighbouring locations and the probability is
 A control object of class \code{RiskMap_control_mcml}.
 }
 \description{
-Non-Gaussian models use independent fitting and validation importance
-samples. Sampling stops automatically only when the importance samples are
-regular enough to estimate Monte Carlo uncertainty, that uncertainty is
-small relative to the model's statistical uncertainty, and both samples
-give compatible score vectors.
+Non-Gaussian models are fitted by Monte Carlo maximum likelihood with
+importance sampling. The estimated log-likelihood is maximised on a
+fitting sample of draws, the estimate is corrected by one Newton step with
+the score from an independent validation sample, and the corrected
+estimate is certified with a second, fresh validation sample: the
+certificate bounds its distance from the exact maximum likelihood
+estimate, in statistical standard errors, with probability about 0.95. If
+the certificate exceeds \code{tolerance}, the samples are enlarged to the size
+predicted to meet it and the fit is repeated.
 }
 \examples{
-control_mcml <- set_control_mcml(max_samples = 10000)
+control_mcml <- set_control_mcml(max_samples = 8000)
 }
 \seealso{
 \code{\link[=glgpm]{glgpm()}}, \code{\link[=set_control_mcmc]{set_control_mcmc()}}

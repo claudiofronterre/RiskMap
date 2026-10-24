@@ -24,7 +24,7 @@ test_that("adaptive importance likelihood agrees with one-dimensional quadrature
   expect_equal(observed, exact, tolerance = 0.005)
 })
 
-test_that("adaptive diagnostics use independent banks and absolute ESS", {
+test_that("a certified stage corrects the fit and certifies the correction", {
   coordinate <- seq(0, 1, length.out = 30)
   covariate <- seq(-1, 1, length.out = 30)
   trials <- rep(20, 30)
@@ -36,25 +36,26 @@ test_that("adaptive diagnostics use independent banks and absolute ESS", {
     family = "binomial"
   )
   fit <- fit_adaptive_mcml(
-    engine = engine$evaluate,
-    start = c(-0.4, 0.5, log(0.8), log(0.4)),
-    latent_dimension = 30,
-    initial_budget = 1000,
-    maximum_budget = 1000,
-    maximum_stages = 1,
-    min_absolute_ess = 100,
-    max_pareto_k = 10,
-    seed = 2718,
-    lower = c(-10, -10, -8, -8),
-    upper = c(10, 10, 4, 4)
+    engine = engine, start = c(-0.4, 0.5, log(0.8), log(0.4)),
+    initial_budget = 1000, validation_budget = 2000, maximum_budget = 1000,
+    maximum_stages = 1, seed = 2718,
+    lower = c(-10, -10, -8, -8), upper = c(10, 10, 4, 4)
   )
   stage <- fit$history[[1L]]
 
-  expect_true(stage$fit_effective_samples >= 100)
-  expect_true(stage$validation_effective_samples >= 100)
-  expect_true(is.finite(stage$max_parameter_mcse_ratio))
-  expect_true(is.finite(stage$score_agreement_statistic))
-  expect_identical(fit$accepted, stage$accepted)
+  expect_identical(stage$proposal, "global")
+  expect_identical(stage$proposal_failures, 0L)
+  expect_true(is.finite(stage$certificate))
+  expect_equal(stage$certificate,
+               stage$certificate_distance + stage$certificate_radius)
+  expect_identical(fit$certified, stage$certificate <= 0.1)
+  expect_identical(fit$outcome,
+                   if (fit$certified) "certified" else "not certified")
+  # The returned estimate is the corrected one, not the optimum of the bank.
+  expect_identical(fit$estimate, stage$estimate)
+  expect_false(identical(stage$estimate, stage$fitted_estimate))
+  expect_equal(fit$score, stage$second_validation$score)
+  expect_identical(fit$validation_budget, 2000L)
 })
 
 test_that("boundary variance components and their linked range are detected", {
@@ -85,21 +86,7 @@ test_that("variance parameters are described in plain language", {
                    character())
 })
 
-test_that("Laplace start candidates include data-based and interior values", {
-  layout <- cov_par_layout(2L, fix_tau2 = TRUE)
-  distances <- as.matrix(dist(c(0, 1, 2, 3)))
-  start <- c(0, 0, log(2), log(5), -15)
-  candidates <- laplace_start_candidates(start, layout, distances)
-  expect_identical(names(candidates),
-                   c("supplied", "data_range", "interior_variances"))
-  expect_identical(candidates$supplied, start)
-  expect_equal(candidates$data_range[4L],
-               log(median(distances[upper.tri(distances)]) / 3))
-  expect_equal(candidates$interior_variances[c(3L, 5L)],
-               c(log(2), log(0.25)))
-})
-
-test_that("Laplace multistart returns the Laplace value at its estimate", {
+test_that("the Laplace start returns the Laplace value at its estimate", {
   coordinate <- seq(0, 1, length.out = 25)
   covariate <- seq(-1, 1, length.out = 25)
   trials <- rep(15, 25)
@@ -108,22 +95,17 @@ test_that("Laplace multistart returns the Laplace value at its estimate", {
   distances <- as.matrix(dist(coordinate))
   engine <- make_adaptive_mcml_engine(
     D = cbind(1, covariate), y = y, units_m = trials,
-    distances = distances, family = "binomial"
+    distances = distances, family = "binomial", proposal = "laplace"
   )
-  lower <- c(-10, -10, -8, -8)
-  upper <- c(10, 10, 4, 4)
-  candidates <- laplace_start_candidates(c(0, 0, log(0.5), log(0.3)),
-                                         engine$layout, distances)
-  laplace <- laplace_multistart(engine$evaluate, candidates, 25, lower, upper)
+  start <- c(0, 0, log(0.5), log(0.3))
+  laplace <- maximise_laplace(engine$evaluate, start, 25,
+                              lower = c(-10, -10, -8, -8),
+                              upper = c(10, 10, 4, 4))
   zero <- matrix(0, nrow = 1, ncol = 25)
 
   expect_equal(laplace$log_likelihood,
                engine$evaluate(laplace$estimate, zero))
-  expect_true(all(laplace$log_likelihood >=
-                    vapply(candidates, function(candidate) {
-                      engine$evaluate(candidate, zero)
-                    }, numeric(1))))
-  expect_contains(names(candidates), laplace$candidate)
+  expect_gte(laplace$log_likelihood, engine$evaluate(start, zero))
 })
 
 test_that("a zero spatial variance is held at the boundary without escalation", {
@@ -138,24 +120,25 @@ test_that("a zero spatial variance is held at the boundary without escalation", 
     distances = as.matrix(dist(coordinate)), family = "binomial"
   )
   fit <- fit_adaptive_mcml(
-    engine = engine$evaluate, start = c(-0.5, 0.6, -14, log(0.2)),
-    latent_dimension = 60, initial_budget = 1000, maximum_budget = 8000,
-    maximum_stages = 4, min_absolute_ess = 100, seed = 99,
+    engine = engine, start = c(-0.5, 0.6, -14, log(0.2)),
+    initial_budget = 1000, validation_budget = 2000, maximum_budget = 8000,
+    maximum_stages = 4, seed = 99,
     lower = c(-10, -10, -20, -8), upper = c(10, 10, 4, 4),
     variance_index = 3L, linked_index = list(`3` = 4L)
   )
 
   expect_identical(fit$boundary_parameters, c(3L, 4L))
-  expect_false(fit$identifiability_failure)
-  expect_true(fit$accepted)
+  expect_identical(fit$outcome, "certified")
   expect_identical(fit$budget, 1000L)
+  # Held parameters are not corrected.
+  expect_identical(fit$estimate[3:4], fit$history[[1L]]$fitted_estimate[3:4])
   expect_true(all(is.finite(diag(fit$covariance)[1:2])))
   expect_true(all(is.na(diag(fit$covariance)[3:4])))
 })
 
 test_that("set_control_mcml validates laplace_start", {
-  expect_false(set_control_mcml()$laplace_start)
-  expect_true(set_control_mcml(laplace_start = TRUE)$laplace_start)
+  expect_true(set_control_mcml()$laplace_start)
+  expect_false(set_control_mcml(laplace_start = FALSE)$laplace_start)
   expect_error(set_control_mcml(laplace_start = NA), "laplace_start")
   expect_error(set_control_mcml(laplace_start = "yes"), "laplace_start")
 })
@@ -186,9 +169,9 @@ test_that("a range shorter than the location spacing is held at the spacing", {
     distances = distances, family = "binomial"
   )
   fit <- fit_adaptive_mcml(
-    engine = engine$evaluate, start = c(-0.3, 0.5, log(0.5), log(0.01)),
-    latent_dimension = 60, initial_budget = 1000, maximum_budget = 4000,
-    maximum_stages = 3, min_absolute_ess = 100, seed = 5,
+    engine = engine, start = c(-0.3, 0.5, log(0.5), log(0.01)),
+    initial_budget = 1000, validation_budget = 2000, maximum_budget = 4000,
+    maximum_stages = 3, seed = 5,
     lower = c(-10, -10, -20, -20), upper = c(10, 10, 4, 4),
     variance_index = 3L, linked_index = list(`3` = 4L),
     range_index = 4L, minimum_log_range = minimum
@@ -238,8 +221,6 @@ test_that("penalising the engine leaves importance weights unchanged", {
   expect_identical(penalised(theta, z, log_weights_only = TRUE),
                    engine$evaluate(theta, z, log_weights_only = TRUE))
   expect_equal(penalised(theta, z), engine$evaluate(theta, z) + penalty(theta))
-  expect_equal(penalised(theta, z, diagnostics = TRUE)$value,
-               engine$evaluate(theta, z) + penalty(theta))
 })
 
 test_that("set_control_mcml validates the PC prior options", {
@@ -257,9 +238,8 @@ test_that("glgpm fits with the PC prior and reports the unpenalised likelihood",
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
     control_mcml = set_control_mcml(
-      initial_samples = 500, max_samples = 500, max_stages = 1,
-      min_effective_samples = 1, max_pareto_k = 100,
-      max_mcse_ratio = 0.99, score_probability = 0.999999, pc_prior = TRUE
+      initial_samples = 500, validation_samples = 500, max_samples = 500,
+      max_stages = 1, pc_prior = TRUE
     ),
     messages = FALSE
   ))
@@ -275,10 +255,8 @@ test_that("identification warnings point to the PC penalty only when it is off",
       glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
             denominator = denominator, control_mcmc = control_mcmc,
             control_mcml = set_control_mcml(
-              initial_samples = 500, max_samples = 500, max_stages = 1,
-              min_effective_samples = 1, max_pareto_k = 100,
-              max_mcse_ratio = 0.99, score_probability = 0.999999,
-              pc_prior = pc_prior
+              initial_samples = 500, validation_samples = 500,
+              max_samples = 500, max_stages = 1, pc_prior = pc_prior
             ),
             messages = FALSE),
       warning = function(w) {
@@ -319,12 +297,12 @@ test_that("defensive mixture weights use the full mixture density", {
   log_weights <- engine$evaluate(parameters, bank, log_weights_only = TRUE)
 
   proposal <- engine$proposal_at(parameters)
-  laplace_covariance <- crossprod(proposal$root)
+  gaussian_covariance <- crossprod(proposal$root)
   prior_covariance <- proposal$covariance
   defensive <- defensive_rows(8, 0.25)
   draws <- bank %*% proposal$root
   draws[defensive, ] <- bank[defensive, ] %*% chol(prior_covariance)
-  draws <- sweep(draws, 2L, proposal$mode, "+")
+  draws <- sweep(draws, 2L, proposal$centre, "+")
   log_normal <- function(x, mean, covariance) {
     root <- chol(covariance)
     residual <- backsolve(root, x - mean, transpose = TRUE)
@@ -340,8 +318,8 @@ test_that("defensive mixture weights use the full mixture density", {
                         trials * softplus(linear_predictor)) +
       log_normal(u, numeric(6), prior_covariance)
     log_proposal <- log(
-      0.75 * exp(log_normal(u, proposal$mode, laplace_covariance)) +
-        0.25 * exp(log_normal(u, proposal$mode, prior_covariance))
+      0.75 * exp(log_normal(u, proposal$centre, gaussian_covariance)) +
+        0.25 * exp(log_normal(u, proposal$centre, prior_covariance))
     )
     log_target - log_proposal
   }, numeric(1))
@@ -358,7 +336,8 @@ test_that("defensive mixture keeps the Laplace approximation and the likelihood"
   engine_for <- function(weight) {
     make_adaptive_mcml_engine(
       D = matrix(1, nrow = 1), y = y, units_m = trials,
-      distances = matrix(0), family = "binomial", defensive_weight = weight
+      distances = matrix(0), family = "binomial", defensive_weight = weight,
+      proposal = "laplace"
     )
   }
   laplace_only <- engine_for(0)
@@ -388,4 +367,206 @@ test_that("set_control_mcml validates the defensive weight", {
   expect_error(set_control_mcml(defensive_weight = -0.1), "defensive_weight")
   expect_error(set_control_mcml(defensive_weight = c(0.1, 0.2)),
                "defensive_weight")
+})
+
+test_that("stable nonlinear parts equal the direct log-likelihood differences", {
+  centre <- c(-3, 0.2, 2)
+  step <- outer(c(0.5, 1, 2), seq(-3, 3, length.out = 7))
+  y <- c(0, 4, 9)
+  units_m <- c(20, 10, 10)
+  direct <- function(family) {
+    linkf <- make_inverse_link_functions(family, NULL, 3)
+    log_likelihood <- function(eta) {
+      if (family == "poisson") {
+        y * eta - units_m * exp(eta)
+      } else {
+        y * eta - units_m * log1p(exp(eta))
+      }
+    }
+    terms <- laplace_observation_terms(centre, y, units_m, family, linkf)
+    matrix(log_likelihood(as.vector(centre + step)), 3) -
+      log_likelihood(centre) - step * terms$score
+  }
+  for (family in c("binomial", "poisson")) {
+    stable <- observation_nonlinear_part(
+      centre, step, y, units_m, family,
+      make_inverse_link_functions(family, NULL, 3), canonical = TRUE
+    )
+    expect_equal(stable$nonlinear, direct(family), tolerance = 1e-10)
+  }
+  # Very large steps switch to the log-sum-exp form without overflow.
+  extreme <- observation_nonlinear_part(
+    0, matrix(c(-800, 800), 1), 1, 10, "binomial",
+    make_inverse_link_functions("binomial", NULL, 1), canonical = TRUE
+  )
+  expect_true(all(is.finite(extreme$nonlinear)))
+})
+
+test_that("weighted quadratic fits recover exact quadratics and use QR when needed", {
+  quadrature <- standard_normal_quadrature()
+  nodes <- quadrature$nodes
+  expect_equal(sum(quadrature$weights), 1)
+  expect_equal(sum(quadrature$weights * nodes^2), 1)
+  coefficients <- rbind(c(0.3, -1, 2), c(1, 0.5, 0.1))
+  basis <- cbind(1, nodes, -0.5 * nodes^2)
+  values <- coefficients %*% t(basis)
+  root_weights <- rbind(sqrt(quadrature$weights),
+                        sqrt(quadrature$weights * exp(-nodes^2)))
+  fitted <- fit_observation_quadratics(values, root_weights, nodes)
+  expect_equal(unname(fitted), coefficients, tolerance = 1e-8)
+  # The QR refit, used for badly conditioned rows, agrees with the closed
+  # form; a minimum condition of one sends every row to QR.
+  expect_equal(fit_observation_quadratics(values, root_weights, nodes,
+                                          minimum_condition = 1),
+               fitted, tolerance = 1e-10)
+  # Weight on two nodes only: the fit is not identified.
+  concentrated <- matrix(0, 1, length(nodes))
+  concentrated[1, 10:11] <- 1
+  expect_false(all(is.finite(suppressWarnings(
+    fit_observation_quadratics(values[1, , drop = FALSE], concentrated,
+                               nodes)[1, ]
+  ))))
+})
+
+test_that("the global proposal keeps more effective draws than the Laplace one", {
+  # A sparse site: twenty tested and none positive, so the conditional
+  # distribution of its latent effect is skewed.
+  parameters <- c(-1, log(4), log(1))
+  engine_for <- function(proposal) {
+    make_adaptive_mcml_engine(
+      D = matrix(1, nrow = 1), y = 0, units_m = 20, distances = matrix(0),
+      family = "binomial", defensive_weight = 0, proposal = proposal
+    )
+  }
+  set.seed(5)
+  bank <- matrix(rnorm(20000), ncol = 1)
+  relative_ess <- function(proposal) {
+    importance_diagnostics(engine_for(proposal)$evaluate(
+      parameters, bank, log_weights_only = TRUE
+    ))$relative_ess
+  }
+  exact <- log(integrate(function(u) {
+    dbinom(0, 20, plogis(-1 + u)) * dnorm(u, sd = 2)
+  }, -Inf, Inf, rel.tol = 1e-12)$value)
+
+  # Over 20 banks of this size the relative effective sample size averages
+  # 0.94 for the global proposal and 0.70 for the Laplace one.
+  expect_gt(relative_ess("global"), relative_ess("laplace") + 0.1)
+  expect_gt(relative_ess("global"), 0.9)
+  expect_equal(engine_for("global")$evaluate(parameters, bank), exact,
+               tolerance = 0.005)
+})
+
+test_that("the global proposal works through a latent map with random effects", {
+  set.seed(12)
+  n <- 40
+  coordinate <- runif(n)
+  village <- rep(1:8, each = 5)
+  trials <- rep(15, n)
+  y <- rbinom(n, trials, plogis(-1 + rnorm(8, sd = 0.5)[village]))
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = n), y = y, units_m = trials,
+    distances = as.matrix(dist(coordinate)), family = "binomial",
+    ID_re = cbind(village = village)
+  )
+  proposal <- engine$proposal_at(c(-1, log(0.5), log(0.3), log(0.25)))
+  expect_identical(proposal$type, "global")
+  expect_identical(engine$proposal_failures(), 0L)
+  expect_length(proposal$centre, n + 8)
+})
+
+test_that("certificate algebra matches its definition", {
+  information <- matrix(c(4, 1, 1, 3), 2)
+  score <- c(0.2, -0.1)
+  covariance <- matrix(c(0.01, 0.002, 0.002, 0.02), 2)
+  certificate <- mcml_certificate(chol(information), score, covariance)
+  expect_equal(certificate$correction, solve(information, score))
+  expect_equal(certificate$distance,
+               sqrt(sum(score * solve(information, score))))
+  expect_equal(certificate$bound, certificate$distance + certificate$radius)
+  # With C = c H the radius is sqrt(c times the 95% point of chi-square(2)).
+  radius <- validation_radius(chol(information), 0.01 * information)
+  expect_equal(radius, sqrt(0.01 * qchisq(0.95, 2)), tolerance = 0.01)
+})
+
+test_that("the validation radius leaves the caller's random numbers unchanged", {
+  set.seed(77)
+  before <- .Random.seed
+  validation_radius(chol(diag(2)), diag(2))
+  expect_identical(.Random.seed, before)
+})
+
+test_that("a bank evaluated in blocks of rows gives the same weights", {
+  coordinate <- seq(0, 1, length.out = 15)
+  trials <- rep(10, 15)
+  y <- c(0, 1, 0, 2, 3, 1, 0, 4, 5, 2, 1, 0, 3, 2, 1)
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 15), y = y, units_m = trials,
+    distances = as.matrix(dist(coordinate)), family = "binomial"
+  )
+  parameters <- c(-1.5, log(0.6), log(0.2))
+  set.seed(4)
+  bank <- matrix(rnorm(1000 * 15), 1000)
+  whole <- engine$evaluate(parameters, bank, log_weights_only = TRUE)
+  # Blocks of ten rows, most of them without a defensive row, use the share
+  # of defensive rows in the whole bank.
+  defensive <- defensive_rows(1000, engine$defensive_weight)
+  blocks <- unlist(lapply(split(1:1000, rep(1:100, each = 10)), function(rows) {
+    engine$evaluate(parameters, bank[rows, , drop = FALSE],
+                    log_weights_only = TRUE, defensive = defensive[rows],
+                    defensive_share = mean(defensive))
+  }), use.names = FALSE)
+  expect_equal(blocks, whole)
+  # A single block is the bank drawn as one matrix from the same seed.
+  score <- validation_score(engine, parameters, 1:3, 1000, seed = 4,
+                            block_rows = 1000)
+  expect_equal(score$log_likelihood, engine$evaluate(parameters, bank))
+  blocked <- validation_score(engine, parameters, 1:3, 1000, seed = 4,
+                              block_rows = 100)
+  expect_true(all(is.finite(blocked$score)))
+  expect_identical(dim(blocked$covariance), c(3L, 3L))
+})
+
+test_that("the budget rule targets the tolerance and respects the limit", {
+  budgets <- next_mcml_budgets(1000L, 5000L, certificate = 0.2,
+                               tolerance = 0.1, maximum_budget = 16000L)
+  expect_identical(budgets$budget, 5000L)
+  expect_identical(budgets$validation_budget, 25000L)
+  capped <- next_mcml_budgets(1000L, 5000L, certificate = 1,
+                              tolerance = 0.1, maximum_budget = 16000L)
+  expect_identical(capped$budget, 16000L)
+  small <- next_mcml_budgets(1000L, 5000L, certificate = 0.101,
+                             tolerance = 0.1, maximum_budget = 16000L)
+  expect_identical(small$budget, 1500L)
+})
+
+test_that("a failed global proposal is counted and the engine can switch", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  expect_identical(engine$proposal_type(), "global")
+  local_mocked_bindings(fit_global_proposal = function(...) NULL)
+  proposal <- engine$proposal_at(c(0, 0, 0))
+  expect_identical(proposal$type, "laplace")
+  expect_identical(engine$proposal_failures(), 1L)
+  engine$reset_proposal_failures()
+  engine$use_proposal("laplace")
+  expect_identical(engine$proposal_type(), "laplace")
+  engine$proposal_at(c(0.1, 0, 0))
+  expect_identical(engine$proposal_failures(), 0L)
+})
+
+test_that("set_control_mcml validates the certification settings", {
+  control <- set_control_mcml()
+  expect_identical(control$initial_samples, 1000L)
+  expect_identical(control$validation_samples, 5000L)
+  expect_identical(control$max_samples, 16000L)
+  expect_identical(control$max_stages, 4L)
+  expect_identical(control$tolerance, 0.1)
+  expect_identical(control$proposal, "global")
+  expect_identical(set_control_mcml(proposal = "laplace")$proposal, "laplace")
+  expect_error(set_control_mcml(proposal = "mean"), "should be one of")
+  expect_error(set_control_mcml(tolerance = 0), "positive number")
+  expect_error(set_control_mcml(validation_samples = 0), "positive integer")
 })

@@ -87,16 +87,26 @@ use the general R implementation.
 integrand when the objective, gradient, and Hessian are evaluated at identical
 parameters, avoiding a repeated likelihood calculation.
 
-- Non-Gaussian models now use automatically validated local-Laplace MCML.
-Independent fitting and validation banks must contain at least 100 effective
-draws, have acceptable importance-weight tails, agree on the score, and keep
-Monte Carlo standard error below 10% of statistical standard error in every
-parameter direction. Bank size increases only when those diagnostics require
-it. The defaults were chosen in a 1,200-dataset simulation study and checked
-against exact likelihoods on small datasets, Stan-based likelihood ratios and
-1,200 further datasets simulated with fresh seeds; see #194.
+- Non-Gaussian models are now fitted by certified Monte Carlo maximum
+likelihood. The estimated likelihood is maximised on a fitting sample of 1,000
+draws, the estimate is corrected by one Newton step with the score from an
+independent validation sample of 5,000 draws, and the corrected estimate is
+certified with a second, fresh validation sample. The certificate bounds the
+distance from the exact maximum likelihood estimate in statistical standard
+errors, with probability about 0.95. When it exceeds the tolerance (0.1 by
+default), both samples are enlarged to the size predicted to meet it, up to
+`max_samples`. The importance distribution is a Gaussian approximation fitted
+to the whole conditional distribution of the latent effects (efficient
+importance sampling), which keeps far more draws effective than the Laplace
+approximation in sparse data. Binomial and Poisson models, with or without a
+nugget and unstructured random effects, share one implementation, and the
+Laplace approximation remains as a fallback and as an option.
+`set_control_mcml()` gains `validation_samples`, `tolerance` and `proposal`,
+and loses `min_effective_samples`, `max_pareto_k`, `max_mcse_ratio` and
+`score_probability`. The defaults of `max_samples` and `max_stages` are now
+16,000 and 4.
 
-- Adaptive MCML now distinguishes Monte Carlo error from weak
+- Certified MCML distinguishes Monte Carlo error from weak
 identification. A variance component estimated as zero (and the spatial range
 when the spatial variance is zero) is held at the boundary, the first stage is
 restarted once from an interior value, and precision is assessed on the
@@ -130,8 +140,8 @@ which selected the general R implementation with numerical derivatives; a
 binomial fit to the `liberia` data now takes about 2 s instead of 27 s.
 Fresh conditional runs in `predict()` now honour a custom inverse link.
 
-- `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
-Laplace approximation from several starting values before MCML.
+- `set_control_mcml()` gains `laplace_start` (default `TRUE`), which maximises
+the Laplace approximation from the starting values before MCML.
 
 ## Predictions
 

@@ -27,9 +27,8 @@ control_mcmc <- set_control_mcmc(n_sim = 1000,
                                  burnin = 200,
                                  seed = 12345)
 fixture_control_mcml <- set_control_mcml(
-  initial_samples = 500, max_samples = 500, max_stages = 1,
-  min_effective_samples = 1, max_pareto_k = 100,
-  max_mcse_ratio = 0.99, score_probability = 0.999999
+  initial_samples = 500, validation_samples = 500, max_samples = 500,
+  max_stages = 1
 )
 
 gaussian_model <- glgpm(y ~ cov + gp() + re(i),

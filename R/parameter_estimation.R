@@ -70,13 +70,15 @@
 ##'
 ##' The `control_mcmc` argument specifies the control parameters for MCMC sampling.
 ##' This argument must be an object returned by [set_control_mcmc()].
-##' For non-Gaussian models, adaptive MCML starts with independent fitting and
-##' validation importance samples. It increases their size only when direct
-##' parameter-scale Monte Carlo error, importance-tail diagnostics, or
-##' independent score agreement show that more information is needed. The
-##' algorithm records every stage and warns if its precision criteria are not
-##' met before the configured limits. `control_mcmc$seed` makes both estimation
-##' banks and final conditional sampling reproducible.
+##' Non-Gaussian models are fitted by certified Monte Carlo maximum likelihood
+##' (MCML), controlled by `control_mcml` (see [set_control_mcml()]). The
+##' estimate is corrected with an independent validation sample and certified
+##' with a second, fresh one, which bounds its Monte Carlo error in statistical
+##' standard errors. The samples are enlarged only when the certificate exceeds
+##' the tolerance. Every stage is recorded in `mcml_history`, and a warning is
+##' issued if the tolerance is not met within the configured limits.
+##' `control_mcmc$seed` makes the estimation samples and the final conditional
+##' sampling reproducible.
 ##'
 ##' The `start_pars` argument allows starting values to be supplied explicitly.
 ##' Otherwise, binomial and Poisson models compare two automatic candidates
@@ -128,18 +130,23 @@
 ##' return probabilities; Poisson models return expected counts and therefore
 ##' include any supplied exposure in `denominator`. These are `NULL` for
 ##' non-Gaussian models when `return_samples = FALSE`.}
-##' \item{mcml_history}{For non-Gaussian models, one entry per adaptive stage,
-##' containing the bank size, estimate, optimizer result, effective sample
-##' sizes, Pareto tail diagnostics, parameter Monte Carlo error,
-##' independent-score agreement, timing, stopping decision, and the reason for
-##' any increase in sample size. Estimates use the same parameterisation as
-##' `estimate`, with regression coefficients and spatial range restored to the
-##' supplied covariate and distance units. `NULL` for Gaussian models.}
-##' \item{mcml_converged}{Whether the final adaptive stage met every Monte
-##' Carlo precision and independent-validation criterion. `NULL` for Gaussian
-##' models.}
-##' \item{mcml_selected_iteration}{The adaptive stage whose estimate is
-##' returned. `NULL` for Gaussian models.}
+##' \item{mcml_history}{For non-Gaussian models, one entry per stage of
+##' certified Monte Carlo maximum likelihood (see [set_control_mcml()]),
+##' containing the sizes of the fitting and validation samples, the
+##' importance distribution used, the optimum of the fitting sample
+##' (`fitted_estimate`) and the corrected estimate (`estimate`), the optimizer
+##' result, the size of the correction, the certificate and its two parts
+##' (`certificate_distance` and `certificate_radius`), effective sample sizes
+##' and Pareto tail diagnostics of each sample, the outcome of the stage and
+##' its timing. Estimates use the same parameterisation as `estimate`, with
+##' regression coefficients and spatial range restored to the supplied
+##' covariate and distance units. `NULL` for Gaussian models.}
+##' \item{mcml_converged}{Whether the certificate of the returned estimate is
+##' within the tolerance, so that its Monte Carlo error is at most `tolerance`
+##' statistical standard errors with probability about 0.95. `NULL` for
+##' Gaussian models.}
+##' \item{mcml_selected_iteration}{The stage whose estimate is returned.
+##' `NULL` for Gaussian models.}
 ##'
 ##' @examples
 ##'
@@ -531,10 +538,10 @@ glgpm <- function(formula,
     res$mcml_selected_iteration <- length(mcml_history)
 
     if (return_samples) {
-      # The samples used by MCML target the current reference distribution,
-      # not necessarily the fitted parameters. When requested, draw once more
-      # at the final estimate and use that draw for fitted values as well as
-      # user-facing diagnostics.
+      # The MCML draws target importance distributions along the optimisation
+      # path, not the conditional distribution at the estimate. When
+      # requested, draw once more at the final estimate and use that draw for
+      # fitted values as well as user-facing diagnostics.
       final_control_mcmc <- final_sampling_control(
         control_mcmc, length(mcml_history)
       )
@@ -930,7 +937,7 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
 restore_mcml_history_scale <- function(history, coefficient_transform,
                                        distance_scale) {
   lapply(history, function(entry) {
-    for (field in intersect("estimate", names(entry))) {
+    for (field in intersect(c("estimate", "fitted_estimate"), names(entry))) {
       if (is.list(entry[[field]])) {
         entry[[field]]$beta <- as.numeric(
           coefficient_transform %*% entry[[field]]$beta
@@ -2960,42 +2967,46 @@ laplace_sampling_mcmc <- function(y,
   class(out_sim) <- "RiskMap_mcmc"
   out_sim
 }
-##' Set control parameters for adaptive MCML estimation
+##' Set control parameters for certified MCML estimation
 ##'
-##' Non-Gaussian models use independent fitting and validation importance
-##' samples. Sampling stops automatically only when the importance samples are
-##' regular enough to estimate Monte Carlo uncertainty, that uncertainty is
-##' small relative to the model's statistical uncertainty, and both samples
-##' give compatible score vectors.
+##' Non-Gaussian models are fitted by Monte Carlo maximum likelihood with
+##' importance sampling. The estimated log-likelihood is maximised on a
+##' fitting sample of draws, the estimate is corrected by one Newton step with
+##' the score from an independent validation sample, and the corrected
+##' estimate is certified with a second, fresh validation sample: the
+##' certificate bounds its distance from the exact maximum likelihood
+##' estimate, in statistical standard errors, with probability about 0.95. If
+##' the certificate exceeds `tolerance`, the samples are enlarged to the size
+##' predicted to meet it and the fit is repeated.
 ##'
-##' @param initial_samples Positive integer giving the number of draws in each
-##' fitting and validation bank at the first stage. Defaults to 1,000.
-##' @param max_samples Positive integer giving the largest permitted bank.
-##' Defaults to 20,000.
-##' @param max_stages Positive integer giving the maximum number of adaptive
-##' stages. Defaults to 5.
-##' @param min_effective_samples Positive integer giving the minimum effective
-##' number of importance draws required in both banks before Monte Carlo
-##' uncertainty is interpreted. Defaults to 100.
-##' @param max_pareto_k Positive upper limit for the Pareto tail-shape
-##' diagnostic. Defaults to 0.7.
-##' @param max_mcse_ratio Number between zero and one giving the largest allowed
-##' ratio of Monte Carlo standard error to ordinary statistical standard error,
-##' over all linear combinations of fitted parameters. Defaults to 0.1.
-##' @param score_probability Number strictly between zero and one used for the
-##' independent-bank score-agreement limit. Defaults to 0.99.
+##' @param initial_samples Positive integer giving the number of draws in the
+##' fitting sample at the first stage. Defaults to 1,000.
+##' @param validation_samples Positive integer giving the number of draws in
+##' each validation sample at the first stage. Later stages enlarge the
+##' validation samples in the same proportion as the fitting sample. Defaults
+##' to 5,000.
+##' @param max_samples Positive integer giving the largest permitted fitting
+##' sample. Defaults to 16,000.
+##' @param max_stages Positive integer giving the maximum number of stages.
+##' Defaults to 4.
+##' @param tolerance Positive number giving the largest accepted certificate,
+##' in statistical standard errors. Defaults to 0.1.
+##' @param proposal The importance distribution for the latent effects.
+##' `"global"` (the default) fits a Gaussian approximation to the whole
+##' conditional distribution of the latent effects, which keeps far more of
+##' the draws effective in sparse data than the Laplace approximation;
+##' `"laplace"` uses the Laplace approximation at the conditional mode. If the
+##' global approximation cannot be built at some parameter value, the stage is
+##' repeated with the Laplace approximation.
 ##' @param defensive_weight Number in \[0, 1) giving the share of importance
 ##' draws taken from the prior distribution of the latent effects instead of
-##' the Laplace approximation. This defensive mixture keeps the variance of the
-##' importance weights finite, which the Gaussian Laplace proposal alone does
-##' not in most spatial datasets, so that Monte Carlo errors and the stopping
-##' rule are valid. Defaults to 0.05. Set to 0 to use the Laplace proposal
-##' alone.
-##' @param laplace_start Logical. If `TRUE`, the Laplace approximation to the
-##' likelihood is first maximised from several starting values and Monte Carlo
-##' maximum likelihood starts from the best Laplace estimate. Defaults to
-##' `FALSE`: in validation this changed which local maximum was reached about as
-##' often for the worse as for the better, at extra computational cost.
+##' the Gaussian approximation. This defensive mixture keeps the variance of
+##' the importance weights finite, which a Gaussian proposal alone does not in
+##' most spatial datasets, so that Monte Carlo errors are valid. Defaults to
+##' 0.05. Set to 0 to use the Gaussian approximation alone.
+##' @param laplace_start Logical. If `TRUE` (the default), the Laplace
+##' approximation to the likelihood is first maximised from the starting
+##' values, and Monte Carlo maximum likelihood starts from that estimate.
 ##' @param hold_short_range Logical. If `TRUE` (the default), a spatial range
 ##' estimated below the median distance between neighbouring locations is held
 ##' at that distance, because spatial correlation on a shorter scale cannot be
@@ -3021,17 +3032,17 @@ laplace_sampling_mcmc <- function(y,
 ##' 0.05.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
-##' control_mcml <- set_control_mcml(max_samples = 10000)
+##' control_mcml <- set_control_mcml(max_samples = 8000)
 ##' @seealso [glgpm()], [set_control_mcmc()]
 ##' @export
-set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
-                             max_stages = 5L,
-                             min_effective_samples = 100L,
-                             max_pareto_k = 0.7,
-                             max_mcse_ratio = 0.1,
-                             score_probability = 0.99,
+set_control_mcml <- function(initial_samples = 1000L,
+                             validation_samples = 5000L,
+                             max_samples = 16000L,
+                             max_stages = 4L,
+                             tolerance = 0.1,
+                             proposal = c("global", "laplace"),
                              defensive_weight = 0.05,
-                             laplace_start = FALSE,
+                             laplace_start = TRUE,
                              hold_short_range = TRUE,
                              pc_prior = FALSE,
                              pc_sigma_threshold = 1,
@@ -3039,14 +3050,11 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
                              pc_range_threshold = NULL,
                              pc_range_probability = 0.05) {
   check_positive_integer(initial_samples, "initial_samples")
+  check_positive_integer(validation_samples, "validation_samples")
   check_positive_integer(max_samples, "max_samples")
   check_positive_integer(max_stages, "max_stages")
-  check_positive_integer(min_effective_samples, "min_effective_samples")
-  check_positive_number(max_pareto_k, "")
-  check_range(max_mcse_ratio, 0, 1, allow_equal = FALSE,
-              name = "max_mcse_ratio")
-  check_range(score_probability, 0, 1, allow_equal = FALSE,
-              name = "score_probability")
+  check_positive_number(tolerance, "")
+  proposal <- match.arg(proposal)
   if (!is.numeric(defensive_weight) || length(defensive_weight) != 1L ||
       !is.finite(defensive_weight) || defensive_weight < 0 ||
       defensive_weight >= 1) {
@@ -3065,20 +3073,15 @@ set_control_mcml <- function(initial_samples = 1000L, max_samples = 20000L,
   if (max_samples < initial_samples) {
     stop("'max_samples' must be at least 'initial_samples'.", call. = FALSE)
   }
-  if (min_effective_samples > max_samples) {
-    stop("'min_effective_samples' cannot exceed 'max_samples'.",
-         call. = FALSE)
-  }
 
   structure(
     list(
       initial_samples = as.integer(initial_samples),
+      validation_samples = as.integer(validation_samples),
       max_samples = as.integer(max_samples),
       max_stages = as.integer(max_stages),
-      min_effective_samples = as.integer(min_effective_samples),
-      max_pareto_k = max_pareto_k,
-      max_mcse_ratio = max_mcse_ratio,
-      score_probability = score_probability,
+      tolerance = tolerance,
+      proposal = proposal,
       defensive_weight = defensive_weight,
       laplace_start = laplace_start,
       hold_short_range = hold_short_range,
@@ -3098,9 +3101,10 @@ final_sampling_control <- function(control_mcmc, mcml_stages) {
   out <- control_mcmc
   if (!is.null(out$seed)) {
     integer_max <- .Machine$integer.max
-    # Each adaptive stage consumes two independent streams: fitting and
-    # validation. Final fitted-value sampling starts after both.
-    offset <- 2L * mcml_stages + 1L
+    # Each certified stage consumes three independent streams: the fitting
+    # bank and two validation banks. Final fitted-value sampling starts after
+    # them.
+    offset <- 3L * mcml_stages + 1L
     out$seed <- as.integer(((out$seed - 1 + offset) %% integer_max) + 1)
   }
   out
