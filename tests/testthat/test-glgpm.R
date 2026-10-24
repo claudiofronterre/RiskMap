@@ -208,7 +208,7 @@ expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "fix_var_me", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function", "mcml_history",
-                     "mcml_converged", "mcml_selected_iteration",
+                     "mcml_certified", "mcml_selected_iteration",
                      "linear_predictors", "fitted_values")
 
 test_that("glgpm produces expected output for gaussian models", {
@@ -226,7 +226,7 @@ test_that("glgpm produces expected output for gaussian models", {
   expect_identical(fitted(fit_no_re), fit_no_re$fitted_values)
   expect_identical(fitted(fit_no_re, type = "link"),
                fit_no_re$linear_predictors)
-  expect_null(fit_no_re$mcml_converged)
+  expect_null(fit_no_re$mcml_certified)
   expect_null(fit_no_re$mcml_selected_iteration)
   expect_identical(fit_no_re$family, "gaussian")
   expect_identical(fit_no_re$coords[,1], data$x)
@@ -629,7 +629,7 @@ test_that("certified MCML records its certificate and bank diagnostics", {
   expect_identical(diagnostics$mcml_budget, 500L)
   expect_identical(diagnostics$mcml_validation_budget, 500L)
   expect_identical(diagnostics$mcml_stages, 1L)
-  expect_identical(diagnostics$mcml_supported, fit$mcml_converged)
+  expect_identical(diagnostics$mcml_certified, fit$mcml_certified)
   expect_identical(diagnostics$mcml_certificate, stage$certificate)
   expect_identical(.Random.seed, caller_seed)
 })

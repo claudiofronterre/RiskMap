@@ -141,7 +141,7 @@
 ##' its timing. Estimates use the same parameterisation as `estimate`, with
 ##' regression coefficients and spatial range restored to the supplied
 ##' covariate and distance units. `NULL` for Gaussian models.}
-##' \item{mcml_converged}{Whether the certificate of the returned estimate is
+##' \item{mcml_certified}{Whether the certificate of the returned estimate is
 ##' within the tolerance, so that its Monte Carlo error is at most `tolerance`
 ##' statistical standard errors with probability about 0.95. `NULL` for
 ##' Gaussian models.}
@@ -518,7 +518,7 @@ glgpm <- function(formula,
                                            sigma2_re = start_pars[["sigma2_re"]]),
             messages = messages)
     res["mcml_history"] <- list(NULL)
-    res["mcml_converged"] <- list(NULL)
+    res["mcml_certified"] <- list(NULL)
     res["mcml_selected_iteration"] <- list(NULL)
   } else if(not_gaussian) {
     fitting_reference <- start_pars
@@ -534,7 +534,7 @@ glgpm <- function(formula,
     optimizer <- attr(res, "optimizer")
     mcml_history <- optimizer$mcml_history
     res$mcml_history <- mcml_history
-    res$mcml_converged <- optimizer$mcml_supported
+    res$mcml_certified <- optimizer$mcml_certified
     res$mcml_selected_iteration <- length(mcml_history)
 
     if (return_samples) {

@@ -104,7 +104,8 @@ Laplace approximation remains as a fallback and as an option.
 `set_control_mcml()` gains `validation_samples`, `tolerance` and `proposal`,
 and loses `min_effective_samples`, `max_pareto_k`, `max_mcse_ratio` and
 `score_probability`. The defaults of `max_samples` and `max_stages` are now
-16,000 and 4.
+16,000 and 4. Fitted objects report `mcml_certified` in place of
+`mcml_converged`.
 
 - Certified MCML distinguishes Monte Carlo error from weak
 identification. A variance component estimated as zero (and the spatial range

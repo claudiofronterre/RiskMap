@@ -135,7 +135,7 @@ and Pareto tail diagnostics of each sample, the outcome of the stage and
 its timing. Estimates use the same parameterisation as \code{estimate}, with
 regression coefficients and spatial range restored to the supplied
 covariate and distance units. \code{NULL} for Gaussian models.}
-\item{mcml_converged}{Whether the certificate of the returned estimate is
+\item{mcml_certified}{Whether the certificate of the returned estimate is
 within the tolerance, so that its Monte Carlo error is at most \code{tolerance}
 statistical standard errors with probability about 0.95. \code{NULL} for
 Gaussian models.}

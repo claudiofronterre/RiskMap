@@ -833,7 +833,7 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     information_rcond = if (is.null(fit$information)) NA_real_ else
       rcond(fit$information),
     information_jitter = 0,
-    mcml_supported = fit$certified,
+    mcml_certified = fit$certified,
     mcml_outcome = fit$outcome,
     mcml_certificate = fit$certificate,
     mcml_proposal = fit$proposal,
