@@ -126,7 +126,9 @@ plot.RiskMap_prediction <- function(
     # Maps carry their legend on top, so two columns keep them readable.
     layout_columns <- if (spatial_scale == "both") 1L else
       min(2L, length(maps))
-    return(patchwork::wrap_plots(maps, ncol = layout_columns))
+    # Side margins keep neighbouring legends apart at book and report widths.
+    return(patchwork::wrap_plots(maps, ncol = layout_columns) &
+             theme(plot.margin = margin(4, 14, 4, 14)))
   }
 
   has_areas <- !is.null(x$boundaries) && !is.null(x$boundary_summary)

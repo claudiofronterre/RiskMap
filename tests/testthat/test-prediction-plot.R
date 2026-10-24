@@ -308,4 +308,8 @@ test_that("several summaries at one scale are arranged in a grid", {
   )
   maps <- plot(prediction, summary = c("mean", "cv", "interval_width"))
   expect_identical(maps$patches$layout$ncol, 2L)
+  side_margins <- vapply(c(maps$patches$plots, list(maps)), function(map) {
+    as.numeric(map$theme$plot.margin[2L])
+  }, numeric(1))
+  expect_true(all(side_margins == 14))
 })
