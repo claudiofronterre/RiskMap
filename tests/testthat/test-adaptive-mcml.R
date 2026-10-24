@@ -664,3 +664,60 @@ test_that("set_control_mcml validates check_maxima", {
   expect_false(set_control_mcml(check_maxima = FALSE)$check_maxima)
   expect_error(set_control_mcml(check_maxima = NA), "check_maxima")
 })
+
+test_that("Newton steps with a known curvature reach the maximum", {
+  curvature <- matrix(c(4, 1, 1, 3), 2)
+  centre <- c(0.7, -1.2)
+  negative <- function(parameters) {
+    0.5 * sum((parameters - centre) * (curvature %*% (parameters - centre)))
+  }
+  exact <- newton_on_bank(negative, c(0, 0), chol(curvature), c(-5, -5),
+                          c(5, 5))
+  expect_true(exact$converged)
+  expect_equal(exact$par, centre, tolerance = 1e-6)
+  # A badly scaled curvature can stall the steps; the optimisation as a
+  # whole still reaches the maximum because nlminb() finishes it.
+  limits <- list(variance_index = integer(), linked_index = list(),
+                 boundary_log_variance = -9)
+  rough <- optimise_on_bank(function(parameters, z) -negative(parameters),
+                            c(0, 0), NULL, c(-5, -5), c(5, 5), FALSE, limits,
+                            curvature_root = chol(diag(c(1, 50))))
+  expect_equal(rough$fit$par, centre, tolerance = 1e-5)
+  # Steps are kept within the bounds.
+  bounded <- newton_on_bank(negative, c(0, 0), chol(curvature), c(-5, -1),
+                            c(5, 5))
+  expect_gte(min(bounded$par[2]), -1)
+  expect_false(bounded$converged)
+})
+
+test_that("the optimisation finishes with nlminb after Newton steps", {
+  negative_objective <- function(parameters, z) {
+    -sum((parameters - c(1, 2))^2) - 3
+  }
+  limits <- list(variance_index = integer(), linked_index = list(),
+                 boundary_log_variance = -9)
+  plain <- optimise_on_bank(negative_objective, c(0, 0), NULL, c(-5, -5),
+                            c(5, 5), FALSE, limits)
+  seeded <- optimise_on_bank(negative_objective, c(0, 0), NULL, c(-5, -5),
+                             c(5, 5), FALSE, limits,
+                             curvature_root = chol(diag(2, 2)))
+  expect_identical(plain$fit$method, "nlminb")
+  expect_identical(seeded$fit$method, "newton, then nlminb")
+  expect_equal(seeded$fit$par, c(1, 2), tolerance = 1e-6)
+  expect_equal(plain$fit$par, seeded$fit$par, tolerance = 1e-6)
+})
+
+test_that("curvatures are reused only when well conditioned", {
+  expect_null(curvature_factor(NULL))
+  expect_null(curvature_factor(diag(c(1, 1e-12))))
+  expect_null(curvature_factor(matrix(c(1, 2, 2, 1), 2)))
+  expect_equal(curvature_factor(diag(c(4, 9))), diag(c(2, 3)))
+})
+
+test_that("the stopping tolerance is fixed in log-likelihood units", {
+  expect_identical(mcml_optimiser_control()$rel.tol, 1e-10)
+  expect_equal(mcml_optimiser_control(1000)$rel.tol, 1e-7)
+  expect_equal(mcml_optimiser_control(10)$rel.tol, 1e-6)
+  expect_equal(mcml_optimiser_control(1e9)$rel.tol, 1e-12)
+  expect_identical(mcml_optimiser_control(Inf)$rel.tol, 1e-10)
+})

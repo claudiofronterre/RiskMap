@@ -1,10 +1,23 @@
 ##' Control settings for the optimiser in Monte Carlo maximum likelihood
 ##'
-##' The common-random-number objective is smooth, so tight tolerances are
-##' reached without difficulty.
+##' `nlminb()` stops when the predicted relative decrease of the objective is
+##' below `rel.tol`. Near a maximum a loss of D in log-likelihood corresponds
+##' to a distance of sqrt(2 D) statistical standard errors whatever the size
+##' of the likelihood, so the tolerance is set from `objective_scale`, the
+##' size of the objective at the start, to stop within about 1e-4
+##' log-likelihood units, or 0.014 standard errors, of the maximum. That is
+##' far below the certificate's tolerance, and the Newton correction with the
+##' validation score removes most of it. Without a scale the tolerance is
+##' 1e-10.
 ##' @noRd
-mcml_optimiser_control <- function() {
-  list(eval.max = 600, iter.max = 300, rel.tol = 1e-10, x.tol = 1e-8)
+mcml_optimiser_control <- function(objective_scale = NULL) {
+  relative <- if (is.null(objective_scale) || !is.finite(objective_scale) ||
+                  objective_scale <= 0) {
+    1e-10
+  } else {
+    min(1e-6, max(1e-12, 1e-4 / objective_scale))
+  }
+  list(eval.max = 600, iter.max = 300, rel.tol = relative, x.tol = 1e-8)
 }
 
 ##' Effective sample size and tail diagnostics of importance weights
@@ -142,16 +155,104 @@ mcml_certificate <- function(information_root, score, covariance) {
        distance = distance, radius = radius, bound = distance + radius)
 }
 
+##' Newton steps with a known curvature
+##'
+##' Minimises `negative`, the negative estimated log-likelihood on the current
+##' bank with the moving proposal, by Newton steps that use a fixed
+##' positive-definite curvature (an observed information) through its upper
+##' Cholesky factor `curvature_root`. Gradients are central differences of the
+##' objective itself, so the objective is not approximated. Each step is
+##' halved until it lowers the objective, and kept within the bounds. The
+##' iteration stops when the information-scaled gradient
+##' sqrt(g' C^-1 g), the length of the next step in standard errors, is below
+##' `tolerance`.
+##' @return A list in the form of an `nlminb()` result, with `converged` FALSE
+##' and the best point reached if a step cannot lower the objective or the
+##' iterations run out, so that the caller can continue with `nlminb()`.
+##' @noRd
+newton_on_bank <- function(negative, start, curvature_root, lower, upper,
+                           tolerance = 1e-3, maximum_iterations = 20L,
+                           relative_step = 1e-5) {
+  evaluations <- 0L
+  evaluate <- function(parameters) {
+    evaluations <<- evaluations + 1L
+    negative(parameters)
+  }
+  gradient_at <- function(parameters) {
+    step <- relative_step * pmax(1, abs(parameters))
+    vapply(seq_along(parameters), function(j) {
+      shift <- replace(numeric(length(parameters)), j, step[j])
+      (evaluate(parameters + shift) - evaluate(parameters - shift)) /
+        (2 * step[j])
+    }, numeric(1))
+  }
+  current <- pmin(pmax(start, lower), upper)
+  value <- evaluate(current)
+  result <- function(converged, iterations) {
+    list(par = current, objective = value,
+         convergence = if (converged) 0L else 1L, converged = converged,
+         iterations = iterations,
+         evaluations = c("function" = evaluations, gradient = 0L),
+         message = if (converged) {
+           "information-scaled gradient below tolerance"
+         } else {
+           "Newton steps with a fixed curvature stopped"
+         },
+         method = "newton")
+  }
+  if (!is.finite(value) || value >= 1e99) return(result(FALSE, 0L))
+  for (iteration in seq_len(maximum_iterations)) {
+    gradient <- gradient_at(current)
+    if (any(!is.finite(gradient))) return(result(FALSE, iteration))
+    standardised <- forwardsolve(t(curvature_root), gradient)
+    if (sqrt(sum(standardised^2)) < tolerance) {
+      return(result(TRUE, iteration - 1L))
+    }
+    direction <- -as.numeric(backsolve(curvature_root, standardised))
+    accepted <- FALSE
+    for (halving in 0:10) {
+      candidate <- pmin(pmax(current + direction / 2^halving, lower), upper)
+      candidate_value <- evaluate(candidate)
+      if (is.finite(candidate_value) && candidate_value < value) {
+        accepted <- TRUE
+        break
+      }
+    }
+    if (!accepted) return(result(FALSE, iteration))
+    current <- candidate
+    value <- candidate_value
+  }
+  result(FALSE, maximum_iterations)
+}
+
 ##' Maximise the estimated log-likelihood on one fitting bank
 ##'
-##' At the first stage a fit that ends with a variance component at its
-##' boundary is restarted once from an interior value.
+##' With `curvature_root`, the upper Cholesky factor of a known information
+##' matrix, Newton steps (`newton_on_bank()`) move the start close to the
+##' maximum first. `nlminb()` then always finishes the optimisation, from the
+##' Newton end point, so that convergence is judged by the same criterion as
+##' without the curvature; on a flat or badly scaled surface an old curvature
+##' can make a step look shorter than it is. At the first stage a fit that
+##' ends with a variance component at its boundary is restarted once from an
+##' interior value.
 ##' @noRd
 optimise_on_bank <- function(objective, start, fit_bank, lower, upper,
-                             first_stage, limits) {
+                             first_stage, limits, curvature_root = NULL) {
   negative <- function(parameters) -objective(parameters, fit_bank)
-  fit <- nlminb(start, negative, lower = lower, upper = upper,
-                control = mcml_optimiser_control())
+  newton <- if (is.null(curvature_root)) NULL else
+    newton_on_bank(negative, start, curvature_root, lower, upper)
+  from <- start
+  if (!is.null(newton) && is.finite(newton$objective) &&
+      newton$objective < 1e99) {
+    from <- newton$par
+  }
+  fit <- nlminb(from, negative, lower = lower, upper = upper,
+                control = mcml_optimiser_control(abs(negative(from))))
+  fit$method <- if (is.null(newton)) "nlminb" else "newton, then nlminb"
+  if (!is.null(newton)) {
+    fit$evaluations[["function"]] <- fit$evaluations[["function"]] +
+      newton$evaluations[["function"]]
+  }
   restart <- if (first_stage && length(limits$variance_index)) {
     restart_from_interior(negative, fit, limits$variance_index,
                           limits$boundary_log_variance, lower, upper)
@@ -247,11 +348,12 @@ observed_information <- function(objective, estimate, fit_bank, boundary,
 ##' validation bank, and certifies the corrected estimate with a second, fresh
 ##' validation bank drawn at that point. `seeds` gives the streams of the
 ##' three banks. At the first stage the check for other maxima of
-##' `check_dispersed_maxima()` may replace the maximum.
+##' `check_dispersed_maxima()` may replace the maximum. `curvature_root`, if
+##' given, seeds the optimisation with Newton steps (`optimise_on_bank()`).
 ##' @noRd
 certified_stage <- function(engine, objective, penalty, start, budget,
                             validation_budget, seeds, lower, upper,
-                            first_stage, limits) {
+                            first_stage, limits, curvature_root = NULL) {
   stage_started <- proc.time()[["elapsed"]]
   # Every global proposal of the stage starts from the factors at its start,
   # so each is a deterministic function of the parameters.
@@ -260,7 +362,7 @@ certified_stage <- function(engine, objective, penalty, start, budget,
   fit_bank <- matrix(stats::rnorm(budget * engine$latent_dimension),
                      nrow = budget)
   optimised <- optimise_on_bank(objective, start, fit_bank, lower, upper,
-                                first_stage, limits)
+                                first_stage, limits, curvature_root)
   check <- NULL
   if (first_stage && !is.null(limits$dispersed)) {
     checked <- check_dispersed_maxima(objective, optimised, fit_bank, lower,
@@ -273,6 +375,7 @@ certified_stage <- function(engine, objective, penalty, start, budget,
     budget = budget, validation_budget = validation_budget,
     proposal = engine$proposal_type(), fitted_estimate = fit$par,
     estimate = fit$par, convergence = fit$convergence,
+    optimiser = fit$method,
     objective = fit$objective, iterations = fit$iterations,
     evaluations = fit$evaluations, message = fit$message,
     boundary_parameters = optimised$boundary,
@@ -391,6 +494,19 @@ check_dispersed_maxima <- function(objective, optimised, fit_bank, lower,
                           chosen = seq_along(values) == chosen))
 }
 
+##' Upper Cholesky factor of a curvature for Newton steps
+##'
+##' A curvature is used only if it is finite, positive definite and not
+##' nearly singular (reciprocal condition number at least 1e-8). Returns
+##' NULL otherwise.
+##' @noRd
+curvature_factor <- function(curvature) {
+  if (is.null(curvature) || any(!is.finite(curvature))) return(NULL)
+  curvature <- (curvature + t(curvature)) / 2
+  if (rcond(curvature) < 1e-8) return(NULL)
+  tryCatch(chol(curvature), error = function(error) NULL)
+}
+
 ##' Bank sizes for the next stage
 ##'
 ##' The certificate decreases approximately with the square root of the
@@ -425,7 +541,8 @@ next_mcml_budgets <- function(budget, validation_budget, certificate,
 ##' proposal, which is then kept. Stage s uses the random number streams
 ##' 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks) after `seed`.
 ##' `dispersed`, from `dispersed_starts()`, turns on the check for other maxima
-##' at the first stage.
+##' at the first stage. Each later stage starts its optimisation with Newton
+##' steps on the previous stage's information when every parameter was free.
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               penalty = NULL, dispersed = NULL,
@@ -454,12 +571,13 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
   history <- list()
   current <- start
   budget <- as.integer(initial_budget)
+  curvature_root <- NULL
   for (stage in seq_len(maximum_stages)) {
     run_stage <- function() {
       engine$reset_proposal_failures()
       certified_stage(engine, objective, penalty, current, budget,
                       validation_budget, stream(3L * stage - 2:0), lower,
-                      upper, stage == 1L, limits)
+                      upper, stage == 1L, limits, curvature_root)
     }
     record <- run_stage()
     record$proposal_failures <- engine$proposal_failures()
@@ -474,6 +592,9 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     record$stage <- stage
     history[[stage]] <- record
     current <- record$estimate
+    curvature_root <- if (length(record$free) == length(current)) {
+      curvature_factor(record$information)
+    }
     if (!identical(record$outcome, "not certified") ||
         budget >= maximum_budget || stage == maximum_stages) break
     budgets <- next_mcml_budgets(budget, validation_budget,
