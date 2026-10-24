@@ -146,7 +146,7 @@ Fresh conditional runs in `predict()` now honour a custom inverse link.
 - `set_control_mcml()` gains `laplace_start` (default `TRUE`), which maximises
 the Laplace approximation from the starting values before MCML.
 
-- `set_control_mcml()` gains `optimisation_check` (default `TRUE`). The
+- `set_control_mcml()` gains `check_maxima` (default `TRUE`). The
 certificate establishes Monte Carlo precision at the maximum found, and in
 sparse surveys an optimiser can stop at a maximum with a spatial scale far
 below the spacing between locations while a higher one exists at a longer

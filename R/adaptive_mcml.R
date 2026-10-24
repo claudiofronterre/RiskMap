@@ -670,7 +670,7 @@ maximise_laplace <- function(objective, start, latent_dimension, lower,
        convergence = fit$convergence)
 }
 
-##' Dispersed starting values for the optimisation check
+##' Dispersed starting values for the check for other maxima
 ##'
 ##' The certificate establishes Monte Carlo precision at the maximum found,
 ##' not that no higher maximum exists. In sparse surveys the Laplace
@@ -834,7 +834,7 @@ glgpm_nong_adaptive <- function(
   fit <- fit_adaptive_mcml(
     engine = engine, start = start, objective = objective,
     penalty = penalty,
-    dispersed = if (isTRUE(control_mcml$optimisation_check %||% TRUE)) {
+    dispersed = if (isTRUE(control_mcml$check_maxima %||% TRUE)) {
       dispersed_starts(engine$layout, distances, distance_scale, messages)
     },
     initial_budget = control_mcml$initial_samples,
@@ -867,7 +867,7 @@ glgpm_nong_adaptive <- function(
                               fit_seed)
   optimizer <- attr(out, "optimizer")
   optimizer$mcml_small_scale <- !is.null(small_scale)
-  optimizer$mcml_optimisation_check <- fit$optimisation_check
+  optimizer$mcml_maxima_check <- fit$maxima_check
   optimizer$mcml_better_maximum <- fit$better_maximum
   attr(out, "optimizer") <- optimizer
   out
@@ -1015,11 +1015,11 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
     )
   }
   if (isTRUE(fit$better_maximum)) {
-    check <- fit$optimisation_check
+    check <- fit$maxima_check
     gain <- max(check$log_likelihood) - check$log_likelihood[[1L]]
     warning(
-      "The optimisation check found a higher maximum of the likelihood than ",
-      "the one reached from the starting values, by ", signif(gain, 2),
+      "The check for other maxima found a higher maximum of the likelihood ",
+      "than the one reached from the starting values, by ", signif(gain, 2),
       " log-likelihood units on the same Monte Carlo draws, and the estimate ",
       "is taken from it. The likelihood has more than one maximum, so Wald ",
       "intervals may describe the uncertainty poorly. Consider inspecting ",

@@ -246,7 +246,7 @@ observed_information <- function(objective, estimate, fit_bank, boundary,
 ##' corrects the estimate by one Newton step with the score on an independent
 ##' validation bank, and certifies the corrected estimate with a second, fresh
 ##' validation bank drawn at that point. `seeds` gives the streams of the
-##' three banks. At the first stage the optimisation check of
+##' three banks. At the first stage the check for other maxima of
 ##' `check_dispersed_maxima()` may replace the maximum.
 ##' @noRd
 certified_stage <- function(engine, objective, penalty, start, budget,
@@ -278,7 +278,7 @@ certified_stage <- function(engine, objective, penalty, start, budget,
     boundary_parameters = optimised$boundary,
     restarted = optimised$restarted,
     restart_improved = optimised$restart_improved,
-    optimisation_check = check,
+    maxima_check = check,
     fit_diagnostics = importance_diagnostics(
       engine$evaluate(fit$par, fit_bank, log_weights_only = TRUE)
     ),
@@ -345,7 +345,7 @@ certified_stage <- function(engine, objective, penalty, start, budget,
   finish(record, if (record$certified) "certified" else "not certified")
 }
 
-##' Optimisation check on the fitting bank
+##' Check for other maxima on the fitting bank
 ##'
 ##' If the fitted spatial scale is below the trigger of `limits$dispersed`
 ##' (see `dispersed_starts()`) and the spatial variance is not at zero, the
@@ -418,7 +418,7 @@ next_mcml_budgets <- function(budget, validation_budget, certificate,
 ##' fails anywhere within a stage, the stage is repeated with the Laplace
 ##' proposal, which is then kept. Stage s uses the random number streams
 ##' 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks) after `seed`.
-##' `dispersed`, from `dispersed_starts()`, turns on the optimisation check
+##' `dispersed`, from `dispersed_starts()`, turns on the check for other maxima
 ##' at the first stage.
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
@@ -488,10 +488,10 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
   } else {
     last$second_validation$score
   }
-  check <- history[[1L]]$optimisation_check
+  check <- history[[1L]]$maxima_check
   list(
     estimate = current, outcome = last$outcome,
-    optimisation_check = check,
+    maxima_check = check,
     better_maximum = !is.null(check) && !check$chosen[[1L]],
     certified = isTRUE(last$certified), certificate = last$certificate,
     reason = last$reason, budget = last$budget,

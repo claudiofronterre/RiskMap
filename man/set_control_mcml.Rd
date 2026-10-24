@@ -13,7 +13,7 @@ set_control_mcml(
   proposal = c("global", "laplace"),
   defensive_weight = 0.05,
   laplace_start = TRUE,
-  optimisation_check = TRUE,
+  check_maxima = TRUE,
   pc_prior = FALSE,
   pc_sigma_threshold = 1,
   pc_sigma_probability = 0.05,
@@ -58,7 +58,7 @@ most spatial datasets, so that Monte Carlo errors are valid. Defaults to
 approximation to the likelihood is first maximised from the starting
 values, and Monte Carlo maximum likelihood starts from that estimate.}
 
-\item{optimisation_check}{Logical. The certificate establishes Monte Carlo
+\item{check_maxima}{Logical. The certificate establishes Monte Carlo
 precision at the maximum found, not that no higher maximum exists. In
 sparse surveys an optimiser can stop at a maximum with a spatial scale far
 below the spacing between locations while a higher one exists at a longer

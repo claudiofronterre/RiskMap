@@ -598,7 +598,7 @@ test_that("dispersed starts span the site spacing and half the extent", {
   expect_identical(dispersed$phi_index, 4L)
 })
 
-test_that("the optimisation check finds a higher maximum at a longer scale", {
+test_that("the check for other maxima finds a higher maximum at a longer scale", {
   # Two maxima in the log scale: a local one at -3 and a higher one at 2.
   objective <- function(parameters, z) {
     log(exp(-(parameters[2] + 3)^2) + 3 * exp(-(parameters[2] - 2)^2)) -
@@ -635,8 +635,8 @@ test_that("the optimisation check finds a higher maximum at a longer scale", {
   expect_null(announced)
 })
 
-test_that("set_control_mcml validates optimisation_check", {
-  expect_true(set_control_mcml()$optimisation_check)
-  expect_false(set_control_mcml(optimisation_check = FALSE)$optimisation_check)
-  expect_error(set_control_mcml(optimisation_check = NA), "optimisation_check")
+test_that("set_control_mcml validates check_maxima", {
+  expect_true(set_control_mcml()$check_maxima)
+  expect_false(set_control_mcml(check_maxima = FALSE)$check_maxima)
+  expect_error(set_control_mcml(check_maxima = NA), "check_maxima")
 })

@@ -3007,7 +3007,7 @@ laplace_sampling_mcmc <- function(y,
 ##' @param laplace_start Logical. If `TRUE` (the default), the Laplace
 ##' approximation to the likelihood is first maximised from the starting
 ##' values, and Monte Carlo maximum likelihood starts from that estimate.
-##' @param optimisation_check Logical. The certificate establishes Monte Carlo
+##' @param check_maxima Logical. The certificate establishes Monte Carlo
 ##' precision at the maximum found, not that no higher maximum exists. In
 ##' sparse surveys an optimiser can stop at a maximum with a spatial scale far
 ##' below the spacing between locations while a higher one exists at a longer
@@ -3045,7 +3045,7 @@ set_control_mcml <- function(initial_samples = 1000L,
                              proposal = c("global", "laplace"),
                              defensive_weight = 0.05,
                              laplace_start = TRUE,
-                             optimisation_check = TRUE,
+                             check_maxima = TRUE,
                              pc_prior = FALSE,
                              pc_sigma_threshold = 1,
                              pc_sigma_probability = 0.05,
@@ -3064,7 +3064,7 @@ set_control_mcml <- function(initial_samples = 1000L,
          call. = FALSE)
   }
   check_logical(laplace_start)
-  check_logical(optimisation_check)
+  check_logical(check_maxima)
   check_logical(pc_prior)
   check_positive_number(pc_sigma_threshold, "")
   check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
@@ -3086,7 +3086,7 @@ set_control_mcml <- function(initial_samples = 1000L,
       proposal = proposal,
       defensive_weight = defensive_weight,
       laplace_start = laplace_start,
-      optimisation_check = optimisation_check,
+      check_maxima = check_maxima,
       pc_prior = pc_prior,
       pc_sigma_threshold = pc_sigma_threshold,
       pc_sigma_probability = pc_sigma_probability,
