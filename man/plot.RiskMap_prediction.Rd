@@ -87,7 +87,7 @@ models as a rate. Probabilities are labelled as percentages. The title can
 be replaced with \code{labs(fill = ...)}.
 
 Grid cells created by \code{\link[=create_grid]{create_grid()}} are drawn as squares clipped to the
-grid's study boundary. Maps are ordinary \code{ggplot} objects drawn with
+grid's study boundary, and the boundary itself is outlined. Maps are ordinary \code{ggplot} objects drawn with
 \code{\link[ggplot2:geom_sf]{ggplot2::geom_sf()}}, so further \code{sf} layers, such as survey locations,
 can be added in any coordinate reference system.
 

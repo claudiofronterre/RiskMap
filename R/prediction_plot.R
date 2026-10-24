@@ -51,7 +51,7 @@
 ##' be replaced with `labs(fill = ...)`.
 ##'
 ##' Grid cells created by [create_grid()] are drawn as squares clipped to the
-##' grid's study boundary. Maps are ordinary `ggplot` objects drawn with
+##' grid's study boundary, and the boundary itself is outlined. Maps are ordinary `ggplot` objects drawn with
 ##' [ggplot2::geom_sf()], so further `sf` layers, such as survey locations,
 ##' can be added in any coordinate reference system.
 ##'
@@ -126,7 +126,9 @@ plot.RiskMap_prediction <- function(
     # Maps carry their legend on top, so two columns keep them readable.
     layout_columns <- if (spatial_scale == "both") 1L else
       min(2L, length(maps))
-    return(patchwork::wrap_plots(maps, ncol = layout_columns))
+    # Side margins keep neighbouring legends apart at book and report widths.
+    return(patchwork::wrap_plots(maps, ncol = layout_columns) &
+             theme(plot.margin = margin(4, 14, 4, 14)))
   }
 
   has_areas <- !is.null(x$boundaries) && !is.null(x$boundary_summary)
@@ -287,6 +289,13 @@ add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
       data = prediction_cells(data, metadata, facet_label),
       aes(fill = .data$.prediction_value), colour = NA, inherit.aes = FALSE
     )
+    if (!is.null(metadata$boundary)) {
+      # The study boundary marks where the clipped cells end.
+      study_area <- st_sf(.spatial_scale = facet_label,
+                          geometry = st_geometry(metadata$boundary))
+      map <- map + geom_sf(data = study_area, fill = NA, colour = "grey20",
+                           linewidth = 0.3, inherit.aes = FALSE)
+    }
   } else {
     data$.spatial_scale <- facet_label
     map <- map + geom_sf(

@@ -265,13 +265,17 @@ test_that("grid maps draw clipped cells and accept extra sf layers", {
   expect_s3_class(map$layers[[1L]]$geom, "GeomSf")
   expect_true(all(as.numeric(st_area(cells)) <= 4 + 1e-8))
   expect_true(all(lengths(st_within(cells, st_buffer(boundary, 1e-6))) > 0))
+  expect_length(map$layers, 2L)
+  outline <- map$layers[[2L]]$data
+  expect_equal(as.numeric(st_area(outline)), as.numeric(st_area(boundary)))
+  expect_true(is.na(map$layers[[2L]]$aes_params$fill))
 
   points <- st_transform(st_sf(geometry = st_sfc(st_point(c(5, 2)),
                                                  crs = 32631)), 4326)
   with_points <- map + geom_sf(data = points, inherit.aes = FALSE)
   built <- ggplot_build(with_points)
   cell_box <- st_bbox(built$data[[1L]]$geometry)
-  point_box <- st_bbox(built$data[[2L]]$geometry)
+  point_box <- st_bbox(built$data[[3L]]$geometry)
   expect_true(point_box[["xmin"]] >= cell_box[["xmin"]] &&
                 point_box[["xmax"]] <= cell_box[["xmax"]])
   expect_true(all(st_geometry_type(cells) %in%
@@ -304,4 +308,8 @@ test_that("several summaries at one scale are arranged in a grid", {
   )
   maps <- plot(prediction, summary = c("mean", "cv", "interval_width"))
   expect_identical(maps$patches$layout$ncol, 2L)
+  side_margins <- vapply(c(maps$patches$plots, list(maps)), function(map) {
+    as.numeric(map$theme$plot.margin[2L])
+  }, numeric(1))
+  expect_true(all(side_margins == 14))
 })
