@@ -47,6 +47,7 @@ laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
 ##' @noRd
 make_latent_map <- function(columns, dimension) {
   columns <- as.matrix(columns)
+  storage.mode(columns) <- "integer"
   width <- ncol(columns)
   pair_rows <- columns[, rep(seq_len(width), each = width), drop = FALSE]
   pair_cols <- columns[, rep(seq_len(width), times = width), drop = FALSE]
@@ -146,14 +147,15 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
 ##' inverse: with J the exchange matrix, chol(J H J) = R gives
 ##' chol(H^{-1}) = J R^{-T} J. The fixed standard-normal draws are mapped by
 ##' this factor, so it must agree with the established construction for
-##' results to be reproduced.
+##' results to be reproduced. The compiled version uses the same LAPACK and
+##' BLAS calls as chol() and backsolve().
 ##' @noRd
 inverse_cholesky_factor <- function(hessian) {
-  dimension <- nrow(hessian)
-  reversed <- dimension:1
-  root <- chol(hessian[reversed, reversed, drop = FALSE])
-  inverse_root <- backsolve(root, diag(dimension))
-  t(inverse_root)[reversed, reversed, drop = FALSE]
+  root <- cpp_inverse_cholesky_factor(as.matrix(hessian))
+  if (is.null(root)) {
+    stop("The matrix is not positive definite.", call. = FALSE)
+  }
+  root
 }
 
 ##' Rows of a standard-normal bank drawn from the defensive component
@@ -180,8 +182,9 @@ defensive_rows <- function(n_draws, defensive_weight) {
 ##' that start does not converge, the iteration starts from the conditional
 ##' mode found by `find_mode()`, and if it fails there the Laplace
 ##' approximation at the mode is used. Returns the centre and precision, the
-##' global factors (NULL for the Laplace approximation) and whether the
-##' global fit `failed`.
+##' upper factor of the proposal covariance when the global fit computed it
+##' (otherwise NULL), the global factors (NULL for the Laplace approximation)
+##' and whether the global fit `failed`.
 ##' @noRd
 build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
                                     precision, family, linkf, canonical,
@@ -213,11 +216,161 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
   if (is.null(global)) {
     if (is.null(approximation)) approximation <- find_mode()
     return(list(centre = approximation$mode,
-                precision = approximation$hessian, factors = NULL,
-                failed = failed))
+                precision = approximation$hessian, root = NULL,
+                factors = NULL, failed = failed))
   }
   list(centre = global$centre, precision = global$precision,
-       factors = global$factors, failed = failed)
+       root = global$root, factors = global$factors, failed = failed)
+}
+
+##' Log-likelihood of every row of a matrix of linear predictors
+##'
+##' `eta` has one row per draw and one column per observation. A draw whose
+##' mean is outside the support has log-likelihood -Inf.
+##' @noRd
+compute_observation_log_likelihood <- function(eta, y, units_m, family,
+                                               linkf) {
+  if (identical(linkf$name, "canonical")) {
+    return(cpp_canonical_log_likelihood(eta, y, units_m,
+                                        poisson = family == "poisson"))
+  }
+  mean <- matrix(linkf$inv(as.vector(eta)), nrow = nrow(eta))
+  if (family == "poisson") {
+    if (any(!is.finite(mean)) || any(mean <= 0))
+      return(rep(-Inf, nrow(eta)))
+    return(rowSums(sweep(log(mean), 2L, y, "*") -
+                     sweep(mean, 2L, units_m, "*")))
+  }
+  if (any(!is.finite(mean)) || any(mean <= 0 | mean >= 1))
+    return(rep(-Inf, nrow(eta)))
+  rowSums(sweep(log(mean), 2L, y, "*") +
+            sweep(log1p(-mean), 2L, units_m - y, "*"))
+}
+
+##' Deviations of draws from the centre under the prior of the latent effects
+##'
+##' The spatial block through the prior Cholesky factor, random-effect levels
+##' scaled by their standard deviations. `latent` gives the latent columns of
+##' the spatial block and of each random effect.
+##' @noRd
+compute_prior_deviations <- function(draws, proposal, latent) {
+  deviations <- matrix(0, nrow(draws), ncol(draws))
+  deviations[, latent$spatial] <-
+    draws[, latent$spatial, drop = FALSE] %*% proposal$spatial_root
+  for (j in seq_along(latent$random)) {
+    index <- latent$random[[j]]
+    deviations[, index] <- draws[, index, drop = FALSE] *
+      sqrt(proposal$values$sigma2_re[j])
+  }
+  deviations
+}
+
+##' Log density of draws under the defensive mixture proposal
+##'
+##' Squared norms of the draws standardised under each mixture component. A
+##' draw's residual under its own component is its standard-normal vector, so
+##' only the other component needs a triangular solve. For the Gaussian
+##' proposal's draws the spatial residuals under the prior can be taken from
+##' the samples already standardised for the prior density
+##' (`standardised_spatial`). The realised share of defensive draws is used as
+##' the mixture weight, so the estimate is unbiased for any bank size. A bank
+##' evaluated in row blocks passes the share of the whole bank.
+##' @noRd
+compute_log_mixture_proposal <- function(draws, deviations, defensive,
+                                         proposal, latent,
+                                         standardised_spatial = NULL,
+                                         share = mean(defensive)) {
+  draw_norms <- rowSums(draws^2)
+  log_normalising <- latent$dimension * log(2 * pi)
+  log_laplace_determinant <- 2 * sum(log(diag(proposal$root)))
+  if (share == 0) {
+    # The latent values are centre + draws %*% root, so their standardised
+    # residuals are the draws themselves.
+    return(-0.5 * (log_normalising + log_laplace_determinant + draw_norms))
+  }
+  laplace_norms <- draw_norms
+  laplace_norms[defensive] <- colSums(forwardsolve(
+    t(proposal$root), t(deviations[defensive, , drop = FALSE])
+  )^2)
+  laplace_draws <- !defensive
+  spatial_norms <- if (is.null(standardised_spatial)) {
+    colSums(forwardsolve(
+      t(proposal$spatial_root),
+      t(deviations[laplace_draws, latent$spatial, drop = FALSE])
+    )^2)
+  } else {
+    colSums((standardised_spatial[, laplace_draws, drop = FALSE] -
+               as.numeric(forwardsolve(t(proposal$spatial_root),
+                                       proposal$centre[latent$spatial])))^2)
+  }
+  for (j in seq_along(latent$random)) {
+    index <- latent$random[[j]]
+    spatial_norms <- spatial_norms +
+      rowSums(deviations[laplace_draws, index, drop = FALSE]^2) /
+      proposal$values$sigma2_re[j]
+  }
+  prior_norms <- draw_norms
+  prior_norms[laplace_draws] <- spatial_norms
+  log_prior_determinant <- 2 * sum(log(diag(proposal$spatial_root))) +
+    if (length(latent$random)) {
+      sum(lengths(latent$random) * log(proposal$values$sigma2_re))
+    } else {
+      0
+    }
+  log_laplace <- log1p(-share) - 0.5 * (
+    log_normalising + log_laplace_determinant + laplace_norms
+  )
+  log_defensive <- log(share) - 0.5 * (
+    log_normalising + log_prior_determinant + prior_norms
+  )
+  largest <- pmax(log_laplace, log_defensive)
+  largest + log(exp(log_laplace - largest) + exp(log_defensive - largest))
+}
+
+##' Log importance weights of a bank of draws, computed in R
+##'
+##' Used for links without the compiled version, `cpp_importance_log_weights()`,
+##' which reproduces this computation exactly. `columns` holds each
+##' observation's latent columns (location, then random-effect levels) and
+##' `log_likelihood` maps a matrix of linear predictors to the log-likelihood
+##' of each row.
+##' @noRd
+compute_log_weights_in_r <- function(draws, proposal, defensive,
+                                     defensive_share, values, spatial_root,
+                                     same_parameters, linear_offset, latent,
+                                     columns, log_likelihood) {
+  deviations <- draws %*% proposal$root
+  if (any(defensive)) {
+    deviations[defensive, ] <- compute_prior_deviations(
+      draws[defensive, , drop = FALSE], proposal, latent
+    )
+  }
+  samples <- deviations + rep(proposal$centre, each = nrow(deviations))
+  spatial_samples <- samples[, latent$spatial, drop = FALSE]
+  # Samples standardised by the prior factor. Their squared norms give the
+  # prior quadratic form and, when the target and proposal parameters
+  # coincide, they also give the residuals under the defensive component.
+  standardised_samples <- forwardsolve(t(spatial_root), t(spatial_samples))
+  log_prior <- -0.5 * (
+    length(latent$spatial) * log(2 * pi) + 2 * sum(log(diag(spatial_root))) +
+      colSums(standardised_samples^2)
+  )
+  eta <- spatial_samples[, columns[, 1L], drop = FALSE] +
+    rep(linear_offset, each = nrow(samples))
+  for (j in seq_along(latent$random)) {
+    random_samples <- samples[, latent$random[[j]], drop = FALSE]
+    eta <- eta + samples[, columns[, j + 1L], drop = FALSE]
+    log_prior <- log_prior - 0.5 * (
+      length(latent$random[[j]]) * log(2 * pi * values$sigma2_re[j]) +
+        rowSums(random_samples^2) / values$sigma2_re[j]
+    )
+  }
+  log_target <- log_prior + log_likelihood(eta)
+  log_proposal <- compute_log_mixture_proposal(
+    draws, deviations, defensive, proposal, latent,
+    if (same_parameters) standardised_samples, share = defensive_share
+  )
+  log_target - log_proposal
 }
 
 ##' Construct the adaptive importance-sampling engine
@@ -244,6 +397,11 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
 ##' used for stopping are valid, at a small cost in efficiency. Weights use the
 ##' full mixture density. With `defensive_weight = 0` the proposal is the
 ##' Gaussian component alone.
+##'
+##' The prior factors, the global proposal's dense algebra and, for canonical
+##' links, the importance weights are computed in compiled code, which
+##' reproduces the R computations (`compute_log_weights_in_r()` for the
+##' weights) exactly but keeps their large working matrices off the R heap.
 ##' @noRd
 make_adaptive_mcml_engine <- function(
     D, y, units_m, distances, family = c("binomial", "poisson"),
@@ -265,7 +423,6 @@ make_adaptive_mcml_engine <- function(
                            sigma2_me = FALSE, n_re = n_re)
 
   linkf <- make_inverse_link_functions(family, invlink, n)
-  inverse_link <- linkf$inv
   canonical <- identical(linkf$name, "canonical")
 
   unpack <- function(parameters) {
@@ -308,23 +465,27 @@ make_adaptive_mcml_engine <- function(
          dimension = next_index - 1L)
   }
   latent <- latent_layout()
+  random_first <- vapply(latent$random, function(index) index[1L], integer(1))
+  random_size <- as.integer(n_dim_re)
 
-  log_observation_likelihood <- function(eta) {
-    if (canonical) {
-      return(cpp_canonical_log_likelihood(eta, y, units_m,
-                                          poisson = family == "poisson"))
+  # The spatial covariance at one parameter value, its upper Cholesky factor
+  # and the precision. For the closed-form Matern correlations they are
+  # computed in compiled code, without temporary copies on the R heap. A
+  # covariance that needs jitter is factorised by factor_covariance(), as for
+  # other values of kappa.
+  spatial_prior_at <- function(values) {
+    if (half_integer_kappa) {
+      prior <- cpp_spatial_prior_factors(
+        distance_values, n_loc, values$phi, kappa, values$sigma2,
+        values$nugget_ratio
+      )
+      if (!is.null(prior$root)) return(prior)
+      covariance <- prior$covariance
+    } else {
+      covariance <- covariance_at(values)
     }
-    mean <- matrix(inverse_link(as.vector(eta)), nrow = nrow(eta))
-    if (family == "poisson") {
-      if (any(!is.finite(mean)) || any(mean <= 0))
-        return(rep(-Inf, nrow(eta)))
-      return(rowSums(sweep(log(mean), 2L, y, "*") -
-                       sweep(mean, 2L, units_m, "*")))
-    }
-    if (any(!is.finite(mean)) || any(mean <= 0 | mean >= 1))
-      return(rep(-Inf, nrow(eta)))
-    rowSums(sweep(log(mean), 2L, y, "*") +
-              sweep(log1p(-mean), 2L, units_m - y, "*"))
+    root <- factor_covariance(covariance, "adaptive MCML target")
+    list(covariance = covariance, root = root, precision = chol2inv(root))
   }
 
   # Index map from latent variables (spatial locations, then random-effect
@@ -346,75 +507,6 @@ make_adaptive_mcml_engine <- function(
   cached_type <- NULL
   cached_proposal <- NULL
 
-  # Deviations from the centre with the prior covariance of the latent effects:
-  # the spatial block through its Cholesky factor, random-effect levels
-  # scaled by their standard deviations.
-  prior_deviations <- function(draws, proposal) {
-    deviations <- matrix(0, nrow(draws), ncol(draws))
-    deviations[, latent$spatial] <-
-      draws[, latent$spatial, drop = FALSE] %*% proposal$spatial_root
-    if (n_re) for (j in seq_len(n_re)) {
-      index <- latent$random[[j]]
-      deviations[, index] <- draws[, index, drop = FALSE] *
-        sqrt(proposal$values$sigma2_re[j])
-    }
-    deviations
-  }
-
-  # Squared norms of the draws standardised under each mixture component. A
-  # draw's residual under its own component is its standard-normal vector, so
-  # only the other component needs a triangular solve. For the Laplace draws
-  # the spatial residuals under the prior can be taken from the samples
-  # already standardised for the prior density (standardised_spatial). The
-  # realised share of defensive draws is used as the mixture weight, so the
-  # estimate is unbiased for any bank size. A bank evaluated in row blocks
-  # passes the share of the whole bank.
-  log_mixture_proposal <- function(draws, deviations, defensive, proposal,
-                                   standardised_spatial = NULL,
-                                   share = mean(defensive)) {
-    draw_norms <- rowSums(draws^2)
-    log_normalising <- latent$dimension * log(2 * pi)
-    log_laplace_determinant <- 2 * sum(log(diag(proposal$root)))
-    if (share == 0) {
-      # The latent values are centre + draws %*% root, so their standardised
-      # residuals are the draws themselves.
-      return(-0.5 * (log_normalising + log_laplace_determinant + draw_norms))
-    }
-    laplace_norms <- draw_norms
-    laplace_norms[defensive] <- colSums(forwardsolve(
-      t(proposal$root), t(deviations[defensive, , drop = FALSE])
-    )^2)
-    laplace_draws <- !defensive
-    spatial_norms <- if (is.null(standardised_spatial)) {
-      colSums(forwardsolve(
-        t(proposal$spatial_root),
-        t(deviations[laplace_draws, latent$spatial, drop = FALSE])
-      )^2)
-    } else {
-      colSums((standardised_spatial[, laplace_draws, drop = FALSE] -
-                 as.numeric(forwardsolve(t(proposal$spatial_root),
-                                         proposal$centre[latent$spatial])))^2)
-    }
-    if (n_re) for (j in seq_len(n_re)) {
-      index <- latent$random[[j]]
-      spatial_norms <- spatial_norms +
-        rowSums(deviations[laplace_draws, index, drop = FALSE]^2) /
-        proposal$values$sigma2_re[j]
-    }
-    prior_norms <- draw_norms
-    prior_norms[laplace_draws] <- spatial_norms
-    log_prior_determinant <- 2 * sum(log(diag(proposal$spatial_root))) +
-      if (n_re) sum(n_dim_re * log(proposal$values$sigma2_re)) else 0
-    log_laplace <- log1p(-share) - 0.5 * (
-      log_normalising + log_laplace_determinant + laplace_norms
-    )
-    log_defensive <- log(share) - 0.5 * (
-      log_normalising + log_prior_determinant + prior_norms
-    )
-    largest <- pmax(log_laplace, log_defensive)
-    largest + log(exp(log_laplace - largest) + exp(log_defensive - largest))
-  }
-
   proposal_at <- function(parameters, type = default_proposal_type) {
     if (!is.null(cached_parameters) &&
         identical(parameters, cached_parameters) &&
@@ -422,13 +514,15 @@ make_adaptive_mcml_engine <- function(
       return(cached_proposal)
     }
     values <- unpack(parameters)
-    covariance <- covariance_at(values)
-    spatial_root <- factor_covariance(covariance, "adaptive MCML target")
-    precision <- matrix(0, latent$dimension, latent$dimension)
-    precision[latent$spatial, latent$spatial] <- chol2inv(spatial_root)
-    if (n_re) for (j in seq_len(n_re)) {
-      index <- latent$random[[j]]
-      precision[cbind(index, index)] <- 1 / values$sigma2_re[j]
+    prior <- spatial_prior_at(values)
+    precision <- prior$precision
+    if (n_re) {
+      precision <- matrix(0, latent$dimension, latent$dimension)
+      precision[latent$spatial, latent$spatial] <- prior$precision
+      for (j in seq_len(n_re)) {
+        index <- latent$random[[j]]
+        precision[cbind(index, index)] <- 1 / values$sigma2_re[j]
+      }
     }
     mu <- as.numeric(D %*% values$beta + cov_offset)
     find_mode <- function() {
@@ -445,14 +539,18 @@ make_adaptive_mcml_engine <- function(
       anchor, find_mode
     )
     if (gaussian$failed) proposal_failures <<- proposal_failures + 1L
-    root <- tryCatch(
-      inverse_cholesky_factor(gaussian$precision),
-      error = function(error) factor_covariance(
-        solve(gaussian$precision), "adaptive MCML proposal"
+    root <- gaussian$root
+    if (is.null(root)) {
+      root <- tryCatch(
+        inverse_cholesky_factor(gaussian$precision),
+        error = function(error) factor_covariance(
+          solve(gaussian$precision), "adaptive MCML proposal"
+        )
       )
-    )
+    }
     proposal <- list(centre = gaussian$centre, root = root, values = values,
-                     covariance = covariance, spatial_root = spatial_root,
+                     covariance = prior$covariance,
+                     spatial_root = prior$root,
                      type = if (is.null(gaussian$factors)) "laplace" else
                        "global",
                      mu = mu, factors = gaussian$factors)
@@ -487,54 +585,36 @@ make_adaptive_mcml_engine <- function(
       defensive <- defensive_rows(nrow(draws), defensive_weight)
     }
     if (is.null(defensive_share)) defensive_share <- mean(defensive)
-    deviations <- draws %*% proposal$root
-    if (any(defensive)) {
-      deviations[defensive, ] <- prior_deviations(
-        draws[defensive, , drop = FALSE], proposal
-      )
-    }
-    samples <- deviations + rep(proposal$centre, each = nrow(deviations))
-    if (identical(parameters, proposal_parameters)) {
+    same_parameters <- identical(parameters, proposal_parameters)
+    if (same_parameters) {
       values <- proposal$values
-      covariance <- proposal$covariance
       spatial_root <- proposal$spatial_root
     } else {
       values <- unpack(parameters)
-      covariance <- covariance_at(values)
       spatial_root <- tryCatch(
-        factor_covariance(covariance, "adaptive MCML target"),
+        factor_covariance(covariance_at(values), "adaptive MCML target"),
         error = function(error) NULL
       )
     }
     if (is.null(spatial_root)) return(failed)
-
-    spatial_samples <- samples[, latent$spatial, drop = FALSE]
-    # Samples standardised by the prior factor. Their squared norms give the
-    # prior quadratic form and, when the target and proposal parameters
-    # coincide, they also give the residuals under the defensive component.
-    standardised_samples <- forwardsolve(t(spatial_root), t(spatial_samples))
-    log_prior <- -0.5 * (
-      n_loc * log(2 * pi) + 2 * sum(log(diag(spatial_root))) +
-        colSums(standardised_samples^2)
-    )
-    eta <- spatial_samples[, ID_coords, drop = FALSE] +
-      rep(as.numeric(D %*% values$beta + cov_offset), each = nrow(samples))
-    if (n_re) for (j in seq_len(n_re)) {
-      random_samples <- samples[, latent$random[[j]], drop = FALSE]
-      eta <- eta + random_samples[, ID_re[, j], drop = FALSE]
-      log_prior <- log_prior - 0.5 * (
-        n_dim_re[j] * log(2 * pi * values$sigma2_re[j]) +
-          rowSums(random_samples^2) / values$sigma2_re[j]
+    linear_offset <- as.numeric(D %*% values$beta + cov_offset)
+    log_weights <- if (canonical) {
+      cpp_importance_log_weights(
+        draws, proposal$root, proposal$centre, defensive, defensive_share,
+        proposal$spatial_root, as.numeric(proposal$values$sigma2_re),
+        spatial_root, as.numeric(values$sigma2_re), same_parameters,
+        linear_offset, latent_map$columns, random_first, random_size, y,
+        units_m, family == "poisson"
+      )
+    } else {
+      compute_log_weights_in_r(
+        draws, proposal, defensive, defensive_share, values, spatial_root,
+        same_parameters, linear_offset, latent, latent_map$columns,
+        function(eta) {
+          compute_observation_log_likelihood(eta, y, units_m, family, linkf)
+        }
       )
     }
-    log_target <- log_prior + log_observation_likelihood(eta)
-
-    log_proposal <- log_mixture_proposal(
-      draws, deviations, defensive, proposal,
-      if (identical(parameters, proposal_parameters)) standardised_samples,
-      share = defensive_share
-    )
-    log_weights <- log_target - log_proposal
     if (log_weights_only) return(log_weights)
     maximum <- max(log_weights)
     maximum + log(mean(exp(log_weights - maximum)))

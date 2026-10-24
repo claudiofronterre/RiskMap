@@ -11,6 +11,88 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// cpp_global_marginals
+SEXP cpp_global_marginals(const NumericMatrix& precision, const NumericVector& linear, const NumericVector& curvature, const IntegerMatrix& columns);
+RcppExport SEXP _RiskMap_cpp_global_marginals(SEXP precisionSEXP, SEXP linearSEXP, SEXP curvatureSEXP, SEXP columnsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type precision(precisionSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type linear(linearSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type curvature(curvatureSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type columns(columnsSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_global_marginals(precision, linear, curvature, columns));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_global_proposal_factors
+SEXP cpp_global_proposal_factors(const NumericMatrix& precision, const NumericVector& linear, const NumericVector& curvature, const IntegerMatrix& columns);
+RcppExport SEXP _RiskMap_cpp_global_proposal_factors(SEXP precisionSEXP, SEXP linearSEXP, SEXP curvatureSEXP, SEXP columnsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type precision(precisionSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type linear(linearSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type curvature(curvatureSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type columns(columnsSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_global_proposal_factors(precision, linear, curvature, columns));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_inverse_cholesky_factor
+SEXP cpp_inverse_cholesky_factor(const NumericMatrix& hessian);
+RcppExport SEXP _RiskMap_cpp_inverse_cholesky_factor(SEXP hessianSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type hessian(hessianSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_inverse_cholesky_factor(hessian));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_spatial_prior_factors
+List cpp_spatial_prior_factors(const NumericVector& distances, const int dimension, const double phi, const double kappa, const double sigma2, const double nugget_ratio);
+RcppExport SEXP _RiskMap_cpp_spatial_prior_factors(SEXP distancesSEXP, SEXP dimensionSEXP, SEXP phiSEXP, SEXP kappaSEXP, SEXP sigma2SEXP, SEXP nugget_ratioSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericVector& >::type distances(distancesSEXP);
+    Rcpp::traits::input_parameter< const int >::type dimension(dimensionSEXP);
+    Rcpp::traits::input_parameter< const double >::type phi(phiSEXP);
+    Rcpp::traits::input_parameter< const double >::type kappa(kappaSEXP);
+    Rcpp::traits::input_parameter< const double >::type sigma2(sigma2SEXP);
+    Rcpp::traits::input_parameter< const double >::type nugget_ratio(nugget_ratioSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_spatial_prior_factors(distances, dimension, phi, kappa, sigma2, nugget_ratio));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_importance_log_weights
+NumericVector cpp_importance_log_weights(const NumericMatrix& draws, const NumericMatrix& root, const NumericVector& centre, const LogicalVector& defensive, const double share, const NumericMatrix& proposal_spatial_root, const NumericVector& proposal_sigma2_re, const NumericMatrix& target_spatial_root, const NumericVector& target_sigma2_re, const bool same_parameters, const NumericVector& linear_offset, const IntegerMatrix& columns, const IntegerVector& random_first, const IntegerVector& random_size, const NumericVector& y, const NumericVector& units, const bool poisson);
+RcppExport SEXP _RiskMap_cpp_importance_log_weights(SEXP drawsSEXP, SEXP rootSEXP, SEXP centreSEXP, SEXP defensiveSEXP, SEXP shareSEXP, SEXP proposal_spatial_rootSEXP, SEXP proposal_sigma2_reSEXP, SEXP target_spatial_rootSEXP, SEXP target_sigma2_reSEXP, SEXP same_parametersSEXP, SEXP linear_offsetSEXP, SEXP columnsSEXP, SEXP random_firstSEXP, SEXP random_sizeSEXP, SEXP ySEXP, SEXP unitsSEXP, SEXP poissonSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type draws(drawsSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type root(rootSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type centre(centreSEXP);
+    Rcpp::traits::input_parameter< const LogicalVector& >::type defensive(defensiveSEXP);
+    Rcpp::traits::input_parameter< const double >::type share(shareSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type proposal_spatial_root(proposal_spatial_rootSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type proposal_sigma2_re(proposal_sigma2_reSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type target_spatial_root(target_spatial_rootSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type target_sigma2_re(target_sigma2_reSEXP);
+    Rcpp::traits::input_parameter< const bool >::type same_parameters(same_parametersSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type linear_offset(linear_offsetSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type columns(columnsSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type random_first(random_firstSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type random_size(random_sizeSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type y(ySEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type units(unitsSEXP);
+    Rcpp::traits::input_parameter< const bool >::type poisson(poissonSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_importance_log_weights(draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson));
+    return rcpp_result_gen;
+END_RCPP
+}
 // cpp_canonical_log_likelihood
 NumericVector cpp_canonical_log_likelihood(const NumericMatrix eta_r, const NumericVector y_r, const NumericVector units_r, const bool poisson);
 RcppExport SEXP _RiskMap_cpp_canonical_log_likelihood(SEXP eta_rSEXP, SEXP y_rSEXP, SEXP units_rSEXP, SEXP poissonSEXP) {
@@ -107,6 +189,11 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_RiskMap_cpp_global_marginals", (DL_FUNC) &_RiskMap_cpp_global_marginals, 4},
+    {"_RiskMap_cpp_global_proposal_factors", (DL_FUNC) &_RiskMap_cpp_global_proposal_factors, 4},
+    {"_RiskMap_cpp_inverse_cholesky_factor", (DL_FUNC) &_RiskMap_cpp_inverse_cholesky_factor, 1},
+    {"_RiskMap_cpp_spatial_prior_factors", (DL_FUNC) &_RiskMap_cpp_spatial_prior_factors, 6},
+    {"_RiskMap_cpp_importance_log_weights", (DL_FUNC) &_RiskMap_cpp_importance_log_weights, 17},
     {"_RiskMap_cpp_canonical_log_likelihood", (DL_FUNC) &_RiskMap_cpp_canonical_log_likelihood, 4},
     {"_RiskMap_cpp_canonical_mala", (DL_FUNC) &_RiskMap_cpp_canonical_mala, 19},
     {"_RiskMap_cpp_pairwise_distances", (DL_FUNC) &_RiskMap_cpp_pairwise_distances, 1},

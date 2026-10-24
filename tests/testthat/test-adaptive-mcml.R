@@ -781,7 +781,9 @@ test_that("a failed evaluation gives every draw zero weight", {
     D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
     distances = as.matrix(dist(1:3)), family = "binomial"
   )
-  local_mocked_bindings(factor_covariance = function(...) stop("not positive"))
+  local_mocked_bindings(
+    cpp_spatial_prior_factors = function(...) stop("not positive")
+  )
   bank <- matrix(rnorm(12), 4)
   expect_identical(engine$evaluate(c(0, 0, 0), bank, log_weights_only = TRUE),
                    rep(-Inf, 4))
@@ -854,4 +856,168 @@ test_that("the table of the check for other maxima is restored to user units", {
   restored <- restore_mcml_history_scale(history, diag(2), distance_scale = 10)
   expect_equal(restored[[1]]$maxima_check$log_phi, log(c(1, 30)))
   expect_equal(restored[[1]]$estimate[4], log(20))
+})
+
+# The R computations that the compiled routines of the engine replaced. The
+# compiled versions must reproduce them exactly.
+reference_inverse_cholesky_factor <- function(hessian) {
+  dimension <- nrow(hessian)
+  reversed <- dimension:1
+  root <- chol(hessian[reversed, reversed, drop = FALSE])
+  inverse_root <- backsolve(root, diag(dimension))
+  t(inverse_root)[reversed, reversed, drop = FALSE]
+}
+
+make_compiled_test_problem <- function(with_random_effect) {
+  set.seed(31)
+  locations <- 12
+  coordinates <- matrix(runif(2 * locations), ncol = 2)
+  precision <- chol2inv(chol(exp(-as.matrix(dist(coordinates)) / 0.3)))
+  levels <- 4
+  dimension <- locations + if (with_random_effect) levels else 0
+  if (with_random_effect) {
+    full <- matrix(0, dimension, dimension)
+    full[seq_len(locations), seq_len(locations)] <- precision
+    full[cbind(locations + 1:levels, locations + 1:levels)] <- 2
+    precision <- full
+  }
+  observations <- 20
+  columns <- cbind(sample(locations, observations, replace = TRUE))
+  if (with_random_effect) {
+    columns <- cbind(columns, locations + sample(levels, observations,
+                                                 replace = TRUE))
+  }
+  list(precision = precision, latent_map = make_latent_map(columns, dimension),
+       linear = rnorm(observations), curvature = runif(observations, 0.1, 2))
+}
+
+test_that("compiled marginals of the global iteration equal the R code", {
+  for (with_random_effect in c(FALSE, TRUE)) {
+    problem <- make_compiled_test_problem(with_random_effect)
+    latent_map <- problem$latent_map
+    proposal_precision <- problem$precision +
+      latent_data_hessian(latent_map, problem$curvature)
+    inverse <- chol2inv(chol(proposal_precision))
+    centre <- as.numeric(inverse %*%
+                           latent_gradient(latent_map, problem$linear))
+    compiled <- cpp_global_marginals(problem$precision, problem$linear,
+                                     problem$curvature, latent_map$columns)
+    expect_identical(compiled$marginal_mean,
+                     latent_linear_predictor(latent_map, centre))
+    expect_identical(compiled$marginal_variance, as.numeric(rowsum(
+      inverse[latent_map$pair_linear], latent_map$pair_observation,
+      reorder = FALSE
+    )))
+  }
+  expect_null(cpp_global_marginals(-diag(3), numeric(3), numeric(3),
+                                   cbind(1:3)))
+})
+
+test_that("the compiled converged proposal equals the R code", {
+  for (with_random_effect in c(FALSE, TRUE)) {
+    problem <- make_compiled_test_problem(with_random_effect)
+    latent_map <- problem$latent_map
+    proposal_precision <- problem$precision +
+      latent_data_hessian(latent_map, problem$curvature)
+    proposal_precision <- (proposal_precision + t(proposal_precision)) / 2
+    root <- chol(proposal_precision)
+    compiled <- cpp_global_proposal_factors(
+      problem$precision, problem$linear, problem$curvature, latent_map$columns
+    )
+    expect_identical(compiled$precision, proposal_precision)
+    expect_identical(compiled$centre, as.numeric(backsolve(root, forwardsolve(
+      t(root), latent_gradient(latent_map, problem$linear)
+    ))))
+    expect_identical(compiled$root,
+                     reference_inverse_cholesky_factor(proposal_precision))
+    expect_identical(inverse_cholesky_factor(proposal_precision),
+                     compiled$root)
+  }
+  expect_null(cpp_global_proposal_factors(-diag(3), numeric(3), numeric(3),
+                                          cbind(1:3)))
+  expect_error(inverse_cholesky_factor(-diag(3)), "not positive definite")
+})
+
+test_that("the compiled spatial prior equals the R code and defers jitter", {
+  set.seed(32)
+  distances <- as.matrix(dist(matrix(runif(20), ncol = 2)))
+  for (kappa in c(0.5, 1.5, 2.5)) {
+    compiled <- cpp_spatial_prior_factors(as.numeric(distances), 10L, 0.4,
+                                          kappa, 1.7, 0.2)
+    correlation <- matrix(cpp_half_integer_matern(as.numeric(distances), 0.4,
+                                                  kappa), 10, 10)
+    diag(correlation) <- diag(correlation) + 0.2
+    covariance <- 1.7 * correlation
+    root <- factor_covariance(covariance)
+    expect_identical(compiled$covariance, covariance)
+    expect_identical(compiled$root, root)
+    expect_identical(compiled$precision, chol2inv(root))
+  }
+  # Two sites at the same place without a nugget give a singular covariance,
+  # which the engine factorises with jitter as before.
+  repeated <- as.matrix(dist(c(0, 0, 1)))
+  singular <- cpp_spatial_prior_factors(as.numeric(repeated), 3L, 1, 0.5, 1, 0)
+  expect_null(singular$root)
+  expect_identical(singular$covariance, unname(exp(-repeated)))
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(1, 2, 1), units_m = rep(4, 3),
+    distances = repeated, family = "binomial", proposal = "laplace"
+  )
+  expect_warning(proposal <- engine$proposal_at(c(0, 0, 0)), "jitter")
+  expect_gt(attr(proposal$spatial_root, "jitter"), 0)
+})
+
+test_that("compiled importance weights equal the R computation", {
+  set.seed(33)
+  locations <- 15
+  distances <- as.matrix(dist(matrix(runif(2 * locations), ncol = 2)))
+  cluster <- sample(4, locations, replace = TRUE)
+  design <- cbind(1, rnorm(locations))
+  linear_predictor <- -0.5 + 0.3 * design[, 2] + rnorm(locations, sd = 0.5)
+  cases <- list(
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = NULL, defensive = 0.05),
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = cbind(cluster), defensive = 0.05),
+    list(family = "poisson", y = rpois(locations, exp(linear_predictor + 1)),
+         units = rep(1, locations), random = cbind(cluster), defensive = 0.05),
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = NULL, defensive = 0)
+  )
+  for (case in cases) {
+    engine <- make_adaptive_mcml_engine(
+      D = design, y = case$y, units_m = case$units, distances = distances,
+      family = case$family, ID_re = case$random,
+      defensive_weight = case$defensive
+    )
+    scope <- environment(engine$evaluate)
+    parameters <- c(-0.5, 0.3, log(0.5), log(0.3),
+                    if (!is.null(case$random)) log(0.4))
+    for (shift in c(0, 0.05)) for (rows in c(1L, 40L)) {
+      target <- parameters + c(0, 0, shift, -shift,
+                               if (!is.null(case$random)) shift)
+      draws <- matrix(rnorm(rows * engine$latent_dimension), rows)
+      proposal <- engine$proposal_at(parameters)
+      same <- identical(target, parameters)
+      values <- if (same) proposal$values else scope$unpack(target)
+      spatial_root <- if (same) proposal$spatial_root else
+        factor_covariance(scope$covariance_at(values))
+      defensive <- defensive_rows(rows, case$defensive)
+      in_r <- compute_log_weights_in_r(
+        draws, proposal, defensive, mean(defensive), values, spatial_root,
+        same, as.numeric(design %*% values$beta), scope$latent,
+        scope$latent_map$columns,
+        function(eta) {
+          compute_observation_log_likelihood(eta, case$y, case$units,
+                                             case$family, scope$linkf)
+        }
+      )
+      # The R code can carry a random effect's name on a single-row result.
+      expect_identical(
+        engine$evaluate(target, draws, log_weights_only = TRUE,
+                        proposal_parameters = parameters),
+        unname(in_r)
+      )
+    }
+  }
 })

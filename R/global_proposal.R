@@ -169,7 +169,9 @@ update_observation_factors <- function(marginal_mean, marginal_sd, offset,
 ##' The fixed-point map of `fit_global_proposal()`. It builds the proposal
 ##' from the current factors, stacked as c(linear, curvature), and refits each
 ##' observation's factor at the quadrature nodes of its marginal distribution
-##' under that proposal. Returns the refitted factors, or NULL if the
+##' under that proposal. The marginal means and variances come from compiled
+##' code (`cpp_global_marginals()`), which keeps the dense factorisation and
+##' inverse off the R heap. Returns the refitted factors, or NULL if the
 ##' precision is not positive definite or a fit fails.
 ##' @noRd
 refit_global_factors <- function(factors, mu, y, units_m, latent_map,
@@ -178,16 +180,11 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
   observations <- length(factors) / 2
   linear <- factors[seq_len(observations)]
   curvature <- factors[observations + seq_len(observations)]
-  proposal_precision <- precision + latent_data_hessian(latent_map, curvature)
-  root <- tryCatch(chol(proposal_precision), error = function(error) NULL)
-  if (is.null(root)) return(NULL)
-  inverse <- chol2inv(root)
-  centre <- as.numeric(inverse %*% latent_gradient(latent_map, linear))
-  marginal_mean <- latent_linear_predictor(latent_map, centre)
-  marginal_variance <- as.numeric(rowsum(
-    inverse[latent_map$pair_linear], latent_map$pair_observation,
-    reorder = FALSE
-  ))
+  marginals <- cpp_global_marginals(precision, linear, curvature,
+                                    latent_map$columns)
+  if (is.null(marginals)) return(NULL)
+  marginal_mean <- marginals$marginal_mean
+  marginal_variance <- marginals$marginal_variance
   if (any(!is.finite(marginal_variance)) || any(marginal_variance <= 0)) {
     return(NULL)
   }
@@ -247,7 +244,9 @@ take_anderson_step <- function(residuals, refits) {
 ##' refit fails or the precision is not positive definite. An iteration that
 ##' has not converged still defines a valid proposal. It is returned with
 ##' `converged = FALSE` so that the caller can decide whether to fall back to
-##' the Laplace proposal.
+##' the Laplace proposal. The returned `root` is the upper factor of Q^-1 that
+##' maps standard-normal draws (`inverse_cholesky_factor()`), or NULL if that
+##' factorisation fails.
 ##' @noRd
 fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 family, linkf, canonical,
@@ -322,14 +321,10 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
   }
   linear <- refitted[seq_len(observations)]
   curvature <- refitted[curvature_part]
-  proposal_precision <- precision + latent_data_hessian(latent_map, curvature)
-  proposal_precision <- (proposal_precision + t(proposal_precision)) / 2
-  root <- tryCatch(chol(proposal_precision), error = function(error) NULL)
-  if (is.null(root)) return(NULL)
-  centre <- as.numeric(backsolve(root, forwardsolve(
-    t(root), latent_gradient(latent_map, linear)
-  )))
-  list(centre = centre, precision = proposal_precision, iterations = refits,
-       change = change, converged = change < tolerance,
+  final <- cpp_global_proposal_factors(precision, linear, curvature,
+                                       latent_map$columns)
+  if (is.null(final)) return(NULL)
+  list(centre = final$centre, precision = final$precision, root = final$root,
+       iterations = refits, change = change, converged = change < tolerance,
        factors = list(linear = linear, curvature = curvature))
 }
