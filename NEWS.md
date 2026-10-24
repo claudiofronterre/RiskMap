@@ -180,6 +180,8 @@ uncertainty, which matters for small or low-prevalence surveys.
 - `plot()` now respects `limits` for maps of signed quantities such as the
   spatial effect, which were previously rescaled, and arranges several
   summaries in two columns.
+- Maps of `create_grid()` grids outline the grid's study boundary, so the
+  edge of the study area is visible where the clipped cells end.
 
 ## Cross validation
 
