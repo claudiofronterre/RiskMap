@@ -570,3 +570,26 @@ test_that("set_control_mcml validates the certification settings", {
   expect_error(set_control_mcml(tolerance = 0), "positive number")
   expect_error(set_control_mcml(validation_samples = 0), "positive integer")
 })
+
+test_that("the accelerated global iteration reaches the plain fixed point", {
+  set.seed(21)
+  coordinate <- runif(40)
+  trials <- rep(15, 40)
+  y <- rbinom(40, trials, plogis(-2 + rnorm(40, sd = 0.8)))
+  precision <- solve(0.8 * exp(-as.matrix(dist(coordinate)) / 0.2))
+  latent_map <- make_latent_map(cbind(seq_len(40)), 40)
+  linkf <- make_inverse_link_functions("binomial", NULL, 40)
+  mu <- rep(-2, 40)
+  mode <- adaptive_laplace_mode(mu, y, trials, latent_map, precision,
+                                "binomial", linkf, numeric(40))$mode
+  fit <- function(memory) {
+    fit_global_proposal(mode, mu, y, trials, latent_map, precision,
+                        "binomial", linkf, canonical = TRUE, memory = memory)
+  }
+  plain <- fit(0L)
+  accelerated <- fit(3L)
+  expect_true(plain$converged && accelerated$converged)
+  expect_lte(accelerated$iterations, plain$iterations)
+  expect_equal(accelerated$centre, plain$centre, tolerance = 1e-6)
+  expect_equal(accelerated$precision, plain$precision, tolerance = 1e-6)
+})

@@ -151,6 +151,66 @@ update_observation_factors <- function(marginal_mean, marginal_sd, offset,
   list(linear = linear, curvature = curvature)
 }
 
+##' One refit of the factors of the global proposal
+##'
+##' The fixed-point map of `fit_global_proposal()`. It builds the proposal
+##' from the current factors, stacked as c(linear, curvature), and refits each
+##' observation's factor at the quadrature nodes of its marginal distribution
+##' under that proposal. Returns the refitted factors, or NULL if the
+##' precision is not positive definite or a fit fails.
+##' @noRd
+refit_global_factors <- function(factors, mu, y, units_m, latent_map,
+                                 precision, family, linkf, canonical,
+                                 quadrature, floor_curvature) {
+  n <- length(factors) / 2
+  linear <- factors[seq_len(n)]
+  curvature <- factors[n + seq_len(n)]
+  proposal_precision <- precision + latent_data_hessian(latent_map, curvature)
+  root <- tryCatch(chol(proposal_precision), error = function(error) NULL)
+  if (is.null(root)) return(NULL)
+  inverse <- chol2inv(root)
+  centre <- as.numeric(inverse %*% latent_gradient(latent_map, linear))
+  marginal_mean <- latent_linear_predictor(latent_map, centre)
+  marginal_variance <- as.numeric(rowsum(
+    inverse[latent_map$pair_linear], latent_map$pair_observation,
+    reorder = FALSE
+  ))
+  if (any(!is.finite(marginal_variance)) || any(marginal_variance <= 0)) {
+    return(NULL)
+  }
+  updated <- tryCatch(
+    update_observation_factors(marginal_mean, sqrt(marginal_variance), mu,
+                               y, units_m, family, linkf, canonical,
+                               linear, curvature, quadrature),
+    error = function(error) NULL
+  )
+  if (is.null(updated)) return(NULL)
+  refitted <- c(updated$linear, floor_curvature(updated$curvature))
+  if (any(!is.finite(refitted))) return(NULL)
+  refitted
+}
+
+##' Anderson acceleration step for a fixed-point iteration
+##'
+##' Given the residuals f_j = G(x_j) - x_j and refits G(x_j) of the recent
+##' iterates, one column each with the oldest first, returns the combination
+##' of refits whose combined residual is smallest in least squares (Walker and
+##' Ni, 2011). With a single column, or collinear residual differences, it is
+##' the plain step G(x_k).
+##' @noRd
+anderson_step <- function(residuals, refits) {
+  last <- ncol(residuals)
+  if (last < 2L) return(refits[, last])
+  residual_differences <- residuals[, -1L, drop = FALSE] -
+    residuals[, -last, drop = FALSE]
+  refit_differences <- refits[, -1L, drop = FALSE] -
+    refits[, -last, drop = FALSE]
+  decomposition <- qr(residual_differences)
+  if (decomposition$rank < ncol(residual_differences)) return(refits[, last])
+  weights <- qr.coef(decomposition, residuals[, last])
+  as.numeric(refits[, last] - refit_differences %*% weights)
+}
+
 ##' Fit the global Gaussian proposal for the latent effects
 ##'
 ##' Starting from the Laplace approximation at the conditional mode, the
@@ -161,16 +221,24 @@ update_observation_factors <- function(marginal_mean, marginal_sd, offset,
 ##' P is the prior precision and A maps latent effects to observations. The
 ##' factors are fitted in standardised coordinates by least squares on the
 ##' stable nonlinear part of each log-likelihood, which keeps the fit well
-##' conditioned when a variance is near zero. Returns NULL if a factor fit
-##' fails or the precision is not positive definite. An iteration that has not
-##' converged still defines a valid proposal; it is returned with
-##' `converged = FALSE` so that the caller can decide whether to fall back to
-##' the Laplace proposal.
+##' conditioned when a variance is near zero.
+##'
+##' The refits are combined by Anderson acceleration with `memory` previous
+##' iterates, which reaches the fixed point in far fewer refits than plain
+##' iteration. A combined step that fails or enlarges the residual is replaced
+##' by the plain step. The iteration always starts from the conditional mode
+##' and stops when one refit changes no factor by more than `tolerance`, as
+##' plain iteration does, so the proposal is a deterministic function of the
+##' parameters. Returns NULL if a refit fails or the precision is not positive
+##' definite. An iteration that has not converged still defines a valid
+##' proposal; it is returned with `converged = FALSE` so that the caller can
+##' decide whether to fall back to the Laplace proposal.
 ##' @noRd
 fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 family, linkf, canonical,
                                 tolerance = 1e-8, maximum_iterations = 500L,
-                                quadrature = standard_normal_quadrature()) {
+                                quadrature = standard_normal_quadrature(),
+                                memory = 3L) {
   mode_terms <- laplace_observation_terms(
     mu + latent_linear_predictor(latent_map, mode), y, units_m, family, linkf
   )
@@ -178,6 +246,7 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
   curvature <- mode_terms$curvature
   linear <- mode_terms$score +
     curvature * latent_linear_predictor(latent_map, mode)
+  n <- length(linear)
   # A lower bound on the factors' curvature that keeps Q positive definite.
   # For C >= c < 0, A' diag(C) A >= c A'A, and by Gershgorin the largest
   # eigenvalue of A'A is at most the number of latent columns per observation
@@ -196,34 +265,41 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
     }
     pmax(curvature, curvature_floor)
   }
+  refit <- function(factors) {
+    refit_global_factors(factors, mu, y, units_m, latent_map, precision,
+                         family, linkf, canonical, quadrature,
+                         floor_curvature)
+  }
+  factors <- c(linear, curvature)
+  refitted <- refit(factors)
+  if (is.null(refitted)) return(NULL)
+  refits <- 1L
+  residuals <- history <- NULL
   change <- Inf
   for (iteration in seq_len(maximum_iterations)) {
-    proposal_precision <- precision + latent_data_hessian(latent_map, curvature)
-    root <- tryCatch(chol(proposal_precision), error = function(error) NULL)
-    if (is.null(root)) return(NULL)
-    inverse <- chol2inv(root)
-    centre <- as.numeric(inverse %*% latent_gradient(latent_map, linear))
-    marginal_mean <- latent_linear_predictor(latent_map, centre)
-    marginal_variance <- as.numeric(rowsum(
-      inverse[latent_map$pair_linear], latent_map$pair_observation,
-      reorder = FALSE
-    ))
-    if (any(!is.finite(marginal_variance)) || any(marginal_variance <= 0)) {
-      return(NULL)
-    }
-    updated <- tryCatch(
-      update_observation_factors(marginal_mean, sqrt(marginal_variance), mu,
-                                 y, units_m, family, linkf, canonical,
-                                 linear, curvature, quadrature),
-      error = function(error) NULL
-    )
-    if (is.null(updated) || any(!is.finite(unlist(updated)))) return(NULL)
-    new_curvature <- floor_curvature(updated$curvature)
-    change <- max(abs(updated$linear - linear), abs(new_curvature - curvature))
-    linear <- updated$linear
-    curvature <- new_curvature
+    change <- max(abs(refitted - factors))
     if (change < tolerance) break
+    stored <- if (is.null(residuals)) 1L else ncol(residuals) + 1L
+    keep <- max(1L, stored - memory):stored
+    residuals <- cbind(residuals, refitted - factors)[, keep, drop = FALSE]
+    history <- cbind(history, refitted)[, keep, drop = FALSE]
+    candidate <- anderson_step(residuals, history)
+    candidate[n + seq_len(n)] <- floor_curvature(candidate[n + seq_len(n)])
+    next_refit <- refit(candidate)
+    refits <- refits + 1L
+    if (is.null(next_refit) ||
+        max(abs(next_refit - candidate)) > 2 * change) {
+      residuals <- history <- NULL
+      candidate <- refitted
+      next_refit <- refit(candidate)
+      refits <- refits + 1L
+      if (is.null(next_refit)) return(NULL)
+    }
+    factors <- candidate
+    refitted <- next_refit
   }
+  linear <- refitted[seq_len(n)]
+  curvature <- refitted[n + seq_len(n)]
   proposal_precision <- precision + latent_data_hessian(latent_map, curvature)
   proposal_precision <- (proposal_precision + t(proposal_precision)) / 2
   root <- tryCatch(chol(proposal_precision), error = function(error) NULL)
@@ -231,6 +307,6 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
   centre <- as.numeric(backsolve(root, forwardsolve(
     t(root), latent_gradient(latent_map, linear)
   )))
-  list(centre = centre, precision = proposal_precision, iterations = iteration,
+  list(centre = centre, precision = proposal_precision, iterations = refits,
        change = change, converged = change < tolerance)
 }
