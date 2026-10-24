@@ -313,3 +313,35 @@ test_that("several summaries at one scale are arranged in a grid", {
   }, numeric(1))
   expect_true(all(side_margins == 14))
 })
+
+test_that("several quantities are drawn in one call", {
+  skip_if_not_installed("patchwork")
+  points <- st_sf(
+    response_mean = c(0.05, 0.2, 0.35),
+    spatial_mean = c(-0.5, 0.1, 0.6),
+    fixed = c(-0.3, 0, 0.3),
+    geometry = st_sfc(
+      st_point(c(0, 0)), st_point(c(1, 0)), st_point(c(2, 0)), crs = 32631
+    )
+  )
+  prediction <- structure(
+    list(predictions = points, boundaries = NULL, boundary_summary = NULL,
+         family = "binomial", summaries = "mean"),
+    class = "RiskMap_prediction"
+  )
+  maps <- plot(prediction, quantity = c("fixed", "spatial"),
+               limits = c(-1, 1))
+  panels <- c(maps$patches$plots, list(maps))
+  expect_length(panels, 2L)
+  expect_identical(maps$patches$layout$ncol, 2L)
+  expect_identical(vapply(panels, legend_title, character(1)),
+                   c("Fixed effects", "Mean spatial effect"))
+  for (panel in panels) {
+    expect_identical(panel$scales$scales[[1L]]$limits, c(-1, 1))
+  }
+  expect_error(plot(prediction, quantity = c("fixed", "spatial"),
+                    summary = c("mean", "sd")),
+               "several quantities or several summaries")
+  expect_error(plot(prediction, quantity = c("spatial", "spatial")),
+               "unique quantity names")
+})

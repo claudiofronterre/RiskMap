@@ -184,6 +184,9 @@ uncertainty, which matters for small or low-prevalence surveys.
   edge of the study area is visible where the clipped cells end.
 - Several maps drawn in one call have wider side margins, so neighbouring
   legends no longer run into each other at narrow widths.
+- `plot()` accepts several quantities, for example
+  `quantity = c("fixed", "spatial")`, and draws them side by side as it
+  does for several summaries.
 
 ## Cross validation
 
