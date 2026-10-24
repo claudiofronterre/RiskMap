@@ -136,9 +136,11 @@ its timing. Estimates use the same parameterisation as \code{estimate}, with
 regression coefficients and spatial scale restored to the supplied
 covariate and distance units. \code{NULL} for Gaussian models.}
 \item{mcml_certified}{Whether the certificate of the returned estimate is
-within the tolerance, so that its Monte Carlo error is at most \code{tolerance}
-statistical standard errors with probability about 0.95. \code{NULL} for
-Gaussian models.}
+within the tolerance. The certificate is an approximate 95\% bound, in
+statistical standard errors, on the Monte Carlo error of the estimate, that
+is its distance from the maximum of the exact likelihood that the fit has
+located. It says nothing about whether that maximum is the highest.
+\code{NULL} for Gaussian models.}
 \item{mcml_selected_iteration}{The stage whose estimate is returned.
 \code{NULL} for Gaussian models.}
 }

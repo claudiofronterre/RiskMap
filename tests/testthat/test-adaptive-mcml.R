@@ -628,9 +628,15 @@ test_that("the check for other maxima finds a higher maximum at a longer scale",
     log(exp(-(parameters[2] + 3)^2) + 3 * exp(-(parameters[2] - 2)^2)) -
       parameters[1]^2
   }
+  # A stand-in engine whose estimated log-likelihood on any bank is exactly
+  # the objective, so the independent comparison has no Monte Carlo error.
+  engine <- list(latent_dimension = 1L,
+                 evaluate = function(parameters, z, log_weights_only) {
+                   rep(objective(parameters, z), nrow(z))
+                 })
   announced <- NULL
   limits <- list(variance_index = integer(), linked_index = list(),
-                 boundary_log_variance = -9,
+                 boundary_log_variance = -9, tolerance = 0.1,
                  dispersed = list(sigma2_index = 1L, phi_index = 2L,
                                   log_sigma2 = log(c(0.25, 4, 0.25, 4)),
                                   log_phi = log(c(1, 1, 50, 50)),
@@ -644,19 +650,45 @@ test_that("the check for other maxima finds a higher maximum at a longer scale",
   local <- optimise_on_bank(objective, c(0, -3.2), NULL, lower, upper,
                             TRUE, limits)
   expect_equal(local$fit$par[2], -3, tolerance = 1e-3)
-  checked <- check_dispersed_maxima(objective, local, NULL, lower, upper,
-                                    limits)
+  checked <- check_dispersed_maxima(engine, objective, NULL, local, NULL,
+                                    lower, upper, limits, 100L, 1L)
   expect_equal(announced, local$fit$par[2])
+  expect_true(checked$separate)
+  expect_false(checked$ambiguous)
   expect_false(checked$check$chosen[1])
   expect_equal(checked$optimised$fit$par[2], 2, tolerance = 1e-3)
+  expect_gt(checked$check$distance_from_fitted[checked$check$chosen], 0.1)
 
   announced <- NULL
   higher <- optimise_on_bank(objective, c(0, 1.5), NULL, lower, upper, TRUE,
                              limits)
-  unchecked <- check_dispersed_maxima(objective, higher, NULL, lower, upper,
-                                      limits)
+  unchecked <- check_dispersed_maxima(engine, objective, NULL, higher, NULL,
+                                      lower, upper, limits, 100L, 1L)
   expect_null(unchecked$check)
   expect_null(announced)
+})
+
+test_that("candidate maxima are tied, separate or ambiguous", {
+  engine <- list(latent_dimension = 1L,
+                 evaluate = function(parameters, z, log_weights_only) {
+                   # Equal likelihoods at the two separated points, with
+                   # Monte Carlo noise from the bank.
+                   -abs(parameters[1]) * 0 + z[, 1] * 0.01
+                 })
+  information <- diag(100, 2)
+  # Within 0.1 standard errors (0.01 apart with information 100): one maximum.
+  tied <- choose_maximum(engine, NULL, list(c(0, 0), c(0.005, 0)),
+                         c(-10, -9.999), information, 50L, 1L, 0.1)
+  expect_false(tied$separate)
+  expect_false(tied$ambiguous)
+  expect_identical(tied$chosen, 2L)
+  expect_true(all(is.na(tied$table$independent_log_likelihood)))
+  # Far apart with equal likelihoods on independent draws: ambiguous.
+  separated <- choose_maximum(engine, NULL, list(c(0, 0), c(1, 0)),
+                              c(-10, -9.999), information, 50L, 1L, 0.1)
+  expect_true(separated$ambiguous)
+  expect_identical(sum(is.finite(separated$table$independent_log_likelihood)),
+                   2L)
 })
 
 test_that("set_control_mcml validates check_maxima", {

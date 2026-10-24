@@ -140,10 +140,11 @@ validation_radius <- function(information_root, covariance,
 ##' an independent validation bank at the estimate and C its Monte Carlo
 ##' covariance, the Newton correction is d = H^-1 S and the certificate is
 ##' U = ||d||_H + q, where q is the 95% radius of the validation error in the
-##' same metric. U bounds the distance from the estimate to the exact maximum
-##' likelihood estimate, in statistical standard errors, with probability
-##' about 0.95 (Fronterre, 2026, Proposition 4). It holds at any estimate, not
-##' only at a maximiser.
+##' same metric. Under the conditions of Fronterre (2026, Proposition 4), U
+##' is an approximate 95% bound, in statistical standard errors, on the
+##' distance from the estimate to the maximum of the exact likelihood near
+##' it. It applies at any estimate, not only at a maximiser, and says nothing
+##' about other maxima.
 ##' @param information_root Upper Cholesky factor R of H = R'R.
 ##' @noRd
 mcml_certificate <- function(information_root, score, covariance) {
@@ -347,9 +348,10 @@ observed_information <- function(objective, estimate, fit_bank, boundary,
 ##' corrects the estimate by one Newton step with the score on an independent
 ##' validation bank, and certifies the corrected estimate with a second, fresh
 ##' validation bank drawn at that point. `seeds` gives the streams of the
-##' three banks. At the first stage the check for other maxima of
-##' `check_dispersed_maxima()` may replace the maximum. `curvature_root`, if
-##' given, seeds the optimisation with Newton steps (`optimise_on_bank()`).
+##' three banks and of the independent bank of the check for other maxima. At
+##' the first stage that check (`check_dispersed_maxima()`) may replace the
+##' maximum. `curvature_root`, if given, seeds the optimisation with Newton
+##' steps (`optimise_on_bank()`).
 ##' @noRd
 certified_stage <- function(engine, objective, penalty, start, budget,
                             validation_budget, seeds, lower, upper,
@@ -364,11 +366,15 @@ certified_stage <- function(engine, objective, penalty, start, budget,
   optimised <- optimise_on_bank(objective, start, fit_bank, lower, upper,
                                 first_stage, limits, curvature_root)
   check <- NULL
+  separate <- ambiguous <- FALSE
   if (first_stage && !is.null(limits$dispersed)) {
-    checked <- check_dispersed_maxima(objective, optimised, fit_bank, lower,
-                                      upper, limits)
+    checked <- check_dispersed_maxima(engine, objective, penalty, optimised,
+                                      fit_bank, lower, upper, limits,
+                                      validation_budget, seeds[[4L]])
     optimised <- checked$optimised
     check <- checked$check
+    separate <- checked$separate
+    ambiguous <- checked$ambiguous
   }
   fit <- optimised$fit
   record <- list(
@@ -381,7 +387,8 @@ certified_stage <- function(engine, objective, penalty, start, budget,
     boundary_parameters = optimised$boundary,
     restarted = optimised$restarted,
     restart_improved = optimised$restart_improved,
-    maxima_check = check,
+    maxima_check = check, separate_maximum = separate,
+    ambiguous_maxima = ambiguous,
     fit_diagnostics = importance_diagnostics(
       engine$evaluate(fit$par, fit_bank, log_weights_only = TRUE)
     ),
@@ -453,21 +460,22 @@ certified_stage <- function(engine, objective, penalty, start, budget,
 ##' If the fitted spatial scale is below the trigger of `limits$dispersed`
 ##' (see `dispersed_starts()`) and the spatial variance is not at zero, the
 ##' estimated log-likelihood is also maximised from the dispersed starts on
-##' the same bank, with the other parameters at their fitted values. A
-##' different maximum replaces the fitted one only if it is higher by more
-##' than 0.005: on a quadratic surface two points 0.1 standard errors apart
-##' (the certificate's tolerance) differ by 0.1^2 / 2 in log-likelihood, so a
-##' smaller gain is the same maximum reached at slightly different points.
-##' @return The kept `optimised` result and a `check` table, NULL if the check
-##' was not triggered.
+##' the same bank, with the other parameters at their fitted values, and
+##' `choose_maximum()` decides which maximum to keep. `n_draws` and `seed`
+##' define the independent bank on which separate maxima are compared.
+##' @return The kept `optimised` result, a `check` table (NULL if the check
+##' was not triggered), whether the kept maximum is `separate` from the fitted
+##' one, and whether the choice is `ambiguous`.
 ##' @noRd
-check_dispersed_maxima <- function(objective, optimised, fit_bank, lower,
-                                   upper, limits) {
+check_dispersed_maxima <- function(engine, objective, penalty, optimised,
+                                   fit_bank, lower, upper, limits, n_draws,
+                                   seed) {
   dispersed <- limits$dispersed
   estimate <- optimised$fit$par
   if (dispersed$sigma2_index %in% optimised$boundary ||
       !(estimate[dispersed$phi_index] < dispersed$trigger)) {
-    return(list(optimised = optimised, check = NULL))
+    return(list(optimised = optimised, check = NULL, separate = FALSE,
+                ambiguous = FALSE))
   }
   if (!is.null(dispersed$announce)) {
     dispersed$announce(estimate[[dispersed$phi_index]])
@@ -480,18 +488,121 @@ check_dispersed_maxima <- function(objective, optimised, fit_bank, lower,
                      lower, upper, TRUE, limits)
   })
   candidates <- c(list(optimised), refits)
-  values <- vapply(candidates, function(candidate) {
-    -candidate$fit$objective
+  information <- tryCatch(
+    central_hessian(function(parameters) -objective(parameters, fit_bank),
+                    estimate),
+    error = function(error) NULL
+  )
+  choice <- choose_maximum(
+    engine, penalty, lapply(candidates, function(candidate) {
+      candidate$fit$par
+    }),
+    vapply(candidates, function(candidate) -candidate$fit$objective,
+           numeric(1)),
+    information, n_draws, seed, limits$tolerance
+  )
+  choice$table$start <- c("fitted", dispersed$labels)
+  choice$table$log_phi <- vapply(candidates, function(candidate) {
+    candidate$fit$par[[dispersed$phi_index]]
   }, numeric(1))
-  chosen <- which.max(values)
-  if (values[[chosen]] <= values[[1L]] + 0.005) chosen <- 1L
-  list(optimised = candidates[[chosen]],
-       check = data.frame(start = c("fitted", dispersed$labels),
-                          log_likelihood = values,
-                          log_phi = vapply(candidates, function(candidate) {
-                            candidate$fit$par[[dispersed$phi_index]]
-                          }, numeric(1)),
-                          chosen = seq_along(values) == chosen))
+  list(optimised = candidates[[choice$chosen]], check = choice$table,
+       separate = choice$separate, ambiguous = choice$ambiguous)
+}
+
+##' Choose among candidate maxima of the estimated log-likelihood
+##'
+##' The first candidate is the fitted maximum and `values` are the
+##' log-likelihoods on the fitting bank. Candidates within `tolerance`
+##' standard errors of each other, in the metric of the observed `information`
+##' at the fitted maximum (directions of zero or negative curvature carry no
+##' weight), are the same maximum at the resolution of the certificate, and
+##' the best of them on the fitting bank represents it. Separate maxima are
+##' compared on an independent bank (`adjudicate_maxima()`), because the
+##' fitting bank favours the points optimised on it, and the highest there is
+##' kept. The choice is ambiguous if another separate maximum is within 2.58
+##' standard errors of it on that bank; a small difference in likelihood
+##' alone does not make two separated points the same maximum.
+##' @noRd
+choose_maximum <- function(engine, penalty, parameters, values, information,
+                           n_draws, seed, tolerance) {
+  metric_root <- NULL
+  if (!is.null(information) && all(is.finite(information))) {
+    decomposition <- eigen((information + t(information)) / 2,
+                           symmetric = TRUE)
+    metric_root <- sqrt(pmax(decomposition$values, 0)) *
+      t(decomposition$vectors)
+  }
+  distance <- function(first, second) {
+    if (is.null(metric_root)) {
+      return(if (max(abs(first - second)) > 1e-6) Inf else 0)
+    }
+    sqrt(sum((metric_root %*% (first - second))^2))
+  }
+  representatives <- integer()
+  maximum <- integer(length(values))
+  for (i in order(values, decreasing = TRUE)) {
+    near <- vapply(representatives, function(r) {
+      distance(parameters[[i]], parameters[[r]]) <= tolerance
+    }, logical(1))
+    if (any(near)) {
+      maximum[i] <- maximum[representatives[which(near)[1L]]]
+    } else {
+      representatives <- c(representatives, i)
+      maximum[i] <- length(representatives)
+    }
+  }
+  table <- data.frame(
+    log_likelihood = values,
+    distance_from_fitted = vapply(parameters, distance, numeric(1),
+                                  second = parameters[[1L]]),
+    maximum = maximum, independent_log_likelihood = NA_real_,
+    independent_se = NA_real_, chosen = FALSE
+  )
+  chosen <- representatives[1L]
+  ambiguous <- FALSE
+  if (length(representatives) > 1L) {
+    judged <- adjudicate_maxima(engine, penalty, parameters[representatives],
+                                n_draws, seed)
+    table$independent_log_likelihood[representatives] <- judged$values
+    table$independent_se[representatives] <- judged$se
+    chosen <- representatives[judged$top]
+    others <- setdiff(seq_along(representatives), judged$top)
+    gaps <- judged$values[judged$top] - judged$values[others]
+    ambiguous <- any(gaps <= 2.58 * judged$se[others])
+  }
+  table$chosen[chosen] <- TRUE
+  list(chosen = chosen, table = table, ambiguous = ambiguous,
+       separate = maximum[chosen] != maximum[1L])
+}
+
+##' Log-likelihoods of candidate maxima on an independent bank
+##'
+##' Each candidate's estimated log-likelihood (with the penalty, if any) on a
+##' fresh bank of `n_draws` draws from `seed`, and the standard error of its
+##' difference from the highest, paired over the common draws by the delta
+##' method.
+##' @noRd
+adjudicate_maxima <- function(engine, penalty, parameters, n_draws, seed) {
+  set.seed(seed)
+  z <- matrix(stats::rnorm(n_draws * engine$latent_dimension),
+              nrow = n_draws)
+  log_weights <- lapply(parameters, function(values) {
+    engine$evaluate(values, z, log_weights_only = TRUE)
+  })
+  scaled <- lapply(log_weights, function(weights) {
+    relative <- exp(weights - max(weights))
+    relative / mean(relative)
+  })
+  values <- vapply(seq_along(parameters), function(i) {
+    largest <- max(log_weights[[i]])
+    largest + log(mean(exp(log_weights[[i]] - largest))) +
+      if (is.null(penalty)) 0 else penalty(parameters[[i]])
+  }, numeric(1))
+  top <- which.max(values)
+  se <- vapply(seq_along(parameters), function(i) {
+    stats::sd(scaled[[top]] - scaled[[i]]) / sqrt(n_draws)
+  }, numeric(1))
+  list(values = values, se = se, top = top)
 }
 
 ##' Upper Cholesky factor of a curvature for Newton steps
@@ -576,8 +687,9 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     run_stage <- function() {
       engine$reset_proposal_failures()
       certified_stage(engine, objective, penalty, current, budget,
-                      validation_budget, stream(3L * stage - 2:0), lower,
-                      upper, stage == 1L, limits, curvature_root)
+                      validation_budget,
+                      c(stream(3L * stage - 2:0), stream(1000L + stage)),
+                      lower, upper, stage == 1L, limits, curvature_root)
     }
     record <- run_stage()
     record$proposal_failures <- engine$proposal_failures()
@@ -615,11 +727,11 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
   } else {
     last$second_validation$score
   }
-  check <- history[[1L]]$maxima_check
   list(
     estimate = current, outcome = last$outcome,
-    maxima_check = check,
-    better_maximum = !is.null(check) && !check$chosen[[1L]],
+    maxima_check = history[[1L]]$maxima_check,
+    better_maximum = isTRUE(history[[1L]]$separate_maximum),
+    ambiguous_maxima = isTRUE(history[[1L]]$ambiguous_maxima),
     certified = isTRUE(last$certified), certificate = last$certificate,
     reason = last$reason, budget = last$budget,
     validation_budget = last$validation_budget,

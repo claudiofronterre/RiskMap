@@ -142,9 +142,11 @@
 ##' regression coefficients and spatial scale restored to the supplied
 ##' covariate and distance units. `NULL` for Gaussian models.}
 ##' \item{mcml_certified}{Whether the certificate of the returned estimate is
-##' within the tolerance, so that its Monte Carlo error is at most `tolerance`
-##' statistical standard errors with probability about 0.95. `NULL` for
-##' Gaussian models.}
+##' within the tolerance. The certificate is an approximate 95% bound, in
+##' statistical standard errors, on the Monte Carlo error of the estimate, that
+##' is its distance from the maximum of the exact likelihood that the fit has
+##' located. It says nothing about whether that maximum is the highest.
+##' `NULL` for Gaussian models.}
 ##' \item{mcml_selected_iteration}{The stage whose estimate is returned.
 ##' `NULL` for Gaussian models.}
 ##'
@@ -2973,11 +2975,14 @@ laplace_sampling_mcmc <- function(y,
 ##' importance sampling. The estimated log-likelihood is maximised on a
 ##' fitting sample of draws, the estimate is corrected by one Newton step with
 ##' the score from an independent validation sample, and the corrected
-##' estimate is certified with a second, fresh validation sample: the
-##' certificate bounds its distance from the exact maximum likelihood
-##' estimate, in statistical standard errors, with probability about 0.95. If
-##' the certificate exceeds `tolerance`, the samples are enlarged to the size
-##' predicted to meet it and the fit is repeated.
+##' estimate is certified with a second, fresh validation sample. The
+##' certificate is an approximate 95% bound, in statistical standard errors,
+##' on the Monte Carlo error of the estimate, that is its distance from the
+##' maximum of the exact likelihood that the fit has located. It is not an
+##' exact finite-sample guarantee, and it says nothing about whether that
+##' maximum is the highest (see `check_maxima`). If the certificate exceeds
+##' `tolerance`, the samples are enlarged to the size predicted to meet it and
+##' the fit is repeated.
 ##'
 ##' @param initial_samples Positive integer giving the number of draws in the
 ##' fitting sample at the first stage. Defaults to 1,000.

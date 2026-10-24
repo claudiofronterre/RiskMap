@@ -861,7 +861,8 @@ glgpm_nong_adaptive <- function(
   small_scale <- small_spatial_scale(fit, engine$layout, distances, kappa,
                                      distance_scale)
   report_mcml_outcome(fit, boundary_names, engine$layout, pc_prior,
-                      control_mcml$tolerance, messages, small_scale)
+                      control_mcml$tolerance, messages, small_scale,
+                      distance_scale)
   out <- assemble_mcml_result(fit, laplace, boundary_names, D, fix_tau2,
                               re_names, family, invlink, length(y), pc_prior,
                               fit_seed)
@@ -869,6 +870,7 @@ glgpm_nong_adaptive <- function(
   optimizer$mcml_small_scale <- !is.null(small_scale)
   optimizer$mcml_maxima_check <- fit$maxima_check
   optimizer$mcml_better_maximum <- fit$better_maximum
+  optimizer$mcml_ambiguous_maxima <- fit$ambiguous_maxima
   attr(out, "optimizer") <- optimizer
   out
 }
@@ -963,6 +965,62 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
   out
 }
 
+##' Tell the user what the check for other maxima found
+##'
+##' Warns when the estimate comes from a maximum separate from the one first
+##' fitted, and when two separate maxima fit about equally well on independent
+##' draws. Neither proves that no higher maximum exists elsewhere.
+##' @noRd
+report_maxima_check <- function(fit, layout, distance_scale) {
+  check <- fit$maxima_check
+  if (is.null(check) || !(fit$better_maximum || fit$ambiguous_maxima)) {
+    return(invisible(NULL))
+  }
+  judged <- check[is.finite(check$independent_log_likelihood), ]
+  kept <- judged[judged$chosen, ]
+  rest <- judged[!judged$chosen, ]
+  # The maximum compared with the kept one: the fitted maximum when the
+  # estimate moved, otherwise the closest rival on the independent draws.
+  other <- if (fit$ambiguous_maxima) {
+    rest[which.max(rest$independent_log_likelihood), ]
+  } else {
+    rest[rest$maximum == check$maximum[[1L]], ][1L, ]
+  }
+  scale <- function(row) signif(exp(row$log_phi) * distance_scale, 3)
+  difference <- paste0(
+    signif(kept$independent_log_likelihood - other$independent_log_likelihood,
+           2),
+    " log-likelihood units (standard error ", signif(other$independent_se, 2),
+    ") on independent Monte Carlo draws"
+  )
+  profile_advice <- paste0(
+    " The likelihood has more than one maximum, so Wald intervals may ",
+    "describe the uncertainty poorly. Consider inspecting the profile ",
+    "likelihood of the spatial scale and variance. The check does not prove ",
+    "that no higher maximum exists elsewhere."
+  )
+  if (fit$ambiguous_maxima) {
+    warning(
+      "The check for other maxima found separate maxima of the likelihood ",
+      "that fit about equally well: they differ by ", difference, ". The ",
+      "estimate is taken from the higher one, with spatial scale ",
+      scale(kept), ". The other has scale ", scale(other), ".",
+      profile_advice,
+      call. = FALSE
+    )
+  } else {
+    warning(
+      "The check for other maxima found a separate maximum of the ",
+      "likelihood, higher than the one reached from the starting values by ",
+      difference, ", and the estimate is taken from it (spatial scale ",
+      scale(kept), " instead of ", scale(other), ").",
+      profile_advice,
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
 ##' Tell the user how a certified MCML fit ended
 ##'
 ##' Warnings name variance components at zero, a scale smaller than the
@@ -971,11 +1029,12 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
 ##' the PC penalty addresses, so these warnings point to it when it is off.
 ##' @noRd
 report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
-                                tolerance, messages, small_scale = NULL) {
+                                tolerance, messages, small_scale = NULL,
+                                distance_scale = 1) {
   pc_advice <- if (pc_prior) "" else paste0(
     " Alternatively, refit with 'control_mcml = set_control_mcml(pc_prior = ",
     "TRUE)', which stabilises the spatial variance and scale with a mild ",
-    "penalty; this is recommended for small or low-prevalence surveys and ",
+    "penalty. This is recommended for small or low-prevalence surveys and ",
     "makes prediction with 'parameter_uncertainty = TRUE' possible."
   )
   spatial_at_zero <- layout$index$sigma2 %in% fit$boundary_parameters
@@ -1005,28 +1064,17 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
       signif(small_scale[["spacing"]], 3), "), all in the distance units of ",
       "the model. The practical range is the distance at which the ",
       "correlation falls to about 0.05. Spatial correlation on so short a ",
-      "scale cannot be distinguished from unstructured variation between ",
-      "locations, so these data say little about the scale and its standard ",
-      "error may be very large. The estimate is the maximum likelihood ",
-      "estimate. Consider a model with a nugget (unstructured) effect, ",
+      "scale is hard to distinguish from unstructured variation between ",
+      "locations, so the scale may be weakly identified by these data and its ",
+      "standard error may be large. Its profile likelihood shows how much the ",
+      "data say about it. The estimate is the maximum likelihood estimate. ",
+      "Consider a model with a nugget (unstructured) effect, ",
       "'gp(nugget = TRUE)', or fixing the scale from external knowledge.",
       pc_advice,
       call. = FALSE
     )
   }
-  if (isTRUE(fit$better_maximum)) {
-    check <- fit$maxima_check
-    gain <- max(check$log_likelihood) - check$log_likelihood[[1L]]
-    warning(
-      "The check for other maxima found a higher maximum of the likelihood ",
-      "than the one reached from the starting values, by ", signif(gain, 2),
-      " log-likelihood units on the same Monte Carlo draws, and the estimate ",
-      "is taken from it. The likelihood has more than one maximum, so Wald ",
-      "intervals may describe the uncertainty poorly. Consider inspecting ",
-      "the profile likelihood of the spatial scale and variance.",
-      call. = FALSE
-    )
-  }
+  report_maxima_check(fit, layout, distance_scale)
   draws <- paste0(format(fit$budget, big.mark = ","), " fitting and ",
                   format(fit$validation_budget, big.mark = ","),
                   " validation draws")
@@ -1035,28 +1083,29 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
       "The observed information matrix is singular, so some parameters ",
       "(often the spatial scale when spatial correlation is weak) are not ",
       "identifiable from these data. The estimate is returned without ",
-      "standard errors and its Monte Carlo precision is not established; ",
-      "consider a simpler model or fixing the scale.",
+      "standard errors and its Monte Carlo precision is not established. ",
+      "Consider a simpler model or fixing the scale.",
       pc_advice,
       call. = FALSE
     )
   } else if (!fit$certified) {
     warning(
       "The Monte Carlo precision of the estimate could not be established ",
-      "with the largest permitted number of draws (", draws, "): the ",
-      "estimate may be up to ", signif(fit$certificate, 2), " standard ",
-      "errors from the exact maximum likelihood estimate, above the ",
+      "with the largest permitted number of draws (", draws, "). The ",
+      "approximate 95% bound on its Monte Carlo error is ",
+      signif(fit$certificate, 2), " statistical standard errors, above the ",
       "tolerance of ", tolerance, ". Increase 'max_samples' or 'max_stages' ",
       "in set_control_mcml(), or relax 'tolerance'.",
       call. = FALSE
     )
   } else if (messages) {
     message(
-      "Monte Carlo maximum likelihood certified the estimate to within ",
-      signif(fit$certificate, 2), " standard errors of the exact maximum ",
-      "likelihood estimate (tolerance ", tolerance, "), after ",
+      "The Monte Carlo error of the estimate is within ",
+      signif(fit$certificate, 2), " statistical standard errors (an ",
+      "approximate 95% bound, tolerance ", tolerance, "), after ",
       length(fit$history), " stage", if (length(fit$history) == 1L) "" else
-        "s", " with ", draws, "."
+        "s", " with ", draws, ". This concerns the maximum found, not ",
+      "whether it is the highest."
     )
   }
   invisible(NULL)

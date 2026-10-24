@@ -91,9 +91,9 @@ parameters, avoiding a repeated likelihood calculation.
 likelihood. The estimated likelihood is maximised on a fitting sample of 1,000
 draws, the estimate is corrected by one Newton step with the score from an
 independent validation sample of 5,000 draws, and the corrected estimate is
-certified with a second, fresh validation sample. The certificate bounds the
-distance from the exact maximum likelihood estimate in statistical standard
-errors, with probability about 0.95. When it exceeds the tolerance (0.1 by
+certified with a second, fresh validation sample. The certificate is an
+approximate 95% bound, in statistical standard errors, on the Monte Carlo
+error of the estimate at the maximum found. When it exceeds the tolerance (0.1 by
 default), both samples are enlarged to the size predicted to meet it, up to
 `max_samples`. The importance distribution is a Gaussian approximation fitted
 to the whole conditional distribution of the latent effects (efficient
