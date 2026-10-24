@@ -145,9 +145,7 @@ mcml_certificate <- function(information_root, score, covariance) {
 ##' Maximise the estimated log-likelihood on one fitting bank
 ##'
 ##' At the first stage a fit that ends with a variance component at its
-##' boundary is restarted once from an interior value. A range shorter than
-##' `minimum_log_range` is held there and the other parameters re-optimised,
-##' unless the spatial variance is already zero.
+##' boundary is restarted once from an interior value.
 ##' @noRd
 optimise_on_bank <- function(objective, start, fit_bank, lower, upper,
                              first_stage, limits) {
@@ -161,33 +159,10 @@ optimise_on_bank <- function(objective, start, fit_bank, lower, upper,
     list(fit = fit, restarted = FALSE)
   }
   fit <- restart$fit
-  boundary_of <- function(estimate) {
-    adaptive_boundary_parameters(estimate, limits$variance_index,
-                                 limits$boundary_log_variance,
-                                 limits$linked_index)
-  }
-  boundary <- boundary_of(fit$par)
-  range_index <- limits$range_index
-  # A range shorter than the spacing between locations cannot be
-  # distinguished from unstructured variation. Unless the spatial variance is
-  # already zero (when the range is meaningless anyway), the range is held at
-  # that spacing and the remaining parameters are re-optimised.
-  if (!is.null(range_index) && !(range_index %in% boundary) &&
-      fit$par[range_index] < limits$minimum_log_range) {
-    lower[range_index] <- limits$minimum_log_range
-    held <- tryCatch(
-      nlminb(pmax(fit$par, lower), negative, lower = lower, upper = upper,
-             control = mcml_optimiser_control()),
-      error = function(error) NULL
-    )
-    if (!is.null(held)) fit <- held
-    boundary <- boundary_of(fit$par)
-  }
-  range_held <- !is.null(range_index) && !(range_index %in% boundary) &&
-    fit$par[range_index] <= limits$minimum_log_range + 1e-6
-  if (range_held) boundary <- sort(c(boundary, range_index))
-  list(fit = fit, boundary = boundary, range_held = range_held, lower = lower,
-       restarted = restart$restarted,
+  boundary <- adaptive_boundary_parameters(fit$par, limits$variance_index,
+                                           limits$boundary_log_variance,
+                                           limits$linked_index)
+  list(fit = fit, boundary = boundary, restarted = restart$restarted,
        restart_improved = isTRUE(restart$restart_improved))
 }
 
@@ -245,7 +220,8 @@ observed_information <- function(objective, estimate, fit_bank, boundary,
 ##' corrects the estimate by one Newton step with the score on an independent
 ##' validation bank, and certifies the corrected estimate with a second, fresh
 ##' validation bank drawn at that point. `seeds` gives the streams of the
-##' three banks.
+##' three banks. At the first stage the optimisation check of
+##' `check_dispersed_maxima()` may replace the maximum.
 ##' @noRd
 certified_stage <- function(engine, objective, penalty, start, budget,
                             validation_budget, seeds, lower, upper,
@@ -256,6 +232,13 @@ certified_stage <- function(engine, objective, penalty, start, budget,
                      nrow = budget)
   optimised <- optimise_on_bank(objective, start, fit_bank, lower, upper,
                                 first_stage, limits)
+  check <- NULL
+  if (first_stage && !is.null(limits$dispersed)) {
+    checked <- check_dispersed_maxima(objective, optimised, fit_bank, lower,
+                                      upper, limits)
+    optimised <- checked$optimised
+    check <- checked$check
+  }
   fit <- optimised$fit
   record <- list(
     budget = budget, validation_budget = validation_budget,
@@ -264,8 +247,9 @@ certified_stage <- function(engine, objective, penalty, start, budget,
     objective = fit$objective, iterations = fit$iterations,
     evaluations = fit$evaluations, message = fit$message,
     boundary_parameters = optimised$boundary,
-    range_held = optimised$range_held, restarted = optimised$restarted,
-    restart_improved = optimised$restart_improved, lower = optimised$lower,
+    restarted = optimised$restarted,
+    restart_improved = optimised$restart_improved,
+    optimisation_check = check,
     fit_diagnostics = importance_diagnostics(
       engine$evaluate(fit$par, fit_bank, log_weights_only = TRUE)
     ),
@@ -332,6 +316,52 @@ certified_stage <- function(engine, objective, penalty, start, budget,
   finish(record, if (record$certified) "certified" else "not certified")
 }
 
+##' Optimisation check on the fitting bank
+##'
+##' If the fitted spatial scale is below the trigger of `limits$dispersed`
+##' (see `dispersed_starts()`) and the spatial variance is not at zero, the
+##' estimated log-likelihood is also maximised from the dispersed starts on
+##' the same bank, with the other parameters at their fitted values. A
+##' different maximum replaces the fitted one only if it is higher by more
+##' than 0.005: on a quadratic surface two points 0.1 standard errors apart
+##' (the certificate's tolerance) differ by 0.1^2 / 2 in log-likelihood, so a
+##' smaller gain is the same maximum reached at slightly different points.
+##' @return The kept `optimised` result and a `check` table, NULL if the check
+##' was not triggered.
+##' @noRd
+check_dispersed_maxima <- function(objective, optimised, fit_bank, lower,
+                                   upper, limits) {
+  dispersed <- limits$dispersed
+  estimate <- optimised$fit$par
+  if (dispersed$sigma2_index %in% optimised$boundary ||
+      !(estimate[dispersed$phi_index] < dispersed$trigger)) {
+    return(list(optimised = optimised, check = NULL))
+  }
+  if (!is.null(dispersed$announce)) {
+    dispersed$announce(estimate[[dispersed$phi_index]])
+  }
+  refits <- lapply(seq_along(dispersed$labels), function(i) {
+    start <- estimate
+    start[dispersed$sigma2_index] <- dispersed$log_sigma2[i]
+    start[dispersed$phi_index] <- dispersed$log_phi[i]
+    optimise_on_bank(objective, pmin(pmax(start, lower), upper), fit_bank,
+                     lower, upper, TRUE, limits)
+  })
+  candidates <- c(list(optimised), refits)
+  values <- vapply(candidates, function(candidate) {
+    -candidate$fit$objective
+  }, numeric(1))
+  chosen <- which.max(values)
+  if (values[[chosen]] <= values[[1L]] + 0.005) chosen <- 1L
+  list(optimised = candidates[[chosen]],
+       check = data.frame(start = c("fitted", dispersed$labels),
+                          log_likelihood = values,
+                          log_phi = vapply(candidates, function(candidate) {
+                            candidate$fit$par[[dispersed$phi_index]]
+                          }, numeric(1)),
+                          chosen = seq_along(values) == chosen))
+}
+
 ##' Bank sizes for the next stage
 ##'
 ##' The certificate decreases approximately with the square root of the
@@ -359,9 +389,12 @@ next_mcml_budgets <- function(budget, validation_budget, certificate,
 ##' fails anywhere within a stage, the stage is repeated with the Laplace
 ##' proposal, which is then kept. Stage s uses the random number streams
 ##' 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks) after `seed`.
+##' `dispersed`, from `dispersed_starts()`, turns on the optimisation check
+##' at the first stage.
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
-                              penalty = NULL, initial_budget = 1000L,
+                              penalty = NULL, dispersed = NULL,
+                              initial_budget = 1000L,
                               validation_budget = 5000L,
                               maximum_budget = 16000L, maximum_stages = 4L,
                               tolerance = 0.1, seed = 1L,
@@ -369,17 +402,15 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               variance_index = integer(),
                               linked_index = list(),
                               boundary_log_variance = -9,
-                              range_index = NULL,
-                              minimum_log_range = -Inf,
                               near_zero_log_variance = -4) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   validation_budget <- as.integer(validation_budget)
   limits <- list(
     variance_index = variance_index, linked_index = linked_index,
-    boundary_log_variance = boundary_log_variance, range_index = range_index,
-    minimum_log_range = minimum_log_range,
-    near_zero_log_variance = near_zero_log_variance, tolerance = tolerance
+    boundary_log_variance = boundary_log_variance,
+    near_zero_log_variance = near_zero_log_variance, tolerance = tolerance,
+    dispersed = dispersed
   )
   stream <- function(offset) {
     as.integer(((seed - 1 + offset) %% .Machine$integer.max) + 1)
@@ -407,7 +438,6 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     }
     record$stage <- stage
     history[[stage]] <- record
-    lower <- record$lower
     current <- record$estimate
     if (!identical(record$outcome, "not certified") ||
         budget >= maximum_budget || stage == maximum_stages) break
@@ -429,14 +459,17 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
   } else {
     last$second_validation$score
   }
+  check <- history[[1L]]$optimisation_check
   list(
     estimate = current, outcome = last$outcome,
+    optimisation_check = check,
+    better_maximum = !is.null(check) && !check$chosen[[1L]],
     certified = isTRUE(last$certified), certificate = last$certificate,
     reason = last$reason, budget = last$budget,
     validation_budget = last$validation_budget,
     proposal = engine$proposal_type(),
     boundary_parameters = last$boundary_parameters,
-    range_held = isTRUE(last$range_held), score = score,
+    score = score,
     log_likelihood = if (is.null(last$second_validation)) {
       last$fit_diagnostics$log_likelihood
     } else {

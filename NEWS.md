@@ -108,12 +108,14 @@ and loses `min_effective_samples`, `max_pareto_k`, `max_mcse_ratio` and
 `mcml_converged`.
 
 - Certified MCML distinguishes Monte Carlo error from weak
-identification. A variance component estimated as zero (and the spatial range
+identification. A variance component estimated as zero (and the spatial scale
 when the spatial variance is zero) is held at the boundary, the first stage is
 restarted once from an interior value, and precision is assessed on the
-remaining parameters, which keep their standard errors. A spatial range shorter
-than the median distance between neighbouring locations is held at that
-distance (`set_control_mcml(hold_short_range = FALSE)` disables this). If the
+remaining parameters, which keep their standard errors. A spatial scale
+estimated below the median distance between neighbouring locations is reported
+as estimated, with a warning that gives its practical range, explains why such
+a scale is poorly determined and suggests a nugget model, a fixed scale or the
+PC prior. If the
 information matrix is still singular, fitting stops instead of drawing more
 samples. Each case produces a plain-language warning.
 
@@ -127,11 +129,11 @@ compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
 
 - `set_control_mcml()` gains `pc_prior` (default `FALSE`) and its thresholds
 `pc_sigma_threshold`, `pc_sigma_probability`, `pc_range_threshold` and
-`pc_range_probability`. When `pc_prior = TRUE`, the spatial variance and range
+`pc_range_probability`. When `pc_prior = TRUE`, the spatial variance and scale
 are penalised by penalised-complexity priors (by default
-P(sigma > 1) = 0.05 and P(range < median nearest-neighbour distance) = 0.05),
+P(sigma > 1) = 0.05 and P(phi < median nearest-neighbour distance) = 0.05),
 which stabilises estimation in small or low-prevalence surveys. Warnings about
-a spatial variance estimated as zero, a held spatial range or a singular
+a spatial variance estimated as zero, a small spatial scale or a singular
 information matrix now suggest this option.
 
 - The final conditional sampling in `glgpm()` (used for fitted values and
@@ -143,6 +145,15 @@ Fresh conditional runs in `predict()` now honour a custom inverse link.
 
 - `set_control_mcml()` gains `laplace_start` (default `TRUE`), which maximises
 the Laplace approximation from the starting values before MCML.
+
+- `set_control_mcml()` gains `optimisation_check` (default `TRUE`). The
+certificate establishes Monte Carlo precision at the maximum found, and in
+sparse surveys an optimiser can stop at a maximum with a spatial scale far
+below the spacing between locations while a higher one exists at a longer
+scale. When the fitted scale is below half the median distance between
+neighbouring locations, the fit is repeated from four dispersed starting
+values on the same draws and the highest maximum is kept. A message says when
+and why this happens, and a warning says when it changes the estimate.
 
 ## Predictions
 

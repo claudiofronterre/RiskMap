@@ -139,7 +139,7 @@
 ##' (`certificate_distance` and `certificate_radius`), effective sample sizes
 ##' and Pareto tail diagnostics of each sample, the outcome of the stage and
 ##' its timing. Estimates use the same parameterisation as `estimate`, with
-##' regression coefficients and spatial range restored to the supplied
+##' regression coefficients and spatial scale restored to the supplied
 ##' covariate and distance units. `NULL` for Gaussian models.}
 ##' \item{mcml_certified}{Whether the certificate of the returned estimate is
 ##' within the tolerance, so that its Monte Carlo error is at most `tolerance`
@@ -3007,18 +3007,20 @@ laplace_sampling_mcmc <- function(y,
 ##' @param laplace_start Logical. If `TRUE` (the default), the Laplace
 ##' approximation to the likelihood is first maximised from the starting
 ##' values, and Monte Carlo maximum likelihood starts from that estimate.
-##' @param hold_short_range Logical. If `TRUE` (the default), a spatial range
-##' estimated below the median distance between neighbouring locations is held
-##' at that distance, because spatial correlation on a shorter scale cannot be
-##' distinguished from unstructured variation; a warning is issued. Set to
-##' `FALSE` to obtain the unconstrained maximum likelihood estimate.
-##' @param pc_prior Logical. If `TRUE`, the spatial variance and range are
+##' @param optimisation_check Logical. The certificate establishes Monte Carlo
+##' precision at the maximum found, not that no higher maximum exists. In
+##' sparse surveys an optimiser can stop at a maximum with a spatial scale far
+##' below the spacing between locations while a higher one exists at a longer
+##' scale. If `TRUE` (the default) and the fitted scale is below half the
+##' median distance between neighbouring locations, the fit is repeated from
+##' four dispersed starting values on the same Monte Carlo draws and the
+##' highest maximum is kept, with a warning if it differs.
+##' @param pc_prior Logical. If `TRUE`, the spatial variance and scale are
 ##' penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
 ##' estimate maximises the penalised likelihood on the log scale of the
 ##' covariance parameters. This shrinks estimates away from degenerate
-##' solutions in small or sparse datasets and replaces the hold of short
-##' ranges. It is recommended for small or low-prevalence surveys, especially
-##' before prediction with `parameter_uncertainty = TRUE` in [predict.RiskMap()].
+##' solutions in small or sparse datasets. It is recommended for small or
+##' low-prevalence surveys, especially before prediction with `parameter_uncertainty = TRUE` in [predict.RiskMap()].
 ##' When the spatial variance is large and well identified, the penalty shrinks
 ##' it somewhat towards zero, so the default is `FALSE`.
 ##' @param pc_sigma_threshold,pc_sigma_probability The penalty sets
@@ -3027,7 +3029,7 @@ laplace_sampling_mcmc <- function(y,
 ##' 1 and 0.05.
 ##' @param pc_range_threshold,pc_range_probability The penalty sets
 ##' P(phi < `pc_range_threshold`) = `pc_range_probability`, where phi is the
-##' range in the units of the coordinates. By default the threshold is the
+##' spatial scale in the units of the coordinates. By default the threshold is the
 ##' median distance between neighbouring locations and the probability is
 ##' 0.05.
 ##' @return A control object of class `RiskMap_control_mcml`.
@@ -3043,7 +3045,7 @@ set_control_mcml <- function(initial_samples = 1000L,
                              proposal = c("global", "laplace"),
                              defensive_weight = 0.05,
                              laplace_start = TRUE,
-                             hold_short_range = TRUE,
+                             optimisation_check = TRUE,
                              pc_prior = FALSE,
                              pc_sigma_threshold = 1,
                              pc_sigma_probability = 0.05,
@@ -3062,7 +3064,7 @@ set_control_mcml <- function(initial_samples = 1000L,
          call. = FALSE)
   }
   check_logical(laplace_start)
-  check_logical(hold_short_range)
+  check_logical(optimisation_check)
   check_logical(pc_prior)
   check_positive_number(pc_sigma_threshold, "")
   check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
@@ -3084,7 +3086,7 @@ set_control_mcml <- function(initial_samples = 1000L,
       proposal = proposal,
       defensive_weight = defensive_weight,
       laplace_start = laplace_start,
-      hold_short_range = hold_short_range,
+      optimisation_check = optimisation_check,
       pc_prior = pc_prior,
       pc_sigma_threshold = pc_sigma_threshold,
       pc_sigma_probability = pc_sigma_probability,

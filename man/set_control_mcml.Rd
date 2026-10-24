@@ -13,7 +13,7 @@ set_control_mcml(
   proposal = c("global", "laplace"),
   defensive_weight = 0.05,
   laplace_start = TRUE,
-  hold_short_range = TRUE,
+  optimisation_check = TRUE,
   pc_prior = FALSE,
   pc_sigma_threshold = 1,
   pc_sigma_probability = 0.05,
@@ -58,19 +58,21 @@ most spatial datasets, so that Monte Carlo errors are valid. Defaults to
 approximation to the likelihood is first maximised from the starting
 values, and Monte Carlo maximum likelihood starts from that estimate.}
 
-\item{hold_short_range}{Logical. If \code{TRUE} (the default), a spatial range
-estimated below the median distance between neighbouring locations is held
-at that distance, because spatial correlation on a shorter scale cannot be
-distinguished from unstructured variation; a warning is issued. Set to
-\code{FALSE} to obtain the unconstrained maximum likelihood estimate.}
+\item{optimisation_check}{Logical. The certificate establishes Monte Carlo
+precision at the maximum found, not that no higher maximum exists. In
+sparse surveys an optimiser can stop at a maximum with a spatial scale far
+below the spacing between locations while a higher one exists at a longer
+scale. If \code{TRUE} (the default) and the fitted scale is below half the
+median distance between neighbouring locations, the fit is repeated from
+four dispersed starting values on the same Monte Carlo draws and the
+highest maximum is kept, with a warning if it differs.}
 
-\item{pc_prior}{Logical. If \code{TRUE}, the spatial variance and range are
+\item{pc_prior}{Logical. If \code{TRUE}, the spatial variance and scale are
 penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
 estimate maximises the penalised likelihood on the log scale of the
 covariance parameters. This shrinks estimates away from degenerate
-solutions in small or sparse datasets and replaces the hold of short
-ranges. It is recommended for small or low-prevalence surveys, especially
-before prediction with \code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
+solutions in small or sparse datasets. It is recommended for small or
+low-prevalence surveys, especially before prediction with \code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
 When the spatial variance is large and well identified, the penalty shrinks
 it somewhat towards zero, so the default is \code{FALSE}.}
 
@@ -81,7 +83,7 @@ spatial standard deviation on the scale of the linear predictor. Default
 
 \item{pc_range_threshold, pc_range_probability}{The penalty sets
 P(phi < \code{pc_range_threshold}) = \code{pc_range_probability}, where phi is the
-range in the units of the coordinates. By default the threshold is the
+spatial scale in the units of the coordinates. By default the threshold is the
 median distance between neighbouring locations and the probability is
 0.05.}
 }

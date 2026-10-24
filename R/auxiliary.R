@@ -558,7 +558,7 @@ check_formula <- function(formula, data, response_required = TRUE){
 ##' @return A list containing the maximum likelihood estimates. For standard models:
 ##' \item{beta}{A vector of coefficient estimates.}
 ##' \item{sigma2}{The estimate for the variance parameter \eqn{\sigma^2}.}
-##' \item{phi}{The estimate for the spatial range parameter \eqn{\phi}.}
+##' \item{phi}{The estimate for the spatial scale parameter \eqn{\phi}.}
 ##' \item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
 ##' \item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
 ##' \item{sigma2_re}{A named vector of variance estimates for the random effects, if applicable.}

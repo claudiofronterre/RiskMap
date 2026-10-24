@@ -521,7 +521,7 @@ adaptive_boundary_parameters <- function(estimate, variance_index,
                                          boundary_log_variance,
                                          linked_index = list()) {
   boundary <- variance_index[estimate[variance_index] <= boundary_log_variance]
-  # A parameter that only acts through a zero variance (the spatial range when
+  # A parameter that only acts through a zero variance (the spatial scale when
   # the spatial variance is zero) is not identifiable and is held with it.
   linked <- unlist(linked_index[as.character(boundary)], use.names = FALSE)
   sort(unique(c(boundary, linked)))
@@ -578,7 +578,7 @@ describe_variance_parameters <- function(index, layout, re_names = NULL) {
       "random-effect variance for '", re_names, "'"
     )
   }
-  # The range is held only because the spatial variance is zero; it is
+  # The scale is held only because the spatial variance is zero; it is
   # explained separately rather than listed as a variance component.
   index <- setdiff(index, layout$index$phi)
   unname(labels[as.character(index)])
@@ -601,7 +601,6 @@ compact_adaptive_mcml_history <- function(history) {
     stage$second_validation <- bank_summary(stage$second_validation)
     stage$information <- NULL
     stage$information_root <- NULL
-    stage$lower <- NULL
     stage
   })
 }
@@ -633,10 +632,47 @@ maximise_laplace <- function(objective, start, latent_dimension, lower,
        convergence = fit$convergence)
 }
 
+##' Dispersed starting values for the optimisation check
+##'
+##' The certificate establishes Monte Carlo precision at the maximum found,
+##' not that no higher maximum exists. In sparse surveys the Laplace
+##' approximation can have its only maximum at a spatial scale far below the
+##' site spacing while the likelihood has a higher maximum at a longer scale,
+##' so an optimiser started from the Laplace estimate stays at the lower one.
+##' A fitted scale below `trigger_fraction` times the median nearest-neighbour
+##' distance is the warning sign, and the fit is then repeated from four
+##' dispersed starts: spatial variance 0.25 or 4, crossed with a scale equal
+##' to that distance or half the largest distance. With `messages = TRUE` the
+##' user is told when and why the refit runs, with distances in the model's
+##' units.
+##' @noRd
+dispersed_starts <- function(layout, distances, distance_scale = 1,
+                             messages = FALSE, trigger_fraction = 0.5) {
+  spacing <- median_nearest_neighbour_distance(distances)
+  grid <- expand.grid(sigma2 = c(0.25, 4), phi = c(spacing, max(distances) / 2))
+  announce <- function(log_phi) {
+    if (!messages) return(invisible(NULL))
+    message(
+      "The fitted spatial scale (phi = ",
+      signif(exp(log_phi) * distance_scale, 3), ") is below half the median ",
+      "distance between neighbouring locations (",
+      signif(spacing * distance_scale, 3), "). In sparse data a maximum at so ",
+      "short a scale can be a local one, with a higher maximum at a longer ",
+      "scale, so the fit is repeated from four dispersed starting values to ",
+      "check."
+    )
+  }
+  list(sigma2_index = layout$index$sigma2, phi_index = layout$index$phi,
+       log_sigma2 = log(grid$sigma2), log_phi = log(grid$phi),
+       labels = paste0(c("small", "large"), " variance, ",
+                       rep(c("short", "long"), each = 2), " scale"),
+       trigger = log(trigger_fraction * spacing), announce = announce)
+}
+
 ##' Penalised-complexity (PC) prior penalty for the spatial covariance
 ##'
 ##' Returns log pi(sigma, phi) for the spatial standard deviation sigma and the
-##' range phi of the Matern correlation in two dimensions (Fuglstad et al.,
+##' scale phi of the Matern correlation in two dimensions (Fuglstad et al.,
 ##' 2019), expressed on the working parameters (log sigma^2, log phi) and
 ##' including the Jacobian of that transformation:
 ##' P(sigma > sigma_threshold) = sigma_probability and
@@ -676,7 +712,7 @@ penalise_engine <- function(evaluate, penalty) {
 
 ##' Starting values on the working scale of the MCML engine
 ##'
-##' Regression coefficients, then the log spatial variance and log range,
+##' Regression coefficients, then the log spatial variance and log scale,
 ##' the log nugget ratio when the nugget is estimated, and the log
 ##' random-effect variances.
 ##' @noRd
@@ -721,15 +757,13 @@ glgpm_nong_adaptive <- function(
     proposal = control_mcml$proposal %||% "global"
   )
   start <- mcml_working_start(reference_pars, fix_tau2)
-  # Coordinates and the initial range are scaled before this function is
+  # Coordinates and the initial scale are rescaled before this function is
   # called. These broad bounds prevent overflow without constraining any
   # scientifically plausible fit on the internal scale.
   lower <- c(rep(-30, ncol(D)), -20, -20,
              rep(-20, length(start) - ncol(D) - 2L))
   upper <- c(rep(30, ncol(D)), 20, 10,
              rep(20, length(start) - ncol(D) - 2L))
-  # With the PC prior the range is penalised smoothly, which replaces the hard
-  # hold of short ranges at the location spacing.
   pc_prior <- isTRUE(control_mcml$pc_prior)
   penalty <- NULL
   objective <- engine$evaluate
@@ -749,18 +783,22 @@ glgpm_nong_adaptive <- function(
   }
 
   laplace <- NULL
+  start <- unname(start)
   if (isTRUE(control_mcml$laplace_start)) {
     laplace <- maximise_laplace(
       function(parameters, z) {
         objective(parameters, z, proposal_type = "laplace")
       },
-      unname(start), engine$latent_dimension, lower, upper
+      start, engine$latent_dimension, lower, upper
     )
     if (!is.null(laplace)) start <- laplace$estimate
   }
   fit <- fit_adaptive_mcml(
-    engine = engine, start = unname(start), objective = objective,
+    engine = engine, start = start, objective = objective,
     penalty = penalty,
+    dispersed = if (isTRUE(control_mcml$optimisation_check %||% TRUE)) {
+      dispersed_starts(engine$layout, distances, distance_scale, messages)
+    },
     initial_budget = control_mcml$initial_samples,
     validation_budget = control_mcml$validation_samples,
     maximum_budget = control_mcml$max_samples,
@@ -772,13 +810,7 @@ glgpm_nong_adaptive <- function(
                             use.names = FALSE),
     linked_index = stats::setNames(
       list(engine$layout$index$phi), engine$layout$index$sigma2
-    ),
-    range_index = engine$layout$index$phi,
-    minimum_log_range = if (pc_prior || isFALSE(control_mcml$hold_short_range)) {
-      -Inf
-    } else {
-      log(median_nearest_neighbour_distance(distances))
-    }
+    )
   )
   if (identical(fit$outcome, "no valid fit")) {
     stop("Monte Carlo maximum likelihood could not obtain a valid fit: ",
@@ -788,10 +820,50 @@ glgpm_nong_adaptive <- function(
   boundary_names <- describe_variance_parameters(
     fit$boundary_parameters, engine$layout, re_names = re_names
   )
+  small_scale <- small_spatial_scale(fit, engine$layout, distances, kappa,
+                                     distance_scale)
   report_mcml_outcome(fit, boundary_names, engine$layout, pc_prior,
-                      control_mcml$tolerance, messages)
-  assemble_mcml_result(fit, laplace, boundary_names, D, fix_tau2, re_names,
-                       family, invlink, length(y), pc_prior, fit_seed)
+                      control_mcml$tolerance, messages, small_scale)
+  out <- assemble_mcml_result(fit, laplace, boundary_names, D, fix_tau2,
+                              re_names, family, invlink, length(y), pc_prior,
+                              fit_seed)
+  optimizer <- attr(out, "optimizer")
+  optimizer$mcml_small_scale <- !is.null(small_scale)
+  optimizer$mcml_optimisation_check <- fit$optimisation_check
+  optimizer$mcml_better_maximum <- fit$better_maximum
+  attr(out, "optimizer") <- optimizer
+  out
+}
+
+##' A fitted scale smaller than the spacing between locations
+##'
+##' Returns the fitted scale phi, its practical range and the median
+##' nearest-neighbour distance, in the model's distance units, when phi is
+##' below that distance and the spatial variance is not at zero, and NULL
+##' otherwise.
+##' @noRd
+small_spatial_scale <- function(fit, layout, distances, kappa,
+                                distance_scale) {
+  if (layout$index$sigma2 %in% fit$boundary_parameters) return(NULL)
+  spacing <- median_nearest_neighbour_distance(distances)
+  scale <- exp(fit$estimate[layout$index$phi])
+  if (!(scale < spacing)) return(NULL)
+  c(scale = scale, practical_range = scale * practical_range_factor(kappa),
+    spacing = spacing) * distance_scale
+}
+
+##' Practical range of a Matern correlation in units of its scale
+##'
+##' The distance, as a multiple of the scale phi, at which the Matern
+##' correlation with smoothness `kappa` falls to `correlation` (about three
+##' scales for the exponential correlation).
+##' @noRd
+practical_range_factor <- function(kappa, correlation = 0.05) {
+  matern <- function(x) {
+    2^(1 - kappa) / gamma(kappa) * x^kappa * besselK(x, kappa)
+  }
+  stats::uniroot(function(x) matern(x) - correlation, c(1e-6, 100),
+                 tol = 1e-10)$root
 }
 
 ##' Build the fitted object returned by `glgpm_nong_adaptive()`
@@ -838,7 +910,6 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_certificate = fit$certificate,
     mcml_proposal = fit$proposal,
     mcml_pc_prior = pc_prior,
-    mcml_range_held = fit$range_held,
     laplace_start = laplace,
     mcml_boundary = boundary_names,
     mcml_identifiability_failure = identical(fit$outcome,
@@ -856,16 +927,16 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
 
 ##' Tell the user how a certified MCML fit ended
 ##'
-##' Warnings name variance components at zero, a range held at the location
-##' spacing, a singular information matrix, or a certificate above the
-##' tolerance. Weak identification of the spatial variance or range is what
+##' Warnings name variance components at zero, a scale smaller than the
+##' location spacing, a singular information matrix, or a certificate above
+##' the tolerance. Weak identification of the spatial variance or scale is what
 ##' the PC penalty addresses, so these warnings point to it when it is off.
 ##' @noRd
 report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
-                                tolerance, messages) {
+                                tolerance, messages, small_scale = NULL) {
   pc_advice <- if (pc_prior) "" else paste0(
     " Alternatively, refit with 'control_mcml = set_control_mcml(pc_prior = ",
-    "TRUE)', which stabilises the spatial variance and range with a mild ",
+    "TRUE)', which stabilises the spatial variance and scale with a mild ",
     "penalty; this is recommended for small or low-prevalence surveys and ",
     "makes prediction with 'parameter_uncertainty = TRUE' possible."
   )
@@ -882,21 +953,39 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
       " cannot be distinguished from zero with these data, so ",
       if (single) "its standard error is" else "their standard errors are",
       " not reported",
-      if (spatial_at_zero) ", and the spatial range cannot be estimated",
+      if (spatial_at_zero) ", and the spatial scale cannot be estimated",
       ". Consider refitting without ", if (single) "it." else "them.",
       if (spatial_at_zero) pc_advice,
       call. = FALSE
     )
   }
-  if (fit$range_held) {
+  if (!is.null(small_scale)) {
     warning(
-      "The estimated spatial range is shorter than the typical distance ",
-      "between neighbouring locations, so spatial correlation cannot be ",
-      "distinguished from unstructured variation with these data. The range ",
-      "was held at the median nearest-neighbour distance and its standard ",
-      "error is not reported. Consider a model with a nugget (unstructured) ",
-      "effect instead, or fixing the range from external knowledge.",
+      "The estimated spatial scale (phi = ", signif(small_scale[["scale"]], 3),
+      ", practical range ", signif(small_scale[["practical_range"]], 3),
+      ") is smaller than the median distance between neighbouring locations (",
+      signif(small_scale[["spacing"]], 3), "), all in the distance units of ",
+      "the model. The practical range is the distance at which the ",
+      "correlation falls to about 0.05. Spatial correlation on so short a ",
+      "scale cannot be distinguished from unstructured variation between ",
+      "locations, so these data say little about the scale and its standard ",
+      "error may be very large. The estimate is the maximum likelihood ",
+      "estimate. Consider a model with a nugget (unstructured) effect, ",
+      "'gp(nugget = TRUE)', or fixing the scale from external knowledge.",
       pc_advice,
+      call. = FALSE
+    )
+  }
+  if (isTRUE(fit$better_maximum)) {
+    check <- fit$optimisation_check
+    gain <- max(check$log_likelihood) - check$log_likelihood[[1L]]
+    warning(
+      "The optimisation check found a higher maximum of the likelihood than ",
+      "the one reached from the starting values, by ", signif(gain, 2),
+      " log-likelihood units on the same Monte Carlo draws, and the estimate ",
+      "is taken from it. The likelihood has more than one maximum, so Wald ",
+      "intervals may describe the uncertainty poorly. Consider inspecting ",
+      "the profile likelihood of the spatial scale and variance.",
       call. = FALSE
     )
   }
@@ -906,10 +995,10 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
   if (identical(fit$outcome, "weak identification")) {
     warning(
       "The observed information matrix is singular, so some parameters ",
-      "(often the spatial range when spatial correlation is weak) are not ",
+      "(often the spatial scale when spatial correlation is weak) are not ",
       "identifiable from these data. The estimate is returned without ",
       "standard errors and its Monte Carlo precision is not established; ",
-      "consider a simpler model or fixing the range.",
+      "consider a simpler model or fixing the scale.",
       pc_advice,
       call. = FALSE
     )

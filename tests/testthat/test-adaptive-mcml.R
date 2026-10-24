@@ -143,45 +143,39 @@ test_that("set_control_mcml validates laplace_start", {
   expect_error(set_control_mcml(laplace_start = "yes"), "laplace_start")
 })
 
-test_that("set_control_mcml validates hold_short_range", {
-  expect_true(set_control_mcml()$hold_short_range)
-  expect_false(set_control_mcml(hold_short_range = FALSE)$hold_short_range)
-  expect_error(set_control_mcml(hold_short_range = NA), "hold_short_range")
-})
-
 test_that("median nearest-neighbour distance ignores duplicate locations", {
   distances <- as.matrix(dist(c(0, 0, 1, 3)))
   expect_identical(median_nearest_neighbour_distance(distances), 1)
 })
 
-test_that("a range shorter than the location spacing is held at the spacing", {
-  set.seed(7)
-  coordinate <- seq(0, 10, length.out = 60)
-  covariate <- rnorm(60)
-  trials <- rep(20, 60)
-  # Independent location effects give a short unconstrained range (about
-  # 0.3 here). A minimum of 1 forces the hold, which is what is tested.
-  y <- rbinom(60, trials, plogis(-0.3 + 0.5 * covariate + rnorm(60, sd = 0.8)))
-  distances <- as.matrix(dist(coordinate))
-  minimum <- log(1)
-  engine <- make_adaptive_mcml_engine(
-    D = cbind(1, covariate), y = y, units_m = trials,
-    distances = distances, family = "binomial"
-  )
-  fit <- fit_adaptive_mcml(
-    engine = engine, start = c(-0.3, 0.5, log(0.5), log(0.01)),
-    initial_budget = 1000, validation_budget = 2000, maximum_budget = 4000,
-    maximum_stages = 3, seed = 5,
-    lower = c(-10, -10, -20, -20), upper = c(10, 10, 4, 4),
-    variance_index = 3L, linked_index = list(`3` = 4L),
-    range_index = 4L, minimum_log_range = minimum
-  )
+test_that("a scale smaller than the location spacing is reported, not held", {
+  fit <- list(estimate = c(0, 0, log(0.5), log(0.3)),
+              boundary_parameters = integer())
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  distances <- as.matrix(dist(seq(0, 10, length.out = 11)))
+  small <- small_spatial_scale(fit, layout, distances, kappa = 0.5,
+                               distance_scale = 2)
+  expect_equal(small, c(scale = 0.6, practical_range = 0.6 * -log(0.05),
+                        spacing = 2), tolerance = 1e-8)
+  # With the spatial variance at zero the scale is meaningless and is not
+  # reported as small.
+  fit$boundary_parameters <- 3:4
+  expect_null(small_spatial_scale(fit, layout, distances, 0.5, 2))
 
-  expect_true(fit$range_held)
-  expect_equal(fit$estimate[4L], minimum, tolerance = 1e-6)
-  expect_contains(fit$boundary_parameters, 4L)
-  expect_true(is.na(fit$covariance[4L, 4L]))
-  expect_true(all(is.finite(diag(fit$covariance)[1:3])))
+  outcome <- list(boundary_parameters = integer(), budget = 1000L,
+                  validation_budget = 5000L, outcome = "certified",
+                  certified = TRUE, certificate = 0.05, history = list(1))
+  expect_warning(
+    report_mcml_outcome(outcome, character(), layout, pc_prior = FALSE,
+                        tolerance = 0.1, messages = FALSE,
+                        small_scale = small),
+    "smaller than the median distance between neighbouring locations"
+  )
+})
+
+test_that("the practical range factor matches the exponential correlation", {
+  expect_equal(practical_range_factor(0.5), -log(0.05), tolerance = 1e-8)
+  expect_gt(practical_range_factor(1.5), practical_range_factor(0.5))
 })
 
 test_that("the PC penalty is a proper density on the working scale", {
@@ -267,7 +261,7 @@ test_that("identification warnings point to the PC penalty only when it is off",
     warnings
   }
   unpenalised <- fit_warnings(FALSE)
-  identification <- grepl("effectively zero|shorter than the typical|singular",
+  identification <- grepl("effectively zero|smaller than the median|singular",
                           unpenalised)
   skip_if_not(any(identification), "fixture fit is well identified")
   expect_true(all(grepl("pc_prior = TRUE", unpenalised[identification])))
@@ -592,4 +586,57 @@ test_that("the accelerated global iteration reaches the plain fixed point", {
   expect_lte(accelerated$iterations, plain$iterations)
   expect_equal(accelerated$centre, plain$centre, tolerance = 1e-6)
   expect_equal(accelerated$precision, plain$precision, tolerance = 1e-6)
+})
+
+test_that("dispersed starts span the site spacing and half the extent", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  distances <- as.matrix(dist(c(0, 1, 2, 3, 10)))
+  dispersed <- dispersed_starts(layout, distances)
+  expect_equal(exp(dispersed$log_phi), c(1, 1, 5, 5))
+  expect_equal(exp(dispersed$log_sigma2), c(0.25, 4, 0.25, 4))
+  expect_equal(dispersed$trigger, log(0.5))
+  expect_identical(dispersed$phi_index, 4L)
+})
+
+test_that("the optimisation check finds a higher maximum at a longer scale", {
+  # Two maxima in the log scale: a local one at -3 and a higher one at 2.
+  objective <- function(parameters, z) {
+    log(exp(-(parameters[2] + 3)^2) + 3 * exp(-(parameters[2] - 2)^2)) -
+      parameters[1]^2
+  }
+  announced <- NULL
+  limits <- list(variance_index = integer(), linked_index = list(),
+                 boundary_log_variance = -9,
+                 dispersed = list(sigma2_index = 1L, phi_index = 2L,
+                                  log_sigma2 = log(c(0.25, 4, 0.25, 4)),
+                                  log_phi = log(c(1, 1, 50, 50)),
+                                  labels = c("a", "b", "c", "d"),
+                                  trigger = log(0.5),
+                                  announce = function(log_phi) {
+                                    announced <<- log_phi
+                                  }))
+  lower <- c(-10, -10)
+  upper <- c(10, 10)
+  local <- optimise_on_bank(objective, c(0, -3.2), NULL, lower, upper,
+                            TRUE, limits)
+  expect_equal(local$fit$par[2], -3, tolerance = 1e-3)
+  checked <- check_dispersed_maxima(objective, local, NULL, lower, upper,
+                                    limits)
+  expect_equal(announced, local$fit$par[2])
+  expect_false(checked$check$chosen[1])
+  expect_equal(checked$optimised$fit$par[2], 2, tolerance = 1e-3)
+
+  announced <- NULL
+  higher <- optimise_on_bank(objective, c(0, 1.5), NULL, lower, upper, TRUE,
+                             limits)
+  unchecked <- check_dispersed_maxima(objective, higher, NULL, lower, upper,
+                                      limits)
+  expect_null(unchecked$check)
+  expect_null(announced)
+})
+
+test_that("set_control_mcml validates optimisation_check", {
+  expect_true(set_control_mcml()$optimisation_check)
+  expect_false(set_control_mcml(optimisation_check = FALSE)$optimisation_check)
+  expect_error(set_control_mcml(optimisation_check = NA), "optimisation_check")
 })
