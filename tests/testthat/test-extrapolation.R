@@ -77,6 +77,12 @@ test_that("extrapolation maps and argument checks", {
   }
   expect_identical(ggplot2::get_labs(plot(extrapolation))$fill,
                    "Extrapolation")
+  skip_if_not_installed("patchwork")
+  both <- plot(extrapolation,
+               indicator = c("spatial_unexplained", "extrapolation"))
+  expect_length(c(both$patches$plots, list(both)), 2L)
+  expect_identical(both$patches$layout$ncol, 2L)
+  expect_error(plot(extrapolation, indicator = "distance"))
   expect_error(assess_extrapolation(gaussian_model, grid,
                                     spatial_threshold = 2))
   expect_error(assess_extrapolation(list(), grid), "fitted RiskMap model")

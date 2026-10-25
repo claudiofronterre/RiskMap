@@ -4,26 +4,23 @@
 \alias{plot.RiskMap_extrapolation}
 \title{Map indicators of extrapolation}
 \usage{
-\method{plot}{RiskMap_extrapolation}(
-  x,
-  indicator = c("extrapolation", "spatial_unexplained", "covariate_novelty",
-    "covariate_leverage"),
-  ...
-)
+\method{plot}{RiskMap_extrapolation}(x, indicator = "extrapolation", ...)
 }
 \arguments{
 \item{x}{A \code{RiskMap_extrapolation} object.}
 
 \item{indicator}{Indicator to map: \code{"extrapolation"} (the default, the
 four classes), \code{"spatial_unexplained"}, \code{"covariate_novelty"} or
-\code{"covariate_leverage"}.}
+\code{"covariate_leverage"}. Several indicators are arranged in two columns.}
 
 \item{...}{Not used.}
 }
 \value{
-A \code{ggplot} object, to which further layers can be added.
+A \code{ggplot} object, to which further layers can be added. When
+several indicators are requested, a \code{patchwork} object combining one
+\code{ggplot} per indicator.
 }
 \description{
-Maps one of the indicators returned by \code{\link[=assess_extrapolation]{assess_extrapolation()}}, in the
-style of \code{\link[=plot.RiskMap_prediction]{plot.RiskMap_prediction()}}.
+Maps indicators returned by \code{\link[=assess_extrapolation]{assess_extrapolation()}}, in the style of
+\code{\link[=plot.RiskMap_prediction]{plot.RiskMap_prediction()}}.
 }

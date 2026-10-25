@@ -184,23 +184,35 @@ extrapolation_spatial_unexplained <- function(object, model_data) {
 
 ##' Map indicators of extrapolation
 ##'
-##' Maps one of the indicators returned by [assess_extrapolation()], in the
-##' style of [plot.RiskMap_prediction()].
+##' Maps indicators returned by [assess_extrapolation()], in the style of
+##' [plot.RiskMap_prediction()].
 ##'
 ##' @param x A `RiskMap_extrapolation` object.
 ##' @param indicator Indicator to map: `"extrapolation"` (the default, the
 ##'   four classes), `"spatial_unexplained"`, `"covariate_novelty"` or
-##'   `"covariate_leverage"`.
+##'   `"covariate_leverage"`. Several indicators are arranged in two columns.
 ##' @param ... Not used.
-##' @return A `ggplot` object, to which further layers can be added.
+##' @return A `ggplot` object, to which further layers can be added. When
+##'   several indicators are requested, a `patchwork` object combining one
+##'   `ggplot` per indicator.
 ##' @method plot RiskMap_extrapolation
 ##' @export
-plot.RiskMap_extrapolation <- function(
-    x,
-    indicator = c("extrapolation", "spatial_unexplained", "covariate_novelty",
-                  "covariate_leverage"),
-    ...) {
-  indicator <- match.arg(indicator)
+plot.RiskMap_extrapolation <- function(x, indicator = "extrapolation", ...) {
+  indicator <- match.arg(
+    indicator,
+    c("extrapolation", "spatial_unexplained", "covariate_novelty",
+      "covariate_leverage"),
+    several.ok = TRUE
+  )
+  if (length(indicator) > 1L) {
+    if (!requireNamespace("patchwork", quietly = TRUE)) {
+      stop("Plotting several maps requires the 'patchwork' package",
+           call. = FALSE)
+    }
+    maps <- lapply(indicator, function(one) plot(x, indicator = one))
+    return(patchwork::wrap_plots(maps, ncol = min(2L, length(maps))) &
+             theme(plot.margin = margin(4, 14, 4, 14)))
+  }
   data <- x
   class(data) <- setdiff(class(data), "RiskMap_extrapolation")
   data$.prediction_value <- data[[indicator]]
