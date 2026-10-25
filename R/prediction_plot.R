@@ -7,6 +7,9 @@
 ##' @param quantity Predictive quantity to display, such as `"response"`,
 ##'   `"spatial"`, `"link"`, `"fixed"` (the fixed-effect contribution), or the
 ##'   name of a target supplied through `transform` in [predict.RiskMap()].
+##'   Several quantities can be supplied, for example
+##'   `c("fixed", "spatial")`, and are arranged like several summaries. Supply
+##'   several quantities or several summaries, not both.
 ##' @param summary Summary to display, such as `"mean"`, `"median"`, `"lower"`,
 ##'   `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or `"exceedance"`. When
 ##'   `NULL` (the default), the first summary requested in
@@ -64,8 +67,8 @@
 ##' Outlines of the `boundaries` supplied to [predict.RiskMap()] are drawn
 ##' automatically on location-level maps.
 ##'
-##' @return A `ggplot` object. When several summaries are requested, a
-##'   `patchwork` object combining one `ggplot` per summary.
+##' @return A `ggplot` object. When several quantities or summaries are
+##'   requested, a `patchwork` object combining one `ggplot` per map.
 ##' @examples
 ##' data(italy_sim)
 ##' example_data <- italy_sim[1:50, ]
@@ -99,30 +102,52 @@ plot.RiskMap_prediction <- function(
   spatial_scale <- match.arg(spatial_scale)
   check_plot_flag(north_arrow, "north_arrow")
   check_plot_flag(scale_bar, "scale_bar")
-  if (quantity %in% c("fixed", "offset")) {
-    summary <- "estimate"
-  } else if (is.null(summary)) {
-    summary <- default_prediction_summary(x)
+  if (!is.character(quantity) || !length(quantity) || anyNA(quantity) ||
+      anyDuplicated(quantity)) {
+    stop("'quantity' must contain unique quantity names", call. = FALSE)
   }
-  if (!is.character(summary) || !length(summary) || anyNA(summary) ||
-      anyDuplicated(summary)) {
-    stop("'summary' must contain unique summary names", call. = FALSE)
+  if (length(quantity) > 1L && length(summary) > 1L) {
+    stop("Supply several quantities or several summaries, not both",
+         call. = FALSE)
+  }
+  if (length(quantity) == 1L) {
+    if (quantity %in% c("fixed", "offset")) {
+      summary <- "estimate"
+    } else if (is.null(summary)) {
+      summary <- default_prediction_summary(x)
+    }
+    if (!is.character(summary) || !length(summary) || anyNA(summary) ||
+        anyDuplicated(summary)) {
+      stop("'summary' must contain unique summary names", call. = FALSE)
+    }
   }
 
-  if (length(summary) > 1L) {
+  if (length(quantity) > 1L || length(summary) > 1L) {
     if (!requireNamespace("patchwork", quietly = TRUE)) {
-      stop("Plotting several summaries requires the 'patchwork' package",
+      stop("Plotting several maps requires the 'patchwork' package",
            call. = FALSE)
     }
-    maps <- lapply(summary, function(one_summary) {
-      plot.RiskMap_prediction(
-        x, quantity = quantity, summary = one_summary,
-        spatial_scale = spatial_scale, aggregate = aggregate,
-        threshold = if (identical(one_summary, "exceedance")) threshold,
-        palette = palette, limits = limits, breaks = breaks,
-        north_arrow = north_arrow, scale_bar = scale_bar, ...
-      )
-    })
+    if (length(quantity) > 1L) {
+      maps <- lapply(quantity, function(one_quantity) {
+        plot.RiskMap_prediction(
+          x, quantity = one_quantity, summary = summary,
+          spatial_scale = spatial_scale, aggregate = aggregate,
+          threshold = threshold, palette = palette, limits = limits,
+          breaks = breaks, north_arrow = north_arrow, scale_bar = scale_bar,
+          ...
+        )
+      })
+    } else {
+      maps <- lapply(summary, function(one_summary) {
+        plot.RiskMap_prediction(
+          x, quantity = quantity, summary = one_summary,
+          spatial_scale = spatial_scale, aggregate = aggregate,
+          threshold = if (identical(one_summary, "exceedance")) threshold,
+          palette = palette, limits = limits, breaks = breaks,
+          north_arrow = north_arrow, scale_bar = scale_bar, ...
+        )
+      })
+    }
     # Maps carry their legend on top, so two columns keep them readable.
     layout_columns <- if (spatial_scale == "both") 1L else
       min(2L, length(maps))
