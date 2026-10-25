@@ -100,7 +100,10 @@ to the whole conditional distribution of the latent effects (efficient
 importance sampling), which keeps far more draws effective than the Laplace
 approximation in sparse data. Binomial and Poisson models, with or without a
 nugget and unstructured random effects, share one implementation, and the
-Laplace approximation remains as a fallback and as an option.
+Laplace approximation remains as a fallback and as an option. If the global
+proposal fails while an estimate is being corrected or certified, the stage
+is repeated with the Laplace proposal on fresh draws, so that every
+certificate rests on validation draws taken after everything that led to it.
 `set_control_mcml()` gains `validation_samples`, `tolerance` and `proposal`,
 and loses `min_effective_samples`, `max_pareto_k`, `max_mcse_ratio` and
 `score_probability`. The defaults of `max_samples` and `max_stages` are now

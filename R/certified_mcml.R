@@ -434,6 +434,9 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   }
   record$free <- information$free
   record$information_root <- information$root
+  # Proposal failures so far depend only on the fitting draws. Any later one
+  # depends on the correction bank (fit_adaptive_mcml()).
+  record$failures_before_validation <- engine$proposal_failures()
   certified <- correct_and_certify(engine, penalty, fit$par, information,
                                    validation_budget, seeds, lower, upper,
                                    limits$tolerance)
@@ -682,11 +685,20 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##'
 ##' Runs certified stages with growing banks until the certificate is within
 ##' `tolerance`, the model is found to be weakly identified, no valid fit can
-##' be obtained, or the largest budget is reached. If the global proposal
-##' fails anywhere within a stage, the stage is repeated with the Laplace
-##' proposal, which is then kept. Stage s uses the random number streams
-##' 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks) after `seed`, and
-##' stream 1000 + s for the independent bank of the check for other maxima.
+##' be obtained, or the largest budget is reached. Stage s uses the random
+##' number streams 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks)
+##' after `seed`, and stream 1000 + s for the independent bank of the check
+##' for other maxima.
+##'
+##' If the global proposal fails within a stage, the stage is repeated with
+##' the Laplace proposal, which is then kept. A failure before the validation
+##' banks (in the fit, the check for other maxima or the information) depends
+##' only on the fitting draws, and the stage is repeated on the same streams.
+##' A failure while correcting or certifying depends on the correction bank,
+##' so the repeated stage draws every bank afresh, from streams
+##' 2000 + 3s - 2 to 2000 + 3s and 3000 + s. The certificate of the repeated
+##' stage then rests on a pair of validation banks drawn after everything that
+##' led to it, as the conditional guarantee of the procedure requires.
 ##' `dispersed`, from `make_dispersed_starts()`, turns on the check for other
 ##' maxima at the first stage. Each later stage starts its optimisation with
 ##' Newton steps on the previous stage's information when every parameter was
@@ -721,22 +733,25 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
   budget <- as.integer(initial_budget)
   curvature_root <- NULL
   for (stage in seq_len(maximum_stages)) {
-    run_stage <- function() {
+    run_stage <- function(offset) {
       engine$reset_proposal_failures()
       run_certified_stage(engine, objective, penalty, current, budget,
                       validation_budget,
-                      c(stream(3L * stage - 2:0), stream(1000L + stage)),
+                      c(stream(offset + 3L * stage - 2:0),
+                        stream(1000L + offset + stage)),
                       lower, upper, stage == 1L, limits, curvature_root)
     }
-    record <- run_stage()
+    record <- run_stage(0L)
     record$proposal_failures <- engine$proposal_failures()
     if (record$proposal_failures > 0L &&
         identical(engine$proposal_type(), "global")) {
       engine$use_proposal("laplace")
       failures <- record$proposal_failures
-      record <- run_stage()
+      late <- failures > (record$failures_before_validation %||% failures)
+      record <- run_stage(if (late) 2000L else 0L)
       record$proposal_failures <- failures
       record$proposal_fallback <- TRUE
+      record$late_fallback <- late
     }
     record$stage <- stage
     history[[stage]] <- record

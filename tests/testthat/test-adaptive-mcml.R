@@ -1021,3 +1021,48 @@ test_that("compiled importance weights equal the R computation", {
     }
   }
 })
+
+test_that("a late proposal failure repeats the stage on fresh streams", {
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  calls <- list()
+  scenario <- "late"
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      calls[[length(calls) + 1L]] <<- seeds
+      global <- identical(type, "global")
+      before <- if (global && scenario == "early") 1L else 0L
+      failures <<- before + if (global && scenario == "late") 1L else 0L
+      list(estimate = start, outcome = "certified", certified = TRUE,
+           certificate = 0.01, free = seq_along(start),
+           information = diag(length(start)),
+           information_root = diag(length(start)),
+           failures_before_validation = before)
+    }
+  )
+  run <- function(which) {
+    scenario <<- which
+    calls <<- list()
+    type <<- "global"
+    fit_adaptive_mcml(engine, start = c(0, 0, 0), seed = 7L)
+  }
+  late <- run("late")
+  expect_length(calls, 2L)
+  expect_true(all(calls[[1]] != calls[[2]]))
+  expect_true(late$history[[1]]$late_fallback)
+  expect_identical(late$proposal, "laplace")
+  early <- run("early")
+  expect_length(calls, 2L)
+  expect_identical(calls[[1]], calls[[2]])
+  expect_false(early$history[[1]]$late_fallback)
+  none <- run("none")
+  expect_length(calls, 1L)
+  expect_null(none$history[[1]]$proposal_fallback)
+})
