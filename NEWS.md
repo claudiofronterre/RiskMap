@@ -187,6 +187,12 @@ uncertainty, which matters for small or low-prevalence surveys.
 - `plot()` accepts several quantities, for example
   `quantity = c("fixed", "spatial")`, and draws them side by side as it
   does for several summaries.
+- New `assess_extrapolation()` reports, for each prediction location,
+  whether a prediction relies on extrapolation: covariates outside their
+  observed range on the model's scale, fixed-effect leverage relative to the
+  data, and the share of the spatial variance not explained by the sampled
+  locations. Locations are classed as supported, spatial, covariate, or
+  spatial and covariate extrapolation, and `plot()` maps each indicator.
 
 ## Cross validation
 
