@@ -1013,10 +1013,13 @@ test_that("compiled importance weights equal the R computation", {
         }
       )
       # The R code can carry a random effect's name on a single-row result.
-      expect_identical(
+      # The weights are identical where the compiler does not fuse multiply
+      # and add, as on x86-64. Where it does, as on arm64, the compiled sums
+      # differ from R's in the last bits.
+      expect_equal(
         engine$evaluate(target, draws, log_weights_only = TRUE,
                         proposal_parameters = parameters),
-        unname(in_r)
+        unname(in_r), tolerance = 1e-12
       )
     }
   }

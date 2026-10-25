@@ -164,7 +164,8 @@ equally well. The check does not prove that no higher maximum exists.
 - Certified MCML computes the importance weights (for the canonical binomial
 and Poisson links) and the dense linear algebra of the proposal in compiled
 code, with the same LAPACK and BLAS routines R uses, and gives results
-identical to the previous R code. A fit no longer creates several large
+identical to the previous R code (up to the last bits on platforms whose
+compilers fuse multiply and add). A fit no longer creates several large
 temporary matrices at every evaluation of the likelihood, whose garbage
 collection took about half of a fit.
 

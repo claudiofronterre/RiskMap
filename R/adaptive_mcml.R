@@ -330,7 +330,8 @@ compute_log_mixture_proposal <- function(draws, deviations, defensive,
 ##' Log importance weights of a bank of draws, computed in R
 ##'
 ##' Used for links without the compiled version, `cpp_importance_log_weights()`,
-##' which reproduces this computation exactly. `columns` holds each
+##' which reproduces this computation exactly (to the last bits where the
+##' compiler fuses multiply and add). `columns` holds each
 ##' observation's latent columns (location, then random-effect levels) and
 ##' `log_likelihood` maps a matrix of linear predictors to the log-likelihood
 ##' of each row.
@@ -401,7 +402,8 @@ compute_log_weights_in_r <- function(draws, proposal, defensive,
 ##' The prior factors, the global proposal's dense algebra and, for canonical
 ##' links, the importance weights are computed in compiled code, which
 ##' reproduces the R computations (`compute_log_weights_in_r()` for the
-##' weights) exactly but keeps their large working matrices off the R heap.
+##' weights) exactly, or to the last bits where the compiler fuses multiply
+##' and add, but keeps their large working matrices off the R heap.
 ##' @noRd
 make_adaptive_mcml_engine <- function(
     D, y, units_m, distances, family = c("binomial", "poisson"),

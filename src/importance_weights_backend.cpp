@@ -18,7 +18,9 @@ using namespace Rcpp;
 // on the R heap. It reproduces the R code of the engine's evaluate() and
 // log_mixture_proposal() step by step: the same BLAS calls R makes for `%*%`
 // and forwardsolve(), and the long double accumulation R uses in rowSums(),
-// colSums() and sum(), so the weights are identical to it.
+// colSums() and sum(), so the weights are identical to it where the compiler
+// does not fuse multiply and add (as on x86-64), and agree to the last bits
+// where it does (as on arm64).
 
 namespace {
 
