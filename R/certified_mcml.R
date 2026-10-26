@@ -363,7 +363,7 @@ compute_observed_information <- function(objective, estimate, fit_bank,
 ##' validation bank drawn at that point. `seeds` gives the streams of the
 ##' three banks and of the independent bank of the check for other maxima. At
 ##' the first stage that check (`check_other_maxima()`) may replace the
-##' maximum, and if the kept maximum is the limit of zero spatial scale the
+##' maximum, and if the optimiser reached the limit of zero spatial scale the
 ##' stage ends with the outcome "zero scale", without information or
 ##' certificate, because both need an interior maximum. `curvature_root`, if
 ##' given, seeds the optimisation with Newton steps (`optimise_on_bank()`).
@@ -432,9 +432,8 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   }
   if (zero_scale) {
     return(finish(record, "zero scale", paste(
-      "the likelihood is highest, within Monte Carlo error, in the limit of",
-      "zero spatial scale, where the model reduces to independent location",
-      "effects"
+      "the fitted scale reached the limit of zero, where the model reduces",
+      "to independent location effects"
     )))
   }
   started <- proc.time()[["elapsed"]]

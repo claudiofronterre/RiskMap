@@ -30,7 +30,8 @@ gauss_hermite_rule <- function(nodes) {
 ##' each location's effect, which the Jensen bound
 ##' (`compute_jensen_bound()`) needs. `maximise()` maximises the value from
 ##' several starting variances and records the change in the maximum from 30
-##' to 60 nodes as its numerical error.
+##' to 60 nodes as its numerical error, keeping the 30-node value and moments
+##' so that the error of the Jensen bound can be judged the same way.
 ##' @noRd
 make_independent_site_likelihood <- function(D, y, units_m, location, offset,
                                              family, nodes = 60L) {
@@ -152,11 +153,13 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
     beta <- best$par[seq_len(p)]
     log_variance <- best$par[p + 1L]
     at_maximum <- log_likelihood(beta, log_variance)
-    coarse <- log_likelihood(beta, log_variance, count = 30L)$value
+    coarse <- log_likelihood(beta, log_variance, count = 30L)
     list(beta = beta, log_variance = log_variance,
          log_likelihood = at_maximum$value,
-         quadrature_error = abs(at_maximum$value - coarse),
+         quadrature_error = abs(at_maximum$value - coarse$value),
          mean = at_maximum$mean, variance = at_maximum$variance,
+         coarse = list(log_likelihood = coarse$value, mean = coarse$mean,
+                       variance = coarse$variance),
          convergence = best$convergence)
   }
 
@@ -199,9 +202,11 @@ compute_jensen_bound <- function(independent, covariance) {
 ##' the coefficients of the fit that the check follows.
 ##' @noRd
 make_short_scale_screen <- function(engine, independent_sites, distances,
-                                    messages = FALSE, distance_scale = 1) {
+                                    kappa = 0.5, messages = FALSE,
+                                    distance_scale = 1) {
   layout <- engine$layout
   spacing <- median_nearest_neighbour_distance(distances)
+  closest <- min(distances[distances > 0])
   cache <- new.env(parent = emptyenv())
   independent <- function(beta_start) {
     if (!exists("fit", envir = cache, inherits = FALSE)) {
@@ -257,12 +262,29 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
     phi_index = layout$index$phi,
     log_phi = log(spacing) + log(c(1 / 8, 1 / 4, 1 / 2, 1)),
     margin = 0.25, window = 2, step = 0.5, step_limit = 2,
-    # The optimiser stops within about 1e-4 log-likelihood units of a
-    # maximum, so smaller differences from an exact value mean nothing.
-    alarm_multiplier = 2.58, alarm_floor = 1e-4, skip_margin = 2,
+    # A numerical comparison tolerance: differences from an exact value
+    # smaller than this are not acted on. It is separate from the Monte Carlo
+    # and quadrature errors.
+    alarm_multiplier = 2.58, comparison_tolerance = 1e-4,
     independent = independent, plug_in = plug_in,
+    # The Jensen bound with its numerical error, the change from 30 to 60
+    # quadrature nodes, which enters through the posterior moments as well as
+    # the limit.
     bound = function(point, fit) {
-      compute_jensen_bound(fit, engine$spatial_covariance(point))
+      covariance <- engine$spatial_covariance(point)
+      fine <- compute_jensen_bound(fit, covariance)
+      coarse <- if (is.null(fit$coarse)) fine else
+        compute_jensen_bound(utils::modifyList(fit, fit$coarse), covariance)
+      c(value = fine, error = abs(fine - coarse))
+    },
+    # A scale at which the correlation between the two closest distinct
+    # locations is below 1e-6 is the limit of zero scale to numerical
+    # precision.
+    at_limit = function(log_phi) {
+      scaled <- closest / exp(log_phi)
+      correlation <- if (scaled > 700) 0 else
+        2^(1 - kappa) / gamma(kappa) * scaled^kappa * besselK(scaled, kappa)
+      !is.finite(correlation) || correlation < 1e-6
     },
     announce = announce
   )
@@ -277,8 +299,9 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
 ##' fitted value. Where the gate is still closed, each value within `window`
 ##' of it is improved by one three-point step in the log spatial variance
 ##' (`step_log_variance()`), keeping the better of the plug-in and the step,
-##' and the gate is judged again. A failed evaluation opens the gate. The
-##' margins are search settings, not significance levels.
+##' and the gate is judged again. A failed evaluation, of a plug-in point or
+##' within a variance step, opens the gate. The margins are search settings,
+##' not significance levels.
 ##' @return The table of screened scales, whether the gate `opened`, whether
 ##' an evaluation `failed`, the `start` for the refit, and the number of
 ##' evaluations.
@@ -308,8 +331,9 @@ screen_short_scales <- function(objective, fit_bank, estimate, fitted_value,
                                 screen$step_limit, lower, upper)
       stepped[near] <- best_values[near] <- step$value
       best_points[[near]] <- step$point
+      failed <- failed || step$failed
     }
-    opened <- any(best_values >= gate, na.rm = TRUE)
+    opened <- failed || any(best_values >= gate, na.rm = TRUE)
   }
   best <- which.max(best_values)
   # With no finite value the refit starts at a quarter of the spacing.
@@ -327,7 +351,8 @@ screen_short_scales <- function(objective, fit_bank, estimate, fitted_value,
 ##' `half_width`, fits a parabola through the three values and evaluates its
 ##' vertex, moved at most `limit` (or, if the parabola is convex, a step of
 ##' twice `half_width` uphill). Returns the best value and point, the
-##' starting point included, so the step never makes the screen worse.
+##' starting point included, so the step never makes the screen worse, and
+##' whether an evaluation failed.
 ##' @noRd
 step_log_variance <- function(value_at, point, centre_value, index,
                               half_width, limit, lower, upper) {
@@ -352,7 +377,7 @@ step_log_variance <- function(value_at, point, centre_value, index,
     }
   }
   best <- which.max(values)
-  list(value = values[best], point = points[[best]])
+  list(value = values[best], point = points[[best]], failed = anyNA(values))
 }
 
 ##' Estimated log-likelihood on the comparison bank, with its standard error
@@ -386,55 +411,38 @@ estimate_on_comparison_bank <- function(engine, penalty, parameters, n_draws,
 ##' likelihood there. The largest of these exact values is compared with the
 ##' fitted log-likelihood estimated on the comparison bank, and the alarm
 ##' fires when it exceeds that estimate by more than `alarm_multiplier`
-##' standard errors plus the quadrature error and `alarm_floor`, the accuracy
-##' to which the optimiser locates a maximum. With a penalty the limit of
+##' standard errors plus its own quadrature error (for a bound, the change in
+##' the bound from 30 to 60 nodes) and `comparison_tolerance`, a numerical
+##' comparison tolerance. With a penalty the limit of
 ##' zero scale is left out, because the penalty diverges there, and the
 ##' penalty is added to the bounds. The `start` is the point that gave the
-##' largest value, at the shortest screened scale for the limit itself. When
-##' the largest value is more than `skip_margin` below `fitted_value`, the
-##' fitted log-likelihood on the fitting bank, and the Pareto diagnostic of
-##' the fitting bank at the estimate is at most 0.7, the comparison bank is
-##' not drawn and the alarm does not fire (`skipped`).
+##' largest value, at the shortest screened scale for the limit itself.
 ##' @noRd
 judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
-                              n_draws, seed, fitted_value = NULL,
-                              fit_bank = NULL) {
+                              n_draws, seed) {
   points <- lapply(screen$log_phi, function(log_phi) {
     screen$plug_in(estimate, fit, log_phi)
   })
   bounds <- vapply(points, function(point) {
-    screen$bound(point, fit) +
+    bound <- screen$bound(point, fit)
+    bound[["value"]] <- bound[["value"]] +
       if (is.null(penalty)) 0 else penalty(point)
-  }, numeric(1))
-  values <- c(if (is.null(penalty)) fit$log_likelihood, bounds)
+    bound
+  }, numeric(2))
+  values <- c(if (is.null(penalty)) fit$log_likelihood, bounds["value", ])
+  errors <- c(if (is.null(penalty)) fit$quadrature_error, bounds["error", ])
   sources <- c(if (is.null(penalty)) -Inf, screen$log_phi)
   starts <- c(if (is.null(penalty)) points[1L], points)
   if (!any(is.finite(values))) return(NULL)
   top <- which.max(values)
-  # Far below the fit, the alarm cannot fire unless the fitted value on the
-  # fitting bank overstates the likelihood by more than `skip_margin`, which
-  # a fitting bank with reliable weights does not do (by at most 0.5 on the
-  # development surveys), so the comparison bank is then not drawn.
-  if (!is.null(fitted_value) && !is.null(fit_bank) &&
-      values[top] < fitted_value - screen$skip_margin) {
-    reliable <- summarise_importance_weights(
-      engine$evaluate(estimate, fit_bank, log_weights_only = TRUE)
-    )$pareto_k
-    if (isTRUE(reliable <= 0.7)) {
-      return(list(statistic = values[top], log_phi = sources[top],
-                  quadrature_error = fit$quadrature_error,
-                  fitted_comparison = NA_real_, fitted_comparison_se = NA_real_,
-                  fired = FALSE, skipped = TRUE, start = starts[[top]]))
-    }
-  }
   fitted <- estimate_on_comparison_bank(engine, penalty, estimate, n_draws,
                                         seed)
   list(statistic = values[top], log_phi = sources[top],
-       quadrature_error = fit$quadrature_error,
+       quadrature_error = errors[top],
        fitted_comparison = fitted$value, fitted_comparison_se = fitted$se,
-       fired = values[top] - fit$quadrature_error - screen$alarm_floor >
+       fired = values[top] - errors[top] - screen$comparison_tolerance >
          fitted$value + screen$alarm_multiplier * fitted$se,
-       skipped = FALSE, start = starts[[top]])
+       start = starts[[top]])
 }
 
 ##' Check for other maxima on the fitting bank
@@ -451,13 +459,15 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
 ##' independent location effects cannot be computed a fit at a long scale is
 ##' repeated from the two dispersed starts at the shortest scale.
 ##' `choose_maximum()` decides which maximum to keep, on the independent bank
-##' of `n_draws` draws from `seed`. The kept maximum is the limit of zero
-##' scale (`zero_scale` is TRUE) when its scale is below the shortest screened
-##' one and its log-likelihood on that bank is not above the limit by more
-##' than `alarm_multiplier` standard errors plus the quadrature error: the
-##' likelihood then rises, or stays level within Monte Carlo error, as the
-##' scale goes to zero. An alarm is not reported as persisting in that case,
-##' because the limit is then the maximum.
+##' of `n_draws` draws from `seed`, or on a bank four times larger from
+##' `enlarged_seed` when the first is ambiguous. That bank serves every later
+##' comparison. The kept maximum is a boundary solution (`zero_scale` is TRUE)
+##' when the optimiser reached the limit of zero scale to numerical precision.
+##' A kept maximum at a positive scale below the shortest screened one whose
+##' log-likelihood is not clearly above the limit at this Monte Carlo
+##' precision stays a candidate like any other, and the record notes it as
+##' `near_limit` for a warning. An alarm persists if its exact value still
+##' exceeds the kept maximum, whatever the comparison with the limit says.
 ##' @return The kept `optimised` result, a `check` table of the candidates
 ##' (NULL if no refit was run), whether the kept maximum is `separate` from
 ##' the fitted one, whether the choice is `ambiguous`, the record of the
@@ -520,8 +530,7 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
         }
       }
       alarm <- judge_exact_alarm(engine, penalty, screen, fit, estimate,
-                                 n_draws, seed, -optimised$fit$objective,
-                                 fit_bank)
+                                 n_draws, seed)
       if (!is.null(alarm)) {
         record$alarm <- alarm[setdiff(names(alarm), "start")]
         if (alarm$fired) {
@@ -564,38 +573,48 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
     candidate$fit$par[[dispersed$phi_index]]
   }, numeric(1))
   kept <- candidates[[choice$chosen]]
+  # Every comparison after the choice uses the bank that decided it, the
+  # enlarged one when it was drawn.
+  enlarged <- any(choice$table$independent_draws > n_draws, na.rm = TRUE)
   judged <- NULL
   judge_kept <- function() {
     if (is.null(judged)) {
-      judged <<- if (choice$chosen == 1L &&
+      judged <<- if (!enlarged && choice$chosen == 1L &&
                      is.finite(record$alarm$fitted_comparison %||% NA)) {
         list(value = record$alarm$fitted_comparison,
-             se = record$alarm$fitted_comparison_se)
+             se = record$alarm$fitted_comparison_se, draws = n_draws)
       } else {
-        estimate_on_comparison_bank(engine, penalty, kept$fit$par, n_draws,
-                                    seed)
+        draws <- if (enlarged) 4L * n_draws else n_draws
+        c(estimate_on_comparison_bank(engine, penalty, kept$fit$par, draws,
+                                      if (enlarged) enlarged_seed else seed),
+          list(draws = draws))
       }
     }
     judged
   }
+  scale <- kept$fit$par[[dispersed$phi_index]]
+  at_zero_variance <- dispersed$sigma2_index %in% kept$boundary
+  # The kept maximum is a boundary solution only when the optimiser itself
+  # reached the limit of zero scale.
+  zero_scale <- !is.null(screen$at_limit) && !at_zero_variance &&
+    screen$at_limit(scale)
   limit <- record$independent
-  zero_scale <- FALSE
-  if (!is.null(limit$log_likelihood) && is.null(penalty) &&
-      !(dispersed$sigma2_index %in% kept$boundary) &&
-      kept$fit$par[[dispersed$phi_index]] < min(screen$log_phi)) {
+  if (!zero_scale && !is.null(limit$log_likelihood) && is.null(penalty) &&
+      !at_zero_variance && scale < min(screen$log_phi)) {
+    # A positive short scale whose likelihood is not clearly above the limit
+    # at this Monte Carlo precision. The candidate is kept and assessed as
+    # usual, with a warning.
     gap <- judge_kept()$value - limit$log_likelihood
-    zero_scale <- gap <= limit$quadrature_error + screen$alarm_floor +
-      screen$alarm_multiplier * judge_kept()$se
-    if (zero_scale) {
-      record$zero_scale <- list(gap = gap, se = judge_kept()$se,
-                                log_phi = kept$fit$par[[dispersed$phi_index]])
+    if (gap <= limit$quadrature_error + screen$comparison_tolerance +
+        screen$alarm_multiplier * judge_kept()$se) {
+      record$near_limit <- list(gap = gap, se = judge_kept()$se,
+                                draws = judge_kept()$draws, log_phi = scale)
     }
   }
   if (isTRUE(record$alarm$fired)) {
     # The alarm persists if the exact value still exceeds the kept maximum.
-    record$alarm$persists <- !zero_scale &&
-      record$alarm$statistic - record$alarm$quadrature_error -
-      screen$alarm_floor >
+    record$alarm$persists <- record$alarm$statistic -
+      record$alarm$quadrature_error - screen$comparison_tolerance >
       judge_kept()$value + screen$alarm_multiplier * judge_kept()$se
   }
   list(optimised = kept, check = choice$table, separate = choice$separate,

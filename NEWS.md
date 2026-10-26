@@ -191,16 +191,13 @@ close, and the fit is repeated from the best point if it comes within 0.25
 log-likelihood units of the fit or if an evaluation fails. The limit and Jensen
 lower bounds at those scales are exact, and if one of them exceeds the fitted
 log-likelihood, estimated on independent draws, a further search is forced and
-a warning is given if it does not resolve the alarm. A likelihood that is
-highest, within Monte Carlo error, in the limit of zero scale ends the fit with
-the outcome "zero scale", without standard errors or certificate, and the
-warning says whether the likelihood rises towards the limit or has a maximum
-at a short scale that the data do not distinguish from it, and points to
-`profile()` for the scale. Separate maxima whose comparison on independent
-draws is ambiguous are compared again on four times as many draws. The
-independent draws for the exact alarm are skipped when the exact bound is more
-than two log-likelihood units below the fit and the importance weights of the
-fit are reliable (Pareto k at most 0.7). The screen
+a warning is given if it does not resolve the alarm. A fit whose scale reaches
+the limit of zero ends with the outcome "zero scale", without standard errors
+or certificate. A fit at a short positive scale whose likelihood is not clearly
+above the limit at the current Monte Carlo precision is assessed as usual, with
+a warning that points to `profile()` for the scale. Separate maxima whose
+comparison on independent draws is ambiguous are compared again on four times
+as many draws, and that comparison serves every later one. The screen
 and the exact bounds need the canonical links and no unstructured random
 effects, and other models keep the earlier check.
 

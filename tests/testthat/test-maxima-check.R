@@ -123,8 +123,7 @@ make_toy_check <- function(short, limit = -50, best_log_variance = function(t) 0
   screen <- list(
     beta_index = 1L, sigma2_index = 2L, phi_index = 3L,
     log_phi = c(-6, -5, -4, -3), margin = 0.25, window = 2, step = 0.5,
-    step_limit = 2, alarm_multiplier = 2.58, alarm_floor = 1e-4,
-    skip_margin = 2,
+    step_limit = 2, alarm_multiplier = 2.58, comparison_tolerance = 1e-4,
     independent = function(beta) {
       list(beta = 0, log_variance = 0, log_likelihood = limit,
            quadrature_error = 0)
@@ -132,7 +131,8 @@ make_toy_check <- function(short, limit = -50, best_log_variance = function(t) 0
     plug_in = function(estimate, fit, log_phi) {
       c(fit$beta, fit$log_variance, log_phi)
     },
-    bound = function(point, fit) limit - 1,
+    bound = function(point, fit) c(value = limit - 1, error = 0),
+    at_limit = function(log_phi) log_phi <= -9.99,
     announce = function(...) NULL
   )
   limits <- list(variance_index = integer(), linked_index = list(),
@@ -202,20 +202,33 @@ test_that("an exact alarm forces a search and persists if it finds nothing", {
   expect_true(checked$screen$alarm$persists)
 })
 
-test_that("a maximum in the limit of zero scale is flagged", {
-  # The likelihood rises towards log(3), its limit, as the scale goes to zero,
-  # and the optimiser stops on the flat approach before the bound.
+test_that("a short scale not clearly above the limit is kept with a warning", {
+  # The likelihood rises towards log(3) as the scale goes to zero, the exact
+  # limit is 0.001 above that, and the optimiser stops on the flat approach
+  # before reaching the limit.
   checked <- make_toy_check(function(t) 3 * stats::plogis(-3 * (t + 4)),
-                            limit = log(3))$run()
+                            limit = log(3) + 0.001)$run()
   expect_identical(checked$screen$gate, "opened")
   expect_lt(checked$optimised$fit$par[3], -6)
-  expect_true(checked$zero_scale)
-  expect_false(checked$screen$alarm$persists)
-  # A higher maximum at a short positive scale is not the limit.
+  expect_false(checked$zero_scale)
+  expect_false(is.null(checked$screen$near_limit))
+  # An unresolved comparison with the limit does not suppress the alarm.
+  expect_true(checked$screen$alarm$persists)
+  # A higher maximum at a short positive scale is neither.
   interior <- make_toy_check(function(t) 3 * exp(-(t + 7)^2),
                              limit = 0.5)$run()
   expect_equal(interior$optimised$fit$par[3], -7, tolerance = 1e-3)
   expect_false(interior$zero_scale)
+  expect_null(interior$screen$near_limit)
+})
+
+test_that("a fit that reaches the limit of zero scale is a boundary solution", {
+  # The likelihood keeps rising as the scale goes to zero, and the refit runs
+  # to the lower bound of the log scale.
+  checked <- make_toy_check(function(t) exp(-0.5 * t), limit = 6)$run()
+  expect_equal(checked$optimised$fit$par[3], -10)
+  expect_true(checked$zero_scale)
+  expect_null(checked$screen$near_limit)
 })
 
 test_that("a stage at the limit of zero scale has no information or certificate", {
@@ -256,12 +269,13 @@ test_that("the outcome of the screen is reported to the user", {
                boundary_parameters = integer(), history = list(1))
   expect_warning(report_mcml_outcome(zero, character(), layout, FALSE, 0.1,
                                      FALSE),
-                 "rises towards the limit of zero spatial scale.*variance 2")
-  near <- list(independent = list(log_variance = log(2)),
-               zero_scale = list(gap = 0.0011, se = 0.0005, log_phi = log(0.023)))
-  expect_warning(report_zero_scale(near, distance_scale = 10),
-                 paste0("scale phi = 0.23, but its log-likelihood exceeds.*",
-                        "by only 0.0011.*profile\\(fit, parameters = \"phi\"\\)"))
+                 "reached the limit of zero.*variance 2")
+  near <- list(near_limit = list(gap = 0.0011, se = 0.0005, draws = 5000L,
+                                 log_phi = log(0.023)))
+  expect_warning(report_near_limit(near, distance_scale = 10),
+                 paste0("phi = 0.23.*not clearly distinguishable.*",
+                        "difference 0.0011.*profile\\(fit, parameters = \"phi\"\\)"))
+  expect_silent(report_near_limit(list(), distance_scale = 10))
 })
 
 test_that("the screen is recorded for fits with and without random effects", {
@@ -287,6 +301,7 @@ test_that("the records of the screen are restored to user units", {
     maxima_screen = list(
       screen = data.frame(log_phi = log(c(0.1, 0.2))),
       alarm = list(log_phi = log(0.1)),
+      near_limit = list(log_phi = log(0.05)),
       independent = list(beta = c(1, 2), log_variance = 0)
     )
   ))
@@ -296,6 +311,7 @@ test_that("the records of the screen are restored to user units", {
   screen <- restored[[1]]$maxima_screen
   expect_equal(screen$screen$log_phi, log(c(1, 2)))
   expect_equal(screen$alarm$log_phi, log(1))
+  expect_equal(screen$near_limit$log_phi, log(0.5))
   expect_equal(screen$independent$beta, c(a = -1, b = 4))
 })
 
@@ -325,25 +341,34 @@ test_that("an ambiguous choice is judged again on a larger bank", {
   expect_identical(unique(twice$table$independent_draws), 200L)
 })
 
-test_that("the comparison bank of the alarm is skipped far below the fit", {
-  engine <- list(latent_dimension = 1L,
-                 evaluate = function(parameters, z, log_weights_only) {
-                   z[, 1] * 0.1
+test_that("a failed evaluation in the variance step opens the gate", {
+  screen <- list(sigma2_index = 2L, margin = 0.25, window = 2, step = 0.5,
+                 step_limit = 2, log_phi = c(-2, -1),
+                 plug_in = function(estimate, fit, log_phi) c(0, 0, log_phi))
+  # The plug-in values are finite and within the window, and every
+  # evaluation of the variance step fails.
+  objective <- function(parameters, z) if (parameters[2] == 0) -1 else NA
+  screened <- screen_short_scales(objective, NULL, c(0, 0, 2), 0, list(),
+                                  screen, rep(-10, 3), rep(10, 3))
+  expect_true(screened$failed)
+  expect_true(screened$opened)
+})
+
+test_that("the Jensen bound carries its own quadrature error", {
+  y <- c(3, 7, 0, 12)
+  units_m <- c(10, 12, 8, 20)
+  sites <- make_independent_site_likelihood(cbind(rep(1, 4)), y, units_m, 1:4,
+                                            numeric(4), "binomial")
+  fit <- sites$maximise(0)
+  expect_named(fit$coarse, c("log_likelihood", "mean", "variance"))
+  engine <- list(layout = cov_par_layout(1L, fix_tau2 = FALSE),
+                 unpack = function(parameters) list(sigma2 = 1, nugget_ratio = 0),
+                 spatial_covariance = function(point) {
+                   exp(point[2]) * exp(-as.matrix(dist(1:4)) / exp(point[3]))
                  })
-  screen <- list(log_phi = c(-2, -1), alarm_multiplier = 2.58,
-                 alarm_floor = 1e-4, skip_margin = 2,
-                 plug_in = function(estimate, fit, log_phi) c(0, log_phi),
-                 bound = function(point, fit) fit$log_likelihood - 1)
-  fit <- list(log_likelihood = -10, quadrature_error = 0)
-  set.seed(3)
-  bank <- matrix(stats::rnorm(1000), ncol = 1)
-  far <- judge_exact_alarm(engine, NULL, screen, fit, c(0, 1), 500L, 1L,
-                           fitted_value = 0, fit_bank = bank)
-  expect_true(far$skipped)
-  expect_false(far$fired)
-  expect_true(is.na(far$fitted_comparison))
-  near <- judge_exact_alarm(engine, NULL, screen, fit, c(0, 1), 500L, 1L,
-                            fitted_value = -9, fit_bank = bank)
-  expect_false(near$skipped)
-  expect_true(is.finite(near$fitted_comparison))
+  screen <- make_short_scale_screen(engine, sites, as.matrix(dist(1:4)))
+  bound <- screen$bound(c(fit$beta, fit$log_variance, log(0.5)), fit)
+  expect_named(bound, c("value", "error"))
+  expect_gte(bound[["error"]], 0)
+  expect_lt(bound[["error"]], 1e-6)
 })

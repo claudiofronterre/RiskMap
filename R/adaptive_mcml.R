@@ -940,7 +940,7 @@ glgpm_nong_adaptive <- function(
           D, y, units_m, ID_coords %||% seq_along(y),
           cov_offset %||% numeric(length(y)), family
         ),
-        distances, messages, distance_scale
+        distances, kappa, messages, distance_scale
       )
     } else {
       dispersed$screen_unavailable <- if (is.null(ID_re)) {
@@ -1104,6 +1104,7 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_maxima_screen = fit$maxima_screen,
     mcml_maxima_alarm = fit$maxima_alarm,
     mcml_zero_scale = identical(fit$outcome, "zero scale"),
+    mcml_near_limit = !is.null(fit$maxima_screen$near_limit),
     mcml_better_maximum = fit$better_maximum,
     mcml_ambiguous_maxima = fit$ambiguous_maxima,
     seed = fit_seed,
@@ -1183,43 +1184,50 @@ report_maxima_check <- function(fit, layout, distance_scale) {
   invisible(NULL)
 }
 
-##' Tell the user that the likelihood is highest at zero spatial scale
+##' Tell the user that the fit reached the limit of zero spatial scale
 ##'
-##' Distinguishes a likelihood that keeps rising as the scale goes to zero
-##' from a maximum at a short positive scale whose log-likelihood is within
-##' Monte Carlo error of the limit, and points to the profile likelihood of the
-##' scale, to the PC penalty and to a model without spatial correlation.
-##' `record` is the record of the screen (`check_other_maxima()`).
+##' The optimiser moved the scale to where the correlation between the
+##' closest locations is negligible, so the model is the one with independent
+##' location effects. Points to the profile likelihood of the scale, to a model
+##' without spatial correlation and to the PC penalty. `record` is the record
+##' of the screen (`check_other_maxima()`).
 ##' @noRd
 report_zero_scale <- function(record, distance_scale = 1, pc_advice = "") {
-  evidence <- record$zero_scale
   variance <- record$independent$log_variance
-  limit <- paste0(
-    "the limit of zero spatial scale, where the correlation between distinct ",
-    "locations vanishes and the model reduces to independent location ",
-    "effects", if (!is.null(variance)) paste0(" with variance ",
-                                              signif(exp(variance), 3))
-  )
-  first <- if (!is.null(evidence) && evidence$gap > 0) {
-    paste0(
-      "The highest maximum found has spatial scale phi = ",
-      signif(exp(evidence$log_phi) * distance_scale, 3), ", but its ",
-      "log-likelihood exceeds that of ", limit, " by only ",
-      signif(evidence$gap, 2), " (Monte Carlo standard error ",
-      signif(evidence$se, 2), "). The data do not distinguish this ",
-      "correlation from none."
-    )
-  } else {
-    paste0("The likelihood rises towards ", limit, ", as the scale decreases.")
-  }
   warning(
-    first, " The scale therefore has no positive estimate, and standard ",
-    "errors and the Monte Carlo certificate, which need an interior ",
-    "maximum, are not reported. The estimate returned is the highest point ",
-    "found. Use profile(fit, parameters = \"phi\") to see how the likelihood ",
-    "changes with the scale. If spatial correlation is not expected, consider ",
-    "a model with an unstructured effect for each location instead of gp().",
+    "The fitted spatial scale reached the limit of zero, where the ",
+    "correlation between the closest locations is negligible and the model ",
+    "reduces to independent location effects",
+    if (!is.null(variance)) paste0(" with variance ", signif(exp(variance), 3)),
+    ". The scale has no positive estimate, so standard errors and the Monte ",
+    "Carlo certificate, which need an interior maximum, are not reported. ",
+    "Use profile(fit, parameters = \"phi\") to see how the likelihood changes ",
+    "with the scale. If spatial correlation is not expected, consider a model ",
+    "with an unstructured effect for each location instead of gp().",
     pc_advice,
+    call. = FALSE
+  )
+}
+
+##' Tell the user that a short fitted scale is close to the limit of zero
+##'
+##' The comparison with the limit has not shown that the fitted likelihood is
+##' above it at the current Monte Carlo precision. That is not evidence that
+##' the maximum is at zero, so the estimate is assessed as usual and only this
+##' warning is given.
+##' @noRd
+report_near_limit <- function(record, distance_scale = 1) {
+  near <- record$near_limit
+  if (is.null(near)) return(invisible(NULL))
+  warning(
+    "The fitted spatial scale (phi = ", signif(exp(near$log_phi) *
+                                                  distance_scale, 3),
+    ") is short, and the fitted likelihood is not clearly distinguishable from ",
+    "the limit with independent location effects at the current Monte Carlo ",
+    "precision (difference ", signif(near$gap, 2), ", standard error ",
+    signif(near$se, 2), " on ", format(near$draws, big.mark = ","),
+    " independent draws). Use profile(fit, parameters = \"phi\") to see how ",
+    "well the data determine the scale.",
     call. = FALSE
   )
 }
@@ -1278,6 +1286,7 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
     )
   }
   report_maxima_check(fit, layout, distance_scale)
+  report_near_limit(fit$maxima_screen, distance_scale)
   draws <- paste0(format(fit$budget, big.mark = ","), " fitting and ",
                   format(fit$validation_budget, big.mark = ","),
                   " validation draws")
