@@ -124,6 +124,7 @@ make_toy_check <- function(short, limit = -50, best_log_variance = function(t) 0
     beta_index = 1L, sigma2_index = 2L, phi_index = 3L,
     log_phi = c(-6, -5, -4, -3), margin = 0.25, window = 2, step = 0.5,
     step_limit = 2, alarm_multiplier = 2.58, alarm_floor = 1e-4,
+    skip_margin = 2,
     independent = function(beta) {
       list(beta = 0, log_variance = 0, log_likelihood = limit,
            quadrature_error = 0)
@@ -304,4 +305,45 @@ test_that("an exact value equal to the fit to numerical precision is no alarm", 
   toy <- make_toy_check(function(t) 1e-8 * exp(-(t + 5)^2),
                         limit = log(1 + 1e-8 * exp(-49)) + 2e-9)
   expect_false(toy$run()$screen$alarm$fired)
+})
+
+test_that("an ambiguous choice is judged again on a larger bank", {
+  # Two separated points whose likelihoods differ by 0.004, the second with
+  # its own noise of sd 0.05 per draw, so that 50 draws cannot tell them
+  # apart. The second bank is the one recorded.
+  engine <- list(latent_dimension = 1L,
+                 evaluate = function(parameters, z, log_weights_only) {
+                   0.004 * parameters[1] + parameters[1] * z[, 1] * 0.05
+                 })
+  information <- diag(100, 2)
+  once <- choose_maximum(engine, NULL, list(c(0, 0), c(1, 0)), c(-10, -10),
+                         information, 50L, 1L, 0.1)
+  twice <- choose_maximum(engine, NULL, list(c(0, 0), c(1, 0)), c(-10, -10),
+                          information, 50L, 1L, 0.1, enlarged_seed = 2L)
+  expect_true(once$ambiguous)
+  expect_identical(unique(once$table$independent_draws), 50L)
+  expect_identical(unique(twice$table$independent_draws), 200L)
+})
+
+test_that("the comparison bank of the alarm is skipped far below the fit", {
+  engine <- list(latent_dimension = 1L,
+                 evaluate = function(parameters, z, log_weights_only) {
+                   z[, 1] * 0.1
+                 })
+  screen <- list(log_phi = c(-2, -1), alarm_multiplier = 2.58,
+                 alarm_floor = 1e-4, skip_margin = 2,
+                 plug_in = function(estimate, fit, log_phi) c(0, log_phi),
+                 bound = function(point, fit) fit$log_likelihood - 1)
+  fit <- list(log_likelihood = -10, quadrature_error = 0)
+  set.seed(3)
+  bank <- matrix(stats::rnorm(1000), ncol = 1)
+  far <- judge_exact_alarm(engine, NULL, screen, fit, c(0, 1), 500L, 1L,
+                           fitted_value = 0, fit_bank = bank)
+  expect_true(far$skipped)
+  expect_false(far$fired)
+  expect_true(is.na(far$fitted_comparison))
+  near <- judge_exact_alarm(engine, NULL, screen, fit, c(0, 1), 500L, 1L,
+                            fitted_value = -9, fit_bank = bank)
+  expect_false(near$skipped)
+  expect_true(is.finite(near$fitted_comparison))
 })

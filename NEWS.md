@@ -192,7 +192,11 @@ highest, within Monte Carlo error, in the limit of zero scale ends the fit with
 the outcome "zero scale", without standard errors or certificate, and the
 warning says whether the likelihood rises towards the limit or has a maximum
 at a short scale that the data do not distinguish from it, and points to
-`profile()` for the scale. The screen
+`profile()` for the scale. Separate maxima whose comparison on independent
+draws is ambiguous are compared again on four times as many draws. The
+independent draws for the exact alarm are skipped when the exact bound is more
+than two log-likelihood units below the fit and the importance weights of the
+fit are reliable (Pareto k at most 0.7). The screen
 and the exact bounds need the canonical links and no unstructured random
 effects, and other models keep the earlier check.
 

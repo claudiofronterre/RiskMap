@@ -259,7 +259,7 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
     margin = 0.25, window = 2, step = 0.5, step_limit = 2,
     # The optimiser stops within about 1e-4 log-likelihood units of a
     # maximum, so smaller differences from an exact value mean nothing.
-    alarm_multiplier = 2.58, alarm_floor = 1e-4,
+    alarm_multiplier = 2.58, alarm_floor = 1e-4, skip_margin = 2,
     independent = independent, plug_in = plug_in,
     bound = function(point, fit) {
       compute_jensen_bound(fit, engine$spatial_covariance(point))
@@ -390,10 +390,15 @@ estimate_on_comparison_bank <- function(engine, penalty, parameters, n_draws,
 ##' to which the optimiser locates a maximum. With a penalty the limit of
 ##' zero scale is left out, because the penalty diverges there, and the
 ##' penalty is added to the bounds. The `start` is the point that gave the
-##' largest value, at the shortest screened scale for the limit itself.
+##' largest value, at the shortest screened scale for the limit itself. When
+##' the largest value is more than `skip_margin` below `fitted_value`, the
+##' fitted log-likelihood on the fitting bank, and the Pareto diagnostic of
+##' the fitting bank at the estimate is at most 0.7, the comparison bank is
+##' not drawn and the alarm does not fire (`skipped`).
 ##' @noRd
 judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
-                              n_draws, seed) {
+                              n_draws, seed, fitted_value = NULL,
+                              fit_bank = NULL) {
   points <- lapply(screen$log_phi, function(log_phi) {
     screen$plug_in(estimate, fit, log_phi)
   })
@@ -406,6 +411,22 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
   starts <- c(if (is.null(penalty)) points[1L], points)
   if (!any(is.finite(values))) return(NULL)
   top <- which.max(values)
+  # Far below the fit, the alarm cannot fire unless the fitted value on the
+  # fitting bank overstates the likelihood by more than `skip_margin`, which
+  # a fitting bank with reliable weights does not do (by at most 0.5 on the
+  # development surveys), so the comparison bank is then not drawn.
+  if (!is.null(fitted_value) && !is.null(fit_bank) &&
+      values[top] < fitted_value - screen$skip_margin) {
+    reliable <- summarise_importance_weights(
+      engine$evaluate(estimate, fit_bank, log_weights_only = TRUE)
+    )$pareto_k
+    if (isTRUE(reliable <= 0.7)) {
+      return(list(statistic = values[top], log_phi = sources[top],
+                  quadrature_error = fit$quadrature_error,
+                  fitted_comparison = NA_real_, fitted_comparison_se = NA_real_,
+                  fired = FALSE, skipped = TRUE, start = starts[[top]]))
+    }
+  }
   fitted <- estimate_on_comparison_bank(engine, penalty, estimate, n_draws,
                                         seed)
   list(statistic = values[top], log_phi = sources[top],
@@ -413,7 +434,7 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
        fitted_comparison = fitted$value, fitted_comparison_se = fitted$se,
        fired = values[top] - fit$quadrature_error - screen$alarm_floor >
          fitted$value + screen$alarm_multiplier * fitted$se,
-       start = starts[[top]])
+       skipped = FALSE, start = starts[[top]])
 }
 
 ##' Check for other maxima on the fitting bank
@@ -444,7 +465,7 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
 ##' @noRd
 check_other_maxima <- function(engine, objective, penalty, optimised,
                                fit_bank, lower, upper, limits, n_draws,
-                               seed) {
+                               seed, enlarged_seed = NULL) {
   dispersed <- limits$dispersed
   screen <- dispersed[["screen"]]
   estimate <- optimised$fit$par
@@ -499,7 +520,8 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
         }
       }
       alarm <- judge_exact_alarm(engine, penalty, screen, fit, estimate,
-                                 n_draws, seed)
+                                 n_draws, seed, -optimised$fit$objective,
+                                 fit_bank)
       if (!is.null(alarm)) {
         record$alarm <- alarm[setdiff(names(alarm), "start")]
         if (alarm$fired) {
@@ -535,7 +557,7 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
     }),
     vapply(candidates, function(candidate) -candidate$fit$objective,
            numeric(1)),
-    information, n_draws, seed, limits$tolerance
+    information, n_draws, seed, limits$tolerance, enlarged_seed
   )
   choice$table$start <- c("fitted", names(starts)[usable])
   choice$table$log_phi <- vapply(candidates, function(candidate) {
@@ -545,7 +567,8 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
   judged <- NULL
   judge_kept <- function() {
     if (is.null(judged)) {
-      judged <<- if (choice$chosen == 1L && !is.null(record$alarm)) {
+      judged <<- if (choice$chosen == 1L &&
+                     is.finite(record$alarm$fitted_comparison %||% NA)) {
         list(value = record$alarm$fitted_comparison,
              se = record$alarm$fitted_comparison_se)
       } else {

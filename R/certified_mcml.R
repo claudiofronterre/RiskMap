@@ -386,7 +386,8 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
       is_valid_fit(optimised$fit)) {
     checked <- check_other_maxima(engine, objective, penalty, optimised,
                                   fit_bank, lower, upper, limits,
-                                  validation_budget, seeds[[4L]])
+                                  validation_budget, seeds[[4L]],
+                                  if (length(seeds) >= 5L) seeds[[5L]])
     optimised <- checked$optimised
     check <- checked$check
     screen <- checked$screen
@@ -524,10 +525,12 @@ is_valid_fit <- function(fit) {
 ##' fitting bank favours the points optimised on it, and the highest there is
 ##' kept. The choice is ambiguous if another separate maximum is within 2.58
 ##' standard errors of it on that bank; a small difference in likelihood
-##' alone does not make two separated points the same maximum.
+##' alone does not make two separated points the same maximum. An ambiguous
+##' choice is made again on a bank of four times `n_draws` from
+##' `enlarged_seed`, when given, and that bank decides.
 ##' @noRd
 choose_maximum <- function(engine, penalty, parameters, values, information,
-                           n_draws, seed, tolerance) {
+                           n_draws, seed, tolerance, enlarged_seed = NULL) {
   metric_root <- NULL
   if (!is.null(information) && all(is.finite(information))) {
     decomposition <- eigen((information + t(information)) / 2,
@@ -560,19 +563,33 @@ choose_maximum <- function(engine, penalty, parameters, values, information,
     distance_from_fitted = vapply(parameters, distance, numeric(1),
                                   second = parameters[[1L]]),
     maximum = maximum, independent_log_likelihood = NA_real_,
-    independent_se = NA_real_, chosen = FALSE
+    independent_se = NA_real_, independent_draws = NA_integer_,
+    chosen = FALSE
   )
   chosen <- representatives[1L]
   ambiguous <- FALSE
-  if (length(representatives) > 1L) {
+  judge <- function(draws, stream) {
     judged <- adjudicate_maxima(engine, penalty, parameters[representatives],
-                                n_draws, seed)
-    table$independent_log_likelihood[representatives] <- judged$values
-    table$independent_se[representatives] <- judged$se
-    chosen <- representatives[judged$top]
+                                draws, stream)
     others <- setdiff(seq_along(representatives), judged$top)
     gaps <- judged$values[judged$top] - judged$values[others]
-    ambiguous <- isTRUE(any(gaps <= 2.58 * judged$se[others], na.rm = TRUE))
+    judged$ambiguous <- isTRUE(any(gaps <= 2.58 * judged$se[others],
+                                   na.rm = TRUE))
+    judged$draws <- as.integer(draws)
+    judged
+  }
+  if (length(representatives) > 1L) {
+    judged <- judge(n_draws, seed)
+    # An ambiguous choice is judged again on a bank four times larger, which
+    # resolves differences that the first bank's error hides.
+    if (judged$ambiguous && !is.null(enlarged_seed)) {
+      judged <- judge(4L * n_draws, enlarged_seed)
+    }
+    table$independent_log_likelihood[representatives] <- judged$values
+    table$independent_se[representatives] <- judged$se
+    table$independent_draws[representatives] <- judged$draws
+    chosen <- representatives[judged$top]
+    ambiguous <- judged$ambiguous
   }
   table$chosen[chosen] <- TRUE
   list(chosen = chosen, table = table, ambiguous = ambiguous,
@@ -660,8 +677,8 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' `tolerance`, the model is found to be weakly identified, no valid fit can
 ##' be obtained, or the largest budget is reached. Stage s uses the random
 ##' number streams 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks)
-##' after `seed`, and stream 1000 + s for the independent bank of the check
-##' for other maxima.
+##' after `seed`, stream 1000 + s for the independent bank of the check for
+##' other maxima and stream 4000 + s for its enlarged bank.
 ##'
 ##' If the global proposal fails within a stage, the stage is repeated with
 ##' the Laplace proposal, which is then kept. A failure before the validation
@@ -712,7 +729,8 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
       run_certified_stage(engine, objective, penalty, current, budget,
                       validation_budget,
                       c(stream(offset + 3L * stage - 2:0),
-                        stream(1000L + offset + stage)),
+                        stream(1000L + offset + stage),
+                        stream(4000L + offset + stage)),
                       lower, upper, stage == 1L, limits, curvature_root)
     }
     record <- run_stage(0L)
