@@ -73,6 +73,8 @@ reference:
   - title: Summaries and Plot Methods
     contents:
       - summary.RiskMap
+      - profile.RiskMap
+      - plot.RiskMap_profile
       - summary.RiskMap.sim.res
       - summary.RiskMap.spatial.cv
       - print.summary.RiskMap

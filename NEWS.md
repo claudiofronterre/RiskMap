@@ -87,6 +87,14 @@ use the general R implementation.
 integrand when the objective, gradient, and Hessian are evaluated at identical
 parameters, avoiding a repeated likelihood calculation.
 
+- `profile()` computes profile likelihoods of binomial and Poisson models
+fitted by certified Monte Carlo maximum likelihood, for single parameters and
+for pairs, on one fixed bank of draws so that the profiles are smooth. It
+reports profile and Wald intervals and says if a point on a profile is higher
+than the estimate. `plot()` draws the marginal profiles against their
+quadratic approximation and the joint profiles as confidence regions with the
+marginal ridges, as a corner plot for one pair.
+
 - Non-Gaussian models are now fitted by certified Monte Carlo maximum
 likelihood. The estimated likelihood is maximised on a fitting sample of 1,000
 draws, the estimate is corrected by one Newton step with the score from an
