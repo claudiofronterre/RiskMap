@@ -129,7 +129,7 @@ containing the bank size, estimate, optimizer result, effective sample
 sizes, Pareto tail diagnostics, parameter Monte Carlo error,
 independent-score agreement, timing, stopping decision, and the reason for
 any increase in sample size. Estimates use the same parameterisation as
-\code{estimate}, with regression coefficients and spatial range restored to the
+\code{estimate}, with regression coefficients and the scale parameter phi restored to the
 supplied covariate and distance units. \code{NULL} for Gaussian models.}
 \item{mcml_converged}{Whether the final adaptive stage met every Monte
 Carlo precision and independent-validation criterion. \code{NULL} for Gaussian

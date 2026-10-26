@@ -57,7 +57,7 @@ test_that("adaptive diagnostics use independent banks and absolute ESS", {
   expect_identical(fit$accepted, stage$accepted)
 })
 
-test_that("boundary variance components and their linked range are detected", {
+test_that("boundary variance components and their linked scale parameter are detected", {
   estimate <- c(0.1, 0.2, -12, 1.5, -0.5)
   expect_identical(
     adaptive_boundary_parameters(estimate, c(3L, 5L), -9),
@@ -171,7 +171,7 @@ test_that("median nearest-neighbour distance ignores duplicate locations", {
   expect_identical(median_nearest_neighbour_distance(distances), 1)
 })
 
-test_that("a range shorter than the location spacing is held at the spacing", {
+test_that("a scale parameter shorter than the location spacing is held at the spacing", {
   set.seed(7)
   coordinate <- seq(0, 10, length.out = 60)
   covariate <- rnorm(60)
