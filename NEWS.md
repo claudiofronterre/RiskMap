@@ -96,9 +96,12 @@ where the profile is flat, up to 11 points a side, and an end the profile does
 not reach is reported as open. Interval ends are interpolated in the signed
 root of the deviance, with one more point at a crossing between distant
 points, and the points around each end are also solved from the estimate,
-because constrained maxima can be multimodal. A constrained maximisation that
-stops with false convergence on the slightly rough Monte Carlo likelihood is
-solved again with a central-difference gradient. Joint profiles are computed only
+because constrained maxima can be multimodal. The constrained maximisations
+work on the scale of the fit, with standardised covariates, which avoids the
+false convergence that coefficients of covariates with large ranges caused in
+their own units, and each starts from the extrapolation of the two previous
+solutions. One that still stops with a non-zero code is solved again with a
+central-difference gradient. Joint profiles are computed only
 when `pairs` asks for them, and the time left is estimated as the profiles
 run. With `cores` above one, the two sides of each profile, the ends of the
 intervals and the joint profiles run in parallel by forking (not on Windows),

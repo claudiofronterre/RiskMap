@@ -77,7 +77,10 @@ either way. If the profile deviance has not passed the 99\% point of a
 chi-squared distribution on one degree of freedom by the end of a marginal
 grid, the grid is extended with steps that double each time, up to
 \code{n_points} points on each side. Each point starts the optimisation from
-the solution at its neighbour. Profiles can have more than one constrained
+the extrapolation of the two previous solutions, which follows a ridge in
+the other parameters. The optimisation works on the scale of the fit, with
+standardised covariates, while a profiled coefficient stays fixed in its
+own units. Profiles can have more than one constrained
 maximum in sparse data, so a point whose deviance is beyond the interval is
 also solved from the estimate, and the higher solution is kept.
 
