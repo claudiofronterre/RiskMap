@@ -486,7 +486,7 @@ adaptive_boundary_parameters <- function(estimate, variance_index,
                                          boundary_log_variance,
                                          linked_index = list()) {
   boundary <- variance_index[estimate[variance_index] <= boundary_log_variance]
-  # A parameter that only acts through a zero variance (the spatial range when
+  # A parameter that only acts through a zero variance (the scale parameter when
   # the spatial variance is zero) is not identifiable and is held with it.
   linked <- unlist(linked_index[as.character(boundary)], use.names = FALSE)
   sort(unique(c(boundary, linked)))
@@ -1242,7 +1242,7 @@ glgpm_nong_adaptive <- function(
         "their standard errors are",
       " not reported",
       if (engine$layout$index$sigma2 %in% fit$boundary_parameters) {
-        ", and the spatial range cannot be estimated"
+        ", and the scale parameter phi cannot be estimated"
       },
       ". Consider refitting without ",
       if (length(boundary_names) == 1L) "it." else "them.",
@@ -1252,12 +1252,12 @@ glgpm_nong_adaptive <- function(
   }
   if (fit$range_held) {
     warning(
-      "The estimated spatial range is shorter than the typical distance ",
+      "The estimated scale parameter phi is shorter than the typical distance ",
       "between neighbouring locations, so spatial correlation cannot be ",
-      "distinguished from unstructured variation with these data. The range ",
+      "distinguished from unstructured variation with these data. It ",
       "was held at the median nearest-neighbour distance and its standard ",
       "error is not reported. Consider a model with a nugget (unstructured) ",
-      "effect instead, or fixing the range from external knowledge.",
+      "effect instead, or fixing phi from external knowledge.",
       pc_advice,
       call. = FALSE
     )
@@ -1265,9 +1265,9 @@ glgpm_nong_adaptive <- function(
   if (fit$identifiability_failure) {
     warning(
       "The observed information matrix is singular, so some parameters ",
-      "(often the spatial range when spatial correlation is weak) are not ",
+      "(often the scale parameter phi when spatial correlation is weak) are not ",
       "identifiable from these data. The estimate is returned without ",
-      "standard errors; consider a simpler model or fixing the range.",
+      "standard errors; consider a simpler model or fixing phi.",
       pc_advice,
       call. = FALSE
     )
