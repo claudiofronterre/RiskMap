@@ -97,10 +97,10 @@ against exact likelihoods on small datasets, Stan-based likelihood ratios and
 1,200 further datasets simulated with fresh seeds; see #194.
 
 - Adaptive MCML now distinguishes Monte Carlo error from weak
-identification. A variance component estimated as zero (and the spatial range
-when the spatial variance is zero) is held at the boundary, the first stage is
+identification. A variance component estimated as zero (and the scale parameter
+phi when the spatial variance is zero) is held at the boundary, the first stage is
 restarted once from an interior value, and precision is assessed on the
-remaining parameters, which keep their standard errors. A spatial range shorter
+remaining parameters, which keep their standard errors. A scale parameter phi shorter
 than the median distance between neighbouring locations is held at that
 distance (`set_control_mcml(hold_short_range = FALSE)` disables this). If the
 information matrix is still singular, fitting stops instead of drawing more
@@ -118,9 +118,9 @@ compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
 `pc_sigma_threshold`, `pc_sigma_probability`, `pc_range_threshold` and
 `pc_range_probability`. When `pc_prior = TRUE`, the spatial variance and range
 are penalised by penalised-complexity priors (by default
-P(sigma > 1) = 0.05 and P(range < median nearest-neighbour distance) = 0.05),
+P(sigma > 1) = 0.05 and P(phi < median nearest-neighbour distance) = 0.05),
 which stabilises estimation in small or low-prevalence surveys. Warnings about
-a spatial variance estimated as zero, a held spatial range or a singular
+a spatial variance estimated as zero, a held scale parameter or a singular
 information matrix now suggest this option.
 
 - The final conditional sampling in `glgpm()` (used for fitted values and
@@ -193,6 +193,10 @@ uncertainty, which matters for small or low-prevalence surveys.
   data, and the share of the spatial variance not explained by the sampled
   locations. Locations are classed as supported, spatial, covariate, or
   spatial and covariate extrapolation, and `plot()` maps each indicator.
+- Documentation and messages call phi the scale parameter of the spatial
+  correlation function, rather than the spatial range, consistently with
+  `summary()` and the MBG book. The practical range, where correlation falls
+  to 0.05, is about 3 phi for the exponential correlation function.
 
 ## Cross validation
 

@@ -84,7 +84,7 @@ index_coordinate_rows <- function(coordinates) {
 #' leaves every ratio of distance to range unchanged.
 #'
 #' @param coordinates Numeric matrix containing observed locations.
-#' @param phi Optional spatial range in the coordinate units.
+#' @param phi Optional scale parameter in the coordinate units.
 #' @return A list containing scaled coordinates, scaled `phi` when supplied,
 #'   and the distance scale.
 #' @noRd
@@ -246,7 +246,7 @@ sample_correlated_gaussian <- function(mean, lower_root, n_samples) {
 #'   weights.
 #' @param conditional_signal Vector or matrix multiplied by those weights.
 #' @param marginal_variance Unconditional spatial variance.
-#' @param phi Matérn range on the internal coordinate scale.
+#' @param phi Matérn scale parameter on the internal coordinate scale.
 #' @param kappa Matérn smoothness.
 #' @param n_samples Number of predictive draws.
 #' @return Matrix with prediction locations in rows and samples in columns.
@@ -313,7 +313,7 @@ marginal_prediction_batch_size <- function(
 #' @param weight_function Function mapping cross-covariances to weights.
 #' @param conditional_signal Vector or matrix multiplied by the weights.
 #' @param marginal_variance Unconditional spatial variance.
-#' @param phi Matérn range on the internal coordinate scale.
+#' @param phi Matérn scale parameter on the internal coordinate scale.
 #' @param kappa Matérn smoothness.
 #' @param n_samples Number of predictive samples.
 #' @param batch_size Number of prediction locations per batch.
