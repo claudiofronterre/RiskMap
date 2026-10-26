@@ -380,7 +380,8 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
                                 first_stage, limits, curvature_root)
   check <- NULL
   separate <- ambiguous <- FALSE
-  if (first_stage && !is.null(limits$dispersed)) {
+  if (first_stage && !is.null(limits$dispersed) &&
+      is_valid_fit(optimised$fit)) {
     checked <- check_dispersed_maxima(engine, objective, penalty, optimised,
                                       fit_bank, lower, upper, limits,
                                       validation_budget, seeds[[4L]])
@@ -402,9 +403,11 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
     restart_improved = optimised$restart_improved,
     maxima_check = check, separate_maximum = separate,
     ambiguous_maxima = ambiguous,
-    fit_diagnostics = summarise_importance_weights(
-      engine$evaluate(fit$par, fit_bank, log_weights_only = TRUE)
-    ),
+    fit_diagnostics = if (all(is.finite(fit$par))) {
+      summarise_importance_weights(
+        engine$evaluate(fit$par, fit_bank, log_weights_only = TRUE)
+      )
+    },
     outcome = "no valid fit", certified = FALSE, certificate = NA_real_,
     timing = list(fit = proc.time()[["elapsed"]] - stage_started)
   )
@@ -414,7 +417,11 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
     record$elapsed_seconds <- proc.time()[["elapsed"]] - stage_started
     record
   }
-  if (!is.finite(fit$objective) || fit$objective >= 1e99) {
+  if (!all(is.finite(fit$par))) {
+    return(finish(record, "no valid fit",
+                  "the optimiser returned non-finite parameter values"))
+  }
+  if (!is_valid_fit(fit)) {
     return(finish(record, "no valid fit",
                   "the estimated log-likelihood is not finite at the optimum"))
   }
@@ -484,6 +491,16 @@ correct_and_certify <- function(engine, penalty, estimate, information,
        certified = certificate$bound <= tolerance)
 }
 
+##' Whether an optimiser result can be used as a maximum
+##'
+##' The estimates and the objective must be finite, and the objective must
+##' not be the penalty value that the estimated log-likelihood takes where it
+##' cannot be computed.
+##' @noRd
+is_valid_fit <- function(fit) {
+  all(is.finite(fit$par)) && is.finite(fit$objective) && fit$objective < 1e99
+}
+
 ##' Check for other maxima on the fitting bank
 ##'
 ##' If the fitted spatial scale is below the trigger of `limits$dispersed`
@@ -516,7 +533,11 @@ check_dispersed_maxima <- function(engine, objective, penalty, optimised,
     optimise_on_bank(objective, pmin(pmax(start, lower), upper), fit_bank,
                      lower, upper, TRUE, limits)
   })
-  candidates <- c(list(optimised), refits)
+  # A refit that ends with non-finite values or the penalty value is not a
+  # maximum and is left out of the comparison.
+  usable <- vapply(refits, function(refit) is_valid_fit(refit$fit),
+                   logical(1))
+  candidates <- c(list(optimised), refits[usable])
   information <- tryCatch(
     compute_central_hessian(function(parameters) {
       -objective(parameters, fit_bank)
@@ -531,7 +552,7 @@ check_dispersed_maxima <- function(engine, objective, penalty, optimised,
            numeric(1)),
     information, n_draws, seed, limits$tolerance
   )
-  choice$table$start <- c("fitted", dispersed$labels)
+  choice$table$start <- c("fitted", dispersed$labels[usable])
   choice$table$log_phi <- vapply(candidates, function(candidate) {
     candidate$fit$par[[dispersed$phi_index]]
   }, numeric(1))

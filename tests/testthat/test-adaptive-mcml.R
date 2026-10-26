@@ -670,6 +670,67 @@ test_that("the check for maxima finds a higher one at a longer scale", {
   expect_null(announced)
 })
 
+test_that("a stage whose optimiser returns non-finite values has no valid fit", {
+  # The Laplace fallback on a ridge returned NaN for every parameter with a
+  # convergence code of zero, and the check for other maxima then failed on
+  # the comparison of the scale with its trigger.
+  engine <- list(latent_dimension = 1L,
+                 proposal_type = function() "laplace",
+                 proposal_failures = function() 0L,
+                 evaluate = function(...) stop("evaluated at an invalid fit"))
+  limits <- list(dispersed = list(sigma2_index = 1L, phi_index = 2L,
+                                  trigger = log(0.5)))
+  local_mocked_bindings(
+    optimise_on_bank = function(...) {
+      list(fit = list(par = c(NaN, NaN), objective = 1e100, convergence = 0L),
+           boundary = integer(), restarted = FALSE, restart_improved = FALSE)
+    },
+    check_dispersed_maxima = function(...) stop("checked an invalid fit")
+  )
+  stage <- run_certified_stage(engine, function(...) 0, NULL, c(0, 0), 10L,
+                               10L, 1:4, c(-10, -10), c(10, 10), TRUE, limits)
+  expect_identical(stage$outcome, "no valid fit")
+  expect_match(stage$reason, "non-finite")
+  expect_null(stage$maxima_check)
+  expect_null(stage$fit_diagnostics)
+})
+
+test_that("the check for other maxima leaves out refits that fail", {
+  objective <- function(parameters, z) {
+    log(exp(-(parameters[2] + 3)^2) + 3 * exp(-(parameters[2] - 2)^2)) -
+      parameters[1]^2
+  }
+  engine <- list(latent_dimension = 1L,
+                 evaluate = function(parameters, z, log_weights_only) {
+                   rep(objective(parameters, z), nrow(z))
+                 })
+  limits <- list(variance_index = integer(), linked_index = list(),
+                 boundary_log_variance = -9, tolerance = 0.1,
+                 dispersed = list(sigma2_index = 1L, phi_index = 2L,
+                                  log_sigma2 = log(c(0.25, 4, 0.25, 4)),
+                                  log_phi = log(c(1, 1, 50, 50)),
+                                  labels = c("a", "b", "c", "d"),
+                                  trigger = log(0.5)))
+  lower <- c(-10, -10)
+  upper <- c(10, 10)
+  local <- optimise_on_bank(objective, c(0, -3.2), NULL, lower, upper,
+                            TRUE, limits)
+  original <- optimise_on_bank
+  # Refits from the long-scale starts fail as the Laplace fallback did.
+  local_mocked_bindings(optimise_on_bank = function(objective, start, ...) {
+    if (start[2] > 3) {
+      return(list(fit = list(par = c(NaN, NaN), objective = 1e100),
+                  boundary = integer()))
+    }
+    original(objective, start, ...)
+  })
+  checked <- check_dispersed_maxima(engine, objective, NULL, local, NULL,
+                                    lower, upper, limits, 100L, 1L)
+  expect_identical(checked$check$start, c("fitted", "a", "b"))
+  expect_true(all(is.finite(checked$check$log_likelihood)))
+  expect_true(all(is.finite(checked$optimised$fit$par)))
+})
+
 test_that("candidate maxima are tied, separate or ambiguous", {
   engine <- list(latent_dimension = 1L,
                  evaluate = function(parameters, z, log_weights_only) {
