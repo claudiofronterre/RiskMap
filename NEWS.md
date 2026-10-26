@@ -95,8 +95,10 @@ than the estimate. Marginal grids of 11 points are extended with doubling steps
 where the profile is flat, up to 11 points a side, and an end the profile does
 not reach is reported as open. Interval ends are interpolated in the signed
 root of the deviance, with one more point at a crossing between distant
-points, and points beyond the interval are also solved from the estimate,
-because constrained maxima can be multimodal. Joint profiles are computed only
+points, and the points around each end are also solved from the estimate,
+because constrained maxima can be multimodal. A constrained maximisation that
+stops with false convergence on the slightly rough Monte Carlo likelihood is
+solved again with a central-difference gradient. Joint profiles are computed only
 when `pairs` asks for them, and the time left is estimated as the profiles
 run. `plot()` draws the marginal profiles against their quadratic
 approximation and the joint profiles as confidence regions with the marginal

@@ -255,29 +255,91 @@ match_profile_parameters <- function(problem, parameters) {
 }
 
 ##' Maximise the log-likelihood on the profile bank with some parameters fixed
+##'
+##' The proposal is rebuilt at every evaluation, as in the fit, which leaves
+##' the estimated log-likelihood slightly rough in the parameters. The
+##' forward differences of `nlminb()` use a step too small for that roughness
+##' and can end in "false convergence" well below the maximum (by up to 0.3
+##' log-likelihood units on a moderate model). A stop with a non-zero code is
+##' therefore solved again from the same start with a central-difference
+##' gradient with a step of 1e-4 on the working scale, keeping the better
+##' solution. The gradient is not used first, because along a ridge it can
+##' need ten times the evaluations of the plain optimiser where that
+##' converges. A proposal held
+##' fixed during the optimisation is smoother but poor far along a ridge. `budget` caps the number of evaluations, and the best point
+##' evaluated so far is returned when the cap is reached. The number of
+##' evaluations is returned.
 ##' @noRd
-maximise_profile <- function(problem, fixed, fixed_values, start) {
+maximise_profile <- function(problem, fixed, fixed_values, start,
+                             budget = Inf) {
   free <- setdiff(seq_along(start), fixed)
+  lower <- problem$lower[free]
+  upper <- problem$upper[free]
   full <- function(free_values) {
     working <- start
     working[fixed] <- fixed_values
     working[free] <- free_values
     working
   }
+  evaluations <- 0L
+  best <- list(objective = Inf, par = NULL)
   negative <- function(free_values) {
+    if (evaluations >= budget) {
+      stop(structure(class = c("profile_budget", "error", "condition"),
+                     list(message = "budget reached", call = NULL)))
+    }
+    evaluations <<- evaluations + 1L
     result <- problem$value(full(free_values))
-    if (is.finite(result)) -result else 1e100
+    objective <- if (is.finite(result)) -result else 1e100
+    if (objective < best$objective) {
+      best <<- list(objective = objective, par = free_values)
+    }
+    objective
   }
-  fit <- tryCatch(stats::nlminb(
-    pmin(pmax(start[free], problem$lower[free]), problem$upper[free]),
-    negative, lower = problem$lower[free], upper = problem$upper[free],
-    control = problem$control %||% make_optimiser_control()
-  ), error = function(error) NULL)
-  if (is.null(fit) || fit$objective >= 1e99) {
-    return(list(par = full(start[free]), value = NA_real_, convergence = NA))
+  gradient <- function(free_values) {
+    vapply(seq_along(free_values), function(j) {
+      up <- down <- free_values
+      up[j] <- min(free_values[j] + 1e-4, upper[j])
+      down[j] <- max(free_values[j] - 1e-4, lower[j])
+      (negative(up) - negative(down)) / (up[j] - down[j])
+    }, numeric(1))
+  }
+  run <- function(from, with_gradient) {
+    tryCatch(
+      stats::nlminb(pmin(pmax(from, lower), upper), negative,
+                    if (with_gradient) gradient,
+                    lower = lower, upper = upper,
+                    control = problem$control %||% make_optimiser_control()),
+      profile_budget = function(condition) NULL,
+      error = function(error) NULL
+    )
+  }
+  better <- function(first, second) {
+    if (is.null(second)) return(first)
+    if (is.null(first) || second$objective < first$objective) second else first
+  }
+  fit <- run(start[free], FALSE)
+  # A stop with a non-zero code, usually false convergence, is solved again
+  # from the same start with the central-difference gradient, and the better
+  # solution is kept. Continuing from where the first run stopped does not
+  # leave a false stop as reliably.
+  if (!is.null(fit) && fit$convergence != 0L && fit$objective < 1e99) {
+    fit <- better(fit, run(start[free], TRUE))
+  }
+  if (is.null(fit)) {
+    if (is.null(best$par) || best$objective >= 1e99) {
+      return(list(par = full(start[free]), value = NA_real_,
+                  convergence = NA, evaluations = evaluations))
+    }
+    return(list(par = full(best$par), value = -best$objective,
+                convergence = 1L, evaluations = evaluations))
+  }
+  if (fit$objective >= 1e99) {
+    return(list(par = full(start[free]), value = NA_real_, convergence = NA,
+                evaluations = evaluations))
   }
   list(par = full(fit$par), value = -fit$objective,
-       convergence = fit$convergence)
+       convergence = fit$convergence, evaluations = evaluations)
 }
 
 ##' Marginal profile of one parameter, stepping outwards from the estimate
@@ -285,8 +347,13 @@ maximise_profile <- function(problem, fixed, fixed_values, start) {
 ##' Regular steps of 2 `span` standard errors over `n_points - 1` cover `span`
 ##' standard errors on each side. Beyond them the steps double until the
 ##' deviance passes the 99% point, with at most `n_points` points on a side.
-##' One more point is then solved at each crossing of the `level` cut-off
-##' whose neighbouring points are more than a regular step apart.
+##' Each point starts from its neighbour's solution. Constrained maxima can be
+##' multimodal, and continuation
+##' can follow a lower branch, so the two points around each crossing of the
+##' `level` cut-off are also solved from the estimate, with a capped number
+##' of evaluations, keeping the higher solution. One more point is then solved
+##' at each crossing whose neighbouring points are more than a regular step
+##' apart.
 ##' @noRd
 profile_one_parameter <- function(problem, name, n_points, span,
                                   level = 0.95) {
@@ -298,22 +365,6 @@ profile_one_parameter <- function(problem, name, n_points, span,
   beyond <- stats::qchisq(0.99, 1)
   cutoff <- stats::qchisq(level, 1)
   deviance_of <- function(result) 2 * (problem$max_loglik - result$value)
-  solve_at <- function(value, start) {
-    result <- maximise_profile(problem, index, value, start)
-    result$second_start <- FALSE
-    # Constrained maxima can be multimodal, and continuation from a
-    # neighbour can follow a lower branch, so a point that may decide an end
-    # of the interval is also solved from the estimate.
-    if (!is.finite(result$value) || deviance_of(result) > cutoff) {
-      other <- maximise_profile(problem, index, value, problem$bank_estimate)
-      if (is.finite(other$value) &&
-          (!is.finite(result$value) || other$value > result$value + 1e-6)) {
-        result <- other
-        result$second_start <- TRUE
-      }
-    }
-    result
-  }
   walk <- function(direction) {
     points <- list()
     start <- problem$bank_estimate
@@ -322,20 +373,69 @@ profile_one_parameter <- function(problem, name, n_points, span,
       offset <- offset + if (k <= regular) step else step * 2^(k - regular)
       value <- centre + direction * offset
       if (value < problem$lower[index] || value > problem$upper[index]) break
-      result <- solve_at(value, start)
+      result <- maximise_profile(problem, index, value, start)
       points[[k]] <- profile_row(problem, index, value, result)
-      if (is.finite(result$value)) start <- result$par
-      if (k >= regular && is.finite(result$value) &&
-          deviance_of(result) > beyond) break
+      if (!is.finite(result$value)) next
+      start <- result$par
+      if (k >= regular && deviance_of(result) > beyond) break
     }
     points
   }
+  second_start <- function(value, result) {
+    other <- maximise_profile(problem, index, value, problem$bank_estimate,
+                              budget = 400L)
+    if (is.finite(other$value) &&
+        (!is.finite(result$value) || other$value > result$value + 1e-6)) {
+      other$second_start <- TRUE
+      return(other)
+    }
+    result
+  }
   centre_row <- profile_row(problem, index, centre,
                             list(par = problem$bank_estimate,
-                                 value = problem$max_loglik, convergence = 0L,
-                                 second_start = FALSE))
+                                 value = problem$max_loglik, convergence = 0L))
   profile <- do.call(rbind, c(rev(walk(-1)), list(centre_row), walk(1)))
-  refine_profile_crossings(problem, profile, index, step, cutoff, solve_at)
+  profile <- recheck_profile_crossings(problem, profile, index, cutoff,
+                                       second_start)
+  refine_profile_crossings(problem, profile, index, step, cutoff,
+                           function(value, start) {
+                             second_start(value, maximise_profile(
+                               problem, index, value, start))
+                           })
+}
+
+##' Solve the two points around each crossing of the cut-off again from the
+##' estimate, keeping the higher solution, until the points around each
+##' crossing have both been checked
+##' @noRd
+recheck_profile_crossings <- function(problem, profile, index, cutoff,
+                                      second_start) {
+  checked <- numeric()
+  repeat {
+    profile <- profile[order(profile$value), ]
+    root <- sqrt(pmax(2 * (problem$max_loglik - profile$loglik), 0))
+    lowest <- which.min(ifelse(is.finite(root), root, Inf))
+    pending <- integer()
+    for (side in c(-1, 1)) {
+      k <- crossing_index(root, lowest, side, sqrt(cutoff))
+      if (is.na(k)) next
+      pending <- c(pending, k, k - side)
+    }
+    pending <- pending[!profile$value[pending] %in% checked &
+                         pending != lowest]
+    if (!length(pending)) break
+    for (row in unique(pending)) {
+      current <- list(value = profile$loglik[row],
+                      par = unlist(profile[row, problem$names]),
+                      convergence = profile$convergence[row],
+                      second_start = profile$second_start[row])
+      result <- second_start(profile$value[row], current)
+      profile[row, ] <- profile_row(problem, index, profile$value[row], result)
+      checked <- c(checked, profile$value[row])
+    }
+  }
+  rownames(profile) <- NULL
+  profile
 }
 
 ##' Solve one more point at each crossing of the cut-off that lies between
