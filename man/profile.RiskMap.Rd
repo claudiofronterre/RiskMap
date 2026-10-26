@@ -7,9 +7,9 @@
 \method{profile}{RiskMap}(
   fitted,
   parameters = NULL,
-  pairs = NULL,
-  n_points = 21L,
-  n_grid = 15L,
+  pairs = list(),
+  n_points = 11L,
+  n_grid = 11L,
   span = 3,
   n_draws = 5000L,
   seed = 1L,
@@ -26,11 +26,11 @@ model.}
 \code{names(unlist(fitted$estimate))} (the prefix \code{beta.} can be left out).
 The default is every parameter.}
 
-\item{pairs}{A list of pairs of parameter names for joint profiles. The
-default is the spatial variance with the scale.}
+\item{pairs}{A list of pairs of parameter names for joint profiles, for
+example \code{list(c("sigma2", "phi"))}. The default is none.}
 
 \item{n_points}{Number of points of each marginal grid before any
-extension.}
+extension, and the most points on each side of the estimate.}
 
 \item{n_grid}{Number of points along each side of a joint grid.}
 
@@ -66,15 +66,30 @@ estimate, so the profiles are smooth functions of the parameters. Use
 \details{
 Grids are centred at the estimate on the scale on which the model is fitted
 (the logarithm for variances and the scale) and span \code{span} standard errors
-either way. A marginal grid is extended until the profile deviance exceeds
-the 99\% point of a chi-squared distribution on one degree of freedom, so
-that the 95\% interval is inside it. Each point starts the optimisation from
-the solution at its neighbour.
+either way. If the profile deviance has not passed the 99\% point of a
+chi-squared distribution on one degree of freedom by the end of a marginal
+grid, the grid is extended with steps that double each time, up to
+\code{n_points} points on each side. Each point starts the optimisation from
+the solution at its neighbour. Profiles can have more than one constrained
+maximum in sparse data, so a point whose deviance is beyond the interval is
+also solved from the estimate, and the higher solution is kept.
 
 Profile intervals are where the profile deviance, twice the drop in the
 log-likelihood from its maximum, crosses the chi-squared quantile for the
-requested level. If a point on a profile is higher than the estimate, the
-estimate is not the highest maximum found, and a message says so.
+requested level. The crossing is interpolated linearly in the signed root
+of the deviance, which is close to linear in the parameter, after one more
+point is solved at the interpolated crossing when the two points around it
+are far apart. An end that the profile does not reach within the grid or
+the bounds of the parameter is reported as open (\code{NA}). If a point on a
+profile is higher than the estimate, the estimate is not the highest
+maximum found, and a message says so.
+
+Each point is a maximisation of the Monte Carlo likelihood over the other
+parameters, so the time grows with the number of points and of parameters.
+A model that takes a minute to fit can take tens of seconds per point.
+Joint profiles cost \code{n_grid^2} points each and are computed only when
+\code{pairs} asks for them. With \code{messages = TRUE} the time left is estimated
+after the first parameter.
 }
 \examples{
 \donttest{
@@ -83,7 +98,9 @@ liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
              data = liberia, model_crs = 32629, family = "binomial",
              control_mcmc = set_control_mcmc(seed = 2026))
-profiles <- profile(fit, n_points = 11, n_grid = 9, n_draws = 2000)
+profiles <- profile(fit, parameters = c("sigma2", "phi"),
+                    pairs = list(c("sigma2", "phi")), n_grid = 9,
+                    n_draws = 2000)
 profiles
 plot(profiles)
 }

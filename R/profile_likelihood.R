@@ -11,25 +11,40 @@
 ##'
 ##' Grids are centred at the estimate on the scale on which the model is fitted
 ##' (the logarithm for variances and the scale) and span `span` standard errors
-##' either way. A marginal grid is extended until the profile deviance exceeds
-##' the 99% point of a chi-squared distribution on one degree of freedom, so
-##' that the 95% interval is inside it. Each point starts the optimisation from
-##' the solution at its neighbour.
+##' either way. If the profile deviance has not passed the 99% point of a
+##' chi-squared distribution on one degree of freedom by the end of a marginal
+##' grid, the grid is extended with steps that double each time, up to
+##' `n_points` points on each side. Each point starts the optimisation from
+##' the solution at its neighbour. Profiles can have more than one constrained
+##' maximum in sparse data, so a point whose deviance is beyond the interval is
+##' also solved from the estimate, and the higher solution is kept.
 ##'
 ##' Profile intervals are where the profile deviance, twice the drop in the
 ##' log-likelihood from its maximum, crosses the chi-squared quantile for the
-##' requested level. If a point on a profile is higher than the estimate, the
-##' estimate is not the highest maximum found, and a message says so.
+##' requested level. The crossing is interpolated linearly in the signed root
+##' of the deviance, which is close to linear in the parameter, after one more
+##' point is solved at the interpolated crossing when the two points around it
+##' are far apart. An end that the profile does not reach within the grid or
+##' the bounds of the parameter is reported as open (`NA`). If a point on a
+##' profile is higher than the estimate, the estimate is not the highest
+##' maximum found, and a message says so.
+##'
+##' Each point is a maximisation of the Monte Carlo likelihood over the other
+##' parameters, so the time grows with the number of points and of parameters.
+##' A model that takes a minute to fit can take tens of seconds per point.
+##' Joint profiles cost `n_grid^2` points each and are computed only when
+##' `pairs` asks for them. With `messages = TRUE` the time left is estimated
+##' after the first parameter.
 ##'
 ##' @param fitted A `RiskMap` object from [glgpm()] for a binomial or Poisson
 ##'   model.
 ##' @param parameters Names of the parameters to profile one at a time, as in
 ##'   `names(unlist(fitted$estimate))` (the prefix `beta.` can be left out).
 ##'   The default is every parameter.
-##' @param pairs A list of pairs of parameter names for joint profiles. The
-##'   default is the spatial variance with the scale.
+##' @param pairs A list of pairs of parameter names for joint profiles, for
+##'   example `list(c("sigma2", "phi"))`. The default is none.
 ##' @param n_points Number of points of each marginal grid before any
-##'   extension.
+##'   extension, and the most points on each side of the estimate.
 ##' @param n_grid Number of points along each side of a joint grid.
 ##' @param span Half-width of the grids, in standard errors.
 ##' @param n_draws Number of Monte Carlo draws in the bank.
@@ -49,15 +64,17 @@
 ##' fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 ##'              data = liberia, model_crs = 32629, family = "binomial",
 ##'              control_mcmc = set_control_mcmc(seed = 2026))
-##' profiles <- profile(fit, n_points = 11, n_grid = 9, n_draws = 2000)
+##' profiles <- profile(fit, parameters = c("sigma2", "phi"),
+##'                     pairs = list(c("sigma2", "phi")), n_grid = 9,
+##'                     n_draws = 2000)
 ##' profiles
 ##' plot(profiles)
 ##' }
 ##' @seealso [plot.RiskMap_profile()]
 ##' @importFrom stats profile
 ##' @export
-profile.RiskMap <- function(fitted, parameters = NULL, pairs = NULL,
-                            n_points = 21L, n_grid = 15L, span = 3,
+profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
+                            n_points = 11L, n_grid = 11L, span = 3,
                             n_draws = 5000L, seed = 1L, level = 0.95,
                             messages = TRUE, ...) {
   stopifnot(inherits(fitted, "RiskMap"))
@@ -69,22 +86,36 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = NULL,
   check_profile_settings(n_points, n_grid, span, n_draws, level)
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
+  if (messages) {
+    message("Re-maximising the likelihood on a bank of ", n_draws, " draws...")
+  }
   problem <- make_profile_problem(fitted, n_draws, seed)
   parameters <- match_profile_parameters(problem, parameters %||% problem$names)
-  if (is.null(pairs)) {
-    pairs <- if (all(c("sigma2", "phi") %in% problem$names)) {
-      list(c("sigma2", "phi"))
-    } else {
-      list()
+  pairs <- lapply(pairs %||% list(), function(pair) {
+    match_profile_parameters(problem, pair)
+  })
+
+  marginal <- vector("list", length(parameters))
+  names(marginal) <- parameters
+  for (k in seq_along(parameters)) {
+    name <- parameters[k]
+    if (messages) {
+      message("Profiling ", problem$labels[[name]], " (", k, " of ",
+              length(parameters), ")...")
+    }
+    started <- proc.time()[["elapsed"]]
+    marginal[[name]] <- profile_one_parameter(problem, name, n_points, span,
+                                              level)
+    if (messages && k == 1L &&
+        (length(parameters) > 1L || length(pairs) > 0L)) {
+      seconds <- proc.time()[["elapsed"]] - started
+      per_point <- seconds / max(1L, nrow(marginal[[name]]) - 1L)
+      planned <- (length(parameters) - 1L) * (n_points + 1L) +
+        length(pairs) * n_grid^2
+      message("About ", format_profile_time(per_point * planned),
+              " left, at about ", signif(per_point, 2), " s per point.")
     }
   }
-  pairs <- lapply(pairs, function(pair) match_profile_parameters(problem, pair))
-
-  marginal <- lapply(parameters, function(name) {
-    if (messages) message("Profiling ", problem$labels[[name]], "...")
-    profile_one_parameter(problem, name, n_points, span)
-  })
-  names(marginal) <- parameters
   joint <- lapply(pairs, function(pair) {
     if (messages) {
       message("Profiling ", problem$labels[[pair[1]]], " with ",
@@ -114,6 +145,14 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = NULL,
     higher_than_estimate = higher, level = level,
     settings = list(n_draws = n_draws, seed = seed, span = span)
   ), class = "RiskMap_profile")
+}
+
+##' A duration in seconds as readable text
+##' @noRd
+format_profile_time <- function(seconds) {
+  if (seconds < 90) return(paste(max(1, round(seconds)), "seconds"))
+  if (seconds < 5400) return(paste(round(seconds / 60), "minutes"))
+  paste(signif(seconds / 3600, 2), "hours")
 }
 
 ##' Check the settings of a profile
@@ -181,6 +220,9 @@ make_profile_problem <- function(fitted, n_draws, seed) {
     upper = c(rep(30, p), 20, 10 + log_scale, rep(20, length(estimate) - p - 2L))
   )
   names(problem$standard_errors) <- names(estimate)
+  # The tolerance of the certified fits: about 1e-4 log-likelihood units, far
+  # below what a deviance needs.
+  problem$control <- make_optimiser_control(abs(value(estimate)))
   best <- maximise_profile(problem, integer(), numeric(), estimate)
   problem$bank_estimate <- best$par
   problem$max_loglik <- best$value
@@ -229,7 +271,7 @@ maximise_profile <- function(problem, fixed, fixed_values, start) {
   fit <- tryCatch(stats::nlminb(
     pmin(pmax(start[free], problem$lower[free]), problem$upper[free]),
     negative, lower = problem$lower[free], upper = problem$upper[free],
-    control = list(eval.max = 400, iter.max = 200, rel.tol = 1e-10)
+    control = problem$control %||% make_optimiser_control()
   ), error = function(error) NULL)
   if (is.null(fit) || fit$objective >= 1e99) {
     return(list(par = full(start[free]), value = NA_real_, convergence = NA))
@@ -239,33 +281,97 @@ maximise_profile <- function(problem, fixed, fixed_values, start) {
 }
 
 ##' Marginal profile of one parameter, stepping outwards from the estimate
+##'
+##' Regular steps of 2 `span` standard errors over `n_points - 1` cover `span`
+##' standard errors on each side. Beyond them the steps double until the
+##' deviance passes the 99% point, with at most `n_points` points on a side.
+##' One more point is then solved at each crossing of the `level` cut-off
+##' whose neighbouring points are more than a regular step apart.
 ##' @noRd
-profile_one_parameter <- function(problem, name, n_points, span) {
+profile_one_parameter <- function(problem, name, n_points, span,
+                                  level = 0.95) {
   index <- match(name, problem$names)
   centre <- problem$bank_estimate[index]
   step <- 2 * span * problem$standard_errors[[name]] / (n_points - 1)
   if (!is.finite(step) || step <= 0) step <- 0.25
-  cutoff <- stats::qchisq(0.99, 1) / 2
+  regular <- (n_points - 1) %/% 2
+  beyond <- stats::qchisq(0.99, 1)
+  cutoff <- stats::qchisq(level, 1)
+  deviance_of <- function(result) 2 * (problem$max_loglik - result$value)
+  solve_at <- function(value, start) {
+    result <- maximise_profile(problem, index, value, start)
+    result$second_start <- FALSE
+    # Constrained maxima can be multimodal, and continuation from a
+    # neighbour can follow a lower branch, so a point that may decide an end
+    # of the interval is also solved from the estimate.
+    if (!is.finite(result$value) || deviance_of(result) > cutoff) {
+      other <- maximise_profile(problem, index, value, problem$bank_estimate)
+      if (is.finite(other$value) &&
+          (!is.finite(result$value) || other$value > result$value + 1e-6)) {
+        result <- other
+        result$second_start <- TRUE
+      }
+    }
+    result
+  }
   walk <- function(direction) {
-    points <- list(); start <- problem$bank_estimate; k <- 0
-    repeat {
-      k <- k + 1
-      value <- centre + direction * k * step
+    points <- list()
+    start <- problem$bank_estimate
+    offset <- 0
+    for (k in seq_len(n_points)) {
+      offset <- offset + if (k <= regular) step else step * 2^(k - regular)
+      value <- centre + direction * offset
       if (value < problem$lower[index] || value > problem$upper[index]) break
-      result <- maximise_profile(problem, index, value, start)
+      result <- solve_at(value, start)
       points[[k]] <- profile_row(problem, index, value, result)
       if (is.finite(result$value)) start <- result$par
-      beyond <- k >= (n_points - 1) / 2 && is.finite(result$value) &&
-        problem$max_loglik - result$value > cutoff
-      if (beyond || k >= 4 * n_points) break
+      if (k >= regular && is.finite(result$value) &&
+          deviance_of(result) > beyond) break
     }
     points
   }
   centre_row <- profile_row(problem, index, centre,
                             list(par = problem$bank_estimate,
-                                 value = problem$max_loglik, convergence = 0L))
-  rows <- c(rev(walk(-1)), list(centre_row), walk(1))
-  do.call(rbind, rows)
+                                 value = problem$max_loglik, convergence = 0L,
+                                 second_start = FALSE))
+  profile <- do.call(rbind, c(rev(walk(-1)), list(centre_row), walk(1)))
+  refine_profile_crossings(problem, profile, index, step, cutoff, solve_at)
+}
+
+##' Solve one more point at each crossing of the cut-off that lies between
+##' points more than a step apart, at the crossing interpolated in the signed
+##' root of the deviance
+##' @noRd
+refine_profile_crossings <- function(problem, profile, index, step, cutoff,
+                                     solve_at) {
+  profile <- profile[order(profile$value), ]
+  root <- sqrt(pmax(2 * (problem$max_loglik - profile$loglik), 0))
+  lowest <- which.min(ifelse(is.finite(root), root, Inf))
+  added <- list()
+  for (side in c(-1, 1)) {
+    k <- crossing_index(root, lowest, side, sqrt(cutoff))
+    if (is.na(k)) next
+    inner <- k - side
+    if (!is.finite(root[inner]) ||
+        abs(profile$value[k] - profile$value[inner]) <= 1.01 * step) next
+    value <- stats::approx(root[c(inner, k)], profile$value[c(inner, k)],
+                           xout = sqrt(cutoff))$y
+    start <- unlist(profile[inner, problem$names])
+    added[[length(added) + 1L]] <- profile_row(problem, index, value,
+                                               solve_at(value, start))
+  }
+  if (length(added)) profile <- rbind(profile, do.call(rbind, added))
+  profile <- profile[order(profile$value), ]
+  rownames(profile) <- NULL
+  profile
+}
+
+##' Index of the first point beyond `threshold` on one side of `lowest`, or NA
+##' @noRd
+crossing_index <- function(root, lowest, side, threshold) {
+  along <- if (side < 0) rev(seq_len(lowest)) else lowest:length(root)
+  above <- along[is.finite(root[along]) & root[along] > threshold]
+  if (!length(above)) NA_integer_ else above[1L]
 }
 
 ##' One row of a profile: the fixed value, the maximised log-likelihood and the
@@ -275,7 +381,8 @@ profile_row <- function(problem, index, value, result) {
   others <- stats::setNames(as.list(result$par), problem$names)
   data.frame(parameter = problem$names[index], value = value,
              loglik = result$value, convergence = result$convergence,
-             others, check.names = FALSE)
+             second_start = isTRUE(result$second_start), others,
+             check.names = FALSE)
 }
 
 ##' Joint profile of two parameters on a grid, in a snake order so that each
@@ -334,15 +441,16 @@ profile_intervals <- function(problem, marginal, level) {
   rows <- lapply(names(marginal), function(name) {
     profile <- marginal[[name]][is.finite(marginal[[name]]$deviance), ]
     profile <- profile[order(profile$value), ]
-    lowest <- which.min(profile$deviance)
+    root <- sqrt(pmax(profile$deviance, 0))
+    lowest <- which.min(root)
+    # Interpolated in the signed root of the deviance, which is close to
+    # linear in the parameter.
     crossing <- function(side) {
-      part <- if (side < 0) profile[seq_len(lowest), ] else profile[lowest:nrow(profile), ]
-      above <- which(part$deviance > cutoff)
-      if (!length(above)) return(NA_real_)
-      k <- if (side < 0) max(above) else min(above)
-      neighbour <- k - side
-      stats::approx(part$deviance[c(k, neighbour)], part$value[c(k, neighbour)],
-                    xout = cutoff)$y
+      k <- crossing_index(root, lowest, side, sqrt(cutoff))
+      if (is.na(k) || !is.finite(root[k - side])) return(NA_real_)
+      inner <- k - side
+      stats::approx(root[c(inner, k)], profile$value[c(inner, k)],
+                    xout = sqrt(cutoff))$y
     }
     estimate <- problem$estimate[[name]]
     se <- problem$standard_errors[[name]]
@@ -371,6 +479,10 @@ print.RiskMap_profile <- function(x, ...) {
   names(table) <- c("Parameter", "Estimate", "Profile lower", "Profile upper",
                     "Wald lower", "Wald upper")
   print(table, row.names = FALSE, digits = 4)
+  if (anyNA(x$intervals[, c("profile_lower", "profile_upper")])) {
+    cat("\nNA: the profile does not reach the cut-off on that side within the",
+        "grid or the\nbounds of the parameter, so the interval is open there.\n")
+  }
   if (x$higher_than_estimate > 0.01) {
     cat("\nA point on the profile is higher than the estimate by",
         signif(x$higher_than_estimate, 3), "log-likelihood units.\n")

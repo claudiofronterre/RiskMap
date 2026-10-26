@@ -91,9 +91,16 @@ parameters, avoiding a repeated likelihood calculation.
 fitted by certified Monte Carlo maximum likelihood, for single parameters and
 for pairs, on one fixed bank of draws so that the profiles are smooth. It
 reports profile and Wald intervals and says if a point on a profile is higher
-than the estimate. `plot()` draws the marginal profiles against their
-quadratic approximation and the joint profiles as confidence regions with the
-marginal ridges, as a corner plot for one pair.
+than the estimate. Marginal grids of 11 points are extended with doubling steps
+where the profile is flat, up to 11 points a side, and an end the profile does
+not reach is reported as open. Interval ends are interpolated in the signed
+root of the deviance, with one more point at a crossing between distant
+points, and points beyond the interval are also solved from the estimate,
+because constrained maxima can be multimodal. Joint profiles are computed only
+when `pairs` asks for them, and the time left is estimated as the profiles
+run. `plot()` draws the marginal profiles against their quadratic
+approximation and the joint profiles as confidence regions with the marginal
+ridges, as a corner plot for one pair.
 
 - Non-Gaussian models are now fitted by certified Monte Carlo maximum
 likelihood. The estimated likelihood is maximised on a fitting sample of 1,000
