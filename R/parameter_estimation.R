@@ -133,7 +133,7 @@
 ##' sizes, Pareto tail diagnostics, parameter Monte Carlo error,
 ##' independent-score agreement, timing, stopping decision, and the reason for
 ##' any increase in sample size. Estimates use the same parameterisation as
-##' `estimate`, with regression coefficients and spatial range restored to the
+##' `estimate`, with regression coefficients and the scale parameter phi restored to the
 ##' supplied covariate and distance units. `NULL` for Gaussian models.}
 ##' \item{mcml_converged}{Whether the final adaptive stage met every Monte
 ##' Carlo precision and independent-validation criterion. `NULL` for Gaussian
@@ -2989,17 +2989,17 @@ laplace_sampling_mcmc <- function(y,
 ##' maximum likelihood starts from the best Laplace estimate. Defaults to
 ##' `FALSE`: in validation this changed which local maximum was reached about as
 ##' often for the worse as for the better, at extra computational cost.
-##' @param hold_short_range Logical. If `TRUE` (the default), a spatial range
-##' estimated below the median distance between neighbouring locations is held
+##' @param hold_short_range Logical. If `TRUE` (the default), a scale parameter
+##' phi estimated below the median distance between neighbouring locations is held
 ##' at that distance, because spatial correlation on a shorter scale cannot be
 ##' distinguished from unstructured variation; a warning is issued. Set to
 ##' `FALSE` to obtain the unconstrained maximum likelihood estimate.
-##' @param pc_prior Logical. If `TRUE`, the spatial variance and range are
+##' @param pc_prior Logical. If `TRUE`, the spatial variance and scale parameter are
 ##' penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
 ##' estimate maximises the penalised likelihood on the log scale of the
 ##' covariance parameters. This shrinks estimates away from degenerate
 ##' solutions in small or sparse datasets and replaces the hold of short
-##' ranges. It is recommended for small or low-prevalence surveys, especially
+##' scale parameters. It is recommended for small or low-prevalence surveys, especially
 ##' before prediction with `parameter_uncertainty = TRUE` in [predict.RiskMap()].
 ##' When the spatial variance is large and well identified, the penalty shrinks
 ##' it somewhat towards zero, so the default is `FALSE`.
@@ -3009,7 +3009,7 @@ laplace_sampling_mcmc <- function(y,
 ##' 1 and 0.05.
 ##' @param pc_range_threshold,pc_range_probability The penalty sets
 ##' P(phi < `pc_range_threshold`) = `pc_range_probability`, where phi is the
-##' range in the units of the coordinates. By default the threshold is the
+##' scale parameter in the units of the coordinates. By default the threshold is the
 ##' median distance between neighbouring locations and the probability is
 ##' 0.05.
 ##' @return A control object of class `RiskMap_control_mcml`.

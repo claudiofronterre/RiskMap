@@ -49,7 +49,7 @@ test_that("compiled distances handle coordinates that are not two-dimensional", 
   }
 })
 
-test_that("Matérn correlations reject invalid ranges and distances", {
+test_that("Matérn correlations reject invalid scale parameters and distances", {
   for (kappa in c(0.5, 1)) {
     for (phi in c(0, -1, NA, Inf)) {
       expect_error(matern_correlation(c(0, 1), phi = phi, kappa = kappa),
@@ -111,7 +111,7 @@ test_that("distance scaling rejects coincident observed locations", {
                "at least two distinct locations")
 })
 
-test_that("fitted spatial ranges remain in the requested distance units", {
+test_that("fitted scale parameters remain in the requested distance units", {
   model_metres <- glgpm(y ~ cov + gp() + re(i),
                         data = gaussian_data,
                         family = "gaussian",

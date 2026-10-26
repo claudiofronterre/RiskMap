@@ -121,6 +121,6 @@ create_grid <- function(boundaries,
     keep = keep,
     boundary = study_boundary
   )
-  class(grid_out) <- c("RiskMap_grid", class(grid_out))
+  class(grid_out) <- c(class(grid_out), "RiskMap_grid")
   grid_out
 }

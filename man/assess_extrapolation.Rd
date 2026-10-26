@@ -62,7 +62,7 @@ the nugget (and, for Gaussian models, the measurement-error variance) to the
 spatial variance. It is close to 0 next to well-sampled locations and close
 to 1 where the data carry no information about the spatial effect. Unlike
 the distance to the nearest sampled location, it accounts for the estimated
-range of correlation and for clustering of the sampled locations. It depends
+scale of spatial correlation and for clustering of the sampled locations. It depends
 only on where the data were collected, not on the outcomes or on the number
 of individuals at each location. For binomial and Poisson outcomes, which
 carry less information than a noise-free observation of the linear
