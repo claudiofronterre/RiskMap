@@ -123,7 +123,7 @@ make_toy_check <- function(short, limit = -50, best_log_variance = function(t) 0
   screen <- list(
     beta_index = 1L, sigma2_index = 2L, phi_index = 3L,
     log_phi = c(-6, -5, -4, -3), margin = 0.25, window = 2, step = 0.5,
-    step_limit = 2, alarm_multiplier = 2.58,
+    step_limit = 2, alarm_multiplier = 2.58, alarm_floor = 1e-4,
     independent = function(beta) {
       list(beta = 0, log_variance = 0, log_likelihood = limit,
            quadrature_error = 0)
@@ -296,4 +296,12 @@ test_that("the records of the screen are restored to user units", {
   expect_equal(screen$screen$log_phi, log(c(1, 2)))
   expect_equal(screen$alarm$log_phi, log(1))
   expect_equal(screen$independent$beta, c(a = -1, b = 4))
+})
+
+test_that("an exact value equal to the fit to numerical precision is no alarm", {
+  # The fit is at the limit itself, as with a variance at zero, and the
+  # comparison has no Monte Carlo error.
+  toy <- make_toy_check(function(t) 1e-8 * exp(-(t + 5)^2),
+                        limit = log(1 + 1e-8 * exp(-49)) + 2e-9)
+  expect_false(toy$run()$screen$alarm$fired)
 })

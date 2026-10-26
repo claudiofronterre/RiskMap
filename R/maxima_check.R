@@ -257,7 +257,9 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
     phi_index = layout$index$phi,
     log_phi = log(spacing) + log(c(1 / 8, 1 / 4, 1 / 2, 1)),
     margin = 0.25, window = 2, step = 0.5, step_limit = 2,
-    alarm_multiplier = 2.58,
+    # The optimiser stops within about 1e-4 log-likelihood units of a
+    # maximum, so smaller differences from an exact value mean nothing.
+    alarm_multiplier = 2.58, alarm_floor = 1e-4,
     independent = independent, plug_in = plug_in,
     bound = function(point, fit) {
       compute_jensen_bound(fit, engine$spatial_covariance(point))
@@ -384,7 +386,8 @@ estimate_on_comparison_bank <- function(engine, penalty, parameters, n_draws,
 ##' likelihood there. The largest of these exact values is compared with the
 ##' fitted log-likelihood estimated on the comparison bank, and the alarm
 ##' fires when it exceeds that estimate by more than `alarm_multiplier`
-##' standard errors plus the quadrature error. With a penalty the limit of
+##' standard errors plus the quadrature error and `alarm_floor`, the accuracy
+##' to which the optimiser locates a maximum. With a penalty the limit of
 ##' zero scale is left out, because the penalty diverges there, and the
 ##' penalty is added to the bounds. The `start` is the point that gave the
 ##' largest value, at the shortest screened scale for the limit itself.
@@ -408,7 +411,7 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
   list(statistic = values[top], log_phi = sources[top],
        quadrature_error = fit$quadrature_error,
        fitted_comparison = fitted$value, fitted_comparison_se = fitted$se,
-       fired = values[top] - fit$quadrature_error >
+       fired = values[top] - fit$quadrature_error - screen$alarm_floor >
          fitted$value + screen$alarm_multiplier * fitted$se,
        start = starts[[top]])
 }
@@ -558,7 +561,7 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
       !(dispersed$sigma2_index %in% kept$boundary) &&
       kept$fit$par[[dispersed$phi_index]] < min(screen$log_phi)) {
     gap <- judge_kept()$value - limit$log_likelihood
-    zero_scale <- gap <= limit$quadrature_error +
+    zero_scale <- gap <= limit$quadrature_error + screen$alarm_floor +
       screen$alarm_multiplier * judge_kept()$se
     if (zero_scale) {
       record$zero_scale <- list(gap = gap, se = judge_kept()$se,
@@ -568,7 +571,8 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
   if (isTRUE(record$alarm$fired)) {
     # The alarm persists if the exact value still exceeds the kept maximum.
     record$alarm$persists <- !zero_scale &&
-      record$alarm$statistic - record$alarm$quadrature_error >
+      record$alarm$statistic - record$alarm$quadrature_error -
+      screen$alarm_floor >
       judge_kept()$value + screen$alarm_multiplier * judge_kept()$se
   }
   list(optimised = kept, check = choice$table, separate = choice$separate,
