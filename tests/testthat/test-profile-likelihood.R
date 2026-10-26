@@ -116,3 +116,19 @@ test_that("profiles on two cores equal those on one", {
   expect_identical(parallel$intervals, serial$intervals)
   expect_error(profile(binomial_model, cores = 0), "cores")
 })
+
+test_that("a coefficient is profiled in the user's units on the standardised scale", {
+  problem <- make_profile_problem(binomial_model, 200L, 1L)
+  index <- match("beta.(Intercept)", problem$names)
+  value <- unname(problem$bank_estimate[index] + 0.3)
+  standardised <- maximise_profile(problem, index, value,
+                                   problem$bank_estimate)
+  # The intercept stays fixed in the user's units, although centring mixes it
+  # with the other coefficients on the standardised scale.
+  expect_identical(unname(standardised$par[[index]]), value)
+  expect_equal(problem$value(standardised$par), standardised$value,
+               tolerance = 1e-8)
+  # Started from its own solution, the optimiser stays there.
+  again <- maximise_profile(problem, index, value, standardised$par)
+  expect_equal(again$value, standardised$value, tolerance = 1e-3)
+})

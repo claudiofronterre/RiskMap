@@ -15,7 +15,10 @@
 ##' chi-squared distribution on one degree of freedom by the end of a marginal
 ##' grid, the grid is extended with steps that double each time, up to
 ##' `n_points` points on each side. Each point starts the optimisation from
-##' the solution at its neighbour. Profiles can have more than one constrained
+##' the extrapolation of the two previous solutions, which follows a ridge in
+##' the other parameters. The optimisation works on the scale of the fit, with
+##' standardised covariates, while a profiled coefficient stays fixed in its
+##' own units. Profiles can have more than one constrained
 ##' maximum in sparse data, so a point whose deviance is beyond the interval is
 ##' also solved from the estimate, and the higher solution is kept.
 ##'
@@ -248,22 +251,35 @@ make_profile_problem <- function(fitted, n_draws, seed) {
     c(solve(transform, working[seq_len(p)]), working[p + 1L],
       working[p + 2L] - log_scale, working[-seq_len(p + 2L)])
   }
+  from_internal <- function(internal) {
+    c(drop(transform %*% internal[seq_len(p)]), internal[p + 1L],
+      internal[p + 2L] + log_scale, internal[-seq_len(p + 2L)])
+  }
   estimate <- unlist(fitted$estimate)
   internal <- to_internal(estimate)
   engine$set_anchor(internal)
   set.seed(seed)
   bank <- matrix(stats::rnorm(n_draws * engine$latent_dimension), nrow = n_draws)
-  value <- function(working) {
-    result <- tryCatch(objective(to_internal(working), bank),
+  value_internal <- function(internal) {
+    result <- tryCatch(objective(internal, bank),
                        error = function(error) NA_real_)
     if (is.finite(result) && result > -1e99) result else NA_real_
   }
+  value <- function(working) value_internal(to_internal(working))
+  others <- length(estimate) - p - 2L
   problem <- list(
     value = value, estimate = estimate, names = names(estimate),
     labels = profile_labels(names(estimate), fitted$distance_units),
     standard_errors = sqrt(pmax(diag(fitted$covariance), 0)),
-    lower = c(rep(-30, p), -20, -20 + log_scale, rep(-20, length(estimate) - p - 2L)),
-    upper = c(rep(30, p), 20, 10 + log_scale, rep(20, length(estimate) - p - 2L))
+    lower = c(rep(-30, p), -20, -20 + log_scale, rep(-20, others)),
+    upper = c(rep(30, p), 20, 10 + log_scale, rep(20, others)),
+    # The optimiser works on the engine's scale (standardised covariates,
+    # rescaled distances), as the fit does, with the bounds of the fit.
+    internal = list(value = value_internal, to = to_internal,
+                    from = from_internal, transform = transform, p = p,
+                    lower = c(rep(-30, p), -20, -20, rep(-20, others)),
+                    upper = c(rep(30, p), 20, 10, rep(20, others))),
+    predict_starts = TRUE
   )
   names(problem$standard_errors) <- names(estimate)
   # The tolerance of the certified fits: about 1e-4 log-likelihood units, far
@@ -302,29 +318,60 @@ match_profile_parameters <- function(problem, parameters) {
 
 ##' Maximise the log-likelihood on the profile bank with some parameters fixed
 ##'
-##' The proposal is rebuilt at every evaluation, as in the fit, which leaves
-##' the estimated log-likelihood slightly rough in the parameters. The
-##' forward differences of `nlminb()` use a step too small for that roughness
-##' and can end in "false convergence" well below the maximum (by up to 0.3
-##' log-likelihood units on a moderate model). A stop with a non-zero code is
-##' therefore solved again from the same start with a central-difference
-##' gradient with a step of 1e-4 on the working scale, keeping the better
-##' solution. The gradient is not used first, because along a ridge it can
-##' need ten times the evaluations of the plain optimiser where that
-##' converges. A proposal held
-##' fixed during the optimisation is smoother but poor far along a ridge. `budget` caps the number of evaluations, and the best point
+##' The fixed parameters and the start are on the user's scale, and so is the
+##' result, but the optimiser works on the engine's scale, with standardised
+##' covariates and rescaled distances, as the fit does. In the user's units a
+##' coefficient of a covariate with a large range is badly scaled for the
+##' optimiser, which then stops well below the maximum. A fixed variance,
+##' scale or nugget is fixed at its value on that scale. A fixed coefficient
+##' is a linear constraint on the standardised coefficients, met exactly by
+##' solving for one of them (chosen by a pivoted QR decomposition) from the
+##' others. This matters for the intercept, which centring mixes with the
+##' other coefficients. A problem without `internal` (the tests' stand-ins)
+##' is optimised on the user's scale.
+##'
+##' A stop with a non-zero code is solved again from the same start with a
+##' central-difference gradient with a step of 1e-4, keeping the better
+##' solution. `budget` caps the number of evaluations, and the best point
 ##' evaluated so far is returned when the cap is reached. The number of
 ##' evaluations is returned.
 ##' @noRd
 maximise_profile <- function(problem, fixed, fixed_values, start,
                              budget = Inf) {
-  free <- setdiff(seq_along(start), fixed)
-  lower <- problem$lower[free]
-  upper <- problem$upper[free]
+  scale <- problem$internal %||% list(
+    value = problem$value, to = identity, from = identity, transform = NULL,
+    p = 0L, lower = problem$lower, upper = problem$upper
+  )
+  p <- scale$p
+  target <- start
+  target[fixed] <- fixed_values
+  internal_start <- scale$to(target)
+  fixed_beta <- fixed[fixed <= p]
+  fixed_other <- fixed[fixed > p]
+  pivot <- integer()
+  if (length(fixed_beta)) {
+    constraint <- scale$transform[fixed_beta, , drop = FALSE]
+    pivot <- qr(constraint)$pivot[seq_along(fixed_beta)]
+    rest <- setdiff(seq_len(p), pivot)
+  }
+  free <- setdiff(seq_along(start), c(pivot, fixed_other))
+  lower <- scale$lower[free]
+  upper <- scale$upper[free]
+  full_internal <- function(free_values) {
+    internal <- internal_start
+    internal[free] <- free_values
+    if (length(pivot)) {
+      internal[pivot] <- solve(
+        constraint[, pivot, drop = FALSE],
+        fixed_values[seq_along(fixed_beta)] -
+          constraint[, rest, drop = FALSE] %*% internal[rest]
+      )
+    }
+    internal
+  }
   full <- function(free_values) {
-    working <- start
+    working <- scale$from(full_internal(free_values))
     working[fixed] <- fixed_values
-    working[free] <- free_values
     working
   }
   evaluations <- 0L
@@ -335,7 +382,7 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
                      list(message = "budget reached", call = NULL)))
     }
     evaluations <<- evaluations + 1L
-    result <- problem$value(full(free_values))
+    result <- scale$value(full_internal(free_values))
     objective <- if (is.finite(result)) -result else 1e100
     if (objective < best$objective) {
       best <<- list(objective = objective, par = free_values)
@@ -364,24 +411,21 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
     if (is.null(second)) return(first)
     if (is.null(first) || second$objective < first$objective) second else first
   }
-  fit <- run(start[free], FALSE)
-  # A stop with a non-zero code, usually false convergence, is solved again
-  # from the same start with the central-difference gradient, and the better
-  # solution is kept. Continuing from where the first run stopped does not
-  # leave a false stop as reliably.
+  from <- internal_start[free]
+  fit <- run(from, FALSE)
   if (!is.null(fit) && fit$convergence != 0L && fit$objective < 1e99) {
-    fit <- better(fit, run(start[free], TRUE))
+    fit <- better(fit, run(from, TRUE))
   }
   if (is.null(fit)) {
     if (is.null(best$par) || best$objective >= 1e99) {
-      return(list(par = full(start[free]), value = NA_real_,
+      return(list(par = full(from), value = NA_real_,
                   convergence = NA, evaluations = evaluations))
     }
     return(list(par = full(best$par), value = -best$objective,
                 convergence = 1L, evaluations = evaluations))
   }
   if (fit$objective >= 1e99) {
-    return(list(par = full(start[free]), value = NA_real_, convergence = NA,
+    return(list(par = full(from), value = NA_real_, convergence = NA,
                 evaluations = evaluations))
   }
   list(par = full(fit$par), value = -fit$objective,
@@ -393,8 +437,9 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
 ##' Regular steps of 2 `span` standard errors over `n_points - 1` cover `span`
 ##' standard errors on each side. Beyond them the steps double until the
 ##' deviance passes the 99% point, with at most `n_points` points on a side.
-##' Each point starts from its neighbour's solution. Constrained maxima can be
-##' multimodal, and continuation
+##' Each point starts from its neighbour's solution or from the extrapolation
+##' of the last two solutions (`problem$predict_starts`). Constrained maxima
+##' can be multimodal, and continuation
 ##' can follow a lower branch, so the two points around each crossing of the
 ##' `level` cut-off are also solved from the estimate, with a capped number
 ##' of evaluations, keeping the higher solution. One more point is then solved
@@ -424,18 +469,32 @@ plan_one_parameter <- function(problem, name, n_points, span, level = 0.95) {
   beyond <- stats::qchisq(0.99, 1)
   cutoff <- stats::qchisq(level, 1)
   deviance_of <- function(result) 2 * (problem$max_loglik - result$value)
+  # The start of each point: its neighbour's solution, or, with
+  # `problem$predict_starts`, the linear extrapolation of the last two
+  # solutions in the profiled parameter, which follows a ridge.
+  start_for <- function(solutions, value) {
+    last <- solutions[[length(solutions)]]
+    if (!isTRUE(problem$predict_starts) || length(solutions) < 2L) {
+      return(last$par)
+    }
+    before <- solutions[[length(solutions) - 1L]]
+    ratio <- (value - last$value) / (last$value - before$value)
+    predicted <- last$par + ratio * (last$par - before$par)
+    pmin(pmax(predicted, problem$lower), problem$upper)
+  }
   walk <- function(direction) {
     points <- list()
-    start <- problem$bank_estimate
+    solutions <- list(list(value = centre, par = problem$bank_estimate))
     offset <- 0
     for (k in seq_len(n_points)) {
       offset <- offset + if (k <= regular) step else step * 2^(k - regular)
       value <- centre + direction * offset
       if (value < problem$lower[index] || value > problem$upper[index]) break
-      result <- maximise_profile(problem, index, value, start)
+      result <- maximise_profile(problem, index, value,
+                                 start_for(solutions, value))
       points[[k]] <- profile_row(problem, index, value, result)
       if (!is.finite(result$value)) next
-      start <- result$par
+      solutions <- c(solutions, list(list(value = value, par = result$par)))
       if (k >= regular && deviance_of(result) > beyond) break
     }
     points
