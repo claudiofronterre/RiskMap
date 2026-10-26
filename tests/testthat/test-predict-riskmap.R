@@ -352,6 +352,24 @@ test_that("missing predictors preserve rows and return missing predictions", {
   expect_true(all(is.finite(result$predictions$response_mean[-2])))
 })
 
+test_that("predictors that are invalid once transformed return missing predictions", {
+  log_data <- gaussian_data
+  log_data$cov <- log_data$cov - min(log_data$cov) + 1
+  log_model <- glgpm(y ~ log(cov) + gp(), data = log_data,
+                     family = "gaussian", messages = FALSE)
+  prediction_data$cov[2:3] <- c(-1, 0)
+
+  expect_warning(
+    result <- predict(log_model, prediction_data, seed = 47,
+                      messages = FALSE),
+    "2 prediction rows give non-finite covariate values"
+  )
+
+  expect_identical(nrow(result$predictions), nrow(prediction_data))
+  expect_true(all(is.na(result$predictions$response_mean[2:3])))
+  expect_true(all(is.finite(result$predictions$response_mean[-(2:3)])))
+})
+
 test_that("all unusable prediction rows retain a complete missing result", {
   prediction_data$cov <- NA_real_
 

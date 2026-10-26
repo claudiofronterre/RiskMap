@@ -36,7 +36,9 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck
+          # local::. installs RiskMap itself so the R process started by the
+          # quarto CLI can load it when building vignettes on Windows
+          extra-packages: any::rcmdcheck, local::.
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2

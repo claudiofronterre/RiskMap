@@ -17,6 +17,8 @@ test_that("location predictions produce an adaptable prediction map", {
 
   expect_s3_class(map, "ggplot")
   expect_no_error(ggplot_build(map))
+  # Points with missing aesthetics are only dropped when the map is drawn.
+  expect_no_warning(ggplot_gtable(ggplot_build(map)))
   expect_equal(map$scales$scales[[1L]]$limits, c(0, 0.8))
   expect_equal(exceedance_map$scales$scales[[1L]]$limits, c(0, 1))
   expect_equal(length(prediction_plot_palette(NULL)), 256L)
