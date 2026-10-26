@@ -362,9 +362,11 @@ compute_observed_information <- function(objective, estimate, fit_bank,
 ##' validation bank, and certifies the corrected estimate with a second, fresh
 ##' validation bank drawn at that point. `seeds` gives the streams of the
 ##' three banks and of the independent bank of the check for other maxima. At
-##' the first stage that check (`check_dispersed_maxima()`) may replace the
-##' maximum. `curvature_root`, if given, seeds the optimisation with Newton
-##' steps (`optimise_on_bank()`).
+##' the first stage that check (`check_other_maxima()`) may replace the
+##' maximum, and if the kept maximum is the limit of zero spatial scale the
+##' stage ends with the outcome "zero scale", without information or
+##' certificate, because both need an interior maximum. `curvature_root`, if
+##' given, seeds the optimisation with Newton steps (`optimise_on_bank()`).
 ##' @noRd
 run_certified_stage <- function(engine, objective, penalty, start, budget,
                             validation_budget, seeds, lower, upper,
@@ -378,17 +380,19 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
                      nrow = budget)
   optimised <- optimise_on_bank(objective, start, fit_bank, lower, upper,
                                 first_stage, limits, curvature_root)
-  check <- NULL
-  separate <- ambiguous <- FALSE
+  check <- screen <- NULL
+  separate <- ambiguous <- zero_scale <- FALSE
   if (first_stage && !is.null(limits$dispersed) &&
       is_valid_fit(optimised$fit)) {
-    checked <- check_dispersed_maxima(engine, objective, penalty, optimised,
-                                      fit_bank, lower, upper, limits,
-                                      validation_budget, seeds[[4L]])
+    checked <- check_other_maxima(engine, objective, penalty, optimised,
+                                  fit_bank, lower, upper, limits,
+                                  validation_budget, seeds[[4L]])
     optimised <- checked$optimised
     check <- checked$check
+    screen <- checked$screen
     separate <- checked$separate
     ambiguous <- checked$ambiguous
+    zero_scale <- checked$zero_scale
   }
   fit <- optimised$fit
   record <- list(
@@ -401,8 +405,8 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
     boundary_parameters = optimised$boundary,
     restarted = optimised$restarted,
     restart_improved = optimised$restart_improved,
-    maxima_check = check, separate_maximum = separate,
-    ambiguous_maxima = ambiguous,
+    maxima_check = check, maxima_screen = screen,
+    separate_maximum = separate, ambiguous_maxima = ambiguous,
     fit_diagnostics = if (all(is.finite(fit$par))) {
       summarise_importance_weights(
         engine$evaluate(fit$par, fit_bank, log_weights_only = TRUE)
@@ -424,6 +428,13 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   if (!is_valid_fit(fit)) {
     return(finish(record, "no valid fit",
                   "the estimated log-likelihood is not finite at the optimum"))
+  }
+  if (zero_scale) {
+    return(finish(record, "zero scale", paste(
+      "the likelihood is highest, within Monte Carlo error, in the limit of",
+      "zero spatial scale, where the model reduces to independent location",
+      "effects"
+    )))
   }
   started <- proc.time()[["elapsed"]]
   information <- compute_observed_information(objective, fit$par, fit_bank,
@@ -499,65 +510,6 @@ correct_and_certify <- function(engine, penalty, estimate, information,
 ##' @noRd
 is_valid_fit <- function(fit) {
   all(is.finite(fit$par)) && is.finite(fit$objective) && fit$objective < 1e99
-}
-
-##' Check for other maxima on the fitting bank
-##'
-##' If the fitted spatial scale is below the trigger of `limits$dispersed`
-##' (see `make_dispersed_starts()`) and the spatial variance is not at zero, the
-##' estimated log-likelihood is also maximised from the dispersed starts on
-##' the same bank, with the other parameters at their fitted values, and
-##' `choose_maximum()` decides which maximum to keep. `n_draws` and `seed`
-##' define the independent bank on which separate maxima are compared.
-##' @return The kept `optimised` result, a `check` table (NULL if the check
-##' was not triggered), whether the kept maximum is `separate` from the fitted
-##' one, and whether the choice is `ambiguous`.
-##' @noRd
-check_dispersed_maxima <- function(engine, objective, penalty, optimised,
-                                   fit_bank, lower, upper, limits, n_draws,
-                                   seed) {
-  dispersed <- limits$dispersed
-  estimate <- optimised$fit$par
-  if (dispersed$sigma2_index %in% optimised$boundary ||
-      !(estimate[dispersed$phi_index] < dispersed$trigger)) {
-    return(list(optimised = optimised, check = NULL, separate = FALSE,
-                ambiguous = FALSE))
-  }
-  if (!is.null(dispersed$announce)) {
-    dispersed$announce(estimate[[dispersed$phi_index]])
-  }
-  refits <- lapply(seq_along(dispersed$labels), function(dispersed_start) {
-    start <- estimate
-    start[dispersed$sigma2_index] <- dispersed$log_sigma2[dispersed_start]
-    start[dispersed$phi_index] <- dispersed$log_phi[dispersed_start]
-    optimise_on_bank(objective, pmin(pmax(start, lower), upper), fit_bank,
-                     lower, upper, TRUE, limits)
-  })
-  # A refit that ends with non-finite values or the penalty value is not a
-  # maximum and is left out of the comparison.
-  usable <- vapply(refits, function(refit) is_valid_fit(refit$fit),
-                   logical(1))
-  candidates <- c(list(optimised), refits[usable])
-  information <- tryCatch(
-    compute_central_hessian(function(parameters) {
-      -objective(parameters, fit_bank)
-    }, estimate),
-    error = function(error) NULL
-  )
-  choice <- choose_maximum(
-    engine, penalty, lapply(candidates, function(candidate) {
-      candidate$fit$par
-    }),
-    vapply(candidates, function(candidate) -candidate$fit$objective,
-           numeric(1)),
-    information, n_draws, seed, limits$tolerance
-  )
-  choice$table$start <- c("fitted", dispersed$labels[usable])
-  choice$table$log_phi <- vapply(candidates, function(candidate) {
-    candidate$fit$par[[dispersed$phi_index]]
-  }, numeric(1))
-  list(optimised = candidates[[choice$chosen]], check = choice$table,
-       separate = choice$separate, ambiguous = choice$ambiguous)
 }
 
 ##' Choose among candidate maxima of the estimated log-likelihood
@@ -721,7 +673,8 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' stage then rests on a pair of validation banks drawn after everything that
 ##' led to it, as the conditional guarantee of the procedure requires.
 ##' `dispersed`, from `make_dispersed_starts()`, turns on the check for other
-##' maxima at the first stage. Each later stage starts its optimisation with
+##' maxima at the first stage, with the screen of short scales and the exact
+##' alarms when it holds their settings (`make_short_scale_screen()`). Each later stage starts its optimisation with
 ##' Newton steps on the previous stage's information when every parameter was
 ##' free.
 ##' @noRd
@@ -803,6 +756,8 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
   list(
     estimate = current, outcome = last$outcome,
     maxima_check = history[[1L]]$maxima_check,
+    maxima_screen = history[[1L]]$maxima_screen,
+    maxima_alarm = isTRUE(history[[1L]]$maxima_screen$alarm$persists),
     better_maximum = isTRUE(history[[1L]]$separate_maximum),
     ambiguous_maxima = isTRUE(history[[1L]]$ambiguous_maxima),
     certified = isTRUE(last$certified), certificate = last$certificate,

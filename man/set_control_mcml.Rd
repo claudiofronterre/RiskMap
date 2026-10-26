@@ -62,10 +62,21 @@ values, and Monte Carlo maximum likelihood starts from that estimate.}
 precision at the maximum found, not that no higher maximum exists. In
 sparse surveys an optimiser can stop at a maximum with a spatial scale far
 below the spacing between locations while a higher one exists at a longer
-scale. If \code{TRUE} (the default) and the fitted scale is below half the
-median distance between neighbouring locations, the fit is repeated from
-four dispersed starting values on the same Monte Carlo draws and the
-highest maximum is kept, with a warning if it differs.}
+scale, or the reverse. If \code{TRUE} (the default), a fitted scale below half
+the median distance between neighbouring locations is refitted from four
+dispersed starting values on the same Monte Carlo draws. After a fit at a
+longer scale the likelihood is evaluated at four shorter scales, with the
+coefficients and variance of the model with independent location effects
+(the limit of the model as the scale goes to zero, computed exactly by
+quadrature), and the fit is repeated from the best of them if it comes
+within 0.25 log-likelihood units of the fit. Exact lower bounds on the
+likelihood at short scales force a further search if they exceed the
+fitted log-likelihood. Separate maxima are compared on independent draws
+and the highest is kept, with a warning if it differs. A likelihood that is
+highest in the limit of zero scale is reported as such, without standard
+errors or certificate. The screen of short scales and the exact bounds are
+available for the canonical links and models without unstructured random
+effects.}
 
 \item{pc_prior}{Logical. If \code{TRUE}, the spatial variance and scale are
 penalised by penalised-complexity priors (Fuglstad et al., 2019) and the

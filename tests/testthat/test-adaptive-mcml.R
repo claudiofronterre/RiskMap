@@ -652,7 +652,7 @@ test_that("the check for maxima finds a higher one at a longer scale", {
   local <- optimise_on_bank(objective, c(0, -3.2), NULL, lower, upper,
                             TRUE, limits)
   expect_equal(local$fit$par[2], -3, tolerance = 1e-3)
-  checked <- check_dispersed_maxima(engine, objective, NULL, local, NULL,
+  checked <- check_other_maxima(engine, objective, NULL, local, NULL,
                                     lower, upper, limits, 100L, 1L)
   expect_equal(announced, local$fit$par[2])
   expect_true(checked$separate)
@@ -664,7 +664,7 @@ test_that("the check for maxima finds a higher one at a longer scale", {
   announced <- NULL
   higher <- optimise_on_bank(objective, c(0, 1.5), NULL, lower, upper, TRUE,
                              limits)
-  unchecked <- check_dispersed_maxima(engine, objective, NULL, higher, NULL,
+  unchecked <- check_other_maxima(engine, objective, NULL, higher, NULL,
                                       lower, upper, limits, 100L, 1L)
   expect_null(unchecked$check)
   expect_null(announced)
@@ -685,7 +685,7 @@ test_that("a stage whose optimiser returns non-finite values has no valid fit", 
       list(fit = list(par = c(NaN, NaN), objective = 1e100, convergence = 0L),
            boundary = integer(), restarted = FALSE, restart_improved = FALSE)
     },
-    check_dispersed_maxima = function(...) stop("checked an invalid fit")
+    check_other_maxima = function(...) stop("checked an invalid fit")
   )
   stage <- run_certified_stage(engine, function(...) 0, NULL, c(0, 0), 10L,
                                10L, 1:4, c(-10, -10), c(10, 10), TRUE, limits)
@@ -724,7 +724,7 @@ test_that("the check for other maxima leaves out refits that fail", {
     }
     original(objective, start, ...)
   })
-  checked <- check_dispersed_maxima(engine, objective, NULL, local, NULL,
+  checked <- check_other_maxima(engine, objective, NULL, local, NULL,
                                     lower, upper, limits, 100L, 1L)
   expect_identical(checked$check$start, c("fitted", "a", "b"))
   expect_true(all(is.finite(checked$check$log_likelihood)))

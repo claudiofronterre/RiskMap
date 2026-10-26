@@ -584,12 +584,15 @@ glgpm <- function(formula,
       design_scaling$coefficient_transform,
       spatial_scaling$distance_scale
     )
-    # The optimiser keeps the same table of the check for other maxima.
+    # The optimiser keeps the same records of the check for other maxima.
     optimizer <- attr(res, "optimizer")
     if (!is.null(optimizer$mcml_maxima_check)) {
       optimizer$mcml_maxima_check <- res$mcml_history[[1L]]$maxima_check
-      attr(res, "optimizer") <- optimizer
     }
+    if (!is.null(optimizer$mcml_maxima_screen)) {
+      optimizer$mcml_maxima_screen <- res$mcml_history[[1L]]$maxima_screen
+    }
+    attr(res, "optimizer") <- optimizer
   }
   # The fitting engines optimise log(phi) on scaled coordinates. An additive
   # shift restores the original distance units without changing its Hessian.
@@ -965,6 +968,20 @@ restore_mcml_history_scale <- function(history, coefficient_transform,
       entry$maxima_check$log_phi <- entry$maxima_check$log_phi +
         log(distance_scale)
     }
+    screen <- entry$maxima_screen
+    if (!is.null(screen$screen)) {
+      screen$screen$log_phi <- screen$screen$log_phi + log(distance_scale)
+    }
+    if (!is.null(screen$alarm)) {
+      screen$alarm$log_phi <- screen$alarm$log_phi + log(distance_scale)
+    }
+    if (!is.null(screen$independent$beta)) {
+      screen$independent$beta <- as.numeric(
+        coefficient_transform %*% screen$independent$beta
+      )
+      names(screen$independent$beta) <- colnames(coefficient_transform)
+    }
+    if (!is.null(screen)) entry$maxima_screen <- screen
     entry
   })
 }
@@ -3026,10 +3043,21 @@ laplace_sampling_mcmc <- function(y,
 ##' precision at the maximum found, not that no higher maximum exists. In
 ##' sparse surveys an optimiser can stop at a maximum with a spatial scale far
 ##' below the spacing between locations while a higher one exists at a longer
-##' scale. If `TRUE` (the default) and the fitted scale is below half the
-##' median distance between neighbouring locations, the fit is repeated from
-##' four dispersed starting values on the same Monte Carlo draws and the
-##' highest maximum is kept, with a warning if it differs.
+##' scale, or the reverse. If `TRUE` (the default), a fitted scale below half
+##' the median distance between neighbouring locations is refitted from four
+##' dispersed starting values on the same Monte Carlo draws. After a fit at a
+##' longer scale the likelihood is evaluated at four shorter scales, with the
+##' coefficients and variance of the model with independent location effects
+##' (the limit of the model as the scale goes to zero, computed exactly by
+##' quadrature), and the fit is repeated from the best of them if it comes
+##' within 0.25 log-likelihood units of the fit. Exact lower bounds on the
+##' likelihood at short scales force a further search if they exceed the
+##' fitted log-likelihood. Separate maxima are compared on independent draws
+##' and the highest is kept, with a warning if it differs. A likelihood that is
+##' highest in the limit of zero scale is reported as such, without standard
+##' errors or certificate. The screen of short scales and the exact bounds are
+##' available for the canonical links and models without unstructured random
+##' effects.
 ##' @param pc_prior Logical. If `TRUE`, the spatial variance and scale are
 ##' penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
 ##' estimate maximises the penalised likelihood on the log scale of the

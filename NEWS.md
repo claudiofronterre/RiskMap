@@ -161,6 +161,23 @@ draws. A message says when and why the check runs, and a warning says when it
 moves the estimate to another maximum or finds two maxima that fit about
 equally well. The check does not prove that no higher maximum exists.
 
+- The check for other maxima also looks at short scales after a fit at a long
+one. The likelihood with independent location effects, the limit of the model
+as the spatial scale goes to zero, is computed exactly by adaptive
+Gauss-Hermite quadrature and maximised once per survey. The estimated
+likelihood is evaluated at four scales from an eighth of the spacing between
+neighbouring locations to the spacing, with the coefficients and variance of
+that limit and one three-point step in the log variance where the value is
+close, and the fit is repeated from the best point if it comes within 0.25
+log-likelihood units of the fit or if an evaluation fails. The limit and Jensen
+lower bounds at those scales are exact, and if one of them exceeds the fitted
+log-likelihood, estimated on independent draws, a further search is forced and
+a warning is given if it does not resolve the alarm. A likelihood that is
+highest, within Monte Carlo error, in the limit of zero scale ends the fit with
+the outcome "zero scale", without standard errors or certificate. The screen
+and the exact bounds need the canonical links and no unstructured random
+effects, and other models keep the earlier check.
+
 - Certified MCML computes the importance weights (for the canonical binomial
 and Poisson links) and the dense linear algebra of the proposal in compiled
 code, with the same LAPACK and BLAS routines R uses, and gives results

@@ -623,7 +623,10 @@ make_adaptive_mcml_engine <- function(
   }
 
   list(evaluate = evaluate, proposal_at = proposal_at, layout = layout,
-       latent_dimension = latent$dimension,
+       latent_dimension = latent$dimension, unpack = unpack,
+       spatial_covariance = function(parameters) {
+         covariance_at(unpack(parameters))
+       },
        defensive_weight = defensive_weight,
        proposal_type = function() default_proposal_type,
        use_proposal = function(type) {
@@ -923,12 +926,33 @@ glgpm_nong_adaptive <- function(
     )
     if (!is.null(laplace)) start <- laplace$estimate
   }
+  dispersed <- NULL
+  if (isTRUE(control_mcml$check_maxima %||% TRUE)) {
+    dispersed <- make_dispersed_starts(engine$layout, distances,
+                                       distance_scale, messages)
+    # The screen of short scales and the exact alarms need the likelihood
+    # with independent location effects, computed exactly for the canonical
+    # links and without unstructured random effects.
+    if (is.null(ID_re) && is.null(invlink)) {
+      dispersed$screen <- make_short_scale_screen(
+        engine,
+        make_independent_site_likelihood(
+          D, y, units_m, ID_coords %||% seq_along(y),
+          cov_offset %||% numeric(length(y)), family
+        ),
+        distances, messages, distance_scale
+      )
+    } else {
+      dispersed$screen_unavailable <- if (is.null(ID_re)) {
+        "custom inverse link"
+      } else {
+        "unstructured random effects"
+      }
+    }
+  }
   fit <- fit_adaptive_mcml(
     engine = engine, start = start, objective = objective,
-    penalty = penalty,
-    dispersed = if (isTRUE(control_mcml$check_maxima %||% TRUE)) {
-      make_dispersed_starts(engine$layout, distances, distance_scale, messages)
-    },
+    penalty = penalty, dispersed = dispersed,
     initial_budget = control_mcml$initial_samples,
     validation_budget = control_mcml$validation_samples,
     maximum_budget = control_mcml$max_samples,
@@ -950,8 +974,9 @@ glgpm_nong_adaptive <- function(
   boundary_names <- describe_variance_parameters(
     fit$boundary_parameters, engine$layout, re_names = re_names
   )
-  small_scale <- detect_small_scale(fit, engine$layout, distances, kappa,
-                                     distance_scale)
+  small_scale <- if (!identical(fit$outcome, "zero scale")) {
+    detect_small_scale(fit, engine$layout, distances, kappa, distance_scale)
+  }
   report_mcml_outcome(fit, boundary_names, engine$layout, pc_prior,
                       control_mcml$tolerance, messages, small_scale,
                       distance_scale)
@@ -1076,6 +1101,9 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_history = compact_adaptive_mcml_history(fit$history),
     mcml_small_scale = !is.null(small_scale),
     mcml_maxima_check = fit$maxima_check,
+    mcml_maxima_screen = fit$maxima_screen,
+    mcml_maxima_alarm = fit$maxima_alarm,
+    mcml_zero_scale = identical(fit$outcome, "zero scale"),
     mcml_better_maximum = fit$better_maximum,
     mcml_ambiguous_maxima = fit$ambiguous_maxima,
     seed = fit_seed,
@@ -1087,11 +1115,25 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
 
 ##' Tell the user what the check for other maxima found
 ##'
-##' Warns when the estimate comes from a maximum separate from the one first
-##' fitted, and when two separate maxima fit about equally well on independent
-##' draws. Neither proves that no higher maximum exists elsewhere.
+##' Warns when an exact alarm shows that the estimate is not the global
+##' maximum, when the estimate comes from a maximum separate from the one
+##' first fitted, and when two separate maxima fit about equally well on
+##' independent draws. Neither of the last two proves that no higher maximum
+##' exists elsewhere.
 ##' @noRd
 report_maxima_check <- function(fit, layout, distance_scale) {
+  alarm <- fit$maxima_screen$alarm
+  if (isTRUE(alarm$persists)) {
+    warning(
+      "An exact lower bound on the likelihood at a short spatial scale, from ",
+      "the limit in which the model has independent location effects, is ",
+      "above the log-likelihood of the estimate. The estimate is therefore ",
+      "not the maximum likelihood estimate, and the check for other maxima ",
+      "did not reach a higher maximum. Inspect the profile likelihood of the ",
+      "spatial scale.",
+      call. = FALSE
+    )
+  }
   check <- fit$maxima_check
   if (is.null(check) || !(fit$better_maximum || fit$ambiguous_maxima)) {
     return(invisible(NULL))
@@ -1198,7 +1240,22 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
   draws <- paste0(format(fit$budget, big.mark = ","), " fitting and ",
                   format(fit$validation_budget, big.mark = ","),
                   " validation draws")
-  if (identical(fit$outcome, "weak identification")) {
+  if (identical(fit$outcome, "zero scale")) {
+    independent <- fit$maxima_screen$independent
+    warning(
+      "The likelihood is highest in the limit of zero spatial scale, where ",
+      "the correlation between distinct locations vanishes and the model ",
+      "reduces to independent location effects",
+      if (!is.null(independent$log_variance)) paste0(
+        " with variance ", signif(exp(independent$log_variance), 3)
+      ),
+      ". The spatial scale has no positive estimate, so standard errors and ",
+      "the Monte Carlo certificate, which need an interior maximum, are not ",
+      "reported. Consider a model without spatial correlation, with an ",
+      "unstructured effect for each location.",
+      call. = FALSE
+    )
+  } else if (identical(fit$outcome, "weak identification")) {
     warning(
       "The observed information matrix is singular, so some parameters ",
       "(often the spatial scale when spatial correlation is weak) are not ",
