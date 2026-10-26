@@ -689,11 +689,48 @@ validate_prediction_data <- function(object, newdata, include,
       call. = FALSE
     )
   }
+  # Values can be present but invalid once transformed, e.g. log() of zero.
+  finite_rows <- prediction_finite_rows(
+    object, st_drop_geometry(prediction_data)[valid_rows, , drop = FALSE]
+  )
+  if (any(!finite_rows)) {
+    warning(
+      sum(!finite_rows), " prediction row",
+      if (sum(!finite_rows) == 1L) "" else "s",
+      " give non-finite covariate values after applying the model formula; ",
+      "their predictions are returned as NA",
+      call. = FALSE
+    )
+    valid_rows[valid_rows] <- finite_rows
+  }
   list(
     model_data = prediction_data[valid_rows, , drop = FALSE],
     output_data = output_data,
     valid_rows = valid_rows
   )
+}
+
+#' Flag prediction rows whose fixed-effect terms evaluate to finite values
+#' @noRd
+prediction_finite_rows <- function(object, predictors) {
+  fixed_formula <- update(interpret_formula(object$formula)$pf, NULL ~ .)
+  if (!nrow(predictors) || !length(all.vars(fixed_formula))) {
+    return(rep(TRUE, nrow(predictors)))
+  }
+  # prediction_design_matrix() reports any other problems with the terms.
+  model_frame <- tryCatch(
+    suppressWarnings(model.frame(fixed_formula, data = predictors,
+                                 na.action = na.pass)),
+    error = function(error) NULL
+  )
+  if (is.null(model_frame)) return(rep(TRUE, nrow(predictors)))
+  finite <- rep(TRUE, nrow(predictors))
+  for (term in model_frame) {
+    if (is.numeric(term)) {
+      finite <- finite & rowSums(!is.finite(as.matrix(term))) == 0L
+    }
+  }
+  finite
 }
 
 #' Restore prediction matrices to the original row alignment

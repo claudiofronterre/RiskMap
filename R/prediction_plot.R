@@ -325,7 +325,8 @@ add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
     data$.spatial_scale <- facet_label
     map <- map + geom_sf(
       data = data, aes(fill = .data$.prediction_value),
-      shape = 21, colour = NA, size = 1.8, inherit.aes = FALSE
+      # A transparent rather than NA colour, which drops every point.
+      shape = 21, colour = "transparent", size = 1.8, inherit.aes = FALSE
     )
   }
   if (!is.null(x$boundaries)) {

@@ -163,7 +163,7 @@ To generate predictions from the model, we first need to generate locations wher
 library(geobounds)
 liberia_boundary <- gb_get_adm1("Liberia")
 liberia_boundary <- sf::st_transform(liberia_boundary, crs = 32629)
-liberia_grid <- create_grid(liberia_boundary, spacing = 20)
+liberia_grid <- create_grid(liberia_boundary, spacing = 20, keep = "overlap")
 
 plot(sf::st_geometry(liberia_boundary))
 plot(liberia_grid, add = TRUE, col = 'red')
