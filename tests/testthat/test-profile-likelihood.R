@@ -47,3 +47,57 @@ test_that("the profile plot draws its panels and returns them", {
   expect_true(all(vapply(panels, ggplot2::is_ggplot, logical(1))))
   expect_output(print(profiles), "Profile likelihood")
 })
+
+# A profile problem with an exact log-likelihood in two parameters.
+make_toy_profile <- function(loglik, se = c(1, 1)) {
+  names <- c("beta.a", "b")
+  problem <- list(
+    value = loglik, estimate = stats::setNames(c(0, 0), names), names = names,
+    labels = list(beta.a = "a", b = "b"),
+    standard_errors = stats::setNames(se, names),
+    lower = c(-30, -30), upper = c(30, 30)
+  )
+  problem$control <- make_optimiser_control(1)
+  best <- maximise_profile(problem, integer(), numeric(), c(0, 0))
+  problem$bank_estimate <- best$par
+  problem$max_loglik <- best$value
+  problem
+}
+
+test_that("profile intervals are exact for a quadratic log-likelihood", {
+  problem <- make_toy_profile(function(w) -0.5 * w[1]^2 - 0.5 * (w[2] - w[1])^2)
+  profile <- profile_one_parameter(problem, "beta.a", 5L, 3)
+  intervals <- profile_intervals(
+    problem, list(beta.a = add_profile_deviance(profile, problem$max_loglik)),
+    0.95)
+  expect_equal(c(intervals$profile_lower, intervals$profile_upper),
+               c(-1, 1) * stats::qnorm(0.975), tolerance = 1e-5)
+  expect_type(profile$second_start, "logical")
+})
+
+test_that("a flat profile is extended with doubling steps and left open", {
+  problem <- make_toy_profile(function(w) -0.001 * w[1]^2 - 0.5 * w[2]^2)
+  profile <- profile_one_parameter(problem, "beta.a", 5L, 3)
+  # Two regular steps of 1.5, then steps of 3, 6 and 12, five points a side.
+  expect_equal(sort(profile$value),
+               c(-24, -12, -6, -3, -1.5, 0, 1.5, 3, 6, 12, 24), tolerance = 1e-8)
+  intervals <- profile_intervals(
+    problem, list(beta.a = add_profile_deviance(profile, problem$max_loglik)),
+    0.95)
+  expect_true(is.na(intervals$profile_lower) && is.na(intervals$profile_upper))
+})
+
+test_that("a crossing between distant points is refined", {
+  # The deviance is quadratic near the estimate and much steeper beyond 2,
+  # so the interval ends are at 1.96 but the grid jumps over them.
+  loglik <- function(w) {
+    a <- abs(w[1])
+    -0.5 * a^2 - 5 * max(a - 2, 0)^3 - 0.5 * w[2]^2
+  }
+  problem <- make_toy_profile(loglik, se = c(0.5, 1))
+  profile <- profile_one_parameter(problem, "beta.a", 5L, 1)
+  intervals <- profile_intervals(
+    problem, list(beta.a = add_profile_deviance(profile, problem$max_loglik)),
+    0.95)
+  expect_equal(intervals$profile_upper, stats::qnorm(0.975), tolerance = 1e-4)
+})
