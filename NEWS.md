@@ -100,7 +100,9 @@ because constrained maxima can be multimodal. A constrained maximisation that
 stops with false convergence on the slightly rough Monte Carlo likelihood is
 solved again with a central-difference gradient. Joint profiles are computed only
 when `pairs` asks for them, and the time left is estimated as the profiles
-run. `plot()` draws the marginal profiles against their quadratic
+run. With `cores` above one, the two sides of each profile, the ends of the
+intervals and the joint profiles run in parallel by forking (not on Windows),
+with the same results as on one core. `plot()` draws the marginal profiles against their quadratic
 approximation and the joint profiles as confidence regions with the marginal
 ridges, as a corner plot for one pair.
 
