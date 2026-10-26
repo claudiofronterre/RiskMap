@@ -77,6 +77,15 @@ test_that("extrapolation maps and argument checks", {
   }
   expect_identical(ggplot2::get_labs(plot(extrapolation))$fill,
                    "Extrapolation")
+  with_missing <- grid
+  with_missing$cov[1] <- NA
+  expect_warning(missing_map <- plot(assess_extrapolation(gaussian_model,
+                                                          with_missing)),
+                 "missing required values")
+  expect_identical(ggplot2::get_guide_data(missing_map, "fill")$.label,
+                   c("Supported", "Spatial", "Covariate",
+                     "Spatial and covariate"))
+  expect_true("grey90" %in% ggplot2::ggplot_build(missing_map)$data[[1]]$fill)
   skip_if_not_installed("patchwork")
   both <- plot(extrapolation,
                indicator = c("spatial_unexplained", "extrapolation"))

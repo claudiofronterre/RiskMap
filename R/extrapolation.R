@@ -222,9 +222,12 @@ plot.RiskMap_extrapolation <- function(x, indicator = "extrapolation", ...) {
                               facet_label = "", facet_levels = "")
 
   if (indicator == "extrapolation") {
+    class_colours <- c("Supported" = "#EFEBE4", "Spatial" = "#8C7BBF",
+                       "Covariate" = "#E3A34F",
+                       "Spatial and covariate" = "#B2182B")
+    # Cells with missing covariates are drawn in grey but get no legend key.
     fill_scale <- scale_fill_manual(
-      values = c("Supported" = "#EFEBE4", "Spatial" = "#8C7BBF",
-                 "Covariate" = "#E3A34F", "Spatial and covariate" = "#B2182B"),
+      values = class_colours, breaks = names(class_colours),
       drop = FALSE, na.value = "grey90",
       guide = guide_legend(title.position = "top", nrow = 2L)
     )

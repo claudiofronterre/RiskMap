@@ -193,6 +193,7 @@ uncertainty, which matters for small or low-prevalence surveys.
   data, and the share of the spatial variance not explained by the sampled
   locations. Locations are classed as supported, spatial, covariate, or
   spatial and covariate extrapolation, and `plot()` maps each indicator.
+  Locations with missing covariates are drawn in grey without a legend key.
 - Documentation and messages call phi the scale parameter of the spatial
   correlation function, rather than the spatial range, consistently with
   `summary()` and the MBG book. The practical range, where correlation falls
