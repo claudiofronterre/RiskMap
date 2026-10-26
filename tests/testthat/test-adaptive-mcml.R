@@ -1130,3 +1130,42 @@ test_that("a late proposal failure repeats the stage on fresh streams", {
   expect_length(calls, 1L)
   expect_null(none$history[[1]]$proposal_fallback)
 })
+
+test_that("a stage whose global proposal fails at the start ends at once", {
+  failures <- 0L
+  engine <- list(latent_dimension = 1L,
+                 proposal_type = function() "global",
+                 set_anchor = function(parameters) {
+                   failures <<- failures + 1L
+                   invisible(FALSE)
+                 },
+                 proposal_failures = function() failures)
+  local_mocked_bindings(
+    optimise_on_bank = function(...) stop("the condemned stage was fitted")
+  )
+  stage <- run_certified_stage(engine, function(...) 0, NULL, c(0, 0), 10L,
+                               10L, 1:5, c(-10, -10), c(10, 10), TRUE, list())
+  expect_identical(stage$outcome, "no valid fit")
+  expect_match(stage$reason, "failed at the start")
+  expect_null(stage$failures_before_validation)
+})
+
+test_that("reusing the spatial factorisation leaves the likelihood unchanged", {
+  make <- function() {
+    make_adaptive_mcml_engine(
+      D = cbind(1, c(-1, 0.5, 2, -0.3, 1.1)), y = c(0, 3, 5, 1, 2),
+      units_m = rep(6, 5), distances = as.matrix(dist(cbind(1:5, c(2, 1, 4, 3, 5)))),
+      family = "binomial"
+    )
+  }
+  set.seed(4)
+  bank <- matrix(stats::rnorm(50 * 5), nrow = 50)
+  first <- c(-0.5, 0.2, 0, log(2))
+  second <- replace(first, 2, 0.4)
+  reused <- make()
+  invisible(reused$evaluate(first, bank))
+  # The engine also starts each mode search from the previous mode, so the
+  # two paths agree to rounding, not to the last bit.
+  expect_equal(reused$evaluate(second, bank), make()$evaluate(second, bank),
+               tolerance = 1e-10)
+})

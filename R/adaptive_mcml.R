@@ -475,7 +475,20 @@ make_adaptive_mcml_engine <- function(
   # computed in compiled code, without temporary copies on the R heap. A
   # covariance that needs jitter is factorised by factor_covariance(), as for
   # other values of kappa.
+  # The last factorisation is kept, because an optimiser's finite
+  # differences in the regression coefficients leave the covariance
+  # unchanged. One entry bounds the memory used for large surveys.
+  prior_cache <- NULL
   spatial_prior_at <- function(values) {
+    key <- c(values$phi, values$sigma2, values$nugget_ratio)
+    if (!is.null(prior_cache) && identical(key, prior_cache$key)) {
+      return(prior_cache$prior)
+    }
+    prior <- compute_spatial_prior(values)
+    prior_cache <<- list(key = key, prior = prior)
+    prior
+  }
+  compute_spatial_prior <- function(values) {
     if (half_integer_kappa) {
       prior <- cpp_spatial_prior_factors(
         distance_values, n_loc, values$phi, kappa, values$sigma2,

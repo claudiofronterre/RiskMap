@@ -197,7 +197,11 @@ or certificate. A fit at a short positive scale whose likelihood is not clearly
 above the limit at the current Monte Carlo precision is assessed as usual, with
 a warning that points to `profile()` for the scale. Separate maxima whose
 comparison on independent draws is ambiguous are compared again on four times
-as many draws, and that comparison serves every later one. The screen
+as many draws, and that comparison serves every later one. A stage whose
+global proposal fails at its start goes straight to the Laplace proposal,
+instead of being completed and then discarded, and the factorisation of the
+spatial covariance is reused while only the regression coefficients change.
+The screen
 and the exact bounds need the canonical links and no unstructured random
 effects, and other models keep the earlier check.
 

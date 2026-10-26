@@ -374,7 +374,21 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   stage_started <- proc.time()[["elapsed"]]
   # Every global proposal of the stage starts from the factors at its start,
   # so each is a deterministic function of the parameters.
-  if (identical(engine$proposal_type(), "global")) engine$set_anchor(start)
+  if (identical(engine$proposal_type(), "global")) {
+    engine$set_anchor(start)
+    # A global proposal that fails at the start already condemns the stage,
+    # which fit_adaptive_mcml() repeats with the Laplace proposal on the same
+    # streams, so the rest of it is not computed.
+    if (engine$proposal_failures() > 0L) {
+      return(list(
+        budget = budget, validation_budget = validation_budget,
+        proposal = "global", fitted_estimate = start, estimate = start,
+        outcome = "no valid fit", certified = FALSE, certificate = NA_real_,
+        reason = "the global proposal failed at the start of the stage",
+        elapsed_seconds = proc.time()[["elapsed"]] - stage_started
+      ))
+    }
+  }
   set.seed(seeds[[1L]])
   fit_bank <- matrix(stats::rnorm(budget * engine$latent_dimension),
                      nrow = budget)
@@ -682,7 +696,9 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' If the global proposal fails within a stage, the stage is repeated with
 ##' the Laplace proposal, which is then kept. A failure before the validation
 ##' banks (in the fit, the check for other maxima or the information) depends
-##' only on the fitting draws, and the stage is repeated on the same streams.
+##' only on the fitting draws, and the stage is repeated on the same streams. A
+##' failure at the start of the stage ends it at once (`run_certified_stage()`),
+##' before any bank is used.
 ##' A failure while correcting or certifying depends on the correction bank,
 ##' so the repeated stage draws every bank afresh, from streams
 ##' 2000 + 3s - 2 to 2000 + 3s and 3000 + s. The certificate of the repeated
