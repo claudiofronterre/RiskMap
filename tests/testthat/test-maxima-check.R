@@ -255,7 +255,12 @@ test_that("the outcome of the screen is reported to the user", {
                boundary_parameters = integer(), history = list(1))
   expect_warning(report_mcml_outcome(zero, character(), layout, FALSE, 0.1,
                                      FALSE),
-                 "limit of zero spatial scale.*variance 2")
+                 "rises towards the limit of zero spatial scale.*variance 2")
+  near <- list(independent = list(log_variance = log(2)),
+               zero_scale = list(gap = 0.0011, se = 0.0005, log_phi = log(0.023)))
+  expect_warning(report_zero_scale(near, distance_scale = 10),
+                 paste0("scale phi = 0.23, but its log-likelihood exceeds.*",
+                        "by only 0.0011.*profile\\(fit, parameters = \"phi\"\\)"))
 })
 
 test_that("the screen is recorded for fits with and without random effects", {

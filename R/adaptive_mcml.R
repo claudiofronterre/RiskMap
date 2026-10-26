@@ -1183,6 +1183,47 @@ report_maxima_check <- function(fit, layout, distance_scale) {
   invisible(NULL)
 }
 
+##' Tell the user that the likelihood is highest at zero spatial scale
+##'
+##' Distinguishes a likelihood that keeps rising as the scale goes to zero
+##' from a maximum at a short positive scale whose log-likelihood is within
+##' Monte Carlo error of the limit, and points to the profile likelihood of the
+##' scale, to the PC penalty and to a model without spatial correlation.
+##' `record` is the record of the screen (`check_other_maxima()`).
+##' @noRd
+report_zero_scale <- function(record, distance_scale = 1, pc_advice = "") {
+  evidence <- record$zero_scale
+  variance <- record$independent$log_variance
+  limit <- paste0(
+    "the limit of zero spatial scale, where the correlation between distinct ",
+    "locations vanishes and the model reduces to independent location ",
+    "effects", if (!is.null(variance)) paste0(" with variance ",
+                                              signif(exp(variance), 3))
+  )
+  first <- if (!is.null(evidence) && evidence$gap > 0) {
+    paste0(
+      "The highest maximum found has spatial scale phi = ",
+      signif(exp(evidence$log_phi) * distance_scale, 3), ", but its ",
+      "log-likelihood exceeds that of ", limit, " by only ",
+      signif(evidence$gap, 2), " (Monte Carlo standard error ",
+      signif(evidence$se, 2), "). The data do not distinguish this ",
+      "correlation from none."
+    )
+  } else {
+    paste0("The likelihood rises towards ", limit, ", as the scale decreases.")
+  }
+  warning(
+    first, " The scale therefore has no positive estimate, and standard ",
+    "errors and the Monte Carlo certificate, which need an interior ",
+    "maximum, are not reported. The estimate returned is the highest point ",
+    "found. Use profile(fit, parameters = \"phi\") to see how the likelihood ",
+    "changes with the scale. If spatial correlation is not expected, consider ",
+    "a model with an unstructured effect for each location instead of gp().",
+    pc_advice,
+    call. = FALSE
+  )
+}
+
 ##' Tell the user how a certified MCML fit ended
 ##'
 ##' Warnings name variance components at zero, a scale smaller than the
@@ -1241,20 +1282,7 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
                   format(fit$validation_budget, big.mark = ","),
                   " validation draws")
   if (identical(fit$outcome, "zero scale")) {
-    independent <- fit$maxima_screen$independent
-    warning(
-      "The likelihood is highest in the limit of zero spatial scale, where ",
-      "the correlation between distinct locations vanishes and the model ",
-      "reduces to independent location effects",
-      if (!is.null(independent$log_variance)) paste0(
-        " with variance ", signif(exp(independent$log_variance), 3)
-      ),
-      ". The spatial scale has no positive estimate, so standard errors and ",
-      "the Monte Carlo certificate, which need an interior maximum, are not ",
-      "reported. Consider a model without spatial correlation, with an ",
-      "unstructured effect for each location.",
-      call. = FALSE
-    )
+    report_zero_scale(fit$maxima_screen, distance_scale, pc_advice)
   } else if (identical(fit$outcome, "weak identification")) {
     warning(
       "The observed information matrix is singular, so some parameters ",

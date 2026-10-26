@@ -557,8 +557,13 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
   if (!is.null(limit$log_likelihood) && is.null(penalty) &&
       !(dispersed$sigma2_index %in% kept$boundary) &&
       kept$fit$par[[dispersed$phi_index]] < min(screen$log_phi)) {
-    zero_scale <- judge_kept()$value - limit$log_likelihood <=
-      limit$quadrature_error + screen$alarm_multiplier * judge_kept()$se
+    gap <- judge_kept()$value - limit$log_likelihood
+    zero_scale <- gap <= limit$quadrature_error +
+      screen$alarm_multiplier * judge_kept()$se
+    if (zero_scale) {
+      record$zero_scale <- list(gap = gap, se = judge_kept()$se,
+                                log_phi = kept$fit$par[[dispersed$phi_index]])
+    }
   }
   if (isTRUE(record$alarm$fired)) {
     # The alarm persists if the exact value still exceeds the kept maximum.

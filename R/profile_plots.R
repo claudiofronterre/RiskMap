@@ -67,7 +67,13 @@ plot_marginal_profile <- function(x, name) {
   estimate <- x$estimate[[name]]
   se <- x$standard_errors[[name]]
   grid <- seq(min(profile$value), max(profile$value), length.out = 200)
-  wald <- data.frame(value = profile_natural(name, grid), deviance = ((grid - estimate) / se)^2)
+  # A fit without standard errors (a scale at zero, a singular information)
+  # has no Wald approximation to draw.
+  wald <- if (is.finite(se) && se > 0) {
+    data.frame(value = profile_natural(name, grid), deviance = ((grid - estimate) / se)^2)
+  } else {
+    data.frame(value = numeric(), deviance = numeric())
+  }
   shown <- data.frame(value = profile_natural(name, profile$value), deviance = profile$deviance)
   interval <- x$intervals[x$intervals$parameter == name, ]
   cutoff <- stats::qchisq(x$level, 1)

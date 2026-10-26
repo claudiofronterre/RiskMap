@@ -182,7 +182,10 @@ lower bounds at those scales are exact, and if one of them exceeds the fitted
 log-likelihood, estimated on independent draws, a further search is forced and
 a warning is given if it does not resolve the alarm. A likelihood that is
 highest, within Monte Carlo error, in the limit of zero scale ends the fit with
-the outcome "zero scale", without standard errors or certificate. The screen
+the outcome "zero scale", without standard errors or certificate, and the
+warning says whether the likelihood rises towards the limit or has a maximum
+at a short scale that the data do not distinguish from it, and points to
+`profile()` for the scale. The screen
 and the exact bounds need the canonical links and no unstructured random
 effects, and other models keep the earlier check.
 
