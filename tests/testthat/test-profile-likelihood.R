@@ -101,3 +101,18 @@ test_that("a crossing between distant points is refined", {
     0.95)
   expect_equal(intervals$profile_upper, stats::qnorm(0.975), tolerance = 1e-4)
 })
+
+test_that("profiles on two cores equal those on one", {
+  skip_on_os("windows")
+  serial <- profile(binomial_model, parameters = c("cov", "sigma2"),
+                    pairs = list(c("sigma2", "phi")), n_points = 5,
+                    n_grid = 3, n_draws = 200, messages = FALSE)
+  parallel <- profile(binomial_model, parameters = c("cov", "sigma2"),
+                      pairs = list(c("sigma2", "phi")), n_points = 5,
+                      n_grid = 3, n_draws = 200, cores = 2,
+                      messages = FALSE)
+  expect_identical(parallel$marginal, serial$marginal)
+  expect_identical(parallel$joint, serial$joint)
+  expect_identical(parallel$intervals, serial$intervals)
+  expect_error(profile(binomial_model, cores = 0), "cores")
+})

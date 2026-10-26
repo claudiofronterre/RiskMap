@@ -33,8 +33,9 @@
 ##' parameters, so the time grows with the number of points and of parameters.
 ##' A model that takes a minute to fit can take tens of seconds per point.
 ##' Joint profiles cost `n_grid^2` points each and are computed only when
-##' `pairs` asks for them. With `messages = TRUE` the time left is estimated
-##' after the first parameter.
+##' `pairs` asks for them. With `messages = TRUE` and one core the time left
+##' is estimated after the first parameter. `cores` runs independent parts in
+##' parallel.
 ##'
 ##' @param fitted A `RiskMap` object from [glgpm()] for a binomial or Poisson
 ##'   model.
@@ -51,6 +52,11 @@
 ##' @param seed Seed of the bank. The random number state of the session is
 ##'   restored afterwards.
 ##' @param level Confidence level of the reported profile intervals.
+##' @param cores Number of processes. With more than one, the two sides of
+##'   each marginal profile, the ends of the intervals and the joint profiles
+##'   run in parallel by forking, which is not available on Windows. The
+##'   results are the same as on one core. When the RhpcBLASctl package is
+##'   installed, each process uses one BLAS and OpenMP thread.
 ##' @param messages Logical, whether to report progress.
 ##' @param ... Not used.
 ##' @return An object of class `RiskMap_profile`: a list with the marginal
@@ -76,7 +82,7 @@
 profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             n_points = 11L, n_grid = 11L, span = 3,
                             n_draws = 5000L, seed = 1L, level = 0.95,
-                            messages = TRUE, ...) {
+                            cores = 1L, messages = TRUE, ...) {
   stopifnot(inherits(fitted, "RiskMap"))
   if (!fitted$family %in% c("binomial", "poisson") ||
       is.null(fitted$mcml_history)) {
@@ -84,6 +90,15 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
          "certified Monte Carlo maximum likelihood.", call. = FALSE)
   }
   check_profile_settings(n_points, n_grid, span, n_draws, level)
+  stopifnot("'cores' must be a positive whole number" =
+              is.numeric(cores) && length(cores) == 1L && cores >= 1 &&
+              cores == round(cores))
+  cores <- as.integer(cores)
+  if (cores > 1L && .Platform$OS.type == "windows") {
+    if (messages) message("Parallel profiles need forking, which Windows ",
+                          "does not support, so they run on one core.")
+    cores <- 1L
+  }
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
   if (messages) {
@@ -95,34 +110,39 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
     match_profile_parameters(problem, pair)
   })
 
-  marginal <- vector("list", length(parameters))
-  names(marginal) <- parameters
-  for (k in seq_along(parameters)) {
-    name <- parameters[k]
-    if (messages) {
-      message("Profiling ", problem$labels[[name]], " (", k, " of ",
-              length(parameters), ")...")
-    }
-    started <- proc.time()[["elapsed"]]
-    marginal[[name]] <- profile_one_parameter(problem, name, n_points, span,
-                                              level)
-    if (messages && k == 1L &&
-        (length(parameters) > 1L || length(pairs) > 0L)) {
-      seconds <- proc.time()[["elapsed"]] - started
-      per_point <- seconds / max(1L, nrow(marginal[[name]]) - 1L)
-      planned <- (length(parameters) - 1L) * (n_points + 1L) +
-        length(pairs) * n_grid^2
-      message("About ", format_profile_time(per_point * planned),
-              " left, at about ", signif(per_point, 2), " s per point.")
+  if (cores > 1L) {
+    marginal <- profile_in_parallel(problem, parameters, n_points, span, level,
+                                    cores, messages)
+  } else {
+    marginal <- vector("list", length(parameters))
+    names(marginal) <- parameters
+    for (k in seq_along(parameters)) {
+      name <- parameters[k]
+      if (messages) {
+        message("Profiling ", problem$labels[[name]], " (", k, " of ",
+                length(parameters), ")...")
+      }
+      started <- proc.time()[["elapsed"]]
+      marginal[[name]] <- profile_one_parameter(problem, name, n_points, span,
+                                                level)
+      if (messages && k == 1L &&
+          (length(parameters) > 1L || length(pairs) > 0L)) {
+        seconds <- proc.time()[["elapsed"]] - started
+        per_point <- seconds / max(1L, nrow(marginal[[name]]) - 1L)
+        planned <- (length(parameters) - 1L) * (n_points + 1L) +
+          length(pairs) * n_grid^2
+        message("About ", format_profile_time(per_point * planned),
+                " left, at about ", signif(per_point, 2), " s per point.")
+      }
     }
   }
-  joint <- lapply(pairs, function(pair) {
-    if (messages) {
-      message("Profiling ", problem$labels[[pair[1]]], " with ",
-              problem$labels[[pair[2]]], "...")
-    }
+  if (messages && length(pairs)) {
+    message("Profiling ", length(pairs), " pair", if (length(pairs) > 1L) "s",
+            " of parameters on a grid of ", n_grid, " by ", n_grid, "...")
+  }
+  joint <- run_profile_tasks(pairs, function(pair) {
     profile_two_parameters(problem, pair, n_grid, span, marginal)
-  })
+  }, cores)
   names(joint) <- vapply(pairs, paste, "", collapse = ":")
 
   values <- c(unlist(lapply(marginal, `[[`, "loglik")),
@@ -145,6 +165,32 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
     higher_than_estimate = higher, level = level,
     settings = list(n_draws = n_draws, seed = seed, span = span)
   ), class = "RiskMap_profile")
+}
+
+##' Marginal profiles with the walks and then the ends run in parallel
+##' @noRd
+profile_in_parallel <- function(problem, parameters, n_points, span, level,
+                                cores, messages) {
+  plans <- lapply(parameters, function(name) {
+    plan_one_parameter(problem, name, n_points, span, level)
+  })
+  tasks <- expand.grid(parameter = seq_along(parameters), direction = c(-1, 1))
+  if (messages) {
+    message("Profiling ", length(parameters), " parameter",
+            if (length(parameters) > 1L) "s", " on ",
+            min(cores, nrow(tasks)), " cores...")
+  }
+  walks <- run_profile_tasks(seq_len(nrow(tasks)), function(row) {
+    plans[[tasks$parameter[row]]]$walk(tasks$direction[row])
+  }, cores)
+  marginal <- run_profile_tasks(seq_along(parameters), function(k) {
+    side <- function(direction) {
+      walks[[which(tasks$parameter == k & tasks$direction == direction)]]
+    }
+    plans[[k]]$finish(side(-1), side(1))
+  }, cores)
+  names(marginal) <- parameters
+  marginal
 }
 
 ##' A duration in seconds as readable text
@@ -357,6 +403,19 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
 ##' @noRd
 profile_one_parameter <- function(problem, name, n_points, span,
                                   level = 0.95) {
+  plan <- plan_one_parameter(problem, name, n_points, span, level)
+  plan$finish(plan$walk(-1), plan$walk(1))
+}
+
+##' The steps of a marginal profile, as functions that can run apart
+##'
+##' `walk(direction)` steps out on one side of the estimate, and
+##' `finish(below, above)` joins the two walks, re-solves the points around
+##' each crossing from the estimate and refines the crossings
+##' (`profile_one_parameter()`). The two walks are independent, so they can run
+##' in parallel.
+##' @noRd
+plan_one_parameter <- function(problem, name, n_points, span, level = 0.95) {
   index <- match(name, problem$names)
   centre <- problem$bank_estimate[index]
   step <- 2 * span * problem$standard_errors[[name]] / (n_points - 1)
@@ -391,17 +450,47 @@ profile_one_parameter <- function(problem, name, n_points, span,
     }
     result
   }
-  centre_row <- profile_row(problem, index, centre,
-                            list(par = problem$bank_estimate,
-                                 value = problem$max_loglik, convergence = 0L))
-  profile <- do.call(rbind, c(rev(walk(-1)), list(centre_row), walk(1)))
-  profile <- recheck_profile_crossings(problem, profile, index, cutoff,
-                                       second_start)
-  refine_profile_crossings(problem, profile, index, step, cutoff,
-                           function(value, start) {
-                             second_start(value, maximise_profile(
-                               problem, index, value, start))
-                           })
+  finish <- function(below, above) {
+    centre_row <- profile_row(problem, index, centre,
+                              list(par = problem$bank_estimate,
+                                   value = problem$max_loglik,
+                                   convergence = 0L))
+    profile <- do.call(rbind, c(rev(below), list(centre_row), above))
+    profile <- recheck_profile_crossings(problem, profile, index, cutoff,
+                                         second_start)
+    refine_profile_crossings(problem, profile, index, step, cutoff,
+                             function(value, start) {
+                               second_start(value, maximise_profile(
+                                 problem, index, value, start))
+                             })
+  }
+  list(walk = walk, finish = finish)
+}
+
+##' Apply a function to tasks, in parallel by forking when `cores` is above 1
+##'
+##' Each worker limits BLAS and OpenMP to one thread when RhpcBLASctl is
+##' installed, because several forked processes that each use every core
+##' oversubscribe the machine. The setting dies with the worker. On Windows,
+##' where R cannot fork, the tasks run one after another. An error in a
+##' worker stops the profile with its message.
+##' @noRd
+run_profile_tasks <- function(tasks, work, cores) {
+  if (cores <= 1L || length(tasks) <= 1L) return(lapply(tasks, work))
+  results <- parallel::mclapply(tasks, function(task) {
+    if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+      RhpcBLASctl::blas_set_num_threads(1L)
+      RhpcBLASctl::omp_set_num_threads(1L)
+    }
+    work(task)
+  }, mc.cores = min(cores, length(tasks)), mc.preschedule = FALSE)
+  failed <- vapply(results, inherits, logical(1), what = "try-error")
+  if (any(failed)) {
+    stop("A profile task failed: ",
+         conditionMessage(attr(results[[which(failed)[1L]]], "condition")),
+         call. = FALSE)
+  }
+  results
 }
 
 ##' Solve the two points around each crossing of the cut-off again from the

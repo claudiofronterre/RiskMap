@@ -14,6 +14,7 @@
   n_draws = 5000L,
   seed = 1L,
   level = 0.95,
+  cores = 1L,
   messages = TRUE,
   ...
 )
@@ -42,6 +43,12 @@ extension, and the most points on each side of the estimate.}
 restored afterwards.}
 
 \item{level}{Confidence level of the reported profile intervals.}
+
+\item{cores}{Number of processes. With more than one, the two sides of
+each marginal profile, the ends of the intervals and the joint profiles
+run in parallel by forking, which is not available on Windows. The
+results are the same as on one core. When the RhpcBLASctl package is
+installed, each process uses one BLAS and OpenMP thread.}
 
 \item{messages}{Logical, whether to report progress.}
 
@@ -88,8 +95,9 @@ Each point is a maximisation of the Monte Carlo likelihood over the other
 parameters, so the time grows with the number of points and of parameters.
 A model that takes a minute to fit can take tens of seconds per point.
 Joint profiles cost \code{n_grid^2} points each and are computed only when
-\code{pairs} asks for them. With \code{messages = TRUE} the time left is estimated
-after the first parameter.
+\code{pairs} asks for them. With \code{messages = TRUE} and one core the time left
+is estimated after the first parameter. \code{cores} runs independent parts in
+parallel.
 }
 \examples{
 \donttest{
