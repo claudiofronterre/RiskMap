@@ -106,9 +106,9 @@ The empirical variogram can be used to assess spatial independence in the data. 
 ```{r}
 variogram <- variogram(data, 
                        variable = "npos", 
-                       distance_units = "km")
+                       distance_units = "km") 
 
-plot_variogram(variogram)
+plot(variogram)
 ```
 
 ## Model fitting
@@ -188,38 +188,39 @@ liberia_elev <- get_elev_raster(locations = liberia_grid,
                                 z = 6, 
                                 clip = "locations")
 
-new_data <- data.frame(elevation = terra::extract(liberia_elev, liberia_grid))
+class(liberia_grid) <- c("sf", "data.frame", "RiskMap_grid")
+
+elevation_points <- data.frame(elevation = terra::extract(liberia_elev, liberia_grid))
+
+newdata <- cbind(liberia_grid, elevation_points)
+
+squares <- sf::st_as_sf(sf::st_make_grid(liberia_boundary, n = c(2, 2)))
 ```
 
 Use `setup_prediction()` to prepare the data to generate predictions either at the grid locations or for areal targets. You can omit `grid_pred` and `predictors` to only generate predictions at the locations in the data. To be able to generate predictions for areal targets, we need to set `type` to `"joint"`:
 
 ```{r}
-prediction_prep <- setup_prediction(model, 
-                                    grid_pred = liberia_grid,
-                                    predictors = new_data,
-                                    type = "joint",
-                                    messages = FALSE)
+prediction <- predict(model, 
+                      newdata = newdata,
+                      boundaries = squares,
+                      aggregate = "mean",
+                      messages = FALSE)
 ```
 
 Generate a prediction over the grid with `predict_target_grid()`. By default, the `f_target` is the linear predictor and to obtain the prevalence prediction, we need to define a custom target. We can visualise the result by passing the result to `plot()`. By default the mean of the first target will be plotted, but if multiple targets are specified, the one to plot can be specified using `target` and the summary statistic with `summary` - see `?plot.RiskMap_predict_grid_target`:
 
 ```{r}
-f_target <- list(prev = function(lp) exp(lp)/(1+exp(lp)))
-
-grid_prediction <- predict_grid_target(prediction_prep,
-                                       f_target = f_target)
-
-plot(grid_prediction)
+plot(prediction)
 ```
 
 ```{r}
-plot(grid_prediction, target = "prev", summary = "lower")
+plot(prediction, summary = "lower")
 ```
 
 To generate areal predictions, we need to provide `boundaries` to `predict_areal_grid()`. In this example, we generate four squares covering the area of Liberia. To generate the predictions, at least one of the points of the `grid_pred` passed to `setup_prediction()` must fall inside each boundary. As with the grid predictions, we need to define `f_target` and we can visualise the predictions by passing the result to `plot()` - see `?plot.RiskMap_predict_areal_target`.
 
 ```{r}
-squares <- sf::st_as_sf(sf::st_make_grid(liberia_boundary, n = c(2, 2)))
+
 areal_prediction <- predict_areal_target(prediction_prep, 
                                          boundaries = squares, 
                                          f_target = f_target,
