@@ -28,7 +28,8 @@ test_that("prediction objects use one stable output schema", {
   expected_output <- c(
     "predictions", "boundaries", "boundary_summary", "samples", "include",
     "transform", "standardized", "aggregate", "summaries", "thresholds",
-    "level", "type", "family", "observed_locations", "coverage"
+    "level", "type", "family", "response_name", "observed_locations",
+    "parameter_draws", "coverage"
   )
 
   observed <- predict(gaussian_model, messages = FALSE)
@@ -1187,4 +1188,88 @@ test_that("Gaussian block conditioning matches direct multivariate conditioning"
     target_covariance - direct_target_gain %*% t(target_to_observation),
     tolerance = 1e-9
   )
+})
+
+with_parameter_covariance <- function(fit, variance = 0.01) {
+  names <- names(unlist(fit$estimate))
+  fit$covariance <- diag(variance, length(names))
+  dimnames(fit$covariance) <- list(names, names)
+  fit
+}
+
+test_that("parameter uncertainty options are validated", {
+  expect_error(
+    predict(gaussian_model, parameter_uncertainty = NA, messages = FALSE),
+    "parameter_uncertainty"
+  )
+  expect_error(
+    predict(gaussian_model, parameter_uncertainty = TRUE, parameter_draws = 0,
+            messages = FALSE),
+    "parameter_draws"
+  )
+})
+
+test_that("an unavailable covariance matrix gives an informative error", {
+  expect_true(anyNA(binomial_model$covariance))
+  expect_error(
+    predict(binomial_model, parameter_uncertainty = TRUE, messages = FALSE),
+    "pc_prior = TRUE"
+  )
+})
+
+test_that("parameter uncertainty pools draws over parameter values", {
+  fit <- with_parameter_covariance(binomial_model)
+  plug_in <- predict(fit, seed = 2, messages = FALSE)
+  pooled <- predict(fit, parameter_uncertainty = TRUE, parameter_draws = 20,
+                    seed = 2, keep_samples = TRUE, messages = FALSE)
+  expect_identical(pooled$parameter_draws, 20L)
+  expect_null(plug_in$parameter_draws)
+  expect_identical(names(pooled$predictions), names(plug_in$predictions))
+  expect_identical(dim(pooled$samples$spatial), dim(pooled$samples$fixed))
+  expect_identical(ncol(pooled$samples$spatial), nrow(fit$S_samples))
+  # The fixed-effect contribution varies between parameter draws.
+  expect_gt(min(apply(pooled$samples$fixed, 1L, stats::sd)), 0)
+  link <- prediction_link_samples(pooled)
+  expect_equal(rowMeans(plogis(link)), pooled$predictions$response_mean)
+  expect_equal(pooled$predictions$fixed, rowMeans(pooled$samples$fixed))
+})
+
+test_that("parameter uncertainty is reproducible and works for polygons", {
+  fit <- with_parameter_covariance(binomial_model)
+  first <- predict(fit, newdata = binomial_data[1:4, ],
+                   parameter_uncertainty = TRUE, parameter_draws = 10,
+                   seed = 5, messages = FALSE)
+  second <- predict(fit, newdata = binomial_data[1:4, ],
+                    parameter_uncertainty = TRUE, parameter_draws = 10,
+                    seed = 5, messages = FALSE)
+  expect_identical(first$predictions, second$predictions)
+  areas <- sf::st_sf(area = 1:2,
+                     geometry = sf::st_make_grid(binomial_data, n = c(2, 1)))
+  areal <- predict(fit, newdata = binomial_data, boundaries = areas,
+                   aggregate = "mean", parameter_uncertainty = TRUE,
+                   parameter_draws = 10, seed = 5, messages = FALSE)
+  expect_identical(areal$parameter_draws, 10L)
+  response <- areal$boundary_summary[
+    areal$boundary_summary$quantity == "response", ]
+  expect_true(all(is.finite(response$value)))
+})
+
+test_that("parameter uncertainty works for Gaussian models", {
+  fit <- with_parameter_covariance(gaussian_model)
+  pooled <- predict(fit, parameter_uncertainty = TRUE, parameter_draws = 10,
+                    seed = 1, messages = FALSE)
+  expect_true(all(is.finite(pooled$predictions$response_mean)))
+  expect_true(all(pooled$predictions$response_lower <
+                    pooled$predictions$response_upper))
+})
+
+test_that("the conditional sampler matches MCMC at the estimate", {
+  sampler <- parameter_conditioning_sampler(binomial_model)
+  set.seed(4)
+  draws <- sampler(binomial_model$estimate, 2000L)
+  expect_identical(ncol(draws$samples), ncol(binomial_model$S_samples))
+  expect_gt(draws$acceptance, 0.2)
+  mcmc_mean <- colMeans(binomial_model$S_samples)
+  mcmc_sd <- apply(binomial_model$S_samples, 2L, stats::sd)
+  expect_lt(max(abs(colMeans(draws$samples) - mcmc_mean) / mcmc_sd), 0.5)
 })

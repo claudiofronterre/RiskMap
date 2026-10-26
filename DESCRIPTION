@@ -28,6 +28,7 @@ Imports:
     Deriv,
     dplyr,
     ggplot2,
+    ggspatial,
     gridExtra,
     knitr,
     loo,
@@ -35,6 +36,7 @@ Imports:
     numDeriv,
     Rcpp,
     rlang,
+    scales,
     sf,
     sns,
     spatialEco,
@@ -50,6 +52,7 @@ Suggests:
     geobounds,
     progress,
     quarto,
+    patchwork,
     testthat (>= 3.0.0)
 License: MIT + file LICENSE
 Encoding: UTF-8

@@ -70,6 +70,15 @@
 ##' @param control_mcmc Optional output from [set_control_mcmc()]. When omitted,
 ##'   conditional samples stored in a non-Gaussian fit are reused. Supplying a
 ##'   control object requests a fresh conditional run.
+##' @param parameter_uncertainty Logical. If `FALSE` (the default), predictions
+##'   are made at the estimated parameters (plug-in prediction). If `TRUE`,
+##'   they also reflect the uncertainty in the estimated parameters; see
+##'   Details.
+##' @param parameter_draws Positive integer giving the number of parameter
+##'   values drawn when `parameter_uncertainty = TRUE`. Default 50. Conditional
+##'   samples stored in the fit are not used in that case, because they
+##'   condition on the estimate only; `control_mcmc`, if supplied, sets only
+##'   the total number of predictive draws.
 ##' @param seed Optional integer seed for random draws made during prediction.
 ##'   The caller's random-number state is restored on exit. When supplied, this
 ##'   seed takes precedence over a seed stored in `control_mcmc` for this call.
@@ -96,6 +105,30 @@
 ##' [set_control_mcmc()] defaults. Supplying `control_mcmc` always requests a
 ##' fresh conditional run. For Gaussian models, prediction is based on their
 ##' exact conditional Gaussian distribution.
+##'
+##' Plug-in prediction treats the estimated parameters as known, so its
+##' intervals can be too narrow when the parameters, in particular the spatial
+##' variance and range, are poorly estimated, as in small or low-prevalence
+##' surveys. With `parameter_uncertainty = TRUE`, `parameter_draws` parameter
+##' values are drawn from the approximate sampling distribution of the
+##' estimate: a multivariate normal distribution with the estimated covariance
+##' matrix, on the scale on which the model is estimated (log variances and
+##' log range). For each value, conditional samples of the latent effects are
+##' generated at that value and the prediction is repeated; the draws are then
+##' pooled, so every summary, aggregation and derived target reflects both the
+##' latent and the parameter uncertainty. For binomial and Poisson models the
+##' conditional samples at each parameter value come from a short run of the
+##' same Langevin (MALA) sampler used for plug-in prediction, in coordinates
+##' whitened by the Laplace approximation at that value, started at its mode
+##' and using the step size tuned at the estimate (500 burn-in iterations,
+##' then thinning by 10). The total number of predictive draws equals that of
+##' plug-in prediction. Parameters
+##' without a finite positive variance, such as those held at a boundary, keep
+##' their estimated value. When the covariance matrix of the estimates is not
+##' available, an error is returned; refitting with
+##' `set_control_mcml(pc_prior = TRUE)` usually resolves this. The location
+##' column `fixed` then reports the average fixed-effect contribution.
+##'
 ##' At the observed locations, the conditioned location-level Gaussian effect
 ##' already includes the fitted nugget when the model has one. Consequently,
 ##' `include = "nugget"` is available only for predictions supplied through
@@ -168,9 +201,10 @@
 ##'     is the row number of the corresponding polygon in `boundaries`.}
 ##'   \item{samples}{`NULL` when `keep_samples = FALSE`; otherwise a list
 ##'     containing spatial samples and any requested random-effect or nugget
-##'     samples for location-level prediction. For polygon aggregation it
-##'     is nested first by aggregation and then by component, with one matrix
-##'     row per polygon.}
+##'     samples for location-level prediction, and, with parameter
+##'     uncertainty, the fixed-effect contribution of each draw (`fixed`).
+##'     For polygon aggregation it is nested first by aggregation and then by
+##'     component, with one matrix row per polygon.}
 ##'   \item{include}{Optional components included in the link and response.}
 ##'   \item{transform}{Names of additional derived predictive targets.}
 ##'   \item{standardized}{Whether response predictions were averaged over a
@@ -180,7 +214,11 @@
 ##'   \item{thresholds}{Thresholds used for exceedance probabilities.}
 ##'   \item{level}{Probability covered by the interval limits.}
 ##'   \item{type}{Whether prediction was marginal or joint.}
+##'   \item{parameter_draws}{The number of parameter draws when parameter
+##'     uncertainty was propagated, otherwise `NULL`.}
 ##'   \item{family}{The fitted response family.}
+##'   \item{response_name}{Name of the response variable, used to label
+##'     maps of Gaussian predictions.}
 ##'   \item{observed_locations}{Whether `newdata` was omitted.}
 ##'   \item{coverage}{`NULL` for location-only prediction. For polygon
 ##'     aggregation, `"exact"` when fractional grid-cell coverage was used and
@@ -202,6 +240,16 @@
 ##'   messages = FALSE
 ##' )
 ##' prediction$predictions
+##'
+##' # Also reflect the uncertainty in the estimated parameters
+##' uncertain_prediction <- predict(
+##'   fit,
+##'   newdata = example_data[1:5, ],
+##'   parameter_uncertainty = TRUE,
+##'   parameter_draws = 20,
+##'   messages = FALSE
+##' )
+##' uncertain_prediction$predictions
 ##'
 ##' # Use the same reference distribution of population density at each location
 ##' reference_population <- data.frame(pop_dens = example_data$pop_dens)
@@ -244,12 +292,21 @@ predict.RiskMap <- function(
     level = 0.95,
     weights = NULL,
     control_mcmc = NULL,
+    parameter_uncertainty = FALSE,
+    parameter_draws = 50L,
     seed = NULL,
     keep_samples = FALSE,
     messages = TRUE,
     ...) {
 
   if (is.null(include)) include <- character()
+  check_logical(parameter_uncertainty)
+  check_positive_integer(parameter_draws, "parameter_draws")
+  parameter_draws <- if (parameter_uncertainty) {
+    as.integer(parameter_draws)
+  } else {
+    NULL
+  }
   aggregate <- normalise_prediction_operations(
     aggregate, c("mean", "median", "sum", "min", "max"),
     argument_name = "aggregate",
@@ -311,6 +368,7 @@ predict.RiskMap <- function(
       level = level,
       weights = weights,
       control_mcmc = control_mcmc,
+      parameter_draws = parameter_draws,
       seed = seed,
       keep_samples = keep_samples,
       messages = messages
@@ -335,20 +393,18 @@ predict.RiskMap <- function(
       level = level,
       type = type,
       family = object$family,
+      response_name = prediction_response_name(object),
       observed_locations = observed_locations,
+      parameter_draws = parameter_draws,
       coverage = NULL
     )
     class(out) <- "RiskMap_prediction"
     return(out)
   }
-  prediction_setup <- prepare_prediction(
+  sample_components <- prediction_sample_components(
     object, prediction_data, type, include, control_mcmc, messages,
-    observed_locations
-  )
-  sample_components <- build_prediction_components(
-    object, prediction_setup, include, transform,
-    standardize = standardize,
-    prediction_data = prediction_data
+    observed_locations = observed_locations, transform = transform,
+    standardize = standardize, parameter_draws = parameter_draws
   )
   output_data <- format_location_predictions(
     prediction_input, sample_components, include, transform, summaries,
@@ -357,6 +413,7 @@ predict.RiskMap <- function(
   valid_rows <- prediction_input$valid_rows
   samples <- if (keep_samples) {
     retained <- sample_components[c("spatial", "random_effects", "nugget")]
+    retained$fixed <- sample_components$fixed_samples
     retained <- retained[!vapply(retained, is.null, logical(1))]
     lapply(retained, restore_prediction_rows,
            valid_rows = valid_rows, n_rows = nrow(output_data))
@@ -377,7 +434,9 @@ predict.RiskMap <- function(
     level = level,
     type = type,
     family = object$family,
+    response_name = prediction_response_name(object),
     observed_locations = observed_locations,
+    parameter_draws = parameter_draws,
     coverage = NULL
   )
   class(out) <- "RiskMap_prediction"
@@ -795,7 +854,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
                                     thresholds,
                                     level, weights,
                                     control_mcmc, seed, keep_samples,
-                                    messages) {
+                                    messages, parameter_draws = NULL) {
   model_data <- prediction_input$model_data
   output_boundaries <- boundaries
   if (!isTRUE(st_crs(boundaries) == st_crs(object$data))) {
@@ -871,7 +930,10 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       samples = NULL, include = include, transform = names(transform),
       standardized = !is.null(standardize), aggregate = names(aggregate),
       summaries = names(summaries), thresholds = thresholds, level = level,
-      type = "joint", family = object$family, observed_locations = FALSE,
+      type = "joint", family = object$family,
+      response_name = prediction_response_name(object),
+      observed_locations = FALSE,
+      parameter_draws = parameter_draws,
       coverage = assignment$method
     )
     class(out) <- "RiskMap_prediction"
@@ -881,26 +943,18 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   prediction_groups <- prediction_boundary_groups(
     assignment, nrow(model_data)
   )
-  prediction_setup <- prepare_prediction(
-    object = object,
-    prediction_data = model_data,
-    prediction = "joint",
-    include = include,
-    control_mcmc = control_mcmc,
-    messages = messages,
-    groups = prediction_groups
-  )
-  sample_components <- build_prediction_components(
-    object, prediction_setup, include, transform,
-    standardize = standardize,
-    prediction_data = model_data
+  sample_components <- prediction_sample_components(
+    object, model_data, "joint", include, control_mcmc, messages,
+    groups = prediction_groups, transform = transform,
+    standardize = standardize, parameter_draws = parameter_draws
   )
   predictions <- format_location_predictions(
     prediction_input, sample_components, include, transform, summaries,
     thresholds, level
   )
   components <- list(
-    fixed = matrix(sample_components$fixed, ncol = 1L),
+    fixed = sample_components$fixed_samples %||%
+      matrix(sample_components$fixed, ncol = 1L),
     offset = matrix(sample_components$offset, ncol = 1L),
     spatial = sample_components$spatial,
     random_effects = sample_components$random_effects,
@@ -940,7 +994,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
             quantity = quantity,
             summary = "estimate",
             threshold = NA_real_,
-            value = values[[1L]],
+            # Constant across draws for plug-in prediction; the average over
+            # parameter draws when parameter uncertainty is propagated.
+            value = mean(values),
             stringsAsFactors = FALSE
           )
         } else {
@@ -1027,7 +1083,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     level = level,
     type = "joint",
     family = object$family,
+    response_name = prediction_response_name(object),
     observed_locations = FALSE,
+    parameter_draws = parameter_draws,
     coverage = assignment$method
   )
   class(out) <- "RiskMap_prediction"
@@ -1111,6 +1169,212 @@ build_prediction_components <- function(object, prediction_setup, include,
   list(fixed = fixed, offset = offset, spatial = spatial,
        random_effects = random_effects, nugget = nugget,
        link = link, response = response, transformed = transformed)
+}
+
+#' Prediction components, optionally averaged over parameter uncertainty
+#'
+#' With `parameter_draws = NULL` this is plug-in prediction at the estimate.
+#' Otherwise the parameters are drawn from the approximate sampling
+#' distribution of the estimate and, for each draw, conditional samples of the
+#' latent effects are generated at that parameter value and passed through the
+#' ordinary prediction machinery. The draws are pooled, so every summary,
+#' aggregation and transformation reflects both sources of uncertainty.
+#' @noRd
+prediction_sample_components <- function(object, prediction_data, prediction,
+                                         include, control_mcmc, messages,
+                                         observed_locations = FALSE,
+                                         groups = NULL, transform = list(),
+                                         standardize = NULL,
+                                         parameter_draws = NULL) {
+  components_at <- function(fit, control) {
+    setup <- prepare_prediction(
+      fit, prediction_data, prediction, include, control, messages = FALSE,
+      observed_locations = observed_locations, groups = groups
+    )
+    build_prediction_components(
+      fit, setup, include, transform, standardize = standardize,
+      prediction_data = prediction_data
+    )
+  }
+  if (is.null(parameter_draws)) {
+    setup <- prepare_prediction(
+      object, prediction_data, prediction, include, control_mcmc, messages,
+      observed_locations = observed_locations, groups = groups
+    )
+    return(build_prediction_components(
+      object, setup, include, transform, standardize = standardize,
+      prediction_data = prediction_data
+    ))
+  }
+
+  n_total <- prediction_sample_size(object, control_mcmc)
+  per_draw <- max(1L, ceiling(n_total / parameter_draws))
+  parameters <- draw_parameter_values(object, parameter_draws)
+  if (messages) {
+    message("Propagating parameter uncertainty over ", parameter_draws,
+            " parameter draws")
+  }
+  sampler <- if (object$family == "gaussian") NULL else
+    parameter_conditioning_sampler(object)
+  pieces <- vector("list", parameter_draws)
+  acceptance <- rep(NA_real_, parameter_draws)
+  for (k in seq_len(parameter_draws)) {
+    fit <- object
+    fit$estimate <- utils::relist(parameters[k, ], skeleton = object$estimate)
+    if (is.null(sampler)) {
+      control <- set_control_mcmc(n_sim = per_draw, linear_model = TRUE)
+    } else {
+      draws <- tryCatch(sampler(fit$estimate, per_draw),
+                        error = function(error) NULL)
+      if (is.null(draws)) next
+      fit$S_samples <- draws$samples
+      acceptance[k] <- draws$acceptance
+      control <- NULL
+    }
+    pieces[[k]] <- tryCatch(components_at(fit, control),
+                            error = function(error) NULL)
+  }
+  pieces <- pieces[!vapply(pieces, is.null, logical(1))]
+  if (length(pieces) < parameter_draws / 2) {
+    stop("Prediction failed for most parameter draws; parameter uncertainty ",
+         "could not be propagated", call. = FALSE)
+  }
+  if (length(pieces) < parameter_draws) {
+    warning(parameter_draws - length(pieces), " of ", parameter_draws,
+            " parameter draws were discarded because prediction failed at ",
+            "those values", call. = FALSE)
+  }
+  if (any(acceptance < 0.1, na.rm = TRUE)) {
+    warning("The Langevin sampler accepted few proposals for some parameter ",
+            "draws; predictive summaries may be noisy", call. = FALSE)
+  }
+  pool_prediction_components(pieces)
+}
+
+#' Pool prediction components drawn at different parameter values
+#'
+#' The fixed-effect contribution differs between parameter draws, so it is
+#' returned both as its average (`fixed`) and draw by draw (`fixed_samples`).
+#' @noRd
+pool_prediction_components <- function(pieces) {
+  bind <- function(name) {
+    values <- lapply(pieces, `[[`, name)
+    if (is.null(values[[1L]])) NULL else do.call(cbind, values)
+  }
+  fixed_samples <- do.call(cbind, lapply(pieces, function(piece) {
+    matrix(piece$fixed, nrow = length(piece$fixed), ncol = ncol(piece$spatial))
+  }))
+  transformed <- lapply(names(pieces[[1L]]$transformed), function(name) {
+    do.call(cbind, lapply(pieces, function(piece) piece$transformed[[name]]))
+  })
+  names(transformed) <- names(pieces[[1L]]$transformed)
+  list(fixed = rowMeans(fixed_samples), fixed_samples = fixed_samples,
+       offset = pieces[[1L]]$offset, spatial = bind("spatial"),
+       random_effects = bind("random_effects"), nugget = bind("nugget"),
+       link = bind("link"), response = bind("response"),
+       transformed = transformed)
+}
+
+#' Number of predictive draws used by plug-in prediction
+#' @noRd
+prediction_sample_size <- function(object, control_mcmc) {
+  if (!is.null(control_mcmc)) {
+    if (isTRUE(control_mcmc$linear_model)) return(control_mcmc$n_sim)
+    return((control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin)
+  }
+  if (object$family != "gaussian" && !is.null(object$S_samples)) {
+    return(nrow(object$S_samples))
+  }
+  control_mcmc <- set_control_mcmc()
+  if (object$family == "gaussian") return(control_mcmc$n_sim)
+  (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
+}
+
+#' Draw parameters from the approximate sampling distribution of the estimate
+#'
+#' Draws are multivariate normal on the scale on which the model is estimated
+#' (log variances and log range), with the covariance matrix of the estimate.
+#' Parameters without a finite positive variance, such as those held at a
+#' boundary, keep their estimated value.
+#' @noRd
+draw_parameter_values <- function(object, n_draws) {
+  estimate <- unlist(object$estimate)
+  covariance <- object$covariance
+  failure <- paste0(
+    "The covariance matrix of the parameter estimates is not available or ",
+    "not positive definite, so parameter uncertainty cannot be propagated. ",
+    "For binomial and Poisson models, refitting with ",
+    "'control_mcml = set_control_mcml(pc_prior = TRUE)' usually resolves this."
+  )
+  if (is.null(covariance)) stop(failure, call. = FALSE)
+  covariance <- as.matrix(covariance)
+  if (!identical(dim(covariance), rep(length(estimate), 2L))) {
+    stop(failure, call. = FALSE)
+  }
+  free <- which(is.finite(diag(covariance)) & diag(covariance) > 0)
+  block <- covariance[free, free, drop = FALSE]
+  root <- if (length(free) && all(is.finite(block))) {
+    tryCatch(chol((block + t(block)) / 2), error = function(error) NULL)
+  }
+  if (is.null(root)) stop(failure, call. = FALSE)
+  draws <- matrix(estimate, nrow = n_draws, ncol = length(estimate),
+                  byrow = TRUE, dimnames = list(NULL, names(estimate)))
+  draws[, free] <- draws[, free, drop = FALSE] +
+    matrix(stats::rnorm(n_draws * length(free)), n_draws) %*% root
+  draws
+}
+
+#' Conditional samples of the latent effects at given parameter values
+#'
+#' Returns a function drawing samples from the conditional distribution of the
+#' latent effects (locations, then random-effect levels) given the data, at
+#' any parameter value, with the same Langevin sampler used for plug-in
+#' prediction. Each short chain runs in the coordinates whitened by the Laplace
+#' approximation at that parameter value, starts at its mode and reuses the
+#' step size tuned at the estimate, so a brief burn-in suffices.
+#' @noRd
+parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
+  distance_scale <- attr(object, "distance_scale") %||% 1
+  coords <- object$coords / distance_scale
+  invlink <- if (identical(object$link_function$name, "canonical")) {
+    NULL
+  } else {
+    object$link_function$inv
+  }
+  design <- as.matrix(object$D)
+  engine <- make_adaptive_mcml_engine(
+    D = design, y = object$y, units_m = object$units_m,
+    distances = as.matrix(pairwise_distances(coords)),
+    family = object$family, kappa = object$kappa,
+    cov_offset = object$cov_offset, ID_coords = object$ID_coords,
+    fix_tau2 = object$fix_tau2, ID_re = object$ID_re, invlink = invlink
+  )
+  phi_index <- engine$layout$index$phi
+  step_size <- utils::tail(attr(object, "mcmc")$tuning_par, 1L)
+  if (!length(step_size) || !is.finite(step_size) || step_size <= 0) {
+    step_size <- NULL
+  }
+  function(estimate, n_samples) {
+    parameters <- unname(unlist(estimate))
+    parameters[phi_index] <- parameters[phi_index] - log(distance_scale)
+    proposal <- engine$proposal_at(parameters)
+    values <- proposal$values
+    simulation <- laplace_sampling_mcmc(
+      y = object$y, units_m = object$units_m,
+      mu = as.numeric(design %*% values$beta + object$cov_offset),
+      Sigma = proposal$covariance, ID_coords = object$ID_coords,
+      ID_re = object$ID_re, sigma2_re = values$sigma2_re,
+      family = object$family,
+      control_mcmc = set_control_mcmc(
+        n_sim = burnin + n_samples * thin, burnin = burnin, thin = thin,
+        h = step_size
+      ),
+      invlink = invlink, Sigma_pd = crossprod(proposal$root),
+      mean_pd = proposal$mode, messages = FALSE
+    )
+    list(samples = do.call(cbind, simulation$samples),
+         acceptance = simulation$acceptance_rate[["sampling"]])
+  }
 }
 
 #' Average predictive targets over a common reference population
@@ -1633,7 +1897,12 @@ prediction_link_samples <- function(prediction, include_fixed = TRUE,
 
   link <- samples$spatial
   if (include_fixed) {
-    link <- sweep(link, 1L, prediction$predictions$fixed, `+`)
+    # With parameter uncertainty the fixed effects differ between draws.
+    link <- if (is.null(samples$fixed)) {
+      sweep(link, 1L, prediction$predictions$fixed, `+`)
+    } else {
+      link + samples$fixed
+    }
   }
   if (include_offset) {
     link <- sweep(link, 1L, prediction$predictions$offset, `+`)
@@ -2033,7 +2302,12 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     } else {
       simulation <- laplace_sampling_mcmc(
         y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
-        sigma2_re = par_hat$sigma2_re, invlink = object$linkf,
+        sigma2_re = par_hat$sigma2_re,
+        invlink = if (identical(object$link_function$name, "canonical")) {
+          NULL
+        } else {
+          object$link_function$inv
+        },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,
         messages = messages
@@ -2366,9 +2640,10 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##'     indices of the dataset to use as the test set, or a list with components
 ##'     \code{in_id} (training indices) and \code{out_id} (test indices).
 ##' @param iter Integer; number of times to repeat the cross-validation. Defaults to `1`.
-##' @param metrics Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"AnPIT"`,
-##' to specify the predictive performance metrics to compute. When `"AnPIT"` is requested,
-##' the scalar score `"AnPIT_area"` is also computed as the integrated absolute deviation
+##' @param metrics Character vector; one or more of `"CRPS"`, `"SCRPS"` and `"PIT"`,
+##' to specify the predictive performance metrics to compute. `"PIT"` computes
+##' the PIT for Gaussian models or the AnPIT curve for discrete models, and
+##' also the scalar score `"PIT_area"`, the integrated absolute deviation
 ##' between the PIT/AnPIT curve and the reference line. Defaults to all metrics.
 ##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
 ##' or re-estimate for each fold. Defaults to `TRUE`.
@@ -2386,14 +2661,14 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##'   \item{test_set}{A list of test sets used for validation, each of class `'sf'`.}
 ##'   \item{model}{A named list, one per model, each containing:
 ##'     \describe{
-##'       \item{metric}{A list with CRPS, SCRPS, and/or AnPIT_area metrics for each fold if requested.}
-##'       \item{PIT}{(if `family = "gaussian"` and `metrics` includes `"AnPIT"`) A list of PIT values for test data.}
-##'       \item{AnPIT}{(if `family` is discrete and `metrics` includes `"AnPIT"`) A list of AnPIT curves for test data.}
+##'       \item{metric}{A list with CRPS, SCRPS, and/or PIT_area metrics for each fold if requested.}
+##'       \item{PIT}{(if `family = "gaussian"` and `metrics` includes `"PIT"`) A list of PIT values for test data.}
+##'       \item{AnPIT}{(if `family` is discrete and `metrics` includes `"PIT"`) A list of AnPIT curves for test data.}
 ##'     }
 ##'   }
 ##' }
 ##'
-##' @seealso \code{\link{plot_AnPIT}}
+##' @seealso \code{\link{plot.RiskMap_cross_validation}}
 ##'
 ##' @references
 ##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
@@ -2404,7 +2679,6 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' tropical disease prevalence. *Journal of the Royal Statistical Society Series
 ##' A: Statistics in Society*.\doi{10.1093/jrsssa/qnag100}.
 ##'
-##' @importFrom terra match
 ##' @importFrom spatialEco subsample.distance
 ##' @importFrom spatialsample spatial_clustering_cv autoplot
 ##'
@@ -2471,7 +2745,7 @@ assess_prediction <- function(object,
                               size = NULL,
                               user_split = NULL,
                               iter = 1,
-                              metrics = c("AnPIT", "CRPS", "SCRPS"),
+                              metrics = c("PIT", "CRPS", "SCRPS"),
                               keep_par_fixed = TRUE,
                               control_mcmc = set_control_mcmc(),
                               plot_fold = TRUE,
@@ -2502,8 +2776,8 @@ assess_prediction <- function(object,
   if (!is_list_of_riskmap(object))
     stop("'object' must be a list of fitted models of class 'RiskMap'.")
 
-  if (!all(metrics %in% c("CRPS", "SCRPS", "AnPIT")))
-    stop("'metrics' must only contain 'CRPS', 'SCRPS' or 'AnPIT'")
+  if (!all(metrics %in% c("CRPS", "SCRPS", "PIT")))
+    stop("'metrics' must only contain 'CRPS', 'SCRPS' or 'PIT'")
 
   if (!method %in% c("cluster", "regularized", "user"))
     stop("'method' must be either 'cluster', 'regularized' or 'user'")
@@ -2537,7 +2811,7 @@ assess_prediction <- function(object,
 
   get_CRPS  <- "CRPS"  %in% metrics
   get_SCRPS <- "SCRPS" %in% metrics
-  get_AnPIT <- "AnPIT" %in% metrics
+  get_PIT <- "PIT" %in% metrics
 
   ## ───────────────────────────── data & splits ───────────────────────────── ##
 
@@ -2721,8 +2995,8 @@ assess_prediction <- function(object,
     ## containers for this model
     if (get_CRPS)   CRPS  <- vector("list", n_iter)
     if (get_SCRPS) { y_CRPS <- vector("list", n_iter); SCRPS <- vector("list", n_iter) }
-    if (get_AnPIT) {
-      AnPIT_area <- vector("list", n_iter)
+    if (get_PIT) {
+      PIT_area <- vector("list", n_iter)
       if (fam == "gaussian") PIT <- vector("list", n_iter) else AnPIT <- vector("list", n_iter)
     }
 
@@ -2814,7 +3088,7 @@ assess_prediction <- function(object,
       if (get_CRPS)   CRPS [[i]] <- numeric(n_pred)
       if (get_SCRPS) { y_CRPS[[i]] <- numeric(n_pred); SCRPS[[i]] <- numeric(n_pred) }
 
-      if (get_AnPIT) {
+      if (get_PIT) {
         if (fam == "gaussian") {
           PIT_i <- numeric(n_pred)
         } else {
@@ -2840,7 +3114,7 @@ assess_prediction <- function(object,
             y_CRPS[[i]][j] <- sd_j / sqrt(pi)
             SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
           }
-          if (get_AnPIT) PIT_i[j] <- pnorm(y_i[j], mean = mu_j, sd = sd_j)
+          if (get_PIT) PIT_i[j] <- pnorm(y_i[j], mean = mu_j, sd = sd_j)
         } else {
           if (fam == "binomial") {
             y_samp  <- rbinom(n_draw, size = units_m_i[j], prob = mu_samp[j, ])
@@ -2857,19 +3131,19 @@ assess_prediction <- function(object,
             y_CRPS[[i]][j] <- exp_crps_discrete(Fk, pk)
             SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
           }
-          if (get_AnPIT) {
+          if (get_PIT) {
             AnPIT_i[, j] <- vapply(u_val, npit_fun, numeric(1), y = y_i[j], Fk = Fk)
           }
         }
       }
 
-      if (get_AnPIT) {
+      if (get_PIT) {
         if (fam == "gaussian") {
           PIT[[i]] <- PIT_i
-          AnPIT_area[[i]] <- .anpit_area(ecdf(PIT_i)(u_val), u_val)
+          PIT_area[[i]] <- .anpit_area(ecdf(PIT_i)(u_val), u_val)
         } else {
           AnPIT[[i]] <- rowMeans(AnPIT_i)
-          AnPIT_area[[i]] <- .anpit_area(AnPIT[[i]], u_val)
+          PIT_area[[i]] <- .anpit_area(AnPIT[[i]], u_val)
         }
       }
 
@@ -2879,8 +3153,8 @@ assess_prediction <- function(object,
     out$model[[model_names[h]]] <- list(metric = list())
     if (get_CRPS)  out$model[[model_names[h]]]$metric$CRPS  <- CRPS
     if (get_SCRPS) out$model[[model_names[h]]]$metric$SCRPS <- SCRPS
-    if (get_AnPIT) {
-      out$model[[model_names[h]]]$metric$AnPIT_area <- AnPIT_area
+    if (get_PIT) {
+      out$model[[model_names[h]]]$metric$PIT_area <- PIT_area
       if (fam == "gaussian") out$model[[model_names[h]]]$PIT <- PIT else out$model[[model_names[h]]]$AnPIT <- AnPIT
     }
 
@@ -2890,47 +3164,229 @@ assess_prediction <- function(object,
   return(out)
 }
 
-
-
-##' Plot simulated surface data for a given simulation
+##' @title Plot Method for RiskMap_simulation Objects
+##' @description
+##' Maps the linear predictor of one simulation from [simulate_glgpm()] over
+##' its prediction grid, with the sampling locations overlaid when data were
+##' also simulated.
 ##'
-##' Plots the linear predictor from [simulate_glgpm()] on a regular grid,
-##' with sampling locations overlaid when replicated data are available.
+##' @param x Output from [simulate_glgpm()] including a surface.
+##' @param simulation A single simulation number to plot, defaulting to one.
+##' @inheritParams plot.RiskMap_simulated_surface
 ##'
-##' @param surf_obj Output from [simulate_glgpm()] including a surface.
-##' @param sim The simulation index to plot.
-##' @param ... Additional graphical parameters to be passed to the plotting function of the `terra` package.
+##' @return A \code{ggplot} object.
+##' @details
+##' The returned object can be modified further
+##' with standard \pkg{ggplot2} functions.
 ##'
-##' @return A plot of the simulation results.
-##'
-##' @importFrom terra rast rasterize vect
-##'
+##' @seealso [simulated_surface()], [plot.RiskMap_simulated_surface()]
+##' @method plot RiskMap_simulation
 ##' @export
-plot_sim_surf <-  function(surf_obj, sim, ...) {
+plot.RiskMap_simulation <- function(x, simulation = 1, palette = "viridis",
+                                    reverse_palette = FALSE, ...) {
+  out <- plot(simulated_surface(x, simulation),
+              palette = palette,
+              reverse_palette = reverse_palette,
+              ...) +
+    ggtitle(paste("Simulation", simulation))
 
-  sf_object <- simulated_surface(surf_obj, sim)
+  if (!is.null(x$locations$data)) {
+    # geom_point() rather than geom_sf(), which would replace the map's coord_sf()
+    sample_coordinates <- st_coordinates(st_transform(x$locations$data,
+                                                      st_crs(x$locations$surface)))
+    out <- out + geom_point(data = data.frame(x = sample_coordinates[, 1],
+                                              y = sample_coordinates[, 2]),
+                            aes(x = .data$x, y = .data$y),
+                            inherit.aes = FALSE, size = 1)
+  }
+  out
+}
 
-  # Points are assumed to fall on a regular lattice (e.g. from create_grid());
-  # infer its cell size from the smallest gap between distinct coordinates,
-  # and pad the extent by half a cell so points land at cell centres.
-  coords <- st_coordinates(sf_object)
-  cellsize <- c(min(diff(sort(unique(coords[, "X"])))),
-               min(diff(sort(unique(coords[, "Y"])))))
-  template <- rast(
-    xmin = min(coords[, "X"]) - cellsize[1] / 2,
-    xmax = max(coords[, "X"]) + cellsize[1] / 2,
-    ymin = min(coords[, "Y"]) - cellsize[2] / 2,
-    ymax = max(coords[, "Y"]) + cellsize[2] / 2,
-    resolution = cellsize,
-    crs = st_crs(sf_object)$wkt
-  )
-  r <- rasterize(vect(sf_object), template, field = "linear_predictor")
+##' Map values over a regular grid of points
+##'
+##' Draws each grid point as a tile, styled with `add_map_layers()`. Shared by
+##' the plot methods for grid predictions and simulated surfaces.
+##'
+##' @param grid An `sf` or `sfc` object of points on a regular grid.
+##' @param values Numeric vector of values to map, one per point in `grid`.
+##' @param legend_title Character string used as the fill legend title.
+##' @param palette,reverse_palette,limits,north_arrow,scale_bar,... Passed to
+##' `add_map_layers()`.
+##' @return A `ggplot` object.
+##' @noRd
+plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
+                      limits, north_arrow, scale_bar, ...) {
+  grid_coordinates <- st_coordinates(grid)
+  plot_data <- data.frame(x = grid_coordinates[, 1],
+                          y = grid_coordinates[, 2],
+                          value = values)
 
-  plot(r, main = paste("Simulation no.", sim), ...)
-  if (!is.null(surf_obj$locations$data)) {
-    points(st_coordinates(surf_obj$locations$data), pch = 20)
+  tile_width <- grid_spacing(plot_data$x)
+  tile_height <- grid_spacing(plot_data$y)
+  # a single row or column has no spacing of its own, so borrow the other
+  # axis's to keep the tiles square
+  if (is.na(tile_width) && is.na(tile_height)) {
+    tile_width <- tile_height <- 1
+  } else if (is.na(tile_width)) {
+    tile_width <- tile_height
+  } else if (is.na(tile_height)) {
+    tile_height <- tile_width
   }
 
+  # extent of the tiles, not just their centres
+  extent <- c(xmin = min(plot_data$x) - tile_width / 2,
+              xmax = max(plot_data$x) + tile_width / 2,
+              ymin = min(plot_data$y) - tile_height / 2,
+              ymax = max(plot_data$y) + tile_height / 2)
+
+  out <- ggplot(plot_data) +
+    geom_tile(aes(x = .data$x, y = .data$y, fill = .data$value),
+              width = tile_width, height = tile_height)
+
+  add_map_layers(out,
+                 extent = extent,
+                 crs = st_crs(grid),
+                 legend_title = legend_title,
+                 palette = palette,
+                 reverse_palette = reverse_palette,
+                 limits = limits,
+                 north_arrow = north_arrow,
+                 scale_bar = scale_bar,
+                 ...)
+}
+
+##' Spacing between the points of a regular grid along one axis
+##'
+##' @param coordinates Numeric vector of coordinates along one axis.
+##' @return The smallest gap between distinct coordinates, or `NA` when they
+##' all share one value.
+##' @noRd
+grid_spacing <- function(coordinates) {
+  if (length(unique(coordinates)) < 2) return(NA_real_)
+  resolution(coordinates, zero = FALSE)
+}
+
+##' Convert a palette specification into a vector of colours
+##'
+##' @param palette Either the name of a palette in [grDevices::hcl.pals()] or a
+##' character vector of two or more valid colours.
+##' @param reverse_palette Logical; reverse the order of the colours.
+##' @return A character vector of colours.
+##' @noRd
+palette_colours <- function(palette, reverse_palette = FALSE) {
+  stopifnot("'palette' must be a character vector" = is.character(palette))
+  check_logical(reverse_palette)
+
+  if (length(palette) == 1) {
+    # hcl.colors() ignores case, spaces and punctuation in palette names
+    normalise_name <- function(name) tolower(gsub("[^[:alnum:]]", "", name))
+    if (!normalise_name(palette) %in% normalise_name(grDevices::hcl.pals())) {
+      stop("'palette' must be one of grDevices::hcl.pals() or a vector of two or more colours")
+    }
+    colours <- grDevices::hcl.colors(256, palette = palette)
+  } else {
+    valid_colour <- vapply(palette, function(colour) {
+      !inherits(try(grDevices::col2rgb(colour), silent = TRUE), "try-error")
+    }, logical(1))
+    if (!all(valid_colour)) {
+      stop("'palette' contains invalid colours: ",
+           paste(shQuote(palette[!valid_colour]), collapse = ", "))
+    }
+    colours <- palette
+  }
+  if (reverse_palette) colours <- rev(colours)
+  colours
+}
+
+##' Add the fill scale, map extent, north arrow and scale bar shared by the
+##' prediction maps
+##'
+##' @param map A `ggplot` object.
+##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`) giving
+##' the extent of the data in `crs`.
+##' @param crs The coordinate reference system of the data.
+##' @param legend_title Character string used as the fill legend title.
+##' @param palette,reverse_palette Passed to `palette_colours()`.
+##' @param limits `NULL` or a numeric vector of length two for the colour scale.
+##' @param north_arrow,scale_bar Logical; whether to add each annotation.
+##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()].
+##' @return The `ggplot` object with the layers added.
+##' @noRd
+add_map_layers <- function(map, extent, crs, legend_title, palette,
+                           reverse_palette, limits, north_arrow, scale_bar, ...) {
+  check_logical(north_arrow)
+  check_logical(scale_bar)
+  map <- map +
+    scale_fill_gradientn(colours = palette_colours(palette, reverse_palette),
+                         limits = limits, ...) +
+    coord_sf(crs = crs,
+             xlim = as.numeric(extent[c("xmin", "xmax")]),
+             ylim = pad_map_extent(extent, north_arrow, scale_bar)) +
+    labs(x = NULL, y = NULL, fill = legend_title)
+
+  if (north_arrow) {
+    map <- map +
+      ggspatial::annotation_north_arrow(location = "tr", which_north = "true",
+                                        height = unit(1, "cm"),
+                                        width = unit(1, "cm"))
+  }
+  if (scale_bar) {
+    map <- map + ggspatial::annotation_scale(location = "bl")
+  }
+  map
+}
+
+##' Extend the vertical extent of a map to make room for annotations
+##'
+##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`).
+##' @param north_arrow Logical; add space above the data for a north arrow.
+##' @param scale_bar Logical; add space below the data for a scale bar.
+##' @return Numeric vector of length two giving the padded y limits.
+##' @noRd
+pad_map_extent <- function(extent, north_arrow, scale_bar) {
+  height <- unname(extent["ymax"] - extent["ymin"])
+  # roughly the height of each annotation on a typical map
+  top_padding <- if (north_arrow) 0.15 * height else 0
+  bottom_padding <- if (scale_bar) 0.08 * height else 0
+  unname(c(extent["ymin"] - bottom_padding, extent["ymax"] + top_padding))
+}
+
+##' @title Plot Method for RiskMap_simulated_surface Objects
+##' @description
+##' Maps the linear predictor of a surface extracted with
+##' [simulated_surface()] over its prediction grid.
+##'
+##' @param x Output from [simulated_surface()].
+##' @param palette Either the name of a palette from [grDevices::hcl.pals()]
+##' (e.g. `"viridis"`, `"Blues"`, `"Spectral"`) or a character vector of two or
+##' more colours to interpolate between. Defaults to `"viridis"`.
+##' @param reverse_palette Logical; if `TRUE`, reverse the order of the palette
+##' colours. Defaults to `FALSE`.
+##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()],
+##' e.g. `name`, `breaks` or `limits`.
+##'
+##' @return A \code{ggplot} object.
+##' @details
+##' The returned object can be modified further
+##' with standard \pkg{ggplot2} functions.
+##'
+##' @seealso [simulated_surface()], [plot.RiskMap_simulation()]
+##' @method plot RiskMap_simulated_surface
+##' @export
+plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
+                                           reverse_palette = FALSE, ...) {
+  stopifnot("'x' must be of class RiskMap_simulated_surface" =
+              inherits(x, "RiskMap_simulated_surface"))
+
+  plot_grid(x,
+            values = x$linear_predictor,
+            legend_title = "linear_predictor",
+            palette = palette,
+            reverse_palette = reverse_palette,
+            limits = NULL,
+            north_arrow = FALSE,
+            scale_bar = FALSE,
+            ...)
 }
 
 ##' @title Assess Simulations
@@ -3619,4 +4075,11 @@ print_pred_objective <- function(x) {
   }
 
   invisible(x)
+}
+
+#' Name of the response variable, used to label prediction maps
+#' @noRd
+prediction_response_name <- function(object) {
+  response <- all.vars(object$formula[[2L]])
+  if (length(response)) response[[1L]] else NA_character_
 }

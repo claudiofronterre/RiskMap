@@ -20,8 +20,34 @@ extract multiple simulations in one tidy table.}
 \code{simulated_data()} returns the sample \code{sf} data with its response
 column replaced by the selected simulation, ready for refitting.
 \code{simulated_surface()} returns the grid \code{sf} data with columns for the
-spatial effect, nugget, group effect, linear predictor and mean.
+spatial effect, nugget, group effect, linear predictor and mean, with
+class \code{RiskMap_simulated_surface} so that it can be mapped with
+\link[=plot.RiskMap_simulated_surface]{plot()}.
 }
 \description{
 Extract a simulated dataset or surface
+}
+\examples{
+library(sf)
+locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
+                      coords = c("x", "y"), crs = 32629)
+
+grid <- st_as_sf(data.frame(x = c(500, 1500), y = 500),
+                 coords = c("x", "y"), crs = 32629)
+
+model <- specify_glgpm(response ~ gp(),
+                       data = locations,
+                       family = "gaussian",
+                       parameters = list(beta = 1,
+                                         sigma2 = 1,
+                                         phi = 2,
+                                         sigma2_me = 0.1))
+
+sim <- simulate_glgpm(model,
+                      nsim = 2,
+                      what = c("data", "surface"),
+                      prediction_grid = grid,
+                      seed = 1)
+
+simulated_data(sim, simulation = 1)
 }

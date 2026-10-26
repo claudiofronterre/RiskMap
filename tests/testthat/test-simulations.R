@@ -22,30 +22,113 @@ test_that("joint simulations share effects at overlapping locations", {
   expect_identical(nrow(simulated_values(sim, "response")), 6L)
 })
 
-test_that("simulation model validation remains informative", {
+test_that("specify_glgpm returns errors as expected", {
   expect_error(
     specify_glgpm("not a formula", gaussian_data, "gaussian",
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
     "'formula' must be a 'formula'"
   )
+
+  expect_error(
+    specify_glgpm(y ~ cov, gaussian_data, "gaussian",
+                  list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
+    "The 'formula' must contain a Gaussian Process term"
+  )
+
   expect_error(
     specify_glgpm(y ~ gp(), "not spatial data", "gaussian",
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
     "class 'sf'"
   )
+
+  expect_error(
+    specify_glgpm(y ~ gp(), gaussian_data, "gaussian", model_crs = 4326,
+                  list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
+    "'model_crs' must be a projected CRS"
+  )
+
+  expect_message(
+    specify_glgpm(y ~ gp(), latlon_data, "gaussian",
+                  list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
+    "'data' are in longitude/latitude "
+  )
+
   expect_error(
     specify_glgpm(y ~ gp(), gaussian_data, "not-a-family",
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
     "should be one of"
   )
+
+  expect_error(
+    specify_glgpm(y ~ gp(), gaussian_data, "gaussian",
+                  denominator = cov,
+                  list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
+    "When 'family' is 'gaussian', neither 'denominator'"
+  )
+
+  expect_error(
+    specify_glgpm(y ~ gp(), gaussian_data, "gaussian",
+                  invlink = plogis,
+                  list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
+    "When 'family' is 'gaussian', neither 'denominator'"
+  )
+
   expect_error(
     specify_glgpm(y ~ gp(), gaussian_data, "gaussian",
                   list(sigma2 = 1, phi = 1, sigma2_me = 0)),
     "Missing simulation parameters: beta"
   )
-  expect_error(simulate_glgpm(gaussian_model, nsim = -1),
-               "positive integer")
+
+  expect_error(
+    specify_glgpm(y ~ gp(), binomial_data, "binomial",
+                  denominator = "d",
+                  list(beta = 1, sigma2 = 1, phi = 1)),
+                  "'denominator' must be provided as an unquoted column"
+  )
+
+  expect_error(
+    specify_glgpm(y ~ gp(), binomial_data, "binomial",
+                  denominator = d,
+                  list(beta = 1, sigma2 = 1, phi = 1)),
+    "'denominator' is not present in 'data'"
+  )
+
+  expect_error(
+    specify_glgpm(y ~ gp(), binomial_data, "binomial",
+                  denominator = denominator,
+                  invlink = "a",
+                  list(beta = 1, sigma2 = 1, phi = 1)),
+    "'invlink' must be a function"
+  )
+
 })
+
+test_that("specify_glgpm returns errors as expected", {
+
+  expect_error(
+    simulate_glgpm(gaussian_model, nsim = -1),
+    "positive integer"
+  )
+
+  expect_error(
+    simulate_glgpm(gaussian_model, nsim = 1, what = "n"),
+    "'what' must be 'data', 'surface'"
+  )
+
+  expect_error(
+    simulate_glgpm(gaussian_model, nsim = 1, what = "surface",
+                   sample_locations = gaussian_data),
+    "'sample_locations' requires 'data' in 'what'"
+  )
+
+  expect_error(
+    simulate_glgpm(gaussian_model, nsim = 1, what = "data",
+                   prediction_grid = grid),
+    "'prediction_grid' requires 'surface' in 'what'"
+  )
+
+})
+
 
 test_that("joint draws follow the specified covariance and distance units", {
   data <- gaussian_data[1:2, ]
@@ -107,10 +190,34 @@ test_that("validation is informative and local seeds preserve RNG", {
   )
   expect_identical(st_crs(transformed$locations$data), st_crs(gaussian_model$data))
   expect_error(simulate_glgpm(binomial_model, sample_locations = binomial_data[, "cov"]),
-               "Random-effect|denominator")
+               "'i' is present in the model formula but not a column in 'sample_locations'")
   expect_error(simulated_data(first, 2), "valid simulation")
   expect_error(simulated_surface(first), "No surface")
   expect_error(simulate_glgpm(list(gaussian_model)), "fitted RiskMap")
+})
+
+test_that("missing formula variables in prediction_grid or sample_locations are named clearly (#204)", {
+  surface_missing_cov <- grid
+  expect_error(
+    simulate_glgpm(gaussian_model, what = c("data", "surface"),
+                   prediction_grid = surface_missing_cov,
+                   sample_locations = gaussian_data),
+    "'cov', 'i' are present in the model formula but not a column in 'prediction_grid'"
+  )
+
+  surface_missing_re <- grid
+  surface_missing_re$cov <- rnorm(nrow(grid))
+  expect_error(
+    simulate_glgpm(gaussian_model, what = c("data", "surface"),
+                   prediction_grid = surface_missing_re,
+                   sample_locations = gaussian_data),
+    "'i' is present in the model formula but not a column in 'prediction_grid'"
+  )
+
+  expect_error(
+    simulate_glgpm(gaussian_model, sample_locations = gaussian_data[, "cov"]),
+    "'i' is present in the model formula but not a column in 'sample_locations'"
+  )
 })
 
 test_that("new locations preserve factor coding without observed responses", {
@@ -357,5 +464,109 @@ test_that("classification metrics retain fixed categories and compute accuracy #
   )
   expect_identical(no_high_predictions$by_cat$Class, c("low", "high"))
   expect_true(is.na(no_high_predictions$by_cat$PPV[2]))
+})
+
+test_that("classification summaries handle one simulation and metric-wise missingness #108", {
+  one_result <- data.frame(
+    Class = c("low", "high"),
+    Sensitivity = c(0.5, NA),
+    Specificity = c(NA, 0.75),
+    PPV = c(0.4, NA),
+    NPV = c(NA, 0.8),
+    CC = c(0.6, 0.7)
+  )
+  one_simulation <- structure(
+    list(
+      pred_objective = list(
+        grid = list(
+          classify = list(
+            model = list(by_cat = list(one_result), CC = 0.65),
+            Class = factor(c("low", "high"), levels = c("low", "high"))
+          )
+        )
+      ),
+      n_sim = 1L,
+      spatial_scale = "grid"
+    ),
+    class = "RiskMap_assess_simulation"
+  )
+
+  expect_warning(summary_one <- summary(one_simulation), "one simulation")
+  model_one <- summary_one$grid$classify$model
+  expect_equal(model_one$classify_res$Sensitivity, c(0.5, NA))
+  expect_equal(model_one$n_valid$Sensitivity, c(1L, 0L))
+  expect_equal(model_one$cc_summary$mean, 0.65)
+  expect_true(is.na(model_one$cc_summary$sd))
+  expect_true(is.na(model_one$cc_summary$lower))
+  expect_output(print(summary_one), "uncertainty unavailable")
+
+  second_result <- one_result
+  second_result$Sensitivity <- c(NA, 0.25)
+  second_result$Specificity <- c(0.5, NA)
+  two_simulations <- one_simulation
+  two_simulations$n_sim <- 2L
+  two_simulations$pred_objective$grid$classify$model$by_cat <-
+    list(one_result, second_result)
+  two_simulations$pred_objective$grid$classify$model$CC <- c(0.65, 0.75)
+
+  summary_two <- summary(two_simulations)$grid$classify$model
+  expect_equal(summary_two$classify_res$Sensitivity, c(0.5, 0.25))
+  expect_equal(summary_two$n_valid$Sensitivity, c(1L, 1L))
+  expect_equal(summary_two$n_valid$Specificity, c(1L, 1L))
+  expect_equal(summary_two$cc_summary$n_valid, 2L)
+  expect_equal(summary_two$cc_summary$n_sim, 2L)
+})
+
+test_that("plot.RiskMap_simulation plots the simulated surface (#87)", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = grid, seed = 1)
+
+  expect_s3_class(sim, "RiskMap_simulation")
+  expect_error(plot(sim, simulation = 3), "must select valid simulation numbers")
+  expect_no_error(plot(sim, simulation = 2))
+
+  p <- plot(sim)
+  expect_s3_class(p, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(p))
+  expect_equal(p$labels$title, "Simulation 1")
+  expect_equal(p$labels$fill, "linear_predictor")
+  expect_equal(p$data$value,
+               as.numeric(sim$samples$surface[, 1, "linear_predictor"]))
+  # sample locations are overlaid when data were simulated
+  expect_length(p$layers, 2)
+  expect_equal(nrow(p$layers[[2]]$data), nrow(sim$locations$data))
+
+  p2 <- plot(sim, simulation = 2)
+  expect_equal(p2$labels$title, "Simulation 2")
+  expect_equal(p2$data$value,
+               as.numeric(sim$samples$surface[, 2, "linear_predictor"]))
+})
+
+test_that("plot.RiskMap_simulation omits points when only a surface was simulated (#183)", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 1, what = "surface",
+                        prediction_grid = grid, seed = 1)
+
+  p <- plot(sim)
+  expect_length(p$layers, 1)
+  expect_no_error(ggplot2::ggplot_build(p))
+})
+
+test_that("simulated_surface() output has a plot method matching plot.RiskMap_simulation (#183)", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = grid, seed = 1)
+  surface <- simulated_surface(sim, 2)
+
+  expect_s3_class(surface, c("RiskMap_simulated_surface", "sf"))
+  p <- plot(surface, palette = "Blues", reverse_palette = TRUE)
+  expect_s3_class(p, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(p))
+  expect_equal(p$data$value, surface$linear_predictor)
+  expect_equal(p$labels$fill, "linear_predictor")
+  expect_identical(ggplot2::ggplot_build(p)$data[[1]]$fill,
+                   ggplot2::ggplot_build(plot(sim, simulation = 2, palette = "Blues",
+                                              reverse_palette = TRUE))$data[[1]]$fill)
+  expect_error(plot.RiskMap_simulated_surface(sim), "must be of class RiskMap_simulated_surface")
 })
 

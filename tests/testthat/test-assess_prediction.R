@@ -543,7 +543,7 @@ test_that("assess_prediction can refit correctly for all model families", {
       keep_par_fixed = FALSE,
       control_mcmc = control_mcmc,
       messages = FALSE),
-    "Adaptive MCML reached its stopping limit")
+    "estimated as effectively zero")
 
   expect_setequal(names(result), c("test_set", "model"))
 
@@ -577,7 +577,7 @@ test_that("assess_prediction's control_mcmc seed makes regularized/cluster split
 })
 
 
-test_that("AnPIT area computes trapezoidal absolute distance", {
+test_that("PIT area computes trapezoidal absolute distance", {
   u <- seq(0, 1, length.out = 1001)
 
   expect_identical(.anpit_area(u, u), 0)
@@ -585,7 +585,7 @@ test_that("AnPIT area computes trapezoidal absolute distance", {
   expect_equal(.anpit_area(u^2, u), 1 / 6, tolerance = 1e-6)
 })
 
-test_that("assess_prediction reports AnPIT area as a scalar score", {
+test_that("assess_prediction reports PIT area as a scalar score", {
   geom <- st_sfc(
     st_point(c(0, 0)),
     st_point(c(1, 1)),
@@ -613,21 +613,22 @@ test_that("assess_prediction reports AnPIT area as a scalar score", {
     user_split = matrix(c(0, 1, 1), ncol = 1),
     plot_fold = FALSE,
     messages = FALSE,
-    metrics = "AnPIT"
+    metrics = "PIT"
   )
 
-  expect_named(out$model$model_x1$metric, "AnPIT_area")
-  expect_length(out$model$model_x1$metric$AnPIT_area, 1)
-  expect_type(out$model$model_x1$metric$AnPIT_area[[1]], "double")
-  expect_true(is.finite(out$model$model_x1$metric$AnPIT_area[[1]]))
-  expect_gte(out$model$model_x1$metric$AnPIT_area[[1]], 0)
-  expect_lte(out$model$model_x1$metric$AnPIT_area[[1]], 0.5)
+  expect_named(out$model$model_x1$metric, "PIT_area")
+  expect_length(out$model$model_x1$metric$PIT_area, 1)
+  expect_type(out$model$model_x1$metric$PIT_area[[1]], "double")
+  expect_true(is.finite(out$model$model_x1$metric$PIT_area[[1]]))
+  expect_gte(out$model$model_x1$metric$PIT_area[[1]], 0)
+  expect_lte(out$model$model_x1$metric$PIT_area[[1]], 0.5)
   expect_length(out$model$model_x1$PIT[[1]], 2)
 
   summary_out <- summary(out)
-  expect_true("AnPIT_area" %in% colnames(summary_out))
-  expect_identical(summary_out["model_x1", "AnPIT_area"],
-               out$model$model_x1$metric$AnPIT_area[[1]])
+  expect_true("PIT_area" %in% colnames(summary_out))
+  expect_identical(summary_out["model_x1", "PIT_area"],
+               out$model$model_x1$metric$PIT_area[[1]])
+
 })
 
 test_that("plot_folds() plots every observation, coloured by training/test set (#157)", {

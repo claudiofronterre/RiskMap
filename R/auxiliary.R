@@ -93,6 +93,10 @@ elogit <- function(y, m) {
 ##' @param data An object of class \code{sf} containing the coordinates.
 ##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
 ##' @return An integer indicating the EPSG code of the UTM zone.
+##' @examples
+##' data("infect_sma")
+##' propose_utm(infect_sma)
+##'
 ##' @export
 propose_utm <- function(data) {
 
@@ -601,6 +605,19 @@ coef.RiskMap <- function(object, ...) {
 ##' @return A numeric vector, or `NULL` when final conditional sampling was
 ##' skipped for a non-Gaussian model.
 ##' @method fitted RiskMap
+##' @examples
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   return_samples = TRUE,
+##'   messages = FALSE
+##' )
+##'
+##' fitted(fit)
+##'
 ##' @export
 fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
   type <- match.arg(type)
@@ -613,14 +630,26 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   model fits
 ##' @param object An object of class "RiskMap" from \code{\link{glgpm}}
 ##' @param ... other parameters.
-##' @param conf_level Confidence level for intervals (default 0.95).
+##' @param level Confidence level for intervals (default 0.95).
 ##' @return A list of class \code{"summary.RiskMap"} with parameter estimates,
 ##'   standard errors, and confidence intervals.
 ##' @method summary RiskMap
+##' @examples
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' summary(fit)
+##' summary(fit, level = 0.98)
 ##' @export
-summary.RiskMap <- function(object, ..., conf_level = 0.95) {
+summary.RiskMap <- function(object, ..., level = 0.95) {
 
-  alpha  <- 1 - conf_level
+  alpha  <- 1 - level
   z_crit <- qnorm(1 - alpha / 2)
   res    <- list()
 
@@ -748,7 +777,7 @@ summary.RiskMap <- function(object, ..., conf_level = 0.95) {
     rownames(res$ranef) <- paste0(re_names, " (random eff. var.)")
   }
 
-  res$conf_level      <- conf_level
+  res$level           <- level
   res$family          <- object$family
   res$kappa           <- object$kappa
   res$log_lik         <- object$log_lik
@@ -796,7 +825,7 @@ print.summary.RiskMap <- function(x, ...) {
   if (!is.null(x$invlink_expression)) cat(x$invlink_expression, "\n\n")
 
   cat("'Lower limit' and 'Upper limit' refer to ",
-      x$conf_level * 100, "% confidence intervals\n", sep = "")
+      x$level * 100, "% confidence intervals\n", sep = "")
 
   cat("\nRegression coefficients\n")
   printCoefmat(x$reg_coef, P.values = TRUE, has.Pvalue = TRUE)
@@ -1038,7 +1067,6 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   attr(res, "test_set_means") <- test_set_means
   attr(res, "overall_averages") <- overall_averages
   attr(res, "view_all") <- view_all
-
   class(res) <- "summary.RiskMap_cross_validation"
   return(res)
 }
@@ -1100,53 +1128,86 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
   invisible(x)
 }
 
+##' Name a predictive-performance metric as it should appear on a plot
+##'
+##' The calibration metrics are stored as `"PIT"` and `"PIT_area"` for every
+##' family, but are labelled AnPIT for discrete families.
+##'
+##' @param object A `RiskMap_cross_validation` object.
+##' @param metric Character string naming the metric.
+##' @param model Character string naming the model.
+##' @return Character string.
+##' @noRd
+.metric_label <- function(object, metric, model) {
+  pit_label <- if (is.null(object$model[[model]]$AnPIT)) "PIT" else "AnPIT"
+  switch(metric,
+         PIT = pit_label,
+         PIT_area = paste0(pit_label, "_area"),
+         metric)
+}
 
-##' @title Plot Calibration Curves (AnPIT / PIT) from Spatial Cross-Validation
+##' Build one spatial map of a predictive-performance metric
 ##'
-##' @description
-##' Produce calibration plots from a \code{RiskMap_cross_validation} object returned by
-##' \code{\link{assess_prediction}}.
-##' * For Binomial or Poisson models the function visualises the
-##'   \emph{Aggregated normalised Probability Integral Transform} (AnPIT)
-##'   curves stored in \code{$AnPIT}.
-##' * For Gaussian models it detects the list \code{$PIT} and instead plots
-##'   the empirical \emph{Probability Integral Transform} curve
-##'   (ECDF of PIT values) on the same \eqn{u}-grid.
-##'
-##' A 45° dashed red line indicates perfect calibration.
-##'
-##' @param object       A \code{RiskMap_cross_validation} object.
-##' @param mode         One of \code{"average"} (average curve across test sets),
-##'                     \code{"single"} (a specific test set),
-##'                     or \code{"all"} (every test set separately).
-##' @param test_set     Integer; required when \code{mode = "single"}.
-##' @param model_name   Optional character string; if supplied,
-##'                     only that model is plotted.
-##' @param combine_panels Logical; when \code{mode = "average"}, draw
-##'                       all models in a single panel (\code{TRUE})
-##'                       or one panel per model (\code{FALSE}, default).
-##'
-##' @return A \pkg{ggplot2} object (single plot) or a \pkg{grid} object
-##'   from \pkg{gridExtra} (multiple panels).
-##'
-##' @importFrom dplyr   group_by summarize %>%
-##' @export
-plot_AnPIT <- function(object,
-                       mode = "average",
-                       test_set = NULL,
-                       model_name = NULL,
-                       combine_panels = FALSE) {
+##' @noRd
+.plot_metric_map <- function(object, metric, model, ...) {
 
-  if (!inherits(object, "RiskMap_cross_validation"))
-    stop("`object` must be a 'RiskMap_cross_validation' produced by assess_prediction().")
-
-  all_models <- names(object$model)
-
-  if (!is.null(model_name)) {
-    if (!model_name %in% all_models)
-      stop("Model name '", model_name, "' not found in `object$model`.")
-    all_models <- model_name
+  if (!model %in% names(object$model)) {
+    stop(paste("'model'", shQuote(model, type = "sh"), "was not found in 'object'"))
   }
+
+  if (!metric %in% names(object$model[[model]]$metric)) {
+    stop(paste("'metric'", shQuote(metric, type = "sh"), "was not computed for model", shQuote(model, type = "sh")))
+  }
+
+  # Extract the test sets and number of test sets
+  test_sets <- object$test_set
+  n_test <- length(test_sets)
+
+  # Combine the data and add the metric variable
+  data_full <- st_as_sf(test_sets[[1]])
+  data_full$value <- object$model[[model]]$metric[[metric]][[1]]
+
+  if (n_test > 1) {
+    for (i in 2:n_test) {
+      test_sets[[i]]$value <- object$model[[model]]$metric[[metric]][[i]]
+      data_full <- rbind(data_full, test_sets[[i]])
+    }
+  }
+
+  # Check for duplicate locations and average the metric
+  data_full <- data_full %>%
+    mutate(geom_id = st_as_text(.data$geometry)) %>%
+    group_by(.data$geom_id) %>%
+    summarize(value = mean(.data$value, na.rm = TRUE),
+              geometry = first(.data$geometry), .groups = "drop") %>%
+    st_as_sf()
+
+  # Create the base plot
+  metric_label <- .metric_label(object, metric, model)
+  out <- ggplot(data = data_full) +
+    geom_sf(aes(color = .data$value), size = 2) +
+    labs(title = paste0("Model ", model, ": ", metric_label),
+         colour = metric_label) +
+    theme_minimal()
+
+  # Layer on any additional ggplot components passed via ...
+  Reduce(`+`, list(...), out)
+}
+
+##' Build calibration-curve plots (AnPIT / PIT) for one or more models
+##'
+##' For Binomial or Poisson models this visualises the Aggregated
+##' normalised Probability Integral Transform (AnPIT) curves stored in
+##' `$AnPIT`; for Gaussian models it instead plots the empirical PIT curve
+##' (ECDF of `$PIT` values) on the same grid. A 45-degree dashed red line
+##' indicates perfect calibration.
+##'
+##' @return A named list of ggplot objects, one per `model` - or, when
+##'   `pit_mode == "average"` and `combine_pit` is `TRUE`, a single-element
+##'   list holding one combined plot.
+##' @noRd
+.plot_calibration_curve <- function(object, pit_mode, pit_test_set, model,
+                                    combine_pit) {
 
   make_df <- function(mname) {
     m <- object$model[[mname]]
@@ -1180,7 +1241,7 @@ plot_AnPIT <- function(object,
     }
   }
 
-  plot_data <- do.call(rbind, unlist(lapply(all_models, make_df), recursive = FALSE))
+  plot_data <- do.call(rbind, unlist(lapply(model, make_df), recursive = FALSE))
 
   if (is.null(plot_data) || nrow(plot_data) == 0)
     stop("No AnPIT or PIT data available for plotting.")
@@ -1191,24 +1252,24 @@ plot_AnPIT <- function(object,
   id_line <- geom_abline(intercept = 0, slope = 1,
                          linetype = "dashed", colour = "red")
 
-  if (mode == "average" && combine_panels) {
+  if (pit_mode == "average" && combine_pit) {
     avg <- plot_data %>%
       dplyr::group_by(.data$model, .data$u_val) %>%
       dplyr::summarize(value = mean(.data$value), .groups = "drop")
 
-    return(
+    return(list(
       ggplot(avg, aes(.data$u_val, .data$value, colour = .data$model)) +
         geom_line() + id_line +
         labs(title = "Average calibration curves",
              x = "", y = y_label) +
         theme_minimal() +
         guides(colour = guide_legend(title = "Model"))
-    )
+    ))
   }
 
   build_plot <- function(df, title_suffix = "") {
     ggplot(df, aes(.data$u_val, .data$value,
-                   colour = if (mode == "all") as.factor(test_set) else NULL)) +
+                   colour = if (pit_mode == "all") as.factor(.data$test_set) else NULL)) +
       geom_line() + id_line +
       labs(title = title_suffix, x = "", y = unique(df$type)) +
       theme_minimal() +
@@ -1216,103 +1277,163 @@ plot_AnPIT <- function(object,
   }
 
   plots <- list()
-  for (mname in all_models) {
+  for (mname in model) {
     df_model <- dplyr::filter(plot_data, .data$model == mname)
 
-    p <- switch(mode,
+    title <- paste0("Model ", mname, ": ", unique(df_model$type))
+    p <- switch(pit_mode,
                 average = {
                   avg <- df_model %>%
                     dplyr::group_by(.data$u_val) %>%
                     dplyr::summarize(value = mean(.data$value), .groups = "drop")
                   avg$type <- unique(df_model$type)
-                  build_plot(avg, paste("Model", mname, ": average"))
+                  build_plot(avg, paste(title, "(average)"))
                 },
                 single  = {
-                  if (is.null(test_set))
-                    stop("Provide `test_set` when mode = 'single'.")
-                  df_ts <- dplyr::filter(df_model, test_set == test_set)
+                  if (is.null(pit_test_set))
+                    stop("Provide `pit_test_set` when pit_mode = 'single'.")
+                  df_ts <- df_model[df_model$test_set == pit_test_set,]
                   if (nrow(df_ts) == 0)
-                    stop("No data for test_set ", test_set, " in model ", mname)
+                    stop("No data for test set ", pit_test_set, " in model ", mname)
                   build_plot(df_ts,
-                             paste("Model", mname, "- test set", test_set))
+                             paste0(title, " (test set ", pit_test_set, ")"))
                 },
                 all     = build_plot(df_model,
-                                     paste("Model", mname, "- all test sets")),
-                stop("Invalid `mode`. Use 'average', 'single' or 'all'.")
+                                     paste(title, "(all test sets)")),
+                stop("Invalid `pit_mode`. Use 'average', 'single' or 'all'.")
     )
 
     plots[[mname]] <- p
   }
 
-  if (length(plots) == 1) {
-    plots[[1]]
-  } else {
-    ncol <- ifelse(length(plots) == 2, 2, 2)
-    nrow <- ceiling(length(plots) / ncol)
-    do.call(gridExtra::grid.arrange, c(plots, ncol = ncol, nrow = nrow))
-  }
+  plots
 }
 
+##' Arrange one metric group's plots into a single grid, if there is more
+##' than one
+##' @noRd
+.arrange_metric_group <- function(group_plots) {
+  if (length(group_plots) == 1) {
+    return(group_plots[[1]])
+  }
 
-##' @title Plot a Predictive Performance Metric for a Specific Model
+  ncol <- 2
+  do.call(
+    gridExtra::grid.arrange,
+    c(group_plots, list(ncol = ncol, nrow = ceiling(length(group_plots) / ncol)))
+  )
+}
+
+##' @title Plot Method for RiskMap_cross_validation Objects
 ##'
-##' @description This function visualizes a predictive performance metric, from
-##' `assess_prediction()`, for a specified model. It combines test set data,
-##' handles duplicate locations by averaging, and creates a customizable map
-##' using ggplot2.
+##' @description
+##' Plots whatever predictive-performance output is available in a
+##' \code{RiskMap_cross_validation} object returned by
+##' \code{\link{assess_prediction}}: a spatial map for each per-location
+##' metric (\code{"CRPS"}, \code{"SCRPS"}, \code{"PIT_area"}) that was
+##' requested via \code{metrics} in that call, and/or a calibration curve
+##' (\code{"PIT"}) - the Aggregated normalised Probability Integral
+##' Transform (AnPIT) curve for discrete families, or the empirical PIT curve
+##' for Gaussian models - when that was requested. Plot titles and legends
+##' use AnPIT or PIT according to each model's family. By default every available
+##' plot is produced, one per requested model, so you don't need to know in
+##' advance which metrics were computed. Each metric gets its own plot
+##' (or, with more than one model, its own small grid of one panel per
+##' model) rather than everything being squeezed into one combined grid.
 ##'
-##' @param object A list containing test sets and model scores. The structure should include
-##'   `object$test_set` (list of sf objects) and `object$model[[model]]$metric[[metric]]`.
-##' @param metric A string specifying which metric to visualize. Must be one of the
-##' values passed to `metrics` in the `assess_prediction()` call that produced `object`.
-##' @param model A string specifying the model whose scores to visualize.
-##' @param ... Additional arguments to customize ggplot, such as `scale_color_gradient` or `scale_color_manual`.
-##' @return A ggplot object visualizing the spatial distribution of the specified metric.
+##' @param x A \code{RiskMap_cross_validation} object.
+##' @param metric Character vector restricting which plot(s) to produce;
+##'   one or more of \code{"CRPS"}, \code{"SCRPS"}, \code{"PIT_area"} (a
+##'   spatial map of that score) and \code{"PIT"} (the calibration
+##'   curve). Defaults to every metric available in \code{x}.
+##' @param model Character vector of model names to include. Defaults to
+##'   every model in \code{x$model}.
+##' @param ... Additional \pkg{ggplot2} components (e.g.
+##'   \code{scale_color_gradient()}), layered onto every spatial-map plot.
+##'   Must be passed by position only after `model`, since the remaining
+##'   arguments must be named.
+##' @param pit_mode For the calibration curve only: one of \code{"average"}
+##'   (average curve across test sets, the default), \code{"single"} (one
+##'   specific test set) or \code{"all"} (every test set separately).
+##' @param pit_test_set Integer; required when \code{pit_mode = "single"}.
+##' @param combine_pit Logical; when \code{pit_mode = "average"}, draw the
+##'   calibration curves for every model in a single panel (\code{TRUE})
+##'   rather than one panel per model (\code{FALSE}, default).
+##'
+##' @return When exactly one metric is produced: a single \pkg{ggplot2}
+##'   object (one model) or a \pkg{grid} object from \pkg{gridExtra} (more
+##'   than one model). When more than one metric is produced, each metric's
+##'   plot/grid is drawn in turn as a side effect (so each one renders as
+##'   its own figure), and a named list of them - one per metric - is
+##'   returned invisibly for later reuse.
+##'
+##' @seealso \code{\link{assess_prediction}}
+##' @method plot RiskMap_cross_validation
+##' @importFrom dplyr group_by summarize %>%
 ##' @export
-plot_metric <- function(object, metric, model, ...) {
+plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
+                                          pit_mode = "average", pit_test_set = NULL,
+                                          combine_pit = FALSE) {
 
-  if (!model %in% names(object$model)) {
-    stop(paste("'model'", shQuote(model, type = "sh"), "was not found in 'object'"))
-  }
-
-  if (!metric %in% names(object$model[[model]]$metric)) {
-    stop(paste("'metric'", shQuote(metric, type = "sh"), "was not computed for model", shQuote(model, type = "sh")))
-  }
-
-  # Extract the test sets and number of test sets
-  test_sets <- object$test_set
-  n_test <- length(test_sets)
-
-  # Combine the data and add the metric variable
-  data_full <- st_as_sf(test_sets[[1]])
-  data_full$value <- object$model[[model]]$metric[[metric]][[1]]
-
-  if (n_test > 1) {
-    for (i in 2:n_test) {
-      test_sets[[i]]$value <- object$model[[model]]$metric[[metric]][[i]]
-      data_full <- rbind(data_full, test_sets[[i]])
+  all_models <- names(x$model)
+  if (is.null(model)) {
+    model <- all_models
+  } else {
+    missing_model <- setdiff(model, all_models)
+    if (length(missing_model) > 0) {
+      stop(paste("'model'", shQuote(missing_model[1], type = "sh"), "was not found in 'object'"))
     }
   }
 
-  # Check for duplicate locations and average the metric
-  data_full <- data_full %>%
-    mutate(geom_id = st_as_text(.data$geometry)) %>%
-    group_by(.data$geom_id) %>%
-    summarize(value = mean(.data$value, na.rm = TRUE),
-              geometry = first(.data$geometry), .groups = "drop") %>%
-    st_as_sf()
+  spatial_metrics <- intersect(
+    c("CRPS", "SCRPS", "PIT_area"),
+    names(x$model[[model[1]]]$metric)
+  )
+  has_calibration <- !is.null(x$model[[model[1]]]$PIT) ||
+    !is.null(x$model[[model[1]]]$AnPIT)
+  available_metrics <- c(if (has_calibration) "PIT", spatial_metrics)
 
+  if (is.null(metric)) {
+    metric <- available_metrics
+  } else {
+    unavailable <- setdiff(metric, available_metrics)
+    if (length(unavailable) > 0) {
+      stop(paste("'metric'", shQuote(unavailable[1], type = "sh"),
+                "was not computed for model", shQuote(model[1], type = "sh")))
+    }
+  }
 
-  # Create the base plot
-  out <- ggplot(data = data_full) +
-    geom_sf(aes(color = .data$value), size = 2) +
-    ggtitle(paste("Visualizing", metric, "for model", model)) +
-    theme_minimal()
+  # Calibration curve first, then the spatial-map metrics in a fixed order,
+  # so metrics are plotted in a stable, predictable order regardless of how
+  # `metric`/the object's own field ordering happen to be arranged.
+  ordered_metrics <- intersect(c("PIT", "CRPS", "SCRPS", "PIT_area"), metric)
 
-  # Layer on any additional ggplot components passed via ...
-  out <- Reduce(`+`, list(...), out)
+  groups <- stats::setNames(lapply(ordered_metrics, function(m) {
+    group_plots <- if (identical(m, "PIT")) {
+      .plot_calibration_curve(x, pit_mode = pit_mode, pit_test_set = pit_test_set,
+                              model = model, combine_pit = combine_pit)
+    } else {
+      stats::setNames(
+        lapply(model, function(mod) .plot_metric_map(x, metric = m, model = mod, ...)),
+        model
+      )
+    }
+    .arrange_metric_group(group_plots)
+  }), ordered_metrics)
 
-  return(out)
+  if (length(groups) == 1) {
+    if (inherits(groups[[1]], "ggplot")) {
+      return(groups[[1]])
+    }
+    return(invisible(groups[[1]]))
+  }
+
+  # draw each metric as its own figure rather than
+  # squeezing every metric into a single combined grid.
+  for (plot_obj in groups) {
+    if (inherits(plot_obj, "ggplot")) print(plot_obj)
+  }
+  invisible(groups)
 }
 
 ##' @title Check for valid binomial values
@@ -1586,4 +1707,42 @@ check_crs <- function(crs, name = deparse(substitute(crs))){
     }
   )
   invisible(TRUE)
+}
+
+
+#' @title check_invlink
+#' @description
+#'
+#' Applies `invlink` to `eta` and checks that the result is a valid mean for
+#' `family`: one finite numeric value per linear predictor, with
+#' probabilities in `[0, 1]` for `"binomial"` and non-negative values for
+#' `"poisson"`.
+#' @param invlink A function mapping the linear predictor to the mean.
+#' @param family One of `"gaussian"`, `"binomial"` or `"poisson"`.
+#' @param eta Numeric vector of linear predictor values. Defaults to a
+#'   representative spread of values, for checking `invlink` on its own
+#'   before any real linear predictor is available.
+#' @return The computed mean values, `invlink(eta)`. Raises an error if they
+#'   are invalid.
+#' @noRd
+check_invlink <- function(invlink, family, eta = seq(-5, 5, length.out = 11)) {
+  if (!is.function(invlink)) stop("'invlink' must be a function.", call. = FALSE)
+  mu <- invlink(as.numeric(eta))
+  if (!is.numeric(mu) || length(mu) != length(eta)) {
+    stop("'invlink' must return one numeric value per linear predictor.",
+         call. = FALSE)
+  }
+  if (any(!is.finite(mu))) {
+    stop("'invlink' returned non-finite mean values. Check the model parameters and covariates.",
+         call. = FALSE)
+  }
+  if (family == "binomial" && any(mu < 0 | mu > 1)) {
+    stop("For a binomial model, 'invlink' must return probabilities between 0 and 1.",
+         call. = FALSE)
+  }
+  if (family == "poisson" && any(mu < 0)) {
+    stop("For a Poisson model, 'invlink' must return non-negative mean values.",
+         call. = FALSE)
+  }
+  mu
 }

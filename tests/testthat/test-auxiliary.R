@@ -121,6 +121,29 @@ test_that("check_crs functions correctly", {
   expect_no_error(check_crs(custom_crs))
 })
 
+test_that("check_invlink functions correctly", {
+  expect_error(check_invlink("not a function", "binomial"), "'invlink' must be a function")
+
+  expect_error(check_invlink(function(eta) 1, "binomial"),
+               "'invlink' must return one numeric value per linear predictor")
+  expect_error(check_invlink(function(eta) rep("a", length(eta)), "binomial"),
+               "'invlink' must return one numeric value per linear predictor")
+
+  expect_error(check_invlink(function(eta) rep(Inf, length(eta)), "binomial"),
+               "'invlink' returned non-finite mean values")
+
+  expect_error(check_invlink(identity, "binomial"),
+               "For a binomial model, 'invlink' must return probabilities between 0 and 1")
+
+  expect_error(check_invlink(identity, "poisson"),
+               "For a Poisson model, 'invlink' must return non-negative mean values")
+
+  expect_identical(check_invlink(plogis, "binomial", c(-1, 0, 1)), plogis(c(-1, 0, 1)))
+  expect_identical(check_invlink(exp, "poisson", c(-1, 0, 1)), exp(c(-1, 0, 1)))
+  expect_no_error(check_invlink(plogis, "binomial"))
+  expect_no_error(check_invlink(exp, "poisson"))
+})
+
 test_that("gp functions correctly", {
 
   expected_output <- c("term", "kappa", "nugget", "dim", "label")
@@ -218,33 +241,33 @@ test_that("check_zero_one validates the closed unit interval", {
   expect_error(check_zero_one(Inf, "a"), "between 0 and 1")
 })
 
-test_that("plot_metric validates model before metric (#156)", {
+test_that("plot.RiskMap_cross_validation validates model before metric (#156)", {
   ## an invalid model should be reported even when the metric is also invalid -
   ## previously this incorrectly complained about the metric first
   expect_error(
-    plot_metric(cross_validation, metric = "not_a_metric", model = "not_a_model"),
+    plot(cross_validation, metric = "not_a_metric", model = "not_a_model"),
     "'model' 'not_a_model' was not found"
   )
 
   expect_error(
-    plot_metric(cross_validation, metric = "not_a_metric", model = "model_a"),
+    plot(cross_validation, metric = "not_a_metric", model = "model_a"),
     "'metric' 'not_a_metric' was not computed for model 'model_a'"
   )
 })
 
-test_that("plot_metric plots the requested metric for the requested model", {
-  p <- plot_metric(cross_validation, metric = "SCRPS", model = "model_b")
+test_that("plot.RiskMap_cross_validation plots the requested metric for the requested model", {
+  p <- plot(cross_validation, metric = "SCRPS", model = "model_b")
 
   expect_s3_class(p, "ggplot")
   expect_no_error(ggplot2::ggplot_build(p))
 })
 
-test_that("plot_metric applies extra ggplot components passed via ...", {
-  p_plain <- plot_metric(cross_validation, metric = "CRPS", model = "model_a")
+test_that("plot.RiskMap_cross_validation applies extra ggplot components passed via ...", {
+  p_plain <- plot(cross_validation, metric = "CRPS", model = "model_a")
   expect_length(p_plain$scales$scales, 0)
 
-  p_custom <- plot_metric(cross_validation, metric = "CRPS", model = "model_a",
-                          ggplot2::scale_color_gradient(low = "yellow", high = "red"))
+  p_custom <- plot(cross_validation, metric = "CRPS", model = "model_a",
+                   ggplot2::scale_color_gradient(low = "yellow", high = "red"))
   expect_length(p_custom$scales$scales, 1)
   expect_no_error(ggplot2::ggplot_build(p_custom))
 })
@@ -383,4 +406,93 @@ test_that("matern_gradient_phi and matern_hessian_phi return symmetric n x n mat
       expect_true(all(is.finite(output)))
     }
   }
+})
+
+test_that("plot.RiskMap_cross_validation combines calibration curves with combine_pit (#183)", {
+  p <- plot(cross_validation, metric = "PIT", combine_pit = TRUE)
+
+  expect_s3_class(p, "ggplot")
+  expect_setequal(unique(p$data$model), c("model_a", "model_b"))
+})
+
+test_that("plot.RiskMap_cross_validation labels metric maps by metric and model (#183)", {
+  p <- plot(cross_validation, metric = "CRPS", model = "model_a")
+
+  expect_equal(p$labels$title, "Model model_a: CRPS")
+  expect_equal(p$labels$colour, "CRPS")
+})
+
+test_that("plot.RiskMap_cross_validation labels PIT as AnPIT for discrete families (#183)", {
+  p <- plot(cross_validation, metric = "PIT_area", model = "model_a")
+  expect_equal(p$labels$title, "Model model_a: PIT_area")
+  expect_equal(p$labels$colour, "PIT_area")
+
+  ## discrete families store AnPIT curves rather than PIT values
+  discrete_cv <- cross_validation
+  discrete_cv$model$model_a$AnPIT <- list(seq(0, 1, length.out = 11),
+                                          seq(0, 1, length.out = 11)^2)
+  discrete_cv$model$model_a$PIT <- NULL
+
+  p_area <- plot(discrete_cv, metric = "PIT_area", model = "model_a")
+  expect_equal(p_area$labels$title, "Model model_a: AnPIT_area")
+  expect_equal(p_area$labels$colour, "AnPIT_area")
+
+  p_curve <- plot(discrete_cv, metric = "PIT", model = "model_a")
+  expect_equal(p_curve$labels$title, "Model model_a: AnPIT (average)")
+  expect_equal(p_curve$labels$y, "AnPIT")
+})
+
+test_that("plot.RiskMap_cross_validation plots each metric separately rather than one combined grid (#87)", {
+  ## the fixture was fit with the default metrics = c("PIT", "CRPS", "SCRPS"),
+  ## and "PIT" also computes the scalar "PIT_area" score, so there are 4
+  ## metrics here. With more than one metric, each gets its own plot/grid
+  ## (printed in turn as a side effect) instead of everything being squeezed
+  ## into one combined grid; the list returned invisibly has one entry per
+  ## metric.
+  groups <- plot(cross_validation)
+
+  expect_type(groups, "list")
+  expect_named(groups, c("PIT", "CRPS", "SCRPS", "PIT_area"))
+  for (g in groups) {
+    expect_s3_class(g, "gtable")
+    expect_equal(length(g$grobs), 2) # one panel per model, no padding
+  }
+})
+
+test_that("plot.RiskMap_cross_validation sizes each metric's grid from its own models only (#87)", {
+  ## 3 models, 2 metrics - each metric's grid should be sized from its own
+  ## 3 models, independent of the other metric (no cross-metric padding)
+  cv3 <- cross_validation
+  cv3$model$model_c <- cv3$model$model_a
+
+  groups <- plot(cv3, metric = c("PIT", "CRPS"))
+
+  expect_named(groups, c("PIT", "CRPS"))
+  for (g in groups) {
+    expect_s3_class(g, "gtable")
+    expect_equal(length(g$grobs), 3)
+  }
+})
+
+test_that("plot.RiskMap_cross_validation can select only the calibration curve", {
+  p <- plot(cross_validation, metric = "PIT", model = "model_a")
+
+  expect_s3_class(p, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(p))
+})
+
+test_that("plot.RiskMap_cross_validation's calibration curve actually filters to the requested test_set", {
+
+  p1 <- plot(cross_validation, metric = "PIT", model = "model_a",
+             pit_mode = "single", pit_test_set = 1)
+  p2 <- plot(cross_validation, metric = "PIT", model = "model_a",
+             pit_mode = "single", pit_test_set = 2)
+
+  expect_false(identical(p1$data$value, p2$data$value))
+  expect_equal(p1$labels$title, "Model model_a: PIT (test set 1)")
+  expect_error(
+    plot(cross_validation, metric = "PIT", model = "model_a",
+         pit_mode = "single", pit_test_set = 99),
+    "No data for test set 99"
+  )
 })
