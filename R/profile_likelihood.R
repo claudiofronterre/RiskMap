@@ -327,8 +327,10 @@ match_profile_parameters <- function(problem, parameters) {
 ##' is a linear constraint on the standardised coefficients, met exactly by
 ##' solving for one of them (chosen by a pivoted QR decomposition) from the
 ##' others. This matters for the intercept, which centring mixes with the
-##' other coefficients. A problem without `internal` (the tests' stand-ins)
-##' is optimised on the user's scale.
+##' other coefficients. The fixed values are matched to the fixed parameters
+##' by position, and a solved coefficient outside its bounds makes the point
+##' infeasible. A problem without `internal` (the tests' stand-ins) is
+##' optimised on the user's scale.
 ##'
 ##' A stop with a non-zero code is solved again from the same start with a
 ##' central-difference gradient with a step of 1e-4, keeping the better
@@ -350,6 +352,9 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
   fixed_other <- fixed[fixed > p]
   pivot <- integer()
   if (length(fixed_beta)) {
+    # The targets of the fixed coefficients, by position, since the fixed
+    # parameters may come in any order.
+    beta_targets <- fixed_values[match(fixed_beta, fixed)]
     constraint <- scale$transform[fixed_beta, , drop = FALSE]
     pivot <- qr(constraint)$pivot[seq_along(fixed_beta)]
     rest <- setdiff(seq_len(p), pivot)
@@ -363,8 +368,7 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
     if (length(pivot)) {
       internal[pivot] <- solve(
         constraint[, pivot, drop = FALSE],
-        fixed_values[seq_along(fixed_beta)] -
-          constraint[, rest, drop = FALSE] %*% internal[rest]
+        beta_targets - constraint[, rest, drop = FALSE] %*% internal[rest]
       )
     }
     internal
@@ -382,7 +386,13 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
                      list(message = "budget reached", call = NULL)))
     }
     evaluations <<- evaluations + 1L
-    result <- scale$value(full_internal(free_values))
+    internal <- full_internal(free_values)
+    # A coefficient solved from the constraint must respect the bounds too,
+    # otherwise the point is outside the parameter space.
+    outside <- length(pivot) &&
+      any(internal[pivot] < scale$lower[pivot] |
+            internal[pivot] > scale$upper[pivot])
+    result <- if (outside) NA_real_ else scale$value(internal)
     objective <- if (is.finite(result)) -result else 1e100
     if (objective < best$objective) {
       best <<- list(objective = objective, par = free_values)
