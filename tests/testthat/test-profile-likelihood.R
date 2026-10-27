@@ -104,6 +104,18 @@ test_that("a crossing between distant points is refined", {
 
 test_that("profiles on two cores equal those on one", {
   skip_on_os("windows")
+  skip_if_not_installed("RhpcBLASctl")
+  # The workers use one BLAS thread. The serial profile does too here, since
+  # with several threads its sums are ordered differently and the profiles
+  # agree only up to rounding.
+  blas_threads <- RhpcBLASctl::blas_get_num_procs()
+  omp_threads <- RhpcBLASctl::omp_get_max_threads()
+  RhpcBLASctl::blas_set_num_threads(1L)
+  RhpcBLASctl::omp_set_num_threads(1L)
+  on.exit({
+    RhpcBLASctl::blas_set_num_threads(blas_threads)
+    RhpcBLASctl::omp_set_num_threads(omp_threads)
+  }, add = TRUE)
   serial <- profile(binomial_model, parameters = c("cov", "sigma2"),
                     pairs = list(c("sigma2", "phi")), n_points = 5,
                     n_grid = 3, n_draws = 200, messages = FALSE)
