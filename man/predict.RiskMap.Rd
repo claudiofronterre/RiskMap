@@ -153,6 +153,8 @@ reference population supplied through \code{standardize}.}
 \item{summaries}{Names of the calculated summaries.}
 \item{thresholds}{Thresholds used for exceedance probabilities.}
 \item{level}{Probability covered by the interval limits.}
+\item{weights}{Name of the weights column used for the polygon
+summaries, or \code{NULL}.}
 \item{type}{Whether prediction was marginal or joint.}
 \item{parameter_draws}{The number of parameter draws when parameter
 uncertainty was propagated, otherwise \code{NULL}.}

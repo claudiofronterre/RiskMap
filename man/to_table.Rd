@@ -2,27 +2,33 @@
 % Please edit documentation in R/auxiliary.R
 \name{to_table}
 \alias{to_table}
-\title{Format RiskMap Model and Validation Results as a Table}
+\alias{to_table.default}
+\title{Format RiskMap Results as a Table}
 \usage{
-to_table(object, digits = 3, ...)
+to_table(object, ...)
+
+\method{to_table}{default}(object, digits = 3, col_names = NULL, ...)
 }
 \arguments{
 \item{object}{An object of class "RiskMap" resulting from a call to
-\code{\link{glgpm}}, a "summary.RiskMap" object, or a
-"summary.RiskMap_cross_validation" object.}
+\code{\link{glgpm}}, a "summary.RiskMap" object, a
+"summary.RiskMap_cross_validation" object, or a "RiskMap_prediction"
+object (see \code{\link{to_table.RiskMap_prediction}}).}
+
+\item{...}{Additional arguments passed to \code{\link[knitr]{kable}}.}
 
 \item{digits}{A non-negative integer giving the number of decimal places
 used to display numeric results.}
 
-\item{...}{Additional arguments passed to \code{\link[knitr]{kable}}.}
+\item{col_names}{Optional column names, replacing the default headers.}
 }
 \value{
 An object of class "knitr_kable" that can be rendered directly.
 }
 \description{
-Converts a fitted "RiskMap" model or cross-validation
-results into a table that renders directly in Quarto, R Markdown, HTML,
-LaTeX and the R console.
+Converts a fitted "RiskMap" model, cross-validation
+results or polygon predictions into a table that renders directly in
+Quarto, R Markdown, HTML, LaTeX and the R console.
 }
 \details{
 This function creates a presentation-ready summary table from a
