@@ -58,6 +58,7 @@ reference:
       - predict.RiskMap
       - assess_extrapolation
       - plot.RiskMap_extrapolation
+      - get_worldpop
 
   - title: Diagnostics and Assessment
     contents:
