@@ -46,9 +46,11 @@ restored afterwards.}
 
 \item{cores}{Number of processes. With more than one, the two sides of
 each marginal profile, the ends of the intervals and the joint profiles
-run in parallel by forking, which is not available on Windows. The
-results are the same as on one core. When the RhpcBLASctl package is
-installed, each process uses one BLAS and OpenMP thread.}
+run in parallel by forking, which is not available on Windows. When
+the RhpcBLASctl package is installed, each process uses one BLAS and
+OpenMP thread, and the results are the same as on one core with one
+BLAS thread. With several BLAS threads on one core they agree up to
+rounding.}
 
 \item{messages}{Logical, whether to report progress.}
 

@@ -57,9 +57,11 @@
 ##' @param level Confidence level of the reported profile intervals.
 ##' @param cores Number of processes. With more than one, the two sides of
 ##'   each marginal profile, the ends of the intervals and the joint profiles
-##'   run in parallel by forking, which is not available on Windows. The
-##'   results are the same as on one core. When the RhpcBLASctl package is
-##'   installed, each process uses one BLAS and OpenMP thread.
+##'   run in parallel by forking, which is not available on Windows. When
+##'   the RhpcBLASctl package is installed, each process uses one BLAS and
+##'   OpenMP thread, and the results are the same as on one core with one
+##'   BLAS thread. With several BLAS threads on one core they agree up to
+##'   rounding.
 ##' @param messages Logical, whether to report progress.
 ##' @param ... Not used.
 ##' @return An object of class `RiskMap_profile`: a list with the marginal
