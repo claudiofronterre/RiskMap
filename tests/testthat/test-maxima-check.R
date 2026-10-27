@@ -160,7 +160,7 @@ test_that("the short screen finds a higher maximum at a short scale", {
   expect_identical(checked$check$start, c("fitted", "short-scale screen"))
   expect_true(checked$separate)
   expect_equal(checked$optimised$fit$par[3], -5, tolerance = 1e-3)
-  expect_false(checked$zero_scale)
+  expect_false(checked$numerically_independent)
   expect_false(checked$screen$alarm$fired)
 })
 
@@ -210,7 +210,7 @@ test_that("a short scale not clearly above the limit is kept with a warning", {
                             limit = log(3) + 0.001)$run()
   expect_identical(checked$screen$gate, "opened")
   expect_lt(checked$optimised$fit$par[3], -6)
-  expect_false(checked$zero_scale)
+  expect_false(checked$numerically_independent)
   expect_false(is.null(checked$screen$near_limit))
   # An unresolved comparison with the limit does not suppress the alarm.
   expect_true(checked$screen$alarm$persists)
@@ -218,20 +218,20 @@ test_that("a short scale not clearly above the limit is kept with a warning", {
   interior <- make_toy_check(function(t) 3 * exp(-(t + 7)^2),
                              limit = 0.5)$run()
   expect_equal(interior$optimised$fit$par[3], -7, tolerance = 1e-3)
-  expect_false(interior$zero_scale)
+  expect_false(interior$numerically_independent)
   expect_null(interior$screen$near_limit)
 })
 
-test_that("a fit that reaches the limit of zero scale is a boundary solution", {
+test_that("a fit with negligible spatial correlation is numerically independent", {
   # The likelihood keeps rising as the scale goes to zero, and the refit runs
   # to the lower bound of the log scale.
   checked <- make_toy_check(function(t) exp(-0.5 * t), limit = 6)$run()
   expect_equal(checked$optimised$fit$par[3], -10)
-  expect_true(checked$zero_scale)
+  expect_true(checked$numerically_independent)
   expect_null(checked$screen$near_limit)
 })
 
-test_that("a stage at the limit of zero scale has no information or certificate", {
+test_that("a numerically independent stage has no information or certificate", {
   engine <- list(latent_dimension = 1L,
                  proposal_type = function() "laplace",
                  proposal_failures = function() 0L,
@@ -245,14 +245,14 @@ test_that("a stage at the limit of zero scale has no information or certificate"
                                   ...) {
       list(optimised = optimised, check = NULL, separate = FALSE,
            ambiguous = FALSE, screen = list(gate = "opened"),
-           zero_scale = TRUE)
+           numerically_independent = TRUE)
     },
     compute_observed_information = function(...) stop("information computed")
   )
   stage <- run_certified_stage(engine, function(...) -1, NULL, c(0, 0, 0),
                                10L, 10L, 1:4, rep(-10, 3), rep(10, 3), TRUE,
                                list(dispersed = list()))
-  expect_identical(stage$outcome, "zero scale")
+  expect_identical(stage$outcome, "numerically independent")
   expect_false(stage$certified)
   expect_identical(stage$maxima_screen$gate, "opened")
 })
@@ -264,12 +264,12 @@ test_that("the outcome of the screen is reported to the user", {
                      ambiguous_maxima = FALSE)
   expect_warning(report_maxima_check(persisting, layout, 1),
                  "not the maximum likelihood estimate")
-  zero <- list(outcome = "zero scale", certified = FALSE,
+  zero <- list(outcome = "numerically independent", certified = FALSE,
                maxima_screen = list(independent = list(log_variance = log(2))),
                boundary_parameters = integer(), history = list(1))
   expect_warning(report_mcml_outcome(zero, character(), layout, FALSE, 0.1,
                                      FALSE),
-                 "reached the limit of zero.*variance 2")
+                 "numerically one of independent.*variance 2.*unresolved")
   near <- list(near_limit = list(gap = 0.0011, se = 0.0005, draws = 5000L,
                                  log_phi = log(0.023)))
   expect_warning(report_near_limit(near, distance_scale = 10),

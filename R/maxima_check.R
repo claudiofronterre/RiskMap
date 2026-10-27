@@ -278,8 +278,9 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
       c(value = fine, error = abs(fine - coarse))
     },
     # A scale at which the correlation between the two closest distinct
-    # locations is below 1e-6 is the limit of zero scale to numerical
-    # precision.
+    # locations is below 1e-6 makes the spatial correlation numerically
+    # negligible. It shows the fit is numerically independent, not that the
+    # maximum lies at zero scale.
     at_limit = function(log_phi) {
       scaled <- closest / exp(log_phi)
       correlation <- if (scaled > 700) 0 else
@@ -461,8 +462,9 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
 ##' `choose_maximum()` decides which maximum to keep, on the independent bank
 ##' of `n_draws` draws from `seed`, or on a bank four times larger from
 ##' `enlarged_seed` when the first is ambiguous. That bank serves every later
-##' comparison. The kept maximum is a boundary solution (`zero_scale` is TRUE)
-##' when the optimiser reached the limit of zero scale to numerical precision.
+##' comparison. The kept fit is numerically independent
+##' (`numerically_independent` is TRUE) when its spatial correlation is
+##' numerically negligible, which leaves the spatial scale unresolved.
 ##' A kept maximum at a positive scale below the shortest screened one whose
 ##' log-likelihood is not clearly above the limit at this Monte Carlo
 ##' precision stays a candidate like any other, and the record notes it as
@@ -471,7 +473,8 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
 ##' @return The kept `optimised` result, a `check` table of the candidates
 ##' (NULL if no refit was run), whether the kept maximum is `separate` from
 ##' the fitted one, whether the choice is `ambiguous`, the record of the
-##' `screen` and alarm (NULL without screen settings) and `zero_scale`.
+##' `screen` and alarm (NULL without screen settings) and
+##' `numerically_independent`.
 ##' @noRd
 check_other_maxima <- function(engine, objective, penalty, optimised,
                                fit_bank, lower, upper, limits, n_draws,
@@ -543,7 +546,8 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
   }
   if (!length(starts)) {
     return(list(optimised = optimised, check = NULL, separate = FALSE,
-                ambiguous = FALSE, screen = record, zero_scale = FALSE))
+                ambiguous = FALSE, screen = record,
+                numerically_independent = FALSE))
   }
   refits <- lapply(starts, function(start) {
     optimise_on_bank(objective, pmin(pmax(start, lower), upper), fit_bank,
@@ -594,12 +598,12 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
   }
   scale <- kept$fit$par[[dispersed$phi_index]]
   at_zero_variance <- dispersed$sigma2_index %in% kept$boundary
-  # The kept maximum is a boundary solution only when the optimiser itself
-  # reached the limit of zero scale.
-  zero_scale <- !is.null(screen$at_limit) && !at_zero_variance &&
+  # A fit whose spatial correlation is numerically negligible is reported as
+  # numerically independent, with the scale unresolved.
+  independent <- !is.null(screen$at_limit) && !at_zero_variance &&
     screen$at_limit(scale)
   limit <- record$independent
-  if (!zero_scale && !is.null(limit$log_likelihood) && is.null(penalty) &&
+  if (!independent && !is.null(limit$log_likelihood) && is.null(penalty) &&
       !at_zero_variance && scale < min(screen$log_phi)) {
     # A positive short scale whose likelihood is not clearly above the limit
     # at this Monte Carlo precision. The candidate is kept and assessed as
@@ -618,5 +622,6 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
       judge_kept()$value + screen$alarm_multiplier * judge_kept()$se
   }
   list(optimised = kept, check = choice$table, separate = choice$separate,
-       ambiguous = choice$ambiguous, screen = record, zero_scale = zero_scale)
+       ambiguous = choice$ambiguous, screen = record,
+       numerically_independent = independent)
 }

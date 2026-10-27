@@ -363,9 +363,10 @@ compute_observed_information <- function(objective, estimate, fit_bank,
 ##' validation bank drawn at that point. `seeds` gives the streams of the
 ##' three banks and of the independent bank of the check for other maxima. At
 ##' the first stage that check (`check_other_maxima()`) may replace the
-##' maximum, and if the optimiser reached the limit of zero spatial scale the
-##' stage ends with the outcome "zero scale", without information or
-##' certificate, because both need an interior maximum. `curvature_root`, if
+##' maximum, and if the fitted spatial correlation is numerically negligible
+##' the stage ends with the outcome "numerically independent", without
+##' information or certificate. The fit is then one of independent location
+##' effects and the spatial scale is unresolved. `curvature_root`, if
 ##' given, seeds the optimisation with Newton steps (`optimise_on_bank()`).
 ##' @noRd
 run_certified_stage <- function(engine, objective, penalty, start, budget,
@@ -395,7 +396,7 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   optimised <- optimise_on_bank(objective, start, fit_bank, lower, upper,
                                 first_stage, limits, curvature_root)
   check <- screen <- NULL
-  separate <- ambiguous <- zero_scale <- FALSE
+  separate <- ambiguous <- independent <- FALSE
   if (first_stage && !is.null(limits$dispersed) &&
       is_valid_fit(optimised$fit)) {
     checked <- check_other_maxima(engine, objective, penalty, optimised,
@@ -407,7 +408,7 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
     screen <- checked$screen
     separate <- checked$separate
     ambiguous <- checked$ambiguous
-    zero_scale <- checked$zero_scale
+    independent <- checked$numerically_independent
   }
   fit <- optimised$fit
   record <- list(
@@ -444,10 +445,11 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
     return(finish(record, "no valid fit",
                   "the estimated log-likelihood is not finite at the optimum"))
   }
-  if (zero_scale) {
-    return(finish(record, "zero scale", paste(
-      "the fitted scale reached the limit of zero, where the model reduces",
-      "to independent location effects"
+  if (independent) {
+    return(finish(record, "numerically independent", paste(
+      "the fitted spatial correlation is numerically negligible, so the fit",
+      "is one of independent location effects and the spatial scale is",
+      "unresolved"
     )))
   }
   started <- proc.time()[["elapsed"]]

@@ -195,8 +195,10 @@ log-likelihood units of the fit or if an evaluation fails. The limit and Jensen
 lower bounds at those scales are exact, and if one of them exceeds the fitted
 log-likelihood, estimated on independent draws, a further search is forced and
 a warning is given if it does not resolve the alarm. A fit whose scale reaches
-the limit of zero ends with the outcome "zero scale", without standard errors
-or certificate. A fit at a short positive scale whose likelihood is not clearly
+the point where the correlation between the closest locations is below 1e-6
+ends with the outcome "numerically independent", without standard errors or
+certificate, since the fit is then one of independent location effects and the
+spatial scale is unresolved. A fit at a short positive scale whose likelihood is not clearly
 above the limit at the current Monte Carlo precision is assessed as usual, with
 a warning that points to `profile()` for the scale. Separate maxima whose
 comparison on independent draws is ambiguous are compared again on four times

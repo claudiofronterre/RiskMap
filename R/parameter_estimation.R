@@ -3057,9 +3057,10 @@ laplace_sampling_mcmc <- function(y,
 ##' within 0.25 log-likelihood units of the fit. Exact lower bounds on the
 ##' likelihood at short scales force a further search if they exceed the
 ##' fitted log-likelihood. Separate maxima are compared on independent draws
-##' and the highest is kept, with a warning if it differs. A likelihood that is
-##' highest in the limit of zero scale is reported as such, without standard
-##' errors or certificate. The screen of short scales and the exact bounds are
+##' and the highest is kept, with a warning if it differs. A fit whose spatial
+##' correlation is numerically negligible is reported as numerically
+##' independent, with the scale unresolved and without standard errors or
+##' certificate. The screen of short scales and the exact bounds are
 ##' available for the canonical links and models without unstructured random
 ##' effects.
 ##' @param pc_prior Logical. If `TRUE`, the spatial variance and scale are

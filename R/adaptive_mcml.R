@@ -987,7 +987,7 @@ glgpm_nong_adaptive <- function(
   boundary_names <- describe_variance_parameters(
     fit$boundary_parameters, engine$layout, re_names = re_names
   )
-  small_scale <- if (!identical(fit$outcome, "zero scale")) {
+  small_scale <- if (!identical(fit$outcome, "numerically independent")) {
     detect_small_scale(fit, engine$layout, distances, kappa, distance_scale)
   }
   report_mcml_outcome(fit, boundary_names, engine$layout, pc_prior,
@@ -1116,7 +1116,8 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_maxima_check = fit$maxima_check,
     mcml_maxima_screen = fit$maxima_screen,
     mcml_maxima_alarm = fit$maxima_alarm,
-    mcml_zero_scale = identical(fit$outcome, "zero scale"),
+    mcml_numerically_independent = identical(fit$outcome,
+                                             "numerically independent"),
     mcml_near_limit = !is.null(fit$maxima_screen$near_limit),
     mcml_better_maximum = fit$better_maximum,
     mcml_ambiguous_maxima = fit$ambiguous_maxima,
@@ -1197,22 +1198,23 @@ report_maxima_check <- function(fit, layout, distance_scale) {
   invisible(NULL)
 }
 
-##' Tell the user that the fit reached the limit of zero spatial scale
+##' Tell the user that the fit is numerically independent
 ##'
-##' The optimiser moved the scale to where the correlation between the
-##' closest locations is negligible, so the model is the one with independent
-##' location effects. Points to the profile likelihood of the scale, to a model
-##' without spatial correlation and to the PC penalty. `record` is the record
-##' of the screen (`check_other_maxima()`).
+##' The spatial correlation at the fitted scale is numerically negligible, so
+##' the fit is one of independent location effects and the scale is
+##' unresolved. That is not evidence that the maximum lies at zero scale.
+##' Points to the profile likelihood of the scale, to a model without spatial
+##' correlation and to the PC penalty. `record` is the record of the screen
+##' (`check_other_maxima()`).
 ##' @noRd
-report_zero_scale <- function(record, distance_scale = 1, pc_advice = "") {
+report_numerically_independent <- function(record, pc_advice = "") {
   variance <- record$independent$log_variance
   warning(
-    "The fitted spatial scale reached the limit of zero, where the ",
-    "correlation between the closest locations is negligible and the model ",
-    "reduces to independent location effects",
+    "The fitted spatial scale is so short that the correlation between the ",
+    "closest locations is below 1e-6, so the fit is numerically one of ",
+    "independent location effects",
     if (!is.null(variance)) paste0(" with variance ", signif(exp(variance), 3)),
-    ". The scale has no positive estimate, so standard errors and the Monte ",
+    ", and the spatial scale is unresolved. Standard errors and the Monte ",
     "Carlo certificate, which need an interior maximum, are not reported. ",
     "Use profile(fit, parameters = \"phi\") to see how the likelihood changes ",
     "with the scale. If spatial correlation is not expected, consider a model ",
@@ -1303,8 +1305,8 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
   draws <- paste0(format(fit$budget, big.mark = ","), " fitting and ",
                   format(fit$validation_budget, big.mark = ","),
                   " validation draws")
-  if (identical(fit$outcome, "zero scale")) {
-    report_zero_scale(fit$maxima_screen, distance_scale, pc_advice)
+  if (identical(fit$outcome, "numerically independent")) {
+    report_numerically_independent(fit$maxima_screen, pc_advice)
   } else if (identical(fit$outcome, "weak identification")) {
     warning(
       "The observed information matrix is singular, so some parameters ",
