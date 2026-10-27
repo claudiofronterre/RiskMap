@@ -194,6 +194,11 @@ uncertainty, which matters for small or low-prevalence surveys.
   locations. Locations are classed as supported, spatial, covariate, or
   spatial and covariate extrapolation, and `plot()` maps each indicator.
   Locations with missing covariates are drawn in grey without a legend key.
+- `create_grid()` gains `raster`. The grid then consists of the cells of a
+  projected `SpatRaster` with square cells: their centres are the grid points
+  and the raster's layers become columns, so values such as population counts
+  aggregated to the grid's resolution need no extraction. `boundaries` is
+  optional in that case and, when given, selects cells according to `keep`.
 - Documentation and messages call phi the scale parameter of the spatial
   correlation function, rather than the spatial range, consistently with
   `summary()` and the MBG book. The practical range, where correlation falls
