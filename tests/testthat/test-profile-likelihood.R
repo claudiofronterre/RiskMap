@@ -132,3 +132,43 @@ test_that("a coefficient is profiled in the user's units on the standardised sca
   again <- maximise_profile(problem, index, value, standardised$par)
   expect_equal(again$value, standardised$value, tolerance = 1e-3)
 })
+
+# A problem on a standardised scale with an exact log-likelihood: internal
+# coefficients a1, a2 and a covariance parameter c, user coefficients
+# b1 = a1 + a2 and b2 = a2, so that fixing b1 solves for a1.
+make_scaled_problem <- function(bound = 30) {
+  transform <- matrix(c(1, 0, 1, 1), 2)
+  loglik <- function(internal) {
+    -0.5 * ((internal[1] - 1)^2 + (internal[2] - 2)^2 + (internal[3] - 3)^2)
+  }
+  to <- function(w) c(solve(transform, w[1:2]), w[3])
+  from <- function(x) c(drop(transform %*% x[1:2]), x[3])
+  list(value = function(w) loglik(to(w)), names = c("beta.b1", "beta.b2", "c"),
+       lower = c(-30, -30, -20), upper = c(30, 30, 20),
+       internal = list(value = loglik, to = to, from = from,
+                       transform = transform, p = 2L,
+                       lower = c(-bound, -bound, -20),
+                       upper = c(bound, bound, 20)),
+       control = make_optimiser_control(1))
+}
+
+test_that("fixed coefficients and covariance parameters can come in any order", {
+  problem <- make_scaled_problem()
+  start <- c(3, 2, 3)
+  first <- maximise_profile(problem, c(1, 3), c(4, 5), start)
+  second <- maximise_profile(problem, c(3, 1), c(5, 4), start)
+  expect_equal(second$value, first$value, tolerance = 1e-8)
+  expect_equal(second$par, first$par, tolerance = 1e-6)
+  # The reported log-likelihood is the one at the returned parameters.
+  for (result in list(first, second)) {
+    expect_equal(problem$value(result$par), result$value, tolerance = 1e-8)
+  }
+})
+
+test_that("a coefficient solved from the constraint respects its bounds", {
+  # With internal bounds of 1, fixing b1 = a1 + a2 at 2.4 needs a1 = 1.4 or
+  # more, so the constraint is infeasible.
+  problem <- make_scaled_problem(bound = 1)
+  result <- maximise_profile(problem, 1, 2.4, c(0, 0, 3))
+  expect_true(is.na(result$value))
+})
