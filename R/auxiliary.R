@@ -858,15 +858,17 @@ print.summary.RiskMap <- function(x, ...) {
   return(invisible(x))
 }
 
-##' @title Format RiskMap Model and Validation Results as a Table
-##' @description Converts a fitted "RiskMap" model or cross-validation
-##' results into a table that renders directly in Quarto, R Markdown, HTML,
-##' LaTeX and the R console.
+##' @title Format RiskMap Results as a Table
+##' @description Converts a fitted "RiskMap" model, cross-validation
+##' results or polygon predictions into a table that renders directly in
+##' Quarto, R Markdown, HTML, LaTeX and the R console.
 ##' @param object An object of class "RiskMap" resulting from a call to
-##' \code{\link{glgpm}}, a "summary.RiskMap" object, or a
-##' "summary.RiskMap_cross_validation" object.
+##' \code{\link{glgpm}}, a "summary.RiskMap" object, a
+##' "summary.RiskMap_cross_validation" object, or a "RiskMap_prediction"
+##' object (see \code{\link{to_table.RiskMap_prediction}}).
 ##' @param digits A non-negative integer giving the number of decimal places
 ##' used to display numeric results.
+##' @param col_names Optional column names, replacing the default headers.
 ##' @param ... Additional arguments passed to \code{\link[knitr]{kable}}.
 ##' @details This function creates a presentation-ready summary table from a
 ##' fitted "RiskMap" model or cross-validation results for multiple models.
@@ -904,7 +906,13 @@ print.summary.RiskMap <- function(x, ...) {
 ##' )
 ##' to_table(fit)
 ##' to_table(fit, digits = 1)
-to_table <- function(object, digits = 3, ...) {
+to_table <- function(object, ...) {
+  UseMethod("to_table")
+}
+
+##' @rdname to_table
+##' @export
+to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
   check_positive_integer(digits, "digits", allow_zero = TRUE)
 
   if (inherits(object, "summary.RiskMap") ||
@@ -951,6 +959,12 @@ to_table <- function(object, digits = 3, ...) {
   )
 
   dots <- list(...)
+  if (!is.null(col_names)) {
+    if (length(col_names) != ncol(tab)) {
+      stop("'col_names' must have ", ncol(tab), " elements", call. = FALSE)
+    }
+    dots$col.names <- col_names
+  }
   if (is.null(dots$row.names))
     dots$row.names <- include_row_names
   if (is.null(dots$align))

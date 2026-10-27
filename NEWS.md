@@ -203,6 +203,11 @@ uncertainty, which matters for small or low-prevalence surveys.
   and year, for the whole population or for chosen age groups and sexes, at
   100 m or 1 km, from the unconstrained 2000-2020 or constrained 2015-2030
   estimates, and returns one raster of people per cell.
+- `to_table()` is now generic and gains a method for `predict()` results with
+  polygon summaries: one row per polygon, the mean and its interval in one
+  column, probabilities as percentages and sums with thousands separators.
+  All `to_table()` methods accept `col_names`. `predict()` output records the
+  name of the `weights` column.
 - Documentation and messages call phi the scale parameter of the spatial
   correlation function, rather than the spatial range, consistently with
   `summary()` and the MBG book. The practical range, where correlation falls

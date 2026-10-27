@@ -213,6 +213,8 @@
 ##'   \item{summaries}{Names of the calculated summaries.}
 ##'   \item{thresholds}{Thresholds used for exceedance probabilities.}
 ##'   \item{level}{Probability covered by the interval limits.}
+##'   \item{weights}{Name of the weights column used for the polygon
+##'     summaries, or `NULL`.}
 ##'   \item{type}{Whether prediction was marginal or joint.}
 ##'   \item{parameter_draws}{The number of parameter draws when parameter
 ##'     uncertainty was propagated, otherwise `NULL`.}
@@ -396,7 +398,8 @@ predict.RiskMap <- function(
       response_name = prediction_response_name(object),
       observed_locations = observed_locations,
       parameter_draws = parameter_draws,
-      coverage = NULL
+      coverage = NULL,
+      weights = NULL
     )
     class(out) <- "RiskMap_prediction"
     return(out)
@@ -437,7 +440,8 @@ predict.RiskMap <- function(
     response_name = prediction_response_name(object),
     observed_locations = observed_locations,
     parameter_draws = parameter_draws,
-    coverage = NULL
+    coverage = NULL,
+    weights = NULL
   )
   class(out) <- "RiskMap_prediction"
   out
@@ -934,7 +938,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       response_name = prediction_response_name(object),
       observed_locations = FALSE,
       parameter_draws = parameter_draws,
-      coverage = assignment$method
+      coverage = assignment$method,
+      weights = weights
     )
     class(out) <- "RiskMap_prediction"
     return(out)
@@ -1086,7 +1091,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     response_name = prediction_response_name(object),
     observed_locations = FALSE,
     parameter_draws = parameter_draws,
-    coverage = assignment$method
+    coverage = assignment$method,
+    weights = weights
   )
   class(out) <- "RiskMap_prediction"
   out
