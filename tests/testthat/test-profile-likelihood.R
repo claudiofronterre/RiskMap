@@ -183,4 +183,38 @@ test_that("a coefficient solved from the constraint respects its bounds", {
   problem <- make_scaled_problem(bound = 1)
   result <- maximise_profile(problem, 1, 2.4, c(0, 0, 3))
   expect_true(is.na(result$value))
+  expect_identical(result$status, "infeasible")
+})
+
+test_that("a feasible constraint is solved from an infeasible start", {
+  # Fixing b1 = a1 + a2 at 29 with b2 = a2 = -2 at the start needs a1 = 31,
+  # outside the bounds of 30, although a1 = 14, a2 = 15 is feasible and is
+  # the constrained maximum.
+  problem <- make_scaled_problem()
+  result <- maximise_profile(problem, 1, 29, c(0, -2, 3))
+  expect_identical(result$status, "ok")
+  expect_equal(result$value, -169, tolerance = 1e-6)
+  expect_equal(unname(result$par), c(29, 15, 3), tolerance = 1e-4)
+})
+
+test_that("the nearest feasible coefficients meet the constraint and bounds", {
+  constraint <- matrix(c(1, 1), 1)
+  feasible <- feasible_coefficients(constraint, 29, c(31, -2), c(-30, -30),
+                                    c(30, 30))
+  expect_identical(feasible$status, "ok")
+  expect_equal(sum(feasible$par), 29, tolerance = 1e-10)
+  expect_true(all(abs(feasible$par) <= 30))
+  # The projection of (31, -2) onto a1 + a2 = 29 within the bounds.
+  expect_equal(feasible$par, c(30, -1), tolerance = 1e-4)
+  impossible <- feasible_coefficients(constraint, 61, c(31, 30), c(-30, -30),
+                                      c(30, 30))
+  expect_identical(impossible$status, "infeasible")
+})
+
+test_that("a failure to find a value is not reported as infeasible", {
+  problem <- make_scaled_problem()
+  problem$internal$value <- function(internal) NA_real_
+  result <- maximise_profile(problem, 1, 4, c(3, 2, 3))
+  expect_true(is.na(result$value))
+  expect_identical(result$status, "failed")
 })

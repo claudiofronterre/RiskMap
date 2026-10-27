@@ -101,11 +101,13 @@ work on the scale of the fit, with standardised covariates, which avoids the
 false convergence that coefficients of covariates with large ranges caused in
 their own units, and each starts from the extrapolation of the two previous
 solutions. One that still stops with a non-zero code is solved again with a
-central-difference gradient. Joint profiles are computed only
-when `pairs` asks for them, and the time left is estimated as the profiles
+central-difference gradient. A fixed coefficient whose constraint the start
+cannot meet within the bounds is first moved to the nearest feasible point,
+and each point records whether it was solved, is infeasible or failed. Joint
+profiles are computed only when `pairs` asks for them, and the time left is estimated as the profiles
 run. With `cores` above one, the two sides of each profile, the ends of the
 intervals and the joint profiles run in parallel by forking (not on Windows),
-with the same results as on one core. `plot()` draws the marginal profiles against their quadratic
+with the same results as on one core with one BLAS thread. `plot()` draws the marginal profiles against their quadratic
 approximation and the joint profiles as confidence regions with the marginal
 ridges, as a corner plot for one pair.
 

@@ -331,14 +331,19 @@ match_profile_parameters <- function(problem, parameters) {
 ##' others. This matters for the intercept, which centring mixes with the
 ##' other coefficients. The fixed values are matched to the fixed parameters
 ##' by position, and a solved coefficient outside its bounds makes the point
-##' infeasible. A problem without `internal` (the tests' stand-ins) is
-##' optimised on the user's scale.
+##' infeasible. Since the optimiser gets no direction from an infeasible
+##' point, the coefficients of the start are first moved to the nearest point
+##' that meets both the constraint and the bounds (`feasible_coefficients()`).
+##' A problem without `internal` (the tests' stand-ins) is optimised on the
+##' user's scale.
 ##'
 ##' A stop with a non-zero code is solved again from the same start with a
 ##' central-difference gradient with a step of 1e-4, keeping the better
 ##' solution. `budget` caps the number of evaluations, and the best point
 ##' evaluated so far is returned when the cap is reached. The number of
-##' evaluations is returned.
+##' evaluations is returned, and `status` is `"ok"` with a finite value,
+##' `"infeasible"` when no coefficients within the bounds meet the constraint,
+##' and `"failed"` when a feasible point exists but no finite value was found.
 ##' @noRd
 maximise_profile <- function(problem, fixed, fixed_values, start,
                              budget = Inf) {
@@ -364,6 +369,18 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
   free <- setdiff(seq_along(start), c(pivot, fixed_other))
   lower <- scale$lower[free]
   upper <- scale$upper[free]
+  feasibility <- "ok"
+  if (length(pivot)) {
+    coefficients <- seq_len(p)
+    feasible <- feasible_coefficients(constraint, beta_targets,
+                                      internal_start[coefficients],
+                                      scale$lower[coefficients],
+                                      scale$upper[coefficients])
+    feasibility <- feasible$status
+    if (identical(feasibility, "ok")) {
+      internal_start[coefficients] <- feasible$par
+    }
+  }
   full_internal <- function(free_values) {
     internal <- internal_start
     internal[free] <- free_values
@@ -424,6 +441,12 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
     if (is.null(first) || second$objective < first$objective) second else first
   }
   from <- internal_start[free]
+  if (!identical(feasibility, "ok")) {
+    return(list(par = full(from), value = NA_real_, convergence = NA,
+                evaluations = 0L,
+                status = if (identical(feasibility, "infeasible"))
+                  "infeasible" else "failed"))
+  }
   fit <- run(from, FALSE)
   if (!is.null(fit) && fit$convergence != 0L && fit$objective < 1e99) {
     fit <- better(fit, run(from, TRUE))
@@ -431,17 +454,66 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
   if (is.null(fit)) {
     if (is.null(best$par) || best$objective >= 1e99) {
       return(list(par = full(from), value = NA_real_,
-                  convergence = NA, evaluations = evaluations))
+                  convergence = NA, evaluations = evaluations,
+                  status = "failed"))
     }
     return(list(par = full(best$par), value = -best$objective,
-                convergence = 1L, evaluations = evaluations))
+                convergence = 1L, evaluations = evaluations, status = "ok"))
   }
   if (fit$objective >= 1e99) {
     return(list(par = full(from), value = NA_real_, convergence = NA,
-                evaluations = evaluations))
+                evaluations = evaluations, status = "failed"))
   }
   list(par = full(fit$par), value = -fit$objective,
-       convergence = fit$convergence, evaluations = evaluations)
+       convergence = fit$convergence, evaluations = evaluations,
+       status = "ok")
+}
+
+##' Coefficients that meet a linear constraint within bounds, near a start
+##'
+##' Finds the point of `{a : constraint %*% a = targets}` within slightly
+##' narrowed bounds that is nearest to `start`, by Dykstra's alternating
+##' projections between the affine set and the box, which converge to that
+##' point whenever the two sets meet. The bounds are narrowed by a millionth
+##' of their width, so that a coefficient solved again from the others stays
+##' within the original bounds despite rounding. When the projections do not
+##' reach a feasible point, the smallest violation of the constraint within
+##' the bounds, a convex problem, tells an infeasible constraint
+##' (`"infeasible"`) from one where no point was found (`"not found"`).
+##' @noRd
+feasible_coefficients <- function(constraint, targets, start, lower, upper) {
+  inside <- function(a, low, high) all(a >= low & a <= high)
+  if (inside(start, lower, upper)) return(list(par = start, status = "ok"))
+  margin <- ifelse(is.finite(upper - lower), 1e-6 * (upper - lower), 0)
+  low <- lower + margin
+  high <- upper - margin
+  normal <- tcrossprod(constraint)
+  to_affine <- function(a) {
+    drop(a - crossprod(constraint,
+                       solve(normal, constraint %*% a - targets)))
+  }
+  x <- to_affine(start)
+  box_correction <- affine_correction <- 0
+  for (iteration in seq_len(5000L)) {
+    y <- pmin(pmax(x + box_correction, low), high)
+    box_correction <- x + box_correction - y
+    updated <- to_affine(y + affine_correction)
+    affine_correction <- y + affine_correction - updated
+    change <- max(abs(updated - x))
+    x <- updated
+    if (change < 1e-12) break
+  }
+  if (inside(x, lower, upper)) return(list(par = x, status = "ok"))
+  violation <- function(a) sum((constraint %*% a - targets)^2)
+  slope <- function(a) {
+    drop(2 * crossprod(constraint, constraint %*% a - targets))
+  }
+  closest <- stats::nlminb(pmin(pmax(start, lower), upper), violation, slope,
+                           lower = lower, upper = upper)
+  tolerance <- (1e-8 * (1 + sum(abs(targets))))^2
+  list(par = start,
+       status = if (closest$objective > tolerance) "infeasible" else
+         "not found")
 }
 
 ##' Marginal profile of one parameter, stepping outwards from the estimate
@@ -505,6 +577,9 @@ plan_one_parameter <- function(problem, name, n_points, span, level = 0.95) {
       result <- maximise_profile(problem, index, value,
                                  start_for(solutions, value))
       points[[k]] <- profile_row(problem, index, value, result)
+      # Beyond a value that no coefficients within the bounds can reach, the
+      # profile has no more points on this side.
+      if (identical(result$status, "infeasible")) break
       if (!is.finite(result$value)) next
       solutions <- c(solutions, list(list(value = value, par = result$par)))
       if (k >= regular && deviance_of(result) > beyond) break
@@ -588,6 +663,7 @@ recheck_profile_crossings <- function(problem, profile, index, cutoff,
       current <- list(value = profile$loglik[row],
                       par = unlist(profile[row, problem$names]),
                       convergence = profile$convergence[row],
+                      status = profile$status[row],
                       second_start = profile$second_start[row])
       result <- second_start(profile$value[row], current)
       profile[row, ] <- profile_row(problem, index, profile$value[row], result)
@@ -641,6 +717,7 @@ profile_row <- function(problem, index, value, result) {
   others <- stats::setNames(as.list(result$par), problem$names)
   data.frame(parameter = problem$names[index], value = value,
              loglik = result$value, convergence = result$convergence,
+             status = result$status %||% "ok",
              second_start = isTRUE(result$second_start), others,
              check.names = FALSE)
 }
@@ -679,7 +756,8 @@ profile_two_parameters <- function(problem, pair, n_grid, span, marginal = list(
       k <- k + 1
       rows[[k]] <- data.frame(first = values[1], second = values[2],
                               loglik = result$value,
-                              convergence = result$convergence)
+                              convergence = result$convergence,
+                              status = result$status)
     }
   }
   joint <- do.call(rbind, rows)
