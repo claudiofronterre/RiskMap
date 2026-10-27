@@ -118,9 +118,10 @@ to_table.RiskMap_prediction <- function(object, label = NULL,
       out <- if (probability) {
         formatC(100 * v, format = "f", digits = as.integer(digits))
       } else if (count) {
-        # Format each value on its own, so that values do not share padding
-        vapply(signif(v, 3), format, character(1),
-               big.mark = ",", scientific = FALSE, trim = TRUE)
+        # Three significant digits for each value on its own, keeping
+        # trailing zeros (28.0, not 28) and without shared padding
+        formatC(signif(v, 3), digits = 3, format = "fg", flag = "#",
+                big.mark = ",")
       } else {
         formatC(v, format = "f", digits = as.integer(digits))
       }

@@ -83,8 +83,10 @@ test_that("to_table formats each sum on its own", {
   prediction <- fake_areal_prediction()
   rows <- prediction$boundary_summary$aggregate == "sum" &
     prediction$boundary_summary$summary %in% c("mean", "lower", "upper")
-  prediction$boundary_summary$value[rows] <- c(1.234, 98.76, 1, 80, 1.5, 120)
+  prediction$boundary_summary$value[rows] <- c(1.234, 98.76, 1, 80, 1.5,
+                                               119.98)
   table <- table_lines(to_table(prediction, aggregate = "sum"))
-  expect_match(table[3], "1.23 (1 to 1.5)", fixed = TRUE)
-  expect_match(table[4], "98.8 (80 to 120)", fixed = TRUE)
+  # Three significant digits for each value, keeping trailing zeros
+  expect_match(table[3], "1.23 (1.00 to 1.50)", fixed = TRUE)
+  expect_match(table[4], "98.8 (80.0 to 120)", fixed = TRUE)
 })
