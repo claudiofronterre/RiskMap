@@ -199,6 +199,10 @@ uncertainty, which matters for small or low-prevalence surveys.
   and the raster's layers become columns, so values such as population counts
   aggregated to the grid's resolution need no extraction. `boundaries` is
   optional in that case and, when given, selects cells according to `keep`.
+- New `get_worldpop()` downloads WorldPop population counts for a country
+  and year, for the whole population or for chosen age groups and sexes, at
+  100 m or 1 km, from the unconstrained 2000-2020 or constrained 2015-2030
+  estimates, and returns one raster of people per cell.
 - Documentation and messages call phi the scale parameter of the spatial
   correlation function, rather than the spatial range, consistently with
   `summary()` and the MBG book. The practical range, where correlation falls
