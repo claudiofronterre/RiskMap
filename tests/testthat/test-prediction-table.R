@@ -78,3 +78,21 @@ test_that("to_table keeps working for fitted models, with col_names", {
                                   col_names = c("Est", "Low", "High")))
   expect_match(renamed[1], "Est")
 })
+
+test_that("to_table shows sums in thousands or millions", {
+  prediction <- fake_areal_prediction()
+  thousands <- table_lines(to_table(prediction, count_scale = "thousands"))
+  expect_match(thousands[1],
+               "Weighted sum of prevalence (thousands, 95% interval)",
+               fixed = TRUE)
+  expect_match(thousands[3], "1.23 (1 to 1.5)", fixed = TRUE)
+  expect_match(thousands[4], "98.8 (80 to 120)", fixed = TRUE)
+  # Probabilities are not scaled
+  expect_match(thousands[3], "10.0 (5.0 to 15.0)", fixed = TRUE)
+
+  millions <- table_lines(to_table(prediction, aggregate = "sum",
+                                   count_scale = "millions"))
+  expect_match(millions[1], "(millions, 95% interval)", fixed = TRUE)
+  expect_match(millions[4], "0.0988 (0.08 to 0.12)", fixed = TRUE)
+  expect_error(to_table(prediction, count_scale = "hundreds"))
+})

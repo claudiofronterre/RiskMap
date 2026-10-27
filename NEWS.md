@@ -208,6 +208,8 @@ uncertainty, which matters for small or low-prevalence surveys.
   column, probabilities as percentages and sums with thousands separators.
   All `to_table()` methods accept `col_names`. `predict()` output records the
   name of the `weights` column.
+- `to_table()` for predictions gains `count_scale` to show sums in thousands
+  or millions, labelled in the column header.
 - Documentation and messages call phi the scale parameter of the spatial
   correlation function, rather than the spatial range, consistently with
   `summary()` and the MBG book. The practical range, where correlation falls
