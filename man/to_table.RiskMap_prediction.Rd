@@ -12,7 +12,6 @@
   quantity = "response",
   sort_by = NULL,
   digits = 1,
-  count_scale = c("none", "thousands", "millions"),
   col_names = NULL,
   ...
 )
@@ -38,11 +37,6 @@ in decreasing order, using the first aggregation that has it. By default,
 rows keep the order of the boundaries.}
 
 \item{digits}{Number of decimal places for values that are not counts.}
-
-\item{count_scale}{How to show sums: \code{"none"} (the default), \code{"thousands"}
-or \code{"millions"}. Scaled sums are labelled in the column header, which
-keeps wide tables, such as numbers of people with intervals, narrow
-enough for print.}
 
 \item{col_names}{Optional column names, replacing the default headers.}
 

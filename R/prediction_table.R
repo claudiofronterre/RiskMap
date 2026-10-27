@@ -17,10 +17,6 @@
 ##'   in decreasing order, using the first aggregation that has it. By default,
 ##'   rows keep the order of the boundaries.
 ##' @param digits Number of decimal places for values that are not counts.
-##' @param count_scale How to show sums: `"none"` (the default), `"thousands"`
-##'   or `"millions"`. Scaled sums are labelled in the column header, which
-##'   keeps wide tables, such as numbers of people with intervals, narrow
-##'   enough for print.
 ##' @param col_names Optional column names, replacing the default headers.
 ##' @param ... Additional arguments passed to [knitr::kable()].
 ##'
@@ -54,19 +50,13 @@
 to_table.RiskMap_prediction <- function(object, label = NULL,
                                         aggregate = NULL, summaries = NULL,
                                         quantity = "response", sort_by = NULL,
-                                        digits = 1,
-                                        count_scale = c("none", "thousands",
-                                                        "millions"),
-                                        col_names = NULL, ...) {
+                                        digits = 1, col_names = NULL, ...) {
   x <- object
   if (is.null(x$boundaries) || is.null(x$boundary_summary)) {
     stop("to_table() needs polygon summaries; supply 'boundaries' to ",
          "predict()", call. = FALSE)
   }
   check_positive_integer(digits, "digits", allow_zero = TRUE)
-  count_scale <- match.arg(count_scale)
-  count_divisor <- switch(count_scale, none = 1, thousands = 1e3,
-                          millions = 1e6)
   rows <- x$boundary_summary[x$boundary_summary$quantity == quantity, ,
                              drop = FALSE]
   if (!nrow(rows)) {
@@ -129,7 +119,7 @@ to_table.RiskMap_prediction <- function(object, label = NULL,
         formatC(100 * v, format = "f", digits = as.integer(digits))
       } else if (count) {
         # Format each value on its own, so that values do not share padding
-        vapply(signif(v / count_divisor, 3), format, character(1),
+        vapply(signif(v, 3), format, character(1),
                big.mark = ",", scientific = FALSE, trim = TRUE)
       } else {
         formatC(v, format = "f", digits = as.integer(digits))
@@ -164,11 +154,7 @@ to_table.RiskMap_prediction <- function(object, label = NULL,
       if (identical(summary_name, sort_by) && is.null(sort_values)) {
         sort_values <- v
       }
-      unit <- if (percent && summary_name != "cv") {
-        "%"
-      } else if (count && count_scale != "none") {
-        count_scale
-      }
+      unit <- if (percent && summary_name != "cv") "%" else NULL
       if (summary_name == "mean" && combined) {
         cells <- sprintf("%s (%s to %s)", format_value(v),
                          format_value(values_for(aggregate_name, "lower")),
