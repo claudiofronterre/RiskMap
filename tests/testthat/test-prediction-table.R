@@ -78,3 +78,13 @@ test_that("to_table keeps working for fitted models, with col_names", {
                                   col_names = c("Est", "Low", "High")))
   expect_match(renamed[1], "Est")
 })
+
+test_that("to_table formats each sum on its own", {
+  prediction <- fake_areal_prediction()
+  rows <- prediction$boundary_summary$aggregate == "sum" &
+    prediction$boundary_summary$summary %in% c("mean", "lower", "upper")
+  prediction$boundary_summary$value[rows] <- c(1.234, 98.76, 1, 80, 1.5, 120)
+  table <- table_lines(to_table(prediction, aggregate = "sum"))
+  expect_match(table[3], "1.23 (1 to 1.5)", fixed = TRUE)
+  expect_match(table[4], "98.8 (80 to 120)", fixed = TRUE)
+})

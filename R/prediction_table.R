@@ -118,8 +118,9 @@ to_table.RiskMap_prediction <- function(object, label = NULL,
       out <- if (probability) {
         formatC(100 * v, format = "f", digits = as.integer(digits))
       } else if (count) {
-        format(signif(v, 3), big.mark = ",", scientific = FALSE,
-               trim = TRUE)
+        # Format each value on its own, so that values do not share padding
+        vapply(signif(v, 3), format, character(1),
+               big.mark = ",", scientific = FALSE, trim = TRUE)
       } else {
         formatC(v, format = "f", digits = as.integer(digits))
       }
@@ -163,7 +164,7 @@ to_table.RiskMap_prediction <- function(object, label = NULL,
       } else {
         cells <- format_value(v, percent && summary_name != "cv")
         header <- paste0(prediction_table_summary(summary_name, name, level),
-                         if (!is.null(unit)) " (%)")
+                         if (!is.null(unit)) paste0(" (", unit, ")"))
       }
       table[[header]] <- cells
     }
