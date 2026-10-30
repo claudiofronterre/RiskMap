@@ -222,6 +222,10 @@ collection took about half of a fit.
 
 ## Predictions
 
+- Grids created by `create_grid()` now have the class `RiskMap_grid` before
+`data.frame`, as vctrs requires of data frame subclasses. dplyr verbs such as
+`filter()` previously failed with an error on these grids and on the
+predictions made from them.
 - `create_grid()` no longer raises an error when `boundaries` is in
 longitude/latitude; like `glgpm()`, it now automatically reprojects to an
 appropriate UTM zone and reports the conversion with a message.
