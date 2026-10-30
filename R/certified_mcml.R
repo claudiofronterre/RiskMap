@@ -515,10 +515,13 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
 ##' - "repeat" predicts the residual from the fitting bank
 ##'   (`predict_correction_residual()`) and, if it exceeds `residual_gate`
 ##'   radii of the correction bank, continues the correction on that bank
-##'   (`repeat_correction()`), and certifies in the last curvature;
+##'   (`repeat_correction()`), and certifies in the last curvature, unless
+##'   those steps stop short of the bank's maximum by more than 2 - sqrt(2)
+##'   radii, the most residual that Lemma 4.2 of Fronterre (2026) tolerates;
 ##' - "refuse" does not certify an estimate whose predicted residual exceeds
-##'   2 - sqrt(2) radii, the most that Lemma 4.2 of Fronterre (2026)
-##'   tolerates.
+##'   2 - sqrt(2) radii.
+##' A stage that is not certified for its residual goes on to the next stage
+##' (`fit_adaptive_mcml()`), which starts from the corrected estimate.
 ##' This choice of methods is a prototype for comparing them.
 ##' @noRd
 correct_and_certify <- function(engine, penalty, estimate, information,
@@ -560,6 +563,7 @@ correct_and_certify <- function(engine, penalty, estimate, information,
       record$correction_steps <- 1L + length(repeated$lengths)
       record$correction_lengths <- repeated$lengths
       record$correction_converged <- repeated$converged
+      record$correction_remaining <- repeated$remaining
       if (!is.null(repeated$information)) {
         record$information <- repeated$information
         record$information_root <- root
@@ -571,8 +575,13 @@ correct_and_certify <- function(engine, penalty, estimate, information,
   if (is.null(second)) return(NULL)
   certificate <- certify_estimate(root, second$score[free],
                                   second$covariance[free, free, drop = FALSE])
-  refused <- identical(correction, "refuse") &&
-    record$predicted_residual > 2 - sqrt(2)
+  refused <- switch(
+    correction,
+    refuse = record$predicted_residual > 2 - sqrt(2),
+    "repeat" = isFALSE(record$correction_converged) &&
+      record$correction_remaining > 2 - sqrt(2),
+    FALSE
+  )
   c(list(estimate = corrected, correction_size = correction_step$distance,
          first_validation = first, second_validation = second,
          certificate = certificate$bound,
@@ -657,8 +666,9 @@ predict_correction_residual <- function(bank_objective, fitted, corrected,
 ##' the noise of that bank alone. Each step costs one score on the
 ##' correction bank and one Hessian on the fitting bank. Returns the
 ##' estimate, the curvature and its factor at the last point where it was
-##' computed, the lengths of the steps taken in radii and whether the last
-##' was below the tolerance.
+##' computed, the lengths of the steps taken in radii, whether the last was
+##' below the tolerance, and the length of the last step computed, taken or
+##' not, as a bound on the residual left.
 ##' @param root Upper Cholesky factor of the curvature used for the first
 ##' correction, kept if the fitting bank's is never positive definite.
 ##' @noRd
@@ -669,6 +679,7 @@ repeat_correction <- function(engine, penalty, corrected, root, free,
   lengths <- numeric()
   information <- NULL
   converged <- FALSE
+  remaining <- Inf
   for (step in seq_len(maximum_steps)) {
     curvature <- compute_bank_curvature(bank_objective, corrected, free)
     rescored <- score_validation_bank(engine, corrected, free, n_draws, seed,
@@ -677,6 +688,7 @@ repeat_correction <- function(engine, penalty, corrected, root, free,
     step_root <- curvature$root %||% root
     standardised <- forwardsolve(t(step_root), rescored$score)
     length <- sqrt(sum(standardised^2)) / radius
+    remaining <- length
     if (length(lengths) && length > lengths[length(lengths)]) break
     root <- step_root
     if (!is.null(curvature$root)) information <- curvature$information
@@ -690,7 +702,7 @@ repeat_correction <- function(engine, penalty, corrected, root, free,
     }
   }
   list(estimate = corrected, root = root, information = information,
-       lengths = lengths, converged = converged)
+       lengths = lengths, converged = converged, remaining = remaining)
 }
 
 ##' Whether an optimiser result can be used as a maximum

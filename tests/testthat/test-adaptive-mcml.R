@@ -582,6 +582,32 @@ test_that("the repeated correction applies only past its gate", {
   expect_true(refused$residual_refused)
   expect_false(refused$certified)
   expect_equal(refused$estimate, single$estimate)
+  # Repeated corrections that stop far from the bank's maximum do not certify.
+  local_mocked_bindings(repeat_correction = function(engine, penalty,
+                                                     corrected, root, ...) {
+    list(estimate = corrected, root = root, information = NULL, lengths = 3,
+         converged = FALSE, remaining = 5)
+  })
+  stopped <- correct(curved, curved_score, c(1.5, 0), "repeat")
+  expect_true(stopped$residual_refused)
+  expect_false(stopped$certified)
+})
+
+test_that("repeated corrections stop when a step does not contract", {
+  # The fitting bank's curvature is a tenth of the correction bank's, so the
+  # steps overshoot by more each time.
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, ...) {
+      list(score = 1 - parameters)
+    }
+  )
+  repeated <- repeat_correction(NULL, NULL, 0, chol(matrix(0.1)), 1L, 10L,
+                                1L, function(parameters) -parameters^2 / 20,
+                                -1000, 1000, radius = 1)
+  expect_false(repeated$converged)
+  expect_length(repeated$lengths, 1L)
+  expect_gt(repeated$remaining, repeated$lengths)
+  expect_equal(repeated$estimate, 10, tolerance = 1e-6)
 })
 
 test_that("the validation radius leaves the caller's random numbers", {
