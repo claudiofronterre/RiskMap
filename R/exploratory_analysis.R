@@ -359,15 +359,27 @@ variogram <- function(data,
 ##' \code{n_permutations} was 0 when running \code{\link{variogram}}, no envelope
 ##' can be generated; a warning is raised and the envelope is skipped.
 ##' @param color If \code{plot_envelope = TRUE}, it sets the colour of the envelope; run \code{vignette("ggplot2-specs")} for more details on this argument.
+##' @param show_pairs A logical value indicating if each point should be
+##' labelled with the number of pairs of locations in its distance class. A
+##' semivariance estimated from few pairs is unstable, so the labels help to
+##' judge how much each point can be trusted, and to choose the distance
+##' classes in \code{\link{variogram}}. By default \code{show_pairs = FALSE}.
 ##' @param ... Currently unused.
 ##' @return A \code{ggplot} object representing the empirical variogram plot, optionally including the envelope of spatial independence.
 ##' @details This function plots the empirical variogram, which shows the spatial dependence structure of the data. If \code{plot_envelope} is set to \code{TRUE}, the plot also includes a simultaneous extreme-rank-length envelope for spatial independence.
 ##' @seealso \code{\link{variogram}}
+##' @examples
+##' data(galicia)
+##' galicia_variogram <- variogram(galicia, variable = "lead",
+##'                                distance_units = "km", seed = 1)
+##' plot(galicia_variogram, show_pairs = TRUE)
 ##' @method plot RiskMap_variogram
 ##' @export
 plot.RiskMap_variogram <- function(x,
                                    plot_envelope = TRUE,
-                                   color = "royalblue1", ...) {
+                                   color = "royalblue1",
+                                   show_pairs = FALSE, ...) {
+  check_logical(show_pairs)
 
   if (plot_envelope && x$n_permutations == 0L){
     warning("No envelope for spatial independence can be plotted because 'n_permutations' ",
@@ -388,6 +400,19 @@ plot.RiskMap_variogram <- function(x,
   }
 
   basic_plot <- basic_plot + geom_point() + geom_line()
+
+  if (show_pairs) {
+    # Labels alternate above and below the points so that neighbouring
+    # labels do not overlap, and both ends of the axis get extra room.
+    labels <- x$variogram
+    labels$label <- format(labels$n_pairs, big.mark = ",", trim = TRUE)
+    labels$vjust <- ifelse(seq_len(nrow(labels)) %% 2L == 1L, -0.9, 1.9)
+    basic_plot <- basic_plot +
+      geom_text(data = labels,
+                aes(label = .data$label, vjust = .data$vjust),
+                size = 2.8, colour = "grey20") +
+      scale_y_continuous(expand = expansion(mult = 0.12))
+  }
 
   x_label <- sprintf("Distance (%s)", x$distance_units)
 

@@ -47,6 +47,9 @@ reprojected to an appropriate UTM zone. `predict()`, `simulate_glgpm()` and
 
 ## Exploratory analysis
 
+- `plot()` for `variogram()` results gains `show_pairs` (default `FALSE`),
+which labels each point with the number of pairs of locations in its distance
+class, so that unstable semivariances from few pairs can be recognised.
 - In `summarise_distance()` and `variogram()`, `scale_to_km` has been
 replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`.
 Default behaviour is unchanged (`"km"` for `summarise_distance()`, `"m"` for

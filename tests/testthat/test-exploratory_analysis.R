@@ -457,3 +457,18 @@ test_that("plot.RiskMap_variogram warns and skips the envelope when n_permutatio
 
   expect_no_warning(plot(result, plot_envelope = FALSE))
 })
+
+test_that("plot.RiskMap_variogram labels points with their numbers of pairs on request", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10,
+                      n_permutations = 99, seed = 123)
+  geoms <- function(p) vapply(p$layers, function(l) class(l$geom)[1], character(1))
+
+  expect_false("GeomText" %in% geoms(plot(result)))
+  p <- plot(result, show_pairs = TRUE)
+  expect_true("GeomText" %in% geoms(p))
+  labels <- ggplot2::layer_data(p, which(geoms(p) == "GeomText"))$label
+  expect_identical(labels, format(result$variogram$n_pairs, big.mark = ",",
+                                  trim = TRUE))
+  expect_error(plot(result, show_pairs = NA), "TRUE or FALSE")
+})
