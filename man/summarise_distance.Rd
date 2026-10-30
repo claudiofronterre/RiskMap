@@ -23,7 +23,7 @@ a named vector containing the following components
 \item{\code{min}}{the minimum distance}
 \item{\code{max}}{the maximum distance}
 \item{\code{mean}}{the mean distance}
-\item{\code{median}}{the minimum distance}
+\item{\code{median}}{the median distance}
 }
 }
 \description{

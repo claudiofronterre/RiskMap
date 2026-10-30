@@ -14,7 +14,7 @@ variogram(
   level = 0.95,
   seed = NULL,
   distance_crs = NULL,
-  distance_units = c("m", "km")
+  distance_units = c("km", "m")
 )
 }
 \arguments{
@@ -24,7 +24,9 @@ is to be computed and the coordinates}
 \item{variable}{a character indicating the name of variable for which the variogram is to be computed.}
 
 \item{breaks}{an optional numeric vector of lag-distance breakpoints.
-If supplied, these breakpoints are used directly to define the distance classes.}
+If supplied, these breakpoints are used directly to define the distance classes.
+A warning is raised when some classes lie entirely beyond the largest
+distance between locations, since they contain no pairs.}
 
 \item{n_bins}{the number of lag-distance classes to generate when \code{breaks = NULL}.
 By default \code{n_bins = 14}.}
@@ -51,7 +53,7 @@ automatically reproject longitude/latitude data to an appropriate UTM CRS
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether
 the distances used in the variogram are expressed in kilometers or meters.
-By default \code{distance_units = "m"}}
+By default \code{distance_units = "km"}, as in \code{\link{glgpm}}.}
 }
 \value{
 an object of class \code{RiskMap_variogram} which is a list containing the following components:
@@ -62,7 +64,7 @@ an object of class \code{RiskMap_variogram} which is a list containing the follo
 \item{semivariance}{the observed empirical semivariance}
 \item{n_pairs}{the number of pairs in the lag class}}
 If \code{n_permutations > 0}, the data-frame also contains the following columns:
-.  \describe{
+\describe{
 \item{lower_envelope}{the lower bound of the simultaneous envelope}
 \item{upper_envelope}{the upper bound of the simultaneous envelope}
 }}

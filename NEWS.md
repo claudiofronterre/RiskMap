@@ -50,10 +50,28 @@ reprojected to an appropriate UTM zone. `predict()`, `simulate_glgpm()` and
 - `plot()` for `variogram()` results gains `show_pairs` (default `FALSE`),
 which labels each point with the number of pairs of locations in its distance
 class, so that unstable semivariances from few pairs can be recognised.
+- `plot()` for `variogram()` results draws the semivariances as points without
+joining lines, omits distance classes without pairs (which previously caused
+"Removed rows" warnings), starts both axes at zero, uses `theme_minimal()` as
+other RiskMap plots do, and draws in red the points that fall outside the
+envelope. `plot_envelope` is now checked.
+- `variogram()` results gain a `print()` method that reports the distance
+classes and the envelope settings before the table.
 - In `summarise_distance()` and `variogram()`, `scale_to_km` has been
 replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`.
-Default behaviour is unchanged (`"km"` for `summarise_distance()`, `"m"` for
-`variogram()`).
+Both now default to `"km"`, as `glgpm()` does. For `variogram()` this changes
+the default from `"m"`, so code that gives `breaks` or `max_dist` in metres
+should set `distance_units = "m"`.
+- `variogram()` accepts `breaks` or `max_dist` beyond the largest distance
+between locations, and warns only when whole distance classes lie beyond it.
+When no pair falls in any class, the error reports the range of the distances
+instead of always suggesting a change of units. `max_dist = NULL` can be passed
+together with `breaks`.
+- `variogram()` no longer fails when the envelope is built for a single
+distance class, and runs about twice as fast with 2,000 or more locations,
+with identical results. Rounding error no longer makes the envelope exclude one
+curve too few at some levels, such as 0.9 with 999 permutations. The default
+level of 0.95 with 999 permutations was not affected.
 - In `summarise_distance()` and `variogram()`, `convert_to_utm` has been replaced
 with `distance_crs`, matching `glgpm()`'s `model_crs` convention: an
 already-projected CRS is retained as-is, longitude/latitude data is automatically
