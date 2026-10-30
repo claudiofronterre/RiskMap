@@ -2423,8 +2423,10 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
           diag(Sigma_g[sc + seq_len(n_dim_re_tot[j+1]), sc + seq_len(n_dim_re_tot[j+1])]) <- par_hat$sigma2_re[j]
         }
       }
+      # coef() omits sigma2_me when the measurement error variance is fixed
+      measurement_variance <- par_hat$sigma2_me %||% object$fix_var_me
       prediction_weights <- gaussian_prediction_weights(C_g, Sigma_g, ID_g,
-                                                         par_hat$sigma2_me)
+                                                         measurement_variance)
       if (!batch_marginal && !grouped_joint) {
         A <- prediction_weights(C)
       }
