@@ -19,7 +19,7 @@ more colours to interpolate between. Defaults to \code{"viridis"}.}
 colours. Defaults to \code{FALSE}.}
 
 \item{...}{Additional arguments passed to \code{\link[ggplot2:scale_fill_gradientn]{ggplot2::scale_fill_gradientn()}},
-e.g. \code{name}, \code{breaks} or \code{limits}.}
+e.g. \code{name} or \code{breaks}.}
 }
 \value{
 A \code{ggplot} object.

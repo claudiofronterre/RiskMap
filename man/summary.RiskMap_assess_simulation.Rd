@@ -12,11 +12,20 @@
 \item{...}{Additional arguments (not used).}
 }
 \value{
-A list containing summary data for each model:
+A list of class \code{summary.RiskMap_assess_simulation} with one
+element per assessed spatial scale (\code{grid} and/or \code{area}), each holding:
 \itemize{
-\item \code{by_cat_summary}: A data frame with average sensitivity, specificity, PPV, NPV, and CC by category.
-\item \code{CC_summary}: A numeric vector with mean, 2.5th percentile, and 97.5th percentile for CC across simulations.
+\item \code{mse}: a data frame with, for each model, the number of simulations
+(\code{n_sim}), the number with a result (\code{n_valid}), and the mean and
+standard deviation of the MSE across simulations (\code{MSE_mean}, \code{MSE_sd});
+\item \code{classify}: for each model, \code{classify_res}, the average sensitivity,
+specificity, PPV, NPV and CC by category across simulations, \code{n_valid},
+the number of simulations with a defined value of each metric, \code{n_sim},
+and \code{cc_summary}, the mean, standard deviation and 2.5\% and 97.5\%
+quantiles of the overall proportion of correct classification.
 }
+
+It also holds \code{fits}, the number of model fits and of failed fits.
 }
 \description{
 Summarizes the results of model evaluations from a \code{RiskMap_assess_simulation} object. Provides average metrics for classification by category and overall correct classification (CC) summary.
