@@ -459,7 +459,7 @@ plot.RiskMap_variogram <- function(x,
     basic_plot <- basic_plot +
       geom_text(data = labels,
                 aes(label = .data$label, vjust = .data$vjust),
-                size = 2.8, colour = "grey20") +
+                size = 2.4, colour = "grey30") +
       scale_y_continuous(expand = expansion(mult = c(0.05, 0.12)))
   }
 
