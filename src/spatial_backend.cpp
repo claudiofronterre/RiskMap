@@ -1,5 +1,6 @@
 #include <Rcpp.h>
 #include <cmath>
+#include "matern_kernel.h"
 
 using namespace Rcpp;
 
@@ -140,28 +141,7 @@ NumericVector cpp_half_integer_matern(const NumericVector distances,
   NumericVector correlation(distances.length());
 
   for (R_xlen_t i = 0; i < distances.length(); ++i) {
-    const double distance = distances[i];
-
-    if (distance == 0.0) {
-      correlation[i] = 1.0;
-      continue;
-    }
-
-    const double scaled_distance = distance / phi;
-
-    if (scaled_distance > 600.0) {
-      correlation[i] = 0.0;
-    } else if (kappa == 0.5) {
-      correlation[i] = std::exp(-scaled_distance);
-    } else if (kappa == 1.5) {
-      correlation[i] = (1.0 + scaled_distance) *
-        std::exp(-scaled_distance);
-    } else {
-      // matern_correlation() only calls this kernel for kappa = 0.5, 1.5 or 2.5
-      correlation[i] = (1.0 + scaled_distance +
-        scaled_distance * scaled_distance / 3.0) *
-        std::exp(-scaled_distance);
-    }
+    correlation[i] = half_integer_matern(distances[i], phi, kappa);
   }
 
   return correlation;

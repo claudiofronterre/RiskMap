@@ -35,6 +35,7 @@ Imports:
     loo,
     Matrix,
     numDeriv,
+    parallel,
     Rcpp,
     rlang,
     scales,
@@ -50,6 +51,7 @@ LinkingTo:
     RcppEigen
 Suggests:
     patchwork,
+    RhpcBLASctl,
     testthat (>= 3.0.0),
     withr
 License: MIT + file LICENSE

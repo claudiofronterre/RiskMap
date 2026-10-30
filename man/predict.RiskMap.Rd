@@ -193,12 +193,12 @@ exact conditional Gaussian distribution.
 
 Plug-in prediction treats the estimated parameters as known, so its
 intervals can be too narrow when the parameters, in particular the spatial
-variance and range, are poorly estimated, as in small or low-prevalence
+variance and scale, are poorly estimated, as in small or low-prevalence
 surveys. With \code{parameter_uncertainty = TRUE}, \code{parameter_draws} parameter
 values are drawn from the approximate sampling distribution of the
 estimate: a multivariate normal distribution with the estimated covariance
 matrix, on the scale on which the model is estimated (log variances and
-log range). For each value, conditional samples of the latent effects are
+log scale). For each value, conditional samples of the latent effects are
 generated at that value and the prediction is repeated; the draws are then
 pooled, so every summary, aggregation and derived target reflects both the
 latent and the parameter uncertainty. For binomial and Poisson models the

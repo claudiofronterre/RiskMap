@@ -2,68 +2,90 @@
 % Please edit documentation in R/parameter_estimation.R
 \name{set_control_mcml}
 \alias{set_control_mcml}
-\title{Set control parameters for adaptive MCML estimation}
+\title{Set control parameters for certified MCML estimation}
 \usage{
 set_control_mcml(
   initial_samples = 1000L,
-  max_samples = 20000L,
-  max_stages = 5L,
-  min_effective_samples = 100L,
-  max_pareto_k = 0.7,
-  max_mcse_ratio = 0.1,
-  score_probability = 0.99,
-  laplace_start = FALSE,
-  hold_short_range = TRUE,
+  validation_samples = 5000L,
+  max_samples = 16000L,
+  max_stages = 4L,
+  tolerance = 0.1,
+  proposal = c("global", "laplace"),
+  defensive_weight = 0.05,
+  laplace_start = TRUE,
+  check_maxima = TRUE,
   pc_prior = FALSE,
   pc_sigma_threshold = 1,
   pc_sigma_probability = 0.05,
-  pc_range_threshold = NULL,
-  pc_range_probability = 0.05
+  pc_scale_threshold = NULL,
+  pc_scale_probability = 0.05
 )
 }
 \arguments{
-\item{initial_samples}{Positive integer giving the number of draws in each
-fitting and validation bank at the first stage. Defaults to 1,000.}
+\item{initial_samples}{Positive integer giving the number of draws in the
+fitting sample at the first stage. Defaults to 1,000.}
 
-\item{max_samples}{Positive integer giving the largest permitted bank.
-Defaults to 20,000.}
+\item{validation_samples}{Positive integer giving the number of draws in
+each validation sample at the first stage. Later stages enlarge the
+validation samples in the same proportion as the fitting sample. Defaults
+to 5,000.}
 
-\item{max_stages}{Positive integer giving the maximum number of adaptive
-stages. Defaults to 5.}
+\item{max_samples}{Positive integer giving the largest permitted fitting
+sample. Defaults to 16,000.}
 
-\item{min_effective_samples}{Positive integer giving the minimum effective
-number of importance draws required in both banks before Monte Carlo
-uncertainty is interpreted. Defaults to 100.}
+\item{max_stages}{Positive integer giving the maximum number of stages.
+Defaults to 4.}
 
-\item{max_pareto_k}{Positive upper limit for the Pareto tail-shape
-diagnostic. Defaults to 0.7.}
+\item{tolerance}{Positive number giving the largest accepted certificate,
+in statistical standard errors. Defaults to 0.1.}
 
-\item{max_mcse_ratio}{Number between zero and one giving the largest allowed
-ratio of Monte Carlo standard error to ordinary statistical standard error,
-over all linear combinations of fitted parameters. Defaults to 0.1.}
+\item{proposal}{The importance distribution for the latent effects.
+\code{"global"} (the default) fits a Gaussian approximation to the whole
+conditional distribution of the latent effects, which keeps far more of
+the draws effective in sparse data than the Laplace approximation;
+\code{"laplace"} uses the Laplace approximation at the conditional mode. If the
+global approximation cannot be built at some parameter value, the stage is
+repeated with the Laplace approximation.}
 
-\item{score_probability}{Number strictly between zero and one used for the
-independent-bank score-agreement limit. Defaults to 0.99.}
+\item{defensive_weight}{Number in [0, 1) giving the share of importance
+draws taken from the prior distribution of the latent effects instead of
+the Gaussian approximation. This defensive mixture keeps the variance of
+the importance weights finite, which a Gaussian proposal alone does not in
+most spatial datasets, so that Monte Carlo errors are valid. Defaults to
+0.05. Set to 0 to use the Gaussian approximation alone.}
 
-\item{laplace_start}{Logical. If \code{TRUE}, the Laplace approximation to the
-likelihood is first maximised from several starting values and Monte Carlo
-maximum likelihood starts from the best Laplace estimate. Defaults to
-\code{FALSE}: in validation this changed which local maximum was reached about as
-often for the worse as for the better, at extra computational cost.}
+\item{laplace_start}{Logical. If \code{TRUE} (the default), the Laplace
+approximation to the likelihood is first maximised from the starting
+values, and Monte Carlo maximum likelihood starts from that estimate.}
 
-\item{hold_short_range}{Logical. If \code{TRUE} (the default), a scale parameter
-phi estimated below the median distance between neighbouring locations is held
-at that distance, because spatial correlation on a shorter scale cannot be
-distinguished from unstructured variation; a warning is issued. Set to
-\code{FALSE} to obtain the unconstrained maximum likelihood estimate.}
+\item{check_maxima}{Logical. The certificate establishes Monte Carlo
+precision at the maximum found, not that no higher maximum exists. In
+sparse surveys an optimiser can stop at a maximum with a spatial scale far
+below the spacing between locations while a higher one exists at a longer
+scale, or the reverse. If \code{TRUE} (the default), a fitted scale below half
+the median distance between neighbouring locations is refitted from four
+dispersed starting values on the same Monte Carlo draws. After a fit at a
+longer scale the likelihood is evaluated at four shorter scales, with the
+coefficients and variance of the model with independent location effects
+(the limit of the model as the scale goes to zero, computed exactly by
+quadrature), and the fit is repeated from the best of them if it comes
+within 0.25 log-likelihood units of the fit. Exact lower bounds on the
+likelihood at short scales force a further search if they exceed the
+fitted log-likelihood. Separate maxima are compared on independent draws
+and the highest is kept, with a warning if it differs. A fit whose spatial
+correlation is numerically negligible is reported as numerically
+independent, with the scale unresolved and without standard errors or
+certificate. The screen of short scales and the exact bounds are
+available for the canonical links and models without unstructured random
+effects.}
 
-\item{pc_prior}{Logical. If \code{TRUE}, the spatial variance and scale parameter are
+\item{pc_prior}{Logical. If \code{TRUE}, the spatial variance and scale are
 penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
 estimate maximises the penalised likelihood on the log scale of the
 covariance parameters. This shrinks estimates away from degenerate
-solutions in small or sparse datasets and replaces the hold of short
-scale parameters. It is recommended for small or low-prevalence surveys, especially
-before prediction with \code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
+solutions in small or sparse datasets. It is recommended for small or
+low-prevalence surveys, especially before prediction with
+\code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
 When the spatial variance is large and well identified, the penalty shrinks
 it somewhat towards zero, so the default is \code{FALSE}.}
 
@@ -72,24 +94,31 @@ P(sigma > \code{pc_sigma_threshold}) = \code{pc_sigma_probability}, where sigma 
 spatial standard deviation on the scale of the linear predictor. Default
 1 and 0.05.}
 
-\item{pc_range_threshold, pc_range_probability}{The penalty sets
-P(phi < \code{pc_range_threshold}) = \code{pc_range_probability}, where phi is the
-scale parameter in the units of the coordinates. By default the threshold is the
-median distance between neighbouring locations and the probability is
+\item{pc_scale_threshold, pc_scale_probability}{The penalty sets
+P(phi < \code{pc_scale_threshold}) = \code{pc_scale_probability}, where phi is the
+spatial scale in the units of the coordinates. By default the threshold is
+the median distance between neighbouring locations and the probability is
 0.05.}
 }
 \value{
 A control object of class \code{RiskMap_control_mcml}.
 }
 \description{
-Non-Gaussian models use independent fitting and validation importance
-samples. Sampling stops automatically only when the importance samples are
-regular enough to estimate Monte Carlo uncertainty, that uncertainty is
-small relative to the model's statistical uncertainty, and both samples
-give compatible score vectors.
+Non-Gaussian models are fitted by Monte Carlo maximum likelihood with
+importance sampling. The estimated log-likelihood is maximised on a
+fitting sample of draws, the estimate is corrected by one Newton step with
+the score from an independent validation sample, and the corrected
+estimate is certified with a second, fresh validation sample. The
+certificate is an approximate 95\% bound, in statistical standard errors,
+on the Monte Carlo error of the estimate, that is its distance from the
+maximum of the exact likelihood that the fit has located. It is not an
+exact finite-sample guarantee, and it says nothing about whether that
+maximum is the highest (see \code{check_maxima}). If the certificate exceeds
+\code{tolerance}, the samples are enlarged to the size predicted to meet it and
+the fit is repeated.
 }
 \examples{
-control_mcml <- set_control_mcml(max_samples = 10000)
+control_mcml <- set_control_mcml(max_samples = 8000)
 }
 \seealso{
 \code{\link[=glgpm]{glgpm()}}, \code{\link[=set_control_mcmc]{set_control_mcmc()}}

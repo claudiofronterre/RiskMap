@@ -87,24 +87,64 @@ use the general R implementation.
 integrand when the objective, gradient, and Hessian are evaluated at identical
 parameters, avoiding a repeated likelihood calculation.
 
-- Non-Gaussian models now use automatically validated local-Laplace MCML.
-Independent fitting and validation banks must contain at least 100 effective
-draws, have acceptable importance-weight tails, agree on the score, and keep
-Monte Carlo standard error below 10% of statistical standard error in every
-parameter direction. Bank size increases only when those diagnostics require
-it. The defaults were chosen in a 1,200-dataset simulation study and checked
-against exact likelihoods on small datasets, Stan-based likelihood ratios and
-1,200 further datasets simulated with fresh seeds; see #194.
+- `profile()` computes profile likelihoods of binomial and Poisson models
+fitted by certified Monte Carlo maximum likelihood, for single parameters and
+for pairs, on one fixed bank of draws so that the profiles are smooth. It
+reports profile and Wald intervals and says if a point on a profile is higher
+than the estimate. Marginal grids of 11 points are extended with doubling steps
+where the profile is flat, up to 11 points a side, and an end the profile does
+not reach is reported as open. Interval ends are interpolated in the signed
+root of the deviance, with one more point at a crossing between distant
+points, and the points around each end are also solved from the estimate,
+because constrained maxima can be multimodal. The constrained maximisations
+work on the scale of the fit, with standardised covariates, which avoids the
+false convergence that coefficients of covariates with large ranges caused in
+their own units, and each starts from the extrapolation of the two previous
+solutions. One that still stops with a non-zero code is solved again with a
+central-difference gradient. A fixed coefficient whose constraint the start
+cannot meet within the bounds is first moved to the nearest feasible point,
+and each point records whether it was solved, is infeasible or failed. Joint
+profiles are computed only when `pairs` asks for them, and the time left is estimated as the profiles
+run. With `cores` above one, the two sides of each profile, the ends of the
+intervals and the joint profiles run in parallel by forking (not on Windows),
+with the same results as on one core with one BLAS thread. `plot()` draws the marginal profiles against their quadratic
+approximation and the joint profiles as confidence regions with the marginal
+ridges, as a corner plot for one pair.
 
-- Adaptive MCML now distinguishes Monte Carlo error from weak
-identification. A variance component estimated as zero (and the scale parameter
-phi when the spatial variance is zero) is held at the boundary, the first stage is
+- Non-Gaussian models are now fitted by certified Monte Carlo maximum
+likelihood. The estimated likelihood is maximised on a fitting sample of 1,000
+draws, the estimate is corrected by one Newton step with the score from an
+independent validation sample of 5,000 draws, and the corrected estimate is
+certified with a second, fresh validation sample. The certificate is an
+approximate 95% bound, in statistical standard errors, on the Monte Carlo
+error of the estimate at the maximum found. When it exceeds the tolerance
+(0.1 by default), both samples are enlarged to the size predicted to meet it,
+up to `max_samples`. The importance distribution is a Gaussian approximation fitted
+to the whole conditional distribution of the latent effects (efficient
+importance sampling), which keeps far more draws effective than the Laplace
+approximation in sparse data. Binomial and Poisson models, with or without a
+nugget and unstructured random effects, share one implementation, and the
+Laplace approximation remains as a fallback and as an option. If the global
+proposal fails while an estimate is being corrected or certified, the stage
+is repeated with the Laplace proposal on fresh draws, so that every
+certificate rests on validation draws taken after everything that led to it.
+`set_control_mcml()` gains `validation_samples`, `tolerance` and `proposal`,
+and loses `min_effective_samples`, `max_pareto_k`, `max_mcse_ratio` and
+`score_probability`. The defaults of `max_samples` and `max_stages` are now
+16,000 and 4. Fitted objects report `mcml_certified` in place of
+`mcml_converged`.
+
+- Certified MCML distinguishes Monte Carlo error from weak
+identification. A variance component estimated as zero (and the spatial scale
+when the spatial variance is zero) is held at the boundary, the first stage is
 restarted once from an interior value, and precision is assessed on the
-remaining parameters, which keep their standard errors. A scale parameter phi shorter
-than the median distance between neighbouring locations is held at that
-distance (`set_control_mcml(hold_short_range = FALSE)` disables this). If the
-information matrix is still singular, fitting stops instead of drawing more
-samples. Each case produces a plain-language warning.
+remaining parameters, which keep their standard errors. A spatial scale
+estimated below the median distance between neighbouring locations is reported
+as estimated, with a warning that gives its practical range, explains that
+such a scale may be weakly identified, points to its profile likelihood and
+suggests a nugget model, a fixed scale or the PC prior. If the information
+matrix is still singular, fitting stops instead of drawing more samples. Each
+case produces a plain-language warning.
 
 - `maxim_integrand()` now takes `denominator` instead of `units_m`, matching
 `glgpm()`. Its documentation no longer lists the Gaussian family, which it has
@@ -115,12 +155,12 @@ never supported, and describes the Newton-type optimisation it actually uses.
 compiled kernel `cpp_canonical_likelihood()`, which no longer had callers.
 
 - `set_control_mcml()` gains `pc_prior` (default `FALSE`) and its thresholds
-`pc_sigma_threshold`, `pc_sigma_probability`, `pc_range_threshold` and
-`pc_range_probability`. When `pc_prior = TRUE`, the spatial variance and range
+`pc_sigma_threshold`, `pc_sigma_probability`, `pc_scale_threshold` and
+`pc_scale_probability`. When `pc_prior = TRUE`, the spatial variance and scale
 are penalised by penalised-complexity priors (by default
 P(sigma > 1) = 0.05 and P(phi < median nearest-neighbour distance) = 0.05),
 which stabilises estimation in small or low-prevalence surveys. Warnings about
-a spatial variance estimated as zero, a held scale parameter or a singular
+a spatial variance estimated as zero, a small spatial scale or a singular
 information matrix now suggest this option.
 
 - The final conditional sampling in `glgpm()` (used for fitted values and
@@ -130,8 +170,55 @@ which selected the general R implementation with numerical derivatives; a
 binomial fit to the `liberia` data now takes about 2 s instead of 27 s.
 Fresh conditional runs in `predict()` now honour a custom inverse link.
 
-- `set_control_mcml()` gains `laplace_start` (default `FALSE`) to maximise the
-Laplace approximation from several starting values before MCML.
+- `set_control_mcml()` gains `laplace_start` (default `TRUE`), which maximises
+the Laplace approximation from the starting values before MCML.
+
+- `set_control_mcml()` gains `check_maxima` (default `TRUE`). The
+certificate establishes Monte Carlo precision at the maximum found, and in
+sparse surveys an optimiser can stop at a maximum with a spatial scale far
+below the spacing between locations while a higher one exists at a longer
+scale. When the fitted scale is below half the median distance between
+neighbouring locations, the fit is repeated from four dispersed starting
+values on the same draws. Candidates within 0.1 standard errors of each other
+are treated as one maximum, and separate maxima are compared on independent
+draws. A message says when and why the check runs, and a warning says when it
+moves the estimate to another maximum or finds two maxima that fit about
+equally well. The check does not prove that no higher maximum exists.
+
+- The check for other maxima also looks at short scales after a fit at a long
+one. The likelihood with independent location effects, the limit of the model
+as the spatial scale goes to zero, is computed exactly by adaptive
+Gauss-Hermite quadrature and maximised once per survey. The estimated
+likelihood is evaluated at four scales from an eighth of the spacing between
+neighbouring locations to the spacing, with the coefficients and variance of
+that limit and one three-point step in the log variance where the value is
+close, and the fit is repeated from the best point if it comes within 0.25
+log-likelihood units of the fit or if an evaluation fails. The limit and Jensen
+lower bounds at those scales are exact, and if one of them exceeds the fitted
+log-likelihood, estimated on independent draws, a further search is forced and
+a warning is given if it does not resolve the alarm. A fit whose scale reaches
+the point where the correlation between the closest locations is below 1e-6
+ends with the outcome "numerically independent", without standard errors or
+certificate, since the fit is then one of independent location effects and the
+spatial scale is unresolved. A fit at a short positive scale whose likelihood is not clearly
+above the limit at the current Monte Carlo precision is assessed as usual, with
+a warning that points to `profile()` for the scale. Separate maxima whose
+comparison on independent draws is ambiguous are compared again on four times
+as many draws, and that comparison serves every later one. A stage whose
+global proposal fails at its start goes straight to the Laplace proposal,
+instead of being completed and then discarded, and the factorisation of the
+spatial covariance is reused while only the regression coefficients change.
+The screen
+and the exact bounds need the canonical links and no unstructured random
+effects, and other models keep the earlier check.
+
+- Certified MCML computes the importance weights (for the canonical binomial
+and Poisson links) and the dense linear algebra of the proposal in compiled
+code, with the same LAPACK and BLAS routines R uses, and gives results
+identical to the previous R code (up to the last bits on platforms whose
+compilers fuse multiply and add). A fit no longer creates several large
+temporary matrices at every evaluation of the likelihood, whose garbage
+collection took about half of a fit.
 
 ## Predictions
 

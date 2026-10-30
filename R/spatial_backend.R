@@ -77,11 +77,11 @@ index_coordinate_rows <- function(coordinates) {
   )
 }
 
-#' Scale spatial coordinates and range
+#' Rescale spatial coordinates and the spatial scale
 #'
 #' The maximum observed pairwise distance is used for both fitting and future
-#' prediction locations. Scaling the coordinates and range by the same value
-#' leaves every ratio of distance to range unchanged.
+#' prediction locations. Rescaling the coordinates and the scale phi by the
+#' same value leaves every ratio of distance to scale unchanged.
 #'
 #' @param coordinates Numeric matrix containing observed locations.
 #' @param phi Optional scale parameter in the coordinate units.
