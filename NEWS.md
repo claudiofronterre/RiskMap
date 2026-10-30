@@ -147,7 +147,11 @@ point, until a step is below a tenth of the radius (at most four more steps).
 The estimate is then certified in the curvature at the last step. If the steps
 stop short by more than the certificate tolerates, they are discarded, the
 stage is not certified, and the next stage starts from the estimate of the
-first step. Fits where the check does not fire
+first step. The check does not act where the validation sample's radius is
+below 1e-6 statistical standard errors, as when the spatial variance is held
+at zero and the likelihood is exact, because the predicted residual is then
+the rounding error of the differences divided by the radius. Fits where the
+check does not fire
 are unchanged. Where it fires, the estimate and the certificate change, and so
 do the returned standard errors, which now come from the curvature at the last
 step. On a simulated survey with a log spatial variance of -4.56 at the

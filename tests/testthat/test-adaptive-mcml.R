@@ -567,11 +567,11 @@ test_that("repeated corrections reach the maximum of the correction bank", {
 test_that("the correction continues only past its check", {
   # The correction bank's score is exact, so one Newton step reaches the
   # maximum of a quadratic and falls short along exp(x) - 2x.
-  correct <- function(log_likelihood, score, start) {
+  correct <- function(log_likelihood, score, start, variance = 1e-6) {
     local_mocked_bindings(
       score_validation_bank = function(engine, parameters, free, ...) {
         list(score = score(parameters)[free],
-             covariance = diag(1e-6, length(free)), log_likelihood = 0,
+             covariance = diag(variance, length(free)), log_likelihood = 0,
              seconds = 0)
       }
     )
@@ -606,6 +606,13 @@ test_that("the correction continues only past its check", {
   expect_true(corrected$certified)
   # The certificate is measured in the curvature at the last step.
   expect_equal(corrected$information[1, 1], 2, tolerance = 1e-5)
+  # Below the floor of the radius the check does not act, whatever the
+  # prediction, since there it divides rounding error by the radius.
+  exact <- correct(curved, curved_score, c(1.5, 0), variance = 1e-30)
+  expect_gt(exact$predicted_residual, 0.25)
+  expect_identical(exact$correction_steps, 1L)
+  expect_equal(exact$estimate, one_step, tolerance = 1e-6)
+  expect_false(exact$residual_refused)
   # Repeated corrections that stop far from the bank's maximum are discarded
   # and the estimate of the first step is not certified.
   local_mocked_bindings(repeat_correction = function(engine, penalty,

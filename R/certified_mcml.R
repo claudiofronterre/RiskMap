@@ -516,11 +516,18 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
 ##' Lemma 4.2 of Fronterre (2026) tolerates, they are discarded, the estimate
 ##' of the first step is not certified, and the next stage
 ##' (`fit_adaptive_mcml()`) starts from it.
+##'
+##' The check does not act where the radius is below `radius_floor`
+##' statistical standard errors. The validation draws then barely vary, as
+##' when the spatial variance is held at zero and the likelihood is exact
+##' (radii of about 1e-11), the correction is of that size too, and the
+##' predicted residual is the rounding error of the central differences
+##' divided by the radius.
 ##' @noRd
 correct_and_certify <- function(engine, penalty, estimate, information,
                                 validation_budget, seeds, lower, upper,
                                 tolerance, bank_objective,
-                                residual_check = 0.25) {
+                                residual_check = 0.25, radius_floor = 1e-6) {
   free <- information$free
   root <- information$root
   first <- score_validation_bank(engine, estimate, free, validation_budget,
@@ -537,7 +544,8 @@ correct_and_certify <- function(engine, penalty, estimate, information,
     information$gradient[free]
   )
   refused <- FALSE
-  if (record$predicted_residual > residual_check) {
+  if (correction$radius > radius_floor &&
+      record$predicted_residual > residual_check) {
     repeated <- repeat_correction(engine, penalty, corrected, root, free,
                                   validation_budget, seeds[[2L]],
                                   bank_objective, lower, upper,
