@@ -501,6 +501,89 @@ test_that("certificate algebra matches its definition", {
   expect_equal(radius, sqrt(0.01 * qchisq(0.95, 2)), tolerance = 0.01)
 })
 
+test_that("the predicted residual of the correction is that of a Newton step", {
+  information <- matrix(c(4, 1, 1, 3), 2)
+  centre <- c(0.5, -0.2)
+  quadratic <- function(parameters) {
+    -0.5 * drop(t(parameters - centre) %*% information %*%
+                  (parameters - centre))
+  }
+  step <- c(0.3, 0.1)
+  expect_equal(predict_correction_residual(quadratic, c(0, 0), step, 1:2,
+                                           chol(information), step, 0.1),
+               0, tolerance = 1e-6)
+  # Along exp(x) - x the score at the corrected point is left over.
+  curved <- function(parameters) -(exp(parameters[1]) - parameters[1]) -
+    parameters[2]^2
+  curvature <- diag(c(exp(1), 2))
+  step <- c(-0.5, 0)
+  left <- exp(1) / 2 - exp(0.5)
+  expect_equal(predict_correction_residual(curved, c(1, 0), c(0.5, 0), 1:2,
+                                           chol(curvature), step, 0.1),
+               abs(left) / sqrt(exp(1)) / 0.1, tolerance = 1e-6)
+})
+
+test_that("repeated corrections reach the maximum of the correction bank", {
+  log_likelihood <- function(parameters) {
+    -(exp(parameters[1]) - 2 * parameters[1]) - (parameters[2] - 1)^2 / 2
+  }
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, ...) {
+      list(score = c(2 - exp(parameters[1]), 1 - parameters[2])[free])
+    }
+  )
+  repeated <- repeat_correction(NULL, NULL, c(1.2, 1), chol(diag(2)), 1:2,
+                                10L, 1L, log_likelihood, c(-10, -10),
+                                c(10, 10), radius = 0.01)
+  expect_equal(repeated$estimate, c(log(2), 1), tolerance = 1e-8)
+  expect_true(repeated$converged)
+  expect_true(all(diff(repeated$lengths) < 0))
+  # The curvature is the fitting bank's at the last point it was computed.
+  expect_equal(repeated$information[2, 2], 1, tolerance = 1e-5)
+})
+
+test_that("the repeated correction applies only past its gate", {
+  # The correction bank's score is exact, so one Newton step reaches the
+  # maximum of a quadratic and falls short along exp(x) - 2x.
+  correct <- function(log_likelihood, score, start, correction) {
+    local_mocked_bindings(
+      score_validation_bank = function(engine, parameters, free, ...) {
+        list(score = score(parameters)[free],
+             covariance = diag(1e-6, length(free)), log_likelihood = 0,
+             seconds = 0)
+      }
+    )
+    information <- compute_bank_curvature(log_likelihood, start, 1:2)
+    correct_and_certify(NULL, NULL, start,
+                        c(information, list(free = 1:2)), 10L, 1:3,
+                        c(-10, -10), c(10, 10), 0.1,
+                        bank_objective = log_likelihood,
+                        correction = correction)
+  }
+  quadratic <- function(parameters) -sum((parameters - c(0.5, 1))^2) / 2
+  quadratic_score <- function(parameters) c(0.5, 1) - parameters
+  single <- correct(quadratic, quadratic_score, c(1.5, 0), "single")
+  repeated <- correct(quadratic, quadratic_score, c(1.5, 0), "repeat")
+  expect_equal(repeated$estimate, single$estimate)
+  expect_identical(repeated$correction_steps, 1L)
+  expect_lt(repeated$predicted_residual, 0.25)
+  curved <- function(parameters) {
+    -(exp(parameters[1]) - 2 * parameters[1]) - (parameters[2] - 1)^2 / 2
+  }
+  curved_score <- function(parameters) {
+    c(2 - exp(parameters[1]), 1 - parameters[2])
+  }
+  single <- correct(curved, curved_score, c(1.5, 0), "single")
+  repeated <- correct(curved, curved_score, c(1.5, 0), "repeat")
+  refused <- correct(curved, curved_score, c(1.5, 0), "refuse")
+  expect_gt(abs(single$estimate[1] - log(2)), 0.1)
+  expect_equal(repeated$estimate, c(log(2), 1), tolerance = 1e-6)
+  expect_gt(repeated$correction_steps, 2L)
+  expect_true(refused$residual_refused)
+  expect_false(refused$certified)
+  expect_equal(refused$estimate, single$estimate)
+})
+
 test_that("the validation radius leaves the caller's random numbers", {
   set.seed(77)
   before <- .Random.seed
