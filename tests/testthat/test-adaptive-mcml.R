@@ -173,6 +173,28 @@ test_that("a scale smaller than the location spacing is reported, not held", {
   )
 })
 
+test_that("a refused Newton correction is reported, not a large bound", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  outcome <- list(boundary_parameters = integer(), budget = 2500L,
+                  validation_budget = 12500L, outcome = "not certified",
+                  certified = FALSE, certificate = 0.04,
+                  history = list(list(residual_refused = TRUE)))
+  refused <- tryCatch(
+    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
+                        tolerance = 0.1, messages = FALSE),
+    warning = conditionMessage
+  )
+  expect_match(refused, "Newton correction of the estimate did not converge")
+  expect_no_match(refused, "above the tolerance")
+  outcome$history <- list(list(residual_refused = FALSE))
+  outcome$certificate <- 0.4
+  expect_warning(
+    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
+                        tolerance = 0.1, messages = FALSE),
+    "0.4 statistical standard errors, above the tolerance of 0.1"
+  )
+})
+
 test_that("the practical range factor matches the exponential correlation", {
   expect_equal(compute_practical_range_factor(0.5), -log(0.05),
                tolerance = 1e-8)
@@ -737,6 +759,12 @@ test_that("dispersed starts span the site spacing and half the extent", {
   expect_equal(exp(dispersed$log_sigma2), c(0.25, 4, 0.25, 4))
   expect_equal(dispersed$trigger, log(0.5))
   expect_identical(dispersed$phi_index, 4L)
+  # The announcement says that the scale is that of the first fit, before
+  # the correction that gives the returned estimate.
+  announcing <- make_dispersed_starts(layout, distances, distance_scale = 2,
+                                      messages = TRUE)
+  expect_message(announcing$announce(log(0.074)),
+                 "first fit \\(phi = 0.148, before its Monte Carlo correction\\)")
 })
 
 test_that("the check for maxima finds a higher one at a longer scale", {
@@ -999,15 +1027,17 @@ test_that("the check for other maxima reports a move and an ambiguity", {
     independent_se = c(0.05, 0), chosen = c(FALSE, TRUE),
     start = c("fitted", "a"), log_phi = log(c(0.1, 20))
   )
+  # The kept maximum is quoted at the returned estimate, after the Newton
+  # correction moved it from the scale 20 fitted on the fitting draws.
   moved <- list(maxima_check = check, better_maximum = TRUE,
-                ambiguous_maxima = FALSE)
+                ambiguous_maxima = FALSE, estimate = c(0, 0, log(20.4)))
   expect_warning(report_maxima_check(moved, layout, 1),
-                 "found a separate maximum.*scale 20 instead of 0.1")
+                 "found a separate maximum.*scale 20.4 instead of 0.1")
   ambiguous <- moved
   ambiguous$better_maximum <- FALSE
   ambiguous$ambiguous_maxima <- TRUE
   expect_warning(report_maxima_check(ambiguous, layout, 1),
-                 "fit about equally well")
+                 "fit about equally well.*spatial scale 20.4\\.")
   quiet <- moved
   quiet$better_maximum <- FALSE
   expect_silent(report_maxima_check(quiet, layout, 1))

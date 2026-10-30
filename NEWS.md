@@ -241,6 +241,25 @@ compilers fuse multiply and add). A fit no longer creates several large
 temporary matrices at every evaluation of the likelihood, whose garbage
 collection took about half of a fit.
 
+- Fitted models have a `print()` method, which gives the call, the estimates
+of the regression coefficients and covariance parameters on their natural
+scale, the log-likelihood and, for binomial and Poisson models, whether the
+Monte Carlo error of the estimate is certified. Printing a fit previously
+listed every component of the object, including the data. `summary()` of a
+binomial or Poisson fit now reports the certificate (its bound in statistical
+standard errors, the level of the bound, the tolerance, the number of stages
+and the draws at the last stage), with short notes on what the warnings of the
+fit reported and the advice they gave, so that both are available for a saved
+model. The certificate is in the `mcml` component of the summary.
+
+- The messages and warnings of certified MCML quote the spatial scale of the
+returned estimate, after the Newton correction. The message that announces
+the refits from dispersed starting values, which are decided before the
+correction, now says that it quotes the scale of the first fit, before its
+correction. When the repeated Newton correction does not converge at the last
+stage, the warning says so, instead of describing the bound as above the
+tolerance.
+
 ## Predictions
 
 - `create_grid()` no longer raises an error when `boundaries` is in
