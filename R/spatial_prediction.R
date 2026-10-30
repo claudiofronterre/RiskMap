@@ -3614,13 +3614,13 @@ assess_simulation <- function(obj_sim,
     missing_columns <- setdiff(required, names(grid))
     if (length(missing_columns) > 0) {
       stop("The prediction grid has no column ",
-           paste(shQuote(missing_columns), collapse = ", "),
+           paste(shQuote(missing_columns, type = "sh"), collapse = ", "),
            ", which model '", model_names[i], "' uses.", call. = FALSE)
     }
     n_incomplete <- sum(!complete.cases(st_drop_geometry(grid)[required]))
     if (n_incomplete > 0) {
       stop("Model '", model_names[i], "' needs complete values of ",
-           paste(shQuote(required), collapse = ", "),
+           paste(shQuote(required, type = "sh"), collapse = ", "),
            " on the prediction grid, but ", n_incomplete, " grid locations ",
            "have missing values. Remove them from the prediction grid ",
            "before simulating.", call. = FALSE)
@@ -3646,7 +3646,7 @@ assess_simulation <- function(obj_sim,
     empty <- lengths(inter) == 0
     if (any(empty)) {
       warning("No grid locations fall within ",
-              paste(shQuote(names_reg[empty]), collapse = ", "),
+              paste(shQuote(names_reg[empty], type = "sh"), collapse = ", "),
               ", which ", if (sum(empty) == 1) "is" else "are",
               " left out of the area-level assessment.", call. = FALSE)
     }
