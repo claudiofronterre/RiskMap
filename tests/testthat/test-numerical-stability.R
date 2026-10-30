@@ -101,6 +101,34 @@ test_that("fixed-effect results are restored with the full Jacobian", {
                as.numeric(solve(t(jacobian), result$grad_MLE)))
 })
 
+test_that("a parameter without a standard error keeps the others", {
+  transform <- matrix(c(1, 0, -2, 0.5), nrow = 2)
+  working_covariance <- matrix(
+    c(2, 0.2, 0.4,
+      0.2, 1, 0.3,
+      0.4, 0.3, 3),
+    nrow = 3
+  )
+  # A variance estimated at zero has no standard error
+  with_missing <- working_covariance
+  with_missing[3, ] <- NA
+  with_missing[, 3] <- NA
+  result <- list(
+    estimate = list(beta = c("(Intercept)" = 3, x = 4), nu2 = -20),
+    covariance = with_missing,
+    grad_MLE = c(0.1, -0.2, NA)
+  )
+
+  restored <- restore_fixed_effect_scale(result, transform)
+
+  expect_equal(unname(restored$covariance[1:2, 1:2]),
+               transform %*% working_covariance[1:2, 1:2] %*% t(transform))
+  expect_true(all(is.na(restored$covariance[3, ])))
+  expect_true(all(is.na(restored$covariance[, 3])))
+  expect_equal(unname(restored$grad_MLE[1:2]),
+               as.numeric(solve(t(transform), c(0.1, -0.2))))
+})
+
 test_that("safe_optimizer_objective penalises and counts invalid trials", {
   objective <- safe_optimizer_objective(function(x) {
     if (x < 0) stop("invalid trial")

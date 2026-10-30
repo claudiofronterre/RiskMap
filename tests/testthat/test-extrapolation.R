@@ -77,6 +77,12 @@ test_that("extrapolation maps and argument checks", {
   }
   expect_identical(ggplot2::get_labs(plot(extrapolation))$fill,
                    "Extrapolation")
+  # Every class gets a coloured key, including classes absent from the map
+  expect_true(plot(extrapolation)$layers[[1L]]$show.legend)
+  expect_true(is.na(
+    plot(extrapolation,
+         indicator = "spatial_unexplained")$layers[[1L]]$show.legend
+  ))
   with_missing <- grid
   with_missing$cov[1] <- NA
   expect_warning(missing_map <- plot(assess_extrapolation(gaussian_model,

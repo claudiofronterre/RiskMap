@@ -154,6 +154,33 @@ test_that("summary.RiskMap reports fixed and estimated nugget and measurement er
   expect_equal(offset_summary$sp["Variance of the nugget", "Estimate"],
                coef(gaussian_offset_model)$tau2)
 
+  # log(tau2) = nu2 + sigma2 on the working scale, so its standard error
+  # comes from the delta method with both parameters
+  covariance <- gaussian_offset_model$covariance
+  gradient <- setNames(numeric(nrow(covariance)), rownames(covariance))
+  gradient[c("sigma2", "nu2")] <- 1
+  log_tau2_se <- sqrt(drop(gradient %*% covariance %*% gradient))
+  tau2 <- coef(gaussian_offset_model)$tau2
+  expect_equal(
+    offset_summary$sp["Variance of the nugget",
+                      c("Lower limit", "Upper limit")],
+    exp(log(tau2) + c(-1, 1) * qnorm(0.975) * log_tau2_se),
+    ignore_attr = TRUE
+  )
+
+  # A nugget without a standard error, as when it is estimated at zero,
+  # leaves the intervals of the other parameters unchanged
+  no_nugget_se <- gaussian_offset_model
+  no_nugget_se$covariance["nu2", ] <- NA
+  no_nugget_se$covariance[, "nu2"] <- NA
+  missing_summary <- summary(no_nugget_se)
+  expect_equal(missing_summary$reg_coef, offset_summary$reg_coef)
+  expect_equal(missing_summary$sp[1:2, ], offset_summary$sp[1:2, ])
+  expect_true(all(is.na(
+    missing_summary$sp["Variance of the nugget",
+                       c("Lower limit", "Upper limit")]
+  )))
+
   # gaussian_model: no nugget, estimated measurement error
   gaussian_summary <- summary(gaussian_model)
   expect_identical(gaussian_summary$tau2, 0)

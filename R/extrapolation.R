@@ -217,9 +217,12 @@ plot.RiskMap_extrapolation <- function(x, indicator = "extrapolation", ...) {
   class(data) <- setdiff(class(data), "RiskMap_extrapolation")
   data$.prediction_value <- data[[indicator]]
   attr(data, "grid_metadata") <- attr(x, "grid_metadata", exact = TRUE)
+  # The class legend lists all four classes, including absent ones.
   map <- add_prediction_layer(ggplot(), list(boundaries = NULL),
                               list(data = data, polygon = FALSE),
-                              facet_label = "", facet_levels = "")
+                              facet_label = "", facet_levels = "",
+                              show_legend = if (indicator == "extrapolation")
+                                TRUE else NA)
 
   if (indicator == "extrapolation") {
     class_colours <- c("Supported" = "#EFEBE4", "Spatial" = "#8C7BBF",

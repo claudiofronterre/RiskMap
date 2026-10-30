@@ -297,22 +297,29 @@ default_prediction_summary <- function(x) {
 }
 
 #' Add the layer for one spatial scale to a prediction map
+#'
+#' `show_legend = TRUE` draws legend keys for every level the fill scale
+#' keeps, including levels absent from the data, which ggplot2 otherwise
+#' leaves blank.
 #' @noRd
-add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
+add_prediction_layer <- function(map, x, panel, facet_label, facet_levels,
+                                 show_legend = NA) {
   facet_label <- factor(facet_label, levels = facet_levels)
   data <- panel$data
   if (isTRUE(panel$polygon)) {
     data$.spatial_scale <- facet_label
     return(map + geom_sf(
       data = data, aes(fill = .data$.prediction_value),
-      colour = "black", linewidth = 0.16, inherit.aes = FALSE
+      colour = "black", linewidth = 0.16, inherit.aes = FALSE,
+      show.legend = show_legend
     ))
   }
   metadata <- attr(data, "grid_metadata", exact = TRUE)
   if (!is.null(metadata) && identical(metadata$cell_shape, "square")) {
     map <- map + geom_sf(
       data = prediction_cells(data, metadata, facet_label),
-      aes(fill = .data$.prediction_value), colour = NA, inherit.aes = FALSE
+      aes(fill = .data$.prediction_value), colour = NA, inherit.aes = FALSE,
+      show.legend = show_legend
     )
     if (!is.null(metadata$boundary)) {
       # The study boundary marks where the clipped cells end.
@@ -325,7 +332,8 @@ add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
     data$.spatial_scale <- facet_label
     map <- map + geom_sf(
       data = data, aes(fill = .data$.prediction_value),
-      shape = 21, colour = NA, size = 1.8, inherit.aes = FALSE
+      shape = 21, colour = NA, size = 1.8, inherit.aes = FALSE,
+      show.legend = show_legend
     )
   }
   if (!is.null(x$boundaries)) {
