@@ -584,16 +584,19 @@ test_that("the correction continues only past its check", {
   expect_true(corrected$certified)
   # The certificate is measured in the curvature at the last step.
   expect_equal(corrected$information[1, 1], 2, tolerance = 1e-5)
-  # Repeated corrections that stop far from the bank's maximum do not certify.
+  # Repeated corrections that stop far from the bank's maximum are discarded
+  # and the estimate of the first step is not certified.
   local_mocked_bindings(repeat_correction = function(engine, penalty,
                                                      corrected, root, ...) {
-    list(estimate = corrected, root = root, information = NULL, lengths = 3,
-         converged = FALSE, remaining = 5)
+    list(estimate = corrected + 3, root = root / 2, information = diag(2),
+         lengths = 3, converged = FALSE, remaining = 5)
   })
   stopped <- correct(curved, curved_score, c(1.5, 0))
   expect_equal(stopped$estimate, one_step, tolerance = 1e-6)
+  expect_null(stopped$information)
   expect_true(stopped$residual_refused)
   expect_false(stopped$certified)
+  expect_identical(stopped$correction_steps, 2L)
 })
 
 test_that("repeated corrections stop when a step does not contract", {

@@ -513,8 +513,9 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
 ##' (`repeat_correction()`) and the estimate is certified in the fitting
 ##' bank's curvature at the last step. If those steps stop short of the
 ##' bank's maximum by more than 2 - sqrt(2) radii, the most residual that
-##' Lemma 4.2 of Fronterre (2026) tolerates, the estimate is not certified,
-##' and the next stage (`fit_adaptive_mcml()`) starts from it.
+##' Lemma 4.2 of Fronterre (2026) tolerates, they are discarded, the estimate
+##' of the first step is not certified, and the next stage
+##' (`fit_adaptive_mcml()`) starts from it.
 ##' @noRd
 correct_and_certify <- function(engine, penalty, estimate, information,
                                 validation_budget, seeds, lower, upper,
@@ -541,17 +542,21 @@ correct_and_certify <- function(engine, penalty, estimate, information,
                                   validation_budget, seeds[[2L]],
                                   bank_objective, lower, upper,
                                   correction$radius)
-    corrected <- repeated$estimate
-    root <- repeated$root
     record$correction_steps <- 1L + length(repeated$lengths)
     record$correction_lengths <- repeated$lengths
     record$correction_converged <- repeated$converged
     record$correction_remaining <- repeated$remaining
-    if (!is.null(repeated$information)) {
-      record$information <- repeated$information
-      record$information_root <- root
-    }
     refused <- !repeated$converged && repeated$remaining > 2 - sqrt(2)
+    # Steps that stop short can have wandered far from the maximum, so they
+    # are discarded, and the next stage starts from the first correction.
+    if (!refused) {
+      corrected <- repeated$estimate
+      root <- repeated$root
+      if (!is.null(repeated$information)) {
+        record$information <- repeated$information
+        record$information_root <- root
+      }
+    }
   }
   second <- score_validation_bank(engine, corrected, seq_along(corrected),
                                   validation_budget, seeds[[3L]], penalty)

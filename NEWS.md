@@ -144,9 +144,10 @@ gradient on that sample, and when it exceeds a quarter of the validation
 sample's radius, further Newton steps are taken with the score from the same
 validation sample, each in the fitting sample's curvature at the current
 point, until a step is below a tenth of the radius (at most four more steps).
-The estimate is then certified in the curvature at the last step, and a stage
-whose steps stop short by more than the certificate tolerates is not certified
-and passes its estimate to the next stage. Fits where the check does not fire
+The estimate is then certified in the curvature at the last step. If the steps
+stop short by more than the certificate tolerates, they are discarded, the
+stage is not certified, and the next stage starts from the estimate of the
+first step. Fits where the check does not fire
 are unchanged. Where it fires, the estimate and the certificate change, and so
 do the returned standard errors, which now come from the curvature at the last
 step. On a simulated survey with a log spatial variance of -4.56 at the
