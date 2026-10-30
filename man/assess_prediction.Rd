@@ -61,14 +61,23 @@ the PIT for Gaussian models or the AnPIT curve for discrete models, and
 also the scalar score \code{"PIT_area"}, the integrated absolute deviation
 between the PIT/AnPIT curve and the reference line. Defaults to all metrics.}
 
-\item{keep_par_fixed}{Logical; whether to keep parameters fixed across folds,
-or re-estimate for each fold. Defaults to \code{TRUE}.}
+\item{keep_par_fixed}{Logical. If \code{TRUE} (the default), the parameters are
+fixed at the estimates of the fitted model, which used all the data, and
+only the predictions are conditioned on the training set. If \code{FALSE}, each
+model is re-estimated on each training set, which costs one fit per test
+set and model. Fixed parameters are much faster, and with many locations
+and few parameters the scores change little. The test observations still
+contribute to the fixed estimates, however, so the scores are optimistic,
+and more so for models with more parameters. Use \code{FALSE} to compare models
+with different numbers of parameters. The choice is stored in the result
+and printed by \code{summary()}.}
 
 \item{control_mcmc}{Control settings for simulation, an output from \code{set_control_mcmc()}.
-If it carries a \code{seed}, the random splits generated for \code{method = "cluster"}
-or \code{method = "regularized"} are reproducible; ignored for \code{method = "user"},
-which is already deterministic. The caller's random number generator state
-is restored on exit.}
+If it carries a \code{seed}, the assessment is reproducible: the seed sets the
+random splits for \code{method = "cluster"} and \code{method = "regularized"}, and a
+seed for each test set. All models share the seed of a test set, so that
+their predictions use common random numbers. The caller's random number
+generator state is restored on exit.}
 
 \item{plot_fold}{Logical; whether to plot each iteration's test and training sets. Defaults to \code{TRUE}.}
 
@@ -87,6 +96,10 @@ A list of class \code{RiskMap_cross_validation}, containing:
 \item{AnPIT}{(if \code{family} is discrete and \code{metrics} includes \code{"PIT"}) A list of AnPIT curves for test data.}
 }
 }
+\item{keep_par_fixed}{The value of \code{keep_par_fixed}.}
+\item{failures}{A data frame with one row for each model and test set
+whose refit or prediction failed, with columns \code{model}, \code{test_set} and
+\code{message}. The scores of these test sets are \code{NA}.}
 }
 }
 \description{
@@ -107,6 +120,14 @@ subsampling with a minimum inter-point distance or a user-defined test set.
 For each fold or subset, models can be refitted or evaluated with fixed parameters,
 offering flexibility in model validation. The function also provides visualizations
 of the spatial distribution of test folds.
+}
+\details{
+A failed refit or prediction does not stop the assessment: the scores of
+that test set are missing and a warning reports the failures. Test
+observations with missing values in a variable used by any of the models
+are left out. The predictive distributions of the test observations do not
+yet include random effects, so the scores of models with \code{re()} terms are
+not reliable, and a warning says so.
 }
 \examples{
 

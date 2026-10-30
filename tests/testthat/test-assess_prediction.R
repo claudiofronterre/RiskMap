@@ -354,7 +354,7 @@ test_that("assess_prediction uses each model's own data for held-out predictors"
 
   expect_s3_class(out, "RiskMap_cross_validation")
 
-  expect_setequal(names(out), c("test_set", "model"))
+  expect_setequal(names(out), c("test_set", "model", "keep_par_fixed", "failures"))
 
   expect_true("x1" %in% seen_predictors$x1)
   expect_false("x2" %in% seen_predictors$x1)
@@ -412,7 +412,7 @@ test_that("assess_prediction requires aligned model data", {
 test_that("assess_prediction re-encodes random effects after subsetting", {
   user_split <- matrix(c(1, 1, rep(0, nrow(gaussian_data) - 2)), ncol = 1)
 
-  expect_no_warning(
+  expect_warning(
     out <- assess_prediction(
       list(model = gaussian_model),
       method = "user",
@@ -421,7 +421,8 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
       plot_fold = FALSE,
       messages = FALSE,
       metrics = "CRPS"
-    )
+    ),
+    "do not include the random effects"
   )
 
   expect_s3_class(out, "RiskMap_cross_validation")
@@ -521,7 +522,7 @@ test_that("assess_prediction can refit correctly for all model families", {
     control_mcmc = control_mcmc,
     messages = FALSE)
 
-  expect_setequal(names(result), c("test_set", "model"))
+  expect_setequal(names(result), c("test_set", "model", "keep_par_fixed", "failures"))
 
   result <- assess_prediction(
     list(binomial_model),
@@ -532,7 +533,7 @@ test_that("assess_prediction can refit correctly for all model families", {
     control_mcmc = control_mcmc,
     messages = FALSE)
 
-  expect_setequal(names(result), c("test_set", "model"))
+  expect_setequal(names(result), c("test_set", "model", "keep_par_fixed", "failures"))
 
   expect_warning(
     result <- assess_prediction(
@@ -545,7 +546,7 @@ test_that("assess_prediction can refit correctly for all model families", {
       messages = FALSE),
     "estimated as effectively zero")
 
-  expect_setequal(names(result), c("test_set", "model"))
+  expect_setequal(names(result), c("test_set", "model", "keep_par_fixed", "failures"))
 
 })
 
@@ -679,5 +680,154 @@ test_that("assess_prediction(plot_fold = TRUE) uses plot_folds() for 'user' and 
     assess_prediction(list(model = gaussian_model), method = "cluster",
                       fold = 2, control_mcmc = control_mcmc,
                       plot_fold = TRUE, messages = FALSE, metrics = "CRPS")
+  )
+})
+
+# A minimal binomial fit with a probit link, scored through a mocked
+# prediction whose linear predictor is 1 in every draw
+make_probit_fit <- function() {
+  geom <- st_sfc(st_point(c(0, 0)), st_point(c(1000, 0)),
+                 st_point(c(0, 1000)), crs = 32637)
+  data <- st_sf(y = c(3, 9, 6), n = c(10, 10, 10), geometry = geom)
+  fit <- make_assess_prediction_fit(data, "1")
+  fit$family <- "binomial"
+  fit$units_m <- data$n
+  fit$estimate <- list(beta = 0, sigma2 = 0, phi = 0)
+  fit$link_function <- list(inv = function(x) pnorm(x), name = "custom")
+  fit
+}
+
+mock_constant_prediction <- function(value) {
+  function(object, newdata, ...) {
+    n <- nrow(newdata)
+    structure(list(
+      predictions = transform(newdata, fixed = 0, offset = 0),
+      samples = list(spatial = matrix(value, nrow = n, ncol = 4000))
+    ), class = "RiskMap_prediction")
+  }
+}
+
+test_that("assess_prediction scores with the model's inverse link", {
+  local_mocked_bindings(predict.RiskMap = mock_constant_prediction(1),
+                        .package = "RiskMap")
+  out <- assess_prediction(
+    list(probit = make_probit_fit()),
+    method = "user",
+    user_split = matrix(c(0, 1, 1), ncol = 1),
+    control_mcmc = set_control_mcmc(seed = 1),
+    plot_fold = FALSE,
+    messages = FALSE,
+    metrics = "CRPS"
+  )
+
+  exact_crps <- function(y, p) {
+    F_k <- pbinom(0:10, 10, p)
+    sum((F_k - as.numeric(0:10 >= y))^2)
+  }
+  expected <- vapply(c(9, 6), exact_crps, numeric(1), p = pnorm(1))
+  expect_equal(out$model$probit$metric$CRPS[[1]], expected, tolerance = 0.05)
+  logit_crps <- vapply(c(9, 6), exact_crps, numeric(1), p = plogis(1))
+  expect_gt(abs(out$model$probit$metric$CRPS[[1]][1] - logit_crps[1]), 0.2)
+})
+
+test_that("assess_prediction refits with the model's link and records failed refits", {
+  captured <- new.env()
+  local_mocked_bindings(
+    glgpm = function(..., invlink = NULL) {
+      captured$invlink <- invlink
+      stop("refit failed")
+    },
+    .package = "RiskMap"
+  )
+  expect_warning(
+    out <- assess_prediction(
+      list(probit = make_probit_fit()),
+      method = "user",
+      user_split = matrix(c(0, 1, 1), ncol = 1),
+      keep_par_fixed = FALSE,
+      plot_fold = FALSE,
+      messages = FALSE,
+      metrics = c("CRPS", "PIT")
+    ),
+    "failed and their scores are missing"
+  )
+
+  expect_equal(captured$invlink$inv(1), pnorm(1))
+  expect_identical(out$failures$message, "refit failed")
+  expect_identical(out$failures$test_set, 1L)
+  expect_true(all(is.na(out$model$probit$metric$CRPS[[1]])))
+  expect_true(is.na(out$model$probit$metric$PIT_area[[1]]))
+  expect_true(is.na(summary(out)["probit", "CRPS"]))
+})
+
+test_that("assess_prediction keeps test rows with missing values in unused columns", {
+  geom <- st_sfc(st_point(c(0, 0)), st_point(c(1, 1)), st_point(c(2, 2)),
+                 crs = 4326)
+  data <- st_sf(y = c(1, 2, 3), x1 = c(10, 20, 30), unused = c(1, NA, NA),
+                geometry = geom)
+  local_mocked_bindings(predict.RiskMap = mock_constant_prediction(0),
+                        .package = "RiskMap")
+
+  out <- assess_prediction(
+    list(model_x1 = make_assess_prediction_fit(data, "x1")),
+    method = "user",
+    user_split = matrix(c(0, 1, 1), ncol = 1),
+    plot_fold = FALSE,
+    messages = FALSE,
+    metrics = "CRPS"
+  )
+
+  expect_identical(nrow(out$test_set[[1]]), 2L)
+  expect_length(out$model$model_x1$metric$CRPS[[1]], 2)
+})
+
+test_that("assess_prediction gives the same model the same scores in any position", {
+  # Each test set has one seed shared by all models, and the Gaussian
+  # measurement error is drawn from a separate stream
+  user_split <- matrix(c(1, 1, 1, rep(0, nrow(gaussian_data) - 3)), ncol = 1)
+  out <- assess_prediction(
+    list(a = gaussian_intercept_model, b = gaussian_intercept_model),
+    method = "user",
+    user_split = user_split,
+    control_mcmc = control_mcmc,
+    plot_fold = FALSE,
+    messages = FALSE
+  )
+  expect_identical(out$model$a$metric, out$model$b$metric)
+  expect_identical(out$model$a$PIT, out$model$b$PIT)
+})
+
+test_that("assess_prediction reports how the parameters are treated", {
+  user_split <- matrix(c(1, 1, rep(0, nrow(gaussian_data) - 2)), ncol = 1)
+  expect_message(
+    out <- assess_prediction(
+      list(m0 = gaussian_intercept_model, m1 = gaussian_offset_model),
+      method = "user",
+      user_split = user_split,
+      control_mcmc = control_mcmc,
+      plot_fold = FALSE,
+      messages = TRUE,
+      metrics = "CRPS"
+    ),
+    "different numbers of parameters"
+  )
+  expect_true(out$keep_par_fixed)
+  expect_output(print(summary(out)),
+                "Parameters: fixed at the estimates from all the data")
+})
+
+test_that("assess_prediction warns when regularized test sets are smaller than 'size'", {
+  expect_warning(
+    assess_prediction(
+      list(gaussian_intercept_model),
+      method = "regularized",
+      min_dist = 50,
+      size = 3,
+      control_mcmc = control_mcmc,
+      plot_fold = FALSE,
+      messages = FALSE,
+      metrics = "CRPS"
+    ),
+    "fewer than 'size'"
   )
 })

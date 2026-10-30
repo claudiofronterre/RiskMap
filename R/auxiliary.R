@@ -1060,17 +1060,25 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   test_set_means <- list()
 
   n_subs <- length(object$model[[1]]$metric[[1]])
-  w <- unlist(lapply(object$model[[1]]$metric[[1]], length))
+  # Weight each test set by its number of observations, for every metric
+  per_observation <- intersect(c("CRPS", "SCRPS"), metric_names)
+  w <- if (length(per_observation) > 0) {
+    lengths(object$model[[1]]$metric[[per_observation[1]]])
+  } else {
+    vapply(object$test_set, nrow, integer(1))
+  }
 
   for (i in 1:n_models) {
     model_scores <- list()
     for (j in 1:n_metrics) {
       score_j <- rep(NA, n_subs)
       for (h in 1:n_subs) {
-        score_j[h] <- mean(object$model[[i]]$metric[[j]][[h]])
+        score_j[h] <- mean(object$model[[i]]$metric[[j]][[h]], na.rm = TRUE)
       }
       model_scores[[j]] <- score_j
-      res[i, j] <- sum(w * score_j) / sum(w)
+      # Test sets whose assessment failed have no scores
+      ok <- is.finite(score_j)
+      res[i, j] <- if (any(ok)) sum(w[ok] * score_j[ok]) / sum(w[ok]) else NA
     }
     test_set_means[[model_names[i]]] <- model_scores
   }
@@ -1081,6 +1089,8 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   attr(res, "test_set_means") <- test_set_means
   attr(res, "overall_averages") <- overall_averages
   attr(res, "view_all") <- view_all
+  attr(res, "keep_par_fixed") <- object$keep_par_fixed
+  attr(res, "n_failed") <- if (is.null(object$failures)) 0L else nrow(object$failures)
   class(res) <- "summary.RiskMap_cross_validation"
   return(res)
 }
@@ -1110,6 +1120,20 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 
   cat("Summary of Cross-Validation Scores\n")
   cat("----------------------------------\n")
+
+  keep_par_fixed <- attr(x, "keep_par_fixed")
+  if (!is.null(keep_par_fixed)) {
+    cat(sprintf("Parameters: %s\n", if (keep_par_fixed) {
+      "fixed at the estimates from all the data"
+    } else {
+      "re-estimated in each training set"
+    }))
+  }
+  n_failed <- attr(x, "n_failed")
+  if (!is.null(n_failed) && n_failed > 0) {
+    cat(sprintf("Failed test-set assessments (scores missing): %d\n", n_failed))
+  }
+  if (!is.null(keep_par_fixed) || isTRUE(n_failed > 0)) cat("\n")
 
   for (model_name in names(test_set_means)) {
     cat(sprintf("Model: %s\n", model_name))

@@ -151,9 +151,9 @@ extrapolation_covariates <- function(object, design) {
 #' @noRd
 extrapolation_spatial_unexplained <- function(object, model_data) {
   parameters <- coef(object)
-  ratio <- 0
-  if (!is.null(parameters$tau2)) ratio <- ratio + parameters$tau2
-  if (!is.null(parameters$sigma2_me)) ratio <- ratio + parameters$sigma2_me
+  # Fixed variances are not reported by coef(), so take them from the fit
+  ratio <- fitted_nugget_variance(object, parameters) +
+    (parameters$sigma2_me %||% object$fix_var_me %||% 0)
   ratio <- ratio / parameters$sigma2
 
   observed <- unique(as.matrix(object$coords))
