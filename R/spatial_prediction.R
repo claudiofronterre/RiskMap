@@ -108,12 +108,12 @@
 ##'
 ##' Plug-in prediction treats the estimated parameters as known, so its
 ##' intervals can be too narrow when the parameters, in particular the spatial
-##' variance and range, are poorly estimated, as in small or low-prevalence
+##' variance and scale, are poorly estimated, as in small or low-prevalence
 ##' surveys. With `parameter_uncertainty = TRUE`, `parameter_draws` parameter
 ##' values are drawn from the approximate sampling distribution of the
 ##' estimate: a multivariate normal distribution with the estimated covariance
 ##' matrix, on the scale on which the model is estimated (log variances and
-##' log range). For each value, conditional samples of the latent effects are
+##' log scale). For each value, conditional samples of the latent effects are
 ##' generated at that value and the prediction is repeated; the draws are then
 ##' pooled, so every summary, aggregation and derived target reflects both the
 ##' latent and the parameter uncertainty. For binomial and Poisson models the
@@ -1299,7 +1299,7 @@ prediction_sample_size <- function(object, control_mcmc) {
 #' Draw parameters from the approximate sampling distribution of the estimate
 #'
 #' Draws are multivariate normal on the scale on which the model is estimated
-#' (log variances and log range), with the covariance matrix of the estimate.
+#' (log variances and log scale), with the covariance matrix of the estimate.
 #' Parameters without a finite positive variance, such as those held at a
 #' boundary, keep their estimated value.
 #' @noRd
@@ -1353,7 +1353,8 @@ parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
     distances = as.matrix(pairwise_distances(coords)),
     family = object$family, kappa = object$kappa,
     cov_offset = object$cov_offset, ID_coords = object$ID_coords,
-    fix_tau2 = object$fix_tau2, ID_re = object$ID_re, invlink = invlink
+    fix_tau2 = object$fix_tau2, ID_re = object$ID_re, invlink = invlink,
+    proposal = "laplace"
   )
   phi_index <- engine$layout$index$phi
   step_size <- utils::tail(attr(object, "mcmc")$tuning_par, 1L)
@@ -1376,7 +1377,7 @@ parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
         h = step_size
       ),
       invlink = invlink, Sigma_pd = crossprod(proposal$root),
-      mean_pd = proposal$mode, messages = FALSE
+      mean_pd = proposal$centre, messages = FALSE
     )
     list(samples = do.call(cbind, simulation$samples),
          acceptance = simulation$acceptance_rate[["sampling"]])

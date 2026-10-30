@@ -2,6 +2,7 @@
 // [[Rcpp::plugins(cpp14)]]
 #include <RcppEigen.h>
 #include <limits>
+#include "likelihood_kernel.h"
 
 using Eigen::LLT;
 using Eigen::Lower;
@@ -32,11 +33,6 @@ double logistic(const double x) {
   return z / (1.0 + z);
 }
 
-double softplus(const double x) {
-  return x > 0.0 ? x + std::log1p(std::exp(-x)) :
-    std::log1p(std::exp(x));
-}
-
 }  // namespace
 
 // Log-likelihood only, for every row of eta (draws x observations). The
@@ -57,14 +53,9 @@ NumericVector cpp_canonical_log_likelihood(const NumericMatrix eta_r,
     const double y = y_r[observation];
     const double units = units_r[observation];
     const double* column = eta + static_cast<R_xlen_t>(observation) * n_samples;
-    if (poisson) {
-      for (int sample = 0; sample < n_samples; ++sample) {
-        total[sample] += y * column[sample] - units * std::exp(column[sample]);
-      }
-    } else {
-      for (int sample = 0; sample < n_samples; ++sample) {
-        total[sample] += y * column[sample] - units * softplus(column[sample]);
-      }
+    for (int sample = 0; sample < n_samples; ++sample) {
+      total[sample] += canonical_log_likelihood(column[sample], y, units,
+                                                poisson);
     }
   }
   if (poisson) {
