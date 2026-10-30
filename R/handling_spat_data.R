@@ -149,8 +149,19 @@ create_grid <- function(boundaries = NULL,
     keep = keep,
     boundary = study_boundary
   )
-  class(grid_out) <- c(class(grid_out), "RiskMap_grid")
-  grid_out
+  as_riskmap_grid(grid_out)
+}
+
+#' Add the RiskMap_grid class to an sf grid
+#'
+#' vctrs, and therefore dplyr, reject a data frame whose subclasses do not all
+#' come before "data.frame", so the class goes just before it, after "sf".
+#' @noRd
+as_riskmap_grid <- function(grid) {
+  classes <- setdiff(class(grid), "RiskMap_grid")
+  class(grid) <- append(classes, "RiskMap_grid",
+                        after = match("data.frame", classes) - 1L)
+  grid
 }
 
 #' Keep the grid cells that lie in, or overlap, a study boundary
@@ -227,6 +238,5 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
     keep = keep,
     boundary = study_boundary
   )
-  class(grid_out) <- c(class(grid_out), "RiskMap_grid")
-  grid_out
+  as_riskmap_grid(grid_out)
 }

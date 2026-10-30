@@ -124,6 +124,28 @@ test_that("RiskMap grid metadata survives common point operations", {
   )
 })
 
+test_that("RiskMap grids and their predictions work with dplyr", {
+  square <- st_polygon(list(matrix(square_coords * 1000,
+                                   ncol = 2, byrow = TRUE)))
+  square_m <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
+  square_grid <- create_grid(square_m, spacing = 2.5)
+
+  # vctrs requires every subclass of a data frame to come before it, and
+  # terra::extract() needs "sf" first (#221)
+  expect_identical(class(square_grid), c("sf", "RiskMap_grid", "data.frame"))
+  filtered <- dplyr::filter(square_grid, grid_id <= 2)
+  expect_identical(filtered$grid_id, 1:2)
+  expect_s3_class(filtered, "RiskMap_grid")
+  values <- terra::rast(nrows = 4, ncols = 4, xmin = 40000, xmax = 50000,
+                        ymin = 40000, ymax = 50000, crs = "EPSG:32638")
+  terra::values(values) <- seq_len(16)
+  expect_false(anyNA(terra::extract(values, square_grid)[[2]]))
+
+  prediction <- predict(gaussian_intercept_model, newdata = grid,
+                        summaries = "mean", seed = 1, messages = FALSE)
+  expect_no_error(dplyr::filter(prediction$predictions, grid_id <= 2))
+})
+
 test_that("create_grid() can keep cells that overlap the boundary", {
   boundary <- st_sf(geometry = st_sfc(
     st_polygon(list(rbind(c(0, 0), c(10, 0), c(10, 10), c(0, 0)))),
