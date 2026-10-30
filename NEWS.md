@@ -285,6 +285,8 @@ uncertainty, which matters for small or low-prevalence surveys.
   locations. Locations are classed as supported, spatial, covariate, or
   spatial and covariate extrapolation, and `plot()` maps each indicator.
   Locations with missing covariates are drawn in grey without a legend key.
+  The legend shows the colour of every class, including classes absent from
+  the map, whose keys ggplot2 otherwise leaves blank.
 - `create_grid()` gains `raster`. The grid then consists of the cells of a
   projected `SpatRaster` with square cells: their centres are the grid points
   and the raster's layers become columns, so values such as population counts
@@ -354,7 +356,16 @@ outputs reproducible.
 - `control_sim` parameters have been renamed to `control_mcmc`.
 - `to_table()` now returns a directly renderable `knitr_kable` table, with an
   explicit `digits` argument that preserves trailing zeroes. This replaces the
-  previous `xtable` return value.
+  previous `xtable` return value. Values that are compared share one
+  notation: when a value needs scientific notation, so do the estimate and
+  limits of the same parameter, or the same metric for the other models.
+- `summary()` of a model with a nugget gave the wrong confidence interval for
+  the nugget variance: its standard error was that of the logarithm of
+  tau2 / sigma2^2 instead of tau2. The interval now uses the delta method for
+  log(tau2) = log(tau2 / sigma2) + log(sigma2).
+- When one parameter has no standard error, as when a variance is estimated
+  at zero, `summary()` and `to_table()` still give the confidence intervals of
+  the other parameters. Previously all of them were missing.
 - The `data_sf` parameter in `create_ids` is now `data`.
 - The `conf_level` parameter in `summary.RiskMap` is now `level`
 - `plot_metric()` and `plot_AnPIT()` have been merged into a single

@@ -36,7 +36,9 @@ fitted "RiskMap" model or cross-validation results for multiple models.
 Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
 required for further analysis. Numeric values use fixed notation with
 \code{digits} decimal places, except when scientific notation is needed to
-represent very large or very small values clearly.
+represent very large or very small values clearly. Values that are
+compared share one notation: the estimate and confidence limits of a
+parameter, and one metric across models.
 
 When the input is a "RiskMap" model object, the table includes:
 \itemize{

@@ -717,10 +717,21 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
     J["nu2", "sigma2"] <- 1
   }
 
+  ## The new parameters are J times the working-scale ones, so their
+  ## covariance is J covariance J'. A parameter without a standard error (an
+  ## NA row and column, for example a variance estimated at zero) is left
+  ## out, with any new parameter that depends on it, so that the missing
+  ## values do not spread to the other parameters.
   covariance <- object$covariance
-  H_new          <- t(J) %*% solve(-covariance) %*% J
-  covariance_new <- solve(-H_new)
-  se_par         <- sqrt(diag(covariance_new))
+  free <- !is.na(diag(covariance))
+  computable <- rowSums(J[, !free, drop = FALSE] != 0) == 0
+  covariance_new <- matrix(NA_real_, length(nm), length(nm),
+                           dimnames = list(nm, nm))
+  covariance_new[computable, computable] <-
+    J[computable, free, drop = FALSE] %*%
+    covariance[free, free, drop = FALSE] %*%
+    t(J[computable, free, drop = FALSE])
+  se_par <- sqrt(diag(covariance_new))
 
   non_beta <- setdiff(nm, beta_flat_names)
   estimate[non_beta] <- exp(estimate[non_beta])
@@ -875,7 +886,9 @@ print.summary.RiskMap <- function(x, ...) {
 ##' Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
 ##' required for further analysis. Numeric values use fixed notation with
 ##' \code{digits} decimal places, except when scientific notation is needed to
-##' represent very large or very small values clearly.
+##' represent very large or very small values clearly. Values that are
+##' compared share one notation: the estimate and confidence limits of a
+##' parameter, and one metric across models.
 ##'
 ##' When the input is a "RiskMap" model object, the table includes:
 ##' \itemize{
@@ -942,21 +955,30 @@ to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
   }
 
   tab <- as.data.frame(tab, check.names = FALSE)
-  numeric_columns <- vapply(tab, is.numeric, logical(1))
-  tab[numeric_columns] <- lapply(
-    tab[numeric_columns],
-    function(x) {
-      use_scientific <- is.finite(x) & x != 0 &
-        (abs(x) >= 1e6 | abs(x) < 10^(-digits))
-      out <- formatC(x, format = "f", digits = as.integer(digits))
-      out[use_scientific] <- formatC(
-        x[use_scientific],
-        format = "e",
-        digits = as.integer(digits)
-      )
-      out
-    }
-  )
+  numeric_columns <- which(vapply(tab, is.numeric, logical(1)))
+  values <- as.matrix(tab[numeric_columns])
+  needs_scientific <- is.finite(values) & values != 0 &
+    (abs(values) >= 1e6 | abs(values) < 10^(-digits))
+  # Values that are compared share one notation: the estimate and limits of a
+  # parameter (a row of a model table), or one metric across models (a
+  # column of a cross-validation table).
+  scientific <- if (include_row_names) {
+    matrix(rowSums(needs_scientific) > 0, nrow(values), ncol(values))
+  } else {
+    matrix(colSums(needs_scientific) > 0, nrow(values), ncol(values),
+           byrow = TRUE)
+  }
+  for (j in seq_along(numeric_columns)) {
+    x <- values[, j]
+    out <- formatC(x, format = "f", digits = as.integer(digits))
+    use_scientific <- scientific[, j] & is.finite(x)
+    out[use_scientific] <- formatC(
+      x[use_scientific],
+      format = "e",
+      digits = as.integer(digits)
+    )
+    tab[[numeric_columns[j]]] <- out
+  }
 
   dots <- list(...)
   if (!is.null(col_names)) {
