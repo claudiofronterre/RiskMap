@@ -134,6 +134,26 @@ and loses `min_effective_samples`, `max_pareto_k`, `max_mcse_ratio` and
 16,000 and 4. Fitted objects report `mcml_certified` in place of
 `mcml_converged`.
 
+- Certified MCML continues the Newton correction when one step leaves a
+residual. Where the log-likelihood is far from quadratic between the fitted
+estimate and the maximum, as along a spatial variance close to zero, one
+Newton step stops short of the maximum, and the certificate, measured in the
+curvature at the fitted estimate, sees only part of the shortfall. The fitting
+sample now predicts the residual of the first step, at the cost of one
+gradient on that sample, and when it exceeds a quarter of the validation
+sample's radius, further Newton steps are taken with the score from the same
+validation sample, each in the fitting sample's curvature at the current
+point, until a step is below a tenth of the radius (at most four more steps).
+The estimate is then certified in the curvature at the last step, and a stage
+whose steps stop short by more than the certificate tolerates is not certified
+and passes its estimate to the next stage. Fits where the check does not fire
+are unchanged. Where it fires, the estimate and the certificate change, and so
+do the returned standard errors, which now come from the curvature at the last
+step. On a simulated survey with a log spatial variance of -4.56 at the
+maximum, the standard error of the log variance moved from 14.5 to 29.5,
+against 30.2 at the maximum. Each stage of `mcml_history` records the
+predicted residual and the number of Newton steps.
+
 - Certified MCML distinguishes Monte Carlo error from weak
 identification. A variance component estimated as zero (and the spatial scale
 when the spatial variance is zero) is held at the boundary, the first stage is

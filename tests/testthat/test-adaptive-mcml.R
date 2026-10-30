@@ -542,10 +542,10 @@ test_that("repeated corrections reach the maximum of the correction bank", {
   expect_equal(repeated$information[2, 2], 1, tolerance = 1e-5)
 })
 
-test_that("the repeated correction applies only past its gate", {
+test_that("the correction continues only past its check", {
   # The correction bank's score is exact, so one Newton step reaches the
   # maximum of a quadratic and falls short along exp(x) - 2x.
-  correct <- function(log_likelihood, score, start, correction) {
+  correct <- function(log_likelihood, score, start) {
     local_mocked_bindings(
       score_validation_bank = function(engine, parameters, free, ...) {
         list(score = score(parameters)[free],
@@ -554,41 +554,44 @@ test_that("the repeated correction applies only past its gate", {
       }
     )
     information <- compute_bank_curvature(log_likelihood, start, 1:2)
+    information$gradient <- compute_central_gradient(log_likelihood, start)
     correct_and_certify(NULL, NULL, start,
                         c(information, list(free = 1:2)), 10L, 1:3,
                         c(-10, -10), c(10, 10), 0.1,
-                        bank_objective = log_likelihood,
-                        correction = correction)
+                        bank_objective = log_likelihood)
   }
   quadratic <- function(parameters) -sum((parameters - c(0.5, 1))^2) / 2
   quadratic_score <- function(parameters) c(0.5, 1) - parameters
-  single <- correct(quadratic, quadratic_score, c(1.5, 0), "single")
-  repeated <- correct(quadratic, quadratic_score, c(1.5, 0), "repeat")
-  expect_equal(repeated$estimate, single$estimate)
-  expect_identical(repeated$correction_steps, 1L)
-  expect_lt(repeated$predicted_residual, 0.25)
+  corrected <- correct(quadratic, quadratic_score, c(1.5, 0))
+  expect_equal(corrected$estimate, c(0.5, 1), tolerance = 1e-6)
+  expect_identical(corrected$correction_steps, 1L)
+  expect_lt(corrected$predicted_residual, 0.25)
+  expect_null(corrected$correction_lengths)
+  expect_false(corrected$residual_refused)
   curved <- function(parameters) {
     -(exp(parameters[1]) - 2 * parameters[1]) - (parameters[2] - 1)^2 / 2
   }
   curved_score <- function(parameters) {
     c(2 - exp(parameters[1]), 1 - parameters[2])
   }
-  single <- correct(curved, curved_score, c(1.5, 0), "single")
-  repeated <- correct(curved, curved_score, c(1.5, 0), "repeat")
-  refused <- correct(curved, curved_score, c(1.5, 0), "refuse")
-  expect_gt(abs(single$estimate[1] - log(2)), 0.1)
-  expect_equal(repeated$estimate, c(log(2), 1), tolerance = 1e-6)
-  expect_gt(repeated$correction_steps, 2L)
-  expect_true(refused$residual_refused)
-  expect_false(refused$certified)
-  expect_equal(refused$estimate, single$estimate)
+  # One step from 1.5 in the curvature exp(1.5) ends at 0.5 + 2 exp(-1.5).
+  one_step <- c(0.5 + 2 * exp(-1.5), 1)
+  corrected <- correct(curved, curved_score, c(1.5, 0))
+  expect_gt(corrected$predicted_residual, 0.25)
+  expect_equal(corrected$estimate, c(log(2), 1), tolerance = 1e-6)
+  expect_gt(corrected$correction_steps, 2L)
+  expect_true(corrected$correction_converged)
+  expect_true(corrected$certified)
+  # The certificate is measured in the curvature at the last step.
+  expect_equal(corrected$information[1, 1], 2, tolerance = 1e-5)
   # Repeated corrections that stop far from the bank's maximum do not certify.
   local_mocked_bindings(repeat_correction = function(engine, penalty,
                                                      corrected, root, ...) {
     list(estimate = corrected, root = root, information = NULL, lengths = 3,
          converged = FALSE, remaining = 5)
   })
-  stopped <- correct(curved, curved_score, c(1.5, 0), "repeat")
+  stopped <- correct(curved, curved_score, c(1.5, 0))
+  expect_equal(stopped$estimate, one_step, tolerance = 1e-6)
   expect_true(stopped$residual_refused)
   expect_false(stopped$certified)
 })

@@ -366,11 +366,11 @@ compute_observed_information <- function(objective, estimate, fit_bank,
 ##' One stage of certified Monte Carlo maximum likelihood
 ##'
 ##' Maximises the estimated log-likelihood on a fitting bank of `budget` draws,
-##' corrects the estimate by one Newton step with the score on an independent
-##' validation bank, and certifies the corrected estimate with a second, fresh
-##' validation bank drawn at that point. `seeds` gives the streams of the
-##' three banks and of the independent bank of the check for other maxima. At
-##' the first stage that check (`check_other_maxima()`) may replace the
+##' corrects the estimate by Newton steps with the score on an independent
+##' validation bank (`correct_and_certify()`), and certifies the corrected
+##' estimate with a second, fresh validation bank drawn at that point. `seeds`
+##' gives the streams of the three banks and of the independent bank of the
+##' check for other maxima. At the first stage that check (`check_other_maxima()`) may replace the
 ##' maximum, and if the fitted spatial correlation is numerically negligible
 ##' the stage ends with the outcome "numerically independent", without
 ##' information or certificate. The fit is then one of independent location
@@ -482,8 +482,7 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   certified <- correct_and_certify(
     engine, penalty, fit$par, information, validation_budget, seeds, lower,
     upper, limits$tolerance,
-    bank_objective = function(parameters) objective(parameters, fit_bank),
-    correction = limits$correction %||% "single"
+    bank_objective = function(parameters) objective(parameters, fit_bank)
   )
   if (is.null(certified)) {
     return(finish(record, "no valid fit",
@@ -507,82 +506,59 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
 ##' One step leaves a residual where the log-likelihood is far from quadratic
 ##' between the fitted estimate and the maximum, as along a log variance near
 ##' zero, and the certificate, measured in the curvature at the fitted
-##' estimate, then sees only part of it. `bank_objective`, the log-likelihood
-##' on the fitting bank as a function of the parameters, allows the
-##' `correction` methods other than "single":
-##' - "recurve" certifies the corrected estimate in the fitting bank's
-##'   curvature at that estimate;
-##' - "repeat" predicts the residual from the fitting bank
-##'   (`predict_correction_residual()`) and, if it exceeds `residual_gate`
-##'   radii of the correction bank, continues the correction on that bank
-##'   (`repeat_correction()`), and certifies in the last curvature, unless
-##'   those steps stop short of the bank's maximum by more than 2 - sqrt(2)
-##'   radii, the most residual that Lemma 4.2 of Fronterre (2026) tolerates;
-##' - "refuse" does not certify an estimate whose predicted residual exceeds
-##'   2 - sqrt(2) radii.
-##' A stage that is not certified for its residual goes on to the next stage
-##' (`fit_adaptive_mcml()`), which starts from the corrected estimate.
-##' This choice of methods is a prototype for comparing them.
+##' estimate, then sees only part of it. So the residual is predicted on the
+##' fitting bank, whose log-likelihood is `bank_objective`
+##' (`predict_correction_residual()`), and if it exceeds `residual_check`
+##' radii of the correction bank, the correction continues on that bank
+##' (`repeat_correction()`) and the estimate is certified in the fitting
+##' bank's curvature at the last step. If those steps stop short of the
+##' bank's maximum by more than 2 - sqrt(2) radii, the most residual that
+##' Lemma 4.2 of Fronterre (2026) tolerates, the estimate is not certified,
+##' and the next stage (`fit_adaptive_mcml()`) starts from it.
 ##' @noRd
 correct_and_certify <- function(engine, penalty, estimate, information,
                                 validation_budget, seeds, lower, upper,
-                                tolerance, bank_objective = NULL,
-                                correction = "single", residual_gate = 0.25) {
+                                tolerance, bank_objective,
+                                residual_check = 0.25) {
   free <- information$free
   root <- information$root
   first <- score_validation_bank(engine, estimate, free, validation_budget,
                                  seeds[[2L]], penalty)
   if (is.null(first)) return(NULL)
-  correction_step <- certify_estimate(root, first$score, first$covariance)
+  correction <- certify_estimate(root, first$score, first$covariance)
   corrected <- estimate
-  corrected[free] <- pmin(pmax(corrected[free] + correction_step$correction,
+  corrected[free] <- pmin(pmax(corrected[free] + correction$correction,
                                lower[free]), upper[free])
-  if (is.null(bank_objective)) correction <- "single"
-  record <- list(correction_method = correction, correction_steps = 1L)
-  if (identical(correction, "recurve")) {
-    curvature <- compute_bank_curvature(bank_objective, corrected, free)
-    if (!is.null(curvature$root)) {
-      root <- curvature$root
-      record$information <- curvature$information
+  record <- list(correction_steps = 1L)
+  record$predicted_residual <- predict_correction_residual(
+    bank_objective, estimate, corrected, free, root,
+    corrected[free] - estimate[free], correction$radius,
+    information$gradient[free]
+  )
+  refused <- FALSE
+  if (record$predicted_residual > residual_check) {
+    repeated <- repeat_correction(engine, penalty, corrected, root, free,
+                                  validation_budget, seeds[[2L]],
+                                  bank_objective, lower, upper,
+                                  correction$radius)
+    corrected <- repeated$estimate
+    root <- repeated$root
+    record$correction_steps <- 1L + length(repeated$lengths)
+    record$correction_lengths <- repeated$lengths
+    record$correction_converged <- repeated$converged
+    record$correction_remaining <- repeated$remaining
+    if (!is.null(repeated$information)) {
+      record$information <- repeated$information
       record$information_root <- root
     }
-  } else if (correction %in% c("repeat", "refuse")) {
-    record$predicted_residual <- predict_correction_residual(
-      bank_objective, estimate, corrected, free, root,
-      corrected[free] - estimate[free], correction_step$radius,
-      information$gradient[free]
-    )
-    if (identical(correction, "repeat") &&
-        record$predicted_residual > residual_gate) {
-      repeated <- repeat_correction(engine, penalty, corrected, root, free,
-                                    validation_budget, seeds[[2L]],
-                                    bank_objective, lower, upper,
-                                    correction_step$radius)
-      corrected <- repeated$estimate
-      root <- repeated$root
-      record$correction_steps <- 1L + length(repeated$lengths)
-      record$correction_lengths <- repeated$lengths
-      record$correction_converged <- repeated$converged
-      record$correction_remaining <- repeated$remaining
-      if (!is.null(repeated$information)) {
-        record$information <- repeated$information
-        record$information_root <- root
-      }
-    }
+    refused <- !repeated$converged && repeated$remaining > 2 - sqrt(2)
   }
   second <- score_validation_bank(engine, corrected, seq_along(corrected),
                                   validation_budget, seeds[[3L]], penalty)
   if (is.null(second)) return(NULL)
   certificate <- certify_estimate(root, second$score[free],
                                   second$covariance[free, free, drop = FALSE])
-  refused <- switch(
-    correction,
-    refuse = record$predicted_residual > 2 - sqrt(2),
-    "repeat" = isFALSE(record$correction_converged) &&
-      record$correction_remaining > 2 - sqrt(2),
-    FALSE
-  )
-  c(list(estimate = corrected, correction_size = correction_step$distance,
+  c(list(estimate = corrected, correction_size = correction$distance,
          first_validation = first, second_validation = second,
          certificate = certificate$bound,
          certificate_distance = certificate$distance,
@@ -897,10 +873,7 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' maxima at the first stage, with the screen of short scales and the exact
 ##' alarms when it holds their settings (`make_short_scale_screen()`). Each later stage starts its optimisation with
 ##' Newton steps on the previous stage's information when every parameter was
-##' free. `correction` chooses how the fitted estimate is corrected and
-##' certified (`correct_and_certify()`). The option `RiskMap.mcml_correction`
-##' that sets its default exists only to compare the methods in this
-##' prototype.
+##' free.
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               penalty = NULL, dispersed = NULL,
@@ -912,19 +885,15 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               variance_index = integer(),
                               linked_index = list(),
                               boundary_log_variance = -9,
-                              near_zero_log_variance = -4,
-                              correction = getOption("RiskMap.mcml_correction",
-                                                     "repeat")) {
+                              near_zero_log_variance = -4) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   validation_budget <- as.integer(validation_budget)
-  correction <- match.arg(correction,
-                          c("repeat", "single", "recurve", "refuse"))
   limits <- list(
     variance_index = variance_index, linked_index = linked_index,
     boundary_log_variance = boundary_log_variance,
     near_zero_log_variance = near_zero_log_variance, tolerance = tolerance,
-    dispersed = dispersed, correction = correction
+    dispersed = dispersed
   )
   stream <- function(offset) {
     as.integer(((seed - 1 + offset) %% .Machine$integer.max) + 1)
