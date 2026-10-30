@@ -281,17 +281,23 @@ optimise_on_bank <- function(objective, start, fit_bank, lower, upper,
 ##'
 ##' The formulas of `numDeriv::genD()` without Richardson extrapolation, with
 ##' 2k + k(k - 1) + 1 evaluations of `objective` for k parameters, against
-##' about twice as many with two rounds, and an error of order step^2.
+##' about twice as many with two rounds, and an error of order step^2. With
+##' `with_gradient`, it returns a list with the Hessian and the gradient by
+##' central differences from the same evaluations.
 ##' @noRd
-compute_central_hessian <- function(objective, point, relative_step = 1e-4) {
+compute_central_hessian <- function(objective, point, relative_step = 1e-4,
+                                    with_gradient = FALSE) {
   count <- length(point)
   step <- relative_step * pmax(1, abs(point))
   centre <- objective(point)
   hessian <- matrix(0, count, count)
+  gradient <- numeric(count)
   for (row in seq_len(count)) {
     shift <- replace(numeric(count), row, step[row])
-    hessian[row, row] <- (objective(point + shift) - 2 * centre +
-                            objective(point - shift)) / step[row]^2
+    above <- objective(point + shift)
+    below <- objective(point - shift)
+    hessian[row, row] <- (above - 2 * centre + below) / step[row]^2
+    gradient[row] <- (above - below) / (2 * step[row])
   }
   for (row in seq_len(count)[-1L]) for (column in seq_len(row - 1L)) {
     pair <- c(row, column)
@@ -302,7 +308,7 @@ compute_central_hessian <- function(objective, point, relative_step = 1e-4) {
         hessian[column, column] * step[column]^2
     ) / (2 * step[row] * step[column])
   }
-  hessian
+  if (with_gradient) list(hessian = hessian, gradient = gradient) else hessian
 }
 
 ##' Observed information on the fitting bank over the free parameters
@@ -310,20 +316,22 @@ compute_central_hessian <- function(objective, point, relative_step = 1e-4) {
 ##' If it is singular, variance components that are small but not exactly
 ##' zero are the usual cause, so they are held as well before the model is
 ##' judged weakly identified. `root` is NULL when the information is singular
-##' over the free parameters.
+##' over the free parameters. `gradient` is the fitting bank's score at
+##' `estimate`, from the same evaluations.
 ##' @noRd
 compute_observed_information <- function(objective, estimate, fit_bank,
                                          boundary, limits) {
-  information <- tryCatch(
+  differences <- tryCatch(
     # One round of central differences suffices for this smooth,
     # deterministic objective: on binomial, Poisson, nugget and cluster
     # models it agreed with four Richardson rounds to about 1e-5 in the
     # metric of the information, closer than two rounds, at half their cost.
     compute_central_hessian(function(parameters) {
       -objective(parameters, fit_bank)
-    }, estimate),
+    }, estimate, with_gradient = TRUE),
     error = function(error) NULL
   )
+  information <- differences$hessian
   if (!is.null(information) && any(!is.finite(information))) {
     information <- NULL
   }
@@ -352,7 +360,7 @@ compute_observed_information <- function(objective, estimate, fit_bank,
     root <- factor_free(free)
   }
   list(information = information, root = root, free = free,
-       boundary = boundary)
+       boundary = boundary, gradient = -differences$gradient)
 }
 
 ##' One stage of certified Monte Carlo maximum likelihood
@@ -538,7 +546,8 @@ correct_and_certify <- function(engine, penalty, estimate, information,
   } else if (correction %in% c("repeat", "refuse")) {
     record$predicted_residual <- predict_correction_residual(
       bank_objective, estimate, corrected, free, root,
-      corrected[free] - estimate[free], correction_step$radius
+      corrected[free] - estimate[free], correction_step$radius,
+      information$gradient[free]
     )
     if (identical(correction, "repeat") &&
         record$predicted_residual > residual_gate) {
@@ -578,7 +587,7 @@ correct_and_certify <- function(engine, penalty, estimate, information,
 ##' @noRd
 compute_central_gradient <- function(objective, point,
                                      index = seq_along(point),
-                                     relative_step = 1e-5) {
+                                     relative_step = 1e-4) {
   step <- relative_step * pmax(1, abs(point))
   vapply(index, function(parameter) {
     shift <- replace(numeric(length(point)), parameter, step[parameter])
@@ -619,15 +628,20 @@ compute_bank_curvature <- function(bank_objective, point, free) {
 ##' correction d. What it changes by in addition is the score left at the
 ##' corrected estimate, and its length in the metric of H, in `radius` units
 ##' (the radius of the correction bank), predicts the step that a further
-##' Newton correction would take. It costs 4k evaluations on the fitting bank
-##' for k free parameters.
+##' Newton correction would take. It costs 2k evaluations on the fitting bank
+##' for k free parameters, and 2k more without `fitted_gradient`, the
+##' fitting bank's score at the fitted estimate over the free parameters,
+##' which the evaluations for H already give.
 ##' @param information_root Upper Cholesky factor R of H = R'R.
 ##' @noRd
 predict_correction_residual <- function(bank_objective, fitted, corrected,
                                         free, information_root, step,
-                                        radius) {
+                                        radius, fitted_gradient = NULL) {
+  if (is.null(fitted_gradient)) {
+    fitted_gradient <- compute_central_gradient(bank_objective, fitted, free)
+  }
   change <- compute_central_gradient(bank_objective, corrected, free) -
-    compute_central_gradient(bank_objective, fitted, free)
+    fitted_gradient
   left <- change + drop(crossprod(information_root) %*% step)
   sqrt(sum(forwardsolve(t(information_root), left)^2)) / radius
 }

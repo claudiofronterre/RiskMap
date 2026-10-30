@@ -909,6 +909,10 @@ test_that("the one-round central Hessian matches an exact quadratic", {
   expected <- curvature + diag(point)
   expect_equal(compute_central_hessian(objective, point), expected,
                tolerance = 1e-6)
+  both <- compute_central_hessian(objective, point, with_gradient = TRUE)
+  expect_identical(both$hessian, compute_central_hessian(objective, point))
+  expect_equal(both$gradient, drop(curvature %*% point) + point^2 / 2,
+               tolerance = 1e-6)
 })
 
 test_that("weight diagnostics survive degenerate banks", {
