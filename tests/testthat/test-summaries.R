@@ -438,3 +438,24 @@ test_that("print.summary.RiskMap_assess_simulation labels each spatial scale", {
 
   expect_snapshot(print(summary_object))
 })
+
+test_that("summary.RiskMap_cross_validation weights every metric by test-set size and skips failed test sets", {
+  cross_validation_pit <- list(
+    test_set = list(gaussian_data[1, ], gaussian_data[2:4, ],
+                    gaussian_data[5:6, ]),
+    model = list(model_a = list(metric = list(
+      PIT_area = list(0.1, 0.3, NA_real_)
+    ))),
+    keep_par_fixed = FALSE,
+    failures = data.frame(model = "model_a", test_set = 3L,
+                          message = "failed")
+  )
+  pit_summary <- summary.RiskMap_cross_validation(cross_validation_pit)
+
+  expect_equal(pit_summary["model_a", "PIT_area"], (0.1 + 3 * 0.3) / 4)
+  expect_false(attr(pit_summary, "keep_par_fixed"))
+  expect_identical(attr(pit_summary, "n_failed"), 1L)
+  expect_output(print(pit_summary), "Parameters: re-estimated in each training set")
+  expect_output(print(pit_summary),
+                "Failed test-set assessments \\(scores missing\\): 1")
+})
