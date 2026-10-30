@@ -82,14 +82,16 @@ prediction_data$i <- rep(gaussian_model$re[[1]],
                          length.out = nrow(prediction_data))
 prediction_data$population <- seq_len(nrow(prediction_data))
 
-cross_validation <- assess_prediction(
+# model_a has a random effect, which assess_prediction() warns is not yet
+# included in the predictive distributions
+cross_validation <- suppressWarnings(assess_prediction(
   list(model_a = gaussian_model,
        model_b = gaussian_offset_model),
   method = "cluster",
   fold = 2,
   plot_fold = FALSE,
   messages = FALSE
-)
+))
 
 surface <- grid
 surface$cov <- rnorm(nrow(grid))

@@ -2653,13 +2653,22 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' the PIT for Gaussian models or the AnPIT curve for discrete models, and
 ##' also the scalar score `"PIT_area"`, the integrated absolute deviation
 ##' between the PIT/AnPIT curve and the reference line. Defaults to all metrics.
-##' @param keep_par_fixed Logical; whether to keep parameters fixed across folds,
-##' or re-estimate for each fold. Defaults to `TRUE`.
+##' @param keep_par_fixed Logical. If `TRUE` (the default), the parameters are
+##' fixed at the estimates of the fitted model, which used all the data, and
+##' only the predictions are conditioned on the training set. If `FALSE`, each
+##' model is re-estimated on each training set, which costs one fit per test
+##' set and model. Fixed parameters are much faster, and with many locations
+##' and few parameters the scores change little. The test observations still
+##' contribute to the fixed estimates, however, so the scores are optimistic,
+##' and more so for models with more parameters. Use `FALSE` to compare models
+##' with different numbers of parameters. The choice is stored in the result
+##' and printed by `summary()`.
 ##' @param control_mcmc Control settings for simulation, an output from `set_control_mcmc()`.
-##' If it carries a `seed`, the random splits generated for `method = "cluster"`
-##' or `method = "regularized"` are reproducible; ignored for `method = "user"`,
-##' which is already deterministic. The caller's random number generator state
-##' is restored on exit.
+##' If it carries a `seed`, the assessment is reproducible: the seed sets the
+##' random splits for `method = "cluster"` and `method = "regularized"`, and a
+##' seed for each test set. All models share the seed of a test set, so that
+##' their predictions use common random numbers. The caller's random number
+##' generator state is restored on exit.
 ##' @param plot_fold Logical; whether to plot each iteration's test and training sets. Defaults to `TRUE`.
 ##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
@@ -2674,7 +2683,19 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##'       \item{AnPIT}{(if `family` is discrete and `metrics` includes `"PIT"`) A list of AnPIT curves for test data.}
 ##'     }
 ##'   }
+##'   \item{keep_par_fixed}{The value of `keep_par_fixed`.}
+##'   \item{failures}{A data frame with one row for each model and test set
+##'   whose refit or prediction failed, with columns `model`, `test_set` and
+##'   `message`. The scores of these test sets are `NA`.}
 ##' }
+##'
+##' @details
+##' A failed refit or prediction does not stop the assessment: the scores of
+##' that test set are missing and a warning reports the failures. Test
+##' observations with missing values in a variable used by any of the models
+##' are left out. The predictive distributions of the test observations do not
+##' yet include random effects, so the scores of models with `re()` terms are
+##' not reliable, and a warning says so.
 ##'
 ##' @seealso \code{\link{plot.RiskMap_cross_validation}}
 ##'
@@ -2774,11 +2795,23 @@ assess_prediction <- function(object,
     k <- seq_along(Fk) - 1
     sum((Fk - as.numeric(k >= y))^2)
   }
-  exp_crps_discrete <- function(Fk, pk) {
-    k <- seq_along(pk) - 1
-    sum(pk * vapply(k, crps_discrete, numeric(1), Fk = Fk))
+  # E_{Y ~ F} CRPS(F, Y) = sum_k F(k) (1 - F(k)), which equals E|X - X'| / 2
+  exp_crps_discrete <- function(Fk) sum(Fk * (1 - Fk))
+  # SCRPS of Bolin and Wallin (2023), undefined for a degenerate predictive
+  scrps <- function(crps, exp_crps) {
+    if (exp_crps > 0) -0.5 * (1 + crps / exp_crps + log(2 * exp_crps)) else NA_real_
   }
   u_val <- seq(0, 1, length.out = 1000)
+  # Nonrandomized PIT curve of one discrete observation (Czado et al., 2009)
+  npit_curve <- function(y, Fk) {
+    F_below <- if (y == 0) 0 else Fk[y]
+    F_at <- Fk[y + 1]
+    if (F_at > F_below) {
+      pmin(pmax((u_val - F_below) / (F_at - F_below), 0), 1)
+    } else {
+      as.numeric(u_val > F_at)
+    }
+  }
 
   ## ────────────────────── sanity checks (unchanged) ─────────────────────── ##
   if (!is_list_of_riskmap(object))
@@ -2967,7 +3000,10 @@ assess_prediction <- function(object,
     for (i in seq_len(iter)) {
       locations_sf <- data_sf[!duplicated(st_as_text(data_sf$geometry)), ]
       data_split$splits[[i]] <- list()
-      data_split$splits[[i]]$data_test <- subsample.distance(locations_sf, size = size, d = min_dist * 1000, ...)
+      data_split$splits[[i]]$data_test <- withCallingHandlers(
+        subsample.distance(locations_sf, size = size, d = min_dist * 1000, ...),
+        message = function(m) if (!messages) invokeRestart("muffleMessage")
+      )
       test_geom <- st_as_text(data_split$splits[[i]]$data_test$geometry)
       in_test   <- st_as_text(data_sf$geometry) %in% test_geom
       data_split$splits[[i]]$out_id <- which(in_test)
@@ -2978,23 +3014,105 @@ assess_prediction <- function(object,
     if (isTRUE(plot_fold)) print(plot_folds(data_split))
   }
 
+  ## ─────────────────────── checks on splits and models ─────────────────────── ##
+  if (method == "regularized") {
+    n_short <- sum(vapply(data_split$splits,
+                          function(s) nrow(s$data_test) < size, logical(1)))
+    if (n_short > 0) {
+      warning(n_short, " of ", n_iter, " test sets have fewer than 'size' = ",
+              size, " locations, because no more locations are at least ",
+              "'min_dist' apart.", call. = FALSE)
+    }
+  }
+
+  # A held-out observation at a location that also has training observations
+  # is predicted with a new nugget draw, ignoring the nugget seen in training.
+  has_nugget <- vapply(object, function(fit) fitted_nugget_variance(fit) > 0,
+                       logical(1))
+  if (method == "user" && any(has_nugget)) {
+    ids <- object1$ID_coords
+    shared <- which(vapply(data_split$splits,
+                           function(s) any(ids[s$out_id] %in% ids[s$in_id]),
+                           logical(1)))
+    if (length(shared) > 0) {
+      warning("In test set(s) ", paste(shared, collapse = ", "),
+              ", some locations also have training observations. Their ",
+              "predictions ignore the nugget effect observed in training, so ",
+              "the scores of models with a nugget are not reliable there.",
+              call. = FALSE)
+    }
+  }
+
+  with_re <- names(object)[vapply(object, function(fit) !is.null(fit$ID_re),
+                                  logical(1))]
+  if (length(with_re) > 0) {
+    warning("The predictive distributions of the test observations do not ",
+            "include the random effects, so the scores of ",
+            paste(shQuote(with_re), collapse = ", "), " are not reliable.",
+            call. = FALSE)
+  }
+
+  n_par <- vapply(object, function(fit) length(unlist(coef(fit))), integer(1))
+  if (messages) {
+    if (keep_par_fixed) {
+      message("Parameters are fixed at the estimates from all the data. Set ",
+              "'keep_par_fixed = FALSE' to re-estimate them in each training set.")
+      if (length(unique(n_par)) > 1) {
+        message("The models have different numbers of parameters. With fixed ",
+                "parameters the comparison tends to favour the model with more ",
+                "parameters, so 'keep_par_fixed = FALSE' is recommended.")
+      }
+    } else {
+      message("Parameters are re-estimated in each training set (",
+              n_iter * length(object), " model fits).")
+    }
+  }
+
+  # Test observations are scored only if every model can use them
+  complete_rows <- Reduce(`&`, lapply(object, function(fit) {
+    model_vars <- intersect(c(all.vars(fit$formula),
+                              as.character(fit$call$denominator)),
+                            names(fit$data))
+    complete.cases(st_drop_geometry(fit$data)[, model_vars, drop = FALSE])
+  }))
+  if (!all(complete_rows)) {
+    warning(sum(!complete_rows), " observations with missing values in the ",
+            "model variables are not used as test observations.", call. = FALSE)
+  }
+
+  # One seed per test set, shared by the models so that their predictions use
+  # common random numbers. The measurement error of Gaussian models is drawn
+  # from a separate stream, independent of the spatial draws.
+  fold_seeds  <- sample.int(.Machine$integer.max, n_iter)
+  noise_seeds <- sample.int(.Machine$integer.max, n_iter)
+
   ## ───────────────────────── initialise output ───────────────────────── ##
   n_models    <- length(object)
   model_names <- names(object)
-  out <- list(test_set = vector("list", n_iter), model = list())
+  out <- list(test_set = vector("list", n_iter), model = list(),
+              keep_par_fixed = keep_par_fixed)
+  failures <- data.frame(model = character(), test_set = integer(),
+                         message = character())
+
+  for (i in seq_len(n_iter)) {
+    out_id <- data_split$splits[[i]]$out_id
+    out$test_set[[i]] <- data_sf[out_id[complete_rows[out_id]], ]
+  }
 
   ## ─────────────────────────── iterate over models ───────────────────────── ##
   for (h in seq_len(n_models)) {
 
     fit0      <- object[[h]]
     fit_data_sf <- fit0$data
-    par_hat   <- coef(fit0)
     den_name  <- as.character(fit0$call$denominator)
     fam       <- fit0$family
-    linkfun   <- switch(fam,
-                        gaussian = identity,
-                        binomial = plogis,
-                        poisson  = exp)
+    linkfun   <- if (fam == "gaussian") {
+      identity
+    } else {
+      fit0$link_function$inv %||% switch(fam, binomial = plogis, poisson = exp)
+    }
+    custom_link <- !is.null(fit0$link_function) &&
+      !identical(fit0$link_function$name, "canonical")
 
     if (messages) {
       message(sprintf("\nModel '%s' (%s)", h, model_names[h]))
@@ -3008,35 +3126,36 @@ assess_prediction <- function(object,
       if (fam == "gaussian") PIT <- vector("list", n_iter) else AnPIT <- vector("list", n_iter)
     }
 
-    ## ─────────────────── iterate over CV splits (refit as needed) ─────────────────── ##
-    for (i in seq_len(n_iter)) {
-
-      in_id  <- data_split$splits[[i]]$in_id
-      out_id <- data_split$splits[[i]]$out_id
+    ## Scores of one test set: refit or slice, predict, score
+    score_test_set <- function(i, in_id, out_id_i, data_test_i) {
+      control_i <- control_mcmc
+      control_i$seed <- fold_seeds[i]
 
       ## ----- refit or slice -----
       if (!keep_par_fixed) {
 
-        message("\nRe-estimating model for subset ", i)
-        model_crs <- st_crs(fit0$data)
+        if (messages) message("\nRe-estimating model for subset ", i)
 
         refit_args <- list(
           formula        = fit0$formula,
           data           = fit_data_sf[in_id, ],
           family         = fam,
-          model_crs      = model_crs,
+          model_crs      = st_crs(fit0$data),
           distance_units = fit0$distance_units,
-          control_mcmc   = control_mcmc,
+          control_mcmc   = control_i,
           control_mcml   = attr(fit0, "control_mcml") %||%
             set_control_mcml(),
           fix_var_me     = fit0$fix_var_me,
-          messages       = FALSE,
-          start_pars     = par_hat
+          return_samples = FALSE,
+          messages       = FALSE
         )
         ## 'denominator' is passed as an unquoted column name (NSE); include it
         ## when the original model was fitted with one
         if (length(den_name) == 1 && nzchar(den_name)) {
           refit_args$denominator <- as.name(den_name)
+        }
+        if (custom_link) {
+          refit_args$invlink <- fit0$link_function[c("inv", "d1", "d2")]
         }
         refit_i <- do.call(glgpm, refit_args)
       } else {
@@ -3062,13 +3181,6 @@ assess_prediction <- function(object,
         refit_i$ID_coords <- create_ids(refit_i$data)$ID_coords
       }
 
-      ## ----- held-out set and offsets -----
-      data_test_i <- fit_data_sf[out_id, ]
-      keep_test <- complete.cases(st_drop_geometry(data_test_i))
-      data_test_i <- data_test_i[keep_test, ]
-      out_id_i <- out_id[keep_test]
-      if (h == 1) out$test_set[[i]] <- data_test_i
-
       if (messages) message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
 
       ## ----- prediction over test set -----
@@ -3080,34 +3192,31 @@ assess_prediction <- function(object,
         newdata = data_test_i,
         type = "marginal",
         include = included_components,
-        control_mcmc = control_mcmc,
+        summaries = "mean",
+        control_mcmc = control_i,
         keep_samples = TRUE,
         messages = FALSE
       )
       eta_samp <- prediction_link_samples(prediction_i)
       if (fam == "gaussian") {
         sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
-        eta_samp <- eta_samp + sqrt(sigma2_me) * rnorm(length(eta_samp))
+        restore_noise_seed <- preserve_random_seed()
+        set.seed(noise_seeds[i])
+        noise <- rnorm(length(eta_samp))
+        restore_noise_seed()
+        eta_samp <- eta_samp + sqrt(sigma2_me) * noise
       }
       mu_samp <- linkfun(eta_samp)
 
       n_pred <- nrow(eta_samp)
       n_draw <- ncol(eta_samp)
-      if (get_CRPS)   CRPS [[i]] <- numeric(n_pred)
-      if (get_SCRPS) { y_CRPS[[i]] <- numeric(n_pred); SCRPS[[i]] <- numeric(n_pred) }
-
-      if (get_PIT) {
-        if (fam == "gaussian") {
-          PIT_i <- numeric(n_pred)
-        } else {
-          AnPIT_i <- matrix(NA_real_, nrow = length(u_val), ncol = n_pred)
-          npit_fun <- function(y, u, Fk) {
-            F_y1 <- if (y == 0) 0 else Fk[y]
-            F_y  <- Fk[y + 1]
-            ifelse(u <= F_y1, 0,
-                   ifelse(u <= F_y, (u - F_y1) / (F_y - F_y1), 1))
-          }
-        }
+      crps_i   <- numeric(n_pred)
+      y_crps_i <- numeric(n_pred)
+      scrps_i  <- numeric(n_pred)
+      if (fam == "gaussian") {
+        pit_i <- numeric(n_pred)
+      } else {
+        anpit_i <- matrix(NA_real_, nrow = length(u_val), ncol = n_pred)
       }
 
       units_m_i <- fit0$units_m[out_id_i]
@@ -3117,12 +3226,16 @@ assess_prediction <- function(object,
         if (fam == "gaussian") {
           mu_j <- mean(mu_samp[j, ])
           sd_j <- sd(mu_samp[j, ])
-          if (get_CRPS)  CRPS[[i]][j] <- sd_j * crps_gaussian(y_i[j], mu_j, sd_j)
-          if (get_SCRPS) {
-            y_CRPS[[i]][j] <- sd_j / sqrt(pi)
-            SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
+          if (sd_j > 0) {
+            crps_i[j]   <- sd_j * crps_gaussian(y_i[j], mu_j, sd_j)
+            y_crps_i[j] <- sd_j / sqrt(pi)
+            pit_i[j]    <- pnorm(y_i[j], mean = mu_j, sd = sd_j)
+          } else {
+            # a point mass: the CRPS is the absolute error
+            crps_i[j]   <- abs(y_i[j] - mu_j)
+            y_crps_i[j] <- 0
+            pit_i[j]    <- as.numeric(y_i[j] >= mu_j)
           }
-          if (get_PIT) PIT_i[j] <- pnorm(y_i[j], mean = mu_j, sd = sd_j)
         } else {
           if (fam == "binomial") {
             y_samp  <- rbinom(n_draw, size = units_m_i[j], prob = mu_samp[j, ])
@@ -3134,25 +3247,53 @@ assess_prediction <- function(object,
           }
           pk <- tabulate(y_samp + 1, nbins = length(support)) / n_draw
           Fk <- cumsum(pk)
-          if (get_CRPS)  CRPS[[i]][j] <- crps_discrete(y_i[j], Fk)
-          if (get_SCRPS) {
-            y_CRPS[[i]][j] <- exp_crps_discrete(Fk, pk)
-            SCRPS [[i]][j] <- -0.5 * (1 + CRPS[[i]][j] / y_CRPS[[i]][j] + log(2 * abs(y_CRPS[[i]][j])))
-          }
-          if (get_PIT) {
-            AnPIT_i[, j] <- vapply(u_val, npit_fun, numeric(1), y = y_i[j], Fk = Fk)
-          }
+          crps_i[j]   <- crps_discrete(y_i[j], Fk)
+          y_crps_i[j] <- exp_crps_discrete(Fk)
+          anpit_i[, j] <- npit_curve(y_i[j], Fk)
         }
+        scrps_i[j] <- scrps(crps_i[j], y_crps_i[j])
       }
 
-      if (get_PIT) {
-        if (fam == "gaussian") {
-          PIT[[i]] <- PIT_i
-          PIT_area[[i]] <- .anpit_area(ecdf(PIT_i)(u_val), u_val)
-        } else {
-          AnPIT[[i]] <- rowMeans(AnPIT_i)
-          PIT_area[[i]] <- .anpit_area(AnPIT[[i]], u_val)
+      if (fam == "gaussian") {
+        list(CRPS = crps_i, y_CRPS = y_crps_i, SCRPS = scrps_i, PIT = pit_i,
+             PIT_area = .anpit_area(ecdf(pit_i)(u_val), u_val))
+      } else {
+        anpit <- rowMeans(anpit_i)
+        list(CRPS = crps_i, y_CRPS = y_crps_i, SCRPS = scrps_i, AnPIT = anpit,
+             PIT_area = .anpit_area(anpit, u_val))
+      }
+    }
+
+    ## ─────────────────── iterate over CV splits (refit as needed) ─────────────────── ##
+    for (i in seq_len(n_iter)) {
+
+      in_id  <- data_split$splits[[i]]$in_id
+      out_id <- data_split$splits[[i]]$out_id
+      out_id_i <- out_id[complete_rows[out_id]]
+      data_test_i <- fit_data_sf[out_id_i, ]
+
+      # A failed fit or prediction leaves this test set's scores missing
+      # instead of stopping the whole assessment
+      scores_i <- tryCatch(
+        score_test_set(i, in_id, out_id_i, data_test_i),
+        error = function(e) {
+          failures[nrow(failures) + 1, ] <<- list(model_names[h], i,
+                                                  conditionMessage(e))
+          n_test <- length(out_id_i)
+          list(CRPS = rep(NA_real_, n_test), y_CRPS = rep(NA_real_, n_test),
+               SCRPS = rep(NA_real_, n_test), PIT = numeric(0),
+               AnPIT = numeric(0), PIT_area = NA_real_)
         }
+      )
+
+      if (get_CRPS) CRPS[[i]] <- scores_i$CRPS
+      if (get_SCRPS) {
+        y_CRPS[[i]] <- scores_i$y_CRPS
+        SCRPS[[i]]  <- scores_i$SCRPS
+      }
+      if (get_PIT) {
+        PIT_area[[i]] <- scores_i$PIT_area
+        if (fam == "gaussian") PIT[[i]] <- scores_i$PIT else AnPIT[[i]] <- scores_i$AnPIT
       }
 
     } # end i loop
@@ -3167,6 +3308,14 @@ assess_prediction <- function(object,
     }
 
   } # end h loop
+
+  out$failures <- failures
+  if (nrow(failures) > 0) {
+    warning(nrow(failures), " of ", n_iter * n_models, " test-set assessments ",
+            "failed and their scores are missing. First error (model ",
+            shQuote(failures$model[1]), ", test set ", failures$test_set[1],
+            "): ", failures$message[1], call. = FALSE)
+  }
 
   class(out) <- "RiskMap_cross_validation"
   return(out)
