@@ -405,7 +405,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
                tolerance = 0.05)
 
   s <- summary(combined)
-  expect_setequal(names(s), c("grid", "area"))
+  expect_setequal(names(s), c("grid", "area", "fits"))
   expect_s3_class(s, "summary.RiskMap_assess_simulation")
   expect_output(print(s), "Grid-level results")
   expect_output(print(s), "Area-level results")
@@ -570,3 +570,140 @@ test_that("simulated_surface() output has a plot method matching plot.RiskMap_si
   expect_error(plot.RiskMap_simulated_surface(sim), "must be of class RiskMap_simulated_surface")
 })
 
+
+test_that("assess_simulation records a failed fit instead of stopping", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 3,
+                        what = c("data", "surface"),
+                        prediction_grid = gaussian_data, seed = 2)
+  real_glgpm <- glgpm
+  calls <- new.env()
+  calls$n <- 0
+  local_mocked_bindings(
+    glgpm = function(...) {
+      calls$n <- calls$n + 1
+      if (calls$n == 2) stop("fit failed")
+      real_glgpm(...)
+    },
+    .package = "RiskMap"
+  )
+  expect_warning(
+    result <- assess_simulation(
+      sim, models = list(intercept = gaussian_intercept_model),
+      control_mcmc = control_mcmc, spatial_scale = "grid",
+      target_transform = identity, pred_objective = "mse", messages = FALSE
+    ),
+    "1 of 3 model fits failed"
+  )
+
+  expect_identical(result$fits$status, c("ok", "failed", "ok"))
+  expect_identical(result$fits$message[2], "fit failed")
+  expect_true(is.na(result$pred_objective$grid$mse[1, 2]))
+  expect_true(all(is.finite(result$pred_objective$grid$mse[1, c(1, 3)])))
+  expect_true(all(is.na(result$estimates$intercept[2, ])))
+  expect_output(print(summary(result)),
+                "Failed model fits \\(results missing\\): 1 of 3")
+  expect_output(print(result), "Failed model fits: 1 of 3")
+})
+
+test_that("assess_simulation leaves out areas without grid locations", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = gaussian_data, seed = 2)
+  hull <- st_geometry(create_convex_hull(gaussian_data))
+  boundaries <- st_sf(
+    region = c("near", "far"),
+    geometry = c(hull, st_set_crs(hull + c(1e6, 1e6), st_crs(hull)))
+  )
+  expect_warning(
+    result <- assess_simulation(
+      sim, models = list(intercept = gaussian_intercept_model),
+      control_mcmc = control_mcmc, spatial_scale = "area",
+      target_transform = identity, area_summary = mean,
+      boundaries = boundaries, col_names = "region",
+      pred_objective = c("mse", "classify"), categories = c(-10, 0, 10),
+      messages = FALSE
+    ),
+    "'far', which is left out of the area-level assessment"
+  )
+  expect_true(all(is.finite(result$pred_objective$area$mse)))
+})
+
+test_that("assess_simulation requires unique area names", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 1,
+                        what = c("data", "surface"),
+                        prediction_grid = gaussian_data, seed = 2)
+  hull <- st_geometry(create_convex_hull(gaussian_data))
+  boundaries <- st_sf(region = c("a", "a"), geometry = c(hull, hull))
+  expect_error(
+    assess_simulation(
+      sim, models = list(intercept = gaussian_intercept_model),
+      spatial_scale = "area", target_transform = identity,
+      area_summary = mean, boundaries = boundaries, col_names = "region",
+      pred_objective = "mse", messages = FALSE
+    ),
+    "unique region names"
+  )
+})
+
+test_that("assess_simulation names missing candidate covariates on the grid", {
+  grid_with_gap <- gaussian_data
+  grid_with_gap$cov[1] <- NA
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 1,
+                        what = c("data", "surface"),
+                        prediction_grid = grid_with_gap, seed = 2)
+  candidate <- specify_glgpm(
+    y ~ cov + gp(), gaussian_data, family = "gaussian",
+    parameters = list(beta = c(1, 0.5), sigma2 = 1, phi = 2, sigma2_me = 0.1)
+  )
+  expect_error(
+    assess_simulation(
+      sim, models = list(candidate = candidate), spatial_scale = "grid",
+      target_transform = identity, pred_objective = "mse", messages = FALSE
+    ),
+    "needs complete values of 'cov' on the prediction grid"
+  )
+})
+
+test_that("assess_simulation scores candidates without the generating model's nugget", {
+  generating <- specify_glgpm(
+    y ~ gp(nugget = TRUE), data = binomial_data, family = "binomial",
+    denominator = denominator,
+    parameters = list(beta = 0, sigma2 = 0.5, phi = 2, tau2 = 0.2)
+  )
+  sim <- simulate_glgpm(generating, nsim = 2, what = c("data", "surface"),
+                        prediction_grid = binomial_data, seed = 3)
+  candidate <- specify_glgpm(
+    y ~ gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, parameters = list(beta = 0, sigma2 = 0.5, phi = 2)
+  )
+  result <- suppressWarnings(assess_simulation(
+    sim, models = list(no_nugget = candidate), control_mcmc = control_mcmc,
+    spatial_scale = "grid", target_transform = plogis, pred_objective = "mse",
+    messages = FALSE
+  ))
+  expect_identical(result$fits$status, c("ok", "ok"))
+  expect_true(all(is.finite(result$pred_objective$grid$mse)))
+})
+
+test_that("simulation objects print briefly", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
+                        what = c("data", "surface"),
+                        prediction_grid = gaussian_data, seed = 2)
+  expect_output(print(sim), "Simulations from a gaussian geostatistical model")
+  expect_output(print(sim), "Number of simulations: 2 \\(seed 2\\)")
+  model <- specify_glgpm(
+    y ~ cov + gp(), gaussian_data, family = "gaussian",
+    parameters = list(beta = c(1, 0.5), sigma2 = 1, phi = 2, sigma2_me = 0.1)
+  )
+  expect_output(print(model), "beta: \\(Intercept\\) = 1, cov = 0.5")
+})
+
+test_that("simulated surfaces can be plotted with fixed colour limits", {
+  sim <- simulate_glgpm(gaussian_intercept_model, nsim = 1, what = "surface",
+                        prediction_grid = grid, seed = 1)
+  p <- plot(simulated_surface(sim), limits = c(-5, 5))
+  expect_s3_class(p, "ggplot")
+  expect_no_error(ggplot2::ggplot_build(p))
+  expect_equal(p$scales$get_scales("fill")$limits, c(-5, 5))
+  expect_no_error(plot(sim, limits = c(-5, 5)))
+})
