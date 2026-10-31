@@ -103,7 +103,7 @@
 ##'              seed = 2026)
 ##' bootstrap <- parametric_bootstrap(fit, n_sim = 100, seed = 2026)
 ##' summary(bootstrap)
-##' plot(bootstrap, parameters = "phi")
+##' plot(bootstrap)
 ##' }
 ##' @export
 parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
@@ -520,10 +520,6 @@ plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30, ...) {
          call. = FALSE)
   }
   check_positive_integer(bins, "bins")
-  if (length(parameters) > 1L && !requireNamespace("patchwork", quietly = TRUE)) {
-    stop("Plotting several parameters requires the 'patchwork' package",
-         call. = FALSE)
-  }
   table <- summary(x)$table
   panels <- lapply(parameters, function(name) {
     plot_bootstrap_parameter(x$estimates[, name],

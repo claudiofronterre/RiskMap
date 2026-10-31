@@ -117,7 +117,7 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
              seed = 2026)
 bootstrap <- parametric_bootstrap(fit, n_sim = 100, seed = 2026)
 summary(bootstrap)
-plot(bootstrap, parameters = "phi")
+plot(bootstrap)
 }
 }
 \references{

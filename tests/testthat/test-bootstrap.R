@@ -145,7 +145,6 @@ test_that("plot draws one histogram per parameter", {
   expect_identical(single$labels$title,
                    paste0("Spatial corr. scale (",
                           gaussian_intercept_model$distance_units, ")"))
-  skip_if_not_installed("patchwork")
   expect_s3_class(plot(boot), "patchwork")
   expect_error(plot(boot, parameters = "kappa"), "Unknown parameter")
 })
