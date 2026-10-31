@@ -1502,6 +1502,7 @@ test_that("glgpm warns when the likelihood has no maximum", {
     capture_warnings(glgpm(
       y ~ cov + gp(), data = data, family = "binomial",
       denominator = denominator, control_mcmc = control_mcmc,
+      seed = fixture_seed,
       control_mcml = fixture_control_mcml, messages = FALSE
     ))
   }
@@ -1528,7 +1529,7 @@ test_that("glgpm warns when the likelihood has no maximum", {
   urban$y[urban$urban == 1] <- 0
   separated <- capture_warnings(glgpm(
     y ~ cov + urban + gp(), data = urban, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = fixture_control_mcml, messages = FALSE
   ))
   optimizer <- attr(separated$value, "optimizer")
@@ -1543,7 +1544,7 @@ test_that("glgpm warns when the likelihood has no maximum", {
   urban$y[1L] <- 1
   near <- capture_warnings(glgpm(
     y ~ cov + urban + gp(), data = urban, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = fixture_control_mcml, messages = FALSE
   ))
   optimizer <- attr(near$value, "optimizer")
