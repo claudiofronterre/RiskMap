@@ -132,6 +132,26 @@ with the same results as on one core with one BLAS thread. `plot()` draws the ma
 approximation and the joint profiles as confidence regions with the marginal
 ridges, as a corner plot for one pair.
 
+- `profile()` also computes profile likelihoods of linear geostatistical
+(Gaussian) models, from their exact likelihood, so `n_draws` and `seed` are
+not used. Every estimated parameter can be profiled: the regression
+coefficients, the spatial variance and scale, the variance of the nugget
+(`tau2`, as `summary()` reports it, rather than its ratio to the spatial
+variance), the measurement error variance unless it is fixed, and the
+variances of the random effects, with the labels of `summary()`. For each
+value of the covariance parameters the coefficients are found by generalised
+least squares, and models with more than three observations per latent effect
+use the Woodbury identity, as `glgpm()` does. The ends of the profile
+intervals are refined until the deviance of a solved point is within 0.01 of
+the cut-off, grid steps of the variances and the scale are at most 1 on the
+log scale, so that a variance estimated near zero, with a huge standard
+error, is still profiled, and each point of a joint profile is also solved
+from the estimate, since a neighbour's solution with a variance near zero can
+leave the optimiser on a plateau. A variance that the data cannot tell from
+zero has a profile that stays below the cut-off down to its lower bound, and
+its interval is reported as open there. The smoothness `kappa` stays fixed
+and can be profiled by refitting over fixed values.
+
 - Non-Gaussian models are now fitted by certified Monte Carlo maximum
 likelihood. The estimated likelihood is maximised on a fitting sample of 1,000
 draws, the estimate is corrected by one Newton step with the score from an
