@@ -1326,3 +1326,248 @@ test_that("reusing the spatial factorisation leaves the likelihood unchanged", {
   expect_equal(reused$evaluate(second, bank), make()$evaluate(second, bank),
                tolerance = 1e-10)
 })
+
+# A survey of 40 locations with 20 tested each, a covariate and an indicator
+# of 12 urban locations, on the design scale that glgpm() passes to the fit.
+make_separation_survey <- function() {
+  set.seed(11)
+  sites <- 40L
+  covariate <- rnorm(sites)
+  urban <- rep(c(0, 1), c(28L, 12L))
+  trials <- rep(20, sites)
+  list(
+    D = standardize_design_matrix(
+      cbind("(Intercept)" = 1, x = covariate, urban = urban)
+    )$design,
+    y = rbinom(sites, trials, plogis(-1 + 0.5 * covariate)),
+    trials = trials, urban = urban,
+    distances = as.matrix(dist(cbind(runif(sites), runif(sites))))
+  )
+}
+
+capture_warnings <- function(expression) {
+  warnings <- character()
+  value <- withCallingHandlers(expression, warning = function(warning) {
+    warnings <<- c(warnings, conditionMessage(warning))
+    invokeRestart("muffleWarning")
+  })
+  list(value = value, warnings = warnings)
+}
+
+test_that("data without positives or without negatives are separated", {
+  survey <- make_separation_survey()
+  none <- find_separation(survey$D, 0 * survey$y, survey$trials, "binomial")
+  expect_identical(none$everywhere, "no positives")
+  expect_identical(none$observations, seq_len(40L))
+  expect_identical(none$no_positives, 40L)
+  expect_identical(none$coefficients, integer())
+  every <- find_separation(survey$D, survey$trials, survey$trials,
+                           "binomial")
+  expect_identical(every$everywhere, "only positives")
+  expect_identical(every$only_positives, 40L)
+  counts <- find_separation(survey$D, 0 * survey$y, rep(1, 40), "poisson")
+  expect_identical(counts$everywhere, "no positives")
+  # A location where nobody was tested carries no information.
+  untested <- find_separation(survey$D, 0 * survey$y,
+                              replace(survey$trials, 1L, 0), "binomial")
+  expect_identical(untested$observations, 2:40)
+  # Without an intercept, a covariate of both signs has a finite maximum.
+  expect_null(find_separation(survey$D[, "x", drop = FALSE], 0 * survey$y,
+                              survey$trials, "binomial"))
+})
+
+test_that("separating covariates are found, and near separation is not", {
+  survey <- make_separation_survey()
+  expect_null(find_separation(survey$D, survey$y, survey$trials, "binomial"))
+  separated <- replace(survey$y, survey$urban == 1, 0)
+  found <- find_separation(survey$D, separated, survey$trials, "binomial")
+  expect_identical(found$coefficients, 3L)
+  expect_identical(found$observations, which(survey$urban == 1))
+  expect_identical(found$no_positives, 12L)
+  expect_null(found$everywhere)
+  # One positive among the urban locations gives a finite maximum.
+  expect_null(find_separation(survey$D, replace(separated, 40L, 1),
+                              survey$trials, "binomial"))
+
+  # Individual data, where every observation has no positives or only
+  # positives, so the search runs over every coefficient.
+  set.seed(12)
+  people <- 600L
+  covariate <- rnorm(people)
+  urban <- rbinom(people, 1, 0.2)
+  D <- standardize_design_matrix(
+    cbind("(Intercept)" = 1, x = covariate, urban = urban)
+  )$design
+  y <- rbinom(people, 1, plogis(-1 + 0.5 * covariate))
+  single <- rep(1, people)
+  expect_null(find_separation(D, y, single, "binomial"))
+  separated <- replace(y, urban == 1, 0)
+  expect_identical(
+    find_separation(D, separated, single, "binomial")$coefficients, 3L
+  )
+  expect_null(find_separation(D, replace(separated, which(urban == 1)[1L], 1),
+                              single, "binomial"))
+  complete <- find_separation(D, as.numeric(covariate > 0.3), single,
+                              "binomial")
+  expect_identical(complete$coefficients, 2L)
+  expect_identical(complete$observations, seq_len(people))
+})
+
+test_that("coefficients at the bound of the search are found", {
+  limits <- list(coefficient_index = 1:2)
+  lower <- c(-30, -30, -20, -20)
+  upper <- c(30, 30, 20, 10)
+  expect_identical(find_coefficients_at_bound(c(-29.63, 0.1, -2, 0), limits,
+                                              lower, upper), 1L)
+  expect_identical(find_coefficients_at_bound(c(-3, 30, -20, 10), limits,
+                                              lower, upper), 2L)
+  # Covariance parameters at their bounds are not regression coefficients.
+  expect_identical(find_coefficients_at_bound(c(-3, 2, -20, 10), limits,
+                                              lower, upper), integer())
+  expect_identical(find_coefficients_at_bound(c(-30, 2, -2, 1), list(),
+                                              lower, upper), integer())
+})
+
+test_that("a fit to separated data ends without information or certificate", {
+  survey <- make_separation_survey()
+  y <- 0 * survey$y
+  engine <- make_adaptive_mcml_engine(
+    D = survey$D, y = y, units_m = survey$trials,
+    distances = survey$distances, family = "binomial"
+  )
+  # The check for other maxima has nothing to compare.
+  local_mocked_bindings(
+    check_other_maxima = function(...) stop("the check for other maxima ran")
+  )
+  arguments <- list(
+    engine = engine, start = c(-3, 0, 0, log(0.5), log(0.2)),
+    dispersed = list(), initial_budget = 500, validation_budget = 500,
+    seed = 5, lower = c(-30, -30, -30, -20, -20),
+    upper = c(30, 30, 30, 20, 10), variance_index = 4L,
+    linked_index = list(`4` = 5L), coefficient_index = 1:3,
+    separation = find_separation(survey$D, y, survey$trials, "binomial")
+  )
+  fit <- do.call(fit_adaptive_mcml, arguments)
+
+  expect_identical(fit$outcome, "no maximum")
+  expect_false(fit$certified)
+  expect_identical(fit$certificate, NA_real_)
+  expect_null(fit$covariance)
+  expect_length(fit$history, 1L)
+  expect_null(fit$history[[1L]]$information)
+  expect_identical(fit$separation$everywhere, "no positives")
+  expect_match(fit$reason, "separated")
+
+  # Without the separation, a coefficient that reaches its bound ends the fit
+  # in the same way.
+  arguments$separation <- NULL
+  arguments$dispersed <- NULL
+  arguments$lower[1L] <- -5
+  bounded <- do.call(fit_adaptive_mcml, arguments)
+  expect_identical(bounded$outcome, "no maximum")
+  expect_identical(bounded$coefficients_at_bound, 1L)
+  expect_identical(bounded$certificate, NA_real_)
+  expect_match(bounded$reason, "reached the bound")
+})
+
+test_that("a correction that reaches a bound is not certified", {
+  survey <- make_separation_survey()
+  engine <- make_adaptive_mcml_engine(
+    D = survey$D, y = survey$y, units_m = survey$trials,
+    distances = survey$distances, family = "binomial"
+  )
+  local_mocked_bindings(
+    correct_and_certify = function(engine, penalty, estimate, ...) {
+      list(estimate = replace(estimate, 1L, -30), certified = TRUE,
+           certificate = 1e-5, first_validation = list(seconds = 0),
+           second_validation = list(seconds = 0, score = numeric(5),
+                                    log_likelihood = 0))
+    }
+  )
+  fit <- fit_adaptive_mcml(
+    engine, start = c(-1, 0.5, 0, log(0.5), log(0.2)), initial_budget = 500,
+    validation_budget = 500, seed = 5, lower = c(-30, -30, -30, -20, -20),
+    upper = c(30, 30, 30, 20, 10), coefficient_index = 1:3
+  )
+
+  expect_identical(fit$outcome, "no maximum")
+  expect_false(fit$certified)
+  expect_identical(fit$certificate, NA_real_)
+  expect_null(fit$covariance)
+  expect_identical(fit$coefficients_at_bound, 1L)
+})
+
+test_that("glgpm warns when the likelihood has no maximum", {
+  fit_to <- function(data) {
+    capture_warnings(glgpm(
+      y ~ cov + gp(), data = data, family = "binomial",
+      denominator = denominator, control_mcmc = control_mcmc,
+      seed = fixture_seed,
+      control_mcml = fixture_control_mcml, messages = FALSE
+    ))
+  }
+  zero <- fit_to(transform(binomial_data, y = 0))
+  optimizer <- attr(zero$value, "optimizer")
+  expect_identical(optimizer$mcml_outcome, "no maximum")
+  expect_false(optimizer$mcml_certified)
+  expect_identical(optimizer$mcml_certificate, NA_real_)
+  expect_true(optimizer$mcml_no_maximum)
+  expect_true(all(is.na(diag(zero$value$covariance))))
+  expect_match(zero$warnings,
+               "None of the individuals tested is positive.*no maximum",
+               all = FALSE)
+  expect_false(any(grepl("maximum likelihood estimate\\.", zero$warnings)))
+  expect_output(print(zero$value), "the likelihood has no maximum")
+  expect_match(summary(zero$value)$mcml$notes, "no observation has a positive")
+
+  every <- fit_to(transform(binomial_data, y = denominator))
+  expect_identical(attr(every$value, "optimizer")$mcml_outcome, "no maximum")
+  expect_match(every$warnings, "Every individual tested is positive",
+               all = FALSE)
+
+  urban <- transform(binomial_data, urban = as.numeric(seq_along(y) <= 3L))
+  urban$y[urban$urban == 1] <- 0
+  separated <- capture_warnings(glgpm(
+    y ~ cov + urban + gp(), data = urban, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+    control_mcml = fixture_control_mcml, messages = FALSE
+  ))
+  optimizer <- attr(separated$value, "optimizer")
+  expect_identical(optimizer$mcml_outcome, "no maximum")
+  expect_identical(optimizer$mcml_separation$coefficients, "urban")
+  expect_identical(optimizer$mcml_separation$observations, 1:3)
+  expect_match(separated$warnings,
+               "fit to 3 observations with no positives.*'urban'",
+               all = FALSE)
+
+  # With one positive at an urban location the maximum is finite.
+  urban$y[1L] <- 1
+  near <- capture_warnings(glgpm(
+    y ~ cov + urban + gp(), data = urban, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+    control_mcml = fixture_control_mcml, messages = FALSE
+  ))
+  optimizer <- attr(near$value, "optimizer")
+  expect_false(optimizer$mcml_outcome == "no maximum")
+  expect_null(optimizer$mcml_separation)
+  expect_true(is.finite(optimizer$mcml_certificate))
+})
+
+test_that("the warning names coefficients that reached the bound", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  bounded <- list(outcome = "no maximum", separation = NULL,
+                  coefficients_at_bound = 2L)
+  expect_warning(
+    report_mcml_outcome(bounded, character(), layout, FALSE, 0.1, FALSE,
+                        coefficient_names = c("(Intercept)", "x")),
+    "regression coefficient of 'x' reached the bound of the search"
+  )
+  counts <- list(outcome = "no maximum",
+                 separation = list(everywhere = "no positives"))
+  expect_warning(
+    report_mcml_outcome(counts, character(), layout, FALSE, 0.1, FALSE,
+                        coefficient_names = c("(Intercept)", "x"),
+                        family = "poisson"),
+    "Every count is zero.*fitted mean tends to zero"
+  )
+})

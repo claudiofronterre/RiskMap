@@ -977,7 +977,10 @@ glgpm_nong_adaptive <- function(
                             use.names = FALSE),
     linked_index = stats::setNames(
       list(engine$layout$index$phi), engine$layout$index$sigma2
-    )
+    ),
+    coefficient_index = engine$layout$index$beta,
+    separation = find_separation(D, y, units_m %||% rep(1, length(y)),
+                                 family)
   )
   if (identical(fit$outcome, "no valid fit")) {
     stop("Monte Carlo maximum likelihood could not obtain a valid fit: ",
@@ -987,12 +990,13 @@ glgpm_nong_adaptive <- function(
   boundary_names <- describe_variance_parameters(
     fit$boundary_parameters, engine$layout, re_names = re_names
   )
-  small_scale <- if (!identical(fit$outcome, "numerically independent")) {
+  small_scale <- if (!fit$outcome %in% c("numerically independent",
+                                         "no maximum")) {
     detect_small_scale(fit, engine$layout, distances, kappa, distance_scale)
   }
   report_mcml_outcome(fit, boundary_names, engine$layout, pc_prior,
                       control_mcml$tolerance, messages, small_scale,
-                      distance_scale)
+                      distance_scale, colnames(D), family)
   assemble_mcml_result(fit, laplace, boundary_names, D, fix_tau2, re_names,
                        family, invlink, length(y), pc_prior, fit_seed,
                        small_scale)
@@ -1118,6 +1122,13 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_maxima_alarm = fit$maxima_alarm,
     mcml_numerically_independent = identical(fit$outcome,
                                              "numerically independent"),
+    mcml_no_maximum = identical(fit$outcome, "no maximum"),
+    mcml_separation = if (!is.null(fit$separation)) {
+      c(fit$separation[c("observations", "no_positives", "only_positives",
+                         "everywhere")],
+        list(coefficients = colnames(D)[fit$separation$coefficients]))
+    },
+    mcml_coefficients_at_bound = colnames(D)[fit$coefficients_at_bound],
     mcml_near_limit = !is.null(fit$maxima_screen$near_limit),
     mcml_better_maximum = fit$better_maximum,
     mcml_ambiguous_maxima = fit$ambiguous_maxima,
@@ -1252,16 +1263,110 @@ report_near_limit <- function(record, scale) {
   )
 }
 
+##' Tell the user that the likelihood has no maximum
+##'
+##' Gives the cause, from the separation of the data (`fit$separation`, from
+##' `find_separation()`) or else the regression coefficients that reached the
+##' bound of the search (`fit$coefficients_at_bound`), and what can be done
+##' instead. `coefficient_names` names the regression coefficients.
+##' @noRd
+report_no_maximum <- function(fit, coefficient_names, family) {
+  binomial <- identical(family, "binomial")
+  listed <- function(index) {
+    names <- paste0("'", coefficient_names[index], "'")
+    if (length(names) <= 2L) return(paste(names, collapse = " and "))
+    paste(paste(names[-length(names)], collapse = ", "), "and",
+          names[length(names)])
+  }
+  returned <- paste0(
+    " The estimate is where the optimiser stopped, and it is returned ",
+    "without standard errors or a Monte Carlo certificate."
+  )
+  separation <- fit$separation
+  everywhere <- separation$everywhere
+  if (!is.null(everywhere)) {
+    none <- identical(everywhere, "no positives")
+    quantity <- if (binomial) "prevalence" else "mean"
+    warning(
+      if (!binomial) "Every count is zero" else if (none) {
+        "None of the individuals tested is positive"
+      } else {
+        "Every individual tested is positive"
+      },
+      ", so the likelihood increases as the fitted ", quantity, " tends to ",
+      if (none) "zero" else "one", " and has no maximum.", returned,
+      " Maximum likelihood cannot fit the model to such data. An exact ",
+      if (none) "upper" else "lower", " confidence limit for the ",
+      if (binomial) "prevalence" else "rate", ", or a Bayesian analysis ",
+      "with an informative prior on the intercept, can be used instead.",
+      call. = FALSE
+    )
+  } else if (!is.null(separation)) {
+    describe <- function(count, kind) {
+      paste(count, if (count == 1L) "observation" else "observations", kind)
+    }
+    observations <- c(
+      if (separation$no_positives) describe(
+        separation$no_positives,
+        if (binomial) "with no positives" else "with a zero count"
+      ),
+      if (separation$only_positives) describe(
+        separation$only_positives, "where every individual is positive"
+      )
+    )
+    single <- length(separation$coefficients) == 1L
+    warning(
+      "The covariates separate the data. The fit to ",
+      paste(observations, collapse = " and "), " improves without limit as ",
+      "the ",
+      "regression coefficient", if (!single) "s", " of ",
+      listed(separation$coefficients), " ", if (single) "grows" else "grow",
+      " in absolute value, while the fit to the other observations is ",
+      "unchanged, so the likelihood has no maximum.", returned,
+      " Consider merging a category of a factor that has ",
+      if (separation$only_positives && !separation$no_positives) {
+        "only positives"
+      } else {
+        "no positives"
+      },
+      " with other categories, or removing the covariate from the model.",
+      call. = FALSE
+    )
+  } else {
+    at_bound <- fit$coefficients_at_bound
+    single <- length(at_bound) == 1L
+    warning(
+      "The estimate", if (!single) "s", " of the regression coefficient",
+      if (!single) "s", " of ", listed(at_bound), " reached the bound of the ",
+      "search (30 in absolute value, for covariates standardised to mean ",
+      "zero and standard deviation one), so the likelihood appears to have ",
+      "no maximum, as when the covariates separate the data.", returned,
+      " Check whether a covariate, or a category of a factor, has only ",
+      "observations with no positives or only observations where every ",
+      "individual is positive.",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
+}
+
 ##' Tell the user how a certified MCML fit ended
 ##'
 ##' Warnings name variance components at zero, a scale smaller than the
 ##' location spacing, a singular information matrix, or a certificate above
 ##' the tolerance. Weak identification of the spatial variance or scale is what
 ##' the PC penalty addresses, so these warnings point to it when it is off.
+##' A fit whose likelihood has no maximum gets only the warning of
+##' `report_no_maximum()`, since the others describe a maximum.
+##' `coefficient_names` names the regression coefficients.
 ##' @noRd
 report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
                                 tolerance, messages, small_scale = NULL,
-                                distance_scale = 1) {
+                                distance_scale = 1, coefficient_names = NULL,
+                                family = "binomial") {
+  if (identical(fit$outcome, "no maximum")) {
+    return(report_no_maximum(fit, coefficient_names, family))
+  }
   pc_advice <- if (pc_prior) "" else paste0(
     " Alternatively, refit with 'control_mcml = set_control_mcml(pc_prior = ",
     "TRUE)', which stabilises the spatial variance and scale with a mild ",
