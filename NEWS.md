@@ -152,6 +152,11 @@ zero has a profile that stays below the cut-off down to its lower bound, and
 its interval is reported as open there. The smoothness `kappa` stays fixed
 and can be profiled by refitting over fixed values.
 
+- In `plot()` of a profile, the subtitle of each marginal panel gives the
+estimate, the profile interval and the Wald interval on separate lines, so
+that it is no longer cut off in panels half or a third of a page wide, and
+the two entries of the ridge legend of a joint profile are stacked.
+
 - Non-Gaussian models are now fitted by certified Monte Carlo maximum
 likelihood. The estimated likelihood is maximised on a fitting sample of 1,000
 draws, the estimate is corrected by one Newton step with the score from an

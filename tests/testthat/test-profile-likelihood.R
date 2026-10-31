@@ -414,3 +414,14 @@ test_that("a poorly identified variance has an open profile interval", {
   cutoff <- stats::qchisq(0.95, 1)
   expect_lt(min(abs(marginal$deviance - cutoff)), 0.01)
 })
+
+test_that("the subtitle of a marginal panel has one line per value", {
+  interval <- data.frame(estimate = 0.0883, profile_lower = 0.03023,
+                         profile_upper = NA, wald_lower = 0.03513,
+                         wald_upper = 0.2217)
+  expect_identical(
+    profile_interval_text(interval, 0.95),
+    paste("Estimate 0.0883", "95% profile interval 0.0302 to open",
+          "95% Wald interval 0.0351 to 0.222", sep = "\n")
+  )
+})
