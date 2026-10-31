@@ -20,12 +20,15 @@
 )
 }
 \arguments{
-\item{fitted}{A \code{RiskMap} object from \code{\link[=glgpm]{glgpm()}} for a binomial or Poisson
-model.}
+\item{fitted}{A \code{RiskMap} object from \code{\link[=glgpm]{glgpm()}} for a Gaussian model, or
+for a binomial or Poisson model fitted with certified Monte Carlo
+maximum likelihood.}
 
 \item{parameters}{Names of the parameters to profile one at a time, as in
 \code{names(unlist(fitted$estimate))} (the prefix \code{beta.} can be left out).
-The default is every parameter.}
+For a Gaussian model the nugget is \code{tau2}, its variance, in place of
+\code{nu2}, its ratio to the spatial variance. The default is every
+parameter.}
 
 \item{pairs}{A list of pairs of parameter names for joint profiles, for
 example \code{list(c("sigma2", "phi"))}. The default is none.}
@@ -37,10 +40,11 @@ extension, and the most points on each side of the estimate.}
 
 \item{span}{Half-width of the grids, in standard errors.}
 
-\item{n_draws}{Number of Monte Carlo draws in the bank.}
+\item{n_draws}{Number of Monte Carlo draws in the bank. Not used for a
+Gaussian model.}
 
 \item{seed}{Seed of the bank. The random number state of the session is
-restored afterwards.}
+restored afterwards. Not used for a Gaussian model.}
 
 \item{level}{Confidence level of the reported profile intervals.}
 
@@ -60,19 +64,46 @@ rounding.}
 An object of class \code{RiskMap_profile}: a list with the marginal
 profiles (\code{marginal}), the joint profiles (\code{joint}), the intervals
 (\code{intervals}), the estimate and the maximum of the log-likelihood on the
-bank (\code{estimate}, \code{max_loglik}) and the settings.
+bank, or of the exact likelihood (\code{estimate}, \code{max_loglik}), and the
+settings.
 }
 \description{
-Computes profile likelihoods of a binomial or Poisson model fitted by
-\code{\link[=glgpm]{glgpm()}} with certified Monte Carlo maximum likelihood: for each chosen
-parameter, the log-likelihood maximised over all the other parameters on a
-grid of values, and for each chosen pair, the same over a grid of pairs.
-The Monte Carlo likelihood is evaluated on one fixed bank of \code{n_draws}
+Computes profile likelihoods of a model fitted by \code{\link[=glgpm]{glgpm()}}: for each
+chosen parameter, the log-likelihood maximised over all the other
+parameters on a grid of values, and for each chosen pair, the same over a
+grid of pairs. Profiles are available for linear geostatistical
+(Gaussian) models and for binomial and Poisson models fitted with
+certified Monte Carlo maximum likelihood. For a binomial or Poisson model
+the Monte Carlo likelihood is evaluated on one fixed bank of \code{n_draws}
 standard normal draws with the importance distribution anchored at the
 estimate, so the profiles are smooth functions of the parameters. Use
 \code{\link[=plot.RiskMap_profile]{plot.RiskMap_profile()}} to draw them.
 }
 \details{
+The likelihood of a Gaussian model is exact, so there is no bank of draws
+and \code{n_draws} and \code{seed} are not used. For each value of the covariance
+parameters the regression coefficients that maximise the likelihood are
+found by generalised least squares, so each point is a maximisation over
+the covariance parameters only. The parameters are those of
+\code{summary()}, with its labels: the regression coefficients, the spatial
+variance and scale, the variance of the nugget (\code{tau2}) when it is
+estimated, the measurement error variance (\code{sigma2_me}) unless it is
+fixed by \code{fix_var_me}, and the variances of the random effects. Since
+points of an exact likelihood are cheap, each end of a profile interval
+is refined until the deviance of a solved point is within 0.01 of the
+cut-off. Grid steps of the variances and the scale are at most 1 on the
+logarithmic scale, so that a variance estimated near zero, whose standard
+error is huge, is still profiled, and each point of a joint profile is
+solved from its neighbour's solution and from the estimate. A profile
+that stays below the cut-off down to the lower bound of a variance (about
+\eqn{e^{-20}}) shows that the data cannot tell that variance from zero,
+and its interval is open there.
+
+The smoothness \eqn{\kappa} of the Matern correlation stays fixed at the
+value used in the fit. It can be profiled by refitting the model over a
+set of values of \eqn{\kappa} and comparing the maximised
+log-likelihoods (\code{log_lik}) of the fits.
+
 Grids are centred at the estimate on the scale on which the model is fitted
 (the logarithm for variances and the scale) and span \code{span} standard errors
 either way. If the profile deviance has not passed the 99\% point of a
@@ -96,9 +127,10 @@ the bounds of the parameter is reported as open (\code{NA}). If a point on a
 profile is higher than the estimate, the estimate is not the highest
 maximum found, and a message says so.
 
-Each point is a maximisation of the Monte Carlo likelihood over the other
+Each point is a maximisation of the likelihood over the other
 parameters, so the time grows with the number of points and of parameters.
-A model that takes a minute to fit can take tens of seconds per point.
+A binomial or Poisson model that takes a minute to fit can take tens of
+seconds per point.
 Joint profiles cost \code{n_grid^2} points each and are computed only when
 \code{pairs} asks for them. With \code{messages = TRUE} and one core the time left
 is estimated after the first parameter. \code{cores} runs independent parts in
@@ -106,6 +138,13 @@ parallel.
 }
 \examples{
 \donttest{
+data(galicia)
+fit <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
+             family = "gaussian", distance_units = "km", messages = FALSE)
+profiles <- profile(fit, pairs = list(c("sigma2", "phi")))
+profiles
+plot(profiles)
+
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,

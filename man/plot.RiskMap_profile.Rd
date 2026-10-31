@@ -26,7 +26,8 @@ Draws the profiles computed by \code{\link[=profile.RiskMap]{profile.RiskMap()}}
 shows the profile deviance (twice the drop in the log-likelihood from its
 maximum) against the parameter, with the quadratic approximation implied
 by the standard error (dashed), the cut-off for the requested level and the
-profile interval shaded. Each joint profile shows the deviance over the
+profile interval shaded, with the estimate, the profile interval and the
+Wald interval in the subtitle, one per line. Each joint profile shows the deviance over the
 grid as filled regions at the 50\%, 80\% and 95\% levels of a chi-squared
 distribution on two degrees of freedom, the estimate, and the ridges of
 the two marginal profiles (the value of one parameter that maximises the

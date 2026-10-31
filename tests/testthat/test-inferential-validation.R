@@ -41,7 +41,7 @@ test_that("independent MCMC seeds agree within estimated Monte Carlo error", {
     })
     estimates <- vapply(draws, mean, numeric(1))
     mcse <- vapply(draws, function(x) {
-      sqrt(var(x) / max(1, as.numeric(sns::ess(x))))
+      sqrt(var(x) / max(1, mcmc_effective_size(x)))
     }, numeric(1))
 
     differences <- abs(outer(estimates, estimates, "-"))
