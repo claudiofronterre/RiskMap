@@ -376,6 +376,14 @@ compute_observed_information <- function(objective, estimate, fit_bank,
 ##' information or certificate. The fit is then one of independent location
 ##' effects and the spatial scale is unresolved. `curvature_root`, if
 ##' given, seeds the optimisation with Newton steps (`optimise_on_bank()`).
+##'
+##' The stage ends with the outcome "no maximum", again without information
+##' or certificate, when the data are separated (`limits$separation`, from
+##' `find_separation()`, in which case the check for other maxima is skipped)
+##' or a regression coefficient of the fit or of its correction is at its
+##' bound (`find_coefficients_at_bound()`). The likelihood then rises towards
+##' the bound, the information vanishes along that direction, and a
+##' certificate in units of the resulting standard errors would be vacuous.
 ##' @noRd
 run_certified_stage <- function(engine, objective, penalty, start, budget,
                             validation_budget, seeds, lower, upper,
@@ -406,7 +414,7 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   check <- screen <- NULL
   separate <- ambiguous <- independent <- FALSE
   if (first_stage && !is.null(limits$dispersed) &&
-      is_valid_fit(optimised$fit)) {
+      is.null(limits$separation) && is_valid_fit(optimised$fit)) {
     checked <- check_other_maxima(engine, objective, penalty, optimised,
                                   fit_bank, lower, upper, limits,
                                   validation_budget, seeds[[4L]],
@@ -453,6 +461,20 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
     return(finish(record, "no valid fit",
                   "the estimated log-likelihood is not finite at the optimum"))
   }
+  no_maximum <- function(record, at_bound) {
+    record$coefficients_at_bound <- at_bound
+    finish(record, "no maximum", if (is.null(limits$separation)) {
+      paste("a regression coefficient reached the bound of the search, so",
+            "the likelihood appears to have no maximum")
+    } else {
+      paste("the data are separated by the regression coefficients, so the",
+            "likelihood has no maximum")
+    })
+  }
+  at_bound <- find_coefficients_at_bound(fit$par, limits, lower, upper)
+  if (!is.null(limits$separation) || length(at_bound)) {
+    return(no_maximum(record, at_bound))
+  }
   if (independent) {
     return(finish(record, "numerically independent", paste(
       "the fitted spatial correlation is numerically negligible, so the fit",
@@ -491,6 +513,16 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   record[names(certified)] <- certified
   record$timing$validation <- certified$first_validation$seconds +
     certified$second_validation$seconds
+  # The correction reaches a bound only along a direction where the
+  # information vanishes, and the certificate is then vacuous.
+  at_bound <- find_coefficients_at_bound(record$estimate, limits, lower,
+                                         upper)
+  if (length(at_bound)) {
+    record$certified <- FALSE
+    record$certificate <- NA_real_
+    record$information_root <- NULL
+    return(no_maximum(record, at_bound))
+  }
   finish(record, if (record$certified) "certified" else "not certified")
 }
 
@@ -704,6 +736,189 @@ is_valid_fit <- function(fit) {
   all(is.finite(fit$par)) && is.finite(fit$objective) && fit$objective < 1e99
 }
 
+##' Separation of the data by the regression coefficients
+##'
+##' The likelihood has no maximum when the data are separated (Albert and
+##' Anderson, 1984; Lesaffre and Albert, 1989): when, for some direction d of
+##' the regression coefficients, the linear predictor D d is zero at every
+##' observation with both positives and negatives (for Poisson counts, at
+##' every positive count), at most zero where there are no positives, at least
+##' zero where all are positive, and not zero everywhere. For an increasing
+##' inverse link, every conditional likelihood given the latent effects then
+##' increases along d, and so does the likelihood, their integral, whatever the
+##' covariance parameters. Its supremum is approached only as the
+##' coefficients tend to infinity. With no positives at all and an intercept,
+##' d is minus the intercept.
+##'
+##' The equalities restrict d to the null space of the rows with both
+##' outcomes. In that space a direction c that satisfies the inequalities
+##' A c >= 0 (`search_separating_direction()`) exists if and only if
+##' sum_i exp(-a_i' c) has no minimum, which Konis (2007) decides instead by
+##' linear programming. A direction is accepted only if it satisfies the
+##' conditions up to rounding, so the check never reports a separation that
+##' does not exist. Observations with a zero denominator carry no information
+##' and are ignored. Separating directions form a cone, and covariates are
+##' held fixed one at a time, while a direction remains, so that d changes
+##' few of them. Centring and scaling the covariates changes neither whether
+##' the data are separated nor which covariates d changes.
+##' @return NULL if no separation is found. Otherwise a list with the
+##' `direction` d, the separated `observations` (where D d is not zero), how
+##' many of them have no positives (`no_positives`) and how many have only
+##' positives (`only_positives`), the `coefficients` other than the intercept
+##' that d changes (indices of the columns of `D`), and `everywhere`, which is
+##' "no positives" or "only positives" when every observation is of that kind
+##' and NULL otherwise.
+##' @noRd
+find_separation <- function(D, y, units_m, family, tolerance = 1e-9) {
+  D <- as.matrix(D)
+  if (!ncol(D)) return(NULL)
+  informative <- units_m > 0
+  none <- informative & y == 0
+  every <- informative & !none & family == "binomial" & y == units_m
+  mixed <- informative & !none & !every
+  if (!any(none | every)) return(NULL)
+  signed <- (ifelse(every, 1, -1) * D)[none | every, , drop = FALSE]
+  # A separating direction that leaves the coefficients in `fixed` unchanged.
+  search <- function(fixed) {
+    basis <- compute_null_space(rbind(D[mixed, , drop = FALSE],
+                                      diag(ncol(D))[fixed, , drop = FALSE]),
+                                tolerance)
+    if (!ncol(basis)) return(NULL)
+    rows <- signed %*% basis
+    lengths <- sqrt(rowSums(rows^2))
+    # Rows that no direction in the null space changes add no condition.
+    keep <- lengths > tolerance * max(lengths)
+    if (!any(keep)) return(NULL)
+    combination <- search_separating_direction(rows[keep, , drop = FALSE] /
+                                                 lengths[keep], tolerance)
+    if (is.null(combination)) NULL else drop(basis %*% combination)
+  }
+  direction <- search(integer())
+  if (is.null(direction)) return(NULL)
+  constant <- apply(D, 2L, function(column) all(column == column[1L]))
+  # Separating directions form a cone, and one that changes fewer
+  # covariates names the cause more plainly.
+  fixed <- integer()
+  for (column in setdiff(order(abs(direction)), which(constant))) {
+    reduced <- search(c(fixed, column))
+    if (!is.null(reduced)) {
+      direction <- reduced
+      fixed <- c(fixed, column)
+    }
+  }
+  predictor <- drop(D %*% direction)
+  separated <- informative &
+    abs(predictor) > tolerance * max(abs(predictor))
+  changed <- abs(direction) > tolerance * max(abs(direction))
+  list(
+    direction = direction, observations = unname(which(separated)),
+    no_positives = sum(separated & none),
+    only_positives = sum(separated & every),
+    coefficients = unname(which(changed & !constant)),
+    everywhere = if (all(none[informative])) {
+      "no positives"
+    } else if (all(every[informative])) {
+      "only positives"
+    }
+  )
+}
+
+##' Orthonormal basis of the null space of the rows of a matrix
+##'
+##' Singular values below `tolerance` times the largest count as zero. A
+##' matrix without rows has the whole space as its null space.
+##' @noRd
+compute_null_space <- function(rows, tolerance = 1e-9) {
+  columns <- ncol(rows)
+  if (!nrow(rows)) return(diag(columns))
+  decomposition <- svd(rows, nu = 0L, nv = columns)
+  singular <- c(decomposition$d, numeric(columns))[seq_len(columns)]
+  rank <- if (singular[1L] > 0) sum(singular > tolerance * singular[1L]) else 0L
+  decomposition$v[, seq_len(columns) > rank, drop = FALSE]
+}
+
+##' A direction c with A c >= 0 and A c not zero, if one exists
+##'
+##' `rows` is A, with unit rows and full column rank. A direction exists if
+##' and only if h(c) = sum_i exp(-a_i' c) has no minimum. Without one, h
+##' grows in every direction, and Newton's method converges to its minimum,
+##' with steps that shrink to zero. With one, the steps keep a length of order
+##' one along it, the terms of the rows that it separates vanish, and the
+##' curvature becomes singular. The direction is then the iterate itself, or
+##' its part orthogonal to the rows whose terms remain, when that satisfies
+##' the inequalities up to rounding. With a single column, both signs are
+##' checked directly.
+##' @return The direction, or NULL if none is found.
+##' @noRd
+search_separating_direction <- function(rows, tolerance = 1e-9,
+                                        maximum_iterations = 200L) {
+  satisfies <- function(direction) {
+    margins <- drop(rows %*% direction)
+    largest <- max(abs(margins))
+    largest > 0 && all(margins >= -tolerance * largest)
+  }
+  if (ncol(rows) == 1L) {
+    if (satisfies(1)) return(1)
+    if (satisfies(-1)) return(-1)
+    return(NULL)
+  }
+  objective <- function(direction) sum(exp(-drop(rows %*% direction)))
+  direction <- numeric(ncol(rows))
+  value <- objective(direction)
+  for (iteration in seq_len(maximum_iterations)) {
+    if (satisfies(direction)) return(direction)
+    terms <- exp(-drop(rows %*% direction))
+    gradient <- -drop(crossprod(rows, terms))
+    step <- tryCatch(solve(crossprod(rows * terms, rows), -gradient),
+                     error = function(error) NULL)
+    if (is.null(step)) break
+    # A finite minimum: no direction exists.
+    if (sqrt(sum(step^2)) <= 1e-8 * max(1, sqrt(sum(direction^2)))) {
+      return(NULL)
+    }
+    accepted <- FALSE
+    for (halving in 0:30) {
+      candidate <- direction + step / 2^halving
+      candidate_value <- objective(candidate)
+      if (is.finite(candidate_value) && candidate_value < value) {
+        accepted <- TRUE
+        break
+      }
+    }
+    if (!accepted) break
+    direction <- candidate
+    value <- candidate_value
+  }
+  if (satisfies(direction)) return(direction)
+  margins <- drop(rows %*% direction)
+  for (fraction in c(0.5, 0.1)) {
+    remaining <- margins <= fraction * max(margins)
+    basis <- compute_null_space(rows[remaining, , drop = FALSE], tolerance)
+    if (!ncol(basis)) next
+    projected <- drop(basis %*% crossprod(basis, direction))
+    if (satisfies(projected)) return(projected)
+  }
+  NULL
+}
+
+##' Regression coefficients that reached the bound of the search
+##'
+##' A coefficient within `margin` of its bound has ended where the likelihood
+##' would rise further without the bound, as when the data are separated in a
+##' way that `find_separation()` did not find. The bounds of the coefficients
+##' (30 in absolute value in `glgpm_nong_adaptive()`) are on the linear
+##' predictor per standard deviation of a standardised covariate, where one
+##' unit less makes no difference to any finite survey.
+##' @return Indices of the coefficients, among `limits$coefficient_index`.
+##' @noRd
+find_coefficients_at_bound <- function(estimate, limits, lower, upper,
+                                       margin = 1) {
+  index <- limits$coefficient_index
+  if (!length(index)) return(integer())
+  index[estimate[index] <= lower[index] + margin |
+          estimate[index] >= upper[index] - margin]
+}
+
 ##' Choose among candidate maxima of the estimated log-likelihood
 ##'
 ##' The first candidate is the fitted maximum and `values` are the
@@ -887,6 +1102,10 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' alarms when it holds their settings (`make_short_scale_screen()`). Each later stage starts its optimisation with
 ##' Newton steps on the previous stage's information when every parameter was
 ##' free.
+##' `coefficient_index` gives the regression coefficients, whose estimates
+##' are checked against their bounds, and `separation`, from
+##' `find_separation()`, records data whose likelihood has no maximum. Either
+##' ends the fit with the outcome "no maximum" (`run_certified_stage()`).
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               penalty = NULL, dispersed = NULL,
@@ -898,7 +1117,9 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               variance_index = integer(),
                               linked_index = list(),
                               boundary_log_variance = -9,
-                              near_zero_log_variance = -4) {
+                              near_zero_log_variance = -4,
+                              coefficient_index = integer(),
+                              separation = NULL) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   validation_budget <- as.integer(validation_budget)
@@ -906,7 +1127,8 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     variance_index = variance_index, linked_index = linked_index,
     boundary_log_variance = boundary_log_variance,
     near_zero_log_variance = near_zero_log_variance, tolerance = tolerance,
-    dispersed = dispersed
+    dispersed = dispersed, coefficient_index = coefficient_index,
+    separation = separation
   )
   stream <- function(offset) {
     as.integer(((seed - 1 + offset) %% .Machine$integer.max) + 1)
@@ -972,7 +1194,9 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     better_maximum = isTRUE(history[[1L]]$separate_maximum),
     ambiguous_maxima = isTRUE(history[[1L]]$ambiguous_maxima),
     certified = isTRUE(last$certified), certificate = last$certificate,
-    reason = last$reason, budget = last$budget,
+    reason = last$reason, separation = separation,
+    coefficients_at_bound = last$coefficients_at_bound %||% integer(),
+    budget = last$budget,
     validation_budget = last$validation_budget,
     proposal = engine$proposal_type(),
     boundary_parameters = last$boundary_parameters,

@@ -192,6 +192,21 @@ suggests a nugget model, a fixed scale or the PC prior. If the information
 matrix is still singular, fitting stops instead of drawing more samples. Each
 case produces a plain-language warning.
 
+- Certified MCML recognises data whose likelihood has no maximum, which
+previously could be certified with a regression coefficient at the bound of the
+search. When no observation has a positive, when every individual tested is
+positive, or more generally when the covariates separate the data (for
+example, a category of a factor whose locations have no positives), the
+likelihood increases without limit as some coefficients tend to infinity. An
+exact check of the data finds such a separation before the fit, and a
+coefficient that reaches the bound of the search is treated in the same way.
+The fit then ends with the outcome "no maximum", without standard errors or
+certificate, and a warning names the cause and the covariates involved. On a
+simulated survey with no positives among 5,000 individuals tested, six of ten
+runs had been certified with an intercept of -30 and a standard error of about
+23,500. Surveys with at least one positive in each such category keep a finite
+maximum and are fitted as before.
+
 - `maxim_integrand()` now takes `denominator` instead of `units_m`, matching
 `glgpm()`. Its documentation no longer lists the Gaussian family, which it has
 never supported, and describes the Newton-type optimisation it actually uses.
