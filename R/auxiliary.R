@@ -632,7 +632,16 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##' @param ... other parameters.
 ##' @param level Confidence level for intervals (default 0.95).
 ##' @return A list of class \code{"summary.RiskMap"} with parameter estimates,
-##'   standard errors, and confidence intervals.
+##'   standard errors, and confidence intervals. For binomial and Poisson
+##'   models, its component \code{mcml} reports certified Monte Carlo maximum
+##'   likelihood: \code{certificate} (an approximate bound, with probability
+##'   \code{level}, on the Monte Carlo error of the estimate in statistical
+##'   standard errors, \code{NA} when there is none), \code{tolerance},
+##'   \code{certified}, \code{outcome}, \code{correction_refused} (whether
+##'   the Newton correction of the last stage did not converge),
+##'   \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
+##'   last stage) and \code{notes}, short notes on what the warnings of the
+##'   fit reported. \code{mcml} is \code{NULL} for Gaussian models.
 ##' @method summary RiskMap
 ##' @examples
 ##' data(italy_sim)
@@ -801,6 +810,7 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
   res$call               <- object$call %||% NULL
   res$link_name          <- link_name
   res$invlink_expression <- inv_expr
+  res$mcml               <- summarise_mcml_fit(object)
 
   class(res) <- "summary.RiskMap"
   return(res)
@@ -865,6 +875,16 @@ print.summary.RiskMap <- function(x, ...) {
   cat("\nLog-likelihood: ", x$log_lik, "\n", sep = "")
   if (identical(x$family, "gaussian") && !is.null(x$aic))
     cat("AIC: ", x$aic, "\n", sep = "")
+
+  if (!is.null(x$mcml)) {
+    cat("\nMonte Carlo maximum likelihood\n")
+    write_wrapped(c(describe_mcml_certificate(x$mcml),
+                    describe_mcml_draws(x$mcml)))
+    if (length(x$mcml$notes)) {
+      cat("\nNotes\n")
+      write_wrapped(x$mcml$notes, bullet = "- ")
+    }
+  }
 
   return(invisible(x))
 }

@@ -801,7 +801,8 @@ maximise_laplace <- function(objective, start, latent_dimension, lower,
 ##' dispersed starts: spatial variance 0.25 or 4, crossed with a scale equal
 ##' to that distance or half the largest distance. With `messages = TRUE` the
 ##' user is told when and why the refit runs, with distances in the model's
-##' units.
+##' units. The scale quoted is that of the fit on the fitting draws, before
+##' the Newton correction that gives the returned estimate.
 ##' @noRd
 make_dispersed_starts <- function(layout, distances, distance_scale = 1,
                              messages = FALSE, trigger_fraction = 0.5) {
@@ -810,8 +811,9 @@ make_dispersed_starts <- function(layout, distances, distance_scale = 1,
   announce <- function(log_phi) {
     if (!messages) return(invisible(NULL))
     message(
-      "The fitted spatial scale (phi = ",
-      signif(exp(log_phi) * distance_scale, 3), ") is below half the median ",
+      "The spatial scale of the first fit (phi = ",
+      signif(exp(log_phi) * distance_scale, 3), ", before its Monte Carlo ",
+      "correction) is below half the median ",
       "distance between neighbouring locations (",
       signif(spacing * distance_scale, 3), "). In sparse data a maximum at so ",
       "short a scale can be a local one, with a higher maximum at a longer ",
@@ -1132,7 +1134,9 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
 ##' maximum, when the estimate comes from a maximum separate from the one
 ##' first fitted, and when two separate maxima fit about equally well on
 ##' independent draws. Neither of the last two proves that no higher maximum
-##' exists elsewhere.
+##' exists elsewhere. The scale quoted for the kept maximum is that of the
+##' returned estimate, after the Newton correction, and the other maximum's
+##' is that of its fit on the fitting draws.
 ##' @noRd
 report_maxima_check <- function(fit, layout, distance_scale) {
   alarm <- fit$maxima_screen$alarm
@@ -1162,6 +1166,8 @@ report_maxima_check <- function(fit, layout, distance_scale) {
     rest[rest$maximum == check$maximum[[1L]], ][1L, ]
   }
   scale <- function(row) signif(exp(row$log_phi) * distance_scale, 3)
+  estimated_scale <- signif(exp(fit$estimate[[layout$index$phi]]) *
+                              distance_scale, 3)
   difference <- paste0(
     signif(kept$independent_log_likelihood - other$independent_log_likelihood,
            2),
@@ -1179,7 +1185,7 @@ report_maxima_check <- function(fit, layout, distance_scale) {
       "The check for other maxima found separate maxima of the likelihood ",
       "that fit about equally well. They differ by ", difference, ". The ",
       "estimate is taken from the higher one, with spatial scale ",
-      scale(kept), ". The other has scale ", scale(other), ".",
+      estimated_scale, ". The other has scale ", scale(other), ".",
       profile_advice,
       call. = FALSE
     )
@@ -1188,7 +1194,7 @@ report_maxima_check <- function(fit, layout, distance_scale) {
       "The check for other maxima found a separate maximum of the ",
       "likelihood, higher than the one reached from the starting values by ",
       difference, ", and the estimate is taken from it (spatial scale ",
-      scale(kept), " instead of ", scale(other), ").",
+      estimated_scale, " instead of ", scale(other), ").",
       profile_advice,
       call. = FALSE
     )
@@ -1227,14 +1233,15 @@ report_numerically_independent <- function(record, pc_advice = "") {
 ##' The comparison with the limit has not shown that the fitted likelihood is
 ##' above it at the current Monte Carlo precision. That is not evidence that
 ##' the maximum is at zero, so the estimate is assessed as usual and only this
-##' warning is given.
+##' warning is given. `scale` is the spatial scale of the returned estimate,
+##' in the model's distance units, which the warning quotes rather than the
+##' scale of the fit on the fitting draws compared with the limit.
 ##' @noRd
-report_near_limit <- function(record, distance_scale = 1) {
+report_near_limit <- function(record, scale) {
   near <- record$near_limit
   if (is.null(near)) return(invisible(NULL))
   warning(
-    "The fitted spatial scale (phi = ", signif(exp(near$log_phi) *
-                                                  distance_scale, 3),
+    "The estimated spatial scale (phi = ", signif(scale, 3),
     ") is short, and the fitted likelihood is not clearly distinguishable from ",
     "the limit with independent location effects at the current Monte Carlo ",
     "precision (difference ", signif(near$gap, 2), ", standard error ",
@@ -1299,7 +1306,8 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
     )
   }
   report_maxima_check(fit, layout, distance_scale)
-  report_near_limit(fit$maxima_screen, distance_scale)
+  report_near_limit(fit$maxima_screen,
+                    exp(fit$estimate[[layout$index$phi]]) * distance_scale)
   draws <- paste0(format(fit$budget, big.mark = ","), " fitting and ",
                   format(fit$validation_budget, big.mark = ","),
                   " validation draws")
@@ -1316,14 +1324,23 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
       call. = FALSE
     )
   } else if (!fit$certified) {
+    refused <- isTRUE(fit$history[[length(fit$history)]]$residual_refused)
     warning(
       "The Monte Carlo precision of the estimate could not be established ",
       "within the permitted stages and draws (", draws, " at the last ",
-      "stage). The ",
-      "approximate 95% bound on its Monte Carlo error is ",
-      signif(fit$certificate, 2), " statistical standard errors, above the ",
-      "tolerance of ", tolerance, ". Increase 'max_samples' or 'max_stages' ",
-      "in set_control_mcml(), or relax 'tolerance'.",
+      "stage). ",
+      if (refused) paste0(
+        "At the last stage the Newton correction of the estimate did not ",
+        "converge on the validation draws, so the approximate 95% bound of ",
+        signif(fit$certificate, 2), " statistical standard errors on its ",
+        "Monte Carlo error may not hold. Increase 'max_samples' in ",
+        "set_control_mcml()."
+      ) else paste0(
+        "The approximate 95% bound on its Monte Carlo error is ",
+        signif(fit$certificate, 2), " statistical standard errors, above the ",
+        "tolerance of ", tolerance, ". Increase 'max_samples' or 'max_stages' ",
+        "in set_control_mcml(), or relax 'tolerance'."
+      ),
       call. = FALSE
     )
   } else if (messages) {
