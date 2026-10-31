@@ -56,6 +56,10 @@ describe_mcml_certificate <- function(mcml, caveat = TRUE) {
       "No certificate: the fit is numerically one of independent location ",
       "effects, and the certificate needs an interior maximum."
     ),
+    "no maximum" = paste0(
+      "No certificate: the likelihood has no maximum, so there is no ",
+      "maximum likelihood estimate whose Monte Carlo error could be bounded."
+    ),
     if (mcml$correction_refused) {
       paste0(
         "Not certified: the Newton correction of the estimate did not ",
@@ -91,9 +95,25 @@ describe_mcml_draws <- function(mcml) {
 ##'
 ##' One sentence for each condition that a warning reported during the fit,
 ##' read from the flags of the `optimizer` attribute, with the advice that
-##' the warning gave.
+##' the warning gave. A fit whose likelihood has no maximum gets that note
+##' alone, since the others describe a maximum.
 ##' @noRd
 describe_mcml_notes <- function(optimizer) {
+  if (isTRUE(optimizer$mcml_no_maximum)) {
+    return(paste0(
+      "The likelihood has no maximum, because ",
+      switch(optimizer$mcml_separation$everywhere %||% "",
+             "no positives" = "no observation has a positive",
+             "only positives" = "every individual tested is positive",
+             if (is.null(optimizer$mcml_separation)) {
+               "a regression coefficient reached the bound of the search"
+             } else {
+               "the covariates separate the data"
+             }),
+      ". The estimate is not a maximum likelihood estimate and has no ",
+      "standard errors."
+    ))
+  }
   boundary <- optimizer$mcml_boundary
   single <- length(boundary) == 1L
   notes <- c(
