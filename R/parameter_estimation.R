@@ -499,6 +499,73 @@ glgpm <- function(formula,
     starting_diagnostics <- selection$diagnostics
   }
 
+  res <- fit_glgpm_design(
+    y = y, D = D, coords = coords, ID_coords = ID_coords, ID_re = ID_re,
+    s_unique = s_unique, re_unique = re_unique,
+    units_m = if (not_gaussian) units_m, cov_offset = cov_offset,
+    kappa = kappa, fix_tau2 = fix_tau2,
+    fix_var_me = fix_var_me, family = family, invlink = invlink,
+    start_pars = start_pars, control_mcmc = control_mcmc,
+    control_mcml = control_mcml, seed = seed,
+    return_samples = return_samples, messages = messages
+  )
+
+  res$y <- y
+  res$D <- original_D
+  res$coords <- coords
+  if (not_gaussian) {
+    attr(res, "starting_values") <- starting_diagnostics
+  }
+  res$ID_coords <- ID_coords
+  if(n_re > 0) {
+    res$re <- re_unique_f
+    res$ID_re <- as.data.frame(ID_re)
+    colnames(res$ID_re) <- names_re
+  } else {
+    res["re"] <- list(NULL)
+    res["ID_re"] <- list(NULL)
+  }
+  res$fix_tau2 <- fix_tau2
+  res["fix_var_me"] <- list(fix_var_me)
+  res$formula <- formula
+  res$family <- family
+  res$distance_units <- distance_units
+  # Retain fitting controls as metadata so a fitted object can serve as a
+  # complete specification when refitted to simulated or held-out data.
+  attr(res, "control_mcml") <- control_mcml
+  res$data <- data
+  res$input_crs <- input_crs
+  res$kappa <- kappa
+  if(not_gaussian) res$units_m <- units_m
+  res$cov_offset <- cov_offset
+  res$call <- match.call()
+  if (!not_gaussian) {
+    gaussian_fitted <- gaussian_conditional_fitted(res)
+    res$linear_predictors <- gaussian_fitted
+    res$fitted_values <- gaussian_fitted
+  }
+  return(res)
+}
+
+##' Fit a geostatistical model to its design
+##'
+##' The estimation step of [glgpm()], from validated inputs and complete
+##' starting values: the response `y`, the design matrix `D` in the supplied
+##' covariate units, the unique coordinates `coords` in the model's distance
+##' units, the location and random-effect indices, the denominators and
+##' offsets, and the correlation and nugget settings. Coordinates and
+##' covariates are rescaled for fitting and the estimate is returned in the
+##' supplied units, with the seed used (`NULL` for Gaussian models) and the
+##' scalings as attributes. It makes no call to sf, so it can run in forked
+##' processes, where GDAL and PROJ can deadlock.
+##' @noRd
+fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
+                             re_unique, units_m, cov_offset, kappa, fix_tau2,
+                             fix_var_me, family, invlink, start_pars,
+                             control_mcmc, control_mcml, seed,
+                             return_samples, messages) {
+  not_gaussian <- family != "gaussian"
+  n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
   spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
   fitting_coords <- spatial_scaling$coordinates
   fitting_start_phi <- spatial_scaling$phi
@@ -520,7 +587,7 @@ glgpm <- function(formula,
     gaussian_layout <- cov_par_layout(ncol(D), fix_tau2 = fix_tau2,
                                       sigma2_me = is.null(fix_var_me), n_re = n_re)
     res <- glgpm_lm(y = y-cov_offset, D, fitting_coords,
-            kappa = inter_f$gp_spec$kappa,
+            kappa = kappa,
             ID_coords, ID_re, s_unique, re_unique,
             fix_var_me, fix_tau2,
             start_beta = start_pars[["beta"]],
@@ -543,7 +610,7 @@ glgpm <- function(formula,
     fitting_reference$phi <- fitting_start_phi
     res <- glgpm_nong_adaptive(
       y = y, D = D, coords = fitting_coords, units_m = units_m,
-      kappa = inter_f$gp_spec$kappa, reference_pars = fitting_reference,
+      kappa = kappa, reference_pars = fitting_reference,
       cov_offset = cov_offset, ID_coords = ID_coords, ID_re = ID_re,
       fix_tau2 = fix_tau2, family = family, invlink = invlink,
       control_mcml = control_mcml, seed = seed,
@@ -612,45 +679,10 @@ glgpm <- function(formula,
   # shift restores the original distance units without changing its Hessian.
   res$estimate$phi <- res$estimate$phi +
     log(spatial_scaling$distance_scale)
-
-  res$y <- y
-  res$D <- original_D
   attr(res, "design_scaling") <- design_scaling[c("center", "scale")]
-  res$coords <- coords
   attr(res, "distance_scale") <- spatial_scaling$distance_scale
-  if (not_gaussian) {
-    attr(res, "starting_values") <- starting_diagnostics
-  }
-  res$ID_coords <- ID_coords
-  if(n_re > 0) {
-    res$re <- re_unique_f
-    res$ID_re <- as.data.frame(ID_re)
-    colnames(res$ID_re) <- names_re
-  } else {
-    res["re"] <- list(NULL)
-    res["ID_re"] <- list(NULL)
-  }
-  res$fix_tau2 <- fix_tau2
-  res["fix_var_me"] <- list(fix_var_me)
-  res$formula <- formula
-  res$family <- family
-  res$distance_units <- distance_units
-  # Retain fitting controls as metadata so a fitted object can serve as a
-  # complete specification when refitted to simulated or held-out data.
-  attr(res, "control_mcml") <- control_mcml
   res["seed"] <- list(if (not_gaussian) seed)
-  res$data <- data
-  res$input_crs <- input_crs
-  res$kappa <- kappa
-  if(not_gaussian) res$units_m <- units_m
-  res$cov_offset <- cov_offset
-  res$call <- match.call()
-  if (!not_gaussian) {
-    gaussian_fitted <- gaussian_conditional_fitted(res)
-    res$linear_predictors <- gaussian_fitted
-    res$fitted_values <- gaussian_fitted
-  }
-  return(res)
+  res
 }
 
 ##' Conditional fitted mean for a Gaussian RiskMap model

@@ -355,6 +355,17 @@ correction. When the repeated Newton correction does not converge at the last
 stage, the warning says so, instead of describing the bound as above the
 tolerance.
 
+- `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
+Poisson fit at its estimate, refits the model to each from the estimate, and
+reports for each parameter the bootstrap median, bias, standard error and
+percentile and bias-corrected (BC) intervals. The BC interval corrects for the
+downward bias of the estimators of the spatial variance and the scale, which
+shifts percentile intervals the wrong way. Each replicate has its own seed,
+10000 apart from the next so that no two replicates share a Monte Carlo
+stream, and the results are the same for any number of `cores`. Failed refits
+are recorded instead of stopping the bootstrap. `plot()` draws a histogram of
+each parameter with the estimate and both intervals.
+
 ## Predictions
 
 - Grids created by `create_grid()` now have the class `RiskMap_grid` before

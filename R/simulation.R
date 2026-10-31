@@ -197,6 +197,30 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   if (!"surface" %in% what && !is.null(prediction_grid)) {
     stop("'prediction_grid' requires 'surface' in 'what'.", call. = FALSE)
   }
+  prepared <- prepare_simulation(model, what, sample_locations,
+                                 prediction_grid)
+  samples <- draw_simulation(prepared, nsim, seed)
+  out <- list(locations = prepared$locations, samples = samples, nsim = nsim,
+              model = model, what = names(prepared$locations), seed = seed)
+  class(out) <- "RiskMap_simulation"
+  out
+}
+
+#' Prepare the locations, inputs and covariance factor of a simulation
+#'
+#' Everything `simulate_glgpm()` needs before drawing: the locations in the
+#' model CRS, the fixed part of the linear predictor and the denominators at
+#' each location set, the indices of the unique coordinates, the group labels
+#' of the `re()` terms and the factor of the spatial covariance. This step
+#' uses sf. `draw_simulation()` does not, so the draws can run in forked
+#' processes.
+#'
+#' @param model A `RiskMap_simulation_model`.
+#' @inheritParams simulate_glgpm
+#' @return A list used by `draw_simulation()`.
+#' @noRd
+prepare_simulation <- function(model, what, sample_locations = NULL,
+                               prediction_grid = NULL) {
   locations <- list()
   original <- is.null(sample_locations)
   if ("data" %in% what) {
@@ -244,6 +268,31 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
            call. = FALSE)
     })
   }
+  group_labels <- lapply(model$re_terms, function(term) {
+    unlist(lapply(locations, function(x) as.character(x[[term]])))
+  })
+  names(group_labels) <- model$re_terms
+  list(model = model, locations = locations, inputs = inputs, sizes = sizes,
+       ids = ids, n_unique = n_unique,
+       root = if (model$parameters$sigma2 > 0) root,
+       group_labels = group_labels)
+}
+
+#' Draw simulations from a prepared simulation
+#'
+#' @param prepared Output from `prepare_simulation()`.
+#' @inheritParams simulate_glgpm
+#' @return The `samples` of a `RiskMap_simulation`: one array per location
+#'   set, indexed by location, simulation and component.
+#' @noRd
+draw_simulation <- function(prepared, nsim, seed = NULL) {
+  model <- prepared$model
+  inputs <- prepared$inputs
+  sizes <- prepared$sizes
+  ids <- prepared$ids
+  n_unique <- prepared$n_unique
+  root <- prepared$root
+  pars <- model$parameters
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
   if (!is.null(seed)) {
     restore_seed <- preserve_random_seed()
@@ -259,7 +308,7 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   nugget <- nugget[ids, , drop = FALSE]
   grouped <- matrix(0, sum(sizes), nsim)
   for (term in model$re_terms) {
-    labels <- unlist(lapply(locations, function(x) as.character(x[[term]])))
+    labels <- prepared$group_labels[[term]]
     groups <- match(labels, unique(labels))
     draws <- matrix(rnorm(length(unique(labels)) * nsim,
                           sd = sqrt(pars$sigma2_re[[term]])),
@@ -272,7 +321,7 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   mu <- matrix(mu, nrow(eta), nsim)
   samples <- list()
   start <- 0L
-  for (name in names(locations)) {
+  for (name in names(sizes)) {
     rows <- start + seq_len(sizes[[name]])
     components <- c("spatial_effect", "nugget", "group_effect",
                     "linear_predictor", "mean")
@@ -300,10 +349,7 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
                              dimnames = list(NULL, NULL, components))
     start <- start + sizes[[name]]
   }
-  out <- list(locations = locations, samples = samples, nsim = nsim,
-              model = model, what = names(locations), seed = seed)
-  class(out) <- "RiskMap_simulation"
-  out
+  samples
 }
 
 #' Extract simulated values in tidy form
