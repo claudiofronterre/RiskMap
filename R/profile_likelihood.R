@@ -1,13 +1,39 @@
 ##' Profile likelihood of a fitted geostatistical model
 ##'
-##' Computes profile likelihoods of a binomial or Poisson model fitted by
-##' [glgpm()] with certified Monte Carlo maximum likelihood: for each chosen
-##' parameter, the log-likelihood maximised over all the other parameters on a
-##' grid of values, and for each chosen pair, the same over a grid of pairs.
-##' The Monte Carlo likelihood is evaluated on one fixed bank of `n_draws`
+##' Computes profile likelihoods of a model fitted by [glgpm()]: for each
+##' chosen parameter, the log-likelihood maximised over all the other
+##' parameters on a grid of values, and for each chosen pair, the same over a
+##' grid of pairs. Profiles are available for linear geostatistical
+##' (Gaussian) models and for binomial and Poisson models fitted with
+##' certified Monte Carlo maximum likelihood. For a binomial or Poisson model
+##' the Monte Carlo likelihood is evaluated on one fixed bank of `n_draws`
 ##' standard normal draws with the importance distribution anchored at the
 ##' estimate, so the profiles are smooth functions of the parameters. Use
 ##' [plot.RiskMap_profile()] to draw them.
+##'
+##' The likelihood of a Gaussian model is exact, so there is no bank of draws
+##' and `n_draws` and `seed` are not used. For each value of the covariance
+##' parameters the regression coefficients that maximise the likelihood are
+##' found by generalised least squares, so each point is a maximisation over
+##' the covariance parameters only. The parameters are those of
+##' `summary()`, with its labels: the regression coefficients, the spatial
+##' variance and scale, the variance of the nugget (`tau2`) when it is
+##' estimated, the measurement error variance (`sigma2_me`) unless it is
+##' fixed by `fix_var_me`, and the variances of the random effects. Since
+##' points of an exact likelihood are cheap, each end of a profile interval
+##' is refined until the deviance of a solved point is within 0.01 of the
+##' cut-off. Grid steps of the variances and the scale are at most 1 on the
+##' logarithmic scale, so that a variance estimated near zero, whose standard
+##' error is huge, is still profiled, and each point of a joint profile is
+##' solved from its neighbour's solution and from the estimate. A profile
+##' that stays below the cut-off down to the lower bound of a variance (about
+##' \eqn{e^{-20}}) shows that the data cannot tell that variance from zero,
+##' and its interval is open there.
+##'
+##' The smoothness \eqn{\kappa} of the Matern correlation stays fixed at the
+##' value used in the fit. It can be profiled by refitting the model over a
+##' set of values of \eqn{\kappa} and comparing the maximised
+##' log-likelihoods (`log_lik`) of the fits.
 ##'
 ##' Grids are centred at the estimate on the scale on which the model is fitted
 ##' (the logarithm for variances and the scale) and span `span` standard errors
@@ -32,28 +58,33 @@
 ##' profile is higher than the estimate, the estimate is not the highest
 ##' maximum found, and a message says so.
 ##'
-##' Each point is a maximisation of the Monte Carlo likelihood over the other
+##' Each point is a maximisation of the likelihood over the other
 ##' parameters, so the time grows with the number of points and of parameters.
-##' A model that takes a minute to fit can take tens of seconds per point.
+##' A binomial or Poisson model that takes a minute to fit can take tens of
+##' seconds per point.
 ##' Joint profiles cost `n_grid^2` points each and are computed only when
 ##' `pairs` asks for them. With `messages = TRUE` and one core the time left
 ##' is estimated after the first parameter. `cores` runs independent parts in
 ##' parallel.
 ##'
-##' @param fitted A `RiskMap` object from [glgpm()] for a binomial or Poisson
-##'   model.
+##' @param fitted A `RiskMap` object from [glgpm()] for a Gaussian model, or
+##'   for a binomial or Poisson model fitted with certified Monte Carlo
+##'   maximum likelihood.
 ##' @param parameters Names of the parameters to profile one at a time, as in
 ##'   `names(unlist(fitted$estimate))` (the prefix `beta.` can be left out).
-##'   The default is every parameter.
+##'   For a Gaussian model the nugget is `tau2`, its variance, in place of
+##'   `nu2`, its ratio to the spatial variance. The default is every
+##'   parameter.
 ##' @param pairs A list of pairs of parameter names for joint profiles, for
 ##'   example `list(c("sigma2", "phi"))`. The default is none.
 ##' @param n_points Number of points of each marginal grid before any
 ##'   extension, and the most points on each side of the estimate.
 ##' @param n_grid Number of points along each side of a joint grid.
 ##' @param span Half-width of the grids, in standard errors.
-##' @param n_draws Number of Monte Carlo draws in the bank.
+##' @param n_draws Number of Monte Carlo draws in the bank. Not used for a
+##'   Gaussian model.
 ##' @param seed Seed of the bank. The random number state of the session is
-##'   restored afterwards.
+##'   restored afterwards. Not used for a Gaussian model.
 ##' @param level Confidence level of the reported profile intervals.
 ##' @param cores Number of processes. With more than one, the two sides of
 ##'   each marginal profile, the ends of the intervals and the joint profiles
@@ -67,9 +98,17 @@
 ##' @return An object of class `RiskMap_profile`: a list with the marginal
 ##'   profiles (`marginal`), the joint profiles (`joint`), the intervals
 ##'   (`intervals`), the estimate and the maximum of the log-likelihood on the
-##'   bank (`estimate`, `max_loglik`) and the settings.
+##'   bank, or of the exact likelihood (`estimate`, `max_loglik`), and the
+##'   settings.
 ##' @examples
 ##' \donttest{
+##' data(galicia)
+##' fit <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
+##'              family = "gaussian", distance_units = "km", messages = FALSE)
+##' profiles <- profile(fit, pairs = list(c("sigma2", "phi")))
+##' profiles
+##' plot(profiles)
+##'
 ##' data(liberia)
 ##' liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 ##' fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
@@ -89,12 +128,15 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             n_draws = 5000L, seed = 1L, level = 0.95,
                             cores = 1L, messages = TRUE, ...) {
   stopifnot(inherits(fitted, "RiskMap"))
-  if (!fitted$family %in% c("binomial", "poisson") ||
-      is.null(fitted$mcml_history)) {
-    stop("Profiles are available for binomial and Poisson models fitted by ",
-         "certified Monte Carlo maximum likelihood.", call. = FALSE)
+  gaussian <- identical(fitted$family, "gaussian")
+  if (!gaussian && (!fitted$family %in% c("binomial", "poisson") ||
+                    is.null(fitted$mcml_history))) {
+    stop("Profiles are available for Gaussian models, and for binomial and ",
+         "Poisson models fitted by certified Monte Carlo maximum likelihood.",
+         call. = FALSE)
   }
-  check_profile_settings(n_points, n_grid, span, n_draws, level)
+  check_profile_settings(n_points, n_grid, span, if (!gaussian) n_draws,
+                         level)
   stopifnot("'cores' must be a positive whole number" =
               is.numeric(cores) && length(cores) == 1L && cores >= 1 &&
               cores == round(cores))
@@ -106,10 +148,15 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
   }
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
-  if (messages) {
-    message("Re-maximising the likelihood on a bank of ", n_draws, " draws...")
+  if (gaussian) {
+    problem <- make_gaussian_profile_problem(fitted)
+  } else {
+    if (messages) {
+      message("Re-maximising the likelihood on a bank of ", n_draws,
+              " draws...")
+    }
+    problem <- make_profile_problem(fitted, n_draws, seed)
   }
-  problem <- make_profile_problem(fitted, n_draws, seed)
   parameters <- match_profile_parameters(problem, parameters %||% problem$names)
   pairs <- lapply(pairs %||% list(), function(pair) {
     match_profile_parameters(problem, pair)
@@ -168,7 +215,8 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
     estimate = problem$estimate, standard_errors = problem$standard_errors,
     labels = problem$labels, max_loglik = max_loglik,
     higher_than_estimate = higher, level = level,
-    settings = list(n_draws = n_draws, seed = seed, span = span)
+    settings = if (gaussian) list(span = span) else
+      list(n_draws = n_draws, seed = seed, span = span)
   ), class = "RiskMap_profile")
 }
 
@@ -206,14 +254,15 @@ format_profile_time <- function(seconds) {
   paste(signif(seconds / 3600, 2), "hours")
 }
 
-##' Check the settings of a profile
+##' Check the settings of a profile, without `n_draws` when it is `NULL`
 ##' @noRd
 check_profile_settings <- function(n_points, n_grid, span, n_draws, level) {
   stopifnot(
     "'n_points' must be at least 5" = is.numeric(n_points) && n_points >= 5,
     "'n_grid' must be at least 3" = is.numeric(n_grid) && n_grid >= 3,
     "'span' must be positive" = is.numeric(span) && span > 0,
-    "'n_draws' must be at least 100" = is.numeric(n_draws) && n_draws >= 100,
+    "'n_draws' must be at least 100" = is.null(n_draws) ||
+      (is.numeric(n_draws) && n_draws >= 100),
     "'level' must be between 0 and 1" = is.numeric(level) && level > 0 &&
       level < 1
   )
@@ -249,14 +298,9 @@ make_profile_problem <- function(fitted, n_draws, seed) {
   p <- ncol(fitted$D)
   transform <- design_scaling$coefficient_transform
   log_scale <- log(spatial_scaling$distance_scale)
-  to_internal <- function(working) {
-    c(solve(transform, working[seq_len(p)]), working[p + 1L],
-      working[p + 2L] - log_scale, working[-seq_len(p + 2L)])
-  }
-  from_internal <- function(internal) {
-    c(drop(transform %*% internal[seq_len(p)]), internal[p + 1L],
-      internal[p + 2L] + log_scale, internal[-seq_len(p + 2L)])
-  }
+  maps <- profile_scale_maps(transform, log_scale, p)
+  to_internal <- maps$to
+  from_internal <- maps$from
   estimate <- unlist(fitted$estimate)
   internal <- to_internal(estimate)
   engine$set_anchor(internal)
@@ -293,10 +337,42 @@ make_profile_problem <- function(fitted, n_draws, seed) {
   problem
 }
 
-##' Readable labels for the parameters of a fitted model
+##' Maps between the user's working scale and the scale of the fit
+##'
+##' The coefficients are standardised with `transform`, and the logarithm of
+##' the scale is shifted by `log_scale`, the logarithm of the largest
+##' distance. The other parameters are the same on both scales.
 ##' @noRd
-profile_labels <- function(names, distance_units) {
+profile_scale_maps <- function(transform, log_scale, p) {
+  list(
+    to = function(working) {
+      c(solve(transform, working[seq_len(p)]), working[p + 1L],
+        working[p + 2L] - log_scale, working[-seq_len(p + 2L)])
+    },
+    from = function(internal) {
+      c(drop(transform %*% internal[seq_len(p)]), internal[p + 1L],
+        internal[p + 2L] + log_scale, internal[-seq_len(p + 2L)])
+    }
+  )
+}
+
+##' Readable labels for the parameters of a fitted model
+##'
+##' Those of a Gaussian fit are the labels of `summary()`.
+##' @noRd
+profile_labels <- function(names, distance_units, family = NULL) {
   labels <- sub("^beta\\.", "", names)
+  if (identical(family, "gaussian")) {
+    labels[names == "sigma2"] <- "Spatial process var."
+    labels[names == "phi"] <- paste0("Spatial corr. scale (",
+                                     distance_units %||% "units", ")")
+    labels[names == "tau2"] <- "Variance of the nugget"
+    labels[names == "sigma2_me"] <- "Measurement error var."
+    random <- grepl("^sigma2_re\\.", names)
+    labels[random] <- paste0(sub("^sigma2_re\\.", "", names[random]),
+                             " (random eff. var.)")
+    return(as.list(stats::setNames(labels, names)))
+  }
   labels[names == "sigma2"] <- "Spatial variance"
   labels[names == "phi"] <- paste0("Scale (", distance_units %||% "units", ")")
   labels[names %in% c("tau2", "nu2")] <- "Nugget variance ratio"
@@ -335,7 +411,10 @@ match_profile_parameters <- function(problem, parameters) {
 ##' point, the coefficients of the start are first moved to the nearest point
 ##' that meets both the constraint and the bounds (`feasible_coefficients()`).
 ##' A problem without `internal` (the tests' stand-ins) is optimised on the
-##' user's scale.
+##' user's scale. When `internal` has a `concentrate` function, as for
+##' Gaussian fits, the coefficients are not searched: for each value of the
+##' other parameters they are set to the solution of `concentrate()`, which
+##' meets the constraint of the fixed coefficients exactly.
 ##'
 ##' A stop with a non-zero code is solved again from the same start with a
 ##' central-difference gradient with a step of 1e-4, keeping the better
@@ -352,21 +431,28 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
     p = 0L, lower = problem$lower, upper = problem$upper
   )
   p <- scale$p
+  concentrate <- scale$concentrate
   target <- start
   target[fixed] <- fixed_values
   internal_start <- scale$to(target)
   fixed_beta <- fixed[fixed <= p]
   fixed_other <- fixed[fixed > p]
   pivot <- integer()
+  constraint <- beta_targets <- NULL
   if (length(fixed_beta)) {
     # The targets of the fixed coefficients, by position, since the fixed
     # parameters may come in any order.
     beta_targets <- fixed_values[match(fixed_beta, fixed)]
     constraint <- scale$transform[fixed_beta, , drop = FALSE]
-    pivot <- qr(constraint)$pivot[seq_along(fixed_beta)]
-    rest <- setdiff(seq_len(p), pivot)
+    if (is.null(concentrate)) {
+      pivot <- qr(constraint)$pivot[seq_along(fixed_beta)]
+      rest <- setdiff(seq_len(p), pivot)
+    }
   }
-  free <- setdiff(seq_along(start), c(pivot, fixed_other))
+  # Coefficients that `concentrate` solves for the other parameters are not
+  # searched.
+  solved <- if (is.null(concentrate)) pivot else seq_len(p)
+  free <- setdiff(seq_along(start), c(solved, fixed_other))
   lower <- scale$lower[free]
   upper <- scale$upper[free]
   feasibility <- "ok"
@@ -384,7 +470,9 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
   full_internal <- function(free_values) {
     internal <- internal_start
     internal[free] <- free_values
-    if (length(pivot)) {
+    if (!is.null(concentrate)) {
+      internal[seq_len(p)] <- concentrate(internal, constraint, beta_targets)
+    } else if (length(pivot)) {
       internal[pivot] <- solve(
         constraint[, pivot, drop = FALSE],
         beta_targets - constraint[, rest, drop = FALSE] %*% internal[rest]
@@ -446,6 +534,15 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
                 evaluations = 0L,
                 status = if (identical(feasibility, "infeasible"))
                   "infeasible" else "failed"))
+  }
+  # Nothing left to search, as when a joint profile fixes every covariance
+  # parameter of a Gaussian fit.
+  if (!length(free)) {
+    objective <- negative(from)
+    return(list(par = full(from),
+                value = if (objective < 1e99) -objective else NA_real_,
+                convergence = 0L, evaluations = evaluations,
+                status = if (objective < 1e99) "ok" else "failed"))
   }
   fit <- run(from, FALSE)
   if (!is.null(fit) && fit$convergence != 0L && fit$objective < 1e99) {
@@ -549,6 +646,7 @@ plan_one_parameter <- function(problem, name, n_points, span, level = 0.95) {
   centre <- problem$bank_estimate[index]
   step <- 2 * span * problem$standard_errors[[name]] / (n_points - 1)
   if (!is.finite(step) || step <= 0) step <- 0.25
+  step <- min(step, profile_step_cap(problem, name))
   regular <- (n_points - 1) %/% 2
   beyond <- stats::qchisq(0.99, 1)
   cutoff <- stats::qchisq(level, 1)
@@ -611,6 +709,18 @@ plan_one_parameter <- function(problem, name, n_points, span, level = 0.95) {
                              })
   }
   list(walk = walk, finish = finish)
+}
+
+##' The largest grid step of a parameter
+##'
+##' A variance estimated near zero, or a likelihood that is nearly flat, has
+##' a huge standard error on the log scale, and steps in proportion to it
+##' would leave the bounds at once. A problem can cap the steps of the
+##' parameters on the log scale with `max_step` (Gaussian fits use 1). The
+##' coefficients, in their own units, are not capped.
+##' @noRd
+profile_step_cap <- function(problem, name) {
+  if (grepl("^beta\\.", name)) Inf else problem$max_step %||% Inf
 }
 
 ##' Apply a function to tasks, in parallel by forking when `cores` is above 1
@@ -677,26 +787,40 @@ recheck_profile_crossings <- function(problem, profile, index, cutoff,
 ##' Solve one more point at each crossing of the cut-off that lies between
 ##' points more than a step apart, at the crossing interpolated in the signed
 ##' root of the deviance
+##'
+##' An exact likelihood (`problem$exact`) is cheap to solve again, so its
+##' crossings are refined in up to eight rounds, wherever the points are,
+##' until the deviance of a point next to each crossing is within 0.01 of the
+##' cut-off. The signed root of the deviance can be far from linear over a
+##' step when the quadratic approximation is poor.
 ##' @noRd
 refine_profile_crossings <- function(problem, profile, index, step, cutoff,
                                      solve_at) {
-  profile <- profile[order(profile$value), ]
-  root <- sqrt(pmax(2 * (problem$max_loglik - profile$loglik), 0))
-  lowest <- which.min(ifelse(is.finite(root), root, Inf))
-  added <- list()
-  for (side in c(-1, 1)) {
-    k <- crossing_index(root, lowest, side, sqrt(cutoff))
-    if (is.na(k)) next
-    inner <- k - side
-    if (!is.finite(root[inner]) ||
-        abs(profile$value[k] - profile$value[inner]) <= 1.01 * step) next
-    value <- stats::approx(root[c(inner, k)], profile$value[c(inner, k)],
-                           xout = sqrt(cutoff))$y
-    start <- unlist(profile[inner, problem$names])
-    added[[length(added) + 1L]] <- profile_row(problem, index, value,
-                                               solve_at(value, start))
+  exact <- isTRUE(problem$exact)
+  for (round in seq_len(if (exact) 8L else 1L)) {
+    profile <- profile[order(profile$value), ]
+    root <- sqrt(pmax(2 * (problem$max_loglik - profile$loglik), 0))
+    lowest <- which.min(ifelse(is.finite(root), root, Inf))
+    added <- list()
+    for (side in c(-1, 1)) {
+      k <- crossing_index(root, lowest, side, sqrt(cutoff))
+      if (is.na(k)) next
+      inner <- k - side
+      if (!is.finite(root[inner])) next
+      if (exact) {
+        if (min(abs(root[c(inner, k)]^2 - cutoff)) < 0.01) next
+      } else if (abs(profile$value[k] - profile$value[inner]) <= 1.01 * step) {
+        next
+      }
+      value <- stats::approx(root[c(inner, k)], profile$value[c(inner, k)],
+                             xout = sqrt(cutoff))$y
+      start <- unlist(profile[inner, problem$names])
+      added[[length(added) + 1L]] <- profile_row(problem, index, value,
+                                                 solve_at(value, start))
+    }
+    if (!length(added)) break
+    profile <- rbind(profile, do.call(rbind, added))
   }
-  if (length(added)) profile <- rbind(profile, do.call(rbind, added))
   profile <- profile[order(profile$value), ]
   rownames(profile) <- NULL
   profile
@@ -743,8 +867,9 @@ profile_two_parameters <- function(problem, pair, n_grid, span, marginal = list(
     }
     se <- problem$standard_errors[[pair[j]]]
     if (!is.finite(se) || se <= 0) se <- 0.5
+    half <- min(span * se, profile_step_cap(problem, pair[j]) * (n_grid - 1) / 2)
     centre <- problem$bank_estimate[index[j]]
-    seq(centre - span * se, centre + span * se, length.out = n_grid)
+    seq(centre - half, centre + half, length.out = n_grid)
   })
   rows <- vector("list", n_grid^2); start <- problem$bank_estimate; k <- 0
   for (i in seq_len(n_grid)) {
@@ -752,6 +877,17 @@ profile_two_parameters <- function(problem, pair, n_grid, span, marginal = list(
     for (j in order_j) {
       values <- c(axes[[1]][i], axes[[2]][j])
       result <- maximise_profile(problem, index, values, start)
+      if (isTRUE(problem$exact)) {
+        # A neighbour's solution with a variance near zero lies on a plateau
+        # where the optimiser stops, so points of a cheap exact likelihood
+        # are also solved from the estimate.
+        other <- maximise_profile(problem, index, values,
+                                  problem$bank_estimate)
+        if (is.finite(other$value) &&
+            (!is.finite(result$value) || other$value > result$value)) {
+          result <- other
+        }
+      }
       if (is.finite(result$value)) start <- result$par
       k <- k + 1
       rows[[k]] <- data.frame(first = values[1], second = values[2],
@@ -808,8 +944,10 @@ profile_intervals <- function(problem, marginal, level) {
 
 ##' @export
 print.RiskMap_profile <- function(x, ...) {
-  cat("Profile likelihood of a RiskMap fit (", x$settings$n_draws,
-      " Monte Carlo draws)\n", sep = "")
+  # A profile without draws is of a Gaussian fit, whose likelihood is exact.
+  cat("Profile likelihood of a RiskMap fit (",
+      if (is.null(x$settings$n_draws)) "exact likelihood" else
+        paste(x$settings$n_draws, "Monte Carlo draws"), ")\n", sep = "")
   cat(round(100 * x$level), "% intervals; variances and the scale on their ",
       "natural scale\n\n", sep = "")
   table <- x$intervals[, c("label", "estimate", "profile_lower", "profile_upper",
