@@ -78,10 +78,10 @@ test_that("binomial bootstraps with random effects use separate streams", {
 })
 
 test_that("failed refits are recorded instead of stopping", {
-  original_glgpm <- glgpm
-  local_mocked_bindings(glgpm = function(..., seed) {
+  original_fit <- fit_glgpm_design
+  local_mocked_bindings(fit_glgpm_design = function(..., seed) {
     if (identical(seed, 10001L)) stop("simulated failure")
-    original_glgpm(..., seed = seed)
+    original_fit(..., seed = seed)
   })
   expect_warning(
     boot <- parametric_bootstrap(gaussian_intercept_model, n_sim = 3,
@@ -95,7 +95,7 @@ test_that("failed refits are recorded instead of stopping", {
   expect_false(anyNA(boot$estimates[-2L, ]))
   expect_output(print(boot), "1 refits failed")
 
-  local_mocked_bindings(glgpm = function(...) stop("always fails"))
+  local_mocked_bindings(fit_glgpm_design = function(...) stop("always fails"))
   expect_error(
     parametric_bootstrap(gaussian_intercept_model, n_sim = 2, seed = 1,
                          messages = FALSE),

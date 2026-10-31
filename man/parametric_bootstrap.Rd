@@ -61,9 +61,9 @@ Each replicate simulates a response at the original locations, with the
 original covariates, denominators, offsets and random-effect groups, from
 the fitted model (see \code{\link[=simulate_glgpm]{simulate_glgpm()}}), and refits the model to it by
 \code{\link[=glgpm]{glgpm()}}, starting from the estimate, without the final conditional
-samples and quietly. The refits reuse the design matrix and the settings
-of \code{control_mcml} stored in the fit, so the model formula is not
-evaluated again.
+samples and quietly. The refits reuse the design matrix, the locations
+and the settings of \code{control_mcml} stored in the fit, so the model
+formula and the data are not evaluated again.
 
 Replicate \eqn{i} uses one seed, \eqn{s_i = s + 10000 (i - 1)}, where
 \eqn{s} is \code{seed}. It simulates its data with \verb{simulate_glgpm(seed =} \eqn{s_i}\verb{)}

@@ -26,9 +26,9 @@
 ##' original covariates, denominators, offsets and random-effect groups, from
 ##' the fitted model (see [simulate_glgpm()]), and refits the model to it by
 ##' [glgpm()], starting from the estimate, without the final conditional
-##' samples and quietly. The refits reuse the design matrix and the settings
-##' of `control_mcml` stored in the fit, so the model formula is not
-##' evaluated again.
+##' samples and quietly. The refits reuse the design matrix, the locations
+##' and the settings of `control_mcml` stored in the fit, so the model
+##' formula and the data are not evaluated again.
 ##'
 ##' Replicate \eqn{i} uses one seed, \eqn{s_i = s + 10000 (i - 1)}, where
 ##' \eqn{s} is `seed`. It simulates its data with `simulate_glgpm(seed =` \eqn{s_i}`)`
@@ -137,11 +137,13 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
 
+  # The workers make no call to sf, because GDAL and PROJ can deadlock in a
+  # forked process, so everything that needs it is prepared here.
   replicate_seeds <- bootstrap_seeds(seed, n_sim, seed_spacing)
-  model <- simulation_model(object)
+  prepared <- prepare_simulation(simulation_model(object), "data")
   refit <- make_bootstrap_refit(object)
   run_replicate <- function(i) {
-    run_bootstrap_replicate(model, refit, replicate_seeds[i])
+    run_bootstrap_replicate(prepared, refit, replicate_seeds[i])
   }
 
   started <- proc.time()[["elapsed"]]
@@ -203,97 +205,57 @@ bootstrap_seeds <- function(seed, n_sim, spacing) {
 
 ##' A function refitting a model to a new response
 ##'
-##' Builds the data and formula of the refits once. The fixed effects enter
-##' as the columns of the design matrix stored in the fit, under internal
-##' names, so that the user's formula is not evaluated again. The intercept,
-##' the offset, the denominators, the random-effect groups, the locations and
-##' the correlation settings are those of the fit. The returned function
-##' takes a response and a seed and returns the estimates on their natural
-##' scale, named as `unlist(coef(object))`.
+##' The refits use what the fit stores: its design matrix, unique coordinates
+##' in the model's distance units, location and random-effect indices,
+##' denominators, offset, correlation and nugget settings, inverse link and
+##' `control_mcml`. They go straight to the estimation step of [glgpm()]
+##' (`fit_glgpm_design()`), from the estimate, without the final conditional
+##' samples and quietly, so the user's formula and data are not evaluated
+##' again and sf is not called. The returned function takes a response and a
+##' seed and returns the estimates on their natural scale, named as
+##' `unlist(coef(object))`.
 ##' @noRd
 make_bootstrap_refit <- function(object) {
+  family <- object$family
+  invlink <- if (family != "gaussian" &&
+                 identical(object$link_function$name, "custom")) {
+    object$link_function[c("inv", "d1", "d2")]
+  }
   design <- as.matrix(object$D)
-  intercept <- colnames(design) == "(Intercept)"
-  covariates <- design[, !intercept, drop = FALSE]
-  covariate_names <- sprintf("bootstrap_x%d", seq_len(ncol(covariates)))
-  re_names <- colnames(object$ID_re)
-  internal <- c(covariate_names, "bootstrap_response", "bootstrap_offset",
-                "bootstrap_denominator")
-  if (any(re_names %in% internal)) {
-    stop("A random-effect variable has a name used internally by ",
-         "parametric_bootstrap(): ",
-         paste(intersect(re_names, internal), collapse = ", "), call. = FALSE)
-  }
-
-  data <- st_sf(geometry = st_geometry(object$data))
-  for (k in seq_along(covariate_names)) {
-    data[[covariate_names[k]]] <- covariates[, k]
-  }
-  for (name in re_names) data[[name]] <- object$data[[name]]
-  has_offset <- any(object$cov_offset != 0)
-  if (has_offset) data$bootstrap_offset <- object$cov_offset
-  if (object$family != "gaussian") data$bootstrap_denominator <- object$units_m
-
-  # The settings of gp() are held in the formula's environment, so that they
-  # keep their exact values instead of a deparsed copy.
-  formula_environment <- new.env(parent = asNamespace("RiskMap"))
-  formula_environment$bootstrap_kappa <- object$kappa
-  formula_environment$bootstrap_nugget <- if (isTRUE(object$fix_tau2)) {
-    TRUE
-  } else if (object$fix_tau2 == 0) {
-    FALSE
-  } else {
-    object$fix_tau2
-  }
-  formula_terms <- c(covariate_names,
-                     "gp(kappa = bootstrap_kappa, nugget = bootstrap_nugget)",
-                     if (length(re_names)) paste0("re(", re_names, ")"),
-                     if (has_offset) "offset(bootstrap_offset)")
-  if (!any(intercept)) formula_terms <- c(formula_terms, "-1")
-  formula <- stats::as.formula(
-    paste("bootstrap_response ~", paste(formula_terms, collapse = " + ")),
-    env = formula_environment
-  )
-
-  arguments <- list(
-    formula = formula,
-    family = object$family,
-    distance_units = object$distance_units,
-    control_mcml = attr(object, "control_mcml") %||% set_control_mcml(),
-    return_samples = FALSE,
-    messages = FALSE,
-    fix_var_me = object$fix_var_me,
-    start_pars = coef(object)
-  )
-  if (object$family != "gaussian") {
-    arguments$denominator <- as.name("bootstrap_denominator")
-    if (identical(object$link_function$name, "custom")) {
-      arguments$invlink <- object$link_function[c("inv", "d1", "d2")]
-    }
-  }
-  beta_names <- colnames(design)
+  re_unique <- if (!is.null(object$ID_re)) lapply(object$re, seq_along)
+  start <- coef(object)
+  control_mcml <- attr(object, "control_mcml") %||% set_control_mcml()
 
   function(response, seed) {
-    data$bootstrap_response <- response
-    fit <- do.call(glgpm, c(arguments, list(data = data, seed = seed)))
-    estimate <- coef(fit)
-    names(estimate$beta) <- beta_names
-    unlist(estimate)
+    fit <- fit_glgpm_design(
+      y = response, D = design, coords = object$coords,
+      ID_coords = object$ID_coords, ID_re = object$ID_re,
+      s_unique = unique(object$ID_coords), re_unique = re_unique,
+      units_m = object$units_m, cov_offset = object$cov_offset,
+      kappa = object$kappa, fix_tau2 = object$fix_tau2,
+      fix_var_me = object$fix_var_me, family = family, invlink = invlink,
+      start_pars = start, control_mcmc = set_control_mcmc(),
+      control_mcml = control_mcml, seed = seed, return_samples = FALSE,
+      messages = FALSE
+    )
+    fit$D <- design
+    fit$family <- family
+    unlist(coef.RiskMap(fit))
   }
 }
 
 ##' Simulate and refit one bootstrap replicate
 ##'
-##' Returns the estimates with the status of the refit, its error message and
-##' its warnings, instead of stopping when the refit fails.
+##' Draws a response from the prepared simulation (`prepare_simulation()`)
+##' and refits the model to it, both with `seed`. Returns the estimates with
+##' the status of the refit, its error message and its warnings, instead of
+##' stopping when the refit fails.
 ##' @noRd
-run_bootstrap_replicate <- function(model, refit, seed) {
+run_bootstrap_replicate <- function(prepared, refit, seed) {
   warnings <- character()
   result <- tryCatch(withCallingHandlers({
-    simulation <- suppressMessages(
-      simulate_glgpm(model, nsim = 1, what = "data", seed = seed)
-    )
-    response <- as.numeric(simulation$samples$data[, 1L, "response"])
+    samples <- draw_simulation(prepared, nsim = 1, seed = seed)
+    response <- as.numeric(samples$data[, 1L, "response"])
     list(status = "ok", message = NA_character_,
          estimate = refit(response, seed))
   }, warning = function(w) {
