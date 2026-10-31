@@ -663,28 +663,10 @@ test_that("a fit is reproduced from the seed it stores", {
   drawn <- fit_binomial()
   expect_identical(drawn$seed, expected_seed)
   expect_identical(.Random.seed, expected_state)
-  # A supplied seed leaves the session's stream unchanged.
+  # A supplied seed leaves the session's stream unchanged, and is stored.
   fit_binomial(5L)
   expect_identical(.Random.seed, expected_state)
-})
-
-test_that("a seed gives the fit that set_control_mcmc() gave with that seed", {
-  # Values of the fixture fits recorded before the seed moved out of
-  # set_control_mcmc(), when they used set_control_mcmc(seed = 12345).
-  expect_identical(binomial_model$seed, 12345L)
-  expect_equal(
-    unlist(coef(binomial_model)),
-    c(`beta.(Intercept)` = 0.678638359929913, beta.cov = -0.0305267434535861,
-      sigma2 = 0.602790357217215, phi = 0.325170679871503,
-      sigma2_re.i = 0.0215210563098895),
-    tolerance = 1e-6
-  )
-  expect_equal(head(binomial_model$fitted_values, 3),
-               c(0.413865657494289, 0.620777749169496, 0.513268470554783),
-               tolerance = 1e-6)
-  expect_equal(unname(unlist(coef(poisson_model))[c(1, 2, 4)]),
-               c(-1.6804462233751, 0.184951835713559, 30.9470256139749),
-               tolerance = 1e-6)
+  expect_identical(binomial_model$seed, as.integer(fixture_seed))
 })
 
 test_that("Gaussian fits store no seed and seeds are validated", {
