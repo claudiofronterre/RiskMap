@@ -45,7 +45,7 @@
 ##' its estimates are `NA`. Warnings from the refits, for example about
 ##' variances estimated at zero, are recorded in `warnings`.
 ##'
-##' [summary()] reports, for each parameter, the estimate, the median of the
+##' `summary()` reports, for each parameter, the estimate, the median of the
 ##' bootstrap estimates, the bias (their mean minus the estimate), their
 ##' standard deviation as the standard error, the proportion below the
 ##' estimate, and two intervals. The percentile interval takes the quantiles

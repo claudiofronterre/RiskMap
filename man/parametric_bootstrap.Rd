@@ -80,7 +80,7 @@ A refit that fails is recorded in \code{failures} with its error message, and
 its estimates are \code{NA}. Warnings from the refits, for example about
 variances estimated at zero, are recorded in \code{warnings}.
 
-\code{\link[=summary]{summary()}} reports, for each parameter, the estimate, the median of the
+\code{summary()} reports, for each parameter, the estimate, the median of the
 bootstrap estimates, the bias (their mean minus the estimate), their
 standard deviation as the standard error, the proportion below the
 estimate, and two intervals. The percentile interval takes the quantiles
