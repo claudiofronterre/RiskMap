@@ -1,12 +1,13 @@
 test_that("predict.RiskMap keeps prediction data and summaries aligned", {
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2, seed = 41
+    n_sim = 40, burnin = 20, thin = 2
   )
 
   result <- predict(
     gaussian_model,
     newdata = prediction_data,
     control_mcmc = prediction_control,
+    seed = 41,
     keep_samples = TRUE,
     messages = FALSE
   )
@@ -64,13 +65,14 @@ test_that("prediction objects use one stable output schema", {
 test_that("predict.RiskMap derives predictors and offsets from one sf object", {
 
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2, seed = 42
+    n_sim = 40, burnin = 20, thin = 2
   )
 
   result <- predict(
     gaussian_offset_model,
     newdata = prediction_data,
     control_mcmc = prediction_control,
+    seed = 42,
     messages = FALSE
   )
 
@@ -127,13 +129,14 @@ test_that("optional random-effect and nugget components are explicit", {
                     "random_effects_upper"))
 
   observation_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2, seed = 43
+    n_sim = 40, burnin = 20, thin = 2
   )
   observation <- predict(
     gaussian_offset_model,
     newdata = gaussian_offset_model$data,
     include = "nugget",
     control_mcmc = observation_control,
+    seed = 43,
     keep_samples = TRUE,
     messages = FALSE
   )
@@ -298,7 +301,7 @@ test_that("coefficient of variation is reported only where interpretable", {
   )
 
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2, seed = 44
+    n_sim = 40, burnin = 20, thin = 2
   )
 
   result <- predict(
@@ -306,6 +309,7 @@ test_that("coefficient of variation is reported only where interpretable", {
     prediction_data,
     summaries = c("mean", "cv"),
     control_mcmc = prediction_control,
+    seed = 44,
     messages = FALSE
   )
 
@@ -426,8 +430,9 @@ test_that("one prediction sample bank serves locations and boundaries", {
     boundaries = areal,
     aggregate = "mean",
     control_mcmc = set_control_mcmc(
-      n_sim = 40, burnin = 20, thin = 2, seed = 48
+      n_sim = 40, burnin = 20, thin = 2
     ),
+    seed = 48,
     keep_samples = TRUE,
     messages = FALSE
   )
@@ -826,6 +831,25 @@ test_that("prediction seed makes generated samples reproducible", {
   )
 
   expect_identical(first, second)
+})
+
+test_that("a prediction seed also seeds a fresh conditional MCMC run", {
+  prediction_control <- set_control_mcmc(
+    n_sim = 40, burnin = 20, thin = 2
+  )
+  predict_binomial <- function(seed) {
+    suppressWarnings(predict(
+      binomial_model, prediction_data, control_mcmc = prediction_control,
+      seed = seed, keep_samples = TRUE, messages = FALSE
+    ))
+  }
+  set.seed(7)
+  caller_state <- .Random.seed
+  first <- predict_binomial(49)
+  expect_identical(.Random.seed, caller_state)
+  expect_identical(first, predict_binomial(49))
+  expect_false(identical(first$samples$spatial,
+                         predict_binomial(50)$samples$spatial))
 })
 
 test_that("joint location prediction covers Gaussian and non-Gaussian engines", {

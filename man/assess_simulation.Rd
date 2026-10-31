@@ -8,6 +8,7 @@ assess_simulation(
   obj_sim,
   models,
   control_mcmc = set_control_mcmc(),
+  seed = NULL,
   spatial_scale,
   messages = TRUE,
   target_transform = NULL,
@@ -29,6 +30,11 @@ candidate model specification and is refitted to every simulated dataset;
 its estimated parameter values are not reused.}
 
 \item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
+
+\item{seed}{Optional non-negative integer that makes the assessment
+reproducible; see Details. The caller's random number state is restored
+on exit. When \code{NULL} (the default), the seeds of the simulations are
+drawn from the session's random number generator.}
 
 \item{spatial_scale}{The scale(s) at which predictions are assessed: \code{"grid"}, \code{"area"}, or \code{c("grid", "area")}
 to compute both from a single fit-and-predict pass over the simulations.}
@@ -87,10 +93,9 @@ without grid locations are left out of the area-level assessment, with a
 warning. Predictive draws are joint within each area, which is all that
 area-level targets need.
 
-Each simulation has its own seed, derived from the seed of
-\code{control_mcmc} or, without one, from the current random number generator
-state, and shared by all models so that their fits and predictions use
-common random numbers. A fit or prediction that fails does not stop the
+Each simulation has its own seed, derived from \code{seed} or, without one,
+from the current random number generator state, and shared by all models
+so that their fits and predictions use common random numbers. A fit or prediction that fails does not stop the
 assessment: its results are missing, and the failure is recorded in
 \code{fits} and reported in a warning, as are warnings from the fits.
 }

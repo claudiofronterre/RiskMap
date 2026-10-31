@@ -54,6 +54,7 @@ test_that("a custom invlink that Deriv cannot differentiate still fits via the n
 
   fit <- suppressWarnings(glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
               denominator = denominator, invlink = invlink, control_mcmc = control_mcmc,
+              seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
               messages = FALSE))
 

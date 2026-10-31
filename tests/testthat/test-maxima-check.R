@@ -283,7 +283,7 @@ test_that("the outcome of the screen is reported to the user", {
 test_that("the screen is recorded for fits with and without random effects", {
   screened <- suppressWarnings(glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = fixture_control_mcml, return_samples = FALSE,
     messages = FALSE
   ))

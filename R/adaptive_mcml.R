@@ -892,20 +892,18 @@ make_working_start <- function(reference_pars, fix_tau2) {
 ##'
 ##' Maximises the Laplace approximation from the supplied start, then runs
 ##' certified Monte Carlo maximum likelihood (`fit_adaptive_mcml()`) from that
-##' estimate and returns the corrected, certified estimate.
+##' estimate and returns the corrected, certified estimate. Every Monte Carlo
+##' stream of the fit is derived from `seed`, and the caller's random number
+##' state is restored on exit.
 ##' @noRd
 glgpm_nong_adaptive <- function(
     y, D, coords, units_m, kappa, reference_pars, cov_offset,
     ID_coords, ID_re, fix_tau2, family, invlink, control_mcml,
-    seed = NULL, messages = TRUE, distance_scale = 1) {
+    seed, messages = TRUE, distance_scale = 1) {
   stopifnot(family %in% c("poisson", "binomial"))
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
-  fit_seed <- if (is.null(seed)) {
-    sample.int(.Machine$integer.max, 1L)
-  } else {
-    as.integer(seed)
-  }
+  fit_seed <- as.integer(seed)
 
   distances <- as.matrix(pairwise_distances(coords))
   engine <- make_adaptive_mcml_engine(

@@ -137,7 +137,7 @@ test_that("prediction scaling preserves draws at fixed fitted parameters", {
     scaled_model,
     newdata = gaussian_data,
     type = "joint",
-    control_mcmc = control_mcmc,
+    control_mcmc = control_mcmc, seed = fixture_seed,
     keep_samples = TRUE,
     messages = FALSE
   )
@@ -146,7 +146,7 @@ test_that("prediction scaling preserves draws at fixed fitted parameters", {
     unscaled_model,
     newdata = gaussian_data,
     type = "joint",
-    control_mcmc = control_mcmc,
+    control_mcmc = control_mcmc, seed = fixture_seed,
     keep_samples = TRUE,
     messages = FALSE
   )

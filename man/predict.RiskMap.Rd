@@ -116,9 +116,9 @@ samples stored in the fit are not used in that case, because they
 condition on the estimate only; \code{control_mcmc}, if supplied, sets only
 the total number of predictive draws.}
 
-\item{seed}{Optional integer seed for random draws made during prediction.
-The caller's random-number state is restored on exit. When supplied, this
-seed takes precedence over a seed stored in \code{control_mcmc} for this call.}
+\item{seed}{Optional integer seed for random draws made during prediction,
+including a fresh conditional MCMC run. The caller's random-number state
+is restored on exit.}
 
 \item{keep_samples}{Logical. If \code{TRUE}, retain the minimal latent samples
 needed for custom post-processing. Predictive samples are generated to

@@ -32,7 +32,7 @@ test_that("compiled log-likelihood agrees with stable R calculations", {
 
 test_that("compiled MALA supports multiple random-effect blocks", {
   control <- set_control_mcmc(
-    n_sim = 100, burnin = 40, thin = 3, h = 0.5, seed = 4821
+    n_sim = 100, burnin = 40, thin = 3, h = 0.5
   )
   fit <- laplace_sampling_mcmc(
     y = c(1, 2, 3, 4), units_m = rep(6, 4),
@@ -44,7 +44,8 @@ test_that("compiled MALA supports multiple random-effect blocks", {
       period = c(1L, 2L, 1L, 2L)
     ),
     sigma2_re = c(cluster = 0.3, period = 0.2),
-    family = "binomial", control_mcmc = control, messages = FALSE
+    family = "binomial", control_mcmc = control, seed = 4821,
+    messages = FALSE
   )
 
   expect_named(fit$samples, c("S", "cluster", "period"))
@@ -57,12 +58,13 @@ test_that("compiled MALA supports multiple random-effect blocks", {
 
 test_that("compiled MALA reproduces the general R transition", {
   control <- set_control_mcmc(
-    n_sim = 100, burnin = 40, thin = 3, h = 0.5, seed = 99
+    n_sim = 100, burnin = 40, thin = 3, h = 0.5
   )
   arguments <- list(
     y = c(1, 3), units_m = c(5, 6), mu = c(-0.5, 0.2),
     Sigma = matrix(c(0.8, 0.2, 0.2, 0.7), 2), ID_coords = 1:2,
-    family = "binomial", control_mcmc = control, messages = FALSE
+    family = "binomial", control_mcmc = control, seed = 99,
+    messages = FALSE
   )
   compiled <- do.call(laplace_sampling_mcmc, arguments)
   # Supplying the same link explicitly selects the general R implementation.
