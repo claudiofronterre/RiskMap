@@ -54,12 +54,45 @@ includes \code{"area"}.}
 \item{categories}{A numeric vector of thresholds defining categories for classification. Required if \code{pred_objective = "classify"}.}
 }
 \value{
-A list of class \code{RiskMap_assess_simulation}. \code{pred_objective} holds one element per
-requested \code{spatial_scale} (\code{"grid"} and/or \code{"area"}), each in turn holding \code{mse} and/or
-\code{classify} per the requested \code{pred_objective}.
+A list of class \code{RiskMap_assess_simulation}:
+\describe{
+\item{pred_objective}{One element per requested \code{spatial_scale}
+(\code{"grid"} and/or \code{"area"}), each holding \code{mse}, a matrix with one row per
+model and one column per simulation, and/or \code{classify}, the
+classification metrics of each model and simulation.}
+\item{fits}{A data frame with one row per model and simulation, giving
+the \code{status} of the fit (\code{"ok"} or \code{"failed"}), the error \code{message} of a
+failed fit and any \code{warnings}.}
+\item{estimates}{A list with, for each model, a matrix of the parameter
+estimates, one row per simulation.}
+\item{n_sim, spatial_scale}{The number of simulations and the spatial
+scales assessed.}
+}
 }
 \description{
 Evaluates models using joint data and surface simulations.
+}
+\details{
+The true target at each grid location is \code{target_transform()} applied to
+the simulated linear predictor, which includes the covariates, any offset
+and, when the generating model has one, the realised nugget. Each
+candidate is refitted to every simulated dataset and predicts the target
+with its own covariates and offset. Candidates with a nugget include it in
+their predictions when the generating model has one.
+
+The target of an area is \code{area_summary()} applied to the targets at the
+grid locations that fall within it, with equal weight, unlike the exact
+fractional coverage used by \code{\link[=predict.RiskMap]{predict.RiskMap()}} with \code{boundaries}. Areas
+without grid locations are left out of the area-level assessment, with a
+warning. Predictive draws are joint within each area, which is all that
+area-level targets need.
+
+Each simulation has its own seed, derived from the seed of
+\code{control_mcmc} or, without one, from the current random number generator
+state, and shared by all models so that their fits and predictions use
+common random numbers. A fit or prediction that fails does not stop the
+assessment: its results are missing, and the failure is recorded in
+\code{fits} and reported in a warning, as are warnings from the fits.
 }
 \examples{
 library(sf)

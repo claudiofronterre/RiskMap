@@ -47,10 +47,31 @@ reprojected to an appropriate UTM zone. `predict()`, `simulate_glgpm()` and
 
 ## Exploratory analysis
 
+- `plot()` for `variogram()` results gains `show_pairs` (default `FALSE`),
+which labels each point with the number of pairs of locations in its distance
+class, so that unstable semivariances from few pairs can be recognised.
+- `plot()` for `variogram()` results draws the semivariances as points without
+joining lines, omits distance classes without pairs (which previously caused
+"Removed rows" warnings), starts both axes at zero, uses `theme_minimal()` as
+other RiskMap plots do, and draws in red the points that fall outside the
+envelope. `plot_envelope` is now checked.
+- `variogram()` results gain a `print()` method that reports the distance
+classes and the envelope settings before the table.
 - In `summarise_distance()` and `variogram()`, `scale_to_km` has been
 replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`.
-Default behaviour is unchanged (`"km"` for `summarise_distance()`, `"m"` for
-`variogram()`).
+Both now default to `"km"`, as `glgpm()` does. For `variogram()` this changes
+the default from `"m"`, so code that gives `breaks` or `max_dist` in metres
+should set `distance_units = "m"`.
+- `variogram()` accepts `breaks` or `max_dist` beyond the largest distance
+between locations, and warns only when whole distance classes lie beyond it.
+When no pair falls in any class, the error reports the range of the distances
+instead of always suggesting a change of units. `max_dist = NULL` can be passed
+together with `breaks`.
+- `variogram()` no longer fails when the envelope is built for a single
+distance class, and runs about twice as fast with 2,000 or more locations,
+with identical results. Rounding error no longer makes the envelope exclude one
+curve too few at some levels, such as 0.9 with 999 permutations. The default
+level of 0.95 with 999 permutations was not affected.
 - In `summarise_distance()` and `variogram()`, `convert_to_utm` has been replaced
 with `distance_crs`, matching `glgpm()`'s `model_crs` convention: an
 already-projected CRS is retained as-is, longitude/latitude data is automatically
@@ -266,6 +287,10 @@ tolerance.
 
 ## Predictions
 
+- Grids created by `create_grid()` now have the class `RiskMap_grid` before
+`data.frame`, as vctrs requires of data frame subclasses. dplyr verbs such as
+`filter()` previously failed with an error on these grids and on the
+predictions made from them.
 - `create_grid()` no longer raises an error when `boundaries` is in
 longitude/latitude; like `glgpm()`, it now automatically reprojects to an
 appropriate UTM zone and reports the conversion with a message.
@@ -311,6 +336,42 @@ uncertainty, which matters for small or low-prevalence surveys.
 - `plot()` now respects `limits` for maps of signed quantities such as the
   spatial effect, which were previously rescaled, and arranges several
   summaries in two columns.
+- Maps of `create_grid()` grids outline the grid's study boundary, so the
+  edge of the study area is visible where the clipped cells end.
+- Several maps drawn in one call have wider side margins, so neighbouring
+  legends no longer run into each other at narrow widths.
+- `plot()` accepts several quantities, for example
+  `quantity = c("fixed", "spatial")`, and draws them side by side as it
+  does for several summaries.
+- New `assess_extrapolation()` reports, for each prediction location,
+  whether a prediction relies on extrapolation: covariates outside their
+  observed range on the model's scale, fixed-effect leverage relative to the
+  data, and the share of the spatial variance not explained by the sampled
+  locations. Locations are classed as supported, spatial, covariate, or
+  spatial and covariate extrapolation, and `plot()` maps each indicator.
+  Locations with missing covariates are drawn in grey without a legend key.
+  The legend shows the colour of every class, including classes absent from
+  the map, whose keys ggplot2 otherwise leaves blank.
+- `create_grid()` gains `raster`. The grid then consists of the cells of a
+  projected `SpatRaster` with square cells: their centres are the grid points
+  and the raster's layers become columns, so values such as population counts
+  aggregated to the grid's resolution need no extraction. `boundaries` is
+  optional in that case and, when given, selects cells according to `keep`.
+- New `get_worldpop()` downloads WorldPop population counts for a country
+  and year, for the whole population or for chosen age groups and sexes, at
+  100 m or 1 km, from the unconstrained 2000-2020 or constrained 2015-2030
+  estimates, and returns one raster of people per cell.
+- `to_table()` is now generic and gains a method for `predict()` results with
+  polygon summaries: one row per polygon, the mean and its interval in one
+  column, probabilities as percentages and sums with thousands separators.
+  All `to_table()` methods accept `col_names`. `predict()` output records the
+  name of the `weights` column.
+- `to_table()` for predictions formats each sum on its own, so that values in a
+  column are no longer padded to a common number of decimals.
+- Documentation and messages call phi the scale parameter of the spatial
+  correlation function, rather than the spatial range, consistently with
+  `summary()` and the MBG book. The practical range, where correlation falls
+  to 0.05, is about 3 phi for the exponential correlation function.
 
 ## Cross validation
 
@@ -360,7 +421,16 @@ outputs reproducible.
 - `control_sim` parameters have been renamed to `control_mcmc`.
 - `to_table()` now returns a directly renderable `knitr_kable` table, with an
   explicit `digits` argument that preserves trailing zeroes. This replaces the
-  previous `xtable` return value.
+  previous `xtable` return value. Values that are compared share one
+  notation: when a value needs scientific notation, so do the estimate and
+  limits of the same parameter, or the same metric for the other models.
+- `summary()` of a model with a nugget gave the wrong confidence interval for
+  the nugget variance: its standard error was that of the logarithm of
+  tau2 / sigma2^2 instead of tau2. The interval now uses the delta method for
+  log(tau2) = log(tau2 / sigma2) + log(sigma2).
+- When one parameter has no standard error, as when a variance is estimated
+  at zero, `summary()` and `to_table()` still give the confidence intervals of
+  the other parameters. Previously all of them were missing.
 - The `data_sf` parameter in `create_ids` is now `data`.
 - The `conf_level` parameter in `summary.RiskMap` is now `level`
 - `plot_metric()` and `plot_AnPIT()` have been merged into a single

@@ -56,6 +56,10 @@ reference:
   - title: Prediction and Targets
     contents:
       - predict.RiskMap
+      - assess_extrapolation
+      - plot.RiskMap_extrapolation
+      - get_worldpop
+      - to_table.RiskMap_prediction
 
   - title: Diagnostics and Assessment
     contents:

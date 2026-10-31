@@ -30,6 +30,7 @@ Imports:
     ggplot2,
     ggspatial,
     gridExtra,
+    jsonlite,
     knitr,
     loo,
     Matrix,
@@ -51,7 +52,8 @@ LinkingTo:
 Suggests:
     patchwork,
     RhpcBLASctl,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    withr
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true

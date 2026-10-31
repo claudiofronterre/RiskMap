@@ -137,7 +137,8 @@ test_that("variogram produces errors", {
     expect_no_error(
       variogram(gaussian_data,
                 variable = "y",
-                breaks = seq(0, 9000, 1000)),
+                breaks = seq(0, 9000, 1000),
+                distance_units = "m"),
     )
   })
 
@@ -299,10 +300,37 @@ test_that("variogram produces errors", {
     )
   })
 
-  test_that("breaks exceeding the maximum observed distance raise an error", {
+  test_that("classes beyond the maximum observed distance raise a warning", {
+    expect_warning(
+      result <- variogram(gaussian_data, variable = "y", max_dist = 1e9,
+                          n_permutations = 0),
+      "13 distance class\\(es\\) lie beyond the largest distance"
+    )
+    expect_identical(sum(result$variogram$n_pairs > 0L), 1L)
+
+    # A last class that only extends past the largest distance still has pairs
+    largest <- max(dist(sf::st_coordinates(gaussian_data))) / 1000
+    expect_no_warning(
+      variogram(gaussian_data, variable = "y", n_permutations = 0,
+                breaks = c(0, largest / 2, largest + 1))
+    )
+  })
+
+  test_that("distance classes without any pair raise an informative error", {
     expect_error(
-      variogram(gaussian_data, variable = "y", max_dist = 1e9),
-      "the provided lag distances go beyond the maximum observed distance"
+      variogram(gaussian_data, variable = "y", breaks = c(0, 1e-6)),
+      "no pair of locations falls within the distance classes"
+    )
+    expect_error(
+      variogram(gaussian_data[1:2, ], variable = "y"),
+      "distances between locations range from"
+    )
+  })
+
+  test_that("max_dist = NULL can be passed together with breaks", {
+    expect_no_error(
+      variogram(gaussian_data, variable = "y", breaks = c(0, 5, 10),
+                max_dist = NULL, n_permutations = 0)
     )
   })
 
@@ -334,7 +362,7 @@ test_that("variogram produces expected output", {
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
   expect_identical(nrow(result$variogram), 10L)
-  expect_identical(result$distance_units, "m")
+  expect_identical(result$distance_units, "km")
   expect_identical(result$n_permutations, 99)
   expect_length(result$breaks, 10 + 1)
   expect_identical(result$level, 0.95)
@@ -342,7 +370,7 @@ test_that("variogram produces expected output", {
 
   breaks <- seq(0, 9000, 1000)
   result <- variogram(gaussian_data, variable = "y", breaks = breaks,
-                      n_permutations = 99, seed = 123)
+                      n_permutations = 99, seed = 123, distance_units = "m")
   expect_s3_class(result, "RiskMap_variogram")
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns)
@@ -356,7 +384,7 @@ test_that("variogram produces expected output", {
   expect_setequal(names(result), expected_output)
   expect_setequal(names(result$variogram), expected_columns_zero)
   expect_identical(nrow(result$variogram), 10L)
-  expect_identical(result$distance_units, "m")
+  expect_identical(result$distance_units, "km")
   expect_identical(result$n_permutations, 0)
   expect_length(result$breaks, 10 + 1)
   expect_null(result$envelope_method)
@@ -382,6 +410,7 @@ test_that("variogram values are correct for a simple dataset", {
                       variable = "z",
                       breaks = seq(0.1, 1.5, 0.2),
                       n_permutations = 119,
+                      distance_units = "m",
                       seed = 12)
 
   expect_identical(sum(result$variogram$n_pairs), 6L)
@@ -412,6 +441,45 @@ test_that("compiled binned semivariances agree with a direct calculation", {
   }, numeric(2))
 
   expect_equal(result, direct)
+
+  # More curves than one block of the compiled loop, with a partial last block
+  set.seed(3)
+  values <- rnorm(12)
+  permutations <- cbind(1:12, replicate(69, sample.int(12)))
+  pairs <- which(lower.tri(diag(12)), arr.ind = TRUE)
+  first <- pairs[, 1] - 1L
+  second <- pairs[, 2] - 1L
+  bins <- sample(0:3, nrow(pairs), replace = TRUE)
+  permuted_values <- matrix(values[permutations], nrow = length(values))
+  result <- cpp_binned_semivariances(permuted_values, first, second, bins, 5L)
+  direct <- vapply(seq_len(ncol(permutations)), function(column) {
+    permuted <- values[permutations[, column]]
+    pair_values <- (permuted[first + 1L] - permuted[second + 1L])^2 / 2
+    c(vapply(0:3, function(bin) mean(pair_values[bins == bin]), numeric(1)),
+      NA_real_)
+  }, numeric(5))
+
+  expect_equal(result, direct)
+})
+
+test_that("a global envelope can be built for a single distance class", {
+  curves <- matrix(c(5, 1, 2, 3, 4, 6, 7, 8, 9, 10), nrow = 1L)
+
+  envelope <- global_rank_envelope(curves, level = 0.8)
+
+  expect_identical(envelope$lower, 2)
+  expect_identical(envelope$upper, 9)
+
+  # (1 - 0.9) * 1000 is slightly below 100, but 100 curves are still excluded
+  curves <- matrix(as.numeric(c(1:1000, 1000:1)), nrow = 2L, byrow = TRUE)
+  envelope <- global_rank_envelope(curves, level = 0.9)
+  expect_identical(envelope$lower, c(51, 51))
+  expect_identical(envelope$upper, c(950, 950))
+
+  expect_no_error(
+    variogram(gaussian_data, variable = "y", n_bins = 1, n_permutations = 99,
+              seed = 1)
+  )
 })
 
 test_that("global rank envelope uses the whole curve and handles ties conservatively", {
@@ -456,4 +524,72 @@ test_that("plot.RiskMap_variogram warns and skips the envelope when n_permutatio
   expect_false("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
 
   expect_no_warning(plot(result, plot_envelope = FALSE))
+})
+
+test_that("plot.RiskMap_variogram labels points with their numbers of pairs on request", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10,
+                      n_permutations = 99, seed = 123)
+  geoms <- function(p) vapply(p$layers, function(l) class(l$geom)[1], character(1))
+
+  expect_false("GeomText" %in% geoms(plot(result)))
+  p <- plot(result, show_pairs = TRUE)
+  expect_true("GeomText" %in% geoms(p))
+  labels <- ggplot2::layer_data(p, which(geoms(p) == "GeomText"))$label
+  nonempty <- result$variogram$n_pairs > 0L
+  expect_identical(labels, format(result$variogram$n_pairs[nonempty],
+                                  big.mark = ",", trim = TRUE))
+  expect_error(plot(result, show_pairs = NA), "TRUE or FALSE")
+})
+
+test_that("plot.RiskMap_variogram omits empty classes and highlights points outside the envelope", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10,
+                      n_permutations = 99, seed = 123)
+  nonempty <- which(result$variogram$n_pairs > 0L)
+  emptied <- nonempty[1]
+  raised <- nonempty[2]
+  result$variogram$n_pairs[emptied] <- 0L
+  result$variogram[emptied, c("distance", "semivariance", "lower_envelope",
+                              "upper_envelope")] <- NA_real_
+  result$variogram$semivariance[raised] <-
+    result$variogram$upper_envelope[raised] + 1
+
+  p <- plot(result, show_pairs = TRUE)
+  geoms <- vapply(p$layers, function(l) class(l$geom)[1], character(1))
+  expect_false("GeomLine" %in% geoms)
+  expect_no_warning(ggplot2::ggplotGrob(p))
+
+  points <- ggplot2::layer_data(p, which(geoms == "GeomPoint"))
+  expect_identical(nrow(points), length(nonempty) - 1L)
+  expect_identical(sum(points$colour == "firebrick"), 1L)
+  expect_identical(points$colour[points$x == result$variogram$distance[raised]],
+                   "firebrick")
+
+  ranges <- ggplot2::layer_scales(p)
+  expect_lte(ranges$x$range$range[1], 0)
+  expect_lte(ranges$y$range$range[1], 0)
+
+  expect_error(plot(result, plot_envelope = "yes"), "TRUE or FALSE")
+})
+
+test_that("print.RiskMap_variogram describes the classes and the envelope", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 4,
+                      n_permutations = 99, seed = 123)
+  output <- capture.output(printed <- print(result))
+
+  expect_identical(printed, result)
+  expect_match(output[1], "Empirical variogram with 4 distance classes from 0 to")
+  expect_match(output[2], "95% global envelope for spatial independence from 99 permutations")
+  expect_true(any(grepl("semivariance", output)))
+
+  # Counts stored as doubles are still printed in full
+  result$variogram$n_pairs <- result$variogram$n_pairs + 12345
+  output <- capture.output(print(result, digits = 2))
+  expect_true(any(grepl(as.character(result$variogram$n_pairs[1]), output)))
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 4,
+                      n_permutations = 0)
+  expect_match(capture.output(print(result))[2], "No envelope")
 })

@@ -60,7 +60,29 @@ test_that("to_table uses scientific notation only when fixed notation is unsuita
 
   expect_match(rendered, "1.000e+100", fixed = TRUE)
   expect_match(rendered, "1.000e-08", fixed = TRUE)
-  expect_match(rendered, "0.400", fixed = TRUE)
+  expect_match(rendered, "2.500", fixed = TRUE)
+})
+
+test_that("to_table shows values that are compared in one notation", {
+  # The estimate and limits of a parameter share a row
+  object <- table_test_model()
+  object$reg_coef[2, 1:3] <- c(-0.0022, -0.0042, -0.00025)
+  rows <- as.character(to_table(object, digits = 3, format = "pipe"))
+  expect_match(rows[grepl("^\\|x ", rows)],
+               "-2.200e-03.*-4.200e-03.*-2.500e-04")
+  expect_match(rows[grepl("Intercept", rows)], "0.490.*0.400.*0.600")
+
+  # One metric is compared across models down a column
+  cv <- structure(
+    matrix(c(0.49, 0.0004, 0.25, 0.3), nrow = 2,
+           dimnames = list(c("model_a", "model_b"), c("crps", "scrps"))),
+    class = c("summary.RiskMap_cross_validation", "matrix", "array")
+  )
+  rendered <- paste(as.character(to_table(cv, digits = 3, format = "pipe")),
+                    collapse = "\n")
+  expect_match(rendered, "4.900e-01", fixed = TRUE)
+  expect_match(rendered, "4.000e-04", fixed = TRUE)
+  expect_match(rendered, "0.250", fixed = TRUE)
 })
 
 test_that("to_table validates its inputs", {

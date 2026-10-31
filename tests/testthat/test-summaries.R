@@ -154,6 +154,33 @@ test_that("summary.RiskMap reports fixed and estimated nugget and measurement er
   expect_equal(offset_summary$sp["Variance of the nugget", "Estimate"],
                coef(gaussian_offset_model)$tau2)
 
+  # log(tau2) = nu2 + sigma2 on the working scale, so its standard error
+  # comes from the delta method with both parameters
+  covariance <- gaussian_offset_model$covariance
+  gradient <- setNames(numeric(nrow(covariance)), rownames(covariance))
+  gradient[c("sigma2", "nu2")] <- 1
+  log_tau2_se <- sqrt(drop(gradient %*% covariance %*% gradient))
+  tau2 <- coef(gaussian_offset_model)$tau2
+  expect_equal(
+    offset_summary$sp["Variance of the nugget",
+                      c("Lower limit", "Upper limit")],
+    exp(log(tau2) + c(-1, 1) * qnorm(0.975) * log_tau2_se),
+    ignore_attr = TRUE
+  )
+
+  # A nugget without a standard error, as when it is estimated at zero,
+  # leaves the intervals of the other parameters unchanged
+  no_nugget_se <- gaussian_offset_model
+  no_nugget_se$covariance["nu2", ] <- NA
+  no_nugget_se$covariance[, "nu2"] <- NA
+  missing_summary <- summary(no_nugget_se)
+  expect_equal(missing_summary$reg_coef, offset_summary$reg_coef)
+  expect_equal(missing_summary$sp[1:2, ], offset_summary$sp[1:2, ])
+  expect_true(all(is.na(
+    missing_summary$sp["Variance of the nugget",
+                       c("Lower limit", "Upper limit")]
+  )))
+
   # gaussian_model: no nugget, estimated measurement error
   gaussian_summary <- summary(gaussian_model)
   expect_identical(gaussian_summary$tau2, 0)
@@ -524,4 +551,25 @@ test_that("print.summary.RiskMap_assess_simulation labels each spatial scale", {
   summary_object <- summary(build_assess_simulation(c("grid", "area")))
 
   expect_snapshot(print(summary_object))
+})
+
+test_that("summary.RiskMap_cross_validation weights every metric by test-set size and skips failed test sets", {
+  cross_validation_pit <- list(
+    test_set = list(gaussian_data[1, ], gaussian_data[2:4, ],
+                    gaussian_data[5:6, ]),
+    model = list(model_a = list(metric = list(
+      PIT_area = list(0.1, 0.3, NA_real_)
+    ))),
+    keep_par_fixed = FALSE,
+    failures = data.frame(model = "model_a", test_set = 3L,
+                          message = "failed")
+  )
+  pit_summary <- summary.RiskMap_cross_validation(cross_validation_pit)
+
+  expect_equal(pit_summary["model_a", "PIT_area"], (0.1 + 3 * 0.3) / 4)
+  expect_false(attr(pit_summary, "keep_par_fixed"))
+  expect_identical(attr(pit_summary, "n_failed"), 1L)
+  expect_output(print(pit_summary), "Parameters: re-estimated in each training set")
+  expect_output(print(pit_summary),
+                "Failed test-set assessments \\(scores missing\\): 1")
 })

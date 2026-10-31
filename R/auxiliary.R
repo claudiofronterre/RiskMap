@@ -558,7 +558,7 @@ check_formula <- function(formula, data, response_required = TRUE){
 ##' @return A list containing the maximum likelihood estimates. For standard models:
 ##' \item{beta}{A vector of coefficient estimates.}
 ##' \item{sigma2}{The estimate for the variance parameter \eqn{\sigma^2}.}
-##' \item{phi}{The estimate for the spatial scale parameter \eqn{\phi}.}
+##' \item{phi}{The estimate for the scale parameter \eqn{\phi} of the spatial correlation function.}
 ##' \item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
 ##' \item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
 ##' \item{sigma2_re}{A named vector of variance estimates for the random effects, if applicable.}
@@ -726,10 +726,21 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
     J["nu2", "sigma2"] <- 1
   }
 
+  ## The new parameters are J times the working-scale ones, so their
+  ## covariance is J covariance J'. A parameter without a standard error (an
+  ## NA row and column, for example a variance estimated at zero) is left
+  ## out, with any new parameter that depends on it, so that the missing
+  ## values do not spread to the other parameters.
   covariance <- object$covariance
-  H_new          <- t(J) %*% solve(-covariance) %*% J
-  covariance_new <- solve(-H_new)
-  se_par         <- sqrt(diag(covariance_new))
+  free <- !is.na(diag(covariance))
+  computable <- rowSums(J[, !free, drop = FALSE] != 0) == 0
+  covariance_new <- matrix(NA_real_, length(nm), length(nm),
+                           dimnames = list(nm, nm))
+  covariance_new[computable, computable] <-
+    J[computable, free, drop = FALSE] %*%
+    covariance[free, free, drop = FALSE] %*%
+    t(J[computable, free, drop = FALSE])
+  se_par <- sqrt(diag(covariance_new))
 
   non_beta <- setdiff(nm, beta_flat_names)
   estimate[non_beta] <- exp(estimate[non_beta])
@@ -878,22 +889,26 @@ print.summary.RiskMap <- function(x, ...) {
   return(invisible(x))
 }
 
-##' @title Format RiskMap Model and Validation Results as a Table
-##' @description Converts a fitted "RiskMap" model or cross-validation
-##' results into a table that renders directly in Quarto, R Markdown, HTML,
-##' LaTeX and the R console.
+##' @title Format RiskMap Results as a Table
+##' @description Converts a fitted "RiskMap" model, cross-validation
+##' results or polygon predictions into a table that renders directly in
+##' Quarto, R Markdown, HTML, LaTeX and the R console.
 ##' @param object An object of class "RiskMap" resulting from a call to
-##' \code{\link{glgpm}}, a "summary.RiskMap" object, or a
-##' "summary.RiskMap_cross_validation" object.
+##' \code{\link{glgpm}}, a "summary.RiskMap" object, a
+##' "summary.RiskMap_cross_validation" object, or a "RiskMap_prediction"
+##' object (see \code{\link{to_table.RiskMap_prediction}}).
 ##' @param digits A non-negative integer giving the number of decimal places
 ##' used to display numeric results.
+##' @param col_names Optional column names, replacing the default headers.
 ##' @param ... Additional arguments passed to \code{\link[knitr]{kable}}.
 ##' @details This function creates a presentation-ready summary table from a
 ##' fitted "RiskMap" model or cross-validation results for multiple models.
 ##' Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
 ##' required for further analysis. Numeric values use fixed notation with
 ##' \code{digits} decimal places, except when scientific notation is needed to
-##' represent very large or very small values clearly.
+##' represent very large or very small values clearly. Values that are
+##' compared share one notation: the estimate and confidence limits of a
+##' parameter, and one metric across models.
 ##'
 ##' When the input is a "RiskMap" model object, the table includes:
 ##' \itemize{
@@ -924,7 +939,13 @@ print.summary.RiskMap <- function(x, ...) {
 ##' )
 ##' to_table(fit)
 ##' to_table(fit, digits = 1)
-to_table <- function(object, digits = 3, ...) {
+to_table <- function(object, ...) {
+  UseMethod("to_table")
+}
+
+##' @rdname to_table
+##' @export
+to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
   check_positive_integer(digits, "digits", allow_zero = TRUE)
 
   if (inherits(object, "summary.RiskMap") ||
@@ -954,23 +975,38 @@ to_table <- function(object, digits = 3, ...) {
   }
 
   tab <- as.data.frame(tab, check.names = FALSE)
-  numeric_columns <- vapply(tab, is.numeric, logical(1))
-  tab[numeric_columns] <- lapply(
-    tab[numeric_columns],
-    function(x) {
-      use_scientific <- is.finite(x) & x != 0 &
-        (abs(x) >= 1e6 | abs(x) < 10^(-digits))
-      out <- formatC(x, format = "f", digits = as.integer(digits))
-      out[use_scientific] <- formatC(
-        x[use_scientific],
-        format = "e",
-        digits = as.integer(digits)
-      )
-      out
-    }
-  )
+  numeric_columns <- which(vapply(tab, is.numeric, logical(1)))
+  values <- as.matrix(tab[numeric_columns])
+  needs_scientific <- is.finite(values) & values != 0 &
+    (abs(values) >= 1e6 | abs(values) < 10^(-digits))
+  # Values that are compared share one notation: the estimate and limits of a
+  # parameter (a row of a model table), or one metric across models (a
+  # column of a cross-validation table).
+  scientific <- if (include_row_names) {
+    matrix(rowSums(needs_scientific) > 0, nrow(values), ncol(values))
+  } else {
+    matrix(colSums(needs_scientific) > 0, nrow(values), ncol(values),
+           byrow = TRUE)
+  }
+  for (j in seq_along(numeric_columns)) {
+    x <- values[, j]
+    out <- formatC(x, format = "f", digits = as.integer(digits))
+    use_scientific <- scientific[, j] & is.finite(x)
+    out[use_scientific] <- formatC(
+      x[use_scientific],
+      format = "e",
+      digits = as.integer(digits)
+    )
+    tab[[numeric_columns[j]]] <- out
+  }
 
   dots <- list(...)
+  if (!is.null(col_names)) {
+    if (length(col_names) != ncol(tab)) {
+      stop("'col_names' must have ", ncol(tab), " elements", call. = FALSE)
+    }
+    dots$col.names <- col_names
+  }
   if (is.null(dots$row.names))
     dots$row.names <- include_row_names
   if (is.null(dots$align))
@@ -1066,17 +1102,25 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   test_set_means <- list()
 
   n_subs <- length(object$model[[1]]$metric[[1]])
-  w <- unlist(lapply(object$model[[1]]$metric[[1]], length))
+  # Weight each test set by its number of observations, for every metric
+  per_observation <- intersect(c("CRPS", "SCRPS"), metric_names)
+  w <- if (length(per_observation) > 0) {
+    lengths(object$model[[1]]$metric[[per_observation[1]]])
+  } else {
+    vapply(object$test_set, nrow, integer(1))
+  }
 
   for (i in 1:n_models) {
     model_scores <- list()
     for (j in 1:n_metrics) {
       score_j <- rep(NA, n_subs)
       for (h in 1:n_subs) {
-        score_j[h] <- mean(object$model[[i]]$metric[[j]][[h]])
+        score_j[h] <- mean(object$model[[i]]$metric[[j]][[h]], na.rm = TRUE)
       }
       model_scores[[j]] <- score_j
-      res[i, j] <- sum(w * score_j) / sum(w)
+      # Test sets whose assessment failed have no scores
+      ok <- is.finite(score_j)
+      res[i, j] <- if (any(ok)) sum(w[ok] * score_j[ok]) / sum(w[ok]) else NA
     }
     test_set_means[[model_names[i]]] <- model_scores
   }
@@ -1087,6 +1131,8 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   attr(res, "test_set_means") <- test_set_means
   attr(res, "overall_averages") <- overall_averages
   attr(res, "view_all") <- view_all
+  attr(res, "keep_par_fixed") <- object$keep_par_fixed
+  attr(res, "n_failed") <- if (is.null(object$failures)) 0L else nrow(object$failures)
   class(res) <- "summary.RiskMap_cross_validation"
   return(res)
 }
@@ -1116,6 +1162,20 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 
   cat("Summary of Cross-Validation Scores\n")
   cat("----------------------------------\n")
+
+  keep_par_fixed <- attr(x, "keep_par_fixed")
+  if (!is.null(keep_par_fixed)) {
+    cat(sprintf("Parameters: %s\n", if (keep_par_fixed) {
+      "fixed at the estimates from all the data"
+    } else {
+      "re-estimated in each training set"
+    }))
+  }
+  n_failed <- attr(x, "n_failed")
+  if (!is.null(n_failed) && n_failed > 0) {
+    cat(sprintf("Failed test-set assessments (scores missing): %d\n", n_failed))
+  }
+  if (!is.null(keep_par_fixed) || isTRUE(n_failed > 0)) cat("\n")
 
   for (model_name in names(test_set_means)) {
     cat(sprintf("Model: %s\n", model_name))

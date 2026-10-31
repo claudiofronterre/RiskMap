@@ -124,6 +124,28 @@ test_that("RiskMap grid metadata survives common point operations", {
   )
 })
 
+test_that("RiskMap grids and their predictions work with dplyr", {
+  square <- st_polygon(list(matrix(square_coords * 1000,
+                                   ncol = 2, byrow = TRUE)))
+  square_m <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
+  square_grid <- create_grid(square_m, spacing = 2.5)
+
+  # vctrs requires every subclass of a data frame to come before it, and
+  # terra::extract() needs "sf" first (#221)
+  expect_identical(class(square_grid), c("sf", "RiskMap_grid", "data.frame"))
+  filtered <- dplyr::filter(square_grid, grid_id <= 2)
+  expect_identical(filtered$grid_id, 1:2)
+  expect_s3_class(filtered, "RiskMap_grid")
+  values <- terra::rast(nrows = 4, ncols = 4, xmin = 40000, xmax = 50000,
+                        ymin = 40000, ymax = 50000, crs = "EPSG:32638")
+  terra::values(values) <- seq_len(16)
+  expect_false(anyNA(terra::extract(values, square_grid)[[2]]))
+
+  prediction <- predict(gaussian_intercept_model, newdata = grid,
+                        summaries = "mean", seed = 1, messages = FALSE)
+  expect_no_error(dplyr::filter(prediction$predictions, grid_id <= 2))
+})
+
 test_that("create_grid() can keep cells that overlap the boundary", {
   boundary <- st_sf(geometry = st_sfc(
     st_polygon(list(rbind(c(0, 0), c(10, 0), c(10, 10), c(0, 0)))),
@@ -140,4 +162,54 @@ test_that("create_grid() can keep cells that overlap the boundary", {
   expect_identical(attr(centre, "grid_metadata")$keep, "centre")
   expect_s3_class(attr(overlap, "grid_metadata")$boundary, "sfc")
   expect_error(create_grid(boundary, 2, "m", keep = "all"), "should be one of")
+})
+
+test_that("create_grid uses the cells of a raster", {
+  counts <- terra::rast(nrows = 5, ncols = 4, xmin = 0, xmax = 8000,
+                        ymin = 0, ymax = 10000, crs = "EPSG:32637")
+  terra::values(counts) <- c(NA, seq_len(19))
+  names(counts) <- "population"
+
+  grid <- create_grid(raster = counts)
+  expect_s3_class(grid, "RiskMap_grid")
+  expect_identical(nrow(grid), 19L)
+  expect_identical(names(st_drop_geometry(grid)), c("population", "grid_id"))
+  expect_equal(sum(grid$population), sum(1:19))
+  metadata <- attr(grid, "grid_metadata")
+  expect_equal(metadata$cellsize, 2000)
+  expect_equal(metadata$spacing, 2)
+  expect_null(metadata$boundary)
+  expect_equal(st_coordinates(grid)[1, ], c(X = 3000, Y = 9000))
+
+  in_metres <- create_grid(raster = counts, spacing = 2000,
+                           distance_units = "m")
+  expect_equal(attr(in_metres, "grid_metadata")$spacing, 2000)
+
+  boundary <- st_sf(geometry = st_sfc(st_polygon(list(rbind(
+    c(0, 0), c(4500, 0), c(4500, 4500), c(0, 4500), c(0, 0)
+  ))), crs = 32637))
+  centre <- create_grid(boundary, raster = counts)
+  overlap <- create_grid(boundary, raster = counts, keep = "overlap")
+  expect_identical(nrow(centre), 4L)
+  expect_identical(nrow(overlap), 9L)
+  expect_false(is.null(attr(centre, "grid_metadata")$boundary))
+
+  assignment <- RiskMap:::assign_prediction_grid_cells(
+    overlap, boundary, attr(overlap, "grid_metadata")
+  )
+  expect_equal(sum(assignment$coverage), 4500^2 / 2000^2, tolerance = 1e-5)
+})
+
+test_that("create_grid checks the raster", {
+  counts <- terra::rast(nrows = 2, ncols = 2, xmin = 0, xmax = 2000,
+                        ymin = 0, ymax = 2000, crs = "EPSG:32637")
+  terra::values(counts) <- 1:4
+  expect_error(create_grid(), "Supply 'boundaries', 'raster' or both")
+  expect_error(create_grid(raster = as.matrix(counts)), "SpatRaster")
+  expect_error(create_grid(raster = terra::rast(nrows = 2, ncols = 2)),
+               "projected CRS")
+  oblong <- terra::rast(nrows = 2, ncols = 2, xmin = 0, xmax = 2000,
+                        ymin = 0, ymax = 3000, crs = "EPSG:32637")
+  expect_error(create_grid(raster = oblong), "square cells")
+  expect_error(create_grid(raster = counts, spacing = 5), "does not match")
 })

@@ -58,7 +58,7 @@ test_that("a certified stage corrects the fit and certifies the correction", {
   expect_identical(fit$validation_budget, 2000L)
 })
 
-test_that("boundary variance components and their linked range are detected", {
+test_that("boundary variance components and their linked scale parameter are detected", {
   estimate <- c(0.1, 0.2, -12, 1.5, -0.5)
   expect_identical(
     adaptive_boundary_parameters(estimate, c(3L, 5L), -9),

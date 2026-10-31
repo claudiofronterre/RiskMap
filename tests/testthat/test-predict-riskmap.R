@@ -29,7 +29,7 @@ test_that("prediction objects use one stable output schema", {
     "predictions", "boundaries", "boundary_summary", "samples", "include",
     "transform", "standardized", "aggregate", "summaries", "thresholds",
     "level", "type", "family", "response_name", "observed_locations",
-    "parameter_draws", "coverage"
+    "parameter_draws", "coverage", "weights"
   )
 
   observed <- predict(gaussian_model, messages = FALSE)
@@ -397,6 +397,7 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
                    c("mean", "median", "sum", "min", "max"))
   expect_identical(result$type, "joint")
   expect_identical(result$coverage, "exact")
+  expect_identical(result$weights, "population")
   expect_identical(st_geometry(result$predictions), st_geometry(prediction_data))
   expect_identical(st_geometry(result$boundaries), st_geometry(boundaries))
   expect_identical(result$boundaries$district, boundaries$district)

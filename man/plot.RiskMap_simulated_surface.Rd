@@ -4,7 +4,7 @@
 \alias{plot.RiskMap_simulated_surface}
 \title{Plot Method for RiskMap_simulated_surface Objects}
 \usage{
-\method{plot}{RiskMap_simulated_surface}(x, palette = "viridis", reverse_palette = FALSE, ...)
+\method{plot}{RiskMap_simulated_surface}(x, palette = "viridis", reverse_palette = FALSE, limits = NULL, ...)
 }
 \arguments{
 \item{x}{Output from \code{\link[=simulated_surface]{simulated_surface()}}.}
@@ -16,8 +16,12 @@ more colours to interpolate between. Defaults to \code{"viridis"}.}
 \item{reverse_palette}{Logical; if \code{TRUE}, reverse the order of the palette
 colours. Defaults to \code{FALSE}.}
 
+\item{limits}{\code{NULL} (the default) or a numeric vector of length two giving
+the range of the colour scale, for example to map several simulations on
+a common scale.}
+
 \item{...}{Additional arguments passed to \code{\link[ggplot2:scale_fill_gradientn]{ggplot2::scale_fill_gradientn()}},
-e.g. \code{name}, \code{breaks} or \code{limits}.}
+e.g. \code{name} or \code{breaks}.}
 }
 \value{
 A \code{ggplot} object.

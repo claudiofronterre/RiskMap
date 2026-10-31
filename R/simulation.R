@@ -221,12 +221,10 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   coords <- do.call(rbind, lapply(locations, coordinates_in_units,
                                 distance_units = model$distance_units))
   # Deduplicate exact coordinates before factorising the joint covariance.
-  coord_table <- data.frame(x = coords[, 1], y = coords[, 2])
-  unique_coords <- unique(coord_table)
-  unique_coords$coord_id <- seq_len(nrow(unique_coords))
-  coord_table$row_id <- seq_len(nrow(coord_table))
-  mapping <- merge(coord_table, unique_coords, by = c("x", "y"), sort = FALSE)
-  ids <- mapping$coord_id[order(mapping$row_id)]
+  indexed <- index_coordinate_rows(coords)
+  unique_coords <- data.frame(x = indexed$coordinates[, 1],
+                              y = indexed$coordinates[, 2])
+  ids <- indexed$index
   n_unique <- nrow(unique_coords)
   pars <- model$parameters
   if (pars$sigma2 > 0) {
@@ -238,7 +236,9 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
       phi = fitting_phi, kappa = model$kappa,
       return_sym_matrix = TRUE
     )
-    root <- tryCatch(t(chol(covariance)), error = function(e) {
+    root <- tryCatch(t(factor_covariance(
+      covariance, "spatial covariance of the simulation locations"
+    )), error = function(e) {
       stop("The spatial covariance could not be factorised. Check spatial ",
            "parameters and nearly coincident locations. ", conditionMessage(e),
            call. = FALSE)
@@ -437,6 +437,67 @@ simulated_surface <- function(object, simulation = 1) {
   }
   class(out) <- c("RiskMap_simulated_surface", class(out))
   out
+}
+
+#' Print a simulation model or simulations
+#'
+#' Prints a short description of a model specification from
+#' [specify_glgpm()] or of simulations from [simulate_glgpm()], instead of
+#' every stored value.
+#'
+#' @param x Output from [specify_glgpm()] or [simulate_glgpm()].
+#' @param ... Not used.
+#' @return Invisibly returns `x`.
+#' @method print RiskMap_simulation_model
+#' @export
+print.RiskMap_simulation_model <- function(x, ...) {
+  cat("Geostatistical model for simulation\n")
+  cat(sprintf("Family: %s%s\n", x$family,
+              if (isTRUE(x$custom_link)) " (custom inverse link)" else ""))
+  cat(sprintf("Formula: %s\n", paste(deparse(x$formula), collapse = " ")))
+  cat(sprintf("Locations: %d\n", nrow(x$data)))
+  print_simulation_parameters(x$parameters, x$distance_units)
+  invisible(x)
+}
+
+#' @rdname print.RiskMap_simulation_model
+#' @method print RiskMap_simulation
+#' @export
+print.RiskMap_simulation <- function(x, ...) {
+  cat(sprintf("Simulations from a %s geostatistical model\n", x$model$family))
+  cat(sprintf("Formula: %s\n", paste(deparse(x$model$formula), collapse = " ")))
+  cat(sprintf("Number of simulations: %d%s\n", x$nsim,
+              if (is.null(x$seed)) "" else sprintf(" (seed %s)", x$seed)))
+  for (name in x$what) {
+    cat(sprintf("Simulated %s at %d locations\n",
+                if (name == "data") "data" else "surface",
+                nrow(x$locations[[name]])))
+  }
+  print_simulation_parameters(x$model$parameters, x$model$distance_units)
+  cat("Extract them with simulated_data(), simulated_surface() or",
+      "simulated_values().\n")
+  invisible(x)
+}
+
+#' Print the parameters of a simulation model
+#' @noRd
+print_simulation_parameters <- function(parameters, distance_units) {
+  format_values <- function(values) {
+    labels <- names(values) %||% paste0("[", seq_along(values), "]")
+    paste(sprintf("%s = %s", labels, signif(values, 4)), collapse = ", ")
+  }
+  cat("Parameters:\n")
+  cat(sprintf("  beta: %s\n", format_values(parameters$beta)))
+  spatial <- c(sigma2 = parameters$sigma2, phi = parameters$phi)
+  cat(sprintf("  %s (phi in %s)\n", format_values(spatial), distance_units))
+  others <- unlist(parameters[intersect(c("tau2", "sigma2_me"),
+                                        names(parameters))])
+  others <- others[others != 0]
+  if (length(others)) cat(sprintf("  %s\n", format_values(others)))
+  if (length(parameters$sigma2_re)) {
+    cat(sprintf("  sigma2_re: %s\n", format_values(parameters$sigma2_re)))
+  }
+  invisible(NULL)
 }
 
 #' Validate a simulation object and requested simulation indices

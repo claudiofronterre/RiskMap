@@ -919,13 +919,17 @@ standardize_design_matrix <- function(design) {
 ##' covariance matrix, including cross-covariances with covariance parameters.
 ##' The score is transformed with the inverse transpose Jacobian.
 ##'
+##' The Jacobian is block diagonal, so each block is transformed on its own.
+##' A parameter without a standard error, such as a variance estimated at
+##' zero, has missing values in its row and column of the covariance matrix,
+##' and a product with the full Jacobian would spread them to every entry.
+##'
 ##' @noRd
 restore_fixed_effect_scale <- function(result, coefficient_transform) {
   p <- nrow(coefficient_transform)
   parameter_names <- names(unlist(result$estimate))
-  n_parameters <- length(parameter_names)
-  jacobian <- diag(n_parameters)
-  jacobian[seq_len(p), seq_len(p)] <- coefficient_transform
+  beta_index <- seq_len(p)
+  other_index <- setdiff(seq_along(parameter_names), beta_index)
 
   beta_names <- names(result$estimate$beta)
   result$estimate$beta <- as.numeric(
@@ -933,12 +937,21 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
   )
   names(result$estimate$beta) <- beta_names
 
-  result$covariance <- jacobian %*% result$covariance %*% t(jacobian)
+  covariance <- result$covariance
+  covariance[beta_index, beta_index] <- coefficient_transform %*%
+    covariance[beta_index, beta_index, drop = FALSE] %*%
+    t(coefficient_transform)
+  cross <- coefficient_transform %*%
+    covariance[beta_index, other_index, drop = FALSE]
+  covariance[beta_index, other_index] <- cross
+  covariance[other_index, beta_index] <- t(cross)
+  result$covariance <- covariance
   dimnames(result$covariance) <- list(parameter_names, parameter_names)
 
-  result$grad_MLE <- as.numeric(
-    solve(t(jacobian), result$grad_MLE)
+  result$grad_MLE[beta_index] <- solve(
+    t(coefficient_transform), result$grad_MLE[beta_index]
   )
+  result$grad_MLE <- as.numeric(result$grad_MLE)
   names(result$grad_MLE) <- parameter_names
   result
 }

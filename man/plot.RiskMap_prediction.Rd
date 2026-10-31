@@ -24,7 +24,10 @@
 
 \item{quantity}{Predictive quantity to display, such as \code{"response"},
 \code{"spatial"}, \code{"link"}, \code{"fixed"} (the fixed-effect contribution), or the
-name of a target supplied through \code{transform} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.}
+name of a target supplied through \code{transform} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
+Several quantities can be supplied, for example
+\code{c("fixed", "spatial")}, and are arranged like several summaries. Supply
+several quantities or several summaries, not both.}
 
 \item{summary}{Summary to display, such as \code{"mean"}, \code{"median"}, \code{"lower"},
 \code{"upper"}, \code{"sd"}, \code{"cv"}, \code{"interval_width"}, or \code{"exceedance"}. When
@@ -73,8 +76,8 @@ such as \code{c(0, 0.05, 0.1, 0.2, 1)}.}
 example \code{transform = "sqrt"} for skewed values.}
 }
 \value{
-A \code{ggplot} object. When several summaries are requested, a
-\code{patchwork} object combining one \code{ggplot} per summary.
+A \code{ggplot} object. When several quantities or summaries are
+requested, a \code{patchwork} object combining one \code{ggplot} per map.
 }
 \description{
 Draws a publication-ready map from the location-level or polygon-level
@@ -87,7 +90,7 @@ models as a rate. Probabilities are labelled as percentages. The title can
 be replaced with \code{labs(fill = ...)}.
 
 Grid cells created by \code{\link[=create_grid]{create_grid()}} are drawn as squares clipped to the
-grid's study boundary. Maps are ordinary \code{ggplot} objects drawn with
+grid's study boundary, and the boundary itself is outlined. Maps are ordinary \code{ggplot} objects drawn with
 \code{\link[ggplot2:geom_sf]{ggplot2::geom_sf()}}, so further \code{sf} layers, such as survey locations,
 can be added in any coordinate reference system.
 

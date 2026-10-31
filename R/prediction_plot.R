@@ -7,6 +7,9 @@
 ##' @param quantity Predictive quantity to display, such as `"response"`,
 ##'   `"spatial"`, `"link"`, `"fixed"` (the fixed-effect contribution), or the
 ##'   name of a target supplied through `transform` in [predict.RiskMap()].
+##'   Several quantities can be supplied, for example
+##'   `c("fixed", "spatial")`, and are arranged like several summaries. Supply
+##'   several quantities or several summaries, not both.
 ##' @param summary Summary to display, such as `"mean"`, `"median"`, `"lower"`,
 ##'   `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or `"exceedance"`. When
 ##'   `NULL` (the default), the first summary requested in
@@ -51,7 +54,7 @@
 ##' be replaced with `labs(fill = ...)`.
 ##'
 ##' Grid cells created by [create_grid()] are drawn as squares clipped to the
-##' grid's study boundary. Maps are ordinary `ggplot` objects drawn with
+##' grid's study boundary, and the boundary itself is outlined. Maps are ordinary `ggplot` objects drawn with
 ##' [ggplot2::geom_sf()], so further `sf` layers, such as survey locations,
 ##' can be added in any coordinate reference system.
 ##'
@@ -64,8 +67,8 @@
 ##' Outlines of the `boundaries` supplied to [predict.RiskMap()] are drawn
 ##' automatically on location-level maps.
 ##'
-##' @return A `ggplot` object. When several summaries are requested, a
-##'   `patchwork` object combining one `ggplot` per summary.
+##' @return A `ggplot` object. When several quantities or summaries are
+##'   requested, a `patchwork` object combining one `ggplot` per map.
 ##' @examples
 ##' data(italy_sim)
 ##' example_data <- italy_sim[1:50, ]
@@ -99,34 +102,58 @@ plot.RiskMap_prediction <- function(
   spatial_scale <- match.arg(spatial_scale)
   check_plot_flag(north_arrow, "north_arrow")
   check_plot_flag(scale_bar, "scale_bar")
-  if (quantity %in% c("fixed", "offset")) {
-    summary <- "estimate"
-  } else if (is.null(summary)) {
-    summary <- default_prediction_summary(x)
+  if (!is.character(quantity) || !length(quantity) || anyNA(quantity) ||
+      anyDuplicated(quantity)) {
+    stop("'quantity' must contain unique quantity names", call. = FALSE)
   }
-  if (!is.character(summary) || !length(summary) || anyNA(summary) ||
-      anyDuplicated(summary)) {
-    stop("'summary' must contain unique summary names", call. = FALSE)
+  if (length(quantity) > 1L && length(summary) > 1L) {
+    stop("Supply several quantities or several summaries, not both",
+         call. = FALSE)
+  }
+  if (length(quantity) == 1L) {
+    if (quantity %in% c("fixed", "offset")) {
+      summary <- "estimate"
+    } else if (is.null(summary)) {
+      summary <- default_prediction_summary(x)
+    }
+    if (!is.character(summary) || !length(summary) || anyNA(summary) ||
+        anyDuplicated(summary)) {
+      stop("'summary' must contain unique summary names", call. = FALSE)
+    }
   }
 
-  if (length(summary) > 1L) {
+  if (length(quantity) > 1L || length(summary) > 1L) {
     if (!requireNamespace("patchwork", quietly = TRUE)) {
-      stop("Plotting several summaries requires the 'patchwork' package",
+      stop("Plotting several maps requires the 'patchwork' package",
            call. = FALSE)
     }
-    maps <- lapply(summary, function(one_summary) {
-      plot.RiskMap_prediction(
-        x, quantity = quantity, summary = one_summary,
-        spatial_scale = spatial_scale, aggregate = aggregate,
-        threshold = if (identical(one_summary, "exceedance")) threshold,
-        palette = palette, limits = limits, breaks = breaks,
-        north_arrow = north_arrow, scale_bar = scale_bar, ...
-      )
-    })
+    if (length(quantity) > 1L) {
+      maps <- lapply(quantity, function(one_quantity) {
+        plot.RiskMap_prediction(
+          x, quantity = one_quantity, summary = summary,
+          spatial_scale = spatial_scale, aggregate = aggregate,
+          threshold = threshold, palette = palette, limits = limits,
+          breaks = breaks, north_arrow = north_arrow, scale_bar = scale_bar,
+          ...
+        )
+      })
+    } else {
+      maps <- lapply(summary, function(one_summary) {
+        plot.RiskMap_prediction(
+          x, quantity = quantity, summary = one_summary,
+          spatial_scale = spatial_scale, aggregate = aggregate,
+          threshold = if (identical(one_summary, "exceedance")) threshold,
+          palette = palette, limits = limits, breaks = breaks,
+          north_arrow = north_arrow, scale_bar = scale_bar, ...
+        )
+      })
+    }
     # Maps carry their legend on top, so two columns keep them readable.
     layout_columns <- if (spatial_scale == "both") 1L else
       min(2L, length(maps))
-    return(patchwork::wrap_plots(maps, ncol = layout_columns))
+    # Side margins keep neighbouring legends apart at book and report widths.
+    return(patchwork::wrap_plots(maps, ncol = layout_columns) &
+             theme(plot.margin = margin(4, 14, 4, 14)))
   }
 
   has_areas <- !is.null(x$boundaries) && !is.null(x$boundary_summary)
@@ -270,28 +297,43 @@ default_prediction_summary <- function(x) {
 }
 
 #' Add the layer for one spatial scale to a prediction map
+#'
+#' `show_legend = TRUE` draws legend keys for every level the fill scale
+#' keeps, including levels absent from the data, which ggplot2 otherwise
+#' leaves blank.
 #' @noRd
-add_prediction_layer <- function(map, x, panel, facet_label, facet_levels) {
+add_prediction_layer <- function(map, x, panel, facet_label, facet_levels,
+                                 show_legend = NA) {
   facet_label <- factor(facet_label, levels = facet_levels)
   data <- panel$data
   if (isTRUE(panel$polygon)) {
     data$.spatial_scale <- facet_label
     return(map + geom_sf(
       data = data, aes(fill = .data$.prediction_value),
-      colour = "black", linewidth = 0.16, inherit.aes = FALSE
+      colour = "black", linewidth = 0.16, inherit.aes = FALSE,
+      show.legend = show_legend
     ))
   }
   metadata <- attr(data, "grid_metadata", exact = TRUE)
   if (!is.null(metadata) && identical(metadata$cell_shape, "square")) {
     map <- map + geom_sf(
       data = prediction_cells(data, metadata, facet_label),
-      aes(fill = .data$.prediction_value), colour = NA, inherit.aes = FALSE
+      aes(fill = .data$.prediction_value), colour = NA, inherit.aes = FALSE,
+      show.legend = show_legend
     )
+    if (!is.null(metadata$boundary)) {
+      # The study boundary marks where the clipped cells end.
+      study_area <- st_sf(.spatial_scale = facet_label,
+                          geometry = st_geometry(metadata$boundary))
+      map <- map + geom_sf(data = study_area, fill = NA, colour = "grey20",
+                           linewidth = 0.3, inherit.aes = FALSE)
+    }
   } else {
     data$.spatial_scale <- facet_label
     map <- map + geom_sf(
       data = data, aes(fill = .data$.prediction_value),
-      shape = 21, colour = NA, size = 1.8, inherit.aes = FALSE
+      shape = 21, colour = NA, size = 1.8, inherit.aes = FALSE,
+      show.legend = show_legend
     )
   }
   if (!is.null(x$boundaries)) {
