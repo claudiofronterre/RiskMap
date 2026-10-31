@@ -310,23 +310,27 @@ run_bootstrap_replicate <- function(model, refit, seed) {
 ##' above 1
 ##'
 ##' Every replicate runs with one BLAS and OpenMP thread when RhpcBLASctl is
-##' installed, so that its result does not depend on `cores`. In the calling
-##' process the user's settings are restored afterwards, and in the forked
-##' workers they die with the worker. One after another, progress is reported
-##' about ten times.
+##' installed, so that its result does not depend on `cores`. The calling
+##' process switches to one thread before any replicate runs and restores the
+##' user's settings afterwards. It does so before forking too, because a
+##' worker forked from a process whose BLAS uses several threads can
+##' deadlock. One after another, progress is reported about ten times.
 ##' @noRd
 run_bootstrap_replicates <- function(replicates, work, cores, messages) {
-  single_thread <- function() {
-    if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
-      RhpcBLASctl::blas_set_num_threads(1L)
-      RhpcBLASctl::omp_set_num_threads(1L)
-    }
+  if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
+    blas_threads <- RhpcBLASctl::blas_get_num_procs()
+    omp_threads <- RhpcBLASctl::omp_get_max_threads()
+    on.exit({
+      RhpcBLASctl::blas_set_num_threads(blas_threads)
+      RhpcBLASctl::omp_set_num_threads(omp_threads)
+    }, add = TRUE)
+    RhpcBLASctl::blas_set_num_threads(1L)
+    RhpcBLASctl::omp_set_num_threads(1L)
   }
   if (cores > 1L && length(replicates) > 1L) {
-    results <- parallel::mclapply(replicates, function(i) {
-      single_thread()
-      work(i)
-    }, mc.cores = min(cores, length(replicates)), mc.preschedule = TRUE)
+    results <- parallel::mclapply(replicates, work,
+                                  mc.cores = min(cores, length(replicates)),
+                                  mc.preschedule = TRUE)
     # A worker that dies returns an error object in place of its results.
     lost <- !vapply(results, is.list, logical(1))
     results[lost] <- lapply(results[lost], function(result) {
@@ -337,15 +341,6 @@ run_bootstrap_replicates <- function(replicates, work, cores, messages) {
     return(results)
   }
 
-  if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
-    blas_threads <- RhpcBLASctl::blas_get_num_procs()
-    omp_threads <- RhpcBLASctl::omp_get_max_threads()
-    on.exit({
-      RhpcBLASctl::blas_set_num_threads(blas_threads)
-      RhpcBLASctl::omp_set_num_threads(omp_threads)
-    }, add = TRUE)
-    single_thread()
-  }
   started <- proc.time()[["elapsed"]]
   report_every <- max(1L, length(replicates) %/% 10L)
   results <- vector("list", length(replicates))
