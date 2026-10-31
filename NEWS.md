@@ -114,6 +114,26 @@ for nugget effects and multiple unstructured random effects, while avoiding
 the main interpreted-R bottlenecks. Custom inverse-link functions continue to
 use the general R implementation.
 
+- `plot_mcmc()` draws its diagnostics with ggplot2 and patchwork and returns
+them as a `patchwork` object, instead of drawing with base graphics and
+resetting `par()`. By default it shows the trace plot and the autocorrelation
+function of the mean of the spatial random effects and of the location with
+the smallest effective sample size, with a histogram of the effective sample
+sizes at all the locations. The trace plots show the iterations at which the
+samples were kept, so fits now record the `n_sim`, `burnin` and `thin` of
+their samples in `attr(fit, "mcmc")`. `component` now defaults to the
+location with the smallest effective sample size, can select several
+locations and can be given together with `check_mean = TRUE`. The mean and
+`component` previously included the levels of unstructured random effects,
+which are stored after the locations in `S_samples`. They now refer to the
+locations only.
+
+- The new `summarise_mcmc()` returns a tibble of the effective sample sizes of
+the mean of the spatial random effects, of each location and of each level of
+an unstructured random effect. They are computed with the initial monotone
+sequence estimator of Geyer (1992), so the package no longer depends on sns.
+patchwork has moved from Suggests to Imports.
+
 - Non-Gaussian optimisation now reuses the sample-wise Monte Carlo log
 integrand when the objective, gradient, and Hessian are evaluated at identical
 parameters, avoiding a repeated likelihood calculation.
@@ -141,6 +161,31 @@ intervals and the joint profiles run in parallel by forking (not on Windows),
 with the same results as on one core with one BLAS thread. `plot()` draws the marginal profiles against their quadratic
 approximation and the joint profiles as confidence regions with the marginal
 ridges, as a corner plot for one pair.
+
+- `profile()` also computes profile likelihoods of linear geostatistical
+(Gaussian) models, from their exact likelihood, so `n_draws` and `seed` are
+not used. Every estimated parameter can be profiled: the regression
+coefficients, the spatial variance and scale, the variance of the nugget
+(`tau2`, as `summary()` reports it, rather than its ratio to the spatial
+variance), the measurement error variance unless it is fixed, and the
+variances of the random effects, with the labels of `summary()`. For each
+value of the covariance parameters the coefficients are found by generalised
+least squares, and models with more than three observations per latent effect
+use the Woodbury identity, as `glgpm()` does. The ends of the profile
+intervals are refined until the deviance of a solved point is within 0.01 of
+the cut-off, grid steps of the variances and the scale are at most 1 on the
+log scale, so that a variance estimated near zero, with a huge standard
+error, is still profiled, and each point of a joint profile is also solved
+from the estimate, since a neighbour's solution with a variance near zero can
+leave the optimiser on a plateau. A variance that the data cannot tell from
+zero has a profile that stays below the cut-off down to its lower bound, and
+its interval is reported as open there. The smoothness `kappa` stays fixed
+and can be profiled by refitting over fixed values.
+
+- In `plot()` of a profile, the subtitle of each marginal panel gives the
+estimate, the profile interval and the Wald interval on separate lines, so
+that it is no longer cut off in panels half or a third of a page wide, and
+the two entries of the ridge legend of a joint profile are stacked.
 
 - Non-Gaussian models are now fitted by certified Monte Carlo maximum
 likelihood. The estimated likelihood is maximised on a fitting sample of 1,000

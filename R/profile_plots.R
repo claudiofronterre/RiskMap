@@ -4,7 +4,8 @@
 ##' shows the profile deviance (twice the drop in the log-likelihood from its
 ##' maximum) against the parameter, with the quadratic approximation implied
 ##' by the standard error (dashed), the cut-off for the requested level and the
-##' profile interval shaded. Each joint profile shows the deviance over the
+##' profile interval shaded, with the estimate, the profile interval and the
+##' Wald interval in the subtitle, one per line. Each joint profile shows the deviance over the
 ##' grid as filled regions at the 50%, 80% and 95% levels of a chi-squared
 ##' distribution on two degrees of freedom, the estimate, and the ridges of
 ##' the two marginal profiles (the value of one parameter that maximises the
@@ -100,12 +101,16 @@ plot_marginal_profile <- function(x, name) {
 }
 
 ##' Interval text for a panel subtitle
+##'
+##' The estimate and each interval go on a line of their own, so that the
+##' subtitle fits a panel a third of a page wide.
 ##' @noRd
 profile_interval_text <- function(interval, level) {
   format_value <- function(value) if (is.na(value)) "open" else format(signif(value, 3))
-  sprintf("%s (%d%% profile %s to %s; Wald %s to %s)", format_value(interval$estimate),
-          round(100 * level), format_value(interval$profile_lower),
-          format_value(interval$profile_upper), format_value(interval$wald_lower),
+  sprintf("Estimate %s\n%d%% profile interval %s to %s\n%d%% Wald interval %s to %s",
+          format_value(interval$estimate), round(100 * level),
+          format_value(interval$profile_lower), format_value(interval$profile_upper),
+          round(100 * level), format_value(interval$wald_lower),
           format_value(interval$wald_upper))
 }
 
@@ -145,7 +150,9 @@ plot_joint_profile <- function(x, pair_name) {
   if (!is.null(ridges)) {
     plot <- plot + ggplot2::geom_path(data = ridges, ggplot2::aes(linetype = .data$ridge),
                                       colour = colours$ridge, linewidth = 0.5) +
-      ggplot2::scale_linetype_manual(values = c("solid", "longdash"), name = NULL)
+      # One entry per line, since the two together are wider than a page.
+      ggplot2::scale_linetype_manual(values = c("solid", "longdash"), name = NULL,
+                                     guide = ggplot2::guide_legend(ncol = 1))
   }
   if (!grepl("^beta\\.", pair[1])) plot <- plot + ggplot2::scale_x_log10()
   if (!grepl("^beta\\.", pair[2])) plot <- plot + ggplot2::scale_y_log10()
