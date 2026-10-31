@@ -3255,10 +3255,14 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     samples = do.call(cbind, sample_blocks),
     linear_predictors = colMeans(eta),
     fitted_values = response_mean,
-    diagnostics = simulation[c(
-      "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
-      "invlink_used"
-    )]
+    # The sampling settings let plot_mcmc() show the iteration of each sample.
+    diagnostics = c(
+      simulation[c(
+        "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
+        "invlink_used"
+      )],
+      unclass(control_mcmc)[c("n_sim", "burnin", "thin")]
+    )
   )
 }
 
@@ -3371,82 +3375,4 @@ set_control_mcmc <- function(n_sim = 12000,
 
   class(res) <- "RiskMap_control_mcmc"
   return(res)
-}
-
-##' Check MCMC Convergence for Spatial Random Effects
-##'
-##' This function checks the Markov Chain Monte Carlo (MCMC) convergence of spatial random effects
-##' for a fitted \code{RiskMap} object.
-##' It plots the trace plot and autocorrelation function (ACF) for the MCMC chain
-##' and calculates the effective sample size (ESS).
-##'
-##' @param object A fitted \code{RiskMap} object returned by \code{\link{glgpm}}.
-##' @param check_mean Logical. If \code{TRUE}, checks the MCMC chain for the mean of the spatial random effects.
-##'  If \code{FALSE}, checks the chain for a specific component of the random effects vector.
-##' @param component Integer. The index of the spatial random effects component to check when \code{check_mean = FALSE}.
-##'  Must be a positive integer corresponding to a location in the data. Ignored if \code{check_mean = TRUE}.
-##' @param ... Additional arguments passed to the \code{\link[stats]{acf}} function for customizing the ACF plot.
-##'
-##' @details
-##' The function first checks that the input is a fitted \code{RiskMap} object.
-##' Depending on the value of \code{check_mean}, it either calculates the mean of the spatial random effects
-##' across all locations for each iteration or uses the specified component.
-##' It then generates two plots:
-##' - A trace plot of the selected spatial random effect over iterations.
-##' - An autocorrelation plot (ACF) with the effective sample size (ESS) displayed in the title.
-##'
-##' The ESS is computed using the \code{\link[sns]{ess}} function, which provides a measure of the effective number
-##' of independent samples in the MCMC chain.
-##'
-##' If \code{check_mean = TRUE}, the \code{component} argument is ignored, and a warning is issued.
-##' To specify a particular component of the random effects vector, set \code{check_mean = FALSE} and provide
-##' a valid \code{component} value.
-##'
-##' @return
-##' No return value, called for side effects (plots and warnings).
-##' @importFrom sns ess
-##' @importFrom graphics par
-##' @export
-plot_mcmc <- function(object, check_mean = TRUE,
-                       component = NULL, ...) {
-  if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a 'RiskMap' object returned by 'glgpm'",
-         call. = FALSE)
-  }
-
-  if (object$family == "gaussian")
-    stop("'object' is a gaussian model which cannot contain MCMC chains")
-
-  if (is.null(object$S_samples))
-    stop("'object' does not contain any MCMC chains - rerun 'glgpm' with 'return_samples' = TRUE")
-
-  S_samples <- object$S_samples
-
-  if(check_mean & !is.null(component)) {
-    warning("if check_mean = TRUE, the value passed to 'component' is ignored;
-            set check_mean = FALSE when specifying a value for 'component'")
-  }
-  n_samples <- nrow(S_samples)
-  n_loc <- ncol(S_samples)
-  if(check_mean) {
-    S_chain <- apply(S_samples, 1, mean)
-  } else {
-    if(is.null(component)) stop("When 'check_mean' = FALSE a component of the
-                                random effects vector must be specified through 'component'
-                                by providing a positive integer")
-    check_positive_integer(component, "component")
-    if(component > n_loc) stop("'component' must be a single positive integer
-                               between 1 and the number of locations in the data")
-    S_chain <- S_samples[,component]
-  }
-
-  par(mfrow = c(1,2))
-  plot(S_chain, type = "l",
-       ylab = "", xlab = "Iteration",
-       main = "Spatial random effect")
-
-  S_chain_ess <- round(ess(S_chain),3)
-  acf(S_chain, main = paste("Effective sample size:",
-                            S_chain_ess), ...)
-  par(mfrow = c(1,1))
 }

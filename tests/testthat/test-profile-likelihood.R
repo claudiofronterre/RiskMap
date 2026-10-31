@@ -29,7 +29,9 @@ test_that("profiling restores the random number state", {
 })
 
 test_that("profile rejects fits and settings it cannot handle", {
-  expect_error(profile(gaussian_model), "binomial and Poisson")
+  uncertified <- binomial_model
+  uncertified$mcml_history <- NULL
+  expect_error(profile(uncertified), "binomial and Poisson")
   expect_error(profile(binomial_model, parameters = "kappa", messages = FALSE),
                "Unknown parameter")
   expect_error(profile(binomial_model, n_points = 2), "n_points")
@@ -217,4 +219,209 @@ test_that("a failure to find a value is not reported as infeasible", {
   result <- maximise_profile(problem, 1, 4, c(3, 2, 3))
   expect_true(is.na(result$value))
   expect_identical(result$status, "failed")
+})
+
+# A well-identified linear geostatistical model with a nugget: 40 locations
+# with four observations each, so that the likelihood uses the Woodbury
+# identity. The shared Gaussian fixtures have one observation at each of ten
+# locations, and some of their variances are estimated near zero, so their
+# profiles reach the bounds, where brute-force maximisation is no check.
+replicated_data <- local({
+  set.seed(2026)
+  n_locations <- 40L
+  locations <- cbind(stats::runif(n_locations, 0, 20000),
+                     stats::runif(n_locations, 0, 20000))
+  correlation <- matern_correlation(dist(locations), phi = 4000, kappa = 0.5,
+                                    return_sym_matrix = TRUE)
+  field <- drop(t(chol(correlation)) %*% stats::rnorm(n_locations)) +
+    stats::rnorm(n_locations, sd = sqrt(0.3))
+  rows <- rep(seq_len(n_locations), each = 4L)
+  data <- data.frame(x = locations[rows, 1], z = locations[rows, 2],
+                     cov = stats::rnorm(length(rows)))
+  data$y <- 1 + 0.5 * data$cov + field[rows] +
+    stats::rnorm(length(rows), sd = sqrt(0.2))
+  sf::st_as_sf(data, coords = c("x", "z"), crs = 32637)
+})
+replicated_fit <- glgpm(y ~ cov + gp(nugget = TRUE), data = replicated_data,
+                        family = "gaussian", messages = FALSE)
+
+test_that("the profile likelihood of a Gaussian fit is the likelihood of the fit", {
+  for (fitted in list(gaussian_model, gaussian_offset_model, replicated_fit)) {
+    problem <- make_gaussian_profile_problem(fitted)
+    expect_equal(problem$value(problem$estimate), fitted$log_lik,
+                 tolerance = 1e-10)
+    expect_equal(problem$max_loglik, fitted$log_lik, tolerance = 1e-6)
+  }
+})
+
+test_that("the Woodbury identity and direct factorisation give one likelihood", {
+  expect_false(use_direct_gaussian_covariance(160L, 40L, NULL, TRUE))
+  # The second fit has a random effect, so the latent effects have more than
+  # one block.
+  for (fitted in list(replicated_fit, gaussian_model)) {
+    problem <- make_gaussian_profile_problem(fitted)
+    scaling <- scale_spatial_coordinates(fitted$coords)
+    likelihood <- function(woodbury) {
+      make_gaussian_likelihood(
+        y = fitted$y, D = standardize_design_matrix(fitted$D)$design,
+        distances = pairwise_distances(scaling$coordinates),
+        kappa = fitted$kappa, ID_coords = fitted$ID_coords,
+        ID_re = if (is.null(fitted$ID_re)) NULL else as.matrix(fitted$ID_re),
+        fix_tau2 = fitted$fix_tau2, fix_var_me = fitted$fix_var_me,
+        woodbury = woodbury
+      )
+    }
+    latent <- likelihood(TRUE)
+    direct <- likelihood(FALSE)
+    at_estimate <- problem$internal$to(pmax(problem$estimate, -10))
+    p <- ncol(fitted$D)
+    for (shift in c(0, 0.5, -2)) {
+      internal <- at_estimate
+      internal[-seq_len(p)] <- internal[-seq_len(p)] + shift
+      expect_equal(latent$value(internal), direct$value(internal),
+                   tolerance = 1e-10)
+      expect_equal(latent$coefficients(internal),
+                   direct$coefficients(internal), tolerance = 1e-8)
+    }
+  }
+})
+
+test_that("Gaussian profiles have every parameter, with the labels of summary()", {
+  profiles <- profile(gaussian_model, pairs = list(c("sigma2", "phi")),
+                      n_points = 5, n_grid = 3, n_draws = 1,
+                      messages = FALSE)
+  expect_named(profiles$marginal, names(unlist(gaussian_model$estimate)))
+  expect_identical(nrow(profiles$joint[[1]]), 9L)
+  summaries <- summary(gaussian_model)
+  expect_identical(profiles$intervals$label,
+                   c(rownames(summaries$reg_coef), rownames(summaries$sp),
+                     rownames(summaries$me), rownames(summaries$ranef)))
+  inside <- with(profiles$intervals,
+                 (is.na(profile_lower) | profile_lower <= estimate) &
+                   (is.na(profile_upper) | estimate <= profile_upper))
+  expect_true(all(inside))
+  expect_null(profiles$settings$n_draws)
+  printed <- capture.output(print(profiles))
+  expect_match(printed[1], "exact likelihood")
+  expect_false(any(grepl("Monte Carlo", printed)))
+  grDevices::pdf(NULL)
+  on.exit(grDevices::dev.off())
+  expect_named(plot(profiles), c(names(profiles$marginal), "sigma2:phi"))
+})
+
+test_that("a Gaussian profile point maximises the likelihood over the rest", {
+  problem <- make_gaussian_profile_problem(replicated_fit)
+  # The likelihood maximised over all the free parameters, the coefficients
+  # included, without generalised least squares.
+  brute_force <- function(index, value) {
+    negative <- function(free) {
+      working <- problem$estimate
+      working[-index] <- free
+      working[index] <- value
+      -problem$value(working)
+    }
+    best <- stats::optim(problem$estimate[-index], negative, method = "BFGS",
+                         control = list(reltol = 1e-14, maxit = 1000))
+    -stats::optim(best$par, negative,
+                  control = list(reltol = 1e-14, maxit = 5000))$value
+  }
+  for (index in seq_along(problem$names)) {
+    value <- problem$estimate[[index]] + problem$standard_errors[[index]]
+    point <- maximise_profile(problem, index, value, problem$bank_estimate)
+    expect_identical(point$status, "ok")
+    expect_identical(unname(point$par[index]), value)
+    expect_equal(problem$value(point$par), point$value, tolerance = 1e-10)
+    # The optimiser stops within about 1e-4 log-likelihood units.
+    expect_lt(abs(point$value - brute_force(index, value)), 1e-4)
+  }
+})
+
+test_that("Gaussian profiles of fixed variances match refits", {
+  problem <- make_gaussian_profile_problem(replicated_fit)
+  measurement <- match("sigma2_me", problem$names)
+  value <- problem$estimate[[measurement]] + 0.3
+  point <- maximise_profile(problem, measurement, value,
+                            problem$bank_estimate)
+  refit <- glgpm(y ~ cov + gp(nugget = TRUE), data = replicated_data,
+                 family = "gaussian", fix_var_me = exp(value),
+                 messages = FALSE)
+  expect_lt(abs(point$value - refit$log_lik), 1e-4)
+  # The nugget is profiled as its variance, so a fixed point is a model with
+  # the nugget fixed at that variance.
+  nugget <- match("tau2", problem$names)
+  expect_false("nu2" %in% problem$names)
+  expect_equal(problem$estimate[["tau2"]],
+               replicated_fit$estimate$nu2 + replicated_fit$estimate$sigma2,
+               tolerance = 1e-12)
+  value <- problem$estimate[[nugget]] + 1
+  point <- maximise_profile(problem, nugget, value, problem$bank_estimate)
+  refit <- glgpm(y ~ cov + gp(nugget = exp(value)), data = replicated_data,
+                 family = "gaussian", messages = FALSE)
+  expect_lt(abs(point$value - refit$log_lik), 1e-4)
+})
+
+test_that("the Wald interval of the nugget variance is that of summary()", {
+  profiles <- profile(replicated_fit, parameters = "tau2", n_points = 5,
+                      messages = FALSE)
+  expect_identical(profiles$labels$tau2, "Variance of the nugget")
+  nugget <- summary(replicated_fit)$sp["Variance of the nugget", ]
+  expect_equal(unlist(profiles$intervals[c("estimate", "wald_lower",
+                                           "wald_upper")]),
+               nugget, tolerance = 1e-10, ignore_attr = TRUE)
+})
+
+test_that("a joint Gaussian profile can fix every covariance parameter", {
+  fitted <- glgpm(y ~ gp(), data = replicated_data, family = "gaussian",
+                  fix_var_me = 0.2, messages = FALSE)
+  profiles <- profile(fitted, parameters = "phi",
+                      pairs = list(c("sigma2", "phi")), n_points = 5,
+                      n_grid = 3, messages = FALSE)
+  joint <- profiles$joint[[1]]
+  expect_true(all(is.finite(joint$loglik)))
+  expect_true(all(joint$deviance >= -1e-8))
+})
+
+test_that("Gaussian profiles on two cores equal those on one", {
+  skip_on_os("windows")
+  serial <- profile(replicated_fit, parameters = c("cov", "sigma2"),
+                    pairs = list(c("sigma2", "phi")), n_points = 5,
+                    n_grid = 3, messages = FALSE)
+  parallel <- profile(replicated_fit, parameters = c("cov", "sigma2"),
+                      pairs = list(c("sigma2", "phi")), n_points = 5,
+                      n_grid = 3, cores = 2, messages = FALSE)
+  expect_identical(parallel$marginal, serial$marginal)
+  expect_identical(parallel$joint, serial$joint)
+  expect_identical(parallel$intervals, serial$intervals)
+})
+
+test_that("a poorly identified variance has an open profile interval", {
+  skip_on_cran()
+  # The Galicia lead data cannot tell the measurement error variance from
+  # zero, so the profile stays below the cut-off down to the lower bound,
+  # while the upper end is refined to the crossing of the cut-off.
+  data(galicia)
+  fitted <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
+                  family = "gaussian", distance_units = "km",
+                  messages = FALSE)
+  profiles <- profile(fitted, parameters = "sigma2_me", messages = FALSE)
+  interval <- profiles$intervals
+  expect_true(is.na(interval$profile_lower))
+  expect_equal(interval$profile_upper, 0.0763, tolerance = 2e-3)
+  marginal <- profiles$marginal$sigma2_me
+  below <- marginal$value < log(interval$estimate)
+  expect_lt(max(marginal$deviance[below]), stats::qchisq(0.95, 1))
+  expect_lt(min(marginal$value), -15)
+  cutoff <- stats::qchisq(0.95, 1)
+  expect_lt(min(abs(marginal$deviance - cutoff)), 0.01)
+})
+
+test_that("the subtitle of a marginal panel has one line per value", {
+  interval <- data.frame(estimate = 0.0883, profile_lower = 0.03023,
+                         profile_upper = NA, wald_lower = 0.03513,
+                         wald_upper = 0.2217)
+  expect_identical(
+    profile_interval_text(interval, 0.95),
+    paste("Estimate 0.0883", "95% profile interval 0.0302 to open",
+          "95% Wald interval 0.0351 to 0.222", sep = "\n")
+  )
 })
