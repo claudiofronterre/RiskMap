@@ -36,11 +36,11 @@ Imports:
     Matrix,
     numDeriv,
     parallel,
+    patchwork,
     Rcpp,
     rlang,
     scales,
     sf,
-    sns,
     spatialEco,
     spatialsample,
     terra,
@@ -50,7 +50,6 @@ LinkingTo:
     Rcpp,
     RcppEigen
 Suggests:
-    patchwork,
     RhpcBLASctl,
     testthat (>= 3.0.0),
     withr
