@@ -104,6 +104,26 @@ for nugget effects and multiple unstructured random effects, while avoiding
 the main interpreted-R bottlenecks. Custom inverse-link functions continue to
 use the general R implementation.
 
+- `plot_mcmc()` draws its diagnostics with ggplot2 and patchwork and returns
+them as a `patchwork` object, instead of drawing with base graphics and
+resetting `par()`. By default it shows the trace plot and the autocorrelation
+function of the mean of the spatial random effects and of the location with
+the smallest effective sample size, with a histogram of the effective sample
+sizes at all the locations. The trace plots show the iterations at which the
+samples were kept, so fits now record the `n_sim`, `burnin` and `thin` of
+their samples in `attr(fit, "mcmc")`. `component` now defaults to the
+location with the smallest effective sample size, can select several
+locations and can be given together with `check_mean = TRUE`. The mean and
+`component` previously included the levels of unstructured random effects,
+which are stored after the locations in `S_samples`. They now refer to the
+locations only.
+
+- The new `summarise_mcmc()` returns the effective sample sizes of the mean of
+the spatial random effects, of each location and of each level of an
+unstructured random effect. They are computed with the initial monotone
+sequence estimator of Geyer (1992), so the package no longer depends on sns.
+patchwork has moved from Suggests to Imports.
+
 - Non-Gaussian optimisation now reuses the sample-wise Monte Carlo log
 integrand when the objective, gradient, and Hessian are evaluated at identical
 parameters, avoiding a repeated likelihood calculation.
