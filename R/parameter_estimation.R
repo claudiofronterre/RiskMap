@@ -3036,8 +3036,10 @@ laplace_sampling_mcmc <- function(y,
 ##' Non-Gaussian models are fitted by Monte Carlo maximum likelihood with
 ##' importance sampling. The estimated log-likelihood is maximised on a
 ##' fitting sample of draws, the estimate is corrected by one Newton step with
-##' the score from an independent validation sample, and the corrected
-##' estimate is certified with a second, fresh validation sample. The
+##' the score from an independent validation sample, followed by further steps
+##' on that sample when the fitting sample predicts that one step leaves a
+##' residual, and the corrected estimate is certified with a second, fresh
+##' validation sample. The
 ##' certificate is an approximate 95% bound, in statistical standard errors,
 ##' on the Monte Carlo error of the estimate, that is its distance from the
 ##' maximum of the exact likelihood that the fit has located. It is not an

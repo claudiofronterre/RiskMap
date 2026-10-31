@@ -272,6 +272,93 @@ test_that("print.summary.RiskMap formats binomial and poisson models", {
   expect_snapshot(print(poisson_summary))
 })
 
+test_that("print.summary.RiskMap reports the Monte Carlo certificate and notes", {
+  sp_without_nugget <- build_summary_riskmap()$sp[1:2, ]
+  certified <- list(certificate = 0.0594, level = 0.95, tolerance = 0.1,
+                    certified = TRUE, outcome = "certified",
+                    correction_refused = FALSE, stages = 1L,
+                    fitting_draws = 1000L, validation_draws = 5000L,
+                    notes = character())
+  binomial_summary <- build_summary_riskmap(list(
+    family = "binomial", me = NULL, sp = sp_without_nugget, tau2 = 0,
+    ranef = NULL, cov_offset_used = FALSE, aic = NULL, call = NULL,
+    link_name = "canonical (logit)",
+    invlink_expression = "Inverse link function = 1 / (1 + exp(-x))",
+    mcml = certified
+  ))
+  expect_snapshot(print(binomial_summary))
+
+  refused <- modifyList(certified, list(
+    certificate = 0.0412, certified = FALSE, outcome = "not certified",
+    correction_refused = TRUE, stages = 4L, fitting_draws = 2500L,
+    validation_draws = 12500L,
+    notes = describe_mcml_notes(list(
+      mcml_boundary = "spatial variance (sigma2)", mcml_pc_prior = FALSE
+    ))
+  ))
+  binomial_summary$mcml <- refused
+  expect_snapshot(print(binomial_summary))
+})
+
+test_that("summary.RiskMap reads the certificate of a non-Gaussian fit", {
+  expect_null(summary(gaussian_model)$mcml)
+  optimizer <- attr(binomial_model, "optimizer")
+  mcml <- summary(binomial_model)$mcml
+  expect_identical(mcml$certificate, optimizer$mcml_certificate)
+  expect_identical(mcml$certified, isTRUE(optimizer$mcml_certified))
+  expect_identical(mcml$outcome, optimizer$mcml_outcome)
+  expect_identical(mcml$stages, optimizer$mcml_stages)
+  expect_identical(mcml$tolerance,
+                   attr(binomial_model, "control_mcml")$tolerance)
+  expect_identical(mcml$fitting_draws, optimizer$mcml_budget)
+  expect_identical(mcml$validation_draws, optimizer$mcml_validation_budget)
+  expect_output(print(summary(binomial_model)),
+                "Monte Carlo maximum likelihood")
+})
+
+test_that("the notes of a summary follow the warnings of the fit", {
+  expect_length(describe_mcml_notes(list()), 0L)
+  notes <- describe_mcml_notes(list(
+    mcml_small_scale = TRUE, mcml_ambiguous_maxima = TRUE,
+    mcml_better_maximum = TRUE, mcml_pc_prior = FALSE
+  ))
+  expect_length(notes, 3L)
+  expect_match(notes[1], "shorter than the median distance")
+  expect_match(notes[2], "fit about equally well")
+  expect_match(notes[3], "pc_prior = TRUE")
+  penalised <- describe_mcml_notes(list(mcml_small_scale = TRUE,
+                                        mcml_pc_prior = TRUE))
+  expect_length(penalised, 1L)
+  two <- describe_mcml_notes(list(
+    mcml_boundary = c("spatial variance (sigma2)", "nugget variance (tau2)"),
+    mcml_pc_prior = TRUE
+  ))
+  expect_match(two, "were estimated as effectively zero.*their standard errors")
+})
+
+test_that("print.RiskMap is short and gives the certificate", {
+  printed <- capture.output(result <- print(binomial_model))
+  expect_identical(result, binomial_model)
+  expect_lt(length(printed), 30L)
+  expect_true(any(grepl("^Binomial geostatistical model, 10 observations",
+                        printed)))
+  expect_true(any(grepl("Regression coefficients", printed, fixed = TRUE)))
+  expect_true(any(grepl("certified", printed, ignore.case = TRUE)))
+  expect_false(any(grepl("concerns the maximum found", printed)))
+  estimates <- coef(binomial_model)
+  variance <- grep("^Spatial process var.", printed, value = TRUE)
+  expect_equal(as.numeric(sub("^Spatial process var. +", "", variance)),
+               estimates$sigma2, tolerance = 1e-3)
+  expect_true(any(grepl("^summary\\(\\) gives standard errors", printed)))
+
+  gaussian_printed <- capture.output(print(gaussian_model))
+  expect_lt(length(gaussian_printed), 30L)
+  expect_true(any(grepl("i (random eff. var.)", gaussian_printed,
+                        fixed = TRUE)))
+  expect_false(any(grepl("Monte Carlo", gaussian_printed)))
+  expect_output(print(poisson_model), "^Call:")
+})
+
 test_that("print.summary.RiskMap labels a summary of a real fit", {
   expect_output(print(summary(gaussian_model)), "Linear geostatistical model")
   expect_output(print(summary(gaussian_model)), "Unstructured random effects")

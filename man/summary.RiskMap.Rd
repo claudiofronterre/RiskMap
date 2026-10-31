@@ -15,7 +15,16 @@
 }
 \value{
 A list of class \code{"summary.RiskMap"} with parameter estimates,
-standard errors, and confidence intervals.
+standard errors, and confidence intervals. For binomial and Poisson
+models, its component \code{mcml} reports certified Monte Carlo maximum
+likelihood: \code{certificate} (an approximate bound, with probability
+\code{level}, on the Monte Carlo error of the estimate in statistical
+standard errors, \code{NA} when there is none), \code{tolerance},
+\code{certified}, \code{outcome}, \code{correction_refused} (whether
+the Newton correction of the last stage did not converge),
+\code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
+last stage) and \code{notes}, short notes on what the warnings of the
+fit reported. \code{mcml} is \code{NULL} for Gaussian models.
 }
 \description{
 Provides a \code{summary} method for the "RiskMap" class that
