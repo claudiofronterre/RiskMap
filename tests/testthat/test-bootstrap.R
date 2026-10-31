@@ -42,12 +42,13 @@ test_that("replicates have their own seeds and do not depend on cores", {
                                   messages = FALSE)
   expect_identical(smaller$estimates, first$estimates[1:2, ])
 
-  # The first replicate simulates and refits with the seed itself.
+  # The first replicate simulates and refits with the seed itself. The
+  # replicates run with one BLAS thread, which this refit may not.
   simulated <- simulate_glgpm(gaussian_model, seed = 11)
   refitted <- suppressWarnings(make_bootstrap_refit(gaussian_model)(
     simulated$samples$data[, 1L, "response"], 11L
   ))
-  expect_identical(first$estimates[1L, ], refitted)
+  expect_equal(first$estimates[1L, ], refitted, tolerance = 1e-8)
 
   skip_on_os("windows")
   parallel <- parametric_bootstrap(gaussian_model, n_sim = 4, seed = 11,
