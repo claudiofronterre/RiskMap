@@ -11,7 +11,7 @@ summarise_mcmc(object)
 binomial or Poisson model with \code{return_samples = TRUE}.}
 }
 \value{
-A data frame with one row per chain and columns
+A tibble with one row per chain and columns
 \item{effect}{\code{"mean of S"} for the mean of the spatial random effects
 over the locations, \code{"S"} for the spatial random effect at a location,
 or the name of the variable of an unstructured random effect.}

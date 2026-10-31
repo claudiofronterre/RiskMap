@@ -118,9 +118,9 @@ locations and can be given together with `check_mean = TRUE`. The mean and
 which are stored after the locations in `S_samples`. They now refer to the
 locations only.
 
-- The new `summarise_mcmc()` returns the effective sample sizes of the mean of
-the spatial random effects, of each location and of each level of an
-unstructured random effect. They are computed with the initial monotone
+- The new `summarise_mcmc()` returns a tibble of the effective sample sizes of
+the mean of the spatial random effects, of each location and of each level of
+an unstructured random effect. They are computed with the initial monotone
 sequence estimator of Geyer (1992), so the package no longer depends on sns.
 patchwork has moved from Suggests to Imports.
 

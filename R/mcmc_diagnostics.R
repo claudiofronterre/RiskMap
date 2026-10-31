@@ -27,7 +27,7 @@
 ##' is at most \eqn{N \log_{10} N}. A chain that never moves has an effective
 ##' sample size of zero.
 ##'
-##' @return A data frame with one row per chain and columns
+##' @return A tibble with one row per chain and columns
 ##' \item{effect}{`"mean of S"` for the mean of the spatial random effects
 ##'   over the locations, `"S"` for the spatial random effect at a location,
 ##'   or the name of the variable of an unstructured random effect.}
@@ -67,6 +67,7 @@ summarise_mcmc <- function(object) {
       ess = mcmc_effective_size(blocks[[name]])
     ))
   }
+  out <- as_tibble(out)
   attr(out, "n_samples") <- nrow(spatial)
   out
 }
