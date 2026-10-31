@@ -103,7 +103,7 @@
 ##'              seed = 2026)
 ##' bootstrap <- parametric_bootstrap(fit, n_sim = 100, seed = 2026)
 ##' summary(bootstrap)
-##' plot(bootstrap)
+##' plot(bootstrap, parameters = "phi")
 ##' }
 ##' @export
 parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
