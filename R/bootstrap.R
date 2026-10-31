@@ -117,7 +117,8 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
   check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
   check_positive_integer(cores, "cores")
   check_logical(messages)
-  seed_spacing <- bootstrap_seed_spacing()
+  control_mcml <- attr(object, "control_mcml") %||% set_control_mcml()
+  seed_spacing <- bootstrap_seed_spacing(control_mcml$max_stages)
   if (n_sim > .Machine$integer.max %/% seed_spacing) {
     stop("'n_sim' must be at most ", .Machine$integer.max %/% seed_spacing,
          call. = FALSE)
@@ -176,11 +177,21 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
 
 ##' Distance between the seeds of consecutive bootstrap replicates
 ##'
-##' Larger than the largest offset `fit_adaptive_mcml()` adds to the seed of
-##' a fit (6000 plus the number of stages), so no two replicates share a
-##' Monte Carlo stream.
+##' Larger than the largest offset `fit_adaptive_mcml()` and the final
+##' sampling add to the seed of a fit, so no two replicates share a Monte
+##' Carlo stream. The offsets reach 2000 plus three per stage, 6000 plus one
+##' per stage, and three per stage plus one, all below 6000 plus three per
+##' stage.
 ##' @noRd
-bootstrap_seed_spacing <- function() 10000L
+bootstrap_seed_spacing <- function(max_stages) {
+  spacing <- 10000L
+  if (6000 + 3 * max_stages >= spacing) {
+    stop("parametric_bootstrap() supports fits with at most ",
+         (spacing - 6001) %/% 3, " stages of certified MCML ('max_stages' ",
+         "in set_control_mcml())", call. = FALSE)
+  }
+  spacing
+}
 
 ##' Seeds of the bootstrap replicates, wrapped like `fit_adaptive_mcml()`
 ##' wraps its streams

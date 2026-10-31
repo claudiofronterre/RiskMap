@@ -35,6 +35,8 @@ test_that("replicates have their own seeds and do not depend on cores", {
   expect_identical(first$settings$seed, 11L)
   expect_identical(bootstrap_seeds(11L, 3L, 10000L),
                    c(11L, 10011L, 20011L))
+  expect_identical(bootstrap_seed_spacing(1333L), 10000L)
+  expect_error(bootstrap_seed_spacing(1334L), "at most 1333 stages")
 
   smaller <- parametric_bootstrap(gaussian_model, n_sim = 2, seed = 11,
                                   messages = FALSE)
