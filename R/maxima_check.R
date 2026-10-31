@@ -241,10 +241,10 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
     message(switch(
       event,
       screen = paste0(
-        "The likelihood at a spatial scale shorter than the fitted one (phi = ",
-        signif(exp(log_phi) * distance_scale, 3), ") came close to the ",
-        "fitted maximum, so the fit is repeated from that point to check for ",
-        "a higher maximum at short scales."
+        "At a spatial scale (phi = ", signif(exp(log_phi) * distance_scale, 3),
+        ") shorter than that of the first fit, the likelihood came close to ",
+        "the fitted maximum, so the fit is repeated from that point to check ",
+        "for a higher maximum at short scales."
       ),
       alarm = paste0(
         "An exact lower bound on the likelihood at a short spatial scale is ",

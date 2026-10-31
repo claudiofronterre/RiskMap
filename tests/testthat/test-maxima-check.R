@@ -272,10 +272,12 @@ test_that("the outcome of the screen is reported to the user", {
                  "numerically one of independent.*variance 2.*unresolved")
   near <- list(near_limit = list(gap = 0.0011, se = 0.0005, draws = 5000L,
                                  log_phi = log(0.023)))
-  expect_warning(report_near_limit(near, distance_scale = 10),
-                 paste0("phi = 0.23.*not clearly distinguishable.*",
+  # The warning quotes the scale of the returned estimate, not that of the
+  # fit compared with the limit.
+  expect_warning(report_near_limit(near, scale = 0.2271),
+                 paste0("phi = 0.227\\).*not clearly distinguishable.*",
                         "difference 0.0011.*profile\\(fit, parameters = \"phi\"\\)"))
-  expect_silent(report_near_limit(list(), distance_scale = 10))
+  expect_silent(report_near_limit(list(), scale = 0.2271))
 })
 
 test_that("the screen is recorded for fits with and without random effects", {
