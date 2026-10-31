@@ -173,6 +173,28 @@ test_that("a scale smaller than the location spacing is reported, not held", {
   )
 })
 
+test_that("a refused Newton correction is reported, not a large bound", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  outcome <- list(boundary_parameters = integer(), budget = 2500L,
+                  validation_budget = 12500L, outcome = "not certified",
+                  certified = FALSE, certificate = 0.04,
+                  history = list(list(residual_refused = TRUE)))
+  refused <- tryCatch(
+    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
+                        tolerance = 0.1, messages = FALSE),
+    warning = conditionMessage
+  )
+  expect_match(refused, "Newton correction of the estimate did not converge")
+  expect_no_match(refused, "above the tolerance")
+  outcome$history <- list(list(residual_refused = FALSE))
+  outcome$certificate <- 0.4
+  expect_warning(
+    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
+                        tolerance = 0.1, messages = FALSE),
+    "0.4 statistical standard errors, above the tolerance of 0.1"
+  )
+})
+
 test_that("the practical range factor matches the exponential correlation", {
   expect_equal(compute_practical_range_factor(0.5), -log(0.05),
                tolerance = 1e-8)
@@ -501,6 +523,128 @@ test_that("certificate algebra matches its definition", {
   expect_equal(radius, sqrt(0.01 * qchisq(0.95, 2)), tolerance = 0.01)
 })
 
+test_that("the predicted residual of the correction is that of a Newton step", {
+  information <- matrix(c(4, 1, 1, 3), 2)
+  centre <- c(0.5, -0.2)
+  quadratic <- function(parameters) {
+    -0.5 * drop(t(parameters - centre) %*% information %*%
+                  (parameters - centre))
+  }
+  step <- c(0.3, 0.1)
+  expect_equal(predict_correction_residual(quadratic, c(0, 0), step, 1:2,
+                                           chol(information), step, 0.1),
+               0, tolerance = 1e-6)
+  # Along exp(x) - x the score at the corrected point is left over.
+  curved <- function(parameters) -(exp(parameters[1]) - parameters[1]) -
+    parameters[2]^2
+  curvature <- diag(c(exp(1), 2))
+  step <- c(-0.5, 0)
+  left <- exp(1) / 2 - exp(0.5)
+  expect_equal(predict_correction_residual(curved, c(1, 0), c(0.5, 0), 1:2,
+                                           chol(curvature), step, 0.1),
+               abs(left) / sqrt(exp(1)) / 0.1, tolerance = 1e-6)
+})
+
+test_that("repeated corrections reach the maximum of the correction bank", {
+  log_likelihood <- function(parameters) {
+    -(exp(parameters[1]) - 2 * parameters[1]) - (parameters[2] - 1)^2 / 2
+  }
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, ...) {
+      list(score = c(2 - exp(parameters[1]), 1 - parameters[2])[free])
+    }
+  )
+  repeated <- repeat_correction(NULL, NULL, c(1.2, 1), chol(diag(2)), 1:2,
+                                10L, 1L, log_likelihood, c(-10, -10),
+                                c(10, 10), radius = 0.01)
+  expect_equal(repeated$estimate, c(log(2), 1), tolerance = 1e-8)
+  expect_true(repeated$converged)
+  expect_true(all(diff(repeated$lengths) < 0))
+  # The curvature is the fitting bank's at the last point it was computed.
+  expect_equal(repeated$information[2, 2], 1, tolerance = 1e-5)
+})
+
+test_that("the correction continues only past its check", {
+  # The correction bank's score is exact, so one Newton step reaches the
+  # maximum of a quadratic and falls short along exp(x) - 2x.
+  correct <- function(log_likelihood, score, start, variance = 1e-6) {
+    local_mocked_bindings(
+      score_validation_bank = function(engine, parameters, free, ...) {
+        list(score = score(parameters)[free],
+             covariance = diag(variance, length(free)), log_likelihood = 0,
+             seconds = 0)
+      }
+    )
+    information <- compute_bank_curvature(log_likelihood, start, 1:2)
+    information$gradient <- compute_central_gradient(log_likelihood, start)
+    correct_and_certify(NULL, NULL, start,
+                        c(information, list(free = 1:2)), 10L, 1:3,
+                        c(-10, -10), c(10, 10), 0.1,
+                        bank_objective = log_likelihood)
+  }
+  quadratic <- function(parameters) -sum((parameters - c(0.5, 1))^2) / 2
+  quadratic_score <- function(parameters) c(0.5, 1) - parameters
+  corrected <- correct(quadratic, quadratic_score, c(1.5, 0))
+  expect_equal(corrected$estimate, c(0.5, 1), tolerance = 1e-6)
+  expect_identical(corrected$correction_steps, 1L)
+  expect_lt(corrected$predicted_residual, 0.25)
+  expect_null(corrected$correction_lengths)
+  expect_false(corrected$residual_refused)
+  curved <- function(parameters) {
+    -(exp(parameters[1]) - 2 * parameters[1]) - (parameters[2] - 1)^2 / 2
+  }
+  curved_score <- function(parameters) {
+    c(2 - exp(parameters[1]), 1 - parameters[2])
+  }
+  # One step from 1.5 in the curvature exp(1.5) ends at 0.5 + 2 exp(-1.5).
+  one_step <- c(0.5 + 2 * exp(-1.5), 1)
+  corrected <- correct(curved, curved_score, c(1.5, 0))
+  expect_gt(corrected$predicted_residual, 0.25)
+  expect_equal(corrected$estimate, c(log(2), 1), tolerance = 1e-6)
+  expect_gt(corrected$correction_steps, 2L)
+  expect_true(corrected$correction_converged)
+  expect_true(corrected$certified)
+  # The certificate is measured in the curvature at the last step.
+  expect_equal(corrected$information[1, 1], 2, tolerance = 1e-5)
+  # Below the floor of the radius the check does not act, whatever the
+  # prediction, since there it divides rounding error by the radius.
+  exact <- correct(curved, curved_score, c(1.5, 0), variance = 1e-30)
+  expect_gt(exact$predicted_residual, 0.25)
+  expect_identical(exact$correction_steps, 1L)
+  expect_equal(exact$estimate, one_step, tolerance = 1e-6)
+  expect_false(exact$residual_refused)
+  # Repeated corrections that stop far from the bank's maximum are discarded
+  # and the estimate of the first step is not certified.
+  local_mocked_bindings(repeat_correction = function(engine, penalty,
+                                                     corrected, root, ...) {
+    list(estimate = corrected + 3, root = root / 2, information = diag(2),
+         lengths = 3, converged = FALSE, remaining = 5)
+  })
+  stopped <- correct(curved, curved_score, c(1.5, 0))
+  expect_equal(stopped$estimate, one_step, tolerance = 1e-6)
+  expect_null(stopped$information)
+  expect_true(stopped$residual_refused)
+  expect_false(stopped$certified)
+  expect_identical(stopped$correction_steps, 2L)
+})
+
+test_that("repeated corrections stop when a step does not contract", {
+  # The fitting bank's curvature is a tenth of the correction bank's, so the
+  # steps overshoot by more each time.
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, ...) {
+      list(score = 1 - parameters)
+    }
+  )
+  repeated <- repeat_correction(NULL, NULL, 0, chol(matrix(0.1)), 1L, 10L,
+                                1L, function(parameters) -parameters^2 / 20,
+                                -1000, 1000, radius = 1)
+  expect_false(repeated$converged)
+  expect_length(repeated$lengths, 1L)
+  expect_gt(repeated$remaining, repeated$lengths)
+  expect_equal(repeated$estimate, 10, tolerance = 1e-6)
+})
+
 test_that("the validation radius leaves the caller's random numbers", {
   set.seed(77)
   before <- .Random.seed
@@ -622,6 +766,12 @@ test_that("dispersed starts span the site spacing and half the extent", {
   expect_equal(exp(dispersed$log_sigma2), c(0.25, 4, 0.25, 4))
   expect_equal(dispersed$trigger, log(0.5))
   expect_identical(dispersed$phi_index, 4L)
+  # The announcement says that the scale is that of the first fit, before
+  # the correction that gives the returned estimate.
+  announcing <- make_dispersed_starts(layout, distances, distance_scale = 2,
+                                      messages = TRUE)
+  expect_message(announcing$announce(log(0.074)),
+                 "first fit \\(phi = 0.148, before its Monte Carlo correction\\)")
 })
 
 test_that("the check for maxima finds a higher one at a longer scale", {
@@ -826,6 +976,10 @@ test_that("the one-round central Hessian matches an exact quadratic", {
   expected <- curvature + diag(point)
   expect_equal(compute_central_hessian(objective, point), expected,
                tolerance = 1e-6)
+  both <- compute_central_hessian(objective, point, with_gradient = TRUE)
+  expect_identical(both$hessian, compute_central_hessian(objective, point))
+  expect_equal(both$gradient, drop(curvature %*% point) + point^2 / 2,
+               tolerance = 1e-6)
 })
 
 test_that("weight diagnostics survive degenerate banks", {
@@ -880,15 +1034,17 @@ test_that("the check for other maxima reports a move and an ambiguity", {
     independent_se = c(0.05, 0), chosen = c(FALSE, TRUE),
     start = c("fitted", "a"), log_phi = log(c(0.1, 20))
   )
+  # The kept maximum is quoted at the returned estimate, after the Newton
+  # correction moved it from the scale 20 fitted on the fitting draws.
   moved <- list(maxima_check = check, better_maximum = TRUE,
-                ambiguous_maxima = FALSE)
+                ambiguous_maxima = FALSE, estimate = c(0, 0, log(20.4)))
   expect_warning(report_maxima_check(moved, layout, 1),
-                 "found a separate maximum.*scale 20 instead of 0.1")
+                 "found a separate maximum.*scale 20.4 instead of 0.1")
   ambiguous <- moved
   ambiguous$better_maximum <- FALSE
   ambiguous$ambiguous_maxima <- TRUE
   expect_warning(report_maxima_check(ambiguous, layout, 1),
-                 "fit about equally well")
+                 "fit about equally well.*spatial scale 20.4\\.")
   quiet <- moved
   quiet$better_maximum <- FALSE
   expect_silent(report_maxima_check(quiet, layout, 1))
