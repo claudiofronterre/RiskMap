@@ -232,7 +232,7 @@ test_that("set_control_mcml validates the PC prior options", {
 test_that("glgpm fits with the PC prior and reports the unpenalised likelihood", {
   fit <- suppressWarnings(glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = set_control_mcml(
       initial_samples = 500, validation_samples = 500, max_samples = 500,
       max_stages = 1, pc_prior = TRUE
@@ -250,6 +250,7 @@ test_that("identification warnings point to the PC penalty only when it is off",
     withCallingHandlers(
       glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
             denominator = denominator, control_mcmc = control_mcmc,
+            seed = fixture_seed,
             control_mcml = set_control_mcml(
               initial_samples = 500, validation_samples = 500,
               max_samples = 500, max_stages = 1, pc_prior = pc_prior

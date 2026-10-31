@@ -91,6 +91,16 @@ native linear units rather than assuming metres.
 
 ## Model fitting
 
+- Breaking change: the seed has moved out of `set_control_mcmc()`, whose
+`seed` argument is removed. `glgpm()`, `predict()`, `assess_prediction()` and
+`assess_simulation()` take a `seed` argument instead, as `simulate_glgpm()`,
+`variogram()` and `profile()` already did. Replacing
+`control_mcmc = set_control_mcmc(seed = s)` with `seed = s` gives identical
+results. Without a seed, `glgpm()` draws one from the session's random number
+generator, so `set.seed()` before the call reproduces the fit, and two calls
+in a row differ. The seed used is returned as `seed` in the fitted object, and
+`glgpm(..., seed = fit$seed)` reproduces any binomial or Poisson fit,
+including its final conditional samples.
 - The `den` argument in `glgpm()` has been renamed to `denominator`.
 - `glpgm()` now only accepts data in an sf format. 
 Consequently the locations do not need to be passed to `gp()` when fitting a model
@@ -339,9 +349,9 @@ with `iter` and `fold`) and `which_metric` has been renamed to `metrics`.
 Parameters have also been reordered: mandatory arguments first, then those
 required per `method` (in the order `"cluster"`, `"regularized"`, `"user"`),
 then the remaining optional arguments.
-- `assess_prediction()` now honours a `seed` set on its `control_mcmc` argument
-to make the random splits generated for `method = "cluster"` or `"regularized"`
-reproducible.
+- `assess_prediction()` takes a `seed` that makes the random splits generated
+for `method = "cluster"` or `"regularized"` reproducible, together with the
+refits and predictions of each test set.
 - `assess_prediction()`'s `plot_fold = TRUE` plots are now consistent across
 `method`s: `"cluster"` is unchanged (`spatialsample::autoplot()`), while
 `"user"` and `"regularized"` now plot the testing and training datasets.
@@ -372,8 +382,6 @@ parameters have been renamed to `metric`/`model`.
 been removed or moved to their R callers, following the contributing guide;
 the R functions already validated everything the MALA and likelihood kernels
 checked.
-- A `seed` parameter can be passed to `set_control_mcmc()` to make non-Gaussian
-outputs reproducible.
 - `control_sim` parameters have been renamed to `control_mcmc`.
 - `to_table()` now returns a directly renderable `knitr_kable` table, with an
   explicit `digits` argument that preserves trailing zeroes. This replaces the

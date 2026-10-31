@@ -27,6 +27,13 @@
 ##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
 ##' @param control_mcml Control parameters for adaptive Monte Carlo maximum
 ##' likelihood estimation. Must be returned by [set_control_mcml()].
+##' @param seed Optional non-negative integer that seeds every random step of
+##' a binomial or Poisson fit: the Monte Carlo samples of the estimation and
+##' the final conditional samples. When `NULL` (the default), one integer is
+##' drawn from the session's random number generator, so [set.seed()] before
+##' the call also reproduces the fit. The seed used is returned as `seed`.
+##' The caller's random number state is otherwise left unchanged. Ignored for
+##' Gaussian models, which have no random step.
 ##' @param return_samples Logical indicating whether to draw and retain
 ##' conditional samples at the fitted parameters. These samples are used to
 ##' compute fitted values. If `FALSE`, final sampling is skipped and fitted
@@ -77,8 +84,9 @@
 ##' standard errors. The samples are enlarged only when the certificate exceeds
 ##' the tolerance. Every stage is recorded in `mcml_history`, and a warning is
 ##' issued if the tolerance is not met within the configured limits.
-##' `control_mcmc$seed` makes the estimation samples and the final conditional
-##' sampling reproducible.
+##' The estimation samples and the final conditional samples are drawn from
+##' separate streams derived from `seed`, so `glgpm(..., seed = fit$seed)`
+##' reproduces a fit exactly.
 ##'
 ##' The `start_pars` argument allows starting values to be supplied explicitly.
 ##' Otherwise, binomial and Poisson models compare two automatic candidates
@@ -149,6 +157,8 @@
 ##' `NULL` for Gaussian models.}
 ##' \item{mcml_selected_iteration}{The stage whose estimate is returned.
 ##' `NULL` for Gaussian models.}
+##' \item{seed}{The seed used for the random steps of a binomial or Poisson
+##' fit, whether supplied or drawn. `NULL` for Gaussian models.}
 ##'
 ##' @examples
 ##'
@@ -197,17 +207,17 @@
 ##' # binomial model
 ##' data(loaloa)
 ##'
-##' # reduce iterations to speed up fit and add
+##' # reduce iterations to speed up the fit, and set a
 ##' # seed for reproducibility
 ##' control_mcmc <- set_control_mcmc(n_sim = 100,
-##'                                  burnin = 20,
-##'                                  seed = 42)
+##'                                  burnin = 20)
 ##'
 ##' fit <- glgpm(NO_INF ~ gp(),
 ##'              data = loaloa[1:50,],
 ##'              denominator = NO_EXAM,
 ##'              family = "binomial",
 ##'              control_mcmc = control_mcmc,
+##'              seed = 42,
 ##'              messages = FALSE)
 ##'
 ##' summary(fit)
@@ -224,6 +234,7 @@ glgpm <- function(formula,
                  distance_units = c("km", "m"),
                  control_mcmc = set_control_mcmc(),
                  control_mcml = set_control_mcml(),
+                 seed = NULL,
                  return_samples = TRUE,
                  messages = TRUE,
                  fix_var_me = NULL,
@@ -249,6 +260,7 @@ glgpm <- function(formula,
     stop("the argument passed to 'control_mcml' must be an output from ",
          "the function set_control_mcml; see ?set_control_mcml for details")
   }
+  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
 
   if (family == "gaussian"){
     stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
@@ -523,6 +535,10 @@ glgpm <- function(formula,
     res["mcml_certified"] <- list(NULL)
     res["mcml_selected_iteration"] <- list(NULL)
   } else if(not_gaussian) {
+    # Without a seed, draw one from the session's stream, which advances it
+    # like any random call. Every random step of the fit derives from it.
+    if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
+    seed <- as.integer(seed)
     fitting_reference <- start_pars
     fitting_reference$phi <- fitting_start_phi
     res <- glgpm_nong_adaptive(
@@ -530,7 +546,7 @@ glgpm <- function(formula,
       kappa = inter_f$gp_spec$kappa, reference_pars = fitting_reference,
       cov_offset = cov_offset, ID_coords = ID_coords, ID_re = ID_re,
       fix_tau2 = fix_tau2, family = family, invlink = invlink,
-      control_mcml = control_mcml, seed = control_mcmc$seed,
+      control_mcml = control_mcml, seed = seed,
       messages = messages, distance_scale = spatial_scaling$distance_scale
     )
     optimizer <- attr(res, "optimizer")
@@ -544,9 +560,6 @@ glgpm <- function(formula,
       # path, not the conditional distribution at the estimate. When
       # requested, draw once more at the final estimate and use that draw for
       # fitted values as well as user-facing diagnostics.
-      final_control_mcmc <- final_sampling_control(
-        control_mcmc, length(mcml_history)
-      )
       final_draw <- sample_at_nongaussian_fit(
         estimate = res$estimate,
         y = y,
@@ -560,7 +573,8 @@ glgpm <- function(formula,
         family = family,
         link_function = res$link_function,
         kappa = kappa,
-        control_mcmc = final_control_mcmc,
+        control_mcmc = control_mcmc,
+        seed = final_sampling_seed(seed, length(mcml_history)),
         messages = messages
       )
       res$linear_predictors <- final_draw$linear_predictors
@@ -624,6 +638,7 @@ glgpm <- function(formula,
   # Retain fitting controls as metadata so a fitted object can serve as a
   # complete specification when refitted to simulated or held-out data.
   attr(res, "control_mcml") <- control_mcml
+  res["seed"] <- list(if (not_gaussian) seed)
   res$data <- data
   res$input_crs <- input_crs
   res$kappa <- kappa
@@ -2592,6 +2607,8 @@ maxim_integrand <- function(
 ##'     \item{h}{Initial step size for the Gaussian proposal. Defaults to \eqn{1.65 / n_\mathrm{tot}^{1/6}} if not supplied.}
 ##'     \item{c1.h, c2.h}{Positive tuning constants for adaptive step-size updates.}
 ##'   }
+##' @param seed Optional integer seed for the chain. When supplied, the
+##'   caller's random number state is restored on exit.
 ##' @param invlink Optional inverse-link function. If \code{NULL}, defaults are used:
 ##'   \code{identity} (gaussian), \code{plogis} (binomial), and \code{exp} (poisson).
 ##' @param Sigma_pd Optional covariance matrix used in the Laplace approximation.
@@ -2644,6 +2661,7 @@ laplace_sampling_mcmc <- function(y,
                                   sigma2_re = NULL,
                                   family,
                                   control_mcmc,
+                                  seed = NULL,
                                   invlink = NULL,
                                   Sigma_pd = NULL,
                                   mean_pd = NULL,
@@ -2681,10 +2699,10 @@ laplace_sampling_mcmc <- function(y,
   }
 
   # set seed if it exists and reset on exit
-  if (!is.null(control_mcmc$seed)){
+  if (!is.null(seed)){
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
-    set.seed(control_mcmc$seed)
+    set.seed(seed)
   }
 
   # ---------- dimensions ----------
@@ -3163,17 +3181,12 @@ set_control_mcml <- function(initial_samples = 1000L,
 
 ##' Use a distinct reproducible stream for final conditional sampling
 ##' @noRd
-final_sampling_control <- function(control_mcmc, mcml_stages) {
-  out <- control_mcmc
-  if (!is.null(out$seed)) {
-    integer_max <- .Machine$integer.max
-    # Each certified stage consumes three independent streams: the fitting
-    # bank and two validation banks. Final fitted-value sampling starts after
-    # them.
-    offset <- 3L * mcml_stages + 1L
-    out$seed <- as.integer(((out$seed - 1 + offset) %% integer_max) + 1)
-  }
-  out
+final_sampling_seed <- function(seed, mcml_stages) {
+  # Each certified stage consumes three independent streams: the fitting
+  # bank and two validation banks. Final fitted-value sampling starts after
+  # them.
+  offset <- 3L * mcml_stages + 1L
+  as.integer(((seed - 1 + offset) %% .Machine$integer.max) + 1)
 }
 
 ##' Convert a working-scale estimate into the next MCML reference point
@@ -3207,7 +3220,7 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
                                       cov_offset, ID_coords, ID_re,
                                       fix_tau2, family, link_function, kappa,
-                                      control_mcmc, messages) {
+                                      control_mcmc, seed = NULL, messages) {
   fitted_pars <- estimate_to_mcml_reference(estimate, fix_tau2)
   mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
   distances <- pairwise_distances(coords)
@@ -3229,7 +3242,7 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     } else {
       link_function$inv
     },
-    control_mcmc = control_mcmc, messages = messages
+    control_mcmc = control_mcmc, seed = seed, messages = messages
   )
 
   eta <- sweep(
@@ -3273,12 +3286,13 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
 ##'   adaptation. Default is 1.
 ##' @param c2.h Numeric. Exponent controlling the diminishing adaptation gain.
 ##'   Must be larger than 0.5 and no larger than 1. Default is 0.6.
-##' @param seed Integer. Optional value passed to `set.seed` to control random number generation for
-##' generating chains and make results reproducible. Defaults to `NULL`.
 ##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
 ##'
 ##' @details
-##' If \code{linear_model = TRUE}, only \code{n_sim} is required
+##' If \code{linear_model = TRUE}, only \code{n_sim} is required.
+##'
+##' Seeds are not part of the control settings. Pass `seed` to [glgpm()],
+##' [predict.RiskMap()], [assess_prediction()] or [assess_simulation()].
 ##'
 ##' @return A list of control parameters with class "RiskMap_control_mcmc". Contents depend on \code{sampler}:
 ##' \itemize{
@@ -3301,11 +3315,7 @@ set_control_mcmc <- function(n_sim = 12000,
                             h = NULL,
                             c1.h = 1,
                             c2.h = 0.6,
-                            seed = NULL,
                             linear_model = FALSE){
-
-  check_positive_integer(seed, "seed", allow_null = TRUE,
-                         allow_zero = TRUE)
 
   # =============================================================================
   # LINEAR MODEL (simple case for both samplers)
@@ -3363,7 +3373,6 @@ set_control_mcmc <- function(n_sim = 12000,
     h = h,
     c1.h = c1.h,
     c2.h = c2.h,
-    seed = seed,
     linear_model = FALSE
   )
 

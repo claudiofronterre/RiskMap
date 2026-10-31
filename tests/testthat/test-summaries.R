@@ -79,6 +79,7 @@ test_that("summary.RiskMap reports a custom inverse link", {
   )
   fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
                denominator = denominator, control_mcmc = control_mcmc,
+               seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
                invlink = custom_link, messages = FALSE)
 

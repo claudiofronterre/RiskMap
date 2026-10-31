@@ -79,9 +79,9 @@
 ##'   samples stored in the fit are not used in that case, because they
 ##'   condition on the estimate only; `control_mcmc`, if supplied, sets only
 ##'   the total number of predictive draws.
-##' @param seed Optional integer seed for random draws made during prediction.
-##'   The caller's random-number state is restored on exit. When supplied, this
-##'   seed takes precedence over a seed stored in `control_mcmc` for this call.
+##' @param seed Optional integer seed for random draws made during prediction,
+##'   including a fresh conditional MCMC run. The caller's random-number state
+##'   is restored on exit.
 ##' @param keep_samples Logical. If `TRUE`, retain the minimal latent samples
 ##'   needed for custom post-processing. Predictive samples are generated to
 ##'   calculate summaries regardless of this setting, but are discarded by
@@ -339,7 +339,6 @@ predict.RiskMap <- function(
     messages = messages
   )
   if (!is.null(seed)) {
-    if (!is.null(control_mcmc)) control_mcmc$seed <- NULL
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
     set.seed(seed)
@@ -407,7 +406,8 @@ predict.RiskMap <- function(
   sample_components <- prediction_sample_components(
     object, prediction_data, type, include, control_mcmc, messages,
     observed_locations = observed_locations, transform = transform,
-    standardize = standardize, parameter_draws = parameter_draws
+    standardize = standardize, parameter_draws = parameter_draws,
+    mcmc_seed = seed
   )
   output_data <- format_location_predictions(
     prediction_input, sample_components, include, transform, summaries,
@@ -951,7 +951,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   sample_components <- prediction_sample_components(
     object, model_data, "joint", include, control_mcmc, messages,
     groups = prediction_groups, transform = transform,
-    standardize = standardize, parameter_draws = parameter_draws
+    standardize = standardize, parameter_draws = parameter_draws,
+    mcmc_seed = seed
   )
   predictions <- format_location_predictions(
     prediction_input, sample_components, include, transform, summaries,
@@ -1102,7 +1103,8 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
 #' @noRd
 prepare_prediction <- function(object, prediction_data, prediction, include,
                                control_mcmc, messages,
-                               observed_locations = FALSE, groups = NULL) {
+                               observed_locations = FALSE, groups = NULL,
+                               mcmc_seed = NULL) {
   draw_prediction_samples(
     object = object,
     prediction_data = prediction_data,
@@ -1111,6 +1113,7 @@ prepare_prediction <- function(object, prediction_data, prediction, include,
     control_mcmc = control_mcmc,
     groups = groups,
     observed_locations = observed_locations,
+    mcmc_seed = mcmc_seed,
     messages = messages
   )
 }
@@ -1185,13 +1188,16 @@ build_prediction_components <- function(object, prediction_setup, include,
 #' latent effects are generated at that parameter value and passed through the
 #' ordinary prediction machinery. The draws are pooled, so every summary,
 #' aggregation and transformation reflects both sources of uncertainty.
+#' `mcmc_seed` seeds a fresh conditional MCMC run of plug-in prediction, as
+#' in `draw_prediction_samples()`.
 #' @noRd
 prediction_sample_components <- function(object, prediction_data, prediction,
                                          include, control_mcmc, messages,
                                          observed_locations = FALSE,
                                          groups = NULL, transform = list(),
                                          standardize = NULL,
-                                         parameter_draws = NULL) {
+                                         parameter_draws = NULL,
+                                         mcmc_seed = NULL) {
   components_at <- function(fit, control) {
     setup <- prepare_prediction(
       fit, prediction_data, prediction, include, control, messages = FALSE,
@@ -1205,7 +1211,8 @@ prediction_sample_components <- function(object, prediction_data, prediction,
   if (is.null(parameter_draws)) {
     setup <- prepare_prediction(
       object, prediction_data, prediction, include, control_mcmc, messages,
-      observed_locations = observed_locations, groups = groups
+      observed_locations = observed_locations, groups = groups,
+      mcmc_seed = mcmc_seed
     )
     return(build_prediction_components(
       object, setup, include, transform, standardize = standardize,
@@ -1998,11 +2005,15 @@ gaussian_conditioning_samples <- function(object, spatial_covariance,
 #' Prediction variables and geometry remain in one row-aligned `sf` object.
 #' For areal predictions, `groups` defines the independent joint covariance
 #' blocks without splitting the data into parallel lists.
+#' A fresh conditional MCMC run of a non-Gaussian model is seeded with
+#' `mcmc_seed`, after which the caller's random number state is restored, so
+#' the predictive draws that follow start from that state.
 #' @noRd
 draw_prediction_samples <- function(object, prediction_data, prediction,
                                     include, control_mcmc = NULL,
                                     groups = NULL,
                                     observed_locations = FALSE,
+                                    mcmc_seed = NULL,
                                     messages = TRUE) {
 
   control_mcmc_supplied <- !is.null(control_mcmc)
@@ -2068,12 +2079,6 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
 
   if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
     stop("'control_mcmc' must be an output from 'set_control_mcmc()'")
-
-  if (!is.null(control_mcmc$seed)) {
-    restore_seed <- preserve_random_seed()
-    on.exit(restore_seed(), add = TRUE)
-    set.seed(control_mcmc$seed)
-  }
 
   if (!type %in% c("marginal", "joint"))
     stop("'type' must be either 'marginal' or 'joint'")
@@ -2317,7 +2322,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,
-        messages = messages
+        seed = mcmc_seed, messages = messages
       )
     }
 
@@ -2665,11 +2670,14 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' with different numbers of parameters. The choice is stored in the result
 ##' and printed by `summary()`.
 ##' @param control_mcmc Control settings for simulation, an output from `set_control_mcmc()`.
-##' If it carries a `seed`, the assessment is reproducible: the seed sets the
-##' random splits for `method = "cluster"` and `method = "regularized"`, and a
-##' seed for each test set. All models share the seed of a test set, so that
-##' their predictions use common random numbers. The caller's random number
-##' generator state is restored on exit.
+##' @param seed Optional non-negative integer that makes the assessment
+##' reproducible. It sets the random splits for `method = "cluster"` and
+##' `method = "regularized"`, and a seed for each test set, which is passed to
+##' [glgpm()] when the models are refitted and to [predict.RiskMap()]. All
+##' models share the seed of a test set, so that their predictions use common
+##' random numbers. The caller's random number state is restored on exit.
+##' When `NULL` (the default), the seeds are drawn from the session's random
+##' number generator.
 ##' @param plot_fold Logical; whether to plot each iteration's test and training sets. Defaults to `TRUE`.
 ##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
@@ -2778,6 +2786,7 @@ assess_prediction <- function(object,
                               metrics = c("PIT", "CRPS", "SCRPS"),
                               keep_par_fixed = TRUE,
                               control_mcmc = set_control_mcmc(),
+                              seed = NULL,
                               plot_fold = TRUE,
                               messages = TRUE,
                               ...) {
@@ -2846,6 +2855,8 @@ assess_prediction <- function(object,
 
   if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
     stop("'control_mcmc' must come from 'set_control_mcmc()'")
+
+  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
 
   check_logical(plot_fold)
 
@@ -2973,10 +2984,10 @@ assess_prediction <- function(object,
     list(splits = spl)
   }
 
-  if (!is.null(control_mcmc$seed)) {
+  if (!is.null(seed)) {
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
-    set.seed(control_mcmc$seed)
+    set.seed(seed)
   }
 
   if (method == "user") {
@@ -3129,9 +3140,6 @@ assess_prediction <- function(object,
 
     ## Scores of one test set: refit or slice, predict, score
     score_test_set <- function(i, in_id, out_id_i, data_test_i) {
-      control_i <- control_mcmc
-      control_i$seed <- fold_seeds[i]
-
       ## ----- refit or slice -----
       if (!keep_par_fixed) {
 
@@ -3143,9 +3151,10 @@ assess_prediction <- function(object,
           family         = fam,
           model_crs      = st_crs(fit0$data),
           distance_units = fit0$distance_units,
-          control_mcmc   = control_i,
+          control_mcmc   = control_mcmc,
           control_mcml   = attr(fit0, "control_mcml") %||%
             set_control_mcml(),
+          seed           = fold_seeds[i],
           fix_var_me     = fit0$fix_var_me,
           return_samples = FALSE,
           messages       = FALSE
@@ -3194,7 +3203,8 @@ assess_prediction <- function(object,
         type = "marginal",
         include = included_components,
         summaries = "mean",
-        control_mcmc = control_i,
+        control_mcmc = control_mcmc,
+        seed = fold_seeds[i],
         keep_samples = TRUE,
         messages = FALSE
       )
@@ -3563,6 +3573,10 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##'   candidate model specification and is refitted to every simulated dataset;
 ##'   its estimated parameter values are not reused.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
+##' @param seed Optional non-negative integer that makes the assessment
+##'   reproducible; see Details. The caller's random number state is restored
+##'   on exit. When `NULL` (the default), the seeds of the simulations are
+##'   drawn from the session's random number generator.
 ##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
 ##'   to compute both from a single fit-and-predict pass over the simulations.
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
@@ -3609,10 +3623,9 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##' warning. Predictive draws are joint within each area, which is all that
 ##' area-level targets need.
 ##'
-##' Each simulation has its own seed, derived from the seed of
-##' `control_mcmc` or, without one, from the current random number generator
-##' state, and shared by all models so that their fits and predictions use
-##' common random numbers. A fit or prediction that fails does not stop the
+##' Each simulation has its own seed, derived from `seed` or, without one,
+##' from the current random number generator state, and shared by all models
+##' so that their fits and predictions use common random numbers. A fit or prediction that fails does not stop the
 ##' assessment: its results are missing, and the failure is recorded in
 ##' `fits` and reported in a warning, as are warnings from the fits.
 ##'
@@ -3649,6 +3662,7 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 assess_simulation <- function(obj_sim,
                        models,
                        control_mcmc = set_control_mcmc(),
+                       seed = NULL,
                        spatial_scale,
                        messages = TRUE,
                        target_transform = NULL,
@@ -3671,6 +3685,10 @@ assess_simulation <- function(obj_sim,
       !all(spatial_scale %in% c("grid", "area"))) {
     stop("'spatial_scale' must be set to 'grid', 'area', or c('grid', 'area')")
   }
+  if (!inherits(control_mcmc, "RiskMap_control_mcmc")) {
+    stop("'control_mcmc' must come from 'set_control_mcmc()'")
+  }
+  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
 
   want_grid <- "grid" %in% spatial_scale
   want_area <- "area" %in% spatial_scale
@@ -3911,16 +3929,20 @@ assess_simulation <- function(obj_sim,
   # One seed per simulation, shared by the models so that their fits and
   # predictions use common random numbers. Each simulation's results then do
   # not depend on the others, which also allows running them separately.
-  if (!is.null(control_mcmc$seed)) {
+  if (!is.null(seed)) {
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)
-    set.seed(control_mcmc$seed)
+    set.seed(seed)
   }
   sim_seeds <- sample.int(.Machine$integer.max, n_sim)
   restore_after_tasks <- preserve_random_seed()
   on.exit(restore_after_tasks(), add = TRUE, after = FALSE)
-  control_task <- control_mcmc
-  control_task$seed <- NULL
+  # The fits of a simulation take their seed from the first draw of its
+  # stream, and its predictions use that stream from the start.
+  fit_seeds <- vapply(sim_seeds, function(sim_seed) {
+    set.seed(sim_seed)
+    sample.int(.Machine$integer.max, 1L)
+  }, integer(1))
 
   # Fits, predicts and scores one model on one simulation. A failure leaves
   # that pair's results missing instead of stopping the assessment, and
@@ -3930,8 +3952,9 @@ assess_simulation <- function(obj_sim,
     fit_warnings <- character()
     result <- tryCatch(withCallingHandlers({
       refit_args <- assessment_refit_args(
-        models[[i]], formulas[[i]], obj_sim$data_sim[[j]], control_task
+        models[[i]], formulas[[i]], obj_sim$data_sim[[j]], control_mcmc
       )
+      refit_args$seed <- fit_seeds[j]
       refit_args$return_samples <- FALSE
       fit_ij <- do.call(glgpm, refit_args)
 
@@ -3945,7 +3968,7 @@ assess_simulation <- function(obj_sim,
       )$model_data
       components <- prediction_sample_components(
         fit_ij, prediction_data, if (want_area) "joint" else "marginal",
-        include_ij, control_task, messages = FALSE,
+        include_ij, control_mcmc, messages = FALSE,
         groups = if (want_area) groups else NULL
       )
       context <- paste0("model '", model_names[i], "', simulation ", j)

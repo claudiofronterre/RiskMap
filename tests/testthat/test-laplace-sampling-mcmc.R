@@ -1,13 +1,12 @@
 test_that("MALA adaptation stops after burn-in", {
   control <- set_control_mcmc(
-    n_sim = 80, burnin = 40, thin = 2, h = 0.5,
-    seed = 918
+    n_sim = 80, burnin = 40, thin = 2, h = 0.5
   )
 
   fit <- laplace_sampling_mcmc(
     y = 3, units_m = 8, mu = 0, Sigma = matrix(0.7),
     ID_coords = 1L, family = "binomial", control_mcmc = control,
-    messages = FALSE
+    seed = 918, messages = FALSE
   )
 
   expect_identical(nrow(fit$samples$S), 20L)
@@ -22,9 +21,9 @@ test_that("MALA warm-up recovers from poor initial step sizes", {
       y = 3, units_m = 8, mu = 0, Sigma = matrix(0.7),
       ID_coords = 1L, family = "binomial",
       control_mcmc = set_control_mcmc(
-        n_sim = 1200, burnin = 1000, thin = 1, h = h, seed = seed
+        n_sim = 1200, burnin = 1000, thin = 1, h = h
       ),
-      messages = FALSE
+      seed = seed, messages = FALSE
     )
   }
   from_small <- run_with_h(0.05, 711)
@@ -40,8 +39,7 @@ test_that("MALA warm-up recovers from poor initial step sizes", {
 
 test_that("one-dimensional binomial samples reproduce exact posterior moments", {
   control <- set_control_mcmc(
-    n_sim = 7000, burnin = 1000, thin = 1, h = 0.8,
-    seed = 2718
+    n_sim = 7000, burnin = 1000, thin = 1, h = 0.8
   )
   sigma2 <- 0.9
   y <- 4
@@ -50,7 +48,7 @@ test_that("one-dimensional binomial samples reproduce exact posterior moments", 
   fit <- laplace_sampling_mcmc(
     y = y, units_m = m, mu = 0, Sigma = matrix(sigma2),
     ID_coords = 1L, family = "binomial", control_mcmc = control,
-    messages = FALSE
+    seed = 2718, messages = FALSE
   )
 
   log_kernel <- function(s) {
@@ -74,8 +72,7 @@ test_that("one-dimensional binomial samples reproduce exact posterior moments", 
 
 test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
   control <- set_control_mcmc(
-    n_sim = 7000, burnin = 1000, thin = 1, h = 0.75,
-    seed = 3141
+    n_sim = 7000, burnin = 1000, thin = 1, h = 0.75
   )
   sigma2 <- 0.8
   y <- 5
@@ -84,7 +81,7 @@ test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
   fit <- laplace_sampling_mcmc(
     y = y, units_m = exposure, mu = 0, Sigma = matrix(sigma2),
     ID_coords = 1L, family = "poisson", control_mcmc = control,
-    messages = FALSE
+    seed = 3141, messages = FALSE
   )
 
   log_kernel <- function(s) {
@@ -108,8 +105,7 @@ test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
 
 test_that("correlated binomial samples reproduce grid-integrated moments", {
   control <- set_control_mcmc(
-    n_sim = 12000, burnin = 2000, thin = 1, h = 0.65,
-    seed = 1618
+    n_sim = 12000, burnin = 2000, thin = 1, h = 0.65
   )
   Sigma <- matrix(c(0.9, 0.45, 0.45, 0.8), 2, 2)
   y <- c(2, 7)
@@ -118,7 +114,7 @@ test_that("correlated binomial samples reproduce grid-integrated moments", {
   fit <- laplace_sampling_mcmc(
     y = y, units_m = m, mu = c(0, 0), Sigma = Sigma,
     ID_coords = 1:2, family = "binomial", control_mcmc = control,
-    messages = FALSE
+    seed = 1618, messages = FALSE
   )
 
   # A dense deterministic grid provides an independent reference calculation.

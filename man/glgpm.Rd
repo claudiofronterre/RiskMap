@@ -14,6 +14,7 @@ glgpm(
   distance_units = c("km", "m"),
   control_mcmc = set_control_mcmc(),
   control_mcml = set_control_mcml(),
+  seed = NULL,
   return_samples = TRUE,
   messages = TRUE,
   fix_var_me = NULL,
@@ -55,6 +56,14 @@ Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\lin
 
 \item{control_mcml}{Control parameters for adaptive Monte Carlo maximum
 likelihood estimation. Must be returned by \code{\link[=set_control_mcml]{set_control_mcml()}}.}
+
+\item{seed}{Optional non-negative integer that seeds every random step of
+a binomial or Poisson fit: the Monte Carlo samples of the estimation and
+the final conditional samples. When \code{NULL} (the default), one integer is
+drawn from the session's random number generator, so \code{\link[=set.seed]{set.seed()}} before
+the call also reproduces the fit. The seed used is returned as \code{seed}.
+The caller's random number state is otherwise left unchanged. Ignored for
+Gaussian models, which have no random step.}
 
 \item{return_samples}{Logical indicating whether to draw and retain
 conditional samples at the fitted parameters. These samples are used to
@@ -143,6 +152,8 @@ located. It says nothing about whether that maximum is the highest.
 \code{NULL} for Gaussian models.}
 \item{mcml_selected_iteration}{The stage whose estimate is returned.
 \code{NULL} for Gaussian models.}
+\item{seed}{The seed used for the random steps of a binomial or Poisson
+fit, whether supplied or drawn. \code{NULL} for Gaussian models.}
 }
 \description{
 Fits generalized linear Gaussian process models to spatial data,
@@ -182,8 +193,9 @@ with a second, fresh one, which bounds its Monte Carlo error in statistical
 standard errors. The samples are enlarged only when the certificate exceeds
 the tolerance. Every stage is recorded in \code{mcml_history}, and a warning is
 issued if the tolerance is not met within the configured limits.
-\code{control_mcmc$seed} makes the estimation samples and the final conditional
-sampling reproducible.
+The estimation samples and the final conditional samples are drawn from
+separate streams derived from \code{seed}, so \code{glgpm(..., seed = fit$seed)}
+reproduces a fit exactly.
 
 The \code{start_pars} argument allows starting values to be supplied explicitly.
 Otherwise, binomial and Poisson models compare two automatic candidates
@@ -236,17 +248,17 @@ summary(fit)
 # binomial model
 data(loaloa)
 
-# reduce iterations to speed up fit and add
+# reduce iterations to speed up the fit, and set a
 # seed for reproducibility
 control_mcmc <- set_control_mcmc(n_sim = 100,
-                                 burnin = 20,
-                                 seed = 42)
+                                 burnin = 20)
 
 fit <- glgpm(NO_INF ~ gp(),
              data = loaloa[1:50,],
              denominator = NO_EXAM,
              family = "binomial",
              control_mcmc = control_mcmc,
+             seed = 42,
              messages = FALSE)
 
 summary(fit)
