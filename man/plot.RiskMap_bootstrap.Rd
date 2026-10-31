@@ -4,7 +4,7 @@
 \alias{plot.RiskMap_bootstrap}
 \title{Plot a parametric bootstrap}
 \usage{
-\method{plot}{RiskMap_bootstrap}(x, parameters = NULL, bins = 30, ...)
+\method{plot}{RiskMap_bootstrap}(x, parameters = NULL, bins = 30, log_scale = FALSE, ...)
 }
 \arguments{
 \item{x}{A \code{RiskMap_bootstrap} object from \code{\link[=parametric_bootstrap]{parametric_bootstrap()}}.}
@@ -13,6 +13,11 @@
 \code{x$estimates}. The default is all of them.}
 
 \item{bins}{Number of bins of each histogram.}
+
+\item{log_scale}{Logical, whether to show the variances and the scale on
+a logarithmic axis, which spreads out bootstrap estimates near zero.
+Estimates at zero are then left out. The regression coefficients stay
+on their natural axis.}
 
 \item{...}{Not used.}
 }
@@ -23,8 +28,8 @@ combining one \code{ggplot} per parameter.
 \description{
 Draws a histogram of the bootstrap estimates of each parameter, with the
 estimate, the percentile interval and the bias-corrected interval (see
-\code{\link[=parametric_bootstrap]{parametric_bootstrap()}}). Variances and the scale are shown on a
-logarithmic axis.
+\code{\link[=parametric_bootstrap]{parametric_bootstrap()}}). Every parameter is shown on its natural axis,
+unless \code{log_scale = TRUE}.
 }
 \seealso{
 \code{\link[=parametric_bootstrap]{parametric_bootstrap()}}

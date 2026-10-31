@@ -357,7 +357,7 @@ assemble_bootstrap <- function(object, results, replicate_seeds) {
   out <- list(
     estimates = estimates,
     estimate = estimate,
-    labels = bootstrap_labels(object, names(estimate)),
+    labels = parameter_labels(names(estimate), object$distance_units),
     failures = data.frame(replicate = failed, seed = replicate_seeds[failed],
                           message = failure_messages),
     warnings = warnings
@@ -366,22 +366,8 @@ assemble_bootstrap <- function(object, results, replicate_seeds) {
   out
 }
 
-##' Readable names of the parameters, as in `summary.RiskMap()`
-##' @noRd
-bootstrap_labels <- function(object, names) {
-  labels <- sub("^beta\\.", "", names)
-  labels[names == "sigma2"] <- "Spatial process var."
-  labels[names == "phi"] <- paste0("Spatial corr. scale (",
-                                   object$distance_units, ")")
-  labels[names == "tau2"] <- "Variance of the nugget"
-  labels[names == "sigma2_me"] <- "Measurement error var."
-  random <- grepl("^sigma2_re\\.", names)
-  labels[random] <- paste0(sub("^sigma2_re\\.", "", names[random]),
-                           " (random eff. var.)")
-  stats::setNames(labels, names)
-}
-
-##' Variances and the scale, which are positive and shown on a log scale
+##' Variances and the scale, which are positive and can be shown on a log
+##' scale
 ##' @noRd
 bootstrap_positive <- function(names) !grepl("^beta\\.", names)
 
@@ -497,20 +483,25 @@ print.summary.RiskMap_bootstrap <- function(x, ...) {
 ##'
 ##' Draws a histogram of the bootstrap estimates of each parameter, with the
 ##' estimate, the percentile interval and the bias-corrected interval (see
-##' [parametric_bootstrap()]). Variances and the scale are shown on a
-##' logarithmic axis.
+##' [parametric_bootstrap()]). Every parameter is shown on its natural axis,
+##' unless `log_scale = TRUE`.
 ##'
 ##' @param x A `RiskMap_bootstrap` object from [parametric_bootstrap()].
 ##' @param parameters Names of the parameters to draw, as in the columns of
 ##'   `x$estimates`. The default is all of them.
 ##' @param bins Number of bins of each histogram.
+##' @param log_scale Logical, whether to show the variances and the scale on
+##'   a logarithmic axis, which spreads out bootstrap estimates near zero.
+##'   Estimates at zero are then left out. The regression coefficients stay
+##'   on their natural axis.
 ##' @param ... Not used.
 ##' @return A `ggplot` object for one parameter, or a `patchwork` object
 ##'   combining one `ggplot` per parameter.
 ##' @seealso [parametric_bootstrap()]
 ##' @method plot RiskMap_bootstrap
 ##' @export
-plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30, ...) {
+plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30,
+                                   log_scale = FALSE, ...) {
   stopifnot(inherits(x, "RiskMap_bootstrap"))
   parameters <- parameters %||% names(x$estimate)
   unknown <- setdiff(parameters, names(x$estimate))
@@ -520,11 +511,12 @@ plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30, ...) {
          call. = FALSE)
   }
   check_positive_integer(bins, "bins")
+  check_logical(log_scale)
   table <- summary(x)$table
   panels <- lapply(parameters, function(name) {
     plot_bootstrap_parameter(x$estimates[, name],
                              table[table$parameter == name, ],
-                             bootstrap_positive(name), bins,
+                             log_scale && bootstrap_positive(name), bins,
                              round(100 * x$settings$level))
   })
   if (length(panels) == 1L) return(panels[[1L]])
@@ -566,12 +558,15 @@ plot_bootstrap_parameter <- function(values, row, log_scale, bins, level) {
     ggplot2::scale_linetype_manual(values = linetypes, drop = FALSE,
                                    name = NULL) +
     ggplot2::labs(title = row$label,
-                  x = if (log_scale) "Value (log scale)" else "Value",
+                  x = if (log_scale) "Bootstrap estimate (log scale)" else
+                    "Bootstrap estimate",
                   y = "Replicates") +
     ggplot2::theme_minimal(base_size = 11) +
     ggplot2::theme(panel.grid.minor = ggplot2::element_blank(),
                    plot.title = ggplot2::element_text(face = "bold", size = 11),
                    legend.position = "bottom")
-  if (log_scale) plot <- plot + ggplot2::scale_x_log10()
+  if (log_scale) {
+    plot <- plot + ggplot2::scale_x_log10(labels = plain_number_labels())
+  }
   plot
 }
