@@ -175,6 +175,31 @@ and loses `min_effective_samples`, `max_pareto_k`, `max_mcse_ratio` and
 16,000 and 4. Fitted objects report `mcml_certified` in place of
 `mcml_converged`.
 
+- Certified MCML continues the Newton correction when one step leaves a
+residual. Where the log-likelihood is far from quadratic between the fitted
+estimate and the maximum, as along a spatial variance close to zero, one
+Newton step stops short of the maximum, and the certificate, measured in the
+curvature at the fitted estimate, sees only part of the shortfall. The fitting
+sample now predicts the residual of the first step, at the cost of one
+gradient on that sample, and when it exceeds a quarter of the validation
+sample's radius, further Newton steps are taken with the score from the same
+validation sample, each in the fitting sample's curvature at the current
+point, until a step is below a tenth of the radius (at most four more steps).
+The estimate is then certified in the curvature at the last step. If the steps
+stop short by more than the certificate tolerates, they are discarded, the
+stage is not certified, and the next stage starts from the estimate of the
+first step. The check does not act where the validation sample's radius is
+below 1e-6 statistical standard errors, as when the spatial variance is held
+at zero and the likelihood is exact, because the predicted residual is then
+the rounding error of the differences divided by the radius. Fits where the
+check does not fire
+are unchanged. Where it fires, the estimate and the certificate change, and so
+do the returned standard errors, which now come from the curvature at the last
+step. On a simulated survey with a log spatial variance of -4.56 at the
+maximum, the standard error of the log variance moved from 14.5 to 29.5,
+against 30.2 at the maximum. Each stage of `mcml_history` records the
+predicted residual and the number of Newton steps.
+
 - Certified MCML distinguishes Monte Carlo error from weak
 identification. A variance component estimated as zero (and the spatial scale
 when the spatial variance is zero) is held at the boundary, the first stage is
@@ -260,6 +285,25 @@ identical to the previous R code (up to the last bits on platforms whose
 compilers fuse multiply and add). A fit no longer creates several large
 temporary matrices at every evaluation of the likelihood, whose garbage
 collection took about half of a fit.
+
+- Fitted models have a `print()` method, which gives the call, the estimates
+of the regression coefficients and covariance parameters on their natural
+scale, the log-likelihood and, for binomial and Poisson models, whether the
+Monte Carlo error of the estimate is certified. Printing a fit previously
+listed every component of the object, including the data. `summary()` of a
+binomial or Poisson fit now reports the certificate (its bound in statistical
+standard errors, the level of the bound, the tolerance, the number of stages
+and the draws at the last stage), with short notes on what the warnings of the
+fit reported and the advice they gave, so that both are available for a saved
+model. The certificate is in the `mcml` component of the summary.
+
+- The messages and warnings of certified MCML quote the spatial scale of the
+returned estimate, after the Newton correction. The message that announces
+the refits from dispersed starting values, which are decided before the
+correction, now says that it quotes the scale of the first fit, before its
+correction. When the repeated Newton correction does not converge at the last
+stage, the warning says so, instead of describing the bound as above the
+tolerance.
 
 ## Predictions
 
