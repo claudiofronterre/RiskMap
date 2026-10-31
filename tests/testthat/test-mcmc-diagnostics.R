@@ -6,7 +6,7 @@ test_that("MCMC diagnostics reject fits without samples", {
   binomial_without_samples <- suppressWarnings(glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,
-    control_mcml = fixture_control_mcml,
+    control_mcml = fixture_control_mcml, seed = fixture_seed,
     return_samples = FALSE, messages = FALSE
   ))
   expect_null(binomial_without_samples$S_samples)

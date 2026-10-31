@@ -17,7 +17,7 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
   expect_lt(max(abs(zero_error_fit$grad_MLE)), 0.001)
   expect_no_error(suppressWarnings(glgpm(
     z ~ gp(nugget = TRUE), gaussian_data, "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = fixture_control_mcml, messages = FALSE
   )))
 
@@ -74,8 +74,7 @@ test_that("a non-Gaussian estimated nugget uses the global proposal", {
   control <- set_control_mcmc(
     n_sim = 500,
     burnin = 100,
-    thin = 4,
-    seed = 2029
+    thin = 4
   )
 
   fit <- glgpm(
@@ -85,6 +84,7 @@ test_that("a non-Gaussian estimated nugget uses the global proposal", {
     family = "binomial",
     control_mcmc = control,
     control_mcml = fixture_control_mcml,
+    seed = 2029,
     messages = FALSE
   )
 

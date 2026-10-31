@@ -381,7 +381,7 @@ test_that("assess_prediction preserves a custom model CRS when refitting", {
       method = "user",
       keep_par_fixed = FALSE,
       user_split = user_split,
-      control_mcmc = control_mcmc,
+      control_mcmc = control_mcmc, seed = fixture_seed,
       plot_fold = FALSE,
       messages = FALSE,
       metrics = "CRPS"
@@ -417,7 +417,7 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
       list(model = gaussian_model),
       method = "user",
       user_split = user_split,
-      control_mcmc = control_mcmc,
+      control_mcmc = control_mcmc, seed = fixture_seed,
       plot_fold = FALSE,
       messages = FALSE,
       metrics = "CRPS"
@@ -509,17 +509,17 @@ test_that("assess_prediction can refit correctly for all model families", {
 
   # 'regularized' holds out a single random point from the tiny (n = 10)
   # fixtures; refitting on whichever 9 points remain is occasionally
-  # numerically singular for an unlucky holdout, so a seeded 'control_mcmc'
-  # is used here to keep the test deterministic (was intermittently failing
-  # on CI). control_mcmc's fixture seed (see helper-data.R) is verified
-  # stable for all three families.
+  # numerically singular for an unlucky holdout, so a seed is used here to
+  # keep the test deterministic (was intermittently failing on CI). The
+  # fixture seed (see helper-data.R) is verified stable for all three
+  # families.
   result <- assess_prediction(
     list(gaussian_model),
     method = "regularized",
     min_dist = 1,
     size = 1,
     keep_par_fixed = FALSE,
-    control_mcmc = control_mcmc,
+    control_mcmc = control_mcmc, seed = fixture_seed,
     messages = FALSE)
 
   expect_setequal(names(result), c("test_set", "model", "keep_par_fixed", "failures"))
@@ -530,7 +530,7 @@ test_that("assess_prediction can refit correctly for all model families", {
     min_dist = 1,
     size = 1,
     keep_par_fixed = FALSE,
-    control_mcmc = control_mcmc,
+    control_mcmc = control_mcmc, seed = fixture_seed,
     messages = FALSE)
 
   expect_setequal(names(result), c("test_set", "model", "keep_par_fixed", "failures"))
@@ -542,7 +542,7 @@ test_that("assess_prediction can refit correctly for all model families", {
       min_dist = 1,
       size = 1,
       keep_par_fixed = FALSE,
-      control_mcmc = control_mcmc,
+      control_mcmc = control_mcmc, seed = fixture_seed,
       messages = FALSE),
     "estimated as effectively zero")
 
@@ -550,7 +550,7 @@ test_that("assess_prediction can refit correctly for all model families", {
 
 })
 
-test_that("assess_prediction's control_mcmc seed makes regularized/cluster splits reproducible and restores the RNG state", {
+test_that("assess_prediction's seed makes regularized/cluster splits reproducible and restores the RNG state", {
 
   rng_before <- .Random.seed
 
@@ -561,7 +561,7 @@ test_that("assess_prediction's control_mcmc seed makes regularized/cluster split
     size = 1,
     messages = FALSE,
     plot_fold = FALSE,
-    control_mcmc = control_mcmc)
+    control_mcmc = control_mcmc, seed = fixture_seed)
 
   expect_identical(rng_before, .Random.seed)
 
@@ -572,7 +572,7 @@ test_that("assess_prediction's control_mcmc seed makes regularized/cluster split
     size = 1,
     messages = FALSE,
     plot_fold = FALSE,
-    control_mcmc = control_mcmc)
+    control_mcmc = control_mcmc, seed = fixture_seed)
 
   expect_identical(result1$test_set, result2$test_set)
 })
@@ -667,18 +667,21 @@ test_that("assess_prediction(plot_fold = TRUE) uses plot_folds() for 'user' and 
   expect_no_error(
     assess_prediction(list(model = gaussian_model), method = "user",
                       user_split = user_split, control_mcmc = control_mcmc,
+                      seed = fixture_seed,
                       plot_fold = TRUE, messages = FALSE, metrics = "CRPS")
   )
 
   expect_no_error(
     assess_prediction(list(model = gaussian_model), method = "regularized",
                       min_dist = 1, size = 2, control_mcmc = control_mcmc,
+                      seed = fixture_seed,
                       plot_fold = TRUE, messages = FALSE, metrics = "CRPS")
   )
 
   expect_no_error(
     assess_prediction(list(model = gaussian_model), method = "cluster",
                       fold = 2, control_mcmc = control_mcmc,
+                      seed = fixture_seed,
                       plot_fold = TRUE, messages = FALSE, metrics = "CRPS")
   )
 })
@@ -714,7 +717,7 @@ test_that("assess_prediction scores with the model's inverse link", {
     list(probit = make_probit_fit()),
     method = "user",
     user_split = matrix(c(0, 1, 1), ncol = 1),
-    control_mcmc = set_control_mcmc(seed = 1),
+    seed = 1,
     plot_fold = FALSE,
     messages = FALSE,
     metrics = "CRPS"
@@ -789,7 +792,7 @@ test_that("assess_prediction gives the same model the same scores in any positio
     list(a = gaussian_intercept_model, b = gaussian_intercept_model),
     method = "user",
     user_split = user_split,
-    control_mcmc = control_mcmc,
+    control_mcmc = control_mcmc, seed = fixture_seed,
     plot_fold = FALSE,
     messages = FALSE
   )
@@ -804,7 +807,7 @@ test_that("assess_prediction reports how the parameters are treated", {
       list(m0 = gaussian_intercept_model, m1 = gaussian_offset_model),
       method = "user",
       user_split = user_split,
-      control_mcmc = control_mcmc,
+      control_mcmc = control_mcmc, seed = fixture_seed,
       plot_fold = FALSE,
       messages = TRUE,
       metrics = "CRPS"
@@ -823,7 +826,7 @@ test_that("assess_prediction warns when regularized test sets are smaller than '
       method = "regularized",
       min_dist = 50,
       size = 3,
-      control_mcmc = control_mcmc,
+      control_mcmc = control_mcmc, seed = fixture_seed,
       plot_fold = FALSE,
       messages = FALSE,
       metrics = "CRPS"

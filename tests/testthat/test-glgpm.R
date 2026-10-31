@@ -209,7 +209,7 @@ expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function", "mcml_history",
                      "mcml_certified", "mcml_selected_iteration",
-                     "linear_predictors", "fitted_values")
+                     "linear_predictors", "fitted_values", "seed")
 
 test_that("glgpm produces expected output for gaussian models", {
 
@@ -425,7 +425,7 @@ test_that("glgpm produces expected output for binomial models", {
                      data = binomial_data,
                      family = "binomial",
                      denominator = denominator,
-                     control_mcmc = control_mcmc,
+                     control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
                      messages = FALSE)
 
@@ -446,7 +446,7 @@ test_that("glgpm produces expected output for binomial models", {
                   data = binomial_data,
                   family = "binomial",
                   denominator = denominator,
-                  control_mcmc = control_mcmc,
+                  control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
                   messages = FALSE))
 
@@ -482,7 +482,7 @@ test_that("transformed starts preserve an estimated nugget", {
   fit <- glgpm(
     y ~ cov + gp(nugget = TRUE), data = binomial_data,
     family = "binomial", denominator = denominator,
-    control_mcmc = control_mcmc,
+    control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = fixture_control_mcml, messages = FALSE
   )
 
@@ -512,13 +512,13 @@ test_that("explicit non-Gaussian starts remain authoritative", {
 
   explicit_fit_2 <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
     start_pars = start_pars, messages = FALSE
   )
   explicit_fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
     start_pars = start_pars, messages = FALSE
   )
@@ -534,7 +534,7 @@ test_that("final fitted samples support a nugget model", {
     data = binomial_data,
     family = "binomial",
     denominator = denominator,
-    control_mcmc = control_mcmc,
+    control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
     messages = FALSE
   )
@@ -555,7 +555,7 @@ test_that("custom inverse links retain the current automatic start", {
   )
   fit <- glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
     invlink = custom_link,
     messages = FALSE
@@ -571,7 +571,7 @@ test_that("glgpm produces expected output for poisson models", {
   fit_no_re <- glgpm(y ~ cov + gp(),
                      data = poisson_data,
                      family = "poisson",
-                     control_mcmc = control_mcmc,
+                     control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
                      messages = FALSE)
 
@@ -584,7 +584,7 @@ test_that("glgpm produces expected output for poisson models", {
   fit_re <- suppressWarnings(glgpm(y ~ cov + gp() + re(i),
                   data = poisson_data,
                   family = "poisson",
-                  control_mcmc = control_mcmc,
+                  control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
                   messages = FALSE))
 
@@ -596,7 +596,7 @@ test_that("glgpm produces expected output for poisson models", {
                       data = poisson_data,
                       denominator = denominator,
                       family = "poisson",
-                      control_mcmc = control_mcmc,
+                      control_mcmc = control_mcmc, seed = fixture_seed,
                      control_mcml = fixture_control_mcml,
                       messages = FALSE))
 
@@ -611,7 +611,7 @@ test_that("certified MCML records its certificate and bank diagnostics", {
   caller_seed <- .Random.seed
   fit <- suppressWarnings(glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
-    denominator = denominator, control_mcmc = control_mcmc,
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = fixture_control_mcml, messages = FALSE
   ))
   stage <- fit$mcml_history[[1L]]
@@ -632,6 +632,56 @@ test_that("certified MCML records its certificate and bank diagnostics", {
   expect_identical(diagnostics$mcml_certified, fit$mcml_certified)
   expect_identical(diagnostics$mcml_certificate, stage$certificate)
   expect_identical(.Random.seed, caller_seed)
+})
+
+test_that("a fit is reproduced from the seed it stores", {
+  fit_binomial <- function(seed = NULL) {
+    suppressWarnings(glgpm(
+      y ~ cov + gp(), data = binomial_data, family = "binomial",
+      denominator = denominator, control_mcmc = control_mcmc,
+      control_mcml = fixture_control_mcml, seed = seed, messages = FALSE
+    ))
+  }
+  set.seed(31)
+  first <- fit_binomial()
+  second <- fit_binomial()
+  expect_type(first$seed, "integer")
+  expect_false(identical(first$seed, second$seed))
+
+  refit <- fit_binomial(first$seed)
+  expect_identical(refit$seed, first$seed)
+  expect_identical(refit$estimate, first$estimate)
+  expect_identical(refit$S_samples, first$S_samples)
+  expect_identical(refit$fitted_values, first$fitted_values)
+
+  # Without a seed, one integer is drawn from the session's stream, which
+  # advances it like any random call, and nothing else is drawn from it.
+  set.seed(32)
+  expected_seed <- sample.int(.Machine$integer.max, 1L)
+  expected_state <- .Random.seed
+  set.seed(32)
+  drawn <- fit_binomial()
+  expect_identical(drawn$seed, expected_seed)
+  expect_identical(.Random.seed, expected_state)
+  # A supplied seed leaves the session's stream unchanged, and is stored.
+  fit_binomial(5L)
+  expect_identical(.Random.seed, expected_state)
+  expect_identical(binomial_model$seed, as.integer(fixture_seed))
+})
+
+test_that("Gaussian fits store no seed and seeds are validated", {
+  expect_true("seed" %in% names(gaussian_model))
+  expect_null(gaussian_model$seed)
+  seeded <- glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+                  seed = 3, messages = FALSE)
+  expect_null(seeded$seed)
+  expect_identical(seeded$estimate, gaussian_intercept_model$estimate)
+  expect_error(
+    glgpm(y ~ gp(), data = gaussian_data, family = "gaussian", seed = -1,
+          messages = FALSE),
+    "'seed' must be a single non-negative integer"
+  )
+  expect_error(set_control_mcmc(seed = 1), "unused argument")
 })
 
 

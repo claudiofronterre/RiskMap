@@ -113,7 +113,7 @@
 ##' liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 ##' fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 ##'              data = liberia, model_crs = 32629, family = "binomial",
-##'              control_mcmc = set_control_mcmc(seed = 2026))
+##'              seed = 2026)
 ##' profiles <- profile(fit, parameters = c("sigma2", "phi"),
 ##'                     pairs = list(c("sigma2", "phi")), n_grid = 9,
 ##'                     n_draws = 2000)

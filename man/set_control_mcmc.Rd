@@ -11,7 +11,6 @@ set_control_mcmc(
   h = NULL,
   c1.h = 1,
   c2.h = 0.6,
-  seed = NULL,
   linear_model = FALSE
 )
 }
@@ -30,9 +29,6 @@ adaptation. Default is 1.}
 \item{c2.h}{Numeric. Exponent controlling the diminishing adaptation gain.
 Must be larger than 0.5 and no larger than 1. Default is 0.6.}
 
-\item{seed}{Integer. Optional value passed to \code{set.seed} to control random number generation for
-generating chains and make results reproducible. Defaults to \code{NULL}.}
-
 \item{linear_model}{Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.}
 }
 \value{
@@ -46,7 +42,10 @@ This function sets control parameters for running simulations, supporting MCMC m
 for glgpm models.
 }
 \details{
-If \code{linear_model = TRUE}, only \code{n_sim} is required
+If \code{linear_model = TRUE}, only \code{n_sim} is required.
+
+Seeds are not part of the control settings. Pass \code{seed} to \code{\link[=glgpm]{glgpm()}},
+\code{\link[=predict.RiskMap]{predict.RiskMap()}}, \code{\link[=assess_prediction]{assess_prediction()}} or \code{\link[=assess_simulation]{assess_simulation()}}.
 }
 \examples{
 # Default parameters (MCMC)

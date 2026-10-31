@@ -310,7 +310,8 @@ test_that("joint output feeds the existing grid assessment", {
                         what = c("data", "surface"),
                         prediction_grid = gaussian_data, seed = 2)
   result <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
-                              control_mcmc = control_mcmc, spatial_scale = "grid",
+                              control_mcmc = control_mcmc,
+                              seed = fixture_seed, spatial_scale = "grid",
                               target_transform = identity, pred_objective = "mse",
                               messages = FALSE)
   expect_identical(dim(result$pred_objective$grid$mse), c(1L, 2L))
@@ -370,6 +371,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
 
   combined <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                 control_mcmc = control_mcmc,
+                                seed = fixture_seed,
                                 spatial_scale = c("grid", "area"),
                                 target_transform = identity, area_summary = mean,
                                 boundaries = boundaries, pred_objective = "mse",
@@ -382,11 +384,13 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   expect_true(all(is.finite(combined$pred_objective$area$mse)))
 
   grid_only <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
-                                 control_mcmc = control_mcmc, spatial_scale = "grid",
+                                 control_mcmc = control_mcmc,
+                                 seed = fixture_seed, spatial_scale = "grid",
                                  target_transform = identity, pred_objective = "mse",
                                  messages = FALSE)
   area_only <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
-                                 control_mcmc = control_mcmc, spatial_scale = "area",
+                                 control_mcmc = control_mcmc,
+                                 seed = fixture_seed, spatial_scale = "area",
                                  target_transform = identity, area_summary = mean,
                                  boundaries = boundaries, pred_objective = "mse",
                                  messages = FALSE)
@@ -412,6 +416,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
 
   combined_classify <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                          control_mcmc = control_mcmc,
+                                         seed = fixture_seed,
                                          spatial_scale = c("grid", "area"),
                                          target_transform = identity, area_summary = mean,
                                          boundaries = boundaries,
@@ -429,7 +434,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
 
   expect_error(
     assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
-                      control_mcmc = control_mcmc,
+                      control_mcmc = control_mcmc, seed = fixture_seed,
                       spatial_scale = "grid", target_transform = identity,
                       pred_objective = "classify", categories = c(-1, 0, 0),
                       messages = FALSE),
@@ -589,7 +594,7 @@ test_that("assess_simulation records a failed fit instead of stopping", {
   expect_warning(
     result <- assess_simulation(
       sim, models = list(intercept = gaussian_intercept_model),
-      control_mcmc = control_mcmc, spatial_scale = "grid",
+      control_mcmc = control_mcmc, seed = fixture_seed, spatial_scale = "grid",
       target_transform = identity, pred_objective = "mse", messages = FALSE
     ),
     "1 of 3 model fits failed"
@@ -617,7 +622,7 @@ test_that("assess_simulation leaves out areas without grid locations", {
   expect_warning(
     result <- assess_simulation(
       sim, models = list(intercept = gaussian_intercept_model),
-      control_mcmc = control_mcmc, spatial_scale = "area",
+      control_mcmc = control_mcmc, seed = fixture_seed, spatial_scale = "area",
       target_transform = identity, area_summary = mean,
       boundaries = boundaries, col_names = "region",
       pred_objective = c("mse", "classify"), categories = c(-10, 0, 10),
@@ -678,6 +683,7 @@ test_that("assess_simulation scores candidates without the generating model's nu
   )
   result <- suppressWarnings(assess_simulation(
     sim, models = list(no_nugget = candidate), control_mcmc = control_mcmc,
+    seed = fixture_seed,
     spatial_scale = "grid", target_transform = plogis, pred_objective = "mse",
     messages = FALSE
   ))

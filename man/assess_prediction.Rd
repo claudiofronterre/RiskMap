@@ -15,6 +15,7 @@ assess_prediction(
   metrics = c("PIT", "CRPS", "SCRPS"),
   keep_par_fixed = TRUE,
   control_mcmc = set_control_mcmc(),
+  seed = NULL,
   plot_fold = TRUE,
   messages = TRUE,
   ...
@@ -72,12 +73,16 @@ and more so for models with more parameters. Use \code{FALSE} to compare models
 with different numbers of parameters. The choice is stored in the result
 and printed by \code{summary()}.}
 
-\item{control_mcmc}{Control settings for simulation, an output from \code{set_control_mcmc()}.
-If it carries a \code{seed}, the assessment is reproducible: the seed sets the
-random splits for \code{method = "cluster"} and \code{method = "regularized"}, and a
-seed for each test set. All models share the seed of a test set, so that
-their predictions use common random numbers. The caller's random number
-generator state is restored on exit.}
+\item{control_mcmc}{Control settings for simulation, an output from \code{set_control_mcmc()}.}
+
+\item{seed}{Optional non-negative integer that makes the assessment
+reproducible. It sets the random splits for \code{method = "cluster"} and
+\code{method = "regularized"}, and a seed for each test set, which is passed to
+\code{\link[=glgpm]{glgpm()}} when the models are refitted and to \code{\link[=predict.RiskMap]{predict.RiskMap()}}. All
+models share the seed of a test set, so that their predictions use common
+random numbers. The caller's random number state is restored on exit.
+When \code{NULL} (the default), the seeds are drawn from the session's random
+number generator.}
 
 \item{plot_fold}{Logical; whether to plot each iteration's test and training sets. Defaults to \code{TRUE}.}
 

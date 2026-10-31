@@ -24,7 +24,7 @@ test_that("Gaussian predictions remain finite with tiny measurement error", {
         model,
         newdata = gaussian_data,
         type = type,
-        control_mcmc = control_mcmc,
+        control_mcmc = control_mcmc, seed = fixture_seed,
         keep_samples = TRUE,
         messages = FALSE
       ), NA)
@@ -45,10 +45,12 @@ test_that("Gaussian predictions use a fixed measurement error variance", {
   estimated_model$estimate$sigma2_me <- log(0.2)
   for (type in c("marginal", "joint")) {
     fixed <- predict(fixed_model, newdata = gaussian_data, type = type,
-                     control_mcmc = control_mcmc, keep_samples = TRUE,
+                     control_mcmc = control_mcmc,
+                     seed = fixture_seed, keep_samples = TRUE,
                      messages = FALSE)
     estimated <- predict(estimated_model, newdata = gaussian_data,
                          type = type, control_mcmc = control_mcmc,
+                         seed = fixture_seed,
                          keep_samples = TRUE, messages = FALSE)
     expect_equal(fixed$samples$spatial, estimated$samples$spatial,
                  tolerance = 1e-12)

@@ -24,8 +24,8 @@ latlon_data <- st_transform(gaussian_data, crs = 4326)
 
 # reduce iterations to speed up fits
 control_mcmc <- set_control_mcmc(n_sim = 1000,
-                                 burnin = 200,
-                                 seed = 12345)
+                                 burnin = 200)
+fixture_seed <- 12345
 fixture_control_mcml <- set_control_mcml(
   initial_samples = 500, validation_samples = 500, max_samples = 500,
   max_stages = 1
@@ -54,7 +54,7 @@ binomial_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
 binomial_model <- suppressWarnings(glgpm(
   y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
-  denominator = denominator, control_mcmc = control_mcmc,
+  denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
   control_mcml = fixture_control_mcml, messages = FALSE
 ))
 
@@ -64,7 +64,7 @@ poisson_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32637)
 
 poisson_model <- suppressWarnings(glgpm(
   y ~ cov + gp() + re(i), data = poisson_data, family = "poisson",
-  denominator = denominator, control_mcmc = control_mcmc,
+  denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
   control_mcml = fixture_control_mcml, return_samples = TRUE,
   messages = FALSE
 ))
