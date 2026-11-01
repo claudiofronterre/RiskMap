@@ -369,8 +369,10 @@ each parameter with the estimate and both intervals.
 - `plot()` of a profile now shows the relative profile log-likelihood, the
 profile log-likelihood minus its maximum, which is 0 at the estimate and
 negative elsewhere, so that the cut-off of a 95% interval is at -1.92 instead
-of 3.84. `scale = "deviance"` draws the profile deviance as before. `plot()` of
-a parametric bootstrap draws each histogram on the natural scale of the
+of 3.84. `scale = "deviance"` draws the profile deviance as before. The panel
+of a joint profile is titled "Joint profile", and its legend calls the two
+ridges "best y for each x" and "best x for each y", since the axes name the
+parameters. `plot()` of a parametric bootstrap draws each histogram on the natural scale of the
 parameter, and gains `log_scale = TRUE` for the logarithmic axis of the
 variances and the scale that it used before. Logarithmic axes of both plots are
 labelled with plain numbers, such as 0.00001 and 1,000 instead of 1e-05 and

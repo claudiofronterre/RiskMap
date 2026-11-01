@@ -67,12 +67,11 @@ profile_axis <- function(scale, level) {
   if (identical(scale, "deviance")) {
     list(scale = scale, value = function(deviance) deviance,
          limits = c(0, top), title = "Profile deviance",
-         joint = "Joint profile deviance regions, with the marginal profile ridges")
+         joint = "Profile deviance regions and profile ridges")
   } else {
     list(scale = scale, value = function(deviance) -deviance / 2,
          limits = c(-top / 2, 0), title = "Relative log-likelihood",
-         joint = paste("Joint profile log-likelihood regions, with the",
-                       "marginal profile ridges"))
+         joint = "Relative log-likelihood regions and profile ridges")
   }
 }
 
@@ -207,18 +206,18 @@ plot_joint_profile <- function(x, pair_name, axis = profile_axis("loglik", x$lev
     ggplot2::geom_point(data = estimate, colour = "white", fill = colours$cutoff,
                         shape = 21, size = 2.6, stroke = 0.8) +
     ggplot2::labs(x = x$labels[[pair[1]]], y = x$labels[[pair[2]]],
-                  title = paste(x$labels[[pair[1]]], "and", tolower(x$labels[[pair[2]]])),
-                  subtitle = axis$joint) +
+                  title = "Joint profile", subtitle = axis$joint) +
     profile_theme() +
     ggplot2::theme(legend.position = "bottom", legend.box = "vertical",
                    legend.margin = ggplot2::margin(0, 0, 0, 0))
   if (!is.null(ridges)) {
     plot <- plot + ggplot2::geom_path(data = ridges, ggplot2::aes(linetype = .data$ridge),
                                       colour = colours$ridge, linewidth = 0.5) +
-      # One entry per line, since the two together are wider than a page,
-      # above the legend of the regions.
-      ggplot2::scale_linetype_manual(values = c("solid", "longdash"), name = NULL,
-                                     guide = ggplot2::guide_legend(ncol = 1, order = 1))
+      # Above the legend of the regions. The axes name the parameters, so
+      # the entries refer to them as x and y.
+      ggplot2::scale_linetype_manual(values = c("solid", "longdash"),
+                                     name = "Profile ridges",
+                                     guide = ggplot2::guide_legend(order = 1))
   }
   if (!grepl("^beta\\.", pair[1])) {
     plot <- plot + ggplot2::scale_x_log10(labels = plain_number_labels())
@@ -243,10 +242,13 @@ profile_ridges <- function(x, pair) {
     }
     values$first <- profile_natural(pair[1], values$first)
     values$second <- profile_natural(pair[2], values$second)
-    values$ridge <- paste("Best", tolower(x$labels[[other]]), "for each", tolower(x$labels[[fixed]]))
+    values$ridge <- if (fixed == pair[1]) "best y for each x" else "best x for each y"
     values
   }
-  rbind(path(pair[1], pair[2]), path(pair[2], pair[1]))
+  ridges <- rbind(path(pair[1], pair[2]), path(pair[2], pair[1]))
+  ridges$ridge <- factor(ridges$ridge,
+                         levels = c("best y for each x", "best x for each y"))
+  ridges
 }
 
 ##' Arrange the panels: a corner plot for one joint profile with both

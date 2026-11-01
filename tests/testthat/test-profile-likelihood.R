@@ -80,6 +80,11 @@ test_that("the profile plot draws its panels and returns them", {
   expect_identical(deviance$sigma2$labels$y, "Profile deviance")
   expect_match(panels[["sigma2:phi"]]$labels$subtitle, "log-likelihood regions")
   expect_match(deviance[["sigma2:phi"]]$labels$subtitle, "deviance regions")
+  # Short title and ridge entries: the axes name the parameters.
+  expect_identical(panels[["sigma2:phi"]]$labels$title, "Joint profile")
+  joint_layers <- panels[["sigma2:phi"]]$layers
+  expect_setequal(unique(joint_layers[[length(joint_layers)]]$data$ridge),
+                  c("best y for each x", "best x for each y"))
   # The joint regions are the same on both scales.
   regions <- function(panel) table(ggplot2::layer_data(panel, 1)$fill)
   expect_identical(regions(panels[["sigma2:phi"]]),
