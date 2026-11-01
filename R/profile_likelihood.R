@@ -358,25 +358,14 @@ profile_scale_maps <- function(transform, log_scale, p) {
 
 ##' Readable labels for the parameters of a fitted model
 ##'
-##' Those of a Gaussian fit are the labels of `summary()`.
+##' The labels of `summary()`, for every family. The nugget of a binomial or
+##' Poisson fit is profiled as `nu2`, its ratio to the spatial variance, which
+##' `summary()` does not report.
 ##' @noRd
-profile_labels <- function(names, distance_units, family = NULL) {
-  labels <- sub("^beta\\.", "", names)
-  if (identical(family, "gaussian")) {
-    labels[names == "sigma2"] <- "Spatial process var."
-    labels[names == "phi"] <- paste0("Spatial corr. scale (",
-                                     distance_units %||% "units", ")")
-    labels[names == "tau2"] <- "Variance of the nugget"
-    labels[names == "sigma2_me"] <- "Measurement error var."
-    random <- grepl("^sigma2_re\\.", names)
-    labels[random] <- paste0(sub("^sigma2_re\\.", "", names[random]),
-                             " (random eff. var.)")
-    return(as.list(stats::setNames(labels, names)))
-  }
-  labels[names == "sigma2"] <- "Spatial variance"
-  labels[names == "phi"] <- paste0("Scale (", distance_units %||% "units", ")")
-  labels[names %in% c("tau2", "nu2")] <- "Nugget variance ratio"
-  as.list(stats::setNames(labels, names))
+profile_labels <- function(names, distance_units) {
+  labels <- parameter_labels(names, distance_units)
+  labels[names == "nu2"] <- "Nugget variance ratio"
+  as.list(labels)
 }
 
 ##' Match user-supplied parameter names to those of the fit
@@ -950,11 +939,7 @@ print.RiskMap_profile <- function(x, ...) {
         paste(x$settings$n_draws, "Monte Carlo draws"), ")\n", sep = "")
   cat(round(100 * x$level), "% intervals; variances and the scale on their ",
       "natural scale\n\n", sep = "")
-  table <- x$intervals[, c("label", "estimate", "profile_lower", "profile_upper",
-                           "wald_lower", "wald_upper")]
-  names(table) <- c("Parameter", "Estimate", "Profile lower", "Profile upper",
-                    "Wald lower", "Wald upper")
-  print(table, row.names = FALSE, digits = 4)
+  cat(format_profile_table(x$intervals), sep = "\n")
   if (anyNA(x$intervals[, c("profile_lower", "profile_upper")])) {
     cat("\nNA: the profile does not reach the cut-off on that side within the",
         "grid or the\nbounds of the parameter, so the interval is open there.\n")
@@ -964,4 +949,41 @@ print.RiskMap_profile <- function(x, ...) {
         signif(x$higher_than_estimate, 3), "log-likelihood units.\n")
   }
   invisible(x)
+}
+
+##' Lines of the table of intervals printed by `print.RiskMap_profile()`
+##'
+##' Every value has 4 significant digits. The lower and upper ends of each
+##' interval sit under a common heading, which keeps a table with the labels
+##' of `summary()` within 80 characters.
+##' @noRd
+format_profile_table <- function(intervals) {
+  significant <- function(values) {
+    ifelse(is.na(values), "NA", vapply(signif(values, 4), format, ""))
+  }
+  ends <- c("profile_lower", "profile_upper", "wald_lower", "wald_upper")
+  cells <- lapply(intervals[ends], significant)
+  estimate <- significant(intervals$estimate)
+  # The two headings must fit over their pairs of columns.
+  headings <- c("Profile interval", "Wald interval")
+  end_width <- max(nchar(c(unlist(cells), "Lower", "Upper")),
+                   ceiling((max(nchar(headings)) - 1) / 2))
+  label_width <- max(nchar(c(intervals$label, "Parameter")))
+  estimate_width <- max(nchar(c(estimate, "Estimate")))
+  centre <- function(text, width) {
+    left <- (width - nchar(text)) %/% 2
+    paste0(strrep(" ", left), text, strrep(" ", width - nchar(text) - left))
+  }
+  right <- function(text, width) formatC(text, width = width)
+  pair_width <- 2L * end_width + 1L
+  top <- paste(strrep(" ", label_width), strrep(" ", estimate_width),
+               centre(headings[1], pair_width), centre(headings[2], pair_width))
+  header <- paste(right("Parameter", label_width),
+                  right("Estimate", estimate_width),
+                  paste(right(c("Lower", "Upper", "Lower", "Upper"), end_width),
+                        collapse = " "))
+  rows <- paste(right(intervals$label, label_width),
+                right(estimate, estimate_width),
+                do.call(paste, lapply(cells, right, end_width)))
+  sub(" +$", "", c(top, header, rows))
 }

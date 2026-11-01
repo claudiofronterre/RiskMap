@@ -50,8 +50,7 @@ make_gaussian_profile_problem <- function(fitted) {
   others <- length(estimate) - p - 2L
   problem <- list(
     value = value, estimate = estimate, names = names(estimate),
-    labels = profile_labels(names(estimate), fitted$distance_units,
-                            "gaussian"),
+    labels = profile_labels(names(estimate), fitted$distance_units),
     standard_errors = stats::setNames(sqrt(pmax(variances, 0)),
                                       names(estimate)),
     # The coefficients are solved in closed form and need no bounds.

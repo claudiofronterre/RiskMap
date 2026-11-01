@@ -766,7 +766,8 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
         "Lower limit" = exp(log(est_me) - z_crit * se_me),
         "Upper limit" = exp(log(est_me) + z_crit * se_me)
       )
-      rownames(res$me) <- "Measurement error var."
+      rownames(res$me) <- unname(parameter_labels("sigma2_me",
+                                                  object$distance_units))
     } else {
       res$me <- object$fix_var_me
     }
@@ -780,10 +781,10 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
     "Lower limit" = exp(log(est_sp) - z_crit * se_sp),
     "Upper limit" = exp(log(est_sp) + z_crit * se_sp)
   )
-  rownames(res$sp) <- c("Spatial process var.",
-                        paste0("Spatial corr. scale (",
-                               object$distance_units, ")"),
-                        if (has_tau2) "Variance of the nugget")
+  # nu2 is reported as tau2, the variance of the nugget.
+  rownames(res$sp) <- unname(parameter_labels(c("sigma2", "phi",
+                                                if (has_tau2) "tau2"),
+                                              object$distance_units))
   if (!is.null(object$fix_tau2)) res$tau2 <- object$fix_tau2
 
   if (n_re > 0) {
@@ -794,7 +795,8 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
       "Lower limit" = exp(log(est_re) - z_crit * se_re),
       "Upper limit" = exp(log(est_re) + z_crit * se_re)
     )
-    rownames(res$ranef) <- paste0(re_names, " (random eff. var.)")
+    rownames(res$ranef) <- unname(parameter_labels(re_par_names,
+                                                   object$distance_units))
   }
 
   res$level           <- level
@@ -814,6 +816,27 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
 
   class(res) <- "summary.RiskMap"
   return(res)
+}
+
+##' Readable names of the parameters, as `summary()` labels them
+##'
+##' `names` are those of `unlist(fit$estimate)` or `unlist(coef(fit))`, with
+##' `tau2` for the variance of the nugget. The prefix `beta.` of the
+##' regression coefficients is dropped, and any other name is kept as it is.
+##' The labels of `summary()`, `profile()` and `parametric_bootstrap()` all
+##' come from here.
+##' @noRd
+parameter_labels <- function(names, distance_units) {
+  labels <- sub("^beta\\.", "", names)
+  labels[names == "sigma2"] <- "Spatial process var."
+  labels[names == "phi"] <- paste0("Spatial corr. scale (",
+                                   distance_units %||% "units", ")")
+  labels[names == "tau2"] <- "Variance of the nugget"
+  labels[names == "sigma2_me"] <- "Measurement error var."
+  random <- grepl("^sigma2_re\\.", names)
+  labels[random] <- paste0(sub("^sigma2_re\\.", "", names[random]),
+                           " (random eff. var.)")
+  stats::setNames(labels, names)
 }
 
 ##' @title Print Summary of RiskMap Model

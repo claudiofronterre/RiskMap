@@ -135,6 +135,9 @@ test_that("summary computes percentile and bias-corrected intervals", {
   expect_true(is.na(sigma2$bc_lower) && is.na(sigma2$bc_upper))
   expect_output(print(boot), "BC interval\\s+is not available")
   expect_equal(summary(boot, level = 0.5)$level, 0.5)
+  # An object with only these fields, as saved by earlier versions, is drawn.
+  expect_s3_class(plot(boot), "patchwork")
+  expect_s3_class(plot(boot, parameters = "phi", log_scale = TRUE), "ggplot")
 })
 
 test_that("plot draws one histogram per parameter", {
@@ -147,6 +150,28 @@ test_that("plot draws one histogram per parameter", {
                           gaussian_intercept_model$distance_units, ")"))
   expect_s3_class(plot(boot), "patchwork")
   expect_error(plot(boot, parameters = "kappa"), "Unknown parameter")
+  summaries <- summary(gaussian_intercept_model)
+  expect_identical(unname(boot$labels),
+                   c(rownames(summaries$reg_coef), rownames(summaries$sp),
+                     rownames(summaries$me)))
+})
+
+test_that("plot shows a natural axis unless log_scale is TRUE", {
+  boot <- parametric_bootstrap(gaussian_intercept_model, n_sim = 5, seed = 2,
+                               messages = FALSE)
+  natural <- plot(boot, parameters = "phi")
+  expect_null(natural$scales$get_scales("x"))
+  expect_identical(natural$labels$x, "Bootstrap estimate")
+  logged <- plot(boot, parameters = "phi", log_scale = TRUE)
+  expect_identical(logged$scales$get_scales("x")$get_transformation()$name,
+                   "log-10")
+  expect_identical(logged$labels$x, "Bootstrap estimate (log scale)")
+  expect_false(any(grepl("e", ggplot2::get_guide_data(logged, "x")$.label)))
+  # A coefficient stays on its natural axis.
+  coefficient <- plot(boot, parameters = names(boot$estimate)[1],
+                      log_scale = TRUE)
+  expect_null(coefficient$scales$get_scales("x"))
+  expect_error(plot(boot, log_scale = NA), "TRUE or FALSE")
 })
 
 test_that("parametric_bootstrap validates its arguments", {

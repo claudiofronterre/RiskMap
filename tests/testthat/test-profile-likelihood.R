@@ -19,6 +19,20 @@ test_that("profiles of a binomial fit have their grids, deviances and intervals"
   expect_equal(intervals$estimate[2], exp(binomial_model$estimate$sigma2))
 })
 
+test_that("profiles of a binomial fit have the labels of summary()", {
+  profiles <- profile(binomial_model, parameters = "sigma2", n_points = 5,
+                      n_draws = 200, messages = FALSE)
+  summaries <- summary(binomial_model)
+  expect_identical(unname(unlist(profiles$labels)),
+                   c(rownames(summaries$reg_coef), rownames(summaries$sp),
+                     rownames(summaries$ranef)))
+  expect_identical(profiles$intervals$label, "Spatial process var.")
+  # The ratio of the nugget to the spatial variance has no label in summary().
+  expect_identical(profile_labels(c("sigma2", "nu2"), "km"),
+                   list(sigma2 = "Spatial process var.",
+                        nu2 = "Nugget variance ratio"))
+})
+
 test_that("profiling restores the random number state", {
   set.seed(42)
   expected <- stats::runif(1)
@@ -48,6 +62,54 @@ test_that("the profile plot draws its panels and returns them", {
   expect_named(panels, c("sigma2", "phi", "sigma2:phi"))
   expect_true(all(vapply(panels, ggplot2::is_ggplot, logical(1))))
   expect_output(print(profiles), "Profile likelihood")
+
+  # The relative log-likelihood by default, minus half the deviance.
+  deviance <- plot(profiles, scale = "deviance")
+  expect_named(deviance, names(panels))
+  for (layer in 3:5) {
+    expect_equal(ggplot2::layer_data(panels$sigma2, layer)$y,
+                 -ggplot2::layer_data(deviance$sigma2, layer)$y / 2)
+  }
+  expect_equal(ggplot2::layer_data(panels$phi, 2)$yintercept,
+               -stats::qchisq(0.95, 1) / 2)
+  expect_equal(ggplot2::layer_data(deviance$phi, 2)$yintercept,
+               stats::qchisq(0.95, 1))
+  expect_equal(panels$sigma2$coordinates$limits$y,
+               -rev(deviance$sigma2$coordinates$limits$y) / 2)
+  expect_identical(panels$sigma2$labels$y, "Relative log-likelihood")
+  expect_identical(deviance$sigma2$labels$y, "Profile deviance")
+  expect_match(panels[["sigma2:phi"]]$labels$subtitle, "log-likelihood regions")
+  expect_match(deviance[["sigma2:phi"]]$labels$subtitle, "deviance regions")
+  # Short title and ridge entries: the axes name the parameters.
+  expect_identical(panels[["sigma2:phi"]]$labels$title, "Joint profile")
+  joint_layers <- panels[["sigma2:phi"]]$layers
+  expect_setequal(unique(joint_layers[[length(joint_layers)]]$data$ridge),
+                  c("best y for each x", "best x for each y"))
+  # The joint regions are the same on both scales.
+  regions <- function(panel) table(ggplot2::layer_data(panel, 1)$fill)
+  expect_identical(regions(panels[["sigma2:phi"]]),
+                   regions(deviance[["sigma2:phi"]]))
+  expect_error(plot(profiles, scale = "likelihood"), "should be one of")
+})
+
+test_that("logarithmic axes are labelled with plain numbers", {
+  expect_identical(plain_number_labels()(c(1e-5, 0.001, 0.03, 0.1, 1, 10, 1000)),
+                   c("0.00001", "0.001", "0.03", "0.1", "1", "10", "1,000"))
+  profile <- data.frame(value = log(c(1e-6, 1e-4, 0.01, 1)), loglik = 0,
+                        deviance = c(9, 4, 0, 4))
+  profiles <- structure(list(
+    marginal = list(sigma2 = profile), estimate = c(sigma2 = log(0.01)),
+    standard_errors = c(sigma2 = 2), labels = list(sigma2 = "Variance"),
+    intervals = data.frame(parameter = "sigma2", label = "Variance",
+                           estimate = 0.01, profile_lower = 1e-4,
+                           profile_upper = 1, wald_lower = 0.0002,
+                           wald_upper = 0.5),
+    level = 0.95
+  ), class = "RiskMap_profile")
+  labels <- ggplot2::get_guide_data(plot_marginal_profile(profiles, "sigma2"),
+                                    "x")$.label
+  expect_true(length(labels) > 0)
+  expect_false(any(grepl("e", labels)))
 })
 
 # A profile problem with an exact log-likelihood in two parameters.
@@ -304,6 +366,7 @@ test_that("Gaussian profiles have every parameter, with the labels of summary()"
   printed <- capture.output(print(profiles))
   expect_match(printed[1], "exact likelihood")
   expect_false(any(grepl("Monte Carlo", printed)))
+  expect_lte(max(nchar(printed)), 80)
   grDevices::pdf(NULL)
   on.exit(grDevices::dev.off())
   expect_named(plot(profiles), c(names(profiles$marginal), "sigma2:phi"))
@@ -424,4 +487,28 @@ test_that("the subtitle of a marginal panel has one line per value", {
     paste("Estimate 0.0883", "95% profile interval 0.0302 to open",
           "95% Wald interval 0.0351 to 0.222", sep = "\n")
   )
+})
+
+test_that("the printed intervals have 4 significant digits within 80 characters", {
+  intervals <- data.frame(
+    parameter = c("beta.(Intercept)", "sigma2", "phi", "sigma2_me"),
+    label = c("(Intercept)", "Spatial process var.", "Spatial corr. scale (km)",
+              "Measurement error var."),
+    estimate = c(0.7074203, 0.1712705, 9.020853, 0.01546019),
+    profile_lower = c(0.5460122, 0.09442121, 6.502491, NA),
+    profile_upper = c(0.8844612, 0.2649031, 16.230801, 0.07629123),
+    wald_lower = c(0.5527617, 0.1033336, 5.3842374, 0.0001947321),
+    wald_upper = c(0.8621455, 0.2838713, 15.1136955, 1.2283812)
+  )
+  lines <- format_profile_table(intervals)
+  expect_length(lines, 6L)
+  expect_lte(max(nchar(lines)), 80)
+  expect_match(lines[1], "^ +Profile interval +Wald interval$")
+  expect_match(lines[2], "^ +Parameter Estimate +Lower +Upper +Lower +Upper$")
+  expect_identical(strsplit(trimws(sub(".*\\)", "", lines[5])), " +")[[1]],
+                   c("9.021", "6.502", "16.23", "5.384", "15.11"))
+  expect_identical(strsplit(trimws(sub(".*var\\.", "", lines[6])), " +")[[1]],
+                   c("0.01546", "NA", "0.07629", "0.0001947", "1.228"))
+  # Each column is right-aligned.
+  expect_identical(length(unique(nchar(lines[-1]))), 1L)
 })
