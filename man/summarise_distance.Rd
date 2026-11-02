@@ -2,9 +2,12 @@
 % Please edit documentation in R/exploratory_analysis.R
 \name{summarise_distance}
 \alias{summarise_distance}
+\alias{print.RiskMap_distance_summary}
 \title{Summaries of the distances}
 \usage{
 summarise_distance(data, distance_crs = NULL, distance_units = c("km", "m"))
+
+\method{print}{RiskMap_distance_summary}(x, digits = 3, ...)
 }
 \arguments{
 \item{data}{an object of class \code{sf} containing point geometries.}
@@ -16,15 +19,25 @@ automatically reproject longitude/latitude data to an appropriate UTM CRS
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether the
 distances used are expressed in kilometers or meters. Defaults to \code{"km"}.}
+
+\item{x}{an object returned by \code{summarise_distance()}.}
+
+\item{digits}{the number of significant digits to print. Defaults to 3.}
+
+\item{...}{further arguments, currently ignored.}
 }
 \value{
-a named vector containing the following components
+a named numeric vector of class \code{RiskMap_distance_summary}
+containing the following components
 \describe{
 \item{\code{min}}{the minimum distance}
 \item{\code{max}}{the maximum distance}
 \item{\code{mean}}{the mean distance}
 \item{\code{median}}{the median distance}
 }
+The values are stored in full. Its \code{print()} method shows them to
+\code{digits} significant digits, with the number of unique locations and the
+distance units.
 }
 \description{
 Computes the distances between the unique locations in the dataset and returns summary statistics.

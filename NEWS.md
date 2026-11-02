@@ -57,6 +57,9 @@ other RiskMap plots do, and draws in red the points that fall outside the
 envelope. `plot_envelope` is now checked.
 - `variogram()` results gain a `print()` method that reports the distance
 classes and the envelope settings before the table.
+- `summarise_distance()` results gain a `print()` method that shows the
+distances to three significant digits (set by `digits`), with the number of
+unique locations and the distance units. The values are still stored in full.
 - In `summarise_distance()` and `variogram()`, `scale_to_km` has been
 replaced with `distance_units` (`"km"` or `"m"`), for consistency with `glgpm()`.
 Both now default to `"km"`, as `glgpm()` does. For `variogram()` this changes
