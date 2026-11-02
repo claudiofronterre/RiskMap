@@ -64,6 +64,31 @@ test_that("summarise_distance produces correct output", {
 
 })
 
+test_that("summarise_distance prints rounded values and stores them in full", {
+
+  square <- data.frame(
+    x = c(1, 2, 1, 2),
+    y = c(1, 1, 2, 2)
+  )
+  square_sf <- sf::st_as_sf(square, coords = c("x", "y"), crs = 32630)
+
+  result <- summarise_distance(square_sf, distance_units = "m")
+  expect_s3_class(result, "RiskMap_distance_summary")
+  expect_identical(attr(result, "n_locations"), 4)
+  expect_identical(result[["max"]], sqrt(2))
+
+  printed <- capture.output(print(result))
+  expect_identical(printed[1], "Distances between 4 unique locations, in m")
+  expect_true(any(grepl("1.41", printed, fixed = TRUE)))
+  expect_false(any(grepl("1.414", printed, fixed = TRUE)))
+  expect_true(any(grepl("1.4142", capture.output(print(result, digits = 5)),
+                        fixed = TRUE)))
+  capture.output(visible <- withVisible(print(result))$visible)
+  expect_false(visible)
+  expect_error(print(result, digits = 0),
+               "'digits' must be a single positive integer")
+})
+
 test_that("summarise_distance follows the glgpm() CRS convention", {
 
   latlon <- st_transform(gaussian_data, 4326)

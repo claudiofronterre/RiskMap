@@ -51,13 +51,17 @@ extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
 ##' @param distance_units Character string, either `"km"` or `"m"`, indicating whether the
 ##' distances used are expressed in kilometers or meters. Defaults to `"km"`.
 ##'
-##' @return a named vector containing the following components
+##' @return a named numeric vector of class `RiskMap_distance_summary`
+##' containing the following components
 ##' \describe{
 ##'   \item{`min`}{the minimum distance}
 ##'   \item{`max`}{the maximum distance}
 ##'   \item{`mean`}{the mean distance}
 ##'   \item{`median`}{the median distance}
 ##' }
+##' The values are stored in full. Its `print()` method shows them to
+##' `digits` significant digits, with the number of unique locations and the
+##' distance units.
 ##'
 ##' @examples
 ##' data(italy_sim)
@@ -81,7 +85,26 @@ summarise_distance <- function(data,
   out <- c(min(d), max(d), mean(d), median(d))
   names(out) <- c("min", "max", "mean", "median")
 
-  return(out)
+  # n unique locations give n (n - 1) / 2 distances
+  n_locations <- round((1 + sqrt(1 + 8 * length(d))) / 2)
+  structure(out, class = "RiskMap_distance_summary",
+            n_locations = n_locations, distance_units = distance_units)
+}
+
+##' @rdname summarise_distance
+##' @param x an object returned by `summarise_distance()`.
+##' @param digits the number of significant digits to print. Defaults to 3.
+##' @param ... further arguments, currently ignored.
+##' @export
+print.RiskMap_distance_summary <- function(x, digits = 3, ...) {
+  check_positive_integer(digits, "digits")
+  cat("Distances between ", attr(x, "n_locations"), " unique locations, in ",
+      attr(x, "distance_units"), "\n", sep = "")
+  values <- formatC(as.numeric(x), digits = digits, format = "fg",
+                    big.mark = ",")
+  names(values) <- names(x)
+  print(noquote(values), right = TRUE)
+  invisible(x)
 }
 
 #' Construct an extreme-rank-length global envelope
