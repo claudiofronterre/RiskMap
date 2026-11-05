@@ -94,6 +94,14 @@ native linear units rather than assuming metres.
 
 ## Model fitting
 
+- Several `re()` calls in a formula are now combined, so `re(a) + re(b)` is the
+same model as `re(a, b)`. Previously only the last call was fitted, with no
+warning. A second, different `gp()` term, which also used to replace the first
+with no warning, is now an error.
+- A second `offset()` term, which used to be ignored with no warning, is now an
+error. `offset()` must name a column of `data`, and an expression such as
+`offset(log(n))` now stops with a message that says so. An offset is also read
+correctly when the formula has several `re()` calls.
 - Breaking change: the seed has moved out of `set_control_mcmc()`, whose
 `seed` argument is removed. `glgpm()`, `predict()`, `assess_prediction()` and
 `assess_simulation()` take a `seed` argument instead, as `simulate_glgpm()`,
