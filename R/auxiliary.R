@@ -640,8 +640,10 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   \code{certified}, \code{outcome}, \code{correction_refused} (whether
 ##'   the Newton correction of the last stage did not converge),
 ##'   \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
-##'   last stage) and \code{notes}, short notes on what the warnings of the
-##'   fit reported. \code{mcml} is \code{NULL} for Gaussian models.
+##'   last stage), \code{certification_bank} (the effective draws and Pareto
+##'   shape of the certification draws) and \code{checks_to_review}, the number
+##'   of checks of \code{\link{check_fit}} that need a look. \code{mcml} is
+##'   \code{NULL} for Gaussian models.
 ##' @method summary RiskMap
 ##' @examples
 ##' data(italy_sim)
@@ -902,11 +904,7 @@ print.summary.RiskMap <- function(x, ...) {
   if (!is.null(x$mcml)) {
     cat("\nMonte Carlo maximum likelihood\n")
     write_wrapped(c(describe_mcml_certificate(x$mcml),
-                    describe_mcml_draws(x$mcml)))
-    if (length(x$mcml$notes)) {
-      cat("\nNotes\n")
-      write_wrapped(x$mcml$notes, bullet = "- ")
-    }
+                    describe_checks_to_review(x$mcml$checks_to_review)))
   }
 
   return(invisible(x))

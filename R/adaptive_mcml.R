@@ -830,33 +830,16 @@ maximise_laplace <- function(objective, start, latent_dimension, lower,
 ##' A fitted scale below `trigger_fraction` times the median nearest-neighbour
 ##' distance is the warning sign, and the fit is then repeated from four
 ##' dispersed starts: spatial variance 0.25 or 4, crossed with a scale equal
-##' to that distance or half the largest distance. With `messages = TRUE` the
-##' user is told when and why the refit runs, with distances in the model's
-##' units. The scale quoted is that of the fit on the fitting draws, before
-##' the Newton correction that gives the returned estimate.
+##' to that distance or half the largest distance.
 ##' @noRd
-make_dispersed_starts <- function(layout, distances, distance_scale = 1,
-                             messages = FALSE, trigger_fraction = 0.5) {
+make_dispersed_starts <- function(layout, distances, trigger_fraction = 0.5) {
   spacing <- median_nearest_neighbour_distance(distances)
   grid <- expand.grid(sigma2 = c(0.25, 4), phi = c(spacing, max(distances) / 2))
-  announce <- function(log_phi) {
-    if (!messages) return(invisible(NULL))
-    message(
-      "The spatial scale of the first fit (phi = ",
-      signif(exp(log_phi) * distance_scale, 3), ", before its Monte Carlo ",
-      "correction) is below half the median ",
-      "distance between neighbouring locations (",
-      signif(spacing * distance_scale, 3), "). In sparse data a maximum at so ",
-      "short a scale can be a local one, with a higher maximum at a longer ",
-      "scale, so the fit is repeated from four dispersed starting values to ",
-      "check."
-    )
-  }
   list(sigma2_index = layout$index$sigma2, phi_index = layout$index$phi,
        log_sigma2 = log(grid$sigma2), log_phi = log(grid$phi),
        labels = paste0(c("small", "large"), " variance, ",
                        rep(c("short", "long"), each = 2), " scale"),
-       trigger = log(trigger_fraction * spacing), announce = announce)
+       trigger = log(trigger_fraction * spacing))
 }
 
 ##' Penalised-complexity (PC) prior penalty for the spatial covariance
@@ -976,8 +959,7 @@ glgpm_nong_adaptive <- function(
   }
   dispersed <- NULL
   if (isTRUE(control_mcml$check_maxima %||% TRUE)) {
-    dispersed <- make_dispersed_starts(engine$layout, distances,
-                                       distance_scale, messages)
+    dispersed <- make_dispersed_starts(engine$layout, distances)
     # The screen of short scales and the exact alarms need the likelihood
     # with independent location effects, computed exactly for the canonical
     # links and without unstructured random effects.
@@ -988,7 +970,7 @@ glgpm_nong_adaptive <- function(
           D, y, units_m, ID_coords %||% seq_along(y),
           cov_offset %||% numeric(length(y)), family
         ),
-        distances, kappa, messages, distance_scale
+        distances, kappa
       )
     } else {
       dispersed$screen_unavailable <- if (is.null(ID_re)) {
@@ -1029,9 +1011,8 @@ glgpm_nong_adaptive <- function(
                                          "no maximum")) {
     detect_small_scale(fit, engine$layout, distances, kappa, distance_scale)
   }
-  report_mcml_outcome(fit, boundary_names, engine$layout, pc_prior,
-                      control_mcml$tolerance, messages, small_scale,
-                      distance_scale, colnames(D), family)
+  report_mcml_outcome(fit, engine$layout, control_mcml$tolerance, messages,
+                      colnames(D), family)
   assemble_mcml_result(fit, laplace, boundary_names, D, fix_tau2, re_names,
                        family, invlink, length(y), pc_prior, fit_seed,
                        small_scale)
@@ -1155,6 +1136,7 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_stages = length(fit$history),
     mcml_history = compact_adaptive_mcml_history(fit$history),
     mcml_small_scale = !is.null(small_scale),
+    mcml_spacing = small_scale[["spacing"]],
     mcml_maxima_check = fit$maxima_check,
     mcml_maxima_screen = fit$maxima_screen,
     mcml_maxima_alarm = fit$maxima_alarm,
@@ -1177,136 +1159,62 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
   out
 }
 
-##' Tell the user what the check for other maxima found
+##' Warn about what the check for other maxima found
 ##'
-##' Warns when an exact alarm shows that the estimate is not the global
-##' maximum, when the estimate comes from a maximum separate from the one
-##' first fitted, and when two separate maxima fit about equally well on
-##' independent draws. Neither of the last two proves that no higher maximum
-##' exists elsewhere. The scale quoted for the kept maximum is that of the
-##' returned estimate, after the Newton correction, and the other maximum's
-##' is that of its fit on the fitting draws.
+##' An exact alarm shows that the estimate is not the global maximum. A separate
+##' maximum, higher or about equal, means that Wald intervals may describe the
+##' uncertainty poorly. `check_fit()` gives the details and what to do.
 ##' @noRd
-report_maxima_check <- function(fit, layout, distance_scale) {
-  alarm <- fit$maxima_screen$alarm
-  if (isTRUE(alarm$persists)) {
+report_maxima_check <- function(fit) {
+  if (isTRUE(fit$maxima_screen$alarm$persists)) {
     warning(
-      "An exact lower bound on the likelihood at a short spatial scale, from ",
-      "the limit in which the model has independent location effects, is ",
-      "above the log-likelihood of the estimate. The estimate is therefore ",
-      "not the maximum likelihood estimate, and the check for other maxima ",
-      "did not reach a higher maximum. Inspect the profile likelihood of the ",
-      "spatial scale.",
+      "An exact lower bound on the likelihood shows that the estimate is not ",
+      "the maximum likelihood estimate. See check_fit().",
       call. = FALSE
     )
   }
-  check <- fit$maxima_check
-  if (is.null(check) || !(fit$better_maximum || fit$ambiguous_maxima)) {
-    return(invisible(NULL))
-  }
-  judged <- check[is.finite(check$independent_log_likelihood), ]
-  kept <- judged[judged$chosen, ]
-  rest <- judged[!judged$chosen, ]
-  # The maximum compared with the kept one: the fitted maximum when the
-  # estimate moved, otherwise the closest rival on the independent draws.
-  other <- if (fit$ambiguous_maxima) {
-    rest[which.max(rest$independent_log_likelihood), ]
-  } else {
-    rest[rest$maximum == check$maximum[[1L]], ][1L, ]
-  }
-  scale <- function(row) signif(exp(row$log_phi) * distance_scale, 3)
-  estimated_scale <- signif(exp(fit$estimate[[layout$index$phi]]) *
-                              distance_scale, 3)
-  difference <- paste0(
-    signif(kept$independent_log_likelihood - other$independent_log_likelihood,
-           2),
-    " log-likelihood units (standard error ", signif(other$independent_se, 2),
-    ") on independent Monte Carlo draws"
-  )
-  profile_advice <- paste0(
-    " The likelihood has more than one maximum, so Wald intervals may ",
-    "describe the uncertainty poorly. Consider inspecting the profile ",
-    "likelihood of the spatial scale and variance. The check does not prove ",
-    "that no higher maximum exists elsewhere."
-  )
-  if (fit$ambiguous_maxima) {
+  if (isTRUE(fit$ambiguous_maxima)) {
     warning(
-      "The check for other maxima found separate maxima of the likelihood ",
-      "that fit about equally well. They differ by ", difference, ". The ",
-      "estimate is taken from the higher one, with spatial scale ",
-      estimated_scale, ". The other has scale ", scale(other), ".",
-      profile_advice,
+      "Separate maxima of the likelihood fit about equally well, so Wald ",
+      "intervals may describe the uncertainty poorly. See check_fit().",
       call. = FALSE
     )
-  } else {
+  } else if (isTRUE(fit$better_maximum)) {
     warning(
-      "The check for other maxima found a separate maximum of the ",
-      "likelihood, higher than the one reached from the starting values by ",
-      difference, ", and the estimate is taken from it (spatial scale ",
-      estimated_scale, " instead of ", scale(other), ").",
-      profile_advice,
+      "The check for other maxima found a maximum higher than the one reached ",
+      "from the starting values, and the estimate is taken from it. See ",
+      "check_fit().",
       call. = FALSE
     )
   }
   invisible(NULL)
 }
 
-##' Tell the user that the fit is numerically independent
+##' Warn that the fit is numerically independent
 ##'
 ##' The spatial correlation at the fitted scale is numerically negligible, so
 ##' the fit is one of independent location effects and the scale is
 ##' unresolved. That is not evidence that the maximum lies at zero scale.
-##' Points to the profile likelihood of the scale, to a model without spatial
-##' correlation and to the PC penalty. `record` is the record of the screen
-##' (`check_other_maxima()`).
+##' `record` is the record of the screen (`check_other_maxima()`).
 ##' @noRd
-report_numerically_independent <- function(record, pc_advice = "") {
+report_numerically_independent <- function(record) {
   variance <- record$independent$log_variance
   warning(
-    "The fitted spatial scale is so short that the correlation between the ",
-    "closest locations is below 1e-6, so the fit is numerically one of ",
+    "The fitted spatial scale is so short that the fit is numerically one of ",
     "independent location effects",
     if (!is.null(variance)) paste0(" with variance ", signif(exp(variance), 3)),
     ", and the spatial scale is unresolved. Standard errors and the Monte ",
-    "Carlo certificate, which need an interior maximum, are not reported. ",
-    "Use profile(fit, parameters = \"phi\") to see how the likelihood changes ",
-    "with the scale. If spatial correlation is not expected, consider a model ",
-    "with an unstructured effect for each location instead of gp().",
-    pc_advice,
+    "Carlo certificate are not reported. See check_fit().",
     call. = FALSE
   )
 }
 
-##' Tell the user that a short fitted scale is close to the limit of zero
-##'
-##' The comparison with the limit has not shown that the fitted likelihood is
-##' above it at the current Monte Carlo precision. That is not evidence that
-##' the maximum is at zero, so the estimate is assessed as usual and only this
-##' warning is given. `scale` is the spatial scale of the returned estimate,
-##' in the model's distance units, which the warning quotes rather than the
-##' scale of the fit on the fitting draws compared with the limit.
-##' @noRd
-report_near_limit <- function(record, scale) {
-  near <- record$near_limit
-  if (is.null(near)) return(invisible(NULL))
-  warning(
-    "The estimated spatial scale (phi = ", signif(scale, 3),
-    ") is short, and the fitted likelihood is not clearly distinguishable from ",
-    "the limit with independent location effects at the current Monte Carlo ",
-    "precision (difference ", signif(near$gap, 2), ", standard error ",
-    signif(near$se, 2), " on ", format(near$draws, big.mark = ","),
-    " independent draws). Use profile(fit, parameters = \"phi\") to see how ",
-    "well the data determine the scale.",
-    call. = FALSE
-  )
-}
-
-##' Tell the user that the likelihood has no maximum
+##' Warn that the likelihood has no maximum
 ##'
 ##' Gives the cause, from the separation of the data (`fit$separation`, from
 ##' `find_separation()`) or else the regression coefficients that reached the
-##' bound of the search (`fit$coefficients_at_bound`), and what can be done
-##' instead. `coefficient_names` names the regression coefficients.
+##' bound of the search (`fit$coefficients_at_bound`). `check_fit()` says what
+##' can be done instead. `coefficient_names` names the regression coefficients.
 ##' @noRd
 report_no_maximum <- function(fit, coefficient_names, family) {
   binomial <- identical(family, "binomial")
@@ -1318,7 +1226,7 @@ report_no_maximum <- function(fit, coefficient_names, family) {
   }
   returned <- paste0(
     " The estimate is where the optimiser stopped, and it is returned ",
-    "without standard errors or a Monte Carlo certificate."
+    "without standard errors or a Monte Carlo certificate. See check_fit()."
   )
   separation <- fit$separation
   everywhere <- separation$everywhere
@@ -1333,10 +1241,6 @@ report_no_maximum <- function(fit, coefficient_names, family) {
       },
       ", so the likelihood increases as the fitted ", quantity, " tends to ",
       if (none) "zero" else "one", " and has no maximum.", returned,
-      " Maximum likelihood cannot fit the model to such data. An exact ",
-      if (none) "upper" else "lower", " confidence limit for the ",
-      if (binomial) "prevalence" else "rate", ", or a Bayesian analysis ",
-      "with an informative prior on the intercept, can be used instead.",
       call. = FALSE
     )
   } else if (!is.null(separation)) {
@@ -1356,18 +1260,9 @@ report_no_maximum <- function(fit, coefficient_names, family) {
     warning(
       "The covariates separate the data. The fit to ",
       paste(observations, collapse = " and "), " improves without limit as ",
-      "the ",
-      "regression coefficient", if (!single) "s", " of ",
+      "the regression coefficient", if (!single) "s", " of ",
       listed(separation$coefficients), " ", if (single) "grows" else "grow",
-      " in absolute value, while the fit to the other observations is ",
-      "unchanged, so the likelihood has no maximum.", returned,
-      " Consider merging a category of a factor that has ",
-      if (separation$only_positives && !separation$no_positives) {
-        "only positives"
-      } else {
-        "no positives"
-      },
-      " with other categories, or removing the covariate from the model.",
+      " in absolute value, so the likelihood has no maximum.", returned,
       call. = FALSE
     )
   } else {
@@ -1376,12 +1271,7 @@ report_no_maximum <- function(fit, coefficient_names, family) {
     warning(
       "The estimate", if (!single) "s", " of the regression coefficient",
       if (!single) "s", " of ", listed(at_bound), " reached the bound of the ",
-      "search (30 in absolute value, for covariates standardised to mean ",
-      "zero and standard deviation one), so the likelihood appears to have ",
-      "no maximum, as when the covariates separate the data.", returned,
-      " Check whether a covariate, or a category of a factor, has only ",
-      "observations with no positives or only observations where every ",
-      "individual is positive.",
+      "search, so the likelihood appears to have no maximum.", returned,
       call. = FALSE
     )
   }
@@ -1390,119 +1280,57 @@ report_no_maximum <- function(fit, coefficient_names, family) {
 
 ##' Tell the user how a certified MCML fit ended
 ##'
-##' Warnings name variance components at zero, a scale smaller than the
-##' location spacing, a singular information matrix, or a certificate above
-##' the tolerance. Weak identification of the spatial variance or scale is what
-##' the PC penalty addresses, so these warnings point to it when it is off.
-##' A fit whose likelihood has no maximum gets only the warning of
+##' Warns only about what changes how a result is read, in a sentence or two
+##' that point to `check_fit()`: a certificate that is missing or above the
+##' tolerance, a likelihood without a maximum, weak identification, other
+##' maxima and a spatial variance at zero. With `messages`, a certified fit gets
+##' one line. A fit whose likelihood has no maximum gets only the warning of
 ##' `report_no_maximum()`, since the others describe a maximum.
 ##' `coefficient_names` names the regression coefficients.
 ##' @noRd
-report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
-                                tolerance, messages, small_scale = NULL,
-                                distance_scale = 1, coefficient_names = NULL,
-                                family = "binomial") {
+report_mcml_outcome <- function(fit, layout, tolerance, messages,
+                                coefficient_names = NULL, family = "binomial") {
   if (identical(fit$outcome, "no maximum")) {
     return(report_no_maximum(fit, coefficient_names, family))
   }
-  pc_advice <- if (pc_prior) "" else paste0(
-    " Alternatively, refit with 'control_mcml = set_control_mcml(pc_prior = ",
-    "TRUE)', which stabilises the spatial variance and scale with a mild ",
-    "penalty. This is recommended for small or low-prevalence surveys and ",
-    "makes prediction with 'parameter_uncertainty = TRUE' possible."
-  )
-  spatial_at_zero <- layout$index$sigma2 %in% fit$boundary_parameters
-  if (length(boundary_names)) {
-    single <- length(boundary_names) == 1L
+  if (layout$index$sigma2 %in% fit$boundary_parameters) {
     warning(
-      "The ", if (single) boundary_names else paste(
-        paste(boundary_names[-length(boundary_names)], collapse = ", "),
-        "and the", boundary_names[length(boundary_names)]
-      ), " ", if (single) "was" else "were",
-      " estimated as effectively zero. ",
-      if (single) "This component" else "These components",
-      " cannot be distinguished from zero with these data, so ",
-      if (single) "its standard error is" else "their standard errors are",
-      " not reported",
-      if (spatial_at_zero) ", and the spatial scale cannot be estimated",
-      ". Consider refitting without ", if (single) "it." else "them.",
-      if (spatial_at_zero) pc_advice,
+      "The spatial variance (sigma2) was estimated as effectively zero, so the ",
+      "spatial scale cannot be estimated. See check_fit().",
       call. = FALSE
     )
   }
-  if (!is.null(small_scale)) {
-    warning(
-      "The estimated spatial scale (phi = ", signif(small_scale[["scale"]], 3),
-      ", practical range ", signif(small_scale[["practical_range"]], 3),
-      ") is smaller than the median distance between neighbouring locations (",
-      signif(small_scale[["spacing"]], 3), "), all in the distance units of ",
-      "the model. The practical range is the distance at which the ",
-      "correlation falls to about 0.05. Spatial correlation on so short a ",
-      "scale is hard to distinguish from unstructured variation between ",
-      "locations, so the scale may be weakly identified by these data and its ",
-      "standard error may be large. Its profile likelihood shows how much the ",
-      "data say about it. The estimate is the maximum likelihood estimate. ",
-      "Consider a model with a nugget (unstructured) effect, ",
-      "'gp(nugget = TRUE)', or fixing the scale from external knowledge.",
-      pc_advice,
-      call. = FALSE
-    )
-  }
-  report_maxima_check(fit, layout, distance_scale)
-  report_near_limit(fit$maxima_screen,
-                    exp(fit$estimate[[layout$index$phi]]) * distance_scale)
-  report_proposal_changes(fit, messages)
-  report_mode_searches(fit$mode_searches)
-  draws <- paste0(format(fit$budget, big.mark = ","), " fitting and ",
-                  format(fit$validation_budget, big.mark = ","),
-                  " validation draws")
-  certification_bank <- function() {
-    summarise_certification_bank(fit$history[[length(fit$history)]])
-  }
+  report_maxima_check(fit)
   if (identical(fit$outcome, "numerically independent")) {
-    report_numerically_independent(fit$maxima_screen, pc_advice)
+    report_numerically_independent(fit$maxima_screen)
   } else if (identical(fit$outcome, "weak identification")) {
     warning(
-      "The observed information matrix is singular, so some parameters ",
-      "(often the spatial scale when spatial correlation is weak) are not ",
-      "identifiable from these data. The estimate is returned without ",
-      "standard errors and its Monte Carlo precision is not established. ",
-      "Consider a simpler model or fixing the scale.",
-      pc_advice,
+      "The observed information matrix is singular, so some parameters (often ",
+      "the spatial scale) are not identifiable from these data, and the ",
+      "estimate has no standard errors or Monte Carlo certificate. See ",
+      "check_fit().",
       call. = FALSE
     )
   } else if (!fit$certified) {
     refused <- isTRUE(fit$history[[length(fit$history)]]$residual_refused)
-    bank <- certification_bank()
     warning(
-      "The Monte Carlo precision of the estimate could not be established ",
-      "within the permitted stages and draws. The last stage had ", draws,
-      describe_certification_bank(bank), ". ",
+      "The Monte Carlo error of the estimate is not certified. ",
       if (refused) paste0(
-        "At the last stage the Newton correction of the estimate did not ",
-        "converge on the validation draws, so the approximate 95% bound of ",
-        signif(fit$certificate, 2), " statistical standard errors on its ",
-        "Monte Carlo error may not hold. Increase 'max_samples' in ",
-        "set_control_mcml()."
+        "The Newton correction of the estimate did not converge on the ",
+        "validation draws, so the approximate 95% bound of ",
+        signif(fit$certificate, 2), " statistical standard errors may not hold."
       ) else paste0(
-        "The approximate 95% bound on its Monte Carlo error is ",
-        signif(fit$certificate, 2), " statistical standard errors, above the ",
-        "tolerance of ", tolerance, ". Increase 'max_samples' or 'max_stages' ",
-        "in set_control_mcml(), or relax 'tolerance'."
+        "Its approximate 95% bound is ", signif(fit$certificate, 2),
+        " statistical standard errors, above the tolerance of ", tolerance, "."
       ),
-      describe_heavy_tail(bank),
+      " See check_fit().",
       call. = FALSE
     )
   } else if (messages) {
-    bank <- certification_bank()
     message(
       "The Monte Carlo error of the estimate is within ",
       signif(fit$certificate, 2), " statistical standard errors (an ",
-      "approximate 95% bound, tolerance ", tolerance, "), after ",
-      length(fit$history), " stage", if (length(fit$history) == 1L) "" else
-        "s", " with ", draws, describe_certification_bank(bank),
-      ". This concerns the maximum found, not whether it is the highest.",
-      describe_heavy_tail(bank)
+      "approximate 95% bound, tolerance ", tolerance, ")."
     )
   }
   invisible(NULL)
@@ -1517,69 +1345,4 @@ summarise_certification_bank <- function(stage) {
   if (is.null(bank)) return(NULL)
   list(effective_draws = bank$relative_ess * stage$validation_budget,
        pareto_k = bank$pareto_k)
-}
-
-##' The certification bank in brackets, to follow the number of draws
-##'
-##' The empty string without a bank.
-##' @noRd
-describe_certification_bank <- function(bank) {
-  if (is.null(bank)) return("")
-  paste0(
-    " (", format(round(bank$effective_draws), big.mark = ",", trim = TRUE),
-    " effective draws, Pareto shape ", signif(bank$pareto_k, 2), ")"
-  )
-}
-
-##' A caveat on the certificate when the certification bank has a heavy tail
-##'
-##' Above a Pareto shape of 0.7 the Gaussian approximation behind the radius of
-##' the certificate is unreliable at the usual numbers of draws (Vehtari et
-##' al., 2024). NULL otherwise.
-##' @noRd
-describe_heavy_tail <- function(bank) {
-  if (isTRUE(bank$pareto_k > 0.7)) {
-    " Importance weights with so heavy a tail make the bound less reliable."
-  }
-}
-
-##' Tell the user how the importance distribution departed from the default
-##' @noRd
-report_proposal_changes <- function(fit, messages) {
-  if (!messages) return(invisible(NULL))
-  if (isTRUE(fit$start_replaced)) {
-    message(
-      "The global importance distribution could not be built at the Laplace ",
-      "estimate, which is often far from the maximum in sparse data, so the ",
-      "fit started from the starting values before the Laplace maximisation."
-    )
-  }
-  if (length(fit$proposal_fallbacks)) {
-    message(
-      "The global importance distribution could not be built in stage",
-      if (length(fit$proposal_fallbacks) == 1L) " " else "s ",
-      paste(fit$proposal_fallbacks, collapse = ", "), ", which used the Laplace ",
-      "approximation instead. Later stages tried the global one again."
-    )
-  }
-  invisible(NULL)
-}
-
-##' Warn when the search for the conditional mode reached its iteration limit
-##'
-##' `counts` is `mode_search_counts()` of the engine. The search stops at the
-##' limit with its last iterate, so the fit continues, but the values there may
-##' be less precise and the fit is slow.
-##' @noRd
-report_mode_searches <- function(counts) {
-  if (is.null(counts) || counts$at_limit == 0L) return(invisible(NULL))
-  warning(
-    "The search for the conditional mode of the latent effects stopped at its ",
-    "iteration limit in ", format(counts$at_limit, big.mark = ","), " of ",
-    format(counts$searches, big.mark = ","), " searches. The likelihood at ",
-    "those parameter values may be less precise, and the fit is slower than ",
-    "it need be.",
-    call. = FALSE
-  )
-  invisible(NULL)
 }

@@ -202,8 +202,7 @@ compute_jensen_bound <- function(independent, covariance) {
 ##' the coefficients of the fit that the check follows.
 ##' @noRd
 make_short_scale_screen <- function(engine, independent_sites, distances,
-                                    kappa = 0.5, messages = FALSE,
-                                    distance_scale = 1) {
+                                    kappa = 0.5) {
   layout <- engine$layout
   spacing <- median_nearest_neighbour_distance(distances)
   closest <- min(distances[distances > 0])
@@ -236,27 +235,6 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
     point[layout$index$sigma2] <- if (sigma2 > 0) log(sigma2) else -20
     point
   }
-  announce <- function(event, log_phi = NULL) {
-    if (!messages) return(invisible(NULL))
-    message(switch(
-      event,
-      screen = paste0(
-        "At a spatial scale (phi = ", signif(exp(log_phi) * distance_scale, 3),
-        ") shorter than that of the first fit, the likelihood came close to ",
-        "the fitted maximum, so the fit is repeated from that point to check ",
-        "for a higher maximum at short scales."
-      ),
-      alarm = paste0(
-        "An exact lower bound on the likelihood at a short spatial scale is ",
-        "above the fitted maximum, so the fit is repeated from that point."
-      ),
-      failed = paste0(
-        "The likelihood with independent location effects could not be ",
-        "computed, so the fit is repeated from short-scale starting values ",
-        "to check for a higher maximum."
-      )
-    ))
-  }
   list(
     beta_index = layout$index$beta, sigma2_index = layout$index$sigma2,
     phi_index = layout$index$phi,
@@ -286,8 +264,7 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
       correlation <- if (scaled > 700) 0 else
         2^(1 - kappa) / gamma(kappa) * scaled^kappa * besselK(scaled, kappa)
       !is.finite(correlation) || correlation < 1e-6
-    },
-    announce = announce
+    }
   )
 }
 
@@ -493,9 +470,6 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
     start
   }
   if (short_fit) {
-    if (!is.null(dispersed$announce)) {
-      dispersed$announce(estimate[[dispersed$phi_index]])
-    }
     starts <- lapply(seq_along(dispersed$labels), dispersed_start)
     names(starts) <- dispersed$labels
   }
@@ -513,7 +487,6 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
     if (is.null(fit)) {
       record$gate <- "failed"
       if (!short_fit && !at_zero_variance) {
-        screen$announce("failed")
         shortest <- which(dispersed$log_phi == min(dispersed$log_phi))
         starts <- lapply(shortest, dispersed_start)
         names(starts) <- dispersed$labels[shortest]
@@ -528,7 +501,6 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
         record$gate <- if (screened$opened) "opened" else "closed"
         record$failed_evaluation <- screened$failed
         if (screened$opened) {
-          screen$announce("screen", screened$start[[dispersed$phi_index]])
           starts[["short-scale screen"]] <- screened$start
         }
       }
@@ -537,7 +509,6 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
       if (!is.null(alarm)) {
         record$alarm <- alarm[setdiff(names(alarm), "start")]
         if (alarm$fired) {
-          screen$announce("alarm")
           starts[["exact alarm"]] <- alarm$start
         }
       }

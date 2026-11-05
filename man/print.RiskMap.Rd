@@ -21,9 +21,9 @@ Print method for objects of class \code{"RiskMap"} from
 \code{\link{glgpm}}: the call, the estimates of the regression
 coefficients and of the covariance parameters on their natural scale,
 the log-likelihood and, for binomial and Poisson models, whether the
-Monte Carlo error of the estimate is certified. Standard errors,
-confidence intervals and notes on the warnings of the fit are given by
-\code{\link{summary.RiskMap}}.
+Monte Carlo error of the estimate is certified. Standard errors and
+confidence intervals are given by \code{\link{summary.RiskMap}}, and the
+checks on the computation by \code{\link{check_fit}}.
 }
 \examples{
 data(italy_sim)

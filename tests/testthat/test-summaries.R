@@ -272,13 +272,13 @@ test_that("print.summary.RiskMap formats binomial and poisson models", {
   expect_snapshot(print(poisson_summary))
 })
 
-test_that("print.summary.RiskMap reports the Monte Carlo certificate and notes", {
+test_that("print.summary.RiskMap reports the certificate and the checks to review", {
   sp_without_nugget <- build_summary_riskmap()$sp[1:2, ]
   certified <- list(certificate = 0.0594, level = 0.95, tolerance = 0.1,
                     certified = TRUE, outcome = "certified",
                     correction_refused = FALSE, stages = 1L,
                     fitting_draws = 1000L, validation_draws = 5000L,
-                    notes = character())
+                    checks_to_review = 0L)
   binomial_summary <- build_summary_riskmap(list(
     family = "binomial", me = NULL, sp = sp_without_nugget, tau2 = 0,
     ranef = NULL, cov_offset_used = FALSE, aic = NULL, call = NULL,
@@ -291,10 +291,7 @@ test_that("print.summary.RiskMap reports the Monte Carlo certificate and notes",
   refused <- modifyList(certified, list(
     certificate = 0.0412, certified = FALSE, outcome = "not certified",
     correction_refused = TRUE, stages = 4L, fitting_draws = 2500L,
-    validation_draws = 12500L,
-    notes = describe_mcml_notes(list(
-      mcml_boundary = "spatial variance (sigma2)", mcml_pc_prior = FALSE
-    ))
+    validation_draws = 12500L, checks_to_review = 2L
   ))
   binomial_summary$mcml <- refused
   expect_snapshot(print(binomial_summary))
@@ -314,26 +311,6 @@ test_that("summary.RiskMap reads the certificate of a non-Gaussian fit", {
   expect_identical(mcml$validation_draws, optimizer$mcml_validation_budget)
   expect_output(print(summary(binomial_model)),
                 "Monte Carlo maximum likelihood")
-})
-
-test_that("the notes of a summary follow the warnings of the fit", {
-  expect_length(describe_mcml_notes(list()), 0L)
-  notes <- describe_mcml_notes(list(
-    mcml_small_scale = TRUE, mcml_ambiguous_maxima = TRUE,
-    mcml_better_maximum = TRUE, mcml_pc_prior = FALSE
-  ))
-  expect_length(notes, 3L)
-  expect_match(notes[1], "shorter than the median distance")
-  expect_match(notes[2], "fit about equally well")
-  expect_match(notes[3], "pc_prior = TRUE")
-  penalised <- describe_mcml_notes(list(mcml_small_scale = TRUE,
-                                        mcml_pc_prior = TRUE))
-  expect_length(penalised, 1L)
-  two <- describe_mcml_notes(list(
-    mcml_boundary = c("spatial variance (sigma2)", "nugget variance (tau2)"),
-    mcml_pc_prior = TRUE
-  ))
-  expect_match(two, "were estimated as effectively zero.*their standard errors")
 })
 
 test_that("print.RiskMap is short and gives the certificate", {
