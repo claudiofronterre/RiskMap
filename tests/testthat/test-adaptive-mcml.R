@@ -1307,6 +1307,269 @@ test_that("a stage whose global proposal fails at the start ends at once", {
   expect_null(stage$failures_before_validation)
 })
 
+test_that("a failure at the Laplace estimate restarts from the starting values", {
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  laplace_estimate <- c(1, 1, 1)
+  automatic <- c(0, 0, 0)
+  calls <- list()
+  failing_starts <- list()
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      calls[[length(calls) + 1L]] <<- list(start = start, type = type,
+                                           seeds = seeds)
+      fails <- identical(type, "global") &&
+        any(vapply(failing_starts, identical, logical(1L), start))
+      if (fails) {
+        failures <<- 1L
+        return(list(estimate = start, outcome = "no valid fit",
+                    certified = FALSE, certificate = NA_real_,
+                    failed_at_start = TRUE))
+      }
+      list(estimate = start + 0.5, outcome = "certified", certified = TRUE,
+           certificate = 0.01, free = seq_along(start),
+           information = diag(length(start)),
+           information_root = diag(length(start)))
+    }
+  )
+  run <- function(fail_at, restart_start = automatic) {
+    failing_starts <<- fail_at
+    calls <<- list()
+    type <<- "global"
+    fit_adaptive_mcml(engine, start = laplace_estimate, seed = 7L,
+                      restart_start = restart_start)
+  }
+  starts_and_types <- function() {
+    list(starts = lapply(calls, `[[`, "start"),
+         types = vapply(calls, `[[`, "", "type"))
+  }
+
+  none <- run(list())
+  expect_length(calls, 1L)
+  expect_identical(calls[[1]]$start, laplace_estimate)
+  expect_false(none$start_replaced)
+  expect_identical(none$proposal_fallbacks, integer())
+
+  restarted <- run(list(laplace_estimate))
+  expect_identical(starts_and_types(), list(
+    starts = list(laplace_estimate, automatic),
+    types = c("global", "global")
+  ))
+  # No bank has been drawn when the first attempt ends.
+  expect_identical(calls[[1]]$seeds, calls[[2]]$seeds)
+  expect_true(restarted$start_replaced)
+  expect_identical(restarted$proposal, "global")
+  expect_identical(restarted$estimate, automatic + 0.5)
+  expect_identical(restarted$history[[1]]$proposal_failures, 0L)
+
+  both <- run(list(laplace_estimate, automatic))
+  expect_identical(starts_and_types(), list(
+    starts = list(laplace_estimate, automatic, laplace_estimate),
+    types = c("global", "global", "laplace")
+  ))
+  expect_false(both$start_replaced)
+  expect_identical(both$proposal_fallbacks, 1L)
+  expect_identical(both$proposal, "laplace")
+
+  without <- run(list(laplace_estimate), restart_start = NULL)
+  expect_identical(starts_and_types(), list(
+    starts = list(laplace_estimate, laplace_estimate),
+    types = c("global", "laplace")
+  ))
+  expect_false(without$start_replaced)
+})
+
+test_that("the stage after a fallback tries the global proposal again", {
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  types <- character()
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      types <<- c(types, type)
+      stage <- length(types)
+      if (stage == 1L) failures <<- 1L
+      list(estimate = start, certified = stage == 3L,
+           outcome = if (stage == 3L) "certified" else "not certified",
+           certificate = if (stage == 3L) 0.01 else 1,
+           free = seq_along(start), information = diag(length(start)),
+           information_root = diag(length(start)),
+           failures_before_validation = if (stage == 1L) 1L else 0L)
+    }
+  )
+  fit <- fit_adaptive_mcml(engine, start = c(0, 0, 0), seed = 7L)
+  expect_identical(types, c("global", "laplace", "global"))
+  expect_identical(fit$proposal, "global")
+  expect_identical(fit$proposal_fallbacks, 1L)
+  expect_true(fit$history[[1]]$proposal_fallback)
+  expect_null(fit$history[[2]]$proposal_fallback)
+})
+
+test_that("a restarted fit equals one started from the same values", {
+  coordinate <- seq(0, 1, length.out = 30)
+  covariate <- seq(-1, 1, length.out = 30)
+  trials <- rep(20, 30)
+  y <- round(trials * plogis(-0.4 + 0.5 * covariate +
+                               0.4 * sin(2 * pi * coordinate)))
+  make <- function() {
+    make_adaptive_mcml_engine(
+      D = cbind(1, covariate), y = y, units_m = trials,
+      distances = as.matrix(dist(coordinate)), family = "binomial"
+    )
+  }
+  automatic <- c(-0.4, 0.5, log(0.8), log(0.4))
+  laplace_estimate <- c(-1, 0.5, log(2), log(0.1))
+  fit <- function(engine, start, ...) {
+    fit_adaptive_mcml(
+      engine = engine, start = start, initial_budget = 1000,
+      validation_budget = 2000, maximum_budget = 1000, maximum_stages = 1,
+      seed = 2718, lower = c(-10, -10, -8, -8), upper = c(10, 10, 4, 4), ...
+    )
+  }
+  direct <- fit(make(), automatic)
+  real_iteration <- fit_global_proposal
+  calls <- 0L
+  local_mocked_bindings(fit_global_proposal = function(...) {
+    calls <<- calls + 1L
+    if (calls == 1L) {
+      return(list(converged = FALSE, change = 1e-4, iterations = 500L))
+    }
+    real_iteration(...)
+  })
+  restarted <- fit(make(), laplace_estimate, restart_start = automatic)
+  expect_true(restarted$start_replaced)
+  expect_identical(restarted$history[[1]]$start_failure,
+                   list(reason = "no convergence", refits = 500L,
+                        change = 1e-4))
+  # The search for the mode starts from where the failed attempt left it, and
+  # this survey leaves the scale nearly flat with the spatial variance at its
+  # bound, so the fits agree to the precision of the optimiser there.
+  expect_equal(restarted$estimate, direct$estimate, tolerance = 1e-3)
+  expect_equal(restarted$certificate, direct$certificate, tolerance = 0.05)
+})
+
+test_that("the mode search says when it reaches its iteration limit", {
+  latent_map <- make_latent_map(matrix(1:3, ncol = 1L), 3L)
+  mode_with <- function(maximum_iterations) {
+    adaptive_laplace_mode(
+      mu = rep(0, 3), y = c(0, 1, 5), units_m = rep(5, 3),
+      latent_map = latent_map, precision = diag(3), family = "binomial",
+      linkf = make_inverse_link_functions("binomial", NULL, 3L),
+      start = rep(0, 3), maximum_iterations = maximum_iterations
+    )
+  }
+  expect_true(mode_with(1L)$reached_limit)
+  expect_false(mode_with(100L)$reached_limit)
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  engine$proposal_at(c(0, 0, 0), "laplace")
+  expect_identical(engine$mode_search_counts(),
+                   list(searches = 1L, at_limit = 0L))
+  expect_warning(
+    report_mode_searches(list(searches = 40L, at_limit = 3L)),
+    "iteration limit in 3 of 40 searches"
+  )
+  expect_no_warning(report_mode_searches(list(searches = 40L, at_limit = 0L)))
+  expect_no_warning(report_mode_searches(NULL))
+})
+
+test_that("a failed global proposal records why it failed", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  local_mocked_bindings(fit_global_proposal = function(...) NULL)
+  engine$proposal_at(c(0, 0, 0))
+  expect_identical(engine$first_proposal_failure(),
+                   list(reason = "a refit failed", refits = NA_integer_,
+                        change = NA_real_))
+  engine$reset_proposal_failures()
+  expect_null(engine$first_proposal_failure())
+})
+
+test_that("the certificate is reported with the draws behind it", {
+  light <- list(second_validation = list(relative_ess = 0.5, pareto_k = 0.3),
+                validation_budget = 5000L)
+  bank <- summarise_certification_bank(light)
+  expect_equal(bank, list(effective_draws = 2500, pareto_k = 0.3))
+  expect_identical(describe_certification_bank(bank),
+                   " (2,500 effective draws, Pareto shape 0.3)")
+  expect_null(describe_heavy_tail(bank))
+  heavy <- list(effective_draws = 40, pareto_k = 1.2)
+  expect_identical(describe_certification_bank(heavy),
+                   " (40 effective draws, Pareto shape 1.2)")
+  expect_match(describe_heavy_tail(heavy), "less reliable", fixed = TRUE)
+  expect_null(summarise_certification_bank(list()))
+  expect_identical(describe_certification_bank(NULL), "")
+  expect_null(describe_heavy_tail(NULL))
+
+  draws <- list(stages = 3L, fitting_draws = 5000L, validation_draws = 25000L,
+                certification_bank = bank)
+  expect_identical(
+    describe_mcml_draws(draws),
+    paste0("Fitted in 3 stages, with 5,000 fitting and 25,000 validation draws ",
+           "at the last stage (2,500 effective draws, Pareto shape 0.3).")
+  )
+  draws$certification_bank <- heavy
+  expect_match(describe_mcml_draws(draws),
+               "Pareto shape 1.2). Importance weights", fixed = TRUE)
+
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  outcome <- list(boundary_parameters = integer(), budget = 2500L,
+                  validation_budget = 5000L, outcome = "certified",
+                  certified = TRUE, certificate = 0.05, history = list(light),
+                  estimate = c(0, 0, 0, 0))
+  expect_message(
+    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
+                        tolerance = 0.1, messages = TRUE),
+    "validation draws (2,500 effective draws, Pareto shape 0.3). This concerns",
+    fixed = TRUE
+  )
+  refused <- outcome
+  refused$certified <- FALSE
+  refused$outcome <- "not certified"
+  expect_warning(
+    report_mcml_outcome(refused, character(), layout, pc_prior = TRUE,
+                        tolerance = 0.1, messages = FALSE),
+    paste0("The last stage had 2,500 fitting and 5,000 validation draws ",
+           "(2,500 effective draws, Pareto shape 0.3)."),
+    fixed = TRUE
+  )
+  outcome$start_replaced <- TRUE
+  reported <- capture_messages(
+    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
+                        tolerance = 0.1, messages = TRUE)
+  )
+  expect_length(reported, 2L)
+  expect_match(reported[[1]], "could not be built at the Laplace estimate")
+  expect_silent(
+    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
+                        tolerance = 0.1, messages = FALSE)
+  )
+})
+
+test_that("summary notes leave out changes of importance distribution", {
+  expect_null(describe_mcml_notes(list(
+    mcml_start_replaced = TRUE, mcml_proposal_fallbacks = 1L,
+    mcml_mode_searches = list(searches = 40L, at_limit = 3L)
+  )))
+})
+
 test_that("reusing the spatial factorisation leaves the likelihood unchanged", {
   make <- function() {
     make_adaptive_mcml_engine(
