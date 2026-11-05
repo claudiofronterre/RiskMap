@@ -27,6 +27,7 @@ summarise_mcml_fit <- function(object) {
     stages = optimizer$mcml_stages %||% length(history),
     fitting_draws = optimizer$mcml_budget,
     validation_draws = optimizer$mcml_validation_budget,
+    certification_bank = if (!is.null(last)) summarise_certification_bank(last),
     notes = describe_mcml_notes(optimizer)
   )
 }
@@ -87,7 +88,9 @@ describe_mcml_draws <- function(mcml) {
     if (identical(as.integer(mcml$stages), 1L)) "" else "s", ", with ",
     format(mcml$fitting_draws, big.mark = ","), " fitting and ",
     format(mcml$validation_draws, big.mark = ","),
-    " validation draws at the last stage."
+    " validation draws at the last stage",
+    describe_certification_bank(mcml$certification_bank), ".",
+    describe_heavy_tail(mcml$certification_bank)
   )
 }
 
@@ -96,7 +99,10 @@ describe_mcml_draws <- function(mcml) {
 ##' One sentence for each condition that a warning reported during the fit,
 ##' read from the flags of the `optimizer` attribute, with the advice that
 ##' the warning gave. A fit whose likelihood has no maximum gets that note
-##' alone, since the others describe a maximum.
+##' alone, since the others describe a maximum. Changes of importance
+##' distribution and the limit of the mode search do not change how a fit is
+##' read, so they stay in the messages and warnings of the fit and in its
+##' stored results.
 ##' @noRd
 describe_mcml_notes <- function(optimizer) {
   if (isTRUE(optimizer$mcml_no_maximum)) {

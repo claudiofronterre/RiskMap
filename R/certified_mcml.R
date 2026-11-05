@@ -394,14 +394,15 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   if (identical(engine$proposal_type(), "global")) {
     engine$set_anchor(start)
     # A global proposal that fails at the start already condemns the stage,
-    # which fit_adaptive_mcml() repeats with the Laplace proposal on the same
-    # streams, so the rest of it is not computed.
+    # which fit_adaptive_mcml() repeats on the same streams, so the rest of it
+    # is not computed.
     if (engine$proposal_failures() > 0L) {
       return(list(
         budget = budget, validation_budget = validation_budget,
         proposal = "global", fitted_estimate = start, estimate = start,
         outcome = "no valid fit", certified = FALSE, certificate = NA_real_,
         reason = "the global proposal failed at the start of the stage",
+        failed_at_start = TRUE,
         elapsed_seconds = proc.time()[["elapsed"]] - stage_started
       ))
     }
@@ -1087,7 +1088,10 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' other maxima and stream 4000 + s for its enlarged bank.
 ##'
 ##' If the global proposal fails within a stage, the stage is repeated with
-##' the Laplace proposal, which is then kept. A failure before the validation
+##' the Laplace proposal, and the next stage tries the global proposal again
+##' from its own start. One failure says little about the next stage, since
+##' the fixed-point iteration can stall at one parameter value and converge
+##' quickly at the next. A failure before the validation
 ##' banks (in the fit, the check for other maxima or the information) depends
 ##' only on the fitting draws, and the stage is repeated on the same streams. A
 ##' failure at the start of the stage ends it at once (`run_certified_stage()`),
@@ -1097,6 +1101,13 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' 2000 + 3s - 2 to 2000 + 3s and 3000 + s. The certificate of the repeated
 ##' stage then rests on a pair of validation banks drawn after everything that
 ##' led to it, as the conditional guarantee of the procedure requires.
+##' `restart_start`, the starting values before the Laplace maximisation that
+##' gave `start`, is used if the global proposal fails at the start of the
+##' first stage. In sparse data the Laplace estimate can have a very large
+##' local variance, where the iteration stalls and every proposal has about one
+##' effective draw. The first stage then runs from `restart_start` with the
+##' global proposal, and only if that fails too does it use the Laplace
+##' proposal, from `start`. The choice is made before any bank is drawn.
 ##' `dispersed`, from `make_dispersed_starts()`, turns on the check for other
 ##' maxima at the first stage, with the screen of short scales and the exact
 ##' alarms when it holds their settings (`make_short_scale_screen()`). Each later stage starts its optimisation with
@@ -1109,6 +1120,7 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               penalty = NULL, dispersed = NULL,
+                              restart_start = NULL,
                               initial_budget = 1000L,
                               validation_budget = 5000L,
                               maximum_budget = 16000L, maximum_stages = 4L,
@@ -1150,18 +1162,35 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     }
     record <- run_stage(0L)
     record$proposal_failures <- engine$proposal_failures()
+    start_failure <- NULL
+    restarted <- stage == 1L && !is.null(restart_start) &&
+      isTRUE(record$failed_at_start)
+    if (restarted) {
+      start_failure <- read_proposal_failure(engine)
+      laplace_estimate <- current
+      current <- restart_start
+      record <- run_stage(0L)
+      record$proposal_failures <- engine$proposal_failures()
+      if (record$proposal_failures > 0L) current <- laplace_estimate
+    }
     if (record$proposal_failures > 0L &&
         identical(engine$proposal_type(), "global")) {
+      failure <- read_proposal_failure(engine)
       engine$use_proposal("laplace")
       failures <- record$proposal_failures
       late <- failures > (record$failures_before_validation %||% failures)
       record <- run_stage(if (late) 2000L else 0L)
       record$proposal_failures <- failures
+      record$proposal_failure <- failure
       record$proposal_fallback <- TRUE
       record$late_fallback <- late
     }
+    record$start_failure <- start_failure
+    record$start_replaced <- restarted && !isTRUE(record$proposal_fallback)
     record$stage <- stage
     history[[stage]] <- record
+    last_proposal <- engine$proposal_type()
+    if (isTRUE(record$proposal_fallback)) engine$use_proposal("global")
     current <- record$estimate
     curvature_root <- if (length(record$free) == length(current)) {
       factor_curvature(record$information)
@@ -1198,7 +1227,14 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     coefficients_at_bound = last$coefficients_at_bound %||% integer(),
     budget = last$budget,
     validation_budget = last$validation_budget,
-    proposal = engine$proposal_type(),
+    proposal = last_proposal,
+    start_replaced = isTRUE(history[[1L]]$start_replaced),
+    proposal_fallbacks = which(vapply(history, function(stage) {
+      isTRUE(stage$proposal_fallback)
+    }, logical(1L))),
+    mode_searches = if (is.function(engine$mode_search_counts)) {
+      engine$mode_search_counts()
+    },
     boundary_parameters = last$boundary_parameters,
     score = score,
     log_likelihood = if (is.null(last$second_validation)) {
@@ -1210,4 +1246,16 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     history = history,
     elapsed_seconds = proc.time()[["elapsed"]] - total_started
   )
+}
+
+##' Why the global iteration failed first since the failures were last reset
+##'
+##' The `reason`, the number of `refits` and the last `change` of the factors.
+##' NULL for an engine that does not record them, such as those that other
+##' packages build on `fit_adaptive_mcml()`.
+##' @noRd
+read_proposal_failure <- function(engine) {
+  if (is.function(engine$first_proposal_failure)) {
+    engine$first_proposal_failure()
+  }
 }

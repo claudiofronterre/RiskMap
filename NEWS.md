@@ -358,6 +358,21 @@ correction. When the repeated Newton correction does not converge at the last
 stage, the warning says so, instead of describing the bound as above the
 tolerance.
 
+- A failure of the global importance distribution no longer condemns the whole
+fit. In sparse data the Laplace estimate can have a very large nugget, where
+the fixed-point iteration stalls and whether it converges can depend on
+rounding, while it converges quickly elsewhere. A failure at the Laplace
+estimate now restarts the first stage from the starting values with the global
+importance distribution, and a stage that does fall back to the Laplace
+approximation is followed by one that tries the global distribution again. Fits
+without a failure are unchanged. `mcml_history` records why the iteration
+failed.
+
+- Certified MCML now reports the effective draws and the Pareto shape of the
+certification draws with the certificate, in its messages, warnings and
+`summary()`, with a caveat when the shape is above 0.7. It warns when the search
+for the conditional mode of the latent effects stops at its iteration limit.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

@@ -56,7 +56,10 @@ most spatial datasets, so that Monte Carlo errors are valid. Defaults to
 
 \item{laplace_start}{Logical. If \code{TRUE} (the default), the Laplace
 approximation to the likelihood is first maximised from the starting
-values, and Monte Carlo maximum likelihood starts from that estimate.}
+values, and Monte Carlo maximum likelihood starts from that estimate. If
+the global importance distribution cannot be built at that estimate, as
+can happen in sparse data when it has a very large nugget, the fit starts
+from the starting values instead.}
 
 \item{check_maxima}{Logical. The certificate establishes Monte Carlo
 precision at the maximum found, not that no higher maximum exists. In

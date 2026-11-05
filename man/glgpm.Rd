@@ -141,7 +141,10 @@ importance distribution used, the optimum of the fitting sample
 result, the size of the correction, the certificate and its two parts
 (\code{certificate_distance} and \code{certificate_radius}), effective sample sizes
 and Pareto tail diagnostics of each sample, the outcome of the stage and
-its timing. Estimates use the same parameterisation as \code{estimate}, with
+its timing. A stage where the global importance distribution failed also
+holds why, in \code{proposal_failure} or, at the start of the first stage,
+\code{start_failure}: the \code{reason}, the number of \code{refits} and the last \code{change}
+of its factors. Estimates use the same parameterisation as \code{estimate}, with
 regression coefficients and spatial scale restored to the supplied
 covariate and distance units. \code{NULL} for Gaussian models.}
 \item{mcml_certified}{Whether the certificate of the returned estimate is

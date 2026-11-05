@@ -146,7 +146,10 @@
 ##' result, the size of the correction, the certificate and its two parts
 ##' (`certificate_distance` and `certificate_radius`), effective sample sizes
 ##' and Pareto tail diagnostics of each sample, the outcome of the stage and
-##' its timing. Estimates use the same parameterisation as `estimate`, with
+##' its timing. A stage where the global importance distribution failed also
+##' holds why, in `proposal_failure` or, at the start of the first stage,
+##' `start_failure`: the `reason`, the number of `refits` and the last `change`
+##' of its factors. Estimates use the same parameterisation as `estimate`, with
 ##' regression coefficients and spatial scale restored to the supplied
 ##' covariate and distance units. `NULL` for Gaussian models.}
 ##' \item{mcml_certified}{Whether the certificate of the returned estimate is
@@ -3107,7 +3110,10 @@ laplace_sampling_mcmc <- function(y,
 ##' 0.05. Set to 0 to use the Gaussian approximation alone.
 ##' @param laplace_start Logical. If `TRUE` (the default), the Laplace
 ##' approximation to the likelihood is first maximised from the starting
-##' values, and Monte Carlo maximum likelihood starts from that estimate.
+##' values, and Monte Carlo maximum likelihood starts from that estimate. If
+##' the global importance distribution cannot be built at that estimate, as
+##' can happen in sparse data when it has a very large nugget, the fit starts
+##' from the starting values instead.
 ##' @param check_maxima Logical. The certificate establishes Monte Carlo
 ##' precision at the maximum found, not that no higher maximum exists. In
 ##' sparse surveys an optimiser can stop at a maximum with a spatial scale far

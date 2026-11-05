@@ -93,6 +93,8 @@ latent_data_hessian <- function(latent_map, curvature) {
 ##' (the previous mode), so successive calls along an optimisation path need
 ##' very few iterations. The objective is log-concave for canonical links;
 ##' step halving keeps every iteration an ascent step for other links.
+##' `reached_limit` says that the search stopped at `maximum_iterations`
+##' without meeting its stopping rule.
 ##' @noRd
 adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
                                   family, linkf, start,
@@ -112,6 +114,7 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
     if (is.null(terms)) stop("Invalid starting linear predictor.", call. = FALSE)
   }
   current <- objective(latent, terms)
+  reached_limit <- TRUE
   for (iteration in seq_len(maximum_iterations)) {
     gradient <- latent_gradient(latent_map, terms$score) -
       as.numeric(precision %*% latent)
@@ -129,16 +132,22 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
         break
       }
     }
-    if (!accepted) break
+    if (!accepted) {
+      reached_limit <- FALSE
+      break
+    }
     change <- max(abs(candidate - latent))
     latent <- candidate
     terms <- candidate_terms
     current <- value
-    if (change <= tolerance * max(1, max(abs(latent)))) break
+    if (change <= tolerance * max(1, max(abs(latent)))) {
+      reached_limit <- FALSE
+      break
+    }
   }
   hessian <- precision + latent_data_hessian(latent_map, terms$curvature)
   list(mode = latent, hessian = (hessian + t(hessian)) / 2,
-       iterations = iteration)
+       iterations = iteration, reached_limit = reached_limit)
 }
 
 ##' Upper Cholesky factor of the inverse of a positive-definite matrix
@@ -183,8 +192,9 @@ defensive_rows <- function(n_draws, defensive_weight) {
 ##' mode found by `find_mode()`, and if it fails there the Laplace
 ##' approximation at the mode is used. Returns the centre and precision, the
 ##' upper factor of the proposal covariance when the global fit computed it
-##' (otherwise NULL), the global factors (NULL for the Laplace approximation)
-##' and whether the global fit `failed`.
+##' (otherwise NULL), the global factors (NULL for the Laplace approximation),
+##' whether the global fit `failed` and, if it did, the `failure`: the `reason`,
+##' the number of `refits` and the last `change` of the factors.
 ##' @noRd
 build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
                                     precision, family, linkf, canonical,
@@ -213,14 +223,20 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
       failed <- is.null(global) || !global$converged
     }
   }
+  failure <- if (failed) {
+    list(reason = if (is.null(global)) "a refit failed" else "no convergence",
+         refits = global$iterations %||% NA_integer_,
+         change = global$change %||% NA_real_)
+  }
   if (is.null(global)) {
     if (is.null(approximation)) approximation <- find_mode()
     return(list(centre = approximation$mode,
                 precision = approximation$hessian, root = NULL,
-                factors = NULL, failed = failed))
+                factors = NULL, failed = failed, failure = failure))
   }
   list(centre = global$centre, precision = global$precision,
-       root = global$root, factors = global$factors, failed = failed)
+       root = global$root, factors = global$factors, failed = failed,
+       failure = failure)
 }
 
 ##' Log-likelihood of every row of a matrix of linear predictors
@@ -413,6 +429,9 @@ make_adaptive_mcml_engine <- function(
   family <- match.arg(family)
   default_proposal_type <- match.arg(proposal)
   proposal_failures <- 0L
+  first_failure <- NULL
+  mode_searches <- 0L
+  mode_searches_at_limit <- 0L
   n <- length(y)
   n_loc <- nrow(distances)
   p <- ncol(D)
@@ -547,13 +566,20 @@ make_adaptive_mcml_engine <- function(
         start = last_mode
       )
       last_mode <<- approximation$mode
+      mode_searches <<- mode_searches + 1L
+      if (approximation$reached_limit) {
+        mode_searches_at_limit <<- mode_searches_at_limit + 1L
+      }
       approximation
     }
     gaussian <- build_gaussian_proposal(
       type, mu, y, units_m, latent_map, precision, family, linkf, canonical,
       anchor, find_mode
     )
-    if (gaussian$failed) proposal_failures <<- proposal_failures + 1L
+    if (gaussian$failed) {
+      proposal_failures <<- proposal_failures + 1L
+      if (is.null(first_failure)) first_failure <<- gaussian$failure
+    }
     root <- gaussian$root
     if (is.null(root)) {
       root <- tryCatch(
@@ -647,6 +673,10 @@ make_adaptive_mcml_engine <- function(
          invisible(NULL)
        },
        proposal_failures = function() proposal_failures,
+       first_proposal_failure = function() first_failure,
+       mode_search_counts = function() {
+         list(searches = mode_searches, at_limit = mode_searches_at_limit)
+       },
        set_anchor = function(parameters) {
          anchor <<- NULL
          cached_parameters <<- NULL
@@ -660,6 +690,7 @@ make_adaptive_mcml_engine <- function(
        },
        reset_proposal_failures = function() {
          proposal_failures <<- 0L
+         first_failure <<- NULL
          invisible(NULL)
        })
 }
@@ -930,6 +961,7 @@ glgpm_nong_adaptive <- function(
 
   laplace <- NULL
   start <- unname(start)
+  restart_start <- NULL
   if (isTRUE(control_mcml$laplace_start)) {
     laplace <- maximise_laplace(
       function(parameters, draws) {
@@ -937,7 +969,10 @@ glgpm_nong_adaptive <- function(
       },
       start, engine$latent_dimension, lower, upper
     )
-    if (!is.null(laplace)) start <- laplace$estimate
+    if (!is.null(laplace)) {
+      restart_start <- start
+      start <- laplace$estimate
+    }
   }
   dispersed <- NULL
   if (isTRUE(control_mcml$check_maxima %||% TRUE)) {
@@ -964,8 +999,8 @@ glgpm_nong_adaptive <- function(
     }
   }
   fit <- fit_adaptive_mcml(
-    engine = engine, start = start, objective = objective,
-    penalty = penalty, dispersed = dispersed,
+    engine = engine, start = start, restart_start = restart_start,
+    objective = objective, penalty = penalty, dispersed = dispersed,
     initial_budget = control_mcml$initial_samples,
     validation_budget = control_mcml$validation_samples,
     maximum_budget = control_mcml$max_samples,
@@ -1107,6 +1142,9 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_outcome = fit$outcome,
     mcml_certificate = fit$certificate,
     mcml_proposal = fit$proposal,
+    mcml_start_replaced = fit$start_replaced,
+    mcml_proposal_fallbacks = fit$proposal_fallbacks,
+    mcml_mode_searches = fit$mode_searches,
     mcml_pc_prior = pc_prior,
     laplace_start = laplace,
     mcml_boundary = boundary_names,
@@ -1413,9 +1451,14 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
   report_maxima_check(fit, layout, distance_scale)
   report_near_limit(fit$maxima_screen,
                     exp(fit$estimate[[layout$index$phi]]) * distance_scale)
+  report_proposal_changes(fit, messages)
+  report_mode_searches(fit$mode_searches)
   draws <- paste0(format(fit$budget, big.mark = ","), " fitting and ",
                   format(fit$validation_budget, big.mark = ","),
                   " validation draws")
+  certification_bank <- function() {
+    summarise_certification_bank(fit$history[[length(fit$history)]])
+  }
   if (identical(fit$outcome, "numerically independent")) {
     report_numerically_independent(fit$maxima_screen, pc_advice)
   } else if (identical(fit$outcome, "weak identification")) {
@@ -1430,10 +1473,11 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
     )
   } else if (!fit$certified) {
     refused <- isTRUE(fit$history[[length(fit$history)]]$residual_refused)
+    bank <- certification_bank()
     warning(
       "The Monte Carlo precision of the estimate could not be established ",
-      "within the permitted stages and draws (", draws, " at the last ",
-      "stage). ",
+      "within the permitted stages and draws. The last stage had ", draws,
+      describe_certification_bank(bank), ". ",
       if (refused) paste0(
         "At the last stage the Newton correction of the estimate did not ",
         "converge on the validation draws, so the approximate 95% bound of ",
@@ -1446,17 +1490,96 @@ report_mcml_outcome <- function(fit, boundary_names, layout, pc_prior,
         "tolerance of ", tolerance, ". Increase 'max_samples' or 'max_stages' ",
         "in set_control_mcml(), or relax 'tolerance'."
       ),
+      describe_heavy_tail(bank),
       call. = FALSE
     )
   } else if (messages) {
+    bank <- certification_bank()
     message(
       "The Monte Carlo error of the estimate is within ",
       signif(fit$certificate, 2), " statistical standard errors (an ",
       "approximate 95% bound, tolerance ", tolerance, "), after ",
       length(fit$history), " stage", if (length(fit$history) == 1L) "" else
-        "s", " with ", draws, ". This concerns the maximum found, not ",
-      "whether it is the highest."
+        "s", " with ", draws, describe_certification_bank(bank),
+      ". This concerns the maximum found, not whether it is the highest.",
+      describe_heavy_tail(bank)
     )
   }
+  invisible(NULL)
+}
+
+##' Effective draws and Pareto shape of the certification bank of a stage
+##'
+##' NULL for a stage that did not reach certification.
+##' @noRd
+summarise_certification_bank <- function(stage) {
+  bank <- stage$second_validation
+  if (is.null(bank)) return(NULL)
+  list(effective_draws = bank$relative_ess * stage$validation_budget,
+       pareto_k = bank$pareto_k)
+}
+
+##' The certification bank in brackets, to follow the number of draws
+##'
+##' The empty string without a bank.
+##' @noRd
+describe_certification_bank <- function(bank) {
+  if (is.null(bank)) return("")
+  paste0(
+    " (", format(round(bank$effective_draws), big.mark = ",", trim = TRUE),
+    " effective draws, Pareto shape ", signif(bank$pareto_k, 2), ")"
+  )
+}
+
+##' A caveat on the certificate when the certification bank has a heavy tail
+##'
+##' Above a Pareto shape of 0.7 the Gaussian approximation behind the radius of
+##' the certificate is unreliable at the usual numbers of draws (Vehtari et
+##' al., 2024). NULL otherwise.
+##' @noRd
+describe_heavy_tail <- function(bank) {
+  if (isTRUE(bank$pareto_k > 0.7)) {
+    " Importance weights with so heavy a tail make the bound less reliable."
+  }
+}
+
+##' Tell the user how the importance distribution departed from the default
+##' @noRd
+report_proposal_changes <- function(fit, messages) {
+  if (!messages) return(invisible(NULL))
+  if (isTRUE(fit$start_replaced)) {
+    message(
+      "The global importance distribution could not be built at the Laplace ",
+      "estimate, which is often far from the maximum in sparse data, so the ",
+      "fit started from the starting values before the Laplace maximisation."
+    )
+  }
+  if (length(fit$proposal_fallbacks)) {
+    message(
+      "The global importance distribution could not be built in stage",
+      if (length(fit$proposal_fallbacks) == 1L) " " else "s ",
+      paste(fit$proposal_fallbacks, collapse = ", "), ", which used the Laplace ",
+      "approximation instead. Later stages tried the global one again."
+    )
+  }
+  invisible(NULL)
+}
+
+##' Warn when the search for the conditional mode reached its iteration limit
+##'
+##' `counts` is `mode_search_counts()` of the engine. The search stops at the
+##' limit with its last iterate, so the fit continues, but the values there may
+##' be less precise and the fit is slow.
+##' @noRd
+report_mode_searches <- function(counts) {
+  if (is.null(counts) || counts$at_limit == 0L) return(invisible(NULL))
+  warning(
+    "The search for the conditional mode of the latent effects stopped at its ",
+    "iteration limit in ", format(counts$at_limit, big.mark = ","), " of ",
+    format(counts$searches, big.mark = ","), " searches. The likelihood at ",
+    "those parameter values may be less precise, and the fit is slower than ",
+    "it need be.",
+    call. = FALSE
+  )
   invisible(NULL)
 }
