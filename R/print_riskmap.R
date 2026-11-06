@@ -1,23 +1,23 @@
 ##' Certified MCML part of a model summary
 ##'
 ##' Reads the certificate of a non-Gaussian fit from the attributes that
-##' `glgpm()` writes, with short notes on what the warnings of the fit
-##' reported, so that both are available after fitting, for example from a
+##' `glgpm()` writes, so that it is available after fitting, for example from a
 ##' saved model. NULL for Gaussian fits, which have no Monte Carlo error.
 ##' @return A list with the `certificate` (an approximate bound at `level`, in
 ##' statistical standard errors, on the Monte Carlo error of the estimate,
 ##' NA when there is none), the `tolerance`, whether the fit is `certified`,
 ##' its `outcome`, whether the repeated Newton correction of the last stage
 ##' was refused (`correction_refused`), the number of `stages`, the
-##' `fitting_draws` and `validation_draws` of the last stage, and the
-##' `notes`.
+##' `fitting_draws` and `validation_draws` of the last stage, the
+##' `certification_bank` and the number of checks of `check_fit()` that need a
+##' look (`checks_to_review`).
 ##' @noRd
 summarise_mcml_fit <- function(object) {
   optimizer <- attr(object, "optimizer")
   if (is.null(optimizer$mcml_outcome)) return(NULL)
   history <- object$mcml_history %||% optimizer$mcml_history
   last <- if (length(history)) history[[length(history)]] else NULL
-  list(
+  mcml <- list(
     certificate = optimizer$mcml_certificate %||% NA_real_,
     level = 0.95,
     tolerance = attr(object, "control_mcml")$tolerance %||% NA_real_,
@@ -27,17 +27,17 @@ summarise_mcml_fit <- function(object) {
     stages = optimizer$mcml_stages %||% length(history),
     fitting_draws = optimizer$mcml_budget,
     validation_draws = optimizer$mcml_validation_budget,
-    certification_bank = if (!is.null(last)) summarise_certification_bank(last),
-    notes = describe_mcml_notes(optimizer)
+    certification_bank = if (!is.null(last)) summarise_certification_bank(last)
   )
+  mcml$checks_to_review <- sum(list_fit_checks(object, mcml)$status != "OK")
+  mcml
 }
 
 ##' One sentence on the Monte Carlo certificate of a fit
 ##'
-##' `mcml` is the list of `summarise_mcml_fit()`. With `caveat`, the sentence
-##' on a certified fit adds that the bound says nothing about other maxima.
+##' `mcml` is the list of `summarise_mcml_fit()`.
 ##' @noRd
-describe_mcml_certificate <- function(mcml, caveat = TRUE) {
+describe_mcml_certificate <- function(mcml) {
   bound <- signif(mcml$certificate, 2)
   level <- paste0(100 * mcml$level, "%")
   switch(
@@ -45,9 +45,7 @@ describe_mcml_certificate <- function(mcml, caveat = TRUE) {
     "certified" = paste0(
       "Certified: the Monte Carlo error of the estimate is within ", bound,
       " statistical standard errors (an approximate ", level, " bound, ",
-      "tolerance ", mcml$tolerance, ").",
-      if (caveat) paste0(" The bound concerns the maximum found, not whether ",
-                         "it is the highest.")
+      "tolerance ", mcml$tolerance, ")."
     ),
     "weak identification" = paste0(
       "No certificate: the observed information is singular, so the Monte ",
@@ -88,102 +86,29 @@ describe_mcml_draws <- function(mcml) {
     if (identical(as.integer(mcml$stages), 1L)) "" else "s", ", with ",
     format(mcml$fitting_draws, big.mark = ","), " fitting and ",
     format(mcml$validation_draws, big.mark = ","),
-    " validation draws at the last stage",
-    describe_certification_bank(mcml$certification_bank), ".",
-    describe_heavy_tail(mcml$certification_bank)
+    " validation draws at the last stage."
   )
 }
 
-##' Short notes on the warnings of a certified MCML fit
+##' One sentence on how many checks of a fit need a look
 ##'
-##' One sentence for each condition that a warning reported during the fit,
-##' read from the flags of the `optimizer` attribute, with the advice that
-##' the warning gave. A fit whose likelihood has no maximum gets that note
-##' alone, since the others describe a maximum. Changes of importance
-##' distribution and the limit of the mode search do not change how a fit is
-##' read, so they stay in the messages and warnings of the fit and in its
-##' stored results.
+##' NULL when the number is not known.
 ##' @noRd
-describe_mcml_notes <- function(optimizer) {
-  if (isTRUE(optimizer$mcml_no_maximum)) {
-    return(paste0(
-      "The likelihood has no maximum, because ",
-      switch(optimizer$mcml_separation$everywhere %||% "",
-             "no positives" = "no observation has a positive",
-             "only positives" = "every individual tested is positive",
-             if (is.null(optimizer$mcml_separation)) {
-               "a regression coefficient reached the bound of the search"
-             } else {
-               "the covariates separate the data"
-             }),
-      ". The estimate is not a maximum likelihood estimate and has no ",
-      "standard errors."
-    ))
-  }
-  boundary <- optimizer$mcml_boundary
-  single <- length(boundary) == 1L
-  notes <- c(
-    if (length(boundary)) paste0(
-      "The ", paste(boundary, collapse = " and the "), " ",
-      if (single) "was" else "were", " estimated as effectively zero, so ",
-      if (single) "its standard error is" else "their standard errors are",
-      " not reported. Consider refitting without ",
-      if (single) "it." else "them."
-    ),
-    if (isTRUE(optimizer$mcml_numerically_independent)) paste0(
-      "The spatial correlation at the fitted scale is numerically negligible, ",
-      "so the scale is unresolved. See profile(fit, parameters = \"phi\"), or ",
-      "consider a model without spatial correlation."
-    ),
-    if (isTRUE(optimizer$mcml_identifiability_failure)) paste0(
-      "Some parameters, often the spatial scale, are not identifiable from ",
-      "these data. Consider a simpler model or fixing the scale."
-    ),
-    if (isTRUE(optimizer$mcml_small_scale)) paste0(
-      "The spatial scale is shorter than the median distance between ",
-      "neighbouring locations, so it may be weakly identified and its ",
-      "interval very wide. See profile(fit, parameters = \"phi\")."
-    ),
-    if (isTRUE(optimizer$mcml_near_limit)) paste0(
-      "The fitted likelihood is not clearly above the limit with independent ",
-      "location effects at this Monte Carlo precision."
-    ),
-    if (isTRUE(optimizer$mcml_maxima_alarm)) paste0(
-      "An exact bound shows that the estimate is not the maximum likelihood ",
-      "estimate. Inspect the profile likelihood of the spatial scale."
-    ),
-    if (isTRUE(optimizer$mcml_ambiguous_maxima)) paste0(
-      "Separate maxima of the likelihood fit about equally well, and the ",
-      "estimate is from the higher. Wald intervals may describe the ",
-      "uncertainty poorly, so consider the profile likelihood (profile())."
-    ) else if (isTRUE(optimizer$mcml_better_maximum)) paste0(
-      "The check for other maxima found a maximum higher than the one ",
-      "reached from the starting values, and the estimate is taken from it."
-    )
-  )
-  weak_spatial <- any(grepl("sigma2", boundary, fixed = TRUE)) ||
-    isTRUE(optimizer$mcml_small_scale) ||
-    isTRUE(optimizer$mcml_near_limit) ||
-    isTRUE(optimizer$mcml_numerically_independent)
-  if (weak_spatial && !isTRUE(optimizer$mcml_pc_prior)) {
-    notes <- c(notes, paste0(
-      "Refitting with 'control_mcml = set_control_mcml(pc_prior = TRUE)' ",
-      "stabilises the spatial variance and scale with a mild penalty."
-    ))
-  }
-  notes
+describe_checks_to_review <- function(count) {
+  if (is.null(count)) return(NULL)
+  if (count == 0L) return("No check needs a look, see check_fit() for the details.")
+  paste0(count, if (count == 1L) " check needs" else " checks need",
+         " a look, see check_fit().")
 }
 
 ##' Write sentences wrapped to the console width
 ##'
-##' Each element of `text` starts a new line, after `bullet` if given, with
-##' continuation lines indented to match.
+##' Each element of `text` starts a new line.
 ##' @noRd
-write_wrapped <- function(text, bullet = "") {
+write_wrapped <- function(text) {
   width <- max(40L, getOption("width", 80L) - 2L)
   for (sentence in text) {
-    cat(strwrap(sentence, width = width, initial = bullet,
-                exdent = nchar(bullet)), sep = "\n")
+    cat(strwrap(sentence, width = width), sep = "\n")
   }
   invisible(NULL)
 }
@@ -193,9 +118,9 @@ write_wrapped <- function(text, bullet = "") {
 ##'   \code{\link{glgpm}}: the call, the estimates of the regression
 ##'   coefficients and of the covariance parameters on their natural scale,
 ##'   the log-likelihood and, for binomial and Poisson models, whether the
-##'   Monte Carlo error of the estimate is certified. Standard errors,
-##'   confidence intervals and notes on the warnings of the fit are given by
-##'   \code{\link{summary.RiskMap}}.
+##'   Monte Carlo error of the estimate is certified. Standard errors and
+##'   confidence intervals are given by \code{\link{summary.RiskMap}}, and the
+##'   checks on the computation by \code{\link{check_fit}}.
 ##' @param x An object of class \code{"RiskMap"}.
 ##' @param digits The number of significant digits of the estimates.
 ##' @param ... other parameters.
@@ -254,13 +179,10 @@ print.RiskMap <- function(x, digits = max(3L, getOption("digits") - 3L),
       sep = "")
   mcml <- summarise_mcml_fit(x)
   if (!is.null(mcml)) {
-    write_wrapped(describe_mcml_certificate(mcml, caveat = FALSE))
+    write_wrapped(c(describe_mcml_certificate(mcml),
+                    describe_checks_to_review(mcml$checks_to_review)))
   }
-  notes <- length(mcml$notes)
-  cat("\nsummary() gives standard errors",
-      if (notes) paste0(", confidence intervals and ", notes, " note",
-                        if (notes > 1L) "s", " on this fit") else
-        " and confidence intervals", ".\n", sep = "")
+  cat("\nsummary() gives standard errors and confidence intervals.\n")
   invisible(x)
 }
 

@@ -368,10 +368,22 @@ approximation is followed by one that tries the global distribution again. Fits
 without a failure are unchanged. `mcml_history` records why the iteration
 failed.
 
-- Certified MCML now reports the effective draws and the Pareto shape of the
-certification draws with the certificate, in its messages, warnings and
-`summary()`, with a caveat when the shape is above 0.7. It warns when the search
-for the conditional mode of the latent effects stops at its iteration limit.
+- New `check_fit()` goes through the checks on how a model was computed, says
+which are OK and which need a look, and gives the fix where there is one. Its
+`plot()` method shows the certificate, the effective draws, the Pareto shape and
+the changes in the estimates by stage. It reports what used to crowd the output,
+including the effective draws and Pareto shape of the certification draws, a
+heavy tail of the importance weights, changes of importance distribution and a
+search for the conditional mode that stopped at its iteration limit.
+
+- Certified MCML is quieter. A fit warns only about what changes how a result is
+read, which is a certificate that is missing or above the tolerance, a likelihood
+without a maximum, weak identification, other maxima and a spatial variance at
+zero, in a sentence or two that point to `check_fit()`. A nugget or random effect
+at zero, a short spatial scale and a scale close to the limit of independent
+effects no longer warn. With `messages = TRUE` a certified fit gives one line.
+`summary()` ends with the verdict and the number of checks that need a look, in
+place of its notes, and `summary()$mcml$notes` is replaced by `checks_to_review`.
 
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and

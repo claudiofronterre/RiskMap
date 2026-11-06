@@ -77,6 +77,9 @@ reference:
   - title: Summaries and Plot Methods
     contents:
       - summary.RiskMap
+      - check_fit
+      - print.RiskMap_check
+      - plot.RiskMap_check
       - profile.RiskMap
       - plot.RiskMap_profile
       - summary.RiskMap.sim.res

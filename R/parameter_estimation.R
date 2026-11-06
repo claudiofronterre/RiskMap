@@ -83,7 +83,9 @@
 ##' with a second, fresh one, which bounds its Monte Carlo error in statistical
 ##' standard errors. The samples are enlarged only when the certificate exceeds
 ##' the tolerance. Every stage is recorded in `mcml_history`, and a warning is
-##' issued if the tolerance is not met within the configured limits.
+##' issued if the tolerance is not met within the configured limits. Warnings
+##' are kept for what changes how a result is read, and [check_fit()] goes through
+##' all the checks on the computation, with what to do about any that need a look.
 ##' The estimation samples and the final conditional samples are drawn from
 ##' separate streams derived from `seed`, so `glgpm(..., seed = fit$seed)`
 ##' reproduces a fit exactly.

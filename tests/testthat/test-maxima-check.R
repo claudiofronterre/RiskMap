@@ -132,8 +132,7 @@ make_toy_check <- function(short, limit = -50, best_log_variance = function(t) 0
       c(fit$beta, fit$log_variance, log_phi)
     },
     bound = function(point, fit) c(value = limit - 1, error = 0),
-    at_limit = function(log_phi) log_phi <= -9.99,
-    announce = function(...) NULL
+    at_limit = function(log_phi) log_phi <= -9.99
   )
   limits <- list(variance_index = integer(), linked_index = list(),
                  boundary_log_variance = -9, tolerance = 0.1,
@@ -262,22 +261,13 @@ test_that("the outcome of the screen is reported to the user", {
   persisting <- list(maxima_screen = list(alarm = list(persists = TRUE)),
                      maxima_check = NULL, better_maximum = FALSE,
                      ambiguous_maxima = FALSE)
-  expect_warning(report_maxima_check(persisting, layout, 1),
+  expect_warning(report_maxima_check(persisting),
                  "not the maximum likelihood estimate")
   zero <- list(outcome = "numerically independent", certified = FALSE,
                maxima_screen = list(independent = list(log_variance = log(2))),
                boundary_parameters = integer(), history = list(1))
-  expect_warning(report_mcml_outcome(zero, character(), layout, FALSE, 0.1,
-                                     FALSE),
+  expect_warning(report_mcml_outcome(zero, layout, 0.1, FALSE),
                  "numerically one of independent.*variance 2.*unresolved")
-  near <- list(near_limit = list(gap = 0.0011, se = 0.0005, draws = 5000L,
-                                 log_phi = log(0.023)))
-  # The warning quotes the scale of the returned estimate, not that of the
-  # fit compared with the limit.
-  expect_warning(report_near_limit(near, scale = 0.2271),
-                 paste0("phi = 0.227\\).*not clearly distinguishable.*",
-                        "difference 0.0011.*profile\\(fit, parameters = \"phi\"\\)"))
-  expect_silent(report_near_limit(list(), scale = 0.2271))
 })
 
 test_that("the screen is recorded for fits with and without random effects", {

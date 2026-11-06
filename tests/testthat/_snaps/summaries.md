@@ -127,7 +127,7 @@
       
       Log-likelihood: -12.3456
 
-# print.summary.RiskMap reports the Monte Carlo certificate and notes
+# print.summary.RiskMap reports the certificate and the checks to review
 
     Code
       print(binomial_summary)
@@ -156,10 +156,8 @@
       
       Monte Carlo maximum likelihood
       Certified: the Monte Carlo error of the estimate is within 0.059 statistical
-      standard errors (an approximate 95% bound, tolerance 0.1). The bound concerns
-      the maximum found, not whether it is the highest.
-      Fitted in 1 stage, with 1,000 fitting and 5,000 validation draws at the last
-      stage.
+      standard errors (an approximate 95% bound, tolerance 0.1).
+      No check needs a look, see check_fit() for the details.
 
 ---
 
@@ -192,14 +190,7 @@
       Not certified: the Newton correction of the estimate did not converge on the
       validation draws, so the approximate 95% bound of 0.041 statistical standard
       errors may not hold. Refit with a larger 'max_samples' in set_control_mcml().
-      Fitted in 4 stages, with 2,500 fitting and 12,500 validation draws at the
-      last stage.
-      
-      Notes
-      - The spatial variance (sigma2) was estimated as effectively zero, so its
-        standard error is not reported. Consider refitting without it.
-      - Refitting with 'control_mcml = set_control_mcml(pc_prior = TRUE)'
-        stabilises the spatial variance and scale with a mild penalty.
+      2 checks need a look, see check_fit().
 
 # print.summary.RiskMap_cross_validation formats scores by model
 

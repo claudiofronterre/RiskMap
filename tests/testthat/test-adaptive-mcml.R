@@ -165,12 +165,24 @@ test_that("a scale smaller than the location spacing is reported, not held", {
   outcome <- list(boundary_parameters = integer(), budget = 1000L,
                   validation_budget = 5000L, outcome = "certified",
                   certified = TRUE, certificate = 0.05, history = list(1))
-  expect_warning(
-    report_mcml_outcome(outcome, character(), layout, pc_prior = FALSE,
-                        tolerance = 0.1, messages = FALSE,
-                        small_scale = small),
-    "smaller than the median distance between neighbouring locations"
-  )
+  # A short scale does not change how a certified fit is read, so check_fit()
+  # reports it and the fit does not warn.
+  expect_no_warning(report_mcml_outcome(outcome, layout, tolerance = 0.1,
+                                        messages = FALSE))
+})
+
+test_that("only a spatial variance at zero warns", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  outcome <- list(boundary_parameters = layout$index$nu2, budget = 1000L,
+                  validation_budget = 5000L, outcome = "certified",
+                  certified = TRUE, certificate = 0.05, history = list(1))
+  expect_no_warning(report_mcml_outcome(outcome, layout, tolerance = 0.1,
+                                        messages = FALSE))
+  outcome$boundary_parameters <- layout$index$sigma2
+  expect_warning(report_mcml_outcome(outcome, layout, tolerance = 0.1,
+                                     messages = FALSE),
+                 "spatial scale cannot be estimated. See check_fit().",
+                 fixed = TRUE)
 })
 
 test_that("a refused Newton correction is reported, not a large bound", {
@@ -180,8 +192,7 @@ test_that("a refused Newton correction is reported, not a large bound", {
                   certified = FALSE, certificate = 0.04,
                   history = list(list(residual_refused = TRUE)))
   refused <- tryCatch(
-    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
-                        tolerance = 0.1, messages = FALSE),
+    report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE),
     warning = conditionMessage
   )
   expect_match(refused, "Newton correction of the estimate did not converge")
@@ -189,9 +200,9 @@ test_that("a refused Newton correction is reported, not a large bound", {
   outcome$history <- list(list(residual_refused = FALSE))
   outcome$certificate <- 0.4
   expect_warning(
-    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
-                        tolerance = 0.1, messages = FALSE),
-    "0.4 statistical standard errors, above the tolerance of 0.1"
+    report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE),
+    "0.4 statistical standard errors, above the tolerance of 0.1. See check_fit().",
+    fixed = TRUE
   )
 })
 
@@ -264,33 +275,6 @@ test_that("glgpm fits with the PC prior and reports the unpenalised likelihood",
   expect_true(attr(fit, "optimizer")$mcml_pc_prior)
   expect_true(all(is.finite(unlist(fit$estimate))))
   expect_true(is.finite(fit$log_lik))
-})
-
-test_that("identification warnings point to the PC penalty only when it is off", {
-  fit_warnings <- function(pc_prior) {
-    warnings <- character()
-    withCallingHandlers(
-      glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
-            denominator = denominator, control_mcmc = control_mcmc,
-            seed = fixture_seed,
-            control_mcml = set_control_mcml(
-              initial_samples = 500, validation_samples = 500,
-              max_samples = 500, max_stages = 1, pc_prior = pc_prior
-            ),
-            messages = FALSE),
-      warning = function(w) {
-        warnings <<- c(warnings, conditionMessage(w))
-        invokeRestart("muffleWarning")
-      }
-    )
-    warnings
-  }
-  unpenalised <- fit_warnings(FALSE)
-  identification <- grepl("effectively zero|smaller than the median|singular",
-                          unpenalised)
-  skip_if_not(any(identification), "fixture fit is well identified")
-  expect_true(all(grepl("pc_prior = TRUE", unpenalised[identification])))
-  expect_false(any(grepl("pc_prior = TRUE", fit_warnings(TRUE))))
 })
 
 test_that("defensive rows are spread evenly and absent from a single row", {
@@ -767,12 +751,6 @@ test_that("dispersed starts span the site spacing and half the extent", {
   expect_equal(exp(dispersed$log_sigma2), c(0.25, 4, 0.25, 4))
   expect_equal(dispersed$trigger, log(0.5))
   expect_identical(dispersed$phi_index, 4L)
-  # The announcement says that the scale is that of the first fit, before
-  # the correction that gives the returned estimate.
-  announcing <- make_dispersed_starts(layout, distances, distance_scale = 2,
-                                      messages = TRUE)
-  expect_message(announcing$announce(log(0.074)),
-                 "first fit \\(phi = 0.148, before its Monte Carlo correction\\)")
 })
 
 test_that("the check for maxima finds a higher one at a longer scale", {
@@ -787,17 +765,13 @@ test_that("the check for maxima finds a higher one at a longer scale", {
                  evaluate = function(parameters, z, log_weights_only) {
                    rep(objective(parameters, z), nrow(z))
                  })
-  announced <- NULL
   limits <- list(variance_index = integer(), linked_index = list(),
                  boundary_log_variance = -9, tolerance = 0.1,
                  dispersed = list(sigma2_index = 1L, phi_index = 2L,
                                   log_sigma2 = log(c(0.25, 4, 0.25, 4)),
                                   log_phi = log(c(1, 1, 50, 50)),
                                   labels = c("a", "b", "c", "d"),
-                                  trigger = log(0.5),
-                                  announce = function(log_phi) {
-                                    announced <<- log_phi
-                                  }))
+                                  trigger = log(0.5)))
   lower <- c(-10, -10)
   upper <- c(10, 10)
   local <- optimise_on_bank(objective, c(0, -3.2), NULL, lower, upper,
@@ -805,20 +779,17 @@ test_that("the check for maxima finds a higher one at a longer scale", {
   expect_equal(local$fit$par[2], -3, tolerance = 1e-3)
   checked <- check_other_maxima(engine, objective, NULL, local, NULL,
                                     lower, upper, limits, 100L, 1L)
-  expect_equal(announced, local$fit$par[2])
   expect_true(checked$separate)
   expect_false(checked$ambiguous)
   expect_false(checked$check$chosen[1])
   expect_equal(checked$optimised$fit$par[2], 2, tolerance = 1e-3)
   expect_gt(checked$check$distance_from_fitted[checked$check$chosen], 0.1)
 
-  announced <- NULL
   higher <- optimise_on_bank(objective, c(0, 1.5), NULL, lower, upper, TRUE,
                              limits)
   unchecked <- check_other_maxima(engine, objective, NULL, higher, NULL,
                                       lower, upper, limits, 100L, 1L)
   expect_null(unchecked$check)
-  expect_null(announced)
 })
 
 test_that("a stage whose optimiser returns non-finite values has no valid fit", {
@@ -1027,28 +998,15 @@ test_that("the anchored start reaches the proposal of the start at the mode", {
                plain$proposal_at(parameters)$root, tolerance = 1e-6)
 })
 
-test_that("the check for other maxima reports a move and an ambiguity", {
-  layout <- cov_par_layout(1L, fix_tau2 = FALSE)
-  check <- data.frame(
-    log_likelihood = c(-12, -10), distance_from_fitted = c(0, 3),
-    maximum = 1:2, independent_log_likelihood = c(-12.1, -10.2),
-    independent_se = c(0.05, 0), chosen = c(FALSE, TRUE),
-    start = c("fitted", "a"), log_phi = log(c(0.1, 20))
-  )
-  # The kept maximum is quoted at the returned estimate, after the Newton
-  # correction moved it from the scale 20 fitted on the fitting draws.
-  moved <- list(maxima_check = check, better_maximum = TRUE,
-                ambiguous_maxima = FALSE, estimate = c(0, 0, log(20.4)))
-  expect_warning(report_maxima_check(moved, layout, 1),
-                 "found a separate maximum.*scale 20.4 instead of 0.1")
-  ambiguous <- moved
-  ambiguous$better_maximum <- FALSE
-  ambiguous$ambiguous_maxima <- TRUE
-  expect_warning(report_maxima_check(ambiguous, layout, 1),
-                 "fit about equally well.*spatial scale 20.4\\.")
-  quiet <- moved
-  quiet$better_maximum <- FALSE
-  expect_silent(report_maxima_check(quiet, layout, 1))
+test_that("the check for other maxima warns about a move and an ambiguity", {
+  moved <- list(better_maximum = TRUE, ambiguous_maxima = FALSE)
+  expect_warning(report_maxima_check(moved),
+                 "found a maximum higher.*See check_fit\\(\\)")
+  ambiguous <- list(better_maximum = FALSE, ambiguous_maxima = TRUE)
+  expect_warning(report_maxima_check(ambiguous),
+                 "fit about equally well.*See check_fit\\(\\)")
+  expect_silent(report_maxima_check(list(better_maximum = FALSE,
+                                         ambiguous_maxima = FALSE)))
 })
 
 test_that("the objective carries the PC penalty only when asked", {
@@ -1480,12 +1438,6 @@ test_that("the mode search says when it reaches its iteration limit", {
   engine$proposal_at(c(0, 0, 0), "laplace")
   expect_identical(engine$mode_search_counts(),
                    list(searches = 1L, at_limit = 0L))
-  expect_warning(
-    report_mode_searches(list(searches = 40L, at_limit = 3L)),
-    "iteration limit in 3 of 40 searches"
-  )
-  expect_no_warning(report_mode_searches(list(searches = 40L, at_limit = 0L)))
-  expect_no_warning(report_mode_searches(NULL))
 })
 
 test_that("a failed global proposal records why it failed", {
@@ -1502,72 +1454,45 @@ test_that("a failed global proposal records why it failed", {
   expect_null(engine$first_proposal_failure())
 })
 
-test_that("the certificate is reported with the draws behind it", {
+test_that("a certified fit says one line and a refused one a short warning", {
   light <- list(second_validation = list(relative_ess = 0.5, pareto_k = 0.3),
                 validation_budget = 5000L)
-  bank <- summarise_certification_bank(light)
-  expect_equal(bank, list(effective_draws = 2500, pareto_k = 0.3))
-  expect_identical(describe_certification_bank(bank),
-                   " (2,500 effective draws, Pareto shape 0.3)")
-  expect_null(describe_heavy_tail(bank))
-  heavy <- list(effective_draws = 40, pareto_k = 1.2)
-  expect_identical(describe_certification_bank(heavy),
-                   " (40 effective draws, Pareto shape 1.2)")
-  expect_match(describe_heavy_tail(heavy), "less reliable", fixed = TRUE)
+  expect_equal(summarise_certification_bank(light),
+               list(effective_draws = 2500, pareto_k = 0.3))
   expect_null(summarise_certification_bank(list()))
-  expect_identical(describe_certification_bank(NULL), "")
-  expect_null(describe_heavy_tail(NULL))
-
-  draws <- list(stages = 3L, fitting_draws = 5000L, validation_draws = 25000L,
-                certification_bank = bank)
   expect_identical(
-    describe_mcml_draws(draws),
+    describe_mcml_draws(list(stages = 3L, fitting_draws = 5000L,
+                             validation_draws = 25000L)),
     paste0("Fitted in 3 stages, with 5,000 fitting and 25,000 validation draws ",
-           "at the last stage (2,500 effective draws, Pareto shape 0.3).")
+           "at the last stage.")
   )
-  draws$certification_bank <- heavy
-  expect_match(describe_mcml_draws(draws),
-               "Pareto shape 1.2). Importance weights", fixed = TRUE)
 
   layout <- cov_par_layout(2L, fix_tau2 = FALSE)
   outcome <- list(boundary_parameters = integer(), budget = 2500L,
                   validation_budget = 5000L, outcome = "certified",
                   certified = TRUE, certificate = 0.05, history = list(light),
-                  estimate = c(0, 0, 0, 0))
-  expect_message(
-    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
-                        tolerance = 0.1, messages = TRUE),
-    "validation draws (2,500 effective draws, Pareto shape 0.3). This concerns",
-    fixed = TRUE
+                  estimate = c(0, 0, 0, 0), start_replaced = TRUE,
+                  proposal_fallbacks = 1L,
+                  mode_searches = list(searches = 40L, at_limit = 3L))
+  reported <- capture_messages(
+    report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = TRUE)
+  )
+  expect_identical(
+    reported,
+    paste0("The Monte Carlo error of the estimate is within 0.05 statistical ",
+           "standard errors (an approximate 95% bound, tolerance 0.1).\n")
+  )
+  expect_silent(
+    report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE)
   )
   refused <- outcome
   refused$certified <- FALSE
   refused$outcome <- "not certified"
   expect_warning(
-    report_mcml_outcome(refused, character(), layout, pc_prior = TRUE,
-                        tolerance = 0.1, messages = FALSE),
-    paste0("The last stage had 2,500 fitting and 5,000 validation draws ",
-           "(2,500 effective draws, Pareto shape 0.3)."),
+    report_mcml_outcome(refused, layout, tolerance = 0.1, messages = FALSE),
+    "is not certified. Its approximate 95% bound is 0.05",
     fixed = TRUE
   )
-  outcome$start_replaced <- TRUE
-  reported <- capture_messages(
-    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
-                        tolerance = 0.1, messages = TRUE)
-  )
-  expect_length(reported, 2L)
-  expect_match(reported[[1]], "could not be built at the Laplace estimate")
-  expect_silent(
-    report_mcml_outcome(outcome, character(), layout, pc_prior = TRUE,
-                        tolerance = 0.1, messages = FALSE)
-  )
-})
-
-test_that("summary notes leave out changes of importance distribution", {
-  expect_null(describe_mcml_notes(list(
-    mcml_start_replaced = TRUE, mcml_proposal_fallbacks = 1L,
-    mcml_mode_searches = list(searches = 40L, at_limit = 3L)
-  )))
 })
 
 test_that("reusing the spatial factorisation leaves the likelihood unchanged", {
@@ -1781,7 +1706,8 @@ test_that("glgpm warns when the likelihood has no maximum", {
                all = FALSE)
   expect_false(any(grepl("maximum likelihood estimate\\.", zero$warnings)))
   expect_output(print(zero$value), "the likelihood has no maximum")
-  expect_match(summary(zero$value)$mcml$notes, "no observation has a positive")
+  expect_match(check_fit(zero$value)$checks$finding,
+               "no individual tested is positive")
 
   every <- fit_to(transform(binomial_data, y = denominator))
   expect_identical(attr(every$value, "optimizer")$mcml_outcome, "no maximum")
@@ -1821,14 +1747,14 @@ test_that("the warning names coefficients that reached the bound", {
   bounded <- list(outcome = "no maximum", separation = NULL,
                   coefficients_at_bound = 2L)
   expect_warning(
-    report_mcml_outcome(bounded, character(), layout, FALSE, 0.1, FALSE,
+    report_mcml_outcome(bounded, layout, 0.1, FALSE,
                         coefficient_names = c("(Intercept)", "x")),
     "regression coefficient of 'x' reached the bound of the search"
   )
   counts <- list(outcome = "no maximum",
                  separation = list(everywhere = "no positives"))
   expect_warning(
-    report_mcml_outcome(counts, character(), layout, FALSE, 0.1, FALSE,
+    report_mcml_outcome(counts, layout, 0.1, FALSE,
                         coefficient_names = c("(Intercept)", "x"),
                         family = "poisson"),
     "Every count is zero.*fitted mean tends to zero"

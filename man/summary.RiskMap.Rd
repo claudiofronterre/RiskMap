@@ -23,8 +23,10 @@ standard errors, \code{NA} when there is none), \code{tolerance},
 \code{certified}, \code{outcome}, \code{correction_refused} (whether
 the Newton correction of the last stage did not converge),
 \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
-last stage) and \code{notes}, short notes on what the warnings of the
-fit reported. \code{mcml} is \code{NULL} for Gaussian models.
+last stage), \code{certification_bank} (the effective draws and Pareto
+shape of the certification draws) and \code{checks_to_review}, the number
+of checks of \code{\link{check_fit}} that need a look. \code{mcml} is
+\code{NULL} for Gaussian models.
 }
 \description{
 Provides a \code{summary} method for the "RiskMap" class that

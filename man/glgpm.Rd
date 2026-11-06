@@ -195,7 +195,9 @@ estimate is corrected with an independent validation sample and certified
 with a second, fresh one, which bounds its Monte Carlo error in statistical
 standard errors. The samples are enlarged only when the certificate exceeds
 the tolerance. Every stage is recorded in \code{mcml_history}, and a warning is
-issued if the tolerance is not met within the configured limits.
+issued if the tolerance is not met within the configured limits. Warnings
+are kept for what changes how a result is read, and \code{\link[=check_fit]{check_fit()}} goes through
+all the checks on the computation, with what to do about any that need a look.
 The estimation samples and the final conditional samples are drawn from
 separate streams derived from \code{seed}, so \code{glgpm(..., seed = fit$seed)}
 reproduces a fit exactly.
