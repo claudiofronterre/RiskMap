@@ -7,7 +7,9 @@
 ##' statistical standard errors, on the Monte Carlo error of the estimate,
 ##' NA when there is none), the `tolerance`, whether the fit is `certified`,
 ##' its `outcome`, whether the repeated Newton correction of the last stage
-##' was refused (`correction_refused`), the number of `stages`, the
+##' was refused (`correction_refused`), whether its stage ended because the
+##' likelihood rises as a held variance leaves zero (`variance_rising`), the
+##' number of `stages`, the
 ##' `fitting_draws` and `validation_draws` of the last stage, the
 ##' `certification_bank` and the number of checks of `check_fit()` that need a
 ##' look (`checks_to_review`).
@@ -24,6 +26,7 @@ summarise_mcml_fit <- function(object) {
     certified = isTRUE(optimizer$mcml_certified),
     outcome = optimizer$mcml_outcome,
     correction_refused = isTRUE(last$residual_refused),
+    variance_rising = isTRUE(last$held_variance_rising),
     stages = optimizer$mcml_stages %||% length(history),
     fitting_draws = optimizer$mcml_budget,
     validation_draws = optimizer$mcml_validation_budget,
@@ -59,7 +62,13 @@ describe_mcml_certificate <- function(mcml) {
       "No certificate: the likelihood has no maximum, so there is no ",
       "maximum likelihood estimate whose Monte Carlo error could be bounded."
     ),
-    if (mcml$correction_refused) {
+    if (isTRUE(mcml$variance_rising)) {
+      paste0(
+        "Not certified: the likelihood rises as a variance held at zero leaves ",
+        "it, so the estimate is not a maximum. Refit with a larger ",
+        "'max_samples' or 'max_stages' in set_control_mcml()."
+      )
+    } else if (mcml$correction_refused) {
       paste0(
         "Not certified: the Newton correction of the estimate did not ",
         "converge on the validation draws, so the approximate ", level,

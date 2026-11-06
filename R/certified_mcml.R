@@ -115,6 +115,60 @@ score_validation_bank <- function(engine, parameters, free, n_draws, seed,
     list(seconds = proc.time()[["elapsed"]] - started))
 }
 
+##' Test whether the likelihood rises as a held variance leaves zero
+##'
+##' A fit moves in the log of a variance, whose gradient is the variance times
+##' the slope in the variance, so it can drift to the boundary and stop there
+##' whether or not the likelihood falls towards it. Zero is a maximum only if
+##' the slope at zero is not positive. The slope and its Monte Carlo standard
+##' error are estimated on an independent bank of `n_draws` draws from `seed`,
+##' in blocks of rows like `score_validation_bank()`, so that the decision does
+##' not depend on the correction and certification banks.
+##' @return NULL if nothing in `boundary` can be tested, otherwise a data frame
+##' with the `parameter`, the `slope` in the variance, its `se` and whether the
+##' slope is clearly positive (`rising`) or clearly negative (`falling`), by
+##' `multiplier` standard errors.
+##' @noRd
+assess_held_variances <- function(engine, parameters, boundary, n_draws, seed,
+                                  multiplier = 2.58, block_rows = NULL) {
+  if (!is.function(engine$testable_variances)) return(NULL)
+  tested <- engine$testable_variances(boundary)
+  if (!length(tested)) return(NULL)
+  proposal <- tryCatch(engine$proposal_at(parameters),
+                       error = function(error) NULL)
+  if (is.null(proposal)) return(NULL)
+  dimension <- engine$latent_dimension
+  if (is.null(block_rows)) block_rows <- max(250L, floor(2.5e6 / dimension))
+  defensive <- defensive_rows(n_draws, engine$defensive_weight)
+  share <- mean(defensive)
+  log_weights <- numeric(n_draws)
+  terms <- matrix(0, n_draws, length(tested))
+  set.seed(seed)
+  for (first in seq.int(1L, n_draws, by = block_rows)) {
+    rows <- first:min(n_draws, first + block_rows - 1L)
+    block <- matrix(stats::rnorm(length(rows) * dimension),
+                    nrow = length(rows))
+    log_weights[rows] <- engine$evaluate(
+      parameters, block, log_weights_only = TRUE, built_proposal = proposal,
+      defensive = defensive[rows], defensive_share = share
+    )
+    terms[rows, ] <- engine$variance_slope_terms(block, proposal,
+                                                 defensive[rows], tested)
+  }
+  valid <- is.finite(log_weights)
+  if (!any(valid)) return(NULL)
+  terms[!valid, ] <- 0
+  if (any(!is.finite(terms))) return(NULL)
+  relative <- exp(log_weights - max(log_weights[valid]))
+  relative[!valid] <- 0
+  weights <- relative / sum(relative)
+  slope <- colSums(terms * weights)
+  se <- sqrt(colSums((sweep(terms, 2L, slope) * weights)^2))
+  data.frame(parameter = tested, slope = slope, se = se,
+             rising = slope - multiplier * se > 0,
+             falling = slope + multiplier * se < 0)
+}
+
 ##' Radius of the validation error in the metric of the observed information
 ##'
 ##' For e ~ N(0, C), ||H^{-1/2} e||^2 is a sum of independent chi-square
@@ -384,6 +438,12 @@ compute_observed_information <- function(objective, estimate, fit_bank,
 ##' bound (`find_coefficients_at_bound()`). The likelihood then rises towards
 ##' the bound, the information vanishes along that direction, and a
 ##' certificate in units of the resulting standard errors would be vacuous.
+##'
+##' A nugget or random-effect variance that the fit holds at zero is tested on
+##' the bank of the stream `seeds[[6L]]` (`assess_held_variances()`). If the
+##' likelihood clearly rises as it leaves zero, the held point is not a maximum,
+##' so the stage is not certified and the next one starts it from an interior
+##' value (`next_start`).
 ##' @noRd
 run_certified_stage <- function(engine, objective, penalty, start, budget,
                             validation_budget, seeds, lower, upper,
@@ -499,9 +559,24 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   }
   record$free <- information$free
   record$information_root <- information$root
+  record$held_variances <- if (length(seeds) >= 6L) {
+    assess_held_variances(engine, fit$par, information$boundary,
+                          validation_budget, seeds[[6L]])
+  }
   # Proposal failures so far depend only on the fitting draws. Any later one
   # depends on the correction bank (fit_adaptive_mcml()).
   record$failures_before_validation <- engine$proposal_failures()
+  if (any(record$held_variances$rising)) {
+    record$held_variance_rising <- TRUE
+    record$next_start <- replace(
+      fit$par, record$held_variances$parameter[record$held_variances$rising],
+      log(0.25)
+    )
+    return(finish(record, "not certified", paste(
+      "the likelihood rises as a variance held at zero leaves it, so the",
+      "estimate is not a maximum"
+    )))
+  }
   certified <- correct_and_certify(
     engine, penalty, fit$par, information, validation_budget, seeds, lower,
     upper, limits$tolerance,
@@ -1085,7 +1160,8 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' be obtained, or the largest budget is reached. Stage s uses the random
 ##' number streams 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks)
 ##' after `seed`, stream 1000 + s for the independent bank of the check for
-##' other maxima and stream 4000 + s for its enlarged bank.
+##' other maxima, stream 4000 + s for its enlarged bank and stream 5000 + s for
+##' the bank that tests a held variance (`assess_held_variances()`).
 ##'
 ##' If the global proposal fails within a stage, the stage is repeated with
 ##' the Laplace proposal, and the next stage tries the global proposal again
@@ -1157,7 +1233,8 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                       validation_budget,
                       c(stream(offset + 3L * stage - 2:0),
                         stream(1000L + offset + stage),
-                        stream(4000L + offset + stage)),
+                        stream(4000L + offset + stage),
+                        stream(5000L + offset + stage)),
                       lower, upper, stage == 1L, limits, curvature_root)
     }
     record <- run_stage(0L)
@@ -1195,14 +1272,25 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     curvature_root <- if (length(record$free) == length(current)) {
       factor_curvature(record$information)
     }
+    # At the largest budget more draws cannot help, but a stage stopped by a
+    # rising held variance still has a maximum to reach from the interior.
     if (!identical(record$outcome, "not certified") ||
-        budget >= maximum_budget || stage == maximum_stages) break
+        stage == maximum_stages ||
+        (budget >= maximum_budget &&
+         !isTRUE(record$held_variance_rising))) break
+    # A stage stopped by a rising held variance has no certificate, and says
+    # nothing about how many more draws the next one needs.
     budgets <- plan_next_budgets(budget, validation_budget,
-                                 record$certificate, tolerance,
-                                 maximum_budget)
+                                 if (isTRUE(record$held_variance_rising)) {
+                                   2 * tolerance
+                                 } else {
+                                   record$certificate
+                                 },
+                                 tolerance, maximum_budget)
     history[[stage]]$next_budget <- budgets$budget
     budget <- budgets$budget
     validation_budget <- budgets$validation_budget
+    current <- record$next_start %||% current
   }
   last <- history[[length(history)]]
   covariance <- NULL
@@ -1236,6 +1324,8 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
       engine$mode_search_counts()
     },
     boundary_parameters = last$boundary_parameters,
+    held_variances = last$held_variances,
+    held_variance_rising = isTRUE(last$held_variance_rising),
     score = score,
     log_likelihood = if (is.null(last$second_validation)) {
       last$fit_diagnostics$log_likelihood
