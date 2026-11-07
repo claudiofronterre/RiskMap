@@ -442,8 +442,9 @@ glgpm <- function(formula,
     } else if(family=="binomial") {
       aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
-      glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
-                        data = aux_data, family = binomial)
+      glm_fitted <- binomial_start_regression(
+        aux_data, cov_offset, link = if (is.list(invlink)) invlink$link
+      )
       start_pars[["beta"]] <- coef(glm_fitted)
     } else if(family=="poisson") {
       pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
@@ -2500,6 +2501,28 @@ named_inverse_link <- function(link) {
     ),
     stop("No inverse is defined for the ", link, " link.", call. = FALSE)
   )
+}
+
+##' The binomial regression that gives the starting regression coefficients
+##'
+##' A named link starts from a regression with its own link, since the
+##' coefficients of a logit regression are on another scale (an intercept of
+##' -2.94 where a cauchit regression gives -6.31). Should that regression fail
+##' or not converge, as one with a cauchit link can, the logit regression is
+##' used, as it is for the canonical link and for a link given as a function.
+##' @param link The name of the link, NULL for a link given as a function.
+##' @noRd
+binomial_start_regression <- function(aux_data, cov_offset, link = NULL) {
+  regress <- function(glm_family) {
+    glm(cbind(y, units_m - y) ~ ., offset = cov_offset, data = aux_data,
+        family = glm_family)
+  }
+  if (!is.null(link) && !identical(link, "logit")) {
+    own <- tryCatch(suppressWarnings(regress(binomial(link))),
+                    error = function(e) NULL)
+    if (isTRUE(own$converged)) return(own)
+  }
+  regress(binomial)
 }
 
 ##' What a refit of a fitted model passes as `invlink`

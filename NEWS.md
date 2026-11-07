@@ -455,6 +455,15 @@ abbreviated family such as `"bin"`, as `glgpm()` never did. `summary()` writes
 an inverse link taken from a package, such as a bare `invlink = pnorm`, by its
 name instead of its compiled body, `.Call(C_pnorm, ...)`.
 
+- `check_fit()` adds a row when a link is not known to make the likelihood of
+each location log-concave in its latent effect, as the cauchit link and links
+given as a function in `invlink` are not, since the latent effects can then
+have more than one conditional mode. The row is `OK`, because this belongs to
+the model and not to how it was fitted. A fit with a named link takes its
+starting regression coefficients from a binomial regression with that link
+instead of a logit regression, and falls back on the logit regression if that
+one cannot be fitted.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

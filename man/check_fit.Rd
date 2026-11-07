@@ -40,6 +40,12 @@ result needs care. The limit of 0.7 on the tail shape of the importance
 weights, the Pareto shape, is that of Vehtari et al. (2024).
 
 A Gaussian fit has no Monte Carlo error, so its only check says so.
+
+A link other than logit, probit or cloglog for binomial data, or log for
+counts, adds a row saying that it is not known to make the likelihood of
+each location log-concave in its latent effect, so that the latent
+effects can have more than one conditional mode. That belongs to the
+model and not to how it was fitted, so the row is \code{OK}.
 }
 \examples{
 data(italy_sim)
