@@ -613,6 +613,56 @@ test_that("the correction continues only past its check", {
   expect_identical(stopped$correction_steps, 2L)
 })
 
+test_that("the certificate takes the larger radius of two banks", {
+  # The mocked bank's covariance grows with its seed, and it moves the random
+  # number state as a real bank does.
+  seeds_used <- integer()
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, n_draws, seed,
+                                     ...) {
+      seeds_used <<- c(seeds_used, seed)
+      set.seed(seed)
+      stats::runif(1)
+      list(score = numeric(length(free)),
+           covariance = diag(seed / 100, length(free)), log_likelihood = 0,
+           relative_ess = 0.5, maximum_weight = 0.01, pareto_k = 0.2,
+           seconds = 0)
+    }
+  )
+  root <- diag(2)
+  second <- list(score = c(0.03, 0.04), covariance = diag(0.04, 2))
+  certify <- function(...) {
+    certify_with_replicate(NULL, NULL, c(0, 0), root, 1:2, second, 10L, ...)
+  }
+  set.seed(5)
+  before <- .Random.seed
+  larger <- certify(9L)
+  expect_identical(.Random.seed, before)
+  expect_identical(seeds_used, 9L)
+  expect_identical(larger$radius_from, "replicate")
+  expect_equal(larger$radii[["certification"]],
+               compute_validation_radius(root, diag(0.04, 2)))
+  expect_equal(larger$radius, compute_validation_radius(root, diag(0.09, 2)))
+  # The distance is the certification bank's.
+  expect_equal(larger$distance, 0.05)
+  expect_equal(larger$bound, larger$distance + larger$radius)
+  expect_identical(larger$replicate$pareto_k, 0.2)
+  smaller <- certify(1L)
+  expect_identical(smaller$radius_from, "certification")
+  expect_equal(smaller$radius, smaller$radii[["certification"]])
+  expect_gt(smaller$radius, smaller$radii[["replicate"]])
+  # Without a stream for the replicate, the radius is the certification bank's.
+  alone <- certify()
+  expect_identical(alone$radius_from, "certification")
+  expect_true(is.na(alone$radii[["replicate"]]))
+  expect_null(alone$replicate)
+  expect_equal(alone$bound, 0.05 + alone$radii[["certification"]])
+  # A replicate whose score cannot be computed leaves no certificate, as the
+  # other banks do.
+  local_mocked_bindings(score_validation_bank = function(...) NULL)
+  expect_null(certify(9L))
+})
+
 test_that("repeated corrections stop when a step does not contract", {
   # The fitting bank's curvature is a tenth of the correction bank's, so the
   # steps overshoot by more each time.
@@ -1235,6 +1285,10 @@ test_that("a late proposal failure repeats the stage on fresh streams", {
   late <- run("late")
   expect_length(calls, 2L)
   expect_true(all(calls[[1]] != calls[[2]]))
+  # No stream of the repeated stage was drawn in the first attempt, the
+  # replicate's included.
+  expect_false(any(calls[[2]] %in% calls[[1]]))
+  expect_identical(calls[[1]][[7L]], 7L + 8001L)
   expect_true(late$history[[1]]$late_fallback)
   expect_identical(late$proposal, "laplace")
   early <- run("early")

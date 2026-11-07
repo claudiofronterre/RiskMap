@@ -17,9 +17,12 @@ first, and the columns \code{check}, \code{status} (\code{"PROBLEM"}, \code{"SUS
 \item{draws}{One sentence on the stages and draws of the fit, \code{NULL} for
 Gaussian models.}
 \item{stages}{For non-Gaussian models, a data frame with one row per stage
-and the columns \code{stage}, \code{proposal}, \code{certificate}, \code{effective_draws} and
-\code{pareto_k}. The last two describe the certification draws, and are \code{NA} for
-a stage that did not reach them.}
+and the columns \code{stage}, \code{proposal}, \code{certificate}, \code{radius_from},
+\code{effective_draws} and \code{pareto_k}. The radius of the certificate is the
+larger of the radii of the certification draws and of a replicate of them,
+and \code{radius_from} says which it was (\code{"certification"} or \code{"replicate"}).
+The last two columns describe the certification draws. All three are \code{NA}
+for a stage that did not reach them.}
 \item{moves}{A data frame with the absolute change in each \code{parameter}
 between one \code{stage} and the one before it, in standard errors (\code{move}).
 \code{NULL} for a fit with one stage or without standard errors.}

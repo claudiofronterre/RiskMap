@@ -193,7 +193,9 @@ Non-Gaussian models are fitted by certified Monte Carlo maximum likelihood
 (MCML), controlled by \code{control_mcml} (see \code{\link[=set_control_mcml]{set_control_mcml()}}). The
 estimate is corrected with an independent validation sample and certified
 with a second, fresh one, which bounds its Monte Carlo error in statistical
-standard errors. The samples are enlarged only when the certificate exceeds
+standard errors, with an allowance for that sample's own error taken from
+it and from a replicate of it (see \code{\link[=set_control_mcml]{set_control_mcml()}}). The samples
+are enlarged only when the certificate exceeds
 the tolerance. Every stage is recorded in \code{mcml_history}, and a warning is
 issued if the tolerance is not met within the configured limits. Warnings
 are kept for what changes how a result is read, and \code{\link[=check_fit]{check_fit()}} goes through
