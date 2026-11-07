@@ -1,4 +1,4 @@
-##' Check of the radius of the certificate, run on request by `check_fit()`
+##' The extra check `"radius"` of `check_fit()`
 ##'
 ##' Predicts, at a fitted binomial or Poisson model, how often the radius of
 ##' its Monte Carlo certificate is too small. Short Markov chains on the
@@ -14,8 +14,8 @@
 ##' the level as run, the percentage of samples whose error, in the form the
 ##' radius allows for, exceeds it, which the 95% of the certificate refers to.
 ##' It gives its interval from resampling the banks, which leaves out the
-##' error of the chains, the percentage of certification banks above their own
-##' radius, the percentage of fits whose Monte Carlo error exceeds the
+##' error of the chains, the percentage of samples in which the error of the
+##' certification bank alone exceeds the radius, the percentage of fits whose Monte Carlo error exceeds the
 ##' certificate, and the factor by which the radius would have to grow for
 ##' the level to be 5%. Outside binomial with the logit link the factor is
 ##' raised by a `margin` of 15%, since the predictions were low on simulated
@@ -29,19 +29,22 @@
 ##' equation of Meng and Wong (1996). On simulated binomial and Poisson
 ##' surveys, one bank with 16 chains of 4,000 rounds predicted the level within
 ##' a factor of 1.65 and the factor within 14%. The chains can miss a separate
-##' mode of the latent effects, so a low prediction is not a proof. The check
-##' takes about as long as the fit. Without a `seed` its streams are 9500 to
-##' 9502 after the seed of the fit, so it is reproducible, and the caller's
-##' random number state is left unchanged.
+##' mode of the latent effects, so a low prediction is not a proof. On twelve
+##' simulated Poisson surveys the check took between 0.3 and 2.1 times as long
+##' as the fit, with a median of 1.7. Without a `seed` its streams are 9500 to
+##' 9502 after the seed of the fit (`make_extra_check_seed()`), so it is
+##' reproducible, and the caller's random number state is left unchanged.
 ##'
-##' Returns the `row` of the check (`fit_check_row()`), the `panel` data of
-##' each resampled bank's error and radius, and the `details`, with the
-##' `level` and its `level_interval`, `own`, `exceedance`, `factor`, `margin`,
-##' `widening` (the raised factor, at least one), the `certificate` and the
-##' certificate with its radius so widened (`widened`), the `tolerance`, the
-##' median Pareto shape of 100 resampled banks (`pareto_k`) and the bank's own
+##' Returns the result of the check (`check_result()`), its row and its data,
+##' a list of class `"RiskMap_radius_check"` with the `level` and its
+##' `level_interval`, `own`, `exceedance`, `factor`, `margin`, `widening` (the
+##' raised factor, at least one), the `certificate` and the certificate with
+##' its radius so widened (`widened`), the `tolerance`, the median Pareto
+##' shape of 100 resampled banks (`pareto_k`) and that of the check's own bank
 ##' (`bank_pareto_k`), the split R-hat of the chains' log weight (`rhat`), the
-##' `settings` and the elapsed `seconds`.
+##' `settings`, the elapsed `seconds` and the `banks`, a data frame with each
+##' resampled bank's `error` and the `radius` from its own draws alone, in
+##' standard errors.
 ##' @noRd
 fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
                              banks = 1000L, seed = NULL) {
@@ -55,16 +58,12 @@ fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
   if (rounds < 10) stop("'rounds' must be at least 10", call. = FALSE)
   if (banks < 3) stop("'banks' must be at least 3", call. = FALSE)
-  history <- object$mcml_history
-  if (!object$family %in% c("binomial", "poisson") || !length(history)) {
-    stop("the radius can be checked only for binomial and Poisson models ",
-         "fitted by certified Monte Carlo maximum likelihood", call. = FALSE)
+  obstacle <- find_radius_check_obstacle(object)
+  if (!is.null(obstacle)) {
+    stop("the radius cannot be checked, because ", obstacle, call. = FALSE)
   }
+  history <- object$mcml_history %||% attr(object, "optimizer")$mcml_history
   last <- history[[length(history)]]
-  if (!is.finite(last$certificate_radius %||% NA_real_)) {
-    stop("the fit has no certificate whose radius could be checked ",
-         "(outcome '", last$outcome %||% "unknown", "')", call. = FALSE)
-  }
   started <- proc.time()[["elapsed"]]
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
@@ -77,7 +76,7 @@ fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
   rates <- measure_radius_rule(resampled$errors, resampled$radii)
   margin <- if (is_binomial_logit(object)) 0 else 0.15
   widening <- max(1, rates$factor * (1 + margin))
-  details <- list(
+  data <- structure(list(
     level = 100 * rates$level, level_interval = 100 * rates$level_interval,
     own = 100 * rates$own, exceedance = 100 * rates$exceedance,
     factor = rates$factor, margin = margin, widening = widening,
@@ -89,12 +88,32 @@ fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
     settings = list(chains = as.integer(chains), rounds = as.integer(rounds),
                     banks = as.integer(banks), draws = problem$draws,
                     seed = streams[[1L]]),
-    seconds = proc.time()[["elapsed"]] - started
-  )
-  list(row = describe_radius_check(details),
-       panel = data.frame(error = sqrt(rowSums(resampled$errors^2)),
-                          radius = resampled$radii),
-       details = details)
+    seconds = proc.time()[["elapsed"]] - started,
+    banks = data.frame(error = sqrt(rowSums(resampled$errors^2)),
+                       radius = resampled$radii)
+  ), class = "RiskMap_radius_check")
+  check_result(describe_radius_check(data), data)
+}
+
+##' Why the radius of a fit cannot be checked, NULL when it can
+##'
+##' The check needs a binomial or Poisson fit by certified Monte Carlo maximum
+##' likelihood whose last stage has a radius.
+##' @noRd
+find_radius_check_obstacle <- function(object) {
+  if (identical(object$family, "gaussian")) {
+    return("a Gaussian fit has no Monte Carlo error")
+  }
+  history <- object$mcml_history %||% attr(object, "optimizer")$mcml_history
+  if (!length(history)) {
+    return("the fit has no stages of certified Monte Carlo maximum likelihood")
+  }
+  last <- history[[length(history)]]
+  if (!is.finite(last$certificate_radius %||% NA_real_)) {
+    return(paste0("the fit has no certificate whose radius could be checked ",
+                  "(outcome '", last$outcome %||% "unknown", "')"))
+  }
+  NULL
 }
 
 ##' Whether a fit is binomial with the logit link
@@ -138,13 +157,13 @@ describe_radius_check <- function(details) {
 ##' Seeds of the three random steps of `fit_check_radius()`
 ##'
 ##' Without a `seed` they are streams 9500 to 9502 after the seed of the fit,
-##' which `fit_adaptive_mcml()` does not use, wrapped as it wraps its streams.
-##' With one they are that seed and the two after it.
+##' which `fit_adaptive_mcml()` does not use, wrapped as it wraps its streams
+##' (`make_extra_check_seed()`), and 1 to 3 for a fit without a seed. With one
+##' they are that seed and the two after it.
 ##' @noRd
 make_radius_check_streams <- function(seed, fit_seed) {
-  base <- as.numeric(if (is.null(seed)) fit_seed else seed)
-  offsets <- if (is.null(seed)) 9500 + 0:2 else 0:2
-  as.integer(((base - 1 + offsets) %% .Machine$integer.max) + 1)
+  first <- seed %||% make_extra_check_seed(fit_seed, 9500L) %||% 1L
+  make_extra_check_seed(first, 0:2)
 }
 
 ##' The certification problem of a fit, rebuilt at its estimate

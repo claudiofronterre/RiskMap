@@ -123,12 +123,14 @@ test_that("the radius of a fit is checked reproducibly", {
   checked <- fit_check_radius(binomial_model, chains = 4, rounds = 40,
                               banks = 20)
   expect_identical(.Random.seed, caller_seed)
-  expect_named(checked, c("row", "panel", "details"))
+  expect_named(checked, c("row", "data"))
   expect_identical(names(checked$row), c("check", "status", "finding", "fix"))
   expect_identical(checked$row$check, "Radius of the bound")
-  expect_identical(dim(checked$panel), c(20L, 2L))
-  expect_true(all(checked$panel$radius > 0))
-  details <- checked$details
+  expect_s3_class(checked$data, "RiskMap_radius_check")
+  expect_identical(dim(checked$data$banks), c(20L, 2L))
+  expect_named(checked$data$banks, c("error", "radius"))
+  expect_true(all(checked$data$banks$radius > 0))
+  details <- checked$data
   for (rate in c("level", "own", "exceedance")) {
     expect_gte(details[[rate]], 0)
     expect_lte(details[[rate]], 100)
@@ -143,9 +145,11 @@ test_that("the radius of a fit is checked reproducibly", {
   expect_identical(details$settings$draws, 500L)
   expect_identical(details$settings$seed,
                    as.integer(binomial_model$seed + 9500L))
+  expect_identical(details$settings$seed,
+                   make_extra_check_seed(binomial_model$seed, 9500L))
   expect_gte(details$seconds, 0)
   without_time <- function(result) {
-    result$details$seconds <- NULL
+    result$data$seconds <- NULL
     result
   }
   again <- fit_check_radius(binomial_model, chains = 4, rounds = 40,
@@ -153,16 +157,28 @@ test_that("the radius of a fit is checked reproducibly", {
   expect_identical(without_time(again), without_time(checked))
   other <- fit_check_radius(binomial_model, chains = 4, rounds = 40,
                             banks = 20, seed = 1)
-  expect_identical(other$details$settings$seed, 1L)
+  expect_identical(other$data$settings$seed, 1L)
   poisson <- fit_check_radius(poisson_model, chains = 4, rounds = 40,
                               banks = 20)
-  expect_identical(poisson$details$margin, 0.15)
+  expect_identical(poisson$data$margin, 0.15)
+  # The streams wrap as those of a fit, and a fit without a seed starts at 1.
+  expect_identical(make_radius_check_streams(NULL, .Machine$integer.max),
+                   9500:9502)
+  expect_identical(make_radius_check_streams(NULL, NULL), 1:3)
+  expect_identical(make_radius_check_streams(7L, 12345L), 7:9)
 })
 
 test_that("the radius is checked only where there is a certificate", {
   check <- function(object, ...) fit_check_radius(object, ...)
   expect_error(check(list()), "'RiskMap' object")
-  expect_error(check(gaussian_model), "binomial and Poisson")
+  expect_error(check(gaussian_model),
+               "cannot be checked, because a Gaussian fit has no Monte Carlo error")
+  no_stages <- binomial_model
+  no_stages$mcml_history <- NULL
+  attr(no_stages, "optimizer")$mcml_history <- NULL
+  expect_identical(find_radius_check_obstacle(no_stages),
+                   "the fit has no stages of certified Monte Carlo maximum likelihood")
+  expect_null(find_radius_check_obstacle(binomial_model))
   expect_error(check(binomial_model, rounds = 5), "at least 10")
   expect_error(check(binomial_model, banks = 2), "at least 3")
   expect_error(check(binomial_model, chains = 0))

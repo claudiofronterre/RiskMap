@@ -191,6 +191,8 @@ print.summary.RiskMap_check <- function(x, ...) {
         result$row$check, "\n", sep = "")
     if (inherits(result$data, "RiskMap_profile")) {
       write_profile_evidence(result$data)
+    } else if (inherits(result$data, "RiskMap_radius_check")) {
+      write_radius_evidence(result$data)
     } else {
       write_check_data(result$data)
     }
@@ -272,4 +274,49 @@ write_profile_evidence <- function(profile) {
     ))))
   }
   invisible(NULL)
+}
+
+##' The full results of the check of the radius
+##'
+##' The predicted rates, the bound so widened and the settings, then the
+##' error and radius of the resampled samples at a few quantiles. Rates are
+##' percentages of samples of certification draws.
+##' @noRd
+write_radius_evidence <- function(check) {
+  percent <- function(value) paste0(signif(value, 3), "%")
+  settings <- check$settings
+  probabilities <- c(0.05, 0.25, 0.5, 0.75, 0.95)
+  quantiles <- function(values) {
+    stats::quantile(values, probabilities, names = FALSE)
+  }
+  write_check_data(list(
+    "Samples whose error exceeds the radius, predicted" = percent(check$level),
+    "Its 95% interval, without the error of the chains" =
+      paste(percent(check$level_interval), collapse = " to "),
+    "Samples whose certification draws alone exceed the radius" =
+      percent(check$own),
+    "Samples whose error exceeds the bound" = percent(check$exceedance),
+    "Growth of the radius that brings the first rate to 5%" = check$factor,
+    "Margin on that growth" = percent(100 * check$margin),
+    "Widening of the radius" = check$widening,
+    "Bound, in standard errors" = check$certificate,
+    "Bound with the radius so widened" = check$widened,
+    "Tolerance" = check$tolerance,
+    "Pareto shape of the fresh sample" = check$bank_pareto_k,
+    "Median Pareto shape of 100 resampled samples" = check$pareto_k,
+    "Split R-hat of the chains' log weight" = check$rhat,
+    "Chains" = paste(settings$chains, "of", format(settings$rounds,
+                                                   big.mark = ","), "rounds"),
+    "Resampled samples" = paste(format(settings$banks, big.mark = ","), "of",
+                                format(settings$draws, big.mark = ","),
+                                "draws"),
+    "Seed of the fresh sample" = as.character(settings$seed),
+    "Time of the check" = format_check_time(check$seconds),
+    "Error and own radius of the resampled samples, in standard errors" =
+      data.frame(quantile = paste0(100 * probabilities, "%"),
+                 error = quantiles(check$banks$error),
+                 radius = quantiles(check$banks$radius),
+                 error_over_radius = quantiles(check$banks$error /
+                                                 check$banks$radius))
+  ))
 }

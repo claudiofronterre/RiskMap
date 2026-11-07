@@ -39,8 +39,12 @@ test_that("the extra checks are named, with all for every one", {
   expect_identical(match_extra_checks("profile"), "profile")
   expect_identical(match_extra_checks(c("profile", "profile")), "profile")
   expect_identical(match_extra_checks("all"), names(list_extra_checks()))
-  expect_error(check_fit(binomial_model, extra = "radius"),
-               "Unknown extra check \"radius\". The extra checks are \"profile\", or \"all\"",
+  expect_identical(match_extra_checks(c("radius", "profile")),
+                   c("profile", "radius"))
+  expect_identical(match_extra_checks("all"), c("profile", "radius"))
+  expect_error(check_fit(binomial_model, extra = "radii"),
+               paste0("Unknown extra check \"radii\". The extra checks are ",
+                      "\"profile\", \"radius\", or \"all\""),
                fixed = TRUE)
   expect_error(check_fit(binomial_model, extra = c("profile", "a", "b")),
                "Unknown extra checks \"a\", \"b\"", fixed = TRUE)
@@ -138,7 +142,8 @@ test_that("the profile check runs on request, from a stream of the fit's seed", 
   expect_identical(nrow(checked$checks), nrow(check_fit(binomial_model)$checks) + 1L)
   # Reproducible, with or without a random number state in the session.
   rm(".Random.seed", envir = .GlobalEnv)
-  expect_silent(again <- check_fit(binomial_model, extra = "all", messages = FALSE))
+  expect_silent(again <- check_fit(binomial_model, extra = "profile",
+                                   messages = FALSE))
   expect_false(exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
   expect_identical(again$extras, checked$extras)
   expect_identical(again$checks, checked$checks)
@@ -230,6 +235,100 @@ test_that("the profiles of a fit with a named link use that link", {
   expect_identical(captured$d1, probit$link_function$d1)
 })
 
+test_that("the radius check runs on request, from streams of the fit's seed", {
+  grDevices::pdf(NULL)
+  withr::defer(grDevices::dev.off())
+  withr::local_preserve_seed()
+  set.seed(12)
+  before <- .Random.seed
+  expect_message(
+    checked <- check_fit(binomial_model, extra = "radius"),
+    paste0("^Computing the predictions of how often the radius of the bound ",
+           "is too small, which should take about .*, from the .* the fit took")
+  )
+  expect_identical(.Random.seed, before)
+  expect_named(checked$extras, "radius")
+  radius <- checked$extras$radius
+  expect_s3_class(radius$data, "RiskMap_radius_check")
+  expect_identical(radius$data$settings[c("chains", "rounds", "banks")],
+                   list(chains = 16L, rounds = 4000L, banks = 1000L))
+  expect_identical(radius$data$settings$seed,
+                   make_extra_check_seed(binomial_model$seed, 9500L))
+  without_time <- function(result) {
+    result$data$seconds <- NULL
+    result
+  }
+  expect_identical(without_time(radius),
+                   without_time(fit_check_radius(binomial_model)))
+  row <- checked$checks[checked$checks$check == "Radius of the bound", ]
+  rownames(row) <- NULL
+  expect_identical(row, radius$row)
+  expect_identical(nrow(checked$checks),
+                   nrow(check_fit(binomial_model)$checks) + 1L)
+  printed <- capture.output(print(checked))
+  expect_true(any(grepl(
+    "^(OK|SUSPICIOUS) +Radius of the bound +The radius of the bound", printed
+  )))
+
+  # The summary gives the rates and the settings, and plot() the panel.
+  evidence <- capture.output(print(summary(checked)))
+  expect_true(any(grepl(
+    "^ +Samples whose error exceeds the radius, predicted +[0-9.e-]+%$", evidence
+  )))
+  expect_true(any(grepl("^ +Chains +16 of 4,000 rounds$", evidence)))
+  expect_true(any(grepl("^ +Resampled samples +1,000 of 500 draws$", evidence)))
+  expect_contains(evidence, paste0("  Error and own radius of the resampled ",
+                                   "samples, in standard errors"))
+  panels <- plot(checked)
+  expect_identical(names(panels),
+                   c("certificate", "effective_draws", "pareto_k", "radius"))
+  expect_s3_class(panels$radius, "ggplot")
+  expect_identical(names(plot(checked, which = "radius")), "radius")
+  above <- mean(radius$data$banks$error > radius$data$banks$radius)
+  expect_identical(panels$radius$labels$subtitle,
+                   paste0(signif(100 * above, 2), "% of the 1,000 samples lie ",
+                          "above the dashed line,\nwhere the error exceeds the ",
+                          "radius from their own draws."))
+  expect_null(plot_radius_panel(NULL))
+  expect_null(plot_radius_panel(list(banks = data.frame(error = 0, radius = 1))))
+})
+
+test_that("a radius check that does not apply or fails says why", {
+  grDevices::pdf(NULL)
+  withr::defer(grDevices::dev.off())
+  expect_silent(gaussian <- check_fit(gaussian_model, extra = "radius"))
+  reason <- paste0("The predictions of how often the radius of the bound is ",
+                   "too small were not computed, because a Gaussian fit has ",
+                   "no Monte Carlo error.")
+  expect_identical(gaussian$not_computed, c(radius = reason))
+  expect_identical(gaussian$extras, list())
+  expect_error(plot(gaussian, which = "radius"), reason, fixed = TRUE)
+  expect_error(plot(check_fit(gaussian_model), which = "radius"),
+               "no stages to plot")
+  expect_silent(no_maximum <- check_fit(no_maximum_fit(), extra = "radius"))
+  expect_match(no_maximum$not_computed[["radius"]],
+               "because the likelihood has no maximum.", fixed = TRUE)
+  uncertified <- binomial_model
+  uncertified$mcml_history[[1L]]$certificate_radius <- NA_real_
+  expect_match(
+    check_fit(uncertified, extra = "radius", messages = FALSE)$not_computed[["radius"]],
+    "because the fit has no certificate whose radius could be checked (outcome '",
+    fixed = TRUE
+  )
+  local_mocked_bindings(fit_check_radius = function(object, ...) {
+    stop("no chains")
+  })
+  failed <- check_fit(binomial_model, extra = "radius", messages = FALSE)
+  expect_identical(failed$extras, list())
+  expect_identical(
+    failed$not_computed[["radius"]],
+    paste0("The predictions of how often the radius of the bound is too ",
+           "small were not computed, because their computation stopped with ",
+           "the error \"no chains\".")
+  )
+  expect_identical(failed$checks, check_fit(binomial_model)$checks)
+})
+
 test_that("a Gaussian profile needs no seed and can be plotted alone", {
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
@@ -262,6 +361,19 @@ test_that("the time of the extra checks comes from the time of the fit", {
     describe_extra_check_time(fit, "profile"),
     paste0("Computing the profiles of the 3 covariance parameters, which ",
            "should take about 6 minutes, from the 12 seconds the fit took.")
+  )
+  # Twice the fit for the radius, on one core.
+  expect_identical(
+    describe_extra_check_time(fit, "radius", cores = 4L),
+    paste0("Computing the predictions of how often the radius of the bound ",
+           "is too small, which should take about 24 seconds, from the 12 ",
+           "seconds the fit took.")
+  )
+  expect_match(
+    describe_extra_check_time(fit, c("profile", "radius")),
+    paste0("^Computing the profiles of the 3 covariance parameters and the ",
+           "predictions of how often the radius of the bound is too small, ",
+           "which should take about 6 minutes, ")
   )
   skip_on_os("windows")
   expect_match(describe_extra_check_time(fit, "profile", cores = 2L),
