@@ -9,15 +9,19 @@ fit_binomial <- function(family, invlink = NULL) {
 }
 
 # What a fit holds apart from its call and formula, whose environments differ,
-# its link functions, which are closures made afresh by each fit, and the time
-# each stage took.
+# its link functions, which are closures made afresh by each fit, and the
+# times recorded anywhere in its history.
 fit_without_timing <- function(fit) {
-  out <- unclass(fit)[setdiff(names(fit), c("call", "formula",
-                                            "link_function"))]
-  out$mcml_history <- lapply(out$mcml_history, function(stage) {
-    stage[setdiff(names(stage), c("timing", "elapsed_seconds"))]
-  })
-  out
+  drop_timing <- function(x) {
+    if (!is.list(x)) return(x)
+    if (!is.null(names(x))) {
+      x <- x[!names(x) %in% c("timing", "elapsed_seconds", "seconds")]
+    }
+    x[] <- lapply(x, drop_timing)
+    x
+  }
+  drop_timing(unclass(fit)[setdiff(names(fit), c("call", "formula",
+                                                 "link_function"))])
 }
 
 # The same links as users would write them in 'invlink'. Bare pnorm and
