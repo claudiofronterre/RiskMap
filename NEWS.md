@@ -476,6 +476,12 @@ starting regression coefficients from a binomial regression with that link
 instead of a logit regression, and falls back on the logit regression if that
 one cannot be fitted.
 
+- `profile()` of a binomial or Poisson fit now rebuilds the likelihood with the
+link of the fit. It used the logit or log link whatever link the fit had, so
+the profiles of a fit with a named link such as `binomial("probit")`, or with
+an inverse link given in `invlink`, were those of another model, and nothing
+warned of it. Profiles of fits with the logit and log links are unchanged.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

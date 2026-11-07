@@ -273,11 +273,12 @@ check_profile_settings <- function(n_points, n_grid, span, n_draws, level) {
 ##'
 ##' Rebuilds the engine of the fit from the data and settings kept in the fitted
 ##' object (the standardised design, the coordinates rescaled by the largest
-##' distance, the latent structure and the Monte Carlo controls), draws one
-##' bank, anchors the global proposal at the estimate and re-maximises the
-##' log-likelihood on that bank. Parameters are handled on the working scale of
-##' the user (coefficients, log variance, log scale in distance units), and
-##' converted to the internal scale of the engine for each evaluation.
+##' distance, the latent structure, the link and the Monte Carlo controls),
+##' draws one bank, anchors the global proposal at the estimate and
+##' re-maximises the log-likelihood on that bank. Parameters are handled on the
+##' working scale of the user (coefficients, log variance, log scale in distance
+##' units), and converted to the internal scale of the engine for each
+##' evaluation.
 ##' @noRd
 make_profile_problem <- function(fitted, n_draws, seed) {
   design_scaling <- standardize_design_matrix(fitted$D)
@@ -290,6 +291,8 @@ make_profile_problem <- function(fitted, n_draws, seed) {
     cov_offset = fitted$cov_offset, ID_coords = fitted$ID_coords,
     fix_tau2 = fitted$fix_tau2,
     ID_re = if (is.null(fitted$ID_re)) NULL else as.matrix(fitted$ID_re),
+    # A canonical link gives NULL, and so the canonical path of the fit.
+    invlink = refit_invlink(fitted),
     defensive_weight = control_mcml$defensive_weight %||% 0.05,
     proposal = control_mcml$proposal %||% "global"
   )

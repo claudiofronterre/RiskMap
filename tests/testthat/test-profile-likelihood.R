@@ -52,6 +52,82 @@ test_that("profile rejects fits and settings it cannot handle", {
   expect_error(profile(binomial_model, level = 1.5), "level")
 })
 
+fit_binomial_link <- function(family, invlink = NULL) {
+  glgpm(y ~ cov + gp(), data = binomial_data, family = family,
+        invlink = invlink, denominator = denominator,
+        control_mcmc = control_mcmc, seed = fixture_seed,
+        control_mcml = fixture_control_mcml, messages = FALSE)
+}
+link_fits <- list(probit = fit_binomial_link(binomial("probit")),
+                  cloglog = fit_binomial_link(binomial("cloglog")),
+                  custom = fit_binomial_link("binomial", stats::pnorm))
+
+# The inverse link with which profile() builds its engine, or
+# list(missing = TRUE) when it passes none.
+capture_profile_invlink <- function(fitted) {
+  captured <- NULL
+  local_mocked_bindings(
+    make_adaptive_mcml_engine = function(..., invlink = list(missing = TRUE)) {
+      captured <<- invlink
+      stop("engine captured")
+    }
+  )
+  expect_error(profile(fitted, parameters = "sigma2", n_draws = 200,
+                       messages = FALSE), "engine captured")
+  captured
+}
+
+test_that("a profile rebuilds the likelihood with the link of the fit", {
+  for (fitted in link_fits) {
+    invlink <- capture_profile_invlink(fitted)
+    expect_identical(invlink$inv, fitted$link_function$inv)
+    expect_identical(invlink$d1, fitted$link_function$d1)
+    expect_identical(invlink$d2, fitted$link_function$d2)
+    expect_identical(invlink$link, fitted$link_function$link)
+  }
+  expect_identical(capture_profile_invlink(link_fits$probit)$link, "probit")
+  # A canonical link passes none, so the engine takes the canonical path.
+  expect_null(capture_profile_invlink(binomial_model))
+  expect_null(capture_profile_invlink(poisson_model))
+})
+
+test_that("a profile with a named link has the log-likelihood of the fit", {
+  for (link in c("probit", "cloglog")) {
+    fitted <- link_fits[[link]]
+    problem <- make_profile_problem(fitted, 2000L, 1L)
+    # The fit's log-likelihood is on its own bank of 500 draws, with a Monte
+    # Carlo standard error of about 0.01 to 0.02. With the logit link in place
+    # of the fit's, the two differed by 1.04 for probit and 3.50 for cloglog.
+    expect_lt(abs(problem$value(problem$estimate) - fitted$log_lik), 0.05)
+    expect_lt(abs(problem$max_loglik - fitted$log_lik), 0.05)
+    # The maximum on the bank is the fit's estimate up to Monte Carlo error,
+    # a few hundredths of a standard error by the certificates of these fits.
+    # With the logit link it moved by 1.3 to 3.2 standard errors.
+    moved <- (problem$bank_estimate - problem$estimate) /
+      problem$standard_errors
+    expect_lt(max(abs(moved)), 0.1)
+  }
+})
+
+# A profile whose engine is built without any 'invlink', as before profiles
+# took the link of the fit.
+profile_without_link <- function(fitted, settings) {
+  build_engine <- make_adaptive_mcml_engine
+  local_mocked_bindings(
+    make_adaptive_mcml_engine = function(..., invlink) build_engine(...)
+  )
+  do.call(profile, c(list(fitted), settings))
+}
+
+test_that("a profile of a canonical fit is that of an engine given no link", {
+  settings <- list(parameters = c("cov", "sigma2"), n_points = 5,
+                   n_draws = 200, messages = FALSE)
+  for (fitted in list(binomial_model, poisson_model)) {
+    expect_identical(do.call(profile, c(list(fitted), settings)),
+                     profile_without_link(fitted, settings))
+  }
+})
+
 test_that("the profile plot draws its panels and returns them", {
   profiles <- profile(binomial_model, parameters = c("sigma2", "phi"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
