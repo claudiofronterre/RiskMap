@@ -495,6 +495,21 @@ starting regression coefficients from a binomial regression with that link
 instead of a logit regression, and falls back on the logit regression if that
 one cannot be fitted.
 
+- Certified MCML now builds every global proposal of a stage, other than the one
+at its start, from three plain refits of the factors found at the start, in place
+of iterating with Anderson acceleration until no factor moves by more than 1e-8.
+The stopping rule of the iteration made the estimated likelihood jump wherever
+the number of refits changed, by up to 4.5e-10 on the Tanzania survey, whereas
+three refits are a smooth function of the parameters, as the theory of the
+certificate assumes, and jumped by at most 2e-12 there. The proposal at the start
+of a stage is still iterated to the tolerance. In a paired test on 127 simulated
+surveys with ten runs each, every run was certified with and without the change,
+the median ratio of the certificates was 1.000, the largest rise in the error was
+0.002 standard errors, and the fits took 0.81 of the time. A refit that fails
+counts as a failure of the global proposal, as before. Each stage of
+`mcml_history` records `refit_change`, the largest change of a factor at the last
+of the three refits.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and
