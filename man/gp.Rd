@@ -30,6 +30,7 @@ Specifies the terms, smoothness, and nugget effect for a Gaussian Process (GP) m
 \details{
 The function constructs a list that includes the specified terms (spatial coordinates or covariates),
 the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
+A model has one spatial Gaussian process, so a formula can contain only one \code{gp()} term.
 }
 \examples{
 # this function is not intended for use by itself

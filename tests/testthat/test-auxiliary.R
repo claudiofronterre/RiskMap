@@ -343,6 +343,66 @@ test_that("re produces expected output", {
   expect_identical(result$label, "re(variable,region)")
 })
 
+test_that("interpret_formula combines several re() calls", {
+  one_call <- interpret_formula(y ~ cov + gp() + re(i, j))
+
+  two_calls <- interpret_formula(y ~ cov + gp() + re(i) + re(j))
+  expect_identical(two_calls$re_spec, one_call$re_spec)
+  expect_identical(deparse(two_calls$pf), "y ~ cov")
+
+  separated_calls <- interpret_formula(y ~ re(i) + cov + re(j) + gp())
+  expect_identical(separated_calls$re_spec, one_call$re_spec)
+
+  shared_variable <- interpret_formula(y ~ cov + gp() + re(i) + re(i, j))
+  expect_identical(shared_variable$re_spec, one_call$re_spec)
+
+  reversed_calls <- interpret_formula(y ~ gp() + re(j) + re(i))
+  expect_identical(reversed_calls$re_spec, re(j, i))
+
+  three_calls <- interpret_formula(y ~ gp() + re(a, b) + re(c) + re(d))
+  expect_identical(three_calls$re_spec, re(a, b, c, d))
+})
+
+test_that("interpret_formula keeps a single re() call as written", {
+  expect_identical(interpret_formula(y ~ gp() + re(i))$re_spec, re(i))
+  expect_identical(interpret_formula(y ~ gp() + re(i, j))$re_spec, re(i, j))
+  expect_null(interpret_formula(y ~ gp())$re_spec)
+})
+
+test_that("interpret_formula allows only one gp() term", {
+  expect_error(
+    interpret_formula(y ~ cov + gp(kappa = 1.5) + gp(kappa = 0.5)),
+    "only one 'gp\\(\\)' term"
+  )
+  expect_error(
+    interpret_formula(y ~ gp(lon, lat) + gp(east, north) + re(i)),
+    "only one 'gp\\(\\)' term"
+  )
+  expect_identical(interpret_formula(y ~ gp() + gp())$gp_spec, gp())
+})
+
+test_that("interpret_formula reads one offset column", {
+  expect_null(interpret_formula(y ~ cov + gp() + re(i))$offset)
+  expect_identical(interpret_formula(y ~ gp() + offset(exposure))$offset, "exposure")
+  expect_identical(
+    interpret_formula(y ~ gp() + re(i) + offset(exposure))$offset,
+    "exposure"
+  )
+  expect_identical(
+    interpret_formula(y ~ gp() + re(i) + re(j) + offset(exposure))$offset,
+    "exposure"
+  )
+
+  expect_error(
+    interpret_formula(y ~ gp() + offset(exposure) + offset(other)),
+    "only one 'offset\\(\\)' term"
+  )
+  expect_error(
+    interpret_formula(y ~ gp() + offset(log(exposure))),
+    "must name a column of 'data', but the 'formula' contains 'offset\\(log\\(exposure\\)\\)'"
+  )
+})
+
 
 test_that("matern_correlation returns output matching the shape of u", {
   u <- dist(st_coordinates(gaussian_data))
