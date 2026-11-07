@@ -977,7 +977,7 @@ test_that("a failed evaluation gives every draw zero weight", {
   expect_identical(engine$evaluate(c(0, 0, 0), bank), -1e100)
 })
 
-test_that("the anchored start reaches the proposal of the start at the mode", {
+test_that("an anchored proposal is three plain refits from the anchor", {
   set.seed(14)
   coordinate <- runif(30)
   trials <- rep(20, 30)
@@ -990,12 +990,55 @@ test_that("the anchored start reaches the proposal of the start at the mode", {
   }
   anchored <- engine_for()
   expect_true(anchored$set_anchor(c(-1.4, log(0.5), log(0.2))))
-  plain <- engine_for()
+  expect_identical(anchored$largest_refit_change(), NA_real_)
   parameters <- c(-1.6, log(0.6), log(0.25))
-  expect_equal(anchored$proposal_at(parameters)$centre,
-               plain$proposal_at(parameters)$centre, tolerance = 1e-6)
-  expect_equal(anchored$proposal_at(parameters)$root,
-               plain$proposal_at(parameters)$root, tolerance = 1e-6)
+  proposal <- anchored$proposal_at(parameters)
+
+  inside <- environment(anchored$proposal_at)
+  values <- inside$unpack(parameters)
+  precision <- inside$spatial_prior_at(values)$precision
+  mu <- as.numeric(inside$D %*% values$beta + inside$cov_offset)
+  anchor <- inside$anchor
+  factors <- c(anchor$linear - anchor$curvature * (mu - anchor$mu),
+               anchor$curvature)
+  for (refit in 1:3) {
+    previous <- factors
+    factors <- refit_global_factors(
+      factors, mu, y, trials, inside$latent_map, precision, "binomial",
+      inside$linkf, inside$canonical, build_normal_quadrature(),
+      make_curvature_floor(inside$latent_map, precision)
+    )
+  }
+  half <- length(factors) / 2
+  by_hand <- cpp_global_proposal_factors(
+    precision, factors[seq_len(half)], factors[half + seq_len(half)],
+    inside$latent_map$columns
+  )
+  expect_identical(proposal$type, "global")
+  expect_identical(proposal$centre, by_hand$centre)
+  expect_identical(anchored$largest_refit_change(),
+                   max(abs(factors - previous)))
+  # Three refits come close to the fixed point that the iteration from the
+  # mode reaches.
+  converged <- engine_for()$proposal_at(parameters)
+  expect_equal(proposal$centre, converged$centre, tolerance = 1e-4)
+  anchored$reset_proposal_failures()
+  expect_identical(anchored$largest_refit_change(), NA_real_)
+})
+
+test_that("a refit from the anchor that fails gives the Laplace proposal", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  expect_true(engine$set_anchor(c(0, 0, 0)))
+  local_mocked_bindings(refit_global_factors = function(...) NULL)
+  expect_identical(engine$proposal_at(c(0.1, 0, 0))$type, "laplace")
+  expect_identical(engine$proposal_failures(), 1L)
+  expect_identical(engine$first_proposal_failure(),
+                   list(reason = "a refit failed", refits = 1L,
+                        change = NA_real_))
+  expect_identical(engine$largest_refit_change(), NA_real_)
 })
 
 test_that("the check for other maxima warns about a move and an ambiguity", {
@@ -1407,6 +1450,7 @@ test_that("a restarted fit equals one started from the same values", {
     }
     real_iteration(...)
   })
+  expect_true(is.finite(direct$history[[1]]$refit_change))
   restarted <- fit(make(), laplace_estimate, restart_start = automatic)
   expect_true(restarted$start_replaced)
   expect_identical(restarted$history[[1]]$start_failure,
@@ -1507,7 +1551,9 @@ test_that("a global failure only within the check for other maxima is set aside"
     distances = as.matrix(dist(1:3)), family = "binomial"
   )
   global_fit <- fit_global_proposal
-  # The global fit fails only at the screened point, whose intercept is 5.
+  refit <- refit_from_anchor
+  # The global fit fails only at the screened point, whose intercept is 5, and
+  # so do the fixed refits from the stage's anchor that build the proposal there.
   screened <- c(5, 0, -6)
   kept <- "fitted"
   screened_value <- NULL
@@ -1518,6 +1564,13 @@ test_that("a global failure only within the check for other maxima is set aside"
   local_mocked_bindings(
     fit_global_proposal = function(mode, mu, ...) {
       if (mu[1] > 4) NULL else global_fit(mode, mu, ...)
+    },
+    refit_from_anchor = function(anchor, mu, ...) {
+      if (mu[1] > 4) {
+        list(failed = TRUE, refits = 1L, change = NA_real_)
+      } else {
+        refit(anchor, mu, ...)
+      }
     },
     optimise_on_bank = function(objective, start, ...) as_optimised(start),
     check_other_maxima = function(engine, objective, penalty, optimised,
