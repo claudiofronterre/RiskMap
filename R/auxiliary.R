@@ -678,7 +678,18 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
 
   link_name <- NULL
   inv_expr  <- NULL
-  if (identical(object$link_function$name, "custom")) {
+  named_link <- if (identical(object$link_function$name, "custom")) {
+    object$link_function$link
+  }
+  if (!is.null(named_link)) {
+    link_name <- named_link
+    inv_expr  <- paste("Inverse link function =", switch(
+      named_link,
+      probit = "pnorm(x)",
+      cloglog = "1 - exp(-exp(x))",
+      cauchit = "0.5 + atan(x) / pi"
+    ))
+  } else if (identical(object$link_function$name, "custom")) {
     link_name <- "custom"
     inv_expr  <- tryCatch(
       paste0("Inverse link function = ",

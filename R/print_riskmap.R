@@ -157,9 +157,14 @@ print.RiskMap <- function(x, digits = max(3L, getOption("digits") - 3L),
   }
   model <- c(gaussian = "Linear", binomial = "Binomial",
              poisson = "Poisson")[x$family]
-  cat(if (is.na(model)) "Geostatistical" else model, " geostatistical model, ",
-      length(x$y), " observations at ", NROW(x$coords), " locations\n",
-      sep = "")
+  # Only a link other than the canonical one is named, since the
+  # coefficients are then on another scale.
+  link <- if (identical(x$link_function$name, "custom")) {
+    paste0(" with ", x$link_function$link %||% "a custom", " link")
+  }
+  cat(if (is.na(model)) "Geostatistical" else model, " geostatistical model",
+      link, ", ", length(x$y), " observations at ", NROW(x$coords),
+      " locations\n", sep = "")
 
   estimates <- coef(x)
   cat("\nRegression coefficients\n")
