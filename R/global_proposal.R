@@ -202,6 +202,73 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
   refitted
 }
 
+##' A lower bound on the factors' curvature that keeps Q positive definite
+##'
+##' For C >= c < 0, A' diag(C) A >= c A'A, and by Gershgorin the largest
+##' eigenvalue of A'A is at most the number of latent columns per observation
+##' times the largest number of observations sharing a latent column. Returns a
+##' function that floors a vector of curvatures at that bound, which it computes
+##' only if a curvature is negative.
+##' @noRd
+make_curvature_floor <- function(latent_map, precision) {
+  curvature_floor <- NULL
+  function(curvature) {
+    if (all(curvature >= 0)) return(curvature)
+    if (is.null(curvature_floor)) {
+      columns <- latent_map$columns
+      largest_column_sum <- ncol(columns) *
+        max(tabulate(columns, nbins = latent_map$dimension))
+      smallest_prior <- min(eigen(precision, symmetric = TRUE,
+                                  only.values = TRUE)$values)
+      curvature_floor <<- -0.5 * smallest_prior / largest_column_sum
+    }
+    pmax(curvature, curvature_floor)
+  }
+}
+
+##' The global proposal from a fixed number of refits of an anchor
+##'
+##' At a parameter value other than the anchor's, the anchor's factors, carried
+##' over to the new regression part `mu` as b - C (mu - mu_anchor) and C, are
+##' refitted `count` times by plain refits (`refit_global_factors()`), with no
+##' acceleration, tolerance or restart. Given the anchor, the proposal is then
+##' a smooth function of the parameters, as the theory of the certificate
+##' assumes, whereas an iteration stopped by a tolerance jumps wherever the
+##' number of refits it takes changes. Returns the centre, precision, root and
+##' factors as `fit_global_proposal()` does, with the number of `refits`, the
+##' largest `change` of a factor at the last refit, and `failed = TRUE` (with
+##' no proposal) if a refit fails or the precision is not positive definite.
+##' @noRd
+refit_from_anchor <- function(anchor, mu, y, units_m, latent_map, precision,
+                              family, linkf, canonical, count = 3L,
+                              quadrature = build_normal_quadrature()) {
+  floor_curvature <- make_curvature_floor(latent_map, precision)
+  factors <- c(anchor$linear - anchor$curvature * (mu - anchor$mu),
+               anchor$curvature)
+  change <- NA_real_
+  for (refit in seq_len(count)) {
+    refitted <- refit_global_factors(factors, mu, y, units_m, latent_map,
+                                     precision, family, linkf, canonical,
+                                     quadrature, floor_curvature)
+    if (is.null(refitted)) {
+      return(list(failed = TRUE, refits = refit, change = change))
+    }
+    change <- max(abs(refitted - factors))
+    factors <- refitted
+  }
+  observations <- length(factors) / 2
+  linear <- factors[seq_len(observations)]
+  curvature <- factors[observations + seq_len(observations)]
+  final <- cpp_global_proposal_factors(precision, linear, curvature,
+                                       latent_map$columns)
+  if (is.null(final)) {
+    return(list(failed = TRUE, refits = count, change = change))
+  }
+  list(centre = final$centre, precision = final$precision, root = final$root,
+       factors = list(linear = linear, curvature = curvature),
+       refits = count, change = change, failed = FALSE)
+}
+
 ##' Anderson acceleration step for a fixed-point iteration
 ##'
 ##' Given the residuals f_j = G(x_j) - x_j and refits G(x_j) of the recent
@@ -238,13 +305,13 @@ take_anderson_step <- function(residuals, refits) {
 ##' The refits are combined by Anderson acceleration with `memory` previous
 ##' iterates, which reaches the fixed point in far fewer refits than plain
 ##' iteration. A combined step that fails or enlarges the residual is replaced
-##' by the plain step. The iteration starts from the conditional mode, or from
-##' `initial`, a list of starting factors `linear` and `curvature` (the
-##' engine's anchor), and stops when one refit changes no factor by more than
-##' `tolerance`, as plain iteration does. Given its start, the proposal is
-##' therefore a deterministic function of the parameters. Returns NULL if a
-##' refit fails or the precision is not positive definite. An iteration that
-##' has not converged still defines a valid proposal. It is returned with
+##' by the plain step. The iteration starts from the conditional mode and stops
+##' when one refit changes no factor by more than `tolerance`, as plain
+##' iteration does. The engine uses it for the anchor of a stage, and the
+##' other proposals of the stage refit the anchor a fixed number of times
+##' (`refit_from_anchor()`). Returns NULL if a refit fails or the precision is
+##' not positive definite. An iteration that has not converged still defines a
+##' valid proposal. It is returned with
 ##' `converged = FALSE` so that the caller can decide whether to fall back to
 ##' the Laplace proposal. The returned `root` is the upper factor of Q^-1 that
 ##' maps standard-normal draws (`inverse_cholesky_factor()`), or NULL if that
@@ -254,43 +321,21 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 family, linkf, canonical,
                                 tolerance = 1e-8, maximum_iterations = 500L,
                                 quadrature = build_normal_quadrature(),
-                                memory = 3L, initial = NULL) {
-  # A lower bound on the factors' curvature that keeps Q positive definite.
-  # For C >= c < 0, A' diag(C) A >= c A'A, and by Gershgorin the largest
-  # eigenvalue of A'A is at most the number of latent columns per observation
-  # times the largest number of observations sharing a latent column. It is
-  # computed only if a fitted curvature is negative.
-  curvature_floor <- NULL
-  floor_curvature <- function(curvature) {
-    if (all(curvature >= 0)) return(curvature)
-    if (is.null(curvature_floor)) {
-      columns <- latent_map$columns
-      largest_column_sum <- ncol(columns) *
-        max(tabulate(columns, nbins = latent_map$dimension))
-      smallest_prior <- min(eigen(precision, symmetric = TRUE,
-                                  only.values = TRUE)$values)
-      curvature_floor <<- -0.5 * smallest_prior / largest_column_sum
-    }
-    pmax(curvature, curvature_floor)
-  }
-  if (is.null(initial)) {
-    mode_terms <- laplace_observation_terms(
-      mu + latent_linear_predictor(latent_map, mode), y, units_m, family,
-      linkf
-    )
-    if (is.null(mode_terms)) return(NULL)
-    # A link that is not log-concave can have negative curvature at the mode.
-    curvature <- if (canonical) {
-      mode_terms$curvature
-    } else {
-      floor_curvature(mode_terms$curvature)
-    }
-    linear <- mode_terms$score +
-      curvature * latent_linear_predictor(latent_map, mode)
+                                memory = 3L) {
+  floor_curvature <- make_curvature_floor(latent_map, precision)
+  mode_terms <- laplace_observation_terms(
+    mu + latent_linear_predictor(latent_map, mode), y, units_m, family,
+    linkf
+  )
+  if (is.null(mode_terms)) return(NULL)
+  # A link that is not log-concave can have negative curvature at the mode.
+  curvature <- if (canonical) {
+    mode_terms$curvature
   } else {
-    linear <- initial$linear
-    curvature <- initial$curvature
+    floor_curvature(mode_terms$curvature)
   }
+  linear <- mode_terms$score +
+    curvature * latent_linear_predictor(latent_map, mode)
   observations <- length(linear)
   curvature_part <- observations + seq_len(observations)
   refit <- function(factors) {
