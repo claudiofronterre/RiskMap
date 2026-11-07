@@ -181,6 +181,59 @@ test_that("print() and summary() name the link", {
                 "Binomial geostatistical model, 10 observations")
 })
 
+test_that("check_fit() notes a link not known to be log-concave", {
+  link_rows <- function(fit) {
+    checks <- check_fit(fit)$checks
+    checks[checks$check == "Link", ]
+  }
+  for (fit in list(binomial_model, poisson_model, named_fits$probit,
+                   named_fits$cloglog)) {
+    expect_identical(nrow(link_rows(fit)), 0L)
+  }
+  cauchit <- link_rows(named_fits$cauchit)
+  expect_identical(cauchit$status, "OK")
+  expect_match(cauchit$finding, paste0(
+    "^The cauchit link is not among those known to make the likelihood of ",
+    "each location log-concave in its latent effect, so the latent effects ",
+    "can have more than one conditional mode"
+  ))
+  expect_identical(cauchit$fix, "")
+  # The row is OK, so summary() does not count it among the checks to review.
+  expect_identical(summarise_mcml_fit(named_fits$cauchit)$checks_to_review,
+                   sum(check_fit(named_fits$cauchit)$checks$status != "OK"))
+
+  supplied <- link_rows(fit_binomial("binomial", link_functions$cloglog))
+  expect_match(supplied$finding, paste0(
+    "^The link was given as a function, so it is not known whether.*as the ",
+    "logit, probit and cloglog links do\\. If it does not, the latent effects"
+  ))
+  expect_match(fit_check_link(list(name = "custom"), "poisson")$finding,
+               "as the log link does\\.")
+  # A refit receives the name of its link in the list form, so it is known.
+  expect_null(fit_check_link(list(name = "custom", link = "probit"),
+                             "binomial"))
+})
+
+test_that("a named link starts from a regression with its own link", {
+  aux_data <- data.frame(y = binomial_data$y,
+                         units_m = binomial_data$denominator,
+                         cov = binomial_data$cov)
+  regress <- function(glm_family) {
+    coef(glm(cbind(y, units_m - y) ~ ., offset = rep(0, nrow(aux_data)),
+             data = aux_data, family = glm_family))
+  }
+  start <- function(link) {
+    coef(binomial_start_regression(aux_data, rep(0, nrow(aux_data)), link))
+  }
+  for (link in names(link_functions)) {
+    expect_identical(start(link), regress(binomial(link)))
+  }
+  expect_identical(start(NULL), regress(binomial()))
+  expect_identical(start("logit"), regress(binomial()))
+  # A regression that cannot be fitted with the link falls back on logit.
+  expect_identical(start("no such link"), regress(binomial()))
+})
+
 test_that("refits, the bootstrap and predict() keep the named link", {
   fit <- named_fits$probit
   carried <- refit_invlink(fit)
