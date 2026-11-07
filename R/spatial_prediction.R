@@ -3123,8 +3123,6 @@ assess_prediction <- function(object,
     } else {
       fit0$link_function$inv %||% switch(fam, binomial = plogis, poisson = exp)
     }
-    custom_link <- !is.null(fit0$link_function) &&
-      !identical(fit0$link_function$name, "canonical")
 
     if (messages) {
       message(sprintf("\nModel '%s' (%s)", h, model_names[h]))
@@ -3164,9 +3162,7 @@ assess_prediction <- function(object,
         if (length(den_name) == 1 && nzchar(den_name)) {
           refit_args$denominator <- as.name(den_name)
         }
-        if (custom_link) {
-          refit_args$invlink <- fit0$link_function[c("inv", "d1", "d2")]
-        }
+        refit_args$invlink <- refit_invlink(fit0)
         refit_i <- do.call(glgpm, refit_args)
       } else {
         ## quick slice without re-fitting
@@ -4091,9 +4087,9 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
   )
   if (template$family != "gaussian") {
     args$denominator <- quote(units_m)
-    if (fitted_template && identical(template$link_function$name, "custom")) {
-      args$invlink <- template$link_function[c("inv", "d1", "d2")]
-    } else if (!fitted_template && isTRUE(template$custom_link)) {
+    if (fitted_template) {
+      args$invlink <- refit_invlink(template)
+    } else if (isTRUE(template$custom_link)) {
       args$invlink <- template$invlink
     }
   }

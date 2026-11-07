@@ -589,7 +589,9 @@ compute_variance_slope_terms <- function(eta, y, units_m, family, group,
 ##' `proposal = "laplace"`, or where the global fit fails, they are the
 ##' conditional mode and the curvature there (the Laplace approximation).
 ##' Failures of the global fit are counted, so that a fit can be repeated with
-##' the Laplace proposal throughout. With a Gaussian proposal alone the
+##' the Laplace proposal throughout. The count can be marked and restored to
+##' the mark, which sets aside the failures of the check for other maxima
+##' (`set_aside_check_failures()`). With a Gaussian proposal alone the
 ##' importance weights have infinite variance whenever the largest eigenvalue of
 ##' Sigma^{1/2} W Sigma^{1/2} exceeds one (W the likelihood curvature), which
 ##' holds in practically every spatial dataset (Pitt et al., 2013). The mixture
@@ -613,6 +615,9 @@ make_adaptive_mcml_engine <- function(
   default_proposal_type <- match.arg(proposal)
   proposal_failures <- 0L
   first_failure <- NULL
+  # Proposals built so far, which date the cached one for
+  # restore_proposal_failures().
+  builds <- 0L
   # Errors while a proposal is built, which make an evaluation fail without
   # failing the global iteration, are counted apart from those failures.
   proposal_errors <- 0L
@@ -727,6 +732,8 @@ make_adaptive_mcml_engine <- function(
   cached_parameters <- NULL
   cached_type <- NULL
   cached_proposal <- NULL
+  cached_failed <- FALSE
+  cached_build <- 0L
 
   proposal_at <- function(parameters, type = default_proposal_type) {
     if (!is.null(cached_parameters) &&
@@ -763,6 +770,7 @@ make_adaptive_mcml_engine <- function(
       type, mu, y, units_m, latent_map, precision, family, linkf, canonical,
       anchor, find_mode
     )
+    builds <<- builds + 1L
     if (gaussian$failed) {
       proposal_failures <<- proposal_failures + 1L
       if (is.null(first_failure)) first_failure <<- gaussian$failure
@@ -785,6 +793,8 @@ make_adaptive_mcml_engine <- function(
     cached_parameters <<- parameters
     cached_type <<- type
     cached_proposal <<- proposal
+    cached_failed <<- gaussian$failed
+    cached_build <<- builds
     proposal
   }
 
@@ -929,6 +939,23 @@ make_adaptive_mcml_engine <- function(
          proposal_failures <<- 0L
          first_failure <<- NULL
          invisible(NULL)
+       },
+       # The failures so far, to be restored after evaluations whose failures
+       # are set aside (set_aside_check_failures()).
+       mark_proposal_failures = function() {
+         list(failures = proposal_failures, first = first_failure,
+              builds = builds)
+       },
+       # A failed proposal built since the mark that is still cached would be
+       # reused without being counted, so it is built again when next needed.
+       restore_proposal_failures = function(mark) {
+         set_aside <- proposal_failures - mark$failures
+         proposal_failures <<- mark$failures
+         first_failure <<- mark$first
+         if (cached_failed && cached_build > mark$builds) {
+           cached_parameters <<- NULL
+         }
+         invisible(set_aside)
        })
 }
 

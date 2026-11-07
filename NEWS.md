@@ -448,10 +448,52 @@ inverse link. Errors while an importance distribution is built at a trial
 parameter value, which give that value no weight, are counted and reported by
 `check_fit()`. Fits with the canonical links are unchanged.
 
+- A failure of the global proposal while the check for other maxima evaluates
+the likelihood far from the fitted maximum, as at the short scales of its
+screen, no longer makes the stage repeat with the Laplace proposal. That
+evaluation already uses the Laplace proposal at its own parameter values, and
+the failure says nothing about the proposal at the maximum. Since the screen
+runs for custom links, such failures in it made the first stage of a cauchit
+fit of `loaloa` repeat with the Laplace proposal, which suits that link far
+worse, and the fit was no longer certified. It is now certified at its first
+stage, with the global proposal. The failures still count when the check keeps
+the maximum of one of its refits, which is then the fit of the stage. Fits
+without such a failure are unchanged.
+
 - A custom inverse link that `Deriv` cannot differentiate, such as a bare
 `invlink = pnorm`, now has its derivatives computed for all values at once, with
 the same values as before. They were computed one value at a time, which made
 such a fit much slower than the same link written as `function(eta) pnorm(eta)`.
+
+- `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
+in `family`, as `glm()` does, so a link can be named as in
+`family = binomial("probit")`. Binomial models take the logit, probit, cloglog
+and cauchit links, Poisson models the log link and Gaussian models the identity
+link, and `family = binomial` is read as `binomial()`. The logit and log links
+fit exactly as `family = "binomial"` and `family = "poisson"` do. A named link
+gives the estimates of its inverse supplied in `invlink`, with exact
+derivatives, so it is never differentiated during the fit and is faster than
+an inverse such as a bare `pnorm`. `binomial("log")` and `poisson("identity")`,
+whose means can leave the range of the family, `poisson("sqrt")`, whose inverse
+is not monotone, quasi families, which have no likelihood, and other families
+are refused with a message pointing to `invlink`, which still takes any other
+inverse link as a function. A link given both in `family` and in `invlink` is
+an error, and `invlink` does not take the name of a link. `print()` and
+`summary()` name the link, and simulations, cross-validation refits and the
+parametric bootstrap keep it. The undocumented list form of `invlink` now takes
+only `inv`, `d1` and `d2`, and `specify_glgpm()` no longer accepts an
+abbreviated family such as `"bin"`, as `glgpm()` never did. `summary()` writes
+an inverse link taken from a package, such as a bare `invlink = pnorm`, by its
+name instead of its compiled body, `.Call(C_pnorm, ...)`.
+
+- `check_fit()` adds a row when a link is not known to make the likelihood of
+each location log-concave in its latent effect, as the cauchit link and links
+given as a function in `invlink` are not, since the latent effects can then
+have more than one conditional mode. The row is `OK`, because this belongs to
+the model and not to how it was fitted. A fit with a named link takes its
+starting regression coefficients from a binomial regression with that link
+instead of a logit regression, and falls back on the logit regression if that
+one cannot be fitted.
 
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and

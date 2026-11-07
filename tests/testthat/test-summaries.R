@@ -89,6 +89,26 @@ test_that("summary.RiskMap reports a custom inverse link", {
                    "Inverse link function = 1/(1 + exp(-x))")
 })
 
+test_that("summary.RiskMap names a package or primitive inverse link", {
+  # The fit is used only for its structure, so its link is replaced.
+  fit <- binomial_model
+  fit$link_function <- list(inv = pnorm, name = "custom")
+  fit$call$invlink <- quote(pnorm)
+  expect_identical(summary(fit)$invlink_expression,
+                   "Inverse link function = pnorm(x)")
+  fit$call$invlink <- quote(stats::pnorm)
+  expect_identical(summary(fit)$invlink_expression,
+                   "Inverse link function = stats::pnorm(x)")
+  fit$link_function$inv <- exp
+  fit$call$invlink <- quote(exp)
+  expect_identical(summary(fit)$invlink_expression,
+                   "Inverse link function = exp(x)")
+  # A refit's call holds the function itself, not its name.
+  fit$call$invlink <- exp
+  expect_identical(summary(fit)$invlink_expression,
+                   "Inverse link function = <user-supplied function>")
+})
+
 test_that("summary.RiskMap computes standard errors and confidence intervals", {
   fit_summary <- summary(binomial_model)
   estimate <- unlist(binomial_model$estimate)
