@@ -2262,7 +2262,8 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' when it cannot process `f`'s body (e.g. a call it has no derivative rule
 ##' for), so that attempt - construction and validation together - is wrapped
 ##' in a single `tryCatch()`. If it fails for any reason, falls back to
-##' numerical differentiation via `numDeriv::grad()`, vectorised over `eta`.
+##' numerical differentiation by the method of `numDeriv::grad()`, applied to
+##' all elements of `eta` at once (`compute_richardson_derivative()`).
 ##'
 ##' @param f Function of a single argument `eta`, returning a numeric vector.
 ##' @param ncheck Length of the probe vector used to validate a candidate
@@ -2284,7 +2285,50 @@ differentiate <- function(f, ncheck) {
 
   if (!is.null(symbolic)) return(symbolic)
 
-  function(eta) vapply(eta, function(z) numDeriv::grad(f, z), numeric(1))
+  # An inverse link acts element by element, so every element can share each
+  # evaluation of `f`. A function that does not is caught on a probe and
+  # differentiated one value at a time, as numDeriv::grad() requires.
+  shared <- function(eta) compute_richardson_derivative(f, eta)
+  one_at_a_time <- function(eta) {
+    vapply(eta, function(z) numDeriv::grad(f, z), numeric(1))
+  }
+  probe <- c(-2.5, -0.7, 0, 0.3, 1.9)
+  agrees <- tryCatch(
+    isTRUE(all.equal(shared(probe), one_at_a_time(probe), tolerance = 1e-10)),
+    error = function(e) FALSE
+  )
+  if (agrees) shared else one_at_a_time
+}
+
+##' Derivative of an elementwise function by Richardson extrapolation
+##'
+##' The default method of `numDeriv::grad()` (central differences with
+##' `rounds` halvings of the step and Richardson extrapolation, with its
+##' default settings) applied to every element of `eta` at once. For a
+##' function that acts element by element it gives the same values as
+##' `numDeriv::grad()` called on each element, with `2 * rounds` calls of `f`
+##' in all in place of `2 * rounds` per element.
+##' @noRd
+compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
+                                          zero_tolerance = sqrt(
+                                            .Machine$double.eps / 7e-7
+                                          ),
+                                          rounds = 4L, ratio = 2) {
+  step <- abs(d * eta) + eps * (abs(eta) < zero_tolerance)
+  estimates <- matrix(NA_real_, rounds, length(eta))
+  for (round in seq_len(rounds)) {
+    estimates[round, ] <- (f(eta + step) - f(eta - step)) / (2 * step)
+    if (anyNA(estimates[round, ])) {
+      stop("The inverse link returns NA near the values being differentiated.",
+           call. = FALSE)
+    }
+    step <- step / ratio
+  }
+  for (m in seq_len(rounds - 1L)) {
+    estimates <- (estimates[2:(rounds + 1L - m), , drop = FALSE] * (4^m) -
+                    estimates[1:(rounds - m), , drop = FALSE]) / (4^m - 1)
+  }
+  c(estimates)
 }
 
 ##' Validate and construct inverse-link functions
@@ -3291,11 +3335,12 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     sigma2_re = fitted_pars$sigma2_re,
     family = family,
     # Canonical links use the compiled sampler, which a supplied function
-    # would bypass; custom links pass the user's inverse-link function.
+    # would bypass. Custom links pass the inverse link with the derivatives
+    # the fit used, so that they are not derived again.
     invlink = if (identical(link_function$name, "canonical")) {
       NULL
     } else {
-      link_function$inv
+      link_function[c("inv", "d1", "d2")]
     },
     control_mcmc = control_mcmc, seed = seed, messages = messages
   )

@@ -61,3 +61,41 @@ test_that("a custom invlink that Deriv cannot differentiate still fits via the n
   expect_s3_class(fit, "RiskMap")
   expect_true(all(is.finite(unlist(fit$estimate))))
 })
+
+test_that("the numeric fallback matches numDeriv on each value, in one pass", {
+  ## A bare pnorm takes the numeric fallback, which is why it fitted slowly.
+  ## Equality with numDeriv to the last bit shows that the fallback ran.
+  d <- differentiate(pnorm, 5)
+  eta <- c(-30, -8.3, -1, 0, 1e-12, 0.4, 3.6, 8.3)
+  expect_identical(d(eta), vapply(eta, function(z) numDeriv::grad(pnorm, z),
+                                  numeric(1)))
+
+  ## Every element shares each evaluation of the link: 2 x 4 calls in all.
+  af <- approxfun(c(-50, 50), c(0.01, 0.99), rule = 2)
+  calls <- 0L
+  counted <- function(eta) {
+    calls <<- calls + 1L
+    af(eta)
+  }
+  d_counted <- differentiate(counted, 5)
+  calls <- 0L
+  values <- d_counted(seq(-3, 3, length.out = 200))
+  expect_identical(calls, 8L)
+  expect_equal(values, rep(0.98 / 100, 200), tolerance = 1e-8)
+})
+
+test_that("a function that is not elementwise is differentiated value by value", {
+  af <- approxfun(c(-50, 50), c(0.01, 0.99), rule = 2)
+  f <- function(eta) af(eta - mean(eta))
+  d <- differentiate(f, 5)
+  eta <- c(-1, 0, 2)
+  expect_identical(d(eta), vapply(eta, function(z) numDeriv::grad(f, z),
+                                  numeric(1)))
+})
+
+test_that("the numeric fallback stops on a link that returns NA", {
+  expect_error(
+    compute_richardson_derivative(function(eta) ifelse(eta > 1, NA, eta), c(0, 2)),
+    "returns NA"
+  )
+})

@@ -38,7 +38,8 @@ multiply_by_count <- function(count, term) {
 ##' link that is not log-concave, such as that of an imperfect test. Returns NULL
 ##' if the mean is outside the support of the family, or if a derivative is not
 ##' finite. `with_curvature = FALSE` omits the curvature for callers that have no
-##' second derivative.
+##' second derivative. `log_likelihoods` holds each observation's term of the
+##' log-likelihood.
 ##' @noRd
 compute_custom_link_terms <- function(eta, y, units_m, family, linkf,
                                       with_curvature = TRUE) {
@@ -49,9 +50,8 @@ compute_custom_link_terms <- function(eta, y, units_m, family, linkf,
   if (family == "poisson") {
     positive <- pmax(mean, .Machine$double.xmin)
     rate <- first / positive
-    log_likelihood <- sum(
-      y * log(pmax(units_m * mean, .Machine$double.xmin)) - units_m * mean
-    )
+    log_likelihoods <- y * log(pmax(units_m * mean, .Machine$double.xmin)) -
+      units_m * mean
     score <- multiply_by_count(y, rate) - units_m * first
     curvature <- if (with_curvature) {
       multiply_by_count(y, rate^2 - second / positive) + units_m * second
@@ -64,8 +64,8 @@ compute_custom_link_terms <- function(eta, y, units_m, family, linkf,
     failures <- units_m - y
     success_rate <- first / success
     failure_rate <- first / failure
-    log_likelihood <- sum(y * log_probability$success +
-                            failures * log_probability$failure)
+    log_likelihoods <- y * log_probability$success +
+      failures * log_probability$failure
     score <- multiply_by_count(y, success_rate) -
       multiply_by_count(failures, failure_rate)
     curvature <- if (with_curvature) {
@@ -77,7 +77,8 @@ compute_custom_link_terms <- function(eta, y, units_m, family, linkf,
       (with_curvature && any(!is.finite(curvature)))) {
     return(NULL)
   }
-  list(log_likelihood = log_likelihood, score = score, curvature = curvature)
+  list(log_likelihood = sum(log_likelihoods), score = score,
+       curvature = curvature, log_likelihoods = log_likelihoods)
 }
 
 ##' Move the start of a search off the limits of a custom link
@@ -553,14 +554,27 @@ compute_log_weights_in_r <- function(draws, proposal, defensive,
 ##' distribution of the other latent effects, of half the sum over groups of
 ##' (sum k')^2 + sum k'', with k the log-likelihood of an observation in its
 ##' linear predictor. Returns that quantity for each row of the matrix `eta` of
-##' linear predictors, for the canonical links.
+##' linear predictors. A custom link (`linkf`) takes k' and k'' from
+##' `compute_custom_link_terms()`, and NA marks a draw where they cannot be
+##' computed. Concavity is not needed.
 ##' @noRd
-compute_variance_slope_terms <- function(eta, y, units_m, family, group) {
-  rate <- if (identical(family, "poisson")) exp(eta) else stats::plogis(eta)
-  expected <- sweep(rate, 2L, units_m, "*")
-  curvature <- if (identical(family, "poisson")) expected else
-    expected * (1 - rate)
-  score <- rep(y, each = nrow(eta)) - expected
+compute_variance_slope_terms <- function(eta, y, units_m, family, group,
+                                         linkf = NULL) {
+  if (is.null(linkf)) {
+    rate <- if (identical(family, "poisson")) exp(eta) else stats::plogis(eta)
+    expected <- sweep(rate, 2L, units_m, "*")
+    curvature <- if (identical(family, "poisson")) expected else
+      expected * (1 - rate)
+    score <- rep(y, each = nrow(eta)) - expected
+  } else {
+    terms <- compute_custom_link_terms(
+      as.vector(eta), rep(y, each = nrow(eta)), rep(units_m, each = nrow(eta)),
+      family, linkf
+    )
+    if (is.null(terms)) return(rep(NA_real_, nrow(eta)))
+    score <- matrix(terms$score, nrow(eta))
+    curvature <- matrix(terms$curvature, nrow(eta))
+  }
   grouped <- rowsum(t(score), group, reorder = FALSE)
   0.5 * (colSums(grouped^2) - rowSums(curvature))
 }
@@ -608,6 +622,10 @@ make_adaptive_mcml_engine <- function(
   # global proposals since the failures were last reset.
   largest_refit_change <- -Inf
   first_failure <- NULL
+  # Errors while a proposal is built, which make an evaluation fail without
+  # failing the global iteration, are counted apart from those failures.
+  proposal_errors <- 0L
+  first_error <- NULL
   mode_searches <- 0L
   mode_searches_at_limit <- 0L
   n <- length(y)
@@ -795,7 +813,11 @@ make_adaptive_mcml_engine <- function(
     # rebuilding the proposal as the optimizer moves.
     proposal <- if (is.null(built_proposal)) {
       tryCatch(proposal_at(proposal_parameters, proposal_type),
-               error = function(error) NULL)
+               error = function(error) {
+                 proposal_errors <<- proposal_errors + 1L
+                 if (is.null(first_error)) first_error <<- conditionMessage(error)
+                 NULL
+               })
     } else {
       built_proposal
     }
@@ -844,15 +866,13 @@ make_adaptive_mcml_engine <- function(
   }
 
   # The groups of the effects whose variance can be tested at zero, by
-  # parameter, for the canonical links. A nugget is one effect per location.
-  slope_groups <- if (canonical) {
-    c(if (!is.null(layout$index$nu2)) {
-      stats::setNames(list(ID_coords), layout$index$nu2)
-    }, if (n_re) {
-      stats::setNames(lapply(seq_len(n_re), function(j) ID_re[, j]),
-                      layout$index$sigma2_re)
-    })
-  }
+  # parameter. A nugget is one effect per location.
+  slope_groups <- c(if (!is.null(layout$index$nu2)) {
+    stats::setNames(list(ID_coords), layout$index$nu2)
+  }, if (n_re) {
+    stats::setNames(lapply(seq_len(n_re), function(j) ID_re[, j]),
+                    layout$index$sigma2_re)
+  })
   # With the spatial variance at zero the nugget ratio says nothing about the
   # nugget itself, so only the other effects can be tested.
   testable_variances <- function(boundary) {
@@ -879,7 +899,8 @@ make_adaptive_mcml_engine <- function(
     }
     vapply(tested, function(parameter) {
       compute_variance_slope_terms(eta, y, units_m, family,
-                                   slope_groups[[as.character(parameter)]])
+                                   slope_groups[[as.character(parameter)]],
+                                   if (!canonical) linkf)
     }, numeric(nrow(draws)))
   }
 
@@ -901,6 +922,10 @@ make_adaptive_mcml_engine <- function(
        largest_refit_change = function() {
          if (is.finite(largest_refit_change)) largest_refit_change else NA_real_
        },
+       proposal_errors = function() {
+         list(count = proposal_errors, first = first_error)
+       },
+       linkf = linkf,
        mode_search_counts = function() {
          list(searches = mode_searches, at_limit = mode_searches_at_limit)
        },
@@ -1189,23 +1214,20 @@ glgpm_nong_adaptive <- function(
   if (isTRUE(control_mcml$check_maxima %||% TRUE)) {
     dispersed <- make_dispersed_starts(engine$layout, distances)
     # The screen of short scales and the exact alarms need the likelihood
-    # with independent location effects, computed exactly for the canonical
-    # links and without unstructured random effects.
-    if (is.null(ID_re) && is.null(invlink)) {
+    # with independent location effects, computed exactly without
+    # unstructured random effects. A custom link supplies its own terms.
+    if (is.null(ID_re)) {
       dispersed$screen <- make_short_scale_screen(
         engine,
         make_independent_site_likelihood(
           D, y, units_m, ID_coords %||% seq_along(y),
-          cov_offset %||% numeric(length(y)), family
+          cov_offset %||% numeric(length(y)), family,
+          linkf = if (!identical(engine$linkf$name, "canonical")) engine$linkf
         ),
         distances, kappa
       )
     } else {
-      dispersed$screen_unavailable <- if (is.null(ID_re)) {
-        "custom inverse link"
-      } else {
-        "unstructured random effects"
-      }
+      dispersed$screen_unavailable <- "unstructured random effects"
     }
   }
   fit <- fit_adaptive_mcml(
@@ -1240,6 +1262,7 @@ glgpm_nong_adaptive <- function(
       fit$held_variances$parameter, engine$layout, re_names = re_names
     )
   }
+  fit$proposal_errors <- engine$proposal_errors()
   small_scale <- if (!fit$outcome %in% c("numerically independent",
                                          "no maximum")) {
     detect_small_scale(fit, engine$layout, distances, kappa, distance_scale)
@@ -1358,6 +1381,7 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_proposal = fit$proposal,
     mcml_start_replaced = fit$start_replaced,
     mcml_proposal_fallbacks = fit$proposal_fallbacks,
+    mcml_proposal_errors = fit$proposal_errors,
     mcml_mode_searches = fit$mode_searches,
     mcml_pc_prior = pc_prior,
     laplace_start = laplace,
