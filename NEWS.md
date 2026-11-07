@@ -510,6 +510,13 @@ counts as a failure of the global proposal, as before. Each stage of
 `mcml_history` records `refit_change`, the largest change of a factor at the last
 of the three refits.
 
+- `profile()` of a binomial or Poisson fit now rebuilds the likelihood with the
+link of the fit. It used the logit or log link whatever link the fit had, so
+the profiles of a fit with a named link such as `binomial("probit")`, or with
+an inverse link given in `invlink`, were those of another model, and nothing
+warned of it. The fix does not change the profiles of fits with the logit
+and log links.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

@@ -2531,7 +2531,8 @@ binomial_start_regression <- function(aux_data, cov_offset, link = NULL) {
 ##'
 ##' `NULL` for a Gaussian fit or a canonical link, so that the refit takes the
 ##' canonical path again, and otherwise the stored inverse, its derivatives
-##' and the name of the link, in the list form of `invlink`.
+##' and the name of the link, in the list form of `invlink`. The likelihood
+##' that `profile()` rebuilds from a fit takes its link from here too.
 ##' @noRd
 refit_invlink <- function(object) {
   link_function <- object$link_function
