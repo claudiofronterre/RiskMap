@@ -404,6 +404,20 @@ more than half the squared tolerance. The screen stopped at the spacing and only
 tried a share near zero, which could miss a spatial effect that a large nugget
 was absorbing.
 
+- Certified MCML now fits custom inverse links that reach the limits of their
+range or are not log-concave, which previously stopped with "no valid fit". A
+probability that rounds to exactly one, as cloglog does from a linear predictor
+of 3.6 and probit from 8.3, set the likelihood of every draw in the bank to zero.
+Such a draw now keeps a finite likelihood, with each failure charged at the bound
+of 2^-53, and the other draws are unaffected. The conditional mode is found where
+the likelihood is convex, as it is for the link of an imperfect test, and the
+curvature no longer underflows far into a tail. Final conditional sampling no
+longer rejects a proposal whose probability rounds to one, which cut off the
+samples at sites where every trial was positive. A custom link that returns a
+value that is not a number, or is outside the range of the family, anywhere from
+-50 to 50 is now refused when it is supplied. Fits with the canonical links are
+unchanged.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

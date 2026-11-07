@@ -1,9 +1,122 @@
+##' Logarithms of a custom link's probability that stay finite at its limits
+##'
+##' A custom inverse link is known only through its value. A probability within
+##' 2^-53 of one rounds to exactly one, for cloglog from a linear predictor of 3.6
+##' and for probit from 8.3, although the model reaches one only in the limit. The
+##' failure probability is then known only to be at most 2^-53, and its logarithm
+##' is taken at that bound. A probability near zero keeps its relative precision,
+##' so its logarithm is bounded only where it underflows. Each bound matters only
+##' for an observation with a failure, or a success, in that position, and it
+##' overstates the likelihood of a draw that is already at least 2^-53 times less
+##' likely per failure than the same draw below the rounding point. The share of
+##' such a draw in an importance-sampling mean is negligible near a maximum, and
+##' being finite it cannot make a sum or a central difference undefined.
+##' @noRd
+bound_log_probability <- function(probability) {
+  list(success = log(pmax(probability, .Machine$double.xmin)),
+       failure = log1p(-pmin(probability, 1 - .Machine$double.eps / 2)))
+}
+
+##' Multiply a term by a count that may be zero
+##'
+##' A zero count contributes nothing to the log-likelihood or its derivatives,
+##' whatever the term, which can overflow at a bounded probability.
+##' @noRd
+multiply_by_count <- function(count, term) {
+  product <- count * term
+  product[count == 0] <- 0
+  product
+}
+
+##' Log-likelihood, score and curvature of an observation with a custom link
+##'
+##' `curvature` is the negative second derivative of the log-likelihood, written
+##' through d log p = p' / p and d log(1 - p) = -p' / (1 - p), so that no product
+##' of tail probabilities underflows, as (p (1 - p))^2 does below a probit linear
+##' predictor of -27. Probabilities are bounded as in `bound_log_probability()`.
+##' The curvature is negative where the log-likelihood is convex, as it is for a
+##' link that is not log-concave, such as that of an imperfect test. Returns NULL
+##' if the mean is outside the support of the family, or if a derivative is not
+##' finite. `with_curvature = FALSE` omits the curvature for callers that have no
+##' second derivative.
+##' @noRd
+compute_custom_link_terms <- function(eta, y, units_m, family, linkf,
+                                      with_curvature = TRUE) {
+  mean <- linkf$inv(eta)
+  if (any(!is.finite(mean)) || any(mean < 0)) return(NULL)
+  first <- linkf$d1(eta)
+  second <- if (with_curvature) linkf$d2(eta)
+  if (family == "poisson") {
+    positive <- pmax(mean, .Machine$double.xmin)
+    rate <- first / positive
+    log_likelihood <- sum(
+      y * log(pmax(units_m * mean, .Machine$double.xmin)) - units_m * mean
+    )
+    score <- multiply_by_count(y, rate) - units_m * first
+    curvature <- if (with_curvature) {
+      multiply_by_count(y, rate^2 - second / positive) + units_m * second
+    }
+  } else {
+    if (any(mean > 1)) return(NULL)
+    success <- pmax(mean, .Machine$double.xmin)
+    failure <- 1 - pmin(mean, 1 - .Machine$double.eps / 2)
+    log_probability <- bound_log_probability(mean)
+    failures <- units_m - y
+    success_rate <- first / success
+    failure_rate <- first / failure
+    log_likelihood <- sum(y * log_probability$success +
+                            failures * log_probability$failure)
+    score <- multiply_by_count(y, success_rate) -
+      multiply_by_count(failures, failure_rate)
+    curvature <- if (with_curvature) {
+      multiply_by_count(y, success_rate^2 - second / success) +
+        multiply_by_count(failures, failure_rate^2 + second / failure)
+    }
+  }
+  if (any(!is.finite(score)) ||
+      (with_curvature && any(!is.finite(curvature)))) {
+    return(NULL)
+  }
+  list(log_likelihood = log_likelihood, score = score, curvature = curvature)
+}
+
+##' Move the start of a search off the limits of a custom link
+##'
+##' Past the point where a probability rounds to one, the likelihood of an
+##' observation with a failure is flat (`bound_log_probability()`), so a search
+##' started there has no slope to follow and stops at once. Each such observation,
+##' and each with a success whose probability has rounded to zero, or a positive
+##' count whose mean has, moves by whole units of its first latent effect until its
+##' mean has left the limit. `columns` gives that effect for each observation and
+##' `linear_predictor` maps the latent effects to the linear predictors.
+##' @noRd
+move_start_off_limits <- function(latent, linear_predictor, y, units_m, family,
+                                  linkf, columns, maximum_moves = 100L) {
+  for (move in seq_len(maximum_moves)) {
+    mean <- linkf$inv(linear_predictor(latent))
+    too_low <- which(y > 0 & mean <= 0)
+    too_high <- if (family == "binomial") {
+      which(y < units_m & mean >= 1 - .Machine$double.eps / 2)
+    } else {
+      integer()
+    }
+    if (!length(too_low) && !length(too_high)) break
+    latent[columns[too_low]] <- latent[columns[too_low]] + 1
+    latent[columns[too_high]] <- latent[columns[too_high]] - 1
+  }
+  latent
+}
+
 ##' Observation log-likelihood, score and curvature in the linear predictor
 ##'
-##' Uses the same formulas as `maxim_integrand()`, including custom inverse
-##' links. `w` is the negative second derivative of the log-likelihood.
+##' For the canonical links, with the formulas of `maxim_integrand()`. Custom
+##' links go through `compute_custom_link_terms()`. `curvature` is the negative
+##' second derivative of the log-likelihood.
 ##' @noRd
 laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
+  if (!identical(linkf$name, "canonical")) {
+    return(compute_custom_link_terms(eta, y, units_m, family, linkf))
+  }
   if (family == "poisson") {
     mean <- linkf$inv(eta)
     if (any(!is.finite(mean)) || any(mean <= 0)) return(NULL)
@@ -91,10 +204,15 @@ latent_data_hessian <- function(latent_map, curvature) {
 ##' precision P and `latent_map` maps latent variables to observations. Every
 ##' linear solve uses a Cholesky factor, and the search starts from `start`
 ##' (the previous mode), so successive calls along an optimisation path need
-##' very few iterations. The objective is log-concave for canonical links;
-##' step halving keeps every iteration an ascent step for other links.
-##' `reached_limit` says that the search stopped at `maximum_iterations`
-##' without meeting its stopping rule.
+##' very few iterations. The objective is log-concave for canonical links. For
+##' other links the Hessian can be indefinite away from a mode, wherever the
+##' likelihood is convex, and a Cholesky factor does not exist. The negative
+##' curvatures are then set to zero, which leaves the prior precision and a
+##' positive semi-definite sum and so a direction of ascent, and step halving
+##' keeps every iteration an ascent step. The Hessian returned is positive
+##' definite for the same reason. A custom link's search starts off the limits of
+##' the link (`move_start_off_limits()`). `reached_limit` says that the search
+##' stopped at `maximum_iterations` without meeting its stopping rule.
 ##' @noRd
 adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
                                   family, linkf, start,
@@ -106,10 +224,35 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
     laplace_observation_terms(mu + latent_linear_predictor(latent_map, latent),
                               y, units_m, family, linkf)
   }
-  latent <- start
+  canonical <- identical(linkf$name, "canonical")
+  hessian_at <- function(curvature) {
+    precision + latent_data_hessian(latent_map, curvature)
+  }
+  # The Hessian and its upper factor, for a custom link with any negative
+  # curvatures set to zero if the Hessian is not positive definite.
+  factorise_hessian <- function(curvature) {
+    hessian <- hessian_at(curvature)
+    root <- if (canonical) chol(hessian) else {
+      tryCatch(chol(hessian), error = function(error) NULL)
+    }
+    if (is.null(root)) {
+      hessian <- hessian_at(pmax(curvature, 0))
+      root <- chol(hessian)
+    }
+    list(hessian = hessian, root = root)
+  }
+  start_at <- function(latent) {
+    if (canonical) return(latent)
+    move_start_off_limits(
+      latent,
+      function(point) mu + latent_linear_predictor(latent_map, point),
+      y, units_m, family, linkf, latent_map$columns[, 1L]
+    )
+  }
+  latent <- start_at(start)
   terms <- terms_at(latent)
   if (is.null(terms)) {
-    latent <- numeric(length(start))
+    latent <- start_at(numeric(length(start)))
     terms <- terms_at(latent)
     if (is.null(terms)) stop("Invalid starting linear predictor.", call. = FALSE)
   }
@@ -118,8 +261,7 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
   for (iteration in seq_len(maximum_iterations)) {
     gradient <- latent_gradient(latent_map, terms$score) -
       as.numeric(precision %*% latent)
-    hessian <- precision + latent_data_hessian(latent_map, terms$curvature)
-    root <- chol(hessian)
+    root <- factorise_hessian(terms$curvature)$root
     step <- backsolve(root, forwardsolve(t(root), gradient))
     accepted <- FALSE
     for (halving in 0:30) {
@@ -145,7 +287,11 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
       break
     }
   }
-  hessian <- precision + latent_data_hessian(latent_map, terms$curvature)
+  hessian <- if (canonical) {
+    hessian_at(terms$curvature)
+  } else {
+    factorise_hessian(terms$curvature)$hessian
+  }
   list(mode = latent, hessian = (hessian + t(hessian)) / 2,
        iterations = iteration, reached_limit = reached_limit)
 }
@@ -242,7 +388,9 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
 ##' Log-likelihood of every row of a matrix of linear predictors
 ##'
 ##' `eta` has one row per draw and one column per observation. A draw whose
-##' mean is outside the support has log-likelihood -Inf.
+##' mean is not finite or is outside the support has log-likelihood -Inf, and
+##' other draws are not affected. A custom link's mean that has rounded to a limit
+##' of its range is inside the support (`bound_log_probability()`).
 ##' @noRd
 compute_observation_log_likelihood <- function(eta, y, units_m, family,
                                                linkf) {
@@ -251,16 +399,18 @@ compute_observation_log_likelihood <- function(eta, y, units_m, family,
                                         poisson = family == "poisson"))
   }
   mean <- matrix(linkf$inv(as.vector(eta)), nrow = nrow(eta))
-  if (family == "poisson") {
-    if (any(!is.finite(mean)) || any(mean <= 0))
-      return(rep(-Inf, nrow(eta)))
-    return(rowSums(sweep(log(mean), 2L, y, "*") -
-                     sweep(mean, 2L, units_m, "*")))
+  outside <- !is.finite(mean) | mean < 0
+  log_likelihood <- if (family == "poisson") {
+    rowSums(sweep(log(pmax(mean, .Machine$double.xmin)), 2L, y, "*") -
+              sweep(mean, 2L, units_m, "*"))
+  } else {
+    outside <- outside | mean > 1
+    log_probability <- bound_log_probability(mean)
+    rowSums(sweep(log_probability$success, 2L, y, "*") +
+              sweep(log_probability$failure, 2L, units_m - y, "*"))
   }
-  if (any(!is.finite(mean)) || any(mean <= 0 | mean >= 1))
-    return(rep(-Inf, nrow(eta)))
-  rowSums(sweep(log(mean), 2L, y, "*") +
-            sweep(log1p(-mean), 2L, units_m - y, "*"))
+  log_likelihood[rowSums(outside) > 0] <- -Inf
+  log_likelihood
 }
 
 ##' Deviations of draws from the centre under the prior of the latent effects
@@ -677,6 +827,7 @@ make_adaptive_mcml_engine <- function(
     }
     if (log_weights_only) return(log_weights)
     maximum <- max(log_weights)
+    if (!canonical && identical(maximum, -Inf)) return(failed)
     maximum + log(mean(exp(log_weights - maximum)))
   }
 

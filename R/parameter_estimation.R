@@ -2355,6 +2355,7 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 
   validate(inv, "invlink")
   check_invlink(inv, family)
+  check_invlink_tails(inv, family)
   if (is.null(d1)) d1 <- differentiate(inv, ncheck)
   validate(d1, "invlink_prime")
   if (second_derivative) {
@@ -2476,6 +2477,15 @@ maxim_integrand <- function(
 
   # Per-observation contributions for arbitrary inverse link
   contribs <- function(eta) {
+    if (!identical(linkf$name, "canonical")) {
+      terms <- compute_custom_link_terms(eta, y, units_m, family, linkf)
+      if (is.null(terms)) {
+        stop("invlink returned a mean outside the support of the family, or ",
+             "a derivative that is not finite.", call. = FALSE)
+      }
+      return(list(g = terms$score, w = terms$curvature,
+                  llik = terms$log_likelihood))
+    }
     if (family == "poisson") {
       mu  <- inv_link(eta)
       mu1 <- inv1(eta)
@@ -2590,8 +2600,22 @@ maxim_integrand <- function(
   }
 
   # ---------- optimize ----------
+  start <- rep(0, n_tot)
+  if (!identical(linkf$name, "canonical")) {
+    start <- move_start_off_limits(
+      start,
+      function(S_tot) {
+        eta <- mu + S_tot[ID_coords]
+        if (n_re > 0) for (i in seq_len(n_re)) {
+          eta <- eta + S_tot[ind_re[[i]]][ID_re[, i]]
+        }
+        eta
+      },
+      y, units_m, family, linkf, ID_coords
+    )
+  }
   estim <- nlminb(
-    rep(0, n_tot),
+    start,
     function(x) -integrand(x),
     function(x) -grad.integrand(x),
     function(x) -hessian.integrand(x)
@@ -2800,8 +2824,6 @@ laplace_sampling_mcmc <- function(y,
   linkf <- make_inverse_link_functions(
     family, invlink, n, second_derivative = FALSE
   )
-  inv_link <- linkf$inv
-  inv1     <- linkf$d1
 
   # ---------- default Laplace proposal if missing ----------
   if (is.null(Sigma_pd) || is.null(mean_pd)) {
@@ -2912,20 +2934,11 @@ laplace_sampling_mcmc <- function(y,
     eta <- mu + S[ID_coords]
     if (n_re > 0) for (i in seq_len(n_re)) eta <- eta + S_re_list[[i]][ID_re[, i]]
 
-    if (family == "poisson") {
-      mu_vec <- inv_link(eta)
-      if (any(!is.finite(mu_vec)) || any(mu_vec <= 0)) return(NULL)
-      llik <- sum(y * log(pmax(mu_vec, .Machine$double.eps)) - units_m * mu_vec)
-      mu1 <- inv1(eta)
-      g_eta <- (y - units_m * mu_vec) * (mu1 / mu_vec)
-    } else {
-      p <- inv_link(eta)
-      if (any(!is.finite(p)) || any(p <= 0 | p >= 1)) return(NULL)
-      llik <- sum(y * log(pmax(p, .Machine$double.eps)) +
-                    (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
-      p1 <- inv1(eta)
-      g_eta <- (y - units_m * p) * (p1 / (p * (1 - p)))
-    }
+    terms <- compute_custom_link_terms(eta, y, units_m, family, linkf,
+                                       with_curvature = FALSE)
+    if (is.null(terms)) return(NULL)
+    llik <- terms$log_likelihood
+    g_eta <- terms$score
     diff_w <- W - mu_w
     prior_solution <- solve_w_covariance(diff_w)
 
