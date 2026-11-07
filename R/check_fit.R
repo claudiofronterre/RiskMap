@@ -360,10 +360,18 @@ fit_check_spatial_scale <- function(object, optimizer) {
 ##'
 ##' A change of distribution does not change how a fit is read, because the
 ##' certificate is computed from the draws of the distribution used, so this
-##' check is always OK.
+##' check is always OK. It also says how often the distribution could not be
+##' built at a parameter value the search tried, which gives that value no
+##' weight.
 ##' @noRd
 fit_check_importance_distribution <- function(optimizer) {
   fallbacks <- optimizer$mcml_proposal_fallbacks
+  errors <- optimizer$mcml_proposal_errors
+  errors_found <- if (isTRUE(errors$count > 0L)) paste0(
+    " It could not be built at ", format(errors$count, big.mark = ","),
+    if (errors$count == 1L) " parameter value" else " parameter values",
+    " that the search tried, the first time with the error: ", errors$first
+  )
   restart <- if (isTRUE(optimizer$mcml_start_replaced)) paste0(
     "The global distribution could not be built at the Laplace estimate, so ",
     "the fit restarted from the starting values"
@@ -383,7 +391,8 @@ fit_check_importance_distribution <- function(optimizer) {
       } else {
         "The global distribution"
       }, " was used at every stage.")
-    }
+    },
+    errors_found
   ))
 }
 

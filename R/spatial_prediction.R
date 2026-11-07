@@ -1352,7 +1352,7 @@ parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
   invlink <- if (identical(object$link_function$name, "canonical")) {
     NULL
   } else {
-    object$link_function$inv
+    object$link_function[c("inv", "d1", "d2")]
   }
   design <- as.matrix(object$D)
   engine <- make_adaptive_mcml_engine(
@@ -2318,7 +2318,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         invlink = if (identical(object$link_function$name, "canonical")) {
           NULL
         } else {
-          object$link_function$inv
+          object$link_function[c("inv", "d1", "d2")]
         },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,

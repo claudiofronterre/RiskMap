@@ -418,6 +418,17 @@ value that is not a number, or is outside the range of the family, anywhere from
 -50 to 50 is now refused when it is supplied. Fits with the canonical links are
 unchanged.
 
+- A custom inverse link now gets the checks of the canonical links. A nugget or
+random-effect variance held at zero is tested by its slope there, and the check
+for other maxima runs its screen of short scales and its exact alarms, which
+take the link's terms in the likelihood with independent location effects.
+Neither test needs the link to be log-concave. The sampler of the final latent
+draws and the sampler behind predictions with parameter uncertainty now receive
+the derivatives that the fit used, in place of deriving them again from the
+inverse link. Errors while an importance distribution is built at a trial
+parameter value, which give that value no weight, are counted and reported by
+`check_fit()`. Fits with the canonical links are unchanged.
+
 - A custom inverse link that `Deriv` cannot differentiate, such as a bare
 `invlink = pnorm`, now has its derivatives computed for all values at once, with
 the same values as before. They were computed one value at a time, which made
