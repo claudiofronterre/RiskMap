@@ -26,18 +26,23 @@
 ##'   The extra checks compute something new and add a row each. Before they
 ##'   start, a message says how long they should take, from the time the fit
 ##'   took. The extra checks are
-##'   * `"profile"`, the marginal profile likelihood of the spatial scale
-##'     `phi` from [profile.RiskMap()], with its default settings. Its row is
-##'     `SUSPICIOUS` when the profile is flat, so that its 95% interval is
-##'     open at an end, or has a second maximum, where it falls by more than
-##'     half a log-likelihood unit between two maxima. It is a `PROBLEM` when
-##'     a point of the profile is above the estimate, which is then not the
-##'     maximum likelihood estimate. A profile of a binomial or Poisson fit
-##'     should take about 10 times as long as the fit.
+##'   * `"profile"`, the marginal profile likelihood of each covariance
+##'     parameter of the fit from [profile.RiskMap()], with its default
+##'     settings. These are the spatial variance and scale, the nugget (its
+##'     ratio to the spatial variance, `nu2`, or for a Gaussian fit its
+##'     variance, `tau2`), an estimated measurement error variance and the
+##'     variances of the random effects, but not the regression coefficients.
+##'     Its row names each parameter whose profile is flat, so that its 95%
+##'     interval is open at an end, or has a second maximum, where it falls by
+##'     more than half a log-likelihood unit between two maxima, and is then
+##'     `SUSPICIOUS`. It is a `PROBLEM` when a point of a profile is above the
+##'     estimate, which is then not the maximum likelihood estimate. The
+##'     profiles of a binomial or Poisson fit should take about 10 times as
+##'     long as the fit for each parameter, less with `cores`.
 ##'
 ##'   Each extra check draws from a random number stream of its own, derived
 ##'   from the seed of the fit (`fit$seed`) as the streams of the fit are, so
-##'   the same call gives the same result. The profile uses the stream 9600
+##'   the same call gives the same result. The profiles use the stream 9600
 ##'   after the seed, which no fit uses. The random number state of the session
 ##'   is left as it was. An extra check that does not apply to the fit, or that
 ##'   fails, is not computed, and the printed checks say why.
@@ -46,11 +51,14 @@
 ##' @param extra Names of the extra checks to run, `"all"` for every one. See
 ##'   Details. The default is none.
 ##' @param profile An optional object of class `"RiskMap_profile"` from
-##'   [profile.RiskMap()] with a marginal profile of `phi` for this fit. The
-##'   profile check then uses it instead of computing one, whether or not
-##'   `extra` names it.
+##'   [profile.RiskMap()] with marginal profiles for this fit. The profile
+##'   check then uses it as it is, whatever parameters it covers, instead of
+##'   computing one, whether or not `extra` names it.
 ##' @param messages Logical, whether to say how long the extra checks should
 ##'   take before they start.
+##' @param cores Number of processes for the extra checks that can use
+##'   several, passed to [profile.RiskMap()], whose results are the same on
+##'   any number of cores.
 ##' @return An object of class `"RiskMap_check"`, a list with:
 ##' \item{checks}{A data frame with one row per check, those that need a look
 ##' first, and the columns `check`, `status` (`"PROBLEM"`, `"SUSPICIOUS"` or
@@ -96,17 +104,21 @@
 ##' }
 ##' @export
 check_fit <- function(object, extra = character(), profile = NULL,
-                      messages = TRUE) {
+                      messages = TRUE, cores = 1L) {
   stopifnot(inherits(object, "RiskMap"))
   extra <- match_extra_checks(extra)
   check_given_profile(profile, object)
   stopifnot("'messages' must be TRUE or FALSE" = isTRUE(messages) ||
-              isFALSE(messages))
+              isFALSE(messages),
+            "'cores' must be a positive whole number" =
+              is.numeric(cores) && length(cores) == 1L && isTRUE(cores >= 1) &&
+              cores == round(cores))
   if (!is.null(profile)) extra <- union(extra, "profile")
   mcml <- summarise_mcml_fit(object)
   history <- object$mcml_history %||% attr(object, "optimizer")$mcml_history
   results <- run_fit_checks(object, mcml)
-  extras <- run_extra_checks(object, extra, profile, messages)
+  extras <- run_extra_checks(object, extra, profile, messages,
+                             as.integer(cores))
   structure(
     list(
       checks = tabulate_fit_checks(c(results, extras$results)),
@@ -699,14 +711,16 @@ print.RiskMap_check <- function(x, ...) {
 ##'   (`"certificate"`), the effective certification draws
 ##'   (`"effective_draws"`), the tail shape of the importance weights against
 ##'   its limit of 0.7 (`"pareto_k"`) and how far the estimates moved
-##'   (`"moves"`). With the extra check `"profile"`, the panel `"profile"`
-##'   shows the profile likelihood of the spatial scale.
+##'   (`"moves"`). With the extra check `"profile"`, each profiled parameter
+##'   has a panel of its profile likelihood, named `"profile_"` followed by
+##'   the parameter, such as `"profile_phi"`.
 ##' @param x An object of class `"RiskMap_check"`.
 ##' @param which Names of the panels to draw, among `"certificate"`,
-##'   `"effective_draws"`, `"pareto_k"`, `"moves"` and `"profile"`. The
-##'   default is every panel that has something to show. A chosen panel with
-##'   nothing to show gives a message saying why, and which extra check of
-##'   [check_fit()] would compute it. If no panel has anything to show,
+##'   `"effective_draws"`, `"pareto_k"`, `"moves"`, the panels of the
+##'   profiles, such as `"profile_phi"`, and `"profile"` for every profile.
+##'   The default is every panel that has something to show. A chosen panel
+##'   with nothing to show gives a message saying why, and which extra check
+##'   of [check_fit()] would compute it. If no panel has anything to show,
 ##'   `plot()` stops with those messages.
 ##' @param ... other parameters.
 ##' @return Invisibly returns the list of panels drawn, each a `ggplot`
@@ -722,27 +736,32 @@ print.RiskMap_check <- function(x, ...) {
 ##' )
 ##' checked <- check_fit(fit, extra = "profile")
 ##' plot(checked)
-##' plot(checked, which = c("certificate", "profile"))
+##' plot(checked, which = c("certificate", "profile_phi"))
 ##' }
 ##' @method plot RiskMap_check
 ##' @export
 plot.RiskMap_check <- function(x, which = NULL, ...) {
   stopifnot(inherits(x, "RiskMap_check"))
-  panel_names <- c("certificate", "effective_draws", "pareto_k", "moves",
-                   "profile")
+  stage_names <- c("certificate", "effective_draws", "pareto_k", "moves")
   if (!is.null(which)) {
     stopifnot("'which' must be a character vector" =
                 is.character(which) && length(which) > 0L && !anyNA(which))
-    unknown <- setdiff(which, panel_names)
+    unknown <- which[!which %in% c(stage_names, "profile") &
+                       !startsWith(which, "profile_")]
     if (length(unknown)) {
       stop("Unknown panel", if (length(unknown) > 1L) "s", " ",
            paste0("\"", unknown, "\"", collapse = ", "), ". The panels are ",
-           paste0("\"", panel_names, "\"", collapse = ", "), ".",
-           call. = FALSE)
+           paste0("\"", stage_names, "\"", collapse = ", "), ", \"profile_\" ",
+           "followed by a parameter, such as \"profile_phi\", and \"profile\" ",
+           "for every profile.", call. = FALSE)
     }
   }
   panels <- draw_check_panels(x)
-  requested <- which %||% panel_names
+  profiles <- grep("^profile_", names(panels), value = TRUE)
+  requested <- unique(unlist(lapply(which %||% c(stage_names, "profile"),
+                                    function(name) {
+    if (identical(name, "profile") && length(profiles)) profiles else name
+  })))
   empty <- requested[vapply(panels[requested], is.null, logical(1L))]
   reasons <- explain_missing_panels(x, empty)
   panels <- Filter(Negate(is.null), panels[requested])
@@ -772,11 +791,13 @@ draw_check_panels <- function(x) {
     moves = plot_estimate_moves(x$moves)
   )
   profile <- x$extras$profile$data
-  list(
-    certificate = stages$certificate, effective_draws = stages$effective_draws,
-    pareto_k = stages$pareto_k, moves = stages$moves,
-    profile = if (!is.null(profile)) plot_marginal_profile(profile, "phi")
-  )
+  profiled <- names(profile$marginal)
+  profiles <- lapply(profiled, function(name) plot_marginal_profile(profile, name))
+  names(profiles) <- if (length(profiled)) paste0("profile_", profiled)
+  c(list(certificate = stages$certificate,
+         effective_draws = stages$effective_draws,
+         pareto_k = stages$pareto_k, moves = stages$moves),
+    profiles)
 }
 
 ##' Why each of the named panels has nothing to show
@@ -785,13 +806,18 @@ draw_check_panels <- function(x) {
 ##' @noRd
 explain_missing_panels <- function(x, names) {
   gaussian <- is.null(x$stages)
+  profiled <- names(x$extras$profile$data$marginal)
   reasons <- vapply(names, function(name) {
-    if (identical(name, "profile")) {
+    if (identical(name, "profile") || startsWith(name, "profile_")) {
       if ("profile" %in% names(x$not_computed)) {
         return(x$not_computed[["profile"]])
       }
-      return(paste0("The panel \"profile\" needs the extra check \"profile\", ",
-                    "check_fit(fit, extra = \"profile\")."))
+      if (!length(profiled)) {
+        return(paste0("The panel \"", name, "\" needs the extra check ",
+                      "\"profile\", check_fit(fit, extra = \"profile\")."))
+      }
+      return(paste0("The panel \"", name, "\" has no profile, since the ",
+                    "profiles are of ", join_phrases(profiled), "."))
     }
     if (gaussian) {
       return(paste0("A Gaussian fit has no Monte Carlo error, so it has no ",

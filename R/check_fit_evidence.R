@@ -255,17 +255,21 @@ format_check_value <- function(value) {
 ##' The full results of the profile check
 ##'
 ##' The intervals as `print()` of the profile gives them, then each point of
-##' the profile of the scale, on the natural scale of the scale.
+##' each marginal profile, with the parameter on its natural scale.
 ##' @noRd
 write_profile_evidence <- function(profile) {
   write_indented(utils::capture.output(print(profile)))
-  points <- profile$marginal$phi
-  points <- points[order(points$value), ]
-  write_indented("Points of the profile")
-  write_indented(paste0("  ", utils::capture.output(print(
-    data.frame(scale = exp(points$value), log_likelihood = points$loglik,
-               deviance = points$deviance, status = points$status),
-    digits = 4L, row.names = FALSE
-  ))))
+  for (name in names(profile$marginal)) {
+    points <- profile$marginal[[name]]
+    points <- points[order(points$value), ]
+    write_indented(paste0("Points of the profile of ",
+                          describe_profile_parameter(name)))
+    write_indented(paste0("  ", utils::capture.output(print(
+      data.frame(value = profile_natural(name, points$value),
+                 log_likelihood = points$loglik, deviance = points$deviance,
+                 status = points$status),
+      digits = 4L, row.names = FALSE
+    ))))
+  }
   invisible(NULL)
 }

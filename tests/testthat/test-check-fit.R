@@ -363,11 +363,16 @@ test_that("the plot shows the stages, and a profile once it is computed", {
 
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
                            n_draws = 200, messages = FALSE)
-  with_profile <- plot(check_fit(binomial_model, profile = scale_profile))
-  expect_identical(names(with_profile), c(names(panels), "profile"))
-  expect_s3_class(with_profile$profile, "ggplot")
-  expect_identical(names(plot(check_fit(binomial_model, profile = scale_profile),
-                              which = "profile")), "profile")
+  given <- check_fit(binomial_model, profile = scale_profile)
+  with_profile <- plot(given)
+  expect_identical(names(with_profile), c(names(panels), "profile_phi"))
+  expect_s3_class(with_profile$profile_phi, "ggplot")
+  expect_identical(names(plot(given, which = "profile")), "profile_phi")
+  expect_identical(names(plot(given, which = c("profile_phi", "pareto_k"))),
+                   c("profile_phi", "pareto_k"))
+  expect_message(plot(given, which = c("profile_sigma2", "profile_phi")),
+                 "\"profile_sigma2\" has no profile, since the profiles are of phi",
+                 fixed = TRUE)
 
   stages <- data.frame(stage = 1:2, certificate = c(NA, 0.05))
   expect_null(plot_stage_panel(stages[1L, ], "certificate", "t", "y"))

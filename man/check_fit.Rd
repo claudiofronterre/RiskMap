@@ -4,7 +4,13 @@
 \alias{check_fit}
 \title{Check How a Fitted Model Was Computed}
 \usage{
-check_fit(object, extra = character(), profile = NULL, messages = TRUE)
+check_fit(
+  object,
+  extra = character(),
+  profile = NULL,
+  messages = TRUE,
+  cores = 1L
+)
 }
 \arguments{
 \item{object}{An object of class \code{"RiskMap"} from \code{\link[=glgpm]{glgpm()}}.}
@@ -13,12 +19,16 @@ check_fit(object, extra = character(), profile = NULL, messages = TRUE)
 Details. The default is none.}
 
 \item{profile}{An optional object of class \code{"RiskMap_profile"} from
-\code{\link[=profile.RiskMap]{profile.RiskMap()}} with a marginal profile of \code{phi} for this fit. The
-profile check then uses it instead of computing one, whether or not
-\code{extra} names it.}
+\code{\link[=profile.RiskMap]{profile.RiskMap()}} with marginal profiles for this fit. The profile
+check then uses it as it is, whatever parameters it covers, instead of
+computing one, whether or not \code{extra} names it.}
 
 \item{messages}{Logical, whether to say how long the extra checks should
 take before they start.}
+
+\item{cores}{Number of processes for the extra checks that can use
+several, passed to \code{\link[=profile.RiskMap]{profile.RiskMap()}}, whose results are the same on
+any number of cores.}
 }
 \value{
 An object of class \code{"RiskMap_check"}, a list with:
@@ -76,19 +86,24 @@ The extra checks compute something new and add a row each. Before they
 start, a message says how long they should take, from the time the fit
 took. The extra checks are
 \itemize{
-\item \code{"profile"}, the marginal profile likelihood of the spatial scale
-\code{phi} from \code{\link[=profile.RiskMap]{profile.RiskMap()}}, with its default settings. Its row is
-\code{SUSPICIOUS} when the profile is flat, so that its 95\% interval is
-open at an end, or has a second maximum, where it falls by more than
-half a log-likelihood unit between two maxima. It is a \code{PROBLEM} when
-a point of the profile is above the estimate, which is then not the
-maximum likelihood estimate. A profile of a binomial or Poisson fit
-should take about 10 times as long as the fit.
+\item \code{"profile"}, the marginal profile likelihood of each covariance
+parameter of the fit from \code{\link[=profile.RiskMap]{profile.RiskMap()}}, with its default
+settings. These are the spatial variance and scale, the nugget (its
+ratio to the spatial variance, \code{nu2}, or for a Gaussian fit its
+variance, \code{tau2}), an estimated measurement error variance and the
+variances of the random effects, but not the regression coefficients.
+Its row names each parameter whose profile is flat, so that its 95\%
+interval is open at an end, or has a second maximum, where it falls by
+more than half a log-likelihood unit between two maxima, and is then
+\code{SUSPICIOUS}. It is a \code{PROBLEM} when a point of a profile is above the
+estimate, which is then not the maximum likelihood estimate. The
+profiles of a binomial or Poisson fit should take about 10 times as
+long as the fit for each parameter, less with \code{cores}.
 }
 
 Each extra check draws from a random number stream of its own, derived
 from the seed of the fit (\code{fit$seed}) as the streams of the fit are, so
-the same call gives the same result. The profile uses the stream 9600
+the same call gives the same result. The profiles use the stream 9600
 after the seed, which no fit uses. The random number state of the session
 is left as it was. An extra check that does not apply to the fit, or that
 fails, is not computed, and the printed checks say why.

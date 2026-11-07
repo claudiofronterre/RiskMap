@@ -10,10 +10,11 @@
 \item{x}{An object of class \code{"RiskMap_check"}.}
 
 \item{which}{Names of the panels to draw, among \code{"certificate"},
-\code{"effective_draws"}, \code{"pareto_k"}, \code{"moves"} and \code{"profile"}. The
-default is every panel that has something to show. A chosen panel with
-nothing to show gives a message saying why, and which extra check of
-\code{\link[=check_fit]{check_fit()}} would compute it. If no panel has anything to show,
+\code{"effective_draws"}, \code{"pareto_k"}, \code{"moves"}, the panels of the
+profiles, such as \code{"profile_phi"}, and \code{"profile"} for every profile.
+The default is every panel that has something to show. A chosen panel
+with nothing to show gives a message saying why, and which extra check
+of \code{\link[=check_fit]{check_fit()}} would compute it. If no panel has anything to show,
 \code{plot()} stops with those messages.}
 
 \item{...}{other parameters.}
@@ -31,8 +32,9 @@ panels show the bound on the Monte Carlo error against the tolerance
 (\code{"certificate"}), the effective certification draws
 (\code{"effective_draws"}), the tail shape of the importance weights against
 its limit of 0.7 (\code{"pareto_k"}) and how far the estimates moved
-(\code{"moves"}). With the extra check \code{"profile"}, the panel \code{"profile"}
-shows the profile likelihood of the spatial scale.
+(\code{"moves"}). With the extra check \code{"profile"}, each profiled parameter
+has a panel of its profile likelihood, named \code{"profile_"} followed by
+the parameter, such as \code{"profile_phi"}.
 }
 \examples{
 \donttest{
@@ -44,7 +46,7 @@ fit <- glgpm(
 )
 checked <- check_fit(fit, extra = "profile")
 plot(checked)
-plot(checked, which = c("certificate", "profile"))
+plot(checked, which = c("certificate", "profile_phi"))
 }
 }
 \seealso{
