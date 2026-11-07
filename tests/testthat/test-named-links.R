@@ -105,22 +105,17 @@ test_that("a named link gives the estimates of its inverse given in invlink", {
   }
 })
 
-test_that("a named link is not differentiated during estimation", {
+test_that("a named link is never differentiated", {
   local_mocked_bindings(differentiate = function(...) {
     stop("differentiate() was called")
   }, .package = "RiskMap")
-  # The final conditional samples are left out, because that sampler is
-  # passed only the inverse link and works out its derivatives again.
-  estimate <- function(family, invlink = NULL) {
-    glgpm(y ~ cov + gp(), data = binomial_data, family = family,
-          invlink = invlink, denominator = denominator,
-          control_mcmc = control_mcmc, seed = fixture_seed,
-          control_mcml = fixture_control_mcml, return_samples = FALSE,
-          messages = FALSE)
-  }
-  expect_no_error(fit <- estimate(binomial("probit")))
-  expect_identical(unlist(coef(fit)), unlist(coef(named_fits$probit)))
-  expect_error(estimate("binomial", pnorm), "differentiate\\(\\) was called")
+  # The fit includes its final conditional samples, and predict() draws
+  # afresh, so every sampler is given the exact derivatives.
+  expect_no_error(fit <- fit_binomial(binomial("probit")))
+  expect_identical(fit_without_timing(fit),
+                   fit_without_timing(named_fits$probit))
+  expect_no_error(predict(fit, control_mcmc = control_mcmc, messages = FALSE))
+  expect_error(fit_binomial("binomial", pnorm), "differentiate\\(\\) was called")
 })
 
 test_that("links that can leave the range of the family are refused", {
