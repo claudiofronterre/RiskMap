@@ -396,6 +396,25 @@ clearly negative, `check_fit()` reports that zero is the
 maximum and the variance no longer counts as a check that needs a look. Fits that
 hold no variance are unchanged, and those with a custom link are not tested.
 
+- The radius of the certificate, its allowance for the Monte Carlo error of
+the certification sample's own score, is now the larger of that sample's radius
+and the radius of a replicate of it, with the same number of draws at the same
+estimate on a stream of its own. The radius of one sample is estimated from its
+own draws, and it is too small when the sample misses the rare draws of very
+large weight that dominate its error. On 13 simulated binomial surveys with 500
+samples of 5,000 draws each, how often the error that the radius allows for
+exceeded it fell from at most 6.7% to at most 2.9%, against the 5% the radius
+is meant to hold, and how often the Monte Carlo error of the estimate exceeded
+the certificate fell from at most 0.62% to at most 0.20%. On 16 simulated
+Poisson surveys the first fell from at most 10.0% to at most 4.6%. The
+certificate changes for every fit, and the replicate costs about 9% more fit
+time. In 1,270 paired fits of 127 simulated binomial surveys every fit stayed
+certified, the median certificate grew from 0.0171 to 0.0175 statistical
+standard errors, and 12 more fits needed a second stage. `check_fit()` says
+which sample set the radius in the `radius_from` column of its `stages` table,
+and each stage of `mcml_history` records both radii (`certificate_radii`) and
+the replicate's weight diagnostics (`replicate_validation`).
+
 - With a nugget and the spatial variance at zero, the exact alarm of the check for
 other maxima now also tries scales up to 16 times the spacing, with 2% to 30% of
 the total variance in the spatial effect, and fires when a lower bound on the

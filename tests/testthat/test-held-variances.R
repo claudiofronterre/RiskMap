@@ -196,8 +196,9 @@ test_that("the next stage starts a rising held variance from the interior", {
   expect_identical(starts[[2L]], c(0, log(0.25)))
   # Five times the draws, as for a certificate of twice the tolerance.
   expect_identical(budgets, c(1000L, 5000L))
-  expect_length(seeds[[1L]], 6L)
+  expect_length(seeds[[1L]], 7L)
   expect_identical(seeds[[1L]][[6L]], 5002L)
+  expect_identical(seeds[[1L]][[7L]], 8002L)
   expect_identical(fit$outcome, "certified")
   expect_false(fit$held_variance_rising)
 
