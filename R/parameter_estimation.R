@@ -3335,11 +3335,12 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     sigma2_re = fitted_pars$sigma2_re,
     family = family,
     # Canonical links use the compiled sampler, which a supplied function
-    # would bypass; custom links pass the user's inverse-link function.
+    # would bypass. Custom links pass the inverse link with the derivatives
+    # the fit used, so that they are not derived again.
     invlink = if (identical(link_function$name, "canonical")) {
       NULL
     } else {
-      link_function$inv
+      link_function[c("inv", "d1", "d2")]
     },
     control_mcmc = control_mcmc, seed = seed, messages = messages
   )

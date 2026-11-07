@@ -88,19 +88,19 @@ test_that("a held nugget is tested against the exact slope", {
   expect_false(held$falling)
 })
 
-test_that("the test of a held variance is skipped when it cannot be made", {
+test_that("the test of a held variance is skipped only when it cannot be made", {
   # An engine from another package, without the test.
   expect_null(assess_held_variances(list(), c(0, 0), 2L, 10L, 1L))
   engine <- make_nugget_engine(c(1, 0, 0, 1), rep(10, 4L))
   expect_null(assess_held_variances(engine, numeric(4L), integer(), 10L, 1L))
-  # A custom link has no compiled slope terms.
+  # A custom link is tested through its own derivatives (#254).
   custom <- make_adaptive_mcml_engine(
     D = matrix(1, 4L, 1L), y = c(1, 0, 0, 1), units_m = rep(10, 4L),
     distances = as.matrix(dist(1:4)), family = "binomial", fix_tau2 = TRUE,
     invlink = function(eta) stats::pnorm(eta)
   )
   expect_identical(custom$testable_variances(custom$layout$index$nu2),
-                   integer())
+                   custom$layout$index$nu2)
 })
 
 test_that("a random-effect variance is tested by its groups", {
