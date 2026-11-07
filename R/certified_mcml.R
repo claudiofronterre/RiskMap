@@ -428,7 +428,10 @@ compute_observed_information <- function(objective, estimate, fit_bank,
 ##' maximum, and if the fitted spatial correlation is numerically negligible
 ##' the stage ends with the outcome "numerically independent", without
 ##' information or certificate. The fit is then one of independent location
-##' effects and the spatial scale is unresolved. `curvature_root`, if
+##' effects and the spatial scale is unresolved. Failures of the global
+##' proposal within the check are set aside unless it keeps the maximum of one
+##' of its refits (`set_aside_check_failures()`), and their number is recorded
+##' as `set_aside_failures` when there are any. `curvature_root`, if
 ##' given, seeds the optimisation with Newton steps (`optimise_on_bank()`).
 ##'
 ##' The stage ends with the outcome "no maximum", again without information
@@ -472,14 +475,18 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
                      nrow = budget)
   optimised <- optimise_on_bank(objective, start, fit_bank, lower, upper,
                                 first_stage, limits, curvature_root)
-  check <- screen <- NULL
+  check <- screen <- set_aside <- NULL
   separate <- ambiguous <- independent <- FALSE
   if (first_stage && !is.null(limits$dispersed) &&
       is.null(limits$separation) && is_valid_fit(optimised$fit)) {
+    mark <- if (is.function(engine$mark_proposal_failures)) {
+      engine$mark_proposal_failures()
+    }
     checked <- check_other_maxima(engine, objective, penalty, optimised,
                                   fit_bank, lower, upper, limits,
                                   validation_budget, seeds[[4L]],
                                   if (length(seeds) >= 5L) seeds[[5L]])
+    set_aside <- set_aside_check_failures(engine, mark, checked)
     optimised <- checked$optimised
     check <- checked$check
     screen <- checked$screen
@@ -508,6 +515,7 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
     outcome = "no valid fit", certified = FALSE, certificate = NA_real_,
     timing = list(fit = proc.time()[["elapsed"]] - stage_started)
   )
+  if (isTRUE(set_aside > 0L)) record$set_aside_failures <- set_aside
   finish <- function(record, outcome, reason = NULL) {
     record$outcome <- outcome
     record$reason <- reason
@@ -1167,9 +1175,12 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' the Laplace proposal, and the next stage tries the global proposal again
 ##' from its own start. One failure says little about the next stage, since
 ##' the fixed-point iteration can stall at one parameter value and converge
-##' quickly at the next. A failure before the validation
-##' banks (in the fit, the check for other maxima or the information) depends
-##' only on the fitting draws, and the stage is repeated on the same streams. A
+##' quickly at the next. Failures in the check for other maxima, at trial
+##' values far from the maximum, are not counted unless the check replaces the
+##' fitted maximum (`set_aside_check_failures()`). A failure before the
+##' validation banks (in the fit, in a check that replaces its maximum or in
+##' the information) depends only on the fitting draws, and the stage is
+##' repeated on the same streams. A
 ##' failure at the start of the stage ends it at once (`run_certified_stage()`),
 ##' before any bank is used.
 ##' A failure while correcting or certifying depends on the correction bank,
@@ -1348,4 +1359,30 @@ read_proposal_failure <- function(engine) {
   if (is.function(engine$first_proposal_failure)) {
     engine$first_proposal_failure()
   }
+}
+
+##' Set aside the failures of the global proposal in the check for other maxima
+##'
+##' The check for other maxima (`check_other_maxima()`) evaluates the
+##' likelihood far from the fitted maximum, at the screened short scales and
+##' from the dispersed starts, where the global iteration can fail although it
+##' converges near the maximum. An evaluation whose global proposal fails uses
+##' the Laplace proposal at that point (`build_gaussian_proposal()`), so it
+##' remains an importance-sampling estimate of the likelihood, and the failure
+##' says nothing about the proposal at the maximum. The engine's failures are
+##' therefore restored to `mark`, which `engine$mark_proposal_failures()` took
+##' before the check, and they do not make the stage repeat with the Laplace
+##' proposal (`fit_adaptive_mcml()`). If the check keeps the maximum of one of
+##' its refits, that refit is the fit of the stage, and the failures of the
+##' check count, as those of the fit do.
+##' @return The number of failures set aside, or NULL for an engine that does
+##' not mark its failures, such as those that other packages build on
+##' `fit_adaptive_mcml()`.
+##' @noRd
+set_aside_check_failures <- function(engine, mark, checked) {
+  if (is.null(mark)) return(NULL)
+  if (!is.null(checked$check) && !isTRUE(checked$check$chosen[[1L]])) {
+    return(0L)
+  }
+  engine$restore_proposal_failures(mark)
 }

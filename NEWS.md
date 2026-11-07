@@ -429,6 +429,18 @@ inverse link. Errors while an importance distribution is built at a trial
 parameter value, which give that value no weight, are counted and reported by
 `check_fit()`. Fits with the canonical links are unchanged.
 
+- A failure of the global proposal while the check for other maxima evaluates
+the likelihood far from the fitted maximum, as at the short scales of its
+screen, no longer makes the stage repeat with the Laplace proposal. That
+evaluation already uses the Laplace proposal at its own parameter values, and
+the failure says nothing about the proposal at the maximum. Since the screen
+runs for custom links, such failures in it made the first stage of a cauchit
+fit of `loaloa` repeat with the Laplace proposal, which suits that link far
+worse, and the fit was no longer certified. It is now certified at its first
+stage, with the global proposal. The failures still count when the check keeps
+the maximum of one of its refits, which is then the fit of the stage. Fits
+without such a failure are unchanged.
+
 - A custom inverse link that `Deriv` cannot differentiate, such as a bare
 `invlink = pnorm`, now has its derivatives computed for all values at once, with
 the same values as before. They were computed one value at a time, which made
