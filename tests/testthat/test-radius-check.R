@@ -56,6 +56,9 @@ test_that("the rates of the radius are measured on triples of banks", {
   halved <- measure_radius_rule(errors, rep(c(radius, radius / 2), 2000))
   expect_lt(abs(halved$own - (0.75 * 0.05 + 0.25 * exp(-radius^2 / 8))),
             0.01)
+  # The interval of the level comes from resampling the banks.
+  expect_lte(rates$level_interval[1], rates$level)
+  expect_gte(rates$level_interval[2], rates$level)
 })
 
 test_that("the rebuilt problem reproduces the fit's certification bank", {
@@ -83,43 +86,87 @@ test_that("the rebuilt problem reproduces the fit's certification bank", {
                tolerance = 1e-6)
 })
 
-test_that("the radius of a fit is measured reproducibly", {
-  set.seed(7)
-  caller_seed <- .Random.seed
-  measured <- measure_certificate_radius(binomial_model, chains = 4,
-                                         rounds = 40, banks = 20)
-  expect_identical(.Random.seed, caller_seed)
-  for (rate in c("level", "own", "exceedance")) {
-    expect_gte(measured[[rate]], 0)
-    expect_lte(measured[[rate]], 100)
-  }
-  expect_gt(measured$factor, 0)
-  expect_identical(measured$margin, 0)
-  expect_gte(measured$inflated, measured$certificate)
-  expect_identical(measured$settings$draws, 500L)
-  expect_identical(measured$settings$seed,
-                   as.integer(binomial_model$seed + 9500L))
-  expect_gte(measured$seconds, 0)
-  again <- measure_certificate_radius(binomial_model, chains = 4, rounds = 40,
-                                      banks = 20)
-  expect_identical(again[names(again) != "seconds"],
-                   measured[names(measured) != "seconds"])
-  other <- measure_certificate_radius(binomial_model, chains = 4, rounds = 40,
-                                      banks = 20, seed = 1)
-  expect_identical(other$settings$seed, 1L)
-  poisson <- measure_certificate_radius(poisson_model, chains = 4,
-                                        rounds = 40, banks = 20)
-  expect_identical(poisson$margin, 0.15)
+test_that("triples of banks are distinct and uniform", {
+  set.seed(8)
+  triples <- draw_distinct_triples(5L, 60000L)
+  expect_true(all(triples[, 1] != triples[, 2] & triples[, 1] != triples[, 3] &
+                    triples[, 2] != triples[, 3]))
+  expect_true(all(triples >= 1L & triples <= 5L))
+  # Each of the 60 ordered triples has probability 1 / 60.
+  counts <- table(paste(triples[, 1], triples[, 2], triples[, 3]))
+  expect_length(counts, 60L)
+  expect_lt(max(abs(counts / 60000 - 1 / 60)), 0.003)
 })
 
-test_that("the radius is measured only where there is a certificate", {
-  measure <- function(object, ...) measure_certificate_radius(object, ...)
-  expect_error(measure(list()), "'RiskMap' object")
-  expect_error(measure(gaussian_model), "binomial and Poisson")
-  expect_error(measure(binomial_model, rounds = 5), "at least 10")
-  expect_error(measure(binomial_model, banks = 2), "at least 3")
-  expect_error(measure(binomial_model, chains = 0))
+test_that("the row of the radius says whether the radius holds", {
+  details <- list(level = 3.2, level_interval = c(2.5, 4.1), margin = 0,
+                  widening = 1, widened = 0.05, certificate = 0.05,
+                  tolerance = 0.1)
+  holds <- describe_radius_check(details)
+  expect_identical(holds$status, "OK")
+  expect_match(holds$finding, "3.2% of samples (2.5% to 4.1%)", fixed = TRUE)
+  expect_identical(holds$fix, "")
+  details[c("level", "margin", "widening", "widened")] <-
+    list(6.5, 0.15, 1.3, 0.08)
+  wide <- describe_radius_check(details)
+  expect_identical(wide$status, "SUSPICIOUS")
+  expect_match(wide$finding, "margin of 15%", fixed = TRUE)
+  expect_match(wide$finding, "factor of 1.3", fixed = TRUE)
+  expect_match(wide$fix, "max_samples", fixed = TRUE)
+  expect_true(is_binomial_logit(binomial_model))
+  expect_false(is_binomial_logit(poisson_model))
+})
+
+test_that("the radius of a fit is checked reproducibly", {
+  set.seed(7)
+  caller_seed <- .Random.seed
+  checked <- fit_check_radius(binomial_model, chains = 4, rounds = 40,
+                              banks = 20)
+  expect_identical(.Random.seed, caller_seed)
+  expect_named(checked, c("row", "panel", "details"))
+  expect_identical(names(checked$row), c("check", "status", "finding", "fix"))
+  expect_identical(checked$row$check, "Radius of the bound")
+  expect_identical(dim(checked$panel), c(20L, 2L))
+  expect_true(all(checked$panel$radius > 0))
+  details <- checked$details
+  for (rate in c("level", "own", "exceedance")) {
+    expect_gte(details[[rate]], 0)
+    expect_lte(details[[rate]], 100)
+  }
+  expect_length(details$level_interval, 2L)
+  expect_lte(details$level_interval[1], details$level_interval[2])
+  expect_gt(details$factor, 0)
+  expect_identical(details$margin, 0)
+  expect_gte(details$widening, 1)
+  expect_gte(details$widened, details$certificate)
+  expect_true(is.finite(details$pareto_k))
+  expect_identical(details$settings$draws, 500L)
+  expect_identical(details$settings$seed,
+                   as.integer(binomial_model$seed + 9500L))
+  expect_gte(details$seconds, 0)
+  without_time <- function(result) {
+    result$details$seconds <- NULL
+    result
+  }
+  again <- fit_check_radius(binomial_model, chains = 4, rounds = 40,
+                            banks = 20)
+  expect_identical(without_time(again), without_time(checked))
+  other <- fit_check_radius(binomial_model, chains = 4, rounds = 40,
+                            banks = 20, seed = 1)
+  expect_identical(other$details$settings$seed, 1L)
+  poisson <- fit_check_radius(poisson_model, chains = 4, rounds = 40,
+                              banks = 20)
+  expect_identical(poisson$details$margin, 0.15)
+})
+
+test_that("the radius is checked only where there is a certificate", {
+  check <- function(object, ...) fit_check_radius(object, ...)
+  expect_error(check(list()), "'RiskMap' object")
+  expect_error(check(gaussian_model), "binomial and Poisson")
+  expect_error(check(binomial_model, rounds = 5), "at least 10")
+  expect_error(check(binomial_model, banks = 2), "at least 3")
+  expect_error(check(binomial_model, chains = 0))
   uncertified <- binomial_model
   uncertified$mcml_history[[1L]]$certificate_radius <- NA_real_
-  expect_error(measure(uncertified), "no certificate")
+  expect_error(check(uncertified), "no certificate")
 })

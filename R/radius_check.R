@@ -1,4 +1,4 @@
-##' Measure the radius of the certificate of a fit
+##' Check of the radius of the certificate, run on request by `check_fit()`
 ##'
 ##' Predicts, at a fitted binomial or Poisson model, how often the radius of
 ##' its Monte Carlo certificate is too small. Short Markov chains on the
@@ -10,34 +10,41 @@
 ##' The certificate is the length of a Newton correction plus a radius that
 ##' allows for the Monte Carlo error of the certification bank, in statistical
 ##' standard errors, and the radius is estimated from the bank's own draws. For
-##' the radius the fit uses (`certify_with_replicate()`), the result gives, in
-##' percent, how often the error that the radius allows for exceeds it
-##' (`level`, which the 95% of the certificate refers to), how often the error
-##' of the certification bank alone exceeds it (`own`) and how often the Monte
-##' Carlo error of the estimate exceeds the certificate (`exceedance`), the
-##' factor by which the radius would have to grow for `level` to be 5%
-##' (`factor`), the `margin` by which that factor is raised (0.15 for a family
-##' or link other than binomial with the logit link, where the predictions
-##' were low on simulated Poisson surveys, and 0 otherwise), the `certificate`
-##' and the certificate with the radius grown by the raised factor when it
-##' exceeds one (`inflated`), the `tolerance`, the bank's Pareto shape
-##' (`pareto_k`), the split R-hat of the chains' log weight (`rhat`), the
-##' `settings` and the elapsed `seconds`.
+##' the radius the fit uses (`certify_with_replicate()`), the check predicts
+##' the level as run, the percentage of samples whose error, in the form the
+##' radius allows for, exceeds it, which the 95% of the certificate refers to.
+##' It gives its interval from resampling the banks, which leaves out the
+##' error of the chains, the percentage of certification banks above their own
+##' radius, the percentage of fits whose Monte Carlo error exceeds the
+##' certificate, and the factor by which the radius would have to grow for
+##' the level to be 5%. Outside binomial with the logit link the factor is
+##' raised by a `margin` of 15%, since the predictions were low on simulated
+##' Poisson surveys. The row is `"SUSPICIOUS"` when the raised factor exceeds
+##' one, which is when the level, with that margin, is above 5%.
 ##'
 ##' The chains use elliptical slice sampling (Murray, Adams and MacKay, 2010)
 ##' with the Gaussian part of the fit's importance distribution as their
 ##' prior, and are pooled with the bank by multiple importance sampling with
 ##' the balance heuristic, with the normalising constant from the bridge
 ##' equation of Meng and Wong (1996). On simulated binomial and Poisson
-##' surveys, one bank with 16 chains of 4,000 rounds predicted `level` within a
-##' factor of 1.65 and `factor` within 14%. The chains can miss a separate mode
-##' of the latent effects, so a low prediction is not a proof. The measurement
+##' surveys, one bank with 16 chains of 4,000 rounds predicted the level within
+##' a factor of 1.65 and the factor within 14%. The chains can miss a separate
+##' mode of the latent effects, so a low prediction is not a proof. The check
 ##' takes about as long as the fit. Without a `seed` its streams are 9500 to
 ##' 9502 after the seed of the fit, so it is reproducible, and the caller's
 ##' random number state is left unchanged.
+##'
+##' Returns the `row` of the check (`fit_check_row()`), the `panel` data of
+##' each resampled bank's error and radius, and the `details`, with the
+##' `level` and its `level_interval`, `own`, `exceedance`, `factor`, `margin`,
+##' `widening` (the raised factor, at least one), the `certificate` and the
+##' certificate with its radius so widened (`widened`), the `tolerance`, the
+##' median Pareto shape of 100 resampled banks (`pareto_k`) and the bank's own
+##' (`bank_pareto_k`), the split R-hat of the chains' log weight (`rhat`), the
+##' `settings` and the elapsed `seconds`.
 ##' @noRd
-measure_certificate_radius <- function(object, chains = 16L, rounds = 4000L,
-                                       banks = 1000L, seed = NULL) {
+fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
+                             banks = 1000L, seed = NULL) {
   if (!inherits(object, "RiskMap")) {
     stop("'object' must be a 'RiskMap' object returned by 'glgpm'",
          call. = FALSE)
@@ -50,7 +57,7 @@ measure_certificate_radius <- function(object, chains = 16L, rounds = 4000L,
   if (banks < 3) stop("'banks' must be at least 3", call. = FALSE)
   history <- object$mcml_history
   if (!object$family %in% c("binomial", "poisson") || !length(history)) {
-    stop("the radius can be measured only for binomial and Poisson models ",
+    stop("the radius can be checked only for binomial and Poisson models ",
          "fitted by certified Monte Carlo maximum likelihood", call. = FALSE)
   }
   last <- history[[length(history)]]
@@ -68,25 +75,67 @@ measure_certificate_radius <- function(object, chains = 16L, rounds = 4000L,
   pool <- pool_radius_draws(bank, chain)
   resampled <- resample_radius_banks(pool, problem, banks, streams[[3L]])
   rates <- measure_radius_rule(resampled$errors, resampled$radii)
-  binomial_logit <- identical(object$family, "binomial") &&
-    identical(object$link_function$name, "canonical")
-  margin <- if (binomial_logit) 0 else 0.15
-  inflation <- max(1, rates$factor * (1 + margin))
-  list(
-    level = 100 * rates$level, own = 100 * rates$own,
-    exceedance = 100 * rates$exceedance, factor = rates$factor,
-    margin = margin, certificate = last$certificate,
-    inflated = last$certificate_distance + inflation * last$certificate_radius,
+  margin <- if (is_binomial_logit(object)) 0 else 0.15
+  widening <- max(1, rates$factor * (1 + margin))
+  details <- list(
+    level = 100 * rates$level, level_interval = 100 * rates$level_interval,
+    own = 100 * rates$own, exceedance = 100 * rates$exceedance,
+    factor = rates$factor, margin = margin, widening = widening,
+    certificate = last$certificate,
+    widened = last$certificate_distance + widening * last$certificate_radius,
     tolerance = attr(object, "control_mcml")$tolerance %||% NA_real_,
-    pareto_k = bank$pareto_k, rhat = chain$rhat,
+    pareto_k = stats::median(resampled$pareto_k), bank_pareto_k = bank$pareto_k,
+    rhat = chain$rhat,
     settings = list(chains = as.integer(chains), rounds = as.integer(rounds),
                     banks = as.integer(banks), draws = problem$draws,
                     seed = streams[[1L]]),
     seconds = proc.time()[["elapsed"]] - started
   )
+  list(row = describe_radius_check(details),
+       panel = data.frame(error = sqrt(rowSums(resampled$errors^2)),
+                          radius = resampled$radii),
+       details = details)
 }
 
-##' Seeds of the three random steps of `measure_certificate_radius()`
+##' Whether a fit is binomial with the logit link
+##' @noRd
+is_binomial_logit <- function(object) {
+  identical(object$family, "binomial") &&
+    (identical(object$link_function$name, "canonical") ||
+       identical(object$link_function$link, "logit"))
+}
+
+##' The row of the check of the radius, from its details
+##' @noRd
+describe_radius_check <- function(details) {
+  percent <- function(value) paste0(signif(value, 2), "%")
+  found <- paste0(
+    "The radius of the bound is predicted to be exceeded in ",
+    percent(details$level), " of samples (", percent(details$level_interval[1]),
+    " to ", percent(details$level_interval[2]), "), against 5%.",
+    if (details$margin > 0) {
+      paste0(" Outside binomial models with the logit link the prediction ",
+             "is read with a margin of ", 100 * details$margin, "%, since it ",
+             "ran low on simulated Poisson surveys.")
+    }
+  )
+  if (details$widening <= 1) {
+    return(fit_check_row("Radius of the bound", "OK",
+                         paste0(found, " The radius holds.")))
+  }
+  fit_check_row(
+    "Radius of the bound", "SUSPICIOUS",
+    paste0(found, " The radius would have to widen by a factor of ",
+           signif(details$widening, 3), ", which makes the bound ",
+           signif(details$widened, 2), " standard errors (limit ",
+           details$tolerance, ")."),
+    paste0("Read the bound with its radius so widened. More draws, through ",
+           "'max_samples' in set_control_mcml(), bring more of the tail of ",
+           "the weights into each sample.")
+  )
+}
+
+##' Seeds of the three random steps of `fit_check_radius()`
 ##'
 ##' Without a `seed` they are streams 9500 to 9502 after the seed of the fit,
 ##' which `fit_adaptive_mcml()` does not use, wrapped as it wraps its streams.
@@ -114,14 +163,13 @@ rebuild_certification_problem <- function(object, last) {
   spatial_scaling <- scale_spatial_coordinates(object$coords)
   distances <- as.matrix(pairwise_distances(spatial_scaling$coordinates))
   control_mcml <- attr(object, "control_mcml") %||% set_control_mcml()
-  custom <- identical(object$link_function$name, "custom")
   engine <- make_adaptive_mcml_engine(
     D = design_scaling$design, y = object$y, units_m = object$units_m,
     distances = distances, family = object$family, kappa = object$kappa,
     cov_offset = object$cov_offset, ID_coords = object$ID_coords,
     fix_tau2 = object$fix_tau2,
     ID_re = if (is.null(object$ID_re)) NULL else as.matrix(object$ID_re),
-    invlink = if (custom) object$link_function[c("inv", "d1", "d2")],
+    invlink = refit_invlink(object),
     defensive_weight = control_mcml$defensive_weight %||% 0.05,
     proposal = control_mcml$proposal %||% "global"
   )
@@ -419,13 +467,14 @@ compute_weighted_score <- function(log_weights, gradients) {
 ##' Each has the bank's number of defensive rows, drawn from its defensive
 ##' rows, and the rest from the pooled Gaussian draws. Returns their errors,
 ##' centred on their mean, and their radii, both in the metric of the
-##' information.
+##' information, and the Pareto shapes of the first `shapes` of them.
 ##' @noRd
-resample_radius_banks <- function(pool, problem, banks, seed) {
+resample_radius_banks <- function(pool, problem, banks, seed, shapes = 100L) {
   set.seed(seed)
   defensive_draws <- sum(problem$defensive)
   gaussian_draws <- problem$draws - defensive_draws
   available <- length(pool$defensive_log_weights)
+  pareto_k <- numeric()
   resampled <- lapply(seq_len(banks), function(bank) {
     rows <- sample.int(length(pool$log_weights), gaussian_draws, TRUE,
                        prob = pool$probability)
@@ -434,8 +483,12 @@ resample_radius_banks <- function(pool, problem, banks, seed) {
     } else {
       integer()
     }
+    log_weights <- c(pool$log_weights[rows], pool$defensive_log_weights[extra])
+    if (bank <= shapes) {
+      pareto_k[bank] <<- summarise_importance_weights(log_weights)$pareto_k
+    }
     compute_weighted_score(
-      c(pool$log_weights[rows], pool$defensive_log_weights[extra]),
+      log_weights,
       rbind(pool$gradients[rows, , drop = FALSE],
             pool$defensive_gradients[extra, , drop = FALSE])
     )
@@ -443,7 +496,8 @@ resample_radius_banks <- function(pool, problem, banks, seed) {
   scores <- do.call(rbind, lapply(resampled, `[[`, "score"))
   list(errors = sweep(scores, 2L, colMeans(scores)),
        radii = compute_validation_radii(lapply(resampled, `[[`,
-                                               "covariance")))
+                                               "covariance")),
+       pareto_k = pareto_k)
 }
 
 ##' Radii of several covariances already in the metric of the information
@@ -477,19 +531,50 @@ compute_validation_radii <- function(covariances, probability = 0.95,
 ##' ||G_i|| by the certificate when it is below r. Gives the rates at which
 ##' that error exceeds r (`level`), ||G_j|| exceeds r (`own`) and ||G_i||
 ##' exceeds the certificate (`exceedance`), and the 95% point of the ratio of
-##' that error to r, the factor that brings `level` to 5%.
+##' that error to r, the factor that brings `level` to 5%. The 95% interval of
+##' `level` comes from `replicates` resamplings of the banks with replacement,
+##' on the same triples of positions.
 ##' @noRd
-measure_radius_rule <- function(errors, radii, tuples = 40000L) {
-  banks <- nrow(errors)
-  triples <- t(replicate(tuples, sample.int(banks, 3L)))
-  norms <- function(rows) sqrt(rowSums(rows^2))
-  correction <- errors[triples[, 1L], , drop = FALSE]
-  certification <- errors[triples[, 2L], , drop = FALSE]
-  radius <- pmax(radii[triples[, 2L]], radii[triples[, 3L]])
-  distance <- norms(certification - correction)
-  allowed <- norms((correction + certification) / 2)
-  list(level = mean(allowed > radius),
-       own = mean(norms(certification) > radius),
-       exceedance = mean(norms(correction) > distance + radius),
-       factor = stats::quantile(allowed / radius, 0.95, names = FALSE))
+measure_radius_rule <- function(errors, radii, tuples = 40000L,
+                                replicates = 200L) {
+  triples <- draw_distinct_triples(nrow(errors), tuples)
+  rates_of <- function(banks) {
+    correction <- errors[banks[triples[, 1L]], , drop = FALSE]
+    certification <- errors[banks[triples[, 2L]], , drop = FALSE]
+    radius <- pmax(radii[banks[triples[, 2L]]], radii[banks[triples[, 3L]]])
+    allowed <- sqrt(rowSums(((correction + certification) / 2)^2))
+    list(allowed = allowed, radius = radius, correction = correction,
+         certification = certification)
+  }
+  all <- rates_of(seq_len(nrow(errors)))
+  distance <- sqrt(rowSums((all$certification - all$correction)^2))
+  levels <- vapply(seq_len(replicates), function(replicate) {
+    resampled <- rates_of(sample.int(nrow(errors), replace = TRUE))
+    mean(resampled$allowed > resampled$radius)
+  }, numeric(1))
+  list(level = mean(all$allowed > all$radius),
+       level_interval = stats::quantile(levels, c(0.025, 0.975),
+                                        names = FALSE),
+       own = mean(sqrt(rowSums(all$certification^2)) > all$radius),
+       exceedance = mean(sqrt(rowSums(all$correction^2)) >
+                           distance + all$radius),
+       factor = stats::quantile(all$allowed / all$radius, 0.95,
+                                names = FALSE))
+}
+
+##' Ordered triples of distinct integers from 1 to `size`, uniformly
+##'
+##' The second is drawn from the other `size - 1` values and the third from
+##' the remaining `size - 2`, by shifting past the values already taken.
+##' @noRd
+draw_distinct_triples <- function(size, tuples) {
+  first <- sample.int(size, tuples, replace = TRUE)
+  second <- sample.int(size - 1L, tuples, replace = TRUE)
+  second <- second + (second >= first)
+  third <- sample.int(size - 2L, tuples, replace = TRUE)
+  low <- pmin(first, second)
+  high <- pmax(first, second)
+  third <- third + (third >= low)
+  third <- third + (third >= high)
+  cbind(first, second, third)
 }
