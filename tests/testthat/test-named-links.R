@@ -97,11 +97,20 @@ test_that("a named link gives the estimates of its inverse given in invlink", {
     expect_identical(named$link_function$link, link)
     expect_null(supplied$link_function$link)
     expect_true(named$mcml_certified)
+    expect_true(supplied$mcml_certified)
     # The derivatives only steer the importance sampler, so the two fits
-    # differ by Monte Carlo error alone, far inside the certificate.
-    expect_equal(unlist(coef(named)), unlist(coef(supplied)),
-                 tolerance = 1e-3)
-    expect_equal(named$log_lik, supplied$log_lik, tolerance = 1e-6)
+    # differ by Monte Carlo error alone. Each estimate is within its
+    # certificate, in standard errors, of the maximum likelihood estimate, so
+    # the two are within the sum of the certificates of each other.
+    standard_errors <- sqrt(diag(named$covariance))
+    moved <- abs(unlist(named$estimate) - unlist(supplied$estimate)) /
+      standard_errors[names(unlist(named$estimate))]
+    expect_lt(max(moved), attr(named, "optimizer")$mcml_certificate +
+                attr(supplied, "optimizer")$mcml_certificate)
+    # With 500 draws and a relative effective sample size above 0.8, each
+    # Monte Carlo log-likelihood has a standard error of about 0.01 to 0.02,
+    # so 0.05 is two to four standard errors of their difference.
+    expect_lt(abs(named$log_lik - supplied$log_lik), 0.05)
   }
 })
 
