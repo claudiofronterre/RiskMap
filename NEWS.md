@@ -510,6 +510,13 @@ counts as a failure of the global proposal, as before. Each stage of
 `mcml_history` records `refit_change`, the largest change of a factor at the last
 of the three refits.
 
+- `profile()` of a binomial or Poisson fit now rebuilds the likelihood with the
+link of the fit. It used the logit or log link whatever link the fit had, so
+the profiles of a fit with a named link such as `binomial("probit")`, or with
+an inverse link given in `invlink`, were those of another model, and nothing
+warned of it. The fix does not change the profiles of fits with the logit
+and log links.
+
 - `check_fit()` gains `extra`, which names the checks that cost computing time,
 with `"all"` for every one, so that `check_fit()` is the one place to check a
 fit (#262). The first is `"profile"`, the marginal profile likelihood from
