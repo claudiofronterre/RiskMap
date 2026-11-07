@@ -390,6 +390,25 @@ compute_log_weights_in_r <- function(draws, proposal, defensive,
   log_target - log_proposal
 }
 
+##' Terms of the slope of the log-likelihood in a variance at zero
+##'
+##' For an effect of variance v shared by the observations of each `group`, the
+##' derivative of the log-likelihood at v = 0 is the mean, under the conditional
+##' distribution of the other latent effects, of half the sum over groups of
+##' (sum k')^2 + sum k'', with k the log-likelihood of an observation in its
+##' linear predictor. Returns that quantity for each row of the matrix `eta` of
+##' linear predictors, for the canonical links.
+##' @noRd
+compute_variance_slope_terms <- function(eta, y, units_m, family, group) {
+  rate <- if (identical(family, "poisson")) exp(eta) else stats::plogis(eta)
+  expected <- sweep(rate, 2L, units_m, "*")
+  curvature <- if (identical(family, "poisson")) expected else
+    expected * (1 - rate)
+  score <- rep(y, each = nrow(eta)) - expected
+  grouped <- rowsum(t(score), group, reorder = FALSE)
+  0.5 * (colSums(grouped^2) - rowSums(curvature))
+}
+
 ##' Construct the adaptive importance-sampling engine
 ##'
 ##' The standard-normal bank is held fixed within a stage, while the Gaussian
@@ -661,8 +680,50 @@ make_adaptive_mcml_engine <- function(
     maximum + log(mean(exp(log_weights - maximum)))
   }
 
+  # The groups of the effects whose variance can be tested at zero, by
+  # parameter, for the canonical links. A nugget is one effect per location.
+  slope_groups <- if (canonical) {
+    c(if (!is.null(layout$index$nu2)) {
+      stats::setNames(list(ID_coords), layout$index$nu2)
+    }, if (n_re) {
+      stats::setNames(lapply(seq_len(n_re), function(j) ID_re[, j]),
+                      layout$index$sigma2_re)
+    })
+  }
+  # With the spatial variance at zero the nugget ratio says nothing about the
+  # nugget itself, so only the other effects can be tested.
+  testable_variances <- function(boundary) {
+    tested <- intersect(boundary, as.integer(names(slope_groups)))
+    if (layout$index$sigma2 %in% boundary) {
+      tested <- setdiff(tested, layout$index$nu2)
+    }
+    tested
+  }
+  # One row per draw and one column per parameter in `tested`
+  # (compute_variance_slope_terms()), from the same draws as the weights.
+  variance_slope_terms <- function(draws, proposal, defensive, tested) {
+    deviations <- draws %*% proposal$root
+    if (any(defensive)) {
+      deviations[defensive, ] <- compute_prior_deviations(
+        draws[defensive, , drop = FALSE], proposal, latent
+      )
+    }
+    samples <- deviations + rep(proposal$centre, each = nrow(deviations))
+    eta <- samples[, latent_map$columns[, 1L], drop = FALSE] +
+      rep(proposal$mu, each = nrow(samples))
+    for (j in seq_along(latent$random)) {
+      eta <- eta + samples[, latent_map$columns[, j + 1L], drop = FALSE]
+    }
+    vapply(tested, function(parameter) {
+      compute_variance_slope_terms(eta, y, units_m, family,
+                                   slope_groups[[as.character(parameter)]])
+    }, numeric(nrow(draws)))
+  }
+
   list(evaluate = evaluate, proposal_at = proposal_at, layout = layout,
        latent_dimension = latent$dimension, unpack = unpack,
+       testable_variances = testable_variances,
+       variance_slope_terms = variance_slope_terms,
        spatial_covariance = function(parameters) {
          covariance_at(unpack(parameters))
        },
@@ -1007,6 +1068,11 @@ glgpm_nong_adaptive <- function(
   boundary_names <- describe_variance_parameters(
     fit$boundary_parameters, engine$layout, re_names = re_names
   )
+  if (!is.null(fit$held_variances)) {
+    fit$held_variances$name <- describe_variance_parameters(
+      fit$held_variances$parameter, engine$layout, re_names = re_names
+    )
+  }
   small_scale <- if (!fit$outcome %in% c("numerically independent",
                                          "no maximum")) {
     detect_small_scale(fit, engine$layout, distances, kappa, distance_scale)
@@ -1129,6 +1195,7 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_pc_prior = pc_prior,
     laplace_start = laplace,
     mcml_boundary = boundary_names,
+    mcml_held_variances = fit$held_variances,
     mcml_identifiability_failure = identical(fit$outcome,
                                              "weak identification"),
     mcml_budget = fit$budget,
@@ -1309,6 +1376,13 @@ report_mcml_outcome <- function(fit, layout, tolerance, messages,
       "the spatial scale) are not identifiable from these data, and the ",
       "estimate has no standard errors or Monte Carlo certificate. See ",
       "check_fit().",
+      call. = FALSE
+    )
+  } else if (isTRUE(fit$held_variance_rising)) {
+    warning(
+      "The Monte Carlo error of the estimate is not certified, because the ",
+      "likelihood rises as a variance held at zero leaves it, so the estimate ",
+      "is not a maximum. See check_fit().",
       call. = FALSE
     )
   } else if (!fit$certified) {

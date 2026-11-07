@@ -385,6 +385,25 @@ effects no longer warn. With `messages = TRUE` a certified fit gives one line.
 `summary()` ends with the verdict and the number of checks that need a look, in
 place of its notes, and `summary()$mcml$notes` is replaced by `checks_to_review`.
 
+- Certified MCML now tests a nugget or random-effect variance that it holds at
+zero. A fit moves in the log of a variance, whose gradient vanishes near zero
+whatever the slope in the variance itself, so reaching the boundary does not
+show that zero is a maximum. The slope at zero is estimated on an independent
+bank of draws. If it is clearly positive the stage is not certified, because the
+held point is not a maximum, and the next stage starts the variance from an
+interior value, even at the largest number of draws if stages remain. If it is
+clearly negative, `check_fit()` reports that zero is the
+maximum and the variance no longer counts as a check that needs a look. Fits that
+hold no variance are unchanged, and those with a custom link are not tested.
+
+- With a nugget and the spatial variance at zero, the exact alarm of the check for
+other maxima now also tries scales up to 16 times the spacing, with 2% to 30% of
+the total variance in the spatial effect, and fires when a lower bound on the
+likelihood is above the maximum of the model with independent location effects by
+more than half the squared tolerance. The screen stopped at the spacing and only
+tried a share near zero, which could miss a spatial effect that a large nugget
+was absorbing.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

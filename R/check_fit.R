@@ -126,7 +126,13 @@ fit_check_monte_carlo <- function(mcml) {
              "one of independent location effects."),
       see_scale
     ),
-    if (mcml$correction_refused) {
+    if (isTRUE(mcml$variance_rising)) {
+      fit_check_row(
+        name, "PROBLEM",
+        "There is no bound on the error, because the estimate is not a maximum.",
+        "See the check of the variances."
+      )
+    } else if (mcml$correction_refused) {
       fit_check_row(
         name, "PROBLEM",
         paste0("The bound of ", bound, " standard errors may not hold, because ",
@@ -184,7 +190,7 @@ fit_check_maxima <- function(optimizer, units = NULL) {
   if (isTRUE(optimizer$mcml_maxima_alarm)) {
     return(fit_check_row(
       name, "PROBLEM",
-      paste0("An exact lower bound on the likelihood at a short spatial scale ",
+      paste0("An exact lower bound on the likelihood at another spatial scale ",
              "is above the likelihood of the estimate, so the estimate is not ",
              "the maximum likelihood estimate."),
       "Inspect the profile likelihood, profile(fit, parameters = \"phi\")."
@@ -236,6 +242,12 @@ describe_other_maximum <- function(check, ambiguous, units = NULL) {
 }
 
 ##' Whether a variance component was estimated as effectively zero
+##'
+##' A nugget or random-effect variance at zero has been tested by the slope of
+##' the likelihood there (`assess_held_variances()`). If the likelihood clearly
+##' rises, zero is not a maximum, and if it clearly falls, it is one and there
+##' is nothing to review. A spatial variance at zero has no such test, because
+##' its slope depends on the scale, which is unidentified there.
 ##' @noRd
 fit_check_variances <- function(optimizer) {
   name <- "Variances"
@@ -243,6 +255,23 @@ fit_check_variances <- function(optimizer) {
   if (!length(boundary)) {
     return(fit_check_row(name, "OK",
                          "No variance was estimated as effectively zero."))
+  }
+  held <- optimizer$mcml_held_variances
+  listed <- function(names) paste(names, collapse = " and the ")
+  if (any(held$rising)) {
+    return(fit_check_row(
+      name, "PROBLEM",
+      paste0("The likelihood rises as the ", listed(held$name[held$rising]),
+             " leaves zero, so holding it at zero does not give a maximum."),
+      paste0("Refit with a larger 'max_samples' or 'max_stages' in ",
+             "set_control_mcml().")
+    ))
+  }
+  if (setequal(boundary, held$name) && all(held$falling)) {
+    return(fit_check_row(name, "OK", paste0(
+      "The ", listed(boundary), " was estimated as zero, where the likelihood ",
+      "is at its maximum, because it falls as the variance leaves zero."
+    )))
   }
   single <- length(boundary) == 1L
   spatial <- any(grepl("sigma2", boundary, fixed = TRUE))
@@ -254,7 +283,11 @@ fit_check_variances <- function(optimizer) {
       if (single) "was" else "were", " estimated as effectively zero, so ",
       if (single) "its standard error is" else "their standard errors are",
       " not reported", if (spatial) ", and the spatial scale cannot be estimated",
-      "."
+      ".",
+      if (!is.null(held) && !all(held$falling)) paste0(
+        " The draws could not tell whether the likelihood rises as the ",
+        listed(held$name[!held$falling]), " leaves zero."
+      )
     ),
     paste0(
       "Consider refitting without ",

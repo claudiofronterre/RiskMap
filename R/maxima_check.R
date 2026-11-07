@@ -200,6 +200,12 @@ compute_jensen_bound <- function(independent, covariance) {
 ##' median distance between neighbouring locations (`spacing`), all on the
 ##' internal distance scale. The independent-site likelihood is maximised from
 ##' the coefficients of the fit that the check follows.
+##'
+##' A model with a nugget also has a grid for a fit with the spatial variance at
+##' zero (`judge_spatial_share()`). There the nugget takes all the variance, and
+##' the spatial effect it may be hiding is not one at a short scale, so the grid
+##' has scales up to 16 times the spacing, capped at the largest distance, and
+##' `spatial_shares` of the total variance.
 ##' @noRd
 make_short_scale_screen <- function(engine, independent_sites, distances,
                                     kappa = 0.5) {
@@ -239,6 +245,22 @@ make_short_scale_screen <- function(engine, independent_sites, distances,
     beta_index = layout$index$beta, sigma2_index = layout$index$sigma2,
     phi_index = layout$index$phi,
     log_phi = log(spacing) + log(c(1 / 8, 1 / 4, 1 / 2, 1)),
+    wide_log_phi = unique(pmin(log(spacing) + log(2^(-1:4)),
+                               log(max(distances)))),
+    spatial_shares = if (!is.null(layout$index$nu2)) {
+      c(0.02, 0.05, 0.1, 0.2, 0.3)
+    },
+    # The point at a screened scale with a share of the total variance of the
+    # independent-site maximum in the spatial effect and the rest in the nugget.
+    plug_in_share = function(estimate, fit, log_phi, share) {
+      point <- estimate
+      point[layout$index$beta] <- fit$beta
+      point[layout$index$phi] <- log_phi
+      point[layout$index$sigma2] <- fit$log_variance + log(share)
+      point[layout$index$nu2] <- log((1 - share) / share)
+      point
+    },
+    spatial_covariance = engine$spatial_covariance,
     margin = 0.25, window = 2, step = 0.5, step_limit = 2,
     # A numerical comparison tolerance: differences from an exact value
     # smaller than this are not acted on. It is separate from the Monte Carlo
@@ -394,10 +416,13 @@ estimate_on_comparison_bank <- function(engine, penalty, parameters, n_draws,
 ##' comparison tolerance. With a penalty the limit of
 ##' zero scale is left out, because the penalty diverges there, and the
 ##' penalty is added to the bounds. The `start` is the point that gave the
-##' largest value, at the shortest screened scale for the limit itself.
+##' largest value, at the shortest screened scale for the limit itself. A fit
+##' with the spatial variance at zero (`at_zero_variance`) is also judged by
+##' `judge_spatial_share()`.
 ##' @noRd
 judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
-                              n_draws, seed) {
+                              n_draws, seed, at_zero_variance = FALSE,
+                              tolerance = 0.1) {
   points <- lapply(screen$log_phi, function(log_phi) {
     screen$plug_in(estimate, fit, log_phi)
   })
@@ -415,12 +440,52 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
   top <- which.max(values)
   fitted <- estimate_on_comparison_bank(engine, penalty, estimate, n_draws,
                                         seed)
-  list(statistic = values[top], log_phi = sources[top],
-       quadrature_error = errors[top],
-       fitted_comparison = fitted$value, fitted_comparison_se = fitted$se,
-       fired = values[top] - errors[top] - screen$comparison_tolerance >
-         fitted$value + screen$alarm_multiplier * fitted$se,
-       start = starts[[top]])
+  alarm <- list(statistic = values[top], log_phi = sources[top],
+                quadrature_error = errors[top],
+                fitted_comparison = fitted$value,
+                fitted_comparison_se = fitted$se,
+                fired = values[top] - errors[top] -
+                  screen$comparison_tolerance >
+                  fitted$value + screen$alarm_multiplier * fitted$se,
+                start = starts[[top]])
+  if (!alarm$fired && at_zero_variance && is.null(penalty)) {
+    wide <- judge_spatial_share(screen, fit, estimate, tolerance)
+    if (!is.null(wide)) alarm <- utils::modifyList(alarm, wide)
+  }
+  alarm
+}
+
+##' Exact alarm for a fit with the spatial variance at zero and a nugget
+##'
+##' Such a fit is the model with independent location effects, whose maximum
+##' `fit` is known exactly, so no Monte Carlo error enters the comparison. Its
+##' spatial variance has no slope of its own to test, because the slope depends
+##' on the scale, which is unidentified there. Jensen bounds over a grid of
+##' scales and spatial shares of the total variance
+##' (`make_short_scale_screen()`) are exact lower bounds on the likelihood of
+##' the model with a spatial effect. The alarm fires when the largest is above
+##' the maximum by more than `tolerance^2 / 2`, beyond which the fit is more
+##' than `tolerance` standard errors from a better point, to second order.
+##' @return NULL if it does not fire, otherwise the fields of the alarm.
+##' @noRd
+judge_spatial_share <- function(screen, fit, estimate, tolerance) {
+  if (!length(screen$spatial_shares)) return(NULL)
+  grid <- expand.grid(log_phi = screen$wide_log_phi,
+                      share = screen$spatial_shares)
+  points <- Map(function(log_phi, share) {
+    screen$plug_in_share(estimate, fit, log_phi, share)
+  }, grid$log_phi, grid$share)
+  bounds <- vapply(points, function(point) {
+    compute_jensen_bound(fit, screen$spatial_covariance(point))
+  }, numeric(1))
+  if (!any(is.finite(bounds))) return(NULL)
+  top <- which.max(bounds)
+  error <- screen$bound(points[[top]], fit)[["error"]]
+  gain <- bounds[top] - fit$log_likelihood - error - fit$quadrature_error
+  if (gain <= tolerance^2 / 2) return(NULL)
+  list(statistic = bounds[top], log_phi = grid$log_phi[top],
+       share = grid$share[top], quadrature_error = error, fired = TRUE,
+       start = points[[top]])
 }
 
 ##' Check for other maxima on the fitting bank
@@ -505,7 +570,8 @@ check_other_maxima <- function(engine, objective, penalty, optimised,
         }
       }
       alarm <- judge_exact_alarm(engine, penalty, screen, fit, estimate,
-                                 n_draws, seed)
+                                 n_draws, seed, at_zero_variance,
+                                 limits$tolerance)
       if (!is.null(alarm)) {
         record$alarm <- alarm[setdiff(names(alarm), "start")]
         if (alarm$fired) {
