@@ -440,7 +440,9 @@ an error, and `invlink` does not take the name of a link. `print()` and
 `summary()` name the link, and simulations, cross-validation refits and the
 parametric bootstrap keep it. The undocumented list form of `invlink` now takes
 only `inv`, `d1` and `d2`, and `specify_glgpm()` no longer accepts an
-abbreviated family such as `"bin"`, as `glgpm()` never did.
+abbreviated family such as `"bin"`, as `glgpm()` never did. `summary()` writes
+an inverse link taken from a package, such as a bare `invlink = pnorm`, by its
+name instead of its compiled body, `.Call(C_pnorm, ...)`.
 
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and

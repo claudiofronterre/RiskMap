@@ -691,12 +691,9 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
     ))
   } else if (identical(object$link_function$name, "custom")) {
     link_name <- "custom"
-    inv_expr  <- tryCatch(
-      paste0("Inverse link function = ",
-             paste(deparse(body(object$link_function$inv), width.cutoff = 500L),
-                   collapse = " ")),
-      error = function(e) "Inverse link function = <user-supplied function>"
-    )
+    inv_expr  <- paste("Inverse link function =", describe_inverse_link(
+      object$link_function$inv, object$call$invlink
+    ))
   } else {
     if (identical(object$family, "poisson")) {
       link_name <- "canonical (log)"
@@ -829,6 +826,29 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
 
   class(res) <- "summary.RiskMap"
   return(res)
+}
+
+##' How `summary()` writes an inverse link given in `invlink`
+##'
+##' The body of a function written by the user, such as `1/(1 + exp(-x))`.
+##' The body of a package function such as `pnorm`, or of a primitive such
+##' as `exp`, is not informative (`.Call(C_pnorm, ...)` or `NULL`), so such a
+##' function is written with the name it was given in the call, as
+##' `pnorm(x)`, when the call names it.
+##' @param inverse The inverse link stored on the fit.
+##' @param supplied The `invlink` argument of the fit's call.
+##' @noRd
+describe_inverse_link <- function(inverse, supplied) {
+  from_package <- is.primitive(inverse) || isNamespace(environment(inverse))
+  if (!from_package) {
+    return(tryCatch(
+      paste(deparse(body(inverse), width.cutoff = 500L), collapse = " "),
+      error = function(e) "<user-supplied function>"
+    ))
+  }
+  named <- is.name(supplied) ||
+    (is.call(supplied) && identical(supplied[[1L]], as.name("::")))
+  if (named) paste0(deparse(supplied), "(x)") else "<user-supplied function>"
 }
 
 ##' Readable names of the parameters, as `summary()` labels them
