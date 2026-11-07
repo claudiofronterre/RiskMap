@@ -37,8 +37,9 @@ response.}
 
 \item{ID_re}{Indices mapping response to unstructured random effects.}
 
-\item{family}{Distribution family for the response variable: \code{"binomial"}
-or \code{"poisson"}.}
+\item{family}{The distribution of the response, \code{"binomial"} or
+\code{"poisson"}, or a binomial or Poisson family object with one of the
+links that \code{\link[=glgpm]{glgpm()}} accepts, such as \code{binomial("probit")}.}
 
 \item{sigma2_re}{Variance of the unstructured random effects.}
 
@@ -46,8 +47,9 @@ or \code{"poisson"}.}
 
 \item{gradient}{Logical; if TRUE, compute the gradient vector.}
 
-\item{invlink}{A function that defines the inverse of the link function for
-the distribution of the data given the random effects.}
+\item{invlink}{A function that maps the linear predictor to the mean of
+the response given the random effects, for a link that \code{family} does
+not name, as in \code{\link[=glgpm]{glgpm()}}.}
 }
 \value{
 A list with the mode (\code{mode}), the name of the inverse link used

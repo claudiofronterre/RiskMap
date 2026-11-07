@@ -13,6 +13,12 @@
 ##'
 ##'   A Gaussian fit has no Monte Carlo error, so its only check says so.
 ##'
+##'   A link other than logit, probit or cloglog for binomial data, or log for
+##'   counts, adds a row saying that it is not known to make the likelihood of
+##'   each location log-concave in its latent effect, so that the latent
+##'   effects can have more than one conditional mode. That belongs to the
+##'   model and not to how it was fitted, so the row is `OK`.
+##'
 ##' @param object An object of class `"RiskMap"` from [glgpm()].
 ##' @return An object of class `"RiskMap_check"`, a list with:
 ##' \item{checks}{A data frame with one row per check, those that need a look
@@ -80,7 +86,8 @@ list_fit_checks <- function(object, mcml) {
          fit_check_variances(optimizer),
          fit_check_spatial_scale(object, optimizer),
          fit_check_importance_distribution(optimizer),
-         fit_check_mode_search(optimizer$mcml_mode_searches))
+         fit_check_mode_search(optimizer$mcml_mode_searches),
+         fit_check_link(object$link_function, object$family))
   }
   checks <- do.call(rbind, rows)
   severity <- match(checks$status, c("PROBLEM", "SUSPICIOUS", "OK"))
@@ -413,6 +420,42 @@ fit_check_mode_search <- function(counts) {
     format(counts$searches, big.mark = ","),
     " searches, which slows the fit but does not affect the certificate."
   ))
+}
+
+##' Whether the link is one known to make the likelihood log-concave
+##'
+##' With the logit, probit and complementary log-log links for binomial data,
+##' and the log link for counts, the likelihood of each location is
+##' log-concave in its latent effect, so the latent effects have one
+##' conditional mode. Other links can give more than one, which belongs to the
+##' model and the data, not to how the fit was computed, so the check is OK.
+##' Concavity cannot be established numerically, so the links come from a
+##' list. NULL for the links on it.
+##' @noRd
+fit_check_link <- function(link_function, family) {
+  if (!identical(link_function$name, "custom") ||
+      isTRUE(link_function$link %in% c("logit", "probit", "cloglog", "log"))) {
+    return(NULL)
+  }
+  consequence <- paste0(
+    "the latent effects can have more than one conditional mode. Every check ",
+    "still runs, but the importance distribution can fit less well, so the ",
+    "fit may take longer to certify."
+  )
+  fit_check_row("Link", "OK", if (is.null(link_function$link)) {
+    paste0("The link was given as a function, so it is not known whether it ",
+           "makes the likelihood of each location log-concave in its latent ",
+           "effect, as ", if (identical(family, "poisson")) {
+             "the log link does"
+           } else {
+             "the logit, probit and cloglog links do"
+           }, ". If it does not, ",
+           consequence)
+  } else {
+    paste0("The ", link_function$link, " link is not among those known to ",
+           "make the likelihood of each location log-concave in its latent ",
+           "effect, so ", consequence)
+  })
 }
 
 ##' Why the likelihood has no maximum, and what can be done instead

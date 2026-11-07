@@ -29,12 +29,30 @@ The formula should include fixed effects and spatial effects specified using
 
 \item{data}{An sf object containing the variables in the model.}
 
-\item{family}{A character string specifying the distribution of the response variable.
-Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
+\item{family}{The distribution of the response given the random effects,
+with its link. Either one of the strings \code{"gaussian"}, \code{"binomial"} and
+\code{"poisson"}, which take the identity, logit and log links, or a family
+object as in \code{\link[stats:glm]{stats::glm()}}, such as \code{binomial("probit")}. Binomial
+responses take the logit, probit, complementary log-log (\code{"cloglog"}) and
+Cauchy (\code{"cauchit"}) links, Poisson responses the log link and Gaussian
+responses the identity link. \code{binomial("log")} and \code{poisson("identity")}
+are not accepted, because they can give means outside the range of the
+family, nor is \code{poisson("sqrt")}, whose inverse gives the same mean to a
+positive and a negative linear predictor. Quasi-likelihood families, such
+as \code{\link[stats:quasibinomial]{stats::quasibinomial()}}, have no likelihood to maximise and are not
+accepted either. Any other link can be given in \code{invlink}. A named link
+gives the same estimates as its inverse given in \code{invlink}, and is faster
+when that inverse cannot be differentiated symbolically, as for
+\code{invlink = pnorm}.}
 
-\item{invlink}{A function that defines the inverse of the link function for
-the distribution of the data given the random effects.
-Not applicable when \code{family} is \code{"gaussian"}.}
+\item{invlink}{A function that maps the linear predictor to the mean of
+the response given the random effects, for a binomial or Poisson model
+whose link is not one of those that \code{family} names, such as a link for an
+imperfect diagnostic test. Its first and second derivatives are found
+symbolically where possible and numerically otherwise. They only steer the
+importance sampler, so they affect the speed of a fit and not its
+estimates. Not applicable for Gaussian models, and not to be combined with
+a family object that names a link other than logit or log.}
 
 \item{denominator}{Optional denominator or exposure for binomial or Poisson distributions.
 Passed as a bare/unquoted column name present in \code{data}.
@@ -113,6 +131,10 @@ its rows/columns are named to match \code{unlist(estimate)}.}
 \item{fix_var_me}{Fixed measurement error variance}
 \item{formula}{Model formula}
 \item{family}{Response family}
+\item{link_function}{For binomial and Poisson models, the inverse link
+(\code{inv}), its first and second derivatives (\code{d1} and \code{d2}) and the name of
+the link (\code{link}), such as \code{"probit"}, which is \code{NULL} for an inverse given
+in \code{invlink}. \code{NULL} for Gaussian models.}
 \item{distance_units}{Units (\code{"km"} or \code{"m"}) used for internal coordinate distances and spatial parameters}
 \item{data}{The \code{sf} data used for model fitting, in the CRS used internally}
 \item{input_crs}{The CRS of the input data}
@@ -269,6 +291,8 @@ fit <- glgpm(NO_INF ~ gp(),
              messages = FALSE)
 
 summary(fit)
+
+# family = binomial("probit") fits the same model with a probit link
 
 }
 \seealso{

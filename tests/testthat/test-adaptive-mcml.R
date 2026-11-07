@@ -1545,6 +1545,110 @@ test_that("a failed global proposal records why it failed", {
   expect_null(engine$first_proposal_failure())
 })
 
+test_that("failures set aside from a mark are neither counted nor reused", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  global_fit <- fit_global_proposal
+  builds <- 0L
+  # The global fit fails wherever the intercept is above 4.
+  local_mocked_bindings(fit_global_proposal = function(mode, mu, ...) {
+    builds <<- builds + 1L
+    if (mu[1] > 4) NULL else global_fit(mode, mu, ...)
+  })
+  # An evaluation whose global fit fails uses the Laplace proposal.
+  set.seed(1)
+  draws <- matrix(stats::rnorm(60), nrow = 20)
+  expect_equal(engine$evaluate(c(5, 0, 0), draws),
+               engine$evaluate(c(5, 0, 0), draws, proposal_type = "laplace"),
+               tolerance = 1e-8)
+  engine$reset_proposal_failures()
+  engine$proposal_at(c(5, 1, 0))
+  failure <- engine$first_proposal_failure()
+  mark <- engine$mark_proposal_failures()
+  engine$proposal_at(c(6, 0, 0))
+  engine$proposal_at(c(0, 0, 0))
+  expect_identical(engine$proposal_failures(), 2L)
+  expect_identical(engine$restore_proposal_failures(mark), 1L)
+  expect_identical(engine$proposal_failures(), 1L)
+  expect_identical(engine$first_proposal_failure(), failure)
+  # A proposal that succeeded stays cached.
+  built <- builds
+  engine$proposal_at(c(0, 0, 0))
+  expect_identical(builds, built)
+  # A failed proposal built since the mark is built, and counted, again.
+  mark <- engine$mark_proposal_failures()
+  engine$proposal_at(c(6, 0, 0))
+  engine$restore_proposal_failures(mark)
+  engine$proposal_at(c(6, 0, 0))
+  expect_identical(engine$proposal_failures(), 2L)
+  # One built before the mark was counted then, and stays cached.
+  mark <- engine$mark_proposal_failures()
+  expect_identical(engine$restore_proposal_failures(mark), 0L)
+  built <- builds
+  engine$proposal_at(c(6, 0, 0))
+  expect_identical(builds, built)
+  expect_identical(engine$proposal_failures(), 2L)
+})
+
+test_that("a global failure only within the check for other maxima is set aside", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  global_fit <- fit_global_proposal
+  # The global fit fails only at the screened point, whose intercept is 5.
+  screened <- c(5, 0, -6)
+  kept <- "fitted"
+  screened_value <- NULL
+  as_optimised <- function(parameters) {
+    list(fit = list(par = parameters, objective = 1, convergence = 0L),
+         boundary = integer(), restarted = FALSE, restart_improved = FALSE)
+  }
+  local_mocked_bindings(
+    fit_global_proposal = function(mode, mu, ...) {
+      if (mu[1] > 4) NULL else global_fit(mode, mu, ...)
+    },
+    optimise_on_bank = function(objective, start, ...) as_optimised(start),
+    check_other_maxima = function(engine, objective, penalty, optimised,
+                                  fit_bank, ...) {
+      screened_value <<- objective(screened, fit_bank)
+      checked <- list(optimised = optimised, check = NULL, separate = FALSE,
+                      ambiguous = FALSE, screen = list(gate = "closed"),
+                      numerically_independent = FALSE)
+      if (identical(kept, "refit")) {
+        checked$optimised <- as_optimised(c(0.5, 0, 0))
+        checked$check <- data.frame(chosen = c(FALSE, TRUE))
+        checked$separate <- TRUE
+      }
+      checked
+    },
+    compute_observed_information = function(...) list(information = NULL)
+  )
+  run <- function() {
+    engine$use_proposal("global")
+    fit_adaptive_mcml(engine, start = c(0, 0, 0), dispersed = list(),
+                      initial_budget = 20L, validation_budget = 20L,
+                      maximum_stages = 1L)
+  }
+  fit <- run()
+  expect_true(is.finite(screened_value))
+  expect_identical(fit$proposal, "global")
+  expect_identical(fit$proposal_fallbacks, integer())
+  expect_null(fit$history[[1]]$proposal_fallback)
+  expect_identical(fit$history[[1]]$proposal_failures, 0L)
+  expect_identical(fit$history[[1]]$set_aside_failures, 1L)
+  # A refit that the check keeps is the fit of the stage, so its failures
+  # count and the stage is repeated with the Laplace proposal.
+  kept <- "refit"
+  fit <- run()
+  expect_identical(fit$proposal, "laplace")
+  expect_identical(fit$proposal_fallbacks, 1L)
+  expect_identical(fit$history[[1]]$proposal_failures, 1L)
+  expect_null(fit$history[[1]]$set_aside_failures)
+})
+
 test_that("a certified fit says one line and a refused one a short warning", {
   light <- list(second_validation = list(relative_ess = 0.5, pareto_k = 0.3),
                 validation_budget = 5000L)

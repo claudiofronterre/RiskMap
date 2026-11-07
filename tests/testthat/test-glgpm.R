@@ -41,10 +41,9 @@ test_that("glgpm produces errors", {
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "invalid"),
-    "'family' must be either 'gaussian', 'binomial' or 'poisson'"
+    "'family' must be \"gaussian\", \"binomial\" or \"poisson\""
   )
 
-  # need to document that invlink can be a list
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", invlink = function(x) x),
     "'invlink' cannot be provided when 'family' is 'gaussian'"
@@ -52,7 +51,7 @@ test_that("glgpm produces errors", {
 
   expect_error(
     glgpm(y ~ cov + gp(), data = poisson_data, family = "poisson", invlink = "not func", messages = FALSE),
-    "'invlink' must be NULL, a function, or a list"
+    "'invlink' takes a function, not the name of a link"
   )
 
   expect_error(
