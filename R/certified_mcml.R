@@ -1226,9 +1226,10 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' before any bank is used.
 ##' A failure while correcting or certifying depends on the correction bank,
 ##' so the repeated stage draws every bank afresh, from streams
-##' 2000 + 3s - 2 to 2000 + 3s, 3000 + s, 6000 + s, 7000 + s and 10000 + s.
-##' The replicate's stream is 8000 + s and not 6000 + s, since 6000 + s is the
-##' enlarged bank of a repeated stage. The certificate of the repeated
+##' 2000 + 3s - 2 to 2000 + 3s, 3000 + s, 6000 + s, 7000 + s and 9000 + s
+##' (the replicate). Every stream of a fit is then below 10,000 after `seed`,
+##' so fits whose seeds are 10,000 apart share no bank. The certificate of the
+##' repeated
 ##' stage then rests on a pair of validation banks drawn after everything that
 ##' led to it, as the conditional guarantee of the procedure requires.
 ##' `restart_start`, the starting values before the Laplace maximisation that
@@ -1289,7 +1290,7 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                         stream(1000L + offset + stage),
                         stream(4000L + offset + stage),
                         stream(5000L + offset + stage),
-                        stream(8000L + offset + stage)),
+                        stream((if (offset == 0L) 8000L else 9000L) + stage)),
                       lower, upper, stage == 1L, limits, curvature_root)
     }
     record <- run_stage(0L)

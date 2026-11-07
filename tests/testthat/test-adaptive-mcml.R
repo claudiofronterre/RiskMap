@@ -1289,6 +1289,7 @@ test_that("a late proposal failure repeats the stage on fresh streams", {
   # replicate's included.
   expect_false(any(calls[[2]] %in% calls[[1]]))
   expect_identical(calls[[1]][[7L]], 7L + 8001L)
+  expect_identical(calls[[2]][[7L]], 7L + 9001L)
   expect_true(late$history[[1]]$late_fallback)
   expect_identical(late$proposal, "laplace")
   early <- run("early")
@@ -1298,6 +1299,42 @@ test_that("a late proposal failure repeats the stage on fresh streams", {
   none <- run("none")
   expect_length(calls, 1L)
   expect_null(none$history[[1]]$proposal_fallback)
+})
+
+test_that("every stream of a fit stays below 10,000 after its seed", {
+  # Runs whose seeds are 10,000 apart then share no bank, even when every
+  # stage is repeated after a late failure.
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  calls <- list()
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      calls[[length(calls) + 1L]] <<- seeds
+      failures <<- if (identical(type, "global")) 1L else 0L
+      list(estimate = start, outcome = "not certified", certified = FALSE,
+           certificate = 0.11, free = seq_along(start),
+           information = diag(length(start)),
+           information_root = diag(length(start)),
+           failures_before_validation = 0L)
+    }
+  )
+  fit <- fit_adaptive_mcml(engine, start = c(0, 0, 0), seed = 7L,
+                           maximum_budget = 1000000L, maximum_stages = 4L)
+  expect_length(fit$history, 4L)
+  expect_true(all(vapply(fit$history, function(stage) {
+    isTRUE(stage$late_fallback)
+  }, logical(1L))))
+  expect_length(calls, 8L)
+  streams <- unlist(calls) - 7L
+  expect_identical(anyDuplicated(streams), 0L)
+  expect_lt(max(streams), 10000L)
 })
 
 test_that("a stage whose global proposal fails at the start ends at once", {
