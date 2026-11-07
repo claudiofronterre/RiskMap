@@ -4,10 +4,21 @@
 \alias{check_fit}
 \title{Check How a Fitted Model Was Computed}
 \usage{
-check_fit(object)
+check_fit(object, extra = character(), profile = NULL, messages = TRUE)
 }
 \arguments{
 \item{object}{An object of class \code{"RiskMap"} from \code{\link[=glgpm]{glgpm()}}.}
+
+\item{extra}{Names of the extra checks to run, \code{"all"} for every one. See
+Details. The default is none.}
+
+\item{profile}{An optional object of class \code{"RiskMap_profile"} from
+\code{\link[=profile.RiskMap]{profile.RiskMap()}} with a marginal profile of \code{phi} for this fit. The
+profile check then uses it instead of computing one, whether or not
+\code{extra} names it.}
+
+\item{messages}{Logical, whether to say how long the extra checks should
+take before they start.}
 }
 \value{
 An object of class \code{"RiskMap_check"}, a list with:
@@ -24,11 +35,24 @@ a stage that did not reach them.}
 between one \code{stage} and the one before it, in standard errors (\code{move}).
 \code{NULL} for a fit with one stage or without standard errors.}
 \item{tolerance}{The tolerance on the certificate.}
+\item{results}{A list with an element for each default check that ran,
+named by the check. Each holds its \code{row} of \code{checks} and its \code{data}, a list
+of the numbers behind the finding.}
+\item{extras}{A list with an element for each extra check that ran, named
+as in \code{extra}, each with its \code{row} and its \code{data}. The \code{data} of
+\code{"profile"} is the \code{"RiskMap_profile"} object.}
+\item{not_computed}{A named character vector giving, for each extra check
+that was asked for but not computed, the reason.}
+\item{fit_seconds}{The time the fit took in seconds, \code{NULL} where the fit
+did not record it.}
 }
 \description{
 Goes through the checks on the computation of a model fitted
 by \code{\link[=glgpm]{glgpm()}}, says which are OK and which need a look, and gives the fix
-where there is one. \code{summary()} gives only the number that need a look.
+where there is one. Checks that cost computing time run only when \code{extra}
+names them. \code{print()} gives the verdict, \code{summary()} the numbers behind
+each finding and \code{plot()} the figures. The model's own \code{summary()} gives
+only the number of checks that need a look.
 }
 \details{
 The checks concern the computation, not whether the model suits the
@@ -39,13 +63,35 @@ on as it stands. \code{SUSPICIOUS} means that the computation is valid but the
 result needs care. The limit of 0.7 on the tail shape of the importance
 weights, the Pareto shape, is that of Vehtari et al. (2024).
 
-A Gaussian fit has no Monte Carlo error, so its only check says so.
+A Gaussian fit has no Monte Carlo error, so its only default check says so.
 
 A link other than logit, probit or cloglog for binomial data, or log for
 counts, adds a row saying that it is not known to make the likelihood of
 each location log-concave in its latent effect, so that the latent
 effects can have more than one conditional mode. That belongs to the
 model and not to how it was fitted, so the row is \code{OK}.
+
+The default checks use only what the fit stored, so they take no time.
+The extra checks compute something new and add a row each. Before they
+start, a message says how long they should take, from the time the fit
+took. The extra checks are
+\itemize{
+\item \code{"profile"}, the marginal profile likelihood of the spatial scale
+\code{phi} from \code{\link[=profile.RiskMap]{profile.RiskMap()}}, with its default settings. Its row is
+\code{SUSPICIOUS} when the profile is flat, so that its 95\% interval is
+open at an end, or has a second maximum, where it falls by more than
+half a log-likelihood unit between two maxima. It is a \code{PROBLEM} when
+a point of the profile is above the estimate, which is then not the
+maximum likelihood estimate. A profile of a binomial or Poisson fit
+should take about 10 times as long as the fit.
+}
+
+Each extra check draws from a random number stream of its own, derived
+from the seed of the fit (\code{fit$seed}) as the streams of the fit are, so
+the same call gives the same result. The profile uses the stream 9600
+after the seed, which no fit uses. The random number state of the session
+is left as it was. An extra check that does not apply to the fit, or that
+fails, is not computed, and the printed checks say why.
 }
 \examples{
 data(italy_sim)
@@ -58,7 +104,14 @@ fit <- glgpm(
 )
 
 check_fit(fit)
+\donttest{
+checked <- check_fit(fit, extra = "profile")
+checked
+summary(checked)
+plot(checked, which = "profile")
+}
 }
 \seealso{
-\code{\link[=summary.RiskMap]{summary.RiskMap()}}, \code{\link[=plot.RiskMap_check]{plot.RiskMap_check()}}, \code{\link[=profile.RiskMap]{profile.RiskMap()}}
+\code{\link[=summary.RiskMap_check]{summary.RiskMap_check()}}, \code{\link[=plot.RiskMap_check]{plot.RiskMap_check()}},
+\code{\link[=summary.RiskMap]{summary.RiskMap()}}, \code{\link[=profile.RiskMap]{profile.RiskMap()}}
 }

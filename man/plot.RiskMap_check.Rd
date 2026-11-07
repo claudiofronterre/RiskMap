@@ -2,28 +2,37 @@
 % Please edit documentation in R/check_fit.R
 \name{plot.RiskMap_check}
 \alias{plot.RiskMap_check}
-\title{Plot the Stages of a Fitted Model}
+\title{Plot the Checks on a Fitted Model}
 \usage{
-\method{plot}{RiskMap_check}(x, profile = NULL, ...)
+\method{plot}{RiskMap_check}(x, which = NULL, ...)
 }
 \arguments{
 \item{x}{An object of class \code{"RiskMap_check"}.}
 
-\item{profile}{An optional object of class \code{"RiskMap_profile"} with a
-marginal profile of \code{phi}, from \code{\link[=profile.RiskMap]{profile.RiskMap()}}.}
+\item{which}{Names of the panels to draw, among \code{"certificate"},
+\code{"effective_draws"}, \code{"pareto_k"}, \code{"moves"} and \code{"profile"}. The
+default is every panel that has something to show. A chosen panel with
+nothing to show gives a message saying why, and which extra check of
+\code{\link[=check_fit]{check_fit()}} would compute it. If no panel has anything to show,
+\code{plot()} stops with those messages.}
 
 \item{...}{other parameters.}
 }
 \value{
-Invisibly returns the list of panels, each a \code{ggplot} object.
+Invisibly returns the list of panels drawn, each a \code{ggplot}
+object.
 }
 \description{
 Plot method for objects of class \code{"RiskMap_check"} from
-\code{\link[=check_fit]{check_fit()}}. By stage of certified Monte Carlo maximum likelihood, it
-shows the bound on the Monte Carlo error against the tolerance, the
-effective draws, the tail shape of the importance weights against its
-limit of 0.7 and how far the estimates moved. A profile of the spatial
-scale can be added, computed first since it refits the model.
+\code{\link[=check_fit]{check_fit()}}. It draws the figures of the checks that were computed,
+and never computes anything itself, so an extra check runs once in
+\code{\link[=check_fit]{check_fit()}}. By stage of certified Monte Carlo maximum likelihood, the
+panels show the bound on the Monte Carlo error against the tolerance
+(\code{"certificate"}), the effective certification draws
+(\code{"effective_draws"}), the tail shape of the importance weights against
+its limit of 0.7 (\code{"pareto_k"}) and how far the estimates moved
+(\code{"moves"}). With the extra check \code{"profile"}, the panel \code{"profile"}
+shows the profile likelihood of the spatial scale.
 }
 \examples{
 \donttest{
@@ -33,9 +42,11 @@ fit <- glgpm(
   npos ~ log_elevation + gp(kappa = 0.5), denominator = ntest,
   data = liberia, model_crs = 32629, family = "binomial", messages = FALSE
 )
-plot(check_fit(fit))
+checked <- check_fit(fit, extra = "profile")
+plot(checked)
+plot(checked, which = c("certificate", "profile"))
 }
 }
 \seealso{
-\code{\link[=check_fit]{check_fit()}}
+\code{\link[=check_fit]{check_fit()}}, \code{\link[=summary.RiskMap_check]{summary.RiskMap_check()}}
 }

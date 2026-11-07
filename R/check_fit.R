@@ -1,7 +1,10 @@
 ##' @title Check How a Fitted Model Was Computed
 ##' @description Goes through the checks on the computation of a model fitted
 ##'   by [glgpm()], says which are OK and which need a look, and gives the fix
-##'   where there is one. `summary()` gives only the number that need a look.
+##'   where there is one. Checks that cost computing time run only when `extra`
+##'   names them. `print()` gives the verdict, `summary()` the numbers behind
+##'   each finding and `plot()` the figures. The model's own `summary()` gives
+##'   only the number of checks that need a look.
 ##'
 ##' @details The checks concern the computation, not whether the model suits the
 ##'   data, so `OK` does not mean that the model is adequate. They read what the
@@ -11,7 +14,7 @@
 ##'   result needs care. The limit of 0.7 on the tail shape of the importance
 ##'   weights, the Pareto shape, is that of Vehtari et al. (2024).
 ##'
-##'   A Gaussian fit has no Monte Carlo error, so its only check says so.
+##'   A Gaussian fit has no Monte Carlo error, so its only default check says so.
 ##'
 ##'   A link other than logit, probit or cloglog for binomial data, or log for
 ##'   counts, adds a row saying that it is not known to make the likelihood of
@@ -19,7 +22,35 @@
 ##'   effects can have more than one conditional mode. That belongs to the
 ##'   model and not to how it was fitted, so the row is `OK`.
 ##'
+##'   The default checks use only what the fit stored, so they take no time.
+##'   The extra checks compute something new and add a row each. Before they
+##'   start, a message says how long they should take, from the time the fit
+##'   took. The extra checks are
+##'   * `"profile"`, the marginal profile likelihood of the spatial scale
+##'     `phi` from [profile.RiskMap()], with its default settings. Its row is
+##'     `SUSPICIOUS` when the profile is flat, so that its 95% interval is
+##'     open at an end, or has a second maximum, where it falls by more than
+##'     half a log-likelihood unit between two maxima. It is a `PROBLEM` when
+##'     a point of the profile is above the estimate, which is then not the
+##'     maximum likelihood estimate. A profile of a binomial or Poisson fit
+##'     should take about 10 times as long as the fit.
+##'
+##'   Each extra check draws from a random number stream of its own, derived
+##'   from the seed of the fit (`fit$seed`) as the streams of the fit are, so
+##'   the same call gives the same result. The profile uses the stream 9600
+##'   after the seed, which no fit uses. The random number state of the session
+##'   is left as it was. An extra check that does not apply to the fit, or that
+##'   fails, is not computed, and the printed checks say why.
+##'
 ##' @param object An object of class `"RiskMap"` from [glgpm()].
+##' @param extra Names of the extra checks to run, `"all"` for every one. See
+##'   Details. The default is none.
+##' @param profile An optional object of class `"RiskMap_profile"` from
+##'   [profile.RiskMap()] with a marginal profile of `phi` for this fit. The
+##'   profile check then uses it instead of computing one, whether or not
+##'   `extra` names it.
+##' @param messages Logical, whether to say how long the extra checks should
+##'   take before they start.
 ##' @return An object of class `"RiskMap_check"`, a list with:
 ##' \item{checks}{A data frame with one row per check, those that need a look
 ##' first, and the columns `check`, `status` (`"PROBLEM"`, `"SUSPICIOUS"` or
@@ -34,7 +65,18 @@
 ##' between one `stage` and the one before it, in standard errors (`move`).
 ##' `NULL` for a fit with one stage or without standard errors.}
 ##' \item{tolerance}{The tolerance on the certificate.}
-##' @seealso [summary.RiskMap()], [plot.RiskMap_check()], [profile.RiskMap()]
+##' \item{results}{A list with an element for each default check that ran,
+##' named by the check. Each holds its `row` of `checks` and its `data`, a list
+##' of the numbers behind the finding.}
+##' \item{extras}{A list with an element for each extra check that ran, named
+##' as in `extra`, each with its `row` and its `data`. The `data` of
+##' `"profile"` is the `"RiskMap_profile"` object.}
+##' \item{not_computed}{A named character vector giving, for each extra check
+##' that was asked for but not computed, the reason.}
+##' \item{fit_seconds}{The time the fit took in seconds, `NULL` where the fit
+##' did not record it.}
+##' @seealso [summary.RiskMap_check()], [plot.RiskMap_check()],
+##'   [summary.RiskMap()], [profile.RiskMap()]
 ##' @examples
 ##' data(italy_sim)
 ##'
@@ -46,30 +88,70 @@
 ##' )
 ##'
 ##' check_fit(fit)
+##' \donttest{
+##' checked <- check_fit(fit, extra = "profile")
+##' checked
+##' summary(checked)
+##' plot(checked, which = "profile")
+##' }
 ##' @export
-check_fit <- function(object) {
+check_fit <- function(object, extra = character(), profile = NULL,
+                      messages = TRUE) {
   stopifnot(inherits(object, "RiskMap"))
+  extra <- match_extra_checks(extra)
+  check_given_profile(profile, object)
+  stopifnot("'messages' must be TRUE or FALSE" = isTRUE(messages) ||
+              isFALSE(messages))
+  if (!is.null(profile)) extra <- union(extra, "profile")
   mcml <- summarise_mcml_fit(object)
   history <- object$mcml_history %||% attr(object, "optimizer")$mcml_history
+  results <- run_fit_checks(object, mcml)
+  extras <- run_extra_checks(object, extra, profile, messages)
   structure(
     list(
-      checks = list_fit_checks(object, mcml),
+      checks = tabulate_fit_checks(c(results, extras$results)),
       draws = if (!is.null(mcml)) describe_mcml_draws(mcml),
       stages = summarise_mcml_stages(history),
       moves = summarise_estimate_moves(object, history),
-      tolerance = mcml$tolerance
+      tolerance = mcml$tolerance,
+      results = results,
+      extras = extras$results,
+      not_computed = extras$not_computed,
+      fit_seconds = attr(object, "optimizer")$elapsed_seconds
     ),
     class = "RiskMap_check"
   )
 }
 
-##' The checks on a fit, those that need a look first
+##' The table of checks, those that need a look first
 ##'
-##' `mcml` is the list of `summarise_mcml_fit()`, NULL for a Gaussian fit. A fit
-##' whose likelihood has no maximum gets that check alone, since the others
-##' describe a maximum.
+##' `results` is a list of check results, each with its `row`.
+##' @noRd
+tabulate_fit_checks <- function(results) {
+  checks <- do.call(rbind, lapply(unname(results), `[[`, "row"))
+  severity <- match(checks$status, c("PROBLEM", "SUSPICIOUS", "OK"))
+  checks <- checks[order(severity), ]
+  rownames(checks) <- NULL
+  checks
+}
+
+##' The table of the default checks on a fit, those that need a look first
+##'
+##' `mcml` is the list of `summarise_mcml_fit()`, NULL for a Gaussian fit.
 ##' @noRd
 list_fit_checks <- function(object, mcml) {
+  tabulate_fit_checks(run_fit_checks(object, mcml))
+}
+
+##' The default checks on a fit, each with the numbers behind its finding
+##'
+##' Gives a list with an element for each check that applies, named by the
+##' check, holding its `row` and its `data` (`collect_check_data()`). `mcml`
+##' is the list of `summarise_mcml_fit()`, NULL for a Gaussian fit. A fit whose
+##' likelihood has no maximum gets that check alone, since the others describe
+##' a maximum.
+##' @noRd
+run_fit_checks <- function(object, mcml) {
   optimizer <- attr(object, "optimizer")
   rows <- if (is.null(mcml)) {
     list(fit_check_row("Monte Carlo accuracy", "OK",
@@ -86,11 +168,22 @@ list_fit_checks <- function(object, mcml) {
          fit_check_mode_search(optimizer$mcml_mode_searches),
          fit_check_link(object$link_function, object$family))
   }
-  checks <- do.call(rbind, rows)
-  severity <- match(checks$status, c("PROBLEM", "SUSPICIOUS", "OK"))
-  checks <- checks[order(severity), ]
-  rownames(checks) <- NULL
-  checks
+  rows <- Filter(Negate(is.null), rows)
+  names(rows) <- vapply(rows, `[[`, "", "check")
+  lapply(rows, function(row) {
+    check_result(row, if (!is.null(mcml)) {
+      collect_check_data(row$check, object, mcml)
+    })
+  })
+}
+
+##' The result of a check, its row of the table and the data behind it
+##'
+##' `data` holds the numbers that the finding rests on, which `summary()`
+##' prints and `plot()` draws from.
+##' @noRd
+check_result <- function(row, data = NULL) {
+  list(row = row, data = data)
 }
 
 ##' One row of the table of checks
@@ -554,8 +647,10 @@ summarise_estimate_moves <- function(object, history) {
 
 ##' @title Print the Checks on a Fitted Model
 ##' @description Print method for objects of class `"RiskMap_check"` from
-##'   [check_fit()]: one line for each check, the findings of those that need a
-##'   look first, each with its fix where there is one.
+##'   [check_fit()], which gives the verdict. Each check has an entry, those
+##'   that need a look first, each with its fix where there is one, and the
+##'   extra checks that were asked for but not computed are listed with the
+##'   reason. [summary.RiskMap_check()] gives the numbers behind each finding.
 ##' @param x An object of class `"RiskMap_check"`.
 ##' @param ... other parameters.
 ##' @return Invisibly returns `x`.
@@ -585,25 +680,38 @@ print.RiskMap_check <- function(x, ...) {
           sep = "\n")
     }
   }
+  if (length(x$not_computed)) {
+    cat("\n")
+    write_wrapped(x$not_computed)
+  }
   cat("\n")
   write_wrapped(paste0("These checks concern the computation, not whether the ",
                        "model suits the data."))
   invisible(x)
 }
 
-##' @title Plot the Stages of a Fitted Model
+##' @title Plot the Checks on a Fitted Model
 ##' @description Plot method for objects of class `"RiskMap_check"` from
-##'   [check_fit()]. By stage of certified Monte Carlo maximum likelihood, it
-##'   shows the bound on the Monte Carlo error against the tolerance, the
-##'   effective draws, the tail shape of the importance weights against its
-##'   limit of 0.7 and how far the estimates moved. A profile of the spatial
-##'   scale can be added, computed first since it refits the model.
+##'   [check_fit()]. It draws the figures of the checks that were computed,
+##'   and never computes anything itself, so an extra check runs once in
+##'   [check_fit()]. By stage of certified Monte Carlo maximum likelihood, the
+##'   panels show the bound on the Monte Carlo error against the tolerance
+##'   (`"certificate"`), the effective certification draws
+##'   (`"effective_draws"`), the tail shape of the importance weights against
+##'   its limit of 0.7 (`"pareto_k"`) and how far the estimates moved
+##'   (`"moves"`). With the extra check `"profile"`, the panel `"profile"`
+##'   shows the profile likelihood of the spatial scale.
 ##' @param x An object of class `"RiskMap_check"`.
-##' @param profile An optional object of class `"RiskMap_profile"` with a
-##'   marginal profile of `phi`, from [profile.RiskMap()].
+##' @param which Names of the panels to draw, among `"certificate"`,
+##'   `"effective_draws"`, `"pareto_k"`, `"moves"` and `"profile"`. The
+##'   default is every panel that has something to show. A chosen panel with
+##'   nothing to show gives a message saying why, and which extra check of
+##'   [check_fit()] would compute it. If no panel has anything to show,
+##'   `plot()` stops with those messages.
 ##' @param ... other parameters.
-##' @return Invisibly returns the list of panels, each a `ggplot` object.
-##' @seealso [check_fit()]
+##' @return Invisibly returns the list of panels drawn, each a `ggplot`
+##'   object.
+##' @seealso [check_fit()], [summary.RiskMap_check()]
 ##' @examples
 ##' \donttest{
 ##' data(liberia)
@@ -612,17 +720,43 @@ print.RiskMap_check <- function(x, ...) {
 ##'   npos ~ log_elevation + gp(kappa = 0.5), denominator = ntest,
 ##'   data = liberia, model_crs = 32629, family = "binomial", messages = FALSE
 ##' )
-##' plot(check_fit(fit))
+##' checked <- check_fit(fit, extra = "profile")
+##' plot(checked)
+##' plot(checked, which = c("certificate", "profile"))
 ##' }
 ##' @method plot RiskMap_check
 ##' @export
-plot.RiskMap_check <- function(x, profile = NULL, ...) {
+plot.RiskMap_check <- function(x, which = NULL, ...) {
   stopifnot(inherits(x, "RiskMap_check"))
-  if (is.null(x$stages)) {
-    stop("a Gaussian fit has no Monte Carlo error, so it has no stages to plot.",
-         call. = FALSE)
+  panel_names <- c("certificate", "effective_draws", "pareto_k", "moves",
+                   "profile")
+  if (!is.null(which)) {
+    stopifnot("'which' must be a character vector" =
+                is.character(which) && length(which) > 0L && !anyNA(which))
+    unknown <- setdiff(which, panel_names)
+    if (length(unknown)) {
+      stop("Unknown panel", if (length(unknown) > 1L) "s", " ",
+           paste0("\"", unknown, "\"", collapse = ", "), ". The panels are ",
+           paste0("\"", panel_names, "\"", collapse = ", "), ".",
+           call. = FALSE)
+    }
   }
-  panels <- list(
+  panels <- draw_check_panels(x)
+  requested <- which %||% panel_names
+  empty <- requested[vapply(panels[requested], is.null, logical(1L))]
+  reasons <- explain_missing_panels(x, empty)
+  panels <- Filter(Negate(is.null), panels[requested])
+  if (!length(panels)) stop(paste(reasons, collapse = " "), call. = FALSE)
+  # Without a choice of panels, those with nothing to show are left out quietly.
+  if (!is.null(which)) for (reason in reasons) message(reason)
+  print(patchwork::wrap_plots(panels, ncol = min(2L, length(panels))))
+  invisible(panels)
+}
+
+##' Every panel of the checks, NULL where there is nothing to show
+##' @noRd
+draw_check_panels <- function(x) {
+  stages <- if (!is.null(x$stages)) list(
     certificate = plot_stage_panel(
       x$stages, "certificate", "Bound on the Monte Carlo error",
       "Standard errors (log scale)", limit = x$tolerance, log_scale = TRUE
@@ -637,15 +771,42 @@ plot.RiskMap_check <- function(x, profile = NULL, ...) {
     ),
     moves = plot_estimate_moves(x$moves)
   )
-  if (!is.null(profile)) {
-    stopifnot("'profile' must be a profile of the fit with a marginal profile of 'phi'" =
-                inherits(profile, "RiskMap_profile") &&
-                "phi" %in% names(profile$marginal))
-    panels$profile <- plot_marginal_profile(profile, "phi")
-  }
-  panels <- Filter(Negate(is.null), panels)
-  print(patchwork::wrap_plots(panels, ncol = 2L))
-  invisible(panels)
+  profile <- x$extras$profile$data
+  list(
+    certificate = stages$certificate, effective_draws = stages$effective_draws,
+    pareto_k = stages$pareto_k, moves = stages$moves,
+    profile = if (!is.null(profile)) plot_marginal_profile(profile, "phi")
+  )
+}
+
+##' Why each of the named panels has nothing to show
+##'
+##' A panel of an extra check that did not run names the extra to run.
+##' @noRd
+explain_missing_panels <- function(x, names) {
+  gaussian <- is.null(x$stages)
+  reasons <- vapply(names, function(name) {
+    if (identical(name, "profile")) {
+      if ("profile" %in% names(x$not_computed)) {
+        return(x$not_computed[["profile"]])
+      }
+      return(paste0("The panel \"profile\" needs the extra check \"profile\", ",
+                    "check_fit(fit, extra = \"profile\")."))
+    }
+    if (gaussian) {
+      return(paste0("A Gaussian fit has no Monte Carlo error, so it has no ",
+                    "stages to plot."))
+    }
+    switch(
+      name,
+      certificate = "No stage of the fit has a certificate to plot.",
+      effective_draws = ,
+      pareto_k = "No stage of the fit reached the certification draws.",
+      moves = paste0("The fit has one stage, or no standard errors, so there ",
+                     "are no changes in the estimates to plot.")
+    )
+  }, character(1L))
+  unique(unname(reasons))
 }
 
 ##' One quantity by stage, with a dashed line at its limit if it has one

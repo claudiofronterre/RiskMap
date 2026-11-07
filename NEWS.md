@@ -476,6 +476,25 @@ starting regression coefficients from a binomial regression with that link
 instead of a logit regression, and falls back on the logit regression if that
 one cannot be fitted.
 
+- `check_fit()` gains `extra`, which names the checks that cost computing time,
+with `"all"` for every one, so that `check_fit()` is the one place to check a
+fit (#262). The first is `"profile"`, the marginal profile likelihood of the
+spatial scale from `profile()`. Its row is `SUSPICIOUS` when the profile is flat,
+so that its 95% interval is open at an end, or has a second maximum, and a
+`PROBLEM` when a point of the profile is above the estimate, which is then not
+the maximum likelihood estimate. Before the extra checks start, a message says
+how long they should take, from the time the fit took. Each draws from a random
+number stream of its own after the seed of the fit, so the same call gives the
+same result, and the random number state of the session is left as it was. A
+profile already computed can be passed to `check_fit()` in `profile`, which moves
+there from `plot()` of the checks. The checks returned keep the result of every
+check that ran with the numbers behind its finding, and the new `summary()` of
+the checks gives them, with the certificate and draws of each stage and the full
+results of the extra checks, while `print()` still gives the verdict. `plot()` of
+the checks gains `which` to choose its panels, draws only what was computed, and
+says which extra check would compute a panel that is missing. The print of a fit
+without extra checks is unchanged.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

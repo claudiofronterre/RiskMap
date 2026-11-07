@@ -37,8 +37,10 @@ test_that("a Gaussian fit has one check and nothing to plot", {
   expect_match(checked$checks$finding, "no Monte Carlo error")
   expect_null(checked$stages)
   expect_null(checked$draws)
+  expect_null(checked$fit_seconds)
   expect_output(print(checked), "Checks on this fit")
-  expect_error(plot(checked), "no stages to plot")
+  expect_error(plot(checked), "no stages to plot.*extra = \"profile\"")
+  expect_error(plot(checked, which = "certificate"), "no stages to plot")
 })
 
 test_that("those that need a look come first", {
@@ -337,24 +339,35 @@ test_that("printing gives a line for each check and the fix where there is one",
   expect_lte(max(nchar(narrow)), 80L)
 })
 
-test_that("the plot shows the stages, and a profile if given", {
+test_that("the plot shows the stages, and a profile once it is computed", {
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   checked <- check_fit(binomial_model)
   panels <- plot(checked)
-  expect_contains(names(panels), "certificate")
+  expect_identical(names(panels), c("certificate", "effective_draws", "pareto_k"))
   for (panel in panels) expect_s3_class(panel, "ggplot")
-  expect_error(plot(checked, profile = 1), "'profile' must be a profile")
+
+  # A panel that was not computed says which extra to run, and plot() draws
+  # the others, or stops when there are none.
+  expect_message(chosen <- plot(checked, which = c("certificate", "profile")),
+                 "needs the extra check \"profile\", check_fit(fit, extra = \"profile\")",
+                 fixed = TRUE)
+  expect_identical(names(chosen), "certificate")
+  expect_error(plot(checked, which = "profile"),
+               "needs the extra check \"profile\"")
+  expect_message(plot(checked, which = c("certificate", "moves")),
+                 "no changes in the estimates to plot")
+  expect_error(plot(checked, which = "radius"),
+               "Unknown panel \"radius\". The panels are \"certificate\"")
+  expect_error(plot(checked, which = 1), "'which' must be a character vector")
 
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
                            n_draws = 200, messages = FALSE)
-  with_profile <- plot(checked, profile = scale_profile)
+  with_profile <- plot(check_fit(binomial_model, profile = scale_profile))
   expect_identical(names(with_profile), c(names(panels), "profile"))
   expect_s3_class(with_profile$profile, "ggplot")
-  variance_profile <- profile(binomial_model, parameters = "sigma2", n_points = 5,
-                              n_draws = 200, messages = FALSE)
-  expect_error(plot(checked, profile = variance_profile),
-               "'profile' must be a profile")
+  expect_identical(names(plot(check_fit(binomial_model, profile = scale_profile),
+                              which = "profile")), "profile")
 
   stages <- data.frame(stage = 1:2, certificate = c(NA, 0.05))
   expect_null(plot_stage_panel(stages[1L, ], "certificate", "t", "y"))
