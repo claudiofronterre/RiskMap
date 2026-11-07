@@ -102,7 +102,8 @@ test_that("a profile with a named link has the log-likelihood of the fit", {
     expect_lt(abs(problem$max_loglik - fitted$log_lik), 0.05)
     # The maximum on the bank is the fit's estimate up to Monte Carlo error,
     # a few hundredths of a standard error by the certificates of these fits.
-    # With the logit link it moved by 1.3 to 3.2 standard errors.
+    # With the logit link it moved by up to 1.4 standard errors for probit
+    # and 3.2 for cloglog.
     moved <- (problem$bank_estimate - problem$estimate) /
       problem$standard_errors
     expect_lt(max(abs(moved)), 0.1)
