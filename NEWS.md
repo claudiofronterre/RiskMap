@@ -418,6 +418,11 @@ value that is not a number, or is outside the range of the family, anywhere from
 -50 to 50 is now refused when it is supplied. Fits with the canonical links are
 unchanged.
 
+- A custom inverse link that `Deriv` cannot differentiate, such as a bare
+`invlink = pnorm`, now has its derivatives computed for all values at once, with
+the same values as before. They were computed one value at a time, which made
+such a fit much slower than the same link written as `function(eta) pnorm(eta)`.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and
