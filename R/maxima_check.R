@@ -34,7 +34,8 @@ gauss_hermite_rule <- function(nodes) {
 ##' so that the error of the Jensen bound can be judged the same way.
 ##' @noRd
 make_independent_site_likelihood <- function(D, y, units_m, location, offset,
-                                             family, nodes = 60L) {
+                                             family, nodes = 60L,
+                                             linkf = NULL) {
   poisson <- identical(family, "poisson")
   location <- as.integer(location)
   n_locations <- max(location)
@@ -44,6 +45,7 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
     rowsum(values, location, reorder = TRUE)
   }
   terms <- function(eta) {
+    if (!is.null(linkf)) return(custom_terms(eta))
     if (poisson) {
       mean <- exp(eta)
       list(value = y * eta - units_m * mean, score = y - units_m * mean,
@@ -56,11 +58,34 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
            curvature = units_m * probability * (1 - probability))
     }
   }
+  # A custom link takes its terms from compute_custom_link_terms(), in the
+  # shape of `eta`, which is a matrix at the quadrature nodes.
+  custom_terms <- function(eta) {
+    observed <- compute_custom_link_terms(eta, y, units_m, family, linkf)
+    if (is.null(observed)) {
+      stop("the inverse link failed in the likelihood with independent ",
+           "location effects", call. = FALSE)
+    }
+    shaped <- function(values) {
+      if (is.matrix(eta)) dim(values) <- dim(eta)
+      values
+    }
+    list(value = shaped(observed$log_likelihoods),
+         score = shaped(observed$score),
+         curvature = shaped(observed$curvature))
+  }
   rules <- list()
   rule <- function(count) {
     key <- as.character(count)
     if (is.null(rules[[key]])) rules[[key]] <<- gauss_hermite_rule(count)
     rules[[key]]
+  }
+
+  # The curvature of a location's log-density. A link that is not log-concave
+  # can make it negative, so it is kept at least half the prior's, which the
+  # canonical links, whose curvature is never negative, do not reach.
+  site_curvature <- function(curvature, variance) {
+    pmax(drop(by_location(curvature)) + 1 / variance, 1 / (2 * variance))
   }
 
   # Posterior mode of every location's effect by Newton steps, each halved
@@ -75,7 +100,7 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
     for (iteration in seq_len(200L)) {
       observed <- terms(linear + effects[location])
       gradient <- drop(by_location(observed$score)) - effects / variance
-      curvature <- drop(by_location(observed$curvature)) + 1 / variance
+      curvature <- site_curvature(observed$curvature, variance)
       if (max(abs(gradient)) < 1e-9) break
       step <- gradient / curvature
       for (halving in seq_len(50L)) {
@@ -87,8 +112,8 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
       effects <- effects + step
       current <- density_at(effects)
     }
-    curvature <- drop(by_location(terms(linear + effects[location])$curvature)) +
-      1 / variance
+    curvature <- site_curvature(terms(linear + effects[location])$curvature,
+                                variance)
     list(mode = effects, scale = 1 / sqrt(curvature))
   }
 
