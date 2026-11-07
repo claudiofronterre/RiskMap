@@ -217,10 +217,7 @@ bootstrap_seeds <- function(seed, n_sim, spacing) {
 ##' @noRd
 make_bootstrap_refit <- function(object) {
   family <- object$family
-  invlink <- if (family != "gaussian" &&
-                 identical(object$link_function$name, "custom")) {
-    object$link_function[c("inv", "d1", "d2")]
-  }
+  invlink <- refit_invlink(object)
   design <- as.matrix(object$D)
   re_unique <- if (!is.null(object$ID_re)) lapply(object$re, seq_along)
   start <- coef(object)

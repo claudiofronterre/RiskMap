@@ -6,11 +6,29 @@
 ##' The formula should include fixed effects and spatial effects specified using
 ##' [gp()] and optionally, random effects specified using [re()].
 ##' @param data An sf object containing the variables in the model.
-##' @param family A character string specifying the distribution of the response variable.
-##' Must be one of `"gaussian"`, `"binomial"`, or `"poisson"`.
-##' @param invlink A function that defines the inverse of the link function for
-##' the distribution of the data given the random effects.
-##' Not applicable when `family` is `"gaussian"`.
+##' @param family The distribution of the response given the random effects,
+##' with its link. Either one of the strings `"gaussian"`, `"binomial"` and
+##' `"poisson"`, which take the identity, logit and log links, or a family
+##' object as in [stats::glm()], such as `binomial("probit")`. Binomial
+##' responses take the logit, probit, complementary log-log (`"cloglog"`) and
+##' Cauchy (`"cauchit"`) links, Poisson responses the log link and Gaussian
+##' responses the identity link. `binomial("log")` and `poisson("identity")`
+##' are not accepted, because they can give means outside the range of the
+##' family, nor is `poisson("sqrt")`, whose inverse gives the same mean to a
+##' positive and a negative linear predictor. Quasi-likelihood families, such
+##' as [stats::quasibinomial()], have no likelihood to maximise and are not
+##' accepted either. Any other link can be given in `invlink`. A named link
+##' gives the same estimates as its inverse given in `invlink`, and is faster
+##' when that inverse cannot be differentiated symbolically, as for
+##' `invlink = pnorm`.
+##' @param invlink A function that maps the linear predictor to the mean of
+##' the response given the random effects, for a binomial or Poisson model
+##' whose link is not one of those that `family` names, such as a link for an
+##' imperfect diagnostic test. Its first and second derivatives are found
+##' symbolically where possible and numerically otherwise. They only steer the
+##' importance sampler, so they affect the speed of a fit and not its
+##' estimates. Not applicable for Gaussian models, and not to be combined with
+##' a family object that names a link other than logit or log.
 ##' @param denominator Optional denominator or exposure for binomial or Poisson distributions.
 ##' Passed as a bare/unquoted column name present in `data`.
 ##' If not provided, defaults to `1` for binomial models.
@@ -120,6 +138,10 @@
 ##' \item{fix_var_me}{Fixed measurement error variance}
 ##' \item{formula}{Model formula}
 ##' \item{family}{Response family}
+##' \item{link_function}{For binomial and Poisson models, the inverse link
+##' (`inv`), its first and second derivatives (`d1` and `d2`) and the name of
+##' the link (`link`), such as `"probit"`, which is `NULL` for an inverse given
+##' in `invlink`. `NULL` for Gaussian models.}
 ##' \item{distance_units}{Units (`"km"` or `"m"`) used for internal coordinate distances and spatial parameters}
 ##' \item{data}{The `sf` data used for model fitting, in the CRS used internally}
 ##' \item{input_crs}{The CRS of the input data}
@@ -227,6 +249,8 @@
 ##'
 ##' summary(fit)
 ##'
+##' # family = binomial("probit") fits the same model with a probit link
+##'
 ##' @seealso [set_control_mcmc()], [set_control_mcml()],
 ##'   \code{\link{summary.RiskMap}}, \code{\link{to_table}}
 ##' @export
@@ -252,8 +276,9 @@ glgpm <- function(formula,
 
   check_data(data)
   check_formula(formula, data)
-  if(!family %in% c("gaussian", "binomial", "poisson"))
-    stop("'family' must be either 'gaussian', 'binomial' or 'poisson'")
+  family_link <- read_family(family, invlink)
+  family <- family_link$family
+  invlink <- family_link$invlink
   not_gaussian <- family != "gaussian"
 
   stopifnot("'distance_units' must be either 'km' or 'm'" =
@@ -417,8 +442,9 @@ glgpm <- function(formula,
     } else if(family=="binomial") {
       aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
-      glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
-                        data = aux_data, family = binomial)
+      glm_fitted <- binomial_start_regression(
+        aux_data, cov_offset, link = if (is.list(invlink)) invlink$link
+      )
       start_pars[["beta"]] <- coef(glm_fitted)
     } else if(family=="poisson") {
       pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
@@ -2331,6 +2357,190 @@ compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
   c(estimates)
 }
 
+##' Read the response family and link that a user gives
+##'
+##' The one reader of `family` for every exported function that takes it.
+##' `family` is one of the strings `"gaussian"`, `"binomial"` and
+##' `"poisson"`, a family function such as `binomial`, or a family object
+##' such as `binomial("probit")`. A family object becomes its family string
+##' and, for a link other than the canonical one, the list form of `invlink`
+##' that `make_inverse_link_functions()` reads, with the link's name and its
+##' exact inverse and derivatives (`named_inverse_link()`). The canonical
+##' logit and log links keep `invlink = NULL`, so they take the canonical path
+##' and fit exactly as the strings do, and the identity link of the Gaussian
+##' family leaves nothing to carry. A string leaves `invlink` as it is, which
+##' keeps the internal list form open to refits.
+##' @param family What the user gave as `family`.
+##' @param invlink What the user gave as `invlink`.
+##' @param families The family strings the calling function accepts.
+##' @return A list with `family`, one of `families`, and `invlink`.
+##' @noRd
+read_family <- function(family, invlink = NULL,
+                        families = c("gaussian", "binomial", "poisson")) {
+  if (inherits(invlink, "link-glm")) {
+    stop("'invlink' takes an inverse-link function, not a link-glm object. ",
+         "Give a named link in 'family', as in binomial(\"", invlink$name,
+         "\"), or the inverse alone, as in make.link(\"", invlink$name,
+         "\")$linkinv.", call. = FALSE)
+  }
+  if (is.character(invlink)) {
+    stop("'invlink' takes a function, not the name of a link. Give a named ",
+         "link in 'family', as in binomial(\"probit\").", call. = FALSE)
+  }
+  if (is.function(family)) {
+    family <- tryCatch(family(), error = function(e) NULL)
+  }
+  if (inherits(family, "family")) {
+    link <- read_family_link(family$family %||% "", family$link %||% "")
+    if (!is.null(link$invlink) && !is.null(invlink)) {
+      stop("Give the link either in 'family', as in binomial(\"", family$link,
+           "\"), or as a function in 'invlink', not both.", call. = FALSE)
+    }
+    family <- link$family
+    if (is.null(invlink)) invlink <- link$invlink
+  }
+  if (!is.character(family) || length(family) != 1L ||
+      !family %in% families) {
+    stop("'family' must be ", format_family_strings(families),
+         ", or a family object such as binomial(\"probit\").", call. = FALSE)
+  }
+  list(family = family, invlink = invlink)
+}
+
+##' Family string and link of a family object
+##'
+##' Takes the `family` and `link` names of a stats family object and returns
+##' its family string and `invlink`, or stops with the reason the link is not
+##' accepted and what to give instead.
+##' @noRd
+read_family_link <- function(family, link) {
+  object <- paste0(family, "(\"", link, "\")")
+  use_invlink <- paste0(
+    "Other links can be given as an inverse-link function in 'invlink', ",
+    "with family = \"", family, "\"."
+  )
+  if (startsWith(family, "quasi")) {
+    stop(family, "() is a quasi-likelihood family, which has no likelihood ",
+         "for RiskMap to maximise. Use binomial() or poisson(), with any ",
+         "link they do not name given as an inverse-link function in ",
+         "'invlink'.", call. = FALSE)
+  }
+  if (!family %in% c("gaussian", "binomial", "poisson")) {
+    stop("RiskMap fits gaussian, binomial and poisson responses, not ",
+         family, ". For a binomial or Poisson response, any link can be ",
+         "given as an inverse-link function in 'invlink'.",
+         call. = FALSE)
+  }
+  refused <- switch(
+    paste(family, link),
+    "binomial log" = "the log link can give probabilities above 1",
+    "poisson identity" = "the identity link can give negative means",
+    "poisson sqrt" = paste("its inverse, the square of the linear",
+                           "predictor, gives the same mean to a positive",
+                           "and a negative linear predictor"),
+    NULL
+  )
+  if (!is.null(refused)) {
+    stop(object, " is not accepted, because ", refused, ". ", use_invlink,
+         call. = FALSE)
+  }
+  accepted <- switch(family,
+                     gaussian = "identity",
+                     binomial = c("logit", "probit", "cloglog", "cauchit"),
+                     poisson = "log")
+  if (!link %in% accepted) {
+    stop("The ", link, " link is not available for the ", family,
+         " family, which takes ", format_family_strings(accepted), ". ",
+         if (family == "gaussian") {
+           "Gaussian responses are fitted with the identity link only."
+         } else {
+           use_invlink
+         },
+         call. = FALSE)
+  }
+  canonical <- link %in% c("identity", "logit", "log")
+  list(family = family,
+       invlink = if (!canonical) c(named_inverse_link(link), link = link))
+}
+
+##' Names in quotes, joined as in "a", "b" or "c"
+##' @noRd
+format_family_strings <- function(names) {
+  quoted <- paste0("\"", names, "\"")
+  if (length(quoted) == 1L) return(quoted)
+  paste(paste(quoted[-length(quoted)], collapse = ", "), "or",
+        quoted[length(quoted)])
+}
+
+##' Exact inverse and derivatives of a named binomial link
+##'
+##' The inverses are written without the clamping of [stats::binomial()],
+##' because `bound_log_probability()` already handles probabilities of 0 and
+##' 1, and the derivatives are exact so that no numerical differences are
+##' needed. The second derivative of the complementary log-log link is
+##' written as a difference of two exponentials, which stays finite where
+##' `exp(eta)` overflows.
+##' @noRd
+named_inverse_link <- function(link) {
+  switch(
+    link,
+    probit = list(
+      inv = function(eta) pnorm(eta),
+      d1 = function(eta) dnorm(eta),
+      d2 = function(eta) -eta * dnorm(eta)
+    ),
+    cloglog = list(
+      inv = function(eta) -expm1(-exp(eta)),
+      d1 = function(eta) exp(eta - exp(eta)),
+      d2 = function(eta) exp(eta - exp(eta)) - exp(2 * eta - exp(eta))
+    ),
+    cauchit = list(
+      inv = function(eta) pcauchy(eta),
+      d1 = function(eta) dcauchy(eta),
+      d2 = function(eta) -2 * eta / (pi * (1 + eta^2)^2)
+    ),
+    stop("No inverse is defined for the ", link, " link.", call. = FALSE)
+  )
+}
+
+##' The binomial regression that gives the starting regression coefficients
+##'
+##' A named link starts from a regression with its own link, since the
+##' coefficients of a logit regression are on another scale (an intercept of
+##' -2.94 where a cauchit regression gives -6.31). Should that regression fail
+##' or not converge, as one with a cauchit link can, the logit regression is
+##' used, as it is for the canonical link and for a link given as a function.
+##' @param link The name of the link, NULL for a link given as a function.
+##' @noRd
+binomial_start_regression <- function(aux_data, cov_offset, link = NULL) {
+  regress <- function(glm_family) {
+    glm(cbind(y, units_m - y) ~ ., offset = cov_offset, data = aux_data,
+        family = glm_family)
+  }
+  if (!is.null(link) && !identical(link, "logit")) {
+    own <- tryCatch(suppressWarnings(regress(binomial(link))),
+                    error = function(e) NULL)
+    if (isTRUE(own$converged)) return(own)
+  }
+  regress(binomial)
+}
+
+##' What a refit of a fitted model passes as `invlink`
+##'
+##' `NULL` for a Gaussian fit or a canonical link, so that the refit takes the
+##' canonical path again, and otherwise the stored inverse, its derivatives
+##' and the name of the link, in the list form of `invlink`.
+##' @noRd
+refit_invlink <- function(object) {
+  link_function <- object$link_function
+  if (is.null(link_function) ||
+      identical(link_function$name, "canonical")) {
+    return(NULL)
+  }
+  list(inv = link_function$inv, d1 = link_function$d1,
+       d2 = link_function$d2, link = link_function$link)
+}
+
 ##' Validate and construct inverse-link functions
 ##'
 ##' This is the single internal representation used by the conditional-mode,
@@ -2382,19 +2592,29 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
     validate(inv, "canonical invlink")
     validate(d1, "canonical invlink_prime")
     if (second_derivative) validate(d2, "canonical invlink_second")
-    return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical"))
+    return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical",
+                link = if (family == "poisson") "log" else "logit"))
   }
 
+  # The list form is internal. It carries a named link from read_family(),
+  # and the stored link of a fit into its refits (refit_invlink()).
+  link <- NULL
   if (is.function(invlink)) {
     inv <- invlink
     d1 <- NULL
     d2 <- NULL
   } else if (is.list(invlink)) {
-    inv <- invlink$inv %||% invlink$inv_link %||% invlink$invlink
-    d1 <- invlink$d1 %||% invlink$inv_link_prime %||% invlink$mu_eta
-    d2 <- invlink$d2 %||% invlink$inv_link_second
+    unknown <- setdiff(names(invlink), c("inv", "d1", "d2", "link"))
+    if (is.null(names(invlink)) || length(unknown)) {
+      stop("A list in 'invlink' takes only the elements 'inv', 'd1', 'd2' ",
+           "and 'link'.", call. = FALSE)
+    }
+    inv <- invlink$inv
+    d1 <- invlink$d1
+    d2 <- invlink$d2
+    link <- invlink$link
   } else {
-    stop("'invlink' must be NULL, a function, or a list with inverse-link functions.")
+    stop("'invlink' must be NULL or a function.", call. = FALSE)
   }
 
   validate(inv, "invlink")
@@ -2409,7 +2629,7 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
     d2 <- NULL
   }
 
-  list(inv = inv, d1 = d1, d2 = d2, name = "custom")
+  list(inv = inv, d1 = d1, d2 = d2, name = "custom", link = link)
 }
 
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
@@ -2431,13 +2651,15 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' @param Sigma Covariance matrix of the spatial process.
 ##' @param ID_coords Indices mapping response to locations.
 ##' @param ID_re Indices mapping response to unstructured random effects.
-##' @param family Distribution family for the response variable: `"binomial"`
-##'   or `"poisson"`.
+##' @param family The distribution of the response, `"binomial"` or
+##'   `"poisson"`, or a binomial or Poisson family object with one of the
+##'   links that [glgpm()] accepts, such as `binomial("probit")`.
 ##' @param sigma2_re Variance of the unstructured random effects.
 ##' @param hessian Logical; if TRUE, compute the Hessian matrix.
 ##' @param gradient Logical; if TRUE, compute the gradient vector.
-##' @param invlink A function that defines the inverse of the link function for
-##'   the distribution of the data given the random effects.
+##' @param invlink A function that maps the linear predictor to the mean of
+##'   the response given the random effects, for a link that `family` does
+##'   not name, as in [glgpm()].
 ##'
 ##' @details
 ##' The mode is found by Newton-type optimisation ([stats::nlminb()]) using the
@@ -2467,9 +2689,10 @@ maxim_integrand <- function(
   if (missing(denominator)) {
     stop("'denominator' must be provided.", call. = FALSE)
   }
-  if (length(family) != 1L || !family %in% c("binomial", "poisson")) {
-    stop("'family' must be either \"binomial\" or \"poisson\".", call. = FALSE)
-  }
+  family_link <- read_family(family, invlink,
+                             families = c("binomial", "poisson"))
+  family <- family_link$family
+  invlink <- family_link$invlink
   # The integrand and its derivatives below refer to the denominator as
   # `units_m`, the name used by the package's internal fitting functions.
   units_m <- denominator

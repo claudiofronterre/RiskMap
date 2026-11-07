@@ -56,7 +56,7 @@ test_that("specify_glgpm returns errors as expected", {
   expect_error(
     specify_glgpm(y ~ gp(), gaussian_data, "not-a-family",
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "should be one of"
+    "'family' must be \"gaussian\", \"binomial\" or \"poisson\""
   )
 
   expect_error(
@@ -98,7 +98,7 @@ test_that("specify_glgpm returns errors as expected", {
                   denominator = denominator,
                   invlink = "a",
                   list(beta = 1, sigma2 = 1, phi = 1)),
-    "'invlink' must be a function"
+    "'invlink' takes a function, not the name of a link"
   )
 
 })

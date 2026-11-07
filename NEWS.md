@@ -446,6 +446,36 @@ without such a failure are unchanged.
 the same values as before. They were computed one value at a time, which made
 such a fit much slower than the same link written as `function(eta) pnorm(eta)`.
 
+- `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
+in `family`, as `glm()` does, so a link can be named as in
+`family = binomial("probit")`. Binomial models take the logit, probit, cloglog
+and cauchit links, Poisson models the log link and Gaussian models the identity
+link, and `family = binomial` is read as `binomial()`. The logit and log links
+fit exactly as `family = "binomial"` and `family = "poisson"` do. A named link
+gives the estimates of its inverse supplied in `invlink`, with exact
+derivatives, so it is never differentiated during the fit and is faster than
+an inverse such as a bare `pnorm`. `binomial("log")` and `poisson("identity")`,
+whose means can leave the range of the family, `poisson("sqrt")`, whose inverse
+is not monotone, quasi families, which have no likelihood, and other families
+are refused with a message pointing to `invlink`, which still takes any other
+inverse link as a function. A link given both in `family` and in `invlink` is
+an error, and `invlink` does not take the name of a link. `print()` and
+`summary()` name the link, and simulations, cross-validation refits and the
+parametric bootstrap keep it. The undocumented list form of `invlink` now takes
+only `inv`, `d1` and `d2`, and `specify_glgpm()` no longer accepts an
+abbreviated family such as `"bin"`, as `glgpm()` never did. `summary()` writes
+an inverse link taken from a package, such as a bare `invlink = pnorm`, by its
+name instead of its compiled body, `.Call(C_pnorm, ...)`.
+
+- `check_fit()` adds a row when a link is not known to make the likelihood of
+each location log-concave in its latent effect, as the cauchit link and links
+given as a function in `invlink` are not, since the latent effects can then
+have more than one conditional mode. The row is `OK`, because this belongs to
+the model and not to how it was fitted. A fit with a named link takes its
+starting regression coefficients from a binomial regression with that link
+instead of a logit regression, and falls back on the logit regression if that
+one cannot be fitted.
+
 - Certified MCML now builds every global proposal of a stage, other than the one
 at its start, from three plain refits of the factors found at the start, in place
 of iterating with Anderson acceleration until no factor moves by more than 1e-8.
