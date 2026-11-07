@@ -1265,6 +1265,7 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     record$start_failure <- start_failure
     record$start_replaced <- restarted && !isTRUE(record$proposal_fallback)
     record$stage <- stage
+    record$refit_change <- read_refit_change(engine)
     history[[stage]] <- record
     last_proposal <- engine$proposal_type()
     if (isTRUE(record$proposal_fallback)) engine$use_proposal("global")
@@ -1347,5 +1348,20 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
 read_proposal_failure <- function(engine) {
   if (is.function(engine$first_proposal_failure)) {
     engine$first_proposal_failure()
+  }
+}
+
+##' The largest change of a factor at the last of the fixed refits
+##'
+##' Over the global proposals since the failures were last reset, that is over
+##' the stage, as a diagnostic of how far the fixed refits from the anchor are
+##' from the iteration's fixed point. NA when no proposal was refitted from an
+##' anchor, and for an engine that does not record it.
+##' @noRd
+read_refit_change <- function(engine) {
+  if (is.function(engine$largest_refit_change)) {
+    engine$largest_refit_change()
+  } else {
+    NA_real_
   }
 }
