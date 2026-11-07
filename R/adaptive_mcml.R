@@ -1069,6 +1069,7 @@ compact_adaptive_mcml_history <- function(history) {
   lapply(history, function(stage) {
     stage$first_validation <- bank_summary(stage$first_validation)
     stage$second_validation <- bank_summary(stage$second_validation)
+    stage$replicate_validation <- bank_summary(stage$replicate_validation)
     stage$information <- NULL
     stage$information_root <- NULL
     stage

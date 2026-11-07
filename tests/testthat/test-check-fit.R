@@ -288,10 +288,10 @@ test_that("the stages and the moves of the estimates are summarised", {
   later <- estimate + 2 * errors
   fit$mcml_history <- list(
     list(proposal = "laplace", certificate = 0.5, estimate = estimate,
-         validation_budget = 100L,
+         validation_budget = 100L, radius_from = "replicate",
          second_validation = list(relative_ess = 0.1, pareto_k = 1.1)),
     list(proposal = "global", certificate = 0.05, estimate = later,
-         validation_budget = 1000L,
+         validation_budget = 1000L, radius_from = "certification",
          second_validation = list(relative_ess = 0.5, pareto_k = 0.3)),
     list(proposal = "global", certificate = NA_real_, estimate = later)
   )
@@ -299,6 +299,8 @@ test_that("the stages and the moves of the estimates are summarised", {
   expect_identical(checked$stages$stage, 1:3)
   expect_identical(checked$stages$proposal, c("laplace", "global", "global"))
   expect_identical(checked$stages$certificate, c(0.5, 0.05, NA))
+  expect_identical(checked$stages$radius_from,
+                   c("replicate", "certification", NA))
   expect_equal(checked$stages$effective_draws, c(10, 500, NA), tolerance = 1e-12)
   expect_identical(checked$stages$pareto_k, c(1.1, 0.3, NA))
 

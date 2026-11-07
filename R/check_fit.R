@@ -66,9 +66,12 @@
 ##' \item{draws}{One sentence on the stages and draws of the fit, `NULL` for
 ##' Gaussian models.}
 ##' \item{stages}{For non-Gaussian models, a data frame with one row per stage
-##' and the columns `stage`, `proposal`, `certificate`, `effective_draws` and
-##' `pareto_k`. The last two describe the certification draws, and are `NA` for
-##' a stage that did not reach them.}
+##' and the columns `stage`, `proposal`, `certificate`, `radius_from`,
+##' `effective_draws` and `pareto_k`. The radius of the certificate is the
+##' larger of the radii of the certification draws and of a replicate of them,
+##' and `radius_from` says which it was (`"certification"` or `"replicate"`).
+##' The last two columns describe the certification draws. All three are `NA`
+##' for a stage that did not reach them.}
 ##' \item{moves}{A data frame with the absolute change in each `parameter`
 ##' between one `stage` and the one before it, in standard errors (`move`).
 ##' `NULL` for a fit with one stage or without standard errors.}
@@ -629,6 +632,7 @@ summarise_mcml_stages <- function(history) {
     bank <- summarise_certification_bank(record)
     data.frame(stage = stage, proposal = record$proposal %||% NA_character_,
                certificate = record$certificate %||% NA_real_,
+               radius_from = record$radius_from %||% NA_character_,
                effective_draws = bank$effective_draws %||% NA_real_,
                pareto_k = bank$pareto_k %||% NA_real_)
   }))
