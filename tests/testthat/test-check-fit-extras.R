@@ -211,6 +211,25 @@ test_that("an extra check that does not apply or fails says why", {
   expect_identical(failed$checks, check_fit(binomial_model)$checks)
 })
 
+test_that("the profiles of a fit with a named link use that link", {
+  probit <- glgpm(y ~ cov + gp(), data = binomial_data,
+                  family = binomial("probit"), denominator = denominator,
+                  control_mcmc = control_mcmc, seed = fixture_seed,
+                  control_mcml = fixture_control_mcml, messages = FALSE)
+  captured <- NULL
+  local_mocked_bindings(
+    make_adaptive_mcml_engine = function(..., invlink = list(missing = TRUE)) {
+      captured <<- invlink
+      stop("engine captured")
+    }
+  )
+  checked <- check_fit(probit, extra = "profile", messages = FALSE)
+  expect_match(checked$not_computed[["profile"]], "engine captured")
+  expect_identical(captured$link, "probit")
+  expect_identical(captured$inv, probit$link_function$inv)
+  expect_identical(captured$d1, probit$link_function$d1)
+})
+
 test_that("a Gaussian profile needs no seed and can be plotted alone", {
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
