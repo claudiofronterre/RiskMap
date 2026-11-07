@@ -16,6 +16,8 @@ Invisibly returns \code{x}.
 }
 \description{
 Print method for objects of class \code{"RiskMap_check"} from
-\code{\link[=check_fit]{check_fit()}}: one line for each check, the findings of those that need a
-look first, each with its fix where there is one.
+\code{\link[=check_fit]{check_fit()}}, which gives the verdict. Each check has an entry, those
+that need a look first, each with its fix where there is one, and the
+extra checks that were asked for but not computed are listed with the
+reason. \code{\link[=summary.RiskMap_check]{summary.RiskMap_check()}} gives the numbers behind each finding.
 }

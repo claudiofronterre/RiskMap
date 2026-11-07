@@ -517,6 +517,31 @@ an inverse link given in `invlink`, were those of another model, and nothing
 warned of it. The fix does not change the profiles of fits with the logit
 and log links.
 
+- `check_fit()` gains `extra`, which names the checks that cost computing time,
+with `"all"` for every one, so that `check_fit()` is the one place to check a
+fit (#262). The first is `"profile"`, the marginal profile likelihood from
+`profile()` of every covariance parameter of the fit, which are the spatial
+variance and scale, the nugget, an estimated measurement error variance and the
+variances of the random effects, but not the regression coefficients. Its row
+names each parameter whose profile is flat, so that its 95% interval is open at
+an end, or has a second maximum, and is then `SUSPICIOUS`, and is a `PROBLEM`
+when a point of a profile is above the estimate, which is then not the maximum
+likelihood estimate. `cores` runs the profiles in parallel, with the same
+results. Before the extra checks start, a message says how long they should
+take, from the time the fit took, the number of parameters and the cores. Each
+draws from a random number stream of its own after the seed of the fit, so the
+same call gives the same result, and the random number state of the session is
+left as it was. A profile already computed can be passed to `check_fit()` in
+`profile`, which moves there from `plot()` of the checks, and is used as it is,
+whatever parameters it covers. The checks returned keep the result of every
+check that ran with the numbers behind its finding, and the new `summary()` of
+the checks gives them, with the certificate and draws of each stage and the full
+results of the extra checks, while `print()` still gives the verdict. `plot()` of
+the checks gains `which` to choose its panels, draws only what was computed, and
+says which extra check would compute a panel that is missing. Each profiled
+parameter has its own panel, such as `"profile_phi"`, and `which = "profile"`
+draws them all. The print of a fit without extra checks is unchanged.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and
