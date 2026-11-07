@@ -1811,6 +1811,27 @@ check_crs <- function(crs, name = deparse(substitute(crs))){
 }
 
 
+#' Check that an inverse link stays in the range of its family in the tails
+#'
+#' A draw whose mean is not a number or is outside the range has no weight
+#' (`compute_observation_log_likelihood()`), so a link that goes wrong only in
+#' its tails would change the likelihood without any message. A mean that
+#' overflows to infinity for a Poisson model is a limit and is allowed.
+#' @noRd
+check_invlink_tails <- function(invlink, family,
+                                eta = seq(-50, 50, by = 0.5)) {
+  mean <- invlink(eta)
+  outside <- is.na(mean) | mean < 0 | (family == "binomial" & mean > 1)
+  if (any(outside)) {
+    stop(sprintf(
+      paste("'invlink' returned a value that is not a number or is outside",
+            "the range of the family at a linear predictor of %g."),
+      eta[which(outside)[1L]]
+    ), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' @title check_invlink
 #' @description
 #'

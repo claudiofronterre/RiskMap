@@ -58,8 +58,8 @@ compute_nonlinear_parts <- function(centre, step, y, units_m, family,
     if (family == "poisson") {
       y * log(pmax(units_m * mean, .Machine$double.xmin)) - units_m * mean
     } else {
-      y * log(pmax(mean, .Machine$double.xmin)) +
-        (units_m - y) * log(pmax(1 - mean, .Machine$double.xmin))
+      log_probability <- bound_log_probability(mean)
+      y * log_probability$success + (units_m - y) * log_probability$failure
     }
   }
   terms <- laplace_observation_terms(centre, y, units_m, family, linkf)
@@ -172,7 +172,8 @@ update_observation_factors <- function(marginal_mean, marginal_sd, offset,
 ##' under that proposal. The marginal means and variances come from compiled
 ##' code (`cpp_global_marginals()`), which keeps the dense factorisation and
 ##' inverse off the R heap. Returns the refitted factors, or NULL if the
-##' precision is not positive definite or a fit fails.
+##' precision is not positive definite or a fit fails. For a custom link that
+##' includes a quadratic fit with too few weighted nodes.
 ##' @noRd
 refit_global_factors <- function(factors, mu, y, units_m, latent_map,
                                  precision, family, linkf, canonical,
@@ -195,6 +196,7 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
     error = function(error) NULL
   )
   if (is.null(updated)) return(NULL)
+  if (!canonical && any(!is.finite(updated$curvature))) return(NULL)
   refitted <- c(updated$linear, floor_curvature(updated$curvature))
   if (any(!is.finite(refitted))) return(NULL)
   refitted
@@ -253,21 +255,6 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 tolerance = 1e-8, maximum_iterations = 500L,
                                 quadrature = build_normal_quadrature(),
                                 memory = 3L, initial = NULL) {
-  if (is.null(initial)) {
-    mode_terms <- laplace_observation_terms(
-      mu + latent_linear_predictor(latent_map, mode), y, units_m, family,
-      linkf
-    )
-    if (is.null(mode_terms)) return(NULL)
-    curvature <- mode_terms$curvature
-    linear <- mode_terms$score +
-      curvature * latent_linear_predictor(latent_map, mode)
-  } else {
-    linear <- initial$linear
-    curvature <- initial$curvature
-  }
-  observations <- length(linear)
-  curvature_part <- observations + seq_len(observations)
   # A lower bound on the factors' curvature that keeps Q positive definite.
   # For C >= c < 0, A' diag(C) A >= c A'A, and by Gershgorin the largest
   # eigenvalue of A'A is at most the number of latent columns per observation
@@ -286,6 +273,26 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
     }
     pmax(curvature, curvature_floor)
   }
+  if (is.null(initial)) {
+    mode_terms <- laplace_observation_terms(
+      mu + latent_linear_predictor(latent_map, mode), y, units_m, family,
+      linkf
+    )
+    if (is.null(mode_terms)) return(NULL)
+    # A link that is not log-concave can have negative curvature at the mode.
+    curvature <- if (canonical) {
+      mode_terms$curvature
+    } else {
+      floor_curvature(mode_terms$curvature)
+    }
+    linear <- mode_terms$score +
+      curvature * latent_linear_predictor(latent_map, mode)
+  } else {
+    linear <- initial$linear
+    curvature <- initial$curvature
+  }
+  observations <- length(linear)
+  curvature_part <- observations + seq_len(observations)
   refit <- function(factors) {
     refit_global_factors(factors, mu, y, units_m, latent_map, precision,
                          family, linkf, canonical, quadrature,
