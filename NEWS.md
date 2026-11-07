@@ -434,6 +434,27 @@ parameter value, which give that value no weight, are counted and reported by
 the same values as before. They were computed one value at a time, which made
 such a fit much slower than the same link written as `function(eta) pnorm(eta)`.
 
+- `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
+in `family`, as `glm()` does, so a link can be named as in
+`family = binomial("probit")`. Binomial models take the logit, probit, cloglog
+and cauchit links, Poisson models the log link and Gaussian models the identity
+link, and `family = binomial` is read as `binomial()`. The logit and log links
+fit exactly as `family = "binomial"` and `family = "poisson"` do. A named link
+gives the estimates of its inverse supplied in `invlink`, with exact
+derivatives, so it is never differentiated during the fit and is faster than
+an inverse such as a bare `pnorm`. `binomial("log")` and `poisson("identity")`,
+whose means can leave the range of the family, `poisson("sqrt")`, whose inverse
+is not monotone, quasi families, which have no likelihood, and other families
+are refused with a message pointing to `invlink`, which still takes any other
+inverse link as a function. A link given both in `family` and in `invlink` is
+an error, and `invlink` does not take the name of a link. `print()` and
+`summary()` name the link, and simulations, cross-validation refits and the
+parametric bootstrap keep it. The undocumented list form of `invlink` now takes
+only `inv`, `d1` and `d2`, and `specify_glgpm()` no longer accepts an
+abbreviated family such as `"bin"`, as `glgpm()` never did. `summary()` writes
+an inverse link taken from a package, such as a bare `invlink = pnorm`, by its
+name instead of its compiled body, `.Call(C_pnorm, ...)`.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

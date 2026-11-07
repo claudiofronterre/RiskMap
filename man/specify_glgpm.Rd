@@ -22,8 +22,21 @@ The formula should include fixed effects and spatial effects specified using
 
 \item{data}{An sf object containing the variables in the model.}
 
-\item{family}{A character string specifying the distribution of the response variable.
-Must be one of \code{"gaussian"}, \code{"binomial"}, or \code{"poisson"}.}
+\item{family}{The distribution of the response given the random effects,
+with its link. Either one of the strings \code{"gaussian"}, \code{"binomial"} and
+\code{"poisson"}, which take the identity, logit and log links, or a family
+object as in \code{\link[stats:glm]{stats::glm()}}, such as \code{binomial("probit")}. Binomial
+responses take the logit, probit, complementary log-log (\code{"cloglog"}) and
+Cauchy (\code{"cauchit"}) links, Poisson responses the log link and Gaussian
+responses the identity link. \code{binomial("log")} and \code{poisson("identity")}
+are not accepted, because they can give means outside the range of the
+family, nor is \code{poisson("sqrt")}, whose inverse gives the same mean to a
+positive and a negative linear predictor. Quasi-likelihood families, such
+as \code{\link[stats:quasibinomial]{stats::quasibinomial()}}, have no likelihood to maximise and are not
+accepted either. Any other link can be given in \code{invlink}. A named link
+gives the same estimates as its inverse given in \code{invlink}, and is faster
+when that inverse cannot be differentiated symbolically, as for
+\code{invlink = pnorm}.}
 
 \item{parameters}{A named list containing \code{beta}, \code{sigma2} and \code{phi}.
 \code{beta} has one entry per design-matrix column, including the intercept
@@ -46,9 +59,14 @@ for internal coordinate distances and spatial parameters such as \code{phi}. The
 the returned \code{data} retain the linear units declared by its CRS.
 Defaults to \code{"km"}.}
 
-\item{invlink}{A function that defines the inverse of the link function for
-the distribution of the data given the random effects.
-Not applicable when \code{family} is \code{"gaussian"}.}
+\item{invlink}{A function that maps the linear predictor to the mean of
+the response given the random effects, for a binomial or Poisson model
+whose link is not one of those that \code{family} names, such as a link for an
+imperfect diagnostic test. Its first and second derivatives are found
+symbolically where possible and numerically otherwise. They only steer the
+importance sampler, so they affect the speed of a fit and not its
+estimates. Not applicable for Gaussian models, and not to be combined with
+a family object that names a link other than logit or log.}
 }
 \value{
 A validated \code{RiskMap_simulation_model} for \code{\link[=simulate_glgpm]{simulate_glgpm()}}. It
