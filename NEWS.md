@@ -558,7 +558,8 @@ gives the bound with the radius so widened. The chains can miss a separate mode
 of the latent effects, so `OK` is not a proof. The check should take about
 twice as long as the fit, and draws from the streams 9500 to 9502 after the
 seed of the fit. `plot()` of the checks gains the panel `"radius"`, the error of
-each resampled sample against the radius estimated from its own draws.
+resampled samples against the radius the fit uses for them, whose subtitle
+gives the predicted rate first.
 
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and

@@ -15,7 +15,8 @@
 ##' radius allows for, exceeds it, which the 95% of the certificate refers to.
 ##' It gives its interval from resampling the banks, which leaves out the
 ##' error of the chains, the percentage of samples in which the error of the
-##' certification bank alone exceeds the radius, the percentage of fits whose Monte Carlo error exceeds the
+##' certification bank alone exceeds the radius, which the panel of the check
+##' shows, the percentage of fits whose Monte Carlo error exceeds the
 ##' certificate, and the factor by which the radius would have to grow for
 ##' the level to be 5%. Outside binomial with the logit link the factor is
 ##' raised by a `margin` of 15%, since the predictions were low on simulated
@@ -42,9 +43,12 @@
 ##' its radius so widened (`widened`), the `tolerance`, the median Pareto
 ##' shape of 100 resampled banks (`pareto_k`) and that of the check's own bank
 ##' (`bank_pareto_k`), the split R-hat of the chains' log weight (`rhat`), the
-##' `settings`, the elapsed `seconds` and the `banks`, a data frame with each
-##' resampled bank's `error` and the `radius` from its own draws alone, in
-##' standard errors.
+##' `settings`, the elapsed `seconds`, the `samples`, a data frame with the
+##' `error` of each resampled bank and the `radius` the fit would use for it
+##' with the replicate of its first triple in `measure_radius_rule()`, in
+##' standard errors, and, as a diagnostic, the
+##' percentage of resampled banks whose error exceeds the radius of their own
+##' draws alone, without the replicate (`own_alone`).
 ##' @noRd
 fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
                              banks = 1000L, seed = NULL) {
@@ -89,8 +93,8 @@ fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
                     banks = as.integer(banks), draws = problem$draws,
                     seed = streams[[1L]]),
     seconds = proc.time()[["elapsed"]] - started,
-    banks = data.frame(error = sqrt(rowSums(resampled$errors^2)),
-                       radius = resampled$radii)
+    samples = rates$samples,
+    own_alone = 100 * mean(sqrt(rowSums(resampled$errors^2)) > resampled$radii)
   ), class = "RiskMap_radius_check")
   check_result(describe_radius_check(data), data)
 }
@@ -127,7 +131,7 @@ is_binomial_logit <- function(object) {
 ##' The row of the check of the radius, from its details
 ##' @noRd
 describe_radius_check <- function(details) {
-  percent <- function(value) paste0(signif(value, 2), "%")
+  percent <- format_radius_percent
   found <- paste0(
     "The radius of the bound is predicted to be exceeded in ",
     percent(details$level), " of samples (", percent(details$level_interval[1]),
@@ -153,6 +157,12 @@ describe_radius_check <- function(details) {
            "the weights into each sample.")
   )
 }
+
+##' A percentage of the check of the radius as text, to two figures
+##'
+##' The same in the row, the summary and the panel of the check.
+##' @noRd
+format_radius_percent <- function(value) paste0(signif(value, 2), "%")
 
 ##' Seeds of the three random steps of `fit_check_radius()`
 ##'
@@ -552,7 +562,9 @@ compute_validation_radii <- function(covariances, probability = 0.95,
 ##' exceeds the certificate (`exceedance`), and the 95% point of the ratio of
 ##' that error to r, the factor that brings `level` to 5%. The 95% interval of
 ##' `level` comes from `replicates` resamplings of the banks with replacement,
-##' on the same triples of positions.
+##' on the same triples of positions. `samples` has ||G_j|| (`error`) and r
+##' (`radius`) for each bank j, from the first triple with j as the
+##' certification bank, so that each bank is drawn once.
 ##' @noRd
 measure_radius_rule <- function(errors, radii, tuples = 40000L,
                                 replicates = 200L) {
@@ -566,6 +578,12 @@ measure_radius_rule <- function(errors, radii, tuples = 40000L,
          certification = certification)
   }
   all <- rates_of(seq_len(nrow(errors)))
+  first <- match(seq_len(nrow(errors)), triples[, 2L])
+  first <- first[!is.na(first)]
+  samples <- data.frame(
+    error = sqrt(rowSums(all$certification[first, , drop = FALSE]^2)),
+    radius = all$radius[first]
+  )
   distance <- sqrt(rowSums((all$certification - all$correction)^2))
   levels <- vapply(seq_len(replicates), function(replicate) {
     resampled <- rates_of(sample.int(nrow(errors), replace = TRUE))
@@ -575,6 +593,7 @@ measure_radius_rule <- function(errors, radii, tuples = 40000L,
        level_interval = stats::quantile(levels, c(0.025, 0.975),
                                         names = FALSE),
        own = mean(sqrt(rowSums(all$certification^2)) > all$radius),
+       samples = samples,
        exceedance = mean(sqrt(rowSums(all$correction^2)) >
                            distance + all$radius),
        factor = stats::quantile(all$allowed / all$radius, 0.95,

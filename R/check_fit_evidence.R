@@ -280,10 +280,12 @@ write_profile_evidence <- function(profile) {
 ##'
 ##' The predicted rates, the bound so widened and the settings, then the
 ##' error and radius of the resampled samples at a few quantiles. Rates are
-##' percentages of samples of certification draws.
+##' percentages of samples of certification draws, to two figures as in the
+##' row and the panel. The rate with the radius of a sample's own draws
+##' alone is a diagnostic, since the fit uses the larger of two radii.
 ##' @noRd
 write_radius_evidence <- function(check) {
-  percent <- function(value) paste0(signif(value, 3), "%")
+  percent <- format_radius_percent
   settings <- check$settings
   probabilities <- c(0.05, 0.25, 0.5, 0.75, 0.95)
   quantiles <- function(values) {
@@ -295,9 +297,11 @@ write_radius_evidence <- function(check) {
       paste(percent(check$level_interval), collapse = " to "),
     "Samples whose certification draws alone exceed the radius" =
       percent(check$own),
+    "Diagnostic, the same with the radius of their own draws alone" =
+      percent(check$own_alone),
     "Samples whose error exceeds the bound" = percent(check$exceedance),
     "Growth of the radius that brings the first rate to 5%" = check$factor,
-    "Margin on that growth" = percent(100 * check$margin),
+    "Margin on that growth" = paste0(100 * check$margin, "%"),
     "Widening of the radius" = check$widening,
     "Bound, in standard errors" = check$certificate,
     "Bound with the radius so widened" = check$widened,
@@ -312,11 +316,11 @@ write_radius_evidence <- function(check) {
                                 "draws"),
     "Seed of the fresh sample" = as.character(settings$seed),
     "Time of the check" = format_check_time(check$seconds),
-    "Error and own radius of the resampled samples, in standard errors" =
+    "Error and radius of the resampled samples, in standard errors" =
       data.frame(quantile = paste0(100 * probabilities, "%"),
-                 error = quantiles(check$banks$error),
-                 radius = quantiles(check$banks$radius),
-                 error_over_radius = quantiles(check$banks$error /
-                                                 check$banks$radius))
+                 error = quantiles(check$samples$error),
+                 radius = quantiles(check$samples$radius),
+                 error_over_radius = quantiles(check$samples$error /
+                                                 check$samples$radius))
   ))
 }

@@ -56,13 +56,13 @@ as in \code{extra}, each with its \code{row} and its \code{data}. The \code{data
 \code{"profile"} is the \code{"RiskMap_profile"} object. That of \code{"radius"} is a list
 with the predicted percentages of samples whose error exceeds the radius
 (\code{level}, with its \code{level_interval}), in which the error of the
-certification draws alone exceeds the radius (\code{own}) and whose error
-exceeds the bound (\code{exceedance}), the \code{factor} by which the radius would have to grow for
+certification draws alone exceeds the radius (\code{own}), the share above the
+line in its panel, and whose error exceeds the bound (\code{exceedance}), the \code{factor} by which the radius would have to grow for
 \code{level} to be 5\%, the \code{margin}, the \code{widening} of the radius with that
 margin, at least one, the bound so widened (\code{widened}), the \code{settings} of
-the check and \code{banks}, a data frame of the \code{error} of each resampled
-sample and the \code{radius} estimated from its own draws, in standard
-errors.}
+the check and \code{samples}, a data frame with the \code{error} of each resampled
+sample and the \code{radius} the fit would use for it, the larger of its own
+and a replicate's, in standard errors.}
 \item{not_computed}{A named character vector giving, for each extra check
 that was asked for but not computed, the reason.}
 \item{fit_seconds}{The time the fit took in seconds, \code{NULL} where the fit

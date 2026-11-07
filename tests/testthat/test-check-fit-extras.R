@@ -277,20 +277,37 @@ test_that("the radius check runs on request, from streams of the fit's seed", {
   )))
   expect_true(any(grepl("^ +Chains +16 of 4,000 rounds$", evidence)))
   expect_true(any(grepl("^ +Resampled samples +1,000 of 500 draws$", evidence)))
-  expect_contains(evidence, paste0("  Error and own radius of the resampled ",
+  expect_contains(evidence, paste0("  Error and radius of the resampled ",
                                    "samples, in standard errors"))
+  own <- format_radius_percent(radius$data$own)
+  expect_true(any(grepl(paste0(
+    "^ +Samples whose certification draws alone exceed the radius +", own, "$"
+  ), evidence)))
+  expect_true(any(grepl(paste0(
+    "^ +Diagnostic, the same with the radius of their own draws alone +",
+    format_radius_percent(radius$data$own_alone), "$"
+  ), evidence)))
+  level <- format_radius_percent(radius$data$level)
+  expect_match(radius$row$finding,
+               paste0("^The radius of the bound is predicted to be exceeded in ",
+                      level, " of samples"))
   panels <- plot(checked)
   expect_identical(names(panels),
                    c("certificate", "effective_draws", "pareto_k", "radius"))
   expect_s3_class(panels$radius, "ggplot")
   expect_identical(names(plot(checked, which = "radius")), "radius")
-  above <- mean(radius$data$banks$error > radius$data$banks$radius)
-  expect_identical(panels$radius$labels$subtitle,
-                   paste0(signif(100 * above, 2), "% of the 1,000 samples lie ",
-                          "above the dashed line,\nwhere the error exceeds the ",
-                          "radius from their own draws."))
+  # The subtitle starts with the predicted rate of the row, and gives the
+  # share above the line as the summary does.
+  subtitle <- gsub("\n", " ", panels$radius$labels$subtitle, fixed = TRUE)
+  expect_match(subtitle, paste0("^Predicted to be exceeded in ", level,
+                                " of samples \\("))
+  expect_match(subtitle, paste0("alone exceeds it in ", own,
+                                ", above the dashed line.$"))
+  expect_lte(max(nchar(strsplit(panels$radius$labels$subtitle, "\n")[[1L]])),
+             62L)
   expect_null(plot_radius_panel(NULL))
-  expect_null(plot_radius_panel(list(banks = data.frame(error = 0, radius = 1))))
+  expect_null(plot_radius_panel(list(samples = data.frame(error = 0,
+                                                          radius = 1))))
 })
 
 test_that("a radius check that does not apply or fails says why", {

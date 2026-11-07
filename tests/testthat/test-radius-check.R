@@ -127,10 +127,13 @@ test_that("the radius of a fit is checked reproducibly", {
   expect_identical(names(checked$row), c("check", "status", "finding", "fix"))
   expect_identical(checked$row$check, "Radius of the bound")
   expect_s3_class(checked$data, "RiskMap_radius_check")
-  expect_identical(dim(checked$data$banks), c(20L, 2L))
-  expect_named(checked$data$banks, c("error", "radius"))
-  expect_true(all(checked$data$banks$radius > 0))
+  # One row for each resampled sample.
+  expect_identical(dim(checked$data$samples), c(20L, 2L))
+  expect_named(checked$data$samples, c("error", "radius"))
+  expect_true(all(checked$data$samples$radius > 0))
   details <- checked$data
+  expect_gte(details$own_alone, 0)
+  expect_lte(details$own_alone, 100)
   for (rate in c("level", "own", "exceedance")) {
     expect_gte(details[[rate]], 0)
     expect_lte(details[[rate]], 100)

@@ -34,8 +34,12 @@ panels show the bound on the Monte Carlo error against the tolerance
 its limit of 0.7 (\code{"pareto_k"}) and how far the estimates moved
 (\code{"moves"}). With the extra check \code{"radius"}, the panel \code{"radius"} shows
 the error of each resampled sample of certification draws against the
-radius estimated from its own draws, in standard errors, with the line
-where they are equal. With
+radius the fit would use for it, the larger of its own and a
+replicate's, in standard errors, with the line where they are equal. Its
+subtitle gives the predicted rate at which the radius is exceeded, as in
+the row of the check, and the share of samples whose error exceeds the
+radius, as in \code{\link[=summary.RiskMap_check]{summary.RiskMap_check()}}, from many more pairs of samples
+than the panel shows. With
 the extra check \code{"profile"}, each profiled parameter has a panel of its
 profile likelihood, named \code{"profile_"} followed by the parameter, such
 as \code{"profile_phi"}.
