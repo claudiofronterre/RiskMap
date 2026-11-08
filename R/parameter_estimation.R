@@ -3426,7 +3426,12 @@ laplace_sampling_mcmc <- function(y,
 ##' the fit integrates the nugget out when its variance at the start of the
 ##' stage is at least 0.1 and samples it otherwise. The first stage takes the
 ##' variance from the Laplace estimate, or from the starting values if
-##' `laplace_start = FALSE`. Defaults to `FALSE`.
+##' `laplace_start = FALSE`. Every validation bank is then drawn in both forms
+##' and the two estimates of the score are combined with weights inverse to
+##' their Monte Carlo covariances, so the certificate rests on the more precise
+##' form, or on both. A bank whose importance weights have a heavy tail, with a
+##' Pareto k above 0.8, can understate its covariance and is left out of the
+##' combination. Defaults to `FALSE`.
 ##' @param check_maxima Logical. The certificate establishes Monte Carlo
 ##' precision at the maximum found, not that no higher maximum exists. In
 ##' sparse surveys an optimiser can stop at a maximum with a spatial scale far

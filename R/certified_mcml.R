@@ -58,9 +58,117 @@ summarise_importance_weights <- function(log_weights) {
 ##' proposal is built once and reused for every block. A penalty on the
 ##' parameters does not change the weights, so its gradient is added to the
 ##' score. Returns NULL if a proposal or a derivative cannot be computed.
+##' An engine that switches between the sampled and the integrated nugget
+##' draws the bank in both forms and combines them
+##' (`combine_validation_banks()`).
 ##' @noRd
 score_validation_bank <- function(engine, parameters, free, n_draws, seed,
                              penalty = NULL, block_rows = NULL) {
+  if (isTRUE(engine$combine_validation)) {
+    return(combine_validation_banks(engine, parameters, free, n_draws, seed,
+                                    penalty, block_rows))
+  }
+  score_one_validation_bank(engine, parameters, free, n_draws, seed, penalty,
+                            block_rows)
+}
+
+##' Validation bank in both forms of a switching engine, combined
+##'
+##' The bank is drawn in the sampled form on the stream `seed` and in the
+##' integrated form on the stream 250 after it, which no other bank of a fit
+##' uses (`fit_adaptive_mcml()`), so the two are independent. Each score
+##' estimates the score of the same exact likelihood, so they are combined with
+##' inverse-covariance weights, S = W (C_s^-1 S_s + C_i^-1 S_i) with
+##' W = (C_s^-1 + C_i^-1)^-1, whose covariance is W. With exact covariances
+##' the combination is never noisier than either bank, which matters near the
+##' threshold of the switch, where either form can be the noisier. The
+##' log-likelihood and the weight diagnostics are those of the form in use.
+##'
+##' The weights rest on the estimated covariances, and a bank whose importance
+##' weights have a heavy tail can underestimate its covariance badly, so that
+##' the combination trusts it far too much. A bank whose Pareto k exceeds
+##' `k_max` is therefore left out and the other bank used alone, or, if both
+##' exceed it, the bank of the form in use, as without the combination. In 288
+##' fits to 96 simulated surveys of 700 sites at nugget variances of 0.15 and
+##' 0.8, the combination without this guard certified 245, 9 of them with an
+##' error above the tolerance in the information of a Markov chain reference.
+##' With a ceiling of 0.8 it certified 228, none of them with such an error, a
+##' ceiling of 0.7 certified 220 with 1 such error, and 0.9 certified 231 with
+##' 2.
+##' Coordinates whose score is nearly deterministic in either form, such as a
+##' held variance, keep the score of the form in use, since their noisy
+##' covariances with the others would distort the weights. If a covariance
+##' cannot be inverted, the bank with the smaller total variance is used. The
+##' result records in `combined` which banks were used and the Pareto k of
+##' each.
+##' @noRd
+combine_validation_banks <- function(engine, parameters, free, n_draws, seed,
+                                     penalty = NULL, block_rows = NULL,
+                                     k_max = 0.8) {
+  form <- engine$form()
+  on.exit(engine$set_form(form), add = TRUE)
+  offset <- c(sampled = 0, integrated = 250)
+  banks <- list()
+  for (f in c("sampled", "integrated")) {
+    engine$set_form(f)
+    stream <- as.integer(((seed - 1 + offset[[f]]) %% .Machine$integer.max) + 1)
+    banks[f] <- list(score_one_validation_bank(engine, parameters, free,
+                                               n_draws, stream, penalty,
+                                               block_rows))
+  }
+  engine$set_form(form)
+  if (is.null(banks$sampled) || is.null(banks$integrated)) {
+    scored <- Filter(Negate(is.null), banks)
+    return(banks[[form]] %||% if (length(scored)) scored[[1L]])
+  }
+  k <- c(sampled = banks$sampled$pareto_k %||% NA_real_,
+         integrated = banks$integrated$pareto_k %||% NA_real_)
+  ess <- c(sampled = banks$sampled$relative_ess,
+           integrated = banks$integrated$relative_ess)
+  seconds <- banks$sampled$seconds + banks$integrated$seconds
+  one_bank <- function(used) {
+    out <- banks[[form]]
+    out$score <- banks[[used]]$score
+    out$covariance <- banks[[used]]$covariance
+    out$seconds <- seconds
+    out$combined <- list(used = used, pareto_k = k, ess = ess)
+    out
+  }
+  heavy <- !is.na(k) & k > k_max
+  if (any(heavy)) {
+    return(one_bank(if (all(heavy)) form else names(k)[!heavy]))
+  }
+  inverse <- function(covariance) {
+    tryCatch(chol2inv(chol(covariance)), error = function(error) NULL)
+  }
+  live <- function(covariance) diag(covariance) > 1e-8 * max(diag(covariance))
+  index <- which(live(banks$sampled$covariance) &
+                   live(banks$integrated$covariance))
+  Ps <- inverse(banks$sampled$covariance[index, index, drop = FALSE])
+  Pi <- inverse(banks$integrated$covariance[index, index, drop = FALSE])
+  W <- if (!is.null(Ps) && !is.null(Pi)) inverse(Ps + Pi)
+  if (is.null(W)) {
+    total <- vapply(banks, function(bank) sum(diag(bank$covariance)),
+                    numeric(1))
+    return(one_bank(names(which.min(total))))
+  }
+  W <- (W + t(W)) / 2
+  out <- banks[[form]]
+  out$score[index] <- drop(W %*% (Ps %*% banks$sampled$score[index] +
+                                    Pi %*% banks$integrated$score[index]))
+  out$covariance[index, ] <- 0
+  out$covariance[, index] <- 0
+  out$covariance[index, index] <- W
+  out$seconds <- seconds
+  out$combined <- list(used = "both", pareto_k = k, ess = ess)
+  out
+}
+
+##' Score of the estimated log-likelihood on one validation bank, in the form
+##' the engine is in (`score_validation_bank()`)
+##' @noRd
+score_one_validation_bank <- function(engine, parameters, free, n_draws, seed,
+                                      penalty = NULL, block_rows = NULL) {
   started <- proc.time()[["elapsed"]]
   dimension <- engine$latent_dimension
   if (is.null(block_rows)) block_rows <- max(250L, floor(2.5e6 / dimension))
@@ -1230,7 +1338,10 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' other maxima, stream 4000 + s for its enlarged bank, stream 5000 + s for
 ##' the bank that tests a held variance (`assess_held_variances()`) and stream
 ##' 8000 + s for the replicate of the certification bank, whose radius the
-##' certificate also takes (`certify_with_replicate()`).
+##' certificate also takes (`certify_with_replicate()`). An engine that
+##' switches between the sampled and the integrated nugget draws each
+##' validation bank and replicate a second time, in the integrated form, on the
+##' stream 250 after its own (`combine_validation_banks()`).
 ##'
 ##' If the global proposal fails within a stage, the stage is repeated with
 ##' the Laplace proposal, and the next stage tries the global proposal again

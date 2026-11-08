@@ -496,6 +496,98 @@ test_that("an automatic fit records the form of each stage", {
   })
   expect_false(summarise_mcml_fit(fit)$suggest_integration)
   expect_match(check_fit(fit)$draws, "The automatic choice")
+  # Every validation bank combines the two forms, or records which it kept.
+  second <- optimizer$mcml_history[[1L]]$second_validation
+  expect_true(second$combined$used %in% c("both", "sampled", "integrated"))
+  expect_named(second$combined$pareto_k, c("sampled", "integrated"))
+})
+
+# A switching engine that only keeps its form, and banks for each form, for
+# the combination of validation banks.
+fake_switching_engine <- function(form = "sampled") {
+  list(form = function() form, set_form = function(new) form <<- new,
+       combine_validation = TRUE)
+}
+fake_bank <- function(score, covariance, k, log_likelihood) {
+  list(log_likelihood = log_likelihood, relative_ess = 0.5,
+       maximum_weight = 0.01, pareto_k = k, score = score,
+       covariance = covariance, seconds = 1)
+}
+
+test_that("validation banks of both forms are combined by their precisions", {
+  sampled <- fake_bank(c(1, -2, 0.5), diag(c(4, 1, 2)) + 0.5, 0.4, -10)
+  integrated <- fake_bank(c(0.2, -1, 0.1), diag(c(1, 3, 1)) + 0.2, 0.6, -11)
+  seeds <- list()
+  local_mocked_bindings(score_one_validation_bank = function(
+      engine, parameters, free, n_draws, seed, penalty = NULL,
+      block_rows = NULL) {
+    seeds[[engine$form()]] <<- seed
+    list(sampled = sampled, integrated = integrated)[[engine$form()]]
+  })
+  engine <- fake_switching_engine("integrated")
+  bank <- score_validation_bank(engine, numeric(3), 1:3, 100L, 7L)
+  Ps <- solve(sampled$covariance)
+  Pi <- solve(integrated$covariance)
+  W <- solve(Ps + Pi)
+  expect_equal(bank$score, drop(W %*% (Ps %*% sampled$score +
+                                         Pi %*% integrated$score)))
+  expect_equal(bank$covariance, W)
+  expect_identical(bank$combined$used, "both")
+  expect_identical(bank$combined$pareto_k, c(sampled = 0.4, integrated = 0.6))
+  # The other records are the form in use's, which is restored.
+  expect_identical(bank$log_likelihood, -11)
+  expect_identical(bank$seconds, 2)
+  expect_identical(engine$form(), "integrated")
+  expect_identical(seeds, list(sampled = 7L, integrated = 257L))
+})
+
+test_that("a heavy-tailed validation bank is left out of the combination", {
+  sampled <- fake_bank(c(1, -2), diag(2), 0.4, -10)
+  integrated <- fake_bank(c(0.2, -1), diag(2) / 4, 0.85, -11)
+  local_mocked_bindings(score_one_validation_bank = function(engine, ...) {
+    list(sampled = sampled, integrated = integrated)[[engine$form()]]
+  })
+  bank <- score_validation_bank(fake_switching_engine("integrated"),
+                                numeric(2), 1:2, 100L, 7L)
+  expect_identical(bank$score, sampled$score)
+  expect_identical(bank$covariance, sampled$covariance)
+  expect_identical(bank$log_likelihood, -11)
+  expect_identical(bank$combined$used, "sampled")
+  # With both tails heavy, the form in use keeps its own bank.
+  sampled$pareto_k <- 0.9
+  for (form in c("sampled", "integrated")) {
+    bank <- score_validation_bank(fake_switching_engine(form), numeric(2),
+                                  1:2, 100L, 7L)
+    expect_identical(bank$combined$used, form)
+    expect_identical(bank$score, get(form)$score)
+  }
+})
+
+test_that("a nearly deterministic score keeps the form in use's value", {
+  # The second coordinate is a held variance, whose score barely varies in
+  # the sampled form.
+  sampled <- fake_bank(c(1, 3), diag(c(1, 1e-12)), 0.4, -10)
+  integrated <- fake_bank(c(0, 5), diag(c(1, 1)), 0.4, -11)
+  local_mocked_bindings(score_one_validation_bank = function(engine, ...) {
+    list(sampled = sampled, integrated = integrated)[[engine$form()]]
+  })
+  bank <- score_validation_bank(fake_switching_engine("sampled"), numeric(2),
+                                1:2, 100L, 7L)
+  expect_equal(bank$score, c(0.5, 3))
+  expect_equal(bank$covariance, diag(c(0.5, 1e-12)))
+})
+
+test_that("a validation bank that cannot be scored is not combined", {
+  integrated <- fake_bank(c(0.2, -1), diag(2), 0.4, -11)
+  banks <- list(sampled = NULL, integrated = integrated)
+  local_mocked_bindings(score_one_validation_bank = function(engine, ...) {
+    banks[[engine$form()]]
+  })
+  engine <- fake_switching_engine("sampled")
+  expect_identical(score_validation_bank(engine, numeric(2), 1:2, 100L, 7L),
+                   integrated)
+  banks$integrated <- NULL
+  expect_null(score_validation_bank(engine, numeric(2), 1:2, 100L, 7L))
 })
 
 test_that("the forms of an automatic fit are described by stage", {

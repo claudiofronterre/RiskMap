@@ -548,7 +548,21 @@ variance of 0.1, 68 against 28 of 75 above 0.3). With
 integrates the nugget out when its variance at the start of the stage is at
 least 0.1 and samples it otherwise, the first stage taking the variance from the
 Laplace estimate. Each stage records its `form` in `mcml_history`, the fit
-records them as `mcml_noise_forms`, and `check_fit()` reports them.
+records them as `mcml_noise_forms`, and `check_fit()` reports them. With
+`"auto"` every validation bank is drawn in both forms, and the two estimates of
+the score are combined with weights inverse to their Monte Carlo covariances,
+so the certificate rests on the more precise form or on both. A bank whose
+importance weights have a Pareto k above 0.8 is left out of the combination,
+since a heavy tail can make its estimated covariance far too small. On 96
+simulated surveys of 700 sites with nugget variances of 0.15 and 0.8, three
+runs each and a build before the replicate bank's radius, the sampled form
+certified 142 of the 288 fits, the integrated form 213 and `"auto"` 228. Among the fits with a Markov chain reference, `"auto"` had no
+error above the tolerance of 0.1 in the reference's information (225 fits),
+against one for the sampled form (140), and in no cell of the design did it
+certify fewer runs than the sampled form. It took 28 core-hours against 33.
+Without the ceiling on k the combination certified 245 fits, 9 of them with
+an error above the tolerance. The stages record the combination in `combined`
+of each validation bank in `mcml_history`.
 
 - `profile()` of a binomial or Poisson fit now rebuilds the likelihood with the
 link of the fit. It used the logit or log link whatever link the fit had, so

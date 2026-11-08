@@ -1226,6 +1226,13 @@ make_switching_mcml_engine <- function(sampled, integrated, threshold = 0.1) {
   engine$defensive_weight <- sampled$defensive_weight
   engine$linkf <- sampled$linkf
   engine$threshold <- threshold
+  # Every validation bank is drawn in both forms and combined
+  # (combine_validation_banks()), so both forms keep the anchor of the stage.
+  engine$combine_validation <- TRUE
+  engine$set_anchor <- function(parameters) {
+    engines[[setdiff(names(engines), current)]]$set_anchor(parameters)
+    engines[[current]]$set_anchor(parameters)
+  }
   makeActiveBinding("integrated", function() identical(current, "integrated"),
                     engine)
   makeActiveBinding("hold_log_ratio",
@@ -1352,8 +1359,9 @@ describe_variance_parameters <- function(index, layout, re_names = NULL) {
 compact_adaptive_mcml_history <- function(history) {
   bank_summary <- function(validation) {
     if (is.null(validation)) return(NULL)
-    validation[c("log_likelihood", "relative_ess", "maximum_weight",
-                 "pareto_k")]
+    # A combined bank (combine_validation_banks()) keeps its record.
+    validation[intersect(c("log_likelihood", "relative_ess", "maximum_weight",
+                           "pareto_k", "combined"), names(validation))]
   }
   lapply(history, function(stage) {
     stage$first_validation <- bank_summary(stage$first_validation)
