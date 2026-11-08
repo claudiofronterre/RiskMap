@@ -1572,7 +1572,65 @@ test_that("the mode search says when it reaches its iteration limit", {
   )
   engine$proposal_at(c(0, 0, 0), "laplace")
   expect_identical(engine$mode_search_counts(),
-                   list(searches = 1L, at_limit = 0L))
+                   list(searches = 1L, at_limit = 0L, restarted = 0L))
+})
+
+test_that("a mode search that fails from the previous mode starts again from zero", {
+  set.seed(208)
+  sites <- 30L
+  coordinate <- runif(sites)
+  trials <- rep(50, sites)
+  y <- rbinom(sites, trials, 0.01)
+  precision <- solve(5 * exp(-as.matrix(dist(coordinate)) / 0.2) +
+                       diag(0.8, sites))
+  latent_map <- make_latent_map(cbind(seq_len(sites)), sites)
+  linkf <- make_inverse_link_functions("binomial", NULL, sites)
+  mu <- rep(-4.6, sites)
+  search_from <- function(start) {
+    adaptive_laplace_mode(mu, y, trials, latent_map, precision, "binomial",
+                          linkf, start)
+  }
+  # At a stale mode of -500 the probabilities are still positive, but the
+  # curvature of the logit link underflows to 0 / 0, so the Hessian there is
+  # not a number.
+  stale <- rep(-500, sites)
+  stale_terms <- laplace_observation_terms(mu + stale, y, trials, "binomial",
+                                           linkf)
+  expect_false(is.null(stale_terms))
+  expect_false(any(is.finite(stale_terms$curvature)))
+  from_zero <- search_from(numeric(sites))
+  from_stale <- search_from(stale)
+  expect_false(from_zero$restarted)
+  expect_true(from_stale$restarted)
+  expect_true(all(is.finite(from_stale$mode)))
+  expect_true(all(is.finite(from_stale$hessian)))
+  expect_identical(from_stale[c("mode", "hessian", "iterations",
+                                "reached_limit")],
+                   from_zero[c("mode", "hessian", "iterations",
+                               "reached_limit")])
+  # A start at the mode needs no restart.
+  expect_false(search_from(from_zero$mode)$restarted)
+})
+
+test_that("an importance distribution that is not finite gives no weight", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial",
+    proposal = "laplace"
+  )
+  # The compiled factor of a Hessian that is not a number is not a number
+  # either, without an error.
+  local_mocked_bindings(
+    inverse_cholesky_factor = function(hessian) hessian * NaN
+  )
+  draws <- matrix(0, nrow = 1L, ncol = engine$latent_dimension)
+  expect_error(engine$proposal_at(c(0, 0, 0)), "is not finite")
+  expect_identical(engine$evaluate(c(0, 0, 0), draws), -1e100)
+  expect_identical(engine$evaluate(c(0, 0, 0), draws, log_weights_only = TRUE),
+                   -Inf)
+  expect_identical(engine$proposal_errors(),
+                   list(count = 2L,
+                        first = "The importance distribution is not finite."))
 })
 
 test_that("a failed global proposal records why it failed", {

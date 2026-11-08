@@ -561,6 +561,28 @@ seed of the fit. `plot()` of the checks gains the panel `"radius"`, the error of
 resampled samples against the radius the fit uses for them, whose subtitle
 gives the predicted rate first.
 
+- Certified MCML no longer stops with "the optimiser returned non-finite
+parameter values" when the search for the conditional mode of the latent
+effects goes wrong. Each search starts from the mode found at the parameter
+values tried before it. On a simulated survey at 1% prevalence a search had
+accepted steps to -507, where the curvature of the logit link underflows to
+0 / 0, and the next search started there. No step was then accepted, and the
+search returned its start as the mode, with a Hessian that was not a number, as
+if it had converged. 15 of the 48 searches of the Laplace step were broken this
+way, which moved the Laplace estimate, and the importance distribution at that
+estimate was not a number, so that every log weight was missing. A step to a
+point where the likelihood terms are not finite is no longer accepted. A search
+fails when its terms, its Newton step or its Hessian are not finite, or when no
+step increases the objective at a point that is not a mode, and a failed search
+from the previous mode is repeated from zero, so the next search starts from a
+mode that was found. An importance distribution that is not finite is an error,
+which gives that parameter value no weight, as other failures to build one do.
+`check_fit()` reports how many searches started again from zero. The three runs
+on that survey that stopped now fit, within 0.05 standard errors of a Markov
+chain reference, and two are certified. The third reaches the largest budget
+of 16,000 draws with a bound of 0.18. Fits whose searches never went wrong are
+unchanged, as on two other surveys of the same study.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

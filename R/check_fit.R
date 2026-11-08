@@ -537,15 +537,31 @@ fit_check_importance_distribution <- function(optimizer) {
 
 ##' Whether the search for the conditional mode reached its iteration limit
 ##'
-##' The search stops at the limit with its last iterate. The mode only shapes
-##' the importance distribution, so the cost is speed and not validity. NULL
-##' when no search reached the limit.
+##' The search stops at the limit with its last iterate. A search that fails
+##' from the mode found before starts again from zero
+##' (`adaptive_laplace_mode()`). The mode only shapes the importance
+##' distribution, so the cost is speed and not validity. NULL when no search
+##' reached the limit or started again. A fit made before the restarts were
+##' counted has no count of them, which is read as none.
 ##' @noRd
 fit_check_mode_search <- function(counts) {
-  if (is.null(counts) || counts$at_limit == 0L) return(NULL)
+  restarted <- counts$restarted %||% 0L
+  if (is.null(counts) || (counts$at_limit == 0L && restarted == 0L)) {
+    return(NULL)
+  }
+  outcomes <- c(
+    if (counts$at_limit > 0L) paste0(
+      "stopped at its iteration limit in ",
+      format(counts$at_limit, big.mark = ",")
+    ),
+    if (restarted > 0L) paste0(
+      "failed from the mode found before and started again from zero in ",
+      format(restarted, big.mark = ",")
+    )
+  )
   fit_check_row("Latent mode search", "OK", paste0(
-    "The search for the mode of the latent effects stopped at its iteration ",
-    "limit in ", format(counts$at_limit, big.mark = ","), " of ",
+    "The search for the mode of the latent effects ",
+    paste(outcomes, collapse = ", and "), " of ",
     format(counts$searches, big.mark = ","),
     " searches, which slows the fit but does not affect the certificate."
   ))
