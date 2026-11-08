@@ -11,8 +11,14 @@
 ##' likelihood rises as a held variance leaves zero (`variance_rising`), the
 ##' number of `stages`, the
 ##' `fitting_draws` and `validation_draws` of the last stage, the
-##' `certification_bank` and the number of checks of `check_fit()` that need a
-##' look (`checks_to_review`).
+##' `certification_bank`, the number of locations whose nugget was integrated
+##' out of the likelihood at the last stage (`integrated_locations`, of
+##' `locations`), the forms of the stages of an automatic fit
+##' (`noise_forms`), the largest
+##' change of a factor at the last fixed refit of the last stage
+##' (`refit_change`), whether to suggest `integrate_noise = TRUE`
+##' (`suggest_integration`, `suggests_integration()`) and the number of checks
+##' of `check_fit()` that need a look (`checks_to_review`).
 ##' @noRd
 summarise_mcml_fit <- function(object) {
   optimizer <- attr(object, "optimizer")
@@ -30,10 +36,40 @@ summarise_mcml_fit <- function(object) {
     stages = optimizer$mcml_stages %||% length(history),
     fitting_draws = optimizer$mcml_budget,
     validation_draws = optimizer$mcml_validation_budget,
-    certification_bank = if (!is.null(last)) summarise_certification_bank(last)
+    certification_bank = if (!is.null(last)) summarise_certification_bank(last),
+    integrated_locations = optimizer$mcml_integrated_locations %||% 0L,
+    locations = optimizer$mcml_locations,
+    noise_forms = optimizer$mcml_noise_forms,
+    refit_change = last$refit_change %||% NA_real_,
+    suggest_integration = suggests_integration(object, optimizer)
   )
   mcml$checks_to_review <- sum(list_fit_checks(object, mcml)$status != "OK")
   mcml
+}
+
+##' Whether `check_fit()` suggests integrating the nugget out
+##'
+##' For a fit that sampled a nugget whose variance is estimated, or fixed, at
+##' `threshold` or more. Where the nugget variance at the maximum is small the
+##' likelihood is nearly flat along the nugget, and there the integrated
+##' estimate of the nugget's score is the noisier of the two forms. In the
+##' larger test of the integrated form it certified 5 runs against 12 of 21 for
+##' the sampled form where that variance was below 0.1, 9 and 9 of 18 between
+##' 0.1 and 0.3, and 68 against 28 of 75 above 0.3. A nugget estimated as zero
+##' gets no suggestion, nor does a fit that chose the form itself
+##' (`integrate_noise = "auto"`).
+##' @noRd
+suggests_integration <- function(object, optimizer, threshold = 0.1) {
+  if (isTRUE(optimizer$mcml_integrate_noise) ||
+      !is.null(optimizer$mcml_noise_forms)) {
+    return(FALSE)
+  }
+  variance <- if (is.numeric(object$fix_tau2)) {
+    object$fix_tau2
+  } else if (!is.null(object$estimate$nu2)) {
+    exp(object$estimate$nu2 + object$estimate$sigma2)
+  }
+  isTRUE(variance >= threshold)
 }
 
 ##' One sentence on the Monte Carlo certificate of a fit
@@ -95,8 +131,38 @@ describe_mcml_draws <- function(mcml) {
     if (identical(as.integer(mcml$stages), 1L)) "" else "s", ", with ",
     format(mcml$fitting_draws, big.mark = ","), " fitting and ",
     format(mcml$validation_draws, big.mark = ","),
-    " validation draws at the last stage."
+    " validation draws at the last stage.",
+    describe_noise_forms(mcml$noise_forms),
+    if (isTRUE(mcml$integrated_locations > 0)) paste0(
+      " The nugget was integrated out at ",
+      format(mcml$integrated_locations, big.mark = ","), " of ",
+      format(mcml$locations, big.mark = ","), " locations",
+      if (length(mcml$noise_forms) > 1L) " in the last stage", "."
+    )
   )
+}
+
+##' Which stages of an automatic fit sampled the nugget and which integrated it
+##'
+##' `forms` are the forms of the stages, NULL for a fit that did not choose
+##' them (`integrate_noise = "auto"` in `set_control_mcml()`).
+##' @noRd
+describe_noise_forms <- function(forms) {
+  if (is.null(forms)) return(NULL)
+  stages <- function(form) {
+    which <- which(forms == form)
+    if (length(which) == 1L) return(paste("stage", which))
+    paste0("stages ", paste(utils::head(which, -1L), collapse = ", "), " and ",
+           utils::tail(which, 1L))
+  }
+  action <- c(sampled = "sampled the nugget",
+              integrated = "integrated the nugget out")
+  if (length(unique(forms)) == 1L) {
+    return(paste0(" The automatic choice ", action[[forms[1L]]],
+                  if (length(forms) > 1L) " in every stage", "."))
+  }
+  paste0(" The automatic choice sampled the nugget in ", stages("sampled"),
+         " and integrated it out in ", stages("integrated"), ".")
 }
 
 ##' One sentence on how many checks of a fit need a look

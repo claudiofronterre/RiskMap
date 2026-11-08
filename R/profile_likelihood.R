@@ -291,7 +291,11 @@ make_profile_problem <- function(fitted, n_draws, seed) {
     fix_tau2 = fitted$fix_tau2,
     ID_re = if (is.null(fitted$ID_re)) NULL else as.matrix(fitted$ID_re),
     defensive_weight = control_mcml$defensive_weight %||% 0.05,
-    proposal = control_mcml$proposal %||% "global"
+    proposal = control_mcml$proposal %||% "global",
+    # The form of the fit's last stage, which an automatic choice can make
+    # differ from the control.
+    integrate_noise = isTRUE(attr(fitted, "optimizer")$mcml_integrate_noise %||%
+                               control_mcml$integrate_noise)
   )
   objective <- make_mcml_objective(engine, control_mcml, distances,
                                    spatial_scaling$distance_scale)$objective

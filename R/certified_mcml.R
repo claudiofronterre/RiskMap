@@ -495,6 +495,7 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
     independent <- checked$numerically_independent
   }
   fit <- optimised$fit
+  fit$par <- hold_noise_at_zero(engine, fit$par, optimised$boundary)
   record <- list(
     budget = budget, validation_budget = validation_budget,
     proposal = engine$proposal_type(), fitted_estimate = fit$par,
@@ -567,6 +568,8 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   }
   record$free <- information$free
   record$information_root <- information$root
+  fit$par <- hold_noise_at_zero(engine, fit$par, information$boundary)
+  record$estimate <- fit$par
   record$held_variances <- if (length(seeds) >= 6L) {
     assess_held_variances(engine, fit$par, information$boundary,
                           validation_budget, seeds[[6L]])
@@ -687,6 +690,12 @@ correct_and_certify <- function(engine, penalty, estimate, information,
   if (is.null(second)) return(NULL)
   certificate <- certify_estimate(root, second$score[free],
                                   second$covariance[free, free, drop = FALSE])
+  # With the nugget integrated out the estimator is unbiased for the likelihood
+  # of the computed table, whose maximum differs from the exact one by a
+  # deterministic gap far below this floor.
+  if (isTRUE(engine$integrated)) {
+    certificate$bound <- max(certificate$bound, 1e-5)
+  }
   c(list(estimate = corrected, correction_size = correction$distance,
          first_validation = first, second_validation = second,
          certificate = certificate$bound,
@@ -1199,7 +1208,10 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' maxima at the first stage, with the screen of short scales and the exact
 ##' alarms when it holds their settings (`make_short_scale_screen()`). Each later stage starts its optimisation with
 ##' Newton steps on the previous stage's information when every parameter was
-##' free.
+##' free. An engine that switches between the sampled and the integrated
+##' nugget (`make_switching_mcml_engine()`) chooses the form of each later
+##' stage from the nugget variance at its start, each stage records its
+##' `form`, and the result gives them as `forms`.
 ##' `coefficient_index` gives the regression coefficients, whose estimates
 ##' are checked against their bounds, and `separation`, from
 ##' `find_separation()`, records data whose likelihood has no maximum. Either
@@ -1238,6 +1250,12 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
   budget <- as.integer(initial_budget)
   curvature_root <- NULL
   for (stage in seq_len(maximum_stages)) {
+    # An engine that switches between the sampled and the integrated nugget
+    # (make_switching_mcml_engine()) takes the form of each stage after the
+    # first from the nugget variance at its start.
+    if (stage > 1L && is.function(engine$choose_form)) {
+      engine$choose_form(current)
+    }
     run_stage <- function(offset) {
       engine$reset_proposal_failures()
       run_certified_stage(engine, objective, penalty, current, budget,
@@ -1276,7 +1294,13 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     record$start_failure <- start_failure
     record$start_replaced <- restarted && !isTRUE(record$proposal_fallback)
     record$stage <- stage
+    if (is.function(engine$form)) record$form <- engine$form()
     record$refit_change <- read_refit_change(engine)
+    stalled <- read_stalled_anchors(engine)
+    if (!is.null(stalled) && stalled$count > 0L) {
+      record$stalled_anchors <- stalled$count
+      record$stalled_change <- stalled$change
+    }
     history[[stage]] <- record
     last_proposal <- engine$proposal_type()
     if (isTRUE(record$proposal_fallback)) engine$use_proposal("global")
@@ -1335,6 +1359,9 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     mode_searches = if (is.function(engine$mode_search_counts)) {
       engine$mode_search_counts()
     },
+    forms = if (is.function(engine$form)) {
+      vapply(history, function(stage) stage$form, character(1L))
+    },
     boundary_parameters = last$boundary_parameters,
     held_variances = last$held_variances,
     held_variance_rising = isTRUE(last$held_variance_rising),
@@ -1362,6 +1389,25 @@ read_proposal_failure <- function(engine) {
   }
 }
 
+##' Hold an integrated nugget at exactly zero
+##'
+##' With the nugget integrated out (`make_adaptive_mcml_engine()` with
+##' `integrate_noise = TRUE`), a nugget held at the boundary is set to the
+##' engine's `hold_log_ratio`, where the engine takes the plain kernel for every
+##' record, so that the held point is the model without a nugget. The test of a
+##' held variance and the certificate then rest on that model, where the slope
+##' of the likelihood in the nugget at zero is exact. Other engines and other
+##' parameters are unchanged.
+##' @noRd
+hold_noise_at_zero <- function(engine, parameters, boundary) {
+  hold <- engine$hold_log_ratio
+  index <- engine$layout$index$nu2
+  if (is.null(hold) || is.null(index) || !(index %in% boundary)) {
+    return(parameters)
+  }
+  replace(parameters, index, hold)
+}
+
 ##' The largest change of a factor at the last of the fixed refits
 ##'
 ##' Over the global proposals since the failures were last reset, that is over
@@ -1375,6 +1421,19 @@ read_refit_change <- function(engine) {
   } else {
     NA_real_
   }
+}
+
+##' Global iterations accepted although they stopped at their limit of refits
+##'
+##' Over the stage, the `count` of iterations that the integrated form accepted
+##' with a last change below its tolerance instead of counting a failure
+##' (`build_gaussian_proposal()`), and the largest such `change`. Recorded in a
+##' stage as `stalled_anchors` and `stalled_change` when there are any, so that
+##' `check_fit()` can report them. NULL for an engine that does not record them,
+##' such as those that other packages build on `fit_adaptive_mcml()`.
+##' @noRd
+read_stalled_anchors <- function(engine) {
+  if (is.function(engine$stalled_anchors)) engine$stalled_anchors()
 }
 
 ##' Set aside the failures of the global proposal in the check for other maxima

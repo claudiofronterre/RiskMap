@@ -12,7 +12,8 @@ set_control_mcml(
   tolerance = 0.1,
   proposal = c("global", "laplace"),
   defensive_weight = 0.05,
-  laplace_start = TRUE,
+  laplace_start = NULL,
+  integrate_noise = FALSE,
   check_maxima = TRUE,
   pc_prior = FALSE,
   pc_sigma_threshold = 1,
@@ -54,12 +55,35 @@ the importance weights finite, which a Gaussian proposal alone does not in
 most spatial datasets, so that Monte Carlo errors are valid. Defaults to
 0.05. Set to 0 to use the Gaussian approximation alone.}
 
-\item{laplace_start}{Logical. If \code{TRUE} (the default), the Laplace
+\item{laplace_start}{Logical or \code{NULL}. If \code{TRUE}, the Laplace
 approximation to the likelihood is first maximised from the starting
 values, and Monte Carlo maximum likelihood starts from that estimate. If
 the global importance distribution cannot be built at that estimate, as
 can happen in sparse data when it has a very large nugget, the fit starts
-from the starting values instead.}
+from the starting values instead. \code{NULL} (the default) means \code{TRUE}, except
+with \code{integrate_noise = TRUE}, where it means \code{FALSE}, because there the
+Laplace approximation's spurious maximum moves to the spatial effect and
+the start from it costs more without certifying more fits. With
+\code{integrate_noise = "auto"} the Laplace estimate chooses the form of the
+first stage, which in the integrated form starts from the starting values.}
+
+\item{integrate_noise}{Logical, or \code{"auto"}. If \code{TRUE}, a binomial or Poisson model with
+a nugget integrates the nugget out of the likelihood of each location
+numerically, and Monte Carlo maximum likelihood samples only the spatial
+effect and any unstructured random effects. The model, its parameters and
+its likelihood are the same, so the option changes only how the same
+maximum is found. Sparse surveys with a large nugget then keep far more
+effective draws. At a location with several records that differ in their
+covariates, offset or random-effect levels the nugget stays sampled, and
+records that do not differ are combined. It works with any link, including
+a custom \code{invlink}. Where the nugget variance is close to zero the
+likelihood is nearly flat along the nugget, and there the Monte Carlo
+estimate of the nugget's effect is noisier with the nugget integrated out
+than sampled, so fewer such fits are certified. With \code{"auto"} each stage of
+the fit integrates the nugget out when its variance at the start of the
+stage is at least 0.1 and samples it otherwise. The first stage takes the
+variance from the Laplace estimate, or from the starting values if
+\code{laplace_start = FALSE}. Defaults to \code{FALSE}.}
 
 \item{check_maxima}{Logical. The certificate establishes Monte Carlo
 precision at the maximum found, not that no higher maximum exists. In

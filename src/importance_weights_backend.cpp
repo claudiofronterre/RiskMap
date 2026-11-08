@@ -6,6 +6,7 @@
 #include <limits>
 #include <vector>
 #include "likelihood_kernel.h"
+#include "site_table.h"
 
 #ifndef FCONE
 #define FCONE
@@ -187,7 +188,9 @@ std::vector<double> compute_log_target(
     const IntegerVector& random_size, const NumericVector& linear_offset,
     const IntegerMatrix& columns, const NumericVector& y,
     const NumericVector& units, const bool poisson,
-    std::vector<double>& standardised) {
+    std::vector<double>& standardised,
+    riskmap_site::SiteTable* sites = nullptr, const double site_v = 0.0,
+    const IntegerVector* site_pair = nullptr) {
   const int locations = spatial_root.nrow();
   std::vector<int> all_rows(rows);
   for (int row = 0; row < rows; ++row) all_rows[row] = row;
@@ -224,6 +227,8 @@ std::vector<double> compute_log_target(
   }
   std::vector<double> log_likelihood(rows, 0.0);
   std::vector<double> eta(rows);
+  riskmap_site::Table* site_table =
+    (sites != nullptr && site_v > 0) ? &sites->table(site_v) : nullptr;
   for (int observation = 0; observation < columns.nrow(); ++observation) {
     const R_xlen_t location = columns(observation, 0) - 1;
     for (int row = 0; row < rows; ++row) {
@@ -235,6 +240,15 @@ std::vector<double> compute_log_target(
         eta[row] = eta[row] + samples[row + level * rows];
       }
     }
+    if (sites != nullptr) {
+      const int pair = (*site_pair)[observation];
+      for (int row = 0; row < rows; ++row) {
+        log_likelihood[row] += riskmap_site::record_log_likelihood(
+          *sites, site_table, pair, eta[row]
+        );
+      }
+      continue;
+    }
     for (int row = 0; row < rows; ++row) {
       log_likelihood[row] += canonical_log_likelihood(
         eta[row], y[observation], units[observation], poisson
@@ -242,7 +256,8 @@ std::vector<double> compute_log_target(
     }
   }
   for (int row = 0; row < rows; ++row) {
-    if (poisson && !std::isfinite(log_likelihood[row])) {
+    if ((poisson || sites != nullptr) &&
+        !std::isfinite(log_likelihood[row])) {
       log_likelihood[row] = -std::numeric_limits<double>::infinity();
     }
     log_target[row] = log_target[row] + log_likelihood[row];
@@ -363,7 +378,10 @@ std::vector<double> compute_log_proposal(
 // so that the standardised spatial samples serve both densities. `columns`
 // holds each observation's latent columns (location, then random-effect
 // levels) and `random_first` and `random_size` the latent columns of each
-// random effect.
+// random effect. With `site_table` (a table of integrated sites, site_table.h)
+// and one pair per observation in `site_pair`, the log-likelihood of each
+// observation is that of the table at the nugget variance `site_v`, or the
+// plain kernel where the pair is negative or `site_v` is zero.
 // [[Rcpp::export]]
 NumericVector cpp_importance_log_weights(
     const NumericMatrix& draws, const NumericMatrix& root,
@@ -374,7 +392,15 @@ NumericVector cpp_importance_log_weights(
     const NumericVector& target_sigma2_re, const bool same_parameters,
     const NumericVector& linear_offset, const IntegerMatrix& columns,
     const IntegerVector& random_first, const IntegerVector& random_size,
-    const NumericVector& y, const NumericVector& units, const bool poisson) {
+    const NumericVector& y, const NumericVector& units, const bool poisson,
+    SEXP site_table, const double site_v, const IntegerVector& site_pair) {
+  riskmap_site::SiteTable* sites = nullptr;
+  if (!Rf_isNull(site_table)) {
+    sites = XPtr<riskmap_site::SiteTable>(site_table).get();
+    if (site_pair.size() != columns.nrow()) {
+      stop("One pair is needed for each observation.");
+    }
+  }
   const Bank bank = {draws.begin(), draws.nrow(), draws.ncol()};
   std::vector<int> defensive_rows;
   std::vector<int> proposal_rows;
@@ -389,7 +415,7 @@ NumericVector cpp_importance_log_weights(
   const std::vector<double> log_target = compute_log_target(
     deviations, centre, bank.rows, target_spatial_root, target_sigma2_re,
     random_first, random_size, linear_offset, columns, y, units, poisson,
-    standardised
+    standardised, sites, site_v, sites != nullptr ? &site_pair : nullptr
   );
   const std::vector<double> log_proposal = compute_log_proposal(
     bank, deviations, defensive_rows, proposal_rows, share, root, centre,

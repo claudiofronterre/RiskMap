@@ -461,6 +461,46 @@ counts as a failure of the global proposal, as before. Each stage of
 `mcml_history` records `refit_change`, the largest change of a factor at the last
 of the three refits.
 
+- `set_control_mcml()` gains `integrate_noise`. With `TRUE`, a binomial or
+Poisson model with a nugget, with any link, integrates the nugget out of the
+likelihood of each location numerically, and certified MCML samples only the
+spatial effect and any unstructured random effects. The model, its parameters,
+its likelihood and `predict()` are unchanged, so the option changes only how the
+same maximum is found. The integral is tabled for each distinct pair of positives
+and trials on a grid of the linear predictor, by adaptive Gauss-Hermite
+quadrature up to a nugget variance of 0.2 and the trapezium rule above it for
+the canonical links, and by the trapezium rule with a step set by the narrowest
+width of the integrand for a custom link, and read through a quintic Hermite
+interpolant. Records at a location with the same covariates, offset and
+random-effect levels are combined, and at a location that still has several
+records the nugget stays sampled. A nugget held at zero is held at exactly zero,
+where every record takes the plain kernel. On simulated surveys the integrated
+form kept 3 to 6 times as many effective draws at the same parameters. In this
+form a global iteration that stops at its limit of 500 refits with a last change
+below 0.01 is accepted, instead of sending the stage to the Laplace proposal.
+This is safe because the certificate rests on validation banks drawn after the
+proposal is fixed, so a nearly settled anchor changes how efficient the sampler
+is, not whether the estimate or its certificate is valid. On simulated surveys
+of 700 sites with a spatial variance of 5 the iteration often stopped just short
+of its tolerance of 1e-8, and the Laplace proposal then left almost no effective
+draws. The stages where this happened record `stalled_anchors` and
+`stalled_change` in `mcml_history`, summarised as `mcml_stalled_anchors`. The
+sampled form keeps its rule, so its fits are unchanged. The
+default of `laplace_start` becomes `NULL`, meaning `TRUE` for the sampled form
+and `FALSE` with `integrate_noise = TRUE`. `check_fit()` says at how many
+locations the nugget was integrated out, and suggests the option for a fit with
+a nugget variance of at least 0.1 that was not certified or whose weights have a
+heavy tail. Where the nugget variance is close to zero the likelihood is nearly
+flat along the nugget, and the integrated estimate of the nugget's score is far
+noisier than the sampled one, so there the integrated form certified fewer
+fits (on simulated surveys of 700 sites, 5 against 12 of 21 runs below a nugget
+variance of 0.1, 68 against 28 of 75 above 0.3). With
+`integrate_noise = "auto"` both forms are built and each stage of the fit
+integrates the nugget out when its variance at the start of the stage is at
+least 0.1 and samples it otherwise, the first stage taking the variance from the
+Laplace estimate. Each stage records its `form` in `mcml_history`, the fit
+records them as `mcml_noise_forms`, and `check_fit()` reports them.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

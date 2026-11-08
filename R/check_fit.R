@@ -72,7 +72,8 @@ list_fit_checks <- function(object, mcml) {
     list(fit_check_no_maximum(optimizer, object$family))
   } else {
     list(fit_check_monte_carlo(mcml),
-         fit_check_weights(mcml$certification_bank),
+         fit_check_weights(mcml$certification_bank,
+                           isTRUE(mcml$suggest_integration)),
          fit_check_maxima(optimizer, object$distance_units),
          fit_check_variances(optimizer),
          fit_check_spatial_scale(object, optimizer),
@@ -145,7 +146,8 @@ fit_check_monte_carlo <- function(mcml) {
         paste0("The bound on the error is ", bound, " standard errors, above ",
                "the limit of ", mcml$tolerance, "."),
         paste0("Refit with a larger 'max_samples' or 'max_stages' in ",
-               "set_control_mcml(), or relax 'tolerance'.")
+               "set_control_mcml(), or relax 'tolerance'.",
+               describe_integration_advice(isTRUE(mcml$suggest_integration)))
       )
     }
   )
@@ -155,9 +157,10 @@ fit_check_monte_carlo <- function(mcml) {
 ##'
 ##' Above a Pareto shape of 0.7 the Gaussian approximation behind the radius of
 ##' the certificate is unreliable at the usual numbers of draws (Vehtari et
-##' al., 2024). NULL for a fit that did not reach those draws.
+##' al., 2024). NULL for a fit that did not reach those draws. With
+##' `suggest_integration`, the fix also suggests integrating the nugget out.
 ##' @noRd
-fit_check_weights <- function(bank) {
+fit_check_weights <- function(bank, suggest_integration = FALSE) {
   if (is.null(bank)) return(NULL)
   name <- "Importance weights"
   found <- paste0(
@@ -173,8 +176,18 @@ fit_check_weights <- function(bank) {
     name, "SUSPICIOUS",
     paste0(found, ", which makes the bound on the error less reliable."),
     paste0("More draws may help, through 'max_samples' in set_control_mcml(). ",
-           "If the shape stays above 0.7, read the bound with caution.")
+           "If the shape stays above 0.7, read the bound with caution.",
+           describe_integration_advice(suggest_integration))
   )
+}
+
+##' The advice to integrate the nugget out, for a fit that sampled it
+##' @noRd
+describe_integration_advice <- function(suggest) {
+  if (!suggest) return("")
+  paste0(" Or refit with 'control_mcml = set_control_mcml(integrate_noise = ",
+         "TRUE)', which integrates the nugget out and often keeps far more ",
+         "effective draws.")
 }
 
 ##' What the check for other maxima found
