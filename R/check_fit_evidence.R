@@ -73,7 +73,9 @@ collect_check_data <- function(check, object, mcml) {
     ),
     "Latent mode search" = list(
       "Searches" = optimizer$mcml_mode_searches$searches,
-      "Stopped at the iteration limit" = optimizer$mcml_mode_searches$at_limit
+      "Stopped at the iteration limit" = optimizer$mcml_mode_searches$at_limit,
+      "Started again from zero after failing from the mode found before" =
+        optimizer$mcml_mode_searches$restarted
     ),
     "Link" = list("Link" = object$link_function$link %||% "a function"),
     "Maximum of the likelihood" = list(

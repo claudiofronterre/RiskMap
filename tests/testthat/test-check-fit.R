@@ -225,6 +225,20 @@ test_that("changes of importance distribution and the mode limit stay OK", {
   limit <- fit_check_mode_search(list(searches = 4000L, at_limit = 3L))
   expect_identical(limit$status, "OK")
   expect_match(limit$finding, "limit in 3 of 4,000 searches", fixed = TRUE)
+  expect_null(fit_check_mode_search(
+    list(searches = 40L, at_limit = 0L, restarted = 0L)
+  ))
+  restarted <- fit_check_mode_search(
+    list(searches = 4000L, at_limit = 0L, restarted = 2L)
+  )
+  expect_identical(restarted$status, "OK")
+  expect_match(restarted$finding,
+               "started again from zero in 2 of 4,000 searches", fixed = TRUE)
+  both <- fit_check_mode_search(
+    list(searches = 4000L, at_limit = 3L, restarted = 2L)
+  )
+  expect_match(both$finding, "limit in 3, and failed from the mode found",
+               fixed = TRUE)
 })
 
 test_that("a fit without a maximum gets that check alone, with what to do", {

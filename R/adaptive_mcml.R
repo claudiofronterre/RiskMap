@@ -214,6 +214,15 @@ latent_data_hessian <- function(latent_map, curvature) {
 ##' definite for the same reason. A custom link's search starts off the limits of
 ##' the link (`move_start_off_limits()`). `reached_limit` says that the search
 ##' stopped at `maximum_iterations` without meeting its stopping rule.
+##'
+##' Far in the lower tail the curvature of the logit link underflows to 0 / 0,
+##' below a linear predictor of -372, so a step to a point where the terms
+##' are not finite is not accepted. A search fails when the terms, the Newton
+##' step or the Hessian are not finite, or when no step increases the objective
+##' at a point that is not a mode, as from a previous mode of -507 on a survey
+##' at 1% prevalence. A failed search from a nonzero `start` is repeated from
+##' zero, and `restarted` says so. If the search from zero fails too there is
+##' no mode to return, and the function stops with an error.
 ##' @noRd
 adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
                                   family, linkf, start,
@@ -221,9 +230,15 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
   objective <- function(latent, terms) {
     terms$log_likelihood - 0.5 * sum(latent * as.numeric(precision %*% latent))
   }
+  # The terms, or NULL where they are not finite and so cannot guide a step.
   terms_at <- function(latent) {
-    laplace_observation_terms(mu + latent_linear_predictor(latent_map, latent),
-                              y, units_m, family, linkf)
+    terms <- laplace_observation_terms(
+      mu + latent_linear_predictor(latent_map, latent),
+      y, units_m, family, linkf
+    )
+    finite <- !is.null(terms) && is.finite(terms$log_likelihood) &&
+      all(is.finite(terms$score)) && all(is.finite(terms$curvature))
+    if (finite) terms
   }
   canonical <- identical(linkf$name, "canonical")
   hessian_at <- function(curvature) {
@@ -250,51 +265,70 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
       y, units_m, family, linkf, latent_map$columns[, 1L]
     )
   }
-  latent <- start_at(start)
-  terms <- terms_at(latent)
-  if (is.null(terms)) {
-    latent <- start_at(numeric(length(start)))
+  # The search from one start, or NULL if it fails.
+  search_from <- function(start) {
+    latent <- start_at(start)
     terms <- terms_at(latent)
-    if (is.null(terms)) stop("Invalid starting linear predictor.", call. = FALSE)
-  }
-  current <- objective(latent, terms)
-  reached_limit <- TRUE
-  for (iteration in seq_len(maximum_iterations)) {
-    gradient <- latent_gradient(latent_map, terms$score) -
-      as.numeric(precision %*% latent)
-    root <- factorise_hessian(terms$curvature)$root
-    step <- backsolve(root, forwardsolve(t(root), gradient))
-    accepted <- FALSE
-    for (halving in 0:30) {
-      candidate <- latent + step / 2^halving
-      candidate_terms <- terms_at(candidate)
-      if (is.null(candidate_terms)) next
-      value <- objective(candidate, candidate_terms)
-      if (is.finite(value) && value >= current - 1e-12 * abs(current)) {
-        accepted <- TRUE
+    if (is.null(terms)) return(NULL)
+    current <- objective(latent, terms)
+    if (!is.finite(current)) return(NULL)
+    reached_limit <- TRUE
+    for (iteration in seq_len(maximum_iterations)) {
+      gradient <- latent_gradient(latent_map, terms$score) -
+        as.numeric(precision %*% latent)
+      root <- factorise_hessian(terms$curvature)$root
+      step <- backsolve(root, forwardsolve(t(root), gradient))
+      if (!all(is.finite(step))) return(NULL)
+      accepted <- FALSE
+      for (halving in 0:30) {
+        candidate <- latent + step / 2^halving
+        candidate_terms <- terms_at(candidate)
+        if (is.null(candidate_terms)) next
+        value <- objective(candidate, candidate_terms)
+        if (is.finite(value) && value >= current - 1e-12 * abs(current)) {
+          accepted <- TRUE
+          break
+        }
+      }
+      if (!accepted) {
+        # The full step promises an increase of half of gradient' step. A
+        # point where that is within the rounding allowed above is a mode
+        # that rounding keeps the search from confirming, and any other point
+        # is not one.
+        if (sum(gradient * step) / 2 > 1e-12 * abs(current)) return(NULL)
+        reached_limit <- FALSE
+        break
+      }
+      change <- max(abs(candidate - latent))
+      latent <- candidate
+      terms <- candidate_terms
+      current <- value
+      if (change <= tolerance * max(1, max(abs(latent)))) {
+        reached_limit <- FALSE
         break
       }
     }
-    if (!accepted) {
-      reached_limit <- FALSE
-      break
+    hessian <- if (canonical) {
+      hessian_at(terms$curvature)
+    } else {
+      factorise_hessian(terms$curvature)$hessian
     }
-    change <- max(abs(candidate - latent))
-    latent <- candidate
-    terms <- candidate_terms
-    current <- value
-    if (change <= tolerance * max(1, max(abs(latent)))) {
-      reached_limit <- FALSE
-      break
-    }
+    if (!all(is.finite(hessian))) return(NULL)
+    list(mode = latent, hessian = (hessian + t(hessian)) / 2,
+         iterations = iteration, reached_limit = reached_limit)
   }
-  hessian <- if (canonical) {
-    hessian_at(terms$curvature)
-  } else {
-    factorise_hessian(terms$curvature)$hessian
+  found <- NULL
+  restarted <- FALSE
+  if (!isTRUE(all(start == 0))) {
+    found <- tryCatch(search_from(start), error = function(error) NULL)
+    restarted <- is.null(found)
   }
-  list(mode = latent, hessian = (hessian + t(hessian)) / 2,
-       iterations = iteration, reached_limit = reached_limit)
+  if (is.null(found)) found <- search_from(numeric(length(start)))
+  if (is.null(found)) {
+    stop("The search for the mode of the latent effects failed.",
+         call. = FALSE)
+  }
+  c(found, list(restarted = restarted))
 }
 
 ##' Upper Cholesky factor of the inverse of a positive-definite matrix
@@ -633,6 +667,8 @@ make_adaptive_mcml_engine <- function(
   first_error <- NULL
   mode_searches <- 0L
   mode_searches_at_limit <- 0L
+  # Searches that failed from the previous mode and were repeated from zero.
+  mode_searches_restarted <- 0L
   n <- length(y)
   n_loc <- nrow(distances)
   p <- ncol(D)
@@ -762,6 +798,8 @@ make_adaptive_mcml_engine <- function(
       }
     }
     mu <- as.numeric(D %*% values$beta + cov_offset)
+    # A search that fails stops with an error, so the next one starts from
+    # the last mode that was found.
     find_mode <- function() {
       approximation <- adaptive_laplace_mode(
         mu = mu, y = y, units_m = units_m, latent_map = latent_map,
@@ -772,6 +810,9 @@ make_adaptive_mcml_engine <- function(
       mode_searches <<- mode_searches + 1L
       if (approximation$reached_limit) {
         mode_searches_at_limit <<- mode_searches_at_limit + 1L
+      }
+      if (approximation$restarted) {
+        mode_searches_restarted <<- mode_searches_restarted + 1L
       }
       approximation
     }
@@ -795,6 +836,12 @@ make_adaptive_mcml_engine <- function(
           solve(gaussian$precision), "adaptive MCML proposal"
         )
       )
+    }
+    # The compiled factorisation does not stop at entries that are not
+    # numbers, so a proposal that is not finite is an error here, which gives
+    # the parameter value no weight in evaluate().
+    if (!all(is.finite(gaussian$centre)) || !all(is.finite(root))) {
+      stop("The importance distribution is not finite.", call. = FALSE)
     }
     proposal <- list(centre = gaussian$centre, root = root, values = values,
                      covariance = prior$covariance,
@@ -937,7 +984,8 @@ make_adaptive_mcml_engine <- function(
        },
        linkf = linkf,
        mode_search_counts = function() {
-         list(searches = mode_searches, at_limit = mode_searches_at_limit)
+         list(searches = mode_searches, at_limit = mode_searches_at_limit,
+              restarted = mode_searches_restarted)
        },
        set_anchor = function(parameters) {
          anchor <<- NULL
