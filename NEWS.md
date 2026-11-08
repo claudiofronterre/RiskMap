@@ -542,6 +542,25 @@ says which extra check would compute a panel that is missing. Each profiled
 parameter has its own panel, such as `"profile_phi"`, and `which = "profile"`
 draws them all. The print of a fit without extra checks is unchanged.
 
+- `check_fit()` gains the extra check `"radius"` for binomial and Poisson fits,
+which predicts how often the radius in the bound on the Monte Carlo error is too
+small (#262). The radius is estimated from the certification draws themselves,
+which can miss the rare draws of large importance weight. Sixteen short Markov
+chains on the latent effects reach those draws, and samples of certification
+draws resampled from them and a fresh sample of the fit's size give the rate at
+which the error that the radius allows for exceeds it, with a 95% interval,
+against the 5% of the bound. On 35 simulated binomial and Poisson surveys the
+prediction was within a factor of 1.65 of the rate measured on independent
+samples. Outside binomial fits with the logit link it is read with a margin of
+15%, since it ran low on the Poisson surveys. The row is `SUSPICIOUS` when the
+radius, with that margin, would have to widen for the rate to be 5%, and then
+gives the bound with the radius so widened. The chains can miss a separate mode
+of the latent effects, so `OK` is not a proof. The check should take about
+twice as long as the fit, and draws from the streams 9500 to 9502 after the
+seed of the fit. `plot()` of the checks gains the panel `"radius"`, the error of
+resampled samples against the radius the fit uses for them, whose subtitle
+gives the predicted rate first.
+
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
 reports for each parameter the bootstrap median, bias, standard error and

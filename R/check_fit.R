@@ -39,12 +39,27 @@
 ##'     estimate, which is then not the maximum likelihood estimate. The
 ##'     profiles of a binomial or Poisson fit should take about 10 times as
 ##'     long as the fit for each parameter, less with `cores`.
+##'   * `"radius"`, for a binomial or Poisson fit, a prediction of how often
+##'     the radius in the bound on the Monte Carlo error is too small. The
+##'     radius is estimated from the certification draws themselves, which
+##'     can miss the rare draws of large importance weight. Short Markov
+##'     chains on the latent effects, 16 chains of 4,000 rounds, reach those
+##'     draws, and samples of certification draws resampled from them and a
+##'     fresh sample of the fit's size show how often the error that the
+##'     radius allows for exceeds it, against the 5% of the bound. Outside
+##'     binomial fits with the logit link the prediction is read with a margin
+##'     of 15%, since it ran low on simulated Poisson surveys. Its row is
+##'     `SUSPICIOUS` when the radius, with that margin, would have to widen for
+##'     the rate to be 5%, and then gives the bound with the radius so widened.
+##'     The chains can miss a separate mode of the latent effects, so `OK` is
+##'     not a proof. The check should take about twice as long as the fit.
 ##'
-##'   Each extra check draws from a random number stream of its own, derived
+##'   Each extra check draws from random number streams of its own, derived
 ##'   from the seed of the fit (`fit$seed`) as the streams of the fit are, so
 ##'   the same call gives the same result. The profiles use the stream 9600
-##'   after the seed, which no fit uses. The random number state of the session
-##'   is left as it was. An extra check that does not apply to the fit, or that
+##'   after the seed and the check of the radius the streams 9500 to 9502,
+##'   which no fit uses. The random number state of the session is left as it
+##'   was. An extra check that does not apply to the fit, or that
 ##'   fails, is not computed, and the printed checks say why.
 ##'
 ##' @param object An object of class `"RiskMap"` from [glgpm()].
@@ -81,7 +96,16 @@
 ##' of the numbers behind the finding.}
 ##' \item{extras}{A list with an element for each extra check that ran, named
 ##' as in `extra`, each with its `row` and its `data`. The `data` of
-##' `"profile"` is the `"RiskMap_profile"` object.}
+##' `"profile"` is the `"RiskMap_profile"` object. That of `"radius"` is a list
+##' with the predicted percentages of samples whose error exceeds the radius
+##' (`level`, with its `level_interval`), in which the error of the
+##' certification draws alone exceeds the radius (`own`), the share above the
+##' line in its panel, and whose error exceeds the bound (`exceedance`), the `factor` by which the radius would have to grow for
+##' `level` to be 5%, the `margin`, the `widening` of the radius with that
+##' margin, at least one, the bound so widened (`widened`), the `settings` of
+##' the check and `samples`, a data frame with the `error` of each resampled
+##' sample and the `radius` the fit would use for it, the larger of its own
+##' and a replicate's, in standard errors.}
 ##' \item{not_computed}{A named character vector giving, for each extra check
 ##' that was asked for but not computed, the reason.}
 ##' \item{fit_seconds}{The time the fit took in seconds, `NULL` where the fit
@@ -715,13 +739,21 @@ print.RiskMap_check <- function(x, ...) {
 ##'   (`"certificate"`), the effective certification draws
 ##'   (`"effective_draws"`), the tail shape of the importance weights against
 ##'   its limit of 0.7 (`"pareto_k"`) and how far the estimates moved
-##'   (`"moves"`). With the extra check `"profile"`, each profiled parameter
-##'   has a panel of its profile likelihood, named `"profile_"` followed by
-##'   the parameter, such as `"profile_phi"`.
+##'   (`"moves"`). With the extra check `"radius"`, the panel `"radius"` shows
+##'   the error of each resampled sample of certification draws against the
+##'   radius the fit would use for it, the larger of its own and a
+##'   replicate's, in standard errors, with the line where they are equal. Its
+##'   subtitle gives the predicted rate at which the radius is exceeded, as in
+##'   the row of the check, and the share of samples whose error exceeds the
+##'   radius, as in [summary.RiskMap_check()], from many more pairs of samples
+##'   than the panel shows. With
+##'   the extra check `"profile"`, each profiled parameter has a panel of its
+##'   profile likelihood, named `"profile_"` followed by the parameter, such
+##'   as `"profile_phi"`.
 ##' @param x An object of class `"RiskMap_check"`.
 ##' @param which Names of the panels to draw, among `"certificate"`,
-##'   `"effective_draws"`, `"pareto_k"`, `"moves"`, the panels of the
-##'   profiles, such as `"profile_phi"`, and `"profile"` for every profile.
+##'   `"effective_draws"`, `"pareto_k"`, `"moves"`, `"radius"`, the panels of
+##'   the profiles, such as `"profile_phi"`, and `"profile"` for every profile.
 ##'   The default is every panel that has something to show. A chosen panel
 ##'   with nothing to show gives a message saying why, and which extra check
 ##'   of [check_fit()] would compute it. If no panel has anything to show,
@@ -738,31 +770,32 @@ print.RiskMap_check <- function(x, ...) {
 ##'   npos ~ log_elevation + gp(kappa = 0.5), denominator = ntest,
 ##'   data = liberia, model_crs = 32629, family = "binomial", messages = FALSE
 ##' )
-##' checked <- check_fit(fit, extra = "profile")
+##' checked <- check_fit(fit, extra = "all")
 ##' plot(checked)
-##' plot(checked, which = c("certificate", "profile_phi"))
+##' plot(checked, which = c("certificate", "radius", "profile_phi"))
 ##' }
 ##' @method plot RiskMap_check
 ##' @export
 plot.RiskMap_check <- function(x, which = NULL, ...) {
   stopifnot(inherits(x, "RiskMap_check"))
-  stage_names <- c("certificate", "effective_draws", "pareto_k", "moves")
+  panel_names <- c("certificate", "effective_draws", "pareto_k", "moves",
+                   "radius")
   if (!is.null(which)) {
     stopifnot("'which' must be a character vector" =
                 is.character(which) && length(which) > 0L && !anyNA(which))
-    unknown <- which[!which %in% c(stage_names, "profile") &
+    unknown <- which[!which %in% c(panel_names, "profile") &
                        !startsWith(which, "profile_")]
     if (length(unknown)) {
       stop("Unknown panel", if (length(unknown) > 1L) "s", " ",
            paste0("\"", unknown, "\"", collapse = ", "), ". The panels are ",
-           paste0("\"", stage_names, "\"", collapse = ", "), ", \"profile_\" ",
+           paste0("\"", panel_names, "\"", collapse = ", "), ", \"profile_\" ",
            "followed by a parameter, such as \"profile_phi\", and \"profile\" ",
            "for every profile.", call. = FALSE)
     }
   }
   panels <- draw_check_panels(x)
   profiles <- grep("^profile_", names(panels), value = TRUE)
-  requested <- unique(unlist(lapply(which %||% c(stage_names, "profile"),
+  requested <- unique(unlist(lapply(which %||% c(panel_names, "profile"),
                                     function(name) {
     if (identical(name, "profile") && length(profiles)) profiles else name
   })))
@@ -800,7 +833,8 @@ draw_check_panels <- function(x) {
   names(profiles) <- if (length(profiled)) paste0("profile_", profiled)
   c(list(certificate = stages$certificate,
          effective_draws = stages$effective_draws,
-         pareto_k = stages$pareto_k, moves = stages$moves),
+         pareto_k = stages$pareto_k, moves = stages$moves,
+         radius = plot_radius_panel(x$extras$radius$data)),
     profiles)
 }
 
@@ -822,6 +856,15 @@ explain_missing_panels <- function(x, names) {
       }
       return(paste0("The panel \"", name, "\" has no profile, since the ",
                     "profiles are of ", join_phrases(profiled), "."))
+    }
+    if (identical(name, "radius")) {
+      if ("radius" %in% names(x$not_computed)) {
+        return(x$not_computed[["radius"]])
+      }
+      if (!gaussian) {
+        return(paste0("The panel \"radius\" needs the extra check ",
+                      "\"radius\", check_fit(fit, extra = \"radius\")."))
+      }
     }
     if (gaussian) {
       return(paste0("A Gaussian fit has no Monte Carlo error, so it has no ",
@@ -887,5 +930,47 @@ plot_estimate_moves <- function(moves) {
     ggplot2::labs(title = "Change in the estimates from the stage before",
                   subtitle = "The line follows the largest change.",
                   x = "Stage", y = "Standard errors") +
+    profile_theme()
+}
+
+##' The error of resampled samples against the radius the fit uses
+##'
+##' From the data of the extra check `"radius"`, on log scales. The radius is
+##' the larger of the sample's own and a replicate's. Samples above the
+##' dashed line, where the two are equal, have an error larger than the
+##' radius. The subtitle starts with the predicted rate at which the radius
+##' is exceeded, the first number of the row, and gives the share above the
+##' line as `own`, the figure of `summary()` from 40,000 pairs of samples,
+##' rather than the share of the points shown. NULL without samples to show.
+##' @noRd
+plot_radius_panel <- function(check) {
+  samples <- check$samples
+  if (is.null(samples)) return(NULL)
+  samples <- samples[is.finite(samples$error) & is.finite(samples$radius) &
+                       samples$error > 0 & samples$radius > 0, , drop = FALSE]
+  if (!nrow(samples)) return(NULL)
+  colours <- profile_palette()
+  percent <- format_radius_percent
+  subtitle <- paste0(
+    "Predicted to be exceeded in ", percent(check$level), " of samples (",
+    percent(check$level_interval[1L]), " to ",
+    percent(check$level_interval[2L]), "), against 5%. The error of the ",
+    "certification draws alone exceeds it in ", percent(check$own),
+    ", above the dashed line."
+  )
+  ggplot2::ggplot(samples, ggplot2::aes(.data$radius, .data$error)) +
+    ggplot2::geom_abline(slope = 1, intercept = 0, linetype = "dashed",
+                         colour = colours$cutoff) +
+    ggplot2::geom_point(colour = colours$profile, size = 1, alpha = 0.35) +
+    ggplot2::scale_x_log10(breaks = scales::breaks_log(n = 5L),
+                           labels = plain_number_labels()) +
+    ggplot2::scale_y_log10(breaks = scales::breaks_log(n = 5L),
+                           labels = plain_number_labels()) +
+    ggplot2::labs(
+      title = "Error and radius of resampled certification draws",
+      subtitle = paste(strwrap(subtitle, width = 62L), collapse = "\n"),
+      x = "Radius of the bound (standard errors, log scale)",
+      y = "Error (standard errors, log scale)"
+    ) +
     profile_theme()
 }

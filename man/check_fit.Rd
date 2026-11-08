@@ -53,7 +53,16 @@ named by the check. Each holds its \code{row} of \code{checks} and its \code{dat
 of the numbers behind the finding.}
 \item{extras}{A list with an element for each extra check that ran, named
 as in \code{extra}, each with its \code{row} and its \code{data}. The \code{data} of
-\code{"profile"} is the \code{"RiskMap_profile"} object.}
+\code{"profile"} is the \code{"RiskMap_profile"} object. That of \code{"radius"} is a list
+with the predicted percentages of samples whose error exceeds the radius
+(\code{level}, with its \code{level_interval}), in which the error of the
+certification draws alone exceeds the radius (\code{own}), the share above the
+line in its panel, and whose error exceeds the bound (\code{exceedance}), the \code{factor} by which the radius would have to grow for
+\code{level} to be 5\%, the \code{margin}, the \code{widening} of the radius with that
+margin, at least one, the bound so widened (\code{widened}), the \code{settings} of
+the check and \code{samples}, a data frame with the \code{error} of each resampled
+sample and the \code{radius} the fit would use for it, the larger of its own
+and a replicate's, in standard errors.}
 \item{not_computed}{A named character vector giving, for each extra check
 that was asked for but not computed, the reason.}
 \item{fit_seconds}{The time the fit took in seconds, \code{NULL} where the fit
@@ -102,13 +111,28 @@ more than half a log-likelihood unit between two maxima, and is then
 estimate, which is then not the maximum likelihood estimate. The
 profiles of a binomial or Poisson fit should take about 10 times as
 long as the fit for each parameter, less with \code{cores}.
+\item \code{"radius"}, for a binomial or Poisson fit, a prediction of how often
+the radius in the bound on the Monte Carlo error is too small. The
+radius is estimated from the certification draws themselves, which
+can miss the rare draws of large importance weight. Short Markov
+chains on the latent effects, 16 chains of 4,000 rounds, reach those
+draws, and samples of certification draws resampled from them and a
+fresh sample of the fit's size show how often the error that the
+radius allows for exceeds it, against the 5\% of the bound. Outside
+binomial fits with the logit link the prediction is read with a margin
+of 15\%, since it ran low on simulated Poisson surveys. Its row is
+\code{SUSPICIOUS} when the radius, with that margin, would have to widen for
+the rate to be 5\%, and then gives the bound with the radius so widened.
+The chains can miss a separate mode of the latent effects, so \code{OK} is
+not a proof. The check should take about twice as long as the fit.
 }
 
-Each extra check draws from a random number stream of its own, derived
+Each extra check draws from random number streams of its own, derived
 from the seed of the fit (\code{fit$seed}) as the streams of the fit are, so
 the same call gives the same result. The profiles use the stream 9600
-after the seed, which no fit uses. The random number state of the session
-is left as it was. An extra check that does not apply to the fit, or that
+after the seed and the check of the radius the streams 9500 to 9502,
+which no fit uses. The random number state of the session is left as it
+was. An extra check that does not apply to the fit, or that
 fails, is not computed, and the printed checks say why.
 }
 \examples{

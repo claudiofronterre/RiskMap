@@ -360,7 +360,12 @@ test_that("the plot shows the stages, and a profile once it is computed", {
   expect_message(plot(checked, which = c("certificate", "moves")),
                  "no changes in the estimates to plot")
   expect_error(plot(checked, which = "radius"),
-               "Unknown panel \"radius\". The panels are \"certificate\"")
+               "needs the extra check \"radius\", check_fit(fit, extra = \"radius\")",
+               fixed = TRUE)
+  expect_error(plot(checked, which = "radii"),
+               "Unknown panel \"radii\". The panels are \"certificate\"")
+  expect_error(plot(checked, which = "radii"), "\"moves\", \"radius\", \"profile_\"",
+               fixed = TRUE)
   expect_error(plot(checked, which = 1), "'which' must be a character vector")
 
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,

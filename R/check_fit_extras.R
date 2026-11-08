@@ -4,7 +4,8 @@
 ##' description completes a sentence such as "Computing ...".
 ##' @noRd
 list_extra_checks <- function() {
-  c(profile = "the profiles of the covariance parameters")
+  c(profile = "the profiles of the covariance parameters",
+    radius = "the predictions of how often the radius of the bound is too small")
 }
 
 ##' The extra checks asked for, in the order they run
@@ -98,8 +99,9 @@ run_extra_checks <- function(object, extra, profile = NULL, messages = TRUE,
 
 ##' Why an extra check does not apply to a fit, NULL when it does
 ##'
-##' The profiles describe a maximum of the likelihood, and need a covariance
-##' parameter to profile.
+##' Both checks describe a maximum of the likelihood. The profiles need a
+##' covariance parameter to profile, and the check of the radius a certificate
+##' (`find_radius_check_obstacle()`).
 ##' @noRd
 find_extra_check_obstacle <- function(name, object) {
   if (isTRUE(attr(object, "optimizer")$mcml_no_maximum)) {
@@ -108,20 +110,23 @@ find_extra_check_obstacle <- function(name, object) {
   if (identical(name, "profile") && !length(list_covariance_parameters(object))) {
     return("the model has no covariance parameters")
   }
+  if (identical(name, "radius")) return(find_radius_check_obstacle(object))
   NULL
 }
 
 ##' Run one extra check, giving its row and data
 ##' @noRd
 run_extra_check <- function(name, object, profile = NULL, cores = 1L) {
-  switch(name, profile = run_profile_check(object, profile, cores))
+  switch(name, profile = run_profile_check(object, profile, cores),
+         radius = fit_check_radius(object))
 }
 
 ##' The seed of an extra check, a stream of its own after the seed of the fit
 ##'
 ##' Wrapped as `fit_adaptive_mcml()` wraps the streams of a fit, which stay
-##' below 10,000 after its seed and do not reach the offsets used here. NULL
-##' for a fit without a seed, such as a Gaussian fit.
+##' below 9,500 after its seed for fewer than 500 stages and so do not reach
+##' the offsets used here, 9500 to 9502 for the radius and 9600 for the
+##' profiles. NULL for a fit without a seed, such as a Gaussian fit.
 ##' @noRd
 make_extra_check_seed <- function(fit_seed, offset) {
   if (is.null(fit_seed)) return(NULL)
@@ -153,7 +158,10 @@ list_covariance_parameters <- function(object) {
 ##' so ten times for each parameter is about right. With several cores the
 ##' two sides of each profile run at once, so at most twice as many cores as
 ##' parameters help, and a Windows session runs on one. A Gaussian fit
-##' records no time, and its exact profiles are quick.
+##' records no time, and its exact profiles are quick. The check of the
+##' radius took between 0.3 and 2.1 times as long as the fit on twelve
+##' simulated Poisson surveys, with a median of 1.7, so twice the fit, and it
+##' runs on one core.
 ##' @noRd
 describe_extra_check_time <- function(object, extras, cores = 1L) {
   descriptions <- list_extra_checks()[extras]
@@ -168,7 +176,8 @@ describe_extra_check_time <- function(object, extras, cores = 1L) {
   fit_seconds <- attr(object, "optimizer")$elapsed_seconds
   if (is.null(fit_seconds)) return(paste0("Computing ", listed, "."))
   if (.Platform$OS.type == "windows") cores <- 1L
-  multiples <- c(profile = 10 * parameters / min(cores, 2L * parameters))
+  multiples <- c(profile = 10 * parameters / min(cores, 2L * parameters),
+                 radius = 2)
   paste0("Computing ", listed, ", which should take about ",
          format_check_time(sum(multiples[extras]) * fit_seconds), ", from the ",
          format_check_time(fit_seconds), " the fit took.")
