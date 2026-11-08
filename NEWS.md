@@ -562,7 +562,11 @@ against one for the sampled form (140), and in no cell of the design did it
 certify fewer runs than the sampled form. It took 28 core-hours against 33.
 Without the ceiling on k the combination certified 245 fits, 9 of them with
 an error above the tolerance. The stages record the combination in `combined`
-of each validation bank in `mcml_history`.
+of each validation bank in `mcml_history`. The extra check `"radius"` of
+`check_fit()` rebuilds its samples in the form of the nugget of the fit's last
+stage, and where that stage combined the two forms it resamples banks in each
+form and combines them in pairs as the fit does, which takes about twice as
+long.
 
 - `profile()` of a binomial or Poisson fit now rebuilds the likelihood with the
 link of the fit. It used the logit or log link whatever link the fit had, so

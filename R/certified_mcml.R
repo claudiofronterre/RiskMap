@@ -98,9 +98,10 @@ score_validation_bank <- function(engine, parameters, free, n_draws, seed,
 ##' Coordinates whose score is nearly deterministic in either form, such as a
 ##' held variance, keep the score of the form in use, since their noisy
 ##' covariances with the others would distort the weights. If a covariance
-##' cannot be inverted, the bank with the smaller total variance is used. The
-##' result records in `combined` which banks were used and the Pareto k of
-##' each.
+##' cannot be inverted, the bank with the smaller total variance is used
+##' (`combine_two_scores()`). The result records in `combined` which banks
+##' were used, the Pareto k and relative effective sample size of each, and
+##' `k_max`.
 ##' @noRd
 combine_validation_banks <- function(engine, parameters, free, n_draws, seed,
                                      penalty = NULL, block_rows = NULL,
@@ -123,45 +124,60 @@ combine_validation_banks <- function(engine, parameters, free, n_draws, seed,
   }
   k <- c(sampled = banks$sampled$pareto_k %||% NA_real_,
          integrated = banks$integrated$pareto_k %||% NA_real_)
-  ess <- c(sampled = banks$sampled$relative_ess,
-           integrated = banks$integrated$relative_ess)
-  seconds <- banks$sampled$seconds + banks$integrated$seconds
+  combined <- combine_two_scores(lapply(banks, `[[`, "score"),
+                                 lapply(banks, `[[`, "covariance"), k, form,
+                                 k_max)
+  out <- banks[[form]]
+  out$score <- combined$score
+  out$covariance <- combined$covariance
+  out$seconds <- banks$sampled$seconds + banks$integrated$seconds
+  out$combined <- list(used = combined$used, pareto_k = k,
+                       ess = c(sampled = banks$sampled$relative_ess,
+                               integrated = banks$integrated$relative_ess),
+                       k_max = k_max)
+  out
+}
+
+##' The combination of the scores of two validation banks
+##'
+##' The arithmetic of `combine_validation_banks()`, which the check of the
+##' radius (`fit_check_radius()`) repeats on resampled banks. `scores` and
+##' `covariances` are lists named `sampled` and `integrated`, `pareto_k` the
+##' Pareto k of the two banks and `form` the form in use. Gives the `score`,
+##' its `covariance` and which banks were `used` ("both", "sampled" or
+##' "integrated").
+##' @noRd
+combine_two_scores <- function(scores, covariances, pareto_k, form, k_max) {
   one_bank <- function(used) {
-    out <- banks[[form]]
-    out$score <- banks[[used]]$score
-    out$covariance <- banks[[used]]$covariance
-    out$seconds <- seconds
-    out$combined <- list(used = used, pareto_k = k, ess = ess)
-    out
+    list(score = scores[[used]], covariance = covariances[[used]],
+         used = used)
   }
-  heavy <- !is.na(k) & k > k_max
+  heavy <- !is.na(pareto_k) & pareto_k > k_max
   if (any(heavy)) {
-    return(one_bank(if (all(heavy)) form else names(k)[!heavy]))
+    return(one_bank(if (all(heavy)) form else names(pareto_k)[!heavy]))
   }
   inverse <- function(covariance) {
     tryCatch(chol2inv(chol(covariance)), error = function(error) NULL)
   }
   live <- function(covariance) diag(covariance) > 1e-8 * max(diag(covariance))
-  index <- which(live(banks$sampled$covariance) &
-                   live(banks$integrated$covariance))
-  Ps <- inverse(banks$sampled$covariance[index, index, drop = FALSE])
-  Pi <- inverse(banks$integrated$covariance[index, index, drop = FALSE])
+  index <- which(live(covariances$sampled) & live(covariances$integrated))
+  Ps <- inverse(covariances$sampled[index, index, drop = FALSE])
+  Pi <- inverse(covariances$integrated[index, index, drop = FALSE])
   W <- if (!is.null(Ps) && !is.null(Pi)) inverse(Ps + Pi)
   if (is.null(W)) {
-    total <- vapply(banks, function(bank) sum(diag(bank$covariance)),
+    total <- vapply(covariances, function(covariance) sum(diag(covariance)),
                     numeric(1))
     return(one_bank(names(which.min(total))))
   }
   W <- (W + t(W)) / 2
-  out <- banks[[form]]
-  out$score[index] <- drop(W %*% (Ps %*% banks$sampled$score[index] +
-                                    Pi %*% banks$integrated$score[index]))
-  out$covariance[index, ] <- 0
-  out$covariance[, index] <- 0
-  out$covariance[index, index] <- W
-  out$seconds <- seconds
-  out$combined <- list(used = "both", pareto_k = k, ess = ess)
-  out
+  score <- scores[[form]]
+  covariance <- covariances[[form]]
+  score[index] <- drop(W %*% (Ps %*% scores$sampled[index] +
+                                Pi %*% scores$integrated[index]))
+  covariance[index, ] <- 0
+  covariance[, index] <- 0
+  covariance[index, index] <- W
+  list(score = score, covariance = covariance, used = "both")
 }
 
 ##' Score of the estimated log-likelihood on one validation bank, in the form
