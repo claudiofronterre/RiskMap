@@ -804,8 +804,15 @@ simulation_inputs <- function(model, data, response, label, original = FALSE) {
 
 #' Adapt unified simulations for the assessment interface
 #'
+#' The true surface is the simulated mean, which `draw_simulation()` computes
+#' through the generating model's own inverse link, whether canonical, named
+#' or custom, so the assessment needs no knowledge of that link.
+#'
 #' @param object A `RiskMap_simulation` containing data and surface draws.
-#' @return The legacy internal structure consumed by [assess_simulation()].
+#' @return A list with the simulated datasets (`data_sim`), the prediction
+#'   grid (`grid`), the simulated mean at each grid location with one column
+#'   per simulation (`mean_sim`), and the family, distance units and whether
+#'   the generating model has a nugget.
 #' @noRd
 simulation_assessment_data <- function(object) {
   check_simulation(object, NULL)
@@ -813,11 +820,10 @@ simulation_assessment_data <- function(object) {
     stop("Assessment requires what = c('data', 'surface').", call. = FALSE)
   }
   model <- object$model
-  if (length(model$re_terms) || isTRUE(model$custom_link)) {
-    stop("The current assess_simulation() interface does not support generating ",
-         "models with re() effects or links other than logit and log. ",
-         "Simulated values remain available through the simulation accessors.",
-         call. = FALSE)
+  if (length(model$re_terms)) {
+    stop("assess_simulation() does not support generating models with re() ",
+         "effects. Simulated values remain available through the simulation ",
+         "accessors.", call. = FALSE)
   }
   den <- simulation_inputs(model, object$locations$data, TRUE, "data",
                             original = identical(object$locations$data, model$data))$denominator
@@ -827,12 +833,9 @@ simulation_assessment_data <- function(object) {
     x$units_m <- den
     x
   })
-  grid <- object$locations$surface
-  for (i in seq_len(object$nsim)) {
-    grid[[paste0("lp_sim_", i)]] <- as.numeric(object$samples$surface[, i, "linear_predictor"])
-  }
-  list(data_sim = data, lp_grid_sim = grid, family = model$family,
-       distance_units = model$distance_units, include_covariates = TRUE,
-       include_cov_offset = !is.null(model$offset),
+  mean_sim <- object$samples$surface[, , "mean"]
+  dim(mean_sim) <- c(nrow(object$locations$surface), object$nsim)
+  list(data_sim = data, grid = object$locations$surface, mean_sim = mean_sim,
+       family = model$family, distance_units = model$distance_units,
        nugget_over_grid = model$parameters$tau2 > 0)
 }

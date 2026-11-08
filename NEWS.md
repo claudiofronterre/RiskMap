@@ -716,8 +716,9 @@ refits and predictions of each test set.
 `"user"` and `"regularized"` now plot the testing and training datasets.
 - `assess_simulation()` now takes fitted objects returned by `glgpm()` or
   model specifications returned by `specify_glgpm()` as its `models`
-  templates. `f_grid_target` and `f_area_target` have been renamed to
-  `target_transform` and `area_summary`; their returned values are now checked
+  templates. `f_grid_target` has been replaced by `target`, a function of the
+  mean that defaults to the identity (see Simulations), and `f_area_target`
+  has been renamed to `area_summary`. Their returned values are now checked
   before they are used. Grid- and area-level objectives can be requested
   together in one run with `spatial_scale = c("grid", "area")`.
 - In `plot_metric()`; its `which_score`/`which_model`
@@ -734,6 +735,20 @@ parameters have been renamed to `metric`/`model`.
   Poisson responses use exposure times the inverse-link mean.
   Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
   extract results.
+
+- `assess_simulation()` scores every model on the scale of the mean, each
+  through its own inverse link. The truth is the simulated mean, which the
+  generating model's inverse link gives, and the predictive draws of each
+  refitted model are mapped to the mean through that model's inverse link.
+  Generating models can therefore have any link, named or custom, and models
+  whose links differ from the generating one, such as a probit model on
+  simulations from a logit model, are scored on the same prevalence as the
+  truth. A single function of the linear predictor was applied to every
+  model before, which scored such a model through the wrong inverse link.
+  The optional `target` is applied to the mean (the probability for a
+  binomial model, the mean per unit exposure for a Poisson model and the
+  value for a Gaussian model), so prevalence needs no argument, and other
+  targets such as `qlogis` for the logit scale remain available.
 
 ## Other
 
