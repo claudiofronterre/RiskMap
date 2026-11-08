@@ -613,6 +613,56 @@ test_that("the correction continues only past its check", {
   expect_identical(stopped$correction_steps, 2L)
 })
 
+test_that("the certificate takes the larger radius of two banks", {
+  # The mocked bank's covariance grows with its seed, and it moves the random
+  # number state as a real bank does.
+  seeds_used <- integer()
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, n_draws, seed,
+                                     ...) {
+      seeds_used <<- c(seeds_used, seed)
+      set.seed(seed)
+      stats::runif(1)
+      list(score = numeric(length(free)),
+           covariance = diag(seed / 100, length(free)), log_likelihood = 0,
+           relative_ess = 0.5, maximum_weight = 0.01, pareto_k = 0.2,
+           seconds = 0)
+    }
+  )
+  root <- diag(2)
+  second <- list(score = c(0.03, 0.04), covariance = diag(0.04, 2))
+  certify <- function(...) {
+    certify_with_replicate(NULL, NULL, c(0, 0), root, 1:2, second, 10L, ...)
+  }
+  set.seed(5)
+  before <- .Random.seed
+  larger <- certify(9L)
+  expect_identical(.Random.seed, before)
+  expect_identical(seeds_used, 9L)
+  expect_identical(larger$radius_from, "replicate")
+  expect_equal(larger$radii[["certification"]],
+               compute_validation_radius(root, diag(0.04, 2)))
+  expect_equal(larger$radius, compute_validation_radius(root, diag(0.09, 2)))
+  # The distance is the certification bank's.
+  expect_equal(larger$distance, 0.05)
+  expect_equal(larger$bound, larger$distance + larger$radius)
+  expect_identical(larger$replicate$pareto_k, 0.2)
+  smaller <- certify(1L)
+  expect_identical(smaller$radius_from, "certification")
+  expect_equal(smaller$radius, smaller$radii[["certification"]])
+  expect_gt(smaller$radius, smaller$radii[["replicate"]])
+  # Without a stream for the replicate, the radius is the certification bank's.
+  alone <- certify()
+  expect_identical(alone$radius_from, "certification")
+  expect_true(is.na(alone$radii[["replicate"]]))
+  expect_null(alone$replicate)
+  expect_equal(alone$bound, 0.05 + alone$radii[["certification"]])
+  # A replicate whose score cannot be computed leaves no certificate, as the
+  # other banks do.
+  local_mocked_bindings(score_validation_bank = function(...) NULL)
+  expect_null(certify(9L))
+})
+
 test_that("repeated corrections stop when a step does not contract", {
   # The fitting bank's curvature is a tenth of the correction bank's, so the
   # steps overshoot by more each time.
@@ -977,7 +1027,7 @@ test_that("a failed evaluation gives every draw zero weight", {
   expect_identical(engine$evaluate(c(0, 0, 0), bank), -1e100)
 })
 
-test_that("the anchored start reaches the proposal of the start at the mode", {
+test_that("an anchored proposal is three plain refits from the anchor", {
   set.seed(14)
   coordinate <- runif(30)
   trials <- rep(20, 30)
@@ -990,12 +1040,55 @@ test_that("the anchored start reaches the proposal of the start at the mode", {
   }
   anchored <- engine_for()
   expect_true(anchored$set_anchor(c(-1.4, log(0.5), log(0.2))))
-  plain <- engine_for()
+  expect_identical(anchored$largest_refit_change(), NA_real_)
   parameters <- c(-1.6, log(0.6), log(0.25))
-  expect_equal(anchored$proposal_at(parameters)$centre,
-               plain$proposal_at(parameters)$centre, tolerance = 1e-6)
-  expect_equal(anchored$proposal_at(parameters)$root,
-               plain$proposal_at(parameters)$root, tolerance = 1e-6)
+  proposal <- anchored$proposal_at(parameters)
+
+  inside <- environment(anchored$proposal_at)
+  values <- inside$unpack(parameters)
+  precision <- inside$spatial_prior_at(values)$precision
+  mu <- as.numeric(inside$D %*% values$beta + inside$cov_offset)
+  anchor <- inside$anchor
+  factors <- c(anchor$linear - anchor$curvature * (mu - anchor$mu),
+               anchor$curvature)
+  for (refit in 1:3) {
+    previous <- factors
+    factors <- refit_global_factors(
+      factors, mu, y, trials, inside$latent_map, precision, "binomial",
+      inside$linkf, inside$canonical, build_normal_quadrature(),
+      make_curvature_floor(inside$latent_map, precision)
+    )
+  }
+  half <- length(factors) / 2
+  by_hand <- cpp_global_proposal_factors(
+    precision, factors[seq_len(half)], factors[half + seq_len(half)],
+    inside$latent_map$columns
+  )
+  expect_identical(proposal$type, "global")
+  expect_identical(proposal$centre, by_hand$centre)
+  expect_identical(anchored$largest_refit_change(),
+                   max(abs(factors - previous)))
+  # Three refits come close to the fixed point that the iteration from the
+  # mode reaches.
+  converged <- engine_for()$proposal_at(parameters)
+  expect_equal(proposal$centre, converged$centre, tolerance = 1e-4)
+  anchored$reset_proposal_failures()
+  expect_identical(anchored$largest_refit_change(), NA_real_)
+})
+
+test_that("a refit from the anchor that fails gives the Laplace proposal", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  expect_true(engine$set_anchor(c(0, 0, 0)))
+  local_mocked_bindings(refit_global_factors = function(...) NULL)
+  expect_identical(engine$proposal_at(c(0.1, 0, 0))$type, "laplace")
+  expect_identical(engine$proposal_failures(), 1L)
+  expect_identical(engine$first_proposal_failure(),
+                   list(reason = "a refit failed", refits = 1L,
+                        change = NA_real_))
+  expect_identical(engine$largest_refit_change(), NA_real_)
 })
 
 test_that("the check for other maxima warns about a move and an ambiguity", {
@@ -1235,6 +1328,11 @@ test_that("a late proposal failure repeats the stage on fresh streams", {
   late <- run("late")
   expect_length(calls, 2L)
   expect_true(all(calls[[1]] != calls[[2]]))
+  # No stream of the repeated stage was drawn in the first attempt, the
+  # replicate's included.
+  expect_false(any(calls[[2]] %in% calls[[1]]))
+  expect_identical(calls[[1]][[7L]], 7L + 8001L)
+  expect_identical(calls[[2]][[7L]], 7L + 9001L)
   expect_true(late$history[[1]]$late_fallback)
   expect_identical(late$proposal, "laplace")
   early <- run("early")
@@ -1244,6 +1342,42 @@ test_that("a late proposal failure repeats the stage on fresh streams", {
   none <- run("none")
   expect_length(calls, 1L)
   expect_null(none$history[[1]]$proposal_fallback)
+})
+
+test_that("every stream of a fit stays below 10,000 after its seed", {
+  # Runs whose seeds are 10,000 apart then share no bank, even when every
+  # stage is repeated after a late failure.
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  calls <- list()
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      calls[[length(calls) + 1L]] <<- seeds
+      failures <<- if (identical(type, "global")) 1L else 0L
+      list(estimate = start, outcome = "not certified", certified = FALSE,
+           certificate = 0.11, free = seq_along(start),
+           information = diag(length(start)),
+           information_root = diag(length(start)),
+           failures_before_validation = 0L)
+    }
+  )
+  fit <- fit_adaptive_mcml(engine, start = c(0, 0, 0), seed = 7L,
+                           maximum_budget = 1000000L, maximum_stages = 4L)
+  expect_length(fit$history, 4L)
+  expect_true(all(vapply(fit$history, function(stage) {
+    isTRUE(stage$late_fallback)
+  }, logical(1L))))
+  expect_length(calls, 8L)
+  streams <- unlist(calls) - 7L
+  expect_identical(anyDuplicated(streams), 0L)
+  expect_lt(max(streams), 10000L)
 })
 
 test_that("a stage whose global proposal fails at the start ends at once", {
@@ -1407,6 +1541,7 @@ test_that("a restarted fit equals one started from the same values", {
     }
     real_iteration(...)
   })
+  expect_true(is.finite(direct$history[[1]]$refit_change))
   restarted <- fit(make(), laplace_estimate, restart_start = automatic)
   expect_true(restarted$start_replaced)
   expect_identical(restarted$history[[1]]$start_failure,
@@ -1452,6 +1587,119 @@ test_that("a failed global proposal records why it failed", {
                         change = NA_real_))
   engine$reset_proposal_failures()
   expect_null(engine$first_proposal_failure())
+})
+
+test_that("failures set aside from a mark are neither counted nor reused", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  global_fit <- fit_global_proposal
+  builds <- 0L
+  # The global fit fails wherever the intercept is above 4.
+  local_mocked_bindings(fit_global_proposal = function(mode, mu, ...) {
+    builds <<- builds + 1L
+    if (mu[1] > 4) NULL else global_fit(mode, mu, ...)
+  })
+  # An evaluation whose global fit fails uses the Laplace proposal.
+  set.seed(1)
+  draws <- matrix(stats::rnorm(60), nrow = 20)
+  expect_equal(engine$evaluate(c(5, 0, 0), draws),
+               engine$evaluate(c(5, 0, 0), draws, proposal_type = "laplace"),
+               tolerance = 1e-8)
+  engine$reset_proposal_failures()
+  engine$proposal_at(c(5, 1, 0))
+  failure <- engine$first_proposal_failure()
+  mark <- engine$mark_proposal_failures()
+  engine$proposal_at(c(6, 0, 0))
+  engine$proposal_at(c(0, 0, 0))
+  expect_identical(engine$proposal_failures(), 2L)
+  expect_identical(engine$restore_proposal_failures(mark), 1L)
+  expect_identical(engine$proposal_failures(), 1L)
+  expect_identical(engine$first_proposal_failure(), failure)
+  # A proposal that succeeded stays cached.
+  built <- builds
+  engine$proposal_at(c(0, 0, 0))
+  expect_identical(builds, built)
+  # A failed proposal built since the mark is built, and counted, again.
+  mark <- engine$mark_proposal_failures()
+  engine$proposal_at(c(6, 0, 0))
+  engine$restore_proposal_failures(mark)
+  engine$proposal_at(c(6, 0, 0))
+  expect_identical(engine$proposal_failures(), 2L)
+  # One built before the mark was counted then, and stays cached.
+  mark <- engine$mark_proposal_failures()
+  expect_identical(engine$restore_proposal_failures(mark), 0L)
+  built <- builds
+  engine$proposal_at(c(6, 0, 0))
+  expect_identical(builds, built)
+  expect_identical(engine$proposal_failures(), 2L)
+})
+
+test_that("a global failure only within the check for other maxima is set aside", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  global_fit <- fit_global_proposal
+  refit <- refit_from_anchor
+  # The global fit fails only at the screened point, whose intercept is 5, and
+  # so do the fixed refits from the stage's anchor that build the proposal there.
+  screened <- c(5, 0, -6)
+  kept <- "fitted"
+  screened_value <- NULL
+  as_optimised <- function(parameters) {
+    list(fit = list(par = parameters, objective = 1, convergence = 0L),
+         boundary = integer(), restarted = FALSE, restart_improved = FALSE)
+  }
+  local_mocked_bindings(
+    fit_global_proposal = function(mode, mu, ...) {
+      if (mu[1] > 4) NULL else global_fit(mode, mu, ...)
+    },
+    refit_from_anchor = function(anchor, mu, ...) {
+      if (mu[1] > 4) {
+        list(failed = TRUE, refits = 1L, change = NA_real_)
+      } else {
+        refit(anchor, mu, ...)
+      }
+    },
+    optimise_on_bank = function(objective, start, ...) as_optimised(start),
+    check_other_maxima = function(engine, objective, penalty, optimised,
+                                  fit_bank, ...) {
+      screened_value <<- objective(screened, fit_bank)
+      checked <- list(optimised = optimised, check = NULL, separate = FALSE,
+                      ambiguous = FALSE, screen = list(gate = "closed"),
+                      numerically_independent = FALSE)
+      if (identical(kept, "refit")) {
+        checked$optimised <- as_optimised(c(0.5, 0, 0))
+        checked$check <- data.frame(chosen = c(FALSE, TRUE))
+        checked$separate <- TRUE
+      }
+      checked
+    },
+    compute_observed_information = function(...) list(information = NULL)
+  )
+  run <- function() {
+    engine$use_proposal("global")
+    fit_adaptive_mcml(engine, start = c(0, 0, 0), dispersed = list(),
+                      initial_budget = 20L, validation_budget = 20L,
+                      maximum_stages = 1L)
+  }
+  fit <- run()
+  expect_true(is.finite(screened_value))
+  expect_identical(fit$proposal, "global")
+  expect_identical(fit$proposal_fallbacks, integer())
+  expect_null(fit$history[[1]]$proposal_fallback)
+  expect_identical(fit$history[[1]]$proposal_failures, 0L)
+  expect_identical(fit$history[[1]]$set_aside_failures, 1L)
+  # A refit that the check keeps is the fit of the stage, so its failures
+  # count and the stage is repeated with the Laplace proposal.
+  kept <- "refit"
+  fit <- run()
+  expect_identical(fit$proposal, "laplace")
+  expect_identical(fit$proposal_fallbacks, 1L)
+  expect_identical(fit$history[[1]]$proposal_failures, 1L)
+  expect_null(fit$history[[1]]$set_aside_failures)
 })
 
 test_that("a certified fit says one line and a refused one a short warning", {

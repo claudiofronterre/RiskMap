@@ -396,6 +396,25 @@ clearly negative, `check_fit()` reports that zero is the
 maximum and the variance no longer counts as a check that needs a look. Fits that
 hold no variance are unchanged, and those with a custom link are not tested.
 
+- The radius of the certificate, its allowance for the Monte Carlo error of
+the certification sample's own score, is now the larger of that sample's radius
+and the radius of a replicate of it, with the same number of draws at the same
+estimate on a stream of its own. The radius of one sample is estimated from its
+own draws, and it is too small when the sample misses the rare draws of very
+large weight that dominate its error. On 13 simulated binomial surveys with 500
+samples of 5,000 draws each, how often the error that the radius allows for
+exceeded it fell from at most 6.7% to at most 2.9%, against the 5% the radius
+is meant to hold, and how often the Monte Carlo error of the estimate exceeded
+the certificate fell from at most 0.62% to at most 0.20%. On 16 simulated
+Poisson surveys the first fell from at most 10.0% to at most 4.6%. The
+certificate changes for every fit, and the replicate costs about 9% more fit
+time. In 1,270 paired fits of 127 simulated binomial surveys every fit stayed
+certified, the median certificate grew from 0.0171 to 0.0175 statistical
+standard errors, and 12 more fits needed a second stage. `check_fit()` says
+which sample set the radius in the `radius_from` column of its `stages` table,
+and each stage of `mcml_history` records both radii (`certificate_radii`) and
+the replicate's weight diagnostics (`replicate_validation`).
+
 - With a nugget and the spatial variance at zero, the exact alarm of the check for
 other maxima now also tries scales up to 16 times the spacing, with 2% to 30% of
 the total variance in the spatial effect, and fires when a lower bound on the
@@ -429,6 +448,18 @@ inverse link. Errors while an importance distribution is built at a trial
 parameter value, which give that value no weight, are counted and reported by
 `check_fit()`. Fits with the canonical links are unchanged.
 
+- A failure of the global proposal while the check for other maxima evaluates
+the likelihood far from the fitted maximum, as at the short scales of its
+screen, no longer makes the stage repeat with the Laplace proposal. That
+evaluation already uses the Laplace proposal at its own parameter values, and
+the failure says nothing about the proposal at the maximum. Since the screen
+runs for custom links, such failures in it made the first stage of a cauchit
+fit of `loaloa` repeat with the Laplace proposal, which suits that link far
+worse, and the fit was no longer certified. It is now certified at its first
+stage, with the global proposal. The failures still count when the check keeps
+the maximum of one of its refits, which is then the fit of the stage. Fits
+without such a failure are unchanged.
+
 - A custom inverse link that `Deriv` cannot differentiate, such as a bare
 `invlink = pnorm`, now has its derivatives computed for all values at once, with
 the same values as before. They were computed one value at a time, which made
@@ -454,6 +485,81 @@ only `inv`, `d1` and `d2`, and `specify_glgpm()` no longer accepts an
 abbreviated family such as `"bin"`, as `glgpm()` never did. `summary()` writes
 an inverse link taken from a package, such as a bare `invlink = pnorm`, by its
 name instead of its compiled body, `.Call(C_pnorm, ...)`.
+
+- `check_fit()` adds a row when a link is not known to make the likelihood of
+each location log-concave in its latent effect, as the cauchit link and links
+given as a function in `invlink` are not, since the latent effects can then
+have more than one conditional mode. The row is `OK`, because this belongs to
+the model and not to how it was fitted. A fit with a named link takes its
+starting regression coefficients from a binomial regression with that link
+instead of a logit regression, and falls back on the logit regression if that
+one cannot be fitted.
+
+- Certified MCML now builds every global proposal of a stage, other than the one
+at its start, from three plain refits of the factors found at the start, in place
+of iterating with Anderson acceleration until no factor moves by more than 1e-8.
+The stopping rule of the iteration made the estimated likelihood jump wherever
+the number of refits changed, by up to 4.5e-10 on the Tanzania survey, whereas
+three refits are a smooth function of the parameters, as the theory of the
+certificate assumes, and jumped by at most 2e-12 there. The proposal at the start
+of a stage is still iterated to the tolerance. In a paired test on 127 simulated
+surveys with ten runs each, every run was certified with and without the change,
+the median ratio of the certificates was 1.000, the largest rise in the error was
+0.002 standard errors, and the fits took 0.81 of the time. A refit that fails
+counts as a failure of the global proposal, as before. Each stage of
+`mcml_history` records `refit_change`, the largest change of a factor at the last
+of the three refits.
+
+- `profile()` of a binomial or Poisson fit now rebuilds the likelihood with the
+link of the fit. It used the logit or log link whatever link the fit had, so
+the profiles of a fit with a named link such as `binomial("probit")`, or with
+an inverse link given in `invlink`, were those of another model, and nothing
+warned of it. The fix does not change the profiles of fits with the logit
+and log links.
+
+- `check_fit()` gains `extra`, which names the checks that cost computing time,
+with `"all"` for every one, so that `check_fit()` is the one place to check a
+fit (#262). The first is `"profile"`, the marginal profile likelihood from
+`profile()` of every covariance parameter of the fit, which are the spatial
+variance and scale, the nugget, an estimated measurement error variance and the
+variances of the random effects, but not the regression coefficients. Its row
+names each parameter whose profile is flat, so that its 95% interval is open at
+an end, or has a second maximum, and is then `SUSPICIOUS`, and is a `PROBLEM`
+when a point of a profile is above the estimate, which is then not the maximum
+likelihood estimate. `cores` runs the profiles in parallel, with the same
+results. Before the extra checks start, a message says how long they should
+take, from the time the fit took, the number of parameters and the cores. Each
+draws from a random number stream of its own after the seed of the fit, so the
+same call gives the same result, and the random number state of the session is
+left as it was. A profile already computed can be passed to `check_fit()` in
+`profile`, which moves there from `plot()` of the checks, and is used as it is,
+whatever parameters it covers. The checks returned keep the result of every
+check that ran with the numbers behind its finding, and the new `summary()` of
+the checks gives them, with the certificate and draws of each stage and the full
+results of the extra checks, while `print()` still gives the verdict. `plot()` of
+the checks gains `which` to choose its panels, draws only what was computed, and
+says which extra check would compute a panel that is missing. Each profiled
+parameter has its own panel, such as `"profile_phi"`, and `which = "profile"`
+draws them all. The print of a fit without extra checks is unchanged.
+
+- `check_fit()` gains the extra check `"radius"` for binomial and Poisson fits,
+which predicts how often the radius in the bound on the Monte Carlo error is too
+small (#262). The radius is estimated from the certification draws themselves,
+which can miss the rare draws of large importance weight. Sixteen short Markov
+chains on the latent effects reach those draws, and samples of certification
+draws resampled from them and a fresh sample of the fit's size give the rate at
+which the error that the radius allows for exceeds it, with a 95% interval,
+against the 5% of the bound. On 35 simulated binomial and Poisson surveys the
+prediction was within a factor of 1.65 of the rate measured on independent
+samples. Outside binomial fits with the logit link it is read with a margin of
+15%, since it ran low on the Poisson surveys. The row is `SUSPICIOUS` when the
+radius, with that margin, would have to widen for the rate to be 5%, and then
+gives the bound with the radius so widened. The chains can miss a separate mode
+of the latent effects, so `OK` is not a proof. The check should take about
+twice as long as the fit, and draws from the streams 9500 to 9502 after the
+seed of the fit. `plot()` of the checks gains the panel `"radius"`, the error of
+resampled samples against the radius the fit uses for them, whose subtitle
+gives the predicted rate first.
 
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and

@@ -99,7 +99,9 @@
 ##' (MCML), controlled by `control_mcml` (see [set_control_mcml()]). The
 ##' estimate is corrected with an independent validation sample and certified
 ##' with a second, fresh one, which bounds its Monte Carlo error in statistical
-##' standard errors. The samples are enlarged only when the certificate exceeds
+##' standard errors, with an allowance for that sample's own error taken from
+##' it and from a replicate of it (see [set_control_mcml()]). The samples
+##' are enlarged only when the certificate exceeds
 ##' the tolerance. Every stage is recorded in `mcml_history`, and a warning is
 ##' issued if the tolerance is not met within the configured limits. Warnings
 ##' are kept for what changes how a result is read, and [check_fit()] goes through
@@ -442,8 +444,9 @@ glgpm <- function(formula,
     } else if(family=="binomial") {
       aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
       if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
-      glm_fitted <- glm(cbind(y, units_m - y) ~ ., offset = cov_offset,
-                        data = aux_data, family = binomial)
+      glm_fitted <- binomial_start_regression(
+        aux_data, cov_offset, link = if (is.list(invlink)) invlink$link
+      )
       start_pars[["beta"]] <- coef(glm_fitted)
     } else if(family=="poisson") {
       pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
@@ -2502,11 +2505,34 @@ named_inverse_link <- function(link) {
   )
 }
 
+##' The binomial regression that gives the starting regression coefficients
+##'
+##' A named link starts from a regression with its own link, since the
+##' coefficients of a logit regression are on another scale (an intercept of
+##' -2.94 where a cauchit regression gives -6.31). Should that regression fail
+##' or not converge, as one with a cauchit link can, the logit regression is
+##' used, as it is for the canonical link and for a link given as a function.
+##' @param link The name of the link, NULL for a link given as a function.
+##' @noRd
+binomial_start_regression <- function(aux_data, cov_offset, link = NULL) {
+  regress <- function(glm_family) {
+    glm(cbind(y, units_m - y) ~ ., offset = cov_offset, data = aux_data,
+        family = glm_family)
+  }
+  if (!is.null(link) && !identical(link, "logit")) {
+    own <- tryCatch(suppressWarnings(regress(binomial(link))),
+                    error = function(e) NULL)
+    if (isTRUE(own$converged)) return(own)
+  }
+  regress(binomial)
+}
+
 ##' What a refit of a fitted model passes as `invlink`
 ##'
 ##' `NULL` for a Gaussian fit or a canonical link, so that the refit takes the
 ##' canonical path again, and otherwise the stored inverse, its derivatives
-##' and the name of the link, in the list form of `invlink`.
+##' and the name of the link, in the list form of `invlink`. The likelihood
+##' that `profile()` rebuilds from a fit takes its link from here too.
 ##' @noRd
 refit_invlink <- function(object) {
   link_function <- object$link_function
@@ -3333,7 +3359,12 @@ laplace_sampling_mcmc <- function(y,
 ##' the score from an independent validation sample, followed by further steps
 ##' on that sample when the fitting sample predicts that one step leaves a
 ##' residual, and the corrected estimate is certified with a second, fresh
-##' validation sample. The
+##' validation sample. The radius of the certificate, its allowance for the
+##' Monte Carlo error of that sample's score, is the larger of the radii of
+##' that sample and of a replicate of the same size drawn at the same
+##' estimate. The radius of one sample is estimated from its own draws, and is
+##' too small when the sample misses the rare draws of very large weight that
+##' dominate its error, which the replicate misses independently. The
 ##' certificate is an approximate 95% bound, in statistical standard errors,
 ##' on the Monte Carlo error of the estimate, that is its distance from the
 ##' maximum of the exact likelihood that the fit has located. It is not an
@@ -3345,7 +3376,8 @@ laplace_sampling_mcmc <- function(y,
 ##' @param initial_samples Positive integer giving the number of draws in the
 ##' fitting sample at the first stage. Defaults to 1,000.
 ##' @param validation_samples Positive integer giving the number of draws in
-##' each validation sample at the first stage. Later stages enlarge the
+##' each validation sample, and in the replicate of the second, at the first
+##' stage. Later stages enlarge the
 ##' validation samples in the same proportion as the fitting sample. Defaults
 ##' to 5,000.
 ##' @param max_samples Positive integer giving the largest permitted fitting

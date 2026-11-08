@@ -329,46 +329,52 @@ defensive_rows <- function(n_draws, defensive_weight) {
 
 ##' Centre and precision of the Gaussian proposal at one parameter value
 ##'
-##' With `type = "global"` the global approximation (`fit_global_proposal()`)
-##' starts from `anchor`, the converged factors at another parameter value,
-##' if one is given. The factors of the likelihood in the latent linear
-##' predictor s carry over exactly to a new regression part `mu`, as
-##' b - C (mu - mu_anchor) and C, so the iteration starts close to its fixed
-##' point and the conditional mode is not needed. Without an anchor, or if
-##' that start does not converge, the iteration starts from the conditional
-##' mode found by `find_mode()`, and if it fails there the Laplace
-##' approximation at the mode is used. Returns the centre and precision, the
-##' upper factor of the proposal covariance when the global fit computed it
-##' (otherwise NULL), the global factors (NULL for the Laplace approximation),
-##' whether the global fit `failed` and, if it did, the `failure`: the `reason`,
-##' the number of `refits` and the last `change` of the factors.
+##' With `type = "global"` and an `anchor`, the converged factors at another
+##' parameter value, the proposal is three plain refits from the anchor
+##' (`refit_from_anchor()`), so given the anchor it is a smooth function of the
+##' parameters and the conditional mode is not needed. If a refit fails, the
+##' Laplace approximation at the mode found by `find_mode()` is used. Without
+##' an anchor, the global iteration (`fit_global_proposal()`) starts from the
+##' conditional mode and runs to its tolerance, and if it fails or does not
+##' converge the Laplace approximation is used. Returns the centre and
+##' precision, the upper factor of the proposal covariance when the global fit
+##' computed it (otherwise NULL), the global factors (NULL for the Laplace
+##' approximation), whether the global fit `failed` and, if it did, the
+##' `failure`: the `reason`, the number of `refits` and the last `change` of
+##' the factors. A proposal refitted from the anchor also returns that last
+##' change as `refit_change`.
 ##' @noRd
 build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
                                     precision, family, linkf, canonical,
                                     anchor, find_mode) {
-  global_from <- function(mode = NULL, initial = NULL) {
-    fit_global_proposal(
-      mode = mode, mu = mu, y = y, units_m = units_m,
-      latent_map = latent_map, precision = precision, family = family,
-      linkf = linkf, canonical = canonical, initial = initial
-    )
-  }
   approximation <- NULL
   global <- NULL
   failed <- FALSE
+  if (identical(type, "global") && !is.null(anchor)) {
+    refitted <- refit_from_anchor(anchor, mu, y, units_m, latent_map,
+                                  precision, family, linkf, canonical)
+    if (!refitted$failed) {
+      return(list(centre = refitted$centre, precision = refitted$precision,
+                  root = refitted$root, factors = refitted$factors,
+                  failed = FALSE, failure = NULL,
+                  refit_change = refitted$change))
+    }
+    approximation <- find_mode()
+    return(list(centre = approximation$mode,
+                precision = approximation$hessian, root = NULL,
+                factors = NULL, failed = TRUE,
+                failure = list(reason = "a refit failed",
+                               refits = refitted$refits,
+                               change = refitted$change)))
+  }
   if (identical(type, "global")) {
-    if (!is.null(anchor)) {
-      global <- global_from(initial = list(
-        linear = anchor$linear - anchor$curvature * (mu - anchor$mu),
-        curvature = anchor$curvature
-      ))
-      if (!is.null(global) && !global$converged) global <- NULL
-    }
-    if (is.null(global)) {
-      approximation <- find_mode()
-      global <- global_from(mode = approximation$mode)
-      failed <- is.null(global) || !global$converged
-    }
+    approximation <- find_mode()
+    global <- fit_global_proposal(
+      mode = approximation$mode, mu = mu, y = y, units_m = units_m,
+      latent_map = latent_map, precision = precision, family = family,
+      linkf = linkf, canonical = canonical
+    )
+    failed <- is.null(global) || !global$converged
   }
   failure <- if (failed) {
     list(reason = if (is.null(global)) "a refit failed" else "no convergence",
@@ -589,7 +595,9 @@ compute_variance_slope_terms <- function(eta, y, units_m, family, group,
 ##' `proposal = "laplace"`, or where the global fit fails, they are the
 ##' conditional mode and the curvature there (the Laplace approximation).
 ##' Failures of the global fit are counted, so that a fit can be repeated with
-##' the Laplace proposal throughout. With a Gaussian proposal alone the
+##' the Laplace proposal throughout. The count can be marked and restored to
+##' the mark, which sets aside the failures of the check for other maxima
+##' (`set_aside_check_failures()`). With a Gaussian proposal alone the
 ##' importance weights have infinite variance whenever the largest eigenvalue of
 ##' Sigma^{1/2} W Sigma^{1/2} exceeds one (W the likelihood curvature), which
 ##' holds in practically every spatial dataset (Pitt et al., 2013). The mixture
@@ -612,7 +620,13 @@ make_adaptive_mcml_engine <- function(
   family <- match.arg(family)
   default_proposal_type <- match.arg(proposal)
   proposal_failures <- 0L
+  # The largest change of a factor at the last of the fixed refits of the
+  # global proposals since the failures were last reset.
+  largest_refit_change <- -Inf
   first_failure <- NULL
+  # Proposals built so far, which date the cached one for
+  # restore_proposal_failures().
+  builds <- 0L
   # Errors while a proposal is built, which make an evaluation fail without
   # failing the global iteration, are counted apart from those failures.
   proposal_errors <- 0L
@@ -727,6 +741,8 @@ make_adaptive_mcml_engine <- function(
   cached_parameters <- NULL
   cached_type <- NULL
   cached_proposal <- NULL
+  cached_failed <- FALSE
+  cached_build <- 0L
 
   proposal_at <- function(parameters, type = default_proposal_type) {
     if (!is.null(cached_parameters) &&
@@ -763,9 +779,13 @@ make_adaptive_mcml_engine <- function(
       type, mu, y, units_m, latent_map, precision, family, linkf, canonical,
       anchor, find_mode
     )
+    builds <<- builds + 1L
     if (gaussian$failed) {
       proposal_failures <<- proposal_failures + 1L
       if (is.null(first_failure)) first_failure <<- gaussian$failure
+    }
+    if (!is.null(gaussian$refit_change)) {
+      largest_refit_change <<- max(largest_refit_change, gaussian$refit_change)
     }
     root <- gaussian$root
     if (is.null(root)) {
@@ -785,6 +805,8 @@ make_adaptive_mcml_engine <- function(
     cached_parameters <<- parameters
     cached_type <<- type
     cached_proposal <<- proposal
+    cached_failed <<- gaussian$failed
+    cached_build <<- builds
     proposal
   }
 
@@ -907,6 +929,9 @@ make_adaptive_mcml_engine <- function(
        },
        proposal_failures = function() proposal_failures,
        first_proposal_failure = function() first_failure,
+       largest_refit_change = function() {
+         if (is.finite(largest_refit_change)) largest_refit_change else NA_real_
+       },
        proposal_errors = function() {
          list(count = proposal_errors, first = first_error)
        },
@@ -927,8 +952,28 @@ make_adaptive_mcml_engine <- function(
        },
        reset_proposal_failures = function() {
          proposal_failures <<- 0L
+         largest_refit_change <<- -Inf
          first_failure <<- NULL
          invisible(NULL)
+       },
+       # The failures so far, and the largest refit change, to be restored
+       # after evaluations whose failures are set aside
+       # (set_aside_check_failures()).
+       mark_proposal_failures = function() {
+         list(failures = proposal_failures, first = first_failure,
+              builds = builds, refit_change = largest_refit_change)
+       },
+       # A failed proposal built since the mark that is still cached would be
+       # reused without being counted, so it is built again when next needed.
+       restore_proposal_failures = function(mark) {
+         set_aside <- proposal_failures - mark$failures
+         proposal_failures <<- mark$failures
+         first_failure <<- mark$first
+         largest_refit_change <<- mark$refit_change %||% largest_refit_change
+         if (cached_failed && cached_build > mark$builds) {
+           cached_parameters <<- NULL
+         }
+         invisible(set_aside)
        })
 }
 
@@ -1024,6 +1069,7 @@ compact_adaptive_mcml_history <- function(history) {
   lapply(history, function(stage) {
     stage$first_validation <- bank_summary(stage$first_validation)
     stage$second_validation <- bank_summary(stage$second_validation)
+    stage$replicate_validation <- bank_summary(stage$replicate_validation)
     stage$information <- NULL
     stage$information_root <- NULL
     stage
