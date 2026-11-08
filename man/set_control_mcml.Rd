@@ -27,7 +27,8 @@ set_control_mcml(
 fitting sample at the first stage. Defaults to 1,000.}
 
 \item{validation_samples}{Positive integer giving the number of draws in
-each validation sample at the first stage. Later stages enlarge the
+each validation sample, and in the replicate of the second, at the first
+stage. Later stages enlarge the
 validation samples in the same proportion as the fitting sample. Defaults
 to 5,000.}
 
@@ -137,7 +138,12 @@ fitting sample of draws, the estimate is corrected by one Newton step with
 the score from an independent validation sample, followed by further steps
 on that sample when the fitting sample predicts that one step leaves a
 residual, and the corrected estimate is certified with a second, fresh
-validation sample. The
+validation sample. The radius of the certificate, its allowance for the
+Monte Carlo error of that sample's score, is the larger of the radii of
+that sample and of a replicate of the same size drawn at the same
+estimate. The radius of one sample is estimated from its own draws, and is
+too small when the sample misses the rare draws of very large weight that
+dominate its error, which the replicate misses independently. The
 certificate is an approximate 95\% bound, in statistical standard errors,
 on the Monte Carlo error of the estimate, that is its distance from the
 maximum of the exact likelihood that the fit has located. It is not an

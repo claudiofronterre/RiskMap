@@ -4,10 +4,31 @@
 \alias{check_fit}
 \title{Check How a Fitted Model Was Computed}
 \usage{
-check_fit(object)
+check_fit(
+  object,
+  extra = character(),
+  profile = NULL,
+  messages = TRUE,
+  cores = 1L
+)
 }
 \arguments{
 \item{object}{An object of class \code{"RiskMap"} from \code{\link[=glgpm]{glgpm()}}.}
+
+\item{extra}{Names of the extra checks to run, \code{"all"} for every one. See
+Details. The default is none.}
+
+\item{profile}{An optional object of class \code{"RiskMap_profile"} from
+\code{\link[=profile.RiskMap]{profile.RiskMap()}} with marginal profiles for this fit. The profile
+check then uses it as it is, whatever parameters it covers, instead of
+computing one, whether or not \code{extra} names it.}
+
+\item{messages}{Logical, whether to say how long the extra checks should
+take before they start.}
+
+\item{cores}{Number of processes for the extra checks that can use
+several, passed to \code{\link[=profile.RiskMap]{profile.RiskMap()}}, whose results are the same on
+any number of cores.}
 }
 \value{
 An object of class \code{"RiskMap_check"}, a list with:
@@ -17,18 +38,43 @@ first, and the columns \code{check}, \code{status} (\code{"PROBLEM"}, \code{"SUS
 \item{draws}{One sentence on the stages and draws of the fit, \code{NULL} for
 Gaussian models.}
 \item{stages}{For non-Gaussian models, a data frame with one row per stage
-and the columns \code{stage}, \code{proposal}, \code{certificate}, \code{effective_draws} and
-\code{pareto_k}. The last two describe the certification draws, and are \code{NA} for
-a stage that did not reach them.}
+and the columns \code{stage}, \code{proposal}, \code{certificate}, \code{radius_from},
+\code{effective_draws} and \code{pareto_k}. The radius of the certificate is the
+larger of the radii of the certification draws and of a replicate of them,
+and \code{radius_from} says which it was (\code{"certification"} or \code{"replicate"}).
+The last two columns describe the certification draws. All three are \code{NA}
+for a stage that did not reach them.}
 \item{moves}{A data frame with the absolute change in each \code{parameter}
 between one \code{stage} and the one before it, in standard errors (\code{move}).
 \code{NULL} for a fit with one stage or without standard errors.}
 \item{tolerance}{The tolerance on the certificate.}
+\item{results}{A list with an element for each default check that ran,
+named by the check. Each holds its \code{row} of \code{checks} and its \code{data}, a list
+of the numbers behind the finding.}
+\item{extras}{A list with an element for each extra check that ran, named
+as in \code{extra}, each with its \code{row} and its \code{data}. The \code{data} of
+\code{"profile"} is the \code{"RiskMap_profile"} object. That of \code{"radius"} is a list
+with the predicted percentages of samples whose error exceeds the radius
+(\code{level}, with its \code{level_interval}), in which the error of the
+certification draws alone exceeds the radius (\code{own}), the share above the
+line in its panel, and whose error exceeds the bound (\code{exceedance}), the \code{factor} by which the radius would have to grow for
+\code{level} to be 5\%, the \code{margin}, the \code{widening} of the radius with that
+margin, at least one, the bound so widened (\code{widened}), the \code{settings} of
+the check and \code{samples}, a data frame with the \code{error} of each resampled
+sample and the \code{radius} the fit would use for it, the larger of its own
+and a replicate's, in standard errors.}
+\item{not_computed}{A named character vector giving, for each extra check
+that was asked for but not computed, the reason.}
+\item{fit_seconds}{The time the fit took in seconds, \code{NULL} where the fit
+did not record it.}
 }
 \description{
 Goes through the checks on the computation of a model fitted
 by \code{\link[=glgpm]{glgpm()}}, says which are OK and which need a look, and gives the fix
-where there is one. \code{summary()} gives only the number that need a look.
+where there is one. Checks that cost computing time run only when \code{extra}
+names them. \code{print()} gives the verdict, \code{summary()} the numbers behind
+each finding and \code{plot()} the figures. The model's own \code{summary()} gives
+only the number of checks that need a look.
 }
 \details{
 The checks concern the computation, not whether the model suits the
@@ -39,7 +85,55 @@ on as it stands. \code{SUSPICIOUS} means that the computation is valid but the
 result needs care. The limit of 0.7 on the tail shape of the importance
 weights, the Pareto shape, is that of Vehtari et al. (2024).
 
-A Gaussian fit has no Monte Carlo error, so its only check says so.
+A Gaussian fit has no Monte Carlo error, so its only default check says so.
+
+A link other than logit, probit or cloglog for binomial data, or log for
+counts, adds a row saying that it is not known to make the likelihood of
+each location log-concave in its latent effect, so that the latent
+effects can have more than one conditional mode. That belongs to the
+model and not to how it was fitted, so the row is \code{OK}.
+
+The default checks use only what the fit stored, so they take no time.
+The extra checks compute something new and add a row each. Before they
+start, a message says how long they should take, from the time the fit
+took. The extra checks are
+\itemize{
+\item \code{"profile"}, the marginal profile likelihood of each covariance
+parameter of the fit from \code{\link[=profile.RiskMap]{profile.RiskMap()}}, with its default
+settings. These are the spatial variance and scale, the nugget (its
+ratio to the spatial variance, \code{nu2}, or for a Gaussian fit its
+variance, \code{tau2}), an estimated measurement error variance and the
+variances of the random effects, but not the regression coefficients.
+Its row names each parameter whose profile is flat, so that its 95\%
+interval is open at an end, or has a second maximum, where it falls by
+more than half a log-likelihood unit between two maxima, and is then
+\code{SUSPICIOUS}. It is a \code{PROBLEM} when a point of a profile is above the
+estimate, which is then not the maximum likelihood estimate. The
+profiles of a binomial or Poisson fit should take about 10 times as
+long as the fit for each parameter, less with \code{cores}.
+\item \code{"radius"}, for a binomial or Poisson fit, a prediction of how often
+the radius in the bound on the Monte Carlo error is too small. The
+radius is estimated from the certification draws themselves, which
+can miss the rare draws of large importance weight. Short Markov
+chains on the latent effects, 16 chains of 4,000 rounds, reach those
+draws, and samples of certification draws resampled from them and a
+fresh sample of the fit's size show how often the error that the
+radius allows for exceeds it, against the 5\% of the bound. Outside
+binomial fits with the logit link the prediction is read with a margin
+of 15\%, since it ran low on simulated Poisson surveys. Its row is
+\code{SUSPICIOUS} when the radius, with that margin, would have to widen for
+the rate to be 5\%, and then gives the bound with the radius so widened.
+The chains can miss a separate mode of the latent effects, so \code{OK} is
+not a proof. The check should take about twice as long as the fit.
+}
+
+Each extra check draws from random number streams of its own, derived
+from the seed of the fit (\code{fit$seed}) as the streams of the fit are, so
+the same call gives the same result. The profiles use the stream 9600
+after the seed and the check of the radius the streams 9500 to 9502,
+which no fit uses. The random number state of the session is left as it
+was. An extra check that does not apply to the fit, or that
+fails, is not computed, and the printed checks say why.
 }
 \examples{
 data(italy_sim)
@@ -52,7 +146,14 @@ fit <- glgpm(
 )
 
 check_fit(fit)
+\donttest{
+checked <- check_fit(fit, extra = "profile")
+checked
+summary(checked)
+plot(checked, which = "profile")
+}
 }
 \seealso{
-\code{\link[=summary.RiskMap]{summary.RiskMap()}}, \code{\link[=plot.RiskMap_check]{plot.RiskMap_check()}}, \code{\link[=profile.RiskMap]{profile.RiskMap()}}
+\code{\link[=summary.RiskMap_check]{summary.RiskMap_check()}}, \code{\link[=plot.RiskMap_check]{plot.RiskMap_check()}},
+\code{\link[=summary.RiskMap]{summary.RiskMap()}}, \code{\link[=profile.RiskMap]{profile.RiskMap()}}
 }

@@ -396,6 +396,25 @@ clearly negative, `check_fit()` reports that zero is the
 maximum and the variance no longer counts as a check that needs a look. Fits that
 hold no variance are unchanged, and those with a custom link are not tested.
 
+- The radius of the certificate, its allowance for the Monte Carlo error of
+the certification sample's own score, is now the larger of that sample's radius
+and the radius of a replicate of it, with the same number of draws at the same
+estimate on a stream of its own. The radius of one sample is estimated from its
+own draws, and it is too small when the sample misses the rare draws of very
+large weight that dominate its error. On 13 simulated binomial surveys with 500
+samples of 5,000 draws each, how often the error that the radius allows for
+exceeded it fell from at most 6.7% to at most 2.9%, against the 5% the radius
+is meant to hold, and how often the Monte Carlo error of the estimate exceeded
+the certificate fell from at most 0.62% to at most 0.20%. On 16 simulated
+Poisson surveys the first fell from at most 10.0% to at most 4.6%. The
+certificate changes for every fit, and the replicate costs about 9% more fit
+time. In 1,270 paired fits of 127 simulated binomial surveys every fit stayed
+certified, the median certificate grew from 0.0171 to 0.0175 statistical
+standard errors, and 12 more fits needed a second stage. `check_fit()` says
+which sample set the radius in the `radius_from` column of its `stages` table,
+and each stage of `mcml_history` records both radii (`certificate_radii`) and
+the replicate's weight diagnostics (`replicate_validation`).
+
 - With a nugget and the spatial variance at zero, the exact alarm of the check for
 other maxima now also tries scales up to 16 times the spacing, with 2% to 30% of
 the total variance in the spatial effect, and fires when a lower bound on the
@@ -445,6 +464,36 @@ without such a failure are unchanged.
 `invlink = pnorm`, now has its derivatives computed for all values at once, with
 the same values as before. They were computed one value at a time, which made
 such a fit much slower than the same link written as `function(eta) pnorm(eta)`.
+
+- `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
+in `family`, as `glm()` does, so a link can be named as in
+`family = binomial("probit")`. Binomial models take the logit, probit, cloglog
+and cauchit links, Poisson models the log link and Gaussian models the identity
+link, and `family = binomial` is read as `binomial()`. The logit and log links
+fit exactly as `family = "binomial"` and `family = "poisson"` do. A named link
+gives the estimates of its inverse supplied in `invlink`, with exact
+derivatives, so it is never differentiated during the fit and is faster than
+an inverse such as a bare `pnorm`. `binomial("log")` and `poisson("identity")`,
+whose means can leave the range of the family, `poisson("sqrt")`, whose inverse
+is not monotone, quasi families, which have no likelihood, and other families
+are refused with a message pointing to `invlink`, which still takes any other
+inverse link as a function. A link given both in `family` and in `invlink` is
+an error, and `invlink` does not take the name of a link. `print()` and
+`summary()` name the link, and simulations, cross-validation refits and the
+parametric bootstrap keep it. The undocumented list form of `invlink` now takes
+only `inv`, `d1` and `d2`, and `specify_glgpm()` no longer accepts an
+abbreviated family such as `"bin"`, as `glgpm()` never did. `summary()` writes
+an inverse link taken from a package, such as a bare `invlink = pnorm`, by its
+name instead of its compiled body, `.Call(C_pnorm, ...)`.
+
+- `check_fit()` adds a row when a link is not known to make the likelihood of
+each location log-concave in its latent effect, as the cauchit link and links
+given as a function in `invlink` are not, since the latent effects can then
+have more than one conditional mode. The row is `OK`, because this belongs to
+the model and not to how it was fitted. A fit with a named link takes its
+starting regression coefficients from a binomial regression with that link
+instead of a logit regression, and falls back on the logit regression if that
+one cannot be fitted.
 
 - Certified MCML now builds every global proposal of a stage, other than the one
 at its start, from three plain refits of the factors found at the start, in place
@@ -500,6 +549,79 @@ integrates the nugget out when its variance at the start of the stage is at
 least 0.1 and samples it otherwise, the first stage taking the variance from the
 Laplace estimate. Each stage records its `form` in `mcml_history`, the fit
 records them as `mcml_noise_forms`, and `check_fit()` reports them.
+
+- `profile()` of a binomial or Poisson fit now rebuilds the likelihood with the
+link of the fit. It used the logit or log link whatever link the fit had, so
+the profiles of a fit with a named link such as `binomial("probit")`, or with
+an inverse link given in `invlink`, were those of another model, and nothing
+warned of it. The fix does not change the profiles of fits with the logit
+and log links.
+
+- `check_fit()` gains `extra`, which names the checks that cost computing time,
+with `"all"` for every one, so that `check_fit()` is the one place to check a
+fit (#262). The first is `"profile"`, the marginal profile likelihood from
+`profile()` of every covariance parameter of the fit, which are the spatial
+variance and scale, the nugget, an estimated measurement error variance and the
+variances of the random effects, but not the regression coefficients. Its row
+names each parameter whose profile is flat, so that its 95% interval is open at
+an end, or has a second maximum, and is then `SUSPICIOUS`, and is a `PROBLEM`
+when a point of a profile is above the estimate, which is then not the maximum
+likelihood estimate. `cores` runs the profiles in parallel, with the same
+results. Before the extra checks start, a message says how long they should
+take, from the time the fit took, the number of parameters and the cores. Each
+draws from a random number stream of its own after the seed of the fit, so the
+same call gives the same result, and the random number state of the session is
+left as it was. A profile already computed can be passed to `check_fit()` in
+`profile`, which moves there from `plot()` of the checks, and is used as it is,
+whatever parameters it covers. The checks returned keep the result of every
+check that ran with the numbers behind its finding, and the new `summary()` of
+the checks gives them, with the certificate and draws of each stage and the full
+results of the extra checks, while `print()` still gives the verdict. `plot()` of
+the checks gains `which` to choose its panels, draws only what was computed, and
+says which extra check would compute a panel that is missing. Each profiled
+parameter has its own panel, such as `"profile_phi"`, and `which = "profile"`
+draws them all. The print of a fit without extra checks is unchanged.
+
+- `check_fit()` gains the extra check `"radius"` for binomial and Poisson fits,
+which predicts how often the radius in the bound on the Monte Carlo error is too
+small (#262). The radius is estimated from the certification draws themselves,
+which can miss the rare draws of large importance weight. Sixteen short Markov
+chains on the latent effects reach those draws, and samples of certification
+draws resampled from them and a fresh sample of the fit's size give the rate at
+which the error that the radius allows for exceeds it, with a 95% interval,
+against the 5% of the bound. On 35 simulated binomial and Poisson surveys the
+prediction was within a factor of 1.65 of the rate measured on independent
+samples. Outside binomial fits with the logit link it is read with a margin of
+15%, since it ran low on the Poisson surveys. The row is `SUSPICIOUS` when the
+radius, with that margin, would have to widen for the rate to be 5%, and then
+gives the bound with the radius so widened. The chains can miss a separate mode
+of the latent effects, so `OK` is not a proof. The check should take about
+twice as long as the fit, and draws from the streams 9500 to 9502 after the
+seed of the fit. `plot()` of the checks gains the panel `"radius"`, the error of
+resampled samples against the radius the fit uses for them, whose subtitle
+gives the predicted rate first.
+
+- Certified MCML no longer stops with "the optimiser returned non-finite
+parameter values" when the search for the conditional mode of the latent
+effects goes wrong. Each search starts from the mode found at the parameter
+values tried before it. On a simulated survey at 1% prevalence a search had
+accepted steps to -507, where the curvature of the logit link underflows to
+0 / 0, and the next search started there. No step was then accepted, and the
+search returned its start as the mode, with a Hessian that was not a number, as
+if it had converged. 15 of the 48 searches of the Laplace step were broken this
+way, which moved the Laplace estimate, and the importance distribution at that
+estimate was not a number, so that every log weight was missing. A step to a
+point where the likelihood terms are not finite is no longer accepted. A search
+fails when its terms, its Newton step or its Hessian are not finite, or when no
+step increases the objective at a point that is not a mode, and a failed search
+from the previous mode is repeated from zero, so the next search starts from a
+mode that was found. An importance distribution that is not finite is an error,
+which gives that parameter value no weight, as other failures to build one do.
+`check_fit()` reports how many searches started again from zero. The three runs
+on that survey that stopped now fit, within 0.05 standard errors of a Markov
+chain reference, and two are certified. The third reaches the largest budget
+of 16,000 draws with a bound of 0.18. Fits whose searches never went wrong are
+unchanged, as on two other surveys of the same study.
 
 - `parametric_bootstrap()` simulates datasets from a Gaussian, binomial or
 Poisson fit at its estimate, refits the model to each from the estimate, and
@@ -634,8 +756,9 @@ refits and predictions of each test set.
 `"user"` and `"regularized"` now plot the testing and training datasets.
 - `assess_simulation()` now takes fitted objects returned by `glgpm()` or
   model specifications returned by `specify_glgpm()` as its `models`
-  templates. `f_grid_target` and `f_area_target` have been renamed to
-  `target_transform` and `area_summary`; their returned values are now checked
+  templates. `f_grid_target` has been replaced by `target`, a function of the
+  mean that defaults to the identity (see Simulations), and `f_area_target`
+  has been renamed to `area_summary`. Their returned values are now checked
   before they are used. Grid- and area-level objectives can be requested
   together in one run with `spatial_scale = c("grid", "area")`.
 - In `plot_metric()`; its `which_score`/`which_model`
@@ -652,6 +775,20 @@ parameters have been renamed to `metric`/`model`.
   Poisson responses use exposure times the inverse-link mean.
   Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
   extract results.
+
+- `assess_simulation()` scores every model on the scale of the mean, each
+  through its own inverse link. The truth is the simulated mean, which the
+  generating model's inverse link gives, and the predictive draws of each
+  refitted model are mapped to the mean through that model's inverse link.
+  Generating models can therefore have any link, named or custom, and models
+  whose links differ from the generating one, such as a probit model on
+  simulations from a logit model, are scored on the same prevalence as the
+  truth. A single function of the linear predictor was applied to every
+  model before, which scored such a model through the wrong inverse link.
+  The optional `target` is applied to the mean (the probability for a
+  binomial model, the mean per unit exposure for a Poisson model and the
+  value for a Gaussian model), so prevalence needs no argument, and other
+  targets such as `qlogis` for the logit scale remain available.
 
 ## Other
 

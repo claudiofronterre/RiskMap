@@ -3123,8 +3123,6 @@ assess_prediction <- function(object,
     } else {
       fit0$link_function$inv %||% switch(fam, binomial = plogis, poisson = exp)
     }
-    custom_link <- !is.null(fit0$link_function) &&
-      !identical(fit0$link_function$name, "canonical")
 
     if (messages) {
       message(sprintf("\nModel '%s' (%s)", h, model_names[h]))
@@ -3164,9 +3162,7 @@ assess_prediction <- function(object,
         if (length(den_name) == 1 && nzchar(den_name)) {
           refit_args$denominator <- as.name(den_name)
         }
-        if (custom_link) {
-          refit_args$invlink <- fit0$link_function[c("inv", "d1", "d2")]
-        }
+        refit_args$invlink <- refit_invlink(fit0)
         refit_i <- do.call(glgpm, refit_args)
       } else {
         ## quick slice without re-fitting
@@ -3565,9 +3561,9 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##'
 ##' @description Evaluates models using joint data and surface simulations.
 ##'
-##' @param obj_sim Output from [simulate_glgpm()] with both data and surface.
-##'   The current assessment interface supports generating models without
-##'   grouped `re()` effects or custom inverse links.
+##' @param obj_sim Output from [simulate_glgpm()] with both data and surface,
+##'   from a generating model without grouped `re()` effects. The generating
+##'   model can have any link.
 ##' @param models A named list of fitted models returned by [glgpm()] or model
 ##'   specifications returned by [specify_glgpm()]. Each object defines a
 ##'   candidate model specification and is refitted to every simulated dataset;
@@ -3580,10 +3576,16 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
 ##'   to compute both from a single fit-and-predict pass over the simulations.
 ##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
-##' @param target_transform A function that converts a numeric matrix of linear
-##'   predictors to a numeric matrix of scientific targets with the same
-##'   dimensions. For example, use [plogis()] for prevalence from a binomial
-##'   logit model or [exp()] for the mean of a Poisson log-link model.
+##' @param target A function that converts a numeric matrix of means to a
+##'   numeric matrix of the scientific target, with the same dimensions. The
+##'   mean is the probability for a binomial model, the mean per unit exposure
+##'   for a Poisson model and the value itself for a Gaussian model. The
+##'   default, [identity()], scores the mean itself, such as prevalence. Other
+##'   targets are functions of the mean, such as [qlogis()] to score
+##'   prevalence on the logit scale, or `function(mu) pnorm((-2 - mu) / sd)`
+##'   for the proportion of children stunted from a Gaussian model of
+##'   height-for-age z-scores with residual standard deviation `sd`. See
+##'   Details.
 ##' @param area_summary A function that combines a numeric vector of grid-cell
 ##'   targets within one area and returns one finite numeric value, such as
 ##'   [base::mean()] or [base::sum()]. Required only when `spatial_scale`
@@ -3609,12 +3611,25 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##' }
 ##'
 ##' @details
-##' The true target at each grid location is `target_transform()` applied to
-##' the simulated linear predictor, which includes the covariates, any offset
-##' and, when the generating model has one, the realised nugget. Each
-##' candidate is refitted to every simulated dataset and predicts the target
-##' with its own covariates and offset. Candidates with a nugget include it in
-##' their predictions when the generating model has one.
+##' Every model is scored on the scale of the mean, each through its own
+##' inverse link, so the links of the generating model and of the candidates
+##' need not agree. The true target at each grid location is `target()`
+##' applied to the simulated mean, which is the generating model's inverse
+##' link of the simulated linear predictor. That linear predictor includes the
+##' covariates, any offset and, when the generating model has one, the
+##' realised nugget. Each candidate is refitted to every simulated dataset,
+##' its predictive draws of the linear predictor are mapped to the mean
+##' through the inverse link of the refitted model, and `target()` is then
+##' applied to those draws. A probit candidate on simulations from a logit
+##' model is thus scored on the same prevalence as the truth. Candidates
+##' predict with their own covariates and offset, and those with a nugget
+##' include it in their predictions when the generating model has one.
+##'
+##' The target receives the mean rather than the linear predictor, which is
+##' what the `transform` argument of [predict.RiskMap()] receives, because
+##' models with different links share no linear-predictor scale. Every link is
+##' monotone, so a target defined on the linear predictor of a given link can
+##' be written as a function of the mean, as [qlogis()] gives the logit scale.
 ##'
 ##' The target of an area is `area_summary()` applied to the targets at the
 ##' grid locations that fall within it, with equal weight, unlike the exact
@@ -3651,7 +3666,6 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##'   simulations,
 ##'   models = list(candidate = model),
 ##'   spatial_scale = c("grid", "area"),
-##'   target_transform = exp,
 ##'   area_summary = mean,
 ##'   boundaries = boundary,
 ##'   pred_objective = "mse",
@@ -3665,7 +3679,7 @@ assess_simulation <- function(obj_sim,
                        seed = NULL,
                        spatial_scale,
                        messages = TRUE,
-                       target_transform = NULL,
+                       target = identity,
                        area_summary = NULL,
                        boundaries = NULL,
                        col_names = NULL,
@@ -3714,22 +3728,23 @@ assess_simulation <- function(obj_sim,
   }
 
   obj_sim <- simulation_assessment_data(obj_sim)
-  if (!is.function(target_transform)) {
-    stop("'target_transform' must be a function that transforms the linear predictor.")
+  if (!is.function(target)) {
+    stop("'target' must be a function of the mean, such as identity() ",
+         "for prevalence.", call. = FALSE)
   }
 
-  apply_target_transform <- function(x, context) {
+  apply_target <- function(x, context) {
     result <- tryCatch(
-      target_transform(x),
+      target(x),
       error = function(e) {
-        stop("'target_transform' failed for ", context, ": ",
+        stop("'target' failed for ", context, ": ",
              conditionMessage(e), call. = FALSE)
       }
     )
     if (!is.numeric(result) || !is.matrix(result) ||
         !identical(dim(result), dim(x)) || anyNA(result) ||
         any(!is.finite(result))) {
-      stop("'target_transform' must return a finite numeric matrix with the same dimensions as its input (failed for ",
+      stop("'target' must return a finite numeric matrix with the same dimensions as its input (failed for ",
            context, ").", call. = FALSE)
     }
     result
@@ -3767,7 +3782,7 @@ assess_simulation <- function(obj_sim,
   }
   model_names <- names(models)
   formulas <- lapply(models, function(template) update(template$formula, y ~ .))
-  grid <- obj_sim$lp_grid_sim
+  grid <- obj_sim$grid
   include_nugget <- obj_sim$nugget_over_grid
 
   # Every candidate needs complete covariates at every grid location, so that
@@ -3836,10 +3851,8 @@ assess_simulation <- function(obj_sim,
     categories_class <- factor(category_labels, levels = category_labels)
   }
 
-  lp_true_sim <- as.matrix(st_drop_geometry(grid[, grepl("^lp_sim_[0-9]+$",
-                                                       names(grid))]))
-  true_target_grid_sim <- apply_target_transform(
-    lp_true_sim, "the simulated true surface"
+  true_target_grid_sim <- apply_target(
+    obj_sim$mean_sim, "the simulated true surface"
   )
 
   # Applies 'area_summary' to the targets of each area, one column per draw
@@ -3972,7 +3985,11 @@ assess_simulation <- function(obj_sim,
         groups = if (want_area) groups else NULL
       )
       context <- paste0("model '", model_names[i], "', simulation ", j)
-      target_ij <- apply_target_transform(components$link, context)
+      # The response draws are the linear-predictor draws mapped through the
+      # refitted model's own inverse link (the identity for a Gaussian fit),
+      # so each model reaches the scale of the simulated mean through its own
+      # link.
+      target_ij <- apply_target(components$response, context)
 
       scores <- list(status = "ok", message = NA_character_,
                      estimate = unlist(coef(fit_ij)))
@@ -4091,9 +4108,9 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
   )
   if (template$family != "gaussian") {
     args$denominator <- quote(units_m)
-    if (fitted_template && identical(template$link_function$name, "custom")) {
-      args$invlink <- template$link_function[c("inv", "d1", "d2")]
-    } else if (!fitted_template && isTRUE(template$custom_link)) {
+    if (fitted_template) {
+      args$invlink <- refit_invlink(template)
+    } else if (isTRUE(template$custom_link)) {
       args$invlink <- template$invlink
     }
   }

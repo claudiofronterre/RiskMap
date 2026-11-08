@@ -79,6 +79,8 @@ reference:
       - summary.RiskMap
       - check_fit
       - print.RiskMap_check
+      - summary.RiskMap_check
+      - print.summary.RiskMap_check
       - plot.RiskMap_check
       - profile.RiskMap
       - plot.RiskMap_profile

@@ -19,7 +19,7 @@ test_that("maxim_integrand rejects families other than binomial and Poisson", {
       y = c(0.3, 1.2, -0.4, 0.8), denominator = rep(1, 4), mu = rep(0, 4),
       Sigma = sigma_mi, ID_coords = 1:4, family = "gaussian"
     ),
-    "must be either \"binomial\" or \"poisson\""
+    "'family' must be \"binomial\" or \"poisson\""
   )
   expect_error(
     maxim_integrand(

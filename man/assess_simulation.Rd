@@ -11,7 +11,7 @@ assess_simulation(
   seed = NULL,
   spatial_scale,
   messages = TRUE,
-  target_transform = NULL,
+  target = identity,
   area_summary = NULL,
   boundaries = NULL,
   col_names = NULL,
@@ -20,9 +20,9 @@ assess_simulation(
 )
 }
 \arguments{
-\item{obj_sim}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}} with both data and surface.
-The current assessment interface supports generating models without
-grouped \code{re()} effects or custom inverse links.}
+\item{obj_sim}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}} with both data and surface,
+from a generating model without grouped \code{re()} effects. The generating
+model can have any link.}
 
 \item{models}{A named list of fitted models returned by \code{\link[=glgpm]{glgpm()}} or model
 specifications returned by \code{\link[=specify_glgpm]{specify_glgpm()}}. Each object defines a
@@ -41,10 +41,16 @@ to compute both from a single fit-and-predict pass over the simulations.}
 
 \item{messages}{Logical, if \code{TRUE} messages will be displayed during processing. Default is \code{TRUE}.}
 
-\item{target_transform}{A function that converts a numeric matrix of linear
-predictors to a numeric matrix of scientific targets with the same
-dimensions. For example, use \code{\link[=plogis]{plogis()}} for prevalence from a binomial
-logit model or \code{\link[=exp]{exp()}} for the mean of a Poisson log-link model.}
+\item{target}{A function that converts a numeric matrix of means to a
+numeric matrix of the scientific target, with the same dimensions. The
+mean is the probability for a binomial model, the mean per unit exposure
+for a Poisson model and the value itself for a Gaussian model. The
+default, \code{\link[=identity]{identity()}}, scores the mean itself, such as prevalence. Other
+targets are functions of the mean, such as \code{\link[=qlogis]{qlogis()}} to score
+prevalence on the logit scale, or \code{function(mu) pnorm((-2 - mu) / sd)}
+for the proportion of children stunted from a Gaussian model of
+height-for-age z-scores with residual standard deviation \code{sd}. See
+Details.}
 
 \item{area_summary}{A function that combines a numeric vector of grid-cell
 targets within one area and returns one finite numeric value, such as
@@ -79,12 +85,25 @@ scales assessed.}
 Evaluates models using joint data and surface simulations.
 }
 \details{
-The true target at each grid location is \code{target_transform()} applied to
-the simulated linear predictor, which includes the covariates, any offset
-and, when the generating model has one, the realised nugget. Each
-candidate is refitted to every simulated dataset and predicts the target
-with its own covariates and offset. Candidates with a nugget include it in
-their predictions when the generating model has one.
+Every model is scored on the scale of the mean, each through its own
+inverse link, so the links of the generating model and of the candidates
+need not agree. The true target at each grid location is \code{target()}
+applied to the simulated mean, which is the generating model's inverse
+link of the simulated linear predictor. That linear predictor includes the
+covariates, any offset and, when the generating model has one, the
+realised nugget. Each candidate is refitted to every simulated dataset,
+its predictive draws of the linear predictor are mapped to the mean
+through the inverse link of the refitted model, and \code{target()} is then
+applied to those draws. A probit candidate on simulations from a logit
+model is thus scored on the same prevalence as the truth. Candidates
+predict with their own covariates and offset, and those with a nugget
+include it in their predictions when the generating model has one.
+
+The target receives the mean rather than the linear predictor, which is
+what the \code{transform} argument of \code{\link[=predict.RiskMap]{predict.RiskMap()}} receives, because
+models with different links share no linear-predictor scale. Every link is
+monotone, so a target defined on the linear predictor of a given link can
+be written as a function of the mean, as \code{\link[=qlogis]{qlogis()}} gives the logit scale.
 
 The target of an area is \code{area_summary()} applied to the targets at the
 grid locations that fall within it, with equal weight, unlike the exact
@@ -121,7 +140,6 @@ assessment <- assess_simulation(
   simulations,
   models = list(candidate = model),
   spatial_scale = c("grid", "area"),
-  target_transform = exp,
   area_summary = mean,
   boundaries = boundary,
   pred_objective = "mse",

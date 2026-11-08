@@ -41,10 +41,9 @@ test_that("glgpm produces errors", {
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "invalid"),
-    "'family' must be either 'gaussian', 'binomial' or 'poisson'"
+    "'family' must be \"gaussian\", \"binomial\" or \"poisson\""
   )
 
-  # need to document that invlink can be a list
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", invlink = function(x) x),
     "'invlink' cannot be provided when 'family' is 'gaussian'"
@@ -52,7 +51,7 @@ test_that("glgpm produces errors", {
 
   expect_error(
     glgpm(y ~ cov + gp(), data = poisson_data, family = "poisson", invlink = "not func", messages = FALSE),
-    "'invlink' must be NULL, a function, or a list"
+    "'invlink' takes a function, not the name of a link"
   )
 
   expect_error(
@@ -622,9 +621,15 @@ test_that("certified MCML records its certificate and bank diagnostics", {
   expect_identical(stage$budget, 500L)
   expect_true(all(c(
     "fit_diagnostics", "first_validation", "second_validation",
-    "certificate", "certificate_distance", "certificate_radius",
+    "replicate_validation", "certificate", "certificate_distance",
+    "certificate_radius", "certificate_radii", "radius_from",
     "correction_size", "certified", "outcome", "timing"
   ) %in% names(stage)))
+  expect_identical(stage$certificate_radius, max(stage$certificate_radii))
+  expect_equal(stage$certificate,
+               stage$certificate_distance + stage$certificate_radius)
+  expect_identical(names(stage$replicate_validation),
+                   names(stage$second_validation))
   expect_null(stage$information)
   expect_identical(diagnostics$mcml_budget, 500L)
   expect_identical(diagnostics$mcml_validation_budget, 500L)

@@ -422,9 +422,11 @@ compute_observed_information <- function(objective, estimate, fit_bank,
 ##' Maximises the estimated log-likelihood on a fitting bank of `budget` draws,
 ##' corrects the estimate by Newton steps with the score on an independent
 ##' validation bank (`correct_and_certify()`), and certifies the corrected
-##' estimate with a second, fresh validation bank drawn at that point. `seeds`
-##' gives the streams of the three banks and of the independent bank of the
-##' check for other maxima. At the first stage that check (`check_other_maxima()`) may replace the
+##' estimate with a second, fresh validation bank drawn at that point, whose
+##' radius is checked against a replicate bank (`certify_with_replicate()`).
+##' `seeds` gives the streams of the three banks, of the independent bank of
+##' the check for other maxima, of its enlarged bank, of the bank that tests a
+##' held variance and of the replicate. At the first stage that check (`check_other_maxima()`) may replace the
 ##' maximum, and if the fitted spatial correlation is numerically negligible
 ##' the stage ends with the outcome "numerically independent", without
 ##' information or certificate. The fit is then one of independent location
@@ -599,7 +601,8 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   }
   record[names(certified)] <- certified
   record$timing$validation <- certified$first_validation$seconds +
-    certified$second_validation$seconds
+    certified$second_validation$seconds +
+    (certified$replicate_validation$seconds %||% 0)
   # The correction reaches a bound only along a direction where the
   # information vanishes, and the certificate is then vacuous.
   at_bound <- find_coefficients_at_bound(record$estimate, limits, lower,
@@ -617,10 +620,11 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
 ##'
 ##' The estimate is corrected by one Newton step, d = H^-1 S, with the score
 ##' S on the first validation bank, and the corrected estimate is certified on
-##' a second, fresh bank drawn at that point (`certify_estimate()`). The
-##' second bank differentiates every parameter, including held ones, so that
-##' the reported gradient is complete. Returns NULL if a validation score
-##' cannot be computed.
+##' a second, fresh bank drawn at that point, with the larger of its radius
+##' and that of a replicate bank on the stream `seeds[[7L]]`
+##' (`certify_with_replicate()`). The second bank differentiates every
+##' parameter, including held ones, so that the reported gradient is complete.
+##' Returns NULL if a validation score cannot be computed.
 ##'
 ##' One step leaves a residual where the log-likelihood is far from quadratic
 ##' between the fitted estimate and the maximum, as along a log variance near
@@ -688,8 +692,11 @@ correct_and_certify <- function(engine, penalty, estimate, information,
   second <- score_validation_bank(engine, corrected, seq_along(corrected),
                                   validation_budget, seeds[[3L]], penalty)
   if (is.null(second)) return(NULL)
-  certificate <- certify_estimate(root, second$score[free],
-                                  second$covariance[free, free, drop = FALSE])
+  certificate <- certify_with_replicate(
+    engine, penalty, corrected, root, free, second, validation_budget,
+    if (length(seeds) >= 7L) seeds[[7L]]
+  )
+  if (is.null(certificate)) return(NULL)
   # With the nugget integrated out the estimator is unbiased for the likelihood
   # of the computed table, whose maximum differs from the exact one by a
   # deterministic gap far below this floor.
@@ -698,12 +705,55 @@ correct_and_certify <- function(engine, penalty, estimate, information,
   }
   c(list(estimate = corrected, correction_size = correction$distance,
          first_validation = first, second_validation = second,
+         replicate_validation = certificate$replicate,
          certificate = certificate$bound,
          certificate_distance = certificate$distance,
          certificate_radius = certificate$radius,
+         certificate_radii = certificate$radii,
+         radius_from = certificate$radius_from,
          certified = certificate$bound <= tolerance && !refused,
          residual_refused = refused),
     record)
+}
+
+##' Certificate whose radius is the larger of two banks' radii
+##'
+##' The radius of the certification bank `second` is estimated from its own
+##' draws, and it is too small mostly when the bank misses the rare draws of
+##' very large weight that also decide its error. A replicate bank of the same
+##' size, drawn at the same estimate on its own stream `replicate_seed`, misses
+##' them independently, so the certificate takes the larger of the two radii,
+##' max(q(C_2), q(C_3)), and the distance ||d||_H of the certification bank
+##' alone (`certify_estimate()`). The replicate is used for nothing but its
+##' radius. It leaves the random number state as it found it, so the rest of
+##' the fit draws what it would have drawn without it. Without
+##' `replicate_seed` the radius is the certification bank's. Returns NULL if
+##' the replicate's score cannot be computed, as for the other banks.
+##' @param information_root Upper Cholesky factor R of H = R'R.
+##' @noRd
+certify_with_replicate <- function(engine, penalty, estimate,
+                                   information_root, free, second,
+                                   validation_budget, replicate_seed = NULL) {
+  certificate <- certify_estimate(information_root, second$score[free],
+                                  second$covariance[free, free, drop = FALSE])
+  radii <- c(certification = certificate$radius, replicate = NA_real_)
+  replicate <- NULL
+  if (!is.null(replicate_seed)) {
+    restore_seed <- preserve_random_seed()
+    replicate <- score_validation_bank(engine, estimate, free,
+                                       validation_budget, replicate_seed,
+                                       penalty)
+    restore_seed()
+    if (is.null(replicate)) return(NULL)
+    radii[["replicate"]] <- compute_validation_radius(information_root,
+                                                      replicate$covariance)
+  }
+  from_replicate <- isTRUE(radii[["replicate"]] > radii[["certification"]])
+  radius <- max(radii, na.rm = TRUE)
+  c(certificate[c("correction", "distance")],
+    list(radius = radius, bound = certificate$distance + radius,
+         radii = radii, replicate = replicate,
+         radius_from = if (from_replicate) "replicate" else "certification"))
 }
 
 ##' Gradient by central differences over the parameters indexed by `index`
@@ -1177,8 +1227,10 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' be obtained, or the largest budget is reached. Stage s uses the random
 ##' number streams 3s - 2 (fitting bank), 3s - 1 and 3s (validation banks)
 ##' after `seed`, stream 1000 + s for the independent bank of the check for
-##' other maxima, stream 4000 + s for its enlarged bank and stream 5000 + s for
-##' the bank that tests a held variance (`assess_held_variances()`).
+##' other maxima, stream 4000 + s for its enlarged bank, stream 5000 + s for
+##' the bank that tests a held variance (`assess_held_variances()`) and stream
+##' 8000 + s for the replicate of the certification bank, whose radius the
+##' certificate also takes (`certify_with_replicate()`).
 ##'
 ##' If the global proposal fails within a stage, the stage is repeated with
 ##' the Laplace proposal, and the next stage tries the global proposal again
@@ -1194,7 +1246,10 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' before any bank is used.
 ##' A failure while correcting or certifying depends on the correction bank,
 ##' so the repeated stage draws every bank afresh, from streams
-##' 2000 + 3s - 2 to 2000 + 3s and 3000 + s. The certificate of the repeated
+##' 2000 + 3s - 2 to 2000 + 3s, 3000 + s, 6000 + s, 7000 + s and 9000 + s
+##' (the replicate). Every stream of a fit is then below 10,000 after `seed`,
+##' so fits whose seeds are 10,000 apart share no bank. The certificate of the
+##' repeated
 ##' stage then rests on a pair of validation banks drawn after everything that
 ##' led to it, as the conditional guarantee of the procedure requires.
 ##' `restart_start`, the starting values before the Laplace maximisation that
@@ -1263,7 +1318,8 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                       c(stream(offset + 3L * stage - 2:0),
                         stream(1000L + offset + stage),
                         stream(4000L + offset + stage),
-                        stream(5000L + offset + stage)),
+                        stream(5000L + offset + stage),
+                        stream((if (offset == 0L) 8000L else 9000L) + stage)),
                       lower, upper, stage == 1L, limits, curvature_root)
     }
     record <- run_stage(0L)

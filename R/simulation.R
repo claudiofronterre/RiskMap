@@ -54,7 +54,9 @@ specify_glgpm <- function(formula, data, family, parameters,
             "automatically reprojecting to EPSG:", model_crs,
             " for simulation. Set 'model_crs' to override.")
   }
-  family <- match.arg(family, c("gaussian", "binomial", "poisson"))
+  family_link <- read_family(family, invlink)
+  family <- family_link$family
+  invlink <- family_link$invlink
   custom_link <- !is.null(invlink)
   inter <- interpret_formula(formula)
 
@@ -79,7 +81,7 @@ specify_glgpm <- function(formula, data, family, parameters,
   if (is.null(invlink)) {
     invlink <- switch(family, gaussian = identity, binomial = plogis, poisson = exp)
   }
-  check_invlink(invlink, family)
+  check_invlink(inverse_link_function(invlink), family)
   fixed_terms <- terms(update(inter$pf, NULL ~ .))
   mf <- model.frame(fixed_terms, data = data, na.action = na.fail)
   design <- model.matrix(fixed_terms, mf)
@@ -317,7 +319,7 @@ draw_simulation <- function(prepared, nsim, seed = NULL) {
   }
   eta <- spatial + nugget + grouped + unlist(lapply(inputs, `[[`, "fixed"),
                                              use.names = FALSE)
-  mu <- check_invlink(model$invlink, model$family, eta)
+  mu <- check_invlink(inverse_link_function(model$invlink), model$family, eta)
   mu <- matrix(mu, nrow(eta), nsim)
   samples <- list()
   start <- 0L
@@ -498,8 +500,15 @@ simulated_surface <- function(object, simulation = 1) {
 #' @export
 print.RiskMap_simulation_model <- function(x, ...) {
   cat("Geostatistical model for simulation\n")
+  link <- if (is.list(x$invlink)) x$invlink$link
   cat(sprintf("Family: %s%s\n", x$family,
-              if (isTRUE(x$custom_link)) " (custom inverse link)" else ""))
+              if (!is.null(link)) {
+                sprintf(" (%s link)", link)
+              } else if (isTRUE(x$custom_link)) {
+                " (custom inverse link)"
+              } else {
+                ""
+              }))
   cat(sprintf("Formula: %s\n", paste(deparse(x$formula), collapse = " ")))
   cat(sprintf("Locations: %d\n", nrow(x$data)))
   print_simulation_parameters(x$parameters, x$distance_units)
@@ -692,7 +701,9 @@ simulation_model <- function(object) {
   } else {
     NULL
   }
-  invlink <- if (object$family == "gaussian") NULL else object$link_function$inv
+  # A named or custom link carries its derivatives and name, and a canonical
+  # link its stored inverse.
+  invlink <- refit_invlink(object) %||% object$link_function$inv
   model <- specify_glgpm(object$formula, object$data, object$family, pars,
                          distance_units = object$distance_units,
                          invlink = invlink)
@@ -704,6 +715,15 @@ simulation_model <- function(object) {
   model$original_offset <- object$cov_offset
   model$custom_link <- identical(object$link_function$name, "custom")
   model
+}
+
+#' The inverse link of a simulation model as a function
+#'
+#' A simulation model stores `invlink` as a function, or in the list form
+#' that also carries derivatives and the name of a link (`read_family()`).
+#' @noRd
+inverse_link_function <- function(invlink) {
+  if (is.list(invlink)) invlink$inv else invlink
 }
 
 #' Check that every variable the model formula references (covariates,
@@ -784,8 +804,15 @@ simulation_inputs <- function(model, data, response, label, original = FALSE) {
 
 #' Adapt unified simulations for the assessment interface
 #'
+#' The true surface is the simulated mean, which `draw_simulation()` computes
+#' through the generating model's own inverse link, whether canonical, named
+#' or custom, so the assessment needs no knowledge of that link.
+#'
 #' @param object A `RiskMap_simulation` containing data and surface draws.
-#' @return The legacy internal structure consumed by [assess_simulation()].
+#' @return A list with the simulated datasets (`data_sim`), the prediction
+#'   grid (`grid`), the simulated mean at each grid location with one column
+#'   per simulation (`mean_sim`), and the family, distance units and whether
+#'   the generating model has a nugget.
 #' @noRd
 simulation_assessment_data <- function(object) {
   check_simulation(object, NULL)
@@ -793,10 +820,10 @@ simulation_assessment_data <- function(object) {
     stop("Assessment requires what = c('data', 'surface').", call. = FALSE)
   }
   model <- object$model
-  if (length(model$re_terms) || isTRUE(model$custom_link)) {
-    stop("The current assess_simulation() interface does not support generating ",
-         "models with re() effects or custom inverse links. Simulated values ",
-         "remain available through the simulation accessors.", call. = FALSE)
+  if (length(model$re_terms)) {
+    stop("assess_simulation() does not support generating models with re() ",
+         "effects. Simulated values remain available through the simulation ",
+         "accessors.", call. = FALSE)
   }
   den <- simulation_inputs(model, object$locations$data, TRUE, "data",
                             original = identical(object$locations$data, model$data))$denominator
@@ -806,12 +833,9 @@ simulation_assessment_data <- function(object) {
     x$units_m <- den
     x
   })
-  grid <- object$locations$surface
-  for (i in seq_len(object$nsim)) {
-    grid[[paste0("lp_sim_", i)]] <- as.numeric(object$samples$surface[, i, "linear_predictor"])
-  }
-  list(data_sim = data, lp_grid_sim = grid, family = model$family,
-       distance_units = model$distance_units, include_covariates = TRUE,
-       include_cov_offset = !is.null(model$offset),
+  mean_sim <- object$samples$surface[, , "mean"]
+  dim(mean_sim) <- c(nrow(object$locations$surface), object$nsim)
+  list(data_sim = data, grid = object$locations$surface, mean_sim = mean_sim,
+       family = model$family, distance_units = model$distance_units,
        nugget_over_grid = model$parameters$tau2 > 0)
 }

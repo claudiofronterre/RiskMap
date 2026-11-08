@@ -181,15 +181,17 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
 ##'
 ##' Larger than the largest offset `fit_adaptive_mcml()` and the final
 ##' sampling add to the seed of a fit, so no two replicates share a Monte
-##' Carlo stream. The offsets reach 2000 plus three per stage, 6000 plus one
-##' per stage, and three per stage plus one, all below 6000 plus three per
-##' stage.
+##' Carlo stream. Stage s uses offsets up to 3s, 1000 + s, 4000 + s, 5000 + s
+##' and 8000 + s, a stage repeated after a late failure up to 2000 + 3s,
+##' 3000 + s, 6000 + s, 7000 + s and 9000 + s, and the final sampling three
+##' per stage plus one. With fewer than 3500 stages all are at most 9000 plus
+##' the number of stages.
 ##' @noRd
 bootstrap_seed_spacing <- function(max_stages) {
   spacing <- 10000L
-  if (6000 + 3 * max_stages >= spacing) {
+  if (9000 + max_stages >= spacing) {
     stop("parametric_bootstrap() supports fits with at most ",
-         (spacing - 6001) %/% 3, " stages of certified MCML ('max_stages' ",
+         spacing - 9001L, " stages of certified MCML ('max_stages' ",
          "in set_control_mcml())", call. = FALSE)
   }
   spacing
@@ -217,10 +219,7 @@ bootstrap_seeds <- function(seed, n_sim, spacing) {
 ##' @noRd
 make_bootstrap_refit <- function(object) {
   family <- object$family
-  invlink <- if (family != "gaussian" &&
-                 identical(object$link_function$name, "custom")) {
-    object$link_function[c("inv", "d1", "d2")]
-  }
+  invlink <- refit_invlink(object)
   design <- as.matrix(object$D)
   re_unique <- if (!is.null(object$ID_re)) lapply(object$re, seq_along)
   start <- coef(object)

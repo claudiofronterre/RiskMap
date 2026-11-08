@@ -617,6 +617,56 @@ test_that("the correction continues only past its check", {
   expect_identical(stopped$correction_steps, 2L)
 })
 
+test_that("the certificate takes the larger radius of two banks", {
+  # The mocked bank's covariance grows with its seed, and it moves the random
+  # number state as a real bank does.
+  seeds_used <- integer()
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, n_draws, seed,
+                                     ...) {
+      seeds_used <<- c(seeds_used, seed)
+      set.seed(seed)
+      stats::runif(1)
+      list(score = numeric(length(free)),
+           covariance = diag(seed / 100, length(free)), log_likelihood = 0,
+           relative_ess = 0.5, maximum_weight = 0.01, pareto_k = 0.2,
+           seconds = 0)
+    }
+  )
+  root <- diag(2)
+  second <- list(score = c(0.03, 0.04), covariance = diag(0.04, 2))
+  certify <- function(...) {
+    certify_with_replicate(NULL, NULL, c(0, 0), root, 1:2, second, 10L, ...)
+  }
+  set.seed(5)
+  before <- .Random.seed
+  larger <- certify(9L)
+  expect_identical(.Random.seed, before)
+  expect_identical(seeds_used, 9L)
+  expect_identical(larger$radius_from, "replicate")
+  expect_equal(larger$radii[["certification"]],
+               compute_validation_radius(root, diag(0.04, 2)))
+  expect_equal(larger$radius, compute_validation_radius(root, diag(0.09, 2)))
+  # The distance is the certification bank's.
+  expect_equal(larger$distance, 0.05)
+  expect_equal(larger$bound, larger$distance + larger$radius)
+  expect_identical(larger$replicate$pareto_k, 0.2)
+  smaller <- certify(1L)
+  expect_identical(smaller$radius_from, "certification")
+  expect_equal(smaller$radius, smaller$radii[["certification"]])
+  expect_gt(smaller$radius, smaller$radii[["replicate"]])
+  # Without a stream for the replicate, the radius is the certification bank's.
+  alone <- certify()
+  expect_identical(alone$radius_from, "certification")
+  expect_true(is.na(alone$radii[["replicate"]]))
+  expect_null(alone$replicate)
+  expect_equal(alone$bound, 0.05 + alone$radii[["certification"]])
+  # A replicate whose score cannot be computed leaves no certificate, as the
+  # other banks do.
+  local_mocked_bindings(score_validation_bank = function(...) NULL)
+  expect_null(certify(9L))
+})
+
 test_that("repeated corrections stop when a step does not contract", {
   # The fitting bank's curvature is a tenth of the correction bank's, so the
   # steps overshoot by more each time.
@@ -1282,6 +1332,11 @@ test_that("a late proposal failure repeats the stage on fresh streams", {
   late <- run("late")
   expect_length(calls, 2L)
   expect_true(all(calls[[1]] != calls[[2]]))
+  # No stream of the repeated stage was drawn in the first attempt, the
+  # replicate's included.
+  expect_false(any(calls[[2]] %in% calls[[1]]))
+  expect_identical(calls[[1]][[7L]], 7L + 8001L)
+  expect_identical(calls[[2]][[7L]], 7L + 9001L)
   expect_true(late$history[[1]]$late_fallback)
   expect_identical(late$proposal, "laplace")
   early <- run("early")
@@ -1291,6 +1346,42 @@ test_that("a late proposal failure repeats the stage on fresh streams", {
   none <- run("none")
   expect_length(calls, 1L)
   expect_null(none$history[[1]]$proposal_fallback)
+})
+
+test_that("every stream of a fit stays below 10,000 after its seed", {
+  # Runs whose seeds are 10,000 apart then share no bank, even when every
+  # stage is repeated after a late failure.
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  calls <- list()
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      calls[[length(calls) + 1L]] <<- seeds
+      failures <<- if (identical(type, "global")) 1L else 0L
+      list(estimate = start, outcome = "not certified", certified = FALSE,
+           certificate = 0.11, free = seq_along(start),
+           information = diag(length(start)),
+           information_root = diag(length(start)),
+           failures_before_validation = 0L)
+    }
+  )
+  fit <- fit_adaptive_mcml(engine, start = c(0, 0, 0), seed = 7L,
+                           maximum_budget = 1000000L, maximum_stages = 4L)
+  expect_length(fit$history, 4L)
+  expect_true(all(vapply(fit$history, function(stage) {
+    isTRUE(stage$late_fallback)
+  }, logical(1L))))
+  expect_length(calls, 8L)
+  streams <- unlist(calls) - 7L
+  expect_identical(anyDuplicated(streams), 0L)
+  expect_lt(max(streams), 10000L)
 })
 
 test_that("a stage whose global proposal fails at the start ends at once", {
@@ -1485,7 +1576,65 @@ test_that("the mode search says when it reaches its iteration limit", {
   )
   engine$proposal_at(c(0, 0, 0), "laplace")
   expect_identical(engine$mode_search_counts(),
-                   list(searches = 1L, at_limit = 0L))
+                   list(searches = 1L, at_limit = 0L, restarted = 0L))
+})
+
+test_that("a mode search that fails from the previous mode starts again from zero", {
+  set.seed(208)
+  sites <- 30L
+  coordinate <- runif(sites)
+  trials <- rep(50, sites)
+  y <- rbinom(sites, trials, 0.01)
+  precision <- solve(5 * exp(-as.matrix(dist(coordinate)) / 0.2) +
+                       diag(0.8, sites))
+  latent_map <- make_latent_map(cbind(seq_len(sites)), sites)
+  linkf <- make_inverse_link_functions("binomial", NULL, sites)
+  mu <- rep(-4.6, sites)
+  search_from <- function(start) {
+    adaptive_laplace_mode(mu, y, trials, latent_map, precision, "binomial",
+                          linkf, start)
+  }
+  # At a stale mode of -500 the probabilities are still positive, but the
+  # curvature of the logit link underflows to 0 / 0, so the Hessian there is
+  # not a number.
+  stale <- rep(-500, sites)
+  stale_terms <- laplace_observation_terms(mu + stale, y, trials, "binomial",
+                                           linkf)
+  expect_false(is.null(stale_terms))
+  expect_false(any(is.finite(stale_terms$curvature)))
+  from_zero <- search_from(numeric(sites))
+  from_stale <- search_from(stale)
+  expect_false(from_zero$restarted)
+  expect_true(from_stale$restarted)
+  expect_true(all(is.finite(from_stale$mode)))
+  expect_true(all(is.finite(from_stale$hessian)))
+  expect_identical(from_stale[c("mode", "hessian", "iterations",
+                                "reached_limit")],
+                   from_zero[c("mode", "hessian", "iterations",
+                               "reached_limit")])
+  # A start at the mode needs no restart.
+  expect_false(search_from(from_zero$mode)$restarted)
+})
+
+test_that("an importance distribution that is not finite gives no weight", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial",
+    proposal = "laplace"
+  )
+  # The compiled factor of a Hessian that is not a number is not a number
+  # either, without an error.
+  local_mocked_bindings(
+    inverse_cholesky_factor = function(hessian) hessian * NaN
+  )
+  draws <- matrix(0, nrow = 1L, ncol = engine$latent_dimension)
+  expect_error(engine$proposal_at(c(0, 0, 0)), "is not finite")
+  expect_identical(engine$evaluate(c(0, 0, 0), draws), -1e100)
+  expect_identical(engine$evaluate(c(0, 0, 0), draws, log_weights_only = TRUE),
+                   -Inf)
+  expect_identical(engine$proposal_errors(),
+                   list(count = 2L,
+                        first = "The importance distribution is not finite."))
 })
 
 test_that("a failed global proposal records why it failed", {

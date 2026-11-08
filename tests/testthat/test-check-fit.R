@@ -37,8 +37,10 @@ test_that("a Gaussian fit has one check and nothing to plot", {
   expect_match(checked$checks$finding, "no Monte Carlo error")
   expect_null(checked$stages)
   expect_null(checked$draws)
+  expect_null(checked$fit_seconds)
   expect_output(print(checked), "Checks on this fit")
-  expect_error(plot(checked), "no stages to plot")
+  expect_error(plot(checked), "no stages to plot.*extra = \"profile\"")
+  expect_error(plot(checked, which = "certificate"), "no stages to plot")
 })
 
 test_that("those that need a look come first", {
@@ -223,6 +225,20 @@ test_that("changes of importance distribution and the mode limit stay OK", {
   limit <- fit_check_mode_search(list(searches = 4000L, at_limit = 3L))
   expect_identical(limit$status, "OK")
   expect_match(limit$finding, "limit in 3 of 4,000 searches", fixed = TRUE)
+  expect_null(fit_check_mode_search(
+    list(searches = 40L, at_limit = 0L, restarted = 0L)
+  ))
+  restarted <- fit_check_mode_search(
+    list(searches = 4000L, at_limit = 0L, restarted = 2L)
+  )
+  expect_identical(restarted$status, "OK")
+  expect_match(restarted$finding,
+               "started again from zero in 2 of 4,000 searches", fixed = TRUE)
+  both <- fit_check_mode_search(
+    list(searches = 4000L, at_limit = 3L, restarted = 2L)
+  )
+  expect_match(both$finding, "limit in 3, and failed from the mode found",
+               fixed = TRUE)
 })
 
 test_that("a fit without a maximum gets that check alone, with what to do", {
@@ -286,10 +302,10 @@ test_that("the stages and the moves of the estimates are summarised", {
   later <- estimate + 2 * errors
   fit$mcml_history <- list(
     list(proposal = "laplace", certificate = 0.5, estimate = estimate,
-         validation_budget = 100L,
+         validation_budget = 100L, radius_from = "replicate",
          second_validation = list(relative_ess = 0.1, pareto_k = 1.1)),
     list(proposal = "global", certificate = 0.05, estimate = later,
-         validation_budget = 1000L,
+         validation_budget = 1000L, radius_from = "certification",
          second_validation = list(relative_ess = 0.5, pareto_k = 0.3)),
     list(proposal = "global", certificate = NA_real_, estimate = later)
   )
@@ -297,6 +313,8 @@ test_that("the stages and the moves of the estimates are summarised", {
   expect_identical(checked$stages$stage, 1:3)
   expect_identical(checked$stages$proposal, c("laplace", "global", "global"))
   expect_identical(checked$stages$certificate, c(0.5, 0.05, NA))
+  expect_identical(checked$stages$radius_from,
+                   c("replicate", "certification", NA))
   expect_equal(checked$stages$effective_draws, c(10, 500, NA), tolerance = 1e-12)
   expect_identical(checked$stages$pareto_k, c(1.1, 0.3, NA))
 
@@ -337,24 +355,45 @@ test_that("printing gives a line for each check and the fix where there is one",
   expect_lte(max(nchar(narrow)), 80L)
 })
 
-test_that("the plot shows the stages, and a profile if given", {
+test_that("the plot shows the stages, and a profile once it is computed", {
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   checked <- check_fit(binomial_model)
   panels <- plot(checked)
-  expect_contains(names(panels), "certificate")
+  expect_identical(names(panels), c("certificate", "effective_draws", "pareto_k"))
   for (panel in panels) expect_s3_class(panel, "ggplot")
-  expect_error(plot(checked, profile = 1), "'profile' must be a profile")
+
+  # A panel that was not computed says which extra to run, and plot() draws
+  # the others, or stops when there are none.
+  expect_message(chosen <- plot(checked, which = c("certificate", "profile")),
+                 "needs the extra check \"profile\", check_fit(fit, extra = \"profile\")",
+                 fixed = TRUE)
+  expect_identical(names(chosen), "certificate")
+  expect_error(plot(checked, which = "profile"),
+               "needs the extra check \"profile\"")
+  expect_message(plot(checked, which = c("certificate", "moves")),
+                 "no changes in the estimates to plot")
+  expect_error(plot(checked, which = "radius"),
+               "needs the extra check \"radius\", check_fit(fit, extra = \"radius\")",
+               fixed = TRUE)
+  expect_error(plot(checked, which = "radii"),
+               "Unknown panel \"radii\". The panels are \"certificate\"")
+  expect_error(plot(checked, which = "radii"), "\"moves\", \"radius\", \"profile_\"",
+               fixed = TRUE)
+  expect_error(plot(checked, which = 1), "'which' must be a character vector")
 
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
                            n_draws = 200, messages = FALSE)
-  with_profile <- plot(checked, profile = scale_profile)
-  expect_identical(names(with_profile), c(names(panels), "profile"))
-  expect_s3_class(with_profile$profile, "ggplot")
-  variance_profile <- profile(binomial_model, parameters = "sigma2", n_points = 5,
-                              n_draws = 200, messages = FALSE)
-  expect_error(plot(checked, profile = variance_profile),
-               "'profile' must be a profile")
+  given <- check_fit(binomial_model, profile = scale_profile)
+  with_profile <- plot(given)
+  expect_identical(names(with_profile), c(names(panels), "profile_phi"))
+  expect_s3_class(with_profile$profile_phi, "ggplot")
+  expect_identical(names(plot(given, which = "profile")), "profile_phi")
+  expect_identical(names(plot(given, which = c("profile_phi", "pareto_k"))),
+                   c("profile_phi", "pareto_k"))
+  expect_message(plot(given, which = c("profile_sigma2", "profile_phi")),
+                 "\"profile_sigma2\" has no profile, since the profiles are of phi",
+                 fixed = TRUE)
 
   stages <- data.frame(stage = 1:2, certificate = c(NA, 0.05))
   expect_null(plot_stage_panel(stages[1L, ], "certificate", "t", "y"))
