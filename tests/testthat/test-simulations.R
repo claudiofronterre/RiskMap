@@ -236,23 +236,22 @@ test_that("assess_simulation validates area boundaries", {
   obj_sim <- structure(list(), class = "RiskMap_simulation")
   expect_error(
     assess_simulation(obj_sim, models = list(model = y ~ gp()),
-                      spatial_scale = "grid", target_transform = identity),
+                      spatial_scale = "grid"),
     "glgpm\\(\\) or specify_glgpm\\(\\)"
   )
   expect_error(
     assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
-                      spatial_scale = character(), target_transform = identity),
+                      spatial_scale = character()),
     "'spatial_scale' must be set"
   )
   expect_error(
     assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
-                      spatial_scale = c("grid", "grid"), target_transform = identity),
+                      spatial_scale = c("grid", "grid")),
     "'spatial_scale' must be set"
   )
   expect_error(
     assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
-                      spatial_scale = "grid", pred_objective = character(),
-                      target_transform = identity),
+                      spatial_scale = "grid", pred_objective = character()),
     "'pred_objective' must be either"
   )
   expect_error(assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
@@ -300,7 +299,7 @@ test_that("assessment refits accept specify_glgpm templates #108", {
   )
   result <- assess_simulation(
     sim, models = list(candidate = template), spatial_scale = "grid",
-    target_transform = identity, pred_objective = "mse", messages = FALSE
+    pred_objective = "mse", messages = FALSE
   )
   expect_identical(dim(result$pred_objective$grid$mse), c(1L, 1L))
 })
@@ -312,7 +311,7 @@ test_that("joint output feeds the existing grid assessment", {
   result <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                               control_mcmc = control_mcmc,
                               seed = fixture_seed, spatial_scale = "grid",
-                              target_transform = identity, pred_objective = "mse",
+                              pred_objective = "mse",
                               messages = FALSE)
   expect_identical(dim(result$pred_objective$grid$mse), c(1L, 2L))
   expect_true(all(is.finite(result$pred_objective$grid$mse)))
@@ -328,7 +327,19 @@ test_that("assess_simulation validates target and area function outputs #171", {
       sim,
       models = list(intercept = gaussian_intercept_model),
       spatial_scale = "grid",
-      target_transform = mean,
+      target = "plogis",
+      pred_objective = "mse",
+      messages = FALSE
+    ),
+    "'target' must be a function of the mean"
+  )
+
+  expect_error(
+    assess_simulation(
+      sim,
+      models = list(intercept = gaussian_intercept_model),
+      spatial_scale = "grid",
+      target = mean,
       pred_objective = "mse",
       messages = FALSE
     ),
@@ -340,7 +351,7 @@ test_that("assess_simulation validates target and area function outputs #171", {
       sim,
       models = list(intercept = gaussian_intercept_model),
       spatial_scale = "grid",
-      target_transform = function(x) x * NA_real_,
+      target = function(x) x * NA_real_,
       pred_objective = "mse",
       messages = FALSE
     ),
@@ -353,7 +364,6 @@ test_that("assess_simulation validates target and area function outputs #171", {
       sim,
       models = list(intercept = gaussian_intercept_model),
       spatial_scale = "area",
-      target_transform = identity,
       area_summary = identity,
       boundaries = boundaries,
       pred_objective = "mse",
@@ -373,7 +383,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
                                 control_mcmc = control_mcmc,
                                 seed = fixture_seed,
                                 spatial_scale = c("grid", "area"),
-                                target_transform = identity, area_summary = mean,
+                                area_summary = mean,
                                 boundaries = boundaries, pred_objective = "mse",
                                 messages = FALSE)
 
@@ -386,12 +396,12 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   grid_only <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                  control_mcmc = control_mcmc,
                                  seed = fixture_seed, spatial_scale = "grid",
-                                 target_transform = identity, pred_objective = "mse",
+                                 pred_objective = "mse",
                                  messages = FALSE)
   area_only <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                  control_mcmc = control_mcmc,
                                  seed = fixture_seed, spatial_scale = "area",
-                                 target_transform = identity, area_summary = mean,
+                                 area_summary = mean,
                                  boundaries = boundaries, pred_objective = "mse",
                                  messages = FALSE)
 
@@ -418,7 +428,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
                                          control_mcmc = control_mcmc,
                                          seed = fixture_seed,
                                          spatial_scale = c("grid", "area"),
-                                         target_transform = identity, area_summary = mean,
+                                         area_summary = mean,
                                          boundaries = boundaries,
                                          pred_objective = c("mse", "classify"),
                                          categories = c(-3, -1, 0, 1, 3),
@@ -435,7 +445,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   expect_error(
     assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                       control_mcmc = control_mcmc, seed = fixture_seed,
-                      spatial_scale = "grid", target_transform = identity,
+                      spatial_scale = "grid",
                       pred_objective = "classify", categories = c(-1, 0, 0),
                       messages = FALSE),
     "unique, strictly increasing"
@@ -595,7 +605,7 @@ test_that("assess_simulation records a failed fit instead of stopping", {
     result <- assess_simulation(
       sim, models = list(intercept = gaussian_intercept_model),
       control_mcmc = control_mcmc, seed = fixture_seed, spatial_scale = "grid",
-      target_transform = identity, pred_objective = "mse", messages = FALSE
+      pred_objective = "mse", messages = FALSE
     ),
     "1 of 3 model fits failed"
   )
@@ -623,7 +633,7 @@ test_that("assess_simulation leaves out areas without grid locations", {
     result <- assess_simulation(
       sim, models = list(intercept = gaussian_intercept_model),
       control_mcmc = control_mcmc, seed = fixture_seed, spatial_scale = "area",
-      target_transform = identity, area_summary = mean,
+      area_summary = mean,
       boundaries = boundaries, col_names = "region",
       pred_objective = c("mse", "classify"), categories = c(-10, 0, 10),
       messages = FALSE
@@ -642,7 +652,7 @@ test_that("assess_simulation requires unique area names", {
   expect_error(
     assess_simulation(
       sim, models = list(intercept = gaussian_intercept_model),
-      spatial_scale = "area", target_transform = identity,
+      spatial_scale = "area",
       area_summary = mean, boundaries = boundaries, col_names = "region",
       pred_objective = "mse", messages = FALSE
     ),
@@ -663,7 +673,7 @@ test_that("assess_simulation names missing candidate covariates on the grid", {
   expect_error(
     assess_simulation(
       sim, models = list(candidate = candidate), spatial_scale = "grid",
-      target_transform = identity, pred_objective = "mse", messages = FALSE
+      pred_objective = "mse", messages = FALSE
     ),
     "needs complete values of 'cov' on the prediction grid"
   )
@@ -684,11 +694,147 @@ test_that("assess_simulation scores candidates without the generating model's nu
   result <- suppressWarnings(assess_simulation(
     sim, models = list(no_nugget = candidate), control_mcmc = control_mcmc,
     seed = fixture_seed,
-    spatial_scale = "grid", target_transform = plogis, pred_objective = "mse",
+    spatial_scale = "grid", pred_objective = "mse",
     messages = FALSE
   ))
   expect_identical(result$fits$status, c("ok", "ok"))
   expect_true(all(is.finite(result$pred_objective$grid$mse)))
+})
+
+# Runs assess_simulation() and records, for every fit in the order of the
+# fits, the name of its link and its predictive draws of the linear predictor.
+assess_recording_links <- function(...) {
+  recorded <- new.env()
+  recorded$links <- character()
+  recorded$draws <- list()
+  real_components <- prediction_sample_components
+  local_mocked_bindings(
+    prediction_sample_components = function(object, ...) {
+      components <- real_components(object, ...)
+      recorded$links <- c(recorded$links,
+                          object$link_function$link %||% "custom")
+      recorded$draws <- c(recorded$draws, list(components$link))
+      components
+    },
+    .package = "RiskMap"
+  )
+  result <- suppressWarnings(assess_simulation(...))
+  list(result = result, links = recorded$links, draws = recorded$draws)
+}
+
+test_that("a canonical logit assessment scores plogis of the linear predictors", {
+  # The scores that target_transform = plogis gave before every model was
+  # mapped through its own inverse link, computed here from the simulated
+  # linear predictor and the predictive draws of the linear predictor.
+  generating <- specify_glgpm(
+    y ~ gp(), data = binomial_data, family = "binomial",
+    denominator = denominator,
+    parameters = list(beta = -0.5, sigma2 = 0.5, phi = 2)
+  )
+  sim <- simulate_glgpm(generating, nsim = 2, what = c("data", "surface"),
+                        prediction_grid = binomial_data, seed = 3)
+  run <- assess_recording_links(
+    sim, models = list(logit = generating), control_mcmc = control_mcmc,
+    seed = fixture_seed, spatial_scale = "grid", pred_objective = "mse",
+    messages = FALSE
+  )
+  expect_identical(run$result$fits$status, c("ok", "ok"))
+  expect_identical(run$links, c("logit", "logit"))
+  truth <- plogis(sim$samples$surface[, , "linear_predictor"])
+  expected <- vapply(1:2, function(j) {
+    mean((rowMeans(plogis(run$draws[[j]])) - truth[, j])^2)
+  }, numeric(1))
+  expect_identical(unname(run$result$pred_objective$grid$mse[1, ]), expected)
+})
+
+test_that("assess_simulation scores every model through its own inverse link", {
+  generating <- specify_glgpm(
+    y ~ gp(), data = binomial_data, family = binomial("probit"),
+    denominator = denominator,
+    parameters = list(beta = -0.5, sigma2 = 0.3, phi = 2)
+  )
+  sim <- simulate_glgpm(generating, nsim = 2, what = c("data", "surface"),
+                        prediction_grid = binomial_data, seed = 3)
+  linear_predictor <- sim$samples$surface[, , "linear_predictor"]
+  truth <- simulation_assessment_data(sim)$mean_sim
+  expect_identical(truth, matrix(pnorm(linear_predictor),
+                                 nrow(linear_predictor)))
+
+  logit <- specify_glgpm(
+    y ~ gp(), data = binomial_data, family = "binomial",
+    denominator = denominator,
+    parameters = list(beta = -0.8, sigma2 = 0.8, phi = 2)
+  )
+  targets <- list()
+  record_target <- function(mean) {
+    targets[[length(targets) + 1L]] <<- mean
+    mean
+  }
+  run <- assess_recording_links(
+    sim, models = list(probit = generating, logit = logit),
+    control_mcmc = control_mcmc, seed = fixture_seed, spatial_scale = "grid",
+    target = record_target, pred_objective = "mse", messages = FALSE
+  )
+  expect_identical(run$result$fits$status, rep("ok", 4))
+  expect_identical(run$links, rep(c("probit", "logit"), 2))
+
+  # The target receives the simulated prevalence first, then the predictive
+  # prevalence of each fit through its own inverse link, and the scores
+  # compare the two.
+  expect_identical(targets[[1]], truth)
+  inverse <- list(probit = function(eta) pnorm(eta), logit = plogis)
+  for (fit in seq_along(run$draws)) {
+    draws <- run$draws[[fit]]
+    prevalence <- matrix(inverse[[run$links[fit]]](as.numeric(draws)),
+                         nrow(draws))
+    expect_identical(targets[[fit + 1L]], prevalence)
+    model <- 2L - fit %% 2L
+    simulation <- (fit + 1L) %/% 2L
+    expect_identical(
+      run$result$pred_objective$grid$mse[model, simulation],
+      mean((rowMeans(prevalence) - truth[, simulation])^2)
+    )
+  }
+})
+
+test_that("assess_simulation accepts a generating model with a custom link", {
+  imperfect_test <- function(eta) 0.01 + 0.89 * plogis(eta)
+  generating <- specify_glgpm(
+    y ~ gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, invlink = imperfect_test,
+    parameters = list(beta = 0, sigma2 = 0.5, phi = 2)
+  )
+  sim <- simulate_glgpm(generating, nsim = 1, what = c("data", "surface"),
+                        prediction_grid = binomial_data, seed = 3)
+  linear_predictor <- sim$samples$surface[, , "linear_predictor"]
+  truth <- simulation_assessment_data(sim)$mean_sim
+  expect_identical(truth, matrix(imperfect_test(linear_predictor), ncol = 1))
+
+  targets <- list()
+  record_target <- function(mean) {
+    targets[[length(targets) + 1L]] <<- mean
+    mean
+  }
+  run <- assess_recording_links(
+    sim, models = list(imperfect_test = generating),
+    control_mcmc = control_mcmc, seed = fixture_seed, spatial_scale = "grid",
+    target = record_target, pred_objective = "mse", messages = FALSE
+  )
+  expect_identical(run$result$fits$status, "ok")
+  expect_identical(run$links, "custom")
+  draws <- run$draws[[1]]
+  expect_identical(targets[[2]],
+                   matrix(imperfect_test(as.numeric(draws)), nrow(draws)))
+  expect_true(is.finite(run$result$pred_objective$grid$mse[1, 1]))
+})
+
+test_that("assess_simulation no longer takes target_transform", {
+  expect_error(
+    assess_simulation(structure(list(), class = "RiskMap_simulation"),
+                      models = list(model = gaussian_intercept_model),
+                      spatial_scale = "grid", target_transform = plogis),
+    "unused argument \\(target_transform = plogis\\)"
+  )
 })
 
 test_that("simulation objects print briefly", {
