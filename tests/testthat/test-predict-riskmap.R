@@ -743,6 +743,45 @@ test_that("prediction interval width uses the requested probability level", {
   expect_identical(result$value[3], result$value[2] - result$value[1])
 })
 
+test_that("row summaries match the summary of each row", {
+  built_ins <- c("mean", "median", "sd", "cv", "lower", "upper",
+                 "interval_width")
+  set.seed(31)
+  for (n_draws in c(1L, 2L, 7L, 40L)) {
+    values <- matrix(rnorm(12 * n_draws, mean = 1), 12, n_draws)
+    values[1, ] <- round(values[1, ])
+    values[2, ] <- 0
+    values[3, 1] <- Inf
+    values[4, n_draws] <- -Inf
+    for (level in c(0.95, 0.5)) {
+      by_row <- prediction_summary_functions(level)
+      summaries <- prediction_row_summaries(values, built_ins, level)
+      expected <- lapply(by_row[built_ins], function(f) apply(values, 1L, f))
+      # Order statistics follow quantile() and median() exactly, while the
+      # moments can differ from mean() and sd() in the last binary digit
+      for (name in c("median", "lower", "upper", "interval_width")) {
+        expect_identical(summaries[[name]], as.numeric(expected[[name]]))
+      }
+      for (name in c("mean", "sd", "cv")) {
+        expect_equal(summaries[[name]], expected[[name]])
+      }
+    }
+  }
+
+  values <- matrix(rnorm(40), 4, 10)
+  values[2, 3] <- NA
+  values[3, 5] <- NaN
+  summaries <- prediction_row_summaries(values, c("mean", "median", "sd"),
+                                        0.95)
+  expect_identical(summaries$median[2:3], c(NA_real_, NA_real_))
+  expect_identical(is.na(summaries$mean), c(FALSE, TRUE, TRUE, FALSE))
+  expect_identical(is.na(summaries$sd), c(FALSE, TRUE, TRUE, FALSE))
+  expect_error(
+    prediction_row_summaries(values, "lower", 0.95),
+    "missing values and NaN's not allowed"
+  )
+})
+
 test_that("built-in and custom aggregation and summary functions can be mixed", {
   prediction_control <- set_control_mcmc(
     n_sim = 40, burnin = 20, thin = 2
