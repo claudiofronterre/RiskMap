@@ -246,7 +246,8 @@ SEXP cpp_inverse_cholesky_factor(const NumericMatrix& hessian) {
 }
 
 // The spatial prior at one parameter value for kappa = 0.5, 1.5 or 2.5: the
-// covariance sigma2 (R(phi) + nugget I), its upper Cholesky factor (with the
+// covariance sigma2 (R(phi) + diag(nugget)), with `nugget_ratio` one value
+// for every location or one per location, its upper Cholesky factor (with the
 // attribute jitter = 0, as factor_covariance() sets it) and the precision
 // from that factor (chol2inv()), symmetrised first as factor_covariance()
 // does. If the covariance is not positive definite, `root` and `precision`
@@ -255,14 +256,19 @@ SEXP cpp_inverse_cholesky_factor(const NumericMatrix& hessian) {
 List cpp_spatial_prior_factors(const NumericVector& distances,
                                const int dimension, const double phi,
                                const double kappa, const double sigma2,
-                               const double nugget_ratio) {
+                               const NumericVector& nugget_ratio) {
+  if (nugget_ratio.size() != 1 && nugget_ratio.size() != dimension) {
+    stop("The nugget ratio needs one value or one per location.");
+  }
+  const bool per_location = nugget_ratio.size() == dimension && dimension != 1;
   const R_xlen_t size = static_cast<R_xlen_t>(dimension) * dimension;
   NumericMatrix covariance(dimension, dimension);
   for (R_xlen_t index = 0; index < size; ++index) {
     covariance[index] = half_integer_matern(distances[index], phi, kappa);
   }
   for (R_xlen_t index = 0; index < dimension; ++index) {
-    covariance[index + index * dimension] += nugget_ratio;
+    covariance[index + index * dimension] +=
+      nugget_ratio[per_location ? index : 0];
   }
   for (R_xlen_t index = 0; index < size; ++index) {
     covariance[index] = sigma2 * covariance[index];

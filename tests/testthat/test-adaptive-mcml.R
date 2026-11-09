@@ -136,11 +136,15 @@ test_that("a zero spatial variance is held at the boundary without escalation", 
   expect_true(all(is.na(diag(fit$covariance)[3:4])))
 })
 
-test_that("set_control_mcml validates laplace_start", {
-  expect_true(set_control_mcml()$laplace_start)
+test_that("set_control_mcml validates laplace_start and integrate_noise", {
+  expect_null(set_control_mcml()$laplace_start)
+  expect_true(set_control_mcml(laplace_start = TRUE)$laplace_start)
   expect_false(set_control_mcml(laplace_start = FALSE)$laplace_start)
   expect_error(set_control_mcml(laplace_start = NA), "laplace_start")
   expect_error(set_control_mcml(laplace_start = "yes"), "laplace_start")
+  expect_identical(set_control_mcml()$integrate_noise, "auto")
+  expect_true(set_control_mcml(integrate_noise = TRUE)$integrate_noise)
+  expect_error(set_control_mcml(integrate_noise = NA), "integrate_noise")
 })
 
 test_that("median nearest-neighbour distance ignores duplicate locations", {

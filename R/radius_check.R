@@ -36,13 +36,25 @@
 ##' 9502 after the seed of the fit (`make_extra_check_seed()`), so it is
 ##' reproducible, and the caller's random number state is left unchanged.
 ##'
+##' The banks are rebuilt in the form of the nugget that the fit's last stage
+##' used, sampled or integrated out (`find_radius_check_forms()`). Where that
+##' stage combined the validation banks of both forms
+##' (`combine_validation_banks()`), the check draws a bank, runs chains and
+##' resamples banks in each form, on the streams 9500 to 9502 for the sampled
+##' form and 9503 to 9505 for the integrated one, and combines the resampled
+##' banks in pairs as the fit combines its banks, with the same ceiling on
+##' their Pareto k (`combine_two_scores()`). It then takes about twice as long.
+##'
 ##' Returns the result of the check (`check_result()`), its row and its data,
-##' a list of class `"RiskMap_radius_check"` with the `level` and its
+##' a list of class `"RiskMap_radius_check"` with the `forms` of the banks,
+##' for combined banks the share of resampled pairs that used both banks or
+##' one (`used`), the `level` and its
 ##' `level_interval`, `own`, `exceedance`, `factor`, `margin`, `widening` (the
 ##' raised factor, at least one), the `certificate` and the certificate with
 ##' its radius so widened (`widened`), the `tolerance`, the median Pareto
 ##' shape of 100 resampled banks (`pareto_k`) and that of the check's own bank
-##' (`bank_pareto_k`), the split R-hat of the chains' log weight (`rhat`), the
+##' (`bank_pareto_k`), both in the form of the last stage, the split R-hat of
+##' the chains' log weight (`rhat`, the larger of the two forms'), the
 ##' `settings`, the elapsed `seconds`, the `samples`, a data frame with the
 ##' `error` of each resampled bank and the `radius` the fit would use for it
 ##' with the replicate of its first triple in `measure_radius_rule()`, in
@@ -71,16 +83,36 @@ fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
   started <- proc.time()[["elapsed"]]
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
-  streams <- make_radius_check_streams(seed, object$seed)
-  problem <- rebuild_certification_problem(object, last)
-  bank <- draw_radius_bank(problem, streams[[1L]])
-  chain <- run_radius_chains(problem, chains, rounds, streams[[2L]])
-  pool <- pool_radius_draws(bank, chain)
-  resampled <- resample_radius_banks(pool, problem, banks, streams[[3L]])
+  forms <- find_radius_check_forms(object, last)
+  combined <- length(forms) > 1L
+  streams <- make_radius_check_streams(seed, object$seed, length(forms))
+  checked <- stats::setNames(lapply(seq_along(forms), function(k) {
+    own <- streams[3L * (k - 1L) + 1:3]
+    problem <- rebuild_certification_problem(object, last, forms[[k]])
+    bank <- draw_radius_bank(problem, own[[1L]])
+    chain <- run_radius_chains(problem, chains, rounds, own[[2L]])
+    pool <- pool_radius_draws(bank, chain)
+    list(problem = problem, bank = bank, chain = chain,
+         resampled = resample_radius_banks(pool, problem, banks, own[[3L]],
+                                           if (combined) banks else 100L))
+  }), forms)
+  in_use <- if (combined) last$form %||% "sampled" else forms
+  resampled <- if (combined) {
+    combine_radius_banks(
+      checked$sampled$resampled, checked$integrated$resampled, in_use,
+      last$second_validation$combined$k_max %||%
+        formals(combine_validation_banks)$k_max
+    )
+  } else {
+    checked[[1L]]$resampled
+  }
+  problem <- checked[[in_use]]$problem
+  bank <- checked[[in_use]]$bank
   rates <- measure_radius_rule(resampled$errors, resampled$radii)
   margin <- if (is_binomial_logit(object)) 0 else 0.15
   widening <- max(1, rates$factor * (1 + margin))
   data <- structure(list(
+    forms = forms, used = resampled$used,
     level = 100 * rates$level, level_interval = 100 * rates$level_interval,
     own = 100 * rates$own, exceedance = 100 * rates$exceedance,
     factor = rates$factor, margin = margin, widening = widening,
@@ -88,7 +120,7 @@ fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
     widened = last$certificate_distance + widening * last$certificate_radius,
     tolerance = attr(object, "control_mcml")$tolerance %||% NA_real_,
     pareto_k = stats::median(resampled$pareto_k), bank_pareto_k = bank$pareto_k,
-    rhat = chain$rhat,
+    rhat = max(vapply(checked, function(form) form$chain$rhat, numeric(1))),
     settings = list(chains = as.integer(chains), rounds = as.integer(rounds),
                     banks = as.integer(banks), draws = problem$draws,
                     seed = streams[[1L]]),
@@ -120,6 +152,25 @@ find_radius_check_obstacle <- function(object) {
   NULL
 }
 
+##' The forms of the nugget whose validation banks the check rebuilds
+##'
+##' Both, `"sampled"` and `"integrated"`, where the fit's last stage combined
+##' the validation banks of the two forms (`combine_validation_banks()`),
+##' otherwise the form of that stage, or for a fit that did not record its
+##' forms, the form the fit ended in.
+##' @noRd
+find_radius_check_forms <- function(object, last) {
+  if (!is.null(last$second_validation$combined)) {
+    return(c("sampled", "integrated"))
+  }
+  integrated <- if (is.null(last$form)) {
+    isTRUE(attr(object, "optimizer")$mcml_integrate_noise)
+  } else {
+    identical(last$form, "integrated")
+  }
+  if (integrated) "integrated" else "sampled"
+}
+
 ##' Whether a fit is binomial with the logit link
 ##' @noRd
 is_binomial_logit <- function(object) {
@@ -136,6 +187,10 @@ describe_radius_check <- function(details) {
     "The radius of the bound is predicted to be exceeded in ",
     percent(details$level), " of samples (", percent(details$level_interval[1]),
     " to ", percent(details$level_interval[2]), "), against 5%.",
+    if (length(details$forms) > 1L) {
+      paste0(" Each sample combines a bank with the nugget sampled and one ",
+             "with it integrated out, as the fit's certificate did.")
+    },
     if (details$margin > 0) {
       paste0(" Outside binomial models with the logit link the prediction ",
              "is read with a margin of ", 100 * details$margin, "%, since it ",
@@ -164,22 +219,24 @@ describe_radius_check <- function(details) {
 ##' @noRd
 format_radius_percent <- function(value) paste0(signif(value, 2), "%")
 
-##' Seeds of the three random steps of `fit_check_radius()`
+##' Seeds of the three random steps of `fit_check_radius()` in each form
 ##'
 ##' Without a `seed` they are streams 9500 to 9502 after the seed of the fit,
 ##' which `fit_adaptive_mcml()` does not use, wrapped as it wraps its streams
 ##' (`make_extra_check_seed()`), and 1 to 3 for a fit without a seed. With one
-##' they are that seed and the two after it.
+##' they are that seed and the two after it. With two `forms` the second form
+##' takes the three streams after those.
 ##' @noRd
-make_radius_check_streams <- function(seed, fit_seed) {
+make_radius_check_streams <- function(seed, fit_seed, forms = 1L) {
   first <- seed %||% make_extra_check_seed(fit_seed, 9500L) %||% 1L
-  make_extra_check_seed(first, 0:2)
+  make_extra_check_seed(first, seq_len(3L * forms) - 1L)
 }
 
 ##' The certification problem of a fit, rebuilt at its estimate
 ##'
 ##' Rebuilds the engine as `make_profile_problem()` does, with the link and
-##' the proposal of the fit's last stage, anchors the global proposal at the
+##' the proposal of the fit's last stage and the nugget in the given `form`,
+##' sampled or integrated out, anchors the global proposal at the
 ##' estimate, and recovers the information over the free parameters of that
 ##' stage from the covariance of the fit, on the engine's scale. Gives the
 ##' estimate on that scale, the upper Cholesky factor `root` of the
@@ -187,7 +244,7 @@ make_radius_check_streams <- function(seed, fit_seed) {
 ##' `defensive` rows, and the derivatives of the log weights
 ##' (`make_radius_derivatives()`).
 ##' @noRd
-rebuild_certification_problem <- function(object, last) {
+rebuild_certification_problem <- function(object, last, form = "sampled") {
   design_scaling <- standardize_design_matrix(object$D)
   spatial_scaling <- scale_spatial_coordinates(object$coords)
   distances <- as.matrix(pairwise_distances(spatial_scaling$coordinates))
@@ -200,7 +257,8 @@ rebuild_certification_problem <- function(object, last) {
     ID_re = if (is.null(object$ID_re)) NULL else as.matrix(object$ID_re),
     invlink = refit_invlink(object),
     defensive_weight = control_mcml$defensive_weight %||% 0.05,
-    proposal = control_mcml$proposal %||% "global"
+    proposal = control_mcml$proposal %||% "global",
+    integrate_noise = identical(form, "integrated")
   )
   if (identical(last$proposal, "laplace")) engine$use_proposal("laplace")
   coefficients <- seq_len(ncol(object$D))
@@ -495,8 +553,9 @@ compute_weighted_score <- function(log_weights, gradients) {
 ##'
 ##' Each has the bank's number of defensive rows, drawn from its defensive
 ##' rows, and the rest from the pooled Gaussian draws. Returns their errors,
-##' centred on their mean, and their radii, both in the metric of the
-##' information, and the Pareto shapes of the first `shapes` of them.
+##' centred on their mean, their radii, their `scores` and `covariances`, all
+##' in the metric of the information, and the Pareto shapes of the first
+##' `shapes` of them.
 ##' @noRd
 resample_radius_banks <- function(pool, problem, banks, seed, shapes = 100L) {
   set.seed(seed)
@@ -523,10 +582,40 @@ resample_radius_banks <- function(pool, problem, banks, seed, shapes = 100L) {
     )
   })
   scores <- do.call(rbind, lapply(resampled, `[[`, "score"))
+  covariances <- lapply(resampled, `[[`, "covariance")
   list(errors = sweep(scores, 2L, colMeans(scores)),
-       radii = compute_validation_radii(lapply(resampled, `[[`,
-                                               "covariance")),
-       pareto_k = pareto_k)
+       radii = compute_validation_radii(covariances),
+       scores = scores, covariances = covariances, pareto_k = pareto_k)
+}
+
+##' Resampled banks of the two forms, combined in pairs as the fit combines
+##' its validation banks
+##'
+##' Bank j of the sampled form is combined with bank j of the integrated form
+##' by `combine_two_scores()`, with their Pareto shapes, the form of the fit's
+##' last stage and its ceiling `k_max`. Each form's errors are centred on the
+##' mean of its scores, and the combination, linear in the scores, is applied
+##' to the errors. Returns the combined errors and radii, the Pareto shapes of
+##' the form in use and the shares of pairs that used both banks or one.
+##' @noRd
+combine_radius_banks <- function(sampled, integrated, form, k_max) {
+  pairs <- lapply(seq_len(nrow(sampled$errors)), function(j) {
+    combine_two_scores(
+      list(sampled = sampled$errors[j, ], integrated = integrated$errors[j, ]),
+      list(sampled = sampled$covariances[[j]],
+           integrated = integrated$covariances[[j]]),
+      c(sampled = sampled$pareto_k[j], integrated = integrated$pareto_k[j]),
+      form, k_max
+    )
+  })
+  used <- factor(vapply(pairs, `[[`, character(1), "used"),
+                 levels = c("both", "sampled", "integrated"))
+  shapes <- min(100L, length(pairs))
+  list(errors = do.call(rbind, lapply(pairs, `[[`, "score")),
+       radii = compute_validation_radii(lapply(pairs, `[[`, "covariance")),
+       pareto_k = list(sampled = sampled, integrated = integrated)[[form]]$
+         pareto_k[seq_len(shapes)],
+       used = c(table(used)) / length(pairs))
 }
 
 ##' Radii of several covariances already in the metric of the information

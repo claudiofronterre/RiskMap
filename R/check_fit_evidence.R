@@ -308,6 +308,7 @@ write_radius_evidence <- function(check) {
     "Bound, in standard errors" = check$certificate,
     "Bound with the radius so widened" = check$widened,
     "Tolerance" = check$tolerance,
+    "Nugget in the samples" = describe_radius_forms(check),
     "Pareto shape of the fresh sample" = check$bank_pareto_k,
     "Median Pareto shape of 100 resampled samples" = check$pareto_k,
     "Split R-hat of the chains' log weight" = check$rhat,
@@ -325,4 +326,16 @@ write_radius_evidence <- function(check) {
                  error_over_radius = quantiles(check$samples$error /
                                                  check$samples$radius))
   ))
+}
+
+##' The form of the nugget in the samples of the check of the radius
+##' @noRd
+describe_radius_forms <- function(check) {
+  forms <- check$forms %||% "sampled"
+  if (length(forms) > 1L) {
+    return(paste0("sampled and integrated out, combined in pairs (both ",
+                  "banks in ", format_radius_percent(100 * check$used[["both"]]),
+                  " of pairs)"))
+  }
+  if (identical(forms, "integrated")) "integrated out" else "sampled"
 }

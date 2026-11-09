@@ -58,9 +58,133 @@ summarise_importance_weights <- function(log_weights) {
 ##' proposal is built once and reused for every block. A penalty on the
 ##' parameters does not change the weights, so its gradient is added to the
 ##' score. Returns NULL if a proposal or a derivative cannot be computed.
+##' An engine that switches between the sampled and the integrated nugget
+##' draws the bank in both forms and combines them
+##' (`combine_validation_banks()`).
 ##' @noRd
 score_validation_bank <- function(engine, parameters, free, n_draws, seed,
                              penalty = NULL, block_rows = NULL) {
+  if (isTRUE(engine$combine_validation)) {
+    return(combine_validation_banks(engine, parameters, free, n_draws, seed,
+                                    penalty, block_rows))
+  }
+  score_one_validation_bank(engine, parameters, free, n_draws, seed, penalty,
+                            block_rows)
+}
+
+##' Validation bank in both forms of a switching engine, combined
+##'
+##' The bank is drawn in the sampled form on the stream `seed` and in the
+##' integrated form on the stream 250 after it, which no other bank of a fit
+##' uses (`fit_adaptive_mcml()`), so the two are independent. Each score
+##' estimates the score of the same exact likelihood, so they are combined with
+##' inverse-covariance weights, S = W (C_s^-1 S_s + C_i^-1 S_i) with
+##' W = (C_s^-1 + C_i^-1)^-1, whose covariance is W. With exact covariances
+##' the combination is never noisier than either bank, which matters near the
+##' threshold of the switch, where either form can be the noisier. The
+##' log-likelihood and the weight diagnostics are those of the form in use.
+##'
+##' The weights rest on the estimated covariances, and a bank whose importance
+##' weights have a heavy tail can underestimate its covariance badly, so that
+##' the combination trusts it far too much. A bank whose Pareto k exceeds
+##' `k_max` is therefore left out and the other bank used alone, or, if both
+##' exceed it, the bank of the form in use, as without the combination. In 288
+##' fits to 96 simulated surveys of 700 sites at nugget variances of 0.15 and
+##' 0.8, the combination without this guard certified 245, 9 of them with an
+##' error above the tolerance in the information of a Markov chain reference.
+##' With a ceiling of 0.8 it certified 228, none of them with such an error, a
+##' ceiling of 0.7 certified 220 with 1 such error, and 0.9 certified 231 with
+##' 2.
+##' Coordinates whose score is nearly deterministic in either form, such as a
+##' held variance, keep the score of the form in use, since their noisy
+##' covariances with the others would distort the weights. If a covariance
+##' cannot be inverted, the bank with the smaller total variance is used
+##' (`combine_two_scores()`). The result records in `combined` which banks
+##' were used, the Pareto k and relative effective sample size of each, and
+##' `k_max`.
+##' @noRd
+combine_validation_banks <- function(engine, parameters, free, n_draws, seed,
+                                     penalty = NULL, block_rows = NULL,
+                                     k_max = 0.8) {
+  form <- engine$form()
+  on.exit(engine$set_form(form), add = TRUE)
+  offset <- c(sampled = 0, integrated = 250)
+  banks <- list()
+  for (f in c("sampled", "integrated")) {
+    engine$set_form(f)
+    stream <- as.integer(((seed - 1 + offset[[f]]) %% .Machine$integer.max) + 1)
+    banks[f] <- list(score_one_validation_bank(engine, parameters, free,
+                                               n_draws, stream, penalty,
+                                               block_rows))
+  }
+  engine$set_form(form)
+  if (is.null(banks$sampled) || is.null(banks$integrated)) {
+    scored <- Filter(Negate(is.null), banks)
+    return(banks[[form]] %||% if (length(scored)) scored[[1L]])
+  }
+  k <- c(sampled = banks$sampled$pareto_k %||% NA_real_,
+         integrated = banks$integrated$pareto_k %||% NA_real_)
+  combined <- combine_two_scores(lapply(banks, `[[`, "score"),
+                                 lapply(banks, `[[`, "covariance"), k, form,
+                                 k_max)
+  out <- banks[[form]]
+  out$score <- combined$score
+  out$covariance <- combined$covariance
+  out$seconds <- banks$sampled$seconds + banks$integrated$seconds
+  out$combined <- list(used = combined$used, pareto_k = k,
+                       ess = c(sampled = banks$sampled$relative_ess,
+                               integrated = banks$integrated$relative_ess),
+                       k_max = k_max)
+  out
+}
+
+##' The combination of the scores of two validation banks
+##'
+##' The arithmetic of `combine_validation_banks()`, which the check of the
+##' radius (`fit_check_radius()`) repeats on resampled banks. `scores` and
+##' `covariances` are lists named `sampled` and `integrated`, `pareto_k` the
+##' Pareto k of the two banks and `form` the form in use. Gives the `score`,
+##' its `covariance` and which banks were `used` ("both", "sampled" or
+##' "integrated").
+##' @noRd
+combine_two_scores <- function(scores, covariances, pareto_k, form, k_max) {
+  one_bank <- function(used) {
+    list(score = scores[[used]], covariance = covariances[[used]],
+         used = used)
+  }
+  heavy <- !is.na(pareto_k) & pareto_k > k_max
+  if (any(heavy)) {
+    return(one_bank(if (all(heavy)) form else names(pareto_k)[!heavy]))
+  }
+  inverse <- function(covariance) {
+    tryCatch(chol2inv(chol(covariance)), error = function(error) NULL)
+  }
+  live <- function(covariance) diag(covariance) > 1e-8 * max(diag(covariance))
+  index <- which(live(covariances$sampled) & live(covariances$integrated))
+  Ps <- inverse(covariances$sampled[index, index, drop = FALSE])
+  Pi <- inverse(covariances$integrated[index, index, drop = FALSE])
+  W <- if (!is.null(Ps) && !is.null(Pi)) inverse(Ps + Pi)
+  if (is.null(W)) {
+    total <- vapply(covariances, function(covariance) sum(diag(covariance)),
+                    numeric(1))
+    return(one_bank(names(which.min(total))))
+  }
+  W <- (W + t(W)) / 2
+  score <- scores[[form]]
+  covariance <- covariances[[form]]
+  score[index] <- drop(W %*% (Ps %*% scores$sampled[index] +
+                                Pi %*% scores$integrated[index]))
+  covariance[index, ] <- 0
+  covariance[, index] <- 0
+  covariance[index, index] <- W
+  list(score = score, covariance = covariance, used = "both")
+}
+
+##' Score of the estimated log-likelihood on one validation bank, in the form
+##' the engine is in (`score_validation_bank()`)
+##' @noRd
+score_one_validation_bank <- function(engine, parameters, free, n_draws, seed,
+                                      penalty = NULL, block_rows = NULL) {
   started <- proc.time()[["elapsed"]]
   dimension <- engine$latent_dimension
   if (is.null(block_rows)) block_rows <- max(250L, floor(2.5e6 / dimension))
@@ -497,6 +621,7 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
     independent <- checked$numerically_independent
   }
   fit <- optimised$fit
+  fit$par <- hold_noise_at_zero(engine, fit$par, optimised$boundary)
   record <- list(
     budget = budget, validation_budget = validation_budget,
     proposal = engine$proposal_type(), fitted_estimate = fit$par,
@@ -569,6 +694,8 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   }
   record$free <- information$free
   record$information_root <- information$root
+  fit$par <- hold_noise_at_zero(engine, fit$par, information$boundary)
+  record$estimate <- fit$par
   record$held_variances <- if (length(seeds) >= 6L) {
     assess_held_variances(engine, fit$par, information$boundary,
                           validation_budget, seeds[[6L]])
@@ -694,6 +821,12 @@ correct_and_certify <- function(engine, penalty, estimate, information,
     if (length(seeds) >= 7L) seeds[[7L]]
   )
   if (is.null(certificate)) return(NULL)
+  # With the nugget integrated out the estimator is unbiased for the likelihood
+  # of the computed table, whose maximum differs from the exact one by a
+  # deterministic gap far below this floor.
+  if (isTRUE(engine$integrated)) {
+    certificate$bound <- max(certificate$bound, 1e-5)
+  }
   c(list(estimate = corrected, correction_size = correction$distance,
          first_validation = first, second_validation = second,
          replicate_validation = certificate$replicate,
@@ -1221,7 +1354,10 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' other maxima, stream 4000 + s for its enlarged bank, stream 5000 + s for
 ##' the bank that tests a held variance (`assess_held_variances()`) and stream
 ##' 8000 + s for the replicate of the certification bank, whose radius the
-##' certificate also takes (`certify_with_replicate()`).
+##' certificate also takes (`certify_with_replicate()`). An engine that
+##' switches between the sampled and the integrated nugget draws each
+##' validation bank and replicate a second time, in the integrated form, on the
+##' stream 250 after its own (`combine_validation_banks()`).
 ##'
 ##' If the global proposal fails within a stage, the stage is repeated with
 ##' the Laplace proposal, and the next stage tries the global proposal again
@@ -1254,7 +1390,10 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' maxima at the first stage, with the screen of short scales and the exact
 ##' alarms when it holds their settings (`make_short_scale_screen()`). Each later stage starts its optimisation with
 ##' Newton steps on the previous stage's information when every parameter was
-##' free.
+##' free. An engine that switches between the sampled and the integrated
+##' nugget (`make_switching_mcml_engine()`) chooses the form of each later
+##' stage from the nugget variance at its start, each stage records its
+##' `form`, and the result gives them as `forms`.
 ##' `coefficient_index` gives the regression coefficients, whose estimates
 ##' are checked against their bounds, and `separation`, from
 ##' `find_separation()`, records data whose likelihood has no maximum. Either
@@ -1293,6 +1432,12 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
   budget <- as.integer(initial_budget)
   curvature_root <- NULL
   for (stage in seq_len(maximum_stages)) {
+    # An engine that switches between the sampled and the integrated nugget
+    # (make_switching_mcml_engine()) takes the form of each stage after the
+    # first from the nugget variance at its start.
+    if (stage > 1L && is.function(engine$choose_form)) {
+      engine$choose_form(current)
+    }
     run_stage <- function(offset) {
       engine$reset_proposal_failures()
       run_certified_stage(engine, objective, penalty, current, budget,
@@ -1332,7 +1477,13 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     record$start_failure <- start_failure
     record$start_replaced <- restarted && !isTRUE(record$proposal_fallback)
     record$stage <- stage
+    if (is.function(engine$form)) record$form <- engine$form()
     record$refit_change <- read_refit_change(engine)
+    stalled <- read_stalled_anchors(engine)
+    if (!is.null(stalled) && stalled$count > 0L) {
+      record$stalled_anchors <- stalled$count
+      record$stalled_change <- stalled$change
+    }
     history[[stage]] <- record
     last_proposal <- engine$proposal_type()
     if (isTRUE(record$proposal_fallback)) engine$use_proposal("global")
@@ -1391,6 +1542,9 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     mode_searches = if (is.function(engine$mode_search_counts)) {
       engine$mode_search_counts()
     },
+    forms = if (is.function(engine$form)) {
+      vapply(history, function(stage) stage$form, character(1L))
+    },
     boundary_parameters = last$boundary_parameters,
     held_variances = last$held_variances,
     held_variance_rising = isTRUE(last$held_variance_rising),
@@ -1418,6 +1572,25 @@ read_proposal_failure <- function(engine) {
   }
 }
 
+##' Hold an integrated nugget at exactly zero
+##'
+##' With the nugget integrated out (`make_adaptive_mcml_engine()` with
+##' `integrate_noise = TRUE`), a nugget held at the boundary is set to the
+##' engine's `hold_log_ratio`, where the engine takes the plain kernel for every
+##' record, so that the held point is the model without a nugget. The test of a
+##' held variance and the certificate then rest on that model, where the slope
+##' of the likelihood in the nugget at zero is exact. Other engines and other
+##' parameters are unchanged.
+##' @noRd
+hold_noise_at_zero <- function(engine, parameters, boundary) {
+  hold <- engine$hold_log_ratio
+  index <- engine$layout$index$nu2
+  if (is.null(hold) || is.null(index) || !(index %in% boundary)) {
+    return(parameters)
+  }
+  replace(parameters, index, hold)
+}
+
 ##' The largest change of a factor at the last of the fixed refits
 ##'
 ##' Over the global proposals since the failures were last reset, that is over
@@ -1431,6 +1604,19 @@ read_refit_change <- function(engine) {
   } else {
     NA_real_
   }
+}
+
+##' Global iterations accepted although they stopped at their limit of refits
+##'
+##' Over the stage, the `count` of iterations that the integrated form accepted
+##' with a last change below its tolerance instead of counting a failure
+##' (`build_gaussian_proposal()`), and the largest such `change`. Recorded in a
+##' stage as `stalled_anchors` and `stalled_change` when there are any, so that
+##' `check_fit()` can report them. NULL for an engine that does not record them,
+##' such as those that other packages build on `fit_adaptive_mcml()`.
+##' @noRd
+read_stalled_anchors <- function(engine) {
+  if (is.function(engine$stalled_anchors)) engine$stalled_anchors()
 }
 
 ##' Set aside the failures of the global proposal in the check for other maxima

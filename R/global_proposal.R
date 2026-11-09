@@ -23,12 +23,14 @@ build_normal_quadrature <- function(number_of_nodes = 20L) {
 ##' never subtracted; other links use the direct difference. For large binomial
 ##' steps the logarithms of p and 1 - p are taken directly from the linear
 ##' predictor, because p itself rounds to 0 or 1 when the predictor is
-##' extreme.
+##' extreme. Records with the nugget integrated out take the differences of
+##' their table (`make_integrated_kernel()`).
 ##' @param centre Linear predictor at the expansion point, one per observation.
 ##' @param step Matrix of steps, one row per observation.
 ##' @noRd
 compute_nonlinear_parts <- function(centre, step, y, units_m, family,
                                        linkf, canonical) {
+  if (is_integrated_link(linkf)) return(linkf$nonlinear_parts(centre, step))
   if (canonical && family == "binomial") {
     probability <- stats::plogis(centre)
     slope <- y - units_m * probability
@@ -242,7 +244,11 @@ make_curvature_floor <- function(latent_map, precision) {
 refit_from_anchor <- function(anchor, mu, y, units_m, latent_map, precision,
                               family, linkf, canonical, count = 3L,
                               quadrature = build_normal_quadrature()) {
-  floor_curvature <- make_curvature_floor(latent_map, precision)
+  floor_curvature <- if (is_integrated_link(linkf)) {
+    smooth_curvature_floor
+  } else {
+    make_curvature_floor(latent_map, precision)
+  }
   factors <- c(anchor$linear - anchor$curvature * (mu - anchor$mu),
                anchor$curvature)
   change <- NA_real_
@@ -322,7 +328,11 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 tolerance = 1e-8, maximum_iterations = 500L,
                                 quadrature = build_normal_quadrature(),
                                 memory = 3L) {
-  floor_curvature <- make_curvature_floor(latent_map, precision)
+  floor_curvature <- if (is_integrated_link(linkf)) {
+    smooth_curvature_floor
+  } else {
+    make_curvature_floor(latent_map, precision)
+  }
   mode_terms <- laplace_observation_terms(
     mu + latent_linear_predictor(latent_map, mode), y, units_m, family,
     linkf

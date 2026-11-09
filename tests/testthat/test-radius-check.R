@@ -189,3 +189,93 @@ test_that("the radius is checked only where there is a certificate", {
   uncertified$mcml_history[[1L]]$certificate_radius <- NA_real_
   expect_error(check(uncertified), "no certificate")
 })
+
+test_that("the radius check rebuilds the form of the fit's last stage", {
+  fit <- list()
+  attr(fit, "optimizer") <- list(mcml_integrate_noise = TRUE)
+  expect_identical(find_radius_check_forms(fit, list()), "integrated")
+  expect_identical(find_radius_check_forms(fit, list(form = "sampled")),
+                   "sampled")
+  attr(fit, "optimizer") <- list(mcml_integrate_noise = FALSE)
+  expect_identical(find_radius_check_forms(fit, list()), "sampled")
+  expect_identical(find_radius_check_forms(fit, list(form = "integrated")),
+                   "integrated")
+  combined <- list(form = "integrated",
+                   second_validation = list(combined = list(used = "both")))
+  expect_identical(find_radius_check_forms(fit, combined),
+                   c("sampled", "integrated"))
+  expect_identical(make_radius_check_streams(NULL, .Machine$integer.max, 2L),
+                   9500:9505)
+})
+
+# A fit whose importance distribution does not depend on an anchor, so that
+# the banks drawn on its streams are the fit's.
+laplace_nugget_fit <- function(integrate_noise) {
+  suppressWarnings(glgpm(
+    y ~ cov + gp(nugget = TRUE), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    seed = fixture_seed, messages = FALSE,
+    control_mcml = set_control_mcml(
+      initial_samples = 500, validation_samples = 500, max_samples = 500,
+      max_stages = 1, proposal = "laplace", integrate_noise = integrate_noise
+    )
+  ))
+}
+
+test_that("the rebuilt problem reproduces an integrated fit's bank", {
+  skip_on_cran()
+  fit <- laplace_nugget_fit(TRUE)
+  last <- fit$mcml_history[[1L]]
+  skip_if(!is.finite(last$certificate_radius %||% NA_real_))
+  expect_identical(find_radius_check_forms(fit, last), "integrated")
+  problem <- rebuild_certification_problem(fit, last, "integrated")
+  bank <- draw_radius_bank(problem, fixture_seed + 3L)
+  score <- compute_weighted_score(bank$log_weights, bank$gradients)
+  expect_equal(compute_validation_radii(list(score$covariance)),
+               last$certificate_radii[["certification"]], tolerance = 1e-6)
+  expect_equal(sqrt(sum(score$score^2)), last$certificate_distance,
+               tolerance = 1e-6)
+})
+
+test_that("combined banks are rebuilt and combined as the fit combined them", {
+  skip_on_cran()
+  fit <- laplace_nugget_fit("auto")
+  last <- fit$mcml_history[[1L]]
+  skip_if(!is.finite(last$certificate_radius %||% NA_real_))
+  record <- last$second_validation$combined
+  expect_false(is.null(record))
+  expect_identical(record$k_max, 0.8)
+  forms <- find_radius_check_forms(fit, last)
+  expect_identical(forms, c("sampled", "integrated"))
+  # The integrated bank is drawn on the stream 250 after the sampled one.
+  streams <- c(sampled = fixture_seed + 3L, integrated = fixture_seed + 253L)
+  banks <- lapply(stats::setNames(forms, forms), function(form) {
+    problem <- rebuild_certification_problem(fit, last, form)
+    draw_radius_bank(problem, streams[[form]])
+  })
+  scores <- lapply(banks, function(bank) {
+    compute_weighted_score(bank$log_weights, bank$gradients)
+  })
+  pareto_k <- vapply(banks, `[[`, numeric(1), "pareto_k")
+  expect_equal(pareto_k, record$pareto_k, tolerance = 1e-6)
+  combined <- combine_two_scores(lapply(scores, `[[`, "score"),
+                                 lapply(scores, `[[`, "covariance"),
+                                 pareto_k, last$form, record$k_max)
+  expect_identical(combined$used, record$used)
+  expect_equal(compute_validation_radii(list(combined$covariance)),
+               last$certificate_radii[["certification"]], tolerance = 1e-6)
+  expect_equal(sqrt(sum(combined$score^2)), last$certificate_distance,
+               tolerance = 1e-6)
+  # The check combines its resampled banks in the same way.
+  checked <- fit_check_radius(fit, chains = 4, rounds = 40, banks = 20)
+  details <- checked$data
+  expect_identical(details$forms, c("sampled", "integrated"))
+  expect_named(details$used, c("both", "sampled", "integrated"))
+  expect_equal(sum(details$used), 1)
+  expect_identical(dim(details$samples), c(20L, 2L))
+  expect_true(all(details$samples$radius > 0))
+  expect_match(checked$row$finding, "combines a bank with the nugget sampled")
+  expect_identical(details$settings$seed,
+                   make_extra_check_seed(fit$seed, 9500L))
+  expect_match(describe_radius_forms(details), "^sampled and integrated out")
+})

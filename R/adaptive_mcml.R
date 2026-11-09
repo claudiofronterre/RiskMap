@@ -111,10 +111,12 @@ move_start_off_limits <- function(latent, linear_predictor, y, units_m, family,
 ##' Observation log-likelihood, score and curvature in the linear predictor
 ##'
 ##' For the canonical links, with the formulas of `maxim_integrand()`. Custom
-##' links go through `compute_custom_link_terms()`. `curvature` is the negative
-##' second derivative of the log-likelihood.
+##' links go through `compute_custom_link_terms()`, and records with the nugget
+##' integrated out through their table (`make_integrated_kernel()`).
+##' `curvature` is the negative second derivative of the log-likelihood.
 ##' @noRd
 laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
+  if (is_integrated_link(linkf)) return(linkf$terms(eta))
   if (!identical(linkf$name, "canonical")) {
     return(compute_custom_link_terms(eta, y, units_m, family, linkf))
   }
@@ -258,7 +260,7 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
     list(hessian = hessian, root = root)
   }
   start_at <- function(latent) {
-    if (canonical) return(latent)
+    if (canonical || is_integrated_link(linkf)) return(latent)
     move_start_off_limits(
       latent,
       function(point) mu + latent_linear_predictor(latent_map, point),
@@ -377,13 +379,26 @@ defensive_rows <- function(n_draws, defensive_weight) {
 ##' `failure`: the `reason`, the number of `refits` and the last `change` of
 ##' the factors. A proposal refitted from the anchor also returns that last
 ##' change as `refit_change`.
+##'
+##' With `stall_tolerance`, which the engine sets for the integrated form only,
+##' an iteration that reaches its limit of refits with a last change below that
+##' tolerance is accepted as it stands, not counted as a failure, and its last
+##' change is returned as `stalled_change`. Such an iteration has settled to
+##' within a small fraction of its factors, closer than the fixed refits from
+##' an anchor routinely leave them. This is safe because the certificate rests
+##' on validation banks drawn after the proposal is fixed. A nearly settled
+##' anchor therefore changes how efficient the importance sampler is, not
+##' whether its estimate or its certificate is valid. Without it the stage would
+##' repeat with the Laplace proposal, which on surveys with a large spatial
+##' variance leaves almost no effective draws.
 ##' @noRd
 build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
                                     precision, family, linkf, canonical,
-                                    anchor, find_mode) {
+                                    anchor, find_mode, stall_tolerance = NULL) {
   approximation <- NULL
   global <- NULL
   failed <- FALSE
+  stalled <- FALSE
   if (identical(type, "global") && !is.null(anchor)) {
     refitted <- refit_from_anchor(anchor, mu, y, units_m, latent_map,
                                   precision, family, linkf, canonical)
@@ -408,7 +423,10 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
       latent_map = latent_map, precision = precision, family = family,
       linkf = linkf, canonical = canonical
     )
-    failed <- is.null(global) || !global$converged
+    stalled <- !is.null(global) && !global$converged &&
+      !is.null(stall_tolerance) && is.finite(global$change) &&
+      global$change < stall_tolerance
+    failed <- is.null(global) || (!global$converged && !stalled)
   }
   failure <- if (failed) {
     list(reason = if (is.null(global)) "a refit failed" else "no convergence",
@@ -423,7 +441,7 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
   }
   list(centre = global$centre, precision = global$precision,
        root = global$root, factors = global$factors, failed = failed,
-       failure = failure)
+       failure = failure, stalled_change = if (stalled) global$change)
 }
 
 ##' Log-likelihood of every row of a matrix of linear predictors
@@ -439,6 +457,7 @@ compute_observation_log_likelihood <- function(eta, y, units_m, family,
     return(cpp_canonical_log_likelihood(eta, y, units_m,
                                         poisson = family == "poisson"))
   }
+  if (is_integrated_link(linkf)) return(linkf$log_likelihood(eta))
   mean <- matrix(linkf$inv(as.vector(eta)), nrow = nrow(eta))
   outside <- !is.finite(mean) | mean < 0
   log_likelihood <- if (family == "poisson") {
@@ -590,11 +609,16 @@ compute_log_weights_in_r <- function(draws, proposal, defensive,
 ##' linear predictor. Returns that quantity for each row of the matrix `eta` of
 ##' linear predictors. A custom link (`linkf`) takes k' and k'' from
 ##' `compute_custom_link_terms()`, and NA marks a draw where they cannot be
-##' computed. Concavity is not needed.
+##' computed. Concavity is not needed. Records with the nugget integrated out
+##' take them from `derivatives`, the first and second derivatives `h1` and `h2`
+##' of `cpp_site_evaluate()`, one column per record, whatever the link.
 ##' @noRd
 compute_variance_slope_terms <- function(eta, y, units_m, family, group,
-                                         linkf = NULL) {
-  if (is.null(linkf)) {
+                                         linkf = NULL, derivatives = NULL) {
+  if (!is.null(derivatives)) {
+    score <- derivatives$h1
+    curvature <- -derivatives$h2
+  } else if (is.null(linkf)) {
     rate <- if (identical(family, "poisson")) exp(eta) else stats::plogis(eta)
     expected <- sweep(rate, 2L, units_m, "*")
     curvature <- if (identical(family, "poisson")) expected else
@@ -611,6 +635,25 @@ compute_variance_slope_terms <- function(eta, y, units_m, family, group,
   }
   grouped <- rowsum(t(score), group, reorder = FALSE)
   0.5 * (colSums(grouped^2) - rowSums(curvature))
+}
+
+##' Stages whose global iteration was accepted although it stopped at its limit
+##'
+##' From the stage records of `fit_adaptive_mcml()`, the `stages` with
+##' `stalled_anchors`, how many iterations were accepted in all (`count`) and the
+##' largest last change (`change`). NULL when no stage has one, as in every fit
+##' of the sampled form.
+##' @noRd
+summarise_stalled_anchors <- function(history) {
+  counts <- vapply(history, function(stage) {
+    as.numeric(stage$stalled_anchors %||% 0)
+  }, numeric(1))
+  if (!any(counts > 0)) return(NULL)
+  changes <- vapply(history, function(stage) {
+    as.numeric(stage$stalled_change %||% NA_real_)
+  }, numeric(1))
+  list(stages = which(counts > 0), count = sum(counts),
+       change = max(changes, na.rm = TRUE))
 }
 
 ##' Construct the adaptive importance-sampling engine
@@ -640,6 +683,21 @@ compute_variance_slope_terms <- function(eta, y, units_m, family, group,
 ##' full mixture density. With `defensive_weight = 0` the proposal is the
 ##' Gaussian component alone.
 ##'
+##' With `integrate_noise = TRUE` and a nugget, the nugget is integrated out of
+##' the likelihood of each record (`make_integrated_kernel()`), so the latent
+##' effects are the spatial effect at the locations and the random-effect
+##' levels, with the nugget left in the prior only at locations that keep
+##' several records after identical ones are summed
+##' (`prepare_integrated_records()`). The model and its parameters are the same.
+##' A nugget whose log ratio is at `hold_log_ratio` is zero, and every record
+##' then takes the plain kernel. `spatial_covariance()` gives the covariance of
+##' the location effects with the whole nugget in either form. In this form a
+##' global iteration that stops at its limit of refits with a last change below
+##' 0.01 is accepted rather than counted as a failure (`build_gaussian_proposal()`),
+##' and `stalled_anchors()` gives how many were accepted since the failures were
+##' last reset and the largest such change. The sampled form keeps the rule of
+##' the release, so its fits are unchanged.
+##'
 ##' The prior factors, the global proposal's dense algebra and, for canonical
 ##' links, the importance weights are computed in compiled code, which
 ##' reproduces the R computations (`compute_log_weights_in_r()` for the
@@ -650,13 +708,19 @@ make_adaptive_mcml_engine <- function(
     D, y, units_m, distances, family = c("binomial", "poisson"),
     kappa = 0.5, cov_offset = NULL, ID_coords = NULL,
     fix_tau2 = FALSE, ID_re = NULL, invlink = NULL,
-    defensive_weight = 0.05, proposal = c("global", "laplace")) {
+    defensive_weight = 0.05, proposal = c("global", "laplace"),
+    integrate_noise = FALSE) {
   family <- match.arg(family)
   default_proposal_type <- match.arg(proposal)
   proposal_failures <- 0L
   # The largest change of a factor at the last of the fixed refits of the
   # global proposals since the failures were last reset.
   largest_refit_change <- -Inf
+  # Global iterations accepted although they stopped at their limit of refits,
+  # in the integrated form only, and the largest last change among them, since
+  # the failures were last reset.
+  stalled_anchors <- 0L
+  largest_stalled_change <- -Inf
   first_failure <- NULL
   # Proposals built so far, which date the cached one for
   # restore_proposal_failures().
@@ -669,12 +733,34 @@ make_adaptive_mcml_engine <- function(
   mode_searches_at_limit <- 0L
   # Searches that failed from the previous mode and were repeated from zero.
   mode_searches_restarted <- 0L
-  n <- length(y)
   n_loc <- nrow(distances)
   p <- ncol(D)
-  if (is.null(cov_offset)) cov_offset <- numeric(n)
-  if (is.null(ID_coords)) ID_coords <- seq_len(n)
+  if (is.null(cov_offset)) cov_offset <- numeric(length(y))
+  if (is.null(ID_coords)) ID_coords <- seq_len(length(y))
   if (!is.null(ID_re)) ID_re <- as.matrix(ID_re)
+  # With integrate_noise the nugget is integrated out of each record's
+  # likelihood (make_integrated_kernel()), except at locations that keep
+  # several records after identical ones are summed, where it stays sampled
+  # (`several`).
+  has_nugget <- isTRUE(fix_tau2) ||
+    (is.numeric(fix_tau2) && isTRUE(fix_tau2 > 0))
+  integrated <- isTRUE(integrate_noise) && has_nugget
+  # The last change below which a global iteration that stops at its limit
+  # of refits is accepted, in the integrated form (build_gaussian_proposal()).
+  stall_tolerance <- 1e-2
+  several <- rep(FALSE, n_loc)
+  if (integrated) {
+    records <- prepare_integrated_records(y, units_m, D, cov_offset,
+                                          ID_coords, ID_re, n_loc)
+    y <- records$y
+    units_m <- records$units_m
+    D <- records$D
+    cov_offset <- records$cov_offset
+    ID_coords <- records$ID_coords
+    ID_re <- records$ID_re
+    several <- records$several
+  }
+  n <- length(y)
   n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
   n_dim_re <- if (n_re) apply(ID_re, 2L, max) else integer()
   layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
@@ -682,6 +768,13 @@ make_adaptive_mcml_engine <- function(
 
   linkf <- make_inverse_link_functions(family, invlink, n)
   canonical <- identical(linkf$name, "canonical")
+  sites <- if (integrated) {
+    make_site_table(y, units_m, family, plain = several[ID_coords],
+                    linkf = linkf)
+  }
+  # A nugget whose log ratio is at this value is held at exactly zero, and
+  # every record then takes the plain kernel.
+  hold_log_ratio <- -20
 
   unpack <- function(parameters) {
     sigma2 <- exp(parameters[layout$index$sigma2])
@@ -689,16 +782,32 @@ make_adaptive_mcml_engine <- function(
       fix_tau2, sigma2,
       if (!is.null(layout$index$nu2)) parameters[layout$index$nu2] else NULL
     )
-    list(
+    values <- list(
       beta = parameters[layout$index$beta], sigma2 = sigma2,
       phi = exp(parameters[layout$index$phi]), nugget_ratio = nugget,
       sigma2_re = if (n_re) exp(parameters[layout$index$sigma2_re]) else NULL
     )
+    if (integrated) {
+      # The nugget variance of the integrated records, and the nugget ratio
+      # left in the prior, at the locations where the nugget stays sampled.
+      held <- isTRUE(fix_tau2) &&
+        parameters[layout$index$nu2] <= hold_log_ratio
+      values$noise_variance <- if (held) 0 else sigma2 * nugget
+      values$prior_ratio <- if (held || !any(several)) 0 else nugget * several
+    }
+    values
+  }
+  # The nugget ratio in the prior of the latent effects.
+  latent_ratio <- function(values) {
+    if (integrated) values$prior_ratio else values$nugget_ratio
   }
 
   half_integer_kappa <- kappa %in% c(0.5, 1.5, 2.5)
   distance_values <- as.numeric(distances)
-  covariance_at <- function(values) {
+  # The prior covariance of the latent location effects, or with `marginal`
+  # that of the location effects with the whole nugget, which is the same in
+  # both forms.
+  covariance_at <- function(values, marginal = FALSE) {
     # Evaluate the closed-form half-integer Matern correlation directly on the
     # stored distance matrix rather than rebuilding it from a dist object.
     correlation <- if (half_integer_kappa) {
@@ -708,7 +817,8 @@ make_adaptive_mcml_engine <- function(
       matern_correlation(stats::as.dist(distances), phi = values$phi,
                          kappa = kappa, return_sym_matrix = TRUE)
     }
-    diag(correlation) <- diag(correlation) + values$nugget_ratio
+    diag(correlation) <- diag(correlation) +
+      if (marginal) values$nugget_ratio else latent_ratio(values)
     values$sigma2 * correlation
   }
 
@@ -736,7 +846,7 @@ make_adaptive_mcml_engine <- function(
   # unchanged. One entry bounds the memory used for large surveys.
   prior_cache <- NULL
   spatial_prior_at <- function(values) {
-    key <- c(values$phi, values$sigma2, values$nugget_ratio)
+    key <- c(values$phi, values$sigma2, latent_ratio(values))
     if (!is.null(prior_cache) && identical(key, prior_cache$key)) {
       return(prior_cache$prior)
     }
@@ -748,7 +858,7 @@ make_adaptive_mcml_engine <- function(
     if (half_integer_kappa) {
       prior <- cpp_spatial_prior_factors(
         distance_values, n_loc, values$phi, kappa, values$sigma2,
-        values$nugget_ratio
+        latent_ratio(values)
       )
       if (!is.null(prior$root)) return(prior)
       covariance <- prior$covariance
@@ -771,6 +881,12 @@ make_adaptive_mcml_engine <- function(
   # parameter values; the most recent factorisations are reused when the
   # proposal and target parameters coincide.
   last_mode <- numeric(latent$dimension)
+  # The likelihood of the records at one parameter value: the link, or with
+  # the nugget integrated out the records' table at the nugget variance.
+  kernel_at <- function(values) {
+    if (integrated) make_integrated_kernel(sites, values$noise_variance) else
+      linkf
+  }
   # Converged global factors at a fixed parameter value (set by
   # set_anchor()), used to start the global iteration at other values.
   anchor <- NULL
@@ -798,12 +914,13 @@ make_adaptive_mcml_engine <- function(
       }
     }
     mu <- as.numeric(D %*% values$beta + cov_offset)
+    kernel <- kernel_at(values)
     # A search that fails stops with an error, so the next one starts from
     # the last mode that was found.
     find_mode <- function() {
       approximation <- adaptive_laplace_mode(
         mu = mu, y = y, units_m = units_m, latent_map = latent_map,
-        precision = precision, family = family, linkf = linkf,
+        precision = precision, family = family, linkf = kernel,
         start = last_mode
       )
       last_mode <<- approximation$mode
@@ -817,10 +934,16 @@ make_adaptive_mcml_engine <- function(
       approximation
     }
     gaussian <- build_gaussian_proposal(
-      type, mu, y, units_m, latent_map, precision, family, linkf, canonical,
-      anchor, find_mode
+      type, mu, y, units_m, latent_map, precision, family, kernel,
+      canonical && !integrated, anchor, find_mode,
+      if (integrated) stall_tolerance
     )
     builds <<- builds + 1L
+    if (!is.null(gaussian$stalled_change)) {
+      stalled_anchors <<- stalled_anchors + 1L
+      largest_stalled_change <<- max(largest_stalled_change,
+                                     gaussian$stalled_change)
+    }
     if (gaussian$failed) {
       proposal_failures <<- proposal_failures + 1L
       if (is.null(first_failure)) first_failure <<- gaussian$failure
@@ -905,14 +1028,16 @@ make_adaptive_mcml_engine <- function(
         proposal$spatial_root, as.numeric(proposal$values$sigma2_re),
         spatial_root, as.numeric(values$sigma2_re), same_parameters,
         linear_offset, latent_map$columns, random_first, random_size, y,
-        units_m, family == "poisson"
+        units_m, family == "poisson", sites$pointer,
+        values$noise_variance %||% 0, sites$pair %||% integer()
       )
     } else {
       compute_log_weights_in_r(
         draws, proposal, defensive, defensive_share, values, spatial_root,
         same_parameters, linear_offset, latent, latent_map$columns,
         function(eta) {
-          compute_observation_log_likelihood(eta, y, units_m, family, linkf)
+          compute_observation_log_likelihood(eta, y, units_m, family,
+                                             kernel_at(values))
         }
       )
     }
@@ -954,10 +1079,14 @@ make_adaptive_mcml_engine <- function(
     for (j in seq_along(latent$random)) {
       eta <- eta + samples[, latent_map$columns[, j + 1L], drop = FALSE]
     }
+    derivatives <- if (integrated && proposal$values$noise_variance > 0) {
+      cpp_site_evaluate(sites$pointer, proposal$values$noise_variance,
+                        sites$pair, eta, FALSE, 2L)
+    }
     vapply(tested, function(parameter) {
       compute_variance_slope_terms(eta, y, units_m, family,
                                    slope_groups[[as.character(parameter)]],
-                                   if (!canonical) linkf)
+                                   if (!canonical) linkf, derivatives)
     }, numeric(nrow(draws)))
   }
 
@@ -966,7 +1095,13 @@ make_adaptive_mcml_engine <- function(
        testable_variances = testable_variances,
        variance_slope_terms = variance_slope_terms,
        spatial_covariance = function(parameters) {
-         covariance_at(unpack(parameters))
+         covariance_at(unpack(parameters), marginal = TRUE)
+       },
+       integrated = integrated,
+       hold_log_ratio = if (integrated && isTRUE(fix_tau2)) hold_log_ratio,
+       integrated_locations = if (integrated) sum(!several) else 0L,
+       site_table_info = function() {
+         if (integrated) cpp_site_table_info(sites$pointer)
        },
        defensive_weight = defensive_weight,
        proposal_type = function() default_proposal_type,
@@ -1001,15 +1136,26 @@ make_adaptive_mcml_engine <- function(
        reset_proposal_failures = function() {
          proposal_failures <<- 0L
          largest_refit_change <<- -Inf
+         stalled_anchors <<- 0L
+         largest_stalled_change <<- -Inf
          first_failure <<- NULL
          invisible(NULL)
        },
-       # The failures so far, and the largest refit change, to be restored
-       # after evaluations whose failures are set aside
-       # (set_aside_check_failures()).
+       stalled_anchors = function() {
+         list(count = stalled_anchors,
+              change = if (is.finite(largest_stalled_change)) {
+                largest_stalled_change
+              } else {
+                NA_real_
+              })
+       },
+       # The failures so far, the largest refit change and the stalled
+       # iterations, to be restored after evaluations whose failures are set
+       # aside (set_aside_check_failures()).
        mark_proposal_failures = function() {
          list(failures = proposal_failures, first = first_failure,
-              builds = builds, refit_change = largest_refit_change)
+              builds = builds, refit_change = largest_refit_change,
+              stalled = stalled_anchors, stalled_change = largest_stalled_change)
        },
        # A failed proposal built since the mark that is still cached would be
        # reused without being counted, so it is built again when next needed.
@@ -1018,11 +1164,113 @@ make_adaptive_mcml_engine <- function(
          proposal_failures <<- mark$failures
          first_failure <<- mark$first
          largest_refit_change <<- mark$refit_change %||% largest_refit_change
+         stalled_anchors <<- mark$stalled %||% stalled_anchors
+         largest_stalled_change <<- mark$stalled_change %||%
+           largest_stalled_change
          if (cached_failed && cached_build > mark$builds) {
            cached_parameters <<- NULL
          }
          invisible(set_aside)
        })
+}
+
+##' An engine that switches between the sampled and the integrated nugget
+##'
+##' With `integrate_noise = "auto"` both forms of the engine are built for a
+##' model with a nugget (`sampled` and `integrated`, from
+##' `make_adaptive_mcml_engine()`), and each stage of the fit uses one of them.
+##' `choose_form()` takes the integrated form when the nugget variance sigma2
+##' nu2 at the given parameters is at least `threshold`, and the sampled form
+##' otherwise. `fit_adaptive_mcml()` calls it at the start of every stage after
+##' the first, whose form `glgpm_nong_adaptive()` sets. Near a zero nugget the
+##' likelihood is nearly flat along the nugget, and there the sampled form's
+##' estimate of the nugget's score is far less noisy, because its moving
+##' proposal follows the nugget in the prior of the latent effects, while in
+##' the integrated form the nugget changes the likelihood of every record. With
+##' a larger nugget the integrated form keeps far more effective draws. In the
+##' larger test of the integrated form it certified 5 runs against 12 of 21 for
+##' the sampled form where the nugget variance at the maximum was below 0.1, 9
+##' and 9 of 18 between 0.1 and 0.3, and 68 against 28 of 75 above 0.3.
+##'
+##' The two forms have the same parameters, layout and latent dimension, so
+##' the returned engine has the interface of `make_adaptive_mcml_engine()`.
+##' It is an environment, whose `integrated`, `hold_log_ratio` and
+##' `integrated_locations` are those of the form in use. `form()` gives that
+##' form, `set_form()` sets it, the proposal type is set in both forms, the
+##' failures of both are reset together, and the counts of mode searches and
+##' of proposal errors are summed over the two. Every other function is that
+##' of the form in use, and the failures marked and restored within a stage
+##' are those of its form.
+##' @noRd
+make_switching_mcml_engine <- function(sampled, integrated, threshold = 0.1) {
+  stopifnot(isTRUE(integrated$integrated), !isTRUE(sampled$integrated),
+            identical(sampled$latent_dimension, integrated$latent_dimension),
+            identical(sampled$layout, integrated$layout))
+  engines <- list(sampled = sampled, integrated = integrated)
+  current <- "sampled"
+  engine <- new.env(parent = emptyenv())
+  delegate <- function(name) {
+    force(name)
+    function(...) engines[[current]][[name]](...)
+  }
+  for (name in c("evaluate", "proposal_at", "unpack", "testable_variances",
+                 "variance_slope_terms", "spatial_covariance",
+                 "site_table_info", "proposal_type", "proposal_failures",
+                 "first_proposal_failure", "largest_refit_change",
+                 "set_anchor", "stalled_anchors", "mark_proposal_failures",
+                 "restore_proposal_failures")) {
+    assign(name, delegate(name), envir = engine)
+  }
+  engine$layout <- sampled$layout
+  engine$latent_dimension <- sampled$latent_dimension
+  engine$defensive_weight <- sampled$defensive_weight
+  engine$linkf <- sampled$linkf
+  engine$threshold <- threshold
+  # Every validation bank is drawn in both forms and combined
+  # (combine_validation_banks()), so both forms keep the anchor of the stage.
+  engine$combine_validation <- TRUE
+  engine$set_anchor <- function(parameters) {
+    engines[[setdiff(names(engines), current)]]$set_anchor(parameters)
+    engines[[current]]$set_anchor(parameters)
+  }
+  makeActiveBinding("integrated", function() identical(current, "integrated"),
+                    engine)
+  makeActiveBinding("hold_log_ratio",
+                    function() engines[[current]]$hold_log_ratio, engine)
+  makeActiveBinding("integrated_locations",
+                    function() engines[[current]]$integrated_locations, engine)
+  engine$form <- function() current
+  engine$set_form <- function(form) {
+    current <<- match.arg(form, c("sampled", "integrated"))
+    invisible(current)
+  }
+  engine$choose_form <- function(parameters) {
+    values <- sampled$unpack(parameters)
+    variance <- values$sigma2 * values$nugget_ratio
+    engine$set_form(if (isTRUE(variance >= threshold)) "integrated" else
+      "sampled")
+  }
+  engine$use_proposal <- function(type) {
+    for (form in engines) form$use_proposal(type)
+    invisible(NULL)
+  }
+  engine$reset_proposal_failures <- function() {
+    for (form in engines) form$reset_proposal_failures()
+    invisible(NULL)
+  }
+  engine$mode_search_counts <- function() {
+    counts <- lapply(engines, function(form) form$mode_search_counts())
+    list(searches = sum(vapply(counts, `[[`, integer(1), "searches")),
+         at_limit = sum(vapply(counts, `[[`, integer(1), "at_limit")),
+         restarted = sum(vapply(counts, `[[`, integer(1), "restarted")))
+  }
+  engine$proposal_errors <- function() {
+    errors <- lapply(engines, function(form) form$proposal_errors())
+    firsts <- Filter(Negate(is.null), lapply(errors, `[[`, "first"))
+    list(count = sum(vapply(errors, `[[`, integer(1), "count")),
+         first = if (length(firsts)) firsts[[1L]])
+  }
+  engine
 }
 
 ##' Identify variance parameters estimated as effectively zero
@@ -1111,8 +1359,9 @@ describe_variance_parameters <- function(index, layout, re_names = NULL) {
 compact_adaptive_mcml_history <- function(history) {
   bank_summary <- function(validation) {
     if (is.null(validation)) return(NULL)
-    validation[c("log_likelihood", "relative_ess", "maximum_weight",
-                 "pareto_k")]
+    # A combined bank (combine_validation_banks()) keeps its record.
+    validation[intersect(c("log_likelihood", "relative_ess", "maximum_weight",
+                           "pareto_k", "combined"), names(validation))]
   }
   lapply(history, function(stage) {
     stage$first_validation <- bank_summary(stage$first_validation)
@@ -1251,14 +1500,31 @@ glgpm_nong_adaptive <- function(
   fit_seed <- as.integer(seed)
 
   distances <- as.matrix(pairwise_distances(coords))
-  engine <- make_adaptive_mcml_engine(
-    D = D, y = y, units_m = units_m, distances = distances,
-    family = family, kappa = kappa, cov_offset = cov_offset,
-    ID_coords = ID_coords, fix_tau2 = fix_tau2, ID_re = ID_re,
-    invlink = invlink,
-    defensive_weight = control_mcml$defensive_weight %||% 0.05,
-    proposal = control_mcml$proposal %||% "global"
-  )
+  engine_with <- function(integrate_noise) {
+    make_adaptive_mcml_engine(
+      D = D, y = y, units_m = units_m, distances = distances,
+      family = family, kappa = kappa, cov_offset = cov_offset,
+      ID_coords = ID_coords, fix_tau2 = fix_tau2, ID_re = ID_re,
+      invlink = invlink,
+      defensive_weight = control_mcml$defensive_weight %||% 0.05,
+      proposal = control_mcml$proposal %||% "global",
+      integrate_noise = integrate_noise
+    )
+  }
+  # With integrate_noise = "auto" and a nugget, both forms are built and each
+  # stage uses one of them (make_switching_mcml_engine()). The threshold can
+  # be changed through control_mcml$integrate_threshold, for experiments.
+  automatic <- identical(control_mcml$integrate_noise, "auto")
+  engine <- engine_with(isTRUE(control_mcml$integrate_noise))
+  if (automatic) {
+    integrated <- engine_with(TRUE)
+    if (isTRUE(integrated$integrated)) {
+      engine <- make_switching_mcml_engine(
+        engine, integrated,
+        threshold = control_mcml$integrate_threshold %||% 0.1
+      )
+    }
+  }
   start <- make_working_start(reference_pars, fix_tau2)
   # Coordinates and the initial scale are rescaled before this function is
   # called. These broad bounds prevent overflow without constraining any
@@ -1276,7 +1542,7 @@ glgpm_nong_adaptive <- function(
   laplace <- NULL
   start <- unname(start)
   restart_start <- NULL
-  if (isTRUE(control_mcml$laplace_start)) {
+  if (isTRUE(control_mcml$laplace_start %||% !engine$integrated)) {
     laplace <- maximise_laplace(
       function(parameters, draws) {
         objective(parameters, draws, proposal_type = "laplace")
@@ -1286,6 +1552,18 @@ glgpm_nong_adaptive <- function(
     if (!is.null(laplace)) {
       restart_start <- start
       start <- laplace$estimate
+    }
+  }
+  # The first stage of an automatic fit takes its form from the Laplace
+  # estimate, or without it from the starting values. In the integrated form
+  # it starts from the starting values, as integrate_noise = TRUE does, unless
+  # laplace_start asks for the Laplace estimate.
+  if (is.function(engine$choose_form)) {
+    engine$choose_form(start)
+    if (engine$integrated && is.null(control_mcml$laplace_start) &&
+        !is.null(restart_start)) {
+      start <- restart_start
+      restart_start <- NULL
     }
   }
   dispersed <- NULL
@@ -1349,7 +1627,13 @@ glgpm_nong_adaptive <- function(
                       colnames(D), family)
   assemble_mcml_result(fit, laplace, boundary_names, D, fix_tau2, re_names,
                        family, invlink, length(y), pc_prior, fit_seed,
-                       small_scale)
+                       small_scale,
+                       integration = list(
+                         used = engine$integrated,
+                         locations = engine$integrated_locations,
+                         of = nrow(distances),
+                         forms = fit$forms
+                       ))
 }
 
 ##' The objective of certified MCML, with the PC penalty if requested
@@ -1414,10 +1698,15 @@ compute_practical_range_factor <- function(kappa, correlation = 0.05) {
 }
 
 ##' Build the fitted object returned by `glgpm_nong_adaptive()`
+##'
+##' `integration` says whether the nugget was integrated out (`used`) at the
+##' last stage, at how many `locations` and `of` how many, and for an automatic
+##' choice of the form the `forms` of the stages.
 ##' @noRd
 assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
                                  re_names, family, invlink, n_observations,
-                                 pc_prior, fit_seed, small_scale = NULL) {
+                                 pc_prior, fit_seed, small_scale = NULL,
+                                 integration = NULL) {
   last <- fit$history[[length(fit$history)]]
   estimate <- structure_estimate(
     fit$estimate, beta_names = colnames(D), fix_tau2 = fix_tau2,
@@ -1461,6 +1750,10 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_proposal_fallbacks = fit$proposal_fallbacks,
     mcml_proposal_errors = fit$proposal_errors,
     mcml_mode_searches = fit$mode_searches,
+    mcml_integrate_noise = isTRUE(integration$used),
+    mcml_noise_forms = integration$forms,
+    mcml_integrated_locations = integration$locations %||% 0L,
+    mcml_locations = integration$of,
     mcml_pc_prior = pc_prior,
     laplace_start = laplace,
     mcml_boundary = boundary_names,
@@ -1492,6 +1785,13 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     elapsed_seconds = fit$elapsed_seconds
   )
   class(out) <- "RiskMap"
+  # The stages where the integrated form accepted a global iteration that
+  # stopped at its limit of refits, with the largest last change. Absent when
+  # there are none, as in every fit of the sampled form.
+  stalled <- summarise_stalled_anchors(fit$history)
+  if (!is.null(stalled)) {
+    attr(out, "optimizer")$mcml_stalled_anchors <- stalled
+  }
   out
 }
 
