@@ -758,6 +758,13 @@ uncertainty, which matters for small or low-prevalence surveys.
   correlation function, rather than the spatial range, consistently with
   `summary()` and the MBG book. The practical range, where correlation falls
   to 0.05, is about 3 phi for the exponential correlation function.
+- `predict()` calculates its location summaries for all locations at once
+  instead of one location at a time. The median and the interval limits come
+  from a single partial sort of each location's draws and are unchanged, and
+  means and standard deviations agree with the previous values up to rounding
+  in the last binary digit. On the 8,740 cells of `tz_covariates`, a
+  `predict()` with the default summaries is about twice as fast, and one with
+  every summary about three times as fast.
 
 ## Cross validation
 

@@ -1617,18 +1617,7 @@ prediction_coefficient_of_variation <- function(values) {
 #' @noRd
 tidy_prediction_summaries <- function(values, boundary_id, aggregate,
                                       quantity, summaries, thresholds, level) {
-  alpha <- (1 - level) / 2
-  summary_functions <- list(
-    mean = mean,
-    median = median,
-    sd = sd,
-    cv = prediction_coefficient_of_variation,
-    lower = function(x) quantile(x, alpha, names = FALSE),
-    upper = function(x) quantile(x, 1 - alpha, names = FALSE),
-    interval_width = function(x) {
-      diff(quantile(x, c(alpha, 1 - alpha), names = FALSE))
-    }
-  )
+  summary_functions <- prediction_summary_functions(level)
   draws <- as.numeric(values)
   ordinary <- drop_prediction_operations(summaries, "exceedance")
   rows <- lapply(names(ordinary), function(name) {
@@ -1815,12 +1804,11 @@ missing_boundary_summaries <- function(n_boundaries, aggregate, include,
   if (length(rows)) do.call(rbind, rows) else empty_prediction_summary()
 }
 
-#' Summarise a location-by-sample prediction matrix
+#' Built-in summaries of one predictive distribution
 #' @noRd
-summarise_prediction_matrix <- function(values, quantity, summaries, level,
-                                        thresholds = NULL) {
+prediction_summary_functions <- function(level) {
   alpha <- (1 - level) / 2
-  summary_functions <- list(
+  list(
     mean = mean,
     median = median,
     sd = sd,
@@ -1831,13 +1819,128 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level,
       diff(quantile(x, c(alpha, 1 - alpha), names = FALSE))
     }
   )
+}
+
+#' Calculate built-in summaries for every row of a prediction matrix
+#'
+#' Gives, for each row, the values of `prediction_summary_functions()`
+#' without calling them row by row. Each complete row is partially sorted
+#' once, and the median and the type 7 quantiles behind `"lower"`, `"upper"`
+#' and `"interval_width"` are formed from those order statistics with the
+#' arithmetic of `median()` and `quantile()`, so they are identical to the
+#' row-by-row values. `"mean"`, `"sd"` and `"cv"` use `rowMeans()` and
+#' `rowSums()`. Like `mean()` and `sd()`, these are within about one unit in
+#' the last place of the exact mean and standard deviation of the draws, but
+#' they round differently, so the two can differ by one unit in the last
+#' place. Rows
+#' with missing values are passed to the row-by-row functions, so they give
+#' the same `NA` values and errors as those functions.
+#' @noRd
+prediction_row_summaries <- function(values, operations, level) {
+  operations <- unique(operations)
+  if (!length(operations)) return(list())
+  complete <- !is.na(rowSums(values))
+  if (!all(complete)) {
+    by_row <- prediction_summary_functions(level)
+    incomplete <- values[!complete, , drop = FALSE]
+    result <- lapply(setNames(nm = operations), function(operation) {
+      value <- rep(NA_real_, nrow(values))
+      value[!complete] <- apply(incomplete, 1L, by_row[[operation]])
+      value
+    })
+    complete_result <- prediction_row_summaries(
+      values[complete, , drop = FALSE], operations, level
+    )
+    for (operation in operations) {
+      result[[operation]][complete] <- complete_result[[operation]]
+    }
+    return(result)
+  }
+
+  result <- list()
+  n_draws <- ncol(values)
+  if (any(c("mean", "sd", "cv") %in% operations)) {
+    result$mean <- rowMeans(values)
+  }
+  if (any(c("sd", "cv") %in% operations)) {
+    result$sd <- if (n_draws > 1L) {
+      deviations <- values - result$mean
+      sqrt(rowSums(deviations * deviations) / (n_draws - 1L))
+    } else {
+      rep(NA_real_, nrow(values))
+    }
+  }
+  if ("cv" %in% operations) {
+    magnitude <- abs(values)
+    largest <- magnitude[cbind(
+      seq_len(nrow(values)), max.col(magnitude, ties.method = "first")
+    )]
+    tolerance <- sqrt(.Machine$double.eps) * pmax(1, largest)
+    result$cv <- result$sd / result$mean
+    result$cv[!is.finite(result$mean) | result$mean <= tolerance] <- NA_real_
+  }
+
+  needs_quantiles <- any(c("lower", "upper", "interval_width") %in% operations)
+  needs_median <- "median" %in% operations
+  if (needs_quantiles || needs_median) {
+    # Positions of the order statistics used by median() and by
+    # quantile(type = 7) at the two interval probabilities
+    alpha <- (1 - level) / 2
+    index <- 1 + max(n_draws - 1, 0) * c(alpha, 1 - alpha)
+    below <- floor(index)
+    above <- ceiling(index)
+    half <- (n_draws + 1L) %/% 2L
+    middle <- if (n_draws %% 2L == 1L) half else half + 0L:1L
+    positions <- unique(c(
+      if (needs_quantiles) c(below, above),
+      if (needs_median) middle
+    ))
+    draws <- t(values)
+    n_statistics <- length(positions) + needs_median
+    statistics <- vapply(seq_len(ncol(draws)), function(i) {
+      sorted <- sort.int(draws[, i], partial = positions)
+      c(
+        sorted[positions],
+        if (needs_median) {
+          if (length(middle) == 1L) sorted[middle] else mean(sorted[middle])
+        }
+      )
+    }, numeric(n_statistics))
+    dim(statistics) <- c(n_statistics, ncol(draws))
+    if (needs_median) result$median <- statistics[n_statistics, ]
+    if (needs_quantiles) {
+      type_seven <- function(j) {
+        low <- statistics[match(below[j], positions), ]
+        high <- statistics[match(above[j], positions), ]
+        weight <- index[j] - below[j]
+        interpolate <- index[j] > below[j] & high != low
+        low[interpolate] <- (1 - weight) * low[interpolate] +
+          weight * high[interpolate]
+        low
+      }
+      result$lower <- type_seven(1L)
+      result$upper <- type_seven(2L)
+      result$interval_width <- result$upper - result$lower
+    }
+  }
+  result[operations]
+}
+
+#' Summarise a location-by-sample prediction matrix
+#' @noRd
+summarise_prediction_matrix <- function(values, quantity, summaries, level,
+                                        thresholds = NULL) {
   ordinary <- drop_prediction_operations(summaries, "exceedance")
+  built_in <- vapply(ordinary, is.character, logical(1))
+  row_summaries <- prediction_row_summaries(
+    values, unlist(ordinary[built_in], use.names = FALSE), level
+  )
   result <- lapply(names(ordinary), function(name) {
     operation <- ordinary[[name]]
     value <- if (is.function(operation)) {
       apply(values, 1L, operation)
     } else {
-      apply(values, 1L, summary_functions[[operation]])
+      row_summaries[[operation]]
     }
     if (!is.numeric(value) || length(value) != nrow(values)) {
       stop("Custom summary ", shQuote(name),
