@@ -16,7 +16,7 @@
 ##' `locations`), the forms of the stages of an automatic fit
 ##' (`noise_forms`), the largest
 ##' change of a factor at the last fixed refit of the last stage
-##' (`refit_change`), whether to suggest `integrate_noise = TRUE`
+##' (`refit_change`), whether to suggest integrating the nugget out
 ##' (`suggest_integration`, `suggests_integration()`) and the number of checks
 ##' of `check_fit()` that need a look (`checks_to_review`).
 ##' @noRd

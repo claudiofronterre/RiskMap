@@ -324,9 +324,9 @@ fit_check_weights <- function(bank, suggest_integration = FALSE) {
 ##' @noRd
 describe_integration_advice <- function(suggest) {
   if (!suggest) return("")
-  paste0(" Or refit with 'control_mcml = set_control_mcml(integrate_noise = ",
-         "TRUE)', which integrates the nugget out and often keeps far more ",
-         "effective draws.")
+  paste0(" Or refit with the default 'integrate_noise = \"auto\"' in ",
+         "set_control_mcml(), which integrates the nugget out where its ",
+         "variance is large and often keeps far more effective draws.")
 }
 
 ##' What the check for other maxima found

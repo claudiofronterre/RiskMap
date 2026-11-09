@@ -13,7 +13,7 @@ set_control_mcml(
   proposal = c("global", "laplace"),
   defensive_weight = 0.05,
   laplace_start = NULL,
-  integrate_noise = FALSE,
+  integrate_noise = "auto",
   check_maxima = TRUE,
   pc_prior = FALSE,
   pc_sigma_threshold = 1,
@@ -89,7 +89,9 @@ and the two estimates of the score are combined with weights inverse to
 their Monte Carlo covariances, so the certificate rests on the more precise
 form, or on both. A bank whose importance weights have a heavy tail, with a
 Pareto k above 0.8, can understate its covariance and is left out of the
-combination. Defaults to \code{FALSE}.}
+combination. Defaults to \code{"auto"}, which on simulated surveys certified
+more fits than either form alone. A model without a nugget is fitted in
+the same way whatever the value.}
 
 \item{check_maxima}{Logical. The certificate establishes Monte Carlo
 precision at the maximum found, not that no higher maximum exists. In

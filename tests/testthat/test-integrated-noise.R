@@ -291,7 +291,7 @@ test_that("a fit with integrate_noise reports the integrated locations", {
 test_that("check_fit suggests integrating a sampled nugget out", {
   bank <- list(effective_draws = 40, pareto_k = 0.9)
   expect_match(fit_check_weights(bank, suggest_integration = TRUE)$fix,
-               "integrate_noise = TRUE")
+               "integrate_noise = \"auto\"")
   expect_no_match(fit_check_weights(bank)$fix, "integrate_noise")
 })
 
