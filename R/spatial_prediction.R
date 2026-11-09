@@ -119,10 +119,10 @@
 ##' latent and the parameter uncertainty. For binomial and Poisson models the
 ##' conditional samples at each parameter value come from a short run of the
 ##' same Langevin (MALA) sampler used for plug-in prediction, in coordinates
-##' whitened by the Laplace approximation at that value, started at its mode
-##' and using the step size tuned at the estimate (500 burn-in iterations,
-##' then thinning by 10). The total number of predictive draws equals that of
-##' plug-in prediction. Parameters
+##' whitened by the Laplace approximation at that value, started from a draw
+##' of that approximation and using the step size tuned at the estimate (100
+##' burn-in iterations, then thinning by 10). The total number of predictive
+##' draws equals that of plug-in prediction, 2,000 by default. Parameters
 ##' without a finite positive variance, such as those held at a boundary, keep
 ##' their estimated value. When the covariance matrix of the estimates is not
 ##' available, an error is returned; refitting with
@@ -1298,8 +1298,8 @@ prediction_sample_size <- function(object, control_mcmc) {
   if (object$family != "gaussian" && !is.null(object$S_samples)) {
     return(nrow(object$S_samples))
   }
+  # As many draws as plug-in prediction takes by default for every family.
   control_mcmc <- set_control_mcmc()
-  if (object$family == "gaussian") return(control_mcmc$n_sim)
   (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
 }
 
@@ -1341,54 +1341,70 @@ draw_parameter_values <- function(object, n_draws) {
 #'
 #' Returns a function drawing samples from the conditional distribution of the
 #' latent effects (locations, then random-effect levels) given the data, at
-#' any parameter value, with the same Langevin sampler used for plug-in
-#' prediction. Each short chain runs in the coordinates whitened by the Laplace
-#' approximation at that parameter value, starts at its mode and reuses the
-#' step size tuned at the estimate, so a brief burn-in suffices.
+#' any parameter value, with the same Langevin sampler and the same covariance
+#' as plug-in prediction. Each short chain runs in the coordinates whitened by
+#' the Laplace approximation at that parameter value and starts from a draw of
+#' it, so that it is in its stationary spread from the start, and the search
+#' for the mode starts from the mode at the previous parameter value. The step
+#' is not tuned. It is the one tuned at the estimate, or else the default,
+#' which suits the whitened chain as well, so the burn-in only discards the
+#' first draws.
 #' @noRd
-parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
+parameter_conditioning_sampler <- function(object, burnin = 100L, thin = 10L) {
   distance_scale <- attr(object, "distance_scale") %||% 1
-  coords <- object$coords / distance_scale
+  fitting_coords <- object$coords / distance_scale
+  distances <- pairwise_distances(fitting_coords)
   invlink <- if (identical(object$link_function$name, "canonical")) {
     NULL
   } else {
     object$link_function[c("inv", "d1", "d2")]
   }
   design <- as.matrix(object$D)
-  engine <- make_adaptive_mcml_engine(
-    D = design, y = object$y, units_m = object$units_m,
-    distances = as.matrix(pairwise_distances(coords)),
-    family = object$family, kappa = object$kappa,
-    cov_offset = object$cov_offset, ID_coords = object$ID_coords,
-    fix_tau2 = object$fix_tau2, ID_re = object$ID_re, invlink = invlink,
-    proposal = "laplace"
-  )
-  phi_index <- engine$layout$index$phi
   step_size <- utils::tail(attr(object, "mcmc")$tuning_par, 1L)
   if (!length(step_size) || !is.finite(step_size) || step_size <= 0) {
     step_size <- NULL
   }
+  last_mode <- NULL
   function(estimate, n_samples) {
-    parameters <- unname(unlist(estimate))
-    parameters[phi_index] <- parameters[phi_index] - log(distance_scale)
-    proposal <- engine$proposal_at(parameters)
-    values <- proposal$values
+    fit <- object
+    fit$estimate <- estimate
+    parameters <- coef(fit)
     simulation <- laplace_sampling_mcmc(
       y = object$y, units_m = object$units_m,
-      mu = as.numeric(design %*% values$beta + object$cov_offset),
-      Sigma = proposal$covariance, ID_coords = object$ID_coords,
-      ID_re = object$ID_re, sigma2_re = values$sigma2_re,
-      family = object$family,
+      mu = as.numeric(design %*% parameters$beta + object$cov_offset),
+      Sigma = conditioning_covariance(fit, parameters, distances,
+                                      distance_scale),
+      ID_coords = object$ID_coords, ID_re = object$ID_re,
+      sigma2_re = parameters$sigma2_re, family = object$family,
       control_mcmc = set_control_mcmc(
         n_sim = burnin + n_samples * thin, burnin = burnin, thin = thin,
         h = step_size
       ),
-      invlink = invlink, Sigma_pd = crossprod(proposal$root),
-      mean_pd = proposal$centre, messages = FALSE
+      invlink = invlink, start = last_mode, adapt_step = FALSE
     )
+    last_mode <<- simulation$mode
     list(samples = do.call(cbind, simulation$samples),
          acceptance = simulation$acceptance_rate[["sampling"]])
   }
+}
+
+#' Covariance of the location effects that prediction conditions on
+#'
+#' The spatial covariance at the locations plus the nugget, which is at least
+#' 1e-10 times the spatial variance, as in `prepare_prediction()`.
+#' `distances` are between the locations in the fitting units, which are the
+#' model's divided by `distance_scale`.
+#' @noRd
+conditioning_covariance <- function(object, parameters, distances,
+                                    distance_scale) {
+  correlation <- matern_correlation(
+    distances, phi = parameters$phi / distance_scale, kappa = object$kappa,
+    return_sym_matrix = TRUE
+  )
+  ratio <- fitted_nugget_variance(object, parameters) / parameters$sigma2
+  if (ratio == 0) ratio <- 1e-10
+  diag(correlation) <- diag(correlation) + ratio
+  parameters$sigma2 * correlation
 }
 
 #' Average predictive targets over a common reference population
@@ -2425,7 +2441,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,
-        seed = mcmc_seed, messages = messages
+        seed = mcmc_seed
       )
     }
 

@@ -204,10 +204,10 @@ pooled, so every summary, aggregation and derived target reflects both the
 latent and the parameter uncertainty. For binomial and Poisson models the
 conditional samples at each parameter value come from a short run of the
 same Langevin (MALA) sampler used for plug-in prediction, in coordinates
-whitened by the Laplace approximation at that value, started at its mode
-and using the step size tuned at the estimate (500 burn-in iterations,
-then thinning by 10). The total number of predictive draws equals that of
-plug-in prediction. Parameters
+whitened by the Laplace approximation at that value, started from a draw
+of that approximation and using the step size tuned at the estimate (100
+burn-in iterations, then thinning by 10). The total number of predictive
+draws equals that of plug-in prediction, 2,000 by default. Parameters
 without a finite positive variance, such as those held at a boundary, keep
 their estimated value. When the covariance matrix of the estimates is not
 available, an error is returned; refitting with

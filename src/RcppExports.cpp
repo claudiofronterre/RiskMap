@@ -110,32 +110,66 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// cpp_canonical_mala
-List cpp_canonical_mala(const NumericVector y_r, const NumericVector units_r, const NumericVector mu_r, const NumericMatrix proposal_lower_r, const NumericMatrix proposal_upper_r, const NumericMatrix prior_lower_r, const NumericMatrix prior_upper_r, const NumericVector transformed_prior_mean_r, const NumericVector proposal_mean_r, const IntegerVector location_id_r, const int n_locations, const IntegerMatrix random_effect_id_r, const std::string family, const int n_sim, const int burnin, const int thin, double step_size, const double adaptation_scale, const double adaptation_exponent);
-RcppExport SEXP _RiskMap_cpp_canonical_mala(SEXP y_rSEXP, SEXP units_rSEXP, SEXP mu_rSEXP, SEXP proposal_lower_rSEXP, SEXP proposal_upper_rSEXP, SEXP prior_lower_rSEXP, SEXP prior_upper_rSEXP, SEXP transformed_prior_mean_rSEXP, SEXP proposal_mean_rSEXP, SEXP location_id_rSEXP, SEXP n_locationsSEXP, SEXP random_effect_id_rSEXP, SEXP familySEXP, SEXP n_simSEXP, SEXP burninSEXP, SEXP thinSEXP, SEXP step_sizeSEXP, SEXP adaptation_scaleSEXP, SEXP adaptation_exponentSEXP) {
+// cpp_structured_solve
+SEXP cpp_structured_solve(const IntegerMatrix columns_r, const int n_u, const int n_d, const NumericMatrix prior_u_r, const NumericVector prior_d_r, const NumericVector weights_r, const NumericVector right_hand_side_r);
+RcppExport SEXP _RiskMap_cpp_structured_solve(SEXP columns_rSEXP, SEXP n_uSEXP, SEXP n_dSEXP, SEXP prior_u_rSEXP, SEXP prior_d_rSEXP, SEXP weights_rSEXP, SEXP right_hand_side_rSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerMatrix >::type columns_r(columns_rSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_u(n_uSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_d(n_dSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix >::type prior_u_r(prior_u_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type prior_d_r(prior_d_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type weights_r(weights_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type right_hand_side_r(right_hand_side_rSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_structured_solve(columns_r, n_u, n_d, prior_u_r, prior_d_r, weights_r, right_hand_side_r));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_structured_factor_matrix
+SEXP cpp_structured_factor_matrix(const IntegerMatrix columns_r, const int n_u, const int n_d, const NumericMatrix prior_u_r, const NumericVector prior_d_r, const NumericVector weights_r);
+RcppExport SEXP _RiskMap_cpp_structured_factor_matrix(SEXP columns_rSEXP, SEXP n_uSEXP, SEXP n_dSEXP, SEXP prior_u_rSEXP, SEXP prior_d_rSEXP, SEXP weights_rSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const IntegerMatrix >::type columns_r(columns_rSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_u(n_uSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_d(n_dSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix >::type prior_u_r(prior_u_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type prior_d_r(prior_d_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type weights_r(weights_rSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_structured_factor_matrix(columns_r, n_u, n_d, prior_u_r, prior_d_r, weights_r));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_latent_mala
+List cpp_latent_mala(const NumericVector y_r, const NumericVector units_r, const NumericVector mu_r, const IntegerMatrix columns_r, const int n_u, const int n_d, const NumericMatrix prior_u_r, const NumericVector prior_d_r, const NumericVector weights_r, const NumericVector mode_r, const std::string family, const SEXP link_terms, const int n_sim, const int burnin, const int thin, double step_size, const double adaptation_scale, const double adaptation_exponent, const bool average_step, const bool start_from_draw);
+RcppExport SEXP _RiskMap_cpp_latent_mala(SEXP y_rSEXP, SEXP units_rSEXP, SEXP mu_rSEXP, SEXP columns_rSEXP, SEXP n_uSEXP, SEXP n_dSEXP, SEXP prior_u_rSEXP, SEXP prior_d_rSEXP, SEXP weights_rSEXP, SEXP mode_rSEXP, SEXP familySEXP, SEXP link_termsSEXP, SEXP n_simSEXP, SEXP burninSEXP, SEXP thinSEXP, SEXP step_sizeSEXP, SEXP adaptation_scaleSEXP, SEXP adaptation_exponentSEXP, SEXP average_stepSEXP, SEXP start_from_drawSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const NumericVector >::type y_r(y_rSEXP);
     Rcpp::traits::input_parameter< const NumericVector >::type units_r(units_rSEXP);
     Rcpp::traits::input_parameter< const NumericVector >::type mu_r(mu_rSEXP);
-    Rcpp::traits::input_parameter< const NumericMatrix >::type proposal_lower_r(proposal_lower_rSEXP);
-    Rcpp::traits::input_parameter< const NumericMatrix >::type proposal_upper_r(proposal_upper_rSEXP);
-    Rcpp::traits::input_parameter< const NumericMatrix >::type prior_lower_r(prior_lower_rSEXP);
-    Rcpp::traits::input_parameter< const NumericMatrix >::type prior_upper_r(prior_upper_rSEXP);
-    Rcpp::traits::input_parameter< const NumericVector >::type transformed_prior_mean_r(transformed_prior_mean_rSEXP);
-    Rcpp::traits::input_parameter< const NumericVector >::type proposal_mean_r(proposal_mean_rSEXP);
-    Rcpp::traits::input_parameter< const IntegerVector >::type location_id_r(location_id_rSEXP);
-    Rcpp::traits::input_parameter< const int >::type n_locations(n_locationsSEXP);
-    Rcpp::traits::input_parameter< const IntegerMatrix >::type random_effect_id_r(random_effect_id_rSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix >::type columns_r(columns_rSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_u(n_uSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_d(n_dSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix >::type prior_u_r(prior_u_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type prior_d_r(prior_d_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type weights_r(weights_rSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type mode_r(mode_rSEXP);
     Rcpp::traits::input_parameter< const std::string >::type family(familySEXP);
+    Rcpp::traits::input_parameter< const SEXP >::type link_terms(link_termsSEXP);
     Rcpp::traits::input_parameter< const int >::type n_sim(n_simSEXP);
     Rcpp::traits::input_parameter< const int >::type burnin(burninSEXP);
     Rcpp::traits::input_parameter< const int >::type thin(thinSEXP);
     Rcpp::traits::input_parameter< double >::type step_size(step_sizeSEXP);
     Rcpp::traits::input_parameter< const double >::type adaptation_scale(adaptation_scaleSEXP);
     Rcpp::traits::input_parameter< const double >::type adaptation_exponent(adaptation_exponentSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_canonical_mala(y_r, units_r, mu_r, proposal_lower_r, proposal_upper_r, prior_lower_r, prior_upper_r, transformed_prior_mean_r, proposal_mean_r, location_id_r, n_locations, random_effect_id_r, family, n_sim, burnin, thin, step_size, adaptation_scale, adaptation_exponent));
+    Rcpp::traits::input_parameter< const bool >::type average_step(average_stepSEXP);
+    Rcpp::traits::input_parameter< const bool >::type start_from_draw(start_from_drawSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_latent_mala(y_r, units_r, mu_r, columns_r, n_u, n_d, prior_u_r, prior_d_r, weights_r, mode_r, family, link_terms, n_sim, burnin, thin, step_size, adaptation_scale, adaptation_exponent, average_step, start_from_draw));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -255,7 +289,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_RiskMap_cpp_spatial_prior_factors", (DL_FUNC) &_RiskMap_cpp_spatial_prior_factors, 6},
     {"_RiskMap_cpp_importance_log_weights", (DL_FUNC) &_RiskMap_cpp_importance_log_weights, 20},
     {"_RiskMap_cpp_canonical_log_likelihood", (DL_FUNC) &_RiskMap_cpp_canonical_log_likelihood, 4},
-    {"_RiskMap_cpp_canonical_mala", (DL_FUNC) &_RiskMap_cpp_canonical_mala, 19},
+    {"_RiskMap_cpp_structured_solve", (DL_FUNC) &_RiskMap_cpp_structured_solve, 7},
+    {"_RiskMap_cpp_structured_factor_matrix", (DL_FUNC) &_RiskMap_cpp_structured_factor_matrix, 6},
+    {"_RiskMap_cpp_latent_mala", (DL_FUNC) &_RiskMap_cpp_latent_mala, 20},
     {"_RiskMap_cpp_site_table_create", (DL_FUNC) &_RiskMap_cpp_site_table_create, 6},
     {"_RiskMap_cpp_site_evaluate", (DL_FUNC) &_RiskMap_cpp_site_evaluate, 6},
     {"_RiskMap_cpp_site_row_sums", (DL_FUNC) &_RiskMap_cpp_site_row_sums, 4},
