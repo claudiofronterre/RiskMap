@@ -1273,6 +1273,15 @@ test_that("parameter uncertainty options are validated", {
   )
 })
 
+test_that("Gaussian prediction takes as many draws with parameter uncertainty", {
+  fit <- with_parameter_covariance(gaussian_model)
+  plug_in <- predict(fit, seed = 2, keep_samples = TRUE, messages = FALSE)
+  pooled <- predict(fit, parameter_uncertainty = TRUE, parameter_draws = 20,
+                    seed = 2, keep_samples = TRUE, messages = FALSE)
+  expect_identical(ncol(plug_in$samples$spatial), 2000L)
+  expect_identical(ncol(pooled$samples$spatial), ncol(plug_in$samples$spatial))
+})
+
 test_that("an unavailable covariance matrix gives an informative error", {
   fit <- binomial_model
   fit$covariance[] <- NA_real_

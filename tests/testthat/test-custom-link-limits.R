@@ -356,7 +356,7 @@ test_that("the sampler is not stopped by a probability that rounds to one", {
     y = y, units_m = y, mu = mu, Sigma = Sigma, ID_coords = seq_len(sites),
     family = "binomial", invlink = cloglog_link[c("inv", "d1", "d2")],
     control_mcmc = set_control_mcmc(n_sim = 3000, burnin = 500, thin = 1),
-    seed = 11L, messages = FALSE
+    seed = 11L
   )
   # All the trials are positive, so the conditional distribution above the
   # rounding point at 3.6 is the prior's, with about 37% of its mass.

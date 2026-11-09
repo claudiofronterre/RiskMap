@@ -35,7 +35,7 @@ test_that("independent MCMC seeds agree within estimated Monte Carlo error", {
         control_mcmc = set_control_mcmc(
           n_sim = 3500, burnin = 500, thin = 1, h = case$h
         ),
-        seed = seed, messages = FALSE
+        seed = seed
       )
       as.numeric(fit$samples$S)
     })

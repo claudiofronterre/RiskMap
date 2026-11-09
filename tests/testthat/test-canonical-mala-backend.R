@@ -44,8 +44,7 @@ test_that("compiled MALA supports multiple random-effect blocks", {
       period = c(1L, 2L, 1L, 2L)
     ),
     sigma2_re = c(cluster = 0.3, period = 0.2),
-    family = "binomial", control_mcmc = control, seed = 4821,
-    messages = FALSE
+    family = "binomial", control_mcmc = control, seed = 4821
   )
 
   expect_named(fit$samples, c("S", "cluster", "period"))
@@ -56,18 +55,17 @@ test_that("compiled MALA supports multiple random-effect blocks", {
   expect_true(all(fit$tuning_par[41:100] == fit$tuning_par[40]))
 })
 
-test_that("compiled MALA reproduces the general R transition", {
+test_that("a canonical link given as a function gives the same chain", {
   control <- set_control_mcmc(
     n_sim = 100, burnin = 40, thin = 3, h = 0.5
   )
   arguments <- list(
     y = c(1, 3), units_m = c(5, 6), mu = c(-0.5, 0.2),
     Sigma = matrix(c(0.8, 0.2, 0.2, 0.7), 2), ID_coords = 1:2,
-    family = "binomial", control_mcmc = control, seed = 99,
-    messages = FALSE
+    family = "binomial", control_mcmc = control, seed = 99
   )
   compiled <- do.call(laplace_sampling_mcmc, arguments)
-  # Supplying the same link explicitly selects the general R implementation.
+  # The same link given as a function is evaluated in R once per iteration.
   r_reference <- do.call(
     laplace_sampling_mcmc,
     c(arguments, list(invlink = function(x) plogis(x)))
@@ -78,7 +76,7 @@ test_that("compiled MALA reproduces the general R transition", {
   # some BLAS/platform combinations.
   expect_equal(compiled$tuning_par, r_reference$tuning_par,
                tolerance = 1e-14)
-  # The two paths use algebraically equivalent derivative calculations.
+  # The two evaluations of the link are algebraically equivalent.
   expect_equal(compiled$samples$S, r_reference$samples$S, tolerance = 5e-5)
 })
 
