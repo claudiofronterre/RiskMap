@@ -1171,6 +1171,102 @@ test_that("a refit from the anchor that fails gives the Laplace proposal", {
   expect_identical(engine$largest_refit_change(), NA_real_)
 })
 
+test_that("a canonical quadratic fit without enough weighted nodes fails", {
+  # The first site has 400 trials but a factor with almost no curvature, so its
+  # marginal under the proposal is about 200 times wider than its likelihood
+  # and only the two central nodes keep any weight.
+  sites <- 3L
+  y <- c(200, 5, 5)
+  units_m <- c(400, 20, 20)
+  mu <- c(0, -1, -1)
+  precision <- diag(0.01, sites)
+  latent_map <- make_latent_map(cbind(seq_len(sites)), sites)
+  linkf <- make_inverse_link_functions("binomial", NULL, sites)
+  linear <- numeric(sites)
+  curvature <- c(1e-6, 3, 3)
+  quadrature <- build_normal_quadrature()
+  marginals <- cpp_global_marginals(precision, linear, curvature,
+                                    latent_map$columns)
+  updated <- update_observation_factors(
+    marginals$marginal_mean, sqrt(marginals$marginal_variance), mu, y,
+    units_m, "binomial", linkf, TRUE, linear, curvature, quadrature
+  )
+  # No other curvature is negative, the case that stopped at the `if` of the
+  # curvature floor with "missing value where TRUE/FALSE needed".
+  expect_identical(is.na(updated$curvature), c(TRUE, FALSE, FALSE))
+  expect_true(all(updated$curvature[-1L] > 0))
+  expect_null(refit_global_factors(
+    c(linear, curvature), mu, y, units_m, latent_map, precision, "binomial",
+    linkf, TRUE, quadrature, make_curvature_floor(latent_map, precision)
+  ))
+  refitted <- refit_from_anchor(
+    list(mu = mu, linear = linear, curvature = curvature), mu, y, units_m,
+    latent_map, precision, "binomial", linkf, TRUE
+  )
+  expect_identical(refitted, list(failed = TRUE, refits = 1L,
+                                  change = NA_real_))
+})
+
+# A survey of 30 locations at low prevalence with one location of 2,000 tested
+# and half of them positive. With the spatial variance near zero, the prior
+# holds the latent effect at that location far below the peak of its
+# likelihood, and the factor fitted there places a refit at a larger variance
+# about 26 likelihood widths beyond the peak. One quadrature node then carries
+# all the weight, and the quadratic fit has too few weighted nodes.
+make_outlier_survey <- function() {
+  set.seed(3)
+  sites <- 30L
+  coordinates <- cbind(runif(sites), runif(sites))
+  units_m <- c(2000, rep(20, sites - 1L))
+  list(y = c(1000, rbinom(sites - 1L, 20, 0.01)), units_m = units_m,
+       distances = as.matrix(dist(coordinates)))
+}
+
+test_that("a canonical refit without enough weighted nodes is a failure", {
+  survey <- make_outlier_survey()
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, length(survey$y), 1), y = survey$y, units_m = survey$units_m,
+    distances = survey$distances, family = "binomial"
+  )
+  expect_true(engine$set_anchor(c(-4, -6, log(0.2))))
+  # It was an error inside the proposal, which gave the parameter value no
+  # weight. It is now a failed refit, so the Laplace proposal is used there and
+  # the failure is counted, as for a custom link.
+  expect_identical(engine$proposal_at(c(-4, 1.5, log(0.2)))$type, "laplace")
+  expect_identical(engine$proposal_failures(), 1L)
+  expect_identical(engine$first_proposal_failure(),
+                   list(reason = "a refit failed", refits = 1L,
+                        change = NA_real_))
+  expect_identical(engine$proposal_errors(), list(count = 0L, first = NULL))
+})
+
+test_that("failed canonical refits make the stage use the Laplace proposal", {
+  skip_on_cran()
+  survey <- make_outlier_survey()
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, length(survey$y), 1), y = survey$y, units_m = survey$units_m,
+    distances = survey$distances, family = "binomial"
+  )
+  fit <- fit_adaptive_mcml(
+    engine = engine, start = c(-4, -6, log(0.2)), initial_budget = 1000,
+    validation_budget = 2000, seed = 5, lower = c(-30, -20, -20),
+    upper = c(30, 20, 10), variance_index = 2L, linked_index = list(`2` = 3L),
+    coefficient_index = 1L
+  )
+  first <- fit$history[[1L]]
+  expect_true(first$proposal_fallback)
+  expect_identical(first$proposal, "laplace")
+  expect_identical(first$proposal_failure$reason, "a refit failed")
+  expect_identical(engine$proposal_errors()$count, 0L)
+  # Every trial value with a larger variance was an error before, so the
+  # search stayed near the start, the spatial variance was taken as
+  # effectively zero and only the intercept was certified, at a log-likelihood
+  # 240 units below this fit.
+  expect_identical(fit$outcome, "certified")
+  expect_length(fit$boundary_parameters, 0L)
+  expect_gt(fit$estimate[[2L]], 0)
+})
+
 test_that("the check for other maxima warns about a move and an ambiguity", {
   moved <- list(better_maximum = TRUE, ambiguous_maxima = FALSE)
   expect_warning(report_maxima_check(moved),

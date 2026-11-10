@@ -468,6 +468,19 @@ stage, with the global proposal. The failures still count when the check keeps
 the maximum of one of its refits, which is then the fit of the stage. Fits
 without such a failure are unchanged.
 
+- A refit of the global proposal in which a location's quadratic fit has too
+few weighted quadrature nodes is now a failed refit for the canonical links
+too, as it already was for custom links, so the stage repeats with the Laplace
+proposal. It stopped inside the proposal with "missing value where TRUE/FALSE
+needed", which gave the trial parameter value no weight. The case arises when
+the proposal for a location with many tests lies many widths of its likelihood
+away from it, as in refits from an anchor where the spatial variance is near
+zero. A fit started there could not leave that variance, reported it as
+effectively zero and certified only the regression coefficients, at a
+log-likelihood 240 units below the maximum it now reaches. No fit in the
+package's tests reaches this case, nor do fits of surveys from Liberia, Loa
+loa, Malawi and Tanzania, and those fits are unchanged.
+
 - A custom inverse link that `Deriv` cannot differentiate, such as a bare
 `invlink = pnorm`, now has its derivatives computed for all values at once, with
 the same values as before. They were computed one value at a time, which made
