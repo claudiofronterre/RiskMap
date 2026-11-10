@@ -27,7 +27,7 @@ test_that("the table of integrated sites matches numerical integration", {
     # inside the grid and beyond it.
     for (v in c(0.01, 0.15, 0.5, 12)) {
       for (x in c(-55, -6, -0.4, 1.7)) {
-        values <- cpp_site_evaluate(sites$pointer, v, sites$pair,
+        values <- cpp_site_evaluate(sites$pointer, v, sites$units,
                                     matrix(x, 3L, 1L), TRUE, 0L)$h
         reference <- vapply(seq_along(y), function(i) {
           integrated_by_integrate(y[i], m[i], x, v, poisson)
@@ -38,11 +38,89 @@ test_that("the table of integrated sites matches numerical integration", {
   }
 })
 
+test_that("a large variance takes the flat side in closed form", {
+  # References by integration over the linear predictor in pieces, with the
+  # kernel's bend in its own piece, and the integrand scaled by its largest
+  # value on a grid. h1 and h2 are the tilted mean of k' and the tilted mean of
+  # k'' plus the tilted variance of k'.
+  reference <- function(y, m, x, v, poisson) {
+    kernel <- function(eta) {
+      if (poisson) cbind(y * eta - m * exp(eta), y - m * exp(eta),
+                         -m * exp(eta)) else {
+        p <- stats::plogis(eta)
+        cbind(y * eta - m * (pmax(eta, 0) + log1p(exp(-abs(eta)))),
+              y - m * p, -m * p * (1 - p))
+      }
+    }
+    log_integrand <- function(eta) {
+      kernel(eta)[, 1L] + stats::dnorm(eta, x, sqrt(v), log = TRUE)
+    }
+    breaks <- sort(unique(c(-40, 0, 40, x + c(-12, -4, 0, 4, 12) * sqrt(v))))
+    top <- max(log_integrand(c(breaks, seq(min(breaks), max(breaks),
+                                           length.out = 4001))))
+    moment <- function(power) {
+      piece <- function(lower, upper) {
+        stats::integrate(function(eta) {
+          k <- kernel(eta)
+          weight <- exp(k[, 1L] + stats::dnorm(eta, x, sqrt(v), log = TRUE) -
+                          top)
+          value <- weight * switch(power + 1L, 1, k[, 2L], k[, 3L] + k[, 2L]^2)
+          # A Poisson kernel far above the mean underflows to zero weight.
+          replace(value, weight == 0, 0)
+        }, lower, upper, rel.tol = 1e-12, subdivisions = 4000L,
+        stop.on.error = FALSE)$value
+      }
+      sum(mapply(piece, c(-Inf, breaks), c(breaks, Inf)))
+    }
+    mass <- moment(0L)
+    first <- moment(1L) / mass
+    c(h = log(mass) + top, h1 = first, h2 = moment(2L) / mass - first^2)
+  }
+  for (family in c("binomial", "poisson")) {
+    poisson <- family == "poisson"
+    # No events, every trial an event (binomial) and a record with both, whose
+    # walk stays short.
+    y <- if (poisson) c(0, 3) else c(0, 20, 3)
+    m <- if (poisson) c(1, 1) else c(20, 20, 20)
+    sites <- make_site_table(y, m, family)
+    for (v in c(300, 1e4, exp(20))) {
+      # Values of -150 and 150 put the walk on a flat stretch well before the
+      # bend at zero, and -1e5 and 1e5 far from it.
+      at <- c(-150, -80, -6, 1.7, 25, 150, if (v > 1e6) c(-1e5, 1e5))
+      for (x in at) {
+        values <- cpp_site_evaluate(sites$pointer, v, sites$units,
+                                    matrix(x, length(y), 1L), TRUE, 2L)
+        for (i in seq_along(y)) {
+          expected <- reference(y[i], m[i], x, v, poisson)
+          # h can be zero to rounding, and h' and h'' are small differences
+          # of terms of the order of m (h'' near -1 / v), so each has an
+          # absolute floor.
+          expect_lt(abs(values$h[i] - expected[["h"]]),
+                    1e-7 * max(1, abs(expected[["h"]])))
+          expect_lt(abs(values$h1[i] - expected[["h1"]]),
+                    1e-9 + 1e-6 * abs(expected[["h1"]]))
+          expect_lt(abs(values$h2[i] - expected[["h2"]]),
+                    1e-9 + 1e-6 * abs(expected[["h2"]]))
+        }
+      }
+    }
+  }
+  # The walk no longer grows with v, so a call at the upper bound of a log
+  # variance's search, 20, is as quick as one at a small variance.
+  skip_on_cran()
+  sites <- make_site_table(c(0, 20, 3), c(20, 20, 20), "binomial")
+  eta <- matrix(seq(-300, 300, length.out = 60), 3L, 20L)
+  seconds <- system.time(
+    cpp_site_evaluate(sites$pointer, exp(20), sites$units, eta, TRUE, 0L)
+  )[["elapsed"]]
+  expect_lt(seconds, 5)
+})
+
 test_that("the table's derivatives are those of its interpolant", {
   sites <- make_site_table(c(2, 7), c(20, 20), "binomial")
   x <- seq(-3, 2, by = 0.137)
   at <- function(x) {
-    cpp_site_evaluate(sites$pointer, 0.8, sites$pair, cbind(x, x), FALSE, 2L)
+    cpp_site_evaluate(sites$pointer, 0.8, sites$units, cbind(x, x), FALSE, 2L)
   }
   step <- 1e-5
   centre <- at(x)
@@ -53,49 +131,51 @@ test_that("the table's derivatives are those of its interpolant", {
                tolerance = 1e-7)
 })
 
-test_that("the table fills only the cells it needs and keeps 16 tables", {
+test_that("the table fills only the cells it needs and keeps 32 tables", {
   sites <- make_site_table(c(1, 5), c(10, 10), "binomial")
-  cpp_site_evaluate(sites$pointer, 0.3, sites$pair, matrix(0.1, 2L, 1L), TRUE,
+  cpp_site_evaluate(sites$pointer, 0.3, sites$units, matrix(0.1, 2L, 1L), TRUE,
                     0L)
   info <- cpp_site_table_info(sites$pointer)
   expect_identical(info$tables_built, 1L)
   expect_identical(info$cells_filled, 4)
-  for (v in seq(0.1, 2, length.out = 20)) {
-    cpp_site_evaluate(sites$pointer, v, sites$pair, matrix(0.1, 2L, 1L), TRUE,
+  for (v in seq(0.1, 2, length.out = 40)) {
+    cpp_site_evaluate(sites$pointer, v, sites$units, matrix(0.1, 2L, 1L), TRUE,
                       0L)
   }
   # The first table was dropped, so v = 0.3 is built again.
   before <- cpp_site_table_info(sites$pointer)$tables_built
-  cpp_site_evaluate(sites$pointer, 0.3, sites$pair, matrix(0.1, 2L, 1L), TRUE,
+  cpp_site_evaluate(sites$pointer, 0.3, sites$units, matrix(0.1, 2L, 1L), TRUE,
                     0L)
   expect_identical(cpp_site_table_info(sites$pointer)$tables_built,
                    before + 1L)
 })
 
-test_that("a negative pair or a zero variance takes the plain kernel", {
+test_that("a plain record or a zero variance takes the plain kernel", {
   sites <- make_site_table(c(3, 3), c(20, 20), "binomial",
                            plain = c(FALSE, TRUE))
-  expect_identical(sites$pair, c(1L, -1L))
+  expect_identical(unname(sites$units[, "kind"]), c(1L, 0L))
+  expect_identical(unname(sites$units[, "index"]), c(1L, 1L))
   eta <- matrix(c(-1.2, 0.4), ncol = 1L)
   plain <- 3 * eta - 20 * log1p(exp(eta))
-  values <- cpp_site_evaluate(sites$pointer, 0.5, sites$pair, eta, TRUE, 0L)$h
+  values <- cpp_site_evaluate(sites$pointer, 0.5, sites$units, eta, TRUE, 0L)$h
   expect_equal(values[2], plain[2])
   expect_false(isTRUE(all.equal(values[1], plain[1])))
-  held <- cpp_site_evaluate(sites$pointer, 0, sites$pair, eta, TRUE, 0L)$h
+  held <- cpp_site_evaluate(sites$pointer, 0, sites$units, eta, TRUE, 0L)$h
   expect_equal(as.numeric(held), as.numeric(plain))
 })
 
 test_that("identical records at a location are summed and others flagged", {
   D <- cbind(1, c(0.5, 0.5, 1, 2))
-  records <- prepare_integrated_records(
+  plan <- plan_integrated_records(
     y = c(1, 2, 3, 4), units_m = c(10, 10, 10, 10), D = D,
     cov_offset = numeric(4), ID_coords = c(1L, 1L, 2L, 2L), ID_re = NULL,
-    n_loc = 3L
+    n_loc = 3L, allowed = c(nugget = TRUE)
   )
-  expect_identical(records$y, c(3, 3, 4))
-  expect_identical(records$units_m, c(20, 10, 10))
-  expect_identical(records$ID_coords, c(1L, 2L, 2L))
-  expect_identical(records$several, c(FALSE, TRUE, FALSE))
+  expect_identical(plan$y, c(3, 3, 4))
+  expect_identical(plan$units_m, c(20, 10, 10))
+  expect_identical(plan$ID_coords, c(1L, 2L, 2L))
+  expect_identical(plan$nugget_integrated, c(TRUE, FALSE, FALSE))
+  expect_identical(plan$kind, c(1L, 0L, 0L))
 })
 
 # A small survey with a nugget, for both forms.
@@ -223,7 +303,7 @@ test_that("the table of a custom link matches numerical integration", {
     m <- if (family == "poisson") c(1, 1, 2) else c(20, 20, 20)
     sites <- make_site_table(y, m, family, linkf = linkf)
     for (v in c(0.004, 0.3, 4)) for (x in c(-4, -0.7, 1.2)) {
-      values <- cpp_site_evaluate(sites$pointer, v, sites$pair,
+      values <- cpp_site_evaluate(sites$pointer, v, sites$units,
                                   matrix(x, 3L, 1L), TRUE, 0L)$h
       reference <- vapply(seq_along(y), function(i) {
         log_integrand <- function(e) {
@@ -249,6 +329,100 @@ test_that("the table of a custom link matches numerical integration", {
                    label = paste(family, name, v, x))
     }
   }
+})
+
+test_that("a custom link takes the kernel beyond its lattice in closed form", {
+  # The kernel of the arrays of compute_custom_kernel_arrays() for the probit
+  # and softplus links, with k' and k'': probabilities at the bound of 2^-53
+  # are flat, and the kernel is constant beyond the lattice from -100 to 80.
+  kernel <- function(eta, y, m, family) {
+    inside <- eta > -100 & eta < 80
+    e <- pmin(pmax(eta, -100), 80)
+    if (family == "binomial") {
+      p <- stats::pnorm(e)
+      d1 <- stats::dnorm(e)
+      d2 <- -e * d1
+      bound <- 2^-53
+      success <- p > bound
+      failure <- 1 - p > bound
+      s1 <- ifelse(success, d1 / p, 0)
+      s2 <- ifelse(success, d2 / p - (d1 / p)^2, 0)
+      f1 <- ifelse(failure, -d1 / (1 - p), 0)
+      f2 <- ifelse(failure, -d2 / (1 - p) - (d1 / (1 - p))^2, 0)
+      cbind(y * log(pmax(p, bound)) + (m - y) * log(pmax(1 - p, bound)),
+            ifelse(inside, y * s1 + (m - y) * f1, 0),
+            ifelse(inside, y * s2 + (m - y) * f2, 0))
+    } else {
+      mean <- log1p(exp(e))
+      d1 <- stats::plogis(e)
+      d2 <- d1 * (1 - d1)
+      cbind(y * log(mean) - m * mean + (if (m > 0) y * log(m) else 0),
+            ifelse(inside, y * d1 / mean - m * d1, 0),
+            ifelse(inside, y * (d2 / mean - (d1 / mean)^2) - m * d2, 0))
+    }
+  }
+  reference <- function(y, m, x, v, family) {
+    log_integrand <- function(eta) {
+      kernel(eta, y, m, family)[, 1L] +
+        stats::dnorm(eta, x, sqrt(v), log = TRUE)
+    }
+    top <- max(vapply(c(-150, -100, -40, 0, 40, 80, 150, x), log_integrand,
+                      numeric(1)))
+    moment <- function(power) {
+      piece <- function(lower, upper) {
+        stats::integrate(function(eta) {
+          k <- kernel(eta, y, m, family)
+          weight <- exp(k[, 1L] + stats::dnorm(eta, x, sqrt(v), log = TRUE) -
+                          top)
+          value <- weight * switch(power + 1L, 1, k[, 2L], k[, 3L] + k[, 2L]^2)
+          replace(value, weight == 0, 0)
+        }, lower, upper, rel.tol = 1e-12, subdivisions = 2000L,
+        stop.on.error = FALSE)$value
+      }
+      breaks <- sort(unique(c(-100, -40, -8.3, 8.3, 40, 80,
+                              x + c(-12, -4, 0, 4, 12) * sqrt(v))))
+      sum(mapply(piece, c(-Inf, breaks), c(breaks, Inf)))
+    }
+    mass <- moment(0L)
+    first <- moment(1L) / mass
+    c(h = log(mass) + top, h1 = first, h2 = moment(2L) / mass - first^2)
+  }
+  inverses <- list(binomial = stats::pnorm,
+                   poisson = function(eta) log1p(exp(eta)))
+  for (family in names(inverses)) {
+    linkf <- make_inverse_link_functions(family, inverses[[family]], 3L)
+    y <- if (family == "poisson") c(0, 3) else c(0, 20, 3)
+    m <- if (family == "poisson") c(1, 1) else c(20, 20, 20)
+    sites <- make_site_table(y, m, family, linkf = linkf)
+    for (v in c(1e4, exp(20))) {
+      # Inside the grid, beyond it, and beyond the lattice on both sides.
+      for (x in c(-150, -6, 1.7, 25, 120)) {
+        values <- cpp_site_evaluate(sites$pointer, v, sites$units,
+                                    matrix(x, length(y), 1L), TRUE, 2L)
+        for (i in seq_along(y)) {
+          expected <- reference(y[i], m[i], x, v, family)
+          expect_equal(values$h[i], expected[["h"]], tolerance = 1e-7)
+          # h' and h'' are near zero here, small differences of terms of the
+          # order of m. Between grid points they are interpolated (about 5e-8
+          # in h'), and h'' rests on the link's second derivative, which a
+          # custom link gets by Richardson extrapolation (3e-5 for the probit),
+          # so they are compared on an absolute scale.
+          expect_lt(abs(values$h1[i] - expected[["h1"]]), 1e-6)
+          expect_lt(abs(values$h2[i] - expected[["h2"]]), 1e-5)
+        }
+      }
+    }
+  }
+  skip_on_cran()
+  linkf <- make_inverse_link_functions("binomial", stats::pnorm, 3L)
+  sites <- make_site_table(c(0, 20, 3), c(20, 20, 20), "binomial",
+                           linkf = linkf)
+  eta <- matrix(seq(-300, 300, length.out = 60), 3L, 20L)
+  # The walk took about 4 s for these 60 values.
+  seconds <- system.time(
+    cpp_site_evaluate(sites$pointer, exp(20), sites$units, eta, TRUE, 0L)
+  )[["elapsed"]]
+  expect_lt(seconds, 1)
 })
 
 test_that("both forms estimate the same likelihood with a custom link", {

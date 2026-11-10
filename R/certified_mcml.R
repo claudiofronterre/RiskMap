@@ -717,7 +717,8 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   certified <- correct_and_certify(
     engine, penalty, fit$par, information, validation_budget, seeds, lower,
     upper, limits$tolerance,
-    bank_objective = function(parameters) objective(parameters, fit_bank)
+    bank_objective = function(parameters) objective(parameters, fit_bank),
+    coefficient_index = limits$coefficient_index
   )
   if (is.null(certified)) {
     return(finish(record, "no valid fit",
@@ -725,7 +726,7 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
   }
   record[names(certified)] <- certified
   record$timing$validation <- certified$first_validation$seconds +
-    certified$second_validation$seconds +
+    (certified$second_validation$seconds %||% 0) +
     (certified$replicate_validation$seconds %||% 0)
   # The correction reaches a bound only along a direction where the
   # information vanishes, and the certificate is then vacuous.
@@ -770,20 +771,46 @@ run_certified_stage <- function(engine, objective, penalty, start, budget,
 ##' (radii of about 1e-11), the correction is of that size too, and the
 ##' predicted residual is the rounding error of the central differences
 ##' divided by the radius.
+##'
+##' A correction that would take a covariance parameter (any free parameter
+##' outside `coefficient_index`) past the upper bound of the search, a variance
+##' or scale of exp(20) or more on the log scale, has followed a direction
+##' where the information nearly vanishes far beyond where the log-likelihood
+##' is quadratic, as along a log variance near zero that is not yet held and a
+##' variance confounded with it. It is discarded before anything is evaluated
+##' there, since an integrated variance that large makes each evaluation take
+##' minutes. The estimate stays the fitted one and is not certified, with the
+##' bound of the first validation bank (`certify_estimate()`) as its
+##' certificate, so the next stage starts from it with a budget planned from
+##' that bound. Past a lower bound a covariance parameter is still clamped to
+##' it, since there it describes a component near zero, as the boundary rule
+##' holds it, and a coefficient past either bound is clamped too, where
+##' `run_certified_stage()` reports the likelihood as having no maximum.
 ##' @noRd
 correct_and_certify <- function(engine, penalty, estimate, information,
                                 validation_budget, seeds, lower, upper,
                                 tolerance, bank_objective,
-                                residual_check = 0.25, radius_floor = 1e-6) {
+                                residual_check = 0.25, radius_floor = 1e-6,
+                                coefficient_index = integer()) {
   free <- information$free
   root <- information$root
   first <- score_validation_bank(engine, estimate, free, validation_budget,
                                  seeds[[2L]], penalty)
   if (is.null(first)) return(NULL)
   correction <- certify_estimate(root, first$score, first$covariance)
+  proposed <- estimate
+  proposed[free] <- estimate[free] + correction$correction
+  guarded <- setdiff(free, coefficient_index)
+  if (any(proposed[guarded] > upper[guarded], na.rm = TRUE)) {
+    return(list(estimate = estimate, correction_size = correction$distance,
+                first_validation = first, certificate = correction$bound,
+                certificate_distance = correction$distance,
+                certificate_radius = correction$radius,
+                certified = FALSE, residual_refused = FALSE,
+                correction_left_bounds = TRUE, correction_steps = 1L))
+  }
   corrected <- estimate
-  corrected[free] <- pmin(pmax(corrected[free] + correction$correction,
-                               lower[free]), upper[free])
+  corrected[free] <- pmin(pmax(proposed[free], lower[free]), upper[free])
   record <- list(correction_steps = 1L)
   record$predicted_residual <- predict_correction_residual(
     bank_objective, estimate, corrected, free, root,
@@ -796,7 +823,7 @@ correct_and_certify <- function(engine, penalty, estimate, information,
     repeated <- repeat_correction(engine, penalty, corrected, root, free,
                                   validation_budget, seeds[[2L]],
                                   bank_objective, lower, upper,
-                                  correction$radius)
+                                  correction$radius, guarded = guarded)
     record$correction_steps <- 1L + length(repeated$lengths)
     record$correction_lengths <- repeated$lengths
     record$correction_converged <- repeated$converged
@@ -949,9 +976,12 @@ predict_correction_residual <- function(bank_objective, fitted, corrected,
 ##' bank of `n_draws` draws from `seed`), each in the fitting bank's curvature
 ##' at the current point, or the last positive-definite one, until a step is
 ##' shorter than `step_tolerance` radii of that bank, a step would be longer
-##' than the one before, or `maximum_steps` steps have been taken. The
-##' estimate then approaches the correction bank's own maximum, whose error is
-##' the noise of that bank alone. Each step costs one score on the
+##' than the one before, a step would take a parameter in `guarded` past its
+##' upper bound (`correct_and_certify()`), or `maximum_steps` steps have been
+##' taken. The estimate then approaches the correction bank's own maximum,
+##' whose error is the noise of that bank alone. A step past an upper bound
+##' is not taken and nothing is evaluated there, and its length is the
+##' residual left. Each step costs one score on the
 ##' correction bank and one Hessian on the fitting bank. Returns the
 ##' estimate, the curvature and its factor at the last point where it was
 ##' computed, the lengths of the steps taken in radii, whether the last was
@@ -963,7 +993,7 @@ predict_correction_residual <- function(bank_objective, fitted, corrected,
 repeat_correction <- function(engine, penalty, corrected, root, free,
                               n_draws, seed, bank_objective, lower, upper,
                               radius, step_tolerance = 0.1,
-                              maximum_steps = 4L) {
+                              maximum_steps = 4L, guarded = integer()) {
   lengths <- numeric()
   information <- NULL
   converged <- FALSE
@@ -978,12 +1008,13 @@ repeat_correction <- function(engine, penalty, corrected, root, free,
     length <- sqrt(sum(standardised^2)) / radius
     remaining <- length
     if (length(lengths) && length > lengths[length(lengths)]) break
+    proposed <- corrected
+    proposed[free] <- corrected[free] + backsolve(step_root, standardised)
+    if (any(proposed[guarded] > upper[guarded], na.rm = TRUE)) break
     root <- step_root
     if (!is.null(curvature$root)) information <- curvature$information
     lengths <- c(lengths, length)
-    corrected[free] <- pmin(pmax(corrected[free] +
-                                   backsolve(root, standardised),
-                                 lower[free]), upper[free])
+    corrected[free] <- pmin(pmax(proposed[free], lower[free]), upper[free])
     if (length < step_tolerance) {
       converged <- TRUE
       break
@@ -1572,22 +1603,22 @@ read_proposal_failure <- function(engine) {
   }
 }
 
-##' Hold an integrated nugget at exactly zero
+##' Hold integrated variances at exactly zero
 ##'
-##' With the nugget integrated out (`make_adaptive_mcml_engine()` with
-##' `integrate_noise = TRUE`), a nugget held at the boundary is set to the
-##' engine's `hold_log_ratio`, where the engine takes the plain kernel for every
-##' record, so that the held point is the model without a nugget. The test of a
-##' held variance and the certificate then rest on that model, where the slope
-##' of the likelihood in the nugget at zero is exact. Other engines and other
-##' parameters are unchanged.
+##' With terms integrated out (`make_adaptive_mcml_engine()` with
+##' `integrate_noise`), the variance of such a term held at the boundary, the
+##' nugget or a random effect among the engine's `hold_indices`, is set to the
+##' engine's `hold_log_ratio`, where the engine takes it as zero, so that the
+##' held point is the model without that term. The test of a held variance and
+##' the certificate then rest on that model, where the slope of the likelihood
+##' in the variance at zero is exact. Other engines and other parameters are
+##' unchanged.
 ##' @noRd
 hold_noise_at_zero <- function(engine, parameters, boundary) {
   hold <- engine$hold_log_ratio
-  index <- engine$layout$index$nu2
-  if (is.null(hold) || is.null(index) || !(index %in% boundary)) {
-    return(parameters)
-  }
+  index <- intersect(engine$hold_indices %||% engine$layout$index$nu2,
+                     boundary)
+  if (is.null(hold) || !length(index)) return(parameters)
   replace(parameters, index, hold)
 }
 

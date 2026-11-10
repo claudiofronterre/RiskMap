@@ -168,16 +168,27 @@ make_latent_map <- function(columns, dimension) {
   pair_rows <- columns[, rep(seq_len(width), each = width), drop = FALSE]
   pair_cols <- columns[, rep(seq_len(width), times = width), drop = FALSE]
   linear <- as.vector(pair_rows) + (as.vector(pair_cols) - 1) * dimension
+  observation <- rep(seq_len(nrow(columns)), times = width^2)
+  # A random-effect level integrated out of an observation has no latent
+  # column, marked 0 (plan_integrated_records()), and enters no pair.
+  if (any(columns == 0L)) {
+    live <- as.vector(pair_rows) > 0L & as.vector(pair_cols) > 0L
+    linear <- linear[live]
+    observation <- observation[live]
+  }
   list(columns = columns, dimension = dimension,
-       pair_linear = linear,
-       pair_observation = rep(seq_len(nrow(columns)), times = width^2))
+       pair_linear = linear, pair_observation = observation)
 }
 
 latent_linear_predictor <- function(latent_map, latent) {
   columns <- latent_map$columns
   eta <- latent[columns[, 1L]]
   if (ncol(columns) > 1L) {
-    for (j in 2:ncol(columns)) eta <- eta + latent[columns[, j]]
+    for (j in 2:ncol(columns)) {
+      index <- columns[, j]
+      eta <- eta + if (any(index == 0L)) c(0, latent)[index + 1L] else
+        latent[index]
+    }
   }
   eta
 }
@@ -187,9 +198,20 @@ latent_gradient <- function(latent_map, score) {
   for (j in seq_len(ncol(latent_map$columns))) {
     sums <- rowsum(score, latent_map$columns[, j], reorder = FALSE)
     index <- as.integer(rownames(sums))
-    out[index] <- out[index] + sums[, 1L]
+    live <- index > 0L
+    out[index[live]] <- out[index[live]] + sums[live, 1L]
   }
   out
+}
+
+##' The latent samples of each observation's random-effect level
+##'
+##' Columns `index` of the matrix of latent `samples`, with zeros where an
+##' observation's level is integrated out (column 0).
+##' @noRd
+latent_level_samples <- function(samples, index) {
+  if (!any(index == 0L)) return(samples[, index, drop = FALSE])
+  cbind(0, samples)[, index + 1L, drop = FALSE]
 }
 
 latent_data_hessian <- function(latent_map, curvature) {
@@ -586,7 +608,7 @@ compute_log_weights_in_r <- function(draws, proposal, defensive,
     rep(linear_offset, each = nrow(samples))
   for (j in seq_along(latent$random)) {
     random_samples <- samples[, latent$random[[j]], drop = FALSE]
-    eta <- eta + samples[, columns[, j + 1L], drop = FALSE]
+    eta <- eta + latent_level_samples(samples, columns[, j + 1L])
     log_prior <- log_prior - 0.5 * (
       length(latent$random[[j]]) * log(2 * pi * values$sigma2_re[j]) +
         rowSums(random_samples^2) / values$sigma2_re[j]
@@ -683,15 +705,21 @@ summarise_stalled_anchors <- function(history) {
 ##' full mixture density. With `defensive_weight = 0` the proposal is the
 ##' Gaussian component alone.
 ##'
-##' With `integrate_noise = TRUE` and a nugget, the nugget is integrated out of
-##' the likelihood of each record (`make_integrated_kernel()`), so the latent
-##' effects are the spatial effect at the locations and the random-effect
-##' levels, with the nugget left in the prior only at locations that keep
-##' several records after identical ones are summed
-##' (`prepare_integrated_records()`). The model and its parameters are the same.
-##' A nugget whose log ratio is at `hold_log_ratio` is zero, and every record
-##' then takes the plain kernel. `spatial_covariance()` gives the covariance of
-##' the location effects with the whole nugget in either form. In this form a
+##' With `integrate_noise`, the nugget and the levels of random effects that
+##' lie within one location are integrated out of the likelihood of the records
+##' by the rules of `plan_integrated_records()` (`make_integrated_kernel()`).
+##' `integrate_noise` is `TRUE` for every term the rules allow and `FALSE` for
+##' none. The latent effects are then the
+##' spatial effect at the locations and the sampled random-effect levels, with
+##' the nugget left in the prior only at the locations where it is sampled. The
+##' model and its parameters are the same. An integrated variance whose log
+##' parameter is at `hold_log_ratio` is zero, and the records it entered then
+##' take the plain kernel or the rest of their integrated variance.
+##' `spatial_covariance()` gives the covariance of the location effects with
+##' the whole nugget in either form, `integrated_terms` the terms integrated
+##' out at one level or more, `integration_counts` how many levels of each
+##' term are integrated out, and `hold_indices` the parameters held at exactly
+##' zero (`hold_noise_at_zero()`). In this form a
 ##' global iteration that stops at its limit of refits with a last change below
 ##' 0.01 is accepted rather than counted as a failure (`build_gaussian_proposal()`),
 ##' and `stalled_anchors()` gives how many were accepted since the failures were
@@ -738,43 +766,65 @@ make_adaptive_mcml_engine <- function(
   if (is.null(cov_offset)) cov_offset <- numeric(length(y))
   if (is.null(ID_coords)) ID_coords <- seq_len(length(y))
   if (!is.null(ID_re)) ID_re <- as.matrix(ID_re)
-  # With integrate_noise the nugget is integrated out of each record's
-  # likelihood (make_integrated_kernel()), except at locations that keep
-  # several records after identical ones are summed, where it stays sampled
-  # (`several`).
+  # The terms that can be integrated out: the nugget, then each random effect.
   has_nugget <- isTRUE(fix_tau2) ||
     (is.numeric(fix_tau2) && isTRUE(fix_tau2 > 0))
-  integrated <- isTRUE(integrate_noise) && has_nugget
+  re_terms <- if (!is.null(ID_re)) {
+    paste0("re(", colnames(ID_re) %||% paste0("effect", seq_len(ncol(ID_re))),
+           ")")
+  }
+  term_names <- c("nugget", re_terms)
+  allowed <- stats::setNames(rep(isTRUE(integrate_noise), length(term_names)),
+                             term_names)
+  allowed[["nugget"]] <- allowed[["nugget"]] && has_nugget
+  plan <- if (any(allowed)) {
+    plan_integrated_records(y, units_m, D, cov_offset, ID_coords, ID_re,
+                            n_loc, allowed)
+  }
+  integrated <- isTRUE(plan$any)
   # The last change below which a global iteration that stops at its limit
   # of refits is accepted, in the integrated form (build_gaussian_proposal()).
   stall_tolerance <- 1e-2
-  several <- rep(FALSE, n_loc)
+  # Whether the nugget is integrated out at any location, and where it stays
+  # sampled in the prior.
+  nugget_integrated <- integrated && isTRUE(allowed[["nugget"]]) &&
+    any(plan$nugget_integrated)
+  nugget_sampled <- if (nugget_integrated) !plan$nugget_integrated
+  n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
   if (integrated) {
-    records <- prepare_integrated_records(y, units_m, D, cov_offset,
-                                          ID_coords, ID_re, n_loc)
-    y <- records$y
-    units_m <- records$units_m
-    D <- records$D
-    cov_offset <- records$cov_offset
-    ID_coords <- records$ID_coords
-    ID_re <- records$ID_re
-    several <- records$several
+    y <- plan$y
+    units_m <- plan$units_m
+    D <- plan$D
+    cov_offset <- plan$cov_offset
+    ID_coords <- plan$ID_coords
+    ID_re <- plan$ID_re
   }
   n <- length(y)
-  n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
-  n_dim_re <- if (n_re) apply(ID_re, 2L, max) else integer()
+  n_dim_re <- if (!n_re) integer() else if (integrated) {
+    as.integer(plan$sampled_levels)
+  } else {
+    apply(ID_re, 2L, max)
+  }
   layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
                            sigma2_me = FALSE, n_re = n_re)
 
   linkf <- make_inverse_link_functions(family, invlink, n)
   canonical <- identical(linkf$name, "canonical")
   sites <- if (integrated) {
-    make_site_table(y, units_m, family, plain = several[ID_coords],
-                    linkf = linkf)
+    make_site_table(y, units_m, family, linkf = linkf, kind = plan$kind,
+                    a = plan$a, b = plan$b, patterns = plan$patterns)
   }
-  # A nugget whose log ratio is at this value is held at exactly zero, and
-  # every record then takes the plain kernel.
+  # A variance whose log parameter is at this value is held at exactly zero,
+  # and the records it entered lose it from their integrated variance.
   hold_log_ratio <- -20
+  # The integrated terms in the order of the plan's classes, with the index of
+  # each one's log parameter.
+  term_index <- c(if (isTRUE(fix_tau2)) layout$index$nu2 else NA_integer_,
+                  if (n_re) layout$index$sigma2_re)
+  hold_indices <- if (integrated) {
+    held <- term_index[term_names %in% plan$integrated_terms]
+    held[!is.na(held)]
+  }
 
   unpack <- function(parameters) {
     sigma2 <- exp(parameters[layout$index$sigma2])
@@ -788,18 +838,30 @@ make_adaptive_mcml_engine <- function(
       sigma2_re = if (n_re) exp(parameters[layout$index$sigma2_re]) else NULL
     )
     if (integrated) {
-      # The nugget variance of the integrated records, and the nugget ratio
-      # left in the prior, at the locations where the nugget stays sampled.
-      held <- isTRUE(fix_tau2) &&
-        parameters[layout$index$nu2] <= hold_log_ratio
-      values$noise_variance <- if (held) 0 else sigma2 * nugget
-      values$prior_ratio <- if (held || !any(several)) 0 else nugget * several
+      # The variance of each term, zero where it is held, the variances of the
+      # classes of integrated records, and the nugget ratio left in the prior
+      # at the locations where the nugget stays sampled.
+      held <- !is.na(term_index) &
+        parameters[pmax(term_index, 1L)] <= hold_log_ratio
+      variances <- c(if (has_nugget) sigma2 * nugget else 0,
+                     values$sigma2_re)
+      variances[held] <- 0
+      values$term_variances <- stats::setNames(variances, term_names)
+      values$class_variances <- if (nrow(plan$classes)) {
+        as.numeric((plan$classes + 0) %*% variances)
+      } else {
+        numeric()
+      }
+      if (nugget_integrated) {
+        values$prior_ratio <- if (held[1L] || !any(nugget_sampled)) 0 else
+          nugget * nugget_sampled
+      }
     }
     values
   }
   # The nugget ratio in the prior of the latent effects.
   latent_ratio <- function(values) {
-    if (integrated) values$prior_ratio else values$nugget_ratio
+    if (nugget_integrated) values$prior_ratio else values$nugget_ratio
   }
 
   half_integer_kappa <- kappa %in% c(0.5, 1.5, 2.5)
@@ -822,18 +884,21 @@ make_adaptive_mcml_engine <- function(
     values$sigma2 * correlation
   }
 
+  # A random effect integrated out at every level has no latent columns.
   latent_layout <- function() {
     indices <- vector("list", n_re)
+    first <- integer(n_re)
     next_index <- n_loc + 1L
     if (n_re) for (j in seq_len(n_re)) {
-      indices[[j]] <- next_index:(next_index + n_dim_re[j] - 1L)
+      indices[[j]] <- next_index - 1L + seq_len(n_dim_re[j])
+      first[j] <- next_index
       next_index <- next_index + n_dim_re[j]
     }
-    list(spatial = seq_len(n_loc), random = indices,
+    list(spatial = seq_len(n_loc), random = indices, first = first,
          dimension = next_index - 1L)
   }
   latent <- latent_layout()
-  random_first <- vapply(latent$random, function(index) index[1L], integer(1))
+  random_first <- latent$first
   random_size <- as.integer(n_dim_re)
 
   # The spatial covariance at one parameter value, its upper Cholesky factor
@@ -872,9 +937,10 @@ make_adaptive_mcml_engine <- function(
   # Index map from latent variables (spatial locations, then random-effect
   # levels) to observations, built once.
   latent_map <- make_latent_map(
-    cbind(ID_coords, if (n_re) vapply(seq_len(n_re), function(j) {
-      latent$random[[j]][ID_re[, j]]
-    }, integer(n))),
+    if (integrated) plan$latent_columns else
+      cbind(ID_coords, if (n_re) vapply(seq_len(n_re), function(j) {
+        latent$random[[j]][ID_re[, j]]
+      }, integer(n))),
     latent$dimension
   )
   # The previous conditional mode is an excellent Newton start for nearby
@@ -884,7 +950,7 @@ make_adaptive_mcml_engine <- function(
   # The likelihood of the records at one parameter value: the link, or with
   # the nugget integrated out the records' table at the nugget variance.
   kernel_at <- function(values) {
-    if (integrated) make_integrated_kernel(sites, values$noise_variance) else
+    if (integrated) make_integrated_kernel(sites, values$class_variances) else
       linkf
   }
   # Converged global factors at a fixed parameter value (set by
@@ -1029,7 +1095,8 @@ make_adaptive_mcml_engine <- function(
         spatial_root, as.numeric(values$sigma2_re), same_parameters,
         linear_offset, latent_map$columns, random_first, random_size, y,
         units_m, family == "poisson", sites$pointer,
-        values$noise_variance %||% 0, sites$pair %||% integer()
+        values$class_variances %||% numeric(),
+        sites$units %||% matrix(0L, 0L, 4L)
       )
     } else {
       compute_log_weights_in_r(
@@ -1048,13 +1115,18 @@ make_adaptive_mcml_engine <- function(
   }
 
   # The groups of the effects whose variance can be tested at zero, by
-  # parameter. A nugget is one effect per location.
+  # parameter. A nugget is one effect per location. In a nested record a
+  # random effect integrated out as an inner term has no group (NA), and its
+  # slope comes from the record's own derivative in the inner variance.
   slope_groups <- c(if (!is.null(layout$index$nu2)) {
     stats::setNames(list(ID_coords), layout$index$nu2)
   }, if (n_re) {
     stats::setNames(lapply(seq_len(n_re), function(j) ID_re[, j]),
                     layout$index$sigma2_re)
   })
+  inner_records <- if (integrated && n_re) {
+    stats::setNames(plan$inner, layout$index$sigma2_re)
+  }
   # With the spatial variance at zero the nugget ratio says nothing about the
   # nugget itself, so only the other effects can be tested.
   testable_variances <- function(boundary) {
@@ -1077,16 +1149,35 @@ make_adaptive_mcml_engine <- function(
     eta <- samples[, latent_map$columns[, 1L], drop = FALSE] +
       rep(proposal$mu, each = nrow(samples))
     for (j in seq_along(latent$random)) {
-      eta <- eta + samples[, latent_map$columns[, j + 1L], drop = FALSE]
+      eta <- eta + latent_level_samples(samples, latent_map$columns[, j + 1L])
     }
-    derivatives <- if (integrated && proposal$values$noise_variance > 0) {
-      cpp_site_evaluate(sites$pointer, proposal$values$noise_variance,
-                        sites$pair, eta, FALSE, 2L)
+    classes <- proposal$values$class_variances
+    derivatives <- if (integrated && any(classes > 0)) {
+      cpp_site_evaluate(sites$pointer, classes, sites$units, eta, FALSE, 2L)
     }
     vapply(tested, function(parameter) {
-      compute_variance_slope_terms(eta, y, units_m, family,
-                                   slope_groups[[as.character(parameter)]],
-                                   if (!canonical) linkf, derivatives)
+      group <- slope_groups[[as.character(parameter)]]
+      inner <- inner_records[[as.character(parameter)]]
+      if (!length(inner)) {
+        return(compute_variance_slope_terms(eta, y, units_m, family, group,
+                                            if (!canonical) linkf,
+                                            derivatives))
+      }
+      # Records whose term is an inner one take their own slope, and the
+      # others the grouped form.
+      keep <- !is.na(group)
+      grouped <- compute_variance_slope_terms(
+        eta[, keep, drop = FALSE], y[keep], units_m[keep], family,
+        group[keep], if (!canonical) linkf,
+        if (!is.null(derivatives)) {
+          list(h1 = derivatives$h1[, keep, drop = FALSE],
+               h2 = derivatives$h2[, keep, drop = FALSE])
+        }
+      )
+      slopes <- cpp_site_inner_slopes(sites$pointer, classes,
+                                      sites$units[inner, , drop = FALSE],
+                                      eta[, inner, drop = FALSE])
+      grouped + rowSums(slopes)
     }, numeric(nrow(draws)))
   }
 
@@ -1098,8 +1189,20 @@ make_adaptive_mcml_engine <- function(
          covariance_at(unpack(parameters), marginal = TRUE)
        },
        integrated = integrated,
-       hold_log_ratio = if (integrated && isTRUE(fix_tau2)) hold_log_ratio,
-       integrated_locations = if (integrated) sum(!several) else 0L,
+       integrated_terms = if (integrated) plan$integrated_terms else
+         character(),
+       term_names = term_names,
+       # Without a nugget only the random effects are counted.
+       integration_counts = if (integrated) {
+         plan$counts[c(has_nugget, rep(TRUE, n_re)), , drop = FALSE]
+       },
+       hold_log_ratio = if (length(hold_indices)) hold_log_ratio,
+       hold_indices = hold_indices,
+       integrated_locations = if (nugget_integrated) {
+         sum(plan$nugget_integrated)
+       } else {
+         0L
+       },
        site_table_info = function() {
          if (integrated) cpp_site_table_info(sites$pointer)
        },
@@ -1192,9 +1295,14 @@ make_adaptive_mcml_engine <- function(
 ##' the sampled form where the nugget variance at the maximum was below 0.1, 9
 ##' and 9 of 18 between 0.1 and 0.3, and 68 against 28 of 75 above 0.3.
 ##'
+##' A model with an `re()` term that can be integrated out is fitted with all
+##' its terms integrated out (`glgpm_nong_adaptive()`), so the engine serves
+##' models whose only such term is the nugget.
+##'
 ##' The two forms have the same parameters, layout and latent dimension, so
 ##' the returned engine has the interface of `make_adaptive_mcml_engine()`.
-##' It is an environment, whose `integrated`, `hold_log_ratio` and
+##' It is an environment, whose `integrated`, `hold_log_ratio`,
+##' `hold_indices`, `integrated_terms`, `integration_counts` and
 ##' `integrated_locations` are those of the form in use. `form()` gives that
 ##' form, `set_form()` sets it, the proposal type is set in both forms, the
 ##' failures of both are reset together, and the counts of mode searches and
@@ -1235,10 +1343,13 @@ make_switching_mcml_engine <- function(sampled, integrated, threshold = 0.1) {
   }
   makeActiveBinding("integrated", function() identical(current, "integrated"),
                     engine)
-  makeActiveBinding("hold_log_ratio",
-                    function() engines[[current]]$hold_log_ratio, engine)
-  makeActiveBinding("integrated_locations",
-                    function() engines[[current]]$integrated_locations, engine)
+  for (name in c("hold_log_ratio", "hold_indices", "integrated_terms",
+                 "integration_counts", "integrated_locations")) {
+    local({
+      field <- name
+      makeActiveBinding(field, function() engines[[current]][[field]], engine)
+    })
+  }
   engine$form <- function() current
   engine$set_form <- function(form) {
     current <<- match.arg(form, c("sampled", "integrated"))
@@ -1511,19 +1622,21 @@ glgpm_nong_adaptive <- function(
       integrate_noise = integrate_noise
     )
   }
-  # With integrate_noise = "auto" and a nugget, both forms are built and each
-  # stage uses one of them (make_switching_mcml_engine()). The threshold can
-  # be changed through control_mcml$integrate_threshold, for experiments.
+  # With integrate_noise = "auto", a model with an re() term that can be
+  # integrated out is fitted as with TRUE, with that term and the nugget
+  # integrated out wherever the rules allow, at every stage. A model whose only
+  # such term is the nugget builds the sampled and the integrated form, and
+  # each stage uses one of them (make_switching_mcml_engine()). The threshold
+  # can be changed through control_mcml$integrate_threshold, for experiments.
   automatic <- identical(control_mcml$integrate_noise, "auto")
-  engine <- engine_with(isTRUE(control_mcml$integrate_noise))
-  if (automatic) {
-    integrated <- engine_with(TRUE)
-    if (isTRUE(integrated$integrated)) {
-      engine <- make_switching_mcml_engine(
-        engine, integrated,
-        threshold = control_mcml$integrate_threshold %||% 0.1
-      )
-    }
+  engine <- engine_with(isTRUE(control_mcml$integrate_noise) || automatic)
+  if (automatic && !isTRUE(engine$integrated)) {
+    engine <- engine_with(FALSE)
+  } else if (automatic && setequal(engine$integrated_terms, "nugget")) {
+    engine <- make_switching_mcml_engine(
+      engine_with(FALSE), engine,
+      threshold = control_mcml$integrate_threshold %||% 0.1
+    )
   }
   start <- make_working_start(reference_pars, fix_tau2)
   # Coordinates and the initial scale are rescaled before this function is
@@ -1632,6 +1745,8 @@ glgpm_nong_adaptive <- function(
                          used = engine$integrated,
                          locations = engine$integrated_locations,
                          of = nrow(distances),
+                         terms = engine$integrated_terms,
+                         counts = engine$integration_counts,
                          forms = fit$forms
                        ))
 }
@@ -1699,9 +1814,10 @@ compute_practical_range_factor <- function(kappa, correlation = 0.05) {
 
 ##' Build the fitted object returned by `glgpm_nong_adaptive()`
 ##'
-##' `integration` says whether the nugget was integrated out (`used`) at the
-##' last stage, at how many `locations` and `of` how many, and for an automatic
-##' choice of the form the `forms` of the stages.
+##' `integration` says whether any term was integrated out (`used`) at the
+##' last stage, at how many `locations` the nugget was and `of` how many, which
+##' `terms` were integrated out with the `counts` of their levels, and for an
+##' automatic choice of the form the `forms` of the stages.
 ##' @noRd
 assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
                                  re_names, family, invlink, n_observations,
@@ -1754,6 +1870,8 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
     mcml_noise_forms = integration$forms,
     mcml_integrated_locations = integration$locations %||% 0L,
     mcml_locations = integration$of,
+    mcml_integrated_terms = integration$terms,
+    mcml_integration_counts = integration$counts,
     mcml_pc_prior = pc_prior,
     laplace_start = laplace,
     mcml_boundary = boundary_names,
@@ -1955,10 +2073,17 @@ report_mcml_outcome <- function(fit, layout, tolerance, messages,
       call. = FALSE
     )
   } else if (!fit$certified) {
-    refused <- isTRUE(fit$history[[length(fit$history)]]$residual_refused)
+    last <- fit$history[[length(fit$history)]]
+    refused <- isTRUE(last$residual_refused)
     warning(
       "The Monte Carlo error of the estimate is not certified. ",
-      if (refused) paste0(
+      if (isTRUE(last$correction_left_bounds)) paste0(
+        "The Newton correction of the estimate would have taken a variance or ",
+        "scale past the upper bound of the search, along a direction where ",
+        "the likelihood is nearly flat, so it was not applied, and the ",
+        "approximate 95% bound of ",
+        signif(fit$certificate, 2), " statistical standard errors may not hold."
+      ) else if (refused) paste0(
         "The Newton correction of the estimate did not converge on the ",
         "validation draws, so the approximate 95% bound of ",
         signif(fit$certificate, 2), " statistical standard errors may not hold."

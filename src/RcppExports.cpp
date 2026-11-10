@@ -67,8 +67,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // cpp_importance_log_weights
-NumericVector cpp_importance_log_weights(const NumericMatrix& draws, const NumericMatrix& root, const NumericVector& centre, const LogicalVector& defensive, const double share, const NumericMatrix& proposal_spatial_root, const NumericVector& proposal_sigma2_re, const NumericMatrix& target_spatial_root, const NumericVector& target_sigma2_re, const bool same_parameters, const NumericVector& linear_offset, const IntegerMatrix& columns, const IntegerVector& random_first, const IntegerVector& random_size, const NumericVector& y, const NumericVector& units, const bool poisson, SEXP site_table, const double site_v, const IntegerVector& site_pair);
-RcppExport SEXP _RiskMap_cpp_importance_log_weights(SEXP drawsSEXP, SEXP rootSEXP, SEXP centreSEXP, SEXP defensiveSEXP, SEXP shareSEXP, SEXP proposal_spatial_rootSEXP, SEXP proposal_sigma2_reSEXP, SEXP target_spatial_rootSEXP, SEXP target_sigma2_reSEXP, SEXP same_parametersSEXP, SEXP linear_offsetSEXP, SEXP columnsSEXP, SEXP random_firstSEXP, SEXP random_sizeSEXP, SEXP ySEXP, SEXP unitsSEXP, SEXP poissonSEXP, SEXP site_tableSEXP, SEXP site_vSEXP, SEXP site_pairSEXP) {
+NumericVector cpp_importance_log_weights(const NumericMatrix& draws, const NumericMatrix& root, const NumericVector& centre, const LogicalVector& defensive, const double share, const NumericMatrix& proposal_spatial_root, const NumericVector& proposal_sigma2_re, const NumericMatrix& target_spatial_root, const NumericVector& target_sigma2_re, const bool same_parameters, const NumericVector& linear_offset, const IntegerMatrix& columns, const IntegerVector& random_first, const IntegerVector& random_size, const NumericVector& y, const NumericVector& units, const bool poisson, SEXP site_table, const NumericVector& site_classes, const IntegerMatrix& site_units);
+RcppExport SEXP _RiskMap_cpp_importance_log_weights(SEXP drawsSEXP, SEXP rootSEXP, SEXP centreSEXP, SEXP defensiveSEXP, SEXP shareSEXP, SEXP proposal_spatial_rootSEXP, SEXP proposal_sigma2_reSEXP, SEXP target_spatial_rootSEXP, SEXP target_sigma2_reSEXP, SEXP same_parametersSEXP, SEXP linear_offsetSEXP, SEXP columnsSEXP, SEXP random_firstSEXP, SEXP random_sizeSEXP, SEXP ySEXP, SEXP unitsSEXP, SEXP poissonSEXP, SEXP site_tableSEXP, SEXP site_classesSEXP, SEXP site_unitsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -90,9 +90,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const NumericVector& >::type units(unitsSEXP);
     Rcpp::traits::input_parameter< const bool >::type poisson(poissonSEXP);
     Rcpp::traits::input_parameter< SEXP >::type site_table(site_tableSEXP);
-    Rcpp::traits::input_parameter< const double >::type site_v(site_vSEXP);
-    Rcpp::traits::input_parameter< const IntegerVector& >::type site_pair(site_pairSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_importance_log_weights(draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson, site_table, site_v, site_pair));
+    Rcpp::traits::input_parameter< const NumericVector& >::type site_classes(site_classesSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type site_units(site_unitsSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_importance_log_weights(draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson, site_table, site_classes, site_units));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -140,8 +140,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // cpp_site_table_create
-SEXP cpp_site_table_create(const NumericVector& y, const NumericVector& m, const bool poisson, const NumericVector& z, const NumericVector& log_w, SEXP custom);
-RcppExport SEXP _RiskMap_cpp_site_table_create(SEXP ySEXP, SEXP mSEXP, SEXP poissonSEXP, SEXP zSEXP, SEXP log_wSEXP, SEXP customSEXP) {
+SEXP cpp_site_table_create(const NumericVector& y, const NumericVector& m, const bool poisson, const NumericVector& z, const NumericVector& log_w, SEXP custom, const List& patterns, const IntegerVector& summed);
+RcppExport SEXP _RiskMap_cpp_site_table_create(SEXP ySEXP, SEXP mSEXP, SEXP poissonSEXP, SEXP zSEXP, SEXP log_wSEXP, SEXP customSEXP, SEXP patternsSEXP, SEXP summedSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -151,37 +151,53 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const NumericVector& >::type z(zSEXP);
     Rcpp::traits::input_parameter< const NumericVector& >::type log_w(log_wSEXP);
     Rcpp::traits::input_parameter< SEXP >::type custom(customSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_site_table_create(y, m, poisson, z, log_w, custom));
+    Rcpp::traits::input_parameter< const List& >::type patterns(patternsSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector& >::type summed(summedSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_site_table_create(y, m, poisson, z, log_w, custom, patterns, summed));
     return rcpp_result_gen;
 END_RCPP
 }
 // cpp_site_evaluate
-List cpp_site_evaluate(SEXP table, const double v, const IntegerVector& pair, const NumericMatrix& eta, const bool by_row, const int order);
-RcppExport SEXP _RiskMap_cpp_site_evaluate(SEXP tableSEXP, SEXP vSEXP, SEXP pairSEXP, SEXP etaSEXP, SEXP by_rowSEXP, SEXP orderSEXP) {
+List cpp_site_evaluate(SEXP table, const NumericVector& classes, const IntegerMatrix& units, const NumericMatrix& eta, const bool by_row, const int order);
+RcppExport SEXP _RiskMap_cpp_site_evaluate(SEXP tableSEXP, SEXP classesSEXP, SEXP unitsSEXP, SEXP etaSEXP, SEXP by_rowSEXP, SEXP orderSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type table(tableSEXP);
-    Rcpp::traits::input_parameter< const double >::type v(vSEXP);
-    Rcpp::traits::input_parameter< const IntegerVector& >::type pair(pairSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type classes(classesSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type units(unitsSEXP);
     Rcpp::traits::input_parameter< const NumericMatrix& >::type eta(etaSEXP);
     Rcpp::traits::input_parameter< const bool >::type by_row(by_rowSEXP);
     Rcpp::traits::input_parameter< const int >::type order(orderSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_site_evaluate(table, v, pair, eta, by_row, order));
+    rcpp_result_gen = Rcpp::wrap(cpp_site_evaluate(table, classes, units, eta, by_row, order));
     return rcpp_result_gen;
 END_RCPP
 }
 // cpp_site_row_sums
-NumericVector cpp_site_row_sums(SEXP table, const double v, const IntegerVector& pair, const NumericMatrix& eta);
-RcppExport SEXP _RiskMap_cpp_site_row_sums(SEXP tableSEXP, SEXP vSEXP, SEXP pairSEXP, SEXP etaSEXP) {
+NumericVector cpp_site_row_sums(SEXP table, const NumericVector& classes, const IntegerMatrix& units, const NumericMatrix& eta);
+RcppExport SEXP _RiskMap_cpp_site_row_sums(SEXP tableSEXP, SEXP classesSEXP, SEXP unitsSEXP, SEXP etaSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< SEXP >::type table(tableSEXP);
-    Rcpp::traits::input_parameter< const double >::type v(vSEXP);
-    Rcpp::traits::input_parameter< const IntegerVector& >::type pair(pairSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type classes(classesSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type units(unitsSEXP);
     Rcpp::traits::input_parameter< const NumericMatrix& >::type eta(etaSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_site_row_sums(table, v, pair, eta));
+    rcpp_result_gen = Rcpp::wrap(cpp_site_row_sums(table, classes, units, eta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// cpp_site_inner_slopes
+NumericMatrix cpp_site_inner_slopes(SEXP table, const NumericVector& classes, const IntegerMatrix& units, const NumericMatrix& eta);
+RcppExport SEXP _RiskMap_cpp_site_inner_slopes(SEXP tableSEXP, SEXP classesSEXP, SEXP unitsSEXP, SEXP etaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type table(tableSEXP);
+    Rcpp::traits::input_parameter< const NumericVector& >::type classes(classesSEXP);
+    Rcpp::traits::input_parameter< const IntegerMatrix& >::type units(unitsSEXP);
+    Rcpp::traits::input_parameter< const NumericMatrix& >::type eta(etaSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_site_inner_slopes(table, classes, units, eta));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -256,9 +272,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_RiskMap_cpp_importance_log_weights", (DL_FUNC) &_RiskMap_cpp_importance_log_weights, 20},
     {"_RiskMap_cpp_canonical_log_likelihood", (DL_FUNC) &_RiskMap_cpp_canonical_log_likelihood, 4},
     {"_RiskMap_cpp_canonical_mala", (DL_FUNC) &_RiskMap_cpp_canonical_mala, 19},
-    {"_RiskMap_cpp_site_table_create", (DL_FUNC) &_RiskMap_cpp_site_table_create, 6},
+    {"_RiskMap_cpp_site_table_create", (DL_FUNC) &_RiskMap_cpp_site_table_create, 8},
     {"_RiskMap_cpp_site_evaluate", (DL_FUNC) &_RiskMap_cpp_site_evaluate, 6},
     {"_RiskMap_cpp_site_row_sums", (DL_FUNC) &_RiskMap_cpp_site_row_sums, 4},
+    {"_RiskMap_cpp_site_inner_slopes", (DL_FUNC) &_RiskMap_cpp_site_inner_slopes, 4},
     {"_RiskMap_cpp_site_table_info", (DL_FUNC) &_RiskMap_cpp_site_table_info, 1},
     {"_RiskMap_cpp_pairwise_distances", (DL_FUNC) &_RiskMap_cpp_pairwise_distances, 1},
     {"_RiskMap_cpp_cross_distances", (DL_FUNC) &_RiskMap_cpp_cross_distances, 2},

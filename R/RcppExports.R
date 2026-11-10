@@ -17,8 +17,8 @@ cpp_spatial_prior_factors <- function(distances, dimension, phi, kappa, sigma2, 
     .Call(`_RiskMap_cpp_spatial_prior_factors`, distances, dimension, phi, kappa, sigma2, nugget_ratio)
 }
 
-cpp_importance_log_weights <- function(draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson, site_table, site_v, site_pair) {
-    .Call(`_RiskMap_cpp_importance_log_weights`, draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson, site_table, site_v, site_pair)
+cpp_importance_log_weights <- function(draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson, site_table, site_classes, site_units) {
+    .Call(`_RiskMap_cpp_importance_log_weights`, draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson, site_table, site_classes, site_units)
 }
 
 cpp_canonical_log_likelihood <- function(eta_r, y_r, units_r, poisson) {
@@ -29,16 +29,20 @@ cpp_canonical_mala <- function(y_r, units_r, mu_r, proposal_lower_r, proposal_up
     .Call(`_RiskMap_cpp_canonical_mala`, y_r, units_r, mu_r, proposal_lower_r, proposal_upper_r, prior_lower_r, prior_upper_r, transformed_prior_mean_r, proposal_mean_r, location_id_r, n_locations, random_effect_id_r, family, n_sim, burnin, thin, step_size, adaptation_scale, adaptation_exponent)
 }
 
-cpp_site_table_create <- function(y, m, poisson, z, log_w, custom) {
-    .Call(`_RiskMap_cpp_site_table_create`, y, m, poisson, z, log_w, custom)
+cpp_site_table_create <- function(y, m, poisson, z, log_w, custom, patterns, summed) {
+    .Call(`_RiskMap_cpp_site_table_create`, y, m, poisson, z, log_w, custom, patterns, summed)
 }
 
-cpp_site_evaluate <- function(table, v, pair, eta, by_row, order) {
-    .Call(`_RiskMap_cpp_site_evaluate`, table, v, pair, eta, by_row, order)
+cpp_site_evaluate <- function(table, classes, units, eta, by_row, order) {
+    .Call(`_RiskMap_cpp_site_evaluate`, table, classes, units, eta, by_row, order)
 }
 
-cpp_site_row_sums <- function(table, v, pair, eta) {
-    .Call(`_RiskMap_cpp_site_row_sums`, table, v, pair, eta)
+cpp_site_row_sums <- function(table, classes, units, eta) {
+    .Call(`_RiskMap_cpp_site_row_sums`, table, classes, units, eta)
+}
+
+cpp_site_inner_slopes <- function(table, classes, units, eta) {
+    .Call(`_RiskMap_cpp_site_inner_slopes`, table, classes, units, eta)
 }
 
 cpp_site_table_info <- function(table) {

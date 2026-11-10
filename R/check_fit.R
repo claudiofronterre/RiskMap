@@ -272,6 +272,15 @@ fit_check_monte_carlo <- function(mcml) {
         "There is no bound on the error, because the estimate is not a maximum.",
         "See the check of the variances."
       )
+    } else if (isTRUE(mcml$correction_left_bounds)) {
+      fit_check_row(
+        name, "PROBLEM",
+        paste0("The bound of ", bound, " standard errors may not hold, because ",
+               "the Newton correction of the estimate would have taken a ",
+               "variance or scale past the upper bound of the search, along a ",
+               "direction where the likelihood is nearly flat."),
+        "Refit with a larger 'max_samples' in set_control_mcml()."
+      )
     } else if (mcml$correction_refused) {
       fit_check_row(
         name, "PROBLEM",
@@ -320,13 +329,15 @@ fit_check_weights <- function(bank, suggest_integration = FALSE) {
   )
 }
 
-##' The advice to integrate the nugget out, for a fit that sampled it
+##' The advice to integrate the nugget or random effects out, for a fit that
+##' sampled them
 ##' @noRd
 describe_integration_advice <- function(suggest) {
   if (!suggest) return("")
   paste0(" Or refit with the default 'integrate_noise = \"auto\"' in ",
-         "set_control_mcml(), which integrates the nugget out where its ",
-         "variance is large and often keeps far more effective draws.")
+         "set_control_mcml(), which integrates the nugget and random effects ",
+         "within locations out where their variances are large and often ",
+         "keeps far more effective draws.")
 }
 
 ##' What the check for other maxima found

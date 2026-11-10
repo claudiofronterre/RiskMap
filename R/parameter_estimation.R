@@ -3405,35 +3405,62 @@ laplace_sampling_mcmc <- function(y,
 ##' the global importance distribution cannot be built at that estimate, as
 ##' can happen in sparse data when it has a very large nugget, the fit starts
 ##' from the starting values instead. `NULL` (the default) means `TRUE`, except
-##' with `integrate_noise = TRUE`, where it means `FALSE`, because there the
-##' Laplace approximation's spurious maximum moves to the spatial effect and
-##' the start from it costs more without certifying more fits. With
-##' `integrate_noise = "auto"` the Laplace estimate chooses the form of the
-##' first stage, which in the integrated form starts from the starting values.
-##' @param integrate_noise Logical, or `"auto"`. If `TRUE`, a binomial or Poisson model with
-##' a nugget integrates the nugget out of the likelihood of each location
-##' numerically, and Monte Carlo maximum likelihood samples only the spatial
-##' effect and any unstructured random effects. The model, its parameters and
-##' its likelihood are the same, so the option changes only how the same
-##' maximum is found. Sparse surveys with a large nugget then keep far more
-##' effective draws. At a location with several records that differ in their
-##' covariates, offset or random-effect levels the nugget stays sampled, and
-##' records that do not differ are combined. It works with any link, including
-##' a custom `invlink`. Where the nugget variance is close to zero the
-##' likelihood is nearly flat along the nugget, and there the Monte Carlo
-##' estimate of the nugget's effect is noisier with the nugget integrated out
-##' than sampled, so fewer such fits are certified. With `"auto"` each stage of
-##' the fit integrates the nugget out when its variance at the start of the
-##' stage is at least 0.1 and samples it otherwise. The first stage takes the
-##' variance from the Laplace estimate, or from the starting values if
-##' `laplace_start = FALSE`. Every validation bank is then drawn in both forms
+##' where `integrate_noise = TRUE` integrates a term out, where it means
+##' `FALSE`, because there the Laplace approximation's spurious maximum moves
+##' to the spatial effect and the start from it costs more without certifying
+##' more fits. With `integrate_noise = "auto"` and a nugget as the only term
+##' that can be integrated out, the Laplace estimate chooses the form of the
+##' first stage, which with the nugget integrated out starts from the starting
+##' values.
+##' @param integrate_noise Logical, or `"auto"`. If `TRUE`, a binomial or
+##' Poisson model integrates its independent Gaussian terms out of the
+##' likelihood numerically wherever the data allow it, and Monte Carlo maximum
+##' likelihood samples the spatial effect and the terms that stay. The model,
+##' its parameters and its likelihood are the same, so the option changes only
+##' how the same maximum is found. Sparse surveys with a large nugget, or with
+##' household effects, then keep far more effective draws. The terms are the
+##' nugget, whose levels are the locations, and each `re()` term. Records at a
+##' location with the same covariates, offset and random-effect levels are
+##' first combined into one unit. Then three rules apply.
+##' \itemize{
+##'   \item A level of an `re()` term that holds a single unit, such as a
+##'   household with one record or with records that do not differ, is
+##'   integrated out of that unit's likelihood, and so is the nugget of a
+##'   location with a single unit.
+##'   \item At a location with several units the nugget is integrated out as
+##'   well, through an integral over the nugget of the units' own integrals,
+##'   when the units share their covariates and offset and differ only in the
+##'   levels of `re()` terms that each hold a single unit, as households of a
+##'   village with covariates measured at the village do.
+##'   \item At any other location the nugget stays sampled.
+##' }
+##' Every other level stays sampled. That includes the levels of an `re()`
+##' term that span several locations, such as villages or districts with
+##' several sampled points, and levels that hold units with different
+##' covariates, such as a household of individuals of different ages. A term
+##' can be integrated out at some of its levels and sampled at others.
+##' `check_fit()` reports, for each term, at how many levels it was integrated
+##' out and at how many it stayed sampled. It works with any link, including a
+##' custom `invlink`. Where the nugget variance is close to zero the
+##' likelihood is nearly flat along it, and there the Monte Carlo estimate of
+##' its effect is noisier with the nugget integrated out than sampled, so fewer
+##' such fits are certified. With `"auto"` each stage of the fit integrates out
+##' the nugget if its variance at the start of the stage is at least 0.1 and
+##' samples it otherwise. The first stage takes the variance from the Laplace
+##' estimate, or from the starting values if `laplace_start = FALSE`. Every
+##' validation bank is then drawn with the nugget sampled and integrated out,
 ##' and the two estimates of the score are combined with weights inverse to
 ##' their Monte Carlo covariances, so the certificate rests on the more precise
 ##' form, or on both. A bank whose importance weights have a heavy tail, with a
 ##' Pareto k above 0.8, can understate its covariance and is left out of the
-##' combination. Defaults to `"auto"`, which on simulated surveys certified
-##' more fits than either form alone. A model without a nugget is fitted in
-##' the same way whatever the value.
+##' combination. A model with an `re()` term that can be integrated out is
+##' fitted with `"auto"` as with `TRUE`, its `re()` terms and its nugget
+##' integrated out at every stage wherever the rules above allow. On simulated
+##' surveys of households that certified every fit, and in a fraction of the
+##' time of sampling, also where the nugget variance was zero, where switching
+##' the nugget alone sometimes failed. Defaults to `"auto"`, which on simulated surveys with a nugget certified
+##' more fits than either form alone. A model without a nugget or `re()` terms
+##' is fitted in the same way whatever the value.
 ##' @param check_maxima Logical. The certificate establishes Monte Carlo
 ##' precision at the maximum found, not that no higher maximum exists. In
 ##' sparse surveys an optimiser can stop at a maximum with a spatial scale far

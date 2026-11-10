@@ -684,6 +684,82 @@ test_that("repeated corrections stop when a step does not contract", {
   expect_equal(repeated$estimate, 10, tolerance = 1e-6)
 })
 
+test_that("a correction past the upper bound of a covariance parameter is not applied", {
+  # Along the second parameter the curvature is 1e-4, as along a log variance
+  # near zero, so the exact score of the correction bank asks for a step to
+  # `target`, past a bound of 20 in absolute value.
+  scored <- 0L
+  correct <- function(target, coefficient_index) {
+    log_likelihood <- function(parameters) {
+      -(parameters[1] - 0.5)^2 / 2 - 1e-4 * (parameters[2] - target)^2 / 2
+    }
+    local_mocked_bindings(
+      score_validation_bank = function(engine, parameters, free, ...) {
+        scored <<- scored + 1L
+        list(score = c(0.5 - parameters[1],
+                       1e-4 * (target - parameters[2]))[free],
+             covariance = diag(1e-6, length(free)), log_likelihood = 0,
+             seconds = 0)
+      }
+    )
+    information <- compute_bank_curvature(log_likelihood, c(0, 0), 1:2)
+    information$gradient <- compute_central_gradient(log_likelihood, c(0, 0))
+    list(information = information,
+         result = correct_and_certify(NULL, NULL, c(0, 0),
+                                      c(information, list(free = 1:2)), 10L,
+                                      1:3, c(-30, -20), c(30, 20), 0.1,
+                                      bank_objective = log_likelihood,
+                                      coefficient_index = coefficient_index))
+  }
+  # As a covariance parameter, the correction is discarded after the first
+  # bank, and the fitted estimate is not certified, with that bank's bound.
+  upward <- correct(100, 1L)
+  left <- upward$result
+  expect_identical(scored, 1L)
+  expect_true(left$correction_left_bounds)
+  expect_identical(left$estimate, c(0, 0))
+  expect_false(left$certified)
+  expect_false(left$residual_refused)
+  expect_null(left$second_validation)
+  first <- certify_estimate(upward$information$root, c(0.5, 0.01),
+                            diag(1e-6, 2))
+  expect_equal(left$certificate, first$bound, tolerance = 1e-6)
+  # Past the lower bound it is clamped there, a component near zero.
+  downward <- correct(-100, 1L)$result
+  expect_null(downward$correction_left_bounds)
+  expect_identical(downward$estimate[2], -20)
+  # As a coefficient, it is clamped to the bound, where run_certified_stage()
+  # reports the likelihood as having no maximum.
+  clamped <- correct(100, 2L)$result
+  expect_null(clamped$correction_left_bounds)
+  expect_identical(clamped$estimate[2], 20)
+})
+
+test_that("repeated corrections stop before a step past a guarded upper bound", {
+  evaluated <- 0L
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, ...) {
+      evaluated <<- evaluated + 1L
+      list(score = 0.01)
+    }
+  )
+  flat <- function(parameters) -1e-4 * parameters^2 / 2
+  # The step of 0.01 / 1e-4 = 100 would leave the bound of 20, so it is not
+  # taken, nothing is evaluated past it, and its length is the residual left.
+  stopped <- repeat_correction(NULL, NULL, 0, chol(matrix(1e-4)), 1L, 10L,
+                               1L, flat, -20, 20, radius = 1, guarded = 1L)
+  expect_identical(evaluated, 1L)
+  expect_identical(stopped$estimate, 0)
+  expect_length(stopped$lengths, 0L)
+  expect_false(stopped$converged)
+  expect_equal(stopped$remaining, 1, tolerance = 1e-6)
+  # Unguarded, the step is clamped to the bound and the steps go on there.
+  clamped <- repeat_correction(NULL, NULL, 0, chol(matrix(1e-4)), 1L, 10L,
+                               1L, flat, -20, 20, radius = 1)
+  expect_identical(clamped$estimate, 20)
+  expect_gt(evaluated, 2L)
+})
+
 test_that("the validation radius leaves the caller's random numbers", {
   set.seed(77)
   before <- .Random.seed
