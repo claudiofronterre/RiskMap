@@ -59,9 +59,13 @@ std::vector<double> add_data_hessian(const NumericMatrix& precision,
   const int dimension = precision.nrow();
   const R_xlen_t size = static_cast<R_xlen_t>(dimension) * dimension;
   std::vector<double> data_hessian(size, 0.0);
+  // A column of 0 marks a level integrated out of the observation, which has
+  // no latent column.
   for (int first = 0; first < columns.ncol(); ++first) {
     for (int second = 0; second < columns.ncol(); ++second) {
       for (int observation = 0; observation < columns.nrow(); ++observation) {
+        if (columns(observation, first) == 0 ||
+            columns(observation, second) == 0) continue;
         const R_xlen_t row = columns(observation, first) - 1;
         const R_xlen_t column = columns(observation, second) - 1;
         data_hessian[row + column * dimension] += curvature[observation];
@@ -83,6 +87,7 @@ std::vector<double> compute_latent_gradient(const NumericVector& linear,
   for (int column = 0; column < columns.ncol(); ++column) {
     std::fill(column_sums.begin(), column_sums.end(), 0.0);
     for (int observation = 0; observation < columns.nrow(); ++observation) {
+      if (columns(observation, column) == 0) continue;
       column_sums[columns(observation, column) - 1] += linear[observation];
     }
     for (int latent = 0; latent < dimension; ++latent) {
@@ -163,12 +168,15 @@ SEXP cpp_global_marginals(const NumericMatrix& precision,
   }
   for (int column = 1; column < width; ++column) {
     for (int observation = 0; observation < observations; ++observation) {
+      if (columns(observation, column) == 0) continue;
       marginal_mean[observation] += centre[columns(observation, column) - 1];
     }
   }
   for (int first = 0; first < width; ++first) {
     for (int second = 0; second < width; ++second) {
       for (int observation = 0; observation < observations; ++observation) {
+        if (columns(observation, first) == 0 ||
+            columns(observation, second) == 0) continue;
         const R_xlen_t row = columns(observation, first) - 1;
         const R_xlen_t column = columns(observation, second) - 1;
         marginal_variance[observation] += inverse[row + column * dimension];

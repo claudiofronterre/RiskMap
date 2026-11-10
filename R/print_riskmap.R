@@ -11,9 +11,10 @@
 ##' likelihood rises as a held variance leaves zero (`variance_rising`), the
 ##' number of `stages`, the
 ##' `fitting_draws` and `validation_draws` of the last stage, the
-##' `certification_bank`, the number of locations whose nugget was integrated
-##' out of the likelihood at the last stage (`integrated_locations`, of
-##' `locations`), the forms of the stages of an automatic fit
+##' `certification_bank`, how many levels of each term were integrated out of
+##' the likelihood at the last stage (`integration`, a data frame with the
+##' `term`, the levels `integrated` and the `levels` in all, the nugget's
+##' levels being the locations), the forms of the stages of an automatic fit
 ##' (`noise_forms`), the largest
 ##' change of a factor at the last fixed refit of the last stage
 ##' (`refit_change`), whether to suggest integrating the nugget out
@@ -32,13 +33,13 @@ summarise_mcml_fit <- function(object) {
     certified = isTRUE(optimizer$mcml_certified),
     outcome = optimizer$mcml_outcome,
     correction_refused = isTRUE(last$residual_refused),
+    correction_left_bounds = isTRUE(last$correction_left_bounds),
     variance_rising = isTRUE(last$held_variance_rising),
     stages = optimizer$mcml_stages %||% length(history),
     fitting_draws = optimizer$mcml_budget,
     validation_draws = optimizer$mcml_validation_budget,
     certification_bank = if (!is.null(last)) summarise_certification_bank(last),
-    integrated_locations = optimizer$mcml_integrated_locations %||% 0L,
-    locations = optimizer$mcml_locations,
+    integration = describe_fit_integration(optimizer),
     noise_forms = optimizer$mcml_noise_forms,
     refit_change = last$refit_change %||% NA_real_,
     suggest_integration = suggests_integration(object, optimizer)
@@ -50,14 +51,15 @@ summarise_mcml_fit <- function(object) {
 ##' Whether `check_fit()` suggests integrating the nugget out
 ##'
 ##' For a fit that sampled a nugget whose variance is estimated, or fixed, at
-##' `threshold` or more. Where the nugget variance at the maximum is small the
-##' likelihood is nearly flat along the nugget, and there the integrated
-##' estimate of the nugget's score is the noisier of the two forms. In the
-##' larger test of the integrated form it certified 5 runs against 12 of 21 for
-##' the sampled form where that variance was below 0.1, 9 and 9 of 18 between
-##' 0.1 and 0.3, and 68 against 28 of 75 above 0.3. A nugget estimated as zero
-##' gets no suggestion, nor does a fit that chose the form itself
-##' (`integrate_noise = "auto"`).
+##' `threshold` or more, or a random effect with such a variance and some
+##' levels within one location. Where the variance at the maximum is small
+##' the likelihood is nearly flat along it, and there the integrated estimate
+##' of its score is the noisier of the two forms. In the larger test of the
+##' integrated nugget it certified 5 runs against 12 of 21 for the sampled
+##' form where that variance was below 0.1, 9 and 9 of 18 between 0.1 and 0.3,
+##' and 68 against 28 of 75 above 0.3. A variance estimated as zero gets no
+##' suggestion, nor does a fit that integrated terms out or chose the form
+##' itself (`integrate_noise = "auto"`).
 ##' @noRd
 suggests_integration <- function(object, optimizer, threshold = 0.1) {
   if (isTRUE(optimizer$mcml_integrate_noise) ||
@@ -69,7 +71,39 @@ suggests_integration <- function(object, optimizer, threshold = 0.1) {
   } else if (!is.null(object$estimate$nu2)) {
     exp(object$estimate$nu2 + object$estimate$sigma2)
   }
-  isTRUE(variance >= threshold)
+  if (isTRUE(variance >= threshold)) return(TRUE)
+  ID_re <- object$ID_re
+  re_variances <- exp(unlist(object$estimate$sigma2_re %||% numeric()))
+  if (is.null(ID_re) || !length(re_variances) || is.null(object$ID_coords)) {
+    return(FALSE)
+  }
+  ID_re <- as.matrix(ID_re)
+  any(vapply(seq_len(ncol(ID_re)), function(j) {
+    within <- tapply(object$ID_coords, ID_re[, j], function(locations) {
+      length(unique(locations)) == 1L
+    })
+    isTRUE(re_variances[j] >= threshold) && any(within)
+  }, logical(1)))
+}
+
+##' How many levels of each term a fit integrated out at its last stage
+##'
+##' The data frame of `make_adaptive_mcml_engine()`'s `integration_counts`
+##' from the optimizer's record, or for a fit recorded before random effects
+##' could be integrated out, the nugget's row from its integrated locations.
+##' NULL for a fit that integrated nothing out.
+##' @noRd
+describe_fit_integration <- function(optimizer) {
+  counts <- optimizer$mcml_integration_counts
+  if (!is.null(counts)) {
+    return(if (isTRUE(optimizer$mcml_integrate_noise)) counts)
+  }
+  located <- optimizer$mcml_integrated_locations %||% 0L
+  if (located > 0) {
+    data.frame(term = "nugget", integrated = located,
+               levels = optimizer$mcml_locations %||% NA_integer_,
+               stringsAsFactors = FALSE)
+  }
 }
 
 ##' One sentence on the Monte Carlo certificate of a fit
@@ -133,13 +167,37 @@ describe_mcml_draws <- function(mcml) {
     format(mcml$validation_draws, big.mark = ","),
     " validation draws at the last stage.",
     describe_noise_forms(mcml$noise_forms),
-    if (isTRUE(mcml$integrated_locations > 0)) paste0(
-      " The nugget was integrated out at ",
-      format(mcml$integrated_locations, big.mark = ","), " of ",
-      format(mcml$locations, big.mark = ","), " locations",
-      if (length(mcml$noise_forms) > 1L) " in the last stage", "."
-    )
+    describe_integration_counts(mcml$integration,
+                                length(mcml$noise_forms) > 1L)
   )
+}
+
+##' Sentences on the levels of each term integrated out at the last stage
+##'
+##' `counts` is the data frame of `describe_fit_integration()`, and
+##' `last_stage` adds that the counts are those of the last stage. A term
+##' integrated out nowhere is said to have stayed sampled. NULL when nothing
+##' was integrated out.
+##' @noRd
+describe_integration_counts <- function(counts, last_stage = FALSE) {
+  if (is.null(counts) || !any(counts$integrated > 0)) return(NULL)
+  number <- function(value) format(value, big.mark = ",", trim = TRUE)
+  sentences <- vapply(seq_len(nrow(counts)), function(k) {
+    nugget <- identical(counts$term[k], "nugget")
+    name <- if (nugget) "The nugget" else paste("The random effect",
+                                                 counts$term[k])
+    unit <- if (nugget) "locations" else "levels"
+    integrated <- counts$integrated[k]
+    levels <- counts$levels[k]
+    if (integrated == 0) return(paste0(" ", name, " stayed sampled."))
+    paste0(" ", name, " was integrated out at ", number(integrated), " of ",
+           number(levels), " ", unit,
+           if (integrated < levels) {
+             paste0(" and sampled at the other ", number(levels - integrated))
+           },
+           if (last_stage) " in the last stage", ".")
+  }, character(1))
+  paste(sentences, collapse = "")
 }
 
 ##' Which stages of an automatic fit sampled the nugget and which integrated it

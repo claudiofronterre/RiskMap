@@ -571,6 +571,67 @@ form and combines them in pairs as the fit does, which takes about twice as
 long. `"auto"` is the default, so fits of binomial and Poisson models with a
 nugget change, while a model without a nugget is fitted as before.
 
+- `integrate_noise` now also integrates out `re()` terms whose levels lie within
+a single location, such as households in a village cluster, alongside the
+nugget. Records at a location with the same covariates, offset and
+random-effect levels are combined into one unit, and three rules decide each
+level and location. A level that holds a single unit is integrated out of that
+unit's likelihood, with the variances of all such levels added, and at a
+location with a single unit so is the nugget. At a location with several units
+the nugget is integrated out as well when the units share their covariates and
+offset and differ only in levels that each hold a single unit, through an
+integral over the nugget of the units' own integrals, tabled for each pattern
+of units and pair of variances in the same way as the records. At any other
+location the nugget stays sampled. Every other level stays sampled, including
+levels that span several locations and levels that hold units with different
+covariates, and a term can be integrated out at some levels and sampled at
+others. The integrated levels leave the latent vector, so the sampled dimension
+falls by one for each of them. A variance held at zero is held at exactly zero
+in this form, as the nugget is, and the test of a held variance takes the slope
+of a nested location's likelihood in its inner variance directly. With
+`"auto"` a model with such a term is fitted as with `TRUE`, its `re()` terms and
+its nugget integrated out at every stage wherever the rules allow, while a
+model whose only such term is the nugget switches it by stage as before.
+`check_fit()` says for each term at how many levels it was integrated out and
+at how many it stayed sampled, and `summary()` gives them as `integration` in
+place of `integrated_locations`. The radius check and `profile()` rebuild the
+integrated form for such a fit. On
+48 simulated surveys of 200 locations with about 800 households each, fitted
+three times in each form, `TRUE`, and so `"auto"`, certified all 144 fits
+against 128 sampled, at a median bound of 0.022 against 0.063, in 9% of the
+sampled form's time. Against MCMC references the median error was 0.011
+against 0.017 sampled, and no fit was off by more than the tolerance. Switching
+the nugget alone with the households integrated certified 142 of 143, and on a
+survey whose nugget variance was zero two of its three runs ended without a
+certificate. On a survey built from `malkenya`'s households the bounds
+fell from about 0.08 sampled to 0.007 integrated. A model without such terms is
+fitted exactly as before.
+
+- The integral over the independent effects of a record or a location, which
+`integrate_noise` tables, no longer slows down as a variance grows. Records
+with no events, or with every trial an event, have a side where the
+likelihood is flat, and the trapezium rule walked across it a distance
+proportional to the standard deviation, so at the upper bound of the search
+for a log variance, 20, one evaluation took seconds to minutes, and a fit whose
+optimiser stepped there could run for hours. Such a stretch is now taken in
+closed form wherever the likelihood is linear across it, the steps of a
+location's integral over its nugget grow with the standard deviation of its
+inner effects, and with a custom or named link the parts beyond the range on
+which the link is tabled, where its likelihood is constant, are taken in
+closed form as well. The search for the mode of the integrand now finds a mode
+far from the linear predictor, and the integral of a Poisson record whose
+linear predictor is in the hundreds is now right, where it overflowed. Up to a
+variance of about 100 the values are unchanged, and above it they agree with
+numerical integration to about 1e-10.
+
+- A Newton correction of a certified Monte Carlo maximum likelihood estimate
+that would take a variance or the spatial scale past the upper bound of the
+search is no longer applied. Such a correction follows a direction along which
+the likelihood is nearly flat. The fit keeps its estimate and is reported as
+not certified, with a warning, and `check_fit()` says why and suggests a larger
+`max_samples`. Before, the parameter was clamped at the bound and the
+certificate was computed there.
+
 - `profile()` of a binomial or Poisson fit now rebuilds the likelihood with the
 link of the fit. It used the logit or log link whatever link the fit had, so
 the profiles of a fit with a named link such as `binomial("probit")`, or with

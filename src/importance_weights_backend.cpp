@@ -6,6 +6,7 @@
 #include <limits>
 #include <vector>
 #include "likelihood_kernel.h"
+#include <memory>
 #include "site_table.h"
 
 #ifndef FCONE
@@ -189,8 +190,7 @@ std::vector<double> compute_log_target(
     const IntegerMatrix& columns, const NumericVector& y,
     const NumericVector& units, const bool poisson,
     std::vector<double>& standardised,
-    riskmap_site::SiteTable* sites = nullptr, const double site_v = 0.0,
-    const IntegerVector* site_pair = nullptr) {
+    riskmap_site::Evaluator* sites = nullptr) {
   const int locations = spatial_root.nrow();
   std::vector<int> all_rows(rows);
   for (int row = 0; row < rows; ++row) all_rows[row] = row;
@@ -227,25 +227,22 @@ std::vector<double> compute_log_target(
   }
   std::vector<double> log_likelihood(rows, 0.0);
   std::vector<double> eta(rows);
-  riskmap_site::Table* site_table =
-    (sites != nullptr && site_v > 0) ? &sites->table(site_v) : nullptr;
   for (int observation = 0; observation < columns.nrow(); ++observation) {
     const R_xlen_t location = columns(observation, 0) - 1;
     for (int row = 0; row < rows; ++row) {
       eta[row] = samples[row + location * rows] + linear_offset[observation];
     }
     for (int effect = 1; effect < columns.ncol(); ++effect) {
+      // A level integrated out of the record has no latent column (0).
+      if (columns(observation, effect) == 0) continue;
       const R_xlen_t level = columns(observation, effect) - 1;
       for (int row = 0; row < rows; ++row) {
         eta[row] = eta[row] + samples[row + level * rows];
       }
     }
     if (sites != nullptr) {
-      const int pair = (*site_pair)[observation];
       for (int row = 0; row < rows; ++row) {
-        log_likelihood[row] += riskmap_site::record_log_likelihood(
-          *sites, site_table, pair, eta[row]
-        );
+        log_likelihood[row] += sites->log_likelihood(observation, eta[row]);
       }
       continue;
     }
@@ -378,10 +375,11 @@ std::vector<double> compute_log_proposal(
 // so that the standardised spatial samples serve both densities. `columns`
 // holds each observation's latent columns (location, then random-effect
 // levels) and `random_first` and `random_size` the latent columns of each
-// random effect. With `site_table` (a table of integrated sites, site_table.h)
-// and one pair per observation in `site_pair`, the log-likelihood of each
-// observation is that of the table at the nugget variance `site_v`, or the
-// plain kernel where the pair is negative or `site_v` is zero.
+// random effect, where a column of 0 marks a level integrated out of that
+// observation. With `site_table` (a table of integrated sites, site_table.h)
+// and one row of `site_units` per observation, the log-likelihood of each
+// observation is that of its table at the variances `site_classes` of the
+// classes of integrated effects (cpp_site_evaluate()).
 // [[Rcpp::export]]
 NumericVector cpp_importance_log_weights(
     const NumericMatrix& draws, const NumericMatrix& root,
@@ -393,13 +391,24 @@ NumericVector cpp_importance_log_weights(
     const NumericVector& linear_offset, const IntegerMatrix& columns,
     const IntegerVector& random_first, const IntegerVector& random_size,
     const NumericVector& y, const NumericVector& units, const bool poisson,
-    SEXP site_table, const double site_v, const IntegerVector& site_pair) {
-  riskmap_site::SiteTable* sites = nullptr;
+    SEXP site_table, const NumericVector& site_classes,
+    const IntegerMatrix& site_units) {
+  std::unique_ptr<riskmap_site::Evaluator> sites;
+  std::vector<riskmap_site::Unit> site_records;
   if (!Rf_isNull(site_table)) {
-    sites = XPtr<riskmap_site::SiteTable>(site_table).get();
-    if (site_pair.size() != columns.nrow()) {
-      stop("One pair is needed for each observation.");
+    riskmap_site::SiteTable* table =
+      XPtr<riskmap_site::SiteTable>(site_table).get();
+    if (site_units.nrow() != columns.nrow() || site_units.ncol() != 4) {
+      stop("One record description is needed for each observation.");
     }
+    site_records.resize(site_units.nrow());
+    for (int r = 0; r < site_units.nrow(); ++r) {
+      site_records[r] = {site_units(r, 0), site_units(r, 1) - 1,
+                         site_units(r, 2) - 1, site_units(r, 3) - 1};
+    }
+    sites.reset(new riskmap_site::Evaluator(
+      *table, std::vector<double>(site_classes.begin(), site_classes.end()),
+      site_records));
   }
   const Bank bank = {draws.begin(), draws.nrow(), draws.ncol()};
   std::vector<int> defensive_rows;
@@ -415,7 +424,7 @@ NumericVector cpp_importance_log_weights(
   const std::vector<double> log_target = compute_log_target(
     deviations, centre, bank.rows, target_spatial_root, target_sigma2_re,
     random_first, random_size, linear_offset, columns, y, units, poisson,
-    standardised, sites, site_v, sites != nullptr ? &site_pair : nullptr
+    standardised, sites.get()
   );
   const std::vector<double> log_proposal = compute_log_proposal(
     bank, deviations, defensive_rows, proposal_rows, share, root, centre,
