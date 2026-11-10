@@ -6,11 +6,25 @@ binomial_kernel <- function(y, m, eta) {
   y * eta - m * (pmax(eta, 0) + log1p(exp(-abs(eta))))
 }
 
+# The Gauss-Hermite rule with `nodes` nodes for the standard normal
+# distribution, from the eigenvalues of the Jacobi matrix of the Hermite
+# polynomials (Golub and Welsch, 1969), whose weights sum to one.
+normal_rule <- function(nodes) {
+  jacobi <- matrix(0, nodes, nodes)
+  off <- sqrt(seq_len(nodes - 1L))
+  jacobi[cbind(seq_len(nodes - 1L), 2:nodes)] <- off
+  jacobi[cbind(2:nodes, seq_len(nodes - 1L))] <- off
+  decomposition <- eigen(jacobi, symmetric = TRUE)
+  order <- rev(seq_len(nodes))
+  list(nodes = decomposition$values[order],
+       weights = decomposition$vectors[1L, order]^2)
+}
+
 # log integral N(e; 0, vo) prod_u integral N(d; 0, vi) G_u(x + e + d) dd de by
 # Gauss-Hermite rules with `nodes` nodes on each Gaussian, independent of the
 # package's tables. Accurate to rounding for households of a few tested.
 nested_by_quadrature <- function(y, m, x, vo, vi, nodes = 60L) {
-  rule <- statmod::gauss.quad.prob(nodes, dist = "normal")
+  rule <- normal_rule(nodes)
   vapply(x, function(point) {
     outer <- point + sqrt(vo) * rule$nodes
     log_inner <- vapply(seq_along(y), function(u) {
@@ -307,7 +321,7 @@ test_that("the integrated form matches an exact likelihood of three locations", 
       survey$y[rows], survey$m[rows], mu[rows[1L]] + grid, vo, vi, 50L
     ))
   })
-  rule <- statmod::gauss.quad.prob(40L, dist = "normal")
+  rule <- normal_rule(40L)
   z <- as.matrix(expand.grid(rule$nodes, rule$nodes, rule$nodes))
   w <- Reduce(`*`, expand.grid(rule$weights, rule$weights, rule$weights))
   S <- z %*% t(t(chol(covariance)))
