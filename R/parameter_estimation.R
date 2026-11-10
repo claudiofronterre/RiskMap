@@ -4,7 +4,8 @@
 ##' Supports Gaussian, binomial, and Poisson response families.
 ##' @param formula A formula object specifying the model to be fitted.
 ##' The formula should include fixed effects and spatial effects specified using
-##' [gp()] and optionally, random effects specified using [re()].
+##' [gp()] and optionally, random effects specified using [re()]. It can also
+##' include one `offset()` term that names a column of `data`, e.g. `offset(log_exposure)`.
 ##' @param data An sf object containing the variables in the model.
 ##' @param family The distribution of the response given the random effects,
 ##' with its link. Either one of the strings `"gaussian"`, `"binomial"` and

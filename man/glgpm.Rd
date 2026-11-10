@@ -25,7 +25,8 @@ glgpm(
 \arguments{
 \item{formula}{A formula object specifying the model to be fitted.
 The formula should include fixed effects and spatial effects specified using
-\code{\link[=gp]{gp()}} and optionally, random effects specified using \code{\link[=re]{re()}}.}
+\code{\link[=gp]{gp()}} and optionally, random effects specified using \code{\link[=re]{re()}}. It can also
+include one \code{offset()} term that names a column of \code{data}, e.g. \code{offset(log_exposure)}.}
 
 \item{data}{An sf object containing the variables in the model.}
 

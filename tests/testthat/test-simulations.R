@@ -859,3 +859,15 @@ test_that("simulated surfaces can be plotted with fixed colour limits", {
   expect_equal(p$scales$get_scales("fill")$limits, c(-5, 5))
   expect_no_error(plot(sim, limits = c(-5, 5)))
 })
+
+test_that("specify_glgpm combines several re() calls", {
+  parameters <- list(beta = c(1, 0.5), sigma2 = 1, phi = 2,
+                     sigma2_re = c(i = 0.3, j = 0.6), sigma2_me = 0.1)
+  one_call <- specify_glgpm(y ~ cov + gp() + re(i, j), gaussian_data, "gaussian",
+                            parameters)
+  two_calls <- specify_glgpm(y ~ cov + gp() + re(i) + re(j), gaussian_data,
+                             "gaussian", parameters)
+  expect_identical(two_calls$re_terms, c("i", "j"))
+  expect_identical(simulate_glgpm(two_calls, nsim = 2, seed = 1)$samples,
+                   simulate_glgpm(one_call, nsim = 2, seed = 1)$samples)
+})

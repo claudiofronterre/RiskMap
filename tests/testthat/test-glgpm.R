@@ -737,3 +737,51 @@ test_that("coordinates_in_units converts projected CRS units", {
   expect_identical(coordinates_in_units(foot_data, "m"),
                st_coordinates(foot_data) * 0.3048006096012192)
 })
+
+test_that("glgpm fits several re() calls as one call with all their variables", {
+  gaussian_start <- list(sigma2_re = c(5, 10), sigma2_me = 0.01)
+  gaussian_one_call <- glgpm(y ~ cov + gp() + re(i, j), data = gaussian_data,
+                             family = "gaussian", start_pars = gaussian_start,
+                             messages = FALSE)
+  gaussian_two_calls <- glgpm(y ~ cov + gp() + re(i) + re(j), data = gaussian_data,
+                              family = "gaussian", start_pars = gaussian_start,
+                              messages = FALSE)
+  expect_identical(names(gaussian_two_calls$re), c("i", "j"))
+  expect_identical(coef(gaussian_two_calls), coef(gaussian_one_call))
+  expect_identical(gaussian_two_calls$covariance, gaussian_one_call$covariance)
+  expect_identical(
+    predict(gaussian_two_calls, seed = 1, messages = FALSE)$predictions,
+    predict(gaussian_one_call, seed = 1, messages = FALSE)$predictions
+  )
+
+  fit_binomial <- function(formula) {
+    suppressWarnings(glgpm(
+      formula, data = binomial_data, family = "binomial",
+      denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+      control_mcml = fixture_control_mcml, messages = FALSE
+    ))
+  }
+  binomial_one_call <- fit_binomial(y ~ cov + gp() + re(i, j))
+  binomial_two_calls <- fit_binomial(y ~ cov + gp() + re(i) + re(j))
+  expect_identical(names(binomial_two_calls$re), c("i", "j"))
+  expect_identical(coef(binomial_two_calls), coef(binomial_one_call))
+})
+
+test_that("glgpm reads an offset alongside several re() calls and reports unusable offsets", {
+  fit <- glgpm(y ~ cov + gp() + re(i) + re(j) + offset(offset), data = gaussian_data,
+               family = "gaussian",
+               start_pars = list(sigma2_re = c(5, 10), sigma2_me = 0.01),
+               messages = FALSE)
+  expect_identical(fit$cov_offset, gaussian_data$offset)
+
+  expect_error(
+    glgpm(y ~ cov + gp() + offset(log(denominator)), data = gaussian_data,
+          family = "gaussian", messages = FALSE),
+    "must name a column of 'data'"
+  )
+  expect_error(
+    glgpm(y ~ gp() + offset(offset) + offset(cov), data = gaussian_data,
+          family = "gaussian", messages = FALSE),
+    "only one 'offset\\(\\)' term"
+  )
+})

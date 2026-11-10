@@ -290,6 +290,7 @@ matern_hessian_phi <- function(u, phi, kappa) {
 ##' a positive numeric value can be provided instead to fix the effect.
 ##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates),
 ##' the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
+##' A model has one spatial Gaussian process, so a formula can contain only one `gp()` term.
 ##' @return A list of class \code{RiskMap_gp_spec} containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{kappa}{The smoothness parameter \eqn{\kappa}.}
@@ -350,8 +351,9 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
 }
 ##' @title Random Effect Model Specification
 ##' @description Specifies the terms for a random effect model.
-##' @param ... Variables representing the random effects in the model.
+##' @param ... Variables representing the random effects in the model. Each variable adds its own independent random effect.
 ##' @details The function constructs a list that includes the specified terms for the random effects. This list can be used as a specification for a random effect model.
+##' Several `re()` calls in a formula are combined, so `re(region) + re(province)` is the same model as `re(region, province)`.
 ##' @return A list of class \code{RiskMap_re_spec} containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{dim}{The number of specified terms.}
@@ -397,6 +399,50 @@ re <- function (...) {
   ret
 }
 
+##' @title Combine the re() terms of a formula
+##' @description Each variable in `re()` adds its own independent random effect,
+##' so several `re()` calls mean the same as one call listing all their variables.
+##' @param re_terms A character vector of `re()` calls, as they appear in the formula.
+##' @param formula_env The environment of the formula.
+##' @return A list of class `RiskMap_re_spec`, or `NULL` if `re_terms` is empty.
+##' @noRd
+combine_re_terms <- function(re_terms, formula_env) {
+  if (length(re_terms) == 0L) {
+    return(NULL)
+  }
+  re_specs <- lapply(re_terms, function(re_term) {
+    eval(parse(text = re_term), envir = formula_env)
+  })
+  if (length(re_specs) == 1L) {
+    return(re_specs[[1L]])
+  }
+  re_variables <- unique(unlist(lapply(re_specs, function(re_spec) re_spec$term)))
+  combined_call <- paste0("re(", paste(re_variables, collapse = ", "), ")")
+  eval(parse(text = combined_call), envir = formula_env)
+}
+
+##' @title Read the offset column of a formula
+##' @param formula_terms The output of `terms.formula()` for the formula.
+##' @return The name of the offset column, or `NULL` if there is no `offset()` term.
+##' @noRd
+read_offset_column <- function(formula_terms) {
+  offset_index <- attr(formula_terms, "offset")
+  if (length(offset_index) == 0L) {
+    return(NULL)
+  }
+  if (length(offset_index) > 1L) {
+    stop("The 'formula' can contain only one 'offset()' term", call. = FALSE)
+  }
+  offset_call <- attr(formula_terms, "variables")[[offset_index + 1L]]
+  offset_variable <- offset_call[[2L]]
+  if (!is.symbol(offset_variable)) {
+    stop("'offset()' must name a column of 'data', but the 'formula' contains '",
+         deparse(offset_call), "'. Add the values as a column and name it in 'offset()'",
+         call. = FALSE)
+  }
+  as.character(offset_variable)
+}
+
 interpret_formula <- function(formula) {
   p.env <- environment(formula)
   tf <- terms.formula(formula, specials = c("gp", "re"))
@@ -407,7 +453,6 @@ interpret_formula <- function(formula) {
 
   gp <- attr(tf, "specials")$gp
   re <- attr(tf, "specials")$re
-  off <- attr(tf, "offset")
   vtab <- attr(tf, "factors")
 
   if (length(gp) > 0) {
@@ -426,14 +471,13 @@ interpret_formula <- function(formula) {
 
   len.gp <- length(gp)
   len.re <- length(re)
-  gp_spec <- eval(parse(text = terms[gp]), envir = p.env)
-  re_spec <- eval(parse(text = terms[re]), envir = p.env)
-
-  if (length(off) > 0) {
-    offset <- as.character(attr(tf, "variables")[[off[i] + 1]])[2]
-  } else {
-    offset <- NULL
+  if (len.gp > 1L) {
+    stop("The 'formula' can contain only one 'gp()' term, because the model has ",
+         "one spatial Gaussian process", call. = FALSE)
   }
+  gp_spec <- eval(parse(text = terms[gp]), envir = p.env)
+  re_spec <- combine_re_terms(terms[re], p.env)
+  offset <- read_offset_column(tf)
 
   if (length(terms[-c(gp, re)]) > 0) {
     pf <- paste(response, "~", paste(terms[-c(gp, re)], collapse = " + "))
