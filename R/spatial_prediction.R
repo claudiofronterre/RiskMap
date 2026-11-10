@@ -119,10 +119,10 @@
 ##' latent and the parameter uncertainty. For binomial and Poisson models the
 ##' conditional samples at each parameter value come from a short run of the
 ##' same Langevin (MALA) sampler used for plug-in prediction, in coordinates
-##' whitened by the Laplace approximation at that value, started at its mode
-##' and using the step size tuned at the estimate (500 burn-in iterations,
-##' then thinning by 10). The total number of predictive draws equals that of
-##' plug-in prediction. Parameters
+##' whitened by the Laplace approximation at that value, started from a draw
+##' of that approximation and using the step size tuned at the estimate (100
+##' burn-in iterations, then thinning by 10). The total number of predictive
+##' draws equals that of plug-in prediction, 2,000 by default. Parameters
 ##' without a finite positive variance, such as those held at a boundary, keep
 ##' their estimated value. When the covariance matrix of the estimates is not
 ##' available, an error is returned; refitting with
@@ -1298,8 +1298,8 @@ prediction_sample_size <- function(object, control_mcmc) {
   if (object$family != "gaussian" && !is.null(object$S_samples)) {
     return(nrow(object$S_samples))
   }
+  # As many draws as plug-in prediction takes by default for every family.
   control_mcmc <- set_control_mcmc()
-  if (object$family == "gaussian") return(control_mcmc$n_sim)
   (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
 }
 
@@ -1341,54 +1341,70 @@ draw_parameter_values <- function(object, n_draws) {
 #'
 #' Returns a function drawing samples from the conditional distribution of the
 #' latent effects (locations, then random-effect levels) given the data, at
-#' any parameter value, with the same Langevin sampler used for plug-in
-#' prediction. Each short chain runs in the coordinates whitened by the Laplace
-#' approximation at that parameter value, starts at its mode and reuses the
-#' step size tuned at the estimate, so a brief burn-in suffices.
+#' any parameter value, with the same Langevin sampler and the same covariance
+#' as plug-in prediction. Each short chain runs in the coordinates whitened by
+#' the Laplace approximation at that parameter value and starts from a draw of
+#' it, so that it is in its stationary spread from the start, and the search
+#' for the mode starts from the mode at the previous parameter value. The step
+#' is not tuned. It is the one tuned at the estimate, or else the default,
+#' which suits the whitened chain as well, so the burn-in only discards the
+#' first draws.
 #' @noRd
-parameter_conditioning_sampler <- function(object, burnin = 500L, thin = 10L) {
+parameter_conditioning_sampler <- function(object, burnin = 100L, thin = 10L) {
   distance_scale <- attr(object, "distance_scale") %||% 1
-  coords <- object$coords / distance_scale
+  fitting_coords <- object$coords / distance_scale
+  distances <- pairwise_distances(fitting_coords)
   invlink <- if (identical(object$link_function$name, "canonical")) {
     NULL
   } else {
     object$link_function[c("inv", "d1", "d2")]
   }
   design <- as.matrix(object$D)
-  engine <- make_adaptive_mcml_engine(
-    D = design, y = object$y, units_m = object$units_m,
-    distances = as.matrix(pairwise_distances(coords)),
-    family = object$family, kappa = object$kappa,
-    cov_offset = object$cov_offset, ID_coords = object$ID_coords,
-    fix_tau2 = object$fix_tau2, ID_re = object$ID_re, invlink = invlink,
-    proposal = "laplace"
-  )
-  phi_index <- engine$layout$index$phi
   step_size <- utils::tail(attr(object, "mcmc")$tuning_par, 1L)
   if (!length(step_size) || !is.finite(step_size) || step_size <= 0) {
     step_size <- NULL
   }
+  last_mode <- NULL
   function(estimate, n_samples) {
-    parameters <- unname(unlist(estimate))
-    parameters[phi_index] <- parameters[phi_index] - log(distance_scale)
-    proposal <- engine$proposal_at(parameters)
-    values <- proposal$values
+    fit <- object
+    fit$estimate <- estimate
+    parameters <- coef(fit)
     simulation <- laplace_sampling_mcmc(
       y = object$y, units_m = object$units_m,
-      mu = as.numeric(design %*% values$beta + object$cov_offset),
-      Sigma = proposal$covariance, ID_coords = object$ID_coords,
-      ID_re = object$ID_re, sigma2_re = values$sigma2_re,
-      family = object$family,
+      mu = as.numeric(design %*% parameters$beta + object$cov_offset),
+      Sigma = conditioning_covariance(fit, parameters, distances,
+                                      distance_scale),
+      ID_coords = object$ID_coords, ID_re = object$ID_re,
+      sigma2_re = parameters$sigma2_re, family = object$family,
       control_mcmc = set_control_mcmc(
         n_sim = burnin + n_samples * thin, burnin = burnin, thin = thin,
         h = step_size
       ),
-      invlink = invlink, Sigma_pd = crossprod(proposal$root),
-      mean_pd = proposal$centre, messages = FALSE
+      invlink = invlink, start = last_mode, adapt_step = FALSE
     )
+    last_mode <<- simulation$mode
     list(samples = do.call(cbind, simulation$samples),
          acceptance = simulation$acceptance_rate[["sampling"]])
   }
+}
+
+#' Covariance of the location effects that prediction conditions on
+#'
+#' The spatial covariance at the locations plus the nugget, which is at least
+#' 1e-10 times the spatial variance, as in `prepare_prediction()`.
+#' `distances` are between the locations in the fitting units, which are the
+#' model's divided by `distance_scale`.
+#' @noRd
+conditioning_covariance <- function(object, parameters, distances,
+                                    distance_scale) {
+  correlation <- matern_correlation(
+    distances, phi = parameters$phi / distance_scale, kappa = object$kappa,
+    return_sym_matrix = TRUE
+  )
+  ratio <- fitted_nugget_variance(object, parameters) / parameters$sigma2
+  if (ratio == 0) ratio <- 1e-10
+  diag(correlation) <- diag(correlation) + ratio
+  parameters$sigma2 * correlation
 }
 
 #' Average predictive targets over a common reference population
@@ -1617,18 +1633,7 @@ prediction_coefficient_of_variation <- function(values) {
 #' @noRd
 tidy_prediction_summaries <- function(values, boundary_id, aggregate,
                                       quantity, summaries, thresholds, level) {
-  alpha <- (1 - level) / 2
-  summary_functions <- list(
-    mean = mean,
-    median = median,
-    sd = sd,
-    cv = prediction_coefficient_of_variation,
-    lower = function(x) quantile(x, alpha, names = FALSE),
-    upper = function(x) quantile(x, 1 - alpha, names = FALSE),
-    interval_width = function(x) {
-      diff(quantile(x, c(alpha, 1 - alpha), names = FALSE))
-    }
-  )
+  summary_functions <- prediction_summary_functions(level)
   draws <- as.numeric(values)
   ordinary <- drop_prediction_operations(summaries, "exceedance")
   rows <- lapply(names(ordinary), function(name) {
@@ -1815,12 +1820,11 @@ missing_boundary_summaries <- function(n_boundaries, aggregate, include,
   if (length(rows)) do.call(rbind, rows) else empty_prediction_summary()
 }
 
-#' Summarise a location-by-sample prediction matrix
+#' Built-in summaries of one predictive distribution
 #' @noRd
-summarise_prediction_matrix <- function(values, quantity, summaries, level,
-                                        thresholds = NULL) {
+prediction_summary_functions <- function(level) {
   alpha <- (1 - level) / 2
-  summary_functions <- list(
+  list(
     mean = mean,
     median = median,
     sd = sd,
@@ -1831,13 +1835,128 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level,
       diff(quantile(x, c(alpha, 1 - alpha), names = FALSE))
     }
   )
+}
+
+#' Calculate built-in summaries for every row of a prediction matrix
+#'
+#' Gives, for each row, the values of `prediction_summary_functions()`
+#' without calling them row by row. Each complete row is partially sorted
+#' once, and the median and the type 7 quantiles behind `"lower"`, `"upper"`
+#' and `"interval_width"` are formed from those order statistics with the
+#' arithmetic of `median()` and `quantile()`, so they are identical to the
+#' row-by-row values. `"mean"`, `"sd"` and `"cv"` use `rowMeans()` and
+#' `rowSums()`. Like `mean()` and `sd()`, these are within about one unit in
+#' the last place of the exact mean and standard deviation of the draws, but
+#' they round differently, so the two can differ by one unit in the last
+#' place. Rows
+#' with missing values are passed to the row-by-row functions, so they give
+#' the same `NA` values and errors as those functions.
+#' @noRd
+prediction_row_summaries <- function(values, operations, level) {
+  operations <- unique(operations)
+  if (!length(operations)) return(list())
+  complete <- !is.na(rowSums(values))
+  if (!all(complete)) {
+    by_row <- prediction_summary_functions(level)
+    incomplete <- values[!complete, , drop = FALSE]
+    result <- lapply(setNames(nm = operations), function(operation) {
+      value <- rep(NA_real_, nrow(values))
+      value[!complete] <- apply(incomplete, 1L, by_row[[operation]])
+      value
+    })
+    complete_result <- prediction_row_summaries(
+      values[complete, , drop = FALSE], operations, level
+    )
+    for (operation in operations) {
+      result[[operation]][complete] <- complete_result[[operation]]
+    }
+    return(result)
+  }
+
+  result <- list()
+  n_draws <- ncol(values)
+  if (any(c("mean", "sd", "cv") %in% operations)) {
+    result$mean <- rowMeans(values)
+  }
+  if (any(c("sd", "cv") %in% operations)) {
+    result$sd <- if (n_draws > 1L) {
+      deviations <- values - result$mean
+      sqrt(rowSums(deviations * deviations) / (n_draws - 1L))
+    } else {
+      rep(NA_real_, nrow(values))
+    }
+  }
+  if ("cv" %in% operations) {
+    magnitude <- abs(values)
+    largest <- magnitude[cbind(
+      seq_len(nrow(values)), max.col(magnitude, ties.method = "first")
+    )]
+    tolerance <- sqrt(.Machine$double.eps) * pmax(1, largest)
+    result$cv <- result$sd / result$mean
+    result$cv[!is.finite(result$mean) | result$mean <= tolerance] <- NA_real_
+  }
+
+  needs_quantiles <- any(c("lower", "upper", "interval_width") %in% operations)
+  needs_median <- "median" %in% operations
+  if (needs_quantiles || needs_median) {
+    # Positions of the order statistics used by median() and by
+    # quantile(type = 7) at the two interval probabilities
+    alpha <- (1 - level) / 2
+    index <- 1 + max(n_draws - 1, 0) * c(alpha, 1 - alpha)
+    below <- floor(index)
+    above <- ceiling(index)
+    half <- (n_draws + 1L) %/% 2L
+    middle <- if (n_draws %% 2L == 1L) half else half + 0L:1L
+    positions <- unique(c(
+      if (needs_quantiles) c(below, above),
+      if (needs_median) middle
+    ))
+    draws <- t(values)
+    n_statistics <- length(positions) + needs_median
+    statistics <- vapply(seq_len(ncol(draws)), function(i) {
+      sorted <- sort.int(draws[, i], partial = positions)
+      c(
+        sorted[positions],
+        if (needs_median) {
+          if (length(middle) == 1L) sorted[middle] else mean(sorted[middle])
+        }
+      )
+    }, numeric(n_statistics))
+    dim(statistics) <- c(n_statistics, ncol(draws))
+    if (needs_median) result$median <- statistics[n_statistics, ]
+    if (needs_quantiles) {
+      type_seven <- function(j) {
+        low <- statistics[match(below[j], positions), ]
+        high <- statistics[match(above[j], positions), ]
+        weight <- index[j] - below[j]
+        interpolate <- index[j] > below[j] & high != low
+        low[interpolate] <- (1 - weight) * low[interpolate] +
+          weight * high[interpolate]
+        low
+      }
+      result$lower <- type_seven(1L)
+      result$upper <- type_seven(2L)
+      result$interval_width <- result$upper - result$lower
+    }
+  }
+  result[operations]
+}
+
+#' Summarise a location-by-sample prediction matrix
+#' @noRd
+summarise_prediction_matrix <- function(values, quantity, summaries, level,
+                                        thresholds = NULL) {
   ordinary <- drop_prediction_operations(summaries, "exceedance")
+  built_in <- vapply(ordinary, is.character, logical(1))
+  row_summaries <- prediction_row_summaries(
+    values, unlist(ordinary[built_in], use.names = FALSE), level
+  )
   result <- lapply(names(ordinary), function(name) {
     operation <- ordinary[[name]]
     value <- if (is.function(operation)) {
       apply(values, 1L, operation)
     } else {
-      apply(values, 1L, summary_functions[[operation]])
+      row_summaries[[operation]]
     }
     if (!is.numeric(value) || length(value) != nrow(values)) {
       stop("Custom summary ", shQuote(name),
@@ -2322,7 +2441,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,
-        seed = mcmc_seed, messages = messages
+        seed = mcmc_seed
       )
     }
 

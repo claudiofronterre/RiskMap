@@ -759,6 +759,43 @@ latent effects are sampled at that value with a short run of the same Langevin
 sampler used for plug-in prediction. The pooled draws give intervals,
 exceedance probabilities and areal summaries that also reflect parameter
 uncertainty, which matters for small or low-prevalence surveys.
+- The Langevin sampler of the latent effects, used by `predict()` and by the
+final draw of `glgpm()`, is faster, most of all with `re()` terms. Its Laplace
+preconditioner is factored through the Schur complement of the `re()` term
+with most levels, and each iteration applies that factor without the prior
+precision, so that it costs two triangular solves of the size of the
+locations and passes over the records, instead of dense algebra in every
+location and `re()` level. The conditional mode is found by Newton's method
+with the same factor instead of `nlminb()` with a dense Hessian, and links
+other than the canonical ones, including named links such as
+`binomial("cloglog")`, run in the compiled chain. For a chain of 12,000
+iterations a call takes 0.16 s instead of 0.28 s for 200 sites with one
+record each, 1.8 s instead of 18 s for 1,000 sites, 0.5 s instead of 19 s for
+200 sites with about 800 households as `re()` levels, and 4 s instead of 13
+minutes for a survey of 46 clusters with 4,868 households. The chain
+now starts from a draw of the Laplace approximation rather than at the mode.
+From the mode a chain in many dimensions accepted almost nothing until its
+step had shrunk, while from a draw it is in its stationary spread at once. The
+step size kept after burn-in is the geometric mean of the tuned step over the
+second half of burn-in, which keeps the acceptance rate closer to its target,
+and a long chain can be interrupted. With `parameter_uncertainty = TRUE` the
+mode at each parameter draw is found by the same search, started from the mode
+at the previous draw, instead of the dense Laplace approximation of the fitting
+engine, and each chain keeps the step tuned at the estimate with a burn-in of
+100 iterations instead of 500, so that `predict()` takes 10 s instead
+of 80 s for the 200 sites with households. A seed still gives the same
+results every time, but they differ from those the same seed gave before,
+although they follow the same distribution.
+- `set_control_mcmc()` keeps 2,000 draws by default instead of 1,000, with
+`n_sim = 22000` and the same burn-in of 2,000 iterations and thinning by 10.
+`glgpm()` stores these draws and `predict()` reuses them, so the Monte Carlo
+error of predictions is about 1.4 times smaller. Predictions on a grid hold
+twice as many draws in memory and take two to two and a half times as long,
+for example 8 s instead of 4 s for a new chain on the 8,740 cells of
+`tz_covariates`.
+Gaussian models also take 2,000 independent draws by default, including with
+`parameter_uncertainty = TRUE`, which took 12,000, and with
+`set_control_mcmc(linear_model = TRUE)`, which also took 12,000.
 - `plot()` maps the output of `predict()`. Default colours depend on what the
   map shows: a calm-to-alarm palette for predicted levels, a single neutral
   hue for uncertainty (`sd`, `cv`, `interval_width`), a blue-to-red palette
@@ -819,6 +856,13 @@ uncertainty, which matters for small or low-prevalence surveys.
   correlation function, rather than the spatial range, consistently with
   `summary()` and the MBG book. The practical range, where correlation falls
   to 0.05, is about 3 phi for the exponential correlation function.
+- `predict()` calculates its location summaries for all locations at once
+  instead of one location at a time. The median and the interval limits come
+  from a single partial sort of each location's draws and are unchanged, and
+  means and standard deviations agree with the previous values up to rounding
+  in the last binary digit. On the 8,740 cells of `tz_covariates`, a
+  `predict()` with the default summaries is about twice as fast, and one with
+  every summary about three times as fast.
 
 ## Cross validation
 

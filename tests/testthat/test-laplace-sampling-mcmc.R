@@ -6,7 +6,7 @@ test_that("MALA adaptation stops after burn-in", {
   fit <- laplace_sampling_mcmc(
     y = 3, units_m = 8, mu = 0, Sigma = matrix(0.7),
     ID_coords = 1L, family = "binomial", control_mcmc = control,
-    seed = 918, messages = FALSE
+    seed = 918
   )
 
   expect_identical(nrow(fit$samples$S), 20L)
@@ -23,7 +23,7 @@ test_that("MALA warm-up recovers from poor initial step sizes", {
       control_mcmc = set_control_mcmc(
         n_sim = 1200, burnin = 1000, thin = 1, h = h
       ),
-      seed = seed, messages = FALSE
+      seed = seed
     )
   }
   from_small <- run_with_h(0.05, 711)
@@ -48,7 +48,7 @@ test_that("one-dimensional binomial samples reproduce exact posterior moments", 
   fit <- laplace_sampling_mcmc(
     y = y, units_m = m, mu = 0, Sigma = matrix(sigma2),
     ID_coords = 1L, family = "binomial", control_mcmc = control,
-    seed = 2718, messages = FALSE
+    seed = 2718
   )
 
   log_kernel <- function(s) {
@@ -81,7 +81,7 @@ test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
   fit <- laplace_sampling_mcmc(
     y = y, units_m = exposure, mu = 0, Sigma = matrix(sigma2),
     ID_coords = 1L, family = "poisson", control_mcmc = control,
-    seed = 3141, messages = FALSE
+    seed = 3141
   )
 
   log_kernel <- function(s) {
@@ -114,7 +114,7 @@ test_that("correlated binomial samples reproduce grid-integrated moments", {
   fit <- laplace_sampling_mcmc(
     y = y, units_m = m, mu = c(0, 0), Sigma = Sigma,
     ID_coords = 1:2, family = "binomial", control_mcmc = control,
-    seed = 1618, messages = FALSE
+    seed = 1618
   )
 
   # A dense deterministic grid provides an independent reference calculation.
@@ -138,6 +138,14 @@ test_that("correlated binomial samples reproduce grid-integrated moments", {
   )
 })
 
+test_that("the default controls keep 2,000 draws", {
+  control <- set_control_mcmc()
+  expect_identical((control$n_sim - control$burnin) / control$thin, 2000)
+  expect_identical(set_control_mcmc(linear_model = TRUE)$n_sim, 2000)
+  expect_identical(set_control_mcmc(n_sim = 50, linear_model = TRUE)$n_sim, 50)
+  expect_error(set_control_mcmc(n_sim = 0, linear_model = TRUE), "n_sim")
+})
+
 test_that("sampler controls and location indices are validated", {
   expect_error(
     set_control_mcmc(n_sim = 100, burnin = 100),
@@ -151,7 +159,7 @@ test_that("sampler controls and location indices are validated", {
     laplace_sampling_mcmc(
       y = c(1, 2), units_m = c(4, 4), mu = c(0, 0),
       Sigma = matrix(1), ID_coords = c(1, 2), family = "binomial",
-      control_mcmc = control, messages = FALSE
+      control_mcmc = control
     ),
     "valid integer location index"
   )
@@ -159,8 +167,7 @@ test_that("sampler controls and location indices are validated", {
   expect_error(
     laplace_sampling_mcmc(
       y = 5, units_m = 4, mu = 0, Sigma = matrix(1),
-      ID_coords = 1L, family = "binomial", control_mcmc = control,
-      messages = FALSE
+      ID_coords = 1L, family = "binomial", control_mcmc = control
     ),
     "cannot exceed"
   )
@@ -168,7 +175,7 @@ test_that("sampler controls and location indices are validated", {
     laplace_sampling_mcmc(
       y = c(1, 2), units_m = c(4, 4), mu = c(0, 0), Sigma = matrix(1),
       ID_coords = c(1, 1), ID_re = matrix(c(1, 3)), sigma2_re = 1,
-      family = "binomial", control_mcmc = control, messages = FALSE
+      family = "binomial", control_mcmc = control
     ),
     "consecutive indices"
   )

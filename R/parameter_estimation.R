@@ -2905,11 +2905,11 @@ maxim_integrand <- function(
 ##' @title Laplace-sampling MCMC for Generalized Linear Gaussian Process Models
 ##'
 ##' @description
-##' Runs Markov chain Monte Carlo (MCMC) sampling using a Laplace
-##' approximation for Generalized Linear Gaussian Process Models (GLGPMs).
-##' The latent Gaussian field is integrated via a second-order Taylor
-##' expansion around the mode, and a Gaussian proposal is used for
-##' Metropolis–Hastings updates with adaptive step-size tuning.
+##' Draws the latent effects of a binomial or Poisson model given the data
+##' (the spatial effects at the locations, then the levels of each `re()`
+##' term) with a Metropolis-adjusted Langevin chain preconditioned by the
+##' Laplace approximation at their conditional mode, with the step size
+##' tuned during burn-in.
 ##'
 ##' @param y Numeric vector of responses of length \eqn{n}: the number of
 ##'   positives for \code{family = "binomial"}, or counts for
@@ -2942,22 +2942,27 @@ maxim_integrand <- function(
 ##'   caller's random number state is restored on exit.
 ##' @param invlink Optional inverse-link function. If \code{NULL}, defaults are used:
 ##'   \code{identity} (gaussian), \code{plogis} (binomial), and \code{exp} (poisson).
-##' @param Sigma_pd Optional covariance matrix used in the Laplace approximation.
-##'   If \code{NULL}, it is obtained internally at the current mode.
-##' @param mean_pd Optional mean vector used in the Laplace approximation.
-##'   If \code{NULL}, it is obtained internally as the mode of the integrand.
-##' @param messages Logical; if \code{TRUE}, prints progress and acceptance diagnostics.
+##' @param start Optional starting value for the search for the mode, in the
+##'   order of the latent effects, such as the mode at nearby parameter values.
+##' @param average_step Logical. If `TRUE`, the step kept after burn-in is the
+##'   geometric mean of the tuned step over the second half of burn-in, and
+##'   otherwise its last value.
+##' @param start_from_draw Logical. If `TRUE`, the chain starts from a draw of
+##'   the Laplace approximation, and otherwise at the mode, from which a chain
+##'   in many dimensions accepts almost nothing until its step has shrunk.
+##' @param adapt_step Logical. If `FALSE`, the step is not tuned during burn-in
+##'   and stays at `control_mcmc$h`, so that burn-in only discards draws.
 ##'
 ##' @details
-##' The algorithm alternates between:
-##' \enumerate{
-##'   \item Locating the mode of the joint integrand for the latent variables
-##'         (via \code{maxim_integrand}) when \code{Sigma_pd} and \code{mean_pd}
-##'         are not provided, yielding a Gaussian approximation.
-##'   \item Metropolis–Hastings updates using a Gaussian proposal centered at
-##'         the current approximate mean with proposal variance governed by \code{h}.
-##'         The step size is adapted based on empirical acceptance probability.
-##' }
+##' The mode is found by Newton's method (`find_sampler_mode()`). The Laplace
+##' precision there, Q = P + A' W A for prior precision P, record weights W
+##' and the map A from latent effects to records, is factored through the
+##' Schur complement of the diagonal block of the `re()` term with most
+##' levels (`sampler_latent_structure()`), so that an iteration of the chain
+##' (`cpp_latent_mala()`) costs two triangular solves of the size of the
+##' locations and passes over the records, whatever the number of levels.
+##' Every link runs in the compiled chain, a custom link through one call of
+##' its R functions per iteration.
 ##'
 ##' Dimensions must be consistent:
 ##' \code{length(y) = n}, \code{nrow(Sigma) = ncol(Sigma) = n_loc},
@@ -2975,6 +2980,7 @@ maxim_integrand <- function(
 ##'   \item{acceptance}{Logical vector recording whether each proposal was accepted.}
 ##'   \item{acceptance_rate}{Named vector giving acceptance rates during burn-in
 ##'                         and retained-sample iterations.}
+##'   \item{mode}{The conditional mode of the latent effects.}
 ##' }
 ##'
 ##' @section Default links:
@@ -2994,10 +3000,10 @@ laplace_sampling_mcmc <- function(y,
                                   control_mcmc,
                                   seed = NULL,
                                   invlink = NULL,
-                                  Sigma_pd = NULL,
-                                  mean_pd = NULL,
-                                  messages = TRUE
-                                  ){
+                                  start = NULL,
+                                  average_step = TRUE,
+                                  start_from_draw = TRUE,
+                                  adapt_step = TRUE) {
 
   if (length(family) != 1L || !family %in% c("poisson", "binomial")) {
     stop("'family' must be either 'poisson' or 'binomial'.")
@@ -3045,7 +3051,6 @@ laplace_sampling_mcmc <- function(y,
   if (is.null(ID_re)) {
     n_re <- 0L
     n_dim_re <- integer(0)
-    ind_re <- list()
   } else {
     ID_re <- as.matrix(ID_re)
     if (nrow(ID_re) != n || ncol(ID_re) < 1L || anyNA(ID_re) ||
@@ -3067,290 +3072,272 @@ laplace_sampling_mcmc <- function(y,
         stop("Each column of 'ID_re' must use consecutive indices starting at 1.")
       }
     }
-    ind_re <- vector("list", n_re)
-    add_i <- 0L
-    for (i in seq_len(n_re)) {
-      ind_re[[i]] <- (add_i + n_loc + 1):(add_i + n_loc + n_dim_re[i])
-      if (i < n_re) add_i <- sum(n_dim_re[1:i])
-    }
   }
-  n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
-  coordinate_aggregation <- Matrix::sparseMatrix(
-    i = ID_coords, j = seq_len(n), x = 1,
-    dims = c(n_loc, n)
+  if (!is.null(start) && (!is.numeric(start) ||
+      length(start) != n_loc + sum(n_dim_re) || any(!is.finite(start)))) {
+    stop("'start' must contain one finite value for each latent effect.")
+  }
+
+  linkf <- make_inverse_link_functions(family, invlink, n)
+  structure <- sampler_latent_structure(Sigma, ID_coords, ID_re, sigma2_re)
+  found <- tryCatch(
+    find_sampler_mode(
+      structure, y, units_m, mu, family, linkf,
+      start = if (!is.null(start)) start[order(structure$position)]
+    ),
+    error = function(error) NULL
   )
-  re_aggregation <- if (n_re > 0) {
-    lapply(seq_len(n_re), function(i) {
-      Matrix::sparseMatrix(
-        i = ID_re[, i], j = seq_len(n), x = 1,
-        dims = c(n_dim_re[i], n)
+  if (is.null(found)) {
+    # The search of maxim_integrand() is slower but differs from Newton's
+    # method, so a survey where Newton's method fails still gets a centre.
+    found <- fallback_sampler_mode(structure, y, units_m, mu, Sigma,
+                                   ID_coords, ID_re, sigma2_re, family,
+                                   invlink, linkf)
+  }
+  link_terms <- if (!identical(linkf$name, "canonical")) {
+    # One call of the link per iteration, on all the linear predictors. A
+    # point where the link fails or is not finite is rejected by the chain.
+    function(eta) {
+      terms <- tryCatch(
+        compute_custom_link_terms(eta, y, units_m, family, linkf,
+                                  with_curvature = FALSE),
+        error = function(error) NULL
       )
-    })
-  } else {
-    list()
+      if (is.null(terms) || !is.finite(terms$log_likelihood)) return(NULL)
+      list(terms$log_likelihood, terms$score)
+    }
   }
-
-  # ---------- inverse link handling (inv, d1) ----------
-  linkf <- make_inverse_link_functions(
-    family, invlink, n, second_derivative = FALSE
+  chain <- cpp_latent_mala(
+    y_r = as.numeric(y), units_r = as.numeric(units_m), mu_r = as.numeric(mu),
+    columns_r = structure$columns, n_u = structure$n_u, n_d = structure$n_d,
+    prior_u_r = structure$prior_u, prior_d_r = structure$prior_d,
+    weights_r = found$weights, mode_r = found$mode, family = family,
+    link_terms = link_terms, n_sim = control_mcmc$n_sim,
+    burnin = control_mcmc$burnin, thin = control_mcmc$thin,
+    step_size = control_mcmc$h %||% (1.65 / structure$dimension^(1 / 6)),
+    adaptation_scale = if (adapt_step) control_mcmc$c1.h else 0,
+    adaptation_exponent = control_mcmc$c2.h,
+    average_step = average_step, start_from_draw = start_from_draw
   )
 
-  # ---------- default Laplace proposal if missing ----------
-  if (is.null(Sigma_pd) || is.null(mean_pd)) {
-    out_maxim <- maxim_integrand(y = y, denominator = units_m, Sigma = Sigma, mu = mu,
-                                 ID_coords = ID_coords, ID_re = ID_re,
-                                 sigma2_re = sigma2_re,
-                                 family = family, invlink = invlink,
-                                 hessian = FALSE, gradient = TRUE)
-    if (is.null(Sigma_pd)) Sigma_pd <- out_maxim$Sigma.tilde
-    if (is.null(mean_pd))  mean_pd  <- out_maxim$mode
-  }
-  if (!is.numeric(Sigma_pd) || length(dim(Sigma_pd)) != 2L ||
-      any(dim(Sigma_pd) != n_tot) || any(!is.finite(Sigma_pd))) {
-    stop("'Sigma_pd' must be a finite covariance matrix for all latent effects.")
-  }
-  if (!is.numeric(mean_pd) || length(mean_pd) != n_tot ||
-      any(!is.finite(mean_pd))) {
-    stop("'mean_pd' must contain one finite value for each latent effect.")
-  }
-
-  # ---------- affine reparameterisation ----------
-  n_sim   <- control_mcmc$n_sim
-  Sigma_pd_root <- factor_covariance(
-    Sigma_pd, context = "Laplace-approximation covariance matrix"
-  )
-  Sigma_pd_sroot <- t(Sigma_pd_root)
-  A <- forwardsolve(Sigma_pd_sroot, diag(n_tot))
-
-  if (n_re == 0) {
-    Sigma_tot <- Sigma
-  } else {
-    Sigma_tot <- matrix(0, n_tot, n_tot)
-    Sigma_tot[1:n_loc, 1:n_loc] <- Sigma
-    for (i in seq_len(n_re)) diag(Sigma_tot)[ind_re[[i]]] <- sigma2_re[i]
-  }
-  Sigma_w_root <- factor_covariance(
-    A %*% Sigma_tot %*% t(A),
-    context = "transformed latent covariance matrix"
-  )
-  Sigma_w_sroot <- t(Sigma_w_root)
-  solve_w_covariance <- function(right_hand_side) {
-    backsolve(
-      Sigma_w_root,
-      forwardsolve(Sigma_w_sroot, right_hand_side)
-    )
-  }
-  mu_w <- -as.numeric(A %*% mean_pd)
-
-  # Canonical binomial and Poisson models use the compiled transition kernel.
-  # Custom inverse links retain the general R implementation below.
-  if (linkf$name == "canonical") {
-    compiled <- cpp_canonical_mala(
-      y_r = y,
-      units_r = units_m,
-      mu_r = mu,
-      proposal_lower_r = Sigma_pd_sroot,
-      proposal_upper_r = Sigma_pd_root,
-      prior_lower_r = Sigma_w_sroot,
-      prior_upper_r = Sigma_w_root,
-      transformed_prior_mean_r = mu_w,
-      proposal_mean_r = mean_pd,
-      location_id_r = as.integer(ID_coords),
-      n_locations = n_loc,
-      random_effect_id_r = if (n_re > 0) {
-        matrix(as.integer(ID_re), nrow = nrow(ID_re),
-               dimnames = dimnames(ID_re))
-      } else {
-        matrix(integer(), nrow = n, ncol = 0L)
-      },
-      family = family,
-      n_sim = control_mcmc$n_sim,
-      burnin = control_mcmc$burnin,
-      thin = control_mcmc$thin,
-      step_size = control_mcmc$h %||% (1.65 / n_tot^(1 / 6)),
-      adaptation_scale = control_mcmc$c1.h,
-      adaptation_exponent = control_mcmc$c2.h
-    )
-    out_sim <- list(samples = list(
-      S = compiled$samples[, seq_len(n_loc), drop = FALSE]
-    ))
-    if (n_re > 0) {
-      re_names <- colnames(ID_re) %||% paste0("re", seq_len(n_re))
-      for (i in seq_len(n_re)) {
-        out_sim$samples[[re_names[i]]] <-
-          compiled$samples[, ind_re[[i]], drop = FALSE]
-      }
-    }
-    out_sim$tuning_par <- compiled$tuning
-    out_sim$acceptance_prob <- compiled$cumulative_acceptance
-    out_sim$acceptance <- as.logical(compiled$acceptance)
-    out_sim$acceptance_rate <- c(
-      burnin = if (control_mcmc$burnin > 0L) {
-        mean(out_sim$acceptance[seq_len(control_mcmc$burnin)])
-      } else NA_real_,
-      sampling = mean(out_sim$acceptance[seq.int(
-        control_mcmc$burnin + 1L, control_mcmc$n_sim
-      )])
-    )
-    out_sim$invlink_used <- linkf$name
-    class(out_sim) <- "RiskMap_mcmc"
-    return(out_sim)
-  }
-
-  target_state <- function(W, S_tot) {
-    S <- S_tot[1:n_loc]
-    S_re_list <- if (n_re > 0) lapply(seq_len(n_re), function(i) S_tot[ind_re[[i]]]) else NULL
-
-    eta <- mu + S[ID_coords]
-    if (n_re > 0) for (i in seq_len(n_re)) eta <- eta + S_re_list[[i]][ID_re[, i]]
-
-    terms <- compute_custom_link_terms(eta, y, units_m, family, linkf,
-                                       with_curvature = FALSE)
-    if (is.null(terms)) return(NULL)
-    llik <- terms$log_likelihood
-    g_eta <- terms$score
-    diff_w <- W - mu_w
-    prior_solution <- solve_w_covariance(diff_w)
-
-    grad_S_tot <- numeric(n_tot)
-    grad_S_tot[1:n_loc] <- as.numeric(coordinate_aggregation %*% g_eta)
-    if (n_re > 0) {
-      for (j in seq_len(n_re)) {
-        grad_S_tot[ind_re[[j]]] <- as.numeric(
-          re_aggregation[[j]] %*% g_eta
-        )
-      }
-    }
-
-    list(
-      log_density = as.numeric(
-        -0.5 * crossprod(diff_w, prior_solution) + llik
-      ),
-      gradient = as.numeric(
-        -prior_solution + Sigma_pd_root %*% grad_S_tot
-      )
-    )
-  }
-
-  # ---------- MALA tuning ----------
-  h      <- control_mcmc$h; if (is.null(h)) h <- 1.65/(n_tot^(1/6))
-  burnin <- control_mcmc$burnin
-  thin   <- control_mcmc$thin
-  c1.h   <- control_mcmc$c1.h
-  c2.h   <- control_mcmc$c2.h
-
-  W_curr <- rep(0, n_tot)
-  S_tot_curr <- as.numeric(Sigma_pd_sroot %*% W_curr + mean_pd)
-  state_curr <- target_state(W_curr, S_tot_curr)
-  if (is.null(state_curr)) {
-    stop("The initial state has a non-finite target density or gradient.")
-  }
-  mean_curr <- as.numeric(W_curr + (h^2 / 2) * state_curr$gradient)
-  lp_curr <- state_curr$log_density
-  acc <- 0L
-  n_samples <- floor((n_sim - burnin) / thin)   # was: (n_sim - burnin) / thin
-  sim <- matrix(NA_real_, nrow = n_samples, ncol = n_tot)
-
-  # ---- safe progress output (no stderr, no flush.console) ----
-  if (messages) message("\n - Conditional simulation (burnin=", burnin, ", thin=", thin, "):")
-  pb <- NULL
-  if (messages && interactive()) {
-    pb <- utils::txtProgressBar(min = 0, max = n_sim, style = 3)
-    on.exit(try(close(pb), silent = TRUE), add = TRUE)
-  }
-
-  h.vec <- rep(NA_real_, n_sim)
-  acc_prob <- rep(NA_real_, n_sim)
-  accepted <- rep(FALSE, n_sim)
-
-  for (i in seq_len(n_sim)) {
-    W_prop <- mean_curr + h * rnorm(n_tot)
-    S_tot_prop <- as.numeric(Sigma_pd_sroot %*% W_prop + mean_pd)
-    proposal <- tryCatch({
-      state_prop <- target_state(W_prop, S_tot_prop)
-      if (is.null(state_prop)) {
-        NULL
-      } else {
-        mean_prop <- as.numeric(
-          W_prop + (h^2 / 2) * state_prop$gradient
-        )
-        lp_prop <- state_prop$log_density
-        if (any(!is.finite(mean_prop)) || !is.finite(lp_prop)) {
-          NULL
-        } else {
-          dprop_curr <- -sum((W_prop - mean_curr)^2) / (2 * h^2)
-          dprop_prop <- -sum((W_curr - mean_prop)^2) / (2 * h^2)
-          list(mean = mean_prop,
-               log_prob = lp_prop + dprop_prop - lp_curr - dprop_curr,
-               state = state_prop)
-        }
-      }
-    }, error = function(e) NULL)
-
-    if (!is.null(proposal) && is.finite(proposal$log_prob) &&
-        log(runif(1)) < proposal$log_prob) {
-      acc <- acc + 1L
-      accepted[i] <- TRUE
-      W_curr <- W_prop
-      S_tot_curr <- S_tot_prop
-      state_curr <- proposal$state
-      lp_curr <- state_curr$log_density
-      mean_curr <- proposal$mean
-    }
-
-    if (i > burnin && (i - burnin) %% thin == 0) {
-      cnt <- (i - burnin) %/% thin
-      sim[cnt, ] <- S_tot_curr
-    }
-
-    acc_prob[i] <- acc / i
-    # Adapt only during burn-in so retained draws use a fixed Markov kernel.
-    # Updating log(h) keeps the step size positive; the diminishing gain is a
-    # Robbins-Monro update targeting the standard MALA acceptance rate.
-    if (i <= burnin) {
-      log_h <- log(h) + c1.h * i^(-c2.h) * (accepted[i] - 0.574)
-      h <- exp(log_h)
-      # The Langevin mean depends on h. Recompute it for the next iteration
-      # after every warm-up update, including when the proposal was rejected.
-      mean_curr <- as.numeric(
-        W_curr + (h^2 / 2) * state_curr$gradient
-      )
-    }
-    h.vec[i] <- h
-
-    if (messages) {
-      if (!is.null(pb)) {
-        utils::setTxtProgressBar(pb, i)
-      } else if (i %% max(1, floor(n_sim/20)) == 0) {
-        # non-interactive fallback: update every ~5%
-        message(sprintf("   %3d%%", round(100 * i / n_sim)))
-      }
-    }
-  }
-
-  if (!is.null(pb)) close(pb)
-  if (messages) message(" done.\n")
-
-  out_sim <- list()
-  out_sim$samples <- list()
-  out_sim$samples$S <- sim[, 1:n_loc, drop = FALSE]
+  samples <- chain$samples[, structure$position, drop = FALSE]
+  out_sim <- list(samples = list(S = samples[, seq_len(n_loc), drop = FALSE]))
   if (n_re > 0) {
-    re_names <- if (!is.null(colnames(ID_re))) colnames(ID_re) else paste0("re", seq_len(n_re))
+    re_names <- colnames(ID_re) %||% paste0("re", seq_len(n_re))
+    first <- n_loc + c(0L, cumsum(n_dim_re))
     for (i in seq_len(n_re)) {
-      out_sim$samples[[re_names[i]]] <- sim[, ind_re[[i]], drop = FALSE]
+      out_sim$samples[[re_names[i]]] <-
+        samples[, first[i] + seq_len(n_dim_re[i]), drop = FALSE]
     }
   }
-  out_sim$tuning_par <- h.vec
-  out_sim$acceptance_prob <- acc_prob
-  out_sim$acceptance <- accepted
+  out_sim$tuning_par <- chain$tuning
+  out_sim$acceptance_prob <- chain$cumulative_acceptance
+  out_sim$acceptance <- as.logical(chain$acceptance)
   out_sim$acceptance_rate <- c(
-    burnin = if (burnin > 0L) mean(accepted[seq_len(burnin)]) else NA_real_,
-    sampling = mean(accepted[seq.int(burnin + 1L, n_sim)])
+    burnin = if (control_mcmc$burnin > 0L) {
+      mean(out_sim$acceptance[seq_len(control_mcmc$burnin)])
+    } else NA_real_,
+    sampling = mean(out_sim$acceptance[seq.int(
+      control_mcmc$burnin + 1L, control_mcmc$n_sim
+    )])
   )
+  out_sim$mode <- found$mode[structure$position]
   out_sim$invlink_used <- linkf$name
   class(out_sim) <- "RiskMap_mcmc"
   out_sim
 }
+
+##' Latent effects of the prediction sampler in the order of its factor
+##'
+##' The sampler orders the latent effects as the locations, then the levels of
+##' every `re()` term but the one with most levels, then the levels of that
+##' term, whose block of the Laplace precision is diagonal (`n_d` of them). The
+##' first `n_u` have the dense prior precision `prior_u` (the inverse of
+##' `Sigma` for the locations, `1 / sigma2_re` on the diagonal for the levels),
+##' and the last `n_d` the prior precision `prior_d`. `columns` holds, for each
+##' record, the 0-based positions of the latent effects in its linear
+##' predictor, with the diagonal term last, and `position` maps the usual
+##' order (locations, then each term's levels in turn) to this one.
+##' @noRd
+sampler_latent_structure <- function(Sigma, ID_coords, ID_re, sigma2_re) {
+  n_loc <- nrow(Sigma)
+  precision <- chol2inv(factor_covariance(Sigma, "spatial covariance matrix"))
+  n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
+  levels <- if (n_re > 0) as.integer(apply(ID_re, 2L, max)) else integer(0)
+  diagonal_term <- if (n_re > 0) which.max(levels) else 0L
+  dense_terms <- setdiff(seq_len(n_re), diagonal_term)
+  n_u <- n_loc + sum(levels[dense_terms])
+  n_d <- if (n_re > 0) levels[diagonal_term] else 0L
+  # First position (0-based) of each term, in the usual and in this order.
+  usual_first <- n_loc + c(0L, cumsum(levels))[seq_len(n_re)]
+  sampler_first <- integer(n_re)
+  sampler_first[dense_terms] <- n_loc + c(0L, cumsum(levels[dense_terms]))[
+    seq_along(dense_terms)]
+  if (n_re > 0) sampler_first[diagonal_term] <- n_u
+  position <- seq_len(n_loc)
+  for (j in seq_len(n_re)) {
+    position[usual_first[j] + seq_len(levels[j])] <-
+      sampler_first[j] + seq_len(levels[j])
+  }
+  columns <- matrix(as.integer(ID_coords) - 1L, ncol = 1L)
+  for (j in c(dense_terms, if (n_re > 0) diagonal_term)) {
+    columns <- cbind(columns, sampler_first[j] + as.integer(ID_re[, j]) - 1L)
+  }
+  storage.mode(columns) <- "integer"
+  dimnames(columns) <- NULL
+  prior_u <- matrix(0, n_u, n_u)
+  prior_u[seq_len(n_loc), seq_len(n_loc)] <- precision
+  for (j in dense_terms) {
+    index <- sampler_first[j] + seq_len(levels[j])
+    prior_u[cbind(index, index)] <- 1 / sigma2_re[[j]]
+  }
+  prior_d <- if (n_re > 0) rep(1 / sigma2_re[[diagonal_term]], n_d) else
+    numeric(0)
+  list(columns = columns, n_u = n_u, n_d = n_d, n_loc = n_loc,
+       dimension = n_u + n_d, prior_u = prior_u, prior_d = prior_d,
+       position = position)
+}
+
+##' Conditional mode of the latent effects for the prediction sampler
+##'
+##' Newton's method with step halving on log f(y | u) - u' P u / 2, in the
+##' order and with the structured factor of `sampler_latent_structure()`, so
+##' that each step costs a factorisation of the size of the locations and
+##' passes over the records, whatever the number of `re()` levels. It follows
+##' the rules of `adaptive_laplace_mode()`. For a link that is not
+##' log-concave, curvatures that leave the Hessian without a Cholesky factor
+##' are set to zero, a search from a nonzero `start` that fails is repeated
+##' from zero, and a custom link's search starts off the limits of the link.
+##' Returns the mode and the record weights of the Laplace precision there,
+##' which are positive definite by the same rule.
+##' @noRd
+find_sampler_mode <- function(structure, y, units_m, mu, family, linkf,
+                              start = NULL, tolerance = 1e-10,
+                              maximum_iterations = 100L) {
+  latent_map <- make_latent_map(structure$columns + 1L, structure$dimension)
+  dense <- seq_len(structure$n_u)
+  diagonal <- structure$n_u + seq_len(structure$n_d)
+  canonical <- identical(linkf$name, "canonical")
+  prior_product <- function(latent) {
+    c(as.numeric(structure$prior_u %*% latent[dense]),
+      structure$prior_d * latent[diagonal])
+  }
+  terms_at <- function(latent) {
+    terms <- laplace_observation_terms(
+      mu + latent_linear_predictor(latent_map, latent),
+      y, units_m, family, linkf
+    )
+    finite <- !is.null(terms) && is.finite(terms$log_likelihood) &&
+      all(is.finite(terms$score)) && all(is.finite(terms$curvature))
+    if (finite) terms
+  }
+  objective <- function(latent, terms) {
+    terms$log_likelihood - 0.5 * sum(latent * prior_product(latent))
+  }
+  solve_at <- function(weights, right_hand_side) {
+    cpp_structured_solve(structure$columns, structure$n_u, structure$n_d,
+                         structure$prior_u, structure$prior_d, weights,
+                         right_hand_side)
+  }
+  # The record weights of the Newton step: the curvatures, or for a link
+  # that is not log-concave with negative ones set to zero if the Hessian
+  # has no Cholesky factor.
+  usable_weights <- function(curvature) {
+    if (canonical || !is.null(solve_at(curvature, numeric(structure$dimension)))) {
+      return(curvature)
+    }
+    pmax(curvature, 0)
+  }
+  search_from <- function(latent) {
+    if (!canonical) {
+      latent <- move_start_off_limits(
+        latent,
+        function(point) mu + latent_linear_predictor(latent_map, point),
+        y, units_m, family, linkf, latent_map$columns[, 1L]
+      )
+    }
+    terms <- terms_at(latent)
+    if (is.null(terms)) return(NULL)
+    current <- objective(latent, terms)
+    if (!is.finite(current)) return(NULL)
+    reached_limit <- TRUE
+    for (iteration in seq_len(maximum_iterations)) {
+      gradient <- latent_gradient(latent_map, terms$score) -
+        prior_product(latent)
+      step <- solve_at(usable_weights(terms$curvature), gradient)
+      if (is.null(step) || !all(is.finite(step))) return(NULL)
+      accepted <- FALSE
+      for (halving in 0:30) {
+        candidate <- latent + step / 2^halving
+        candidate_terms <- terms_at(candidate)
+        if (is.null(candidate_terms)) next
+        value <- objective(candidate, candidate_terms)
+        if (is.finite(value) && value >= current - 1e-12 * abs(current)) {
+          accepted <- TRUE
+          break
+        }
+      }
+      if (!accepted) {
+        # As in adaptive_laplace_mode(), a point where the promised increase
+        # is within rounding is a mode that rounding keeps from confirming.
+        if (sum(gradient * step) / 2 > 1e-12 * abs(current)) return(NULL)
+        reached_limit <- FALSE
+        break
+      }
+      change <- max(abs(candidate - latent))
+      latent <- candidate
+      terms <- candidate_terms
+      current <- value
+      if (change <= tolerance * max(1, max(abs(latent)))) {
+        reached_limit <- FALSE
+        break
+      }
+    }
+    list(mode = latent, weights = usable_weights(terms$curvature),
+         iterations = iteration, reached_limit = reached_limit)
+  }
+  found <- NULL
+  restarted <- FALSE
+  if (!is.null(start) && !all(start == 0)) {
+    found <- tryCatch(search_from(start), error = function(error) NULL)
+    restarted <- is.null(found)
+  }
+  if (is.null(found)) found <- search_from(numeric(structure$dimension))
+  if (is.null(found)) {
+    stop("The search for the mode of the latent effects failed.",
+         call. = FALSE)
+  }
+  found$restarted <- restarted
+  found
+}
+
+##' Centre of the prediction sampler from maxim_integrand()
+##'
+##' Used when `find_sampler_mode()` fails. Returns the mode found by
+##' `nlminb()` in the order of the sampler, with the record weights of the
+##' Laplace precision there and negative curvatures set to zero, which keeps
+##' that precision positive definite.
+##' @noRd
+fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
+                                  ID_re, sigma2_re, family, invlink, linkf) {
+  maximum <- maxim_integrand(
+    y = y, denominator = units_m, mu = mu, Sigma = Sigma,
+    ID_coords = ID_coords, ID_re = ID_re, sigma2_re = sigma2_re,
+    family = family, invlink = invlink, hessian = TRUE
+  )
+  mode <- maximum$mode[order(structure$position)]
+  latent_map <- make_latent_map(structure$columns + 1L, structure$dimension)
+  terms <- laplace_observation_terms(
+    mu + latent_linear_predictor(latent_map, mode), y, units_m, family, linkf
+  )
+  if (is.null(terms) || !all(is.finite(terms$curvature))) {
+    stop("The search for the mode of the latent effects failed.",
+         call. = FALSE)
+  }
+  list(mode = mode, weights = pmax(terms$curvature, 0), iterations = NA_integer_,
+       reached_limit = NA, restarted = TRUE)
+}
+
 ##' Set control parameters for certified MCML estimation
 ##'
 ##' Non-Gaussian models are fitted by Monte Carlo maximum likelihood with
@@ -3628,15 +3615,15 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     ID_coords = ID_coords, ID_re = ID_re,
     sigma2_re = fitted_pars$sigma2_re,
     family = family,
-    # Canonical links use the compiled sampler, which a supplied function
-    # would bypass. Custom links pass the inverse link with the derivatives
-    # the fit used, so that they are not derived again.
+    # Canonical links are evaluated inside the compiled chain. Custom links
+    # pass the inverse link with the derivatives the fit used, so that they
+    # are not derived again.
     invlink = if (identical(link_function$name, "canonical")) {
       NULL
     } else {
       link_function[c("inv", "d1", "d2")]
     },
-    control_mcmc = control_mcmc, seed = seed, messages = messages
+    control_mcmc = control_mcmc, seed = seed
   )
 
   eta <- sweep(
@@ -3676,7 +3663,10 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
 ##' This function sets control parameters for running simulations, supporting MCMC methods
 ##' for glgpm models.
 ##'
-##' @param n_sim Integer. The total number of simulations to run. Default is 12000.
+##' @param n_sim Integer. The total number of simulations to run. Default is
+##'   22000, which with the default burn-in and thinning keeps 2,000 draws. With
+##'   `linear_model = TRUE` it is the number of independent draws, 2,000 by
+##'   default.
 ##' @param burnin Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.
 ##' @param thin Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.
 ##' @param h Numeric. An optional positive step size for Langevin MCMC.
@@ -3688,6 +3678,12 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
 ##'
 ##' @details
 ##' If \code{linear_model = TRUE}, only \code{n_sim} is required.
+##'
+##' During burn-in the step size of the Langevin chain is adapted towards an
+##' acceptance rate of 0.574, starting from \code{h} (by default
+##' \eqn{1.65 / d^{1/6}} for \eqn{d} latent effects). The step kept after
+##' burn-in is the geometric mean of the adapted step over the second half of
+##' burn-in.
 ##'
 ##' Seeds are not part of the control settings. Pass `seed` to [glgpm()],
 ##' [predict.RiskMap()], [assess_prediction()] or [assess_simulation()].
@@ -3707,7 +3703,7 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
 ##' @seealso \code{\link{glgpm}}
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
-set_control_mcmc <- function(n_sim = 12000,
+set_control_mcmc <- function(n_sim = 22000,
                             burnin = 2000,
                             thin = 10,
                             h = NULL,
@@ -3720,6 +3716,9 @@ set_control_mcmc <- function(n_sim = 12000,
   # =============================================================================
 
   if (linear_model) {
+    # Draws of a linear model are independent, so none is discarded.
+    if (missing(n_sim)) n_sim <- 2000
+    check_positive_integer(n_sim, "n_sim")
     res <- list(
       n_sim = n_sim,
       linear_model = linear_model

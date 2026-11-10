@@ -5,7 +5,7 @@
 \title{Set Control Parameters for Simulation}
 \usage{
 set_control_mcmc(
-  n_sim = 12000,
+  n_sim = 22000,
   burnin = 2000,
   thin = 10,
   h = NULL,
@@ -15,7 +15,10 @@ set_control_mcmc(
 )
 }
 \arguments{
-\item{n_sim}{Integer. The total number of simulations to run. Default is 12000.}
+\item{n_sim}{Integer. The total number of simulations to run. Default is
+22000, which with the default burn-in and thinning keeps 2,000 draws. With
+\code{linear_model = TRUE} it is the number of independent draws, 2,000 by
+default.}
 
 \item{burnin}{Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.}
 
@@ -43,6 +46,12 @@ for glgpm models.
 }
 \details{
 If \code{linear_model = TRUE}, only \code{n_sim} is required.
+
+During burn-in the step size of the Langevin chain is adapted towards an
+acceptance rate of 0.574, starting from \code{h} (by default
+\eqn{1.65 / d^{1/6}} for \eqn{d} latent effects). The step kept after
+burn-in is the geometric mean of the adapted step over the second half of
+burn-in.
 
 Seeds are not part of the control settings. Pass \code{seed} to \code{\link[=glgpm]{glgpm()}},
 \code{\link[=predict.RiskMap]{predict.RiskMap()}}, \code{\link[=assess_prediction]{assess_prediction()}} or \code{\link[=assess_simulation]{assess_simulation()}}.
