@@ -19,19 +19,30 @@ gauss_hermite_rule <- function(nodes) {
 ##' locations vanishes, and the likelihood tends to that of independent
 ##' location effects with the total variance at a location (the spatial
 ##' variance plus any nugget), a product of one-dimensional integrals. Each is
-##' evaluated by adaptive Gauss-Hermite quadrature at the posterior mode of
-##' the location's effect. The observation terms are those of the MCML engine
-##' for the canonical links, so the result is on the engine's scale, with the
-##' same constants. `D` is the engine's design matrix, `location` maps each
-##' observation to its location, and `offset` is the covariate offset.
+##' evaluated on the engine's scale, with the observation terms of the MCML
+##' engine and the same constants. `D` is the engine's design matrix,
+##' `location` maps each observation to its location, and `offset` is the
+##' covariate offset.
+##'
+##' For the canonical links each location's log-density is concave, and its
+##' integral is taken by adaptive Gauss-Hermite quadrature at the posterior
+##' mode of the location's effect, found by Newton steps from zero. A custom
+##' link (`linkf`) can make that density flat where a probability rounds to a
+##' limit (`bound_log_probability()`), where a search from zero finds no slope,
+##' or give it more than one mode, where a rule at one mode misses the mass of
+##' the others. Its integral is taken by the rule of the site table for a
+##' custom link, which assumes no mode (`place_trapezium_nodes()`).
 ##'
 ##' The returned `log_likelihood(beta, log_variance)` gives the value, its
-##' gradient in (beta, log_variance), and the posterior mean and variance of
-##' each location's effect, which the Jensen bound
-##' (`compute_jensen_bound()`) needs. `maximise()` maximises the value from
-##' several starting variances and records the change in the maximum from 30
-##' to 60 nodes as its numerical error, keeping the 30-node value and moments
-##' so that the error of the Jensen bound can be judged the same way.
+##' gradient in (beta, log_variance), the posterior mean and variance of each
+##' location's effect, which the Jensen bound (`compute_jensen_bound()`)
+##' needs, and each location's term of the value (`sites`). `count` is the
+##' number of Gauss-Hermite nodes, and with a custom link any count below
+##' `nodes` doubles the step of the trapezium rule. `maximise()` maximises the
+##' value from several starting variances and records the change in the
+##' maximum from 60 to 30 nodes, or to the doubled step, as its numerical
+##' error, keeping the coarser value and moments so that the error of the
+##' Jensen bound can be judged the same way.
 ##' @noRd
 make_independent_site_likelihood <- function(D, y, units_m, location, offset,
                                              family, nodes = 60L,
@@ -45,7 +56,6 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
     rowsum(values, location, reorder = TRUE)
   }
   terms <- function(eta) {
-    if (!is.null(linkf)) return(custom_terms(eta))
     if (poisson) {
       mean <- exp(eta)
       list(value = y * eta - units_m * mean, score = y - units_m * mean,
@@ -58,21 +68,66 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
            curvature = units_m * probability * (1 - probability))
     }
   }
-  # A custom link takes its terms from compute_custom_link_terms(), in the
-  # shape of `eta`, which is a matrix at the quadrature nodes.
-  custom_terms <- function(eta) {
-    observed <- compute_custom_link_terms(eta, y, units_m, family, linkf)
+  # A custom link's terms of the records `rows` at the linear predictors
+  # `eta` (compute_custom_link_terms()), with value -Inf and score and
+  # curvature 0 where the link or one of its derivatives is not finite or the
+  # mean is outside the support of the family, as it may be far beyond the
+  # range on which the link was checked.
+  custom_terms <- function(eta, rows, with_curvature) {
+    observe <- function(valid) {
+      observed <- compute_custom_link_terms(eta[valid], y[rows][valid],
+                                            units_m[rows][valid], family,
+                                            linkf, with_curvature)
+      if (is.null(observed)) return(NULL)
+      value <- rep(-Inf, length(eta))
+      score <- curvature <- numeric(length(eta))
+      value[valid] <- observed$log_likelihoods
+      score[valid] <- observed$score
+      if (with_curvature) curvature[valid] <- observed$curvature
+      list(value = value, score = score, curvature = curvature)
+    }
+    mean <- suppressWarnings(linkf$inv(eta))
+    valid <- is.finite(mean) & mean >= 0 & (poisson | mean <= 1)
+    observed <- if (any(valid)) observe(valid)
+    if (is.null(observed) && any(valid)) {
+      valid <- valid & is.finite(suppressWarnings(linkf$d1(eta)))
+      if (with_curvature) {
+        valid <- valid & is.finite(suppressWarnings(linkf$d2(eta)))
+      }
+      observed <- if (any(valid)) observe(valid)
+    }
     if (is.null(observed)) {
       stop("the inverse link failed in the likelihood with independent ",
            "location effects", call. = FALSE)
     }
-    shaped <- function(values) {
-      if (is.matrix(eta)) dim(values) <- dim(eta)
-      values
-    }
-    list(value = shaped(observed$log_likelihoods),
-         score = shaped(observed$score),
-         curvature = shaped(observed$curvature))
+    observed
+  }
+  largest_terms <- if (!is.null(linkf)) {
+    drop(by_location(compute_largest_record_terms(y, units_m, family)))
+  }
+  # The integral of each location's effect by the trapezium rule, for a custom
+  # link, with the step doubled where `doubled`.
+  custom_log_likelihood <- function(linear, variance, doubled) {
+    lattice <- place_trapezium_nodes(linear, location, n_locations, variance,
+                                     custom_terms, largest_terms, doubled)
+    nodes <- lattice$nodes
+    log_integrand <- nodes$log_density + log(lattice$step)[nodes$location]
+    largest <- maximum_by_group(log_integrand, nodes$location, n_locations)
+    weights <- exp(log_integrand - largest[nodes$location])
+    weights[!is.finite(weights)] <- 0
+    totals <- drop(rowsum(weights, nodes$location, reorder = TRUE))
+    posterior <- weights / totals[nodes$location]
+    mean <- drop(rowsum(posterior * nodes$effects, nodes$location,
+                        reorder = TRUE))
+    second <- drop(rowsum(posterior * nodes$effects^2, nodes$location,
+                          reorder = TRUE))
+    score <- drop(rowsum(nodes$score * posterior[nodes$point_of],
+                         nodes$record_of, reorder = TRUE))
+    sites <- largest + log(totals) - log(2 * pi * variance) / 2
+    list(value = sum(sites),
+         gradient = c(drop(crossprod(D, score)),
+                      sum(second) / (2 * variance) - n_locations / 2),
+         mean = mean, variance = pmax(second - mean^2, 0), sites = sites)
   }
   rules <- list()
   rule <- function(count) {
@@ -81,9 +136,9 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
     rules[[key]]
   }
 
-  # The curvature of a location's log-density. A link that is not log-concave
-  # can make it negative, so it is kept at least half the prior's, which the
-  # canonical links, whose curvature is never negative, do not reach.
+  # The curvature of a location's log-density, kept at least half the
+  # prior's, which the canonical links, whose curvature is never negative, do
+  # not reach.
   site_curvature <- function(curvature, variance) {
     pmax(drop(by_location(curvature)) + 1 / variance, 1 / (2 * variance))
   }
@@ -120,6 +175,9 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
   log_likelihood <- function(beta, log_variance, count = nodes) {
     variance <- exp(log_variance)
     linear <- drop(D %*% beta) + offset
+    if (!is.null(linkf)) {
+      return(custom_log_likelihood(linear, variance, count < nodes))
+    }
     modes <- find_modes(linear, variance)
     gh <- rule(count)
     # Location effects at the nodes, one row per location.
@@ -140,7 +198,9 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
     list(value = value,
          gradient = c(drop(crossprod(D, score)),
                       sum(second) / (2 * variance) - n_locations / 2),
-         mean = mean, variance = pmax(second - mean^2, 0))
+         mean = mean, variance = pmax(second - mean^2, 0),
+         sites = largest + log(totals) + log(sqrt(2) * modes$scale) -
+           log(2 * pi * variance) / 2)
   }
 
   maximise <- function(beta_start, log_variance_starts = c(-2, 0, 2),
@@ -189,6 +249,135 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
   }
 
   list(log_likelihood = log_likelihood, maximise = maximise)
+}
+
+##' The largest term of each record of the likelihood over its linear predictor
+##'
+##' y log(y / m) + (m - y) log(1 - y / m) for a binomial record and
+##' y log(y) - y for a Poisson one, with 0 log 0 = 0, which bound the terms of
+##' the MCML engine for any link. The bounds of `bound_log_probability()` only
+##' move a probability within [0, 1], or a mean above zero, so they hold there
+##' too.
+##' @noRd
+compute_largest_record_terms <- function(y, units_m, family) {
+  if (identical(family, "poisson")) {
+    return(ifelse(y > 0, y * log(pmax(y, 1)) - y, 0))
+  }
+  proportion <- y / units_m
+  ifelse(y > 0, y * log(pmax(proportion, .Machine$double.xmin)), 0) +
+    ifelse(units_m > y,
+           (units_m - y) * log1p(-pmin(proportion, 1 - .Machine$double.eps)),
+           0)
+}
+
+##' The largest value of each group, -Inf for a group without a finite value
+##' @noRd
+maximum_by_group <- function(values, group, n_groups) {
+  values[is.na(values)] <- -Inf
+  largest <- rep(-Inf, n_groups)
+  order_in_group <- order(group, -values)
+  first <- order_in_group[!duplicated(group[order_in_group])]
+  largest[group[first]] <- values[first]
+  largest
+}
+
+##' The log-density of each location's effect on a lattice of its own
+##'
+##' Location i is evaluated at `count[i]` effects from `first[i]` with a step
+##' of `spacing[i]`, and each of its records at each of them. `terms` is as in
+##' `place_trapezium_nodes()`. Returns, for each point, its location, effect
+##' and log-density g(u) = l(u) - u^2 / (2 v), with the sum of its records'
+##' curvatures where `with_curvature`, and for each record at each point its
+##' record, its point and its score.
+##' @noRd
+evaluate_site_lattice <- function(linear, location, n_locations, variance,
+                                  terms, first, spacing, count,
+                                  with_curvature) {
+  point_location <- rep(seq_len(n_locations), count)
+  effects <- first[point_location] +
+    (sequence(count) - 1) * spacing[point_location]
+  first_point <- cumsum(c(0L, count))[seq_len(n_locations)]
+  per_record <- count[location]
+  record_of <- rep(seq_along(linear), per_record)
+  point_of <- first_point[location[record_of]] + sequence(per_record)
+  observed <- terms(linear[record_of] + effects[point_of], record_of,
+                    with_curvature)
+  log_density <- drop(rowsum(observed$value, point_of, reorder = TRUE)) -
+    effects^2 / (2 * variance)
+  log_density[is.na(log_density)] <- -Inf
+  list(location = point_location, effects = effects,
+       log_density = log_density,
+       curvature = if (with_curvature) {
+         drop(rowsum(observed$curvature, point_of, reorder = TRUE))
+       },
+       record_of = record_of, point_of = point_of, score = observed$score)
+}
+
+##' The nodes of the trapezium rule for each location with a custom link
+##'
+##' The rule of the site table for a custom link (`custom_cell()` in
+##' `src/site_table.h`), which assumes no mode, applied to each location of
+##' the likelihood with independent location effects, whose records need not
+##' share their linear predictor. A location's log integrand
+##' g(u) = l(u) - u^2 / (2 v), with l the sum of its records' terms, is below
+##' g(0) less the cut of 40 wherever u^2 / (2 v) exceeds sup l - l(0) plus
+##' the cut, with `sup` the bound of `compute_largest_record_terms()`, which
+##' gives the range. A coarse pass over that range, with a step of at most
+##' 0.25 and at most `maximum_steps` steps, finds where g is within the cut of
+##' its top, allowing for a peak between its points, and the largest
+##' curvature of l there. The trapezium rule then sums that stretch, widened
+##' by one coarse step on each side, on the multiples of a step of at most
+##' 0.25 and at most half the narrowest width of the integrand,
+##' 1 / sqrt(curvature + 1 / v), with at most `maximum_steps` steps.
+##' `doubled` doubles that step, for the change
+##' that measures the rule's error. `terms(eta, rows, with_curvature)` gives
+##' the `value`, `score` and `curvature` of each record `rows` at the linear
+##' predictors `eta`, with value -Inf where the link is not finite. Returns
+##' the step of each location and its nodes (`evaluate_site_lattice()`).
+##' @noRd
+place_trapezium_nodes <- function(linear, location, n_locations, variance,
+                                  terms, sup, doubled = FALSE, cut = 40,
+                                  step_cap = 0.25, maximum_steps = 2000L) {
+  at_zero <- drop(rowsum(terms(linear, seq_along(linear), FALSE)$value,
+                         location, reorder = TRUE))
+  # A location whose likelihood is not finite at u = 0, as far beyond the range
+  # on which the link was checked, has no bound, and its range is taken as
+  # if l(0) were 1000 below sup l.
+  gap <- sup - at_zero
+  gap[!is.finite(gap)] <- 1000
+  reach <- sqrt(2 * variance * (pmax(gap, 0) + cut + 2))
+  coarse <- pmax(pmin(step_cap, reach / 50), 2 * reach / maximum_steps)
+  steps <- as.integer(ceiling(2 * reach / coarse))
+  pass <- evaluate_site_lattice(linear, location, n_locations, variance,
+                                terms, -reach, coarse, steps + 1L, TRUE)
+  top <- maximum_by_group(pass$log_density, pass$location, n_locations)
+  spacing <- coarse[pass$location]
+  slack <- (spacing^2 + 2 * spacing * abs(pass$effects)) / (2 * variance)
+  kept <- is.finite(pass$log_density) &
+    pass$log_density > top[pass$location] - cut - slack
+  low <- -maximum_by_group(-pass$effects[kept], pass$location[kept],
+                           n_locations)
+  high <- maximum_by_group(pass$effects[kept], pass$location[kept],
+                           n_locations)
+  largest <- pmax(maximum_by_group(pass$curvature[kept], pass$location[kept],
+                                   n_locations), 0)
+  empty <- !is.finite(low) | !is.finite(high)
+  low[empty] <- 0
+  high[empty] <- 0
+  width <- 1 / sqrt(largest + 1 / variance)
+  halvings <- pmax(ceiling(log2(step_cap / (0.5 * width))), 0)
+  # At a variance far above any fit's, as maximise() may try, the stretch to
+  # sum can be thousands of units long, and the number of nodes is held at
+  # `maximum_steps` as in the coarse pass.
+  span <- high - low + 2 * coarse
+  step <- pmax(step_cap / 2^halvings, 1e-7, span / maximum_steps) *
+    if (doubled) 2 else 1
+  start <- floor((low - coarse) / step)
+  end <- ceiling((high + coarse) / step)
+  list(step = step,
+       nodes = evaluate_site_lattice(linear, location, n_locations, variance,
+                                     terms, start * step, step,
+                                     as.integer(end - start + 1), FALSE))
 }
 
 ##' Jensen lower bound on the log-likelihood at a positive spatial scale

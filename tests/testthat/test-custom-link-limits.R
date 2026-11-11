@@ -364,6 +364,100 @@ test_that("the sampler is not stopped by a probability that rounds to one", {
   expect_gt(above, 0.2)
 })
 
+# The log-likelihood of one location with independent effects of variance
+# `variance`, on the engine's kernel with its bounds, by the trapezium rule on a
+# fine lattice that holds every mode.
+integrate_one_site <- function(linkf, y, units_m, linear, variance) {
+  effects <- seq(-60, 60, by = 1 / 512)
+  bounded <- bound_log_probability(linkf$inv(linear + effects))
+  log_density <- y * bounded$success + (units_m - y) * bounded$failure -
+    effects^2 / (2 * variance)
+  top <- max(log_density)
+  top + log(sum(exp(log_density - top)) / 512) - log(2 * pi * variance) / 2
+}
+
+test_that("the independent-site likelihood finds a mode past a limit of the link", {
+  # cloglog rounds to one from a linear predictor of 3.6, where the bounded
+  # log-likelihood of a record with failures is flat, so a search for the
+  # location's mode from zero had no slope to follow. The mode is near -4.
+  sites <- make_independent_site_likelihood(cbind(1), 8, 20, 1L, 0,
+                                            "binomial", linkf = cloglog_link)
+  at <- sites$log_likelihood(4, log(2))
+  expect_equal(at$value, integrate_one_site(cloglog_link, 8, 20, 4, 2),
+               tolerance = 1e-8)
+  expect_lt(at$mean, -3)
+  coarse <- sites$log_likelihood(4, log(2), count = 30L)
+  expect_lt(abs(at$value - coarse$value), 1e-8)
+  probit <- make_independent_site_likelihood(cbind(1), 8, 20, 1L, 0,
+                                             "binomial", linkf = probit_link)
+  expect_equal(probit$log_likelihood(9, log(2))$value,
+               integrate_one_site(probit_link, 8, 20, 9, 2), tolerance = 1e-8)
+})
+
+test_that("the independent-site likelihood finds the higher of two modes", {
+  # With the link of an imperfect test and a large variance, the density of the
+  # location's effect has a low mode near zero, on the flat top of the link,
+  # and the highest near -10, where the link fits 8 in 20.
+  sites <- make_independent_site_likelihood(cbind(1), 8, 20, 1L, 0,
+                                            "binomial", linkf = imperfect_link)
+  at <- sites$log_likelihood(10, log(32))
+  expect_equal(at$value, integrate_one_site(imperfect_link, 8, 20, 10, 32),
+               tolerance = 1e-4)
+  expect_lt(at$mean, -9)
+})
+
+test_that("the independent-site likelihood counts the mass of every mode", {
+  # At these sites the density of the location's effect has two modes, each
+  # with a third or more of the mass, so a rule at either mode misses the
+  # other.
+  cauchit <- make_link(
+    function(eta) stats::pcauchy(eta),
+    function(eta) stats::dcauchy(eta),
+    function(eta) -2 * eta / (pi * (1 + eta^2)^2)
+  )
+  sites <- make_independent_site_likelihood(cbind(1), 20, 20, 1L, 0,
+                                            "binomial", linkf = cauchit)
+  expect_equal(sites$log_likelihood(-6.6, log(0.5))$value,
+               integrate_one_site(cauchit, 20, 20, -6.6, 0.5),
+               tolerance = 1e-10)
+  sites <- make_independent_site_likelihood(cbind(1), 19, 20, 1L, 0,
+                                            "binomial", linkf = cloglog_link)
+  expect_equal(sites$log_likelihood(7.4, log(0.5))$value,
+               integrate_one_site(cloglog_link, 19, 20, 7.4, 0.5),
+               tolerance = 1e-8)
+})
+
+test_that("the trapezium rule of a custom link gives each location's term", {
+  set.seed(5)
+  location <- c(1:6, 2L, 4L)
+  D <- cbind(1, stats::rnorm(length(location)))
+  y <- c(3, 0, 8, 10, 1, 5, 2, 9)
+  sites <- make_independent_site_likelihood(D, y, rep(10, 8), location,
+                                            numeric(8), "binomial",
+                                            linkf = imperfect_link)
+  at <- sites$log_likelihood(c(0.2, 0.5), log(1.5))
+  expect_length(at$sites, 6L)
+  expect_equal(sum(at$sites), at$value, tolerance = 1e-12)
+  expect_equal(at$gradient, numDeriv::grad(function(parameters) {
+    sites$log_likelihood(parameters[1:2], parameters[3])$value
+  }, c(0.2, 0.5, log(1.5))), tolerance = 1e-6)
+  doubled <- sites$log_likelihood(c(0.2, 0.5), log(1.5), count = 30L)
+  expect_lt(abs(doubled$value - at$value), 1e-6)
+})
+
+test_that("the largest term of a record bounds it for any probability", {
+  probability <- seq(0, 1, by = 0.001)
+  bounded <- bound_log_probability(probability)
+  for (y in c(0, 3, 10)) {
+    largest <- compute_largest_record_terms(y, 10, "binomial")
+    terms <- multiply_by_count(y, bounded$success) +
+      multiply_by_count(10 - y, bounded$failure)
+    expect_lte(max(terms), largest + 1e-12)
+  }
+  expect_identical(compute_largest_record_terms(c(0, 4), c(1, 1), "poisson"),
+                   c(0, 4 * log(4) - 4))
+})
+
 test_that("cloglog at high prevalence is certified", {
   skip_on_cran()
   set.seed(4)
