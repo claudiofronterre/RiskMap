@@ -412,8 +412,7 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
   }
   if (is.null(found)) found <- search_from(numeric(length(start)))
   if (is.null(found)) {
-    stop("The search for the mode of the latent effects failed.",
-         call. = FALSE)
+    riskmap_abort("The search for the mode of the latent effects failed.", class = "riskmap_error_fit")
   }
   c(found, list(restarted = restarted))
 }
@@ -430,7 +429,7 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
 inverse_cholesky_factor <- function(hessian) {
   root <- cpp_inverse_cholesky_factor(as.matrix(hessian))
   if (is.null(root)) {
-    stop("The matrix is not positive definite.", call. = FALSE)
+    riskmap_abort("The matrix is not positive definite.", class = "riskmap_error_fit")
   }
   root
 }
@@ -1093,7 +1092,7 @@ make_adaptive_mcml_engine <- function(
     # numbers, so a proposal that is not finite is an error here, which gives
     # the parameter value no weight in evaluate().
     if (!all(is.finite(gaussian$centre)) || !all(is.finite(root))) {
-      stop("The importance distribution is not finite.", call. = FALSE)
+      riskmap_abort("The importance distribution is not finite.", class = "riskmap_error_fit")
     }
     proposal <- list(centre = gaussian$centre, root = root, values = values,
                      covariance = prior$covariance,
@@ -1374,9 +1373,11 @@ make_adaptive_mcml_engine <- function(
 ##' are those of its form.
 ##' @noRd
 make_switching_mcml_engine <- function(sampled, integrated, threshold = 0.1) {
-  stopifnot(isTRUE(integrated$integrated), !isTRUE(sampled$integrated),
-            identical(sampled$latent_dimension, integrated$latent_dimension),
-            identical(sampled$layout, integrated$layout))
+  if (!isTRUE(integrated$integrated) || isTRUE(sampled$integrated) ||
+      !identical(sampled$latent_dimension, integrated$latent_dimension) ||
+      !identical(sampled$layout, integrated$layout)) {
+    riskmap_bug("A switching engine needs a sampled and an integrated form of the same model.")
+  }
   engines <- list(sampled = sampled, integrated = integrated)
   current <- "sampled"
   engine <- new.env(parent = emptyenv())
@@ -1668,7 +1669,9 @@ glgpm_nong_adaptive <- function(
     y, D, coords, units_m, kappa, reference_pars, cov_offset,
     ID_coords, ID_re, fix_tau2, family, invlink, control_mcml,
     seed, messages = TRUE, distance_scale = 1) {
-  stopifnot(family %in% c("poisson", "binomial"))
+  if (!family %in% c("poisson", "binomial")) {
+    riskmap_bug("{.arg family} must be {.val poisson} or {.val binomial}.")
+  }
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
   fit_seed <- as.integer(seed)
@@ -1786,8 +1789,7 @@ glgpm_nong_adaptive <- function(
     messages = messages
   )
   if (identical(fit$outcome, "no valid fit")) {
-    stop("Monte Carlo maximum likelihood could not obtain a valid fit: ",
-         fit$reason, ".", call. = FALSE)
+    riskmap_abort("Monte Carlo maximum likelihood could not obtain a valid fit ({fit$reason}).", class = "riskmap_error_fit")
   }
   re_names <- if (is.null(ID_re)) NULL else colnames(ID_re)
   boundary_names <- describe_variance_parameters(
@@ -1988,25 +1990,12 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
 ##' @noRd
 report_maxima_check <- function(fit) {
   if (isTRUE(fit$maxima_screen$alarm$persists)) {
-    warning(
-      "An exact lower bound on the likelihood shows that the estimate is not ",
-      "the maximum likelihood estimate. See check_fit().",
-      call. = FALSE
-    )
+    riskmap_warn("An exact lower bound on the likelihood shows that the estimate is not the maximum likelihood estimate. See {.fn check_fit}.", class = "riskmap_warning_fit")
   }
   if (isTRUE(fit$ambiguous_maxima)) {
-    warning(
-      "Separate maxima of the likelihood fit about equally well, so Wald ",
-      "intervals may describe the uncertainty poorly. See check_fit().",
-      call. = FALSE
-    )
+    riskmap_warn("Separate maxima of the likelihood fit about equally well, so Wald intervals may describe the uncertainty poorly. See {.fn check_fit}.", class = "riskmap_warning_fit")
   } else if (isTRUE(fit$better_maximum)) {
-    warning(
-      "The check for other maxima found a maximum higher than the one reached ",
-      "from the starting values, and the estimate is taken from it. See ",
-      "check_fit().",
-      call. = FALSE
-    )
+    riskmap_warn("The check for other maxima found a maximum higher than the one reached from the starting values, and the estimate is taken from it. See {.fn check_fit}.", class = "riskmap_warning_fit")
   }
   invisible(NULL)
 }
@@ -2020,14 +2009,12 @@ report_maxima_check <- function(fit) {
 ##' @noRd
 report_numerically_independent <- function(record) {
   variance <- record$independent$log_variance
-  warning(
-    "The fitted spatial scale is so short that the fit is numerically one of ",
-    "independent location effects",
-    if (!is.null(variance)) paste0(" with variance ", signif(exp(variance), 3)),
-    ", and the spatial scale is unresolved. Standard errors and the Monte ",
-    "Carlo certificate are not reported. See check_fit().",
-    call. = FALSE
-  )
+  with_variance <- if (!is.null(variance)) {
+    paste0(" with variance ", signif(exp(variance), 3))
+  } else {
+    ""
+  }
+  riskmap_warn("The fitted spatial scale is so short that the fit is numerically one of independent location effects{with_variance}, and the spatial scale is unresolved. Standard errors and the Monte Carlo certificate are not reported. See {.fn check_fit}.", class = "riskmap_warning_fit")
 }
 
 ##' Warn that the likelihood has no maximum
@@ -2045,25 +2032,20 @@ report_no_maximum <- function(fit, coefficient_names, family) {
     paste(paste(names[-length(names)], collapse = ", "), "and",
           names[length(names)])
   }
-  returned <- paste0(
-    " The estimate is where the optimiser stopped, and it is returned ",
-    "without standard errors or a Monte Carlo certificate. See check_fit()."
-  )
+  # A template, interpolated by the warning that uses it.
+  returned <- " The estimate is where the optimiser stopped, and it is returned without standard errors or a Monte Carlo certificate. See {.fn check_fit}."
   separation <- fit$separation
   everywhere <- separation$everywhere
   if (!is.null(everywhere)) {
     none <- identical(everywhere, "no positives")
     quantity <- if (binomial) "prevalence" else "mean"
-    warning(
-      if (!binomial) "Every count is zero" else if (none) {
-        "None of the individuals tested is positive"
-      } else {
-        "Every individual tested is positive"
-      },
-      ", so the likelihood increases as the fitted ", quantity, " tends to ",
-      if (none) "zero" else "one", " and has no maximum.", returned,
-      call. = FALSE
-    )
+    what <- if (!binomial) "Every count is zero" else if (none) {
+      "None of the individuals tested is positive"
+    } else {
+      "Every individual tested is positive"
+    }
+    limit <- if (none) "zero" else "one"
+    riskmap_warn(paste0("{what}, so the likelihood increases as the fitted {quantity} tends to {limit} and has no maximum.", returned), class = "riskmap_warning_fit")
   } else if (!is.null(separation)) {
     describe <- function(count, kind) {
       paste(count, if (count == 1L) "observation" else "observations", kind)
@@ -2078,23 +2060,18 @@ report_no_maximum <- function(fit, coefficient_names, family) {
       )
     )
     single <- length(separation$coefficients) == 1L
-    warning(
-      "The covariates separate the data. The fit to ",
-      paste(observations, collapse = " and "), " improves without limit as ",
-      "the regression coefficient", if (!single) "s", " of ",
-      listed(separation$coefficients), " ", if (single) "grows" else "grow",
-      " in absolute value, so the likelihood has no maximum.", returned,
-      call. = FALSE
-    )
+    observed <- paste(observations, collapse = " and ")
+    coefficients <- paste0("the regression coefficient", if (!single) "s",
+                           " of ", listed(separation$coefficients), " ",
+                           if (single) "grows" else "grow")
+    riskmap_warn(paste0("The covariates separate the data. The fit to {observed} improves without limit as {coefficients} in absolute value, so the likelihood has no maximum.", returned), class = "riskmap_warning_fit")
   } else {
     at_bound <- fit$coefficients_at_bound
     single <- length(at_bound) == 1L
-    warning(
-      "The estimate", if (!single) "s", " of the regression coefficient",
-      if (!single) "s", " of ", listed(at_bound), " reached the bound of the ",
-      "search, so the likelihood appears to have no maximum.", returned,
-      call. = FALSE
-    )
+    estimates <- paste0("The estimate", if (!single) "s",
+                        " of the regression coefficient", if (!single) "s",
+                        " of ", listed(at_bound))
+    riskmap_warn(paste0("{estimates} reached the bound of the search, so the likelihood appears to have no maximum.", returned), class = "riskmap_warning_fit")
   }
   invisible(NULL)
 }
@@ -2115,58 +2092,30 @@ report_mcml_outcome <- function(fit, layout, tolerance, messages,
     return(report_no_maximum(fit, coefficient_names, family))
   }
   if (layout$index$sigma2 %in% fit$boundary_parameters) {
-    warning(
-      "The spatial variance (sigma2) was estimated as effectively zero, so the ",
-      "spatial scale cannot be estimated. See check_fit().",
-      call. = FALSE
-    )
+    riskmap_warn("The spatial variance (sigma2) was estimated as effectively zero, so the spatial scale cannot be estimated. See {.fn check_fit}.", class = "riskmap_warning_fit")
   }
   report_maxima_check(fit)
   if (identical(fit$outcome, "numerically independent")) {
     report_numerically_independent(fit$maxima_screen)
   } else if (identical(fit$outcome, "weak identification")) {
-    warning(
-      "The observed information matrix is singular, so some parameters (often ",
-      "the spatial scale) are not identifiable from these data, and the ",
-      "estimate has no standard errors or Monte Carlo certificate. See ",
-      "check_fit().",
-      call. = FALSE
-    )
+    riskmap_warn("The observed information matrix is singular, so some parameters (often the spatial scale) are not identifiable from these data, and the estimate has no standard errors or Monte Carlo certificate. See {.fn check_fit}.", class = "riskmap_warning_fit")
   } else if (isTRUE(fit$held_variance_rising)) {
-    warning(
-      "The Monte Carlo error of the estimate is not certified, because the ",
-      "likelihood rises as a variance held at zero leaves it, so the estimate ",
-      "is not a maximum. See check_fit().",
-      call. = FALSE
-    )
+    riskmap_warn("The Monte Carlo error of the estimate is not certified, because the likelihood rises as a variance held at zero leaves it, so the estimate is not a maximum. See {.fn check_fit}.", class = "riskmap_warning_fit")
   } else if (!fit$certified) {
     last <- fit$history[[length(fit$history)]]
     refused <- isTRUE(last$residual_refused)
-    warning(
-      "The Monte Carlo error of the estimate is not certified. ",
-      if (isTRUE(last$correction_left_bounds)) paste0(
-        "The Newton correction of the estimate would have taken a variance or ",
-        "scale past the upper bound of the search, along a direction where ",
-        "the likelihood is nearly flat, so it was not applied, and the ",
-        "approximate 95% bound of ",
-        signif(fit$certificate, 2), " statistical standard errors may not hold."
-      ) else if (refused) paste0(
-        "The Newton correction of the estimate did not converge on the ",
-        "validation draws, so the approximate 95% bound of ",
-        signif(fit$certificate, 2), " statistical standard errors may not hold."
-      ) else paste0(
-        "Its approximate 95% bound is ", signif(fit$certificate, 2),
-        " statistical standard errors, above the tolerance of ", tolerance, "."
-      ),
-      " See check_fit().",
-      call. = FALSE
-    )
+    bound <- signif(fit$certificate, 2)
+    reason <- if (isTRUE(last$correction_left_bounds)) {
+      "The Newton correction of the estimate would have taken a variance or scale past the upper bound of the search, along a direction where the likelihood is nearly flat, so it was not applied, and the approximate 95% bound of {bound} statistical standard errors may not hold."
+    } else if (refused) {
+      "The Newton correction of the estimate did not converge on the validation draws, so the approximate 95% bound of {bound} statistical standard errors may not hold."
+    } else {
+      "Its approximate 95% bound is {bound} statistical standard errors, above the tolerance of {tolerance}."
+    }
+    riskmap_warn(paste("The Monte Carlo error of the estimate is not certified.", reason, "See {.fn check_fit}."), class = "riskmap_warning_fit")
   } else if (messages) {
-    message(
-      "The Monte Carlo error of the estimate is within ",
-      signif(fit$certificate, 2), " statistical standard errors (an ",
-      "approximate 95% bound, tolerance ", tolerance, ")."
-    )
+    bound <- signif(fit$certificate, 2)
+    riskmap_inform("The Monte Carlo error of the estimate is within {bound} statistical standard errors (an approximate 95% bound, tolerance {tolerance}).")
   }
   invisible(NULL)
 }

@@ -97,18 +97,17 @@ plot.RiskMap_prediction <- function(
     scale_bar = FALSE,
     ...) {
   if (!inherits(x, "RiskMap_prediction")) {
-    stop("'x' must be a RiskMap_prediction object", call. = FALSE)
+    abort_input("{.arg x} must be a {.cls RiskMap_prediction} object, not {.obj_type_friendly {x}}.", arg = "x")
   }
-  spatial_scale <- match.arg(spatial_scale)
+  spatial_scale <- match_choice(spatial_scale)
   check_plot_flag(north_arrow, "north_arrow")
   check_plot_flag(scale_bar, "scale_bar")
   if (!is.character(quantity) || !length(quantity) || anyNA(quantity) ||
       anyDuplicated(quantity)) {
-    stop("'quantity' must contain unique quantity names", call. = FALSE)
+    abort_input("{.arg quantity} must be distinct names of predicted quantities.", arg = "quantity")
   }
   if (length(quantity) > 1L && length(summary) > 1L) {
-    stop("Supply several quantities or several summaries, not both",
-         call. = FALSE)
+    abort_input("Give several quantities or several summaries, not both.", arg = "summary")
   }
   if (length(quantity) == 1L) {
     if (quantity %in% c("fixed", "offset")) {
@@ -118,14 +117,13 @@ plot.RiskMap_prediction <- function(
     }
     if (!is.character(summary) || !length(summary) || anyNA(summary) ||
         anyDuplicated(summary)) {
-      stop("'summary' must contain unique summary names", call. = FALSE)
+      abort_input("{.arg summary} must be distinct names of summaries.", arg = "summary")
     }
   }
 
   if (length(quantity) > 1L || length(summary) > 1L) {
     if (!requireNamespace("patchwork", quietly = TRUE)) {
-      stop("Plotting several maps requires the 'patchwork' package",
-           call. = FALSE)
+      riskmap_abort("Plotting several maps needs the {.pkg patchwork} package.")
     }
     if (length(quantity) > 1L) {
       maps <- lapply(quantity, function(one_quantity) {
@@ -162,8 +160,7 @@ plot.RiskMap_prediction <- function(
       "location"
   }
   if (spatial_scale %in% c("area", "both") && !has_areas) {
-    stop("This prediction object does not contain boundary summaries",
-         call. = FALSE)
+    abort_input("{.arg x} has no summaries over {.arg boundaries}, so {.arg spatial_scale} can't be {.val {spatial_scale}}.", arg = "spatial_scale")
   }
   if (spatial_scale %in% c("area", "both")) {
     aggregate <- select_prediction_plot_value(
@@ -173,9 +170,8 @@ plot.RiskMap_prediction <- function(
   }
   if (spatial_scale == "both" &&
       !aggregate %in% c("mean", "median", "min", "max")) {
-    stop("spatial_scale = \"both\" needs an aggregation on the same scale as ",
-         "the locations: \"mean\", \"median\", \"min\" or \"max\"",
-         call. = FALSE)
+    same_scale <- c("mean", "median", "min", "max")
+    abort_input("{.code spatial_scale = \"both\"} needs an aggregation on the scale of the locations, {.or {.val {same_scale}}}.", arg = "aggregate")
   }
 
   panels <- list()
@@ -199,8 +195,7 @@ plot.RiskMap_prediction <- function(
   }), use.names = FALSE)
   if (role == "evidence" && !is.null(limits) &&
       !identical(as.numeric(limits), c(0, 1))) {
-    warning("Exceedance probabilities always use limits from 0 to 1",
-            call. = FALSE)
+    riskmap_warn("{.arg limits} is ignored, because exceedance probabilities always use limits from 0 to 1.")
   }
   limits <- check_plot_limits(limits)
   breaks <- check_plot_breaks(breaks)
@@ -425,11 +420,11 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
                                  threshold) {
   if (!is.character(quantity) || length(quantity) != 1L || is.na(quantity) ||
       !nzchar(quantity)) {
-    stop("'quantity' must be one non-empty character string", call. = FALSE)
+    abort_input("{.arg quantity} must be a single non-empty string.", arg = "quantity")
   }
   if (!is.character(summary) || length(summary) != 1L || is.na(summary) ||
       !nzchar(summary)) {
-    stop("'summary' must be one non-empty character string", call. = FALSE)
+    abort_input("{.arg summary} must be a single non-empty string.", arg = "summary")
   }
 
   if (!is.null(aggregate)) {
@@ -439,8 +434,7 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
         x$boundary_summary$summary == summary, , drop = FALSE
     ]
     if (!nrow(candidates)) {
-      stop("The requested quantity, summary and aggregation are not available",
-           call. = FALSE)
+      abort_input("{.arg x} has no summary {.val {summary}} of {.val {quantity}} aggregated by {.val {aggregate}}.", arg = "quantity")
     }
     if (identical(summary, "exceedance")) {
       threshold <- select_prediction_plot_value(
@@ -449,8 +443,7 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
       candidates <- candidates[candidates$threshold == threshold, ,
                                drop = FALSE]
     } else if (!is.null(threshold)) {
-      stop("'threshold' is used only when summary = \"exceedance\"",
-           call. = FALSE)
+      abort_input("{.arg threshold} is used only when {.arg summary} is {.val exceedance}.", arg = "threshold")
     }
     values <- rep(NA_real_, nrow(x$boundaries))
     values[candidates$boundary_id] <- candidates$value
@@ -466,7 +459,7 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
       paste0("^", quantity, "_exceedance_"), names(x$predictions), value = TRUE
     )
     if (!length(available)) {
-      stop("The requested exceedance quantity is not available", call. = FALSE)
+      abort_input("{.arg x} has no exceedance probabilities of {.val {quantity}}.", arg = "quantity")
     }
     available_thresholds <- as.numeric(sub(
       paste0("^", quantity, "_exceedance_"), "", available
@@ -477,14 +470,12 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
     available[[which.min(abs(available_thresholds - threshold))]]
   } else {
     if (!is.null(threshold)) {
-      stop("'threshold' is used only when summary = \"exceedance\"",
-           call. = FALSE)
+      abort_input("{.arg threshold} is used only when {.arg summary} is {.val exceedance}.", arg = "threshold")
     }
     paste(quantity, summary, sep = "_")
   }
   if (!column %in% names(x$predictions)) {
-    stop("Prediction column ", shQuote(column), " is not available",
-         call. = FALSE)
+    abort_input("{.arg x} has no prediction column {.val {column}}.", arg = "quantity")
   }
   data <- x$predictions
   data$.prediction_value <- data[[column]]
@@ -497,14 +488,12 @@ select_prediction_plot_value <- function(value, available, argument) {
   available <- available[!is.na(available)]
   if (is.null(value)) {
     if (length(available) != 1L) {
-      stop("'", argument, "' must be supplied; available values are: ",
-           paste(available, collapse = ", "), call. = FALSE)
+      abort_input("{.arg {argument}} must be given, as one of {.or {.val {available}}}.", arg = argument)
     }
     return(available[[1L]])
   }
   if (length(value) != 1L || is.na(value) || !value %in% available) {
-    stop("'", argument, "' must be one of: ",
-         paste(available, collapse = ", "), call. = FALSE)
+    abort_input("{.arg {argument}} must be one of {.or {.val {available}}}.", arg = argument)
   }
   value
 }
@@ -543,12 +532,11 @@ prediction_role_palette <- function(role) {
 prediction_plot_palette <- function(palette) {
   if (is.null(palette)) return(.riskmap_mist_ember)
   if (!is.character(palette) || !length(palette) || anyNA(palette)) {
-    stop("'palette' must be a named HCL palette or a vector of colours",
-         call. = FALSE)
+    abort_input("{.arg palette} must be the name of an HCL palette or a vector of colours.", arg = "palette")
   }
   if (length(palette) > 1L) {
     tryCatch(grDevices::col2rgb(palette), error = function(error) {
-      stop("'palette' contains an invalid colour", call. = FALSE)
+      abort_input("{.arg palette} has an invalid colour.", arg = "palette", parent = error)
     })
     return(palette)
   }
@@ -556,8 +544,9 @@ prediction_plot_palette <- function(palette) {
   name <- if (reverse) substring(palette, 2L) else palette
   colours <- tryCatch(
     grDevices::hcl.colors(256L, palette = name),
-    error = function(error) stop("Unknown HCL palette ", shQuote(name),
-                                 call. = FALSE)
+    error = function(error) {
+      abort_input(c("{.arg palette} must name an HCL palette, and {.val {name}} doesn't.", "i" = "See {.fn grDevices::hcl.pals} for the names."), arg = "palette")
+    }
   )
   if (reverse) rev(colours) else colours
 }
@@ -628,9 +617,7 @@ prediction_legend_title <- function(x, quantity, summary, threshold,
 #' Validate a plot switch
 #' @noRd
 check_plot_flag <- function(value, argument) {
-  if (!is.logical(value) || length(value) != 1L || is.na(value)) {
-    stop("'", argument, "' must be TRUE or FALSE", call. = FALSE)
-  }
+  check_logical(value, arg = argument)
 }
 
 #' Validate colour limits
@@ -639,7 +626,7 @@ check_plot_limits <- function(limits) {
   if (is.null(limits)) return(NULL)
   if (!is.numeric(limits) || length(limits) != 2L || anyNA(limits) ||
       any(!is.finite(limits)) || limits[[1L]] >= limits[[2L]]) {
-    stop("'limits' must contain two increasing finite numbers", call. = FALSE)
+    abort_input("{.arg limits} must be two increasing finite numbers.", arg = "limits")
   }
   limits
 }
@@ -650,8 +637,7 @@ check_plot_breaks <- function(breaks) {
   if (is.null(breaks)) return(NULL)
   if (!is.numeric(breaks) || length(breaks) < 3L || anyNA(breaks) ||
       any(!is.finite(breaks)) || is.unsorted(breaks, strictly = TRUE)) {
-    stop("'breaks' must contain at least three increasing finite numbers",
-         call. = FALSE)
+    abort_input("{.arg breaks} must be at least three increasing finite numbers.", arg = "breaks")
   }
   breaks
 }

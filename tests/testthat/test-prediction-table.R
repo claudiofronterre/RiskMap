@@ -63,7 +63,7 @@ test_that("to_table selects, sorts and renames columns", {
   expect_match(means[3], "\\| *10\\|")
 
   expect_error(to_table(prediction, col_names = "Area"), "must have 4")
-  expect_error(to_table(prediction, aggregate = "max"), "not calculated")
+  expect_error(to_table(prediction, aggregate = "max"), "must be among the aggregations computed")
   expect_error(to_table(prediction, sort_by = "median"), "sort_by")
   expect_error(to_table(prediction, label = "missing"), "label")
   prediction$boundaries <- NULL

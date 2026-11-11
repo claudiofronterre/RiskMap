@@ -110,8 +110,7 @@
 parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
                                  level = 0.95, cores = 1, messages = TRUE) {
   if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a 'RiskMap' object returned by 'glgpm'",
-         call. = FALSE)
+    abort_input("{.arg object} must be a {.cls RiskMap} fit from {.fn glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
   check_positive_integer(n_sim, "n_sim")
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
@@ -121,13 +120,14 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
   control_mcml <- attr(object, "control_mcml") %||% set_control_mcml()
   seed_spacing <- bootstrap_seed_spacing(control_mcml$max_stages)
   if (n_sim > .Machine$integer.max %/% seed_spacing) {
-    stop("'n_sim' must be at most ", .Machine$integer.max %/% seed_spacing,
-         call. = FALSE)
+    most <- .Machine$integer.max %/% seed_spacing
+    abort_input("{.arg n_sim} must be at most {most}, not {n_sim}.", arg = "n_sim")
   }
   cores <- as.integer(cores)
   if (cores > 1L && .Platform$OS.type == "windows") {
-    if (messages) message("Parallel replicates need forking, which Windows ",
-                          "does not support, so they run on one core.")
+    if (messages) {
+      riskmap_inform("Parallel replicates need forking, which Windows doesn't support, so they run on one core.")
+    }
     cores <- 1L
   }
 
@@ -149,8 +149,8 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
 
   started <- proc.time()[["elapsed"]]
   if (messages) {
-    message("Simulating and refitting ", n_sim, " replicates",
-            if (cores > 1L) paste0(" on ", cores, " cores"), "...")
+    on_cores <- if (cores > 1L) paste0(" on ", cores, " cores") else ""
+    riskmap_inform("Simulating and refitting {n_sim} replicates{on_cores}.")
   }
   bar <- progress_bar("Refitting replicates", n_sim, messages)
   results <- riskmap_map(seq_len(n_sim), run_replicate, cores = cores,
@@ -173,16 +173,14 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
                        elapsed_seconds = elapsed)
   n_failed <- nrow(out$failures)
   if (n_failed == n_sim) {
-    stop("All ", n_sim, " refits failed. The first failure: ",
-         out$failures$message[1L], call. = FALSE)
+    riskmap_abort(c("All {n_sim} refits failed.", "i" = "The first failure was {.val {out$failures$message[1L]}}."), class = "riskmap_error_fit")
   }
   if (n_failed > 0L) {
-    warning(n_failed, " of ", n_sim, " refits failed and are left out. ",
-            "See the 'failures' element of the result.", call. = FALSE)
+    riskmap_warn(c("{n_failed} of {n_sim} refits failed and are left out.", "i" = "See the {.code failures} element of the result."))
   }
   if (messages) {
-    message("Done in ", format_bootstrap_time(elapsed), ". ",
-            n_sim - n_failed, " of ", n_sim, " refits succeeded.")
+    took <- format_bootstrap_time(elapsed)
+    riskmap_inform("Done in {took}. {n_sim - n_failed} of {n_sim} refits succeeded.")
   }
   out
 }
@@ -200,9 +198,8 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
 bootstrap_seed_spacing <- function(max_stages) {
   spacing <- 10000L
   if (9000 + max_stages >= spacing) {
-    stop("parametric_bootstrap() supports fits with at most ",
-         spacing - 9001L, " stages of certified MCML ('max_stages' ",
-         "in set_control_mcml())", call. = FALSE)
+    most <- spacing - 9001L
+    abort_input(c("{.fn parametric_bootstrap} supports fits with at most {most} stages of certified Monte Carlo maximum likelihood.", "i" = "Set {.arg max_stages} in {.fn set_control_mcml} lower."), arg = "object")
   }
   spacing
 }
@@ -461,13 +458,12 @@ print.summary.RiskMap_bootstrap <- function(x, ...) {
 ##' @export
 plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30,
                                    log_scale = FALSE, ...) {
-  stopifnot(inherits(x, "RiskMap_bootstrap"))
+  check_class(x, "RiskMap_bootstrap")
   parameters <- parameters %||% names(x$estimate)
   unknown <- setdiff(parameters, names(x$estimate))
   if (length(unknown)) {
-    stop("Unknown parameter(s): ", paste(unknown, collapse = ", "),
-         ". Choose from: ", paste(names(x$estimate), collapse = ", "),
-         call. = FALSE)
+    known <- names(x$estimate)
+    abort_input("{.arg parameters} must name parameters among {.val {known}}, and {.val {unknown}} {?isn't/aren't}.", arg = "parameters")
   }
   check_positive_integer(bins, "bins")
   check_logical(log_scale)

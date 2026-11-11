@@ -2,9 +2,9 @@ test_that("summarise_distance produces errors", {
 
   test_that("data must be an object of class 'sf'", {
     df <- data.frame(x = 1:5, y = 1:5)
-    expect_error(
+    expect_input_error(
       summarise_distance(df),
-      "'data' must be of class 'sf'"
+      "data"
     )
   })
 
@@ -16,16 +16,16 @@ test_that("summarise_distance produces errors", {
   })
 
   test_that("distance_crs must be projected", {
-    expect_error(
+    expect_input_error(
       summarise_distance(gaussian_data, distance_crs = 4326),
-      "'distance_crs' must be a projected CRS, not longitude/latitude"
+      "distance_crs"
     )
   })
 
   test_that("distance_units must be 'km' or 'm'", {
-    expect_error(
+    expect_input_error(
       summarise_distance(gaussian_data, distance_units = "a"),
-      "'distance_units' must be either 'km' or 'm'"
+      "distance_units"
     )
   })
 })
@@ -96,7 +96,7 @@ test_that("summarise_distance follows the glgpm() CRS convention", {
 
   expect_message(
     result <- summarise_distance(latlon, distance_units = "m"),
-    "automatically reprojecting to EPSG"
+    "projected to EPSG"
   )
   expect_identical(result, summarise_distance(st_transform(latlon, suggested_crs),
                                           distance_units = "m"))
@@ -123,38 +123,38 @@ test_that("variogram produces errors", {
 
   test_that("data must be an object of class 'sf'", {
     df <- data.frame(x = 1:5, y = 1:5)
-    expect_error(
+    expect_input_error(
       variogram(df, variable = "y"),
-      "'data' must be of class 'sf'"
+      "data"
     )
   })
 
   test_that("variable must be a character vector", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = 1),
-      "'variable' must be a single object of class 'character'"
+      "variable"
     )
   })
 
   test_that("variable must have length 1", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = c("y", "y")),
-      "'variable' must be a single object of class 'character'"
+      "variable"
     )
   })
 
   test_that("variable must exist in the columns of data", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "not_a_column"),
-      "'variable' must be one of the columns in 'data'"
+      "variable"
     )
   })
 
   test_that("breaks and n_bins cannot both be explicitly supplied", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y",
                 breaks = c(0, 1, 2), n_bins = 5),
-      "'breaks' and 'n_bins' cannot both be supplied"
+      "breaks"
     )
   })
 
@@ -168,10 +168,10 @@ test_that("variogram produces errors", {
   })
 
   test_that("breaks and max_dist cannot both be explicitly supplied", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y",
                 breaks = c(0, 1, 2), max_dist = 5),
-      "'breaks' and 'max_dist' cannot both be supplied"
+      "breaks"
     )
   })
 
@@ -243,9 +243,9 @@ test_that("variogram produces errors", {
   })
 
   test_that("too few permutations for the requested level are rejected", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", n_permutations = 2),
-      "'n_permutations' is too small to construct a global envelope"
+      "n_permutations"
     )
   })
 
@@ -257,7 +257,7 @@ test_that("variogram produces errors", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_permutations = 50,
                 level = 0.99),
-      "too small to construct a global envelope"
+      "for a global envelope"
     )
   })
 
@@ -274,16 +274,16 @@ test_that("variogram produces errors", {
   })
 
   test_that("an explicit distance_crs that is longitude/latitude produces an error", {
-    expect_error(
+    expect_input_error(
         variogram(latlon_data, variable = "y", n_permutations = 100, distance_crs = 4326),
-      "'distance_crs' must be a projected CRS, not longitude/latitude"
+      "distance_crs"
     )
   })
 
   test_that("longitude/latitude data is automatically reprojected with a message", {
     expect_message(
         variogram(latlon_data, variable = "y", n_permutations = 100),
-      "automatically reprojecting to EPSG"
+      "projected to EPSG"
     )
   })
 
@@ -294,34 +294,34 @@ test_that("variogram produces errors", {
   })
 
   test_that("breaks must be numeric", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = c("a", "b", "c")),
-      "'breaks' must be a numeric vector with at least two values"
+      "breaks"
     )
   })
 
   test_that("breaks must have at least two values", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = 5),
-      "'breaks' must be a numeric vector with at least two values"
+      "breaks"
     )
   })
 
   test_that("breaks must be strictly increasing", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = c(0, 5, 5, 10)),
-      "'breaks' must be strictly increasing"
+      "breaks"
     )
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = c(0, 10, 5)),
-      "'breaks' must be strictly increasing"
+      "breaks"
     )
   })
 
   test_that("breaks must be non-negative", {
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", breaks = c(-5, 0, 5)),
-      "'breaks' must be non-negative"
+      "breaks"
     )
   })
 
@@ -329,7 +329,7 @@ test_that("variogram produces errors", {
     expect_warning(
       result <- variogram(gaussian_data, variable = "y", max_dist = 1e9,
                           n_permutations = 0),
-      "13 distance class\\(es\\) lie beyond the largest distance"
+      "13 distance classes lie beyond the largest distance"
     )
     expect_identical(sum(result$variogram$n_pairs > 0L), 1L)
 
@@ -344,11 +344,11 @@ test_that("variogram produces errors", {
   test_that("distance classes without any pair raise an informative error", {
     expect_error(
       variogram(gaussian_data, variable = "y", breaks = c(0, 1e-6)),
-      "no pair of locations falls within the distance classes"
+      "No pair of locations falls within the distance classes"
     )
     expect_error(
       variogram(gaussian_data[1:2, ], variable = "y"),
-      "distances between locations range from"
+      "Distances between locations range from"
     )
   })
 
@@ -364,9 +364,9 @@ test_that("variogram produces errors", {
       variogram(gaussian_data, variable = "y", distance_crs = "a"),
       "distance_crs", class = "riskmap_error_input")
 
-    expect_error(
+    expect_input_error(
       variogram(gaussian_data, variable = "y", distance_units = "a"),
-      "'distance_units' must be either 'km' or 'm'")
+      "distance_units")
   })
 
 })
@@ -544,7 +544,7 @@ test_that("plot.RiskMap_variogram warns and skips the envelope when n_permutatio
 
   expect_warning(
     p <- plot(result),
-    "'n_permutations' was 0"
+    "n_permutations = 0"
   )
   expect_false("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
 

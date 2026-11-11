@@ -44,7 +44,9 @@ plan_integrated_records <- function(y, units_m, D, cov_offset, ID_coords,
                                     ID_re, n_loc, allowed) {
   n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
   terms <- names(allowed)
-  stopifnot(length(allowed) == n_re + 1L)
+  if (length(allowed) != n_re + 1L) {
+    riskmap_bug("{.arg allowed} must have one element for the nugget and one for each random effect.")
+  }
   key <- do.call(paste, c(
     list(ID_coords), as.data.frame(D), list(cov_offset),
     if (n_re) as.data.frame(ID_re), sep = "\r"
@@ -260,7 +262,9 @@ compute_custom_kernel_arrays <- function(linkf, family, low = -100,
   second <- suppressWarnings(linkf$d2(eta))
   invalid <- !is.finite(mean) | !is.finite(first) | !is.finite(second) |
     mean < 0 | (family == "binomial" & mean > 1)
-  if (all(invalid)) stop("The custom link is not finite anywhere.", call. = FALSE)
+  if (all(invalid)) {
+    abort_input("{.arg invlink} gives no finite mean and derivatives at any of the points tried.", arg = "invlink")
+  }
   if (any(invalid)) {
     valid <- which(!invalid)
     nearest <- valid[pmax(1L, findInterval(seq_along(eta), valid))]

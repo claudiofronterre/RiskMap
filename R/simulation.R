@@ -37,22 +37,19 @@
 specify_glgpm <- function(formula, data, family, parameters,
                          denominator = NULL, model_crs = NULL,
                          distance_units = c("km", "m"), invlink = NULL) {
-  distance_units <- match.arg(distance_units)
+  distance_units <- match_choice(distance_units)
   check_data(data)
   check_formula(formula, data, response_required = FALSE)
   if (!is.null(model_crs)) {
     check_crs(model_crs)
     data <- st_transform(data, crs = model_crs)
     if (st_is_longlat(data)) {
-      stop("'model_crs' must be a projected CRS, not longitude/latitude",
-           call. = FALSE)
+      abort_input("{.arg model_crs} must be a projected coordinate reference system, not longitude and latitude.", arg = "model_crs")
     }
   } else if (st_is_longlat(data)) {
     model_crs <- propose_utm(data)
     data <- st_transform(data, crs = model_crs)
-    message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
-            "automatically reprojecting to EPSG:", model_crs,
-            " for simulation. Set 'model_crs' to override.")
+    riskmap_inform(c("{.arg data} are in longitude and latitude, so they are projected to EPSG:{model_crs} for simulation.", "i" = "Set {.arg model_crs} to choose the projection."))
   }
   family_link <- read_family(family, invlink)
   family <- family_link$family
@@ -64,19 +61,16 @@ specify_glgpm <- function(formula, data, family, parameters,
   denominator_name <- NULL
   if (!is.null(sub_denominator)) {
     if (!is.symbol(sub_denominator)) {
-      stop("'denominator' must be provided as an unquoted column name for a column in 'data'.",
-           call. = FALSE)
+      abort_input("{.arg denominator} must be the unquoted name of a column of {.arg data}.", arg = "denominator")
     }
     denominator_name <- deparse(sub_denominator)
     if (!denominator_name %in% names(data)) {
-      stop("the variable provided to 'denominator' is not present in 'data'",
-           call. = FALSE)
+      abort_input(c("{.arg denominator} must name a column of {.arg data}.", "x" = "There is no column {.val {denominator_name}}."), arg = "denominator")
     }
   }
   if (family == "gaussian" &&
       (!is.null(denominator_name) || !is.null(invlink))) {
-    stop("When 'family' is 'gaussian', neither 'denominator' nor 'invlink' should be supplied.",
-         call. = FALSE)
+    abort_input("{.arg denominator} and {.arg invlink} can't be given for a Gaussian model.", arg = if (is.null(invlink)) "denominator" else "invlink")
   }
   if (is.null(invlink)) {
     invlink <- switch(family, gaussian = identity, binomial = plogis, poisson = exp)
@@ -190,14 +184,14 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   check_positive_integer(nsim, "nsim")
   if (!is.character(what) || !length(what) || anyNA(what) ||
       any(!what %in% c("data", "surface")) || anyDuplicated(what)) {
-    stop("'what' must be 'data', 'surface', or c('data', 'surface').", call. = FALSE)
+    abort_input("{.arg what} must be {.val data}, {.val surface} or both.", arg = "what")
   }
   model <- simulation_model(object)
   if (!"data" %in% what && !is.null(sample_locations)) {
-    stop("'sample_locations' requires 'data' in 'what'.", call. = FALSE)
+    abort_input("{.arg sample_locations} is used only when {.arg what} includes {.val data}.", arg = "sample_locations")
   }
   if (!"surface" %in% what && !is.null(prediction_grid)) {
-    stop("'prediction_grid' requires 'surface' in 'what'.", call. = FALSE)
+    abort_input("{.arg prediction_grid} is used only when {.arg what} includes {.val surface}.", arg = "prediction_grid")
   }
   prepared <- prepare_simulation(model, what, sample_locations,
                                  prediction_grid)
@@ -230,7 +224,7 @@ prepare_simulation <- function(model, what, sample_locations = NULL,
   }
   if ("surface" %in% what) {
     if (is.null(prediction_grid)) {
-      stop("Provide 'prediction_grid' when requesting a surface.", call. = FALSE)
+      abort_input("{.arg prediction_grid} must be given to simulate a surface.", arg = "prediction_grid")
     }
     locations$surface <- prediction_grid
   }
@@ -265,9 +259,7 @@ prepare_simulation <- function(model, what, sample_locations = NULL,
     root <- tryCatch(t(factor_covariance(
       covariance, "spatial covariance of the simulation locations"
     )), error = function(e) {
-      stop("The spatial covariance could not be factorised. Check spatial ",
-           "parameters and nearly coincident locations. ", conditionMessage(e),
-           call. = FALSE)
+      riskmap_abort(c("The spatial covariance of the simulation locations can't be factorised.", "i" = "Check the spatial parameters and look for nearly coincident locations."), class = "riskmap_error_fit", parent = e)
     })
   }
   group_labels <- lapply(model$re_terms, function(term) {
@@ -343,8 +335,7 @@ draw_simulation <- function(prepared, nsim, seed = NULL,
                                            prob = as.numeric(means)),
                          poisson = rpois(length(means), lambda = as.numeric(means) * exposure))
       if (any(!is.finite(response))) {
-        stop("Response simulation produced non-finite values. Check means and exposures.",
-             call. = FALSE)
+        riskmap_abort(c("The simulated responses aren't all finite.", "i" = "Check the means and the denominators."), class = "riskmap_error_fit")
       }
       values[[length(values) + 1L]] <- response
       components <- c(components, "response")
@@ -398,12 +389,13 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
   if (is.null(location_set)) location_set <- names(object$samples)
   if (!is.character(location_set) || !length(location_set) || anyNA(location_set) ||
       any(!location_set %in% names(object$samples)) || anyDuplicated(location_set)) {
-    stop("'location_set' must select available data or surface locations.", call. = FALSE)
+    available_sets <- names(object$samples)
+    abort_input("{.arg location_set} must select among the simulated location sets, {.val {available_sets}}.", arg = "location_set")
   }
   available <- unique(unlist(lapply(object$samples[location_set], function(x) dimnames(x)[[3]])))
   if (!is.null(component) && (!is.character(component) || !length(component) ||
       anyNA(component) || any(!component %in% available) || anyDuplicated(component))) {
-    stop("'component' must select available simulation components.", call. = FALSE)
+    abort_input("{.arg component} must select among the simulated components, {.val {available}}.", arg = "component")
   }
   tables <- lapply(location_set, function(name) {
     x <- object$samples[[name]]
@@ -457,14 +449,13 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
 simulated_data <- function(object, simulation = 1) {
   check_simulation(object, simulation, single = TRUE)
   if (is.null(object$samples$data)) {
-    stop("No responses were simulated. Include 'data' in 'what'.", call. = FALSE)
+    abort_input(c("{.arg object} has no simulated responses.", "i" = "Simulate with {.arg what} including {.val data}."), arg = "object")
   }
   out <- object$locations$data
   response <- object$model$response
   if (is.null(response) || length(response) != 1L ||
       !identical(make.names(response), response)) {
-    stop("Refitting requires a simple response name in the model formula. ",
-         "Use simulated_values() to extract responses.", call. = FALSE)
+    abort_input(c("The response of the model formula must be a plain column name to be put in a data set.", "i" = "Use {.fn simulated_values} to extract the responses."), arg = "object")
   }
   out[[response]] <- as.numeric(object$samples$data[, simulation, "response"])
   out
@@ -475,13 +466,13 @@ simulated_data <- function(object, simulation = 1) {
 simulated_surface <- function(object, simulation = 1) {
   check_simulation(object, simulation, single = TRUE)
   if (is.null(object$samples$surface)) {
-    stop("No surface was simulated. Include 'surface' in 'what'.", call. = FALSE)
+    abort_input(c("{.arg object} has no simulated surface.", "i" = "Simulate with {.arg what} including {.val surface}."), arg = "object")
   }
   out <- object$locations$surface
   components <- dimnames(object$samples$surface)[[3]]
   if (any(components %in% names(out))) {
-    stop("Grid columns conflict with simulation component names. ",
-         "Use simulated_values() to keep them separate.", call. = FALSE)
+    clashes <- intersect(components, names(out))
+    abort_input(c("The prediction grid has column{?s} {.val {clashes}} named like simulated components.", "i" = "Use {.fn simulated_values} to keep them apart."), arg = "object")
   }
   for (name in components) {
     out[[name]] <- as.numeric(object$samples$surface[, simulation, name])
@@ -567,15 +558,19 @@ print_simulation_parameters <- function(parameters, distance_units) {
 #' @noRd
 check_simulation <- function(object, simulation, single = FALSE) {
   if (!inherits(object, "RiskMap_simulation") || is.null(object$samples)) {
-    stop("'object' must be output from simulate_glgpm().", call. = FALSE)
+    abort_input("{.arg object} must be made by {.fn simulate_glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
   if (is.null(simulation) && !single) return(invisible(NULL))
   if (!is.numeric(simulation) || !length(simulation) || anyNA(simulation) ||
       any(!is.finite(simulation)) || any(simulation != floor(simulation)) ||
       any(simulation < 1 | simulation > object$nsim) || anyDuplicated(simulation) ||
       (single && length(simulation) != 1L)) {
-    stop("'simulation' must select valid simulation numbers",
-         if (single) " (one at a time)" else "", ".", call. = FALSE)
+    problem <- if (single) {
+      "{.arg simulation} must be one simulation number between 1 and {object$nsim}."
+    } else {
+      "{.arg simulation} must be distinct simulation numbers between 1 and {object$nsim}."
+    }
+    abort_input(problem, arg = "simulation")
   }
 }
 
@@ -587,23 +582,29 @@ check_simulation <- function(object, simulation, single = FALSE) {
 #' @return `data`, transformed to `crs` when necessary.
 #' @noRd
 simulation_locations <- function(data, crs, label) {
+  arg <- simulation_location_arg(label)
   check_data(data)
   if (nrow(data) == 0L || any(st_is_empty(data))) {
-    stop("'", label, "' must contain at least one non-empty POINT geometry.",
-         call. = FALSE)
+    abort_input("{.arg {arg}} must have at least one point and no empty geometries.", arg = arg)
   }
   if (is.na(crs)) {
-    stop("The simulation model must have a known CRS.", call. = FALSE)
+    abort_input("The simulation model must have a coordinate reference system.", arg = "object")
   }
   if (!isTRUE(st_crs(data) == crs)) {
     data <- st_transform(data, crs)
-    message("'", label, "' has been transformed to the model CRS.")
+    riskmap_inform("{.arg {arg}} is projected to the coordinate reference system of the model.")
   }
   coords <- st_coordinates(data)
   if (ncol(coords) != 2L || any(!is.finite(coords))) {
-    stop("'", label, "' must contain finite two-dimensional coordinates.", call. = FALSE)
+    abort_input("{.arg {arg}} must have finite two-dimensional coordinates.", arg = arg)
   }
   data
+}
+
+#' The argument that gives a set of simulation locations
+#' @noRd
+simulation_location_arg <- function(label) {
+  switch(label, data = "sample_locations", surface = "prediction_grid", label)
 }
 
 #' Validate simulation parameters
@@ -618,19 +619,18 @@ simulation_locations <- function(data, crs, label) {
 simulation_parameters <- function(parameters, beta_names, re_terms, family, nugget) {
   if (!is.list(parameters) || is.null(names(parameters)) || anyNA(names(parameters)) ||
       any(names(parameters) == "") || anyDuplicated(names(parameters))) {
-    stop("'parameters' must be a named list with unique names.", call. = FALSE)
+    abort_input("{.arg parameters} must be a list with distinct names.", arg = "parameters")
   }
   unknown <- setdiff(names(parameters), c("beta", "sigma2", "phi", "tau2",
                                          "sigma2_me", "sigma2_re"))
   if (length(unknown)) {
-    stop("Unknown simulation parameters: ", paste(unknown, collapse = ", "), ".",
-         call. = FALSE)
+    abort_input("{.arg parameters} has unknown element{?s} {.val {unknown}}.", arg = "parameters")
   }
   required <- c("beta", "sigma2", "phi", if (isTRUE(nugget)) "tau2",
                  if (family == "gaussian") "sigma2_me", if (length(re_terms)) "sigma2_re")
   missing <- required[vapply(required, function(x) is.null(parameters[[x]]), logical(1))]
   if (length(missing)) {
-    stop("Missing simulation parameters: ", paste(missing, collapse = ", "), ".", call. = FALSE)
+    abort_input("{.arg parameters} must have the element{?s} {.val {missing}}.", arg = "parameters")
   }
   if (is.null(parameters$tau2)) {
     parameters$tau2 <- if (is.numeric(nugget)) nugget else 0
@@ -640,28 +640,26 @@ simulation_parameters <- function(parameters, beta_names, re_terms, family, nugg
     value <- parameters[[name]]
     if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
         value < 0 || (name == "phi" && value == 0)) {
-      stop("'", name, "' must be finite and ",
-           if (name == "phi") "positive." else "non-negative.", call. = FALSE)
+      kind <- if (name == "phi") "positive" else "non-negative"
+      abort_input("{.code parameters${name}} must be a single finite {kind} number.", arg = "parameters")
     }
   }
   if (!isTRUE(nugget)) {
     fixed <- if (is.numeric(nugget)) nugget else 0
     if (parameters$tau2 != fixed) {
-      stop("'tau2' must agree with the nugget setting in gp().", call. = FALSE)
+      abort_input("{.code parameters$tau2} must agree with the nugget set in {.fn gp}.", arg = "parameters")
     }
   }
   if (family != "gaussian" && parameters$sigma2_me != 0) {
-    stop("'sigma2_me' applies only to Gaussian models.", call. = FALSE)
+    abort_input("{.code parameters$sigma2_me} can be given only for a Gaussian model.", arg = "parameters")
   }
   beta <- parameters$beta
   if (!is.numeric(beta) || length(beta) != length(beta_names) || any(!is.finite(beta))) {
-    stop("'beta' must have one finite value per design-matrix column, including ",
-         "the intercept when present. Expected: ", paste(beta_names, collapse = ", "),
-         ".", call. = FALSE)
+    abort_input(c("{.code parameters$beta} must have one finite value for each column of the design matrix, including any intercept.", "i" = "The columns are {.val {beta_names}}."), arg = "parameters")
   }
   if (!is.null(names(beta))) {
     if (anyDuplicated(names(beta)) || !setequal(names(beta), beta_names)) {
-      stop("Names of 'beta' must match the design-matrix columns.", call. = FALSE)
+      abort_input("The names of {.code parameters$beta} must be those of the columns of the design matrix, {.val {beta_names}}.", arg = "parameters")
     }
     beta <- beta[beta_names]
   }
@@ -669,17 +667,17 @@ simulation_parameters <- function(parameters, beta_names, re_terms, family, nugg
   if (length(re_terms)) {
     re <- parameters$sigma2_re
     if (!is.numeric(re) || length(re) != length(re_terms) || any(!is.finite(re)) || any(re < 0)) {
-      stop("'sigma2_re' must contain one non-negative variance per re() term.", call. = FALSE)
+      abort_input("{.code parameters$sigma2_re} must have one non-negative variance for each {.fn re} term.", arg = "parameters")
     }
     if (!is.null(names(re))) {
       if (anyDuplicated(names(re)) || !setequal(names(re), re_terms)) {
-        stop("Names of 'sigma2_re' must match the re() terms.", call. = FALSE)
+        abort_input("The names of {.code parameters$sigma2_re} must be those of the {.fn re} terms, {.val {re_terms}}.", arg = "parameters")
       }
       re <- re[re_terms]
     }
     parameters$sigma2_re <- setNames(re, re_terms)
   } else if (length(parameters$sigma2_re)) {
-    stop("'sigma2_re' requires re() terms in the formula.", call. = FALSE)
+    abort_input("{.code parameters$sigma2_re} can be given only for a model with {.fn re} terms.", arg = "parameters")
   }
   parameters
 }
@@ -692,7 +690,7 @@ simulation_parameters <- function(parameters, beta_names, re_terms, family, nugg
 simulation_model <- function(object) {
   if (inherits(object, "RiskMap_simulation_model")) return(object)
   if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a fitted RiskMap model or output from specify_glgpm().", call. = FALSE)
+    abort_input("{.arg object} must be a {.cls RiskMap} fit or a model from {.fn specify_glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
   pars <- coef(object)
   if (is.null(pars$tau2)) pars$tau2 <- object$fix_tau2
@@ -744,12 +742,8 @@ check_simulation_variables <- function(formula, data, label) {
   required <- setdiff(unique(get_formula_terms(formula)), all.vars(formula[[2L]]))
   missing <- setdiff(required, names(data))
   if (length(missing)) {
-    argument <- switch(label, data = "sample_locations",
-                       surface = "prediction_grid", label)
-    stop("'", paste(missing, collapse = "', '"), "' ",
-         if (length(missing) > 1L) "are" else "is",
-         " present in the model formula but not a column in '", argument, "'.",
-         call. = FALSE)
+    argument <- simulation_location_arg(label)
+    abort_input("{.arg {argument}} must have the column{?s} {.val {missing}} of the model formula.", arg = argument)
   }
   invisible(TRUE)
 }
@@ -767,28 +761,33 @@ simulation_inputs <- function(model, data, response, label, original = FALSE) {
   check_simulation_variables(model$formula, data, label)
   mf <- tryCatch(model.frame(model$fixed_terms, data = data, na.action = na.fail,
                              xlev = model$xlevels), error = function(e) {
-    stop("Invalid covariates in '", label, "': ", conditionMessage(e), call. = FALSE)
+    arg <- simulation_location_arg(label)
+    abort_input("{.arg {arg}} has invalid covariates.", arg = arg, parent = e)
   })
   design <- model.matrix(model$fixed_terms, mf, contrasts.arg = model$contrasts)
   if (!identical(colnames(design), names(model$parameters$beta)) || any(!is.finite(design))) {
-    stop("The design matrix for '", label, "' does not match the model.", call. = FALSE)
+    arg <- simulation_location_arg(label)
+    abort_input("{.arg {arg}} gives a design matrix that doesn't match the model.", arg = arg)
   }
   prepare_random_effects(data, model$re_terms)
   offset <- rep(0, nrow(data))
   if (!is.null(model$offset)) {
     if (!model$offset %in% names(data)) {
-      stop("Missing offset column '", model$offset, "' in '", label, "'.", call. = FALSE)
+      arg <- simulation_location_arg(label)
+      abort_input("{.arg {arg}} must have the offset column {.val {model$offset}}.", arg = arg)
     }
     offset <- data[[model$offset]]
   }
   if (original && !is.null(model$original_offset)) offset <- model$original_offset
   if (!is.numeric(offset) || length(offset) != nrow(data) || any(!is.finite(offset))) {
-    stop("Offsets in '", label, "' must be finite numeric values.", call. = FALSE)
+    arg <- simulation_location_arg(label)
+    abort_input("The offsets in {.arg {arg}} must be finite numbers.", arg = arg)
   }
   den <- rep(1, nrow(data))
   if (response && !is.null(model$denominator)) {
     if (!model$denominator %in% names(data)) {
-      stop("Missing denominator column '", model$denominator, "' in '", label, "'.", call. = FALSE)
+      arg <- simulation_location_arg(label)
+      abort_input("{.arg {arg}} must have the denominator column {.val {model$denominator}}.", arg = arg)
     }
     den <- data[[model$denominator]]
   }
@@ -798,8 +797,9 @@ simulation_inputs <- function(model, data, response, label, original = FALSE) {
   if (response && (!is.numeric(den) || length(den) != nrow(data) ||
       any(!is.finite(den)) || any(den < 0) ||
       (model$family == "binomial" && any(den != floor(den))))) {
-    stop("Denominators in '", label, "' must be finite, non-negative",
-         if (model$family == "binomial") " integers." else " numbers.", call. = FALSE)
+    arg <- simulation_location_arg(label)
+    kind <- if (model$family == "binomial") "whole numbers" else "numbers"
+    abort_input("The denominators in {.arg {arg}} must be finite non-negative {kind}.", arg = arg)
   }
   list(fixed = as.numeric(design %*% model$parameters$beta) + offset,
        denominator = den)
@@ -820,13 +820,11 @@ simulation_inputs <- function(model, data, response, label, original = FALSE) {
 simulation_assessment_data <- function(object) {
   check_simulation(object, NULL)
   if (!all(c("data", "surface") %in% object$what)) {
-    stop("Assessment requires what = c('data', 'surface').", call. = FALSE)
+    abort_input("{.arg obj_sim} must be simulated with {.code what = c(\"data\", \"surface\")}.", arg = "obj_sim")
   }
   model <- object$model
   if (length(model$re_terms)) {
-    stop("assess_simulation() does not support generating models with re() ",
-         "effects. Simulated values remain available through the simulation ",
-         "accessors.", call. = FALSE)
+    abort_input(c("{.fn assess_simulation} can't assess simulations from a model with {.fn re} terms.", "i" = "The simulated values are available through {.fn simulated_values}."), arg = "obj_sim")
   }
   den <- simulation_inputs(model, object$locations$data, TRUE, "data",
                             original = identical(object$locations$data, model$data))$denominator

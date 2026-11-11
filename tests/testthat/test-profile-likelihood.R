@@ -47,7 +47,7 @@ test_that("profile rejects fits and settings it cannot handle", {
   uncertified$mcml_history <- NULL
   expect_error(profile(uncertified), "binomial and Poisson")
   expect_error(profile(binomial_model, parameters = "kappa", messages = FALSE),
-               "Unknown parameter")
+               "must name parameters of the fit")
   expect_error(profile(binomial_model, n_points = 2), "n_points")
   expect_error(profile(binomial_model, level = 1.5), "level")
 })
@@ -166,7 +166,7 @@ test_that("the profile plot draws its panels and returns them", {
   regions <- function(panel) table(ggplot2::layer_data(panel, 1)$fill)
   expect_identical(regions(panels[["sigma2:phi"]]),
                    regions(deviance[["sigma2:phi"]]))
-  expect_error(plot(profiles, scale = "likelihood"), "should be one of")
+  expect_error(plot(profiles, scale = "likelihood"), "must be one of")
 })
 
 test_that("logarithmic axes are labelled with plain numbers", {

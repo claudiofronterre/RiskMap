@@ -401,7 +401,7 @@ test_that("summary.RiskMap_cross_validation weights test sets by their size", {
 test_that("summary.RiskMap_cross_validation errors when no metrics were computed", {
   no_metrics <- list(model = list(model_a = list(metric = list())))
   expect_error(summary.RiskMap_cross_validation(no_metrics),
-               "No metrics of predictive performance were computed")
+               "has no metrics of predictive performance")
 })
 
 test_that("summary.RiskMap_cross_validation summarises assess_prediction output", {
@@ -535,7 +535,7 @@ test_that("summary.RiskMap_assess_simulation summarises MSE and classification",
                unname(quantile(c(0.7, 0.8), 0.025)))
 
   assessment$pred_objective$grid$mse <- c(0.12, 0.18)
-  expect_error(summary(assessment), "mse_data must be a matrix")
+  expect_error(summary(assessment), "must be a matrix")
 })
 
 test_that("print.summary.RiskMap_assess_simulation formats one spatial scale", {

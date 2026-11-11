@@ -185,7 +185,7 @@ test_that("only a spatial variance at zero warns", {
   outcome$boundary_parameters <- layout$index$sigma2
   expect_warning(report_mcml_outcome(outcome, layout, tolerance = 0.1,
                                      messages = FALSE),
-                 "spatial scale cannot be estimated. See check_fit().",
+                 "spatial scale cannot be estimated. See `check_fit()`.",
                  fixed = TRUE)
 })
 
@@ -205,7 +205,7 @@ test_that("a refused Newton correction is reported, not a large bound", {
   outcome$certificate <- 0.4
   expect_warning(
     report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE),
-    "0.4 statistical standard errors, above the tolerance of 0.1. See check_fit().",
+    "0.4 statistical standard errors, above the tolerance of 0.1. See `check_fit()`.",
     fixed = TRUE
   )
 })
@@ -845,7 +845,7 @@ test_that("set_control_mcml validates the certification settings", {
   expect_identical(control$tolerance, 0.1)
   expect_identical(control$proposal, "global")
   expect_identical(set_control_mcml(proposal = "laplace")$proposal, "laplace")
-  expect_error(set_control_mcml(proposal = "mean"), "should be one of")
+  expect_input_error(set_control_mcml(proposal = "mean"), "proposal")
   expect_error(set_control_mcml(tolerance = 0), "positive number")
   expect_error(set_control_mcml(validation_samples = 0), "positive integer")
 })
@@ -1270,10 +1270,10 @@ test_that("failed canonical refits make the stage use the Laplace proposal", {
 test_that("the check for other maxima warns about a move and an ambiguity", {
   moved <- list(better_maximum = TRUE, ambiguous_maxima = FALSE)
   expect_warning(report_maxima_check(moved),
-                 "found a maximum higher.*See check_fit\\(\\)")
+                 "found a maximum higher.*See `check_fit\\(\\)`")
   ambiguous <- list(better_maximum = FALSE, ambiguous_maxima = TRUE)
   expect_warning(report_maxima_check(ambiguous),
-                 "fit about equally well.*See check_fit\\(\\)")
+                 "fit about equally well.*See `check_fit\\(\\)`")
   expect_silent(report_maxima_check(list(better_maximum = FALSE,
                                          ambiguous_maxima = FALSE)))
 })
@@ -1962,7 +1962,7 @@ test_that("a certified fit says one line and a refused one a short warning", {
   expect_identical(
     reported,
     paste0("The Monte Carlo error of the estimate is within 0.05 statistical ",
-           "standard errors (an approximate 95% bound, tolerance 0.1).\n")
+           "standard errors (an approximate 95% bound, tolerance 0.1).")
   )
   expect_silent(
     report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE)

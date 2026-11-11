@@ -38,12 +38,20 @@
 ##' @export
 plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
                                  scale = c("loglik", "deviance"), ...) {
-  stopifnot(inherits(x, "RiskMap_profile"))
-  scale <- match.arg(scale)
+  check_class(x, "RiskMap_profile")
+  scale <- match_choice(scale)
   parameters <- parameters %||% names(x$marginal)
   pairs <- pairs %||% names(x$joint)
-  stopifnot("unknown marginal profile" = all(parameters %in% names(x$marginal)),
-            "unknown joint profile" = all(pairs %in% names(x$joint)))
+  unknown <- setdiff(parameters, names(x$marginal))
+  if (length(unknown)) {
+    known <- names(x$marginal)
+    abort_input("{.arg parameters} must name marginal profiles of {.arg x}, among {.val {known}}, and {.val {unknown}} {?isn't/aren't}.", arg = "parameters")
+  }
+  unknown <- setdiff(pairs, names(x$joint))
+  if (length(unknown)) {
+    known <- names(x$joint)
+    abort_input("{.arg pairs} must name joint profiles of {.arg x}, among {.val {known}}, and {.val {unknown}} {?isn't/aren't}.", arg = "pairs")
+  }
   axis <- profile_axis(scale, x$level)
   marginal <- lapply(parameters, function(name) {
     plot_marginal_profile(x, name, axis)

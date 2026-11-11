@@ -182,13 +182,13 @@ test_that("prediction distinguishes estimated and fixed nugget variances", {
 
 test_that("predict.RiskMap validates its concise public interface", {
 
-  expect_error(
+  expect_input_error(
     predict(gaussian_model, prediction_data, include = "spatial"),
-    "'include' must contain unique values"
+    "include"
   )
-  expect_error(
+  expect_input_error(
     predict(gaussian_model, prediction_data, summaries = "mode"),
-    "'summaries' must contain unique values"
+    "summaries"
   )
   expect_error(
     predict(gaussian_model, prediction_data, level = 1),
@@ -201,35 +201,35 @@ test_that("predict.RiskMap validates its concise public interface", {
       gaussian_model, prediction_data, type = "joint",
       include = "random_effects", messages = FALSE
     ),
-    "unknown levels for random effect"
+    "levels of the random effect"
   )
 
-  expect_error(
+  expect_input_error(
     predict(
       gaussian_model, prediction_data, boundaries = areal,
       aggregate = "mean", type = "marginal", messages = FALSE
     ),
-    "'type' must be \"joint\""
+    "type"
   )
   expect_error(
     predict(gaussian_model, prediction_data, aggregate = "mean",
             messages = FALSE),
-    "only when 'boundaries' are supplied"
+    "only with `boundaries`"
   )
-  expect_error(
+  expect_input_error(
     predict(gaussian_model, prediction_data,
             summaries = "exceedance", messages = FALSE),
-    "'thresholds' must contain"
+    "thresholds"
   )
   expect_error(
     predict(gaussian_model, prediction_data,
             summaries = "mean", thresholds = 0.2, messages = FALSE),
-    "used only when 'summaries' includes 'exceedance'"
+    "used only when `summaries` includes \"exceedance\""
   )
   expect_error(
     predict(gaussian_model, prediction_data, control_mcmc = list(),
             messages = FALSE),
-    "output from set_control_mcmc"
+    "must be made by `set_control_mcmc\\(\\)`"
   )
   expect_error(
     predict(gaussian_model, prediction_data, seed = 0, messages = FALSE),
@@ -243,7 +243,7 @@ test_that("predict.RiskMap validates its concise public interface", {
   expect_error(
     predict(gaussian_model, prediction_data, weights = "population",
             messages = FALSE),
-    "only when 'boundaries' are supplied"
+    "only with `boundaries`"
   )
   expect_error(
     predict(gaussian_model, prediction_data, keep_samples = NA,
@@ -260,14 +260,14 @@ test_that("prediction validates required offset and optional components", {
   no_offset_data <- subset(prediction_data, select = -offset)
   expect_error(
     predict(gaussian_offset_model, no_offset_data, messages = FALSE),
-    "missing required column.*offset"
+    "must have the column.*offset"
   )
   expect_error(
     predict(
       gaussian_model, prediction_data, type = "marginal",
       include = "random_effects", messages = FALSE
     ),
-    "requires 'type = \"joint\"'"
+    "must be \"joint\" to predict the random effects"
   )
   complete_offset_data <- prediction_data
   complete_offset_data$offset <- 0
@@ -276,14 +276,14 @@ test_that("prediction validates required offset and optional components", {
       gaussian_offset_model, complete_offset_data, type = "joint",
       include = "random_effects", messages = FALSE
     ),
-    "does not contain unstructured random effects"
+    "the model has no `re\\(\\)` terms"
   )
   expect_error(
     predict(
       gaussian_model, prediction_data, include = "nugget",
       messages = FALSE
     ),
-    "does not contain a positive nugget variance"
+    "has no positive nugget variance"
   )
 })
 
@@ -541,20 +541,20 @@ test_that("exact grid assignment rejects invalid geometry metadata", {
 
   expect_error(
     assign_prediction_grid_cells(grid, areal, invalid_metadata),
-    "invalid RiskMap grid metadata"
+    "invalid grid metadata"
   )
 
   overlapping <- rbind(areal[1, ], areal[1, ])
   expect_error(
     assign_prediction_grid_cells(grid, overlapping, metadata),
-    "overlapping polygons"
+    "must not overlap"
   )
 
   duplicated <- rbind(grid[1, ], grid[1, ])
   attr(duplicated, "grid_metadata") <- metadata
   expect_error(
     assign_prediction_grid_cells(duplicated, areal, metadata),
-    "duplicate RiskMap grid cells"
+    "same grid cell more than once"
   )
 
   empty <- assign_prediction_grid_cells(grid[0, ], areal, metadata)
@@ -576,7 +576,7 @@ test_that("polygon prediction handles outside cells and empty polygons", {
       summaries = c("mean", "exceedance"), thresholds = 0,
       keep_samples = TRUE, seed = 472, messages = FALSE
     ),
-    "outside all polygons"
+    "outside every polygon"
   )
 
   missing <- result$boundary_summary$boundary_id == 2L
@@ -590,7 +590,7 @@ test_that("polygon prediction handles outside cells and empty polygons", {
       boundaries = far_polygon, aggregate = "mean",
       seed = 473, messages = FALSE
     ),
-    "outside all polygons"
+    "outside every polygon"
   )
   expect_true(all(is.na(empty$boundary_summary$value)))
   expect_null(empty$samples)
@@ -617,14 +617,14 @@ test_that("polygons containing a single prediction location trigger a warning", 
       gaussian_model, points_in_squares(c(1, 1, 2, 2)), boundaries = areal,
       aggregate = "mean", seed = 475, messages = FALSE
     ),
-    "2 polygons contain only one prediction location; their areal summaries"
+    "2 polygons contain only one prediction location, so their summaries"
   )
   expect_warning(
     predict(
       gaussian_model, points_in_squares(c(1, 2)), boundaries = areal[1:2, ],
       aggregate = "mean", seed = 476, messages = FALSE
     ),
-    "1 polygon contains only one prediction location; its areal summaries"
+    "1 polygon contains only one prediction location, so its summaries"
   )
   expect_no_warning(
     predict(
@@ -642,7 +642,7 @@ test_that("polygon weights are validated and zero totals return missing summarie
       gaussian_model, no_weight_data, boundaries = areal,
       aggregate = "mean", weights = "population", messages = FALSE
     ),
-    "does not contain the weights column"
+    "must name a column of `newdata`"
   )
 
   invalid_weights <- prediction_data
@@ -673,7 +673,7 @@ test_that("polygon weights are validated and zero totals return missing summarie
       aggregate = c("mean", "median", "sum"), weights = "population",
       seed = 474, messages = FALSE
     ),
-    "zero total weight"
+    "total weight of zero"
   )
   weighted <- zero$boundary_summary$aggregate %in% c("mean", "median", "sum")
   expect_true(all(is.na(zero$boundary_summary$value[weighted])))
@@ -816,21 +816,21 @@ test_that("custom prediction operations have strict output contracts", {
     aggregate_prediction_values(
       matrix(1:6, nrow = 2), function(values, weights) 1, c(1, 1)
     ),
-    "one numeric value per predictive draw"
+    "one number for each predictive draw"
   )
   expect_error(
     normalise_prediction_operations(
       list(function(values, weights) colMeans(values)),
       c("mean", "sum"), "aggregate"
     ),
-    "unique, non-empty name"
+    "distinct, non-empty name"
   )
   expect_error(
     summarise_prediction_matrix(
       matrix(1:6, nrow = 2), "response",
       list(bad = function(values) c(1, 2)), 0.95
     ),
-    "must return exactly one numeric value"
+    "must return a single number"
   )
 })
 
@@ -840,18 +840,18 @@ test_that("stored conditioning samples are checked before prediction", {
 
   expect_error(
     predict(inconsistent, keep_samples = TRUE, messages = FALSE),
-    "inconsistent with the fitted model"
+    "don't match its model"
   )
 })
 
 test_that("areal aggregation must be chosen explicitly", {
 
-  expect_error(
+  expect_input_error(
     predict(
       gaussian_model, newdata = prediction_data, boundaries = areal,
       messages = FALSE
     ),
-    "'aggregate' must be supplied"
+    "aggregate"
   )
 })
 
@@ -914,7 +914,7 @@ test_that("joint location prediction covers Gaussian and non-Gaussian engines", 
       binomial_model, prediction_data, type = "joint",
       keep_samples = TRUE, seed = 482, messages = TRUE
     ),
-    "Reusing conditional samples stored"
+    "Reusing the conditional samples stored"
   )
   expect_identical(nrow(binomial$samples$spatial), nrow(prediction_data))
   expect_true(all(binomial$predictions$response_mean >= 0 &
@@ -1070,7 +1070,7 @@ test_that("derived targets validate names and returned dimensions", {
     predict(gaussian_model, prediction_data,
             transform = list(response = function(link) link),
             messages = FALSE),
-    "reserved prediction quantities"
+    "built-in prediction quantities"
   )
   expect_error(
     predict(gaussian_model, prediction_data,
@@ -1152,7 +1152,7 @@ test_that("standardization validates reference predictors and weights", {
   expect_error(
     predict(gaussian_model, grid,
             standardize = data.frame(unknown = 1), messages = FALSE),
-    "invalid column"
+    "is not a covariate"
   )
   expect_error(
     predict(gaussian_model, grid,

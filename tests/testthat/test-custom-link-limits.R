@@ -85,7 +85,7 @@ test_that("a link that goes wrong in its tails is refused when it is supplied", 
     make_inverse_link_functions(
       "binomial", function(eta) ifelse(abs(eta) > 6, NaN, pnorm(eta)), 3L
     ),
-    "not a number or is outside the range of the family"
+    "isn't a number, or is outside the range of the family"
   )
   expect_error(
     make_inverse_link_functions(
@@ -97,7 +97,7 @@ test_that("a link that goes wrong in its tails is refused when it is supplied", 
     make_inverse_link_functions(
       "poisson", function(eta) ifelse(eta < -10, -1, exp(eta)), 3L
     ),
-    "not a number or is outside the range of the family"
+    "isn't a number, or is outside the range of the family"
   )
   # A valid link at its limits is accepted, and so is overflow for a mean.
   expect_no_error(make_inverse_link_functions("binomial", pnorm, 3L))

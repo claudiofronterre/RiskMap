@@ -31,13 +31,13 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 
 ## Errors, warnings and messages
 
-RiskMap reports conditions with [cli](https://cli.r-lib.org), following the [error messages chapter](https://style.tidyverse.org/errors.html) of the tidyverse style guide. The package is being converted, so older code still uses base R. `R/worldpop.R` and `R/checks.R` show the conventions below.
+RiskMap reports conditions with [cli](https://cli.r-lib.org), following the [error messages chapter](https://style.tidyverse.org/errors.html) of the tidyverse style guide. `R/worldpop.R` and `R/checks.R` show the conventions below.
 
 ### Raising a condition
 
 Raise every error, warning and message with `riskmap_abort()`, `riskmap_warn()` or `riskmap_inform()` from `R/conditions.R`, never with `stop()`, `warning()`, `message()`, `stopifnot()` or cli directly. They wrap `cli::cli_abort()`, `cli::cli_warn()` and `cli::cli_inform()`, so messages take cli markup, and they add the classes `riskmap_error`, `riskmap_warning` and `riskmap_message`. A change that should apply to every condition is then made in one place.
 
-`test-conditions.R` enforces this. It reads every function in the installed package and fails if one raises a condition directly without being listed in `tests/testthat/conditions-to-convert.txt`. When you convert a function, remove it from that list. The test also fails if a listed function no longer needs to be there, so the list can only shrink.
+`test-conditions.R` enforces this. It reads every function in the installed package and fails if one calls any of those functions, or `rlang::abort()` and its relatives, directly.
 
 For a state that RiskMap should never reach, which would be a bug in RiskMap rather than a mistake by the user, use `riskmap_bug()`. Its error asks the user to report it.
 
@@ -104,7 +104,13 @@ When an error from another package is the cause, pass it as `parent`, so that bo
 
 ### Condition classes
 
-The classes are documented for users in `?riskmap_conditions` (`R/conditions.R`). Every error has class `riskmap_error`, every warning `riskmap_warning` and every message `riskmap_message`. A more specific class goes before these when code or tests need to tell a condition apart. Invalid arguments have class `riskmap_error_input`, which every helper and `abort_input()` raise. Other failures have a class named after their subject, such as `riskmap_error_worldpop` when WorldPop can't be reached or has no data for a request, and warnings follow the same pattern, `riskmap_warning_<subject>`. A class is easy to add and hard to rename, because users' code may catch it, so choose names with care and add each new one to `?riskmap_conditions`.
+The classes are documented for users in `?riskmap_conditions` (`R/conditions.R`). Every error has class `riskmap_error`, every warning `riskmap_warning` and every message `riskmap_message`. A more specific class goes before these when code or tests need to tell a condition apart. Invalid arguments have class `riskmap_error_input`, which every helper and `abort_input()` raise. Other failures have a class named after their subject, such as `riskmap_error_worldpop` when WorldPop can't be reached or has no data for a request, and warnings follow the same pattern, `riskmap_warning_<subject>`.
+
+Choose the class by who can cause the problem and fix it.
+
+- If users can reach it with what they pass, including data or a modified object, it is an input error, with `arg` naming the argument to change. This holds even when an internal function finds it.
+- If a fit or a computation on a fit fails numerically, as when a mode search fails or a covariance isn't positive definite, use `riskmap_error_fit`, and `riskmap_warning_fit` for a result that may not be reliable.
+- If only a mistake in RiskMap can reach it, use `riskmap_bug()`. A class is easy to add and hard to rename, because users' code may catch it, so choose names with care and add each new one to `?riskmap_conditions`.
 
 ### Testing conditions
 

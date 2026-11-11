@@ -286,25 +286,23 @@ glgpm <- function(formula,
   invlink <- family_link$invlink
   not_gaussian <- family != "gaussian"
 
-  stopifnot("'distance_units' must be either 'km' or 'm'" =
-              is.character(distance_units) && all(distance_units %in% c("km", "m")),
-            "'return_samples' must be either TRUE or FALSE" = is.logical(return_samples),
-            "'messages' must be either TRUE or FALSE" = is.logical(messages))
-  distance_units <- match.arg(distance_units)
-  if (!inherits(control_mcml, "RiskMap_control_mcml")) {
-    stop("the argument passed to 'control_mcml' must be an output from ",
-         "the function set_control_mcml; see ?set_control_mcml for details")
-  }
+  distance_units <- match_choice(distance_units)
+  check_logical(return_samples)
+  check_logical(messages)
+  check_control(control_mcml, "set_control_mcml")
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
 
-  if (family == "gaussian"){
-    stopifnot("'invlink' cannot be provided when 'family' is 'gaussian'" = is.null(invlink),
-              "'denominator' cannot be provided when 'family' is 'gaussian'" = is.null(denominator),
-              "'fix_var_me' must be NULL or a single positive value or zero" =
-                is.null(fix_var_me) ||
-                (length(fix_var_me) == 1 && is.numeric(fix_var_me) && fix_var_me >= 0))
-  } else {
-    if (!is.null(fix_var_me)) stop("'fix_var_me' cannot be provided when 'family' is '", family, "'")
+  if (family == "gaussian") {
+    if (!is.null(invlink)) {
+      abort_input("{.arg invlink} can't be given for a Gaussian model, which has the identity link.", arg = "invlink")
+    }
+    # `denominator` names a column, so it is read without being evaluated.
+    if (!is.null(substitute(denominator))) {
+      abort_input("{.arg denominator} can't be given for a Gaussian model.", arg = "denominator")
+    }
+    if (!is.null(fix_var_me)) check_range(fix_var_me, min = 0)
+  } else if (!is.null(fix_var_me)) {
+    abort_input("{.arg fix_var_me} can be given only for a Gaussian model, not a {family} one.", arg = "fix_var_me")
   }
 
   inter_f <- interpret_formula(formula)
@@ -330,24 +328,25 @@ glgpm <- function(formula,
     sub_den <- substitute(denominator)
     if (is.null(sub_den)){
       units_m <- rep(1, nrow(data))
-      if (family == "binomial") warning("'denominator' is assumed to be 1 for all observations")
+      if (family == "binomial") {
+        riskmap_warn("{.arg denominator} isn't given, so it is taken to be 1 for every observation.")
+      }
     } else {
-      if (!is.symbol(sub_den)){
-        stop("'denominator' must be provided as an unquoted column name for a column in 'data'")
+      if (!is.symbol(sub_den)) {
+        abort_input("{.arg denominator} must be the unquoted name of a column of {.arg data}.", arg = "denominator")
       }
       do_name <- deparse(sub_den)
-      if (!do_name %in% names(data)){
-        stop("the variable provided to 'denominator' is not present in 'data'")
+      if (!do_name %in% names(data)) {
+        abort_input(c("{.arg denominator} must name a column of {.arg data}.", "x" = "There is no column {.val {do_name}}."), arg = "denominator")
       }
       units_m <- data[[do_name]]
     }
-    if (family == "binomial") check_binomial(y, units_m)
-    if(is.integer(units_m)) units_m <- as.numeric(units_m)
-    if(!is.numeric(units_m)) stop("the variable passed to 'denominator' must be numeric")
-    if(!inherits(control_mcmc, "RiskMap_control_mcmc")){
-      stop("the argument passed to 'control_mcmc' must be an output
-           from the function set_control_mcmc; see ?set_control_mcmc for more details")
+    if (!is.numeric(units_m)) {
+      abort_input("{.arg denominator} must name a numeric column, not {.obj_type_friendly {units_m}}.", arg = "denominator")
     }
+    if (is.integer(units_m)) units_m <- as.numeric(units_m)
+    if (family == "binomial") check_binomial(y, units_m)
+    check_control(control_mcmc, "set_control_mcmc")
   }
 
   if (length(inter_f$re_spec) > 0L) {
@@ -373,16 +372,15 @@ glgpm <- function(formula,
     check_crs(model_crs)
     data <- st_transform(data, crs = model_crs)
     if(st_is_longlat(data)) {
-      stop("'model_crs' must be a projected CRS, not longitude/latitude")
+      abort_input("{.arg model_crs} must be a projected coordinate reference system, not longitude and latitude.", arg = "model_crs")
     }
   } else if(st_is_longlat(data)) {
     auto_crs <- propose_utm(data)
     data <- st_transform(data, crs = auto_crs)
-    message("'data' are in longitude/latitude and 'model_crs' was not provided; ",
-            "automatically reprojecting to EPSG:", auto_crs,
-            " for model fitting. Set 'model_crs' to override.")
+    # Shown even with `messages = FALSE`, because it changes the model.
+    riskmap_inform(c("{.arg data} are in longitude and latitude, so they are projected to EPSG:{auto_crs} for fitting.", "i" = "Set {.arg model_crs} to choose the projection."))
   }
-  if(messages) message("The CRS used is ", as.list(st_crs(data))$input, "\n")
+  if (messages) riskmap_inform("The CRS used is {as.list(st_crs(data))$input}.")
 
   coords_o <- coordinates_in_units(data, distance_units)
   coordinate_index <- index_coordinate_rows(coords_o)
@@ -398,8 +396,7 @@ glgpm <- function(formula,
      family == "gaussian" &&
      isTRUE(fix_tau2) &&
      is.null(fix_var_me)){
-    stop("When there is only one observation per location, both the nugget and measurement error cannot
-         be estimated. Either set 'nugget' to FALSE, provide a value to 'nugget' or add a value for 'fix_var_me' ")
+    abort_input(c("The nugget and the measurement error variance can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} or a fixed nugget in {.fn gp}, or give {.arg fix_var_me}."), arg = "formula")
   }
 
   # For the Gaussian family, an observation-level random effect is perfectly
@@ -420,20 +417,17 @@ glgpm <- function(formula,
       } else {
         "the nugget"
       }
-      stop("The random effect(s) '",
-           paste(names_re[is_saturated_re], collapse = "', '"),
-           "' have one level per observation, which cannot be distinguished ",
-           "from ", confounded_component, " when 'family' is 'gaussian'. ",
-           "Drop the random effect or fix the confounded variance component(s).")
+      saturated <- names_re[is_saturated_re]
+      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "In a Gaussian model such an effect can't be told apart from {confounded_component}.", "i" = "Drop it from {.arg formula}, or fix the variance of {confounded_component}."), arg = "formula")
     }
   }
 
-  if(messages) message("Distances between locations are computed in ", distance_units, " ")
+  if (messages) riskmap_inform("Distances between locations are computed in {distance_units}.")
 
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
   invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
   if (length(invalid)) {
-    stop("'", paste(invalid, collapse = "', '"), "' is not a valid starting parameter")
+    abort_input(c("{.arg start_pars} must name parameters among {.val {valid_start_pars}}.", "x" = "{.val {invalid}} {?is/are} not among them."), arg = "start_pars")
   }
   user_supplied_start <- any(vapply(
     start_pars,
@@ -457,11 +451,11 @@ glgpm <- function(formula,
       start_pars[["beta"]] <- coef(glm_fitted)
     }
   } else {
-    if(length(start_pars[["beta"]]) != ncol(D))
-      stop("The number of starting values provided for 'beta' do not match the number of
-      covariates specified in the model, including the intercept")
-    if (any(!is.numeric(start_pars[["beta"]]))){
-      stop("The starting values for 'beta' must be numeric")
+    if (!is.numeric(start_pars[["beta"]])) {
+      abort_input("{.code start_pars$beta} must be numeric, not {.obj_type_friendly {start_pars[['beta']]}}.", arg = "start_pars")
+    }
+    if (length(start_pars[["beta"]]) != ncol(D)) {
+      abort_input("{.code start_pars$beta} must have {ncol(D)} value{?s}, one for each column of the design matrix including the intercept, not {length(start_pars[['beta']])}.", arg = "start_pars")
     }
   }
 
@@ -485,22 +479,25 @@ glgpm <- function(formula,
     }
   } else {
     if(!is.null(start_pars[["tau2"]]))
-      stop("The starting value for 'tau2' cannot be provided when 'nugget' in 'gp()' is FALSE")
+      abort_input("A starting value for {.code tau2} can't be given when {.fn gp} has {.code nugget = FALSE}.", arg = "start_pars")
   }
 
   if(n_re > 0) {
     if(is.null(start_pars[["sigma2_re"]])) {
       start_pars[["sigma2_re"]] <- rep(1,n_re)
     } else {
-      if(length(start_pars[["sigma2_re"]]) != n_re)
-        stop("The starting values for 'sigma2_re' do not match the number
-             of specified unstructured random effects")
-      if(any(start_pars[["sigma2_re"]] < 0))
-        stop("All the starting values for 'sigma2_re' must be positive")
+      if (length(start_pars[["sigma2_re"]]) != n_re) {
+        abort_input("{.code start_pars$sigma2_re} must have {n_re} value{?s}, one for each random effect, not {length(start_pars[['sigma2_re']])}.", arg = "start_pars")
+      }
+      if (!is.numeric(start_pars[["sigma2_re"]]) ||
+          !all(is.finite(start_pars[["sigma2_re"]]) &
+               start_pars[["sigma2_re"]] > 0)) {
+        abort_input("The starting values in {.code start_pars$sigma2_re} must be positive finite numbers.", arg = "start_pars")
+      }
     }
   } else {
-    if(!is.null(start_pars[["sigma2_re"]])) {
-      stop("Starting values for 'sigma2_re' cannot be provided when no random effects are included in the model")
+    if (!is.null(start_pars[["sigma2_re"]])) {
+      abort_input("Starting values for {.code sigma2_re} can't be given for a model without random effects.", arg = "start_pars")
     }
   }
 
@@ -885,8 +882,7 @@ structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_
 nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
   if (isTRUE(fix_tau2)) {
     if (is.null(log_nu2)) {
-      stop("'log_nu2' is required when the nugget is estimated.",
-           call. = FALSE)
+      riskmap_bug("{.arg log_nu2} is required when the nugget is estimated.")
     }
 
     return(exp(log_nu2))
@@ -904,7 +900,7 @@ nugget_ratio <- function(fix_tau2, sigma2, log_nu2 = NULL) {
 normalise_log_weights <- function(log_weights) {
   shift <- max(log_weights)
   if (!is.finite(shift)) {
-    stop("All Monte Carlo importance weights are non-finite.", call. = FALSE)
+    riskmap_abort("All Monte Carlo importance weights are non-finite.", class = "riskmap_error_fit")
   }
 
   weights <- exp(log_weights - shift)
@@ -920,8 +916,7 @@ normalise_log_weights <- function(log_weights) {
 linear_start_values <- function(design, response) {
   fit <- lm.fit(x = design, y = response)
   if (fit$rank < ncol(design)) {
-    stop("The model matrix is rank deficient; regression starting values ",
-         "cannot be determined.", call. = FALSE)
+    abort_input(c("The design matrix is rank deficient, so starting values for the regression coefficients can't be found.", "i" = "Check {.arg formula} for covariates that are linear combinations of others."), arg = "formula")
   }
 
   unname(fit$coefficients)
@@ -942,8 +937,7 @@ standardize_design_matrix <- function(design) {
   intercept <- which(coefficient_names == "(Intercept)")
 
   if (length(intercept) > 1L) {
-    stop("The model matrix contains more than one intercept column.",
-         call. = FALSE)
+    abort_input("The design matrix has more than one intercept column.", arg = "formula")
   }
 
   columns_to_scale <- setdiff(seq_len(p), intercept)
@@ -969,12 +963,7 @@ standardize_design_matrix <- function(design) {
       scale[columns_to_scale] == 0
     if (any(invalid)) {
       invalid_names <- coefficient_names[columns_to_scale][invalid]
-      stop(
-        "The model matrix contains constant or numerically constant column",
-        if (length(invalid_names) > 1L) "s" else "",
-        ": ", paste(invalid_names, collapse = ", "), ".",
-        call. = FALSE
-      )
+      abort_input("The design matrix has {?a /}constant or numerically constant column{?s}, {.val {invalid_names}}.", arg = "formula")
     }
   }
 
@@ -1139,13 +1128,8 @@ collect_optimizer_diagnostics <- function(estimate, objective, gradient,
 ##' @noRd
 warn_unconverged_optimizer <- function(diagnostics) {
   if (diagnostics$convergence != 0 && !diagnostics$stationary) {
-    warning(
-      "Model optimisation did not converge (code ",
-      diagnostics$convergence, "): ", diagnostics$message,
-      ". The maximum absolute score is ",
-      format(diagnostics$max_abs_gradient, scientific = TRUE), ".",
-      call. = FALSE
-    )
+    largest_score <- format(diagnostics$max_abs_gradient, scientific = TRUE)
+    riskmap_warn(c("Model optimisation did not converge (code {diagnostics$convergence}).", "i" = "The optimiser reported {.val {diagnostics$message}}.", "i" = "The largest absolute score is {largest_score}."), class = "riskmap_warning_fit")
   }
 }
 
@@ -1382,7 +1366,7 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
        scores["transformed_gaussian"] > scores["current"])) {
     diagnostics$selected <- "transformed_gaussian"
     if (messages) {
-      message("Using transformed-Gaussian automatic starting values.")
+      riskmap_inform("Using transformed-Gaussian automatic starting values.")
     }
     return(list(start = transformed, diagnostics = diagnostics))
   }
@@ -2315,10 +2299,9 @@ differentiate <- function(f, ncheck) {
 
   symbolic <- tryCatch({
     wrapped <- function(eta) f(eta)
-    d <- Deriv::Deriv(wrapped, "eta")
-    if (!is_valid(d)) stop("symbolic derivative failed validation")
-    d
+    Deriv::Deriv(wrapped, "eta")
   }, error = function(e) NULL)
+  if (!is.null(symbolic) && !is_valid(symbolic)) symbolic <- NULL
 
   if (!is.null(symbolic)) return(symbolic)
 
@@ -2356,8 +2339,7 @@ compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
   for (round in seq_len(rounds)) {
     estimates[round, ] <- (f(eta + step) - f(eta - step)) / (2 * step)
     if (anyNA(estimates[round, ])) {
-      stop("The inverse link returns NA near the values being differentiated.",
-           call. = FALSE)
+      abort_input("{.arg invlink} returns {.code NA} near the values being differentiated.", arg = "invlink")
     }
     step <- step / ratio
   }
@@ -2389,14 +2371,11 @@ compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
 read_family <- function(family, invlink = NULL,
                         families = c("gaussian", "binomial", "poisson")) {
   if (inherits(invlink, "link-glm")) {
-    stop("'invlink' takes an inverse-link function, not a link-glm object. ",
-         "Give a named link in 'family', as in binomial(\"", invlink$name,
-         "\"), or the inverse alone, as in make.link(\"", invlink$name,
-         "\")$linkinv.", call. = FALSE)
+    link_name <- invlink$name
+    abort_input(c("{.arg invlink} must be an inverse-link function, not a {.cls link-glm} object.", "i" = "Give a named link in {.arg family}, as in {.code binomial(\"{link_name}\")}, or the inverse alone, as in {.code make.link(\"{link_name}\")$linkinv}."), arg = "invlink")
   }
   if (is.character(invlink)) {
-    stop("'invlink' takes a function, not the name of a link. Give a named ",
-         "link in 'family', as in binomial(\"probit\").", call. = FALSE)
+    abort_input(c("{.arg invlink} must be a function, not the name of a link.", "i" = "Give a named link in {.arg family}, as in {.code binomial(\"probit\")}."), arg = "invlink")
   }
   if (is.function(family)) {
     family <- tryCatch(family(), error = function(e) NULL)
@@ -2404,16 +2383,15 @@ read_family <- function(family, invlink = NULL,
   if (inherits(family, "family")) {
     link <- read_family_link(family$family %||% "", family$link %||% "")
     if (!is.null(link$invlink) && !is.null(invlink)) {
-      stop("Give the link either in 'family', as in binomial(\"", family$link,
-           "\"), or as a function in 'invlink', not both.", call. = FALSE)
+      family_call <- paste0(family$family, "(\"", family$link, "\")")
+      abort_input("Give the link either in {.arg family}, as in {.code {family_call}}, or as a function in {.arg invlink}, not both.", arg = "invlink")
     }
     family <- link$family
     if (is.null(invlink)) invlink <- link$invlink
   }
   if (!is.character(family) || length(family) != 1L ||
       !family %in% families) {
-    stop("'family' must be ", format_family_strings(families),
-         ", or a family object such as binomial(\"probit\").", call. = FALSE)
+    abort_input("{.arg family} must be {.or {.val {families}}}, or a family object such as {.code binomial(\"probit\")}.", arg = "family")
   }
   list(family = family, invlink = invlink)
 }
@@ -2426,21 +2404,13 @@ read_family <- function(family, invlink = NULL,
 ##' @noRd
 read_family_link <- function(family, link) {
   object <- paste0(family, "(\"", link, "\")")
-  use_invlink <- paste0(
-    "Other links can be given as an inverse-link function in 'invlink', ",
-    "with family = \"", family, "\"."
-  )
+  # A template, interpolated by the error that uses it.
+  use_invlink <- "Other links can be given as an inverse-link function in {.arg invlink}, with {.code family = \"{family}\"}."
   if (startsWith(family, "quasi")) {
-    stop(family, "() is a quasi-likelihood family, which has no likelihood ",
-         "for RiskMap to maximise. Use binomial() or poisson(), with any ",
-         "link they do not name given as an inverse-link function in ",
-         "'invlink'.", call. = FALSE)
+    abort_input(c("{.fn {family}} is a quasi-likelihood family, which has no likelihood for RiskMap to maximise.", "i" = "Use {.fn binomial} or {.fn poisson}, and give a link they don't name as an inverse-link function in {.arg invlink}."), arg = "family")
   }
   if (!family %in% c("gaussian", "binomial", "poisson")) {
-    stop("RiskMap fits gaussian, binomial and poisson responses, not ",
-         family, ". For a binomial or Poisson response, any link can be ",
-         "given as an inverse-link function in 'invlink'.",
-         call. = FALSE)
+    abort_input(c("{.arg family} must be a Gaussian, binomial or Poisson family, not {.val {family}}.", "i" = "For a binomial or Poisson response, any link can be given as an inverse-link function in {.arg invlink}."), arg = "family")
   }
   refused <- switch(
     paste(family, link),
@@ -2452,35 +2422,23 @@ read_family_link <- function(family, link) {
     NULL
   )
   if (!is.null(refused)) {
-    stop(object, " is not accepted, because ", refused, ". ", use_invlink,
-         call. = FALSE)
+    abort_input(c("{.code {object}} can't be used, because {refused}.", "i" = use_invlink), arg = "family")
   }
   accepted <- switch(family,
                      gaussian = "identity",
                      binomial = c("logit", "probit", "cloglog", "cauchit"),
                      poisson = "log")
   if (!link %in% accepted) {
-    stop("The ", link, " link is not available for the ", family,
-         " family, which takes ", format_family_strings(accepted), ". ",
-         if (family == "gaussian") {
-           "Gaussian responses are fitted with the identity link only."
-         } else {
-           use_invlink
-         },
-         call. = FALSE)
+    hint <- if (family == "gaussian") {
+      "Gaussian responses are fitted with the identity link only."
+    } else {
+      use_invlink
+    }
+    abort_input(c("The {link} link isn't available for the {family} family, which takes {.or {.val {accepted}}}.", "i" = hint), arg = "family")
   }
   canonical <- link %in% c("identity", "logit", "log")
   list(family = family,
        invlink = if (!canonical) c(named_inverse_link(link), link = link))
-}
-
-##' Names in quotes, joined as in "a", "b" or "c"
-##' @noRd
-format_family_strings <- function(names) {
-  quoted <- paste0("\"", names, "\"")
-  if (length(quoted) == 1L) return(quoted)
-  paste(paste(quoted[-length(quoted)], collapse = ", "), "or",
-        quoted[length(quoted)])
 }
 
 ##' Exact inverse and derivatives of a named binomial link
@@ -2510,7 +2468,7 @@ named_inverse_link <- function(link) {
       d1 = function(eta) dcauchy(eta),
       d2 = function(eta) -2 * eta / (pi * (1 + eta^2)^2)
     ),
-    stop("No inverse is defined for the ", link, " link.", call. = FALSE)
+    riskmap_bug("No inverse is defined for the {link} link.")
   )
 }
 
@@ -2569,23 +2527,25 @@ refit_invlink <- function(object) {
 ##' @noRd
 make_inverse_link_functions <- function(family, invlink, ncheck,
                                         second_derivative = TRUE) {
-  validate <- function(f, name) {
-    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
+  # `what` names the function checked, with cli markup.
+  validate <- function(f, what) {
+    what <- cli::format_inline(what)
+    if (!is.function(f)) {
+      abort_input("{what} must be a function, not {.obj_type_friendly {f}}.", arg = "invlink")
+    }
     x <- rep(0, ncheck)
     out <- tryCatch(f(x), error = function(e) e)
     if (inherits(out, "error")) {
-      stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
+      abort_input("{what} failed on a numeric vector.", arg = "invlink", parent = out)
     }
     if (!is.numeric(out)) {
-      stop(sprintf("`%s` must return a numeric vector.", name))
+      abort_input("{what} must return a numeric vector, not {.obj_type_friendly {out}}.", arg = "invlink")
     }
     if (length(out) != length(x)) {
-      stop(sprintf(
-        "`%s` must return a vector of the same length as its input.", name
-      ))
+      abort_input("{what} must return a vector as long as its input.", arg = "invlink")
     }
     if (!all(is.finite(out))) {
-      stop(sprintf("`%s` returns non-finite values.", name))
+      abort_input("{what} returns values that aren't finite.", arg = "invlink")
     }
     invisible(TRUE)
   }
@@ -2607,9 +2567,11 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
         derivative * (1 - 2 * probability)
       } else NULL
     }
-    validate(inv, "canonical invlink")
-    validate(d1, "canonical invlink_prime")
-    if (second_derivative) validate(d2, "canonical invlink_second")
+    validate(inv, "The canonical inverse link")
+    validate(d1, "The derivative of the canonical inverse link")
+    if (second_derivative) {
+      validate(d2, "The second derivative of the canonical inverse link")
+    }
     return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical",
                 link = if (family == "poisson") "log" else "logit"))
   }
@@ -2624,25 +2586,24 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
   } else if (is.list(invlink)) {
     unknown <- setdiff(names(invlink), c("inv", "d1", "d2", "link"))
     if (is.null(names(invlink)) || length(unknown)) {
-      stop("A list in 'invlink' takes only the elements 'inv', 'd1', 'd2' ",
-           "and 'link'.", call. = FALSE)
+      abort_input("A list in {.arg invlink} takes only the elements {.code inv}, {.code d1}, {.code d2} and {.code link}.", arg = "invlink")
     }
     inv <- invlink$inv
     d1 <- invlink$d1
     d2 <- invlink$d2
     link <- invlink$link
   } else {
-    stop("'invlink' must be NULL or a function.", call. = FALSE)
+    abort_input("{.arg invlink} must be {.code NULL} or a function, not {.obj_type_friendly {invlink}}.", arg = "invlink")
   }
 
-  validate(inv, "invlink")
+  validate(inv, "{.arg invlink}")
   check_invlink(inv, family)
   check_invlink_tails(inv, family)
   if (is.null(d1)) d1 <- differentiate(inv, ncheck)
-  validate(d1, "invlink_prime")
+  validate(d1, "The derivative of {.arg invlink}")
   if (second_derivative) {
     if (is.null(d2)) d2 <- differentiate(d1, ncheck)
-    validate(d2, "invlink_second")
+    validate(d2, "The second derivative of {.arg invlink}")
   } else {
     d2 <- NULL
   }
@@ -2708,7 +2669,7 @@ maxim_integrand <- function(
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
 ) {
   if (missing(denominator)) {
-    stop("'denominator' must be provided.", call. = FALSE)
+    abort_input("{.arg denominator} must be given.", arg = "denominator")
   }
   family_link <- read_family(family, invlink,
                              families = c("binomial", "poisson"))
@@ -2739,7 +2700,7 @@ maxim_integrand <- function(
 
   if (( !is.null(ID_re) && is.null(sigma2_re)) ||
       (  is.null(ID_re) && !is.null(sigma2_re))) {
-    stop("To add unstructured random effects, provide both `ID_re` and `sigma2_re`.")
+    abort_input("{.arg ID_re} and {.arg sigma2_re} must be given together.", arg = if (is.null(ID_re)) "ID_re" else "sigma2_re")
   }
 
   if (is.null(ID_re)) {
@@ -2768,21 +2729,22 @@ maxim_integrand <- function(
     if (!identical(linkf$name, "canonical")) {
       terms <- compute_custom_link_terms(eta, y, units_m, family, linkf)
       if (is.null(terms)) {
-        stop("invlink returned a mean outside the support of the family, or ",
-             "a derivative that is not finite.", call. = FALSE)
+        abort_input("{.arg invlink} gives a mean outside the support of the family, or a derivative that isn't finite.", arg = "invlink")
       }
       return(list(g = terms$score, w = terms$curvature,
                   llik = terms$log_likelihood))
     }
     if (any(!is.finite(eta))) {
-      stop("The linear predictor is not finite.", call. = FALSE)
+      riskmap_abort("The linear predictor isn't finite.", class = "riskmap_error_fit")
     }
     if (family == "poisson") {
       mu  <- inv_link(eta)
       mu1 <- inv1(eta)
       mu2 <- inv2(eta)
 
-      if (any(!is.finite(mu))) stop("invlink produced non-finite values for Poisson.")
+      if (any(!is.finite(mu))) {
+        riskmap_abort("The Poisson mean isn't finite at the current linear predictor.", class = "riskmap_error_fit")
+      }
 
       g  <- (y / mu - units_m) * mu1
       l2 <- - y * (mu1^2) / (mu^2) + (y / mu - units_m) * mu2
@@ -3032,33 +2994,33 @@ laplace_sampling_mcmc <- function(y,
                                   adapt_step = TRUE) {
 
   if (length(family) != 1L || !family %in% c("poisson", "binomial")) {
-    stop("'family' must be either 'poisson' or 'binomial'.")
+    riskmap_bug("{.arg family} must be {.val poisson} or {.val binomial}.")
   }
 
   n <- length(y)
   n_loc <- nrow(Sigma)
   if (!is.numeric(y) || n < 1L || any(!is.finite(y)) ||
       any(y < 0) || any(y != as.integer(y))) {
-    stop("'y' must be a non-empty vector of non-negative integer counts.")
+    abort_input("The response must be non-negative whole numbers.", arg = "data")
   }
   if (!is.numeric(units_m) || length(units_m) != n ||
       any(!is.finite(units_m)) || any(units_m <= 0)) {
-    stop("'units_m' must contain one positive finite value per response.")
+    abort_input("The denominators must be positive finite numbers, one for each response.", arg = "denominator")
   }
   if (family == "binomial" && any(y > units_m)) {
-    stop("Binomial responses in 'y' cannot exceed 'units_m'.")
+    abort_input("Binomial responses can't exceed their denominators.", arg = "denominator")
   }
   if (!is.numeric(Sigma) || length(dim(Sigma)) != 2L ||
       n_loc != ncol(Sigma) || n_loc < 1L) {
-    stop("'Sigma' must be a non-empty square numeric matrix.")
+    riskmap_bug("{.arg Sigma} must be a non-empty square numeric matrix.")
   }
   if (!is.numeric(mu) || length(mu) != n || any(!is.finite(mu))) {
-    stop("'mu' must contain one finite value per response.")
+    riskmap_bug("{.arg mu} must contain one finite value per response.")
   }
   if (length(ID_coords) != n || anyNA(ID_coords) ||
       any(ID_coords != as.integer(ID_coords)) ||
       any(ID_coords < 1L | ID_coords > n_loc)) {
-    stop("'ID_coords' must contain one valid integer location index per response.")
+    riskmap_bug("{.arg ID_coords} must contain one valid location index per response.")
   }
 
   # set seed if it exists and reset on exit
@@ -3071,7 +3033,7 @@ laplace_sampling_mcmc <- function(y,
   # ---------- dimensions ----------
   if (( !is.null(ID_re) && is.null(sigma2_re)) ||
       (  is.null(ID_re) && !is.null(sigma2_re))) {
-    stop("To introduce unstructured random effects both `ID_re` and `sigma2_re` must be provided.")
+    riskmap_bug("{.arg ID_re} and {.arg sigma2_re} must be given together.")
   }
 
   if (is.null(ID_re)) {
@@ -3081,27 +3043,27 @@ laplace_sampling_mcmc <- function(y,
     ID_re <- as.matrix(ID_re)
     if (nrow(ID_re) != n || ncol(ID_re) < 1L || anyNA(ID_re) ||
         any(ID_re != as.integer(ID_re)) || any(ID_re < 1L)) {
-      stop("'ID_re' must contain positive integer indices and one row per response.")
+      riskmap_bug("{.arg ID_re} must contain positive integer indices and one row per response.")
     }
     n_re <- length(sigma2_re)
     if (n_re != ncol(ID_re) || any(!is.finite(sigma2_re)) ||
         any(sigma2_re <= 0)) {
-      stop("'sigma2_re' must contain one positive finite variance per random effect.")
+      riskmap_bug("{.arg sigma2_re} must contain one positive finite variance per random effect.")
     }
     if (!is.null(names(sigma2_re)) && !is.null(colnames(ID_re)) &&
         !identical(names(sigma2_re), colnames(ID_re))) {
-      stop("Names of 'sigma2_re' must match the columns of 'ID_re'.")
+      riskmap_bug("The names of {.arg sigma2_re} must match the columns of {.arg ID_re}.")
     }
     n_dim_re <- vapply(seq_len(n_re), function(i) length(unique(ID_re[, i])), integer(1))
     for (i in seq_len(n_re)) {
       if (!identical(sort(unique(ID_re[, i])), seq_len(n_dim_re[i]))) {
-        stop("Each column of 'ID_re' must use consecutive indices starting at 1.")
+        riskmap_bug("Each column of {.arg ID_re} must use consecutive indices starting at 1.")
       }
     }
   }
   if (!is.null(start) && (!is.numeric(start) ||
       length(start) != n_loc + sum(n_dim_re) || any(!is.finite(start)))) {
-    stop("'start' must contain one finite value for each latent effect.")
+    riskmap_bug("{.arg start} must contain one finite value for each latent effect.")
   }
 
   linkf <- make_inverse_link_functions(family, invlink, n)
@@ -3330,8 +3292,7 @@ find_sampler_mode <- function(structure, y, units_m, mu, family, linkf,
   }
   if (is.null(found)) found <- search_from(numeric(structure$dimension))
   if (is.null(found)) {
-    stop("The search for the mode of the latent effects failed.",
-         call. = FALSE)
+    riskmap_abort("The search for the mode of the latent effects failed.", class = "riskmap_error_fit")
   }
   found$restarted <- restarted
   found
@@ -3357,8 +3318,7 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
     mu + latent_linear_predictor(latent_map, mode), y, units_m, family, linkf
   )
   if (is.null(terms) || !all(is.finite(terms$curvature))) {
-    stop("The search for the mode of the latent effects failed.",
-         call. = FALSE)
+    riskmap_abort("The search for the mode of the latent effects failed.", class = "riskmap_error_fit")
   }
   list(mode = mode, weights = pmax(terms$curvature, 0), iterations = NA_integer_,
        reached_limit = NA, restarted = TRUE)
@@ -3537,17 +3497,18 @@ set_control_mcml <- function(initial_samples = 1000L,
   check_positive_integer(max_samples, "max_samples")
   check_positive_integer(max_stages, "max_stages")
   check_positive_number(tolerance, "")
-  proposal <- match.arg(proposal)
+  proposal <- match_choice(proposal)
   if (!is.numeric(defensive_weight) || length(defensive_weight) != 1L ||
       !is.finite(defensive_weight) || defensive_weight < 0 ||
       defensive_weight >= 1) {
-    stop("'defensive_weight' must be a single number in [0, 1).",
-         call. = FALSE)
+    supplied <- describe_value(defensive_weight)
+    abort_input("{.arg defensive_weight} must be a single number from 0 up to but not including 1, not {supplied}.", arg = "defensive_weight")
   }
   if (!is.null(laplace_start)) check_logical(laplace_start)
   if (!isTRUE(integrate_noise) && !isFALSE(integrate_noise) &&
       !identical(integrate_noise, "auto")) {
-    stop("'integrate_noise' must be TRUE, FALSE or \"auto\"", call. = FALSE)
+    supplied <- describe_value(integrate_noise)
+    abort_input("{.arg integrate_noise} must be {.code TRUE}, {.code FALSE} or {.val auto}, not {supplied}.", arg = "integrate_noise")
   }
   check_logical(check_maxima)
   check_logical(pc_prior)
@@ -3560,7 +3521,7 @@ set_control_mcml <- function(initial_samples = 1000L,
   check_range(pc_scale_probability, 0, 1, allow_equal = FALSE,
               arg = "pc_scale_probability")
   if (max_samples < initial_samples) {
-    stop("'max_samples' must be at least 'initial_samples'.", call. = FALSE)
+    abort_input("{.arg max_samples} must be at least {.arg initial_samples} ({initial_samples}), not {max_samples}.", arg = "max_samples")
   }
 
   structure(
@@ -3763,30 +3724,16 @@ set_control_mcmc <- function(n_sim = 22000,
   check_positive_integer(thin, "thin")
 
   if (n_sim <= burnin) {
-    stop("n_sim must be larger than burnin.")
+    abort_input("{.arg n_sim} must be larger than {.arg burnin} ({burnin}), not {n_sim}.", arg = "n_sim")
   }
-
-  if (thin <= 0) {
-    stop("thin must be positive")
-  }
-
   if ((n_sim - burnin) %% thin != 0) {
-    stop("thin must be a divisor of (n_sim - burnin)")
+    abort_input("{.arg thin} must divide {.code n_sim - burnin} ({n_sim - burnin}) exactly, not {thin}.", arg = "thin")
   }
-
-  if (!is.null(h) && (!is.numeric(h) || length(h) != 1L ||
-                      !is.finite(h) || h <= 0)) {
-    stop("h must be a positive finite number.")
-  }
-
-  if (!is.numeric(c1.h) || length(c1.h) != 1L ||
-      !is.finite(c1.h) || c1.h <= 0) {
-    stop("c1.h must be a positive finite number.")
-  }
-
+  if (!is.null(h)) check_positive_number(h, "")
+  check_positive_number(c1.h, "")
   check_zero_one(c2.h, "c2.h")
   if (c2.h <= 0.5) {
-    stop("c2.h must be larger than 0.5 and no larger than 1.")
+    abort_input("{.arg c2.h} must be larger than 0.5 and at most 1, not {c2.h}.", arg = "c2.h")
   }
 
   res <- list(

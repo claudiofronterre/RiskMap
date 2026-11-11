@@ -28,14 +28,12 @@ extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
     check_crs(crs, arg = crs_arg, call = call)
     data <- st_transform(data, crs = crs)
     if (st_is_longlat(data)) {
-      stop("'", crs_arg, "' must be a projected CRS, not longitude/latitude", call. = FALSE)
+      abort_input("{.arg {crs_arg}} must be a projected coordinate reference system, not longitude and latitude.", arg = crs_arg, call = call)
     }
   } else if (st_is_longlat(data)) {
     auto_crs <- propose_utm(data)
     data <- st_transform(data, crs = auto_crs)
-    message("'data' are in longitude/latitude and '", crs_arg, "' was not provided; ",
-            "automatically reprojecting to EPSG:", auto_crs,
-            " for ", purpose, ". Set '", crs_arg, "' to override.")
+    riskmap_inform(c("{.arg data} are in longitude and latitude, so they are projected to EPSG:{auto_crs} for {purpose}.", "i" = "Set {.arg {crs_arg}} to choose the projection."))
   }
   coords <- coordinates_in_units(data, distance_units)
   if (dedupe) coords <- unique(coords)
@@ -77,9 +75,7 @@ summarise_distance <- function(data,
 
   check_data(data)
 
-  stopifnot("'distance_units' must be either 'km' or 'm'" =
-              is.character(distance_units) && all(distance_units %in% c("km", "m")))
-  distance_units <- match.arg(distance_units)
+  distance_units <- match_choice(distance_units)
 
   d <- extract_distances(data, distance_crs, "distance_crs", "computing distances",
                          distance_units, dedupe = TRUE)
@@ -239,23 +235,24 @@ variogram <- function(data,
 
   if (!is.character(variable) || length(variable) != 1L ||
       is.na(variable) || !nzchar(variable)) {
-    stop("'variable' must be a single object of class 'character'", call. = FALSE)
+    supplied <- describe_value(variable)
+    abort_input("{.arg variable} must be the name of one column of {.arg data}, not {supplied}.", arg = "variable")
   }
-  if (!variable %in% names(data)){
-    stop("'variable' must be one of the columns in 'data'", call. = FALSE)
+  if (!variable %in% names(data)) {
+    abort_input("{.arg variable} must name a column of {.arg data}, and {.val {variable}} doesn't.", arg = "variable")
   }
-  if (!is.null(breaks) && !missing(n_bins)){
-    stop("'breaks' and 'n_bins' cannot both be supplied", call. = FALSE)
+  if (!is.null(breaks) && !missing(n_bins)) {
+    abort_input("{.arg breaks} and {.arg n_bins} can't both be given.", arg = "breaks")
   }
-  if (!is.null(breaks) && !is.null(max_dist)){
-    stop("'breaks' and 'max_dist' cannot both be supplied", call. = FALSE)
+  if (!is.null(breaks) && !is.null(max_dist)) {
+    abort_input("{.arg breaks} and {.arg max_dist} can't both be given.", arg = "breaks")
   }
   values <- data[[variable]]
   if (!is.numeric(values) || any(!is.finite(values))) {
-    stop("'variable' must contain only finite numeric values", call. = FALSE)
+    abort_input("The column {.val {variable}} must hold only finite numbers.", arg = "variable")
   }
   if (nrow(data) < 2L) {
-    stop("'data' must contain at least two locations", call. = FALSE)
+    abort_input("{.arg data} must have at least two locations.", arg = "data")
   }
 
   check_positive_integer(n_bins, "n_bins")
@@ -267,18 +264,16 @@ variogram <- function(data,
   check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level")
   if (n_permutations > 0L &&
       n_permutations + 1L < ceiling(1 / (1 - level))) {
-    stop("'n_permutations' is too small to construct a global envelope at ",
-         "the requested 'level'", call. = FALSE)
+    needed <- ceiling(1 / (1 - level)) - 1L
+    abort_input("{.arg n_permutations} must be at least {needed} for a global envelope at {.arg level} = {level}, not {n_permutations}.", arg = "n_permutations")
   }
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
-  stopifnot("'distance_units' must be either 'km' or 'm'" =
-              is.character(distance_units) && all(distance_units %in% c("km", "m")))
-  distance_units <- match.arg(distance_units)
+  distance_units <- match_choice(distance_units)
 
   d <- extract_distances(data, distance_crs, "distance_crs", "computing distances",
                         distance_units)
   if (!length(d) || !is.finite(max(d)) || max(d) <= 0) {
-    stop("'data' must contain at least two distinct locations", call. = FALSE)
+    abort_input("{.arg data} must have at least two distinct locations.", arg = "data")
   }
 
   if (is.null(breaks)) {
@@ -286,33 +281,28 @@ variogram <- function(data,
     breaks <- seq(0, upper_dist, length.out = n_bins + 1)
   } else {
     if (!is.numeric(breaks) || length(breaks) < 2L || any(!is.finite(breaks))) {
-      stop("'breaks' must be a numeric vector with at least two values",
-           call. = FALSE)
+      abort_input("{.arg breaks} must be at least two finite numbers.", arg = "breaks")
     }
     if (any(diff(breaks) <= 0)) {
-      stop("'breaks' must be strictly increasing", call. = FALSE)
+      abort_input("{.arg breaks} must be strictly increasing.", arg = "breaks")
     }
     if (min(breaks) < 0) {
-      stop("'breaks' must be non-negative", call. = FALSE)
+      abort_input("{.arg breaks} must be non-negative.", arg = "breaks")
     }
   }
   distance_class <- as.integer(cut(d, breaks = breaks,
                                    include.lowest = TRUE, right = TRUE))
   included <- !is.na(distance_class)
   if (!any(included)) {
-    stop("no pair of locations falls within the distance classes; distances ",
-         "between locations range from ", signif(min(d), 3), " to ",
-         signif(max(d), 3), " ", distance_units, ". Check 'breaks', ",
-         "'max_dist' and 'distance_units'.", call. = FALSE)
+    range_d <- signif(range(d), 3)
+    abort_input(c("No pair of locations falls within the distance classes.", "i" = "Distances between locations range from {range_d[1]} to {range_d[2]} {distance_units}.", "i" = "Check {.arg breaks}, {.arg max_dist} and {.arg distance_units}."), arg = "breaks")
   }
   # Classes are closed on the right, so a class whose lower limit is at or
   # beyond the largest distance cannot contain any pair
   number_beyond <- sum(breaks[-length(breaks)] >= max(d))
   if (number_beyond > 0L) {
-    warning(number_beyond, " distance class(es) lie beyond the largest ",
-            "distance between locations (", signif(max(d), 3), " ",
-            distance_units, ") and contain no pairs. Check 'breaks', ",
-            "'max_dist' and 'distance_units'.", call. = FALSE)
+    largest <- signif(max(d), 3)
+    riskmap_warn(c("{number_beyond} distance class{?es} {?lies/lie} beyond the largest distance between locations, {largest} {distance_units}, and {cli::qty(number_beyond)}{?has/have} no pairs.", "i" = "Check {.arg breaks}, {.arg max_dist} and {.arg distance_units}."))
   }
 
   d <- d[included]
@@ -449,10 +439,7 @@ plot.RiskMap_variogram <- function(x,
   check_logical(show_pairs)
 
   if (plot_envelope && x$n_permutations == 0L){
-    warning("No envelope for spatial independence can be plotted because 'n_permutations' ",
-            "was ", x$n_permutations, " when 'variogram()' was run; ",
-            "plotting without the envelope. Increase 'n_permutations' or set ",
-            "plot_envelope = FALSE to silence this warning.")
+    riskmap_warn(c("The variogram is plotted without an envelope for spatial independence, because {.fn variogram} was run with {.code n_permutations = 0}.", "i" = "Increase {.arg n_permutations}, or set {.code plot_envelope = FALSE}."))
     plot_envelope <- FALSE
   }
 

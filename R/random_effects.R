@@ -26,11 +26,7 @@ prepare_random_effects <- function(data, terms) {
 
   missing_terms <- setdiff(terms, names(data))
   if (length(missing_terms) > 0L) {
-    stop(
-      "Random-effect variable(s) not found in `data`: ",
-      paste(missing_terms, collapse = ", "),
-      "."
-    )
+    abort_input("{.arg data} must have the random-effect column{?s} {.val {missing_terms}}.", arg = "data")
   }
 
   encoded_groups <- lapply(
@@ -71,10 +67,7 @@ prepare_random_effects <- function(data, terms) {
 ##' @noRd
 encode_random_effect <- function(group, variable_name) {
   if (anyNA(group)) {
-    stop(
-      "Random-effect variable `", variable_name,
-      "` contains missing values."
-    )
+    abort_input("The random-effect column {.val {variable_name}} has missing values.", arg = "data")
   }
 
   if (is.factor(group)) {
@@ -87,18 +80,12 @@ encode_random_effect <- function(group, variable_name) {
     ids <- match(group, labels)
   } else if (is.numeric(group)) {
     if (any(!is.finite(group))) {
-      stop(
-        "Random-effect variable `", variable_name,
-        "` contains non-finite values."
-      )
+      abort_input("The random-effect column {.val {variable_name}} has values that aren't finite.", arg = "data")
     }
     labels <- unique(group)
     ids <- match(group, labels)
   } else {
-    stop(
-      "Random-effect variable `", variable_name,
-      "` must be a factor, character, integer, or numeric vector."
-    )
+    abort_input("The random-effect column {.val {variable_name}} must be a factor, character, integer or numeric vector, not {.obj_type_friendly {group}}.", arg = "data")
   }
 
   result <- list(

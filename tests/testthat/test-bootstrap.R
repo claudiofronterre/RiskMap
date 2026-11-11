@@ -99,7 +99,7 @@ test_that("failed refits are recorded instead of stopping", {
   expect_error(
     parametric_bootstrap(gaussian_intercept_model, n_sim = 2, seed = 1,
                          messages = FALSE),
-    "All 2 refits failed. The first failure: always fails"
+    "All 2 refits failed", class = "riskmap_error_fit"
   )
 })
 
@@ -149,7 +149,7 @@ test_that("plot draws one histogram per parameter", {
                    paste0("Spatial corr. scale (",
                           gaussian_intercept_model$distance_units, ")"))
   expect_s3_class(plot(boot), "patchwork")
-  expect_error(plot(boot, parameters = "kappa"), "Unknown parameter")
+  expect_input_error(plot(boot, parameters = "kappa"), "parameters")
   summaries <- summary(gaussian_intercept_model)
   expect_identical(unname(boot$labels),
                    c(rownames(summaries$reg_coef), rownames(summaries$sp),
@@ -175,7 +175,7 @@ test_that("plot shows a natural axis unless log_scale is TRUE", {
 })
 
 test_that("parametric_bootstrap validates its arguments", {
-  expect_error(parametric_bootstrap(list()), "'RiskMap' object")
+  expect_input_error(parametric_bootstrap(list()), "object")
   expect_error(parametric_bootstrap(gaussian_model, n_sim = 0),
                "n_sim", class = "riskmap_error_input")
   expect_error(parametric_bootstrap(gaussian_model, seed = -1),
@@ -185,6 +185,6 @@ test_that("parametric_bootstrap validates its arguments", {
                "cores", class = "riskmap_error_input")
   expect_error(parametric_bootstrap(gaussian_model, messages = NA),
                "messages", class = "riskmap_error_input")
-  expect_error(parametric_bootstrap(gaussian_model, n_sim = 300000),
-               "'n_sim' must be at most")
+  expect_input_error(parametric_bootstrap(gaussian_model, n_sim = 300000),
+               "n_sim")
 })

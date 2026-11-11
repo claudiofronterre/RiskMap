@@ -32,14 +32,24 @@ be considered stable, but further breaking changes will be handled gracefully.
 
 ## Errors, warnings and messages
 
-- RiskMap is moving to cli for its errors, warnings and messages. So far
-`get_worldpop()` and the argument checks shared by most functions use it.
-Their errors name the function that was called and describe the value
-supplied.
+- Every error, warning and message of RiskMap is raised through cli. Errors
+name the function that the user called, even when the problem is found deep
+inside it, and an input error describes the value supplied. Messages have
+been reworded to one style, with arguments, values and functions marked up.
+Code that matched the old wording of a message should match its class
+instead.
 - Conditions have classes, documented in `?riskmap_conditions`, so that code
 can catch them by class rather than by their text. Every error RiskMap raises
-on purpose has class `riskmap_error`, and an invalid argument
-`riskmap_error_input`, whose field `arg` names the argument.
+on purpose has class `riskmap_error`. An invalid argument has
+`riskmap_error_input`, whose field `arg` names the argument, a fit that fails
+`riskmap_error_fit`, and a state RiskMap should never reach
+`riskmap_error_internal`, which asks for a report. Warnings that a fit may not
+be reliable, such as an uncertified Monte Carlo error, have
+`riskmap_warning_fit`.
+- Some arguments are checked more strictly. `glgpm()` rejects a starting value
+of 0 for a variance of `re()` terms and reads `denominator` without
+evaluating it for a Gaussian model. `match.arg()` errors are replaced by
+RiskMap input errors.
 - `get_worldpop()` takes the default of `messages` from the option
 `RiskMap.messages`, so `options(RiskMap.messages = FALSE)` silences it.
 - A `max_dist` or `phi` that isn't positive is now reported as "must be a
