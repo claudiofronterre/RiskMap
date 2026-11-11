@@ -225,6 +225,10 @@ make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
     index[nested] <- match(pattern_key, pattern_key[unique_pattern])
   }
   kernel <- as_family_object(family, linkf)
+  if (kernel$integrated) {
+    stop("The site table is built from the model's link, not from a kernel ",
+         "of integrated records.", call. = FALSE)
+  }
   quadrature <- build_normal_quadrature(20L)
   custom <- kernel$kernel_arrays()
   pointer <- cpp_site_table_create(

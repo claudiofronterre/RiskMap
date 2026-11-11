@@ -49,6 +49,11 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
                                              family, nodes = 60L,
                                              linkf = NULL) {
   kernel <- as_family_object(family, linkf)
+  if (kernel$integrated) {
+    stop("The likelihood with independent location effects is built from the ",
+         "model's link, not from a kernel of integrated records.",
+         call. = FALSE)
+  }
   family <- kernel$family
   linkf <- if (!kernel$canonical) kernel$linkf
   poisson <- kernel$poisson

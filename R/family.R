@@ -364,8 +364,10 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
 ##' For the old entry points, which take in `linkf` either a link or the kernel
 ##' of integrated records (`make_integrated_kernel()`). With a kernel the
 ##' model's link is not known, and the object is built on the canonical link,
-##' whose properties those entry points do not read. Removed with them in step
-##' 1d of #253.
+##' so only its likelihood methods and its rules for the mode search mean
+##' anything, and the functions that read the link itself (`make_site_table()`,
+##' `make_independent_site_likelihood()`) refuse such an object. Removed with
+##' the old entry points in step 1d of #253.
 ##' @noRd
 family_of_link <- function(family, linkf) {
   if (is_integrated_link(linkf)) return(make_family(family, kernel = linkf))
@@ -378,10 +380,16 @@ family_of_link <- function(family, linkf) {
 ##' yet a family string with the link or integrated kernel `linkf` and the
 ##' test of the canonical link `canonical` that they passed before. That test
 ##' was the canonical link without a kernel, so it has to agree with the
-##' object's `assumes_concave`. The string form is removed in step 1d.
+##' object's `assumes_concave`. An object comes alone, without `linkf` or
+##' `canonical`. The string form is removed in step 1d.
 ##' @noRd
 as_family_object <- function(family, linkf = NULL, canonical = NULL) {
-  if (inherits(family, "riskmap_family")) return(family)
+  if (inherits(family, "riskmap_family")) {
+    if (!is.null(linkf) || !is.null(canonical)) {
+      stop("A family object takes no `linkf` or `canonical`.", call. = FALSE)
+    }
+    return(family)
+  }
   object <- family_of_link(family, linkf)
   if (!is.null(canonical) && !identical(canonical, object$assumes_concave)) {
     stop("`canonical` disagrees with the link.", call. = FALSE)

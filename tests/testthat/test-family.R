@@ -176,3 +176,22 @@ test_that("a family string with a flag that disagrees with its link is refused",
   object <- make_family("poisson")
   expect_identical(as_family_object(object), object)
 })
+
+test_that("an object comes alone, and a kernel is refused where the link is read", {
+  object <- make_family("binomial")
+  expect_error(as_family_object(object, probit_family_link(), FALSE),
+               "takes no")
+  expect_error(as_family_object(object, NULL, TRUE), "takes no")
+  y <- c(0, 20, 3)
+  units_m <- c(20, 20, 20)
+  kernel <- make_integrated_kernel(make_site_table(y, units_m, "binomial"), 0.5)
+  expect_error(make_site_table(y, units_m, "binomial", linkf = kernel),
+               "model's link")
+  expect_error(make_site_table(y, units_m, make_family("binomial",
+                                                        kernel = kernel)),
+               "model's link")
+  expect_error(make_independent_site_likelihood(cbind(c(1, 1, 1)), y, units_m,
+                                                1:3, numeric(3), "binomial",
+                                                linkf = kernel),
+               "model's link")
+})
