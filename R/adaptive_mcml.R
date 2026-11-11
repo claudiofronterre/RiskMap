@@ -162,8 +162,8 @@ laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
 
 ##' Exact observation terms of the canonical links at the limits of the link
 ##'
-##' The inverse logit rounds to 0 below a linear predictor of about -745 and
-##' to 1 above about 36.74, and the mean of a count underflows to 0 below
+##' The inverse logit rounds to 0 below a linear predictor of about -709.8
+##' and to 1 above about 36.74, and the mean of a count underflows to 0 below
 ##' about -745. There the formulas of `laplace_observation_terms()` and
 ##' `maxim_integrand()` divide zero by zero, although the likelihood is smooth
 ##' and finite. Complete separation by a covariate takes the linear predictor
@@ -176,7 +176,18 @@ laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
 ##' where y log(m) is the constant of the usual formula. They replace the
 ##' per-observation `log_likelihoods`, `score` and `curvature` of `terms` only
 ##' where `at` is TRUE, so that terms away from the limits are unchanged bit
-##' for bit.
+##' for bit. Short of the limits the usual formulas keep two weaknesses. Their
+##' curvature is not finite between about -709.8 and -372 for the logit, or
+##' below -372 for a positive count, and `adaptive_laplace_mode()` rejects a
+##' step to such a point. They also bound log p, log(1 - p) and log(m mu)
+##' below at log(.Machine$double.eps). The log-likelihood of an observation
+##' with any positives is then flat below a linear predictor of about -36,
+##' that of a binomial observation with any negatives is flat above about
+##' 36.04, and both fall where the exact forms take over. Neither is reached
+##' under complete separation, where the locations with positives have only
+##' positives and lie in the upper tail, and the others lie in the lower one.
+##' Exact forms throughout would remove both but would change every canonical
+##' fit by rounding.
 ##' @noRd
 replace_at_canonical_limits <- function(terms, at, eta, y, units_m, family) {
   if (!any(at)) return(terms)

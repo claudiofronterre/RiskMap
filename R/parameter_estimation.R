@@ -2672,8 +2672,8 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' (`sigma2_re`), and the log-likelihood of the responses for the specified
 ##' family. With the canonical links, the terms of a response whose
 ##' probability rounds to 0 or 1, or whose mean underflows to 0, are computed
-##' in their exact canonical form, so that the mode is found however far the
-##' linear predictor is from zero.
+##' in their exact canonical form, so that the optimisation is not stopped
+##' there.
 ##'
 ##' @return A list with the mode (`mode`), the name of the inverse link used
 ##'   (`invlink_used`) and either the Hessian of the integrand at the mode

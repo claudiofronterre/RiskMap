@@ -157,13 +157,14 @@ test_that("a custom link's terms agree with the canonical formula for logit", {
 })
 
 test_that("the canonical terms are exact where a probability or mean reaches a limit", {
-  # The inverse logit rounds to 0 below about -745 and to 1 above about
+  # The inverse logit rounds to 0 below about -709.8 and to 1 above about
   # 36.74, where the usual formulas divide zero by zero.
   logit <- make_inverse_link_functions("binomial", NULL, 1L)
-  eta <- c(-800, -40, 0, 10, 40, 800)
-  y <- c(0, 0, 9, 20, 20, 17)
-  units_m <- rep(20, 6)
-  expect_identical(plogis(eta[c(1L, 5L, 6L)]), c(0, 1, 1))
+  # Each limit has an observation whose score there is not zero.
+  eta <- c(-800, -750, -40, 0, 10, 40, 800)
+  y <- c(0, 3, 0, 9, 20, 20, 17)
+  units_m <- rep(20, 7)
+  expect_identical(plogis(eta[c(1L, 2L, 6L, 7L)]), c(0, 0, 1, 1))
   log_likelihood <- function(point) {
     sum(y * plogis(point, log.p = TRUE) +
           (units_m - y) * plogis(point, lower.tail = FALSE, log.p = TRUE))
@@ -176,10 +177,11 @@ test_that("the canonical terms are exact where a probability or mean reaches a l
   expect_equal(terms$curvature, units_m * plogis(eta) * plogis(-eta),
                tolerance = 1e-10)
   # Observations away from the limits keep the usual formulas.
-  away <- laplace_observation_terms(eta[2:4], y[2:4], units_m[2:4],
+  expect_identical(terms$score[c(2L, 7L)], c(3, -3))
+  away <- laplace_observation_terms(eta[3:5], y[3:5], units_m[3:5],
                                     "binomial", logit)
-  expect_identical(terms$score[2:4], away$score)
-  expect_identical(terms$curvature[2:4], away$curvature)
+  expect_identical(terms$score[3:5], away$score)
+  expect_identical(terms$curvature[3:5], away$curvature)
 
   # The mean of a count underflows to 0 below about -745.
   log_link <- make_inverse_link_functions("poisson", NULL, 1L)
@@ -396,22 +398,25 @@ test_that("maxim_integrand() is not stopped by a probability that rounds to one"
 
 test_that("maxim_integrand() is not stopped at the limits of a canonical link", {
   sites <- 5L
-  distances <- as.matrix(dist(seq_len(sites)))
+  distances <- unname(as.matrix(dist(seq_len(sites))))
   Sigma <- 3 * exp(-distances / 2)
-  y <- rep(20, sites)
-  mu <- rep(40, sites)
-  expect_identical(plogis(mu), rep(1, sites))
-  found <- maxim_integrand(
-    y = y, denominator = y, mu = mu, Sigma = Sigma,
-    ID_coords = seq_len(sites), family = "binomial"
-  )
-  expect_equal(found$mode, rep(0, sites), tolerance = 1e-6)
-  # No counts where every mean underflows to 0.
-  counts <- maxim_integrand(
-    y = rep(0, sites), denominator = rep(1, sites), mu = rep(-800, sites),
-    Sigma = Sigma, ID_coords = seq_len(sites), family = "poisson"
-  )
-  expect_equal(counts$mode, rep(0, sites), tolerance = 1e-6)
+  mode_at <- function(y, units_m, mu, family) {
+    maxim_integrand(y = y, denominator = units_m, mu = rep(mu, sites),
+                    Sigma = Sigma, ID_coords = seq_len(sites), family = family)
+  }
+  # Beyond the limits the score is y - m p, or y - m mu for a count, which is
+  # 1 or -1 at every site here, and the curvature is 0. The mode is then
+  # Sigma times the score, and its covariance is Sigma.
+  one <- rep(1, sites)
+  expect_identical(plogis(c(-790, 790)), c(0, 1))
+  low <- mode_at(one, rep(20, sites), -800, "binomial")
+  expect_equal(low$mode, rowSums(Sigma), tolerance = 1e-6)
+  expect_equal(low$Sigma.tilde, Sigma, tolerance = 1e-10)
+  high <- mode_at(rep(19, sites), rep(20, sites), 800, "binomial")
+  expect_equal(high$mode, -rowSums(Sigma), tolerance = 1e-6)
+  expect_identical(exp(-790), 0)
+  counts <- mode_at(one, one, -800, "poisson")
+  expect_equal(counts$mode, rowSums(Sigma), tolerance = 1e-6)
 })
 
 test_that("the sampler is not stopped by a probability that rounds to one", {
