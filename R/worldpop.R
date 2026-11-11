@@ -113,7 +113,7 @@ get_worldpop <- function(country, year, ages = NULL,
   if (messages) {
     selection <- if (is.null(ages)) "" else worldpop_age_label(ages, sex)
     riskmap_inform(
-      "WorldPop {product$label}, {iso3} {year}{selection}: {length(urls)} file{?s}."
+      "WorldPop {product$label}, {iso3} {year}{selection}, in {length(urls)} file{?s}."
     )
   }
   dir.create(dest_dir, showWarnings = FALSE, recursive = TRUE)
@@ -241,7 +241,7 @@ worldpop_age_groups <- function(groups, ages, call = rlang::caller_env()) {
     abort_input(
       c("{.arg ages} must start and end on WorldPop age groups.",
         "x" = "You supplied {.code c({ages[1]}, {ages[2]})}.",
-        "i" = "Groups start at {groups}, and the oldest is open-ended.",
+        "i" = "The groups start at {groups}. The oldest is open-ended.",
         "i" = "Use, for example, {.code c(20, Inf)} or {.code c(15, 49)}."),
       arg = "ages", call = call
     )

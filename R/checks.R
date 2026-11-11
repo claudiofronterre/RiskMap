@@ -4,16 +4,15 @@
 # names the argument, and returns its input invisibly (`match_choice()`
 # returns the matched choice). They follow the conventions of rlang's own
 # type checks. The argument name defaults to the expression passed as `x`,
-# and `call` to the function that called the check, which is right when an
-# exported function checks its own arguments. An internal function that
-# checks arguments on behalf of an exported one takes `call` and passes it on.
+# and `call` to the function that called the check. The error names the
+# user-facing function the user called (`riskmap_abort()`), so a check made
+# inside an internal function still names the exported one.
 
 #' Raise an input error for an argument
 #' @param message The message, as in `riskmap_abort()`.
 #' @param arg The name of the argument, stored in the field `arg`.
-#' @param call The call named in the error. The default, the function that
-#'   called `abort_input()`, is right in an exported function. A check helper
-#'   passes the `call` it was given.
+#' @param call Where the error was raised, as in `riskmap_abort()`. A check
+#'   helper passes the `call` it was given.
 #' @param ... Other fields, such as `parent`.
 #' @param .envir The environment in which the message is interpolated.
 #' @noRd
@@ -32,6 +31,7 @@ abort_input <- function(message, arg, call = rlang::caller_env(), ...,
 #' @return A character string, already formatted by cli.
 #' @noRd
 describe_value <- function(x) {
+  if (is.factor(x) && length(x) == 1L) x <- as.character(x)
   if (is.atomic(x) && length(x) == 1L) {
     cli::format_inline("{.val {x}}")
   } else {
@@ -57,8 +57,9 @@ check_positive_integer <- function(x, arg = rlang::caller_arg(x),
     x > .Machine$integer.max
   if (invalid) {
     supplied <- describe_value(x)
+    or_null <- if (allow_null) " or {.code NULL}" else ""
     abort_input(
-      "{.arg {arg}} must be a single {description} integer, not {supplied}.",
+      paste0("{.arg {arg}} must be a single {description} integer", or_null, ", not {supplied}."),
       arg = arg, call = call
     )
   }
@@ -71,7 +72,8 @@ check_positive_integer <- function(x, arg = rlang::caller_arg(x),
 #' @param type The kind of value. The default, `"starting "`, is for an
 #'   element of a list of starting values such as `start_pars[["sigma2"]]`,
 #'   and the message names the element. Use `""` for an argument.
-#' @param arg The expression supplied as `x`, stored in the field `arg`.
+#' @param arg The expression supplied as `x`. The field `arg` stores the
+#'   argument it comes from, `start_pars` for `start_pars[["sigma2"]]`.
 #' @param call The call named in the error.
 #' @noRd
 check_positive_number <- function(x, type = "starting ",
@@ -81,13 +83,15 @@ check_positive_number <- function(x, type = "starting ",
       !is.finite(x) || x <= 0) {
     # The element of a list, as in start_pars[["sigma2"]], or the argument
     name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", arg)
+    # The argument that holds the value, such as `start_pars`.
+    argument <- sub("\\[.*", "", arg)
     supplied <- describe_value(x)
     problem <- if (nzchar(type)) {
       "The {trimws(type)} value for {.code {name}} must be a single positive number, not {supplied}."
     } else {
       "{.arg {name}} must be a single positive number, not {supplied}."
     }
-    abort_input(problem, arg = arg, call = call)
+    abort_input(problem, arg = argument, call = call)
   }
   invisible(x)
 }
@@ -202,6 +206,27 @@ check_class <- function(x, class, arg = rlang::caller_arg(x),
   invisible(x)
 }
 
+#' Check that a control argument was made by its function
+#'
+#' For `control_mcmc` and `control_mcml`, made by [set_control_mcmc()] and
+#' [set_control_mcml()].
+#' @param maker The name of the function that makes it.
+#' @noRd
+check_control <- function(x, maker = c("set_control_mcmc", "set_control_mcml"),
+                          arg = rlang::caller_arg(x),
+                          call = rlang::caller_env()) {
+  maker <- match.arg(maker)
+  class <- switch(maker, set_control_mcmc = "RiskMap_control_mcmc",
+                  set_control_mcml = "RiskMap_control_mcml")
+  if (!inherits(x, class)) {
+    abort_input(
+      "{.arg {arg}} must be made by {.fn {maker}}, not {.obj_type_friendly {x}}.",
+      arg = arg, call = call
+    )
+  }
+  invisible(x)
+}
+
 #' Match a value to one of some choices
 #'
 #' A replacement for [match.arg()] that raises a RiskMap input error. As with
@@ -225,8 +250,9 @@ match_choice <- function(x, choices = NULL, arg = rlang::caller_arg(x),
       riskmap_bug("{.fn match_choice} needs {.arg choices} for {.code {arg}}.")
     }
     choices <- eval(caller_formals[[arg]], envir = call)
-    if (identical(x, choices)) return(choices[[1L]])
   }
+  # NULL or the whole default give the first choice, as with match.arg().
+  if (is.null(x) || identical(x, choices)) return(choices[[1L]])
   index <- if (is.character(x) && length(x) == 1L && !is.na(x)) {
     pmatch(x, choices)
   } else {

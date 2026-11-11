@@ -13,6 +13,53 @@ test_that("conditions carry the RiskMap classes", {
   expect_match(conditionMessage(error), "report it", fixed = TRUE)
 })
 
+test_that("errors name the user-facing function, bugs the internal one", {
+  # An error raised inside an internal function names the exported function
+  # that the user called.
+  local_mocked_bindings(worldpop_files = function(...) {
+    riskmap_abort("A problem deep inside.")
+  })
+  error <- expect_error(get_worldpop("LBR", 2020), class = "riskmap_error")
+  expect_identical(conditionCall(error)[[1]], quote(get_worldpop))
+
+  local_mocked_bindings(worldpop_files = function(...) {
+    riskmap_bug("A state RiskMap should never reach.")
+  })
+  error <- expect_error(get_worldpop("LBR", 2020),
+                        class = "riskmap_error_internal")
+  expect_identical(conditionCall(error)[[1]], quote(worldpop_files))
+
+  # An exported function that RiskMap calls internally doesn't hide the one
+  # the user called.
+  local_mocked_bindings(worldpop_files = function(...) {
+    set_control_mcmc(n_sim = 0)
+  })
+  error <- expect_input_error(get_worldpop("LBR", 2020), "n_sim")
+  expect_identical(conditionCall(error)[[1]], quote(get_worldpop))
+
+  # A function called through do.call() with a function object has no name
+  # to show, and a large call is not stored.
+  local_mocked_bindings(worldpop_files = function(...) {
+    riskmap_abort("A problem deep inside.")
+  })
+  error <- expect_error(do.call(get_worldpop, list("LBR", 2020)),
+                        class = "riskmap_error")
+  expect_null(conditionCall(error))
+
+})
+
+test_that("stored condition text has no colours or line breaks", {
+  withr::local_options(cli.num_colors = 256)
+  error <- tryCatch(
+    riskmap_abort(c("A {.val long} problem.", "i" = "A hint.")),
+    error = identity
+  )
+  text <- condition_text(error)
+  expect_false(grepl("\\033", text))
+  expect_false(grepl("\n", text))
+  expect_match(text, "A \"long\" problem.", fixed = TRUE)
+})
+
 test_that("check_positive_integer functions correctly", {
   expect_no_error(check_positive_integer(1, "a"))
   expect_no_error(check_positive_integer(999, "a"))
@@ -47,8 +94,9 @@ test_that("check_positive_number functions correctly", {
     expect_input_error(check_positive_number(a, ""), "a")
   }
   start_pars <- list(sigma2 = -1)
+  # The field arg holds the argument the value comes from.
   error <- expect_input_error(check_positive_number(start_pars[["sigma2"]]),
-                              'start_pars[["sigma2"]]')
+                              "start_pars")
   expect_match(conditionMessage(error), "starting value for `sigma2`",
                fixed = TRUE)
 })
@@ -89,6 +137,11 @@ test_that("match_choice works as match.arg does", {
                      "distance_units")
   no_default <- function(units) match_choice(units)
   expect_error(no_default("km"), class = "riskmap_error_internal")
+  # NULL and the whole default give the first choice, as with match.arg()
+  expect_identical(choose(NULL), "gaussian")
+  expect_identical(match_choice(c("km", "m"), c("km", "m"), arg = "units"),
+                   "km")
+  expect_identical(match_choice(NULL, c("km", "m"), arg = "units"), "km")
 })
 
 test_that("check_crs functions correctly", {

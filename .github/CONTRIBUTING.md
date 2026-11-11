@@ -57,7 +57,7 @@ Each helper takes the argument name from `rlang::caller_arg()`, so that `check_l
 
 ### Naming the function that went wrong
 
-`riskmap_abort()` names the function that called it, which is right for an exported function that checks its own arguments. A check helper, or an internal function that checks arguments for an exported one, must name the exported function instead. It takes `call = rlang::caller_env()` and passes it on, as the helpers do. Without this the error names a function the user never called.
+An error names the function the user called, not the internal function that found the problem. `riskmap_abort()` finds it on the call stack, as the outermost function at or above the one raising the error that RiskMap exports or registers as an S3 method. An error raised deep inside `glgpm()` therefore reads "Error in `glgpm()`", and internal functions don't need to pass `call` down. A check helper takes `call = rlang::caller_env()` and passes it on, so that the search starts at the function that called the check, as below. `riskmap_bug()` names the internal function instead, because a bug report needs it.
 
 ```r
 check_logical <- function(x, arg = rlang::caller_arg(x),
