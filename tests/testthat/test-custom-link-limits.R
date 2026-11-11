@@ -492,35 +492,73 @@ test_that("the trapezium rule of a Poisson custom link matches integration", {
   at <- sites$log_likelihood(beta, log(variance))
   expect_equal(unname(at$sites), exact, tolerance = 1e-9)
   expect_equal(at$value, sum(exact), tolerance = 1e-9)
+  # A location whose mode, near 3.4, lies beyond the range that the cut alone
+  # gives at a variance of 0.05, so that only the bound reaches it.
+  far <- make_independent_site_likelihood(cbind(1), 100, 1, 1L, 0, "poisson",
+                                          linkf = log_link)
+  log_integrand <- function(effects) {
+    100 * effects - exp(effects) + stats::dnorm(effects, 0, sqrt(0.05),
+                                                log = TRUE)
+  }
+  top <- stats::optimize(log_integrand, c(0, 6), maximum = TRUE)$objective
+  far_exact <- top + log(stats::integrate(function(effects) {
+    exp(log_integrand(effects) - top)
+  }, 1, 6, rel.tol = 1e-12)$value)
+  expect_equal(far$log_likelihood(0, log(0.05))$value, far_exact,
+               tolerance = 1e-9)
 })
 
 test_that("points where a derivative of the link is not finite are dropped", {
-  # This link's derivatives are not numbers beyond a linear predictor of 8 in
-  # either direction, where the integrand is negligible, so the rule drops
-  # those points of its range and its value is that of the logit link.
+  # These links' first or second derivatives are not numbers beyond a linear
+  # predictor of 8 in either direction, where the integrand is negligible, so
+  # the rule drops those points of its range and its value is that of the
+  # logit link.
   outside <- function(eta) abs(eta) > 8
-  partial <- make_link(
+  second <- function(eta) stats::dlogis(eta) * (1 - 2 * stats::plogis(eta))
+  logit <- make_link(function(eta) stats::plogis(eta),
+                     function(eta) stats::dlogis(eta), second)
+  first_fails <- make_link(
     function(eta) stats::plogis(eta),
     function(eta) ifelse(outside(eta), NaN, stats::dlogis(eta)),
-    function(eta) {
-      ifelse(outside(eta), NaN,
-             stats::dlogis(eta) * (1 - 2 * stats::plogis(eta)))
-    }
+    function(eta) ifelse(outside(eta), NaN, second(eta))
   )
-  logit <- make_link(
+  second_fails <- make_link(
     function(eta) stats::plogis(eta),
     function(eta) stats::dlogis(eta),
-    function(eta) stats::dlogis(eta) * (1 - 2 * stats::plogis(eta))
+    function(eta) ifelse(outside(eta), NaN, second(eta))
   )
   # The terms of the link fail as a whole wherever a point lies beyond 8.
   expect_null(compute_custom_link_terms(c(0, 9), c(3, 3), c(10, 10),
-                                        "binomial", partial))
-  sites <- make_independent_site_likelihood(cbind(1), 3, 10, 1L, 0,
-                                            "binomial", linkf = partial)
-  at <- sites$log_likelihood(0, log(16))
-  expect_equal(at$value, integrate_one_site(logit, 3, 10, 0, 16),
-               tolerance = 1e-8)
-  expect_true(all(is.finite(at$gradient)))
+                                        "binomial", first_fails))
+  expect_null(compute_custom_link_terms(c(0, 9), c(3, 3), c(10, 10),
+                                        "binomial", second_fails))
+  screen_of <- function(link) {
+    make_independent_site_likelihood(cbind(1), 3, 10, 1L, 0, "binomial",
+                                     linkf = link)$log_likelihood(0, log(16))
+  }
+  plain <- screen_of(logit)
+  # The pass of the rule without curvatures meets a failure as well, from its
+  # node one coarse step beyond the last point that the first pass kept.
+  failed_without_curvature <- 0L
+  original <- compute_custom_link_terms
+  local_mocked_bindings(
+    compute_custom_link_terms = function(eta, y, units_m, family, linkf,
+                                         with_curvature = TRUE) {
+      observed <- original(eta, y, units_m, family, linkf, with_curvature)
+      if (is.null(observed) && !with_curvature) {
+        failed_without_curvature <<- failed_without_curvature + 1L
+      }
+      observed
+    }
+  )
+  for (link in list(first_fails, second_fails)) {
+    at <- screen_of(link)
+    expect_equal(at$value, integrate_one_site(logit, 3, 10, 0, 16),
+                 tolerance = 1e-8)
+    expect_equal(at$value, plain$value, tolerance = 1e-8)
+    expect_equal(at$gradient, plain$gradient, tolerance = 1e-6)
+  }
+  expect_gt(failed_without_curvature, 0L)
 })
 
 test_that("cloglog at high prevalence is certified", {
