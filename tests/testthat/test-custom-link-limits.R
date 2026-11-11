@@ -458,6 +458,71 @@ test_that("the largest term of a record bounds it for any probability", {
                    c(0, 4 * log(4) - 4))
 })
 
+test_that("the trapezium rule of a Poisson custom link matches integration", {
+  # The log link given as a function takes the custom path, whose Poisson
+  # kernel is y log(m mean) - m mean, with means above one inside its support
+  # and the bound y log(y) - y for the range.
+  log_link <- make_inverse_link_functions(
+    "poisson", list(inv = exp, d1 = exp, d2 = exp), 3L
+  )
+  location <- c(1L, 1L, 2L, 3L, 3L, 3L)
+  D <- cbind(1, c(-0.5, 0.4, 1.2, -1, 0, 0.8))
+  y <- c(0, 7, 15, 2, 4, 30)
+  exposure <- c(2, 3, 4, 1, 2, 5)
+  beta <- c(0.6, 0.5)
+  variance <- 0.9
+  sites <- make_independent_site_likelihood(D, y, exposure, location,
+                                            numeric(6), "poisson",
+                                            linkf = log_link)
+  linear <- drop(D %*% beta)
+  # Each location by integrate() over 12 prior standard deviations or more,
+  # scaled by the top of its log integrand.
+  exact <- vapply(1:3, function(site) {
+    rows <- which(location == site)
+    log_integrand <- function(effects) vapply(effects, function(effect) {
+      mean <- exposure[rows] * exp(linear[rows] + effect)
+      sum(y[rows] * log(mean) - mean) +
+        stats::dnorm(effect, 0, sqrt(variance), log = TRUE)
+    }, numeric(1))
+    top <- stats::optimize(log_integrand, c(-12, 12), maximum = TRUE)$objective
+    top + log(stats::integrate(function(effects) {
+      exp(log_integrand(effects) - top)
+    }, -12, 12, rel.tol = 1e-12)$value)
+  }, numeric(1))
+  at <- sites$log_likelihood(beta, log(variance))
+  expect_equal(unname(at$sites), exact, tolerance = 1e-9)
+  expect_equal(at$value, sum(exact), tolerance = 1e-9)
+})
+
+test_that("points where a derivative of the link is not finite are dropped", {
+  # This link's derivatives are not numbers beyond a linear predictor of 8 in
+  # either direction, where the integrand is negligible, so the rule drops
+  # those points of its range and its value is that of the logit link.
+  outside <- function(eta) abs(eta) > 8
+  partial <- make_link(
+    function(eta) stats::plogis(eta),
+    function(eta) ifelse(outside(eta), NaN, stats::dlogis(eta)),
+    function(eta) {
+      ifelse(outside(eta), NaN,
+             stats::dlogis(eta) * (1 - 2 * stats::plogis(eta)))
+    }
+  )
+  logit <- make_link(
+    function(eta) stats::plogis(eta),
+    function(eta) stats::dlogis(eta),
+    function(eta) stats::dlogis(eta) * (1 - 2 * stats::plogis(eta))
+  )
+  # The terms of the link fail as a whole wherever a point lies beyond 8.
+  expect_null(compute_custom_link_terms(c(0, 9), c(3, 3), c(10, 10),
+                                        "binomial", partial))
+  sites <- make_independent_site_likelihood(cbind(1), 3, 10, 1L, 0,
+                                            "binomial", linkf = partial)
+  at <- sites$log_likelihood(0, log(16))
+  expect_equal(at$value, integrate_one_site(logit, 3, 10, 0, 16),
+               tolerance = 1e-8)
+  expect_true(all(is.finite(at$gradient)))
+})
+
 test_that("cloglog at high prevalence is certified", {
   skip_on_cran()
   set.seed(4)
