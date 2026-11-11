@@ -456,6 +456,19 @@ inverse link. Errors while an importance distribution is built at a trial
 parameter value, which give that value no weight, are counted and reported by
 `check_fit()`. Fits with the canonical links are unchanged.
 
+- The likelihood with independent location effects, behind the screen of
+short scales and the exact alarms, is now right at every location for a custom
+link. It integrated each location's effect by Gauss-Hermite quadrature at a
+mode found by Newton steps from zero. Where a probability rounds to one, as
+for cloglog from a linear predictor of 3.6 and probit from 8.3, the likelihood
+of a location with a failure is flat, the search did not move, and the value
+could be wrong by several log units without the change from 30 to 60 nodes
+showing it. With a link that is not log-concave, such as that of an imperfect
+test, the search could stop at a lower mode. A custom link now takes the rule
+of the site table, the trapezium rule over the whole range where the integrand
+is not negligible, which assumes no mode, and its recorded error is the change
+when the step is doubled. Fits with the canonical links are unchanged.
+
 - A failure of the global proposal while the check for other maxima evaluates
 the likelihood far from the fitted maximum, as at the short scales of its
 screen, no longer makes the stage repeat with the Laplace proposal. That
