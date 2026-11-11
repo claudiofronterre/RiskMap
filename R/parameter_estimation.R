@@ -2477,37 +2477,6 @@ format_family_strings <- function(names) {
         quoted[length(quoted)])
 }
 
-##' Exact inverse and derivatives of a named binomial link
-##'
-##' The inverses are written without the clamping of [stats::binomial()],
-##' because `bound_log_probability()` already handles probabilities of 0 and
-##' 1, and the derivatives are exact so that no numerical differences are
-##' needed. The second derivative of the complementary log-log link is
-##' written as a difference of two exponentials, which stays finite where
-##' `exp(eta)` overflows.
-##' @noRd
-named_inverse_link <- function(link) {
-  switch(
-    link,
-    probit = list(
-      inv = function(eta) pnorm(eta),
-      d1 = function(eta) dnorm(eta),
-      d2 = function(eta) -eta * dnorm(eta)
-    ),
-    cloglog = list(
-      inv = function(eta) -expm1(-exp(eta)),
-      d1 = function(eta) exp(eta - exp(eta)),
-      d2 = function(eta) exp(eta - exp(eta)) - exp(2 * eta - exp(eta))
-    ),
-    cauchit = list(
-      inv = function(eta) pcauchy(eta),
-      d1 = function(eta) dcauchy(eta),
-      d2 = function(eta) -2 * eta / (pi * (1 + eta^2)^2)
-    ),
-    stop("No inverse is defined for the ", link, " link.", call. = FALSE)
-  )
-}
-
 ##' The binomial regression that gives the starting regression coefficients
 ##'
 ##' A named link starts from a regression with its own link, since the
@@ -2551,97 +2520,6 @@ refit_invlink <- function(object) {
   }
   list(inv = link_function$inv, d1 = link_function$d1,
        d2 = link_function$d2, link = link_function$link)
-}
-
-##' Validate and construct inverse-link functions
-##'
-##' This is the single internal representation used by the conditional-mode,
-##' sampling and non-Gaussian likelihood code. Keeping the validation and
-##' derivative construction here prevents those paths from interpreting a
-##' user-supplied link differently.
-##'
-##' @noRd
-make_inverse_link_functions <- function(family, invlink, ncheck,
-                                        second_derivative = TRUE) {
-  validate <- function(f, name) {
-    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
-    x <- rep(0, ncheck)
-    out <- tryCatch(f(x), error = function(e) e)
-    if (inherits(out, "error")) {
-      stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
-    }
-    if (!is.numeric(out)) {
-      stop(sprintf("`%s` must return a numeric vector.", name))
-    }
-    if (length(out) != length(x)) {
-      stop(sprintf(
-        "`%s` must return a vector of the same length as its input.", name
-      ))
-    }
-    if (!all(is.finite(out))) {
-      stop(sprintf("`%s` returns non-finite values.", name))
-    }
-    invisible(TRUE)
-  }
-
-  if (is.null(invlink)) {
-    if (family == "poisson") {
-      inv <- function(x) exp(x)
-      d1 <- function(x) exp(x)
-      d2 <- if (second_derivative) function(x) exp(x) else NULL
-    } else {
-      inv <- function(x) plogis(x)
-      d1 <- function(x) {
-        probability <- inv(x)
-        probability * (1 - probability)
-      }
-      d2 <- if (second_derivative) function(x) {
-        probability <- inv(x)
-        derivative <- probability * (1 - probability)
-        derivative * (1 - 2 * probability)
-      } else NULL
-    }
-    validate(inv, "canonical invlink")
-    validate(d1, "canonical invlink_prime")
-    if (second_derivative) validate(d2, "canonical invlink_second")
-    return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical",
-                link = if (family == "poisson") "log" else "logit"))
-  }
-
-  # The list form is internal. It carries a named link from read_family(),
-  # and the stored link of a fit into its refits (refit_invlink()).
-  link <- NULL
-  if (is.function(invlink)) {
-    inv <- invlink
-    d1 <- NULL
-    d2 <- NULL
-  } else if (is.list(invlink)) {
-    unknown <- setdiff(names(invlink), c("inv", "d1", "d2", "link"))
-    if (is.null(names(invlink)) || length(unknown)) {
-      stop("A list in 'invlink' takes only the elements 'inv', 'd1', 'd2' ",
-           "and 'link'.", call. = FALSE)
-    }
-    inv <- invlink$inv
-    d1 <- invlink$d1
-    d2 <- invlink$d2
-    link <- invlink$link
-  } else {
-    stop("'invlink' must be NULL or a function.", call. = FALSE)
-  }
-
-  validate(inv, "invlink")
-  check_invlink(inv, family)
-  check_invlink_tails(inv, family)
-  if (is.null(d1)) d1 <- differentiate(inv, ncheck)
-  validate(d1, "invlink_prime")
-  if (second_derivative) {
-    if (is.null(d2)) d2 <- differentiate(d1, ncheck)
-    validate(d2, "invlink_second")
-  } else {
-    d2 <- NULL
-  }
-
-  list(inv = inv, d1 = d1, d2 = d2, name = "custom", link = link)
 }
 
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
