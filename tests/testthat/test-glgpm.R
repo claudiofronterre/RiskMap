@@ -565,6 +565,42 @@ test_that("custom inverse links retain the current automatic start", {
   expect_match(diagnostics$fallback_reason, "custom inverse links")
 })
 
+test_that("a binomial model without an intercept starts from a regression without one", {
+  # The start regression dropped the first column of the design matrix and
+  # added an intercept, so a model without one started from the coefficients
+  # of another model, shifted by one column. With a named link that start
+  # went straight to MCML.
+  regression_start <- function(formula, family) {
+    start <- NULL
+    local_mocked_bindings(select_nongaussian_start = function(current, ...) {
+      start <<- current$beta
+      stop("start recorded")
+    })
+    expect_error(glgpm(formula, data = binomial_data, family = family,
+                       denominator = denominator, messages = FALSE),
+                 "start recorded")
+    start
+  }
+  glm_start <- function(formula, link) {
+    coef(glm(formula, family = binomial(link),
+             data = st_drop_geometry(binomial_data)))
+  }
+  for (link in c("logit", "probit")) {
+    expect_identical(
+      regression_start(y ~ 0 + factor(j) + cov + gp(), binomial(link)),
+      glm_start(cbind(y, denominator - y) ~ 0 + factor(j) + cov, link)
+    )
+    expect_identical(
+      regression_start(y ~ 0 + cov + gp(), binomial(link)),
+      glm_start(cbind(y, denominator - y) ~ 0 + cov, link)
+    )
+    expect_identical(
+      regression_start(y ~ factor(j) + cov + gp(), binomial(link)),
+      glm_start(cbind(y, denominator - y) ~ factor(j) + cov, link)
+    )
+  }
+})
+
 test_that("glgpm produces expected output for poisson models", {
 
   fit_no_re <- glgpm(y ~ cov + gp(),

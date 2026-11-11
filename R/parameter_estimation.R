@@ -443,10 +443,8 @@ glgpm <- function(formula,
     if(family=="gaussian") {
       start_pars[["beta"]] <- linear_start_values(D, y)
     } else if(family=="binomial") {
-      aux_data <- data.frame(y=y, units_m = units_m, D[,-1])
-      if(length(cov_offset)==1) cov_offset_aux <- rep(cov_offset, n)
       glm_fitted <- binomial_start_regression(
-        aux_data, cov_offset, link = if (is.list(invlink)) invlink$link
+        y, units_m, D, cov_offset, link = if (is.list(invlink)) invlink$link
       )
       start_pars[["beta"]] <- coef(glm_fitted)
     } else if(family=="poisson") {
@@ -2517,19 +2515,25 @@ named_inverse_link <- function(link) {
 ##' -2.94 where a cauchit regression gives -6.31). Should that regression fail
 ##' or not converge, as one with a cauchit link can, the logit regression is
 ##' used, as it is for the canonical link and for a link given as a function.
+##' The regression is on the columns of the model's design matrix, so it has
+##' an intercept only when the model has one, and its coefficients are in the
+##' order of those columns.
+##' @param y,units_m The positives and the denominators.
+##' @param D The design matrix of the model.
 ##' @param link The name of the link, NULL for a link given as a function.
 ##' @noRd
-binomial_start_regression <- function(aux_data, cov_offset, link = NULL) {
+binomial_start_regression <- function(y, units_m, D, cov_offset,
+                                      link = NULL) {
   regress <- function(glm_family) {
-    glm(cbind(y, units_m - y) ~ ., offset = cov_offset, data = aux_data,
-        family = glm_family)
+    glm.fit(x = D, y = cbind(y, units_m - y), offset = cov_offset,
+            family = glm_family)
   }
   if (!is.null(link) && !identical(link, "logit")) {
     own <- tryCatch(suppressWarnings(regress(binomial(link))),
                     error = function(e) NULL)
     if (isTRUE(own$converged)) return(own)
   }
-  regress(binomial)
+  regress(binomial())
 }
 
 ##' What a refit of a fitted model passes as `invlink`

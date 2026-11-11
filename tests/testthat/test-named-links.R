@@ -227,12 +227,16 @@ test_that("a named link starts from a regression with its own link", {
   aux_data <- data.frame(y = binomial_data$y,
                          units_m = binomial_data$denominator,
                          cov = binomial_data$cov)
+  # The regression the start was taken from before it regressed on the design
+  # matrix, which it reproduces exactly for a model with an intercept.
   regress <- function(glm_family) {
     coef(glm(cbind(y, units_m - y) ~ ., offset = rep(0, nrow(aux_data)),
              data = aux_data, family = glm_family))
   }
+  D <- model.matrix(~ cov, data = aux_data)
   start <- function(link) {
-    coef(binomial_start_regression(aux_data, rep(0, nrow(aux_data)), link))
+    coef(binomial_start_regression(aux_data$y, aux_data$units_m, D,
+                                   rep(0, nrow(aux_data)), link))
   }
   for (link in names(link_functions)) {
     expect_identical(start(link), regress(binomial(link)))
