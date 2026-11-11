@@ -12,7 +12,7 @@ test_that("elogit validates binomial inputs", {
   expect_input_error(elogit(11, 10), "y")
   expect_input_error(elogit(-1, 10), "y")
   expect_input_error(elogit(1, 0), "m")
-  expect_error(elogit(c(1, 2), c(10, 10, 10)), "same length")
+  expect_error(elogit(c(1, 2), c(10, 10, 10)), "divide the longer")
 })
 
 test_that("elogit returns zero for zero length", {

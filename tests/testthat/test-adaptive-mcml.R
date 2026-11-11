@@ -185,7 +185,7 @@ test_that("only a spatial variance at zero warns", {
   outcome$boundary_parameters <- layout$index$sigma2
   expect_warning(report_mcml_outcome(outcome, layout, tolerance = 0.1,
                                      messages = FALSE),
-                 "spatial scale cannot be estimated. See `check_fit()`.",
+                 "spatial scale cannot be estimated.",
                  fixed = TRUE)
 })
 
@@ -205,7 +205,7 @@ test_that("a refused Newton correction is reported, not a large bound", {
   outcome$certificate <- 0.4
   expect_warning(
     report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE),
-    "0.4 statistical standard errors, above the tolerance of 0.1. See `check_fit()`.",
+    "0.4 statistical standard errors, above the tolerance of 0.1.",
     fixed = TRUE
   )
 })
@@ -1972,7 +1972,7 @@ test_that("a certified fit says one line and a refused one a short warning", {
   refused$outcome <- "not certified"
   expect_warning(
     report_mcml_outcome(refused, layout, tolerance = 0.1, messages = FALSE),
-    "is not certified. Its approximate 95% bound is 0.05",
+    "Its approximate 95% bound is 0.05",
     fixed = TRUE
   )
 })
@@ -2208,7 +2208,7 @@ test_that("glgpm warns when the likelihood has no maximum", {
   expect_identical(optimizer$mcml_separation$coefficients, "urban")
   expect_identical(optimizer$mcml_separation$observations, 1:3)
   expect_match(separated$warnings,
-               "fit to 3 observations with no positives.*'urban'",
+               "fit to 3 observations with no positives.*\"urban\"",
                all = FALSE)
 
   # Complete separation by a continuous covariate takes the linear predictor
@@ -2245,7 +2245,7 @@ test_that("the warning names coefficients that reached the bound", {
   expect_warning(
     report_mcml_outcome(bounded, layout, 0.1, FALSE,
                         coefficient_names = c("(Intercept)", "x")),
-    "regression coefficient of 'x' reached the bound of the search"
+    "regression coefficient of \"x\" reached the bound of the search"
   )
   counts <- list(outcome = "no maximum",
                  separation = list(everywhere = "no positives"))

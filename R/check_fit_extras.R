@@ -82,7 +82,7 @@ run_extra_checks <- function(object, extra, profile = NULL, messages = TRUE,
       obstacles[[name]]
     } else if (inherits(result, "error")) {
       paste0("their computation stopped with the error \"",
-             conditionMessage(result), "\"")
+             condition_text(result), "\"")
     }
     if (is.null(reason)) {
       results[[name]] <- result

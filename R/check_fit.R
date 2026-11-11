@@ -71,6 +71,7 @@
 ##'   computing one, whether or not `extra` names it.
 ##' @param messages Logical, whether to say how long the extra checks should
 ##'   take before they start.
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param cores Number of processes for the extra checks that can use
 ##'   several, passed to [profile.RiskMap()], whose results are the same on
 ##'   any number of cores.
@@ -133,7 +134,8 @@
 ##' }
 ##' @export
 check_fit <- function(object, extra = character(), profile = NULL,
-                      messages = TRUE, cores = 1L) {
+                      messages = getOption("RiskMap.messages", TRUE),
+                      cores = 1L) {
   check_class(object, "RiskMap")
   extra <- match_extra_checks(extra)
   check_given_profile(profile, object)
@@ -938,7 +940,7 @@ plot.RiskMap_check <- function(x, which = NULL, ...) {
     unknown <- which[!which %in% c(panel_names, "profile") &
                        !startsWith(which, "profile_")]
     if (length(unknown)) {
-      abort_input(c("{.arg which} has unknown panel{?s} {.val {unknown}}.", "i" = "The panels are {.val {panel_names}}, {.val profile_} followed by a parameter, such as {.val profile_phi}, and {.val profile} for every profile."), arg = "which")
+      abort_input(c("{.arg which} has unknown panel{?s} {.val {unknown}}.", "i" = "The panels are {.or {.val {panel_names}}}.", "i" = "{.val profile} gives every profile, and {.val profile_} followed by a parameter, such as {.val profile_phi}, gives one."), arg = "which")
     }
   }
   panels <- draw_check_panels(x)
@@ -952,7 +954,7 @@ plot.RiskMap_check <- function(x, which = NULL, ...) {
   panels <- Filter(Negate(is.null), panels[requested])
   if (!length(panels)) {
     explanation <- paste(reasons, collapse = " ")
-    abort_input("{explanation}", arg = "which")
+    abort_input("{explanation}", arg = if (is.null(which)) "x" else "which")
   }
   # Without a choice of panels, those with nothing to show are left out quietly.
   if (!is.null(which)) for (reason in reasons) riskmap_inform("{reason}")

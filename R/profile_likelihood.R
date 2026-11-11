@@ -95,6 +95,7 @@
 ##'   rounding.
 ##' @param messages Logical, whether to report on the profiles, with a
 ##'   progress bar as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param ... Not used.
 ##' @return An object of class `RiskMap_profile`: a list with the marginal
 ##'   profiles (`marginal`), the joint profiles (`joint`), the intervals
@@ -127,7 +128,9 @@
 profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             n_points = 11L, n_grid = 11L, span = 3,
                             n_draws = 5000L, seed = 1L, level = 0.95,
-                            cores = 1L, messages = TRUE, ...) {
+                            cores = 1L,
+                            messages = getOption("RiskMap.messages", TRUE),
+                            ...) {
   check_class(fitted, "RiskMap")
   gaussian <- identical(fitted$family, "gaussian")
   if (!gaussian && (!fitted$family %in% c("binomial", "poisson") ||
@@ -157,13 +160,15 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
   }
   parameters <- match_profile_parameters(problem, parameters %||% problem$names)
   pairs <- lapply(pairs %||% list(), function(pair) {
-    match_profile_parameters(problem, pair)
+    match_profile_parameters(problem, pair, arg = "pairs")
   })
 
   if (messages) {
     n_pairs <- length(pairs)
     and_pairs <- if (n_pairs) cli::format_inline(" and {n_pairs} pair{?s}") else ""
-    on_cores <- if (cores > 1L) paste0(" on ", cores, " cores") else ""
+    # At most two walks per parameter, or one task per pair, run at once.
+    used <- min(cores, max(2L * length(parameters), n_pairs))
+    on_cores <- if (used > 1L) paste0(" on ", used, " cores") else ""
     riskmap_inform("Profiling {length(parameters)} parameter{?s}{and_pairs}{on_cores}.")
   }
   # The two walks of each marginal profile are independent, and so are the
@@ -356,12 +361,12 @@ profile_labels <- function(names, distance_units) {
 
 ##' Match user-supplied parameter names to those of the fit
 ##' @noRd
-match_profile_parameters <- function(problem, parameters) {
+match_profile_parameters <- function(problem, parameters, arg = "parameters") {
   matched <- vapply(parameters, function(name) {
     hit <- c(name, paste0("beta.", name))
     hit <- hit[hit %in% problem$names]
     if (!length(hit)) {
-      abort_input("{.arg parameters} must name parameters of the fit, among {.val {problem$names}}, and {.val {name}} isn't one.", arg = "parameters")
+      abort_input(c("{.arg {arg}} must name parameters of the fit.", "x" = "{.val {name}} is not one of them.", "i" = "The parameters are {.val {problem$names}}."), arg = arg)
     }
     hit[1]
   }, "")

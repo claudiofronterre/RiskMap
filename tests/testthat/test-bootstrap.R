@@ -96,11 +96,12 @@ test_that("failed refits are recorded instead of stopping", {
   expect_output(print(boot), "1 refits failed")
 
   local_mocked_bindings(fit_glgpm_design = function(...) stop("always fails"))
-  expect_error(
+  error <- expect_error(
     parametric_bootstrap(gaussian_intercept_model, n_sim = 2, seed = 1,
                          messages = FALSE),
     "All 2 refits failed", class = "riskmap_error_fit"
   )
+  expect_match(conditionMessage(error), "always fails", fixed = TRUE)
 })
 
 test_that("summary computes percentile and bias-corrected intervals", {

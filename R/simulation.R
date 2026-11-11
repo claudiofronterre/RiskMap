@@ -583,7 +583,7 @@ check_simulation <- function(object, simulation, single = FALSE) {
 #' @noRd
 simulation_locations <- function(data, crs, label) {
   arg <- simulation_location_arg(label)
-  check_data(data)
+  check_data(data, arg = arg)
   if (nrow(data) == 0L || any(st_is_empty(data))) {
     abort_input("{.arg {arg}} must have at least one point and no empty geometries.", arg = arg)
   }
@@ -825,6 +825,11 @@ simulation_assessment_data <- function(object) {
   model <- object$model
   if (length(model$re_terms)) {
     abort_input(c("{.fn assess_simulation} can't assess simulations from a model with {.fn re} terms.", "i" = "The simulated values are available through {.fn simulated_values}."), arg = "obj_sim")
+  }
+  response <- model$response
+  if (is.null(response) || length(response) != 1L ||
+      !identical(make.names(response), response)) {
+    abort_input("The response of the model that simulated {.arg obj_sim} must be a plain column name, such as {.code y}, for the models to be refitted to it.", arg = "obj_sim")
   }
   den <- simulation_inputs(model, object$locations$data, TRUE, "data",
                             original = identical(object$locations$data, model$data))$denominator

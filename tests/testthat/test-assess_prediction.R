@@ -148,147 +148,147 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(1:2, ncol = 1)),
-    "user_split"
+    "user_split", "must have one row per observation"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(1:20, ncol = 2)),
-    "user_split"
+    "user_split", "columns, not 2"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(1, 2)),
-    "user_split"
+    "user_split", "elements, not 2"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = "not list or matrix"),
-    "user_split"
+    "user_split", "must be a matrix or a list"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(sample(10))),
-    "must leave at least one observation for training"
+    "user_split", "must leave at least one observation for training"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(integer(0))),
-    "must not be empty"
+    "user_split", "must not be empty"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(0)),
-    "must be row numbers between 1 and"
+    "user_split", "must be row numbers between 1 and"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(c(1.1, 2, 3.3))),
-    "must be whole numbers"
+    "user_split", "must be whole numbers"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(c(1, NA, 3))),
-    "must be numeric row numbers without missing values"
+    "user_split", "must be numeric row numbers without missing values"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(c(1, 1, 2))),
-    "must not repeat a row"
+    "user_split", "must not repeat a row"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(c(NA, rep(0, n - 1)), ncol = 1)),
-    "user_split"
+    "user_split", "must not have missing values"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(c(2, rep(0, n - 1)), ncol = 1)),
-    "user_split"
+    "user_split", "must hold only 0 for training and 1 for test"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(rep(0, n), ncol = 1)),
-    "must have at least one training observation \\(0\\) and one test observation \\(1\\)"
+    "user_split", "one training observation (0) and one test observation (1)"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(rep(1, n), ncol = 1)),
-    "must have at least one training observation \\(0\\) and one test observation \\(1\\)"
+    "user_split", "one training observation (0) and one test observation (1)"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, 2, 3), out_id = c(3, 4)))),
-    "user_split"
+    "user_split", "must not overlap"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, 1, 2), out_id = 3:n))),
-    "user_split"
+    "user_split", "must not repeat a row"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = 1:2, out_id = n + 1))),
-    "user_split"
+    "user_split", "must be row numbers between 1 and"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = integer(0), out_id = 1:n))),
-    "user_split"
+    "user_split", "must not be empty"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, 2.5), out_id = 3:n))),
-    "user_split"
+    "user_split", "must be whole numbers"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c("1", "2"), out_id = 3:n))),
-    "user_split"
+    "user_split", "must be numeric row numbers without missing values"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, NA), out_id = 3:n))),
-    "user_split"
+    "user_split", "must be numeric row numbers without missing values"
   )
 
 })

@@ -21,6 +21,7 @@
 ##'   run one after another.
 ##' @param messages Logical, whether to report on the bootstrap, with a
 ##'   progress bar as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##'
 ##' @details
 ##' Each replicate simulates a response at the original locations, with the
@@ -108,7 +109,8 @@
 ##' }
 ##' @export
 parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
-                                 level = 0.95, cores = 1, messages = TRUE) {
+                                 level = 0.95, cores = 1,
+                                 messages = getOption("RiskMap.messages", TRUE)) {
   if (!inherits(object, "RiskMap")) {
     abort_input("{.arg object} must be a {.cls RiskMap} fit from {.fn glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
@@ -150,7 +152,7 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
   started <- proc.time()[["elapsed"]]
   if (messages) {
     on_cores <- if (cores > 1L) paste0(" on ", cores, " cores") else ""
-    riskmap_inform("Simulating and refitting {n_sim} replicates{on_cores}.")
+    riskmap_inform("Simulating and refitting {n_sim} replicate{?s}{on_cores}.")
   }
   bar <- progress_bar("Refitting replicates", n_sim, messages)
   results <- riskmap_map(seq_len(n_sim), run_replicate, cores = cores,
@@ -161,7 +163,7 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
   lost <- vapply(results, inherits, logical(1), what = "error")
   results[lost] <- lapply(results[lost], function(error) {
     list(status = "failed", estimate = NULL, warnings = character(),
-         message = conditionMessage(error))
+         message = condition_text(error))
   })
   elapsed <- proc.time()[["elapsed"]] - started
 
@@ -173,10 +175,11 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
                        elapsed_seconds = elapsed)
   n_failed <- nrow(out$failures)
   if (n_failed == n_sim) {
-    riskmap_abort(c("All {n_sim} refits failed.", "i" = "The first failure was {.val {out$failures$message[1L]}}."), class = "riskmap_error_fit")
+    failed <- if (n_sim == 1L) "The refit failed." else "All {n_sim} refits failed."
+    riskmap_abort(c(failed, "i" = "The first failure was {.val {out$failures$message[1L]}}."), class = "riskmap_error_fit")
   }
   if (n_failed > 0L) {
-    riskmap_warn(c("{n_failed} of {n_sim} refits failed and are left out.", "i" = "See the {.code failures} element of the result."))
+    riskmap_warn(c("{n_failed} of {n_sim} refits failed and are left out.", "i" = "See the {.code failures} element of the result."), class = "riskmap_warning_fit")
   }
   if (messages) {
     took <- format_bootstrap_time(elapsed)
@@ -265,10 +268,10 @@ run_bootstrap_replicate <- function(prepared, refit, seed) {
     list(status = "ok", message = NA_character_,
          estimate = refit(response, seed))
   }, warning = function(w) {
-    warnings <<- c(warnings, conditionMessage(w))
+    warnings <<- c(warnings, condition_text(w))
     invokeRestart("muffleWarning")
   }), error = function(e) {
-    list(status = "failed", message = conditionMessage(e), estimate = NULL)
+    list(status = "failed", message = condition_text(e), estimate = NULL)
   })
   result$warnings <- unique(warnings)
   result
@@ -463,7 +466,7 @@ plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30,
   unknown <- setdiff(parameters, names(x$estimate))
   if (length(unknown)) {
     known <- names(x$estimate)
-    abort_input("{.arg parameters} must name parameters among {.val {known}}, and {.val {unknown}} {?isn't/aren't}.", arg = "parameters")
+    abort_input(c("{.arg parameters} must name parameters of the bootstrap.", "x" = "{.val {unknown}} {cli::qty(length(unknown))}{?is/are} not among them.", "i" = "The parameters are {.val {known}}."), arg = "parameters")
   }
   check_positive_integer(bins, "bins")
   check_logical(log_scale)

@@ -35,7 +35,8 @@ extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
     data <- st_transform(data, crs = auto_crs)
     riskmap_inform(c("{.arg data} are in longitude and latitude, so they are projected to EPSG:{auto_crs} for {purpose}.", "i" = "Set {.arg {crs_arg}} to choose the projection."))
   }
-  coords <- coordinates_in_units(data, distance_units)
+  coords <- coordinates_in_units(data, distance_units,
+                                 if (is.null(crs)) "data" else crs_arg)
   if (dedupe) coords <- unique(coords)
   as.numeric(pairwise_distances(coords))
 }

@@ -100,6 +100,7 @@ plot.RiskMap_prediction <- function(
     abort_input("{.arg x} must be a {.cls RiskMap_prediction} object, not {.obj_type_friendly {x}}.", arg = "x")
   }
   spatial_scale <- match_choice(spatial_scale)
+  spatial_scale_given <- !identical(spatial_scale, "auto")
   check_plot_flag(north_arrow, "north_arrow")
   check_plot_flag(scale_bar, "scale_bar")
   if (!is.character(quantity) || !length(quantity) || anyNA(quantity) ||
@@ -160,7 +161,12 @@ plot.RiskMap_prediction <- function(
       "location"
   }
   if (spatial_scale %in% c("area", "both") && !has_areas) {
-    abort_input("{.arg x} has no summaries over {.arg boundaries}, so {.arg spatial_scale} can't be {.val {spatial_scale}}.", arg = "spatial_scale")
+    # An aggregation asked for on a prediction without areas is the mistake
+    # when `spatial_scale` was left to choose itself.
+    if (spatial_scale_given) {
+      abort_input("{.arg x} has no summaries over {.arg boundaries}, so {.arg spatial_scale} can't be {.val {spatial_scale}}.", arg = "spatial_scale")
+    }
+    abort_input("{.arg x} has no summaries over {.arg boundaries}, so {.arg aggregate} can't be used.", arg = "aggregate")
   }
   if (spatial_scale %in% c("area", "both")) {
     aggregate <- select_prediction_plot_value(
@@ -171,7 +177,7 @@ plot.RiskMap_prediction <- function(
   if (spatial_scale == "both" &&
       !aggregate %in% c("mean", "median", "min", "max")) {
     same_scale <- c("mean", "median", "min", "max")
-    abort_input("{.code spatial_scale = \"both\"} needs an aggregation on the scale of the locations, {.or {.val {same_scale}}}.", arg = "aggregate")
+    abort_input("{.arg aggregate} must be {.or {.val {same_scale}}} when {.arg spatial_scale} is {.val both}, so that areas and locations share a scale.", arg = "aggregate")
   }
 
   panels <- list()

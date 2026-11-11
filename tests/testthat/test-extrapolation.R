@@ -97,10 +97,11 @@ test_that("extrapolation maps and argument checks", {
                indicator = c("spatial_unexplained", "extrapolation"))
   expect_length(c(both$patches$plots, list(both)), 2L)
   expect_identical(both$patches$layout$ncol, 2L)
-  expect_error(plot(extrapolation, indicator = "distance"))
-  expect_error(assess_extrapolation(gaussian_model, grid,
-                                    spatial_threshold = 2))
-  expect_error(assess_extrapolation(list(), grid), "<RiskMap> fit")
+  expect_input_error(plot(extrapolation, indicator = "distance"), "indicator")
+  expect_input_error(assess_extrapolation(gaussian_model, grid,
+                                          spatial_threshold = 2),
+                     "spatial_threshold")
+  expect_input_error(assess_extrapolation(list(), grid), "object")
 })
 
 test_that("unexplained spatial variance uses fixed variance components", {

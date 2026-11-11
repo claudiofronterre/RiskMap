@@ -201,7 +201,7 @@ test_that("both spatial scales share one colour scale", {
   expect_identical(legend_title(plot(prediction, aggregate = "sum")),
                    "Mean prevalence (area sum)")
   expect_error(plot(prediction, spatial_scale = "both", aggregate = "sum"),
-               "on the scale of the locations")
+               "when `spatial_scale` is \"both\"")
 })
 
 test_that("breaks give a binned map and several summaries give one row each", {

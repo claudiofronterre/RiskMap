@@ -16,7 +16,7 @@ glgpm(
   control_mcml = set_control_mcml(),
   seed = NULL,
   return_samples = TRUE,
-  messages = TRUE,
+  messages = getOption("RiskMap.messages", TRUE),
   fix_var_me = NULL,
   start_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, sigma2_me =
     NULL, sigma2_re = NULL)
@@ -91,7 +91,8 @@ values are not computed. Defaults to \code{TRUE}. Ignored for Gaussian models.}
 
 \item{messages}{Logical indicating whether to print messages, and a
 line for each stage of Monte Carlo maximum likelihood as described in
-\link{riskmap_progress}. Defaults to \code{TRUE}.}
+\link{riskmap_progress}. Defaults to the option \code{RiskMap.messages}, or
+\code{TRUE} if it is not set.}
 
 \item{fix_var_me}{Optional fixed value for the measurement error variance when fitting a Gaussian model.
 When not provided, the value will be estimated, but cannot be if each location only has one sample and

@@ -46,10 +46,18 @@ on purpose has class `riskmap_error`. An invalid argument has
 `riskmap_error_internal`, which asks for a report. Warnings that a fit may not
 be reliable, such as an uncertified Monte Carlo error, have
 `riskmap_warning_fit`.
+- Errors from the compiled Langevin sampler are raised again as
+`riskmap_error_fit`, with the original error as the cause.
+- The `messages` argument of `glgpm()`, `predict()`, `profile()`,
+`parametric_bootstrap()`, `check_fit()`, `assess_prediction()` and
+`assess_simulation()` defaults to the option `RiskMap.messages`, as
+`get_worldpop()`'s does, so `options(RiskMap.messages = FALSE)` silences them
+all.
 - Some arguments are checked more strictly. `glgpm()` rejects a starting value
-of 0 for a variance of `re()` terms and reads `denominator` without
-evaluating it for a Gaussian model. `match.arg()` errors are replaced by
-RiskMap input errors.
+of 0 for a variance of `re()` terms, and `predict()` rejects points with Z or
+M coordinates or empty points in `newdata`. `match.arg()` errors are replaced
+by RiskMap input errors, and a unique abbreviation is now accepted wherever a
+choice is made, as `match.arg()` allows.
 - `get_worldpop()` takes the default of `messages` from the option
 `RiskMap.messages`, so `options(RiskMap.messages = FALSE)` silences it.
 - A `max_dist` or `phi` that isn't positive is now reported as "must be a

@@ -113,7 +113,8 @@ create_grid <- function(boundaries = NULL,
     riskmap_inform(c("{.arg boundaries} are in longitude and latitude, so they are projected to EPSG:{auto_crs} to create the grid.", "i" = "Project {.arg boundaries} yourself to choose the projection."))
   }
 
-  cellsize <- spacing / crs_to_distance_factor(boundaries, distance_units)
+  cellsize <- spacing / crs_to_distance_factor(boundaries, distance_units,
+                                               "boundaries")
   grid_box <- st_sf(
     geometry = st_make_grid(boundaries,
                             cellsize = cellsize,
@@ -188,7 +189,7 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
     cbind(as.data.frame(centres), terra::values(raster, dataframe = TRUE)),
     coords = c("x", "y"), crs = grid_crs
   )
-  factor <- crs_to_distance_factor(grid_box, distance_units)
+  factor <- crs_to_distance_factor(grid_box, distance_units, "raster")
   raster_spacing <- cellsize * factor
   if (!is.null(spacing)) {
     check_positive_number(spacing, "")

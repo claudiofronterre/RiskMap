@@ -45,12 +45,12 @@ plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
   unknown <- setdiff(parameters, names(x$marginal))
   if (length(unknown)) {
     known <- names(x$marginal)
-    abort_input("{.arg parameters} must name marginal profiles of {.arg x}, among {.val {known}}, and {.val {unknown}} {?isn't/aren't}.", arg = "parameters")
+    abort_input(c("{.arg parameters} must name marginal profiles of {.arg x}.", "x" = "{.val {unknown}} {cli::qty(length(unknown))}{?is/are} not among them.", "i" = "The marginal profiles are {.val {known}}."), arg = "parameters")
   }
   unknown <- setdiff(pairs, names(x$joint))
   if (length(unknown)) {
     known <- names(x$joint)
-    abort_input("{.arg pairs} must name joint profiles of {.arg x}, among {.val {known}}, and {.val {unknown}} {?isn't/aren't}.", arg = "pairs")
+    abort_input(c("{.arg pairs} must name joint profiles of {.arg x}.", "x" = "{.val {unknown}} {cli::qty(length(unknown))}{?is/are} not among them.", "i" = "The joint profiles are {.val {known}}."), arg = "pairs")
   }
   axis <- profile_axis(scale, x$level)
   marginal <- lapply(parameters, function(name) {

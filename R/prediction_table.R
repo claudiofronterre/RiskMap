@@ -65,7 +65,7 @@ to_table.RiskMap_prediction <- function(object, label = NULL,
   if (!is.null(aggregate)) {
     unknown <- setdiff(aggregate, aggregates)
     if (length(unknown)) {
-      abort_input("{.arg aggregate} must be among the aggregations computed, {.val {aggregates}}, and {.val {unknown}} {?isn't/aren't}.", arg = "aggregate")
+      abort_input("{.arg aggregate} must be {.or {.val {aggregates}}}, the aggregations computed, not {.val {unknown}}.", arg = "aggregate")
     }
     aggregates <- aggregate
   }

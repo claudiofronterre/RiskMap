@@ -59,7 +59,8 @@
 ##' values are not computed. Defaults to `TRUE`. Ignored for Gaussian models.
 ##' @param messages Logical indicating whether to print messages, and a
 ##'   line for each stage of Monte Carlo maximum likelihood as described in
-##'   [riskmap_progress]. Defaults to `TRUE`.
+##'   [riskmap_progress]. Defaults to the option `RiskMap.messages`, or
+##'   `TRUE` if it is not set.
 ##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
 ##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
 ##' the `nugget` term in [gp()] is also set to `TRUE`.
@@ -270,7 +271,7 @@ glgpm <- function(formula,
                  control_mcml = set_control_mcml(),
                  seed = NULL,
                  return_samples = TRUE,
-                 messages = TRUE,
+                 messages = getOption("RiskMap.messages", TRUE),
                  fix_var_me = NULL,
                  start_pars = list(beta = NULL,
                                    sigma2 = NULL,
@@ -296,8 +297,11 @@ glgpm <- function(formula,
     if (!is.null(invlink)) {
       abort_input("{.arg invlink} can't be given for a Gaussian model, which has the identity link.", arg = "invlink")
     }
-    # `denominator` names a column, so it is read without being evaluated.
-    if (!is.null(substitute(denominator))) {
+    # `denominator` names a column, so it is read without being evaluated,
+    # but a variable holding NULL passed on by another function is accepted.
+    given <- !is.null(substitute(denominator)) &&
+      !is.null(tryCatch(denominator, error = function(error) TRUE))
+    if (given) {
       abort_input("{.arg denominator} can't be given for a Gaussian model.", arg = "denominator")
     }
     if (!is.null(fix_var_me)) check_range(fix_var_me, min = 0)
@@ -382,7 +386,9 @@ glgpm <- function(formula,
   }
   if (messages) riskmap_inform("The CRS used is {as.list(st_crs(data))$input}.")
 
-  coords_o <- coordinates_in_units(data, distance_units)
+  coords_o <- coordinates_in_units(
+    data, distance_units, if (is.null(model_crs)) "data" else "model_crs"
+  )
   coordinate_index <- index_coordinate_rows(coords_o)
   coords <- coordinate_index$coordinates
   ID_coords <- coordinate_index$index
@@ -418,7 +424,8 @@ glgpm <- function(formula,
         "the nugget"
       }
       saturated <- names_re[is_saturated_re]
-      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "In a Gaussian model such an effect can't be told apart from {confounded_component}.", "i" = "Drop it from {.arg formula}, or fix the variance of {confounded_component}."), arg = "formula")
+      n_saturated <- length(saturated)
+      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "In a Gaussian model {cli::qty(n_saturated)}{?such an effect/these effects} can't be told apart from {confounded_component}.", "i" = "Drop {cli::qty(n_saturated)}{?it/them} from {.arg formula}, or fix the variance of {confounded_component}."), arg = "formula")
     }
   }
 
@@ -1305,7 +1312,7 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   if (inherits(transformed_fit, "error")) {
     diagnostics$fallback_reason <- paste(
       "transformed Gaussian fit failed:",
-      conditionMessage(transformed_fit)
+      condition_text(transformed_fit)
     )
     return(list(start = current, diagnostics = diagnostics))
   }
@@ -1354,7 +1361,7 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   if (inherits(scores, "error")) {
     diagnostics$fallback_reason <- paste(
       "starting-value Laplace comparison failed:",
-      conditionMessage(scores)
+      condition_text(scores)
     )
     return(list(start = current, diagnostics = diagnostics))
   }
@@ -2279,10 +2286,10 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' Used to auto-derive a missing `d1`/`d2` from a user-supplied inverse link
 ##' (or from an already-derived `d1`, for `d2`). Tries symbolic
 ##' differentiation via `Deriv::Deriv()` first, since the result is fast and
-##' stable when evaluated repeatedly; `Deriv::Deriv()` raises a hard error
+##' stable when evaluated repeatedly. `Deriv::Deriv()` raises a hard error
 ##' when it cannot process `f`'s body (e.g. a call it has no derivative rule
-##' for), so that attempt - construction and validation together - is wrapped
-##' in a single `tryCatch()`. If it fails for any reason, falls back to
+##' for), so its construction is wrapped in `tryCatch()`, and a derivative
+##' that fails validation is dropped. If either fails, falls back to
 ##' numerical differentiation by the method of `numDeriv::grad()`, applied to
 ##' all elements of `eta` at once (`compute_richardson_derivative()`).
 ##'
@@ -2729,7 +2736,7 @@ maxim_integrand <- function(
     if (!identical(linkf$name, "canonical")) {
       terms <- compute_custom_link_terms(eta, y, units_m, family, linkf)
       if (is.null(terms)) {
-        abort_input("{.arg invlink} gives a mean outside the support of the family, or a derivative that isn't finite.", arg = "invlink")
+        riskmap_abort("{.arg invlink} gives a mean outside the support of the family, or a derivative that isn't finite, at the current linear predictor.", class = "riskmap_error_fit")
       }
       return(list(g = terms$score, w = terms$curvature,
                   llik = terms$log_likelihood))
@@ -3095,7 +3102,9 @@ laplace_sampling_mcmc <- function(y,
       list(terms$log_likelihood, terms$score)
     }
   }
-  chain <- cpp_latent_mala(
+  # The compiled chain stops with base errors, which are raised again with
+  # the fit class. RiskMap's own errors, from a custom link, pass as they are.
+  chain <- tryCatch(cpp_latent_mala(
     y_r = as.numeric(y), units_r = as.numeric(units_m), mu_r = as.numeric(mu),
     columns_r = structure$columns, n_u = structure$n_u, n_d = structure$n_d,
     prior_u_r = structure$prior_u, prior_d_r = structure$prior_d,
@@ -3106,7 +3115,10 @@ laplace_sampling_mcmc <- function(y,
     adaptation_scale = if (adapt_step) control_mcmc$c1.h else 0,
     adaptation_exponent = control_mcmc$c2.h,
     average_step = average_step, start_from_draw = start_from_draw
-  )
+  ), error = function(error) {
+    if (inherits(error, "riskmap_error")) riskmap_rethrow(error)
+    riskmap_abort("The Langevin sampler of the latent effects failed.", class = "riskmap_error_fit", parent = error)
+  })
 
   samples <- chain$samples[, structure$position, drop = FALSE]
   out_sim <- list(samples = list(S = samples[, seq_len(n_loc), drop = FALSE]))

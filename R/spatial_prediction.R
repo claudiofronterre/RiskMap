@@ -88,6 +88,7 @@
 ##'   default to limit memory use.
 ##' @param messages Logical. Display messages, and a progress bar while
 ##'   predicting at many locations, as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param ... Additional arguments reserved for future prediction methods.
 ##'
 ##' @details
@@ -299,7 +300,7 @@ predict.RiskMap <- function(
     parameter_draws = 50L,
     seed = NULL,
     keep_samples = FALSE,
-    messages = TRUE,
+    messages = getOption("RiskMap.messages", TRUE),
     ...) {
 
   if (is.null(include)) include <- character()
@@ -536,7 +537,7 @@ normalise_prediction_operations <- function(x, allowed, argument_name,
          !is.na(operation) && operation %in% allowed)
   }, logical(1))
   if (!all(valid)) {
-    abort_input("Each entry of {.arg {argument_name}} must be a function or one of {.val {allowed}}.", arg = argument_name)
+    abort_input("Each entry of {.arg {argument_name}} must be a function or one of {.or {.val {allowed}}}.", arg = argument_name)
   }
   x
 }
@@ -555,7 +556,7 @@ normalise_prediction_transforms <- function(transform) {
                 "link", "response")
   conflicts <- intersect(names(transform), reserved)
   if (length(conflicts)) {
-    abort_input("The names in {.arg transform} can't be those of built-in prediction quantities, as {.val {conflicts}} {?is/are}.", arg = "transform")
+    abort_input(c("The names in {.arg transform} can't be those of built-in prediction quantities.", "x" = "{.val {conflicts}} {cli::qty(length(conflicts))}{?is a built-in quantity/are built-in quantities}."), arg = "transform")
   }
   transform
 }
@@ -584,7 +585,7 @@ validate_prediction_standardize <- function(object, standardize) {
     invalid <- setdiff(reference_names, fixed_names)
     problem <- "{.arg standardize} must have one or more columns, each a covariate of the model."
     if (length(invalid)) {
-      problem <- c(problem, "x" = "{.val {invalid}} {?is not a covariate/are not covariates}.")
+      problem <- c(problem, "x" = "{.val {invalid}} {cli::qty(length(invalid))}{?is not a covariate/are not covariates}.")
     }
     abort_input(problem, arg = "standardize")
   }
@@ -629,7 +630,16 @@ prediction_operation_requested <- function(operations, built_in) {
 validate_prediction_data <- function(object, newdata, include,
                                      standardize = NULL) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
-  check_data(prediction_data, geometry = "point", type = "sf")
+  data_arg <- if (is.null(newdata)) "object" else "newdata"
+  check_data(prediction_data, geometry = "point", type = "sf", arg = data_arg)
+  # The compiled distances need finite planar coordinates.
+  coordinates <- st_coordinates(prediction_data)
+  if (ncol(coordinates) != 2L) {
+    abort_input("The points of {.arg {data_arg}} must have two coordinates, without Z or M values.", arg = data_arg)
+  }
+  if (any(!is.finite(coordinates))) {
+    abort_input("The points of {.arg {data_arg}} must have finite coordinates, and none may be empty.", arg = data_arg)
+  }
   output_data <- prediction_data
   if (!isTRUE(st_crs(prediction_data) == st_crs(object$data))) {
     riskmap_inform("{.arg newdata} is projected to the coordinate reference system of the fit.")
@@ -657,7 +667,7 @@ validate_prediction_data <- function(object, newdata, include,
       unknown <- unique(supplied[!is.na(supplied) &
                                    !supplied %in% object$re[[name]]])
       if (length(unknown) > 0L) {
-        abort_input(c("{.arg newdata} has levels of the random effect {.val {name}} that the fit doesn't know.", "x" = "Unknown: {.val {unknown}}."), arg = "newdata")
+        abort_input(c("{.arg newdata} has levels of the random effect {.val {name}} that the fit doesn't know.", "x" = "The unknown {cli::qty(length(unknown))}level{?s} {?is/are} {.val {unknown}}."), arg = "newdata")
       }
     }
   }
@@ -1190,32 +1200,38 @@ prediction_sample_components <- function(object, prediction_data, prediction,
     parameter_conditioning_sampler(object)
   pieces <- vector("list", parameter_draws)
   acceptance <- rep(NA_real_, parameter_draws)
+  # A failure at one parameter value leaves that draw out. An input error
+  # would fail at every value, so it reaches the user as it is.
+  first_failure <- NULL
+  leave_out <- function(error) {
+    if (inherits(error, "riskmap_error_input")) riskmap_rethrow(error)
+    if (is.null(first_failure)) first_failure <<- error
+    NULL
+  }
   for (k in seq_len(parameter_draws)) {
     fit <- object
     fit$estimate <- utils::relist(parameters[k, ], skeleton = object$estimate)
     if (is.null(sampler)) {
       control <- set_control_mcmc(n_sim = per_draw, linear_model = TRUE)
     } else {
-      draws <- tryCatch(sampler(fit$estimate, per_draw),
-                        error = function(error) NULL)
+      draws <- tryCatch(sampler(fit$estimate, per_draw), error = leave_out)
       if (is.null(draws)) next
       fit$S_samples <- draws$samples
       acceptance[k] <- draws$acceptance
       control <- NULL
     }
-    pieces[[k]] <- tryCatch(components_at(fit, control),
-                            error = function(error) NULL)
+    pieces[[k]] <- tryCatch(components_at(fit, control), error = leave_out)
   }
   pieces <- pieces[!vapply(pieces, is.null, logical(1))]
   if (length(pieces) < parameter_draws / 2) {
-    riskmap_abort("Prediction failed at most parameter draws, so parameter uncertainty can't be propagated.", class = "riskmap_error_fit")
+    riskmap_abort("Prediction failed at most parameter draws, so parameter uncertainty can't be propagated.", class = "riskmap_error_fit", parent = first_failure)
   }
   if (length(pieces) < parameter_draws) {
     failed <- parameter_draws - length(pieces)
-    riskmap_warn("{failed} of {parameter_draws} parameter draws are left out, because prediction failed at those values.")
+    riskmap_warn("{failed} of {parameter_draws} parameter draws are left out, because prediction failed at those values.", class = "riskmap_warning_fit")
   }
   if (any(acceptance < 0.1, na.rm = TRUE)) {
-    riskmap_warn("The Langevin sampler accepted few proposals at some parameter draws, so the predictive summaries may be noisy.")
+    riskmap_warn("The Langevin sampler accepted few proposals at some parameter draws, so the predictive summaries may be noisy.", class = "riskmap_warning_fit")
   }
   pool_prediction_components(pieces)
 }
@@ -2112,7 +2128,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   model_crs <- st_crs(object$data)
 
   if (is.na(model_crs)) {
-    abort_input("{.arg object} must have the coordinate reference system of its data.", arg = "object")
+    abort_input("The data of {.arg object} must have a coordinate reference system.", arg = "object")
   }
 
   crs_label <- function(x) {
@@ -2744,8 +2760,9 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' When `NULL` (the default), the seeds are drawn from the session's random
 ##' number generator.
 ##' @param plot_fold Logical; whether to plot each iteration's test and training sets. Defaults to `TRUE`.
-##' @param messages Logical; whether to report on the assessment, with a
-##'   progress bar as described in [riskmap_progress]. Defaults to `TRUE`.
+##' @param messages Logical, whether to report on the assessment, with a
+##'   progress bar as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
 ##'
 ##' @return A list of class `RiskMap_cross_validation`, containing:
@@ -2854,7 +2871,7 @@ assess_prediction <- function(object,
                               control_mcmc = set_control_mcmc(),
                               seed = NULL,
                               plot_fold = TRUE,
-                              messages = TRUE,
+                              messages = getOption("RiskMap.messages", TRUE),
                               ...) {
 
   ## ─────────────────────────── helpers ─────────────────────────── ##
@@ -2894,7 +2911,8 @@ assess_prediction <- function(object,
     abort_input("{.arg object} must be a list of {.cls RiskMap} fits.", arg = "object")
   }
   allowed_metrics <- c("CRPS", "SCRPS", "PIT")
-  if (!is.character(metrics) || !all(metrics %in% allowed_metrics)) {
+  if (!is.null(metrics) &&
+      (!is.character(metrics) || !all(metrics %in% allowed_metrics))) {
     abort_input("{.arg metrics} must contain only {.val {allowed_metrics}}.", arg = "metrics")
   }
   method <- match_choice(method, c("cluster", "regularized", "user"))
@@ -3123,7 +3141,7 @@ assess_prediction <- function(object,
                            function(s) any(ids[s$out_id] %in% ids[s$in_id]),
                            logical(1)))
     if (length(shared) > 0) {
-      riskmap_warn(c("In test set{?s} {shared}, some locations also have training observations.", "i" = "Their predictions ignore the nugget seen in training, so the scores of models with a nugget aren't reliable there."))
+      riskmap_warn(c("In {cli::qty(length(shared))}test set{?s} {shared}, some locations also have training observations.", "i" = "Their predictions ignore the nugget seen in training, so the scores of models with a nugget aren't reliable there."))
     }
   }
 
@@ -3346,7 +3364,7 @@ assess_prediction <- function(object,
         score_test_set(i, in_id, out_id_i, data_test_i),
         error = function(e) {
           failures[nrow(failures) + 1, ] <<- list(model_names[h], i,
-                                                  conditionMessage(e))
+                                                  condition_text(e))
           n_test <- length(out_id_i)
           list(CRPS = rep(NA_real_, n_test), y_CRPS = rep(NA_real_, n_test),
                SCRPS = rep(NA_real_, n_test), PIT = numeric(0),
@@ -3648,7 +3666,8 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
 ##'   to compute both from a single fit-and-predict pass over the simulations.
 ##' @param messages Logical, whether to report on the assessment, with a
-##'   progress bar as described in [riskmap_progress]. Default is `TRUE`.
+##'   progress bar as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param target A function that converts a numeric matrix of means to a
 ##'   numeric matrix of the scientific target, with the same dimensions. The
 ##'   mean is the probability for a binomial model, the mean per unit exposure
@@ -3751,7 +3770,7 @@ assess_simulation <- function(obj_sim,
                        control_mcmc = set_control_mcmc(),
                        seed = NULL,
                        spatial_scale,
-                       messages = TRUE,
+                       messages = getOption("RiskMap.messages", TRUE),
                        target = identity,
                        area_summary = NULL,
                        boundaries = NULL,
@@ -3890,7 +3909,7 @@ assess_simulation <- function(obj_sim,
     empty <- lengths(inter) == 0
     if (any(empty)) {
       empty_names <- names_reg[empty]
-      riskmap_warn("No grid locations fall within {.val {empty_names}}, so {?it is/they are} left out of the assessment of areas.")
+      riskmap_warn("No grid locations fall within {.val {empty_names}}, so {cli::qty(length(empty_names))}{?it is/they are} left out of the assessment of areas.")
     }
     areas <- which(!empty)
     # Joint predictive draws are needed only within each area; areas that
@@ -4057,10 +4076,10 @@ assess_simulation <- function(obj_sim,
       }
       scores
     }, warning = function(w) {
-      fit_warnings <<- c(fit_warnings, conditionMessage(w))
+      fit_warnings <<- c(fit_warnings, condition_text(w))
       invokeRestart("muffleWarning")
     }), error = function(e) {
-      list(status = "failed", message = conditionMessage(e))
+      list(status = "failed", message = condition_text(e))
     })
     result$warnings <- unique(fit_warnings)
     result

@@ -67,7 +67,7 @@ elogit <- function(y, m) {
   }
   incompatible <- sizes != 1 & max_size %% sizes != 0
   if (any(incompatible)) {
-    abort_input("{.arg y} and {.arg m} must have the same length, or one of them length 1.", arg = "m")
+    abort_input("{.arg y} and {.arg m} must have lengths that divide the longer of the two.", arg = "m")
   }
   y <- rep_len(y, max_size)
   m <- rep_len(m, max_size)
@@ -104,7 +104,7 @@ propose_utm <- function(data) {
   if (length(utm_z_u) > 1) {
     tab_utm <- table(utm_z)
     if (all(diff(tab_utm) == 0))
-      riskmap_warn("The same number of locations falls in more than one UTM zone, so the first of them is used.")
+      riskmap_warn("The same number of locations falls in more than one UTM zone, so the lowest-numbered of them is used.")
     utm_z_u <- as.numeric(names(which.max(tab_utm)))
   }
 
@@ -530,10 +530,13 @@ get_formula_terms <- function(formula) {
 ##' as passed by the caller (for example, `data` from `check_formula()`).
 ##' @param data The data to check.
 ##' @param columns The column names to check for missing data.
+##' @param arg The argument the user gave the data as, by default the
+##'   expression passed as `data`.
 ##' @return TRUE if there is no missing data, or raise an error if not.
 ##' @noRd
-check_complete_data <- function(data, columns) {
-  name <- deparse(substitute(data))
+check_complete_data <- function(data, columns,
+                                arg = deparse(substitute(data))) {
+  name <- arg
   drop_coords <- st_drop_geometry(data[, columns])
   if (any(!complete.cases(drop_coords))) {
     abort_input(c("{.arg {name}} has rows with missing values in the variables of the model.", "i" = "Check or remove them."), arg = name)
@@ -1550,7 +1553,7 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
   } else {
     missing_model <- setdiff(model, all_models)
     if (length(missing_model) > 0) {
-      abort_input("{.arg model} must name models of {.arg x}, and {.val {missing_model}} {?doesn't/don't}.", arg = "model")
+      abort_input(c("{.arg model} must name models of {.arg x}.", "x" = "{.val {missing_model}} {cli::qty(length(missing_model))}{?is/are} not among them."), arg = "model")
     }
   }
 
@@ -1567,7 +1570,7 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
   } else {
     unavailable <- setdiff(metric, available_metrics)
     if (length(unavailable) > 0) {
-      abort_input("{.arg metric} must be among those computed, {.val {available_metrics}}, and {.val {unavailable}} {?isn't/aren't}.", arg = "metric")
+      abort_input(c("{.arg metric} must name metrics computed for {.arg x}.", "x" = "{.val {unavailable}} {cli::qty(length(unavailable))}{?was/were} not computed.", "i" = "The metrics computed are {.val {available_metrics}}."), arg = "metric")
     }
   }
 
@@ -1619,7 +1622,7 @@ check_binomial <- function(y, den){
   tolerance <- sqrt(.Machine$double.eps)
   valid <- all(y >= 0) & all(abs(y - round(y)) < tolerance)
   if (!valid) {
-    abort_input("A binomial response must be non-negative whole numbers.", arg = "data")
+    abort_input("The responses of a binomial model must be non-negative whole numbers.", arg = "data")
   }
 
   if (!is.null(den) && !all(den >= y)) {
@@ -1641,10 +1644,13 @@ check_binomial <- function(y, den){
 #' `"polygon"` (covering both polygons and multipolygons) or `"any"` to not check
 #' @param type whether to check that the data is `"sf"` (default) or
 #' `"sfc"` (either sf or sfc)
+#' @param arg The argument the user gave the data as, by default the
+#' expression passed as `data`. Internal callers name the user's argument.
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_data <- function(data, geometry = "point", type = "sf"){
+check_data <- function(data, geometry = "point", type = "sf",
+                       arg = deparse(substitute(data))) {
   if (!geometry %in% c("point", "polygon", "any")) {
     riskmap_bug("{.arg geometry} must be {.val point}, {.val polygon} or {.val any}.")
   }
@@ -1652,8 +1658,7 @@ check_data <- function(data, geometry = "point", type = "sf"){
     riskmap_bug("{.arg type} must be {.val sf} or {.val sfc}.")
   }
 
-  # The name passed to the function
-  name <- deparse(substitute(data))
+  name <- arg
 
   if (type == "sf") {
     if (!inherits(data, "sf")) {
@@ -1691,14 +1696,16 @@ check_data <- function(data, geometry = "point", type = "sf"){
 #'
 #' @param data An `sf` or `sfc` object with a projected CRS.
 #' @param distance_units The requested coordinate units, either `"m"` or `"km"`.
+#' @param arg The argument that gave the coordinate reference system, such as
+#'   `model_crs`, or the data whose system it is.
 #' @return The numeric factor converting one CRS unit to `distance_units`.
 #' @importFrom units set_units
 #' @noRd
-crs_to_distance_factor <- function(data, distance_units) {
+crs_to_distance_factor <- function(data, distance_units, arg = "data") {
   crs_unit <- st_crs(data)$ud_unit
 
   if (is.null(crs_unit)) {
-    abort_input(c("The coordinate reference system of the model has no linear units.", "i" = "Use a projected system with recognised linear units."), arg = "model_crs")
+    abort_input(c("The coordinate reference system given by {.arg {arg}} has no linear units.", "i" = "Use a projected system with recognised linear units."), arg = arg)
   }
 
   tryCatch(
@@ -1708,7 +1715,7 @@ crs_to_distance_factor <- function(data, distance_units) {
                 mode = "standard")
     ),
     error = function(e) {
-      abort_input(c("The units of the coordinate reference system of the model can't be converted to {.val {distance_units}}.", "i" = "Use a projected system with recognised linear units."), arg = "model_crs", parent = e)
+      abort_input(c("The units of the coordinate reference system given by {.arg {arg}} can't be converted to {.val {distance_units}}.", "i" = "Use a projected system with recognised linear units."), arg = arg, parent = e)
     }
   )
 }
@@ -1718,8 +1725,8 @@ crs_to_distance_factor <- function(data, distance_units) {
 #' @inheritParams crs_to_distance_factor
 #' @return A numeric coordinate matrix expressed in `distance_units`.
 #' @noRd
-coordinates_in_units <- function(data, distance_units) {
-  st_coordinates(data) * crs_to_distance_factor(data, distance_units)
+coordinates_in_units <- function(data, distance_units, arg = "data") {
+  st_coordinates(data) * crs_to_distance_factor(data, distance_units, arg)
 }
 
 #' Preserve the caller's random-number state
