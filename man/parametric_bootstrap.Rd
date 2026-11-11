@@ -33,7 +33,8 @@ random number state is otherwise left unchanged.}
 in parallel by forking, which is not available on Windows, where they
 run one after another.}
 
-\item{messages}{Logical, whether to report progress.}
+\item{messages}{Logical, whether to report on the bootstrap, with a
+progress bar as described in \link{riskmap_progress}.}
 }
 \value{
 An object of class \code{RiskMap_bootstrap}, a list with

@@ -19,7 +19,8 @@
 ##' @param cores Number of processes. With more than one, the replicates run
 ##'   in parallel by forking, which is not available on Windows, where they
 ##'   run one after another.
-##' @param messages Logical, whether to report progress.
+##' @param messages Logical, whether to report on the bootstrap, with a
+##'   progress bar as described in [riskmap_progress].
 ##'
 ##' @details
 ##' Each replicate simulates a response at the original locations, with the
@@ -151,8 +152,17 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
     message("Simulating and refitting ", n_sim, " replicates",
             if (cores > 1L) paste0(" on ", cores, " cores"), "...")
   }
-  results <- run_bootstrap_replicates(seq_len(n_sim), run_replicate, cores,
-                                      messages)
+  bar <- progress_bar("Refitting replicates", n_sim, messages)
+  results <- riskmap_map(seq_len(n_sim), run_replicate, cores = cores,
+                         progress = bar, errors = "return", one_thread = TRUE)
+  progress_done(bar)
+  # A replicate records its own failure, so an error here is a worker
+  # process that ended without returning a result.
+  lost <- vapply(results, inherits, logical(1), what = "error")
+  results[lost] <- lapply(results[lost], function(error) {
+    list(status = "failed", estimate = NULL, warnings = character(),
+         message = conditionMessage(error))
+  })
   elapsed <- proc.time()[["elapsed"]] - started
 
   out <- assemble_bootstrap(object, results, replicate_seeds)
@@ -265,56 +275,6 @@ run_bootstrap_replicate <- function(prepared, refit, seed) {
   })
   result$warnings <- unique(warnings)
   result
-}
-
-##' Run the bootstrap replicates, in parallel by forking when `cores` is
-##' above 1
-##'
-##' Every replicate runs with one BLAS and OpenMP thread when RhpcBLASctl is
-##' installed, so that its result does not depend on `cores`. The calling
-##' process switches to one thread before any replicate runs and restores the
-##' user's settings afterwards. It does so before forking too, because a
-##' worker forked from a process whose BLAS uses several threads can
-##' deadlock. One after another, progress is reported about ten times.
-##' @noRd
-run_bootstrap_replicates <- function(replicates, work, cores, messages) {
-  if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
-    blas_threads <- RhpcBLASctl::blas_get_num_procs()
-    omp_threads <- RhpcBLASctl::omp_get_max_threads()
-    on.exit({
-      RhpcBLASctl::blas_set_num_threads(blas_threads)
-      RhpcBLASctl::omp_set_num_threads(omp_threads)
-    }, add = TRUE)
-    RhpcBLASctl::blas_set_num_threads(1L)
-    RhpcBLASctl::omp_set_num_threads(1L)
-  }
-  if (cores > 1L && length(replicates) > 1L) {
-    results <- parallel::mclapply(replicates, work,
-                                  mc.cores = min(cores, length(replicates)),
-                                  mc.preschedule = TRUE)
-    # A worker that dies returns an error object in place of its results.
-    lost <- !vapply(results, is.list, logical(1))
-    results[lost] <- lapply(results[lost], function(result) {
-      list(status = "failed", estimate = NULL, warnings = character(),
-           message = paste("The worker process failed:",
-                           as.character(result)))
-    })
-    return(results)
-  }
-
-  started <- proc.time()[["elapsed"]]
-  report_every <- max(1L, length(replicates) %/% 10L)
-  results <- vector("list", length(replicates))
-  for (k in seq_along(replicates)) {
-    results[[k]] <- work(replicates[k])
-    if (messages && k %% report_every == 0L && k < length(replicates)) {
-      elapsed <- proc.time()[["elapsed"]] - started
-      message(k, " of ", length(replicates), " replicates done, about ",
-              format_bootstrap_time(elapsed / k * (length(replicates) - k)),
-              " left")
-    }
-  }
-  results
 }
 
 ##' @noRd

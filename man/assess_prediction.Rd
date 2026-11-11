@@ -86,7 +86,8 @@ number generator.}
 
 \item{plot_fold}{Logical; whether to plot each iteration's test and training sets. Defaults to \code{TRUE}.}
 
-\item{messages}{Logical; whether to display progress messages. Defaults to \code{TRUE}.}
+\item{messages}{Logical; whether to report on the assessment, with a
+progress bar as described in \link{riskmap_progress}. Defaults to \code{TRUE}.}
 
 \item{...}{Additional arguments passed to clustering or subsampling functions.}
 }

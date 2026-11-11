@@ -125,6 +125,33 @@ get_worldpop <- function(country, year, ..., messages = getOption("RiskMap.messa
 
 Internal functions keep taking `messages` from their caller without a default. Because messages are conditions, users can also silence them with `suppressMessages()`, and `options(rlib_message_verbosity = "quiet")` silences every message raised through cli or rlang, in RiskMap and in other packages.
 
+## Long computations
+
+### Repeated work
+
+Run repeated, independent work, such as bootstrap replicates, test sets, profile walks or simulations, through `riskmap_map()` in `R/map.R`, not through `lapply()`, `parallel::mclapply()` or a loop. On one core it runs the tasks in order. With `cores` above 1 it runs each task in a forked process, at most `cores` at a time, and collects the results as the processes finish, so that a progress bar moves while they run. It stops the other processes when a task fails, reports a process that died, uses one BLAS thread while forking, and runs on one core on Windows. Two rules keep the results independent of `cores`.
+
+- A task that draws random numbers sets its own seed, derived from the task.
+- A task makes no call to sf, because GDAL and PROJ can deadlock in a forked process. Prepare everything that needs sf before `riskmap_map()`.
+
+With `errors = "return"` a failed task's error takes the place of its result, for callers that record failures instead of stopping.
+
+### Progress
+
+Show progress with the helpers in `R/progress.R`, never with `message()` inside a loop.
+
+- `progress_bar(name, total, messages)` makes a bar for work whose amount is known. Pass it to `riskmap_map()` as `progress`, or move it with `progress_tick(bar)`, and close it with `progress_done(bar)`. When the units are only estimates, such as the expected number of profile points, use `unit = "percent"` and give `riskmap_map()` the `weights` of the tasks.
+- `progress_step(message, messages)` shows a line for each stage of work whose number of stages isn't known in advance, such as the stages of Monte Carlo maximum likelihood. `progress_step_done(messages)` closes the last one.
+
+```r
+bar <- progress_bar("Refitting replicates", n_sim, messages)
+results <- riskmap_map(seq_len(n_sim), run_replicate, cores = cores,
+                       progress = bar)
+progress_done(bar)
+```
+
+Both helpers show progress only when `messages` is `TRUE` and the option `RiskMap.progress` allows it (`?riskmap_progress`), so callers don't check either. Progress is for the console. Say what a long computation is about to do and what it found with `riskmap_inform()`, which stays in logs where progress is off.
+
 ## Debugging
 
 - To view data internal to a function call `debug(<function name>)` and then call the function to enter the debugger.

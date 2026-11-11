@@ -1719,6 +1719,8 @@ glgpm_nong_adaptive <- function(
   start <- unname(start)
   restart_start <- NULL
   if (isTRUE(control_mcml$laplace_start %||% !engine$integrated)) {
+    progress_step("Finding starting values with the Laplace approximation",
+                  messages)
     laplace <- maximise_laplace(
       function(parameters, draws) {
         objective(parameters, draws, proposal_type = "laplace")
@@ -1762,6 +1764,7 @@ glgpm_nong_adaptive <- function(
       dispersed$screen_unavailable <- "unstructured random effects"
     }
   }
+  progress_step_done(messages)
   fit <- fit_adaptive_mcml(
     engine = engine, start = start, restart_start = restart_start,
     objective = objective, penalty = penalty, dispersed = dispersed,
@@ -1779,7 +1782,8 @@ glgpm_nong_adaptive <- function(
     ),
     coefficient_index = engine$layout$index$beta,
     separation = find_separation(D, y, units_m %||% rep(1, length(y)),
-                                 family)
+                                 family),
+    messages = messages
   )
   if (identical(fit$outcome, "no valid fit")) {
     stop("Monte Carlo maximum likelihood could not obtain a valid fit: ",

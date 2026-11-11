@@ -45,6 +45,28 @@ on purpose has class `riskmap_error`, and an invalid argument
 - A `max_dist` or `phi` that isn't positive is now reported as "must be a
 single positive finite number" instead of "strictly between 0 and Inf".
 
+## Progress
+
+- `parametric_bootstrap()`, `profile()`, `assess_prediction()` and
+`assess_simulation()` show a progress bar with the work done and an estimate
+of the time left, and `predict()` shows one while it predicts at many
+locations in blocks. `glgpm()` shows a line for each stage of Monte Carlo
+maximum likelihood, with the time the stage took. See `?riskmap_progress`.
+- Progress is shown when `messages` is `TRUE` and the option
+`RiskMap.progress` allows it. The option's default is `interactive()`, so
+progress appears in the console but not in scripts, rendered documents or
+tests. `options(RiskMap.progress = TRUE)` shows it in the log of a script,
+where a bar writes a line for each tenth of the work.
+- The bars replace the progress messages of the bootstrap ("k of n replicates
+done"), the profiles ("Profiling sigma2 (1 of 3)"), cross-validation
+("Re-estimating model for subset i") and simulation studies ("Simulation j of
+n").
+- With `cores` above 1, the bootstrap and the profiles start one process per
+task, at most `cores` at a time, and collect each as it finishes, instead of
+dividing the tasks between the processes in advance. The results don't
+change. A profile on several cores now also switches the main process to one
+BLAS thread while the workers run, as the bootstrap already did.
+
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.
 

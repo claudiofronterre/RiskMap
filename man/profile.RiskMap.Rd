@@ -56,7 +56,8 @@ OpenMP thread, and the results are the same as on one core with one
 BLAS thread. With several BLAS threads on one core they agree up to
 rounding.}
 
-\item{messages}{Logical, whether to report progress.}
+\item{messages}{Logical, whether to report on the profiles, with a
+progress bar as described in \link{riskmap_progress}.}
 
 \item{...}{Not used.}
 }
