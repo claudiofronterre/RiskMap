@@ -236,23 +236,29 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' One object through which the MCML engine sees the family and the link of a
 ##' model (#253). `family` is "binomial" or "poisson", and `linkf` the inverse
 ##' link functions of `make_inverse_link_functions()`, NULL for the canonical
-##' link, or the kernel of records with effects integrated out
-##' (`make_integrated_kernel()`), which stands in the place of the link. Each
-##' method is the arithmetic the engine used before, moved without change, so
-##' that fits stay identical to the last bit, and each property is a test of
-##' the canonical link that the engine made, under the name of what it decides.
+##' link. Where records have effects integrated out, `kernel` is their kernel
+##' at the variances of the classes (`make_integrated_kernel()`), which gives
+##' the likelihood of the records in the place of the link, and the object
+##' keeps every other property and method of the model's link. Each method is
+##' the arithmetic the engine used before, moved without change, so that fits
+##' stay identical to the last bit, and each property is a test of the
+##' canonical link that the engine made, under the name of what it decides.
 ##'
 ##' Properties.
-##' - `canonical`, `integrated`, `poisson`, as the engine tested them.
+##' - `canonical`, `poisson`, of the model's link, and `integrated`, whether
+##'   `kernel` is given.
 ##' - `compiled`, the weights and rows of the log-likelihood are compiled
 ##'   (`cpp_importance_log_weights()`, `cpp_canonical_log_likelihood()`), with
-##'   `poisson` as their flag.
+##'   `poisson` as their flag. The compiled weights evaluate an integrated
+##'   kernel through its table themselves.
 ##' - `assumes_concave`, the mode search factorises its Hessian without a
-##'   guard and returns it unfloored.
-##' - `moves_start`, the mode search starts off the limits of the link
-##'   (`move_start_off_limits()`).
+##'   guard and returns it unfloored, for the canonical link without a kernel.
+##' - `moves_start`, the mode search starts off the limits of a custom link
+##'   without a kernel (`move_start_off_limits()`).
 ##' - `needs_finite_weight`, a bank with no finite weight is a failed
 ##'   evaluation.
+##' - `legacy_link`, what the code that step 1 has not moved yet takes in the
+##'   place of the link, the kernel where there is one and the link otherwise.
 ##'
 ##' Methods, for records with `y` events of `units_m` trials, or counts with
 ##' exposure `units_m`, at linear predictors `eta`.
@@ -262,22 +268,28 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   matrix of linear predictors, one column per record
 ##'   (`compute_observation_log_likelihood()`).
 ##' - `slope_parts(eta, y, units_m)`, the score and curvature of each record
-##'   at each row of `eta`, for the slope at a held variance, or NULL where a
-##'   custom link cannot give them (`compute_variance_slope_terms()`).
+##'   at each row of `eta` under the model's link, for the slope at a held
+##'   variance, or NULL where a custom link cannot give them
+##'   (`compute_slope_terms()`). Records integrated out take theirs from their
+##'   table instead.
 ##' - `move_start(latent, linear_predictor, y, units_m, columns)`, as
 ##'   `move_start_off_limits()`.
 ##' @noRd
-make_family <- function(family, linkf = NULL) {
+make_family <- function(family, linkf = NULL, kernel = NULL) {
   if (!family %in% c("binomial", "poisson")) {
     stop("The family object is defined for the binomial and Poisson ",
          "families only.", call. = FALSE)
   }
   if (is.null(linkf)) linkf <- make_inverse_link_functions(family, NULL, 1L)
+  if (is_integrated_link(linkf)) {
+    stop("The kernel of integrated records goes in `kernel`, not in ",
+         "`linkf`.", call. = FALSE)
+  }
   canonical <- identical(linkf$name, "canonical")
-  integrated <- is_integrated_link(linkf)
+  integrated <- !is.null(kernel)
   poisson <- family == "poisson"
   terms <- if (integrated) {
-    function(eta, y, units_m) linkf$terms(eta)
+    function(eta, y, units_m) kernel$terms(eta)
   } else if (!canonical) {
     function(eta, y, units_m) {
       compute_custom_link_terms(eta, y, units_m, family, linkf)
@@ -287,18 +299,18 @@ make_family <- function(family, linkf = NULL) {
   } else {
     function(eta, y, units_m) canonical_binomial_terms(eta, y, units_m, linkf)
   }
-  log_likelihood <- if (canonical) {
+  log_likelihood <- if (integrated) {
+    function(eta, y, units_m) kernel$log_likelihood(eta)
+  } else if (canonical) {
     function(eta, y, units_m) {
       cpp_canonical_log_likelihood(eta, y, units_m, poisson = poisson)
     }
-  } else if (integrated) {
-    function(eta, y, units_m) linkf$log_likelihood(eta)
   } else {
     function(eta, y, units_m) {
       compute_link_log_likelihood_rows(eta, y, units_m, family, linkf)
     }
   }
-  slope_parts <- if (integrated) NULL else if (canonical) {
+  slope_parts <- if (canonical) {
     function(eta, y, units_m) {
       canonical_slope_parts(eta, y, units_m, family)
     }
@@ -307,11 +319,12 @@ make_family <- function(family, linkf = NULL) {
   }
   structure(
     list(
-      family = family, linkf = linkf, canonical = canonical,
+      family = family, linkf = linkf, kernel = kernel, canonical = canonical,
       integrated = integrated, poisson = poisson, compiled = canonical,
-      assumes_concave = canonical,
+      assumes_concave = canonical && !integrated,
       moves_start = !canonical && !integrated,
       needs_finite_weight = !canonical,
+      legacy_link = if (integrated) kernel else linkf,
       terms = terms, log_likelihood = log_likelihood,
       slope_parts = slope_parts,
       move_start = function(latent, linear_predictor, y, units_m, columns) {
@@ -323,12 +336,27 @@ make_family <- function(family, linkf = NULL) {
   )
 }
 
+##' The family object for a family string and a link or an integrated kernel
+##'
+##' For the old entry points, which take in `linkf` either a link or the kernel
+##' of integrated records (`make_integrated_kernel()`). With a kernel the
+##' model's link is not known, and the object is built on the canonical link,
+##' whose properties those entry points do not read. Removed with them in step
+##' 1d of #253.
+##' @noRd
+family_of_link <- function(family, linkf) {
+  if (is_integrated_link(linkf)) return(make_family(family, kernel = linkf))
+  make_family(family, linkf)
+}
+
 ##' The family object of a fitted model
 ##'
 ##' Rebuilt from what the fit stores, the family string and the
-##' `link_function` list, so that a refit, a profile, a check or a prediction
-##' sees the likelihood the fit used. Fits of the binomial and Poisson
-##' families only.
+##' `link_function` list, for the binomial and Poisson families. It gives the
+##' likelihood of the fit's records under its link. Where the fit integrated
+##' effects out, the likelihood of those records also needs the fit's plan of
+##' integrated records and the variances of its classes (`kernel`), which
+##' this does not rebuild.
 ##' @noRd
 fit_family <- function(fit) {
   make_family(fit$family, fit$link_function)

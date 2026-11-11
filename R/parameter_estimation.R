@@ -3091,7 +3091,7 @@ sampler_latent_structure <- function(Sigma, ID_coords, ID_re, sigma2_re) {
 ##' order and with the structured factor of `sampler_latent_structure()`, so
 ##' that each step costs a factorisation of the size of the locations and
 ##' passes over the records, whatever the number of `re()` levels. It follows
-##' the rules of `adaptive_laplace_mode()`. For a link that is not
+##' the rules of `find_latent_mode()`. For a link that is not
 ##' log-concave, curvatures that leave the Hessian without a Cholesky factor
 ##' are set to zero, a search from a nonzero `start` that fails is repeated
 ##' from zero, and a custom link's search starts off the limits of the link.
@@ -3165,7 +3165,7 @@ find_sampler_mode <- function(structure, y, units_m, mu, family, linkf,
         }
       }
       if (!accepted) {
-        # As in adaptive_laplace_mode(), a point where the promised increase
+        # As in find_latent_mode(), a point where the promised increase
         # is within rounding is a mode that rounding keeps from confirming.
         if (sum(gradient * step) / 2 > 1e-12 * abs(current)) return(NULL)
         reached_limit <- FALSE

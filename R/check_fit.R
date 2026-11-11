@@ -637,7 +637,7 @@ fit_check_importance_distribution <- function(optimizer) {
 ##'
 ##' The search stops at the limit with its last iterate. A search that fails
 ##' from the mode found before starts again from zero
-##' (`adaptive_laplace_mode()`). The mode only shapes the importance
+##' (`find_latent_mode()`). The mode only shapes the importance
 ##' distribution, so the cost is speed and not validity. NULL when no search
 ##' reached the limit or started again. A fit made before the restarts were
 ##' counted has no count of them, which is read as none.

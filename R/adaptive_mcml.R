@@ -5,7 +5,7 @@
 ##' `curvature` is the negative second derivative of the log-likelihood.
 ##' @noRd
 laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
-  make_family(family, linkf)$terms(eta, y, units_m)
+  family_of_link(family, linkf)$terms(eta, y, units_m)
 }
 
 ##' Index structure mapping latent variables to observations
@@ -219,7 +219,7 @@ adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
                                   family, linkf, start,
                                   tolerance = 1e-10, maximum_iterations = 100L) {
   find_latent_mode(mu, y, units_m, latent_map, precision,
-                   make_family(family, linkf), start, tolerance,
+                   family_of_link(family, linkf), start, tolerance,
                    maximum_iterations)
 }
 
@@ -344,7 +344,7 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
 ##' @noRd
 compute_observation_log_likelihood <- function(eta, y, units_m, family,
                                                linkf) {
-  make_family(family, linkf)$log_likelihood(eta, y, units_m)
+  family_of_link(family, linkf)$log_likelihood(eta, y, units_m)
 }
 
 ##' Deviations of draws from the centre under the prior of the latent effects
@@ -809,7 +809,8 @@ make_adaptive_mcml_engine <- function(
   # the nugget integrated out the records' table at the nugget variance.
   kernel_at <- function(values) {
     if (!integrated) return(model)
-    make_family(family, make_integrated_kernel(sites, values$class_variances))
+    make_family(family, linkf,
+                kernel = make_integrated_kernel(sites, values$class_variances))
   }
   # Converged global factors at a fixed parameter value (set by
   # set_anchor()), used to start the global iteration at other values.
@@ -857,7 +858,7 @@ make_adaptive_mcml_engine <- function(
       approximation
     }
     gaussian <- build_gaussian_proposal(
-      type, mu, y, units_m, latent_map, precision, family, kernel$linkf,
+      type, mu, y, units_m, latent_map, precision, family, kernel$legacy_link,
       canonical && !integrated, anchor, find_mode,
       if (integrated) stall_tolerance
     )
@@ -991,7 +992,7 @@ make_adaptive_mcml_engine <- function(
     tested
   }
   # One row per draw and one column per parameter in `tested`
-  # (compute_variance_slope_terms()), from the same draws as the weights.
+  # (compute_slope_terms()), from the same draws as the weights.
   variance_slope_terms <- function(draws, proposal, defensive, tested) {
     deviations <- draws %*% proposal$root
     if (any(defensive)) {
