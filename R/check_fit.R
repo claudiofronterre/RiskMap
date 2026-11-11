@@ -77,7 +77,9 @@
 ##' @return An object of class `"RiskMap_check"`, a list with:
 ##' \item{checks}{A data frame with one row per check, those that need a look
 ##' first, and the columns `check`, `status` (`"PROBLEM"`, `"SUSPICIOUS"` or
-##' `"OK"`), `finding` and `fix`, which is empty where there is nothing to do.}
+##' `"OK"`), `finding`, `fix`, which is empty where there is nothing to do,
+##' and `brief`, the finding in a few words, which `print()` gives for a check
+##' that is `OK`.}
 ##' \item{draws}{One sentence on the stages and draws of the fit, `NULL` for
 ##' Gaussian models.}
 ##' \item{stages}{For non-Gaussian models, a data frame with one row per stage
@@ -143,9 +145,9 @@ check_fit <- function(object, extra = character(), profile = NULL,
   if (!is.null(profile)) extra <- union(extra, "profile")
   mcml <- summarise_mcml_fit(object)
   history <- object$mcml_history %||% attr(object, "optimizer")$mcml_history
-  results <- run_fit_checks(object, mcml)
   extras <- run_extra_checks(object, extra, profile, messages,
                              as.integer(cores))
+  results <- run_fit_checks(object, mcml, names(extras$results))
   structure(
     list(
       checks = tabulate_fit_checks(c(results, extras$results)),
@@ -188,10 +190,18 @@ list_fit_checks <- function(object, mcml) {
 ##' check, holding its `row` and its `data` (`collect_check_data()`). `mcml`
 ##' is the list of `summarise_mcml_fit()`, NULL for a Gaussian fit. A fit whose
 ##' likelihood has no maximum gets that check alone, since the others describe
-##' a maximum.
+##' a maximum. `extras` names the extra checks that ran, so that a fix points
+##' to the row of an extra check that ran and otherwise to the call that runs
+##' it.
 ##' @noRd
-run_fit_checks <- function(object, mcml) {
+run_fit_checks <- function(object, mcml, extras = character()) {
   optimizer <- attr(object, "optimizer")
+  radius <- if (is.null(find_radius_check_obstacle(object))) {
+    describe_radius_pointer("radius" %in% extras)
+  } else {
+    ""
+  }
+  profile <- describe_profile_pointer("profile" %in% extras)
   rows <- if (is.null(mcml)) {
     list(fit_check_row("Monte Carlo accuracy", "OK",
                        "A Gaussian fit has no Monte Carlo error."))
@@ -200,10 +210,10 @@ run_fit_checks <- function(object, mcml) {
   } else {
     list(fit_check_monte_carlo(mcml),
          fit_check_weights(mcml$certification_bank,
-                           isTRUE(mcml$suggest_integration)),
-         fit_check_maxima(optimizer, object$distance_units),
+                           isTRUE(mcml$suggest_integration), radius),
+         fit_check_maxima(optimizer, object$distance_units, profile),
          fit_check_variances(optimizer),
-         fit_check_spatial_scale(object, optimizer),
+         fit_check_spatial_scale(object, optimizer, profile),
          fit_check_importance_distribution(optimizer),
          fit_check_mode_search(optimizer$mcml_mode_searches),
          fit_check_link(object$link_function, object$family))
@@ -227,9 +237,43 @@ check_result <- function(row, data = NULL) {
 }
 
 ##' One row of the table of checks
+##'
+##' `brief` is the finding in a few words, which `print()` gives on one line
+##' for a check that is OK.
 ##' @noRd
-fit_check_row <- function(check, status, finding, fix = "") {
-  data.frame(check = check, status = status, finding = finding, fix = fix)
+fit_check_row <- function(check, status, finding, fix = "", brief = finding) {
+  data.frame(check = check, status = status, finding = finding, fix = fix,
+             brief = brief)
+}
+
+##' Text with its first letter in capitals
+##' @noRd
+capitalise_first <- function(text) {
+  paste0(toupper(substr(text, 1L, 1L)), substring(text, 2L))
+}
+
+##' Where a fix sends the user for the profile likelihood
+##'
+##' The phrase completes "see the profile likelihood", with the call of
+##' `check_fit()` that computes the profiles or, when they ran, their row and
+##' panels.
+##' @noRd
+describe_profile_pointer <- function(ran = FALSE) {
+  if (ran) {
+    return(" in the check \"Profile likelihood\" and its panels in plot()")
+  }
+  ", check_fit(fit, extra = \"profile\")"
+}
+
+##' Where a fix sends the user for the check of the radius of the bound
+##'
+##' A sentence for the fix of heavy-tailed weights, which can make the radius
+##' too small.
+##' @noRd
+describe_radius_pointer <- function(ran = FALSE) {
+  if (ran) return(" See the check \"Radius of the bound\".")
+  paste0(" The check of the radius, check_fit(fit, extra = \"radius\"), ",
+         "predicts whether it is too small.")
 }
 
 ##' The advice to use the PC penalty, unless the fit already does
@@ -254,7 +298,7 @@ fit_check_monte_carlo <- function(mcml) {
     "certified" = fit_check_row(name, "OK", paste0(
       "The error of the estimate is within ", bound, " standard errors (limit ",
       mcml$tolerance, ")."
-    )),
+    ), brief = paste0("Within ", bound, " standard errors.")),
     "weak identification" = fit_check_row(
       name, "PROBLEM",
       "There is no bound on the error, because the observed information is singular.",
@@ -307,25 +351,28 @@ fit_check_monte_carlo <- function(mcml) {
 ##' the certificate is unreliable at the usual numbers of draws (Vehtari et
 ##' al., 2024). NULL for a fit that did not reach those draws. With
 ##' `suggest_integration`, the fix also suggests integrating the nugget out.
+##' `radius` is the sentence of the fix on the check of the radius
+##' (`describe_radius_pointer()`), empty where that check does not apply.
 ##' @noRd
-fit_check_weights <- function(bank, suggest_integration = FALSE) {
+fit_check_weights <- function(bank, suggest_integration = FALSE, radius = "") {
   if (is.null(bank)) return(NULL)
   name <- "Importance weights"
+  draws <- format(round(bank$effective_draws), big.mark = ",", trim = TRUE)
   found <- paste0(
-    "The certification draws had ",
-    format(round(bank$effective_draws), big.mark = ",", trim = TRUE),
-    " effective draws and a tail shape of ", signif(bank$pareto_k, 2),
-    " (limit 0.7)"
+    "The certification draws had ", draws, " effective draws and a tail ",
+    "shape of ", signif(bank$pareto_k, 2), " (limit 0.7)"
   )
   if (isTRUE(bank$pareto_k <= 0.7)) {
-    return(fit_check_row(name, "OK", paste0(found, ".")))
+    return(fit_check_row(name, "OK", paste0(found, "."), brief = paste0(
+      draws, " effective draws, tail shape ", signif(bank$pareto_k, 2), "."
+    )))
   }
   fit_check_row(
     name, "SUSPICIOUS",
     paste0(found, ", which makes the bound on the error less reliable."),
     paste0("More draws may help, through 'max_samples' in set_control_mcml(). ",
            "If the shape stays above 0.7, read the bound with caution.",
-           describe_integration_advice(suggest_integration))
+           radius, describe_integration_advice(suggest_integration))
   )
 }
 
@@ -344,9 +391,11 @@ describe_integration_advice <- function(suggest) {
 ##'
 ##' An exact alarm shows that the estimate is not the global maximum. The check
 ##' does not prove that no higher maximum exists, which the certificate says
-##' nothing about either.
+##' nothing about either. `profile` completes the fix
+##' (`describe_profile_pointer()`).
 ##' @noRd
-fit_check_maxima <- function(optimizer, units = NULL) {
+fit_check_maxima <- function(optimizer, units = NULL,
+                             profile = describe_profile_pointer()) {
   name <- "Other maxima"
   ambiguous <- isTRUE(optimizer$mcml_ambiguous_maxima)
   better <- isTRUE(optimizer$mcml_better_maximum)
@@ -356,13 +405,15 @@ fit_check_maxima <- function(optimizer, units = NULL) {
       paste0("An exact lower bound on the likelihood at another spatial scale ",
              "is above the likelihood of the estimate, so the estimate is not ",
              "the maximum likelihood estimate."),
-      "Inspect the profile likelihood, profile(fit, parameters = \"phi\")."
+      paste0("Inspect the profile likelihood", profile, ".")
     ))
   }
   if (!ambiguous && !better) {
-    return(fit_check_row(name, "OK", paste0(
-      "The check found no higher maximum, though it cannot rule one out."
-    )))
+    return(fit_check_row(
+      name, "OK",
+      "The check found no higher maximum, though it cannot rule one out.",
+      brief = "The check found no higher maximum."
+    ))
   }
   fit_check_row(
     name, "SUSPICIOUS",
@@ -376,7 +427,7 @@ fit_check_maxima <- function(optimizer, units = NULL) {
       describe_other_maximum(optimizer$mcml_maxima_check, ambiguous, units)
     ),
     paste0("Wald intervals may describe the uncertainty poorly, so see the ",
-           "profile likelihood, profile(fit).")
+           "profile likelihood", profile, ".")
   )
 }
 
@@ -417,7 +468,8 @@ fit_check_variances <- function(optimizer) {
   boundary <- optimizer$mcml_boundary
   if (!length(boundary)) {
     return(fit_check_row(name, "OK",
-                         "No variance was estimated as effectively zero."))
+                         "No variance was estimated as effectively zero.",
+                         brief = "No variance was estimated as zero."))
   }
   held <- optimizer$mcml_held_variances
   listed <- function(names) paste(names, collapse = " and the ")
@@ -431,10 +483,11 @@ fit_check_variances <- function(optimizer) {
     ))
   }
   if (setequal(boundary, held$name) && all(held$falling)) {
+    symbols <- sub("^.*\\((.*)\\)$", "\\1", boundary)
     return(fit_check_row(name, "OK", paste0(
       "The ", listed(boundary), " was estimated as zero, where the likelihood ",
       "is at its maximum, because it falls as the variance leaves zero."
-    )))
+    ), brief = paste0("Zero is the maximum for ", join_phrases(symbols), ".")))
   }
   single <- length(boundary) == 1L
   spatial <- any(grepl("sigma2", boundary, fixed = TRUE))
@@ -463,11 +516,13 @@ fit_check_variances <- function(optimizer) {
 ##' Whether the data determine the spatial scale
 ##'
 ##' NULL with the spatial variance at zero, where there is no scale to check.
+##' `profile` completes the fix (`describe_profile_pointer()`).
 ##' @noRd
-fit_check_spatial_scale <- function(object, optimizer) {
+fit_check_spatial_scale <- function(object, optimizer,
+                                    profile = describe_profile_pointer()) {
   name <- "Spatial scale"
   advice <- describe_pc_prior_advice(optimizer)
-  see_profile <- "See profile(fit, parameters = \"phi\")."
+  see_profile <- paste0("See the profile likelihood", profile, ".")
   if (isTRUE(optimizer$mcml_identifiability_failure)) {
     return(fit_check_row(
       name, "PROBLEM",
@@ -486,13 +541,14 @@ fit_check_spatial_scale <- function(object, optimizer) {
   }
   if (any(grepl("sigma2", optimizer$mcml_boundary, fixed = TRUE))) return(NULL)
   units <- object$distance_units %||% "distance units"
-  scale <- paste0("The scale of ", signif(stats::coef(object)$phi, 3), " ", units)
+  value <- paste0(signif(stats::coef(object)$phi, 3), " ", units)
+  scale <- paste0("The scale of ", value)
   small <- isTRUE(optimizer$mcml_small_scale)
   near <- isTRUE(optimizer$mcml_near_limit)
   if (!small && !near) {
     return(fit_check_row(name, "OK", paste0(
       scale, " is longer than the median distance between neighbouring locations."
-    )))
+    ), brief = paste0(value, ", longer than the median spacing.")))
   }
   fit_check_row(
     name, "SUSPICIOUS",
@@ -539,7 +595,28 @@ fit_check_importance_distribution <- function(optimizer) {
     "The global distribution could not be built at the Laplace estimate, so ",
     "the fit restarted from the starting values"
   )
-  fit_check_row("Importance distribution", "OK", paste0(
+  used <- if (identical(optimizer$mcml_proposal, "laplace")) {
+    "The Laplace approximation"
+  } else {
+    "The global distribution"
+  }
+  brief <- c(
+    if (!is.null(restart)) "restarted from the starting values",
+    if (length(fallbacks)) paste0(
+      "the Laplace approximation at stage", if (length(fallbacks) > 1L) "s",
+      " ", paste(fallbacks, collapse = ", ")
+    ),
+    if (!is.null(errors_found)) paste0(
+      "not built at ", format(errors$count, big.mark = ","),
+      if (errors$count == 1L) " parameter value" else " parameter values"
+    )
+  )
+  brief <- if (length(brief)) {
+    paste0(capitalise_first(paste(brief, collapse = ", ")), ".")
+  } else {
+    paste0(used, " at every stage.")
+  }
+  finding <- paste0(
     if (length(fallbacks)) {
       paste0(if (!is.null(restart)) paste0(restart, ". "),
              "The global distribution could not be built at stage",
@@ -549,14 +626,11 @@ fit_check_importance_distribution <- function(optimizer) {
     } else if (!is.null(restart)) {
       paste0(restart, " and used it at every stage.")
     } else {
-      paste0(if (identical(optimizer$mcml_proposal, "laplace")) {
-        "The Laplace approximation"
-      } else {
-        "The global distribution"
-      }, " was used at every stage.")
+      paste0(used, " was used at every stage.")
     },
     errors_found
-  ))
+  )
+  fit_check_row("Importance distribution", "OK", finding, brief = brief)
 }
 
 ##' Whether the search for the conditional mode reached its iteration limit
@@ -583,12 +657,22 @@ fit_check_mode_search <- function(counts) {
       format(restarted, big.mark = ",")
     )
   )
+  brief <- c(
+    if (counts$at_limit > 0L) paste0(
+      "at its limit in ", format(counts$at_limit, big.mark = ",")
+    ),
+    if (restarted > 0L) {
+      paste0("restarted in ", format(restarted, big.mark = ","))
+    }
+  )
+  searches <- paste0(" of ", format(counts$searches, big.mark = ","),
+                     " searches")
   fit_check_row("Latent mode search", "OK", paste0(
     "The search for the mode of the latent effects ",
-    paste(outcomes, collapse = ", and "), " of ",
-    format(counts$searches, big.mark = ","),
-    " searches, which slows the fit but does not affect the certificate."
-  ))
+    paste(outcomes, collapse = ", and "), searches,
+    ", which slows the fit but does not affect the certificate."
+  ), brief = paste0(capitalise_first(paste(brief, collapse = ", ")), searches,
+                    "."))
 }
 
 ##' Whether the link is one known to make the likelihood log-concave
@@ -611,7 +695,7 @@ fit_check_link <- function(link_function, family) {
     "still runs, but the importance distribution can fit less well, so the ",
     "fit may take longer to certify."
   )
-  fit_check_row("Link", "OK", if (is.null(link_function$link)) {
+  finding <- if (is.null(link_function$link)) {
     paste0("The link was given as a function, so it is not known whether it ",
            "makes the likelihood of each location log-concave in its latent ",
            "effect, as ", if (identical(family, "poisson")) {
@@ -624,7 +708,10 @@ fit_check_link <- function(link_function, family) {
     paste0("The ", link_function$link, " link is not among those known to ",
            "make the likelihood of each location log-concave in its latent ",
            "effect, so ", consequence)
-  })
+  }
+  fit_check_row("Link", "OK", finding, brief = paste0(
+    link_function$link %||% "A function", ", not known to be log-concave."
+  ))
 }
 
 ##' Why the likelihood has no maximum, and what can be done instead
@@ -728,9 +815,11 @@ summarise_estimate_moves <- function(object, history) {
 ##' @title Print the Checks on a Fitted Model
 ##' @description Print method for objects of class `"RiskMap_check"` from
 ##'   [check_fit()], which gives the verdict. Each check has an entry, those
-##'   that need a look first, each with its fix where there is one, and the
-##'   extra checks that were asked for but not computed are listed with the
-##'   reason. [summary.RiskMap_check()] gives the numbers behind each finding.
+##'   that need a look first. A check that needs a look is given in full,
+##'   with its fix where there is one, and a check that is `OK` takes one line,
+##'   with its finding in a few words. The extra checks that were asked for
+##'   but not computed are listed with the reason. [summary.RiskMap_check()]
+##'   gives each finding in full with the numbers behind it.
 ##' @param x An object of class `"RiskMap_check"`.
 ##' @param ... other parameters.
 ##' @return Invisibly returns `x`.
@@ -741,20 +830,25 @@ print.RiskMap_check <- function(x, ...) {
   cat("Checks on this fit\n")
   if (!is.null(x$draws)) write_wrapped(x$draws)
   cat("\n")
-  status_width <- max(nchar(x$checks$status))
-  name_width <- max(nchar(x$checks$check))
+  checks <- x$checks
+  status_width <- max(nchar(checks$status))
+  name_width <- max(nchar(checks$check))
   finding_start <- status_width + name_width + 4L
   width <- max(finding_start + 30L, getOption("width", 80L) - 2L)
-  for (row in seq_len(nrow(x$checks))) {
-    check <- x$checks[row, ]
-    finding <- strwrap(check$finding, width = width - finding_start)
+  # A table made before the column of brief findings gives the findings.
+  briefs <- checks$brief %||% checks$finding
+  for (row in seq_len(nrow(checks))) {
+    check <- checks[row, ]
+    ok <- identical(check$status, "OK")
+    finding <- strwrap(if (ok) briefs[[row]] else check$finding,
+                       width = width - finding_start)
     cat(formatC(check$status, width = -status_width), "  ",
         formatC(check$check, width = -name_width), "  ", finding[1L], "\n",
         sep = "")
     if (length(finding) > 1L) {
       cat(paste0(strrep(" ", finding_start), finding[-1L]), sep = "\n")
     }
-    if (nzchar(check$fix)) {
+    if (!ok && nzchar(check$fix)) {
       cat(strwrap(paste("Fix:", check$fix), width = width,
                   indent = status_width + 2L, exdent = status_width + 7L),
           sep = "\n")
@@ -765,6 +859,8 @@ print.RiskMap_check <- function(x, ...) {
     write_wrapped(x$not_computed)
   }
   cat("\n")
+  write_wrapped(paste0("summary() of these checks gives the evidence behind ",
+                       "each finding."))
   write_wrapped(paste0("These checks concern the computation, not whether the ",
                        "model suits the data."))
   invisible(x)
@@ -779,8 +875,25 @@ print.RiskMap_check <- function(x, ...) {
 ##'   (`"certificate"`), the effective certification draws
 ##'   (`"effective_draws"`), the tail shape of the importance weights against
 ##'   its limit of 0.7 (`"pareto_k"`) and how far the estimates moved
-##'   (`"moves"`). With the extra check `"radius"`, the panel `"radius"` shows
-##'   the error of each resampled sample of certification draws against the
+##'   (`"moves"`). Two more panels come from what the fit recorded. For a
+##'   variance held at zero whose slope was tested, `"held_variances"` shows
+##'   the slope of the log-likelihood in that variance at zero with its
+##'   interval of 2.58 standard errors each side, the test of the fit, so that
+##'   the likelihood clearly rises as the variance leaves zero when the whole
+##'   interval is above zero, and clearly falls when it is below. The panel
+##'   `"screen"` shows the screen of short scales of the check for other
+##'   maxima. On a log scale of distance it gives, at each short scale, the
+##'   log-likelihood estimated on the fitting draws above that of the
+##'   estimate, which repeats the fit from the best such scale when one comes
+##'   within 0.25 of it (the dashed line), and the exact lower bound on the
+##'   likelihood there, with the likelihood with independent location effects,
+##'   the limit as the scale goes to zero, as a dotted line. An exact bound
+##'   clearly above the estimate shows that the estimate is not the maximum
+##'   likelihood estimate. For a fit with the spatial variance at zero and a
+##'   nugget, the panel adds the exact bound over longer scales for each share
+##'   of the variance in a spatial effect. With the extra check `"radius"`,
+##'   the panel `"radius"` shows the error of each resampled sample of
+##'   certification draws against the
 ##'   radius the fit would use for it, the larger of its own and a
 ##'   replicate's, in standard errors, with the line where they are equal. Its
 ##'   subtitle gives the predicted rate at which the radius is exceeded, as in
@@ -792,8 +905,9 @@ print.RiskMap_check <- function(x, ...) {
 ##'   as `"profile_phi"`.
 ##' @param x An object of class `"RiskMap_check"`.
 ##' @param which Names of the panels to draw, among `"certificate"`,
-##'   `"effective_draws"`, `"pareto_k"`, `"moves"`, `"radius"`, the panels of
-##'   the profiles, such as `"profile_phi"`, and `"profile"` for every profile.
+##'   `"effective_draws"`, `"pareto_k"`, `"moves"`, `"held_variances"`,
+##'   `"screen"`, `"radius"`, the panels of the profiles, such as
+##'   `"profile_phi"`, and `"profile"` for every profile.
 ##'   The default is every panel that has something to show. A chosen panel
 ##'   with nothing to show gives a message saying why, and which extra check
 ##'   of [check_fit()] would compute it. If no panel has anything to show,
@@ -812,14 +926,14 @@ print.RiskMap_check <- function(x, ...) {
 ##' )
 ##' checked <- check_fit(fit, extra = "all")
 ##' plot(checked)
-##' plot(checked, which = c("certificate", "radius", "profile_phi"))
+##' plot(checked, which = c("certificate", "screen", "radius", "profile_phi"))
 ##' }
 ##' @method plot RiskMap_check
 ##' @export
 plot.RiskMap_check <- function(x, which = NULL, ...) {
   stopifnot(inherits(x, "RiskMap_check"))
   panel_names <- c("certificate", "effective_draws", "pareto_k", "moves",
-                   "radius")
+                   "held_variances", "screen", "radius")
   if (!is.null(which)) {
     stopifnot("'which' must be a character vector" =
                 is.character(which) && length(which) > 0L && !anyNA(which))
@@ -874,6 +988,10 @@ draw_check_panels <- function(x) {
   c(list(certificate = stages$certificate,
          effective_draws = stages$effective_draws,
          pareto_k = stages$pareto_k, moves = stages$moves,
+         held_variances = plot_held_variance_panel(
+           x$results$Variances$data[["Slope of the likelihood at zero"]]
+         ),
+         screen = plot_screen_panel(x$results[["Other maxima"]]$data),
          radius = plot_radius_panel(x$extras$radius$data)),
     profiles)
 }
@@ -906,6 +1024,9 @@ explain_missing_panels <- function(x, names) {
                       "\"radius\", check_fit(fit, extra = \"radius\")."))
       }
     }
+    if (name %in% c("held_variances", "screen")) {
+      return(explain_missing_fit_panel(x, name))
+    }
     if (gaussian) {
       return(paste0("A Gaussian fit has no Monte Carlo error, so it has no ",
                     "stages to plot."))
@@ -920,6 +1041,269 @@ explain_missing_panels <- function(x, names) {
     )
   }, character(1L))
   unique(unname(reasons))
+}
+
+##' Why the panel of the held variances or of the screen has nothing to show
+##'
+##' Both draw only what the fit recorded, so the reason is about the fit, not
+##' an extra check.
+##' @noRd
+explain_missing_fit_panel <- function(x, name) {
+  held_panel <- identical(name, "held_variances")
+  if (is.null(x$stages)) {
+    return(paste0("A Gaussian fit is fitted exactly, so it has no ",
+                  if (held_panel) "test of a variance held at zero" else
+                    "screen of short scales", " to plot."))
+  }
+  if ("Maximum of the likelihood" %in% x$checks$check) {
+    return(paste0("The likelihood has no maximum, so there is no ",
+                  if (held_panel) "test of a held variance" else
+                    "screen of short scales", " to plot."))
+  }
+  if (held_panel) {
+    held <- x$results$Variances$data[["Held at zero"]]
+    if (is.null(held) || identical(held, "none")) {
+      return(paste0("No variance was held at zero, so there is no slope at ",
+                    "zero to plot."))
+    }
+    if (any(grepl("sigma2", held, fixed = TRUE))) {
+      return(paste0("The ", join_phrases(held), " held at zero ",
+                    if (length(held) > 1L) "were" else "was", " not tested, ",
+                    "since with the spatial variance at zero the slope ",
+                    "depends on the scale, which is then unidentified."))
+    }
+    return(paste0("The fit recorded no test of the slope at zero for the ",
+                  join_phrases(held), "."))
+  }
+  data <- x$results[["Other maxima"]]$data
+  gate <- data[["Screen of short scales"]]
+  if (is.null(gate)) {
+    return("The fit recorded no screen of short scales.")
+  }
+  if (startsWith(gate, "unavailable")) {
+    return(paste0("The screen of short scales did not run on this fit, ",
+                  "because of its ",
+                  sub("^unavailable \\((.*)\\)$", "\\1", gate), "."))
+  }
+  if (identical(gate, "failed")) {
+    return(paste0("The screen of short scales did not run, because the ",
+                  "likelihood with independent location effects could not be ",
+                  "computed."))
+  }
+  largest <- data[["Largest exact lower bound, above the estimate"]]
+  if (length(largest)) {
+    return(paste0("The fit kept only the largest exact lower bound of the ",
+                  "screen of short scales (", signif(largest, 2), " above the ",
+                  "estimate), as fits did before the bound at each scale was ",
+                  "recorded, so there is nothing to plot. A refit records it."))
+  }
+  "The fit recorded no values of the screen of short scales to plot."
+}
+
+##' The slope of the log-likelihood at each variance held at zero
+##'
+##' From `slopes`, the test of `assess_held_variances()` as the check of the
+##' variances keeps it, with an interval of `multiplier` standard errors each
+##' side, the multiplier of that test. The verdict of each slope is the one the
+##' fit recorded, written next to it so that it is not told by colour alone.
+##' NULL without a tested variance.
+##' @noRd
+plot_held_variance_panel <- function(slopes, multiplier = 2.58) {
+  if (is.null(slopes) || !nrow(slopes)) return(NULL)
+  colours <- profile_palette()
+  slopes$lower <- slopes$slope - multiplier * slopes$se
+  slopes$upper <- slopes$slope + multiplier * slopes$se
+  slopes$verdict <- ifelse(slopes$rising, "rises from zero",
+                           ifelse(slopes$falling, "falls from zero",
+                                  "undecided"))
+  slopes$name <- factor(slopes$name, rev(unique(slopes$name)))
+  verdict_colours <- c("rises from zero" = colours$cutoff,
+                       "falls from zero" = colours$profile,
+                       "undecided" = colours$wald)
+  ggplot2::ggplot(slopes, ggplot2::aes(.data$slope, .data$name,
+                                       colour = .data$verdict)) +
+    ggplot2::geom_vline(xintercept = 0, linetype = "dashed",
+                        colour = colours$ridge) +
+    ggplot2::geom_linerange(ggplot2::aes(xmin = .data$lower,
+                                         xmax = .data$upper), linewidth = 0.9) +
+    ggplot2::geom_point(size = 2.6) +
+    ggplot2::geom_text(ggplot2::aes(.data$upper, label = .data$verdict),
+                       hjust = -0.12, size = 3.2, colour = "#3b4350") +
+    ggplot2::scale_colour_manual(values = verdict_colours, guide = "none") +
+    ggplot2::scale_x_continuous(
+      expand = ggplot2::expansion(mult = c(0.05, 0.3))
+    ) +
+    ggplot2::labs(
+      title = "Slope of the likelihood at a variance held at zero",
+      subtitle = paste(strwrap(paste0(
+        "The interval is ", multiplier, " standard errors each side. Above ",
+        "zero, the likelihood rises as the variance leaves zero, so zero is ",
+        "not a maximum. Below zero, it falls, so zero is one."
+      ), width = 62L), collapse = "\n"),
+      x = "Slope of the log-likelihood in the variance at zero", y = NULL
+    ) +
+    profile_theme()
+}
+
+##' The screen of short scales and its exact bounds, against the estimate
+##'
+##' From the data of the check of other maxima (`tabulate_short_scales()`,
+##' `tabulate_spatial_shares()`), on a log scale of distance, with the
+##' log-likelihood above that of the estimate. The dashed line at `margin`
+##' below the estimate is the gate of the screen, the margin of
+##' `make_short_scale_screen()`, and the dotted line the limit with
+##' independent location effects. The bounds by spatial share are labelled at
+##' their right end. The vertical axis is cut a unit below the lowest of the
+##' screened values, the gate and the limit, since a bound far below them,
+##' which the bound at a scale near the estimate often is, says nothing
+##' about other maxima. NULL with nothing to show.
+##' @noRd
+plot_screen_panel <- function(data, margin = 0.25) {
+  short <- data[["Short scales, log-likelihood above the estimate"]]
+  shares <- data[["Exact bound by scale and spatial share, above the estimate"]]
+  if (is.null(short) && is.null(shares)) return(NULL)
+  colours <- profile_palette()
+  table <- if (!is.null(short)) short else shares
+  units <- gsub("_", " ", sub("^scale_", "", names(table)[1L]))
+  series <- c("Screened, on the fitting draws" = "screened",
+              "Exact lower bound" = "exact_bound")
+  series_colours <- stats::setNames(c(colours$profile, colours$ridge),
+                                    names(series))
+  lines <- reshape_screen_columns(short, series)
+  share_lines <- if (!is.null(shares)) {
+    reshape_screen_columns(shares, stats::setNames(
+      names(shares)[-1L], paste(names(shares)[-1L], "spatial")
+    ))
+  }
+  estimate <- unlist(data[startsWith(names(data), "Scale of the estimate")])
+  limit <- data[["Limit with independent location effects, above the estimate"]]
+  panel <- ggplot2::ggplot() +
+    ggplot2::geom_hline(yintercept = 0, colour = "#b7bec8")
+  left <- min(table[[1L]], shares[[1L]])
+  if (!is.null(short$screened)) {
+    panel <- panel +
+      ggplot2::geom_hline(yintercept = -margin, linetype = "dashed",
+                          colour = colours$cutoff) +
+      ggplot2::annotate("text", x = left, y = -margin, label = "gate",
+                        hjust = 0, vjust = 1.5, size = 2.9,
+                        colour = colours$cutoff)
+  }
+  if (length(limit) && is.finite(limit)) {
+    panel <- panel +
+      ggplot2::geom_hline(yintercept = limit, linetype = "dotted",
+                          colour = colours$wald, linewidth = 0.8)
+  }
+  if (!is.null(share_lines)) {
+    levels <- levels(share_lines$series)
+    ends <- share_lines[!duplicated(share_lines$series, fromLast = TRUE), ]
+    ramp <- grDevices::colorRampPalette(c("#7fb2db", "#08306b"))(length(levels))
+    panel <- panel +
+      ggplot2::geom_line(data = share_lines,
+                         ggplot2::aes(.data$scale, .data$value,
+                                      colour = .data$series),
+                         linewidth = 0.7) +
+      ggplot2::geom_text(data = ends,
+                         ggplot2::aes(.data$scale, .data$value,
+                                      label = .data$series),
+                         hjust = -0.1, size = 2.9, colour = "#3b4350")
+    series_colours <- c(series_colours, stats::setNames(ramp, levels))
+  }
+  if (!is.null(lines)) {
+    panel <- panel +
+      ggplot2::geom_line(data = lines,
+                         ggplot2::aes(.data$scale, .data$value,
+                                      colour = .data$series),
+                         linewidth = 0.8) +
+      ggplot2::geom_point(data = lines,
+                          ggplot2::aes(.data$scale, .data$value,
+                                       colour = .data$series), size = 2.2)
+  }
+  if (length(estimate) && is.finite(estimate)) {
+    panel <- panel +
+      ggplot2::annotate("point", x = estimate, y = 0, size = 3, shape = 21,
+                        fill = "white", colour = colours$ridge, stroke = 1) +
+      ggplot2::annotate("text", x = estimate, y = 0, label = "estimate",
+                        vjust = -1, size = 3.2, colour = "#3b4350")
+  }
+  if (length(limit) && is.finite(limit)) {
+    panel <- panel +
+      ggplot2::annotate("text", x = max(table[[1L]], shares[[1L]], estimate),
+                        y = limit, label = "independent location effects",
+                        hjust = 1, vjust = 1.5, size = 2.9, colour = "#3b4350")
+  }
+  shown <- c(lines$value, share_lines$value, limit, 0)
+  focus <- c(0, -margin, limit, short$screened,
+             if (is.null(short$screened)) share_lines$value)
+  focus <- focus[is.finite(focus)]
+  shown <- shown[is.finite(shown)]
+  panel +
+    ggplot2::scale_x_log10(labels = plain_number_labels(),
+                           expand = ggplot2::expansion(mult = c(0.05, 0.18))) +
+    ggplot2::scale_colour_manual(
+      values = series_colours,
+      breaks = intersect(names(series), as.character(lines$series))
+    ) +
+    ggplot2::labs(
+      title = "Screen of short scales",
+      subtitle = paste(strwrap(describe_screen_outcome(data, margin),
+                               width = 62L), collapse = "\n"),
+      x = paste0("Spatial scale (", units, ", log scale)"),
+      y = "Log-likelihood above the estimate", colour = NULL
+    ) +
+    ggplot2::coord_cartesian(ylim = c(min(focus) - 1, max(shown) + 0.12 *
+                                        (max(shown) - min(focus) + 1))) +
+    profile_theme() +
+    ggplot2::theme(legend.position = "bottom")
+}
+
+##' Columns of a table of the screen as lines to draw
+##'
+##' `columns` names the columns to take, by the label of their series. One row
+##' per finite value, with the `scale` from the first column of `table` and
+##' the `series` as a factor in the order of `columns`. NULL without values.
+##' @noRd
+reshape_screen_columns <- function(table, columns) {
+  columns <- columns[columns %in% names(table)]
+  if (is.null(table) || !length(columns)) return(NULL)
+  lines <- do.call(rbind, lapply(names(columns), function(label) {
+    data.frame(scale = table[[1L]], value = table[[columns[[label]]]],
+               series = label)
+  }))
+  lines <- lines[is.finite(lines$value), ]
+  if (!nrow(lines)) return(NULL)
+  lines$series <- factor(lines$series, names(columns))
+  lines
+}
+
+##' What the screen of short scales and its exact alarm found, for the panel
+##'
+##' A fit made before the bound at each scale was recorded has only the
+##' largest, which the subtitle gives.
+##' @noRd
+describe_screen_outcome <- function(data, margin) {
+  gate <- data[["Screen of short scales"]] %||% ""
+  largest <- data[["Largest exact lower bound, above the estimate"]]
+  short <- data[["Short scales, log-likelihood above the estimate"]]
+  paste0(
+    switch(gate,
+           closed = paste0("No short scale came within ", margin, " of the ",
+                           "estimate on the fitting draws, so the fit was not ",
+                           "repeated. "),
+           opened = paste0("A short scale came within ", margin, " of the ",
+                           "estimate on the fitting draws, so the fit was ",
+                           "repeated from it. "),
+           ""),
+    if (isTRUE(data[["Exact alarm"]])) {
+      paste0("An exact lower bound is above the estimate, which is therefore ",
+             "not the maximum likelihood estimate.")
+    } else {
+      "No exact lower bound is clearly above the estimate."
+    },
+    if (length(largest) && is.null(short$exact_bound)) paste0(
+      " The fit kept only the largest exact lower bound (", signif(largest, 2),
+      "), so the bound at each scale is not shown."
+    )
+  )
 }
 
 ##' One quantity by stage, with a dashed line at its limit if it has one

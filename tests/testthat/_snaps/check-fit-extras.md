@@ -1,4 +1,4 @@
-# the print of a fit without extras is unchanged
+# the print gives the checks that need a look in full and the others on a line
 
     Code
       print(fixed)
@@ -11,15 +11,11 @@
                                            as effectively zero, so its standard
                                            error is not reported.
                   Fix: Consider refitting without it, gp(nugget = FALSE).
-      OK          Monte Carlo accuracy     The error of the estimate is within
-                                           0.059 standard errors (limit 0.1).
-      OK          Importance weights       The certification draws had 1,081
-                                           effective draws and a tail shape of 0.46
-                                           (limit 0.7).
-      OK          Other maxima             The check found no higher maximum,
-                                           though it cannot rule one out.
-      OK          Importance distribution  The global distribution was used at
-                                           every stage.
+      OK          Monte Carlo accuracy     Within 0.059 standard errors.
+      OK          Importance weights       1,081 effective draws, tail shape 0.46.
+      OK          Other maxima             The check found no higher maximum.
+      OK          Importance distribution  The global distribution at every stage.
       
+      summary() of these checks gives the evidence behind each finding.
       These checks concern the computation, not whether the model suits the data.
 

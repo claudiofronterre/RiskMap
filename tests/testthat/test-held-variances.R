@@ -290,10 +290,20 @@ test_that("a spatial variance held at zero is judged over scales and shares", {
   expect_equal(values$sigma2 * (1 + values$nugget_ratio),
                exp(judged$fit$log_variance), tolerance = 1e-12)
 
+  # The bounds over the grid are kept, whether or not the alarm fires.
+  grid <- expand.grid(log_phi = judged$screen$wide_log_phi,
+                      share = judged$screen$spatial_shares)
+  grid <- data.frame(log_phi = grid$log_phi, share = grid$share)
+  expect_identical(alarm$shares[c("log_phi", "share")], grid)
+  expect_identical(max(alarm$shares$bound), alarm$statistic)
+
   # The same effects without spatial structure raise no alarm.
-  expect_null(judge_survey(make_grid_survey(TRUE))$alarm)
+  quiet <- judge_survey(make_grid_survey(TRUE))$alarm
+  expect_false(quiet$fired)
+  expect_named(quiet, c("fired", "shares"))
+  expect_identical(quiet$shares[c("log_phi", "share")], grid)
   # Nor a gain below the tolerance's own scale.
-  expect_null(judge_survey(make_grid_survey(FALSE), tolerance = 100)$alarm)
+  expect_false(judge_survey(make_grid_survey(FALSE), tolerance = 100)$alarm$fired)
 })
 
 test_that("a model without a nugget has no spatial share to judge", {

@@ -198,8 +198,10 @@ describe_radius_check <- function(details) {
     }
   )
   if (details$widening <= 1) {
-    return(fit_check_row("Radius of the bound", "OK",
-                         paste0(found, " The radius holds.")))
+    return(fit_check_row(
+      "Radius of the bound", "OK", paste0(found, " The radius holds."),
+      brief = paste0("Exceeded in ", percent(details$level), ", against 5%.")
+    ))
   }
   fit_check_row(
     "Radius of the bound", "SUSPICIOUS",

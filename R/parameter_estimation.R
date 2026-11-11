@@ -1068,6 +1068,10 @@ restore_mcml_history_scale <- function(history, coefficient_transform,
     }
     if (!is.null(screen$alarm)) {
       screen$alarm$log_phi <- screen$alarm$log_phi + log(distance_scale)
+      for (table in intersect(c("bounds", "shares"), names(screen$alarm))) {
+        screen$alarm[[table]]$log_phi <- screen$alarm[[table]]$log_phi +
+          log(distance_scale)
+      }
     }
     if (!is.null(screen$near_limit)) {
       screen$near_limit$log_phi <- screen$near_limit$log_phi +

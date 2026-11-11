@@ -704,6 +704,25 @@ seed of the fit. `plot()` of the checks gains the panel `"radius"`, the error of
 resampled samples against the radius the fit uses for them, whose subtitle
 gives the predicted rate first.
 
+- `print()` of the checks from `check_fit()` now gives a check that needs a
+look in full with its fix, and a check that is `OK` on one line with its
+finding in a few words, and ends by pointing to `summary()`, which now gives
+every finding in full before the numbers behind it (#262). A fix that a costly
+check would settle names it, `check_fit(fit, extra = "profile")` for a scale
+that may be weakly identified and for other maxima, and
+`check_fit(fit, extra = "radius")` for heavy-tailed importance weights, or
+points to the row of that check when it ran. `plot()` of the checks gains two
+panels drawn from what the fit recorded. `"held_variances"` shows the slope of
+the log-likelihood at each variance held at zero with its interval of 2.58
+standard errors, the test of the fit, and `"screen"` shows the screen of short
+scales of the check for other maxima, the log-likelihood estimated at each short
+scale and the exact lower bound there, against the estimate and the limit with
+independent location effects. Each says why when it has nothing to show. A fit
+now records the exact bound at each scale of the screen and, with the spatial
+variance at zero and a nugget, over the scales and spatial shares, where it
+kept only the largest, and `summary()` of the checks gives them. Estimates and
+the decisions of a fit are unchanged.
+
 - Certified MCML no longer stops with "the optimiser returned non-finite
 parameter values" when the search for the conditional mode of the latent
 effects goes wrong. Each search starts from the mode found at the parameter
