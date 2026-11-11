@@ -174,8 +174,8 @@ update_observation_factors <- function(marginal_mean, marginal_sd, offset,
 ##' under that proposal. The marginal means and variances come from compiled
 ##' code (`cpp_global_marginals()`), which keeps the dense factorisation and
 ##' inverse off the R heap. Returns the refitted factors, or NULL if the
-##' precision is not positive definite or a fit fails. For a custom link that
-##' includes a quadratic fit with too few weighted nodes.
+##' precision is not positive definite or a fit fails, which includes a
+##' quadratic fit with too few weighted nodes.
 ##' @noRd
 refit_global_factors <- function(factors, mu, y, units_m, latent_map,
                                  precision, family, linkf, canonical,
@@ -198,7 +198,13 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
     error = function(error) NULL
   )
   if (is.null(updated)) return(NULL)
-  if (!canonical && any(!is.finite(updated$curvature))) return(NULL)
+  # A quadratic fit with too few weighted nodes gives an NA curvature, which
+  # fails the refit for every link. An infinite curvature fails it for a custom
+  # link, and a canonical link's -Inf is left to the floor.
+  if (anyNA(updated$curvature) ||
+      (!canonical && any(!is.finite(updated$curvature)))) {
+    return(NULL)
+  }
   refitted <- c(updated$linear, floor_curvature(updated$curvature))
   if (any(!is.finite(refitted))) return(NULL)
   refitted
