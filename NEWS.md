@@ -503,6 +503,18 @@ starting regression coefficients from a binomial regression with that link
 instead of a logit regression, and falls back on the logit regression if that
 one cannot be fitted.
 
+- A binomial model fitted without an intercept, such as
+`y ~ 0 + x1 + x2 + gp()`, now takes its automatic starting regression
+coefficients from a regression without an intercept. The start regression
+dropped the first column of the design matrix and added an intercept, so the
+starting coefficients were shifted by one column, and the first covariate
+started from the intercept of another model. With the logit link the
+transformed-Gaussian start usually replaced them, but with a named link such as
+probit, or a link given in `invlink`, MCML started from them. In simulated
+surveys this made fits with a nugget up to ten times slower, and with
+`laplace_start = FALSE` it led one fit to a lower maximum. Fits of models with
+an intercept are unchanged.
+
 - Certified MCML now builds every global proposal of a stage, other than the one
 at its start, from three plain refits of the factors found at the start, in place
 of iterating with Anderson acceleration until no factor moves by more than 1e-8.
