@@ -78,8 +78,9 @@ test_that("a fit without extras keeps every default check and no extra", {
   expect_null(check_fit(gaussian_model)$results[[1L]]$data)
 })
 
-test_that("the print of a fit without extras is unchanged", {
-  # The print reads only what check_fit() gave before the extras, as on dev.
+test_that("the print gives the checks that need a look in full and the others on a line", {
+  # The print reads only the table of checks, the draws and what was not
+  # computed.
   checked <- check_fit(binomial_model)
   before <- structure(unclass(checked)[c("checks", "draws", "stages", "moves",
                                          "tolerance")],
@@ -266,9 +267,10 @@ test_that("the radius check runs on request, from streams of the fit's seed", {
   expect_identical(nrow(checked$checks),
                    nrow(check_fit(binomial_model)$checks) + 1L)
   printed <- capture.output(print(checked))
-  expect_true(any(grepl(
-    "^(OK|SUSPICIOUS) +Radius of the bound +The radius of the bound", printed
-  )))
+  expect_true(any(grepl(paste0(
+    "^(OK +Radius of the bound +Exceeded in [0-9.e-]+%, against 5%\\.$|",
+    "SUSPICIOUS +Radius of the bound +The radius of the bound)"
+  ), printed)))
 
   # The summary gives the rates and the settings, and plot() the panel.
   evidence <- capture.output(print(summary(checked)))
@@ -578,8 +580,15 @@ test_that("the summary gives the numbers behind each finding", {
   expect_output(result <- print(summarised))
   expect_identical(result, summarised)
 
+  # Each finding is given in full, OK or not.
+  expect_contains(printed, paste0(
+    "  ", strwrap(checked$checks$finding[checked$checks$check == "Other maxima"],
+                  width = 76L)
+  ))
+
   gaussian <- capture.output(print(summary(check_fit(gaussian_model))))
-  expect_identical(gaussian[2:3], c("", "OK  Monte Carlo accuracy"))
+  expect_identical(gaussian[2:4], c("", "OK  Monte Carlo accuracy",
+                                    "  A Gaussian fit has no Monte Carlo error."))
   expect_contains(gaussian, "  Nothing recorded beyond the finding.")
 })
 

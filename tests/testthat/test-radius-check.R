@@ -124,7 +124,8 @@ test_that("the radius of a fit is checked reproducibly", {
                               banks = 20)
   expect_identical(.Random.seed, caller_seed)
   expect_named(checked, c("row", "data"))
-  expect_identical(names(checked$row), c("check", "status", "finding", "fix"))
+  expect_identical(names(checked$row),
+                   c("check", "status", "finding", "fix", "brief"))
   expect_identical(checked$row$check, "Radius of the bound")
   expect_s3_class(checked$data, "RiskMap_radius_check")
   # One row for each resampled sample.

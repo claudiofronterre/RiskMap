@@ -20,10 +20,12 @@ and the \code{draws}, \code{fit_seconds} and \code{not_computed} of \code{object
 \description{
 Summary method for objects of class \code{"RiskMap_check"} from
 \code{\link[=check_fit]{check_fit()}}. Where \code{print()} gives the verdict, \code{summary()} gives the
-evidence, the numbers behind the finding of each check, the certificate
-and the certification draws of each stage with the largest change in the
-estimates from the stage before, and the full results of the extra
-checks that ran.
+evidence, the finding of each check in full with the numbers behind it,
+the certificate and the certification draws of each stage with the
+largest change in the estimates from the stage before, and the full
+results of the extra checks that ran. For the check of other maxima the
+numbers include the log-likelihood estimated on the fitting draws at
+each short scale of the screen, above that of the estimate.
 }
 \examples{
 data(italy_sim)

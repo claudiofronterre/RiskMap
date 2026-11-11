@@ -34,7 +34,9 @@ any number of cores.}
 An object of class \code{"RiskMap_check"}, a list with:
 \item{checks}{A data frame with one row per check, those that need a look
 first, and the columns \code{check}, \code{status} (\code{"PROBLEM"}, \code{"SUSPICIOUS"} or
-\code{"OK"}), \code{finding} and \code{fix}, which is empty where there is nothing to do.}
+\code{"OK"}), \code{finding}, \code{fix}, which is empty where there is nothing to do,
+and \code{brief}, the finding in a few words, which \code{print()} gives for a check
+that is \code{OK}.}
 \item{draws}{One sentence on the stages and draws of the fit, \code{NULL} for
 Gaussian models.}
 \item{stages}{For non-Gaussian models, a data frame with one row per stage

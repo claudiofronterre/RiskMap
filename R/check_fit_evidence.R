@@ -10,6 +10,8 @@ collect_check_data <- function(check, object, mcml) {
   history <- object$mcml_history %||% optimizer$mcml_history
   last <- if (length(history)) history[[length(history)]]
   units <- object$distance_units %||% "distance units"
+  screen <- optimizer$mcml_maxima_screen
+  spatial_held <- any(grepl("sigma2", optimizer$mcml_boundary, fixed = TRUE))
   data <- switch(
     check,
     "Monte Carlo accuracy" = list(
@@ -32,7 +34,16 @@ collect_check_data <- function(check, object, mcml) {
       "Higher maximum found by the check" = isTRUE(optimizer$mcml_better_maximum),
       "Separate maxima about equally high" =
         isTRUE(optimizer$mcml_ambiguous_maxima),
-      "Screen of short scales" = describe_screen_gate(optimizer$mcml_maxima_screen),
+      "Screen of short scales" = describe_screen_gate(screen),
+      "Scale of the estimate" = if (!spatial_held) stats::coef(object)$phi,
+      "Short scales, log-likelihood above the estimate" =
+        tabulate_short_scales(screen, units),
+      "Largest exact lower bound, above the estimate" =
+        screen$alarm$statistic - screen$alarm$fitted_comparison,
+      "Limit with independent location effects, above the estimate" =
+        if (!isTRUE(optimizer$mcml_pc_prior)) {
+          screen$independent$log_likelihood - screen$alarm$fitted_comparison
+        },
       "Maxima from the dispersed starts" =
         tabulate_maxima_check(optimizer$mcml_maxima_check, units)
     ),
@@ -85,6 +96,10 @@ collect_check_data <- function(check, object, mcml) {
         optimizer$mcml_coefficients_at_bound
     )
   )
+  scale_name <- match("Scale of the estimate", names(data))
+  if (!is.na(scale_name)) {
+    names(data)[scale_name] <- paste0("Scale of the estimate (", units, ")")
+  }
   Filter(function(value) length(value) > 0L, data)
 }
 
@@ -93,6 +108,29 @@ collect_check_data <- function(check, object, mcml) {
 describe_screen_gate <- function(screen) {
   if (is.null(screen$gate)) return(NULL)
   paste0(screen$gate, if (!is.null(screen$reason)) paste0(" (", screen$reason, ")"))
+}
+
+##' The name of a column of spatial scales in the distance `units`
+##' @noRd
+name_scale_column <- function(units) {
+  paste0("scale_", gsub("[^A-Za-z]+", "_", units))
+}
+
+##' The log-likelihood at the short scales of the screen, above the estimate
+##'
+##' At each scale of the screen of short scales (`screen_short_scales()`), the
+##' log-likelihood estimated on the fitting draws at the point from the
+##' maximum with independent location effects, or after a step in the spatial
+##' variance where that was higher, less the fitted log-likelihood on the
+##' same draws. NULL when the screen did not run, as when the estimate is at a
+##' short scale. The scale is in `units`.
+##' @noRd
+tabulate_short_scales <- function(screen, units) {
+  screened <- screen$screen
+  if (is.null(screened)) return(NULL)
+  table <- data.frame(scale = exp(screened$log_phi), screened = screened$gap)
+  names(table)[1L] <- name_scale_column(units)
+  table
 }
 
 ##' The maxima of the check for other maxima, with the scale in `units`
@@ -107,7 +145,7 @@ tabulate_maxima_check <- function(check, units) {
                       independent_loglik = check$independent_log_likelihood,
                       independent_se = check$independent_se,
                       chosen = check$chosen)
-  names(table)[2L] <- paste0("scale_", gsub("[^A-Za-z]+", "_", units))
+  names(table)[2L] <- name_scale_column(units)
   judged <- is.finite(table$independent_loglik)
   if (!any(judged)) table[c("independent_loglik", "independent_se")] <- NULL
   table
@@ -116,10 +154,12 @@ tabulate_maxima_check <- function(check, units) {
 ##' @title Summarise the Checks on a Fitted Model
 ##' @description Summary method for objects of class `"RiskMap_check"` from
 ##'   [check_fit()]. Where `print()` gives the verdict, `summary()` gives the
-##'   evidence, the numbers behind the finding of each check, the certificate
-##'   and the certification draws of each stage with the largest change in the
-##'   estimates from the stage before, and the full results of the extra
-##'   checks that ran.
+##'   evidence, the finding of each check in full with the numbers behind it,
+##'   the certificate and the certification draws of each stage with the
+##'   largest change in the estimates from the stage before, and the full
+##'   results of the extra checks that ran. For the check of other maxima the
+##'   numbers include the log-likelihood estimated on the fitting draws at
+##'   each short scale of the screen, above that of the estimate.
 ##' @param object An object of class `"RiskMap_check"`.
 ##' @param ... other parameters.
 ##' @return An object of class `"summary.RiskMap_check"`, a list with the
@@ -191,6 +231,8 @@ print.summary.RiskMap_check <- function(x, ...) {
   for (result in x$results) {
     cat("\n", formatC(result$row$status, width = -status_width), "  ",
         result$row$check, "\n", sep = "")
+    write_indented(strwrap(result$row$finding,
+                           width = getOption("width", 80L) - 4L))
     if (inherits(result$data, "RiskMap_profile")) {
       write_profile_evidence(result$data)
     } else if (inherits(result$data, "RiskMap_radius_check")) {

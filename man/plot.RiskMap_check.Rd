@@ -10,8 +10,9 @@
 \item{x}{An object of class \code{"RiskMap_check"}.}
 
 \item{which}{Names of the panels to draw, among \code{"certificate"},
-\code{"effective_draws"}, \code{"pareto_k"}, \code{"moves"}, \code{"radius"}, the panels of
-the profiles, such as \code{"profile_phi"}, and \code{"profile"} for every profile.
+\code{"effective_draws"}, \code{"pareto_k"}, \code{"moves"}, \code{"held_variances"},
+\code{"screen"}, \code{"radius"}, the panels of the profiles, such as
+\code{"profile_phi"}, and \code{"profile"} for every profile.
 The default is every panel that has something to show. A chosen panel
 with nothing to show gives a message saying why, and which extra check
 of \code{\link[=check_fit]{check_fit()}} would compute it. If no panel has anything to show,
@@ -32,8 +33,24 @@ panels show the bound on the Monte Carlo error against the tolerance
 (\code{"certificate"}), the effective certification draws
 (\code{"effective_draws"}), the tail shape of the importance weights against
 its limit of 0.7 (\code{"pareto_k"}) and how far the estimates moved
-(\code{"moves"}). With the extra check \code{"radius"}, the panel \code{"radius"} shows
-the error of each resampled sample of certification draws against the
+(\code{"moves"}). Two more panels come from what the fit recorded. For a
+variance held at zero whose slope was tested, \code{"held_variances"} shows
+the slope of the log-likelihood in that variance at zero with its
+interval of 2.58 standard errors each side, the test of the fit, so that
+the likelihood clearly rises as the variance leaves zero when the whole
+interval is above zero, and clearly falls when it is below. The panel
+\code{"screen"} shows the screen of short scales of the check for other
+maxima. On a log scale of distance it gives, at each short scale, the
+log-likelihood estimated on the fitting draws above that of the
+estimate, which repeats the fit from the best such scale when one comes
+within 0.25 of it (the dashed line), with the likelihood with
+independent location effects, the limit as the scale goes to zero, as a
+dotted line. Its subtitle gives the largest exact lower bound on the
+likelihood at those scales, which shows, when clearly above the
+estimate, that the estimate is not the maximum likelihood estimate. With
+the extra check \code{"radius"},
+the panel \code{"radius"} shows the error of each resampled sample of
+certification draws against the
 radius the fit would use for it, the larger of its own and a
 replicate's, in standard errors, with the line where they are equal. Its
 subtitle gives the predicted rate at which the radius is exceeded, as in
@@ -54,7 +71,7 @@ fit <- glgpm(
 )
 checked <- check_fit(fit, extra = "all")
 plot(checked)
-plot(checked, which = c("certificate", "radius", "profile_phi"))
+plot(checked, which = c("certificate", "screen", "radius", "profile_phi"))
 }
 }
 \seealso{

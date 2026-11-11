@@ -320,7 +320,11 @@ fit_check_profile <- function(profile, units = NULL, advice = "") {
       "The profile", if (length(read) > 1L) "s", " of ", join_phrases(labels),
       if (length(read) > 1L) " each have" else " has", " one maximum and a ",
       "closed ", level, " interval."
-    )))
+    ), brief = if (length(read) > 1L) {
+      paste0("One maximum each, closed ", level, " intervals.")
+    } else {
+      paste0("One maximum and a closed ", level, " interval.")
+    }))
   }
   fit_check_row(
     name, "SUSPICIOUS",
