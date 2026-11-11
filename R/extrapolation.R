@@ -77,7 +77,7 @@ assess_extrapolation <- function(object, newdata, spatial_threshold = 0.8) {
     stop("'object' must be a fitted RiskMap model", call. = FALSE)
   }
   check_range(spatial_threshold, min = 0, max = 1,
-              name = "spatial_threshold")
+              arg = "spatial_threshold")
   prediction <- validate_prediction_data(object, newdata, include = character())
   model_data <- prediction$model_data
   valid_rows <- prediction$valid_rows

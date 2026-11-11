@@ -34,9 +34,9 @@ test_that("get_worldpop selects the age groups and sums them", {
                         dest_dir = withr::local_tempdir(), messages = FALSE)
   expect_equal(unique(terra::values(women)[, 1]), sum(1:7))
 
-  expect_error(get_worldpop("LBR", 2011, ages = c(18, Inf),
-                            messages = FALSE),
-               class = "riskmap_error_input")
+  expect_input_error(get_worldpop("LBR", 2011, ages = c(18, Inf),
+                                  messages = FALSE),
+                     "ages")
   expect_error(get_worldpop("LBR", 2012, ages = c(20, Inf),
                             messages = FALSE),
                class = "riskmap_error_worldpop")
@@ -75,12 +75,11 @@ test_that("get_worldpop chooses products and checks arguments", {
   expect_true(is.na(product(2011, c(20, Inf), "1km", FALSE, FALSE)$dataset))
   expect_identical(product(2020, c(0, 4), "1km", TRUE, FALSE)$dataset,
                    "age_structures/G2_CN_Age_R25A_1km")
-  expect_error(product(2011, NULL, "100m", TRUE, FALSE),
-               class = "riskmap_error_input")
-  expect_error(product(2025, NULL, "100m", FALSE, FALSE),
-               class = "riskmap_error_input")
-  expect_error(product(2011, c(20, Inf), "100m", FALSE, TRUE),
-               class = "riskmap_error_input")
+  expect_input_error(product(2011, NULL, "100m", TRUE, FALSE), "year")
+  expect_input_error(product(2025, NULL, "100m", FALSE, FALSE), "year")
+  expect_input_error(product(2011, c(20, Inf), "100m", FALSE, TRUE),
+                     "un_adjusted")
+  expect_input_error(product(2020, NULL, "100m", TRUE, TRUE), "un_adjusted")
 
   urls <- RiskMap:::worldpop_files(product(2011, c(20, Inf), "1km", FALSE,
                                            FALSE),
@@ -89,14 +88,14 @@ test_that("get_worldpop chooses products and checks arguments", {
   expect_match(urls[1], "Global_2000_2020_1km/unconstrained/2011/LBR/lbr_m_20_2011_1km.tif",
                fixed = TRUE)
 
-  expect_error(get_worldpop("Liberia", 2011), "`country`",
-               class = "riskmap_error_input")
-  expect_error(get_worldpop("LBR", 2011.5), "`year`",
-               class = "riskmap_error_input")
-  expect_error(get_worldpop("LBR", NA_real_), "`year`",
-               class = "riskmap_error_input")
-  expect_error(get_worldpop("LBR", 2011, ages = 20), "`ages`",
-               class = "riskmap_error_input")
+  expect_input_error(get_worldpop("Liberia", 2011), "country")
+  expect_input_error(get_worldpop("LBR", 2011.5), "year")
+  expect_input_error(get_worldpop("LBR", NA_real_), "year")
+  expect_input_error(get_worldpop("LBR", 2011, ages = 20), "ages")
+  expect_input_error(get_worldpop("LBR", 2011, sex = "women"), "sex")
+  expect_input_error(get_worldpop("LBR", 2011, resolution = "5km"),
+                     "resolution")
+  expect_input_error(get_worldpop("LBR", 2011, messages = "no"), "messages")
 })
 
 test_that("get_worldpop uses the both-sexes layers when available", {

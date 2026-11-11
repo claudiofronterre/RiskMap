@@ -105,24 +105,6 @@ test_that("check_data functions correctly", {
 
 })
 
-test_that("check_crs functions correctly", {
-  crs <- "invalid"
-  error <- expect_error(check_crs(crs), "`crs`", class = "riskmap_error_input")
-  # the error from sf is kept as the cause
-  expect_s3_class(error$parent, "condition")
-  crs <- 121212
-  expect_error(check_crs(crs), "`crs`", class = "riskmap_error_input")
-  dif_crs <- 12121.2
-  expect_error(check_crs(dif_crs), "`dif_crs`", class = "riskmap_error_input")
-
-  crs <- 2648
-  expect_no_error(check_crs(crs))
-  expect_no_error(check_crs(2648))
-
-  custom_crs <- "+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs"
-  expect_no_error(check_crs(custom_crs))
-})
-
 test_that("check_invlink functions correctly", {
   expect_error(check_invlink("not a function", "binomial"), "'invlink' must be a function")
 
@@ -176,91 +158,6 @@ test_that("gp functions correctly", {
   expect_identical(custom_result$dim, 2L)
   expect_identical(custom_result$label, "gp(a,b)")
 
-})
-
-test_that("check_positive_integer functions correctly", {
-  expect_no_error(check_positive_integer(1, "a"))
-  expect_no_error(check_positive_integer(999, "a"))
-  expect_no_error(check_positive_integer(NULL, "a", allow_null = TRUE))
-  expect_no_error(check_positive_integer(0, "a", allow_zero = TRUE))
-
-  for (value in list(0.1, 0, c(0, 1), "not", NULL, NA, Inf)) {
-    expect_error(check_positive_integer(value, "a"), "`a`",
-                 class = "riskmap_error_input")
-  }
-  expect_error(check_positive_integer(-1, "a", allow_zero = TRUE),
-               "non-negative", class = "riskmap_error_input")
-})
-
-test_that("check_logical functions correctly and names the caller's argument", {
-  my_flag <- TRUE
-  expect_no_error(check_logical(my_flag))
-
-  my_flag <- FALSE
-  expect_no_error(check_logical(my_flag))
-
-  for (my_flag in list(NA, c(TRUE, FALSE), "TRUE", 1)) {
-    expect_error(check_logical(my_flag), "`my_flag`",
-                 class = "riskmap_error_input")
-  }
-})
-
-test_that("check_positive_number functions correctly", {
-  expect_no_error(check_positive_number(1, ""))
-  expect_no_error(check_positive_number(0.1, ""))
-
-  for (a in list(0, c(0, 1), "not", NULL, NA, Inf)) {
-    expect_error(check_positive_number(a, ""), "`a`",
-                 class = "riskmap_error_input")
-  }
-  start_pars <- list(sigma2 = -1)
-  expect_error(check_positive_number(start_pars[["sigma2"]]),
-               "starting value for `sigma2`", class = "riskmap_error_input")
-})
-
-test_that("check_zero_one validates the closed unit interval", {
-  expect_no_error(check_zero_one(0, "a"))
-  expect_no_error(check_zero_one(0.5, "a"))
-  expect_no_error(check_zero_one(1, "a"))
-
-  for (value in list(-0.1, 1.1, c(0, 1), NA, Inf)) {
-    expect_error(check_zero_one(value, "a"), "between 0 and 1",
-                 class = "riskmap_error_input")
-  }
-})
-
-test_that("input errors name the calling function and describe the value", {
-  fit_example <- function(n_iter, verbose, level = 0.95) {
-    check_positive_integer(n_iter, "n_iter")
-    check_logical(verbose)
-    check_range(level, min = 0, max = 1, allow_equal = FALSE)
-    invisible(TRUE)
-  }
-  expect_snapshot(error = TRUE, {
-    fit_example(2.5, TRUE)
-    fit_example(c(1, 2), TRUE)
-    fit_example(10, "yes")
-    fit_example(10, TRUE, level = 1)
-  })
-})
-
-test_that("check_range leaves infinite bounds out of the message", {
-  range_example <- function(max_dist, weight = 1, shift = -1) {
-    check_range(max_dist, min = 0, max = Inf, allow_equal = FALSE)
-    check_range(weight, min = 0)
-    check_range(shift, min = -Inf, max = 2, allow_equal = FALSE)
-    invisible(TRUE)
-  }
-  expect_snapshot(error = TRUE, {
-    range_example(-5)
-    range_example(Inf)
-    range_example(10, weight = -1)
-    range_example(10, shift = 2)
-  })
-  expect_error(check_range(1, min = 2, name = "a"),
-               "greater than or equal to 2", class = "riskmap_error_input")
-  expect_error(check_range(Inf, name = "a"), "single finite number, not Inf",
-               class = "riskmap_error_input")
 })
 
 test_that("plot.RiskMap_cross_validation validates model before metric (#156)", {

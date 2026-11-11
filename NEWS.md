@@ -34,12 +34,16 @@ be considered stable, but further breaking changes will be handled gracefully.
 
 - RiskMap is moving to cli for its errors, warnings and messages. So far
 `get_worldpop()` and the argument checks shared by most functions use it.
-Their errors name the function that was called, describe the value supplied
-and have a class, `riskmap_error_input` for an invalid argument and
-`riskmap_error_worldpop` when WorldPop can't be reached or has no data for a
-request, so that code can catch them by class rather than by their text.
+Their errors name the function that was called and describe the value
+supplied.
+- Conditions have classes, documented in `?riskmap_conditions`, so that code
+can catch them by class rather than by their text. Every error RiskMap raises
+on purpose has class `riskmap_error`, and an invalid argument
+`riskmap_error_input`, whose field `arg` names the argument.
 - `get_worldpop()` takes the default of `messages` from the option
 `RiskMap.messages`, so `options(RiskMap.messages = FALSE)` silences it.
+- A `max_dist` or `phi` that isn't positive is now reported as "must be a
+single positive finite number" instead of "strictly between 0 and Inf".
 
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.

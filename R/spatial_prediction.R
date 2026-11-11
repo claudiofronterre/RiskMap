@@ -493,7 +493,7 @@ validate_prediction_options <- function(object, type, include,
     stop("'thresholds' is used only when 'summaries' includes 'exceedance'",
          call. = FALSE)
   }
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level",
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level",
               call = call)
   if (!is.null(control_mcmc) &&
       !inherits(control_mcmc, "RiskMap_control_mcmc")) {

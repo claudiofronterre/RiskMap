@@ -44,3 +44,16 @@
       Error in `range_example()`:
       ! `shift` must be a single finite number less than 2, not 2.
 
+# class and choice errors read well
+
+    Code
+      summarise_example(data.frame())
+    Condition
+      Error in `summarise_example()`:
+      ! `object` must be an object of class <RiskMap> or <RiskMap_prediction>, not a data frame.
+    Code
+      summarise_example(fit, units = "miles")
+    Condition
+      Error in `summarise_example()`:
+      ! `units` must be one of "km" or "m", not "miles".
+
