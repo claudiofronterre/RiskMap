@@ -257,8 +257,6 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   without a kernel (`move_start_off_limits()`).
 ##' - `needs_finite_weight`, a bank with no finite weight is a failed
 ##'   evaluation.
-##' - `legacy_link`, what the code that step 1 has not moved yet takes in the
-##'   place of the link, the kernel where there is one and the link otherwise.
 ##'
 ##' Methods, for records with `y` events of `units_m` trials, or counts with
 ##' exposure `units_m`, at linear predictors `eta`.
@@ -274,6 +272,11 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   table instead.
 ##' - `move_start(latent, linear_predictor, y, units_m, columns)`, as
 ##'   `move_start_off_limits()`.
+##' - `nonlinear_parts(centre, step, y, units_m)`, the part of each record's
+##'   log-likelihood that is not linear in a step from `centre`, with the slope
+##'   at `centre`, for the global proposal (`compute_nonlinear_parts()`).
+##' - `kernel_arrays()`, the arrays of a custom link's kernel for the site
+##'   table (`compute_custom_kernel_arrays()`), NULL for the canonical link.
 ##' @noRd
 make_family <- function(family, linkf = NULL, kernel = NULL) {
   if (!family %in% c("binomial", "poisson")) {
@@ -317,6 +320,26 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
   } else {
     function(eta, y, units_m) custom_slope_parts(eta, y, units_m, family, linkf)
   }
+  nonlinear_parts <- if (integrated) {
+    function(centre, step, y, units_m) kernel$nonlinear_parts(centre, step)
+  } else if (canonical && poisson) {
+    function(centre, step, y, units_m) {
+      canonical_poisson_nonlinear_parts(centre, step, y, units_m)
+    }
+  } else if (canonical) {
+    function(centre, step, y, units_m) {
+      canonical_binomial_nonlinear_parts(centre, step, y, units_m)
+    }
+  } else {
+    function(centre, step, y, units_m) {
+      link_nonlinear_parts(centre, step, y, units_m, family, linkf, terms)
+    }
+  }
+  kernel_arrays <- if (canonical) {
+    function() NULL
+  } else {
+    function() compute_custom_kernel_arrays(linkf, family)
+  }
   structure(
     list(
       family = family, linkf = linkf, kernel = kernel, canonical = canonical,
@@ -324,9 +347,9 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
       assumes_concave = canonical && !integrated,
       moves_start = !canonical && !integrated,
       needs_finite_weight = !canonical,
-      legacy_link = if (integrated) kernel else linkf,
       terms = terms, log_likelihood = log_likelihood,
-      slope_parts = slope_parts,
+      slope_parts = slope_parts, nonlinear_parts = nonlinear_parts,
+      kernel_arrays = kernel_arrays,
       move_start = function(latent, linear_predictor, y, units_m, columns) {
         move_start_off_limits(latent, linear_predictor, y, units_m, family,
                               linkf, columns)
@@ -347,6 +370,23 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
 family_of_link <- function(family, linkf) {
   if (is_integrated_link(linkf)) return(make_family(family, kernel = linkf))
   make_family(family, linkf)
+}
+
+##' The family object that a function takes in its `family` argument
+##'
+##' The object itself, or for the callers that step 1 of #253 has not moved
+##' yet a family string with the link or integrated kernel `linkf` and the
+##' test of the canonical link `canonical` that they passed before. That test
+##' was the canonical link without a kernel, so it has to agree with the
+##' object's `assumes_concave`. The string form is removed in step 1d.
+##' @noRd
+as_family_object <- function(family, linkf = NULL, canonical = NULL) {
+  if (inherits(family, "riskmap_family")) return(family)
+  object <- family_of_link(family, linkf)
+  if (!is.null(canonical) && !identical(canonical, object$assumes_concave)) {
+    stop("`canonical` disagrees with the link.", call. = FALSE)
+  }
+  object
 }
 
 ##' The family object of a fitted model
@@ -427,6 +467,71 @@ compute_link_log_likelihood_rows <- function(eta, y, units_m, family, linkf) {
   }
   log_likelihood[rowSums(outside) > 0] <- -Inf
   log_likelihood
+}
+
+##' Nonlinear part of each record's log-likelihood, canonical binomial link
+##'
+##' The arm of `compute_nonlinear_parts()` for the canonical binomial link. The
+##' difference is written with log1p and expm1 so that nearly equal
+##' log-likelihood values are never subtracted, and for large steps the
+##' logarithms of p and 1 - p are taken directly from the linear predictor,
+##' because p itself rounds to 0 or 1 when the predictor is extreme.
+##' @noRd
+canonical_binomial_nonlinear_parts <- function(centre, step, y, units_m) {
+  probability <- stats::plogis(centre)
+  slope <- y - units_m * probability
+  # log(1 - p + p exp(step)), switching to log-sum-exp for large steps.
+  log_success <- stats::plogis(centre, log.p = TRUE) + step
+  log_failure <- matrix(
+    stats::plogis(centre, lower.tail = FALSE, log.p = TRUE),
+    nrow(step), ncol(step)
+  )
+  log_ratio <- ifelse(
+    abs(step) < 20,
+    log1p(probability * expm1(step)),
+    pmax(log_failure, log_success) +
+      log1p(exp(-abs(log_failure - log_success)))
+  )
+  nonlinear <- units_m * (probability * step - log_ratio)
+  list(nonlinear = nonlinear, slope = slope)
+}
+
+##' Nonlinear part of each record's log-likelihood, canonical Poisson link
+##'
+##' The arm of `compute_nonlinear_parts()` for the canonical Poisson link.
+##' @noRd
+canonical_poisson_nonlinear_parts <- function(centre, step, y, units_m) {
+  rate <- units_m * exp(centre)
+  slope <- y - rate
+  nonlinear <- -rate * (expm1(step) - step)
+  list(nonlinear = nonlinear, slope = slope)
+}
+
+##' Nonlinear part of each record's log-likelihood, other links
+##'
+##' The arm of `compute_nonlinear_parts()` for a custom link, the direct
+##' difference, with the slope from the observation terms
+##' `observation_terms` of the family object.
+##' @noRd
+link_nonlinear_parts <- function(centre, step, y, units_m, family, linkf,
+                                 observation_terms) {
+  log_likelihood <- function(eta) {
+    mean <- linkf$inv(eta)
+    if (family == "poisson") {
+      y * log(pmax(units_m * mean, .Machine$double.xmin)) - units_m * mean
+    } else {
+      log_probability <- bound_log_probability(mean)
+      y * log_probability$success + (units_m - y) * log_probability$failure
+    }
+  }
+  terms <- observation_terms(centre, y, units_m)
+  if (is.null(terms)) {
+    stop("Invalid linear predictor in the global proposal.", call. = FALSE)
+  }
+  per_observation_centre <- log_likelihood(centre)
+  nonlinear <- matrix(log_likelihood(as.vector(centre + step)), nrow(step)) -
+    per_observation_centre - step * terms$score
+  list(nonlinear = nonlinear, slope = terms$score)
 }
 
 ##' Score and curvature of each record at each row, canonical link
