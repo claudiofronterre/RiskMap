@@ -18,11 +18,13 @@ with the time the stage took.
 
 Progress is shown when the function's argument \code{messages} is \code{TRUE} and
 the option \code{RiskMap.progress} is \code{TRUE}. The option's default is
-\code{\link[=interactive]{interactive()}}, so progress appears in the console but not in scripts run
-with \code{Rscript}, in rendered documents or in tests. Set
+\code{\link[rlang:is_interactive]{rlang::is_interactive()}}, so progress appears in the console but not in
+scripts run with \code{Rscript}, in documents rendered by knitr or in tests,
+even when these are started from the console. Set
 \code{options(RiskMap.progress = TRUE)} to show it in the log of a script too.
 A log can't redraw a line, so there a bar writes a line each time another
-tenth of the work is done, and each stage of a fit writes one line.
+tenth of the work is done, and each stage of a fit writes a line when it
+starts and another, with its time, when it ends.
 \code{options(RiskMap.progress = FALSE)} hides progress everywhere and leaves
 the other messages.
 

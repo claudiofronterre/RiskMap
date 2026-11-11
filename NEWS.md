@@ -53,9 +53,10 @@ of the time left, and `predict()` shows one while it predicts at many
 locations in blocks. `glgpm()` shows a line for each stage of Monte Carlo
 maximum likelihood, with the time the stage took. See `?riskmap_progress`.
 - Progress is shown when `messages` is `TRUE` and the option
-`RiskMap.progress` allows it. The option's default is `interactive()`, so
-progress appears in the console but not in scripts, rendered documents or
-tests. `options(RiskMap.progress = TRUE)` shows it in the log of a script,
+`RiskMap.progress` allows it. The option's default is
+`rlang::is_interactive()`, so progress appears in the console but not in
+scripts, in documents rendered by knitr or in tests, even when these are
+started from the console. `options(RiskMap.progress = TRUE)` shows it in the log of a script,
 where a bar writes a line for each tenth of the work.
 - The bars replace the progress messages of the bootstrap ("k of n replicates
 done"), the profiles ("Profiling sigma2 (1 of 3)"), cross-validation

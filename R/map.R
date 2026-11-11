@@ -23,22 +23,26 @@
 #' @param reports_progress Whether `work` takes `report`. In a forked process
 #'   `report` does nothing, and the bar moves when the task finishes.
 #' @param errors `"stop"` stops at the first task that fails, and the other
-#'   processes, with an error whose cause is the task's error. `"return"`
-#'   puts the error in place of the task's result. A process that ends
-#'   without returning a result, for example because the system ran out of
-#'   memory, fails in the same way.
+#'   processes, with an error whose cause is the task's error and which keeps
+#'   its RiskMap classes, such as `riskmap_error_fit`, and its field `arg`.
+#'   `"return"` puts the error in place of the task's result. A process that
+#'   ends without returning a result, for example because the system ran out
+#'   of memory, fails in the same way.
+#' @param labels What each task is, for the error that stops the loop, as in
+#'   "Replicate 3" or "The profile of `phi`". By default "Task k of n".
 #' @param one_thread Whether the tasks run with one BLAS and OpenMP thread,
 #'   when the RhpcBLASctl package is installed. The settings are restored
-#'   afterwards. Always the case with more than one core, because a process
-#'   forked while BLAS runs several threads can deadlock, and processes that
-#'   each use every core slow one another down.
+#'   afterwards. Always the case when more than one core is asked for, even
+#'   with a single task, because a process forked while BLAS runs several
+#'   threads can deadlock, processes that each use every core slow one another
+#'   down, and the results then don't depend on how many tasks there are.
 #' @param call The call named in an error, by default the caller.
 #' @return A list of the results, in the order of `tasks`.
 #' @noRd
 riskmap_map <- function(tasks, work, cores = 1L, progress = NULL,
                         weights = NULL, reports_progress = FALSE,
                         errors = c("stop", "return"), one_thread = FALSE,
-                        call = rlang::caller_env()) {
+                        labels = NULL, call = rlang::caller_env()) {
   errors <- match.arg(errors)
   n <- length(tasks)
   if (n == 0L) return(list())
@@ -46,12 +50,16 @@ riskmap_map <- function(tasks, work, cores = 1L, progress = NULL,
   if (length(weights) != n) {
     riskmap_bug("{.arg weights} must have one value per task.")
   }
-  if (.Platform$OS.type == "windows") cores <- 1L
-  cores <- min(as.integer(cores), n)
+  labels <- labels %||% paste("Task", seq_len(n), "of", n)
+  if (length(labels) != n) {
+    riskmap_bug("{.arg labels} must have one value per task.")
+  }
   if (one_thread || cores > 1L) {
     restore_threads <- use_one_thread()
     on.exit(restore_threads(), add = TRUE)
   }
+  if (.Platform$OS.type == "windows") cores <- 1L
+  cores <- min(as.integer(cores), n)
 
   # How much of each task's weight the bar has shown, so that partial
   # reports never move it by more than the weight.
@@ -66,13 +74,15 @@ riskmap_map <- function(tasks, work, cores = 1L, progress = NULL,
   results <- vector("list", n)
   finish <- function(k, outcome) {
     force(outcome)
+    # Warnings caught in a forked process
+    for (warning in outcome$warnings) riskmap_rethrow(warning)
     advance(k, weights[k])
     if (outcome$ok) {
       results[k] <<- list(outcome$value)
     } else if (errors == "return") {
       results[k] <<- list(outcome$error)
     } else {
-      abort_task(k, n, outcome$error, call)
+      abort_task(labels[k], outcome$error, call)
     }
   }
 
@@ -83,7 +93,7 @@ riskmap_map <- function(tasks, work, cores = 1L, progress = NULL,
       } else {
         work
       }
-      outcome <- run_task(task_work, tasks[[k]], errors, k, n, call)
+      outcome <- run_task(task_work, tasks[[k]], errors, labels[k], call)
       finish(k, outcome)
     }
   } else {
@@ -92,7 +102,7 @@ riskmap_map <- function(tasks, work, cores = 1L, progress = NULL,
     } else {
       work
     }
-    run_forked(tasks, forked_work, cores, finish)
+    run_forked(tasks, forked_work, cores, finish, progress)
   }
   results
 }
@@ -102,29 +112,34 @@ riskmap_map <- function(tasks, work, cores = 1L, progress = NULL,
 #' With `errors = "stop"` an error is raised from a calling handler, so that
 #' its backtrace still reaches into the task.
 #' @noRd
-run_task <- function(work, task, errors, k, n, call) {
+run_task <- function(work, task, errors, label, call) {
   if (errors == "stop") {
     return(withCallingHandlers(
       list(ok = TRUE, value = work(task)),
-      error = function(error) abort_task(k, n, error, call)
+      error = function(error) abort_task(label, error, call)
     ))
   }
   tryCatch(list(ok = TRUE, value = work(task)),
            error = function(error) list(ok = FALSE, error = error))
 }
 
+#' Stop because a task failed, keeping the RiskMap classes and `arg` of its
+#' error, so that a handler for `riskmap_error_fit` still catches it
 #' @noRd
-abort_task <- function(k, n, error, call) {
-  riskmap_abort("Task {k} of {n} failed.", parent = error, call = call)
+abort_task <- function(label, error, call) {
+  inherited <- grep("^riskmap_error_", class(error), value = TRUE)
+  riskmap_abort("{label} failed.", parent = error, arg = error$arg,
+                class = inherited, call = call)
 }
 
 #' Run tasks in forked processes, at most `cores` at a time
 #'
 #' `finish(k, outcome)` is called in the parent for each task as its process
 #' finishes. If it raises an error, or the user interrupts, the processes
-#' still running are stopped.
+#' still running are stopped. The bar is redrawn while the processes run, so
+#' that its estimate of the time left keeps moving.
 #' @noRd
-run_forked <- function(tasks, work, cores, finish) {
+run_forked <- function(tasks, work, cores, finish, progress = NULL) {
   jobs <- list()
   on.exit(stop_jobs(jobs), add = TRUE)
   next_task <- 1L
@@ -140,10 +155,14 @@ run_forked <- function(tasks, work, cores, finish) {
     collected <- suppressWarnings(
       parallel::mccollect(unname(jobs), wait = FALSE, timeout = 1)
     )
-    for (pid in names(collected)) {
-      k <- jobs[[pid]]$task
-      outcome <- collected[[pid]]
-      jobs[[pid]] <- NULL
+    # Every collected process has ended, so it leaves `jobs` before any
+    # result is handled, and stop_jobs() never signals a reused pid.
+    finished <- lapply(names(collected), function(pid) {
+      list(task = jobs[[pid]]$task, outcome = collected[[pid]])
+    })
+    jobs[names(collected)] <- NULL
+    for (one in finished) {
+      outcome <- one$outcome
       if (!is.list(outcome) || is.null(outcome$ok)) {
         outcome <- list(ok = FALSE, error = rlang::error_cnd(
           "riskmap_error",
@@ -152,8 +171,9 @@ run_forked <- function(tasks, work, cores, finish) {
                           "system ran out of memory.")
         ))
       }
-      finish(k, outcome)
+      finish(one$task, outcome)
     }
+    progress_refresh(progress)
   }
   invisible(NULL)
 }
@@ -161,11 +181,29 @@ run_forked <- function(tasks, work, cores, finish) {
 #' Fork a process running one task, which sends back its outcome
 #' @noRd
 start_job <- function(work, task) {
-  parallel::mcparallel(
-    tryCatch(list(ok = TRUE, value = work(task)),
-             error = function(error) list(ok = FALSE, error = error)),
-    mc.set.seed = FALSE
+  parallel::mcparallel(run_job(work, task), mc.set.seed = FALSE)
+}
+
+#' Run one task in a forked process, keeping its warnings
+#'
+#' A warning in a forked process would be lost, so it is kept, without its
+#' call, and sent back with the outcome to be raised again in the main one.
+#' @noRd
+run_job <- function(work, task) {
+  warnings <- list()
+  outcome <- tryCatch(
+    withCallingHandlers(
+      list(ok = TRUE, value = work(task)),
+      warning = function(warning) {
+        warning$call <- NULL
+        warnings[[length(warnings) + 1L]] <<- warning
+        invokeRestart("muffleWarning")
+      }
+    ),
+    error = function(error) list(ok = FALSE, error = error)
   )
+  outcome$warnings <- warnings
+  outcome
 }
 
 #' Stop forked processes that are still running and collect them

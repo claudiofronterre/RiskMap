@@ -63,8 +63,8 @@
 ##' A binomial or Poisson model that takes a minute to fit can take tens of
 ##' seconds per point.
 ##' Joint profiles cost `n_grid^2` points each and are computed only when
-##' `pairs` asks for them. With `messages = TRUE` and one core the time left
-##' is estimated after the first parameter. `cores` runs independent parts in
+##' `pairs` asks for them. With `messages = TRUE` a progress bar shows the
+##' time left (see [riskmap_progress]). `cores` runs independent parts in
 ##' parallel.
 ##'
 ##' @param fitted A `RiskMap` object from [glgpm()] for a Gaussian model, or
@@ -187,21 +187,28 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
       length(pairs) * weights$pair,
     messages, unit = "percent"
   )
+  walk_labels <- paste0("The profile of ", parameters[walks_of$parameter],
+                        ifelse(walks_of$direction < 0, " below", " above"),
+                        " the estimate")
   walks <- riskmap_map(seq_len(nrow(walks_of)), function(row, report) {
     plans[[walks_of$parameter[row]]]$walk(walks_of$direction[row], report)
   }, cores, progress = bar, weights = rep(weights$walk, nrow(walks_of)),
-  reports_progress = TRUE)
+  reports_progress = TRUE, labels = walk_labels)
   marginal <- riskmap_map(seq_along(parameters), function(k) {
     side <- function(direction) {
       walks[[which(walks_of$parameter == k & walks_of$direction == direction)]]
     }
     plans[[k]]$finish(side(-1), side(1))
-  }, cores, progress = bar, weights = rep(weights$finish, length(parameters)))
+  }, cores, progress = bar, weights = rep(weights$finish, length(parameters)),
+  labels = paste("The profile of", parameters))
   names(marginal) <- parameters
   joint <- riskmap_map(pairs, function(pair, report) {
     profile_two_parameters(problem, pair, n_grid, span, marginal, report)
   }, cores, progress = bar, weights = rep(weights$pair, length(pairs)),
-  reports_progress = TRUE)
+  reports_progress = TRUE,
+  labels = vapply(pairs, function(pair) {
+    paste("The joint profile of", pair[1], "and", pair[2])
+  }, ""))
   progress_done(bar)
   names(joint) <- vapply(pairs, paste, "", collapse = ":")
 

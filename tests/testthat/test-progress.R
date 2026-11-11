@@ -122,3 +122,40 @@ test_that("in a log a step writes a line when it starts and when it ends", {
   withr::local_options(RiskMap.progress = FALSE)
   expect_no_message(progress_step("Stage 1"))
 })
+
+test_that("warnings in forked tasks reach the main process", {
+  skip_on_os("windows")
+  warn_second <- function(k) {
+    if (k == 2) warning("The second task warns.")
+    k
+  }
+  expect_warning(results <- riskmap_map(1:3, warn_second, cores = 2),
+                 "second task warns")
+  expect_identical(results, as.list(1:3))
+})
+
+test_that("a log gets no blank lines between steps", {
+  withr::local_options(RiskMap.progress = TRUE, cli.dynamic = FALSE)
+  run <- function() {
+    progress_step("First")
+    progress_step("Second")
+    progress_step_done()
+  }
+  lines <- capture_messages(run())
+  expect_length(lines, 4L)
+  expect_false(any(!nzchar(trimws(lines))))
+  expect_match(lines[2], "First [", fixed = TRUE)
+})
+
+test_that("a task that fails keeps its classes and arg", {
+  failing <- function(k) {
+    if (k == 2) abort_input("{.arg n} is wrong.", arg = "n") else k
+  }
+  error <- expect_input_error(
+    riskmap_map(1:3, failing, labels = paste("Replicate", 1:3)), "n"
+  )
+  expect_match(conditionMessage(error), "Replicate 2 failed", fixed = TRUE)
+  expect_s3_class(error$parent, "riskmap_error_input")
+  skip_on_os("windows")
+  expect_input_error(riskmap_map(1:3, failing, cores = 2), "n")
+})

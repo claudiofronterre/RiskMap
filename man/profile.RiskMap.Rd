@@ -133,8 +133,8 @@ parameters, so the time grows with the number of points and of parameters.
 A binomial or Poisson model that takes a minute to fit can take tens of
 seconds per point.
 Joint profiles cost \code{n_grid^2} points each and are computed only when
-\code{pairs} asks for them. With \code{messages = TRUE} and one core the time left
-is estimated after the first parameter. \code{cores} runs independent parts in
+\code{pairs} asks for them. With \code{messages = TRUE} a progress bar shows the
+time left (see \link{riskmap_progress}). \code{cores} runs independent parts in
 parallel.
 }
 \examples{

@@ -14,8 +14,9 @@
 #'
 #' Progress is shown when the function's argument `messages` is `TRUE` and
 #' the option `RiskMap.progress` is `TRUE`. The option's default is
-#' [interactive()], so progress appears in the console but not in scripts run
-#' with `Rscript`, in rendered documents or in tests. Set
+#' [rlang::is_interactive()], so progress appears in the console but not in
+#' scripts run with `Rscript`, in documents rendered by knitr or in tests,
+#' even when these are started from the console. Set
 #' `options(RiskMap.progress = TRUE)` to show it in the log of a script too.
 #' A log can't redraw a line, so there a bar writes a line each time another
 #' tenth of the work is done, and each stage of a fit writes a line when it
@@ -39,10 +40,12 @@ NULL
 #' Whether progress is shown
 #'
 #' When `messages` is `TRUE` and the option `RiskMap.progress` (by default
-#' [interactive()]) allows it.
+#' [rlang::is_interactive()], which is `FALSE` while knitr renders and while
+#' testthat runs) allows it.
 #' @noRd
 progress_enabled <- function(messages = TRUE) {
-  isTRUE(messages) && isTRUE(getOption("RiskMap.progress", interactive()))
+  isTRUE(messages) &&
+    isTRUE(getOption("RiskMap.progress", rlang::is_interactive()))
 }
 
 #' A progress bar
@@ -111,6 +114,16 @@ progress_tick <- function(bar, amount = 1) {
   invisible(bar)
 }
 
+#' Redraw a bar in a terminal, so that its time left moves between ticks
+#' @noRd
+progress_refresh <- function(bar) {
+  if (!is.null(bar) && bar$dynamic) {
+    cli::cli_progress_update(id = bar$id, set = bar$current,
+                             .envir = bar$envir)
+  }
+  invisible(bar)
+}
+
 #' Close a progress bar
 #' @noRd
 progress_done <- function(bar) {
@@ -121,25 +134,74 @@ progress_done <- function(bar) {
 
 #' A line saying which step of a computation is running
 #'
-#' cli shows the step while it runs and then a tick with the time it took,
-#' when the next step of `.envir` starts, when `progress_step_done()` is
-#' called, or when the frame `.envir` exits. In a log the step writes a line
-#' when it starts and another, with its time, when it ends. `message` is
-#' formatted with cli inline markup in `.envir` when the step starts, so
-#' the line that ends it reads the same.
+#' In a terminal, cli shows the step while it runs and then a tick with the
+#' time it took, when the next step of `.envir` starts, when
+#' `progress_step_done()` is called, or when the frame `.envir` exits. In a
+#' log, where cli would add a blank line after each step, the step writes a
+#' line when it starts and another, with its time, when the next step of
+#' `.envir` starts or `progress_step_done()` is called. `message` is
+#' formatted with cli inline markup in `.envir` when the step starts, so the
+#' line that ends it reads the same.
 #' @noRd
 progress_step <- function(message, messages = TRUE, .envir = parent.frame()) {
   if (!progress_enabled(messages)) return(invisible(NULL))
   text <- cli::format_inline(message, .envir = .envir)
-  # Already formatted, so cli must not interpolate it again.
-  literal <- gsub("}", "}}", gsub("{", "{{", text, fixed = TRUE), fixed = TRUE)
-  cli::cli_progress_step(literal, .envir = .envir)
+  if (cli::is_dynamic_tty()) {
+    # Already formatted, so cli must not interpolate it again.
+    literal <- gsub("}", "}}", gsub("{", "{{", text, fixed = TRUE),
+                    fixed = TRUE)
+    cli::cli_progress_step(literal, .envir = .envir)
+  } else {
+    end_log_step(.envir)
+    riskmap_inform(c("i" = "{text}"))
+    log_steps$open[[length(log_steps$open) + 1L]] <-
+      list(envir = .envir, text = text, started = proc.time()[["elapsed"]])
+  }
   invisible(NULL)
 }
 
 #' Close the current step of `.envir`
 #' @noRd
 progress_step_done <- function(messages = TRUE, .envir = parent.frame()) {
-  if (progress_enabled(messages)) cli::cli_progress_done(.envir = .envir)
+  if (!progress_enabled(messages)) return(invisible(NULL))
+  if (cli::is_dynamic_tty()) {
+    cli::cli_progress_done(.envir = .envir)
+  } else {
+    end_log_step(.envir)
+  }
   invisible(NULL)
+}
+
+#' Steps open in a log, each with its frame, text and start time
+#' @noRd
+log_steps <- new.env(parent = emptyenv())
+log_steps$open <- list()
+
+#' Write the line that ends the open step of `.envir` in a log
+#'
+#' Steps whose frame has exited, after an error, are dropped without a line.
+#' @noRd
+end_log_step <- function(.envir) {
+  frames <- sys.frames()
+  on_stack <- function(step) {
+    any(vapply(frames, identical, logical(1), step$envir))
+  }
+  open <- Filter(on_stack, log_steps$open)
+  mine <- vapply(open, function(step) identical(step$envir, .envir),
+                 logical(1))
+  for (step in open[mine]) {
+    took <- format_step_time(proc.time()[["elapsed"]] - step$started)
+    text <- step$text
+    riskmap_inform(c("v" = "{text} [{took}]"))
+  }
+  log_steps$open <- open[!mine]
+  invisible(NULL)
+}
+
+#' A step's time as cli shows it, as in 338ms, 2.2s or 3m 5s
+#' @noRd
+format_step_time <- function(seconds) {
+  if (seconds < 1) return(paste0(round(seconds * 1000), "ms"))
+  if (seconds < 60) return(paste0(format(round(seconds, 1), nsmall = 1), "s"))
+  paste0(seconds %/% 60, "m ", round(seconds %% 60), "s")
 }

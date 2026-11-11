@@ -129,12 +129,12 @@ Internal functions keep taking `messages` from their caller without a default. B
 
 ### Repeated work
 
-Run repeated, independent work, such as bootstrap replicates, test sets, profile walks or simulations, through `riskmap_map()` in `R/map.R`, not through `lapply()`, `parallel::mclapply()` or a loop. On one core it runs the tasks in order. With `cores` above 1 it runs each task in a forked process, at most `cores` at a time, and collects the results as the processes finish, so that a progress bar moves while they run. It stops the other processes when a task fails, reports a process that died, uses one BLAS thread while forking, and runs on one core on Windows. Two rules keep the results independent of `cores`.
+Run repeated, independent work, such as bootstrap replicates, profile walks or simulations, through `riskmap_map()` in `R/map.R`, not through `lapply()`, `parallel::mclapply()` or a loop. A loop that can't be written that way, such as the test sets of `assess_prediction()`, which share state between models, moves a bar with `progress_tick()` instead. On one core it runs the tasks in order. With `cores` above 1 it runs each task in a forked process, at most `cores` at a time, and collects the results as the processes finish, so that a progress bar moves while they run. It stops the other processes when a task fails, reports a process that died, raises the warnings of a forked process again in the main one, uses one BLAS thread while forking, and runs on one core on Windows. Two rules keep the results independent of `cores`.
 
 - A task that draws random numbers sets its own seed, derived from the task.
 - A task makes no call to sf, because GDAL and PROJ can deadlock in a forked process. Prepare everything that needs sf before `riskmap_map()`.
 
-With `errors = "return"` a failed task's error takes the place of its result, for callers that record failures instead of stopping.
+When a task fails, `riskmap_map()` stops with an error that names the task, from `labels`, such as "The profile of phi below the estimate failed.", keeps the task's error as its cause and keeps its RiskMap classes and `arg`, so that a handler for `riskmap_error_fit` still catches it. With `errors = "return"` a failed task's error takes the place of its result, for callers that record failures instead of stopping. Store the text of a condition in a result with `condition_text()`, which leaves out the colours and line breaks cli adds for the console.
 
 ### Progress
 

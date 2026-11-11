@@ -4161,11 +4161,15 @@ assess_simulation <- function(obj_sim,
     })
   }
 
+  if (messages) {
+    riskmap_inform("Refitting {n_models} model{?s} to {n_sim} simulation{?s}.")
+  }
   bar <- progress_bar("Refitting models to simulations", n_sim * n_models,
                       messages)
   results <- riskmap_map(seq_len(n_sim), assess_one_simulation,
                          progress = bar, weights = rep(n_models, n_sim),
-                         reports_progress = TRUE)
+                         reports_progress = TRUE,
+                         labels = paste("Simulation", seq_len(n_sim)))
   progress_done(bar)
 
   fits <- data.frame(
