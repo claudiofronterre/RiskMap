@@ -244,6 +244,25 @@ test_that("input errors name the calling function and describe the value", {
   })
 })
 
+test_that("check_range leaves infinite bounds out of the message", {
+  range_example <- function(max_dist, weight = 1, shift = -1) {
+    check_range(max_dist, min = 0, max = Inf, allow_equal = FALSE)
+    check_range(weight, min = 0)
+    check_range(shift, min = -Inf, max = 2, allow_equal = FALSE)
+    invisible(TRUE)
+  }
+  expect_snapshot(error = TRUE, {
+    range_example(-5)
+    range_example(Inf)
+    range_example(10, weight = -1)
+    range_example(10, shift = 2)
+  })
+  expect_error(check_range(1, min = 2, name = "a"),
+               "greater than or equal to 2", class = "riskmap_error_input")
+  expect_error(check_range(Inf, name = "a"), "single finite number, not Inf",
+               class = "riskmap_error_input")
+})
+
 test_that("plot.RiskMap_cross_validation validates model before metric (#156)", {
   ## an invalid model should be reported even when the metric is also invalid -
   ## previously this incorrectly complained about the metric first
@@ -418,7 +437,7 @@ test_that("matern_correlation returns output matching the shape of u", {
 
   expect_error(
     matern_correlation(u, -0.5, 0.5),
-    "must be a single finite number"
+    "phi", class = "riskmap_error_input"
   )
 
   for (kappa in c(0.5, 0.8)) {
@@ -458,7 +477,7 @@ test_that("matern_gradient_phi and matern_hessian_phi return symmetric n x n mat
 
       expect_error(
         derivative(u, -0.5, 0.5),
-        "must be a single finite number"
+        "phi", class = "riskmap_error_input"
       )
 
       output <- derivative(u, phi = 1, kappa = kappa)

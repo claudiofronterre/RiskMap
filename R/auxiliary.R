@@ -1867,15 +1867,47 @@ check_range <- function(x, min = -Inf, max = Inf, allow_equal = TRUE,
   }
   invalid <- !valid_number || outside
   if (invalid) {
-    interval <- if (allow_equal) "between" else "strictly between"
+    description <- describe_range(min, max, allow_equal)
     supplied <- describe_value(x)
     cli::cli_abort(
-      "{.arg {name}} must be a single finite number {interval} {min} and {max}, not {supplied}.",
+      "{.arg {name}} must be a single {description}, not {supplied}.",
       class = "riskmap_error_input",
       call = call
     )
   }
   invisible(TRUE)
+}
+
+#' Describe the numbers that `check_range()` accepts
+#'
+#' An infinite bound is left out, so that `min = 0, max = Inf` gives
+#' "positive finite number" rather than "finite number strictly between 0 and
+#' Inf".
+#' @param min,max,allow_equal As in `check_range()`.
+#' @return A character string to follow "must be a single".
+#' @noRd
+describe_range <- function(min, max, allow_equal) {
+  has_lower <- is.finite(min)
+  has_upper <- is.finite(max)
+  if (has_lower && has_upper) {
+    interval <- if (allow_equal) "between" else "strictly between"
+    return(paste("finite number", interval, min, "and", max))
+  }
+  if (has_lower && min == 0) {
+    return(if (allow_equal) "non-negative finite number" else "positive finite number")
+  }
+  if (has_upper && max == 0) {
+    return(if (allow_equal) "non-positive finite number" else "negative finite number")
+  }
+  if (has_lower) {
+    comparison <- if (allow_equal) "greater than or equal to" else "greater than"
+    return(paste("finite number", comparison, min))
+  }
+  if (has_upper) {
+    comparison <- if (allow_equal) "less than or equal to" else "less than"
+    return(paste("finite number", comparison, max))
+  }
+  "finite number"
 }
 
 #' Check that a value belongs to the closed unit interval
