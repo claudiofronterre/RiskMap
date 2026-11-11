@@ -11,7 +11,7 @@ test_that("create_grid produces errors", {
 
   expect_error(create_grid("gaussian_data", 1), "'boundaries' must be of class 'sf'")
   expect_error(create_grid(gaussian_data, 1), "'boundaries' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
-  expect_error(create_grid(sf_polygon, "not numeric"), "The value for 'spacing' must be a single positive number")
+  expect_error(create_grid(sf_polygon, "not numeric"), "spacing", class = "riskmap_error_input")
   expect_error(create_grid(sf_polygon, 1, distance_units = "feet"),
                "'distance_units' must be either 'km' or 'm'")
 

@@ -19,11 +19,13 @@
 #'   distances. Defaults to `FALSE`.
 #' @return A numeric vector of pairwise distances, in `distance_units`, as
 #'   returned by `dist()`.
+#' @param call The call named in input errors, so that they name the exported
+#'   function that called this one.
 #' @noRd
 extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
-                              dedupe = FALSE) {
+                              dedupe = FALSE, call = rlang::caller_env()) {
   if (!is.null(crs)) {
-    check_crs(crs, name = crs_arg)
+    check_crs(crs, name = crs_arg, call = call)
     data <- st_transform(data, crs = crs)
     if (st_is_longlat(data)) {
       stop("'", crs_arg, "' must be a projected CRS, not longitude/latitude", call. = FALSE)

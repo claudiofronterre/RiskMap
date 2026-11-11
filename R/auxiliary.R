@@ -1735,27 +1735,54 @@ coordinates_in_units <- function(data, distance_units) {
   st_coordinates(data) * crs_to_distance_factor(data, distance_units)
 }
 
+#' Describe a supplied value for an error message
+#'
+#' A single atomic value is shown as itself, for example `0.5`, `NA` or
+#' `"yes"`. Anything else is described by its type, for example "a double
+#' vector" or "a data frame". Used after "not" in input errors.
+#' @param x The value supplied by the user.
+#' @return A character string, already formatted by cli.
+#' @noRd
+describe_value <- function(x) {
+  if (is.atomic(x) && length(x) == 1L) {
+    cli::format_inline("{.val {x}}")
+  } else {
+    cli::format_inline("{.obj_type_friendly {x}}")
+  }
+}
+
 #' @title check_positive_integer
 #' @description
 #'
 #' Check that a value is a single, positive integer and error if not
 #' @param x the value to check
-#' @param name the name of the parameter to return in error messages
+#' @param name the name of the argument to use in error messages. Defaults to
+#'   the expression supplied as `x`.
 #' @param allow_null whether `NULL` is permitted
 #' @param allow_zero whether zero is permitted
-#' @return TRUE if the data is valid. Raise an error if not.
+#' @param call the call named in the error. The default, the function that
+#'   called the check, is right when an exported function checks its own
+#'   arguments. An internal function that checks arguments on behalf of an
+#'   exported one should take its own `call` argument and pass it on.
+#' @return TRUE if the data is valid. Raise an error of class
+#'   `riskmap_error_input` if not.
 #' @noRd
 #'
-check_positive_integer <- function(x, name, allow_null = FALSE,
-                                   allow_zero = FALSE) {
+check_positive_integer <- function(x, name = rlang::caller_arg(x),
+                                   allow_null = FALSE, allow_zero = FALSE,
+                                   call = rlang::caller_env()) {
   if (is.null(x) && allow_null) return(invisible(TRUE))
   description <- if (allow_zero) "non-negative" else "positive"
   invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
     !is.finite(x) || x %% 1 != 0 || x < as.integer(!allow_zero) ||
     x > .Machine$integer.max
   if (invalid) {
-    stop("'", name, "' must be a single ", description, " integer",
-         call. = FALSE)
+    supplied <- describe_value(x)
+    cli::cli_abort(
+      "{.arg {name}} must be a single {description} integer, not {supplied}.",
+      class = "riskmap_error_input",
+      call = call
+    )
   }
   invisible(TRUE)
 }
@@ -1786,17 +1813,29 @@ preserve_random_seed <- function() {
 #'
 #' Check that a value is a single, positive number and error if not
 #' @param x the value to check
-#' @param type the type of value being checked. Defaults to `"starting"`.
-#' @return TRUE if x is valid. Raise an error if not.
+#' @param type the type of value being checked. The default, `"starting "`,
+#'   is for an element of a list of starting values such as
+#'   `start_pars[["sigma2"]]`, and the message names the element. Use `""`
+#'   for an argument.
+#' @param call the call named in the error, as in `check_positive_integer()`.
+#' @return TRUE if x is valid. Raise an error of class `riskmap_error_input`
+#'   if not.
 #' @noRd
 #'
-check_positive_number <- function(x, type = "starting ") {
+check_positive_number <- function(x, type = "starting ",
+                                  call = rlang::caller_env()) {
   # extract name, removing any list
-  name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
+  name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", rlang::caller_arg(x))
 
   if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
       !is.finite(x) || x <= 0) {
-    stop("The ", type, "value for '", name, "' must be a single positive number")
+    supplied <- describe_value(x)
+    problem <- if (nzchar(type)) {
+      "The {trimws(type)} value for {.code {name}} must be a single positive number, not {supplied}."
+    } else {
+      "{.arg {name}} must be a single positive number, not {supplied}."
+    }
+    cli::cli_abort(problem, class = "riskmap_error_input", call = call)
   }
 
   invisible(TRUE)
@@ -1810,10 +1849,13 @@ check_positive_number <- function(x, type = "starting ") {
 #' @param allow_equal Whether either endpoint is allowed.
 #' @param name The argument name to use in the error message. Defaults to the
 #'   expression supplied as `x`.
-#' @return `TRUE` invisibly when valid; otherwise raises an error.
+#' @param call The call named in the error, as in `check_positive_integer()`.
+#' @return `TRUE` invisibly when valid; otherwise raises an error of class
+#'   `riskmap_error_input`.
 #' @noRd
 check_range <- function(x, min = -Inf, max = Inf, allow_equal = TRUE,
-                        name = deparse(substitute(x))) {
+                        name = rlang::caller_arg(x),
+                        call = rlang::caller_env()) {
   valid_number <- is.numeric(x) && length(x) == 1L && !is.na(x) &&
     is.finite(x)
   outside <- if (!valid_number) {
@@ -1826,17 +1868,21 @@ check_range <- function(x, min = -Inf, max = Inf, allow_equal = TRUE,
   invalid <- !valid_number || outside
   if (invalid) {
     interval <- if (allow_equal) "between" else "strictly between"
-    stop("'", name, "' must be a single finite number ", interval, " ",
-         min, " and ", max,
-         call. = FALSE)
+    supplied <- describe_value(x)
+    cli::cli_abort(
+      "{.arg {name}} must be a single finite number {interval} {min} and {max}, not {supplied}.",
+      class = "riskmap_error_input",
+      call = call
+    )
   }
   invisible(TRUE)
 }
 
 #' Check that a value belongs to the closed unit interval
 #' @noRd
-check_zero_one <- function(x, name = deparse(substitute(x))) {
-  check_range(x, min = 0, max = 1, name = name)
+check_zero_one <- function(x, name = rlang::caller_arg(x),
+                           call = rlang::caller_env()) {
+  check_range(x, min = 0, max = 1, name = name, call = call)
 }
 
 
@@ -1846,14 +1892,22 @@ check_zero_one <- function(x, name = deparse(substitute(x))) {
 #' Check that a value is a single, non-missing logical (`TRUE` or `FALSE`)
 #' and error if not
 #' @param x the value to check
-#' @return TRUE if x is valid. Raise an error if not.
+#' @param name the argument name to use in the error message. Defaults to the
+#'   expression supplied as `x`.
+#' @param call the call named in the error, as in `check_positive_integer()`.
+#' @return TRUE if x is valid. Raise an error of class `riskmap_error_input`
+#'   if not.
 #' @noRd
 #'
-check_logical <- function(x) {
-  name <- deparse(substitute(x))
-
+check_logical <- function(x, name = rlang::caller_arg(x),
+                          call = rlang::caller_env()) {
   if (!isTRUE(x) && !isFALSE(x)) {
-    stop("'", name, "' must be either TRUE or FALSE", call. = FALSE)
+    supplied <- describe_value(x)
+    cli::cli_abort(
+      "{.arg {name}} must be {.code TRUE} or {.code FALSE}, not {supplied}.",
+      class = "riskmap_error_input",
+      call = call
+    )
   }
 
   invisible(TRUE)
@@ -1868,20 +1922,24 @@ check_logical <- function(x) {
 #' @param name the argument name to use in the error message. Defaults to the
 #'   name of the variable passed as `crs`; callers wrapping this in another
 #'   function should pass their own argument's name explicitly, since
-#'   `substitute()` only sees the immediate call site.
-#' @return TRUE if the CRS is valid. Raise an error if not.
+#'   `rlang::caller_arg()` only sees the immediate call site.
+#' @param call the call named in the error, as in `check_positive_integer()`.
+#' @return TRUE if the CRS is valid. Raise an error of class
+#'   `riskmap_error_input` if not, with the warning or error from
+#'   [sf::st_crs()] as its parent.
 #' @noRd
 #'
-check_crs <- function(crs, name = deparse(substitute(crs))){
-  tryCatch(
-    st_crs(crs),
-    warning = function(w) {
-      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
-    },
-    error = function(e){
-      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
-    }
-  )
+check_crs <- function(crs, name = rlang::caller_arg(crs),
+                      call = rlang::caller_env()) {
+  invalid_crs <- function(condition) {
+    cli::cli_abort(
+      "{.arg {name}} must be a valid coordinate reference system.",
+      class = "riskmap_error_input",
+      call = call,
+      parent = condition
+    )
+  }
+  tryCatch(st_crs(crs), warning = invalid_crs, error = invalid_crs)
   invisible(TRUE)
 }
 

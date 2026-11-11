@@ -12,7 +12,7 @@ fake_download <- function(urls, dest_dir, messages) {
   paths
 }
 
-age_catalogue <- function(dataset, iso3) {
+age_catalogue <- function(dataset, iso3, ...) {
   groups <- c(0, 1, seq(5, 80, by = 5))
   files <- sprintf("https://example.org/lbr_%s_%d_2011.tif",
                    rep(c("f", "m"), each = length(groups)), groups)
@@ -36,10 +36,32 @@ test_that("get_worldpop selects the age groups and sums them", {
 
   expect_error(get_worldpop("LBR", 2011, ages = c(18, Inf),
                             messages = FALSE),
-               "must start and end on WorldPop age groups")
+               class = "riskmap_error_input")
   expect_error(get_worldpop("LBR", 2012, ages = c(20, Inf),
                             messages = FALSE),
-               "no unconstrained")
+               class = "riskmap_error_worldpop")
+})
+
+test_that("get_worldpop reports the product unless messages are off", {
+  local_mocked_bindings(worldpop_catalogue = age_catalogue,
+                        worldpop_download = fake_download)
+  dest_dir <- withr::local_tempdir()
+  expect_snapshot(
+    adults <- get_worldpop("LBR", 2011, ages = c(20, Inf), dest_dir = dest_dir)
+  )
+  withr::local_options(RiskMap.messages = FALSE)
+  expect_no_message(get_worldpop("LBR", 2011, ages = c(20, Inf),
+                                 dest_dir = dest_dir))
+})
+
+test_that("get_worldpop errors name get_worldpop and give hints", {
+  local_mocked_bindings(worldpop_catalogue = age_catalogue,
+                        worldpop_download = fake_download)
+  expect_snapshot(error = TRUE, {
+    get_worldpop("LBR", 2011, ages = c(18, Inf), messages = FALSE)
+    get_worldpop("LBR", 2011, constrained = "yes")
+    get_worldpop("LBR", 2035, constrained = TRUE)
+  })
 })
 
 test_that("get_worldpop chooses products and checks arguments", {
@@ -53,10 +75,12 @@ test_that("get_worldpop chooses products and checks arguments", {
   expect_true(is.na(product(2011, c(20, Inf), "1km", FALSE, FALSE)$dataset))
   expect_identical(product(2020, c(0, 4), "1km", TRUE, FALSE)$dataset,
                    "age_structures/G2_CN_Age_R25A_1km")
-  expect_error(product(2011, NULL, "100m", TRUE, FALSE), "2015 to 2030")
-  expect_error(product(2025, NULL, "100m", FALSE, FALSE), "2000 to 2020")
+  expect_error(product(2011, NULL, "100m", TRUE, FALSE),
+               class = "riskmap_error_input")
+  expect_error(product(2025, NULL, "100m", FALSE, FALSE),
+               class = "riskmap_error_input")
   expect_error(product(2011, c(20, Inf), "100m", FALSE, TRUE),
-               "whole population")
+               class = "riskmap_error_input")
 
   urls <- RiskMap:::worldpop_files(product(2011, c(20, Inf), "1km", FALSE,
                                            FALSE),
@@ -65,13 +89,18 @@ test_that("get_worldpop chooses products and checks arguments", {
   expect_match(urls[1], "Global_2000_2020_1km/unconstrained/2011/LBR/lbr_m_20_2011_1km.tif",
                fixed = TRUE)
 
-  expect_error(get_worldpop("Liberia", 2011), "ISO3")
-  expect_error(get_worldpop("LBR", 2011.5), "whole number")
-  expect_error(get_worldpop("LBR", 2011, ages = 20), "c\\(from, to\\)")
+  expect_error(get_worldpop("Liberia", 2011), "`country`",
+               class = "riskmap_error_input")
+  expect_error(get_worldpop("LBR", 2011.5), "`year`",
+               class = "riskmap_error_input")
+  expect_error(get_worldpop("LBR", NA_real_), "`year`",
+               class = "riskmap_error_input")
+  expect_error(get_worldpop("LBR", 2011, ages = 20), "`ages`",
+               class = "riskmap_error_input")
 })
 
 test_that("get_worldpop uses the both-sexes layers when available", {
-  catalogue <- function(dataset, iso3) {
+  catalogue <- function(dataset, iso3, ...) {
     files <- sprintf("https://example.org/lbr_%s_%02d_2015_CN_1km.tif",
                      rep(c("f", "m", "t"), each = 3), rep(c(0, 1, 5), 3))
     data.frame(popyear = "2015", files = I(list(files)))

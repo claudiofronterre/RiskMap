@@ -27,7 +27,7 @@ test_that("plot_mcmc checks its arguments", {
                  "'component' must contain distinct whole numbers between 1 and the number of locations, 10")
   }
   expect_error(plot_mcmc(poisson_model, check_mean = NA),
-               "'check_mean' must be either TRUE or FALSE")
+               "check_mean", class = "riskmap_error_input")
 })
 
 test_that("plot_mcmc shows the mean and the location with the smallest ESS", {

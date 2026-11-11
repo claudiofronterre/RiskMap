@@ -448,12 +448,14 @@ predict.RiskMap <- function(
 }
 
 #' Validate the unified prediction options
+#' @param call The call named in input errors, so that they name
+#'   `predict.RiskMap()`.
 #' @noRd
 validate_prediction_options <- function(object, type, include,
                                         boundaries, aggregate, summaries,
                                         thresholds, level, weights,
                                         control_mcmc, seed, keep_samples,
-                                        messages) {
+                                        messages, call = rlang::caller_env()) {
   type <- match.arg(type, c("auto", "marginal", "joint"))
   if (!is.null(boundaries)) {
     check_data(boundaries, geometry = "polygon", type = "sf")
@@ -491,14 +493,15 @@ validate_prediction_options <- function(object, type, include,
     stop("'thresholds' is used only when 'summaries' includes 'exceedance'",
          call. = FALSE)
   }
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level",
+              call = call)
   if (!is.null(control_mcmc) &&
       !inherits(control_mcmc, "RiskMap_control_mcmc")) {
     stop("'control_mcmc' must be NULL or an output from set_control_mcmc()",
          call. = FALSE)
   }
   check_positive_integer(seed, "seed", allow_null = TRUE,
-                         allow_zero = FALSE)
+                         allow_zero = FALSE, call = call)
   if (!is.null(weights) &&
       (!is.character(weights) || length(weights) != 1L || is.na(weights))) {
     stop("'weights' must be NULL or the name of one column in 'newdata'",
@@ -508,8 +511,8 @@ validate_prediction_options <- function(object, type, include,
     stop("'weights' is used only when 'boundaries' are supplied",
          call. = FALSE)
   }
-  check_logical(keep_samples)
-  check_logical(messages)
+  check_logical(keep_samples, call = call)
+  check_logical(messages, call = call)
   type
 }
 
@@ -3495,10 +3498,13 @@ plot.RiskMap_simulation <- function(x, simulation = 1, palette = "viridis",
 ##' @param legend_title Character string used as the fill legend title.
 ##' @param palette,reverse_palette,limits,north_arrow,scale_bar,... Passed to
 ##' `add_map_layers()`.
+##' @param call The call named in input errors, so that they name the plot
+##' method.
 ##' @return A `ggplot` object.
 ##' @noRd
 plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
-                      limits, north_arrow, scale_bar, ...) {
+                      limits, north_arrow, scale_bar, ...,
+                      call = rlang::caller_env()) {
   grid_coordinates <- st_coordinates(grid)
   plot_data <- data.frame(x = grid_coordinates[, 1],
                           y = grid_coordinates[, 2],
@@ -3535,7 +3541,8 @@ plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
                  limits = limits,
                  north_arrow = north_arrow,
                  scale_bar = scale_bar,
-                 ...)
+                 ...,
+                 call = call)
 }
 
 ##' Spacing between the points of a regular grid along one axis
@@ -3554,11 +3561,13 @@ grid_spacing <- function(coordinates) {
 ##' @param palette Either the name of a palette in [grDevices::hcl.pals()] or a
 ##' character vector of two or more valid colours.
 ##' @param reverse_palette Logical; reverse the order of the colours.
+##' @param call The call named in input errors.
 ##' @return A character vector of colours.
 ##' @noRd
-palette_colours <- function(palette, reverse_palette = FALSE) {
+palette_colours <- function(palette, reverse_palette = FALSE,
+                            call = rlang::caller_env()) {
   stopifnot("'palette' must be a character vector" = is.character(palette))
-  check_logical(reverse_palette)
+  check_logical(reverse_palette, call = call)
 
   if (length(palette) == 1) {
     # hcl.colors() ignores case, spaces and punctuation in palette names
@@ -3593,14 +3602,17 @@ palette_colours <- function(palette, reverse_palette = FALSE) {
 ##' @param limits `NULL` or a numeric vector of length two for the colour scale.
 ##' @param north_arrow,scale_bar Logical; whether to add each annotation.
 ##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()].
+##' @param call The call named in input errors.
 ##' @return The `ggplot` object with the layers added.
 ##' @noRd
 add_map_layers <- function(map, extent, crs, legend_title, palette,
-                           reverse_palette, limits, north_arrow, scale_bar, ...) {
-  check_logical(north_arrow)
-  check_logical(scale_bar)
+                           reverse_palette, limits, north_arrow, scale_bar, ...,
+                           call = rlang::caller_env()) {
+  check_logical(north_arrow, call = call)
+  check_logical(scale_bar, call = call)
   map <- map +
-    scale_fill_gradientn(colours = palette_colours(palette, reverse_palette),
+    scale_fill_gradientn(colours = palette_colours(palette, reverse_palette,
+                                                   call = call),
                          limits = limits, ...) +
     coord_sf(crs = crs,
              xlim = as.numeric(extent[c("xmin", "xmax")]),

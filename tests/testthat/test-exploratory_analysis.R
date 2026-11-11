@@ -11,7 +11,7 @@ test_that("summarise_distance produces errors", {
   test_that("distance_crs must be a valid CRS", {
     expect_error(
       summarise_distance(gaussian_data, distance_crs = "a"),
-      "The 'distance_crs' provided is not a valid CRS"
+      "distance_crs", class = "riskmap_error_input"
     )
   })
 
@@ -86,7 +86,7 @@ test_that("summarise_distance prints rounded values and stores them in full", {
   capture.output(visible <- withVisible(print(result))$visible)
   expect_false(visible)
   expect_error(print(result, digits = 0),
-               "'digits' must be a single positive integer")
+               "digits", class = "riskmap_error_input")
 })
 
 test_that("summarise_distance follows the glgpm() CRS convention", {
@@ -178,67 +178,67 @@ test_that("variogram produces errors", {
   test_that("n_bins must be numeric", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = "10"),
-      "'n_bins' must be a single positive integer"
+      "n_bins", class = "riskmap_error_input"
     )
   })
 
   test_that("n_bins must have length 1", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = c(5, 10)),
-      "'n_bins' must be a single positive integer"
+      "n_bins", class = "riskmap_error_input"
     )
   })
 
   test_that("n_bins must be >= 1", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = 0),
-      "'n_bins' must be a single positive integer"
+      "n_bins", class = "riskmap_error_input"
     )
   })
 
   test_that("n_bins must be a whole number", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_bins = 4.5),
-      "'n_bins' must be a single positive integer"
+      "n_bins", class = "riskmap_error_input"
     )
   })
 
   test_that("max_dist must be numeric", {
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = "100"),
-      "'max_dist' must be a single finite number strictly between 0 and Inf"
+      "max_dist", class = "riskmap_error_input"
     )
   })
 
   test_that("max_dist must have length 1", {
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = c(10, 20)),
-      "'max_dist' must be a single finite number strictly between 0 and Inf"
+      "max_dist", class = "riskmap_error_input"
     )
   })
 
   test_that("max_dist must be strictly positive", {
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = 0),
-      "'max_dist' must be a single finite number strictly between 0 and Inf"
+      "max_dist", class = "riskmap_error_input"
     )
     expect_error(
       variogram(gaussian_data, variable = "y", max_dist = -5),
-      "'max_dist' must be a single finite number strictly between 0 and Inf"
+      "max_dist", class = "riskmap_error_input"
     )
   })
 
   test_that("n_permutations must be non-negative", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_permutations = -1),
-      "'n_permutations' must be a single non-negative integer"
+      "n_permutations", class = "riskmap_error_input"
     )
   })
 
   test_that("n_permutations must be a whole number", {
     expect_error(
       variogram(gaussian_data, variable = "y", n_permutations = 10.5),
-      "'n_permutations' must be a single non-negative integer"
+      "n_permutations", class = "riskmap_error_input"
     )
   })
 
@@ -362,7 +362,7 @@ test_that("variogram produces errors", {
   test_that("distance_crs must be a valid, projected CRS and distance_units must be 'km' or 'm'", {
     expect_error(
       variogram(gaussian_data, variable = "y", distance_crs = "a"),
-      "The 'distance_crs' provided is not a valid CRS")
+      "distance_crs", class = "riskmap_error_input")
 
     expect_error(
       variogram(gaussian_data, variable = "y", distance_units = "a"),
@@ -564,7 +564,7 @@ test_that("plot.RiskMap_variogram labels points with their numbers of pairs on r
   nonempty <- result$variogram$n_pairs > 0L
   expect_identical(labels, format(result$variogram$n_pairs[nonempty],
                                   big.mark = ",", trim = TRUE))
-  expect_error(plot(result, show_pairs = NA), "TRUE or FALSE")
+  expect_error(plot(result, show_pairs = NA), "show_pairs", class = "riskmap_error_input")
 })
 
 test_that("plot.RiskMap_variogram omits empty classes and highlights points outside the envelope", {
@@ -595,7 +595,7 @@ test_that("plot.RiskMap_variogram omits empty classes and highlights points outs
   expect_lte(ranges$x$range$range[1], 0)
   expect_lte(ranges$y$range$range[1], 0)
 
-  expect_error(plot(result, plot_envelope = "yes"), "TRUE or FALSE")
+  expect_error(plot(result, plot_envelope = "yes"), "plot_envelope", class = "riskmap_error_input")
 })
 
 test_that("print.RiskMap_variogram describes the classes and the envelope", {

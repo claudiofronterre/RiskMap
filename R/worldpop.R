@@ -23,7 +23,8 @@
 ##'   population of the unconstrained 2000 to 2020 estimates.
 ##' @param dest_dir Directory for the downloaded files. Files already there
 ##'   are not downloaded again. Defaults to a temporary directory.
-##' @param messages Logical. Report the product and the downloads.
+##' @param messages Logical. Report the product and the number of files.
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##'
 ##' @details
 ##' WorldPop distributes census-based population totals over a fine grid with
@@ -73,15 +74,24 @@ get_worldpop <- function(country, year, ages = NULL,
                          sex = c("both", "female", "male"),
                          resolution = c("100m", "1km"),
                          constrained = FALSE, un_adjusted = FALSE,
-                         dest_dir = tempdir(), messages = TRUE) {
+                         dest_dir = tempdir(),
+                         messages = getOption("RiskMap.messages", TRUE)) {
   if (!is.character(country) || length(country) != 1L ||
       !grepl("^[A-Za-z]{3}$", country)) {
-    stop("'country' must be a three-letter ISO3 code, such as \"LBR\"",
-         call. = FALSE)
+    supplied <- describe_value(country)
+    cli::cli_abort(
+      "{.arg country} must be a three-letter ISO3 code, such as {.val LBR}, not {supplied}.",
+      class = "riskmap_error_input"
+    )
   }
   iso3 <- toupper(country)
-  if (!is.numeric(year) || length(year) != 1L || year != round(year)) {
-    stop("'year' must be a single whole number", call. = FALSE)
+  if (!is.numeric(year) || length(year) != 1L || is.na(year) ||
+      year != round(year)) {
+    supplied <- describe_value(year)
+    cli::cli_abort(
+      "{.arg year} must be a single whole number, not {supplied}.",
+      class = "riskmap_error_input"
+    )
   }
   sex <- match.arg(sex)
   resolution <- match.arg(resolution)
@@ -90,17 +100,21 @@ get_worldpop <- function(country, year, ages = NULL,
   check_logical(messages)
   if (!is.null(ages) && (!is.numeric(ages) || length(ages) != 2L ||
                          anyNA(ages) || ages[1] > ages[2])) {
-    stop("'ages' must be NULL or c(from, to), for example c(20, Inf)",
-         call. = FALSE)
+    cli::cli_abort(
+      c("{.arg ages} must be {.code NULL} or {.code c(from, to)} with {.code from <= to}.",
+        "i" = "For example, {.code c(20, Inf)} selects adults aged 20 and over."),
+      class = "riskmap_error_input"
+    )
   }
 
   product <- worldpop_product(year, ages, resolution, constrained,
                               un_adjusted)
   urls <- worldpop_files(product, iso3, year, ages, sex)
   if (messages) {
-    message("WorldPop ", product$label, ", ", iso3, " ", year,
-            if (!is.null(ages)) worldpop_age_label(ages, sex), ": ",
-            length(urls), " file", if (length(urls) > 1L) "s")
+    selection <- if (is.null(ages)) "" else worldpop_age_label(ages, sex)
+    cli::cli_inform(
+      "WorldPop {product$label}, {iso3} {year}{selection}: {length(urls)} file{?s}."
+    )
   }
   dir.create(dest_dir, showWarnings = FALSE, recursive = TRUE)
   paths <- worldpop_download(urls, dest_dir, messages)
@@ -113,16 +127,24 @@ get_worldpop <- function(country, year, ages = NULL,
 #' The WorldPop product for a request
 #' @noRd
 worldpop_product <- function(year, ages, resolution, constrained,
-                             un_adjusted) {
+                             un_adjusted, call = rlang::caller_env()) {
   by_age <- !is.null(ages)
   if (constrained) {
     if (year < 2015 || year > 2030) {
-      stop("Constrained estimates are available for 2015 to 2030; use ",
-           "constrained = FALSE for earlier years", call. = FALSE)
+      cli::cli_abort(
+        c("Constrained estimates can't be requested for {year}.",
+          "i" = "Constrained estimates cover 2015 to 2030 and unconstrained estimates ({.code constrained = FALSE}) cover 2000 to 2020."),
+        class = "riskmap_error_input",
+        call = call
+      )
     }
     if (un_adjusted) {
-      stop("'un_adjusted' is available only for the unconstrained ",
-           "2000 to 2020 estimates of the whole population", call. = FALSE)
+      cli::cli_abort(
+        c("{.arg un_adjusted} can't be {.code TRUE} with constrained estimates.",
+          "i" = "UN-adjusted totals exist only for the unconstrained 2000 to 2020 estimates of the whole population."),
+        class = "riskmap_error_input",
+        call = call
+      )
     }
     dataset <- if (by_age) {
       paste0("age_structures/G2_CN_Age_R25A_", resolution)
@@ -134,12 +156,20 @@ worldpop_product <- function(year, ages, resolution, constrained,
                               resolution)))
   }
   if (year < 2000 || year > 2020) {
-    stop("Unconstrained estimates are available for 2000 to 2020; use ",
-         "constrained = TRUE for 2015 to 2030", call. = FALSE)
+    cli::cli_abort(
+      c("Unconstrained estimates can't be requested for {year}.",
+        "i" = "Unconstrained estimates cover 2000 to 2020 and constrained estimates ({.code constrained = TRUE}) cover 2015 to 2030."),
+      class = "riskmap_error_input",
+      call = call
+    )
   }
   if (un_adjusted && by_age) {
-    stop("'un_adjusted' is available only for the whole population",
-         call. = FALSE)
+    cli::cli_abort(
+      c("{.arg un_adjusted} can't be {.code TRUE} together with {.arg ages}.",
+        "i" = "UN-adjusted totals exist only for the whole population."),
+      class = "riskmap_error_input",
+      call = call
+    )
   }
   dataset <- if (by_age) {
     if (resolution == "1km") NA_character_ else "age_structures/aswpgp"
@@ -156,11 +186,12 @@ worldpop_product <- function(year, ages, resolution, constrained,
 
 #' Addresses of the files for a request
 #' @noRd
-worldpop_files <- function(product, iso3, year, ages, sex) {
+worldpop_files <- function(product, iso3, year, ages, sex,
+                           call = rlang::caller_env()) {
   if (is.na(product$dataset)) {
     # The 1 km age and sex layers of 2000-2020 are not in the catalogue.
     groups <- c(0, 1, seq(5, 80, by = 5))
-    keep <- worldpop_age_groups(groups, ages)
+    keep <- worldpop_age_groups(groups, ages, call = call)
     sexes <- switch(sex, both = c("f", "m"), female = "f", male = "m")
     files <- sprintf("%s_%s_%d_%d_1km.tif", tolower(iso3),
                      rep(sexes, each = length(keep)), keep, year)
@@ -168,18 +199,25 @@ worldpop_files <- function(product, iso3, year, ages, sex) {
                   "Global_2000_2020_1km/unconstrained/", year, "/", iso3,
                   "/", files))
   }
-  catalogue <- worldpop_catalogue(product$dataset, iso3)
+  catalogue <- worldpop_catalogue(product$dataset, iso3, call = call)
   entry <- catalogue$files[as.character(catalogue$popyear) ==
                              as.character(year)]
   if (!length(entry)) {
-    stop("WorldPop has no ", product$label, " for ", iso3, " in ", year,
-         call. = FALSE)
+    cli::cli_abort(
+      "Can't find WorldPop {product$label} for {iso3} in {year}.",
+      class = "riskmap_error_worldpop",
+      call = call
+    )
   }
   files <- grep("\\.tif$", entry[[1]], value = TRUE)
   if (is.null(ages)) {
     if (length(files) != 1L) {
-      stop("Unexpected WorldPop catalogue entry for ", iso3, " in ", year,
-           call. = FALSE)
+      cli::cli_abort(
+        c("Can't read the WorldPop catalogue entry for {iso3} in {year}.",
+          "x" = "It lists {length(files)} GeoTIFF file{?s} where one was expected."),
+        class = "riskmap_error_worldpop",
+        call = call
+      )
     }
     return(files)
   }
@@ -190,7 +228,7 @@ worldpop_files <- function(product, iso3, year, ages, sex) {
   files <- files[ok]
   file_sex <- vapply(parsed[ok], `[`, "", 2)
   file_age <- as.numeric(vapply(parsed[ok], `[`, "", 3))
-  keep <- worldpop_age_groups(sort(unique(file_age)), ages)
+  keep <- worldpop_age_groups(sort(unique(file_age)), ages, call = call)
   sexes <- if (sex == "both") {
     if (any(file_sex == "t")) "t" else c("f", "m")
   } else {
@@ -201,13 +239,17 @@ worldpop_files <- function(product, iso3, year, ages, sex) {
 
 #' Lower bounds of the age groups between two ages
 #' @noRd
-worldpop_age_groups <- function(groups, ages) {
+worldpop_age_groups <- function(groups, ages, call = rlang::caller_env()) {
   upper <- c(groups[-1] - 1, Inf)
   if (!ages[1] %in% groups || !ages[2] %in% upper) {
-    stop("'ages' must start and end on WorldPop age groups: groups start ",
-         "at ", paste(groups, collapse = ", "), " and the oldest is ",
-         "open-ended, so use, for example, c(20, Inf) or c(15, 49)",
-         call. = FALSE)
+    cli::cli_abort(
+      c("{.arg ages} must start and end on WorldPop age groups.",
+        "x" = "You supplied {.code c({ages[1]}, {ages[2]})}.",
+        "i" = "Groups start at {groups}, and the oldest is open-ended.",
+        "i" = "Use, for example, {.code c(20, Inf)} or {.code c(15, 49)}."),
+      class = "riskmap_error_input",
+      call = call
+    )
   }
   groups[groups >= ages[1] & upper <= ages[2]]
 }
@@ -222,23 +264,32 @@ worldpop_age_label <- function(ages, sex) {
 
 #' Query the WorldPop catalogue
 #' @noRd
-worldpop_catalogue <- function(dataset, iso3) {
+worldpop_catalogue <- function(dataset, iso3, call = rlang::caller_env()) {
   url <- paste0("https://hub.worldpop.org/rest/data/", dataset, "?iso3=",
                 iso3)
   result <- tryCatch(jsonlite::fromJSON(url), error = function(error) {
-    stop("Could not reach the WorldPop catalogue (", conditionMessage(error),
-         ")", call. = FALSE)
+    cli::cli_abort(
+      "Can't reach the WorldPop catalogue at {.url {url}}.",
+      class = "riskmap_error_worldpop",
+      call = call,
+      parent = error
+    )
   })
   data <- result$data
   if (is.null(data) || !length(data)) {
-    stop("WorldPop has no data for ", iso3, " in ", dataset, call. = FALSE)
+    cli::cli_abort(
+      "Can't find WorldPop data for {iso3} in {.val {dataset}}.",
+      class = "riskmap_error_worldpop",
+      call = call
+    )
   }
   data
 }
 
 #' Download files that are not already present
 #' @noRd
-worldpop_download <- function(urls, dest_dir, messages) {
+worldpop_download <- function(urls, dest_dir, messages,
+                              call = rlang::caller_env()) {
   old_timeout <- options(timeout = max(600, getOption("timeout")))
   on.exit(options(old_timeout), add = TRUE)
   paths <- file.path(dest_dir, basename(urls))
@@ -250,7 +301,12 @@ worldpop_download <- function(urls, dest_dir, messages) {
     )
     if (inherits(status, "error") || !identical(status, 0L)) {
       unlink(paths[i])
-      stop("Could not download ", urls[i], call. = FALSE)
+      cli::cli_abort(
+        "Can't download {.url {urls[i]}}.",
+        class = "riskmap_error_worldpop",
+        call = call,
+        parent = if (inherits(status, "error")) status else NULL
+      )
     }
   }
   paths

@@ -13,7 +13,7 @@ get_worldpop(
   constrained = FALSE,
   un_adjusted = FALSE,
   dest_dir = tempdir(),
-  messages = TRUE
+  messages = getOption("RiskMap.messages", TRUE)
 )
 }
 \arguments{
@@ -44,7 +44,8 @@ population of the unconstrained 2000 to 2020 estimates.}
 \item{dest_dir}{Directory for the downloaded files. Files already there
 are not downloaded again. Defaults to a temporary directory.}
 
-\item{messages}{Logical. Report the product and the downloads.}
+\item{messages}{Logical. Report the product and the number of files.
+Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 }
 \value{
 A \code{SpatRaster} with one layer, \code{population}, giving the number of

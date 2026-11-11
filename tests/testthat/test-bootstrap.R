@@ -171,20 +171,20 @@ test_that("plot shows a natural axis unless log_scale is TRUE", {
   coefficient <- plot(boot, parameters = names(boot$estimate)[1],
                       log_scale = TRUE)
   expect_null(coefficient$scales$get_scales("x"))
-  expect_error(plot(boot, log_scale = NA), "TRUE or FALSE")
+  expect_error(plot(boot, log_scale = NA), "log_scale", class = "riskmap_error_input")
 })
 
 test_that("parametric_bootstrap validates its arguments", {
   expect_error(parametric_bootstrap(list()), "'RiskMap' object")
   expect_error(parametric_bootstrap(gaussian_model, n_sim = 0),
-               "'n_sim' must be a single positive integer")
+               "n_sim", class = "riskmap_error_input")
   expect_error(parametric_bootstrap(gaussian_model, seed = -1),
-               "'seed' must be a single non-negative integer")
+               "seed", class = "riskmap_error_input")
   expect_error(parametric_bootstrap(gaussian_model, level = 1), "level")
   expect_error(parametric_bootstrap(gaussian_model, cores = 0),
-               "'cores' must be a single positive integer")
+               "cores", class = "riskmap_error_input")
   expect_error(parametric_bootstrap(gaussian_model, messages = NA),
-               "'messages' must be either TRUE or FALSE")
+               "messages", class = "riskmap_error_input")
   expect_error(parametric_bootstrap(gaussian_model, n_sim = 300000),
                "'n_sim' must be at most")
 })

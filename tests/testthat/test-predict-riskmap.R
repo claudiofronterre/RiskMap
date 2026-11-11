@@ -248,11 +248,11 @@ test_that("predict.RiskMap validates its concise public interface", {
   expect_error(
     predict(gaussian_model, prediction_data, keep_samples = NA,
             messages = FALSE),
-    "either TRUE or FALSE"
+    "keep_samples", class = "riskmap_error_input"
   )
   expect_error(
     predict(gaussian_model, prediction_data, messages = NA),
-    "either TRUE or FALSE"
+    "messages", class = "riskmap_error_input"
   )
 })
 
