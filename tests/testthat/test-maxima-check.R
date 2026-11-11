@@ -282,7 +282,16 @@ test_that("the screen is recorded for fits with and without random effects", {
   expect_named(record$independent$beta, c("(Intercept)", "cov"))
   expect_contains(c("opened", "closed", "not run"), record$gate)
   expect_true(is.finite(record$alarm$statistic))
-  unavailable <- attr(binomial_model, "optimizer")$mcml_maxima_screen
+  # The exact bound at each screened scale is kept, on the user's scale, and
+  # the statistic is the largest of them and the limit.
+  bounds <- record$alarm$bounds
+  expect_named(bounds, c("log_phi", "bound", "error"))
+  if (!is.null(record$screen)) {
+    expect_equal(bounds$log_phi, record$screen$log_phi, tolerance = 1e-12)
+  }
+  expect_identical(record$alarm$statistic,
+                   max(record$independent$log_likelihood, bounds$bound))
+  unavailable <-attr(binomial_model, "optimizer")$mcml_maxima_screen
   expect_identical(unavailable$gate, "unavailable")
   expect_identical(unavailable$reason, "unstructured random effects")
 })
@@ -292,7 +301,10 @@ test_that("the records of the screen are restored to user units", {
     estimate = c(0, 0, 1, log(2)),
     maxima_screen = list(
       screen = data.frame(log_phi = log(c(0.1, 0.2))),
-      alarm = list(log_phi = log(0.1)),
+      alarm = list(log_phi = log(0.1),
+                   bounds = data.frame(log_phi = log(c(0.1, 0.2)), bound = 1:2),
+                   shares = data.frame(log_phi = log(0.4), share = 0.1,
+                                       bound = 3)),
       near_limit = list(log_phi = log(0.05)),
       independent = list(beta = c(1, 2), log_variance = 0)
     )
@@ -303,6 +315,9 @@ test_that("the records of the screen are restored to user units", {
   screen <- restored[[1]]$maxima_screen
   expect_equal(screen$screen$log_phi, log(c(1, 2)))
   expect_equal(screen$alarm$log_phi, log(1))
+  expect_equal(screen$alarm$bounds$log_phi, log(c(1, 2)))
+  expect_equal(screen$alarm$shares$log_phi, log(4))
+  expect_identical(screen$alarm$shares$bound, 3)
   expect_equal(screen$near_limit$log_phi, log(0.5))
   expect_equal(screen$independent$beta, c(a = -1, b = 4))
 })

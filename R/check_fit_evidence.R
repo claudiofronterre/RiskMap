@@ -44,6 +44,8 @@ collect_check_data <- function(check, object, mcml) {
         if (!isTRUE(optimizer$mcml_pc_prior)) {
           screen$independent$log_likelihood - screen$alarm$fitted_comparison
         },
+      "Exact bound by scale and spatial share, above the estimate" =
+        tabulate_spatial_shares(screen, units),
       "Maxima from the dispersed starts" =
         tabulate_maxima_check(optimizer$mcml_maxima_check, units)
     ),
@@ -118,17 +120,52 @@ name_scale_column <- function(units) {
 
 ##' The log-likelihood at the short scales of the screen, above the estimate
 ##'
-##' At each scale of the screen of short scales (`screen_short_scales()`), the
-##' log-likelihood estimated on the fitting draws at the point from the
-##' maximum with independent location effects, or after a step in the spatial
-##' variance where that was higher, less the fitted log-likelihood on the
-##' same draws. NULL when the screen did not run, as when the estimate is at a
-##' short scale. The scale is in `units`.
+##' At each scale of the screen of short scales (`screen_short_scales()`),
+##' `screened` is the log-likelihood estimated on the fitting draws at the
+##' point from the maximum with independent location effects, or after a step
+##' in the spatial variance where that was higher, less the fitted
+##' log-likelihood on the same draws. `exact_bound` is the exact lower bound
+##' at that point (`judge_exact_alarm()`) less the log-likelihood of the
+##' estimate on independent draws. A column is left out when the fit did not
+##' record it, as when the screen did not run because the estimate is at a
+##' short scale, and NULL when neither was recorded. The scale is in `units`.
 ##' @noRd
 tabulate_short_scales <- function(screen, units) {
   screened <- screen$screen
-  if (is.null(screened)) return(NULL)
-  table <- data.frame(scale = exp(screened$log_phi), screened = screened$gap)
+  bounds <- screen$alarm$bounds
+  reference <- screen$alarm$fitted_comparison
+  if (!is.finite(reference %||% NA_real_)) bounds <- NULL
+  log_phi <- if (!is.null(screened)) screened$log_phi else bounds$log_phi
+  if (!length(log_phi) || (is.null(screened) && is.null(bounds))) return(NULL)
+  table <- data.frame(scale = exp(log_phi))
+  if (!is.null(screened)) table$screened <- screened$gap
+  if (!is.null(bounds)) {
+    table$exact_bound <- bounds$bound[match(log_phi, bounds$log_phi)] -
+      reference
+  }
+  names(table)[1L] <- name_scale_column(units)
+  table
+}
+
+##' The exact bound over scales and spatial shares, above the estimate
+##'
+##' For a fit with the spatial variance at zero and a nugget, the exact lower
+##' bound on the likelihood with a share of the total variance in a spatial
+##' effect (`judge_spatial_share()`), less the maximum with independent
+##' location effects, which is then the estimate. One row per scale in
+##' `units` and one column per share. NULL where the fit did not record them.
+##' @noRd
+tabulate_spatial_shares <- function(screen, units) {
+  shares <- screen$alarm$shares
+  reference <- screen$independent$log_likelihood
+  if (is.null(shares) || !is.finite(reference %||% NA_real_)) return(NULL)
+  log_phi <- sort(unique(shares$log_phi))
+  table <- data.frame(scale = exp(log_phi))
+  for (share in sort(unique(shares$share))) {
+    rows <- shares[shares$share == share, ]
+    table[[paste0(100 * share, "%")]] <-
+      rows$bound[match(log_phi, rows$log_phi)] - reference
+  }
   names(table)[1L] <- name_scale_column(units)
   table
 }
@@ -158,8 +195,10 @@ tabulate_maxima_check <- function(check, units) {
 ##'   the certificate and the certification draws of each stage with the
 ##'   largest change in the estimates from the stage before, and the full
 ##'   results of the extra checks that ran. For the check of other maxima the
-##'   numbers include the log-likelihood estimated on the fitting draws at
-##'   each short scale of the screen, above that of the estimate.
+##'   numbers include, at each short scale of the screen, the log-likelihood
+##'   estimated on the fitting draws and its exact lower bound, both above the
+##'   estimate, and for a fit with the spatial variance at zero and a nugget
+##'   the exact bound by scale and spatial share.
 ##' @param object An object of class `"RiskMap_check"`.
 ##' @param ... other parameters.
 ##' @return An object of class `"summary.RiskMap_check"`, a list with the

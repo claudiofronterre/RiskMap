@@ -43,12 +43,13 @@ interval is above zero, and clearly falls when it is below. The panel
 maxima. On a log scale of distance it gives, at each short scale, the
 log-likelihood estimated on the fitting draws above that of the
 estimate, which repeats the fit from the best such scale when one comes
-within 0.25 of it (the dashed line), with the likelihood with
-independent location effects, the limit as the scale goes to zero, as a
-dotted line. Its subtitle gives the largest exact lower bound on the
-likelihood at those scales, which shows, when clearly above the
-estimate, that the estimate is not the maximum likelihood estimate. With
-the extra check \code{"radius"},
+within 0.25 of it (the dashed line), and the exact lower bound on the
+likelihood there, with the likelihood with independent location effects,
+the limit as the scale goes to zero, as a dotted line. An exact bound
+clearly above the estimate shows that the estimate is not the maximum
+likelihood estimate. For a fit with the spatial variance at zero and a
+nugget, the panel adds the exact bound over longer scales for each share
+of the variance in a spatial effect. With the extra check \code{"radius"},
 the panel \code{"radius"} shows the error of each resampled sample of
 certification draws against the
 radius the fit would use for it, the larger of its own and a

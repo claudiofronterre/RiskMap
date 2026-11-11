@@ -443,7 +443,10 @@ estimate_on_comparison_bank <- function(engine, penalty, parameters, n_draws,
 ##' penalty is added to the bounds. The `start` is the point that gave the
 ##' largest value, at the shortest screened scale for the limit itself. A fit
 ##' with the spatial variance at zero (`at_zero_variance`) is also judged by
-##' `judge_spatial_share()`.
+##' `judge_spatial_share()`. The alarm keeps the bound and its quadrature
+##' error at each screened scale (`bounds`), and the bounds over scales and
+##' spatial shares where they were computed (`shares`), which `check_fit()`
+##' reports and plots.
 ##' @noRd
 judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
                               n_draws, seed, at_zero_variance = FALSE,
@@ -472,7 +475,10 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
                 fired = values[top] - errors[top] -
                   screen$comparison_tolerance >
                   fitted$value + screen$alarm_multiplier * fitted$se,
-                start = starts[[top]])
+                start = starts[[top]],
+                bounds = data.frame(log_phi = screen$log_phi,
+                                    bound = bounds["value", ],
+                                    error = bounds["error", ]))
   if (!alarm$fired && at_zero_variance && is.null(penalty)) {
     wide <- judge_spatial_share(screen, fit, estimate, tolerance)
     if (!is.null(wide)) alarm <- utils::modifyList(alarm, wide)
@@ -491,7 +497,10 @@ judge_exact_alarm <- function(engine, penalty, screen, fit, estimate,
 ##' the model with a spatial effect. The alarm fires when the largest is above
 ##' the maximum by more than `tolerance^2 / 2`, beyond which the fit is more
 ##' than `tolerance` standard errors from a better point, to second order.
-##' @return NULL if it does not fire, otherwise the fields of the alarm.
+##' @return NULL without spatial shares or a finite bound, otherwise whether
+##' it `fired`, the bound at each scale and share (`shares`, a data frame with
+##' the columns `log_phi`, `share` and `bound`) and, if it fired, the other
+##' fields of the alarm.
 ##' @noRd
 judge_spatial_share <- function(screen, fit, estimate, tolerance) {
   if (!length(screen$spatial_shares)) return(NULL)
@@ -504,13 +513,15 @@ judge_spatial_share <- function(screen, fit, estimate, tolerance) {
     compute_jensen_bound(fit, screen$spatial_covariance(point))
   }, numeric(1))
   if (!any(is.finite(bounds))) return(NULL)
+  shares <- data.frame(log_phi = grid$log_phi, share = grid$share,
+                       bound = bounds)
   top <- which.max(bounds)
   error <- screen$bound(points[[top]], fit)[["error"]]
   gain <- bounds[top] - fit$log_likelihood - error - fit$quadrature_error
-  if (gain <= tolerance^2 / 2) return(NULL)
+  if (gain <= tolerance^2 / 2) return(list(fired = FALSE, shares = shares))
   list(statistic = bounds[top], log_phi = grid$log_phi[top],
        share = grid$share[top], quadrature_error = error, fired = TRUE,
-       start = points[[top]])
+       start = points[[top]], shares = shares)
 }
 
 ##' Check for other maxima on the fitting bank

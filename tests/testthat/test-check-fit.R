@@ -624,7 +624,7 @@ test_that("the panel of the held variances draws the test the fit recorded", {
   expect_null(plot_held_variance_panel(slopes[0L, ]))
 })
 
-test_that("the screen of short scales is tabulated from the fit", {
+test_that("the screen of short scales is tabulated and drawn from the fit", {
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   screened <- suppressWarnings(glgpm(
@@ -637,60 +637,127 @@ test_that("the screen of short scales is tabulated from the fit", {
   checked <- check_fit(screened)
   data <- checked$results[["Other maxima"]]$data
   units <- screened$distance_units %||% "distance units"
-  expect_identical(data[["Largest exact lower bound, above the estimate"]],
-                   record$alarm$statistic - record$alarm$fitted_comparison)
+  short <- data[["Short scales, log-likelihood above the estimate"]]
+  expect_identical(names(short)[1L], name_scale_column(units))
+  expect_equal(log(short[[1L]]), record$alarm$bounds$log_phi, tolerance = 1e-12)
+  expect_identical(short$exact_bound,
+                   record$alarm$bounds$bound - record$alarm$fitted_comparison)
+  if (!is.null(record$screen)) {
+    expect_identical(short$screened, record$screen$gap)
+  }
   expect_identical(
     data[["Limit with independent location effects, above the estimate"]],
     record$independent$log_likelihood - record$alarm$fitted_comparison
   )
   expect_identical(data[[paste0("Scale of the estimate (", units, ")")]],
                    coef(screened)$phi)
-  # The estimate of this fit is at a short scale, so the screen did not run.
-  expect_identical(record$gate, "not run")
-  expect_null(data[["Short scales, log-likelihood above the estimate"]])
-  expect_error(plot(checked, which = "screen"),
-               paste0("The screen of short scales did not run on this fit, ",
-                      "because its estimate is at a short scale or its ",
-                      "spatial variance is at zero."), fixed = TRUE)
+  panels <- plot(checked, which = "screen")
+  expect_named(panels, "screen")
+  expect_s3_class(panels$screen, "ggplot")
+  expect_contains(names(plot(checked)), "screen")
+  evidence <- capture.output(print(summary(checked)))
+  expect_contains(evidence, "  Short scales, log-likelihood above the estimate")
 })
 
-test_that("the screen table keeps what the fit recorded", {
+test_that("the screen tables keep what the fit recorded", {
   screen <- list(
     gate = "closed",
     screen = data.frame(log_phi = log(c(1, 2)), gap = c(-3, -0.5)),
     independent = list(log_likelihood = -105),
-    alarm = list(statistic = -104, fitted_comparison = -100)
+    alarm = list(fitted_comparison = -100,
+                 bounds = data.frame(log_phi = log(c(1, 2)), bound = c(-104, -110),
+                                     error = 0))
   )
   # The scales are exponentiated from the log scale of the record.
-  expect_equal(tabulate_short_scales(screen, "km"),
-               data.frame(scale_km = c(1, 2), screened = c(-3, -0.5)),
-               tolerance = 1e-12)
-  expect_null(tabulate_short_scales(list(gate = "not run"), "km"))
-  checked <- check_fit(with_flags(mcml_maxima_screen = screen))
-  data <- checked$results[["Other maxima"]]$data
-  expect_identical(data[["Largest exact lower bound, above the estimate"]], -4)
-  expect_identical(
-    data[["Limit with independent location effects, above the estimate"]], -5
+  expect_equal(
+    tabulate_short_scales(screen, "km"),
+    data.frame(scale_km = c(1, 2), screened = c(-3, -0.5), exact_bound = c(-4, -10)),
+    tolerance = 1e-12
   )
+  # A fit made before the bounds were kept has the screened values alone, and
+  # one whose estimate is at a short scale the bounds alone.
+  older <- screen
+  older$alarm$bounds <- NULL
+  expect_named(tabulate_short_scales(older, "km"), c("scale_km", "screened"))
+  short <- screen
+  short$screen <- NULL
+  expect_named(tabulate_short_scales(short, "km"), c("scale_km", "exact_bound"))
+  expect_null(tabulate_short_scales(list(gate = "not run"), "km"))
+  expect_null(tabulate_spatial_shares(screen, "km"))
+
+  # With the spatial variance at zero and a nugget, the bounds by share, above
+  # the maximum with independent location effects.
+  zero <- list(
+    gate = "not run", independent = list(log_likelihood = -50),
+    alarm = list(fitted_comparison = -50.01, bounds = screen$alarm$bounds,
+                 shares = expand.grid(log_phi = log(c(1, 4)), share = c(0.1, 0.2)))
+  )
+  zero$alarm$shares$bound <- -50 + c(-1, 0.25, -2, -0.5)
+  shares <- tabulate_spatial_shares(zero, "km")
+  expect_equal(shares, data.frame(scale_km = c(1, 4), "10%" = c(-1, 0.25),
+                                  "20%" = c(-2, -0.5), check.names = FALSE),
+               tolerance = 1e-12)
+  data <- list("Screen of short scales" = "not run", "Exact alarm" = FALSE,
+               "Short scales, log-likelihood above the estimate" =
+                 tabulate_short_scales(zero, "km"),
+               "Limit with independent location effects, above the estimate" = 0.01,
+               "Exact bound by scale and spatial share, above the estimate" = shares)
+  panel <- plot_screen_panel(data)
+  expect_s3_class(panel, "ggplot")
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
-  panel <- plot(checked, which = "screen")$screen
-  expect_s3_class(panel, "ggplot")
   built <- ggplot2::ggplot_build(panel)
   labels <- unlist(lapply(built$data, function(layer) as.character(layer$label)))
-  expect_contains(labels, c("gate", "independent location effects"))
-  expect_identical(
-    gsub("\n", " ", panel$labels$subtitle),
-    paste0("No short scale came within 0.25 of the estimate on the fitting ",
-           "draws, so the fit was not repeated. No exact lower bound is ",
-           "clearly above the estimate. The largest exact lower bound is 4 ",
-           "below the estimate.")
-  )
-  expect_lte(max(nchar(strsplit(panel$labels$subtitle, "\n")[[1L]])), 62L)
-  expect_contains(capture.output(print(summary(checked))),
-                  "  Short scales, log-likelihood above the estimate")
+  expect_contains(labels, c("10% spatial", "20% spatial",
+                            "independent location effects"))
+  expect_false("gate" %in% labels)
+  expect_match(describe_screen_outcome(data, 0.25),
+               "^No exact lower bound is clearly above the estimate.$")
   expect_match(describe_screen_outcome(list("Screen of short scales" = "opened",
                                             "Exact alarm" = TRUE), 0.25),
                "fit was repeated from it. An exact lower bound is above")
   expect_null(plot_screen_panel(list()))
+})
+
+test_that("a fit made before the bounds were kept draws the screen alone", {
+  grDevices::pdf(NULL)
+  withr::defer(grDevices::dev.off())
+  # Such a fit kept only the largest exact bound, here 4 below the estimate.
+  alarm <- list(statistic = -104, log_phi = log(1), quadrature_error = 0,
+                fitted_comparison = -100, fitted_comparison_se = 0.1,
+                fired = FALSE)
+  older <- with_flags(mcml_maxima_screen = list(
+    gate = "closed", independent = list(log_likelihood = -105), alarm = alarm,
+    screen = data.frame(log_phi = log(c(1, 2)), plug_in = c(-103, -101),
+                        stepped = c(NA, -100.5), gap = c(-3, -0.5))
+  ))
+  checked <- check_fit(older)
+  data <- checked$results[["Other maxima"]]$data
+  expect_identical(data[["Largest exact lower bound, above the estimate"]], -4)
+  expect_named(data[["Short scales, log-likelihood above the estimate"]],
+               c(name_scale_column(binomial_model$distance_units %||%
+                                     "distance units"), "screened"))
+  panel <- plot(checked, which = "screen")$screen
+  expect_match(gsub("\n", " ", panel$labels$subtitle),
+               "The fit kept only the largest exact lower bound (-4), so the bound at each scale is not shown.",
+               fixed = TRUE)
+  # Without the screened values, as for an estimate at a short scale, there
+  # is nothing to draw.
+  unscreened <- with_flags(mcml_maxima_screen = list(
+    gate = "not run", independent = list(log_likelihood = -105), alarm = alarm
+  ))
+  expect_error(plot(check_fit(unscreened), which = "screen"),
+               paste0("The fit kept only the largest exact lower bound of the ",
+                      "screen of short scales (-4 above the estimate), as fits ",
+                      "did before the bound at each scale was recorded, so ",
+                      "there is nothing to plot. A refit records it."),
+               fixed = TRUE)
+  # A fit with the bounds says nothing of the kind.
+  newer <- older
+  record <- attr(newer, "optimizer")$mcml_maxima_screen
+  record$alarm$bounds <- data.frame(log_phi = log(c(1, 2)), bound = c(-104, -110),
+                                    error = 0)
+  newer <- with_flags(mcml_maxima_screen = record)
+  subtitle <- plot(check_fit(newer), which = "screen")$screen$labels$subtitle
+  expect_no_match(subtitle, "kept only")
 })

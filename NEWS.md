@@ -703,9 +703,12 @@ panels drawn from what the fit recorded. `"held_variances"` shows the slope of
 the log-likelihood at each variance held at zero with its interval of 2.58
 standard errors, the test of the fit, and `"screen"` shows the screen of short
 scales of the check for other maxima, the log-likelihood estimated at each short
-scale against the estimate, the gate of the screen and the limit with
-independent location effects, with the largest exact lower bound in its
-subtitle. Each says why when it has nothing to show.
+scale and the exact lower bound there, against the estimate and the limit with
+independent location effects. Each says why when it has nothing to show. A fit
+now records the exact bound at each scale of the screen and, with the spatial
+variance at zero and a nugget, over the scales and spatial shares, where it
+kept only the largest, and `summary()` of the checks gives them. Estimates and
+the decisions of a fit are unchanged.
 
 - Certified MCML no longer stops with "the optimiser returned non-finite
 parameter values" when the search for the conditional mode of the latent

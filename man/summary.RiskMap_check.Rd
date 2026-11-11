@@ -24,8 +24,10 @@ evidence, the finding of each check in full with the numbers behind it,
 the certificate and the certification draws of each stage with the
 largest change in the estimates from the stage before, and the full
 results of the extra checks that ran. For the check of other maxima the
-numbers include the log-likelihood estimated on the fitting draws at
-each short scale of the screen, above that of the estimate.
+numbers include, at each short scale of the screen, the log-likelihood
+estimated on the fitting draws and its exact lower bound, both above the
+estimate, and for a fit with the spatial variance at zero and a nugget
+the exact bound by scale and spatial share.
 }
 \examples{
 data(italy_sim)

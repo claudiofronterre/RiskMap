@@ -885,12 +885,13 @@ print.RiskMap_check <- function(x, ...) {
 ##'   maxima. On a log scale of distance it gives, at each short scale, the
 ##'   log-likelihood estimated on the fitting draws above that of the
 ##'   estimate, which repeats the fit from the best such scale when one comes
-##'   within 0.25 of it (the dashed line), with the likelihood with
-##'   independent location effects, the limit as the scale goes to zero, as a
-##'   dotted line. Its subtitle gives the largest exact lower bound on the
-##'   likelihood at those scales, which shows, when clearly above the
-##'   estimate, that the estimate is not the maximum likelihood estimate. With
-##'   the extra check `"radius"`,
+##'   within 0.25 of it (the dashed line), and the exact lower bound on the
+##'   likelihood there, with the likelihood with independent location effects,
+##'   the limit as the scale goes to zero, as a dotted line. An exact bound
+##'   clearly above the estimate shows that the estimate is not the maximum
+##'   likelihood estimate. For a fit with the spatial variance at zero and a
+##'   nugget, the panel adds the exact bound over longer scales for each share
+##'   of the variance in a spatial effect. With the extra check `"radius"`,
 ##'   the panel `"radius"` shows the error of each resampled sample of
 ##'   certification draws against the
 ##'   radius the fit would use for it, the larger of its own and a
@@ -1089,10 +1090,12 @@ explain_missing_fit_panel <- function(x, name) {
                   "likelihood with independent location effects could not be ",
                   "computed."))
   }
-  if (identical(gate, "not run")) {
-    return(paste0("The screen of short scales did not run on this fit, ",
-                  "because its estimate is at a short scale or its spatial ",
-                  "variance is at zero."))
+  largest <- data[["Largest exact lower bound, above the estimate"]]
+  if (length(largest)) {
+    return(paste0("The fit kept only the largest exact lower bound of the ",
+                  "screen of short scales (", signif(largest, 2), " above the ",
+                  "estimate), as fits did before the bound at each scale was ",
+                  "recorded, so there is nothing to plot. A refit records it."))
   }
   "The fit recorded no values of the screen of short scales to plot."
 }
@@ -1142,46 +1145,79 @@ plot_held_variance_panel <- function(slopes, multiplier = 2.58) {
     profile_theme()
 }
 
-##' The screen of short scales, against the estimate
+##' The screen of short scales and its exact bounds, against the estimate
 ##'
-##' From the data of the check of other maxima (`tabulate_short_scales()`), on
-##' a log scale of distance, with the log-likelihood above that of the
-##' estimate. The dashed line at `margin` below the estimate is the gate of
-##' the screen, the margin of `make_short_scale_screen()`, and the dotted line
-##' the limit with independent location effects. The vertical axis is cut a
-##' unit below the lowest of the screened values, the gate and the limit.
-##' NULL with nothing to show.
+##' From the data of the check of other maxima (`tabulate_short_scales()`,
+##' `tabulate_spatial_shares()`), on a log scale of distance, with the
+##' log-likelihood above that of the estimate. The dashed line at `margin`
+##' below the estimate is the gate of the screen, the margin of
+##' `make_short_scale_screen()`, and the dotted line the limit with
+##' independent location effects. The bounds by spatial share are labelled at
+##' their right end. The vertical axis is cut a unit below the lowest of the
+##' screened values, the gate and the limit, since a bound far below them,
+##' which the bound at a scale near the estimate often is, says nothing
+##' about other maxima. NULL with nothing to show.
 ##' @noRd
 plot_screen_panel <- function(data, margin = 0.25) {
   short <- data[["Short scales, log-likelihood above the estimate"]]
-  lines <- reshape_screen_columns(
-    short, c("Screened, on the fitting draws" = "screened")
-  )
-  if (is.null(lines)) return(NULL)
+  shares <- data[["Exact bound by scale and spatial share, above the estimate"]]
+  if (is.null(short) && is.null(shares)) return(NULL)
   colours <- profile_palette()
-  units <- gsub("_", " ", sub("^scale_", "", names(short)[1L]))
+  table <- if (!is.null(short)) short else shares
+  units <- gsub("_", " ", sub("^scale_", "", names(table)[1L]))
+  series <- c("Screened, on the fitting draws" = "screened",
+              "Exact lower bound" = "exact_bound")
+  series_colours <- stats::setNames(c(colours$profile, colours$ridge),
+                                    names(series))
+  lines <- reshape_screen_columns(short, series)
+  share_lines <- if (!is.null(shares)) {
+    reshape_screen_columns(shares, stats::setNames(
+      names(shares)[-1L], paste(names(shares)[-1L], "spatial")
+    ))
+  }
   estimate <- unlist(data[startsWith(names(data), "Scale of the estimate")])
   limit <- data[["Limit with independent location effects, above the estimate"]]
   panel <- ggplot2::ggplot() +
-    ggplot2::geom_hline(yintercept = 0, colour = "#b7bec8") +
-    ggplot2::geom_hline(yintercept = -margin, linetype = "dashed",
-                        colour = colours$cutoff) +
-    ggplot2::annotate("text", x = min(short[[1L]]), y = -margin,
-                      label = "gate", hjust = 0, vjust = 1.5, size = 2.9,
-                      colour = colours$cutoff)
+    ggplot2::geom_hline(yintercept = 0, colour = "#b7bec8")
+  left <- min(table[[1L]], shares[[1L]])
+  if (!is.null(short$screened)) {
+    panel <- panel +
+      ggplot2::geom_hline(yintercept = -margin, linetype = "dashed",
+                          colour = colours$cutoff) +
+      ggplot2::annotate("text", x = left, y = -margin, label = "gate",
+                        hjust = 0, vjust = 1.5, size = 2.9,
+                        colour = colours$cutoff)
+  }
   if (length(limit) && is.finite(limit)) {
     panel <- panel +
       ggplot2::geom_hline(yintercept = limit, linetype = "dotted",
-                          colour = colours$wald, linewidth = 0.8) +
-      ggplot2::annotate("text", x = max(short[[1L]], estimate), y = limit,
-                        label = "independent location effects", hjust = 1,
-                        vjust = 1.5, size = 2.9, colour = "#3b4350")
+                          colour = colours$wald, linewidth = 0.8)
   }
-  panel <- panel +
-    ggplot2::geom_line(data = lines, ggplot2::aes(.data$scale, .data$value),
-                       colour = colours$profile, linewidth = 0.8) +
-    ggplot2::geom_point(data = lines, ggplot2::aes(.data$scale, .data$value),
-                        colour = colours$profile, size = 2.2)
+  if (!is.null(share_lines)) {
+    levels <- levels(share_lines$series)
+    ends <- share_lines[!duplicated(share_lines$series, fromLast = TRUE), ]
+    ramp <- grDevices::colorRampPalette(c("#7fb2db", "#08306b"))(length(levels))
+    panel <- panel +
+      ggplot2::geom_line(data = share_lines,
+                         ggplot2::aes(.data$scale, .data$value,
+                                      colour = .data$series),
+                         linewidth = 0.7) +
+      ggplot2::geom_text(data = ends,
+                         ggplot2::aes(.data$scale, .data$value,
+                                      label = .data$series),
+                         hjust = -0.1, size = 2.9, colour = "#3b4350")
+    series_colours <- c(series_colours, stats::setNames(ramp, levels))
+  }
+  if (!is.null(lines)) {
+    panel <- panel +
+      ggplot2::geom_line(data = lines,
+                         ggplot2::aes(.data$scale, .data$value,
+                                      colour = .data$series),
+                         linewidth = 0.8) +
+      ggplot2::geom_point(data = lines,
+                          ggplot2::aes(.data$scale, .data$value,
+                                       colour = .data$series), size = 2.2)
+  }
   if (length(estimate) && is.finite(estimate)) {
     panel <- panel +
       ggplot2::annotate("point", x = estimate, y = 0, size = 3, shape = 21,
@@ -1189,23 +1225,35 @@ plot_screen_panel <- function(data, margin = 0.25) {
       ggplot2::annotate("text", x = estimate, y = 0, label = "estimate",
                         vjust = -1, size = 3.2, colour = "#3b4350")
   }
-  shown <- c(lines$value, limit, 0)
-  focus <- c(lines$value, limit, -margin)
+  if (length(limit) && is.finite(limit)) {
+    panel <- panel +
+      ggplot2::annotate("text", x = max(table[[1L]], shares[[1L]], estimate),
+                        y = limit, label = "independent location effects",
+                        hjust = 1, vjust = 1.5, size = 2.9, colour = "#3b4350")
+  }
+  shown <- c(lines$value, share_lines$value, limit, 0)
+  focus <- c(0, -margin, limit, short$screened,
+             if (is.null(short$screened)) share_lines$value)
   focus <- focus[is.finite(focus)]
   shown <- shown[is.finite(shown)]
   panel +
     ggplot2::scale_x_log10(labels = plain_number_labels(),
                            expand = ggplot2::expansion(mult = c(0.05, 0.18))) +
+    ggplot2::scale_colour_manual(
+      values = series_colours,
+      breaks = intersect(names(series), as.character(lines$series))
+    ) +
     ggplot2::labs(
-      title = "Screen of short scales, on the fitting draws",
+      title = "Screen of short scales",
       subtitle = paste(strwrap(describe_screen_outcome(data, margin),
                                width = 62L), collapse = "\n"),
       x = paste0("Spatial scale (", units, ", log scale)"),
-      y = "Log-likelihood above the estimate"
+      y = "Log-likelihood above the estimate", colour = NULL
     ) +
     ggplot2::coord_cartesian(ylim = c(min(focus) - 1, max(shown) + 0.12 *
                                         (max(shown) - min(focus) + 1))) +
-    profile_theme()
+    profile_theme() +
+    ggplot2::theme(legend.position = "bottom")
 }
 
 ##' Columns of a table of the screen as lines to draw
@@ -1228,10 +1276,14 @@ reshape_screen_columns <- function(table, columns) {
 }
 
 ##' What the screen of short scales and its exact alarm found, for the panel
+##'
+##' A fit made before the bound at each scale was recorded has only the
+##' largest, which the subtitle gives.
 ##' @noRd
 describe_screen_outcome <- function(data, margin) {
   gate <- data[["Screen of short scales"]] %||% ""
   largest <- data[["Largest exact lower bound, above the estimate"]]
+  short <- data[["Short scales, log-likelihood above the estimate"]]
   paste0(
     switch(gate,
            closed = paste0("No short scale came within ", margin, " of the ",
@@ -1247,9 +1299,9 @@ describe_screen_outcome <- function(data, margin) {
     } else {
       "No exact lower bound is clearly above the estimate."
     },
-    if (length(largest)) paste0(
-      " The largest exact lower bound is ", signif(abs(largest), 2),
-      if (largest < 0) " below" else " above", " the estimate."
+    if (length(largest) && is.null(short$exact_bound)) paste0(
+      " The fit kept only the largest exact lower bound (", signif(largest, 2),
+      "), so the bound at each scale is not shown."
     )
   )
 }
