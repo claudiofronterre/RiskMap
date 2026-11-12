@@ -411,11 +411,21 @@ format_variogram <- function(x, digits, ...) {
     "There is no envelope, since `n_permutations` is 0."
   }
   outside <- if (x$n_permutations > 0L) {
+    # A class without pairs has no semivariance and no envelope, so it is
+    # neither inside nor outside.
     table <- x$variogram
-    beyond <- sum(table$semivariance < table$lower_envelope |
-                    table$semivariance > table$upper_envelope, na.rm = TRUE)
+    tested <- is.finite(table$semivariance) &
+      is.finite(table$lower_envelope) & is.finite(table$upper_envelope)
+    beyond <- sum(tested & (table$semivariance < table$lower_envelope |
+                              table$semivariance > table$upper_envelope))
+    untested <- classes - sum(tested)
     c(i = paste0("The variogram is outside the envelope in ", beyond, " of ",
-                 classes, " distance classes."))
+                 sum(tested), " distance classes",
+                 if (untested > 0L) {
+                   paste0(", and ", untested,
+                          if (untested == 1L) " class has" else
+                            " classes have", " no envelope")
+                 }, "."))
   }
   # Counts are printed in full, whatever the number of digits
   variogram_table <- x$variogram

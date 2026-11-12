@@ -421,10 +421,26 @@ test_that("print.RiskMap_cross_validation gives the averages, not the raw list",
   expect_true(any(startsWith(trimws(printed), "model_a ")))
   expect_true(any(startsWith(trimws(printed), "model_b ")))
   expect_match(squish(printed), paste(
-    "`summary()` gives the scores of each test set, and `plot()` draws them."
+    "`summary()` gives the scores of each test set, and `plot()` maps the",
+    "scores at the test locations and draws the calibration curve."
   ), fixed = TRUE)
   expect_lt(length(printed), 20L)
   expect_false(any(grepl("$test_set", printed, fixed = TRUE)))
+})
+
+test_that("the print of a cross-validation describes its test sets", {
+  expect_identical(describe_test_sets(c(80L, 20L)),
+                   "2 test sets of 80 and 20 observations")
+  expect_identical(describe_test_sets(rep(50L, 10L)),
+                   "10 test sets of 50 observations each")
+  expect_identical(describe_test_sets(1L), "1 test set of 1 observation")
+  expect_identical(describe_test_sets(rep(1L, 20L)),
+                   "20 test sets of 1 observation each")
+  expect_identical(describe_test_sets(c(8L, 12L, 9L, 10L)),
+                   "4 test sets of 8 to 12 observations")
+  # A failed assessment leaves no scores, printed as NA and not NaN.
+  expect_identical(format_cv_score(c(0.12345, NaN, NA)),
+                   c("0.1235", "NA", "NA"))
 })
 
 test_that("print.summary.RiskMap_cross_validation formats scores by model", {

@@ -611,8 +611,24 @@ test_that("print.RiskMap_variogram describes the classes and the envelope", {
     "4 distance classes from 0 to [0-9.]+ km. The 95% global envelope for",
     "spatial independence is from 99 permutations."
   ))
+  # The first class holds no pairs, so it has no envelope and is left out of
+  # the count, and the other three lie inside the envelope.
+  expect_equal(result$variogram$n_pairs[1L], 0)
   expect_match(squish(output),
-               "The variogram is outside the envelope in [0-4] of 4 distance")
+               paste("The variogram is outside the envelope in 0 of 3",
+                     "distance classes, and 1 class has no envelope."),
+               fixed = TRUE)
+  empty <- result
+  empty$variogram[4L, c("semivariance", "lower_envelope",
+                        "upper_envelope")] <- NA_real_
+  expect_match(squish(capture.output(print(empty))),
+               paste("outside the envelope in 0 of 2 distance classes, and 2",
+                     "classes have no envelope."), fixed = TRUE)
+  # A class above the envelope is counted.
+  above <- result
+  above$variogram$semivariance[2L] <- above$variogram$upper_envelope[2L] + 1
+  expect_match(squish(capture.output(print(above))),
+               "outside the envelope in 1 of 3 distance classes", fixed = TRUE)
   expect_true(any(grepl("semivariance", output)))
 
   # Counts stored as doubles are still printed in full

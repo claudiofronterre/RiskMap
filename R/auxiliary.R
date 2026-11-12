@@ -1298,10 +1298,19 @@ format_cv_settings <- function(keep_par_fixed, n_failed, before = NULL) {
 format_cv_averages <- function(x) {
   scores <- data.frame(Model = rownames(x), check.names = FALSE)
   for (metric in colnames(x)) {
-    scores[[metric]] <- sprintf("%.4f", x[, metric])
+    scores[[metric]] <- format_cv_score(x[, metric])
   }
   c(out_heading("Averages over the test sets, weighted by their sizes"),
     out_capture(print(scores, row.names = FALSE, right = TRUE)))
+}
+
+##' Scores to four decimals, NA where a failed assessment left none
+##'
+##' The mean of no scores is `NaN`, which is printed as NA, as the missing
+##' scores it stands for.
+##' @noRd
+format_cv_score <- function(values) {
+  ifelse(is.finite(values), sprintf("%.4f", values), "NA")
 }
 
 ##' The scores of each model in each test set
@@ -1313,7 +1322,7 @@ format_cv_test_sets <- function(x) {
     table <- data.frame(Model = model, "Test set" = seq_along(scores[[1L]]),
                         check.names = FALSE)
     for (k in seq_along(scores)) {
-      table[[colnames(x)[k]]] <- sprintf("%.4f", scores[[k]])
+      table[[colnames(x)[k]]] <- format_cv_score(scores[[k]])
     }
     table
   })
@@ -1325,9 +1334,10 @@ format_cv_test_sets <- function(x) {
 ##' @description Print method for objects of class
 ##'   \code{"RiskMap_cross_validation"} from \code{\link{assess_prediction}}.
 ##'   It gives the models, the test sets, how the parameters were set and the
-##'   scores of each model averaged over the test sets. The scores of each test set
-##'   are given by \code{\link{summary.RiskMap_cross_validation}} and drawn by
-##'   \code{\link{plot.RiskMap_cross_validation}}.
+##'   scores of each model averaged over the test sets.
+##'   \code{\link{summary.RiskMap_cross_validation}} gives the scores of each
+##'   test set, and \code{\link{plot.RiskMap_cross_validation}} maps the scores
+##'   at the test locations and draws the calibration curve.
 ##' @param x An object of class \code{"RiskMap_cross_validation"}.
 ##' @param ... Not used.
 ##' @return Invisibly returns \code{x}.
@@ -1339,26 +1349,39 @@ print.RiskMap_cross_validation <- function(x, ...) {
   invisible(x)
 }
 
+##' The number of test sets and their sizes, as in "2 test sets of 80 and 20
+##' observations" or "10 test sets of 50 observations each"
+##' @noRd
+describe_test_sets <- function(sizes) {
+  n <- length(sizes)
+  sets <- paste0(n, if (n == 1L) " test set" else " test sets")
+  if (length(unique(sizes)) == 1L) {
+    return(paste0(sets, " of ", format_count(sizes[1L]),
+                  if (sizes[1L] == 1L) " observation" else " observations",
+                  if (n > 1L) " each"))
+  }
+  observations <- if (n <= 3L) {
+    paste(paste(format_count(utils::head(sizes, -1L)), collapse = ", "),
+          "and", format_count(utils::tail(sizes, 1L)))
+  } else {
+    paste(format_count(min(sizes)), "to", format_count(max(sizes)))
+  }
+  paste0(sets, " of ", observations, " observations")
+}
+
 ##' The lines that print the results of a cross-validation
 ##' @noRd
 format_cross_validation <- function(x) {
   scores <- summary(x, view_all = FALSE)
   n_models <- length(x$model)
   sizes <- vapply(x$test_set, NROW, integer(1))
-  observations <- if (length(sizes) <= 3L) {
-    paste0(paste(format_count(utils::head(sizes, -1L)), collapse = ", "),
-           if (length(sizes) > 1L) " and ", format_count(utils::tail(sizes, 1L)))
-  } else {
-    paste(format_count(min(sizes)), "to", format_count(max(sizes)))
-  }
   setting <- paste0(n_models, if (n_models == 1L) " model" else " models",
-                    " assessed on ", length(sizes), " test set",
-                    if (length(sizes) == 1L) "" else "s", " of ",
-                    observations, " observations.")
+                    " assessed on ", describe_test_sets(sizes), ".")
   hint <- paste0(out_fun("summary", "summary.RiskMap_cross_validation"),
                  " gives the scores of each test set, and ",
                  out_fun("plot", "plot.RiskMap_cross_validation"),
-                 " draws them.")
+                 " maps the scores at the test locations and draws the ",
+                 "calibration curve.")
   c(out_rule("Cross-validation"),
     format_cv_settings(x$keep_par_fixed, NROW(x$failures), before = setting),
     "",
