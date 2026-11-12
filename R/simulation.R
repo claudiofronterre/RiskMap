@@ -689,7 +689,7 @@ simulation_model <- function(object) {
   }
   pars <- coef(object)
   if (is.null(pars$tau2)) pars$tau2 <- object$fix_tau2
-  if (isTRUE(fit_traits(object)$measurement_error) &&
+  if (family_traits(object$family)$measurement_error &&
       !is.null(object$fix_var_me)) {
     pars$sigma2_me <- object$fix_var_me
   }

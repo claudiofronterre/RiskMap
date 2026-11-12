@@ -4178,7 +4178,7 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
     fix_var_me = if (fitted_template) template$fix_var_me else NULL,
     messages = FALSE
   )
-  if (!isTRUE(fit_traits(template)$exact)) {
+  if (!family_traits(template$family)$exact) {
     args$denominator <- quote(units_m)
     if (fitted_template) {
       args$invlink <- refit_invlink(template)
