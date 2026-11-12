@@ -91,33 +91,23 @@ test_that("a message without a bullet gets the information sign", {
                fixed = TRUE)
 })
 
-test_that("a warning repeated within a scope is raised once", {
-  repeating <- function() {
-    collapse_repeated_warnings()
-    riskmap_warn("The same warning.")
-    riskmap_warn("The same warning.")
-    riskmap_warn("Another warning.")
-  }
-  expect_length(testthat::capture_warnings(repeating()), 2L)
-  expect_null(warning_scope$seen)
-  # Outside a scope every warning is raised.
-  twice <- function() {
-    riskmap_warn("The same warning.")
-    riskmap_warn("The same warning.")
-  }
-  expect_length(testthat::capture_warnings(twice()), 2L)
-  # A scope inside another leaves the outer one in charge.
-  outer <- function() {
-    collapse_repeated_warnings()
-    repeating()
-    riskmap_warn("Another warning.")
-  }
-  expect_length(testthat::capture_warnings(outer()), 2L)
-  # The scope closes when its function exits, also after an error.
-  failing <- function() {
-    collapse_repeated_warnings()
-    riskmap_abort("It failed.")
-  }
-  expect_error(failing(), "It failed.")
-  expect_null(warning_scope$seen)
+test_that("a prediction warns once for the blocks that needed a jitter", {
+  # Two blocks, each of two points at one place, so each block's covariance
+  # is singular and needs a jitter.
+  prediction <- rbind(c(0, 0), c(0, 0), c(5, 5), c(5, 5))
+  conditioning <- rbind(c(50, 50), c(60, 60))
+  no_weights <- function(cross) matrix(0, nrow(cross), ncol(cross))
+  warnings <- testthat::capture_warnings(grouped_joint_prediction(
+    prediction, conditioning, group_indices = list(1:2, 3:4),
+    weight_function = no_weights, conditional_signal = c(0, 0),
+    marginal_variance = 1, phi = 1, kappa = 0.5, n_samples = 3
+  ))
+  expect_length(warnings, 1L)
+  expect_match(warnings, paste("The conditional prediction covariance of 2",
+                               "of 2 blocks needed a diagonal jitter"),
+               fixed = TRUE)
+  # One matrix keeps the warning it always had.
+  expect_warning(warn_jitter("covariance matrix", 1e-12),
+                 "needed a diagonal jitter of 1e-12 to be factorised")
+  expect_no_warning(warn_jitter("covariance matrix", c(0, 0)))
 })

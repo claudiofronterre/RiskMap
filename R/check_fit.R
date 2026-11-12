@@ -140,7 +140,6 @@ check_fit <- function(object, extra = character(), profile = NULL,
                       messages = getOption("RiskMap.messages", TRUE),
                       cores = 1L) {
   check_supplied(object)
-  collapse_repeated_warnings()
   check_class(object, "RiskMap")
   extra <- match_extra_checks(extra)
   check_given_profile(profile, object)

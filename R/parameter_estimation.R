@@ -282,7 +282,6 @@ glgpm <- function(formula,
   check_supplied(formula)
   check_supplied(data)
   check_supplied(family)
-  collapse_repeated_warnings()
 
   check_data(data)
   check_formula(formula, data)

@@ -131,7 +131,6 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             cores = 1L,
                             messages = getOption("RiskMap.messages", TRUE),
                             ...) {
-  collapse_repeated_warnings()
   check_class(fitted, "RiskMap")
   traits <- fit_traits(fitted)
   exact <- isTRUE(traits$exact)

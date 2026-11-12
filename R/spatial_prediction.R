@@ -304,7 +304,6 @@ predict.RiskMap <- function(
     keep_samples = FALSE,
     messages = getOption("RiskMap.messages", TRUE),
     ...) {
-  collapse_repeated_warnings()
 
   if (is.null(include)) include <- character()
   check_logical(parameter_uncertainty)
@@ -2881,7 +2880,6 @@ assess_prediction <- function(object,
                               ...) {
   check_supplied(object)
   check_supplied(method)
-  collapse_repeated_warnings()
 
   ## ─────────────────────────── helpers ─────────────────────────── ##
   is_list_of_riskmap <- function(x) {
@@ -3781,7 +3779,6 @@ assess_simulation <- function(obj_sim,
   check_supplied(obj_sim)
   check_supplied(models)
   check_supplied(spatial_scale)
-  collapse_repeated_warnings()
 
   if (!inherits(obj_sim, "RiskMap_simulation")) {
     abort_input("{.arg obj_sim} must be made by {.fn simulate_glgpm}, not {.obj_type_friendly {obj_sim}}.", arg = "obj_sim")

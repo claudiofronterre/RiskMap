@@ -112,11 +112,14 @@ scale_spatial_coordinates <- function(coordinates, phi = NULL) {
 #' @param context Short description used in diagnostics.
 #' @param allow_jitter Whether to try reported scale-aware diagonal jitter after
 #'   an unmodified factorisation fails.
+#' @param warn Whether to warn when a jitter was needed. A caller that
+#'   factorises many matrices warns once itself, from their `jitter`
+#'   attributes.
 #' @return An upper-triangular Cholesky factor. The applied jitter is stored in
 #'   the `jitter` attribute.
 #' @noRd
 factor_covariance <- function(covariance, context = "covariance matrix",
-                              allow_jitter = TRUE) {
+                              allow_jitter = TRUE, warn = TRUE) {
   covariance <- as.matrix(covariance)
   if (nrow(covariance) != ncol(covariance)) {
     riskmap_bug("The {context} must be square.")
@@ -142,13 +145,31 @@ factor_covariance <- function(covariance, context = "covariance matrix",
     root <- tryCatch(chol(adjusted), error = function(error) NULL)
     if (!is.null(root)) {
       attr(root, "jitter") <- jitter
-      added <- format(jitter, scientific = TRUE)
-      riskmap_warn("The {context} needed a diagonal jitter of {added} to be factorised.", class = "riskmap_warning_fit")
+      if (warn) warn_jitter(context, jitter)
       return(root)
     }
   }
 
   riskmap_abort("The {context} is not positive definite, even with a diagonal jitter.", class = "riskmap_error_fit")
+}
+
+#' Warn that a factorisation needed a diagonal jitter
+#'
+#' `jitter` holds the jitter of each matrix factorised, 0 where none was
+#' needed. One matrix gives the jitter it needed, and several give how many
+#' needed one and the largest.
+#' @noRd
+warn_jitter <- function(context, jitter) {
+  needed <- sum(jitter > 0)
+  if (needed == 0L) return(invisible(NULL))
+  added <- format(max(jitter), scientific = TRUE)
+  if (length(jitter) == 1L) {
+    riskmap_warn("The {context} needed a diagonal jitter of {added} to be factorised.", class = "riskmap_warning_fit")
+  } else {
+    blocks <- length(jitter)
+    riskmap_warn("The {context} of {needed} of {blocks} blocks needed a diagonal jitter, of up to {added}, to be factorised.", class = "riskmap_warning_fit")
+  }
+  invisible(NULL)
 }
 
 #' Solve a positive-definite system from its Cholesky factor
@@ -252,8 +273,11 @@ grouped_joint_prediction <- function(
   samples <- matrix(
     NA_real_, nrow = nrow(prediction_coordinates), ncol = n_samples
   )
+  # The jitter each block needed, reported once after the loop.
+  jitter <- numeric(length(group_indices))
 
-  for (index in group_indices) {
+  for (block in seq_along(group_indices)) {
+    index <- group_indices[[block]]
     block_coordinates <- prediction_coordinates[index, , drop = FALSE]
     distance <- cross_distances(block_coordinates, conditioning_coordinates)
     cross_covariance <- marginal_variance * matern_correlation(
@@ -271,12 +295,15 @@ grouped_joint_prediction <- function(
     conditional_covariance <- prediction_covariance -
       weights %*% t(cross_covariance)
     root <- factor_covariance(
-      conditional_covariance, "conditional prediction covariance"
+      conditional_covariance, "conditional prediction covariance",
+      warn = FALSE
     )
+    jitter[block] <- attr(root, "jitter")
     samples[index, ] <- sample_correlated_gaussian(
       conditional_mean, t(root), n_samples
     )
   }
+  warn_jitter("conditional prediction covariance", jitter)
 
   samples
 }

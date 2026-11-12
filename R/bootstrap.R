@@ -112,7 +112,6 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
                                  level = 0.95, cores = 1,
                                  messages = getOption("RiskMap.messages", TRUE)) {
   check_supplied(object)
-  collapse_repeated_warnings()
   if (!inherits(object, "RiskMap")) {
     abort_input("{.arg object} must be a {.cls RiskMap} fit from {.fn glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }

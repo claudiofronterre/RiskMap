@@ -121,7 +121,7 @@ Choose the class by who can cause the problem and fix it.
 
 ### Required arguments and repeated warnings
 
-An exported function calls `check_supplied()` first, once for each argument without a default, so that a missing argument gives a RiskMap input error naming it. A function whose work repeats a step that can warn, such as a factorisation for each block, calls `collapse_repeated_warnings()` at its top, so that `riskmap_warn()` raises each distinct warning once until the function returns. The scope closes through `on.exit()`, so any later `on.exit()` in that function must use `add = TRUE`.
+An exported function calls `check_supplied()` first, once for each argument without a default, so that a missing argument gives a RiskMap input error naming it. A loop that repeats a step that can warn, such as a factorisation for each block, warns once after the loop with what the steps found, as `grouped_joint_prediction()` does with `warn_jitter()`, rather than once for each step. Hiding repeated warnings in general would also hide them from the handlers that record the warnings of each refit, in the bootstrap and in `assess_simulation()`.
 
 ### Messages and the `messages` argument
 

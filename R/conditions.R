@@ -117,42 +117,8 @@ user_facing_functions <- function(namespace) {
 #' @noRd
 riskmap_warn <- function(message, ..., class = NULL,
                          .envir = parent.frame()) {
-  if (!is.null(warning_scope$seen)) {
-    text <- cli::format_warning(message, .envir = .envir)
-    if (text %in% warning_scope$seen) return(invisible(NULL))
-    warning_scope$seen <- c(warning_scope$seen, text)
-  }
   cli::cli_warn(message, ..., class = c(class, "riskmap_warning"),
                 .envir = .envir)
-}
-
-#' The warnings raised in the open scope, NULL when none is open
-#' @noRd
-warning_scope <- new.env(parent = emptyenv())
-warning_scope$seen <- NULL
-
-#' Raise each distinct warning once, until the calling function returns
-#'
-#' Called at the top of a function whose work repeats a step that can warn,
-#' such as a factorisation done for each block of a prediction or each stage
-#' of a fit. Until that function returns, `riskmap_warn()` skips a warning
-#' whose text it has already raised. A scope opened inside another one leaves
-#' the outer one in charge. Warnings raised again from forked processes, with
-#' `riskmap_rethrow()`, are not affected.
-#' @noRd
-collapse_repeated_warnings <- function(frame = parent.frame()) {
-  if (!is.null(warning_scope$seen)) return(invisible(FALSE))
-  warning_scope$seen <- character()
-  do.call(on.exit, list(quote(close_warning_scope()), add = TRUE),
-          envir = frame)
-  invisible(TRUE)
-}
-
-#' Close the scope that `collapse_repeated_warnings()` opened
-#' @noRd
-close_warning_scope <- function() {
-  warning_scope$seen <- NULL
-  invisible(NULL)
 }
 
 #' @rdname riskmap_abort
