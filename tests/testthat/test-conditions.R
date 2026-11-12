@@ -67,3 +67,57 @@ test_that("conditions are raised through the RiskMap constructors", {
           paste(direct, collapse = ", "))
   )
 })
+
+test_that("leaving out a required argument gives a RiskMap input error", {
+  error <- expect_input_error(check_fit(), "object",
+                              "`object` is missing, with no default.")
+  expect_identical(as.character(error$call[[1L]]), "check_fit")
+  expect_input_error(glgpm(y ~ gp(), family = "gaussian"), "data")
+  expect_input_error(variogram(gaussian_data), "variable")
+  # An argument passed on without a value is missing too, and the error
+  # names the function the user called.
+  wrapper <- function(fit) check_fit(fit)
+  error <- expect_input_error(wrapper(), "object")
+  expect_identical(as.character(error$call[[1L]]), "check_fit")
+})
+
+test_that("a message without a bullet gets the information sign", {
+  plain <- rlang::catch_cnd(riskmap_inform("A plain message."))
+  expect_s3_class(plain, "riskmap_message")
+  expect_match(rlang::cnd_message(plain),
+               paste(cli::symbol$info, "A plain message."), fixed = TRUE)
+  done <- rlang::catch_cnd(riskmap_inform(c(v = "Done.")))
+  expect_match(rlang::cnd_message(done), paste(cli::symbol$tick, "Done."),
+               fixed = TRUE)
+})
+
+test_that("a warning repeated within a scope is raised once", {
+  repeating <- function() {
+    collapse_repeated_warnings()
+    riskmap_warn("The same warning.")
+    riskmap_warn("The same warning.")
+    riskmap_warn("Another warning.")
+  }
+  expect_length(testthat::capture_warnings(repeating()), 2L)
+  expect_null(warning_scope$seen)
+  # Outside a scope every warning is raised.
+  twice <- function() {
+    riskmap_warn("The same warning.")
+    riskmap_warn("The same warning.")
+  }
+  expect_length(testthat::capture_warnings(twice()), 2L)
+  # A scope inside another leaves the outer one in charge.
+  outer <- function() {
+    collapse_repeated_warnings()
+    repeating()
+    riskmap_warn("Another warning.")
+  }
+  expect_length(testthat::capture_warnings(outer()), 2L)
+  # The scope closes when its function exits, also after an error.
+  failing <- function() {
+    collapse_repeated_warnings()
+    riskmap_abort("It failed.")
+  }
+  expect_error(failing(), "It failed.")
+  expect_null(warning_scope$seen)
+})

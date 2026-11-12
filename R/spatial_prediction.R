@@ -304,6 +304,7 @@ predict.RiskMap <- function(
     keep_samples = FALSE,
     messages = getOption("RiskMap.messages", TRUE),
     ...) {
+  collapse_repeated_warnings()
 
   if (is.null(include)) include <- character()
   check_logical(parameter_uncertainty)
@@ -2878,6 +2879,9 @@ assess_prediction <- function(object,
                               plot_fold = TRUE,
                               messages = getOption("RiskMap.messages", TRUE),
                               ...) {
+  check_supplied(object)
+  check_supplied(method)
+  collapse_repeated_warnings()
 
   ## ─────────────────────────── helpers ─────────────────────────── ##
   is_list_of_riskmap <- function(x) {
@@ -3161,7 +3165,7 @@ assess_prediction <- function(object,
     if (keep_par_fixed) {
       riskmap_inform(c("Parameters are fixed at the estimates from all the data.", "i" = "Set {.code keep_par_fixed = FALSE} to re-estimate them in each training set."))
       if (length(unique(n_par)) > 1) {
-        riskmap_inform("The models have different numbers of parameters. With fixed parameters the comparison tends to favour the model with more of them, so {.code keep_par_fixed = FALSE} is recommended.")
+        riskmap_inform(c("!" = "The models have different numbers of parameters. With fixed parameters the comparison tends to favour the model with more of them, so {.code keep_par_fixed = FALSE} is recommended."))
       }
     } else {
       n_fits <- n_iter * length(object)
@@ -3774,6 +3778,10 @@ assess_simulation <- function(obj_sim,
                        col_names = NULL,
                        pred_objective = c("mse", "classify"),
                        categories = NULL) {
+  check_supplied(obj_sim)
+  check_supplied(models)
+  check_supplied(spatial_scale)
+  collapse_repeated_warnings()
 
   if (!inherits(obj_sim, "RiskMap_simulation")) {
     abort_input("{.arg obj_sim} must be made by {.fn simulate_glgpm}, not {.obj_type_friendly {obj_sim}}.", arg = "obj_sim")

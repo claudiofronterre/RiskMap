@@ -210,7 +210,7 @@ describe_radius_check <- function(details) {
            signif(details$widened, 2), " standard errors (limit ",
            details$tolerance, ")."),
     paste0("Read the bound with its radius so widened. More draws, through ",
-           "'max_samples' in set_control_mcml(), bring more of the tail of ",
+           "`max_samples` in `set_control_mcml()`, bring more of the tail of ",
            "the weights into each sample.")
   )
 }

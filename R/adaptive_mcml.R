@@ -1836,7 +1836,7 @@ report_mcml_outcome <- function(fit, layout, tolerance, messages,
     riskmap_warn(c("The Monte Carlo error of the estimate is not certified.", "x" = reason, "i" = "See {.fn check_fit}."), class = "riskmap_warning_fit")
   } else if (messages) {
     bound <- signif(fit$certificate, 2)
-    riskmap_inform("The Monte Carlo error of the estimate is within {bound} statistical standard errors (an approximate 95% bound, tolerance {tolerance}).")
+    riskmap_inform(c(v = "Certified. The Monte Carlo error of the estimate is within {bound} statistical standard errors (an approximate 95% bound, tolerance {tolerance})."))
   }
   invisible(NULL)
 }

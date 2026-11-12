@@ -53,6 +53,7 @@
 ##' }
 ##' @export
 summarise_mcmc <- function(object) {
+  check_supplied(object)
   blocks <- mcmc_sample_blocks(object)
   spatial <- blocks$S
   out <- data.frame(
@@ -122,6 +123,7 @@ summarise_mcmc <- function(object) {
 ##' }
 ##' @export
 plot_mcmc <- function(object, check_mean = TRUE, component = NULL, ...) {
+  check_supplied(object)
   check_logical(check_mean)
   spatial <- mcmc_sample_blocks(object)$S
   spatial_ess <- mcmc_effective_size(spatial)

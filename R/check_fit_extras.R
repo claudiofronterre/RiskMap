@@ -310,7 +310,7 @@ fit_check_profile <- function(profile, units = NULL, advice = "") {
       },
       paste0("Refit with starting values at the highest point of ",
              if (length(higher) > 1L) "these profiles" else "that profile",
-             ", through 'start_pars' in glgpm(), and keep the fit with the ",
+             ", through `start_pars` in `glgpm()`, and keep the fit with the ",
              "higher log-likelihood.")
     ))
   }
@@ -383,7 +383,7 @@ describe_profile_fix <- function(second, flat, advice) {
     "Use the profile interval", if (length(concerned) > 1L) "s", " of ",
     join_phrases(concerned), " rather than the Wald interval",
     if (length(concerned) > 1L) "s", ", and see ",
-    if (length(concerned) > 1L) "their panels" else "its panel", " in plot().",
+    if (length(concerned) > 1L) "their panels" else "its panel", " in `plot()`.",
     if (length(spatial)) paste0(" Consider a scale fixed from external ",
                                 "knowledge.", advice),
     if (length(variances)) paste0(

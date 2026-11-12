@@ -76,6 +76,8 @@ get_worldpop <- function(country, year, ages = NULL,
                          constrained = FALSE, un_adjusted = FALSE,
                          dest_dir = tempdir(),
                          messages = getOption("RiskMap.messages", TRUE)) {
+  check_supplied(country)
+  check_supplied(year)
   if (!is.character(country) || length(country) != 1L ||
       !grepl("^[A-Za-z]{3}$", country)) {
     supplied <- describe_value(country)

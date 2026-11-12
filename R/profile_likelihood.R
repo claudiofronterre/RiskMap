@@ -131,6 +131,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             cores = 1L,
                             messages = getOption("RiskMap.messages", TRUE),
                             ...) {
+  collapse_repeated_warnings()
   check_class(fitted, "RiskMap")
   traits <- fit_traits(fitted)
   exact <- isTRUE(traits$exact)
@@ -217,7 +218,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
               unlist(lapply(joint, `[[`, "loglik")))
   higher <- max(values, na.rm = TRUE) - problem$max_loglik
   if (messages && higher > 0.01) {
-    riskmap_inform("A point on the profile is higher than the estimate by {signif(higher, 3)} log-likelihood units, so the estimate is not the highest maximum found.")
+    riskmap_inform(c("!" = "A point on the profile is higher than the estimate by {signif(higher, 3)} log-likelihood units, so the estimate is not the highest maximum found."))
   }
   max_loglik <- max(problem$max_loglik, values, na.rm = TRUE)
   marginal <- lapply(marginal, add_profile_deviance, max_loglik)

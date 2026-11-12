@@ -73,6 +73,8 @@
 ##' table(extrapolation$extrapolation)
 ##' @export
 assess_extrapolation <- function(object, newdata, spatial_threshold = 0.8) {
+  check_supplied(object)
+  check_supplied(newdata)
   if (!inherits(object, "RiskMap")) {
     abort_input("{.arg object} must be a {.cls RiskMap} fit, not {.obj_type_friendly {object}}.", arg = "object")
   }

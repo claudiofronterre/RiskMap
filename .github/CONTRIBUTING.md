@@ -119,9 +119,13 @@ Choose the class by who can cause the problem and fix it.
 - Use `expect_snapshot(error = TRUE)` when the wording itself matters, for example for an error with hints. A snapshot records the message as users see it, including the function named. Review changes with `testthat::snapshot_review()`, and commit new snapshots, because a snapshot missing on CI fails there.
 - Do not match whole sentences, so that the wording can improve without breaking tests.
 
+### Required arguments and repeated warnings
+
+An exported function calls `check_supplied()` first, once for each argument without a default, so that a missing argument gives a RiskMap input error naming it. A function whose work repeats a step that can warn, such as a factorisation for each block, calls `collapse_repeated_warnings()` at its top, so that `riskmap_warn()` raises each distinct warning once until the function returns. The scope closes through `on.exit()`, so any later `on.exit()` in that function must use `add = TRUE`.
+
 ### Messages and the `messages` argument
 
-Functions that report progress or choices made for the user take `messages`. When it is `TRUE` they report with `riskmap_inform()`. Use `riskmap_warn()` instead for a result the user should doubt. Do not use `cat()` or `print()` for progress, because those can't be silenced like messages. Keep them for `print()` methods.
+Functions that report progress or choices made for the user take `messages`. When it is `TRUE` they report with `riskmap_inform()`. A message whose first element has no bullet gets the information sign. Name it `"v"` for a step done and `"!"` for something to note. Use `riskmap_warn()` instead for a result the user should doubt. Do not use `cat()` or `print()` for progress, because those can't be silenced like messages. Keep them for `print()` methods.
 
 The default of `messages` is the option `RiskMap.messages`, so that a script or a book chapter can silence RiskMap once with `options(RiskMap.messages = FALSE)`.
 

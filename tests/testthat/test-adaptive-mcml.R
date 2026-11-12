@@ -1962,8 +1962,9 @@ test_that("a certified fit says one line and a refused one a short warning", {
   )
   expect_identical(
     reported,
-    paste0("The Monte Carlo error of the estimate is within 0.05 statistical ",
-           "standard errors (an approximate 95% bound, tolerance 0.1).")
+    paste0(cli::symbol$tick, " Certified. The Monte Carlo error of the ",
+           "estimate is within 0.05 statistical standard errors (an ",
+           "approximate 95% bound, tolerance 0.1).")
   )
   expect_silent(
     report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE)

@@ -279,6 +279,10 @@ glgpm <- function(formula,
                                    phi = NULL,
                                    sigma2_me = NULL,
                                    sigma2_re = NULL)) {
+  check_supplied(formula)
+  check_supplied(data)
+  check_supplied(family)
+  collapse_repeated_warnings()
 
   check_data(data)
   check_formula(formula, data)
@@ -384,7 +388,6 @@ glgpm <- function(formula,
     # Shown even with `messages = FALSE`, because it changes the model.
     riskmap_inform(c("{.arg data} are in longitude and latitude, so they are projected to EPSG:{auto_crs} for fitting.", "i" = "Set {.arg model_crs} to choose the projection."))
   }
-  if (messages) riskmap_inform("The CRS used is {as.list(st_crs(data))$input}.")
 
   coords_o <- coordinates_in_units(
     data, distance_units, if (is.null(model_crs)) "data" else "model_crs"
@@ -429,7 +432,10 @@ glgpm <- function(formula,
     }
   }
 
-  if (messages) riskmap_inform("Distances between locations are computed in {distance_units}.")
+  if (messages) {
+    crs <- as.list(st_crs(data))$input
+    riskmap_inform("The model is fitted in {crs}, with distances in {distance_units}.")
+  }
 
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
   invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
@@ -2437,6 +2443,11 @@ maxim_integrand <- function(
     y, denominator, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
 ) {
+  check_supplied(y)
+  check_supplied(mu)
+  check_supplied(Sigma)
+  check_supplied(ID_coords)
+  check_supplied(family)
   if (missing(denominator)) {
     abort_input("{.arg denominator} must be given.", arg = "denominator")
   }

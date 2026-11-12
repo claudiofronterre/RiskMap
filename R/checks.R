@@ -22,6 +22,22 @@ abort_input <- function(message, arg, call = rlang::caller_env(), ...,
                 call = call, .envir = .envir)
 }
 
+#' Check that an argument without a default was given
+#'
+#' Called first in an exported function, once for each argument that has no
+#' default, so that leaving one out raises a RiskMap input error, which names
+#' the argument and the function, instead of R's own error when the argument
+#' is first used. `missing()` also sees an argument that a caller passed on
+#' without a value.
+#' @param x The argument, as the exported function received it.
+#' @noRd
+check_supplied <- function(x, arg = rlang::caller_arg(x),
+                           call = rlang::caller_env()) {
+  if (!missing(x)) return(invisible(NULL))
+  abort_input("{.arg {arg}} is missing, with no default.", arg = arg,
+              call = call)
+}
+
 #' Describe a supplied value for an error message
 #'
 #' A single atomic value is shown as itself, for example `0.5`, `NA` or
