@@ -57,7 +57,9 @@
 ##' conditional samples at the fitted parameters. These samples are used to
 ##' compute fitted values. If `FALSE`, final sampling is skipped and fitted
 ##' values are not computed. Defaults to `TRUE`. Ignored for Gaussian models.
-##' @param messages Logical indicating whether to print progress messages. Defaults to `TRUE`.
+##' @param messages Logical indicating whether to print messages, and a
+##'   line for each stage of Monte Carlo maximum likelihood as described in
+##'   [riskmap_progress]. Defaults to `TRUE`.
 ##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
 ##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
 ##' the `nugget` term in [gp()] is also set to `TRUE`.
@@ -661,6 +663,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
       # path, not the conditional distribution at the estimate. When
       # requested, draw once more at the final estimate and use that draw for
       # fitted values as well as user-facing diagnostics.
+      progress_step("Drawing conditional samples at the estimate", messages)
       final_draw <- sample_at_nongaussian_fit(
         estimate = res$estimate,
         y = y,
@@ -678,6 +681,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
         seed = final_sampling_seed(seed, length(mcml_history)),
         messages = messages
       )
+      progress_step_done(messages)
       res$linear_predictors <- final_draw$linear_predictors
       res$fitted_values <- final_draw$fitted_values
       res$S_samples <- final_draw$samples

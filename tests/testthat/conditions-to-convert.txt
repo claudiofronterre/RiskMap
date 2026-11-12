@@ -101,7 +101,6 @@ prepare_simulation
 print.RiskMap
 print.RiskMap_check
 print.summary.RiskMap_check
-profile_in_parallel
 profile.RiskMap
 propose_utm
 re
@@ -112,9 +111,7 @@ report_maxima_check
 report_mcml_outcome
 report_no_maximum
 report_numerically_independent
-run_bootstrap_replicates
 run_extra_checks
-run_profile_tasks
 run_radius_chains
 scale_spatial_coordinates
 select_nongaussian_start

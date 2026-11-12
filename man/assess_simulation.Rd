@@ -39,7 +39,8 @@ drawn from the session's random number generator.}
 \item{spatial_scale}{The scale(s) at which predictions are assessed: \code{"grid"}, \code{"area"}, or \code{c("grid", "area")}
 to compute both from a single fit-and-predict pass over the simulations.}
 
-\item{messages}{Logical, if \code{TRUE} messages will be displayed during processing. Default is \code{TRUE}.}
+\item{messages}{Logical, whether to report on the assessment, with a
+progress bar as described in \link{riskmap_progress}. Default is \code{TRUE}.}
 
 \item{target}{A function that converts a numeric matrix of means to a
 numeric matrix of the scientific target, with the same dimensions. The

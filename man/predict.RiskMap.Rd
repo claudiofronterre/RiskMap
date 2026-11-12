@@ -125,7 +125,8 @@ needed for custom post-processing. Predictive samples are generated to
 calculate summaries regardless of this setting, but are discarded by
 default to limit memory use.}
 
-\item{messages}{Logical. Display progress messages.}
+\item{messages}{Logical. Display messages, and a progress bar while
+predicting at many locations, as described in \link{riskmap_progress}.}
 
 \item{...}{Additional arguments reserved for future prediction methods.}
 }

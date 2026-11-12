@@ -317,12 +317,14 @@ marginal_prediction_batch_size <- function(
 #' @param kappa Matérn smoothness.
 #' @param n_samples Number of predictive samples.
 #' @param batch_size Number of prediction locations per batch.
+#' @param progress A bar from `progress_bar()`, moved by the locations of
+#'   each batch, or `NULL`.
 #' @return Matrix with prediction locations in rows and samples in columns.
 #' @noRd
 batched_marginal_prediction <- function(
     prediction_coordinates, conditioning_coordinates, weight_function,
     conditional_signal, marginal_variance, phi, kappa, n_samples,
-    batch_size) {
+    batch_size, progress = NULL) {
   n_prediction <- nrow(prediction_coordinates)
   samples <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
 
@@ -345,6 +347,7 @@ batched_marginal_prediction <- function(
     ))
     samples[index, ] <- conditional_mean +
       conditional_sd * samples[index, , drop = FALSE]
+    progress_tick(progress, length(index))
   }
 
   samples

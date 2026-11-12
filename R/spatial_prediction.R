@@ -86,7 +86,8 @@
 ##'   needed for custom post-processing. Predictive samples are generated to
 ##'   calculate summaries regardless of this setting, but are discarded by
 ##'   default to limit memory use.
-##' @param messages Logical. Display progress messages.
+##' @param messages Logical. Display messages, and a progress bar while
+##'   predicting at many locations, as described in [riskmap_progress].
 ##' @param ... Additional arguments reserved for future prediction methods.
 ##'
 ##' @details
@@ -2451,11 +2452,14 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     if (obs_loc) {
       out$S_samples <- t(simulation$samples$S)
     } else if (batch_marginal) {
+      bar <- progress_bar("Predicting at locations", nrow(fitting_grp),
+                          messages)
       out$S_samples <- batched_marginal_prediction(
         fitting_grp, conditioning_coords, prediction_weights,
         t(simulation$samples$S), par_hat$sigma2, fitting_phi,
-        object$kappa, n_samples, marginal_batch_size
+        object$kappa, n_samples, marginal_batch_size, progress = bar
       )
+      progress_done(bar)
     } else if (grouped_joint) {
       out$S_samples <- grouped_joint_prediction(
         prediction_coordinates = fitting_grp,
@@ -2572,11 +2576,14 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     if (blockwise_random_effects) {
       # Samples were generated above from one shared fitted latent state.
     } else if (batch_marginal) {
+      bar <- progress_bar("Predicting at locations", nrow(fitting_grp),
+                          messages)
       out$S_samples <- batched_marginal_prediction(
         fitting_grp, conditioning_coords, prediction_weights, diff.y,
         par_hat$sigma2, fitting_phi, object$kappa, n_samples,
-        marginal_batch_size
+        marginal_batch_size, progress = bar
       )
+      progress_done(bar)
     } else if (grouped_joint) {
       out$S_samples <- grouped_joint_prediction(
         prediction_coordinates = fitting_grp,
@@ -2801,7 +2808,8 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' When `NULL` (the default), the seeds are drawn from the session's random
 ##' number generator.
 ##' @param plot_fold Logical; whether to plot each iteration's test and training sets. Defaults to `TRUE`.
-##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
+##' @param messages Logical; whether to report on the assessment, with a
+##'   progress bar as described in [riskmap_progress]. Defaults to `TRUE`.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
 ##'
 ##' @return A list of class `RiskMap_cross_validation`, containing:
@@ -3233,6 +3241,10 @@ assess_prediction <- function(object,
     out$test_set[[i]] <- data_sf[out_id[complete_rows[out_id]], ]
   }
 
+  bar <- progress_bar(if (keep_par_fixed) "Scoring test sets" else
+                        "Refitting and scoring test sets",
+                      n_models * n_iter, messages)
+
   ## ─────────────────────────── iterate over models ───────────────────────── ##
   for (h in seq_len(n_models)) {
 
@@ -3262,8 +3274,6 @@ assess_prediction <- function(object,
     score_test_set <- function(i, in_id, out_id_i, data_test_i) {
       ## ----- refit or slice -----
       if (!keep_par_fixed) {
-
-        if (messages) message("\nRe-estimating model for subset ", i)
 
         refit_args <- list(
           formula        = fit0$formula,
@@ -3308,8 +3318,6 @@ assess_prediction <- function(object,
         ## recompute ID_coords mapping
         refit_i$ID_coords <- create_ids(refit_i$data)$ID_coords
       }
-
-      if (messages) message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
 
       ## ----- prediction over test set -----
       included_components <- if (
@@ -3424,6 +3432,7 @@ assess_prediction <- function(object,
         PIT_area[[i]] <- scores_i$PIT_area
         if (fam == "gaussian") PIT[[i]] <- scores_i$PIT else AnPIT[[i]] <- scores_i$AnPIT
       }
+      progress_tick(bar)
 
     } # end i loop
 
@@ -3437,6 +3446,7 @@ assess_prediction <- function(object,
     }
 
   } # end h loop
+  progress_done(bar)
 
   out$failures <- failures
   if (nrow(failures) > 0) {
@@ -3706,7 +3716,8 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##'   drawn from the session's random number generator.
 ##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
 ##'   to compute both from a single fit-and-predict pass over the simulations.
-##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
+##' @param messages Logical, whether to report on the assessment, with a
+##'   progress bar as described in [riskmap_progress]. Default is `TRUE`.
 ##' @param target A function that converts a numeric matrix of means to a
 ##'   numeric matrix of the scientific target, with the same dimensions. The
 ##'   mean is the probability for a binomial model, the mean per unit exposure
@@ -4142,12 +4153,24 @@ assess_simulation <- function(obj_sim,
     result
   }
 
-  assess_one_simulation <- function(j) {
-    if (messages) message("Simulation ", j, " of ", n_sim)
-    lapply(seq_len(n_models), assess_pair, j = j)
+  assess_one_simulation <- function(j, report) {
+    lapply(seq_len(n_models), function(i) {
+      result <- assess_pair(i, j)
+      report()
+      result
+    })
   }
 
-  results <- lapply(seq_len(n_sim), assess_one_simulation)
+  if (messages) {
+    riskmap_inform("Refitting {n_models} model{?s} to {n_sim} simulation{?s}.")
+  }
+  bar <- progress_bar("Refitting models to simulations", n_sim * n_models,
+                      messages)
+  results <- riskmap_map(seq_len(n_sim), assess_one_simulation,
+                         progress = bar, weights = rep(n_models, n_sim),
+                         reports_progress = TRUE,
+                         labels = paste("Simulation", seq_len(n_sim)))
+  progress_done(bar)
 
   fits <- data.frame(
     model = rep(model_names, times = n_sim),
