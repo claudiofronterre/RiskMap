@@ -1,23 +1,14 @@
 # Functions outside R/family.R that still compare a family string, as in
-# family == "binomial". They are the output, prediction and simulation code of
-# steps 2 and 4 of #253. Remove a function from the list when it is converted.
+# family == "binomial". After step 4 of #253 they are the output code that
+# step 2 moves (summary(), print() and coef(), and the names of a profile),
+# the row of check_fit() for a likelihood without a maximum (step 2) and its
+# row "Link" (step 5). Remove a function from the list when it is converted.
 # test-family-strings.R fails if the list is out of date, so it can only shrink.
-build_prediction_components
 coef.RiskMap
-draw_prediction_samples
-find_radius_check_obstacle
 fit_check_link
 fit_check_no_maximum
-is_binomial_logit
 list_covariance_parameters
-mcmc_sample_blocks
-prediction_is_probability
-prediction_quantity_label
-prediction_sample_components
-prediction_sample_size
 print.RiskMap
 print.summary.RiskMap
 print.summary.RiskMap_bootstrap
-run_profile_check
-standardize_prediction_targets
 summary.RiskMap

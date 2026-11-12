@@ -204,7 +204,7 @@ run_profile_check <- function(object, profile = NULL, cores = 1L) {
       cores = cores, messages = FALSE
     )
   }
-  advice <- if (!identical(object$family, "gaussian")) {
+  advice <- if (!fit_is_exact(object)) {
     describe_pc_prior_advice(attr(object, "optimizer"))
   } else {
     ""

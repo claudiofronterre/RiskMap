@@ -136,7 +136,7 @@ fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
 ##' likelihood whose last stage has a radius.
 ##' @noRd
 find_radius_check_obstacle <- function(object) {
-  if (identical(object$family, "gaussian")) {
+  if (fit_is_exact(object)) {
     return("a Gaussian fit has no Monte Carlo error")
   }
   history <- object$mcml_history %||% attr(object, "optimizer")$mcml_history
@@ -173,7 +173,8 @@ find_radius_check_forms <- function(object, last) {
 ##' Whether a fit is binomial with the logit link
 ##' @noRd
 is_binomial_logit <- function(object) {
-  identical(object$family, "binomial") &&
+  # The binomial family is the one whose canonical link is the logit.
+  identical(fit_traits(object)$default_link, "logit") &&
     (identical(object$link_function$name, "canonical") ||
        identical(object$link_function$link, "logit"))
 }

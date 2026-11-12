@@ -1114,7 +1114,7 @@ build_prediction_components <- function(object, prediction_setup, include,
   link <- sweep(spatial, 1L, fixed + offset, "+")
   if (!is.null(random_effects)) link <- link + random_effects
   if (!is.null(nugget)) link <- link + nugget
-  response <- if (object$family == "gaussian") {
+  response <- if (fit_is_exact(object)) {
     link
   } else {
     matrix(object$link_function$inv(as.numeric(link)), nrow = n_locations)
@@ -1196,7 +1196,7 @@ prediction_sample_components <- function(object, prediction_data, prediction,
   if (messages) {
     riskmap_inform("Propagating parameter uncertainty over {parameter_draws} parameter draws.")
   }
-  sampler <- if (object$family == "gaussian") NULL else
+  sampler <- if (fit_is_exact(object)) NULL else
     parameter_conditioning_sampler(object)
   pieces <- vector("list", parameter_draws)
   acceptance <- rep(NA_real_, parameter_draws)
@@ -1267,7 +1267,7 @@ prediction_sample_size <- function(object, control_mcmc) {
     if (isTRUE(control_mcmc$linear_model)) return(control_mcmc$n_sim)
     return((control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin)
   }
-  if (object$family != "gaussian" && !is.null(object$S_samples)) {
+  if (!fit_is_exact(object) && !is.null(object$S_samples)) {
     return(nrow(object$S_samples))
   }
   # As many draws as plug-in prediction takes by default for every family.
@@ -1420,7 +1420,7 @@ standardize_prediction_targets <- function(object, prediction_data,
       profile_link <- sweep(base_link, 1L, profile_fixed, "+")
       weight <- standardize$weights[[profile]]
       fixed <- fixed + weight * profile_fixed
-      profile_response <- if (object$family == "gaussian") {
+      profile_response <- if (fit_is_exact(object)) {
         profile_link
       } else {
         matrix(object$link_function$inv(as.numeric(profile_link)),
@@ -2300,7 +2300,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   fitting_phi <- par_hat$phi / distance_scale
   fitting_grp <- grp / distance_scale
 
-  conditioning_coords <- if (object$family == "gaussian") {
+  conditioning_coords <- if (fit_is_exact(object)) {
     fitting_coords[object$ID_coords, , drop = FALSE]
   } else {
     fitting_coords
@@ -2313,10 +2313,10 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   batch_marginal <- !obs_loc && type == "marginal" &&
     marginal_batch_size < n_pred
 
-  if (object$family != "gaussian" && !obs_loc && !batch_marginal &&
+  if (!fit_is_exact(object) && !obs_loc && !batch_marginal &&
       !grouped_joint) {
     U_pred <- cross_distances(fitting_grp, fitting_coords)
-  } else if (object$family == "gaussian" && !obs_loc && !batch_marginal &&
+  } else if (fit_is_exact(object) && !obs_loc && !batch_marginal &&
              !grouped_joint) {
     U_pred <- cross_distances(fitting_grp, conditioning_coords)
   }
@@ -2339,7 +2339,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
 
   mu <- as.numeric(object$D %*% par_hat$beta + object$cov_offset)
 
-  reuse_fitted_samples <- object$family != "gaussian" &&
+  reuse_fitted_samples <- !fit_is_exact(object) &&
     !control_mcmc_supplied && !is.null(object$S_samples)
   n_samples <- if (reuse_fitted_samples) {
     nrow(object$S_samples)
@@ -2360,13 +2360,13 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   if (nu2 == 0) nu2 <- 1e-10
   diag(R) <- diag(R) + nu2
 
-  diff.y <- if (object$family == "gaussian") object$y - mu else NULL
+  diff.y <- if (fit_is_exact(object)) object$y - mu else NULL
   shared_gaussian_re_samples <- NULL
 
   # ===========================================================================
   # NON-GAUSSIAN MODELS
   # ===========================================================================
-  if (object$family != "gaussian") {
+  if (!fit_is_exact(object)) {
 
     Sigma     <- par_hat$sigma2 * R
     Sigma_root <- factor_covariance(Sigma, "observation covariance")
@@ -2580,9 +2580,9 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     out$re$D_pred   <- D_re_pred
     out$re$samples  <- list()
     re_names        <- colnames(object$ID_re)
-    if (object$family == "gaussian" && !is.null(shared_gaussian_re_samples)) {
+    if (fit_is_exact(object) && !is.null(shared_gaussian_re_samples)) {
       re_samples <- do.call(rbind, shared_gaussian_re_samples)
-    } else if (object$family == "gaussian") {
+    } else if (fit_is_exact(object)) {
       C_Z  <- C_g[, -(seq_len(n_dim_re_tot[1]))]
       add  <- 0
       for (i in seq_along(n_dim_re_tot[-1])) {

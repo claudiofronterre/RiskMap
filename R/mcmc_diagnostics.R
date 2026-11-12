@@ -168,7 +168,7 @@ mcmc_sample_blocks <- function(object) {
   if (!inherits(object, "RiskMap")) {
     abort_input("{.arg object} must be a {.cls RiskMap} fit from {.fn glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
-  if (identical(object$family, "gaussian")) {
+  if (fit_is_exact(object)) {
     abort_input("{.arg object} is a Gaussian model, which has no MCMC samples.", arg = "object")
   }
   if (is.null(object$S_samples)) {
