@@ -181,19 +181,23 @@ test_that("a link is given either in family or in invlink", {
 
 test_that("print() and summary() name the link", {
   fit <- named_fits$cloglog
-  expect_output(print(fit),
-                "Binomial geostatistical model with cloglog link, 10 obs")
+  expect_output(print(fit), "Binomial geostatistical model with cloglog link")
+  expect_output(print(fit), "10 observations at 10 locations")
   fit_summary <- summary(fit)
   expect_identical(fit_summary$link_name, "cloglog")
   expect_identical(fit_summary$invlink_expression,
                    "Inverse link function = 1 - exp(-exp(x))")
-  expect_output(print(fit_summary), "Link: cloglog")
+  expect_output(print(fit_summary),
+                "The cloglog link, with inverse 1 - exp(-exp(x)).",
+                fixed = TRUE)
   expect_output(print(named_fits$probit), "with probit link")
   expect_output(print(fit_binomial("binomial", link_functions$cloglog)),
                 "with a custom link")
   expect_identical(summary(named_fits$cauchit)$link_name, "cauchit")
-  expect_output(print(binomial_model),
-                "Binomial geostatistical model, 10 observations")
+  # The canonical link is not named in the title.
+  title <- capture.output(print(binomial_model))[1L]
+  expect_match(title, "Binomial geostatistical model")
+  expect_no_match(title, "link")
 })
 
 test_that("check_fit() notes a link not known to be log-concave", {

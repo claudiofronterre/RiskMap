@@ -66,7 +66,7 @@ test_that("the Monte Carlo check follows the outcome of the fit", {
   )))
   expect_identical(above$status, "PROBLEM")
   expect_match(above$finding, "1.7 standard errors, above the limit of 0.1")
-  expect_match(above$fix, "'max_samples' or 'max_stages'")
+  expect_match(above$fix, "`max_samples` or `max_stages`")
 
   refused <- fit_check_monte_carlo(modifyList(certified_mcml, list(
     outcome = "not certified", correction_refused = TRUE
@@ -95,7 +95,7 @@ test_that("the weights check flags a heavy tail", {
   heavy <- fit_check_weights(list(effective_draws = 94, pareto_k = 1.005))
   expect_identical(heavy$status, "SUSPICIOUS")
   expect_match(heavy$finding, "tail shape of 1 (limit 0.7), which", fixed = TRUE)
-  expect_match(heavy$fix, "'max_samples'")
+  expect_match(heavy$fix, "`max_samples`")
   expect_identical(fit_check_weights(list(effective_draws = 1, pareto_k = NA))$status,
                    "SUSPICIOUS")
   expect_null(fit_check_weights(NULL))
@@ -280,12 +280,14 @@ test_that("a fit without a maximum gets that check alone, with what to do", {
 
 test_that("the summary counts the checks that need a look", {
   expect_null(describe_checks_to_review(NULL))
-  expect_identical(describe_checks_to_review(0L),
-                   "No check needs a look, see check_fit() for the details.")
+  expect_identical(
+    describe_checks_to_review(0L),
+    c(v = "No check needs a look. See `check_fit()` for the details.")
+  )
   expect_identical(describe_checks_to_review(1L),
-                   "1 check needs a look, see check_fit().")
+                   c("!" = "1 check needs a look. See `check_fit()`."))
   expect_identical(describe_checks_to_review(2L),
-                   "2 checks need a look, see check_fit().")
+                   c("!" = "2 checks need a look. See `check_fit()`."))
   flagged <- with_flags(mcml_maxima_alarm = FALSE,
                         mcml_near_limit = TRUE,
                         mcml_boundary = "nugget variance (tau2)")
@@ -348,29 +350,41 @@ test_that("printing gives a check that needs a look in full and an OK one on a l
   withr::local_options(width = 80L)
   printed <- capture.output(result <- print(checked))
   expect_identical(result, checked)
-  expect_identical(printed[1L], "Checks on this fit")
+  expect_match(printed[1L], "Checks on this fit", fixed = TRUE)
   expect_match(printed[2L], "^Fitted in ")
-  expect_true(any(grepl("^SUSPICIOUS +Variances +The nugget", printed)))
-  expect_true(any(grepl("^ +Fix: Consider refitting without it", printed)))
+  # The symbol of a check that needs a look, then its name and finding, and
+  # under them the fix after an arrow.
+  suspicious <- out_status_symbol("SUSPICIOUS")
+  expect_true(any(startsWith(printed, paste0(suspicious, " Variances "))))
+  expect_true(any(grepl("The nugget", printed[startsWith(printed,
+                                                       suspicious)])))
+  arrow <- paste0(cli::symbol$arrow_right, " Consider refitting without it")
+  expect_true(any(grepl(arrow, printed, fixed = TRUE)))
   # Each OK check is one line with its brief finding, the next line starting
   # another check or the closing lines.
   checks <- checked$checks
   ok <- checks[checks$status == "OK", ]
   expect_gte(nrow(ok), 3L)
   for (row in seq_len(nrow(ok))) {
-    line <- which(startsWith(printed, paste0(formatC("OK", width = -10L), "  ",
+    line <- which(startsWith(printed, paste0(out_status_symbol("OK"), " ",
                                              ok$check[[row]], " ")))
     expect_length(line, 1L)
     expect_match(printed[[line]], paste0("  ", ok$brief[[row]]), fixed = TRUE)
     expect_false(startsWith(printed[[line + 1L]], " "))
   }
-  expect_true(any(grepl("^OK +Monte Carlo accuracy +Within [0-9.]+ standard errors\\.$",
-                        printed)))
+  expect_true(any(grepl(
+    paste0("^", out_status_symbol("OK"),
+           " Monte Carlo accuracy +Within [0-9.]+ standard errors\\.$"),
+    printed
+  )))
   expect_false(any(grepl("though it cannot rule one out", printed)))
+  info <- out_symbol("i")
   expect_identical(
     utils::tail(printed, 2L),
-    c("summary() of these checks gives the evidence behind each finding.",
-      "These checks concern the computation, not whether the model suits the data.")
+    c(paste(info, "`summary()` of these checks gives the evidence behind each",
+            "finding."),
+      paste(info, "These checks concern the computation, not whether the",
+            "model suits the data."))
   )
   expect_false(any(grepl("^ +$", printed)))
   withr::local_options(width = 60L)

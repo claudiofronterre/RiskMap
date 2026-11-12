@@ -259,41 +259,48 @@ add_largest_moves <- function(stages, moves) {
 ##' @export
 print.summary.RiskMap_check <- function(x, ...) {
   check_class(x, "summary.RiskMap_check")
-  cat("Evidence for the checks on this fit\n")
+  out_print(format_check_evidence(x))
+  invisible(x)
+}
+
+##' The lines that print the evidence for the checks on a fit
+##' @noRd
+format_check_evidence <- function(x) {
   timing <- if (!is.null(x$fit_seconds)) {
     paste0("The fit took ", format_check_time(x$fit_seconds), ".")
   }
-  if (!is.null(x$draws) || !is.null(timing)) {
-    write_wrapped(paste(c(x$draws, timing), collapse = " "))
+  results <- unlist(lapply(x$results, function(result) {
+    data <- result$data
+    c("",
+      paste0(out_status_symbol(result$row$status), " ",
+             out_heading(result$row$check)),
+      out_text(result$row$finding, indent = 2L),
+      out_capture(
+        if (inherits(data, "RiskMap_profile")) {
+          write_profile_evidence(data)
+        } else if (inherits(data, "RiskMap_radius_check")) {
+          write_radius_evidence(data)
+        } else {
+          write_check_data(data)
+        }
+      ))
+  }))
+  stages <- if (!is.null(x$stages)) {
+    c("",
+      out_heading("Certificate and certification draws by stage"),
+      out_capture(print(x$stages, digits = 4L, row.names = FALSE),
+                  indent = 2L))
   }
-  status_width <- max(nchar(x$checks$status))
-  for (result in x$results) {
-    cat("\n", formatC(result$row$status, width = -status_width), "  ",
-        result$row$check, "\n", sep = "")
-    write_indented(strwrap(result$row$finding,
-                           width = getOption("width", 80L) - 4L))
-    if (inherits(result$data, "RiskMap_profile")) {
-      write_profile_evidence(result$data)
-    } else if (inherits(result$data, "RiskMap_radius_check")) {
-      write_radius_evidence(result$data)
-    } else {
-      write_check_data(result$data)
-    }
-  }
-  if (!is.null(x$stages)) {
-    cat("\nCertificate and certification draws by stage\n")
-    write_indented(utils::capture.output(
-      print(x$stages, digits = 4L, row.names = FALSE)
-    ))
-  }
-  if (length(x$not_computed)) {
-    cat("\n")
-    write_wrapped(x$not_computed)
-  }
-  cat("\n")
-  write_wrapped(paste0("These checks concern the computation, not whether the ",
-                       "model suits the data."))
-  invisible(x)
+  c(out_rule("Evidence for the checks on this fit"),
+    if (!is.null(x$draws) || !is.null(timing)) {
+      out_text(paste(c(x$draws, timing), collapse = " "))
+    },
+    results,
+    stages,
+    "",
+    out_bullets(c(out_as_bullets(x$not_computed, "i"),
+                  i = paste0("These checks concern the computation, not ",
+                             "whether the model suits the data."))))
 }
 
 ##' Lines of text indented by two spaces

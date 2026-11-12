@@ -86,6 +86,30 @@ dividing the tasks between the processes in advance. The results don't
 change. A profile on several cores now also switches the main process to one
 BLAS thread while the workers run, as the bootstrap already did.
 
+## Printed output
+
+- The printed output of a fit, of its `summary()`, of `check_fit()` and of the
+summary of the checks is formatted with cli. Each starts with a rule that
+carries its title, the call is shown faint, and each verdict has a symbol. A
+certified fit and an OK check have a green tick, a check that needs care a
+yellow exclamation mark, and a problem a red cross. Hints have an information
+sign, and the fix of a check follows an arrow.
+- In a console that supports links, such as RStudio, the functions named in
+the printed output link to their help pages.
+- The output is still printed with `cat()`, not raised as messages, so it
+appears in knitr chunks with `message: false` and in `capture.output()`.
+Without colour support, as in knitr, it is plain text, and
+`options(cli.unicode = FALSE)` gives ASCII symbols, which a PDF without
+Unicode fonts needs.
+- Some printed wording changes. The certificate starts "Certified." or "Not
+certified." instead of "Certified:" or "Not certified:", `summary()` gives the
+link in one sentence, such as "The canonical logit link.", the log-likelihood
+and the AIC have no colon, and a fix follows an arrow instead of "Fix:".
+Argument and function names in the findings and fixes of `check_fit()` are
+quoted with backticks, as in RiskMap's messages. Code that matched the old
+printed text needs updating.
+- RiskMap now needs cli 3.6.0 or later, for the links to help pages.
+
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.
 

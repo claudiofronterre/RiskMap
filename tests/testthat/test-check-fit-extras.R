@@ -153,7 +153,9 @@ test_that("the profile check runs on request, from a stream of the fit's seed", 
                     messages = FALSE)
   expect_identical(checked$extras$profile$data, direct)
   printed <- capture.output(print(checked))
-  expect_true(any(grepl("^SUSPICIOUS +Profile likelihood +The 95% profile", printed)))
+  expect_true(any(grepl(paste0("^", out_status_symbol("SUSPICIOUS"),
+                               " Profile likelihood +The 95% profile"),
+                        printed)))
 })
 
 test_that("a profile computed by the user is used as it is", {
@@ -194,7 +196,7 @@ test_that("an extra check that does not apply or fails says why", {
   expect_identical(checked$not_computed, c(profile = reason))
   expect_identical(checked$checks$check, "Maximum of the likelihood")
   printed <- capture.output(print(checked))
-  expect_match(paste(printed, collapse = " "), reason, fixed = TRUE)
+  expect_match(squish(printed), reason, fixed = TRUE)
   expect_message(plot(checked, which = c("certificate", "profile")), reason,
                  fixed = TRUE)
   expect_error(plot(checked, which = "profile"), reason, fixed = TRUE)
@@ -268,8 +270,10 @@ test_that("the radius check runs on request, from streams of the fit's seed", {
                    nrow(check_fit(binomial_model)$checks) + 1L)
   printed <- capture.output(print(checked))
   expect_true(any(grepl(paste0(
-    "^(OK +Radius of the bound +Exceeded in [0-9.e-]+%, against 5%\\.$|",
-    "SUSPICIOUS +Radius of the bound +The radius of the bound)"
+    "^(", out_status_symbol("OK"),
+    " Radius of the bound +Exceeded in [0-9.e-]+%, against 5%\\.$|",
+    out_status_symbol("SUSPICIOUS"),
+    " Radius of the bound +The radius of the bound)"
   ), printed)))
 
   # The summary gives the rates and the settings, and plot() the panel.
@@ -570,9 +574,11 @@ test_that("the summary gives the numbers behind each finding", {
     "Maxima from the dispersed starts"]], "data.frame")
 
   printed <- capture.output(print(summarised))
-  expect_identical(printed[1L], "Evidence for the checks on this fit")
+  expect_match(printed[1L], "Evidence for the checks on this fit",
+               fixed = TRUE)
   expect_match(printed[2L], "^Fitted in 1 stage")
-  expect_true(any(grepl("^SUSPICIOUS +Variances$", printed)))
+  expect_true(any(grepl(paste0("^", out_status_symbol("SUSPICIOUS"),
+                               " Variances$"), printed)))
   expect_true(any(grepl("^ +Held at zero +nugget variance \\(tau2\\)$", printed)))
   expect_true(any(grepl("^ +Pareto shape +0\\.", printed)))
   expect_contains(printed, "Certificate and certification draws by stage")
@@ -582,13 +588,16 @@ test_that("the summary gives the numbers behind each finding", {
 
   # Each finding is given in full, OK or not.
   expect_contains(printed, paste0(
-    "  ", strwrap(checked$checks$finding[checked$checks$check == "Other maxima"],
-                  width = 76L)
+    "  ", cli::ansi_strwrap(
+      checked$checks$finding[checked$checks$check == "Other maxima"],
+      width = out_width() - 2L
+    )
   ))
 
   gaussian <- capture.output(print(summary(check_fit(gaussian_model))))
-  expect_identical(gaussian[2:4], c("", "OK  Monte Carlo accuracy",
-                                    "  A Gaussian fit has no Monte Carlo error."))
+  expect_identical(gaussian[2:4],
+                   c("", paste(out_status_symbol("OK"), "Monte Carlo accuracy"),
+                     "  A Gaussian fit has no Monte Carlo error."))
   expect_contains(gaussian, "  Nothing recorded beyond the finding.")
 })
 
@@ -597,7 +606,8 @@ test_that("the summary gives the full results of the extra checks", {
                            n_draws = 200, messages = FALSE)
   printed <- capture.output(print(summary(check_fit(binomial_model,
                                                     profile = scale_profile))))
-  expect_true(any(grepl("^SUSPICIOUS +Profile likelihood$", printed)))
+  expect_true(any(grepl(paste0("^", out_status_symbol("SUSPICIOUS"),
+                               " Profile likelihood$"), printed)))
   expect_contains(printed, paste0("  ", capture.output(print(scale_profile))))
   points <- which(printed == "  Points of the profile of the spatial scale (phi)")
   expect_length(points, 1L)
@@ -606,7 +616,7 @@ test_that("the summary gives the full results of the extra checks", {
 
   missing <- capture.output(print(summary(check_fit(no_maximum_fit(),
                                                     extra = "profile"))))
-  expect_match(paste(missing, collapse = " "),
+  expect_match(squish(missing),
                paste0("The profiles of the covariance parameters were not ",
                       "computed, because the likelihood has no maximum."),
                fixed = TRUE)

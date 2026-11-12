@@ -158,6 +158,18 @@ progress_done(bar)
 
 Both helpers show progress only when `messages` is `TRUE` and the option `RiskMap.progress` allows it (`?riskmap_progress`), so callers don't check either. Progress is for the console. Say what a long computation is about to do and what it found with `riskmap_inform()`, which stays in logs where progress is off.
 
+## Printed output
+
+`print()` methods build their lines with the helpers in `R/format.R` and write them with `out_print()`, which calls `cat()`. Printed output is not a message, so don't use `riskmap_inform()`, `cli_text()` or the other cli functions that raise conditions in a print method. Those would vanish in knitr chunks with `message: false` and escape `capture.output()`.
+
+- `out_rule(title)` starts the output with a rule that carries the title of the object.
+- `out_heading()` marks the heading of a section, and `out_faint()` what matters less, such as the call.
+- `out_text()` wraps sentences to the console width, and `out_bullets()` gives lines a symbol as `cli_bullets()` does. Use `"v"` for a good verdict, `"!"` for one that needs care, `"x"` for a problem and `"i"` for a hint. `out_status_symbol()` gives the symbol of the status of a check.
+- `out_fun(name, topic)` names a RiskMap function and links it to its help page where the console supports such links.
+- `out_capture()` takes the lines of a table that R prints, such as a matrix or `printCoefmat()`, and `out_pairs()` lines up labels and values.
+
+Text is plain unless `markup = TRUE`, so that data such as a formula are printed as they are. Wrapping keeps code between backticks on one line. Build the lines in a separate function, as `format_fit()` does for `print.RiskMap()`, so that tests can read them. Snapshot tests run without colour and with ASCII symbols, and `test-format.R` also keeps one snapshot in Unicode.
+
 ## Debugging
 
 - To view data internal to a function call `debug(<function name>)` and then call the function to enter the debugger.

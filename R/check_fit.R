@@ -11,8 +11,11 @@
 ##'   fit recorded, and add no statistical judgement of their own. The status
 ##'   `PROBLEM` means that the estimate or its certificate should not be relied
 ##'   on as it stands. `SUSPICIOUS` means that the computation is valid but the
-##'   result needs care. The limit of 0.7 on the tail shape of the importance
-##'   weights, the Pareto shape, is that of Vehtari et al. (2024).
+##'   result needs care. `print()` marks a check that is `OK` with a green
+##'   tick, one that is `SUSPICIOUS` with a yellow exclamation mark and a
+##'   `PROBLEM` with a red cross, and gives the fix after an arrow. The limit
+##'   of 0.7 on the tail shape of the importance weights, the Pareto shape, is
+##'   that of Vehtari et al. (2024).
 ##'
 ##'   A Gaussian fit has no Monte Carlo error, so its only default check says so.
 ##'
@@ -282,7 +285,7 @@ describe_radius_pointer <- function(ran = FALSE) {
 ##' @noRd
 describe_pc_prior_advice <- function(optimizer) {
   if (isTRUE(optimizer$mcml_pc_prior)) return("")
-  paste0(" Or refit with 'control_mcml = set_control_mcml(pc_prior = TRUE)', a ",
+  paste0(" Or refit with `control_mcml = set_control_mcml(pc_prior = TRUE)`, a ",
          "mild penalty that stabilises the spatial variance and scale.")
 }
 
@@ -322,22 +325,22 @@ fit_check_monte_carlo <- function(mcml) {
                "the Newton correction of the estimate would have taken a ",
                "variance or scale past the upper bound of the search, along a ",
                "direction where the likelihood is nearly flat."),
-        "Refit with a larger 'max_samples' in set_control_mcml()."
+        "Refit with a larger `max_samples` in `set_control_mcml()`."
       )
     } else if (mcml$correction_refused) {
       fit_check_row(
         name, "PROBLEM",
         paste0("The bound of ", bound, " standard errors may not hold, because ",
                "the Newton correction of the estimate did not converge."),
-        "Refit with a larger 'max_samples' in set_control_mcml()."
+        "Refit with a larger `max_samples` in `set_control_mcml()`."
       )
     } else {
       fit_check_row(
         name, "PROBLEM",
         paste0("The bound on the error is ", bound, " standard errors, above ",
                "the limit of ", mcml$tolerance, "."),
-        paste0("Refit with a larger 'max_samples' or 'max_stages' in ",
-               "set_control_mcml(), or relax 'tolerance'.",
+        paste0("Refit with a larger `max_samples` or `max_stages` in ",
+               "`set_control_mcml()`, or relax `tolerance`.",
                describe_integration_advice(isTRUE(mcml$suggest_integration)))
       )
     }
@@ -369,8 +372,9 @@ fit_check_weights <- function(bank, suggest_integration = FALSE, radius = "") {
   fit_check_row(
     name, "SUSPICIOUS",
     paste0(found, ", which makes the bound on the error less reliable."),
-    paste0("More draws may help, through 'max_samples' in set_control_mcml(). ",
-           "If the shape stays above 0.7, read the bound with caution.",
+    paste0("More draws may help, through `max_samples` in ",
+           "`set_control_mcml()`. If the shape stays above 0.7, read the ",
+           "bound with caution.",
            radius, describe_integration_advice(suggest_integration))
   )
 }
@@ -380,10 +384,10 @@ fit_check_weights <- function(bank, suggest_integration = FALSE, radius = "") {
 ##' @noRd
 describe_integration_advice <- function(suggest) {
   if (!suggest) return("")
-  paste0(" Or refit with the default 'integrate_noise = \"auto\"' in ",
-         "set_control_mcml(), which integrates the nugget and random effects ",
-         "within locations out where their variances are large and often ",
-         "keeps far more effective draws.")
+  paste0(" Or refit with the default `integrate_noise = \"auto\"` in ",
+         "`set_control_mcml()`, which integrates the nugget and random ",
+         "effects within locations out where their variances are large and ",
+         "often keeps far more effective draws.")
 }
 
 ##' What the check for other maxima found
@@ -477,8 +481,8 @@ fit_check_variances <- function(optimizer) {
       name, "PROBLEM",
       paste0("The likelihood rises as the ", listed(held$name[held$rising]),
              " leaves zero, so holding it at zero does not give a maximum."),
-      paste0("Refit with a larger 'max_samples' or 'max_stages' in ",
-             "set_control_mcml().")
+      paste0("Refit with a larger `max_samples` or `max_stages` in ",
+             "`set_control_mcml()`.")
     ))
   }
   if (setequal(boundary, held$name) && all(held$falling)) {
@@ -506,7 +510,9 @@ fit_check_variances <- function(optimizer) {
     ),
     paste0(
       "Consider refitting without ",
-      if (nugget_alone) "it, gp(nugget = FALSE)." else if (single) "it." else "them.",
+      if (nugget_alone) {
+        "it, `gp(nugget = FALSE)`."
+      } else if (single) "it." else "them.",
       if (spatial) describe_pc_prior_advice(optimizer)
     )
   )
@@ -535,7 +541,7 @@ fit_check_spatial_scale <- function(object, optimizer,
       paste0("The scale is so short that the correlation between the closest ",
              "locations is below 1e-6, so it is unresolved."),
       paste0(see_profile, " If spatial correlation is not expected, consider an ",
-             "unstructured effect for each location instead of gp().", advice)
+             "unstructured effect for each location instead of `gp()`.", advice)
     ))
   }
   if (any(grepl("sigma2", optimizer$mcml_boundary, fixed = TRUE))) return(NULL)
@@ -568,7 +574,7 @@ fit_check_spatial_scale <- function(object, optimizer,
     ),
     paste0(
       see_profile, " Consider ",
-      if (is.numeric(object$fix_tau2)) "a nugget, gp(nugget = TRUE), or ",
+      if (is.numeric(object$fix_tau2)) "a nugget, `gp(nugget = TRUE)`, or ",
       "a scale fixed from external knowledge.", advice
     )
   )
@@ -826,43 +832,50 @@ summarise_estimate_moves <- function(object, history) {
 ##' @export
 print.RiskMap_check <- function(x, ...) {
   check_class(x, "RiskMap_check")
-  cat("Checks on this fit\n")
-  if (!is.null(x$draws)) write_wrapped(x$draws)
-  cat("\n")
+  out_print(format_checks(x))
+  invisible(x)
+}
+
+##' The lines that print the checks on a fit
+##'
+##' One row per check, with the symbol of its status, its name and its brief
+##' finding when it is OK, or else its full finding and, under it, the fix.
+##' @noRd
+format_checks <- function(x) {
   checks <- x$checks
-  status_width <- max(nchar(checks$status))
   name_width <- max(nchar(checks$check))
-  finding_start <- status_width + name_width + 4L
-  width <- max(finding_start + 30L, getOption("width", 80L) - 2L)
+  finding_start <- name_width + 4L
+  width <- max(finding_start + 30L, out_width())
+  pad <- strrep(" ", finding_start)
   # A table made before the column of brief findings gives the findings.
   briefs <- checks$brief %||% checks$finding
-  for (row in seq_len(nrow(checks))) {
+  rows <- unlist(lapply(seq_len(nrow(checks)), function(row) {
     check <- checks[row, ]
     ok <- identical(check$status, "OK")
-    finding <- strwrap(if (ok) briefs[[row]] else check$finding,
-                       width = width - finding_start)
-    cat(formatC(check$status, width = -status_width), "  ",
-        formatC(check$check, width = -name_width), "  ", finding[1L], "\n",
-        sep = "")
-    if (length(finding) > 1L) {
-      cat(paste0(strrep(" ", finding_start), finding[-1L]), sep = "\n")
+    finding <- out_wrap(if (ok) briefs[[row]] else check$finding,
+                        width = width - finding_start)
+    fix <- if (!ok && nzchar(check$fix)) {
+      lines <- out_wrap(check$fix, width = width - finding_start - 2L)
+      c(paste0(pad, cli::symbol$arrow_right, " ", lines[1L]),
+        if (length(lines) > 1L) paste0(pad, "  ", lines[-1L]))
     }
-    if (!ok && nzchar(check$fix)) {
-      cat(strwrap(paste("Fix:", check$fix), width = width,
-                  indent = status_width + 2L, exdent = status_width + 7L),
-          sep = "\n")
-    }
-  }
-  if (length(x$not_computed)) {
-    cat("\n")
-    write_wrapped(x$not_computed)
-  }
-  cat("\n")
-  write_wrapped(paste0("summary() of these checks gives the evidence behind ",
-                       "each finding."))
-  write_wrapped(paste0("These checks concern the computation, not whether the ",
-                       "model suits the data."))
-  invisible(x)
+    c(paste0(out_status_symbol(check$status), " ",
+             formatC(check$check, width = -name_width), "  ", finding[1L]),
+      if (length(finding) > 1L) paste0(pad, finding[-1L]),
+      fix)
+  }))
+  evidence <- paste0(out_fun("summary", "summary.RiskMap_check"),
+                     " of these checks gives the evidence behind each ",
+                     "finding.")
+  c(out_rule("Checks on this fit"),
+    out_text(x$draws),
+    "",
+    rows,
+    "",
+    out_bullets(c(out_as_bullets(x$not_computed, "i"),
+                  i = evidence,
+                  i = paste0("These checks concern the computation, not ",
+                             "whether the model suits the data."))))
 }
 
 ##' @title Plot the Checks on a Fitted Model

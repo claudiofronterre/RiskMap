@@ -2188,7 +2188,8 @@ test_that("glgpm warns when the likelihood has no maximum", {
                "None of the individuals tested is positive.*no maximum",
                all = FALSE)
   expect_false(any(grepl("maximum likelihood estimate\\.", zero$warnings)))
-  expect_output(print(zero$value), "the likelihood has no maximum")
+  expect_output(print(zero$value), "No certificate. The likelihood has no maximum",
+                fixed = TRUE)
   expect_match(check_fit(zero$value)$checks$finding,
                "no individual tested is positive")
 

@@ -337,8 +337,8 @@ test_that("print.RiskMap is short and gives the certificate", {
   printed <- capture.output(result <- print(binomial_model))
   expect_identical(result, binomial_model)
   expect_lt(length(printed), 30L)
-  expect_true(any(grepl("^Binomial geostatistical model, 10 observations",
-                        printed)))
+  expect_match(printed[1L], "Binomial geostatistical model")
+  expect_true(any(grepl("^10 observations at ", printed)))
   expect_true(any(grepl("Regression coefficients", printed, fixed = TRUE)))
   expect_true(any(grepl("certified", printed, ignore.case = TRUE)))
   expect_false(any(grepl("concerns the maximum found", printed)))
@@ -346,14 +346,15 @@ test_that("print.RiskMap is short and gives the certificate", {
   variance <- grep("^Spatial process var.", printed, value = TRUE)
   expect_equal(as.numeric(sub("^Spatial process var. +", "", variance)),
                estimates$sigma2, tolerance = 1e-3)
-  expect_true(any(grepl("^summary\\(\\) gives standard errors", printed)))
+  expect_true(any(grepl("`summary()` gives standard errors", printed,
+                        fixed = TRUE)))
 
   gaussian_printed <- capture.output(print(gaussian_model))
   expect_lt(length(gaussian_printed), 30L)
   expect_true(any(grepl("i (random eff. var.)", gaussian_printed,
                         fixed = TRUE)))
   expect_false(any(grepl("Monte Carlo", gaussian_printed)))
-  expect_output(print(poisson_model), "^Call:")
+  expect_output(print(poisson_model), "glgpm(formula = y ~ cov", fixed = TRUE)
 })
 
 test_that("print.summary.RiskMap labels a summary of a real fit", {
