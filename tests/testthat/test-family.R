@@ -303,3 +303,38 @@ test_that("the start of each family is the regression its caller ran", {
     linear_start_values(D, response)
   )
 })
+
+test_that("the family's simulator and scoring support take the draws of their callers", {
+  means <- c(0.2, 0.7, 0.5)
+  units_m <- c(4, 10, 6)
+  set.seed(3)
+  expected <- rbinom(3, size = units_m, prob = means)
+  set.seed(3)
+  expect_identical(family_traits("binomial")$simulate(means, units_m, NULL),
+                   expected)
+  set.seed(4)
+  expected <- rpois(3, lambda = means * units_m)
+  set.seed(4)
+  expect_identical(family_traits("poisson")$simulate(means, units_m, NULL),
+                   expected)
+  set.seed(5)
+  expected <- means + rnorm(3, sd = sqrt(0.3))
+  set.seed(5)
+  expect_identical(
+    family_traits("gaussian")$simulate(means, NULL, list(sigma2_me = 0.3)),
+    expected
+  )
+  draws <- c(0, 3, 9)
+  expect_identical(family_traits("binomial")$score_support(draws, 2, 10, means),
+                   0:10)
+  expect_identical(family_traits("poisson")$score_support(draws, 12, 2, means),
+                   0:max(9, 12, qpois(0.999, mean(2 * means))))
+  expect_null(family_traits("gaussian")$score_support(draws, 1, 1, means))
+  expect_identical(family_traits("binomial")$inverse_link, stats::plogis)
+  expect_identical(family_traits("poisson")$inverse_link, exp)
+  expect_identical(family_traits("gaussian")$inverse_link, identity)
+  expect_false(family_traits("gaussian")$discrete)
+  expect_true(family_traits("poisson")$discrete)
+  expect_true(family_traits("binomial")$whole_denominator)
+  expect_false(family_traits("poisson")$whole_denominator)
+})
