@@ -49,14 +49,24 @@ test_that("an object with integrated records keeps the properties of its link", 
                class = "riskmap_error_internal")
 })
 
-test_that("the Gaussian object is exact and has no likelihood methods", {
+test_that("the Gaussian object is exact, and the engine's readers refuse it", {
   gaussian <- make_family("gaussian")
   expect_s3_class(gaussian, "riskmap_family")
   expect_true(gaussian$exact)
   expect_true(gaussian$measurement_error)
   expect_null(gaussian$linkf)
+  expect_null(gaussian$canonical)
   expect_null(gaussian$terms)
   expect_null(gaussian$log_likelihood)
+  expect_error(as_family_object(gaussian), "fitted exactly",
+               class = "riskmap_error_internal")
+  expect_error(as_family_object("gaussian"), "fitted exactly",
+               class = "riskmap_error_internal")
+  expect_error(laplace_observation_terms(0, 1, 1, "gaussian", NULL),
+               "fitted exactly", class = "riskmap_error_internal")
+  expect_error(make_independent_site_likelihood(cbind(1), 8, 20, 1L, 0,
+                                                "gaussian"),
+               "fitted exactly", class = "riskmap_error_internal")
   expect_false(make_family("binomial")$exact)
   expect_false(make_family("poisson")$exact)
   expect_error(make_family("gaussian", probit_family_link()), "exact",
@@ -213,7 +223,7 @@ test_that("an object comes alone, and a kernel is refused where the link is read
                "model's link", class = "riskmap_error_internal")
 })
 
-test_that("the traits of each family give the arithmetic of their callers", {
+test_that("the traits of each family give their closed forms", {
   y <- c(0, 3, 5)
   units_m <- c(5, 5, 6)
   eta <- c(-1, 0.5, 2)
@@ -251,4 +261,37 @@ test_that("only the families the engine fits pass its check", {
   expect_null(fit_traits(list(family = "gamma")))
   expect_true(fit_traits(gaussian_model)$exact)
   expect_false(fit_traits(binomial_model)$exact)
+})
+
+test_that("the start of each family is the regression its caller ran", {
+  y <- poisson_data$y
+  units_m <- poisson_data$denominator
+  D <- cbind(1, poisson_data$cov)
+  expected <- coef(glm(y ~ cov + offset(log(denominator)) + offset(offset),
+                       data = poisson_data, family = poisson))
+  start <- family_traits("poisson")$start_coefficients(
+    y, units_m, D, poisson_data$offset, NULL, y ~ cov, poisson_data
+  )
+  expect_equal(start, expected, tolerance = 1e-10)
+
+  y <- c(0, 3, 5, 2, 4)
+  units_m <- c(5, 5, 6, 4, 7)
+  D <- cbind(1, c(-1, 0, 1, 2, 0.5))
+  offset <- c(0.1, 0, -0.2, 0.3, 0)
+  binomial <- family_traits("binomial")
+  for (link in list(NULL, "probit")) {
+    glm_family <- if (is.null(link)) stats::binomial() else stats::binomial(link)
+    expected <- stats::glm.fit(D, cbind(y, units_m - y), offset = offset,
+                               family = glm_family)$coefficients
+    expect_identical(
+      binomial$start_coefficients(y, units_m, D, offset, link, NULL, NULL),
+      expected
+    )
+  }
+  response <- c(1.2, 0.4, -0.3, 2.2, 0.9)
+  expect_identical(
+    family_traits("gaussian")$start_coefficients(response, NULL, D, NULL,
+                                                 NULL, NULL, NULL),
+    linear_start_values(D, response)
+  )
 })

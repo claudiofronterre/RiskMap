@@ -236,18 +236,20 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' The families of RiskMap and their links
 ##'
 ##' One entry for each family a user can give (#253, step 1c). `links` are the
-##' links `read_family_link()` accepts, `canonical_link` the one fitted on the
-##' canonical path, and `refused` the links of a stats family that it refuses,
-##' with the reason. The other fields do not depend on the link, and
-##' `family_traits()` gives them with the family's methods.
+##' links `read_family_link()` accepts, `default_link` the canonical one, which
+##' a family string implies and which is fitted on the canonical path, and
+##' `refused` the links of a stats family that it refuses, with the reason.
+##' The name is not `canonical_link`, because `$canonical` would then match it
+##' partially on an object without the property `canonical`. The other fields
+##' do not depend on the link, and `family_traits()` gives them with the
+##' family's methods.
 ##' - `exact`, the likelihood integrates the latent field out in closed form,
 ##'   so the fit is exact and has no Monte Carlo (`glgpm_lm()`).
 ##' - `measurement_error`, the model has a measurement error variance
 ##'   `sigma2_me`, which an observation-level random effect or the nugget can
 ##'   be confounded with.
-##' - `denominator`, what `denominator` gives, "trials" or "exposure", NULL
-##'   for a family without one, and `warn_missing_denominator`, whether a
-##'   missing denominator taken to be 1 is worth a warning.
+##' - `warn_missing_denominator`, a missing `denominator`, taken to be 1, is
+##'   worth a warning.
 ##' - `upper_limit`, the responses are bounded above by their denominators, so
 ##'   a record can sit at the upper limit of its mean, with every trial
 ##'   positive.
@@ -261,9 +263,9 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' @noRd
 riskmap_families <- list(
   gaussian = list(
-    links = "identity", canonical_link = "identity", refused = character(),
+    links = "identity", default_link = "identity", refused = character(),
     exact = TRUE, measurement_error = TRUE,
-    denominator = NULL, warn_missing_denominator = FALSE,
+    warn_missing_denominator = FALSE,
     upper_limit = FALSE, mean_range = c(-Inf, Inf), range_message = NULL,
     quantity = "mean", no_events = NULL, none_everywhere = NULL,
     every_everywhere = NULL,
@@ -271,10 +273,10 @@ riskmap_families <- list(
   ),
   binomial = list(
     links = c("logit", "probit", "cloglog", "cauchit"),
-    canonical_link = "logit",
+    default_link = "logit",
     refused = c(log = "the log link can give probabilities above 1"),
     exact = FALSE, measurement_error = FALSE,
-    denominator = "trials", warn_missing_denominator = TRUE,
+    warn_missing_denominator = TRUE,
     upper_limit = TRUE, mean_range = c(0, 1),
     range_message = "For a binomial model, {.arg invlink} must return probabilities between 0 and 1.",
     quantity = "prevalence", no_events = "with no positives",
@@ -283,7 +285,7 @@ riskmap_families <- list(
     link_hint = NULL
   ),
   poisson = list(
-    links = "log", canonical_link = "log",
+    links = "log", default_link = "log",
     refused = c(
       identity = "the identity link can give negative means",
       sqrt = paste("its inverse, the square of the linear",
@@ -291,7 +293,7 @@ riskmap_families <- list(
                    "and a negative linear predictor")
     ),
     exact = FALSE, measurement_error = FALSE,
-    denominator = "exposure", warn_missing_denominator = FALSE,
+    warn_missing_denominator = FALSE,
     upper_limit = FALSE, mean_range = c(0, Inf),
     range_message = "For a Poisson model, {.arg invlink} must return non-negative means.",
     quantity = "mean", no_events = "with a zero count",
@@ -489,7 +491,7 @@ read_family_link <- function(family, link) {
     hint <- traits$link_hint %||% use_invlink
     abort_input(c("The {link} link isn't available for the {family} family, which takes {.or {.val {accepted}}}.", "i" = hint), arg = "family")
   }
-  canonical <- identical(link, traits$canonical_link)
+  canonical <- identical(link, traits$default_link)
   list(family = family,
        invlink = if (!canonical) c(named_inverse_link(link), link = link))
 }
@@ -501,8 +503,10 @@ read_family_link <- function(family, link) {
 ##' the inverse link functions of `make_inverse_link_functions()`, NULL for the
 ##' canonical link. The object has every field and method of
 ##' `family_traits()`. The Gaussian family is exact (`exact`), fitted without
-##' the engine, so its object has the identity link and no likelihood
-##' methods, and takes no `linkf` or `kernel`. Where records have effects
+##' the engine, so its object has only its traits, with no link, properties
+##' of the engine or likelihood methods, and takes no `linkf` or `kernel`.
+##' `family_of_link()` and `as_family_object()`, through which the engine reads
+##' a family, refuse it. Where records have effects
 ##' integrated out, `kernel` is their kernel at the variances of the classes
 ##' (`make_integrated_kernel()`), which gives
 ##' the likelihood of the records in the place of the link, and the object
@@ -551,11 +555,8 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
     if (!is.null(linkf) || !is.null(kernel)) {
       riskmap_bug("The {family} family is exact and takes no {.arg linkf} or {.arg kernel}.")
     }
-    return(structure(
-      c(traits, list(linkf = NULL, kernel = NULL, canonical = TRUE,
-                     integrated = FALSE, poisson = FALSE)),
-      class = "riskmap_family"
-    ))
+    return(structure(c(traits, list(linkf = NULL, kernel = NULL)),
+                     class = "riskmap_family"))
   }
   if (is.null(linkf)) linkf <- make_inverse_link_functions(family, NULL, 1L)
   if (is_integrated_link(linkf)) {
@@ -644,7 +645,17 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
 ##' @noRd
 family_of_link <- function(family, linkf) {
   if (is_integrated_link(linkf)) return(make_family(family, kernel = linkf))
-  make_family(family, linkf)
+  refuse_exact_family(make_family(family, linkf))
+}
+
+##' Stops if a family object is of an exact family, which the engine does not
+##' fit, and otherwise returns it.
+##' @noRd
+refuse_exact_family <- function(object) {
+  if (isTRUE(object$exact)) {
+    riskmap_bug("The {object$family} family is fitted exactly, not by the engine, which can't read its family object.")
+  }
+  object
 }
 
 ##' The family object that a function takes in its `family` argument
@@ -661,7 +672,7 @@ as_family_object <- function(family, linkf = NULL, canonical = NULL) {
     if (!is.null(linkf) || !is.null(canonical)) {
       riskmap_bug("A family object takes no {.arg linkf} or {.arg canonical}.")
     }
-    return(family)
+    return(refuse_exact_family(family))
   }
   object <- family_of_link(family, linkf)
   if (!is.null(canonical) && !identical(canonical, object$assumes_concave)) {
