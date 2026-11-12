@@ -95,6 +95,7 @@
 ##'   rounding.
 ##' @param messages Logical, whether to report on the profiles, with a
 ##'   progress bar as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param ... Not used.
 ##' @return An object of class `RiskMap_profile`: a list with the marginal
 ##'   profiles (`marginal`), the joint profiles (`joint`), the intervals
@@ -127,24 +128,24 @@
 profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             n_points = 11L, n_grid = 11L, span = 3,
                             n_draws = 5000L, seed = 1L, level = 0.95,
-                            cores = 1L, messages = TRUE, ...) {
-  stopifnot(inherits(fitted, "RiskMap"))
+                            cores = 1L,
+                            messages = getOption("RiskMap.messages", TRUE),
+                            ...) {
+  check_class(fitted, "RiskMap")
   gaussian <- identical(fitted$family, "gaussian")
   if (!gaussian && (!fitted$family %in% c("binomial", "poisson") ||
                     is.null(fitted$mcml_history))) {
-    stop("Profiles are available for Gaussian models, and for binomial and ",
-         "Poisson models fitted by certified Monte Carlo maximum likelihood.",
-         call. = FALSE)
+    abort_input("Profiles are available for Gaussian models, and for binomial and Poisson models fitted by certified Monte Carlo maximum likelihood.", arg = "fitted")
   }
   check_profile_settings(n_points, n_grid, span, if (!gaussian) n_draws,
                          level)
-  stopifnot("'cores' must be a positive whole number" =
-              is.numeric(cores) && length(cores) == 1L && cores >= 1 &&
-              cores == round(cores))
+  check_positive_integer(cores)
+  check_logical(messages)
   cores <- as.integer(cores)
   if (cores > 1L && .Platform$OS.type == "windows") {
-    if (messages) message("Parallel profiles need forking, which Windows ",
-                          "does not support, so they run on one core.")
+    if (messages) {
+      riskmap_inform("Parallel profiles need forking, which Windows doesn't support, so they run on one core.")
+    }
     cores <- 1L
   }
   restore_seed <- preserve_random_seed()
@@ -153,22 +154,22 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
     problem <- make_gaussian_profile_problem(fitted)
   } else {
     if (messages) {
-      message("Re-maximising the likelihood on a bank of ", n_draws,
-              " draws...")
+      riskmap_inform("Re-maximising the likelihood on a bank of {n_draws} draws.")
     }
     problem <- make_profile_problem(fitted, n_draws, seed)
   }
   parameters <- match_profile_parameters(problem, parameters %||% problem$names)
   pairs <- lapply(pairs %||% list(), function(pair) {
-    match_profile_parameters(problem, pair)
+    match_profile_parameters(problem, pair, arg = "pairs")
   })
 
   if (messages) {
-    message("Profiling ", length(parameters), " parameter",
-            if (length(parameters) > 1L) "s",
-            if (length(pairs)) paste0(" and ", length(pairs), " pair",
-                                      if (length(pairs) > 1L) "s"),
-            if (cores > 1L) paste0(" on ", cores, " cores"), "...")
+    n_pairs <- length(pairs)
+    and_pairs <- if (n_pairs) cli::format_inline(" and {n_pairs} pair{?s}") else ""
+    # At most two walks per parameter, or one task per pair, run at once.
+    used <- min(cores, max(2L * length(parameters), n_pairs))
+    on_cores <- if (used > 1L) paste0(" on ", used, " cores") else ""
+    riskmap_inform("Profiling {length(parameters)} parameter{?s}{and_pairs}{on_cores}.")
   }
   # The two walks of each marginal profile are independent, and so are the
   # joint profiles once the marginal ones are known. The bar counts profile
@@ -216,9 +217,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
               unlist(lapply(joint, `[[`, "loglik")))
   higher <- max(values, na.rm = TRUE) - problem$max_loglik
   if (messages && higher > 0.01) {
-    message("A point on the profile is higher than the estimate by ",
-            signif(higher, 3), " log-likelihood units: the estimate is not ",
-            "the highest maximum found.")
+    riskmap_inform("A point on the profile is higher than the estimate by {signif(higher, 3)} log-likelihood units, so the estimate is not the highest maximum found.")
   }
   max_loglik <- max(problem$max_loglik, values, na.rm = TRUE)
   marginal <- lapply(marginal, add_profile_deviance, max_loglik)
@@ -246,15 +245,11 @@ format_profile_time <- function(seconds) {
 ##' Check the settings of a profile, without `n_draws` when it is `NULL`
 ##' @noRd
 check_profile_settings <- function(n_points, n_grid, span, n_draws, level) {
-  stopifnot(
-    "'n_points' must be at least 5" = is.numeric(n_points) && n_points >= 5,
-    "'n_grid' must be at least 3" = is.numeric(n_grid) && n_grid >= 3,
-    "'span' must be positive" = is.numeric(span) && span > 0,
-    "'n_draws' must be at least 100" = is.null(n_draws) ||
-      (is.numeric(n_draws) && n_draws >= 100),
-    "'level' must be between 0 and 1" = is.numeric(level) && level > 0 &&
-      level < 1
-  )
+  check_range(n_points, min = 5)
+  check_range(n_grid, min = 3)
+  check_range(span, min = 0, allow_equal = FALSE)
+  if (!is.null(n_draws)) check_range(n_draws, min = 100)
+  check_range(level, min = 0, max = 1, allow_equal = FALSE)
   invisible(TRUE)
 }
 
@@ -366,13 +361,12 @@ profile_labels <- function(names, distance_units) {
 
 ##' Match user-supplied parameter names to those of the fit
 ##' @noRd
-match_profile_parameters <- function(problem, parameters) {
+match_profile_parameters <- function(problem, parameters, arg = "parameters") {
   matched <- vapply(parameters, function(name) {
     hit <- c(name, paste0("beta.", name))
     hit <- hit[hit %in% problem$names]
     if (!length(hit)) {
-      stop("Unknown parameter '", name, "'. Choose from: ",
-           paste(problem$names, collapse = ", "), ".", call. = FALSE)
+      abort_input(c("{.arg {arg}} must name parameters of the fit.", "x" = "{.val {name}} is not one of them.", "i" = "The parameters are {.val {problem$names}}."), arg = arg)
     }
     hit[1]
   }, "")
@@ -474,8 +468,8 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
   best <- list(objective = Inf, par = NULL)
   negative <- function(free_values) {
     if (evaluations >= budget) {
-      stop(structure(class = c("profile_budget", "error", "condition"),
-                     list(message = "budget reached", call = NULL)))
+      # Caught below, to stop the optimiser.
+      riskmap_abort("The budget of evaluations is reached.", class = "profile_budget", call = NULL)
     }
     evaluations <<- evaluations + 1L
     internal <- full_internal(free_values)

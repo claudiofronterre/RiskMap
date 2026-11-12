@@ -66,7 +66,7 @@ compute_nonlinear_parts <- function(centre, step, y, units_m, family,
   }
   terms <- laplace_observation_terms(centre, y, units_m, family, linkf)
   if (is.null(terms)) {
-    stop("Invalid linear predictor in the global proposal.", call. = FALSE)
+    riskmap_abort("The linear predictor at the centre of the global proposal is invalid.", class = "riskmap_error_fit")
   }
   per_observation_centre <- log_likelihood(centre)
   nonlinear <- matrix(log_likelihood(as.vector(centre + step)), nrow(step)) -

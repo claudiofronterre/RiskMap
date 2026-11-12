@@ -97,8 +97,7 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
       observed <- if (any(valid)) observe(valid)
     }
     if (is.null(observed)) {
-      stop("the inverse link failed in the likelihood with independent ",
-           "location effects", call. = FALSE)
+      riskmap_abort("The inverse link failed in the likelihood with independent location effects.", class = "riskmap_error_fit")
     }
     observed
   }

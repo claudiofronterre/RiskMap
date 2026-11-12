@@ -22,7 +22,7 @@
   parameter_draws = 50L,
   seed = NULL,
   keep_samples = FALSE,
-  messages = TRUE,
+  messages = getOption("RiskMap.messages", TRUE),
   ...
 )
 }
@@ -126,7 +126,8 @@ calculate summaries regardless of this setting, but are discarded by
 default to limit memory use.}
 
 \item{messages}{Logical. Display messages, and a progress bar while
-predicting at many locations, as described in \link{riskmap_progress}.}
+predicting at many locations, as described in \link{riskmap_progress}.
+Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 
 \item{...}{Additional arguments reserved for future prediction methods.}
 }

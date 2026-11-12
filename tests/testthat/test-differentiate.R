@@ -96,6 +96,6 @@ test_that("a function that is not elementwise is differentiated value by value",
 test_that("the numeric fallback stops on a link that returns NA", {
   expect_error(
     compute_richardson_derivative(function(eta) ifelse(eta > 1, NA, eta), c(0, 2)),
-    "returns NA"
+    "returns `NA`", class = "riskmap_error_input"
   )
 })

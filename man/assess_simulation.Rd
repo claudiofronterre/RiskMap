@@ -10,7 +10,7 @@ assess_simulation(
   control_mcmc = set_control_mcmc(),
   seed = NULL,
   spatial_scale,
-  messages = TRUE,
+  messages = getOption("RiskMap.messages", TRUE),
   target = identity,
   area_summary = NULL,
   boundaries = NULL,
@@ -40,7 +40,8 @@ drawn from the session's random number generator.}
 to compute both from a single fit-and-predict pass over the simulations.}
 
 \item{messages}{Logical, whether to report on the assessment, with a
-progress bar as described in \link{riskmap_progress}. Default is \code{TRUE}.}
+progress bar as described in \link{riskmap_progress}.
+Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 
 \item{target}{A function that converts a numeric matrix of means to a
 numeric matrix of the scientific target, with the same dimensions. The

@@ -149,10 +149,10 @@ test_that("the default controls keep 2,000 draws", {
 test_that("sampler controls and location indices are validated", {
   expect_error(
     set_control_mcmc(n_sim = 100, burnin = 100),
-    "larger than burnin"
+    "larger than `burnin`", class = "riskmap_error_input"
   )
-  expect_error(set_control_mcmc(h = 0), "positive finite")
-  expect_error(set_control_mcmc(c2.h = 0.5), "larger than 0.5")
+  expect_input_error(set_control_mcmc(h = 0), "h")
+  expect_input_error(set_control_mcmc(c2.h = 0.5), "c2.h")
 
   control <- set_control_mcmc(n_sim = 20, burnin = 10, thin = 1)
   expect_error(
@@ -161,7 +161,7 @@ test_that("sampler controls and location indices are validated", {
       Sigma = matrix(1), ID_coords = c(1, 2), family = "binomial",
       control_mcmc = control
     ),
-    "valid integer location index"
+    "valid location index", class = "riskmap_error_internal"
   )
 
   expect_error(
@@ -169,7 +169,7 @@ test_that("sampler controls and location indices are validated", {
       y = 5, units_m = 4, mu = 0, Sigma = matrix(1),
       ID_coords = 1L, family = "binomial", control_mcmc = control
     ),
-    "cannot exceed"
+    "can't exceed", class = "riskmap_error_input"
   )
   expect_error(
     laplace_sampling_mcmc(
@@ -177,6 +177,6 @@ test_that("sampler controls and location indices are validated", {
       ID_coords = c(1, 1), ID_re = matrix(c(1, 3)), sigma2_re = 1,
       family = "binomial", control_mcmc = control
     ),
-    "consecutive indices"
+    "consecutive indices", class = "riskmap_error_internal"
   )
 })

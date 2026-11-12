@@ -9,17 +9,20 @@
 #'   purpose. A more specific class says what went wrong.
 #'   - `riskmap_error_input`, an argument has a value that the function can't
 #'     use. The field `arg` of the condition names the argument.
+#'   - `riskmap_error_fit`, a model can't be fitted or a computation on a
+#'     fit fails, for example because the search for the mode of the latent
+#'     effects fails or every Monte Carlo weight is zero.
 #'   - `riskmap_error_worldpop`, WorldPop can't be reached or has no data for
 #'     the request.
 #'   - `riskmap_error_internal`, a problem in RiskMap itself. Please report it.
 #' - `riskmap_warning` is the class of every warning.
+#'   - `riskmap_warning_fit`, a fit may not be reliable, for example because
+#'     the optimiser did not converge or the Monte Carlo error of the estimate
+#'     is not certified.
 #' - `riskmap_message` is the class of every message. Functions that report
 #'   on their progress take an argument `messages`, whose default is the
 #'   option `RiskMap.messages`, so that `options(RiskMap.messages = FALSE)`
 #'   silences them all.
-#'
-#' RiskMap is moving to these classes one source file at a time, so some of
-#' its conditions don't carry them yet.
 #'
 #' @examples
 #' # Which argument was rejected

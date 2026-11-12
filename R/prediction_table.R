@@ -53,21 +53,19 @@ to_table.RiskMap_prediction <- function(object, label = NULL,
                                         digits = 1, col_names = NULL, ...) {
   x <- object
   if (is.null(x$boundaries) || is.null(x$boundary_summary)) {
-    stop("to_table() needs polygon summaries; supply 'boundaries' to ",
-         "predict()", call. = FALSE)
+    abort_input(c("{.arg object} has no summaries over polygons.", "i" = "Give {.arg boundaries} to {.fn predict}."), arg = "object")
   }
   check_positive_integer(digits, "digits", allow_zero = TRUE)
   rows <- x$boundary_summary[x$boundary_summary$quantity == quantity, ,
                              drop = FALSE]
   if (!nrow(rows)) {
-    stop("No polygon summaries for quantity '", quantity, "'", call. = FALSE)
+    abort_input("{.arg object} has no summaries over polygons of the quantity {.val {quantity}}.", arg = "quantity")
   }
   aggregates <- unique(rows$aggregate)
   if (!is.null(aggregate)) {
     unknown <- setdiff(aggregate, aggregates)
     if (length(unknown)) {
-      stop("Aggregation not calculated: ", paste(unknown, collapse = ", "),
-           call. = FALSE)
+      abort_input("{.arg aggregate} must be {.or {.val {aggregates}}}, the aggregations computed, not {.val {unknown}}.", arg = "aggregate")
     }
     aggregates <- aggregate
   }
@@ -86,7 +84,7 @@ to_table.RiskMap_prediction <- function(object, label = NULL,
   } else {
     if (!is.character(label) || length(label) != 1L ||
         !label %in% names(boundary_data)) {
-      stop("'label' must name a column of the boundaries", call. = FALSE)
+      abort_input("{.arg label} must name a column of the boundaries.", arg = "label")
     }
     row_labels <- as.character(boundary_data[[label]])
   }
@@ -173,15 +171,14 @@ to_table.RiskMap_prediction <- function(object, label = NULL,
 
   if (!is.null(sort_by)) {
     if (is.null(sort_values)) {
-      stop("'sort_by' must name a summary in the table, such as \"mean\"",
-           call. = FALSE)
+      abort_input("{.arg sort_by} must name a summary in the table, such as {.val mean}.", arg = "sort_by")
     }
     table <- table[order(-sort_values), , drop = FALSE]
   }
   dots <- list(...)
   if (!is.null(col_names)) {
     if (length(col_names) != ncol(table)) {
-      stop("'col_names' must have ", ncol(table), " elements", call. = FALSE)
+      abort_input("{.arg col_names} must have {ncol(table)} elements, one for each column, not {length(col_names)}.", arg = "col_names")
     }
     dots$col.names <- col_names
   }

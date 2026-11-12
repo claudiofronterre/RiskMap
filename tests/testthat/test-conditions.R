@@ -1,12 +1,9 @@
 # RiskMap raises every condition through riskmap_abort(), riskmap_warn() and
 # riskmap_inform(), so that each carries the RiskMap classes and names the
 # function the user called. This test reads every function in the installed
-# package and finds those that call stop(), warning(), message(),
-# stopifnot(), signalCondition() or the cli and rlang functions that raise or
-# print conditions, directly or through do.call(). Functions not yet
-# converted are listed in conditions-to-convert.txt. The list may only shrink,
-# because a new function that raises a condition directly fails here, and so
-# does a listed function that no longer needs to be listed.
+# package and fails if one calls stop(), warning(), message(), stopifnot(),
+# signalCondition() or the cli and rlang functions that raise or print
+# conditions, directly or through do.call().
 
 direct_condition_calls <- c(
   "stop", "warning", "message", "stopifnot", "signalCondition",
@@ -62,22 +59,11 @@ test_that("the check finds direct calls, also through do.call()", {
 })
 
 test_that("conditions are raised through the RiskMap constructors", {
-  listed <- trimws(readLines(test_path("conditions-to-convert.txt")))
-  listed <- listed[nzchar(listed) & !startsWith(listed, "#")]
   direct <- functions_raising_conditions_directly()
-
-  unlisted <- setdiff(direct, listed)
   expect(
-    length(unlisted) == 0L,
+    length(direct) == 0L,
     paste("These functions raise conditions without riskmap_abort(),",
           "riskmap_warn() or riskmap_inform().",
-          paste(unlisted, collapse = ", "))
-  )
-  converted <- setdiff(listed, direct)
-  expect(
-    length(converted) == 0L,
-    paste("These functions no longer raise conditions directly, so remove",
-          "them from conditions-to-convert.txt.",
-          paste(converted, collapse = ", "))
+          paste(direct, collapse = ", "))
   )
 })

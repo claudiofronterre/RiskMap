@@ -27,7 +27,7 @@ test_that("compiled cross-distances match direct Euclidean distances", {
 
 test_that("compiled distances reject invalid coordinate matrices", {
   expect_error(pairwise_distances(matrix(c(1, NA), ncol = 1)),
-               "finite values")
+               "must be finite numbers")
   expect_error(cross_distances(matrix(1:4, ncol = 2),
                                matrix(1:6, ncol = 3)),
                "same number of columns")
@@ -56,8 +56,8 @@ test_that("Matérn correlations reject invalid scale parameters and distances", 
                    "phi", class = "riskmap_error_input")
     }
     for (distance in c(-1, NA, Inf)) {
-      expect_error(matern_correlation(c(0, distance), phi = 1, kappa = kappa),
-                   "'u' must contain only finite, non-negative distances")
+      expect_input_error(matern_correlation(c(0, distance), phi = 1, kappa = kappa),
+                   "u")
     }
   }
 })
@@ -177,7 +177,7 @@ test_that("coordinate rows are indexed in first-occurrence order", {
                rbind(c(3, 4), c(1, 2), c(-1, 2)))
   expect_identical(indexed$index, c(1L, 2L, 1L, 3L, 2L))
   expect_error(index_coordinate_rows(matrix(1:9, ncol = 3)),
-               "exactly two columns")
+               "must have two coordinates")
 })
 
 test_that("adaptive jitter is reported and conditional variances are guarded", {
@@ -187,7 +187,7 @@ test_that("adaptive jitter is reported and conditional variances are guarded", {
     "not positive definite"
   )
   expect_warning(root <- factor_covariance(singular, "test covariance"),
-                 "required diagonal jitter")
+                 "needed a diagonal jitter")
   expect_gt(attr(root, "jitter"), 0)
 
   expect_identical(conditional_variances(1, matrix(c(1, 0)),
@@ -195,7 +195,7 @@ test_that("adaptive jitter is reported and conditional variances are guarded", {
                c(0, 1))
   expect_error(conditional_variances(1, matrix(c(1, 0)),
                                      matrix(c(1.01, 0))),
-               "materially negative")
+               "clearly negative")
 })
 
 test_that("vectorised Gaussian sampling preserves seeded draws", {

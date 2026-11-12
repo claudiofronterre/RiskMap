@@ -199,7 +199,7 @@ test_that("a chain can start its mode search from a given point", {
   expect_equal(restarted$mode, first$mode, tolerance = 1e-8)
   expect_error(
     do.call(laplace_sampling_mcmc, c(arguments, list(start = 1:3))),
-    "'start' must contain"
+    "`start` must contain", class = "riskmap_error_internal"
   )
 })
 

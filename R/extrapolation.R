@@ -74,7 +74,7 @@
 ##' @export
 assess_extrapolation <- function(object, newdata, spatial_threshold = 0.8) {
   if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a fitted RiskMap model", call. = FALSE)
+    abort_input("{.arg object} must be a {.cls RiskMap} fit, not {.obj_type_friendly {object}}.", arg = "object")
   }
   check_range(spatial_threshold, min = 0, max = 1,
               arg = "spatial_threshold")
@@ -198,16 +198,20 @@ extrapolation_spatial_unexplained <- function(object, model_data) {
 ##' @method plot RiskMap_extrapolation
 ##' @export
 plot.RiskMap_extrapolation <- function(x, indicator = "extrapolation", ...) {
-  indicator <- match.arg(
-    indicator,
-    c("extrapolation", "spatial_unexplained", "covariate_novelty",
-      "covariate_leverage"),
-    several.ok = TRUE
-  )
+  choices <- c("extrapolation", "spatial_unexplained", "covariate_novelty",
+               "covariate_leverage")
+  matched <- if (is.character(indicator) && length(indicator)) {
+    choices[pmatch(indicator, choices, duplicates.ok = TRUE)]
+  } else {
+    NA_character_
+  }
+  if (anyNA(matched)) {
+    abort_input("{.arg indicator} must be among {.val {choices}}.", arg = "indicator")
+  }
+  indicator <- matched
   if (length(indicator) > 1L) {
     if (!requireNamespace("patchwork", quietly = TRUE)) {
-      stop("Plotting several maps requires the 'patchwork' package",
-           call. = FALSE)
+      riskmap_abort("Plotting several maps needs the {.pkg patchwork} package.")
     }
     maps <- lapply(indicator, function(one) plot(x, indicator = one))
     return(patchwork::wrap_plots(maps, ncol = min(2L, length(maps))) &

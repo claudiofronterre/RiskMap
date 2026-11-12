@@ -1,7 +1,7 @@
 test_that("MCMC diagnostics reject fits without samples", {
-  expect_error(plot_mcmc("not risk"), "'object' must be a 'RiskMap'")
-  expect_error(summarise_mcmc("not risk"), "'object' must be a 'RiskMap'")
-  expect_error(plot_mcmc(gaussian_model), "'object' is a Gaussian model")
+  expect_input_error(plot_mcmc("not risk"), "object")
+  expect_input_error(summarise_mcmc("not risk"), "object")
+  expect_input_error(plot_mcmc(gaussian_model), "object")
 
   binomial_without_samples <- suppressWarnings(glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
@@ -12,19 +12,19 @@ test_that("MCMC diagnostics reject fits without samples", {
   expect_null(binomial_without_samples$S_samples)
   expect_null(binomial_without_samples$linear_predictors)
   expect_null(fitted(binomial_without_samples))
-  expect_error(plot_mcmc(binomial_without_samples),
-               "'object' does not contain any MCMC chains")
-  expect_error(summarise_mcmc(binomial_without_samples),
-               "'object' does not contain any MCMC chains")
+  expect_input_error(plot_mcmc(binomial_without_samples),
+               "object")
+  expect_input_error(summarise_mcmc(binomial_without_samples),
+               "object")
 })
 
 test_that("plot_mcmc checks its arguments", {
   # The model has 10 locations followed by 5 levels of re(i), whose samples
   # are not locations.
   for (component in list(11, 20, 10.5, 0, "no", c(1, 1), Inf, integer())) {
-    expect_error(plot_mcmc(poisson_model, check_mean = FALSE,
+    expect_input_error(plot_mcmc(poisson_model, check_mean = FALSE,
                            component = component),
-                 "'component' must contain distinct whole numbers between 1 and the number of locations, 10")
+                 "component")
   }
   expect_error(plot_mcmc(poisson_model, check_mean = NA),
                "check_mean", class = "riskmap_error_input")

@@ -94,17 +94,14 @@ create_grid <- function(boundaries = NULL,
                         keep = c("centre", "overlap"),
                         raster = NULL) {
 
-  stopifnot("'distance_units' must be either 'km' or 'm'" =
-              is.character(distance_units) &&
-              all(distance_units %in% c("km", "m")))
-  distance_units <- match.arg(distance_units)
-  keep <- match.arg(keep)
+  distance_units <- match_choice(distance_units)
+  keep <- match_choice(keep)
   if (!is.null(raster)) {
     return(create_grid_from_raster(raster, boundaries, spacing,
                                    distance_units, keep))
   }
   if (is.null(boundaries)) {
-    stop("Supply 'boundaries', 'raster' or both", call. = FALSE)
+    abort_input("{.arg boundaries}, {.arg raster} or both must be given.", arg = "boundaries")
   }
   check_data(boundaries, "polygon")
   check_positive_number(spacing, "")
@@ -113,12 +110,11 @@ create_grid <- function(boundaries = NULL,
   if (st_is_longlat(boundaries)) {
     auto_crs <- propose_utm(boundaries)
     boundaries <- st_transform(boundaries, crs = auto_crs)
-    message("'boundaries' is in longitude/latitude; automatically reprojecting to EPSG:",
-            auto_crs, " to create the grid. Transform 'boundaries' to a projected CRS ",
-            "yourself to override.")
+    riskmap_inform(c("{.arg boundaries} are in longitude and latitude, so they are projected to EPSG:{auto_crs} to create the grid.", "i" = "Project {.arg boundaries} yourself to choose the projection."))
   }
 
-  cellsize <- spacing / crs_to_distance_factor(boundaries, distance_units)
+  cellsize <- spacing / crs_to_distance_factor(boundaries, distance_units,
+                                               "boundaries")
   grid_box <- st_sf(
     geometry = st_make_grid(boundaries,
                             cellsize = cellsize,
@@ -129,10 +125,7 @@ create_grid <- function(boundaries = NULL,
   grid_out <- keep_grid_cells(grid_box, study_boundary, cellsize, keep)
 
   if (nrow(grid_out) == 0) {
-    stop(
-      "No grid cells fall within 'boundaries'; try decreasing 'spacing' and check 'distance_units'.",
-      call. = FALSE
-    )
+    abort_input(c("No grid cells fall within {.arg boundaries}.", "i" = "Try a smaller {.arg spacing}, and check {.arg distance_units}."), arg = "spacing")
   }
 
   grid_out$grid_id <- seq_len(nrow(grid_out))
@@ -180,16 +173,14 @@ keep_grid_cells <- function(grid_box, study_boundary, cellsize, keep) {
 create_grid_from_raster <- function(raster, boundaries, spacing,
                                     distance_units, keep) {
   if (!inherits(raster, "SpatRaster")) {
-    stop("'raster' must be a SpatRaster from the terra package", call. = FALSE)
+    abort_input("{.arg raster} must be a {.cls SpatRaster} from the {.pkg terra} package, not {.obj_type_friendly {raster}}.", arg = "raster")
   }
   if (terra::is.lonlat(raster)) {
-    stop("'raster' must be in a projected CRS. Project it first, for ",
-         "example with terra::project(), using method = \"sum\" for counts.",
-         call. = FALSE)
+    abort_input(c("{.arg raster} must be in a projected coordinate reference system.", "i" = "Project it first, for example with {.fn terra::project}, using {.code method = \"sum\"} for counts."), arg = "raster")
   }
   resolution <- terra::res(raster)
   if (abs(resolution[1] - resolution[2]) > 1e-8 * max(resolution)) {
-    stop("'raster' must have square cells", call. = FALSE)
+    abort_input("{.arg raster} must have square cells.", arg = "raster")
   }
   cellsize <- resolution[1]
   grid_crs <- st_crs(terra::crs(raster))
@@ -198,14 +189,12 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
     cbind(as.data.frame(centres), terra::values(raster, dataframe = TRUE)),
     coords = c("x", "y"), crs = grid_crs
   )
-  factor <- crs_to_distance_factor(grid_box, distance_units)
+  factor <- crs_to_distance_factor(grid_box, distance_units, "raster")
   raster_spacing <- cellsize * factor
   if (!is.null(spacing)) {
     check_positive_number(spacing, "")
     if (abs(spacing - raster_spacing) > 1e-6 * raster_spacing) {
-      stop("'spacing' (", spacing, " ", distance_units,
-           ") does not match the resolution of 'raster' (", raster_spacing,
-           " ", distance_units, ")", call. = FALSE)
+      abort_input("{.arg spacing} ({spacing} {distance_units}) must match the resolution of {.arg raster} ({raster_spacing} {distance_units}).", arg = "spacing")
     }
   }
 
@@ -221,8 +210,7 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
     grid_out <- keep_grid_cells(grid_box, study_boundary, cellsize, keep)
   }
   if (nrow(grid_out) == 0) {
-    stop("No cells of 'raster' fall within 'boundaries' or have values",
-         call. = FALSE)
+    abort_input("No cells of {.arg raster} fall within {.arg boundaries} or have values.", arg = "raster")
   }
 
   grid_out$grid_id <- seq_len(nrow(grid_out))

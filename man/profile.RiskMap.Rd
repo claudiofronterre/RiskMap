@@ -15,7 +15,7 @@
   seed = 1L,
   level = 0.95,
   cores = 1L,
-  messages = TRUE,
+  messages = getOption("RiskMap.messages", TRUE),
   ...
 )
 }
@@ -57,7 +57,8 @@ BLAS thread. With several BLAS threads on one core they agree up to
 rounding.}
 
 \item{messages}{Logical, whether to report on the profiles, with a
-progress bar as described in \link{riskmap_progress}.}
+progress bar as described in \link{riskmap_progress}.
+Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 
 \item{...}{Not used.}
 }

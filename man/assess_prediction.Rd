@@ -17,7 +17,7 @@ assess_prediction(
   control_mcmc = set_control_mcmc(),
   seed = NULL,
   plot_fold = TRUE,
-  messages = TRUE,
+  messages = getOption("RiskMap.messages", TRUE),
   ...
 )
 }
@@ -86,8 +86,9 @@ number generator.}
 
 \item{plot_fold}{Logical; whether to plot each iteration's test and training sets. Defaults to \code{TRUE}.}
 
-\item{messages}{Logical; whether to report on the assessment, with a
-progress bar as described in \link{riskmap_progress}. Defaults to \code{TRUE}.}
+\item{messages}{Logical, whether to report on the assessment, with a
+progress bar as described in \link{riskmap_progress}.
+Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 
 \item{...}{Additional arguments passed to clustering or subsampling functions.}
 }

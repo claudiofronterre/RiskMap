@@ -46,6 +46,10 @@ test_that("errors name the user-facing function, bugs the internal one", {
                         class = "riskmap_error")
   expect_null(conditionCall(error))
 
+  # An S3 method, with the error found by an internal check
+  error <- expect_input_error(predict(gaussian_model, newdata = data.frame()),
+                              "newdata")
+  expect_identical(conditionCall(error)[[1]], quote(predict))
 })
 
 test_that("stored condition text has no colours or line breaks", {
