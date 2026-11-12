@@ -26,10 +26,137 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 ## Defensive programming
 
 - Code should be written defensively so that users are provided with informative errors.
-- Start each exported function by checking that objects are of the correct class using `stopifnot(inherits())`.
-- If objects must be of a certain value i.e. one of certain strings or numbers within certain bounds, check those next.
-- There are various `check_*` functions to help with this - use or adapt those rather than adding large chunks of checking code to functions.
-- If writing C++ functions, arguments should be checked on the R side, so do not need checking in the C++. 
+- Check the arguments of an exported function when it starts, with the helpers in `R/checks.R` (see below). Internal functions can then trust what they are given.
+- If writing C++ functions, arguments should be checked on the R side, so do not need checking in the C++.
+
+## Errors, warnings and messages
+
+RiskMap reports conditions with [cli](https://cli.r-lib.org), following the [error messages chapter](https://style.tidyverse.org/errors.html) of the tidyverse style guide. `R/worldpop.R` and `R/checks.R` show the conventions below.
+
+### Raising a condition
+
+Raise every error, warning and message with `riskmap_abort()`, `riskmap_warn()` or `riskmap_inform()` from `R/conditions.R`, never with `stop()`, `warning()`, `message()`, `stopifnot()` or cli directly. They wrap `cli::cli_abort()`, `cli::cli_warn()` and `cli::cli_inform()`, so messages take cli markup, and they add the classes `riskmap_error`, `riskmap_warning` and `riskmap_message`. A change that should apply to every condition is then made in one place.
+
+`test-conditions.R` enforces this. It reads every function in the installed package and fails if one calls any of those functions, or `rlang::abort()` and its relatives, directly.
+
+For a state that RiskMap should never reach, which would be a bug in RiskMap rather than a mistake by the user, use `riskmap_bug()`. Its error asks the user to report it.
+
+### Checking arguments
+
+Use the helpers in `R/checks.R` for the common checks rather than writing the test and the message again.
+
+- `check_logical()` for `TRUE` or `FALSE`, as for `messages`.
+- `check_positive_integer()`, with `allow_zero` and `allow_null`.
+- `check_positive_number()`, for a starting value or, with `type = ""`, an argument.
+- `check_range()` and `check_zero_one()` for a number in an interval.
+- `check_class()` for an object of a given class, instead of `stopifnot(inherits())`.
+- `match_choice()` instead of `match.arg()`. It takes the choices from the default of the argument, accepts a unique abbreviation as `match.arg()` does, and raises a RiskMap error.
+- `check_crs()` for a coordinate reference system.
+
+Each helper takes the argument name from `rlang::caller_arg()`, so that `check_logical(messages)` reports `messages`, and stores it in the field `arg` of the error. For an input error that no helper covers, call `abort_input()` with the message and `arg`.
+
+### Naming the function that went wrong
+
+An error names the function the user called, not the internal function that found the problem. `riskmap_abort()` finds it on the call stack, as the outermost function at or above the one raising the error that RiskMap exports or registers as an S3 method. An error raised deep inside `glgpm()` therefore reads "Error in `glgpm()`", and internal functions don't need to pass `call` down. A check helper takes `call = rlang::caller_env()` and passes it on, so that the search starts at the function that called the check, as below. `riskmap_bug()` names the internal function instead, because a bug report needs it.
+
+```r
+check_logical <- function(x, arg = rlang::caller_arg(x),
+                          call = rlang::caller_env()) {
+  if (!isTRUE(x) && !isFALSE(x)) {
+    supplied <- describe_value(x)
+    abort_input(
+      "{.arg {arg}} must be {.code TRUE} or {.code FALSE}, not {supplied}.",
+      arg = arg, call = call
+    )
+  }
+  invisible(x)
+}
+```
+
+When an error from another package is the cause, pass it as `parent`, so that both are shown. `check_crs()` does this with the error from `sf::st_crs()`.
+
+### Writing the message
+
+- Start with a problem statement. Use "must" when the requirement is clear, as in "`n_sim` must be a single positive integer, not 0.5.", and "can't" when the request is impossible, as in "Constrained estimates can't be requested for 2035."
+- Add bullets after the problem statement when they help. A bullet named `"x"` says what went wrong and a bullet named `"i"` gives context or a hint. Two or three bullets are usually enough.
+
+  ```r
+  abort_input(
+    c("{.arg ages} must start and end on WorldPop age groups.",
+      "x" = "You supplied {.code c({ages[1]}, {ages[2]})}.",
+      "i" = "Use, for example, {.code c(20, Inf)} or {.code c(15, 49)}."),
+    arg = "ages", call = call
+  )
+  ```
+
+- Write full sentences that start with a capital letter and end with a full stop.
+- Mark up names and values with inline styles instead of quoting them by hand.
+  - `{.arg n_sim}` for an argument, shown as `` `n_sim` ``.
+  - `{.val {x}}` for a value. Strings are quoted and numbers coloured.
+  - `{.cls RiskMap}` for a class.
+  - `{.fn glgpm}` for a function, shown as `` `glgpm()` ``.
+  - `{.file {path}}` for a file and `{.url {url}}` for a web address.
+  - `{.code TRUE}` for code, and also for an element of a list such as `start_pars`, as in `{.code sigma2}`. The `{.field}` style is meant for such names but shows them without quotes in plain text.
+  - `{.obj_type_friendly {x}}` for the type of an object, such as "a data frame". The internal `describe_value()` shows a single value as itself and anything else by its type, for the "not ..." part of an input error.
+- Pluralise with `{?}`. The number is taken from the value interpolated just before, so `"{n} file{?s}"` gives "1 file" and "3 files", and `{?is/are}` works the same way. A vector is collapsed with commas and "and", or with "or" inside `{.or }`.
+- Interpolated values are not parsed again for markup, so braces in user data are safe. Write a literal brace in the template as `{{` or `}}`.
+- Keep each line of a message on one line of source, even past 80 characters, so that it can be found with grep.
+
+### Condition classes
+
+The classes are documented for users in `?riskmap_conditions` (`R/conditions.R`). Every error has class `riskmap_error`, every warning `riskmap_warning` and every message `riskmap_message`. A more specific class goes before these when code or tests need to tell a condition apart. Invalid arguments have class `riskmap_error_input`, which every helper and `abort_input()` raise. Other failures have a class named after their subject, such as `riskmap_error_worldpop` when WorldPop can't be reached or has no data for a request, and warnings follow the same pattern, `riskmap_warning_<subject>`.
+
+Choose the class by who can cause the problem and fix it.
+
+- If users can reach it with what they pass, including data or a modified object, it is an input error, with `arg` naming the argument to change. This holds even when an internal function finds it.
+- If a fit or a computation on a fit fails numerically, as when a mode search fails or a covariance isn't positive definite, use `riskmap_error_fit`, and `riskmap_warning_fit` for a result that may not be reliable.
+- If only a mistake in RiskMap can reach it, use `riskmap_bug()`. A class is easy to add and hard to rename, because users' code may catch it, so choose names with care and add each new one to `?riskmap_conditions`.
+
+### Testing conditions
+
+- Test an input error with `expect_input_error(code, "n_bins")`, from `tests/testthat/helper-conditions.R`. It checks the class `riskmap_error_input` and that the field `arg` is `"n_bins"`, without matching the wording.
+- Test another error by its class, as in `expect_error(code, class = "riskmap_error_worldpop")`.
+- Use `expect_snapshot(error = TRUE)` when the wording itself matters, for example for an error with hints. A snapshot records the message as users see it, including the function named. Review changes with `testthat::snapshot_review()`, and commit new snapshots, because a snapshot missing on CI fails there.
+- Do not match whole sentences, so that the wording can improve without breaking tests.
+
+### Messages and the `messages` argument
+
+Functions that report progress or choices made for the user take `messages`. When it is `TRUE` they report with `riskmap_inform()`. Use `riskmap_warn()` instead for a result the user should doubt. Do not use `cat()` or `print()` for progress, because those can't be silenced like messages. Keep them for `print()` methods.
+
+The default of `messages` is the option `RiskMap.messages`, so that a script or a book chapter can silence RiskMap once with `options(RiskMap.messages = FALSE)`.
+
+```r
+get_worldpop <- function(country, year, ..., messages = getOption("RiskMap.messages", TRUE))
+```
+
+Internal functions keep taking `messages` from their caller without a default. Because messages are conditions, users can also silence them with `suppressMessages()`, and `options(rlib_message_verbosity = "quiet")` silences every message raised through cli or rlang, in RiskMap and in other packages.
+
+## Long computations
+
+### Repeated work
+
+Run repeated, independent work, such as bootstrap replicates, profile walks or simulations, through `riskmap_map()` in `R/map.R`, not through `lapply()`, `parallel::mclapply()` or a loop. A loop that can't be written that way, such as the test sets of `assess_prediction()`, which share state between models, moves a bar with `progress_tick()` instead. On one core it runs the tasks in order. With `cores` above 1 it runs each task in a forked process, at most `cores` at a time, and collects the results as the processes finish, so that a progress bar moves while they run. It stops the other processes when a task fails, reports a process that died, raises the warnings of a forked process again in the main one, uses one BLAS thread while forking, and runs on one core on Windows. Two rules keep the results independent of `cores`.
+
+- A task that draws random numbers sets its own seed, derived from the task.
+- A task makes no call to sf, because GDAL and PROJ can deadlock in a forked process. Prepare everything that needs sf before `riskmap_map()`.
+
+When a task fails, `riskmap_map()` stops with an error that names the task, from `labels`, such as "The profile of phi below the estimate failed.", keeps the task's error as its cause and keeps its RiskMap classes and `arg`, so that a handler for `riskmap_error_fit` still catches it. With `errors = "return"` a failed task's error takes the place of its result, for callers that record failures instead of stopping. Store the text of a condition in a result with `condition_text()`, which leaves out the colours and line breaks cli adds for the console.
+
+### Progress
+
+Show progress with the helpers in `R/progress.R`, never with `message()` inside a loop.
+
+- `progress_bar(name, total, messages)` makes a bar for work whose amount is known. Pass it to `riskmap_map()` as `progress`, or move it with `progress_tick(bar)`, and close it with `progress_done(bar)`. When the units are only estimates, such as the expected number of profile points, use `unit = "percent"` and give `riskmap_map()` the `weights` of the tasks.
+- `progress_step(message, messages)` shows a line for each stage of work whose number of stages isn't known in advance, such as the stages of Monte Carlo maximum likelihood. `progress_step_done(messages)` closes the last one.
+
+```r
+bar <- progress_bar("Refitting replicates", n_sim, messages)
+results <- riskmap_map(seq_len(n_sim), run_replicate, cores = cores,
+                       progress = bar)
+progress_done(bar)
+```
+
+Both helpers show progress only when `messages` is `TRUE` and the option `RiskMap.progress` allows it (`?riskmap_progress`), so callers don't check either. Progress is for the console. Say what a long computation is about to do and what it found with `riskmap_inform()`, which stays in logs where progress is off.
 
 ## Debugging
 
@@ -50,7 +177,7 @@ This guide outlines how to propose a change to RiskMap. It is currently a draft 
 
 ## Deprecating parameters and functions
 
-- If functions are renamed or removed, they should initially be left either as aliases to the updated function with a `warning()` message or if no updated function exists, a `stop()` message.
+- If functions are renamed or removed, they should initially be left either as aliases to the updated function that warn with `riskmap_warn()` or, if no updated function exists, that stop with `riskmap_abort()`.
 - Similarly, if function parameters are renamed or removed, they should be left with a default `NULL` parameter and if a user uses the parameter they should be informed that it is deprecated.
 - One year after a version containing the deprecated versions has been released on CRAN, the functions and parameters can be removed entirely.
 

@@ -29,7 +29,7 @@
 create_convex_hull <- function(sf_object) {
   # Check if the input is an sf object
   if (!inherits(sf_object, "sf")) {
-    stop("'sf_object' must be an sf object")
+    abort_input("{.arg sf_object} must be an {.cls sf} object, not {.obj_type_friendly {sf_object}}.", arg = "sf_object")
   }
 
   # Get the geometry from the sf object
@@ -56,12 +56,10 @@ create_convex_hull <- function(sf_object) {
 ##' elogit(y, m)
 ##' @export
 elogit <- function(y, m) {
-  if (!is.numeric(y) || !is.numeric(m)) {
-    stop("'y' and 'm' must be numeric")
-  }
-  if (anyNA(y) || anyNA(m)) {
-    stop("'y' and 'm' cannot contain missing values")
-  }
+  if (!is.numeric(y)) abort_input("{.arg y} must be numeric, not {.obj_type_friendly {y}}.", arg = "y")
+  if (!is.numeric(m)) abort_input("{.arg m} must be numeric, not {.obj_type_friendly {m}}.", arg = "m")
+  if (anyNA(y)) abort_input("{.arg y} must not have missing values.", arg = "y")
+  if (anyNA(m)) abort_input("{.arg m} must not have missing values.", arg = "m")
   sizes <- c(length(y), length(m))
   max_size <- max(sizes)
   if (max_size == 0) {
@@ -69,20 +67,14 @@ elogit <- function(y, m) {
   }
   incompatible <- sizes != 1 & max_size %% sizes != 0
   if (any(incompatible)) {
-    stop("'y' and 'm' must have compatible lengths")
+    abort_input("{.arg y} and {.arg m} must have lengths that divide the longer of the two.", arg = "m")
   }
   y <- rep_len(y, max_size)
   m <- rep_len(m, max_size)
 
-  if (any(m <= 0)) {
-    stop("'m' must contain only positive values")
-  }
-  if (any(y < 0)) {
-    stop("'y' must contain only non-negative values")
-  }
-  if (any(y > m)) {
-    stop("'y' must be less than or equal to 'm'")
-  }
+  if (any(m <= 0)) abort_input("{.arg m} must be positive.", arg = "m")
+  if (any(y < 0)) abort_input("{.arg y} must be non-negative.", arg = "y")
+  if (any(y > m)) abort_input("{.arg y} must not exceed {.arg m}.", arg = "y")
 
   log((y + 0.5) / (m - y + 0.5))
 }
@@ -112,7 +104,7 @@ propose_utm <- function(data) {
   if (length(utm_z_u) > 1) {
     tab_utm <- table(utm_z)
     if (all(diff(tab_utm) == 0))
-      warning("An equal amount of locations falls in different UTM zones")
+      riskmap_warn("The same number of locations falls in more than one UTM zone, so the lowest-numbered of them is used.")
     utm_z_u <- as.numeric(names(which.max(tab_utm)))
   }
 
@@ -124,7 +116,7 @@ propose_utm <- function(data) {
   if (length(ns_u) > 1) {
     tab_ns <- table(ns)
     if (all(diff(tab_ns) == 0))
-      warning("An equal amount of locations falls north and south of the Equator")
+      riskmap_warn("The same number of locations falls north and south of the Equator, so the southern zone is used.")
     ns_u <- as.numeric(names(which.max(tab_ns)))
   }
 
@@ -156,9 +148,9 @@ propose_utm <- function(data) {
 ##' @export
 matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
   if (any(!is.finite(u) | u < 0)) {
-    stop("'u' must contain only finite, non-negative distances", call. = FALSE)
+    abort_input("{.arg u} must contain only finite, non-negative distances.", arg = "u")
   }
-  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+  check_range(phi, min = 0, allow_equal = FALSE, arg = "phi")
 
   input_dimensions <- if (is.matrix(u)) dim(u) else NULL
   if (is.vector(u))
@@ -207,8 +199,10 @@ matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 ##'
 matern_gradient_phi <- function(u, phi, kappa) {
 
-  stopifnot("'u' must be an output from 'stats::dist()'" = inherits(u, "dist"))
-  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+  if (!inherits(u, "dist")) {
+    abort_input("{.arg u} must be made by {.fn stats::dist}, not {.obj_type_friendly {u}}.", arg = "u")
+  }
+  check_range(phi, min = 0, allow_equal = FALSE, arg = "phi")
 
   der.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
@@ -250,8 +244,10 @@ matern_gradient_phi <- function(u, phi, kappa) {
 ##' @export
 matern_hessian_phi <- function(u, phi, kappa) {
 
-  stopifnot("'u' must be an output from 'stats::dist()'" = inherits(u, "dist"))
-  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+  if (!inherits(u, "dist")) {
+    abort_input("{.arg u} must be made by {.fn stats::dist}, not {.obj_type_friendly {u}}.", arg = "u")
+  }
+  check_range(phi, min = 0, allow_equal = FALSE, arg = "phi")
 
   der2.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
@@ -316,12 +312,13 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
   d <- length(vars)
   term <- NULL
 
-  if((!is.numeric(kappa) || kappa <= 0)){
-    stop("'kappa' must be positive.")
-  }
+  check_range(kappa, min = 0, allow_equal = FALSE)
 
-  if(!(is.logical(nugget) || (is.numeric(nugget) && nugget > 0))) {
-    stop("'nugget' must be either 'TRUE' or 'FALSE' or a positive real number")
+  if (!(isTRUE(nugget) || isFALSE(nugget) ||
+        (is.numeric(nugget) && length(nugget) == 1L && is.finite(nugget) &&
+         nugget > 0))) {
+    supplied <- describe_value(nugget)
+    abort_input("{.arg nugget} must be {.code TRUE}, {.code FALSE} or a positive number, not {supplied}.", arg = "nugget")
   }
 
   if (isFALSE(nugget)){
@@ -380,7 +377,7 @@ re <- function (...) {
   term <- NULL
 
   if (d == 0) {
-    stop("You need to provide at least one variable to re()")
+    abort_input("{.fn re} needs at least one variable, as in {.code re(village)}.", arg = "...")
   } else {
     if (d > 0) {
       for (i in 1:d) {
@@ -431,14 +428,13 @@ read_offset_column <- function(formula_terms) {
     return(NULL)
   }
   if (length(offset_index) > 1L) {
-    stop("The 'formula' can contain only one 'offset()' term", call. = FALSE)
+    abort_input("{.arg formula} can contain only one {.fn offset} term.", arg = "formula")
   }
   offset_call <- attr(formula_terms, "variables")[[offset_index + 1L]]
   offset_variable <- offset_call[[2L]]
   if (!is.symbol(offset_variable)) {
-    stop("'offset()' must name a column of 'data', but the 'formula' contains '",
-         deparse(offset_call), "'. Add the values as a column and name it in 'offset()'",
-         call. = FALSE)
+    offset_text <- deparse(offset_call)
+    abort_input(c("{.fn offset} must name a column of {.arg data}, not {.code {offset_text}}.", "i" = "Add the values as a column and name it in {.fn offset}."), arg = "formula")
   }
   as.character(offset_variable)
 }
@@ -472,8 +468,7 @@ interpret_formula <- function(formula) {
   len.gp <- length(gp)
   len.re <- length(re)
   if (len.gp > 1L) {
-    stop("The 'formula' can contain only one 'gp()' term, because the model has ",
-         "one spatial Gaussian process", call. = FALSE)
+    abort_input("{.arg formula} can contain only one {.fn gp} term, because the model has one spatial Gaussian process.", arg = "formula")
   }
   gp_spec <- eval(parse(text = terms[gp]), envir = p.env)
   re_spec <- combine_re_terms(terms[re], p.env)
@@ -535,13 +530,16 @@ get_formula_terms <- function(formula) {
 ##' as passed by the caller (for example, `data` from `check_formula()`).
 ##' @param data The data to check.
 ##' @param columns The column names to check for missing data.
+##' @param arg The argument the user gave the data as, by default the
+##'   expression passed as `data`.
 ##' @return TRUE if there is no missing data, or raise an error if not.
 ##' @noRd
-check_complete_data <- function(data, columns) {
-  name <- deparse(substitute(data))
+check_complete_data <- function(data, columns,
+                                arg = deparse(substitute(data))) {
+  name <- arg
   drop_coords <- st_drop_geometry(data[, columns])
   if (any(!complete.cases(drop_coords))) {
-    stop("'", name, "' contains rows with missing data - check or remove them", call. = FALSE)
+    abort_input(c("{.arg {name}} has rows with missing values in the variables of the model.", "i" = "Check or remove them."), arg = name)
   }
   invisible(TRUE)
 }
@@ -556,14 +554,12 @@ check_complete_data <- function(data, columns) {
 ##' @noRd
 check_formula <- function(formula, data, response_required = TRUE){
 
-  if(!inherits(formula, "formula")) {
-    stop("'formula' must be a 'formula'
-         object indicating the variables of the
-         model to be fitted", call. = FALSE)
+  if (!inherits(formula, "formula")) {
+    abort_input("{.arg formula} must be a formula, not {.obj_type_friendly {formula}}.", arg = "formula")
   }
 
   if (length(formula) != 3L) {
-    stop("The 'formula' must specify a response on the left-hand side, e.g. 'y ~ gp()'", call. = FALSE)
+    abort_input("{.arg formula} must have a response on the left-hand side, as in {.code y ~ gp()}.", arg = "formula")
   }
 
   formula_terms <- unique(get_formula_terms(formula))
@@ -572,7 +568,7 @@ check_formula <- function(formula, data, response_required = TRUE){
   contains_gp <- !is.null(attr(terms(formula, specials = "gp"), "specials")$gp)
 
   if (!contains_gp){
-    stop("The 'formula' must contain a Gaussian Process term, specified with 'gp()'", call. = FALSE)
+    abort_input("{.arg formula} must contain a Gaussian process term, {.fn gp}.", arg = "formula")
   }
 
   if (!response_required) {
@@ -582,11 +578,7 @@ check_formula <- function(formula, data, response_required = TRUE){
   n_missing <- length(missing_columns)
   if (n_missing > 0){
 
-    stop(paste0("The 'formula' term",
-          ifelse(n_missing > 1, "s '", " '"),
-          paste(missing_columns, collapse = "', '"),
-          ifelse(n_missing > 1, "' are", "' is"),
-         " not present in 'data'"), call. = FALSE)
+    abort_input("{.arg data} must have the column{?s} {.val {missing_columns}} named in {.arg formula}.", arg = "data")
   }
 
   check_complete_data(data, formula_terms)
@@ -664,7 +656,7 @@ coef.RiskMap <- function(object, ...) {
 ##'
 ##' @export
 fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
-  type <- match.arg(type)
+  type <- match_choice(type)
   if (type == "response") object$fitted_values else object$linear_predictors
 }
 
@@ -1067,7 +1059,7 @@ to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
     }
     include_row_names <- FALSE
   } else {
-    stop("'object' must be a RiskMap model or RiskMap cross-validation result")
+    abort_input("{.arg object} must be a {.cls RiskMap} fit or a {.cls RiskMap_cross_validation} result, not {.obj_type_friendly {object}}.", arg = "object")
   }
 
   tab <- as.data.frame(tab, check.names = FALSE)
@@ -1099,7 +1091,7 @@ to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
   dots <- list(...)
   if (!is.null(col_names)) {
     if (length(col_names) != ncol(tab)) {
-      stop("'col_names' must have ", ncol(tab), " elements", call. = FALSE)
+      abort_input("{.arg col_names} must have {ncol(tab)} elements, one for each column, not {length(col_names)}.", arg = "col_names")
     }
     dots$col.names <- col_names
   }
@@ -1188,7 +1180,9 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
   n_models <- length(model_names)
 
   metric_names <- names(object$model[[1]]$metric)
-  if (is.null(metric_names)) stop("No metrics of predictive performance were computed when running 'assess_prediction'")
+  if (is.null(metric_names)) {
+    abort_input("{.arg object} has no metrics of predictive performance.", arg = "object")
+  }
   n_metrics <- length(metric_names)
 
   res <- matrix(NA, ncol = n_metrics, nrow = n_models)
@@ -1328,11 +1322,11 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 .plot_metric_map <- function(object, metric, model, ...) {
 
   if (!model %in% names(object$model)) {
-    stop(paste("'model'", shQuote(model, type = "sh"), "was not found in 'object'"))
+    abort_input("{.arg model} must name a model of {.arg object}, and {.val {model}} doesn't.", arg = "model")
   }
 
   if (!metric %in% names(object$model[[model]]$metric)) {
-    stop(paste("'metric'", shQuote(metric, type = "sh"), "was not computed for model", shQuote(model, type = "sh")))
+    abort_input("{.arg metric} must be a metric computed for model {.val {model}}, and {.val {metric}} isn't.", arg = "metric")
   }
 
   # Extract the test sets and number of test sets
@@ -1420,7 +1414,7 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
   plot_data <- do.call(rbind, unlist(lapply(model, make_df), recursive = FALSE))
 
   if (is.null(plot_data) || nrow(plot_data) == 0)
-    stop("No AnPIT or PIT data available for plotting.")
+    abort_input("{.arg x} has no PIT or AnPIT values to plot.", arg = "x")
 
   y_label <- unique(plot_data$type)
   if (length(y_label) > 1) y_label <- "Calibration curve"
@@ -1466,17 +1460,19 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
                   build_plot(avg, paste(title, "(average)"))
                 },
                 single  = {
-                  if (is.null(pit_test_set))
-                    stop("Provide `pit_test_set` when pit_mode = 'single'.")
+                  if (is.null(pit_test_set)) {
+                    abort_input("{.arg pit_test_set} must be given when {.arg pit_mode} is {.val single}.", arg = "pit_test_set")
+                  }
                   df_ts <- df_model[df_model$test_set == pit_test_set,]
-                  if (nrow(df_ts) == 0)
-                    stop("No data for test set ", pit_test_set, " in model ", mname)
+                  if (nrow(df_ts) == 0) {
+                    abort_input("{.arg pit_test_set} must be a test set of model {.val {mname}}, and {pit_test_set} isn't.", arg = "pit_test_set")
+                  }
                   build_plot(df_ts,
                              paste0(title, " (test set ", pit_test_set, ")"))
                 },
                 all     = build_plot(df_model,
                                      paste(title, "(all test sets)")),
-                stop("Invalid `pit_mode`. Use 'average', 'single' or 'all'.")
+                abort_input("{.arg pit_mode} must be {.val average}, {.val single} or {.val all}.", arg = "pit_mode")
     )
 
     plots[[mname]] <- p
@@ -1557,7 +1553,7 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
   } else {
     missing_model <- setdiff(model, all_models)
     if (length(missing_model) > 0) {
-      stop(paste("'model'", shQuote(missing_model[1], type = "sh"), "was not found in 'object'"))
+      abort_input(c("{.arg model} must name models of {.arg x}.", "x" = "{.val {missing_model}} {cli::qty(length(missing_model))}{?is/are} not among them."), arg = "model")
     }
   }
 
@@ -1574,8 +1570,7 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
   } else {
     unavailable <- setdiff(metric, available_metrics)
     if (length(unavailable) > 0) {
-      stop(paste("'metric'", shQuote(unavailable[1], type = "sh"),
-                "was not computed for model", shQuote(model[1], type = "sh")))
+      abort_input(c("{.arg metric} must name metrics computed for {.arg x}.", "x" = "{.val {unavailable}} {cli::qty(length(unavailable))}{?was/were} not computed.", "i" = "The metrics computed are {.val {available_metrics}}."), arg = "metric")
     }
   }
 
@@ -1626,11 +1621,12 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
 check_binomial <- function(y, den){
   tolerance <- sqrt(.Machine$double.eps)
   valid <- all(y >= 0) & all(abs(y - round(y)) < tolerance)
-  stopifnot("'y' must only consist of zero or positive integers when 'family' is 'binomial'" = valid)
+  if (!valid) {
+    abort_input("The responses of a binomial model must be non-negative whole numbers.", arg = "data")
+  }
 
-  if (!is.null(den)){
-    valid <- all(den >= y)
-    stopifnot("Values of 'den' must be greater than or equal to values of 'y'"= valid)
+  if (!is.null(den) && !all(den >= y)) {
+    abort_input("Binomial responses can't exceed their denominators.", arg = "denominator")
   }
 
   invisible(TRUE)
@@ -1648,43 +1644,48 @@ check_binomial <- function(y, den){
 #' `"polygon"` (covering both polygons and multipolygons) or `"any"` to not check
 #' @param type whether to check that the data is `"sf"` (default) or
 #' `"sfc"` (either sf or sfc)
+#' @param arg The argument the user gave the data as, by default the
+#' expression passed as `data`. Internal callers name the user's argument.
 #' @return TRUE if the data is valid. Raise an error if not.
 #' @noRd
 #'
-check_data <- function(data, geometry = "point", type = "sf"){
-  stopifnot("'geometry' must be either 'point', 'polygon' or 'any'" = geometry %in% c("point", "polygon", "any"))
-  stopifnot("'type' must be either 'sf' or 'sfc'" = type %in% c("sf", "sfc"))
-
-  # extract name passed to function
-  data_type <- paste0("'", deparse(substitute(data)), "'")
-
-  geometry_type <- switch(geometry,
-                          point = "'POINT'",
-                          polygon = "'POLYGON' or 'MULTIPOLYGON'")
-
-  if (type == "sf"){
-    if (!inherits(data, "sf"))
-      stop(data_type, " must be of class 'sf'", call. = FALSE)
-  } else {
-    if (!inherits(data, c("sf", "sfc")))
-      stop(data_type, " must be of class 'sf' or 'sfc'", call. = FALSE)
+check_data <- function(data, geometry = "point", type = "sf",
+                       arg = deparse(substitute(data))) {
+  if (!geometry %in% c("point", "polygon", "any")) {
+    riskmap_bug("{.arg geometry} must be {.val point}, {.val polygon} or {.val any}.")
+  }
+  if (!type %in% c("sf", "sfc")) {
+    riskmap_bug("{.arg type} must be {.val sf} or {.val sfc}.")
   }
 
-  if (is.na(st_crs(data)))
-    stop(data_type, " must contain a coordinate reference system", call. = FALSE)
+  name <- arg
 
-  if (geometry != "any"){
+  if (type == "sf") {
+    if (!inherits(data, "sf")) {
+      abort_input("{.arg {name}} must be an {.cls sf} object, not {.obj_type_friendly {data}}.", arg = name)
+    }
+  } else if (!inherits(data, c("sf", "sfc"))) {
+    abort_input("{.arg {name}} must be an {.cls sf} or {.cls sfc} object, not {.obj_type_friendly {data}}.", arg = name)
+  }
+
+  if (is.na(st_crs(data))) {
+    abort_input("{.arg {name}} must have a coordinate reference system.", arg = name)
+  }
+
+  if (geometry != "any") {
     all_valid_geometry <- all(grepl(toupper(geometry), st_geometry_type(data)))
-    if (!all_valid_geometry)
-      stop(data_type, " can only contain ", geometry_type, " geometry", call. = FALSE)
+    if (!all_valid_geometry) {
+      geometry_type <- switch(geometry, point = "POINT",
+                              polygon = c("POLYGON", "MULTIPOLYGON"))
+      abort_input("{.arg {name}} must have only {.or {.val {geometry_type}}} geometries.", arg = name)
+    }
   }
 
-  if (st_crs(data) == st_crs(4326)){
+  if (st_crs(data) == st_crs(4326)) {
     tryCatch(
       st_is_longlat(data$geometry),
       warning = function(w) {
-        stop(data_type, " contains impossible latitude or longitude values -
-             check you have specified the columns correctly when converting the data", call. = FALSE)
+        abort_input(c("{.arg {name}} has impossible longitudes or latitudes.", "i" = "Check that the coordinate columns were given in the right order when the data were converted."), arg = name)
       }
     )
   }
@@ -1695,18 +1696,16 @@ check_data <- function(data, geometry = "point", type = "sf"){
 #'
 #' @param data An `sf` or `sfc` object with a projected CRS.
 #' @param distance_units The requested coordinate units, either `"m"` or `"km"`.
+#' @param arg The argument that gave the coordinate reference system, such as
+#'   `model_crs`, or the data whose system it is.
 #' @return The numeric factor converting one CRS unit to `distance_units`.
 #' @importFrom units set_units
 #' @noRd
-crs_to_distance_factor <- function(data, distance_units) {
+crs_to_distance_factor <- function(data, distance_units, arg = "data") {
   crs_unit <- st_crs(data)$ud_unit
 
   if (is.null(crs_unit)) {
-    stop(
-      "The modelling CRS does not define linear coordinate units. ",
-      "Use a projected CRS with recognised linear units.",
-      call. = FALSE
-    )
+    abort_input(c("The coordinate reference system given by {.arg {arg}} has no linear units.", "i" = "Use a projected system with recognised linear units."), arg = arg)
   }
 
   tryCatch(
@@ -1716,12 +1715,7 @@ crs_to_distance_factor <- function(data, distance_units) {
                 mode = "standard")
     ),
     error = function(e) {
-      stop(
-        "The modelling CRS units cannot be converted to '",
-        distance_units,
-        "'. Use a projected CRS with recognised linear units.",
-        call. = FALSE
-      )
+      abort_input(c("The units of the coordinate reference system given by {.arg {arg}} can't be converted to {.val {distance_units}}.", "i" = "Use a projected system with recognised linear units."), arg = arg, parent = e)
     }
   )
 }
@@ -1731,33 +1725,8 @@ crs_to_distance_factor <- function(data, distance_units) {
 #' @inheritParams crs_to_distance_factor
 #' @return A numeric coordinate matrix expressed in `distance_units`.
 #' @noRd
-coordinates_in_units <- function(data, distance_units) {
-  st_coordinates(data) * crs_to_distance_factor(data, distance_units)
-}
-
-#' @title check_positive_integer
-#' @description
-#'
-#' Check that a value is a single, positive integer and error if not
-#' @param x the value to check
-#' @param name the name of the parameter to return in error messages
-#' @param allow_null whether `NULL` is permitted
-#' @param allow_zero whether zero is permitted
-#' @return TRUE if the data is valid. Raise an error if not.
-#' @noRd
-#'
-check_positive_integer <- function(x, name, allow_null = FALSE,
-                                   allow_zero = FALSE) {
-  if (is.null(x) && allow_null) return(invisible(TRUE))
-  description <- if (allow_zero) "non-negative" else "positive"
-  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
-    !is.finite(x) || x %% 1 != 0 || x < as.integer(!allow_zero) ||
-    x > .Machine$integer.max
-  if (invalid) {
-    stop("'", name, "' must be a single ", description, " integer",
-         call. = FALSE)
-  }
-  invisible(TRUE)
+coordinates_in_units <- function(data, distance_units, arg = "data") {
+  st_coordinates(data) * crs_to_distance_factor(data, distance_units, arg)
 }
 
 #' Preserve the caller's random-number state
@@ -1781,111 +1750,6 @@ preserve_random_seed <- function() {
   }
 }
 
-#' @title check_positive_number
-#' @description
-#'
-#' Check that a value is a single, positive number and error if not
-#' @param x the value to check
-#' @param type the type of value being checked. Defaults to `"starting"`.
-#' @return TRUE if x is valid. Raise an error if not.
-#' @noRd
-#'
-check_positive_number <- function(x, type = "starting ") {
-  # extract name, removing any list
-  name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
-
-  if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
-      !is.finite(x) || x <= 0) {
-    stop("The ", type, "value for '", name, "' must be a single positive number")
-  }
-
-  invisible(TRUE)
-}
-
-#' Check that a numeric value belongs to a range
-#'
-#' @param x The value to check.
-#' @param min Lower endpoint.
-#' @param max Upper endpoint.
-#' @param allow_equal Whether either endpoint is allowed.
-#' @param name The argument name to use in the error message. Defaults to the
-#'   expression supplied as `x`.
-#' @return `TRUE` invisibly when valid; otherwise raises an error.
-#' @noRd
-check_range <- function(x, min = -Inf, max = Inf, allow_equal = TRUE,
-                        name = deparse(substitute(x))) {
-  valid_number <- is.numeric(x) && length(x) == 1L && !is.na(x) &&
-    is.finite(x)
-  outside <- if (!valid_number) {
-    TRUE
-  } else if (allow_equal) {
-    x < min || x > max
-  } else {
-    x <= min || x >= max
-  }
-  invalid <- !valid_number || outside
-  if (invalid) {
-    interval <- if (allow_equal) "between" else "strictly between"
-    stop("'", name, "' must be a single finite number ", interval, " ",
-         min, " and ", max,
-         call. = FALSE)
-  }
-  invisible(TRUE)
-}
-
-#' Check that a value belongs to the closed unit interval
-#' @noRd
-check_zero_one <- function(x, name = deparse(substitute(x))) {
-  check_range(x, min = 0, max = 1, name = name)
-}
-
-
-#' @title check_logical
-#' @description
-#'
-#' Check that a value is a single, non-missing logical (`TRUE` or `FALSE`)
-#' and error if not
-#' @param x the value to check
-#' @return TRUE if x is valid. Raise an error if not.
-#' @noRd
-#'
-check_logical <- function(x) {
-  name <- deparse(substitute(x))
-
-  if (!isTRUE(x) && !isFALSE(x)) {
-    stop("'", name, "' must be either TRUE or FALSE", call. = FALSE)
-  }
-
-  invisible(TRUE)
-}
-
-
-#' @title check_crs
-#' @description
-#'
-#' Check that a CRS is valid
-#' @param crs the CRS to check
-#' @param name the argument name to use in the error message. Defaults to the
-#'   name of the variable passed as `crs`; callers wrapping this in another
-#'   function should pass their own argument's name explicitly, since
-#'   `substitute()` only sees the immediate call site.
-#' @return TRUE if the CRS is valid. Raise an error if not.
-#' @noRd
-#'
-check_crs <- function(crs, name = deparse(substitute(crs))){
-  tryCatch(
-    st_crs(crs),
-    warning = function(w) {
-      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
-    },
-    error = function(e){
-      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
-    }
-  )
-  invisible(TRUE)
-}
-
-
 #' Check that an inverse link stays in the range of its family in the tails
 #'
 #' A draw whose mean is not a number or is outside the range has no weight
@@ -1898,11 +1762,8 @@ check_invlink_tails <- function(invlink, family,
   mean <- invlink(eta)
   outside <- is.na(mean) | mean < 0 | (family == "binomial" & mean > 1)
   if (any(outside)) {
-    stop(sprintf(
-      paste("'invlink' returned a value that is not a number or is outside",
-            "the range of the family at a linear predictor of %g."),
-      eta[which(outside)[1L]]
-    ), call. = FALSE)
+    at <- eta[which(outside)[1L]]
+    abort_input("{.arg invlink} returns a value that isn't a number, or is outside the range of the family, at a linear predictor of {at}.", arg = "invlink")
   }
   invisible(TRUE)
 }
@@ -1923,23 +1784,21 @@ check_invlink_tails <- function(invlink, family,
 #'   are invalid.
 #' @noRd
 check_invlink <- function(invlink, family, eta = seq(-5, 5, length.out = 11)) {
-  if (!is.function(invlink)) stop("'invlink' must be a function.", call. = FALSE)
+  if (!is.function(invlink)) {
+    abort_input("{.arg invlink} must be a function, not {.obj_type_friendly {invlink}}.", arg = "invlink")
+  }
   mu <- invlink(as.numeric(eta))
   if (!is.numeric(mu) || length(mu) != length(eta)) {
-    stop("'invlink' must return one numeric value per linear predictor.",
-         call. = FALSE)
+    abort_input("{.arg invlink} must return one number for each linear predictor.", arg = "invlink")
   }
   if (any(!is.finite(mu))) {
-    stop("'invlink' returned non-finite mean values. Check the model parameters and covariates.",
-         call. = FALSE)
+    abort_input(c("{.arg invlink} returns means that aren't finite.", "i" = "Check the model parameters and covariates."), arg = "invlink")
   }
   if (family == "binomial" && any(mu < 0 | mu > 1)) {
-    stop("For a binomial model, 'invlink' must return probabilities between 0 and 1.",
-         call. = FALSE)
+    abort_input("For a binomial model, {.arg invlink} must return probabilities between 0 and 1.", arg = "invlink")
   }
   if (family == "poisson" && any(mu < 0)) {
-    stop("For a Poisson model, 'invlink' must return non-negative mean values.",
-         call. = FALSE)
+    abort_input("For a Poisson model, {.arg invlink} must return non-negative means.", arg = "invlink")
   }
   mu
 }

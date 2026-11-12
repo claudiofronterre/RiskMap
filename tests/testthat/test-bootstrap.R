@@ -96,11 +96,12 @@ test_that("failed refits are recorded instead of stopping", {
   expect_output(print(boot), "1 refits failed")
 
   local_mocked_bindings(fit_glgpm_design = function(...) stop("always fails"))
-  expect_error(
+  error <- expect_error(
     parametric_bootstrap(gaussian_intercept_model, n_sim = 2, seed = 1,
                          messages = FALSE),
-    "All 2 refits failed. The first failure: always fails"
+    "All 2 refits failed", class = "riskmap_error_fit"
   )
+  expect_match(conditionMessage(error), "always fails", fixed = TRUE)
 })
 
 test_that("summary computes percentile and bias-corrected intervals", {
@@ -149,7 +150,7 @@ test_that("plot draws one histogram per parameter", {
                    paste0("Spatial corr. scale (",
                           gaussian_intercept_model$distance_units, ")"))
   expect_s3_class(plot(boot), "patchwork")
-  expect_error(plot(boot, parameters = "kappa"), "Unknown parameter")
+  expect_input_error(plot(boot, parameters = "kappa"), "parameters")
   summaries <- summary(gaussian_intercept_model)
   expect_identical(unname(boot$labels),
                    c(rownames(summaries$reg_coef), rownames(summaries$sp),
@@ -171,20 +172,20 @@ test_that("plot shows a natural axis unless log_scale is TRUE", {
   coefficient <- plot(boot, parameters = names(boot$estimate)[1],
                       log_scale = TRUE)
   expect_null(coefficient$scales$get_scales("x"))
-  expect_error(plot(boot, log_scale = NA), "TRUE or FALSE")
+  expect_error(plot(boot, log_scale = NA), "log_scale", class = "riskmap_error_input")
 })
 
 test_that("parametric_bootstrap validates its arguments", {
-  expect_error(parametric_bootstrap(list()), "'RiskMap' object")
+  expect_input_error(parametric_bootstrap(list()), "object")
   expect_error(parametric_bootstrap(gaussian_model, n_sim = 0),
-               "'n_sim' must be a single positive integer")
+               "n_sim", class = "riskmap_error_input")
   expect_error(parametric_bootstrap(gaussian_model, seed = -1),
-               "'seed' must be a single non-negative integer")
+               "seed", class = "riskmap_error_input")
   expect_error(parametric_bootstrap(gaussian_model, level = 1), "level")
   expect_error(parametric_bootstrap(gaussian_model, cores = 0),
-               "'cores' must be a single positive integer")
+               "cores", class = "riskmap_error_input")
   expect_error(parametric_bootstrap(gaussian_model, messages = NA),
-               "'messages' must be either TRUE or FALSE")
-  expect_error(parametric_bootstrap(gaussian_model, n_sim = 300000),
-               "'n_sim' must be at most")
+               "messages", class = "riskmap_error_input")
+  expect_input_error(parametric_bootstrap(gaussian_model, n_sim = 300000),
+               "n_sim")
 })

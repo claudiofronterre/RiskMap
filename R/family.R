@@ -135,7 +135,7 @@ named_inverse_link <- function(link) {
       d1 = function(eta) dcauchy(eta),
       d2 = function(eta) -2 * eta / (pi * (1 + eta^2)^2)
     ),
-    stop("No inverse is defined for the ", link, " link.", call. = FALSE)
+    riskmap_bug("No inverse is defined for the {link} link.")
   )
 }
 
@@ -149,23 +149,25 @@ named_inverse_link <- function(link) {
 ##' @noRd
 make_inverse_link_functions <- function(family, invlink, ncheck,
                                         second_derivative = TRUE) {
-  validate <- function(f, name) {
-    if (!is.function(f)) stop(sprintf("`%s` must be a function.", name))
+  # `what` names the function checked, with cli markup.
+  validate <- function(f, what) {
+    what <- cli::format_inline(what)
+    if (!is.function(f)) {
+      abort_input("{what} must be a function, not {.obj_type_friendly {f}}.", arg = "invlink")
+    }
     x <- rep(0, ncheck)
     out <- tryCatch(f(x), error = function(e) e)
     if (inherits(out, "error")) {
-      stop(sprintf("`%s` failed on a numeric vector: %s", name, out$message))
+      abort_input("{what} failed on a numeric vector.", arg = "invlink", parent = out)
     }
     if (!is.numeric(out)) {
-      stop(sprintf("`%s` must return a numeric vector.", name))
+      abort_input("{what} must return a numeric vector, not {.obj_type_friendly {out}}.", arg = "invlink")
     }
     if (length(out) != length(x)) {
-      stop(sprintf(
-        "`%s` must return a vector of the same length as its input.", name
-      ))
+      abort_input("{what} must return a vector as long as its input.", arg = "invlink")
     }
     if (!all(is.finite(out))) {
-      stop(sprintf("`%s` returns non-finite values.", name))
+      abort_input("{what} returns values that aren't finite.", arg = "invlink")
     }
     invisible(TRUE)
   }
@@ -187,9 +189,11 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
         derivative * (1 - 2 * probability)
       } else NULL
     }
-    validate(inv, "canonical invlink")
-    validate(d1, "canonical invlink_prime")
-    if (second_derivative) validate(d2, "canonical invlink_second")
+    validate(inv, "The canonical inverse link")
+    validate(d1, "The derivative of the canonical inverse link")
+    if (second_derivative) {
+      validate(d2, "The second derivative of the canonical inverse link")
+    }
     return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical",
                 link = if (family == "poisson") "log" else "logit"))
   }
@@ -204,25 +208,24 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
   } else if (is.list(invlink)) {
     unknown <- setdiff(names(invlink), c("inv", "d1", "d2", "link"))
     if (is.null(names(invlink)) || length(unknown)) {
-      stop("A list in 'invlink' takes only the elements 'inv', 'd1', 'd2' ",
-           "and 'link'.", call. = FALSE)
+      abort_input("A list in {.arg invlink} takes only the elements {.code inv}, {.code d1}, {.code d2} and {.code link}.", arg = "invlink")
     }
     inv <- invlink$inv
     d1 <- invlink$d1
     d2 <- invlink$d2
     link <- invlink$link
   } else {
-    stop("'invlink' must be NULL or a function.", call. = FALSE)
+    abort_input("{.arg invlink} must be {.code NULL} or a function, not {.obj_type_friendly {invlink}}.", arg = "invlink")
   }
 
-  validate(inv, "invlink")
+  validate(inv, "{.arg invlink}")
   check_invlink(inv, family)
   check_invlink_tails(inv, family)
   if (is.null(d1)) d1 <- differentiate(inv, ncheck)
-  validate(d1, "invlink_prime")
+  validate(d1, "The derivative of {.arg invlink}")
   if (second_derivative) {
     if (is.null(d2)) d2 <- differentiate(d1, ncheck)
-    validate(d2, "invlink_second")
+    validate(d2, "The second derivative of {.arg invlink}")
   } else {
     d2 <- NULL
   }
@@ -277,13 +280,11 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' @noRd
 make_family <- function(family, linkf = NULL, kernel = NULL) {
   if (!family %in% c("binomial", "poisson")) {
-    stop("The family object is defined for the binomial and Poisson ",
-         "families only.", call. = FALSE)
+    riskmap_bug("The family object is defined for the binomial and Poisson families only.")
   }
   if (is.null(linkf)) linkf <- make_inverse_link_functions(family, NULL, 1L)
   if (is_integrated_link(linkf)) {
-    stop("The kernel of integrated records goes in `kernel`, not in ",
-         "`linkf`.", call. = FALSE)
+    riskmap_bug("The kernel of integrated records goes in {.arg kernel}, not in {.arg linkf}.")
   }
   canonical <- identical(linkf$name, "canonical")
   integrated <- !is.null(kernel)
@@ -365,45 +366,114 @@ fit_family <- function(fit) {
 ##' Observation terms of the canonical log link of the Poisson family
 ##'
 ##' The arm of `laplace_observation_terms()` for the canonical Poisson link,
-##' with the formulas of `maxim_integrand()`.
+##' with the formulas of `maxim_integrand()`, and the exact canonical terms
+##' where those formulas fail at the limits of the link
+##' (`replace_at_canonical_limits()`). NULL if a linear predictor or a mean is
+##' not finite.
 ##' @noRd
 canonical_poisson_terms <- function(eta, y, units_m, linkf) {
+  if (any(!is.finite(eta))) return(NULL)
   mean <- linkf$inv(eta)
-  if (any(!is.finite(mean)) || any(mean <= 0)) return(NULL)
+  if (any(!is.finite(mean))) return(NULL)
   first <- linkf$d1(eta)
   second <- linkf$d2(eta)
   residual <- y / mean - units_m
-  list(
-    log_likelihood = sum(y * log(pmax(units_m * mean, .Machine$double.eps)) -
-                           units_m * mean),
+  terms <- list(
+    log_likelihoods = y * log(pmax(units_m * mean, .Machine$double.eps)) -
+      units_m * mean,
     score = residual * first,
     curvature = y * first^2 / mean^2 - residual * second
   )
+  terms <- replace_at_canonical_limits(terms, mean <= 0, eta, y, units_m,
+                                       "poisson")
+  list(log_likelihood = sum(terms$log_likelihoods), score = terms$score,
+       curvature = terms$curvature)
 }
 
 ##' Observation terms of the canonical logit link of the binomial family
 ##'
 ##' The arm of `laplace_observation_terms()` for the canonical binomial link,
-##' with the formulas of `maxim_integrand()`.
+##' with the formulas of `maxim_integrand()`, and the exact canonical terms
+##' where those formulas fail at the limits of the link
+##' (`replace_at_canonical_limits()`). NULL if a linear predictor is not
+##' finite.
 ##' @noRd
 canonical_binomial_terms <- function(eta, y, units_m, linkf) {
+  if (any(!is.finite(eta))) return(NULL)
   probability <- linkf$inv(eta)
-  if (any(!is.finite(probability)) ||
-      any(probability <= 0 | probability >= 1)) return(NULL)
   first <- linkf$d1(eta)
   second <- linkf$d2(eta)
   variance <- probability * (1 - probability)
   residual <- y - units_m * probability
-  list(
-    log_likelihood = sum(
-      y * log(pmax(probability, .Machine$double.eps)) +
-        (units_m - y) * log(pmax(1 - probability, .Machine$double.eps))
-    ),
+  terms <- list(
+    log_likelihoods = y * log(pmax(probability, .Machine$double.eps)) +
+      (units_m - y) * log(pmax(1 - probability, .Machine$double.eps)),
     score = residual * first / variance,
     curvature = units_m * first^2 / variance -
       residual * (second / variance - first^2 * (1 - 2 * probability) /
                     variance^2)
   )
+  terms <- replace_at_canonical_limits(
+    terms, probability <= 0 | probability >= 1, eta, y, units_m, "binomial"
+  )
+  list(log_likelihood = sum(terms$log_likelihoods), score = terms$score,
+       curvature = terms$curvature)
+}
+
+##' Exact observation terms of the canonical links at the limits of the link
+##'
+##' The inverse logit rounds to 0 below a linear predictor of about -709.8
+##' and to 1 above about 36.74, and the mean of a count underflows to 0 below
+##' about -745. There the formulas of `laplace_observation_terms()` and
+##' `maxim_integrand()` divide zero by zero, although the likelihood is smooth
+##' and finite. Complete separation by a covariate takes the linear predictor
+##' of locations where every individual is positive past 36.74 well inside the
+##' bounds of the search, so the latent mode must be found there too. The
+##' canonical forms need no division. With p = plogis(eta) they are
+##' log p = -softplus(-eta), log(1 - p) = -softplus(eta), the score
+##' y (1 - p) - (m - y) p and the curvature m p (1 - p). For the log link
+##' they are y log(m) + y eta - m exp(eta), y - m exp(eta) and m exp(eta),
+##' where y log(m) is the constant of the usual formula. They replace the
+##' per-observation `log_likelihoods`, `score` and `curvature` of `terms` only
+##' where `at` is TRUE, so that terms away from the limits are unchanged bit
+##' for bit. Short of the limits the usual formulas keep two weaknesses. Their
+##' curvature is not finite between about -709.8 and -372 for the logit, or
+##' below -372 for a positive count, and `adaptive_laplace_mode()` rejects a
+##' step to such a point. They also bound log p, log(1 - p) and log(m mu)
+##' below at log(.Machine$double.eps). The log-likelihood of an observation
+##' with any positives is then flat below a linear predictor of about -36,
+##' that of a binomial observation with any negatives is flat above about
+##' 36.04, and both fall where the exact forms take over. Neither is reached
+##' under complete separation, where the locations with positives have only
+##' positives and lie in the upper tail, and the others lie in the lower one.
+##' Exact forms throughout would remove both but would change every canonical
+##' fit by rounding.
+##' @noRd
+replace_at_canonical_limits <- function(terms, at, eta, y, units_m, family) {
+  if (!any(at)) return(terms)
+  eta <- eta[at]
+  y <- y[at]
+  units_m <- units_m[at]
+  if (family == "poisson") {
+    mean <- exp(eta)
+    log_likelihoods <- -units_m * mean
+    # An observation with no count adds no y log(m), even when m is zero.
+    positive <- y > 0
+    log_likelihoods[positive] <- log_likelihoods[positive] +
+      y[positive] * (log(units_m[positive]) + eta[positive])
+    score <- y - units_m * mean
+    curvature <- units_m * mean
+  } else {
+    success <- stats::plogis(eta)
+    failure <- stats::plogis(-eta)
+    log_likelihoods <- -y * softplus(-eta) - (units_m - y) * softplus(eta)
+    score <- y * failure - (units_m - y) * success
+    curvature <- units_m * success * failure
+  }
+  terms$log_likelihoods[at] <- log_likelihoods
+  terms$score[at] <- score
+  terms$curvature[at] <- curvature
+  terms
 }
 
 ##' Log-likelihood of every row of a matrix of linear predictors, custom link

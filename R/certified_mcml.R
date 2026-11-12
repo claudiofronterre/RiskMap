@@ -1429,6 +1429,8 @@ plan_next_budgets <- function(budget, validation_budget, certificate,
 ##' are checked against their bounds, and `separation`, from
 ##' `find_separation()`, records data whose likelihood has no maximum. Either
 ##' ends the fit with the outcome "no maximum" (`run_certified_stage()`).
+##' With `messages`, a line names each stage while it runs
+##' (`progress_step()`).
 ##' @noRd
 fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               penalty = NULL, dispersed = NULL,
@@ -1443,7 +1445,7 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               boundary_log_variance = -9,
                               near_zero_log_variance = -4,
                               coefficient_index = integer(),
-                              separation = NULL) {
+                              separation = NULL, messages = FALSE) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   validation_budget <- as.integer(validation_budget)
@@ -1469,6 +1471,10 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     if (stage > 1L && is.function(engine$choose_form)) {
       engine$choose_form(current)
     }
+    progress_step(paste0("Monte Carlo maximum likelihood, stage {stage} of ",
+                         "at most {maximum_stages}, with ",
+                         "{format(budget, big.mark = ',')} draws"),
+                  messages)
     run_stage <- function(offset) {
       engine$reset_proposal_failures()
       run_certified_stage(engine, objective, penalty, current, budget,
@@ -1542,6 +1548,7 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     validation_budget <- budgets$validation_budget
     current <- record$next_start %||% current
   }
+  progress_step_done(messages)
   last <- history[[length(history)]]
   covariance <- NULL
   if (!is.null(last$information_root)) {

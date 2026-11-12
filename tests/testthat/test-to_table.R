@@ -90,5 +90,5 @@ test_that("to_table validates its inputs", {
 
   expect_error(to_table(object, digits = -1), "non-negative integer")
   expect_error(to_table(object, digits = 1.5), "non-negative integer")
-  expect_error(to_table(1), "RiskMap model")
+  expect_error(to_table(1), "<RiskMap> fit")
 })

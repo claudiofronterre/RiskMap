@@ -8,7 +8,7 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
 
   gaussian_data <- sf::st_as_sf(data, coords = c("x", "y"), crs = sf::st_crs(4326))
 
-  expect_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", messages = FALSE), "When there is only one observation per location")
+  expect_input_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", messages = FALSE), "formula")
   expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fix_var_me = 1, messages = FALSE))
   zero_error_fit <- glgpm(
     z ~ gp(), gaussian_data, "gaussian", fix_var_me = 0, messages = FALSE
@@ -34,7 +34,7 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
   expect_error(
     glgpm(z ~ gp(), gaussian_data, "gaussian", fix_var_me = 0,
           messages = FALSE),
-    "structurally singular"
+    "is singular, whatever the parameters"
   )
 
   expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", messages = FALSE))
@@ -54,7 +54,7 @@ test_that("nugget_ratio distinguishes estimated and fixed nuggets", {
   expect_equal(nugget_ratio(TRUE, sigma2 = 2, log_nu2 = log(0.3)), 0.3)
   expect_error(
     nugget_ratio(TRUE, sigma2 = 2),
-    "'log_nu2' is required when the nugget is estimated"
+    class = "riskmap_error_internal"
   )
 })
 

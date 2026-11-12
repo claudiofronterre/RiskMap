@@ -42,17 +42,17 @@ test_that("the extra checks are named, with all for every one", {
   expect_identical(match_extra_checks(c("radius", "profile")),
                    c("profile", "radius"))
   expect_identical(match_extra_checks("all"), c("profile", "radius"))
-  expect_error(check_fit(binomial_model, extra = "radii"),
-               paste0("Unknown extra check \"radii\". The extra checks are ",
-                      "\"profile\", \"radius\", or \"all\""),
+  error <- expect_input_error(check_fit(binomial_model, extra = "radii"),
+                              "extra")
+  expect_match(conditionMessage(error), "\"profile\" and \"radius\", or \"all\"",
                fixed = TRUE)
   expect_error(check_fit(binomial_model, extra = c("profile", "a", "b")),
-               "Unknown extra checks \"a\", \"b\"", fixed = TRUE)
-  expect_error(check_fit(binomial_model, extra = TRUE),
-               "'extra' must be a character vector")
-  expect_error(check_fit(binomial_model, extra = NA_character_),
-               "'extra' must be a character vector")
-  expect_error(check_fit(binomial_model, messages = NA), "'messages' must be")
+               "unknown extra checks \"a\" and \"b\"", fixed = TRUE)
+  expect_input_error(check_fit(binomial_model, extra = TRUE),
+               "extra")
+  expect_input_error(check_fit(binomial_model, extra = NA_character_),
+               "extra")
+  expect_input_error(check_fit(binomial_model, messages = NA), "messages")
 })
 
 test_that("a fit without extras keeps every default check and no extra", {
@@ -165,7 +165,7 @@ test_that("a profile computed by the user is used as it is", {
     check_fit(binomial_model, extra = "profile", profile = scale_profile)$extras,
     checked$extras
   )
-  expect_error(check_fit(binomial_model, profile = 1), "'profile' must be a profile")
+  expect_input_error(check_fit(binomial_model, profile = 1), "profile")
   # Whatever parameters it covers, coefficients included.
   other_profile <- profile(binomial_model, parameters = c("cov", "sigma2"),
                            n_points = 5, n_draws = 200, messages = FALSE)
@@ -176,12 +176,12 @@ test_that("a profile computed by the user is used as it is", {
   withr::defer(grDevices::dev.off())
   expect_named(plot(other, which = "profile"),
                c("profile_beta.cov", "profile_sigma2"))
-  expect_error(check_fit(poisson_model, profile = scale_profile),
-               "'profile' must be a profile of this fit")
-  expect_error(check_fit(binomial_model, cores = 0),
-               "'cores' must be a positive whole number")
-  expect_error(check_fit(binomial_model, cores = 1.5),
-               "'cores' must be a positive whole number")
+  expect_input_error(check_fit(poisson_model, profile = scale_profile),
+               "profile")
+  expect_input_error(check_fit(binomial_model, cores = 0),
+               "cores")
+  expect_input_error(check_fit(binomial_model, cores = 1.5),
+               "cores")
 })
 
 test_that("an extra check that does not apply or fails says why", {
@@ -352,7 +352,7 @@ test_that("a Gaussian profile needs no seed and can be plotted alone", {
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   expect_message(checked <- check_fit(gaussian_model, extra = "profile"),
-                 "^Computing the profiles of the 4 covariance parameters.\n$")
+                 "^Computing the profiles of the 4 covariance parameters.$")
   expect_null(make_extra_check_seed(gaussian_model$seed, 9600L))
   expect_identical(checked$checks$check,
                    c("Profile likelihood", "Monte Carlo accuracy"))

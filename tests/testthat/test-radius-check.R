@@ -174,17 +174,17 @@ test_that("the radius of a fit is checked reproducibly", {
 
 test_that("the radius is checked only where there is a certificate", {
   check <- function(object, ...) fit_check_radius(object, ...)
-  expect_error(check(list()), "'RiskMap' object")
+  expect_input_error(check(list()), "object")
   expect_error(check(gaussian_model),
-               "cannot be checked, because a Gaussian fit has no Monte Carlo error")
+               "can't be checked, because a Gaussian fit has no Monte Carlo error")
   no_stages <- binomial_model
   no_stages$mcml_history <- NULL
   attr(no_stages, "optimizer")$mcml_history <- NULL
   expect_identical(find_radius_check_obstacle(no_stages),
                    "the fit has no stages of certified Monte Carlo maximum likelihood")
   expect_null(find_radius_check_obstacle(binomial_model))
-  expect_error(check(binomial_model, rounds = 5), "at least 10")
-  expect_error(check(binomial_model, banks = 2), "at least 3")
+  expect_error(check(binomial_model, rounds = 5), "greater than or equal to 10")
+  expect_error(check(binomial_model, banks = 2), "greater than or equal to 3")
   expect_error(check(binomial_model, chains = 0))
   uncertified <- binomial_model
   uncertified$mcml_history[[1L]]$certificate_radius <- NA_real_

@@ -220,7 +220,7 @@ tabulate_maxima_check <- function(check, units) {
 ##' @method summary RiskMap_check
 ##' @export
 summary.RiskMap_check <- function(object, ...) {
-  stopifnot(inherits(object, "RiskMap_check"))
+  check_class(object, "RiskMap_check")
   results <- c(object$results, object$extras)
   checks <- vapply(results, function(result) result$row$check, character(1L))
   results <- results[match(object$checks$check, checks)]
@@ -258,7 +258,7 @@ add_largest_moves <- function(stages, moves) {
 ##' @method print summary.RiskMap_check
 ##' @export
 print.summary.RiskMap_check <- function(x, ...) {
-  stopifnot(inherits(x, "summary.RiskMap_check"))
+  check_class(x, "summary.RiskMap_check")
   cat("Evidence for the checks on this fit\n")
   timing <- if (!is.null(x$fit_seconds)) {
     paste0("The fit took ", format_check_time(x$fit_seconds), ".")

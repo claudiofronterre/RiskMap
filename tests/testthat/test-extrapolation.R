@@ -13,7 +13,7 @@ test_that("extrapolation indicators separate spatial and covariate novelty", {
   )
   expect_warning(
     extrapolation <- assess_extrapolation(gaussian_model, newdata),
-    "missing required values"
+    "missing values, so"
   )
 
   expect_s3_class(extrapolation, c("RiskMap_extrapolation", "sf"))
@@ -87,7 +87,7 @@ test_that("extrapolation maps and argument checks", {
   with_missing$cov[1] <- NA
   expect_warning(missing_map <- plot(assess_extrapolation(gaussian_model,
                                                           with_missing)),
-                 "missing required values")
+                 "missing values, so")
   expect_identical(ggplot2::get_guide_data(missing_map, "fill")$.label,
                    c("Supported", "Spatial", "Covariate",
                      "Spatial and covariate"))
@@ -97,10 +97,11 @@ test_that("extrapolation maps and argument checks", {
                indicator = c("spatial_unexplained", "extrapolation"))
   expect_length(c(both$patches$plots, list(both)), 2L)
   expect_identical(both$patches$layout$ncol, 2L)
-  expect_error(plot(extrapolation, indicator = "distance"))
-  expect_error(assess_extrapolation(gaussian_model, grid,
-                                    spatial_threshold = 2))
-  expect_error(assess_extrapolation(list(), grid), "fitted RiskMap model")
+  expect_input_error(plot(extrapolation, indicator = "distance"), "indicator")
+  expect_input_error(assess_extrapolation(gaussian_model, grid,
+                                          spatial_threshold = 2),
+                     "spatial_threshold")
+  expect_input_error(assess_extrapolation(list(), grid), "object")
 })
 
 test_that("unexplained spatial variance uses fixed variance components", {

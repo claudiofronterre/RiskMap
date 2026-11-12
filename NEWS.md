@@ -30,6 +30,62 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `surf_sim` | `simulate_glgpm` |
 | `s_variogram` | `variogram` |
 
+## Errors, warnings and messages
+
+- Every error, warning and message of RiskMap is raised through cli. Errors
+name the function that the user called, even when the problem is found deep
+inside it, and an input error describes the value supplied. Messages have
+been reworded to one style, with arguments, values and functions marked up.
+Code that matched the old wording of a message should match its class
+instead.
+- Conditions have classes, documented in `?riskmap_conditions`, so that code
+can catch them by class rather than by their text. Every error RiskMap raises
+on purpose has class `riskmap_error`. An invalid argument has
+`riskmap_error_input`, whose field `arg` names the argument, a fit that fails
+`riskmap_error_fit`, and a state RiskMap should never reach
+`riskmap_error_internal`, which asks for a report. Warnings that a fit may not
+be reliable, such as an uncertified Monte Carlo error, have
+`riskmap_warning_fit`.
+- Errors from the compiled Langevin sampler are raised again as
+`riskmap_error_fit`, with the original error as the cause.
+- The `messages` argument of `glgpm()`, `predict()`, `profile()`,
+`parametric_bootstrap()`, `check_fit()`, `assess_prediction()` and
+`assess_simulation()` defaults to the option `RiskMap.messages`, as
+`get_worldpop()`'s does, so `options(RiskMap.messages = FALSE)` silences them
+all.
+- Some arguments are checked more strictly. `glgpm()` rejects a starting value
+of 0 for a variance of `re()` terms, and `predict()` rejects points with Z or
+M coordinates or empty points in `newdata`. `match.arg()` errors are replaced
+by RiskMap input errors, and a unique abbreviation is now accepted wherever a
+choice is made, as `match.arg()` allows.
+- `get_worldpop()` takes the default of `messages` from the option
+`RiskMap.messages`, so `options(RiskMap.messages = FALSE)` silences it.
+- A `max_dist` or `phi` that isn't positive is now reported as "must be a
+single positive finite number" instead of "strictly between 0 and Inf".
+
+## Progress
+
+- `parametric_bootstrap()`, `profile()`, `assess_prediction()` and
+`assess_simulation()` show a progress bar with the work done and an estimate
+of the time left, and `predict()` shows one while it predicts at many
+locations in blocks. `glgpm()` shows a line for each stage of Monte Carlo
+maximum likelihood, with the time the stage took. See `?riskmap_progress`.
+- Progress is shown when `messages` is `TRUE` and the option
+`RiskMap.progress` allows it. The option's default is
+`rlang::is_interactive()`, so progress appears in the console but not in
+scripts, in documents rendered by knitr or in tests, even when these are
+started from the console. `options(RiskMap.progress = TRUE)` shows it in the log of a script,
+where a bar writes a line for each tenth of the work.
+- The bars replace the progress messages of the bootstrap ("k of n replicates
+done"), the profiles ("Profiling sigma2 (1 of 3)"), cross-validation
+("Re-estimating model for subset i") and simulation studies ("Simulation j of
+n").
+- With `cores` above 1, the bootstrap and the profiles start one process per
+task, at most `cores` at a time, and collect each as it finishes, instead of
+dividing the tasks between the processes in advance. The results don't
+change. A profile on several cores now also switches the main process to one
+BLAS thread while the workers run, as the bootstrap already did.
+
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.
 
@@ -272,6 +328,21 @@ simulated survey with no positives among 5,000 individuals tested, six of ten
 runs had been certified with an intercept of -30 and a standard error of about
 23,500. Surveys with at least one positive in each such category keep a finite
 maximum and are fitted as before.
+
+- A binomial fit whose covariate separates the data completely, such as one
+where every location with a positive covariate has only positives and every
+other location none, now ends with the outcome "no maximum" as intended. It
+stopped with "the estimated log-likelihood is not finite at the optimum",
+although the separation had been found. With the logit link, the linear
+predictor of a location where every individual is positive passes 36.74 well
+inside the bounds of the search, the inverse logit rounds to 1 there, and the
+formulas of the conditional mode of the latent effects divided zero by zero.
+The canonical links now use the exact form of each observation's
+log-likelihood, score and curvature where the probability rounds to 0 or 1 or
+the mean of a count underflows to 0, in the fit and in `maxim_integrand()`.
+The probit and complementary log-log links already ended such fits with "no
+maximum". Fits that never reach these limits are unchanged, since the new forms
+apply only where the previous ones could not be evaluated.
 
 - `maxim_integrand()` now takes `denominator` instead of `units_m`, matching
 `glgpm()`. Its documentation no longer lists the Gaussian family, which it has

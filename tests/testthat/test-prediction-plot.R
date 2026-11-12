@@ -64,7 +64,7 @@ test_that("polygon prediction maps select tidy summaries without reordering", {
   expect_equal(map$scales$scales[[1L]]$limits, c(0, 1))
 
   expect_error(plot(prediction, aggregate = "median"),
-               "must be one of: mean, sum")
+               "must be one of \"mean\" or \"sum\"")
 })
 
 test_that("plot arguments reject unavailable or ambiguous requests", {
@@ -78,11 +78,11 @@ test_that("plot arguments reject unavailable or ambiguous requests", {
                                boundary_summary = NULL),
                           class = "RiskMap_prediction")
 
-  expect_error(plot(prediction, quantity = "spatial"), "not available")
+  expect_error(plot(prediction, quantity = "spatial"), "has no prediction column")
   expect_error(plot(prediction, aggregate = "mean"),
-               "does not contain boundary summaries")
+               "has no summaries over `boundaries`")
   expect_error(plot(prediction, summary = "exceedance"),
-               "threshold.*must be supplied")
+               "threshold.*must be given")
   expect_error(plot(prediction, limits = c(1, 0)), "increasing")
   expect_warning(
     map <- plot(prediction, summary = "exceedance", threshold = 0.2,
@@ -201,7 +201,7 @@ test_that("both spatial scales share one colour scale", {
   expect_identical(legend_title(plot(prediction, aggregate = "sum")),
                    "Mean prevalence (area sum)")
   expect_error(plot(prediction, spatial_scale = "both", aggregate = "sum"),
-               "same scale as the locations")
+               "when `spatial_scale` is \"both\"")
 })
 
 test_that("breaks give a binned map and several summaries give one row each", {
@@ -343,5 +343,5 @@ test_that("several quantities are drawn in one call", {
                     summary = c("mean", "sd")),
                "several quantities or several summaries")
   expect_error(plot(prediction, quantity = c("spatial", "spatial")),
-               "unique quantity names")
+               "distinct names of predicted quantities")
 })

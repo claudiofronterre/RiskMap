@@ -46,11 +46,13 @@ test_that("an object with integrated records keeps the properties of its link", 
     expect_identical(integrated$slope_parts(eta, y, units_m),
                      plain$slope_parts(eta, y, units_m))
   }
-  expect_error(make_family("binomial", kernel), "goes in `kernel`")
+  expect_error(make_family("binomial", kernel), "goes in",
+               class = "riskmap_error_internal")
 })
 
 test_that("a family object is defined only for the binomial and Poisson families", {
-  expect_error(make_family("gaussian"), "binomial and Poisson")
+  expect_error(make_family("gaussian"), "binomial and Poisson",
+               class = "riskmap_error_internal")
 })
 
 test_that("the methods of the canonical object agree with those of a custom logit", {

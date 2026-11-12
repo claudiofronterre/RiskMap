@@ -65,18 +65,17 @@
 fit_check_radius <- function(object, chains = 16L, rounds = 4000L,
                              banks = 1000L, seed = NULL) {
   if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a 'RiskMap' object returned by 'glgpm'",
-         call. = FALSE)
+    abort_input("{.arg object} must be a {.cls RiskMap} fit from {.fn glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
   check_positive_integer(chains, "chains")
   check_positive_integer(rounds, "rounds")
   check_positive_integer(banks, "banks")
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
-  if (rounds < 10) stop("'rounds' must be at least 10", call. = FALSE)
-  if (banks < 3) stop("'banks' must be at least 3", call. = FALSE)
+  check_range(rounds, min = 10)
+  check_range(banks, min = 3)
   obstacle <- find_radius_check_obstacle(object)
   if (!is.null(obstacle)) {
-    stop("the radius cannot be checked, because ", obstacle, call. = FALSE)
+    abort_input("The radius can't be checked, because {obstacle}.", arg = "object")
   }
   history <- object$mcml_history %||% attr(object, "optimizer")$mcml_history
   last <- history[[length(history)]]
@@ -312,8 +311,7 @@ make_radius_derivatives <- function(problem) {
     tryCatch(engine$proposal_at(values), error = function(error) NULL)
   })
   if (any(vapply(proposals, is.null, logical(1)))) {
-    stop("the importance distribution of the fit could not be rebuilt at ",
-         "its estimate", call. = FALSE)
+    riskmap_abort("The importance distribution of the fit couldn't be rebuilt at its estimate.", class = "riskmap_error_fit")
   }
   share <- mean(problem$defensive)
   weights_at <- function(variant, draws, defensive) {
@@ -334,8 +332,7 @@ make_radius_derivatives <- function(problem) {
       valid <- is.finite(log_weights)
       gradients[!valid, ] <- 0
       if (any(!is.finite(gradients))) {
-        stop("the derivatives of the importance weights are not finite at ",
-             "some draws", call. = FALSE)
+        riskmap_abort("The derivatives of the importance weights aren't finite at some draws.", class = "riskmap_error_fit")
       }
       list(log_weights = log_weights,
            gradients = t(forwardsolve(t(problem$root), t(gradients))))
@@ -423,8 +420,7 @@ run_radius_chains <- function(problem, chains, rounds, seed) {
     log_likelihood[restart] <- core(state[restart, , drop = FALSE])
   }
   if (any(!is.finite(log_likelihood))) {
-    stop("the chains could not be started at draws of positive weight",
-         call. = FALSE)
+    riskmap_abort("The chains couldn't be started at draws of positive weight.", class = "riskmap_error_fit")
   }
   stored <- array(0, c(kept, chains, dimension))
   traced <- matrix(NA_real_, rounds, chains)

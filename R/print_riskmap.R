@@ -273,7 +273,7 @@ write_wrapped <- function(text) {
 ##' @export
 print.RiskMap <- function(x, digits = max(3L, getOption("digits") - 3L),
                           ...) {
-  stopifnot(inherits(x, "RiskMap"))
+  check_class(x, "RiskMap")
   check_positive_integer(digits, "digits")
   if (!is.null(x$call)) {
     cat("Call:\n")
