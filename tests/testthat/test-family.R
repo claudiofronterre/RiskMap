@@ -29,7 +29,9 @@ test_that("the properties of a family object follow the link", {
 test_that("an object with integrated records keeps the properties of its link", {
   y <- c(0, 20, 3)
   units_m <- c(20, 20, 20)
-  kernel <- make_integrated_kernel(make_site_table(y, units_m, "binomial"), 0.5)
+  kernel <- make_integrated_kernel(
+    make_site_table(y, units_m, make_family("binomial")), 0.5
+  )
   for (linkf in list(NULL, probit_family_link())) {
     plain <- make_family("binomial", linkf)
     integrated <- make_family("binomial", linkf, kernel = kernel)
@@ -58,14 +60,10 @@ test_that("the Gaussian object is exact, and the engine's readers refuse it", {
   expect_null(gaussian$canonical)
   expect_null(gaussian$terms)
   expect_null(gaussian$log_likelihood)
-  expect_error(as_family_object(gaussian), "fitted exactly",
+  expect_error(check_family_object(gaussian), "fitted exactly",
                class = "riskmap_error_internal")
-  expect_error(as_family_object("gaussian"), "fitted exactly",
-               class = "riskmap_error_internal")
-  expect_error(laplace_observation_terms(0, 1, 1, "gaussian", NULL),
-               "fitted exactly", class = "riskmap_error_internal")
   expect_error(make_independent_site_likelihood(cbind(1), 8, 20, 1L, 0,
-                                                "gaussian"),
+                                                make_family("gaussian")),
                "fitted exactly", class = "riskmap_error_internal")
   expect_false(make_family("binomial")$exact)
   expect_false(make_family("poisson")$exact)
@@ -178,7 +176,9 @@ test_that("the nonlinear parts of the canonical links agree with the direct diff
 test_that("an object with integrated records takes its nonlinear parts from the kernel", {
   y <- c(0, 20, 3)
   units_m <- c(20, 20, 20)
-  kernel <- make_integrated_kernel(make_site_table(y, units_m, "binomial"), 0.5)
+  kernel <- make_integrated_kernel(
+    make_site_table(y, units_m, make_family("binomial")), 0.5
+  )
   integrated <- make_family("binomial", kernel = kernel)
   step <- matrix(c(-0.5, 0.3, 0.1, 0.4, -0.2, 0.6), 3)
   expect_identical(integrated$nonlinear_parts(c(-1, 2, 0), step, y, units_m),
@@ -193,34 +193,33 @@ test_that("only a custom link has kernel arrays for the site table", {
                                                 "binomial"))
 })
 
-test_that("a family string with a flag that disagrees with its link is refused", {
-  expect_identical(as_family_object("binomial", NULL, TRUE)$canonical, TRUE)
-  expect_error(as_family_object("binomial", NULL, FALSE), "disagrees",
-               class = "riskmap_error_internal")
-  expect_error(as_family_object("binomial", probit_family_link(), TRUE),
-               "disagrees", class = "riskmap_error_internal")
+test_that("the engine takes a family object, not a family string", {
   object <- make_family("poisson")
-  expect_identical(as_family_object(object), object)
+  expect_identical(check_family_object(object), object)
+  expect_error(check_family_object("binomial"), "family object",
+               class = "riskmap_error_internal")
+  expect_error(make_site_table(c(0, 2), c(5, 5), "binomial"), "family object",
+               class = "riskmap_error_internal")
+  expect_error(fit_global_proposal(0, 0, 1, 5, make_latent_map(cbind(1L), 1L),
+                                   diag(1), "binomial"),
+               "family object", class = "riskmap_error_internal")
 })
 
-test_that("an object comes alone, and a kernel is refused where the link is read", {
-  object <- make_family("binomial")
-  expect_error(as_family_object(object, probit_family_link(), FALSE),
-               "takes no", class = "riskmap_error_internal")
-  expect_error(as_family_object(object, NULL, TRUE), "takes no",
-               class = "riskmap_error_internal")
+test_that("a kernel is refused where the link is read", {
   y <- c(0, 20, 3)
   units_m <- c(20, 20, 20)
-  kernel <- make_integrated_kernel(make_site_table(y, units_m, "binomial"), 0.5)
-  expect_error(make_site_table(y, units_m, "binomial", linkf = kernel),
+  kernel <- make_integrated_kernel(
+    make_site_table(y, units_m, make_family("binomial")), 0.5
+  )
+  expect_error(make_site_table(y, units_m, family_object("binomial", kernel)),
                "model's link", class = "riskmap_error_internal")
-  expect_error(make_site_table(y, units_m, make_family("binomial",
-                                                        kernel = kernel)),
+  expect_error(make_site_table(y, units_m,
+                               make_family("binomial", kernel = kernel)),
                "model's link", class = "riskmap_error_internal")
-  expect_error(make_independent_site_likelihood(cbind(c(1, 1, 1)), y, units_m,
-                                                1:3, numeric(3), "binomial",
-                                                linkf = kernel),
-               "model's link", class = "riskmap_error_internal")
+  expect_error(make_independent_site_likelihood(
+    cbind(c(1, 1, 1)), y, units_m, 1:3, numeric(3),
+    family_object("binomial", kernel)
+  ), "model's link", class = "riskmap_error_internal")
 })
 
 test_that("the traits of each family give their closed forms", {

@@ -36,7 +36,7 @@ expect_slope_matches_exact_model <- function(family, group, effect, y, units_m) 
   # A one-sided difference, because the variance cannot be negative.
   numerical <- (-3 * values[1L] + 4 * values[2L] - values[3L]) / (2 * step)
   terms <- model$mean_of(covariance, function(eta) {
-    compute_variance_slope_terms(eta, y, units_m, family, group)
+    compute_slope_terms(eta, y, units_m, family_object(family), group)
   })
   expect_equal(terms, numerical, tolerance = 1e-5)
 }
@@ -81,7 +81,7 @@ test_that("a held nugget is tested against the exact slope", {
   covariance <- 0.5 * exp(-as.matrix(dist(cbind(c(0, 1, 0, 1), c(0, 0, 1, 1)))) / 0.5)
   model <- make_exact_model(y, units_m, rep(0, 4L), "binomial", nodes = 24L)
   exact <- model$mean_of(covariance, function(eta) {
-    compute_variance_slope_terms(eta, y, units_m, "binomial", 1:4)
+    compute_slope_terms(eta, y, units_m, make_family("binomial"), 1:4)
   })
   expect_lt(abs(held$slope - exact), 4 * held$se)
   expect_true(held$rising)
@@ -259,9 +259,10 @@ judge_survey <- function(survey, tolerance = 0.1) {
   engine <- make_adaptive_mcml_engine(survey$D, survey$y, survey$units_m,
                                       survey$distances, family = "binomial",
                                       fix_tau2 = TRUE)
-  sites <- make_independent_site_likelihood(survey$D, survey$y, survey$units_m,
-                                            seq_along(survey$y),
-                                            numeric(length(survey$y)), "binomial")
+  sites <- make_independent_site_likelihood(
+    survey$D, survey$y, survey$units_m, seq_along(survey$y),
+    numeric(length(survey$y)), make_family("binomial")
+  )
   screen <- make_short_scale_screen(engine, sites, survey$distances)
   fit <- screen$independent(0)
   index <- engine$layout$index

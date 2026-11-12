@@ -29,8 +29,8 @@ test_that("a draw at a limit of the link leaves the other draws unchanged", {
   moderate <- c(0, 1, -1)
   rounded <- c(5, 1, -1)
   expect_identical(cloglog_link$inv(5), 1)
-  log_likelihood <- compute_observation_log_likelihood(
-    rbind(moderate, rounded, moderate), y, units_m, "binomial", cloglog_link
+  log_likelihood <- family_object("binomial", cloglog_link)$log_likelihood(
+    rbind(moderate, rounded, moderate), y, units_m
   )
   exact <- sum(y * log(cloglog_link$inv(moderate)) -
                  (units_m - y) * exp(moderate))
@@ -44,20 +44,17 @@ test_that("a draw at a limit of the link leaves the other draws unchanged", {
 
 test_that("a mean at a limit costs nothing if no observation contradicts it", {
   expect_identical(
-    compute_observation_log_likelihood(matrix(50), 20, 20, "binomial",
-                                       cloglog_link),
+    family_object("binomial", cloglog_link)$log_likelihood(matrix(50), 20, 20),
     0
   )
   expect_identical(pnorm(-50), 0)
   expect_identical(
-    compute_observation_log_likelihood(matrix(-50), 0, 20, "binomial",
-                                       probit_link),
+    family_object("binomial", probit_link)$log_likelihood(matrix(-50), 0, 20),
     0
   )
   expect_identical(softplus_link$inv(-800), 0)
   expect_identical(
-    compute_observation_log_likelihood(matrix(-800), 0, 1, "poisson",
-                                       softplus_link),
+    family_object("poisson", softplus_link)$log_likelihood(matrix(-800), 0, 1),
     0
   )
 })
@@ -71,13 +68,13 @@ test_that("only the draws outside the support have zero likelihood", {
     d1 = dlogis, d2 = function(eta) dlogis(eta) * (1 - 2 * plogis(eta)),
     name = "custom"
   )
-  log_likelihood <- compute_observation_log_likelihood(
-    rbind(0, 11, -11), 3, 20, "binomial", link
+  log_likelihood <- family_object("binomial", link)$log_likelihood(
+    rbind(0, 11, -11), 3, 20
   )
   expect_true(is.finite(log_likelihood[[1L]]))
   expect_identical(log_likelihood[2:3], c(-Inf, -Inf))
-  expect_null(laplace_observation_terms(11, 3, 20, "binomial", link))
-  expect_null(laplace_observation_terms(-11, 3, 20, "binomial", link))
+  expect_null(family_object("binomial", link)$terms(11, 3, 20))
+  expect_null(family_object("binomial", link)$terms(-11, 3, 20))
 })
 
 test_that("a link that goes wrong in its tails is refused when it is supplied", {
@@ -114,7 +111,7 @@ test_that("a custom link's terms are the derivatives of its log-likelihood", {
     log_likelihood <- function(point) {
       sum(y * log(linkf$inv(point)) + (units_m - y) * log1p(-linkf$inv(point)))
     }
-    terms <- laplace_observation_terms(eta, y, units_m, "binomial", linkf)
+    terms <- family_object("binomial", linkf)$terms(eta, y, units_m)
     expect_equal(terms$log_likelihood, log_likelihood(eta), tolerance = 1e-12)
     expect_equal(terms$score, numDeriv::grad(log_likelihood, eta),
                  tolerance = 1e-8)
@@ -128,8 +125,7 @@ test_that("a custom link's terms are the derivatives of its log-likelihood", {
     mean <- softplus_link$inv(point)
     sum(counts * log(exposure * mean) - exposure * mean)
   }
-  terms <- laplace_observation_terms(eta, counts, exposure, "poisson",
-                                     softplus_link)
+  terms <- family_object("poisson", softplus_link)$terms(eta, counts, exposure)
   expect_equal(terms$log_likelihood, log_likelihood(eta), tolerance = 1e-12)
   expect_equal(terms$score, numDeriv::grad(log_likelihood, eta),
                tolerance = 1e-8)
@@ -141,15 +137,11 @@ test_that("a custom link's terms agree with the canonical formula for logit", {
   eta <- c(-30, -3, 0, 3, 30)
   y <- c(0, 2, 9, 18, 20)
   units_m <- rep(20, 5)
-  custom <- laplace_observation_terms(
-    eta, y, units_m, "binomial",
-    make_link(plogis, dlogis, function(point) {
-      dlogis(point) * (1 - 2 * plogis(point))
-    })
-  )
-  canonical <- laplace_observation_terms(
-    eta, y, units_m, "binomial", make_inverse_link_functions("binomial", NULL, 5L)
-  )
+  link <- make_link(plogis, dlogis, function(point) {
+    dlogis(point) * (1 - 2 * plogis(point))
+  })
+  custom <- family_object("binomial", link)$terms(eta, y, units_m)
+  canonical <- make_family("binomial")$terms(eta, y, units_m)
   expect_equal(custom$score, canonical$score, tolerance = 1e-10)
   expect_equal(custom$curvature, canonical$curvature, tolerance = 1e-10)
   expect_equal(custom$log_likelihood, canonical$log_likelihood,
@@ -169,7 +161,7 @@ test_that("the canonical terms are exact where a probability or mean reaches a l
     sum(y * plogis(point, log.p = TRUE) +
           (units_m - y) * plogis(point, lower.tail = FALSE, log.p = TRUE))
   }
-  terms <- laplace_observation_terms(eta, y, units_m, "binomial", logit)
+  terms <- family_object("binomial", logit)$terms(eta, y, units_m)
   expect_equal(terms$log_likelihood, log_likelihood(eta), tolerance = 1e-12)
   expect_equal(terms$score, numDeriv::grad(log_likelihood, eta),
                tolerance = 1e-8)
@@ -178,8 +170,7 @@ test_that("the canonical terms are exact where a probability or mean reaches a l
                tolerance = 1e-10)
   # Observations away from the limits keep the usual formulas.
   expect_identical(terms$score[c(2L, 7L)], c(3, -3))
-  away <- laplace_observation_terms(eta[3:5], y[3:5], units_m[3:5],
-                                    "binomial", logit)
+  away <- family_object("binomial", logit)$terms(eta[3:5], y[3:5], units_m[3:5])
   expect_identical(terms$score[3:5], away$score)
   expect_identical(terms$curvature[3:5], away$curvature)
 
@@ -189,8 +180,7 @@ test_that("the canonical terms are exact where a probability or mean reaches a l
   counts <- c(0, 2, 1, 3)
   exposure <- c(1, 2, 1, 1)
   expect_identical(exp(eta[1:2]), c(0, 0))
-  terms <- laplace_observation_terms(eta, counts, exposure, "poisson",
-                                     log_link)
+  terms <- family_object("poisson", log_link)$terms(eta, counts, exposure)
   expect_equal(terms$log_likelihood,
                sum(counts * (log(exposure) + eta) - exposure * exp(eta)),
                tolerance = 1e-12)
@@ -200,22 +190,22 @@ test_that("the canonical terms are exact where a probability or mean reaches a l
                tolerance = 1e-12)
 
   # A linear predictor that is not finite has no terms.
-  expect_null(laplace_observation_terms(Inf, 20, 20, "binomial", logit))
-  expect_null(laplace_observation_terms(-Inf, 0, 1, "poisson", log_link))
+  expect_null(family_object("binomial", logit)$terms(Inf, 20, 20))
+  expect_null(family_object("poisson", log_link)$terms(-Inf, 0, 1))
 })
 
 test_that("the curvature survives far into the tails of the probability", {
   # (p (1 - p))^2 underflows below a probit linear predictor of -27.
   eta <- c(-30, -37)
   expect_identical(pnorm(eta)^2, c(0, 0))
-  terms <- laplace_observation_terms(eta, c(3, 3), c(20, 20), "binomial",
-                                     probit_link)
+  terms <- family_object("binomial", probit_link)$terms(eta, c(3, 3), c(20, 20))
   mills <- exp(dnorm(eta, log = TRUE) - pnorm(eta, log.p = TRUE))
   expect_equal(terms$score, 3 * mills, tolerance = 1e-10)
   expect_equal(terms$curvature, 3 * mills * (eta + mills), tolerance = 1e-8)
   # Without a success the likelihood is flat there, and nothing overflows.
-  flat <- laplace_observation_terms(c(-40, 40), c(0, 20), c(20, 20),
-                                    "binomial", probit_link)
+  flat <- family_object("binomial", probit_link)$terms(c(-40, 40), c(0, 20), c(
+    20, 20
+  ))
   expect_identical(flat$score, c(0, 0))
   expect_identical(flat$curvature, c(0, 0))
 })
@@ -273,15 +263,17 @@ test_that("the mode is found where the likelihood is convex", {
   mu <- rep(-6, sites)
   precision <- diag(0.25, sites)
   latent_map <- make_latent_map(cbind(seq_len(sites)), sites)
-  start_terms <- laplace_observation_terms(mu, y, units_m, "binomial",
-                                           imperfect_link)
+  start_terms <- family_object("binomial", imperfect_link)$terms(mu, y, units_m)
   # The Newton step of the search does not exist at the start.
   expect_lt(start_terms$curvature[[1L]], 0)
   expect_error(chol(precision + diag(start_terms$curvature)))
-  found <- adaptive_laplace_mode(mu, y, units_m, latent_map, precision,
-                                 "binomial", imperfect_link, numeric(sites))
-  terms <- laplace_observation_terms(mu + found$mode, y, units_m, "binomial",
-                                     imperfect_link)
+  found <- find_latent_mode(
+    mu, y, units_m, latent_map, precision,
+    family_object("binomial", imperfect_link), numeric(sites)
+  )
+  terms <- family_object("binomial", imperfect_link)$terms(
+    mu + found$mode, y, units_m
+  )
   expect_false(found$reached_limit)
   expect_equal(terms$score, as.numeric(precision %*% found$mode),
                tolerance = 1e-7)
@@ -298,12 +290,13 @@ test_that("the global proposal starts from a positive definite precision", {
   latent_map <- make_latent_map(cbind(seq_len(sites)), sites)
   # A point where the curvature is too negative for the factors at the mode to
   # give a positive definite precision.
-  curvature_at <- laplace_observation_terms(mu, y, units_m, "binomial",
-                                            imperfect_link)$curvature
+  curvature_at <- family_object("binomial", imperfect_link)$terms(
+    mu, y, units_m
+  )$curvature
   expect_lt(min(curvature_at + diag(precision)), 0)
   proposal <- fit_global_proposal(
-    numeric(sites), mu, y, units_m, latent_map, precision, "binomial",
-    imperfect_link, canonical = FALSE
+    numeric(sites), mu, y, units_m, latent_map, precision,
+    family_object("binomial", imperfect_link)
   )
   expect_false(is.null(proposal))
   expect_no_error(chol(proposal$precision))
@@ -318,11 +311,11 @@ test_that("a quadratic fit without enough weighted nodes is a failed refit", {
   })
   expect_null(refit_global_factors(
     c(rep(0, sites), rep(1, sites)), rep(-1, sites), c(1, 2, 3),
-    rep(20, sites), latent_map, precision, "binomial", probit_link, FALSE,
-    build_normal_quadrature(), function(curvature) {
+    rep(20, sites), latent_map, precision,
+    family_object("binomial", probit_link), build_normal_quadrature(),
+    function(curvature) {
       if (all(curvature >= 0)) curvature else stop("unexpected missing value")
-    }
-  ))
+    }))
 })
 
 test_that("a search started past a limit of the link finds the mode", {
@@ -342,11 +335,13 @@ test_that("a search started past a limit of the link finds the mode", {
   for (case in cases) {
     # The start has no slope to follow, because the mean is at its limit.
     expect_true(any(case$link$inv(case$mu) %in% c(0, 1)))
-    found <- adaptive_laplace_mode(case$mu, case$y, units_m, latent_map,
-                                   precision, "binomial", case$link,
-                                   numeric(sites))
-    terms <- laplace_observation_terms(case$mu + found$mode, case$y, units_m,
-                                       "binomial", case$link)
+    found <- find_latent_mode(
+      case$mu, case$y, units_m, latent_map, precision,
+      family_object("binomial", case$link), numeric(sites)
+    )
+    terms <- family_object("binomial", case$link)$terms(
+      case$mu + found$mode, case$y, units_m
+    )
     expect_false(found$reached_limit)
     expect_equal(terms$score, as.numeric(precision %*% found$mode),
                  tolerance = 1e-7)
@@ -452,16 +447,18 @@ test_that("the independent-site likelihood finds a mode past a limit of the link
   # cloglog rounds to one from a linear predictor of 3.6, where the bounded
   # log-likelihood of a record with failures is flat, so a search for the
   # location's mode from zero had no slope to follow. The mode is near -4.
-  sites <- make_independent_site_likelihood(cbind(1), 8, 20, 1L, 0,
-                                            "binomial", linkf = cloglog_link)
+  sites <- make_independent_site_likelihood(
+    cbind(1), 8, 20, 1L, 0, family_object("binomial", cloglog_link)
+  )
   at <- sites$log_likelihood(4, log(2))
   expect_equal(at$value, integrate_one_site(cloglog_link, 8, 20, 4, 2),
                tolerance = 1e-8)
   expect_lt(at$mean, -3)
   coarse <- sites$log_likelihood(4, log(2), count = 30L)
   expect_lt(abs(at$value - coarse$value), 1e-8)
-  probit <- make_independent_site_likelihood(cbind(1), 8, 20, 1L, 0,
-                                             "binomial", linkf = probit_link)
+  probit <- make_independent_site_likelihood(
+    cbind(1), 8, 20, 1L, 0, family_object("binomial", probit_link)
+  )
   expect_equal(probit$log_likelihood(9, log(2))$value,
                integrate_one_site(probit_link, 8, 20, 9, 2), tolerance = 1e-8)
 })
@@ -470,8 +467,9 @@ test_that("the independent-site likelihood finds the higher of two modes", {
   # With the link of an imperfect test and a large variance, the density of the
   # location's effect has a low mode near zero, on the flat top of the link,
   # and the highest near -10, where the link fits 8 in 20.
-  sites <- make_independent_site_likelihood(cbind(1), 8, 20, 1L, 0,
-                                            "binomial", linkf = imperfect_link)
+  sites <- make_independent_site_likelihood(
+    cbind(1), 8, 20, 1L, 0, family_object("binomial", imperfect_link)
+  )
   at <- sites$log_likelihood(10, log(32))
   expect_equal(at$value, integrate_one_site(imperfect_link, 8, 20, 10, 32),
                tolerance = 1e-4)
@@ -487,13 +485,15 @@ test_that("the independent-site likelihood counts the mass of every mode", {
     function(eta) stats::dcauchy(eta),
     function(eta) -2 * eta / (pi * (1 + eta^2)^2)
   )
-  sites <- make_independent_site_likelihood(cbind(1), 20, 20, 1L, 0,
-                                            "binomial", linkf = cauchit)
+  sites <- make_independent_site_likelihood(
+    cbind(1), 20, 20, 1L, 0, family_object("binomial", cauchit)
+  )
   expect_equal(sites$log_likelihood(-6.6, log(0.5))$value,
                integrate_one_site(cauchit, 20, 20, -6.6, 0.5),
                tolerance = 1e-10)
-  sites <- make_independent_site_likelihood(cbind(1), 19, 20, 1L, 0,
-                                            "binomial", linkf = cloglog_link)
+  sites <- make_independent_site_likelihood(
+    cbind(1), 19, 20, 1L, 0, family_object("binomial", cloglog_link)
+  )
   expect_equal(sites$log_likelihood(7.4, log(0.5))$value,
                integrate_one_site(cloglog_link, 19, 20, 7.4, 0.5),
                tolerance = 1e-8)
@@ -504,9 +504,10 @@ test_that("the trapezium rule of a custom link gives each location's term", {
   location <- c(1:6, 2L, 4L)
   D <- cbind(1, stats::rnorm(length(location)))
   y <- c(3, 0, 8, 10, 1, 5, 2, 9)
-  sites <- make_independent_site_likelihood(D, y, rep(10, 8), location,
-                                            numeric(8), "binomial",
-                                            linkf = imperfect_link)
+  sites <- make_independent_site_likelihood(
+    D, y, rep(10, 8), location, numeric(8),
+    family_object("binomial", imperfect_link)
+  )
   at <- sites$log_likelihood(c(0.2, 0.5), log(1.5))
   expect_length(at$sites, 6L)
   expect_equal(sum(at$sites), at$value, tolerance = 1e-12)
@@ -543,9 +544,9 @@ test_that("the trapezium rule of a Poisson custom link matches integration", {
   exposure <- c(2, 3, 4, 1, 2, 5)
   beta <- c(0.6, 0.5)
   variance <- 0.9
-  sites <- make_independent_site_likelihood(D, y, exposure, location,
-                                            numeric(6), "poisson",
-                                            linkf = log_link)
+  sites <- make_independent_site_likelihood(
+    D, y, exposure, location, numeric(6), family_object("poisson", log_link)
+  )
   linear <- drop(D %*% beta)
   # Each location by integrate() over 12 prior standard deviations or more,
   # scaled by the top of its log integrand.
@@ -566,8 +567,9 @@ test_that("the trapezium rule of a Poisson custom link matches integration", {
   expect_equal(at$value, sum(exact), tolerance = 1e-9)
   # A location whose mode, near 3.4, lies beyond the range that the cut alone
   # gives at a variance of 0.05, so that only the bound reaches it.
-  far <- make_independent_site_likelihood(cbind(1), 100, 1, 1L, 0, "poisson",
-                                          linkf = log_link)
+  far <- make_independent_site_likelihood(
+    cbind(1), 100, 1, 1L, 0, family_object("poisson", log_link)
+  )
   log_integrand <- function(effects) {
     100 * effects - exp(effects) + stats::dnorm(effects, 0, sqrt(0.05),
                                                 log = TRUE)
@@ -605,8 +607,9 @@ test_that("points where a derivative of the link is not finite are dropped", {
   expect_null(compute_custom_link_terms(c(0, 9), c(3, 3), c(10, 10),
                                         "binomial", second_fails))
   screen_of <- function(link) {
-    make_independent_site_likelihood(cbind(1), 3, 10, 1L, 0, "binomial",
-                                     linkf = link)$log_likelihood(0, log(16))
+    make_independent_site_likelihood(
+      cbind(1), 3, 10, 1L, 0, family_object("binomial", link)
+    )$log_likelihood(0, log(16))
   }
   plain <- screen_of(logit)
   # The pass of the rule without curvatures meets a failure as well, from its

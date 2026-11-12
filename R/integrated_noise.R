@@ -195,12 +195,12 @@ plan_integrated_records <- function(y, units_m, D, cov_offset, ID_coords,
 ##' class, or of kind 0 where `plain`. `patterns` gives the units (`y` and
 ##' `m`) of each nested record, and identical patterns share one table.
 ##' Adaptive Gauss-Hermite quadrature uses 20 nodes. `family` is the family
-##' object, or a family string with the link `linkf` (`as_family_object()`),
-##' and a custom link is passed to the table as the arrays of its kernel
-##' (`kernel_arrays()`, `compute_custom_kernel_arrays()`).
+##' object of the model's link (`make_family()`), and a custom link is passed
+##' to the table as the arrays of its kernel (`kernel_arrays()`,
+##' `compute_custom_kernel_arrays()`).
 ##' @noRd
 make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
-                            linkf = NULL, kind = ifelse(plain, 0L, 1L),
+                            kind = ifelse(plain, 0L, 1L),
                             a = rep(1L, length(y)), b = rep(1L, length(y)),
                             patterns = NULL) {
   nested <- which(kind == 2L)
@@ -226,7 +226,7 @@ make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
     }, integer(1))
     index[nested] <- match(pattern_key, pattern_key[unique_pattern])
   }
-  kernel <- as_family_object(family, linkf)
+  kernel <- check_family_object(family)
   if (kernel$integrated) {
     riskmap_bug("The site table is built from the model's link, not from a kernel of integrated records.")
   }
@@ -243,64 +243,6 @@ make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
   list(pointer = pointer, units = units)
 }
 
-##' The kernel of a custom link on a lattice of linear predictors
-##'
-##' Each record's log-likelihood is y A(eta) + m B(eta) + c, with A and B the
-##' same for every record, so one set of arrays serves all of them. For the
-##' binomial family A = log p - log(1 - p) and B = log(1 - p), and for the
-##' Poisson family A = log(mean) and B = -mean (with c = y log m). The
-##' arrays hold A, B and their first two derivatives from the link's own
-##' derivatives, on the lattice from `low` to `high` with step 0.25 / 128, so
-##' the coarsest steps of the table's rule fall on lattice points. As in the
-##' sampled form (`bound_log_probability()`), a probability that rounds to a
-##' limit is charged at the bound of 2^-53, where that logarithm is flat. Where
-##' the link is not finite, beyond the range on which it was checked, the
-##' kernel is continued from the nearest point where it is.
-##' @noRd
-compute_custom_kernel_arrays <- function(linkf, family, low = -100,
-                                         high = 80, step = 0.25 / 128) {
-  eta <- low + step * (0:round((high - low) / step))
-  mean <- suppressWarnings(linkf$inv(eta))
-  first <- suppressWarnings(linkf$d1(eta))
-  second <- suppressWarnings(linkf$d2(eta))
-  invalid <- !is.finite(mean) | !is.finite(first) | !is.finite(second) |
-    mean < 0 | (family == "binomial" & mean > 1)
-  if (all(invalid)) {
-    abort_input("{.arg invlink} gives no finite mean and derivatives at any of the points tried.", arg = "invlink")
-  }
-  if (any(invalid)) {
-    valid <- which(!invalid)
-    nearest <- valid[pmax(1L, findInterval(seq_along(eta), valid))]
-    below <- seq_along(eta) < valid[1L]
-    nearest[below] <- valid[1L]
-    mean[invalid] <- mean[nearest[invalid]]
-    first[invalid] <- 0
-    second[invalid] <- 0
-  }
-  if (family == "binomial") {
-    bound <- 2^-53
-    success <- mean > bound
-    failure <- 1 - mean > bound
-    log_success <- log(pmax(mean, bound))
-    log_failure <- log(pmax(1 - mean, bound))
-    success_first <- ifelse(success, first / mean, 0)
-    success_second <- ifelse(success, second / mean - (first / mean)^2, 0)
-    failure_first <- ifelse(failure, -first / (1 - mean), 0)
-    failure_second <- ifelse(failure,
-                             -second / (1 - mean) - (first / (1 - mean))^2, 0)
-    list(low = low, step = step, A = log_success - log_failure,
-         A1 = success_first - failure_first,
-         A2 = success_second - failure_second, B = log_failure,
-         B1 = failure_first, B2 = failure_second)
-  } else {
-    positive <- mean > 0
-    list(low = low, step = step, A = log(pmax(mean, .Machine$double.xmin)),
-         A1 = ifelse(positive, first / mean, 0),
-         A2 = ifelse(positive, second / mean - (first / mean)^2, 0),
-         B = -mean, B1 = -first, B2 = -second)
-  }
-}
-
 ##' The likelihood of records with effects integrated out, as a link
 ##'
 ##' A list in the place of the inverse link functions (`linkf`), with name
@@ -308,7 +250,8 @@ compute_custom_kernel_arrays <- function(linkf, family, low = -100,
 ##' effects (`plan_integrated_records()`). The engine's mode search, global
 ##' proposal and weights dispatch on that name: `terms()` gives the
 ##' log-likelihood, score and curvature at one linear predictor per record,
-##' `nonlinear_parts()` the parts of `compute_nonlinear_parts()`, and
+##' `nonlinear_parts()` the part of each likelihood that is not linear in a
+##' step from a centre, with its slope, and
 ##' `log_likelihood()` the log-likelihood of each row of a matrix of linear
 ##' predictors with one column per record. A class whose variance is zero
 ##' takes the plain kernel.

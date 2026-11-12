@@ -40,8 +40,9 @@ test_that("the independent-site likelihood matches numerical integration", {
   )
   for (family in names(responses)) {
     y <- responses[[family]]
-    sites <- make_independent_site_likelihood(D, y, units_m, location, offset,
-                                              family)
+    sites <- make_independent_site_likelihood(
+      D, y, units_m, location, offset, family_object(family)
+    )
     beta <- c(-0.8, 0.3)
     at <- sites$log_likelihood(beta, log(0.7))
     expect_equal(at$value,
@@ -63,8 +64,9 @@ test_that("the Jensen bound is below the likelihood and tight at zero scale", {
   units_m <- c(10, 12)
   beta <- -0.2
   variance <- 0.8
-  sites <- make_independent_site_likelihood(cbind(c(1, 1)), y, units_m, 1:2,
-                                            c(0, 0), "binomial")
+  sites <- make_independent_site_likelihood(
+    cbind(c(1, 1)), y, units_m, 1:2, c(0, 0), make_family("binomial")
+  )
   at <- sites$log_likelihood(beta, log(variance))
   independent <- list(log_likelihood = at$value,
                       log_variance = log(variance), mean = at$mean,
@@ -364,8 +366,9 @@ test_that("a failed evaluation in the variance step opens the gate", {
 test_that("the Jensen bound carries its own quadrature error", {
   y <- c(3, 7, 0, 12)
   units_m <- c(10, 12, 8, 20)
-  sites <- make_independent_site_likelihood(cbind(rep(1, 4)), y, units_m, 1:4,
-                                            numeric(4), "binomial")
+  sites <- make_independent_site_likelihood(
+    cbind(rep(1, 4)), y, units_m, 1:4, numeric(4), make_family("binomial")
+  )
   fit <- sites$maximise(0)
   expect_named(fit$coarse, c("log_likelihood", "mean", "variance"))
   engine <- list(layout = cov_par_layout(1L, fix_tau2 = FALSE),

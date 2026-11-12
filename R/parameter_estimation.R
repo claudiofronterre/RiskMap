@@ -3048,8 +3048,8 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
   )
   mode <- maximum$mode[order(structure$position)]
   latent_map <- make_latent_map(structure$columns + 1L, structure$dimension)
-  terms <- laplace_observation_terms(
-    mu + latent_linear_predictor(latent_map, mode), y, units_m, family, linkf
+  terms <- make_family(family, linkf)$terms(
+    mu + latent_linear_predictor(latent_map, mode), y, units_m
   )
   if (is.null(terms) || !all(is.finite(terms$curvature))) {
     riskmap_abort("The search for the mode of the latent effects failed.", class = "riskmap_error_fit")

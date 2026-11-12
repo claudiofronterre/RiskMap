@@ -390,21 +390,17 @@ test_that("stable nonlinear parts equal direct likelihood differences", {
         y * eta - units_m * log1p(exp(eta))
       }
     }
-    terms <- laplace_observation_terms(centre, y, units_m, family, linkf)
+    terms <- family_object(family, linkf)$terms(centre, y, units_m)
     matrix(log_likelihood(as.vector(centre + step)), 3) -
       log_likelihood(centre) - step * terms$score
   }
   for (family in c("binomial", "poisson")) {
-    stable <- compute_nonlinear_parts(
-      centre, step, y, units_m, family,
-      make_inverse_link_functions(family, NULL, 3), canonical = TRUE
-    )
+    stable <- make_family(family)$nonlinear_parts(centre, step, y, units_m)
     expect_equal(stable$nonlinear, direct(family), tolerance = 1e-10)
   }
   # Very large steps switch to the log-sum-exp form without overflow.
-  extreme <- compute_nonlinear_parts(
-    0, matrix(c(-800, 800), 1), 1, 10, "binomial",
-    make_inverse_link_functions("binomial", NULL, 1), canonical = TRUE
+  extreme <- make_family("binomial")$nonlinear_parts(
+    0, matrix(c(-800, 800), 1), 1, 10
   )
   expect_true(all(is.finite(extreme$nonlinear)))
 })
@@ -417,9 +413,8 @@ test_that("binomial nonlinear parts stay exact for extreme linear predictors", {
   softplus_stable <- function(x) pmax(x, 0) + log1p(exp(-abs(x)))
   exact <- -softplus_stable(centre + step) + softplus_stable(centre) +
     step * stats::plogis(centre)
-  stable <- compute_nonlinear_parts(
-    centre, step, rep(0, 5), rep(1, 5), "binomial",
-    make_inverse_link_functions("binomial", NULL, 5), canonical = TRUE
+  stable <- make_family("binomial")$nonlinear_parts(
+    centre, step, rep(0, 5), rep(1, 5)
   )
   expect_equal(stable$nonlinear, exact, tolerance = 1e-10)
   expect_equal(stable$nonlinear[1:2], c(-10.0000454, -50), tolerance = 1e-7)
@@ -859,11 +854,15 @@ test_that("the accelerated global iteration reaches the plain fixed point", {
   latent_map <- make_latent_map(cbind(seq_len(40)), 40)
   linkf <- make_inverse_link_functions("binomial", NULL, 40)
   mu <- rep(-2, 40)
-  mode <- adaptive_laplace_mode(mu, y, trials, latent_map, precision,
-                                "binomial", linkf, numeric(40))$mode
+  mode <- find_latent_mode(
+    mu, y, trials, latent_map, precision, family_object("binomial", linkf),
+    numeric(40)
+  )$mode
   fit <- function(memory) {
-    fit_global_proposal(mode, mu, y, trials, latent_map, precision,
-                        "binomial", linkf, canonical = TRUE, memory = memory)
+    fit_global_proposal(
+      mode, mu, y, trials, latent_map, precision,
+      family_object("binomial", linkf), memory = memory
+    )
   }
   plain <- fit(0L)
   accelerated <- fit(3L)
@@ -1134,8 +1133,8 @@ test_that("an anchored proposal is three plain refits from the anchor", {
   for (refit in 1:3) {
     previous <- factors
     factors <- refit_global_factors(
-      factors, mu, y, trials, inside$latent_map, precision, inside$model,
-      NULL, NULL, build_normal_quadrature(),
+      factors, mu, y, trials, inside$latent_map, precision,
+      family_object(inside$model), build_normal_quadrature(),
       make_curvature_floor(inside$latent_map, precision)
     )
   }
@@ -1188,20 +1187,21 @@ test_that("a canonical quadratic fit without enough weighted nodes fails", {
   marginals <- cpp_global_marginals(precision, linear, curvature,
                                     latent_map$columns)
   updated <- update_observation_factors(
-    marginals$marginal_mean, sqrt(marginals$marginal_variance), mu, y,
-    units_m, "binomial", linkf, TRUE, linear, curvature, quadrature
+    marginals$marginal_mean, sqrt(marginals$marginal_variance), mu, y, units_m,
+    family_object("binomial", linkf), linear, curvature, quadrature
   )
   # No other curvature is negative, the case that stopped at the `if` of the
   # curvature floor with "missing value where TRUE/FALSE needed".
   expect_identical(is.na(updated$curvature), c(TRUE, FALSE, FALSE))
   expect_true(all(updated$curvature[-1L] > 0))
   expect_null(refit_global_factors(
-    c(linear, curvature), mu, y, units_m, latent_map, precision, "binomial",
-    linkf, TRUE, quadrature, make_curvature_floor(latent_map, precision)
+    c(linear, curvature), mu, y, units_m, latent_map, precision,
+    family_object("binomial", linkf), quadrature,
+    make_curvature_floor(latent_map, precision)
   ))
   refitted <- refit_from_anchor(
     list(mu = mu, linear = linear, curvature = curvature), mu, y, units_m,
-    latent_map, precision, "binomial", linkf, TRUE
+    latent_map, precision, family_object("binomial", linkf)
   )
   expect_identical(refitted, list(failed = TRUE, refits = 1L,
                                   change = NA_real_))
@@ -1453,8 +1453,9 @@ test_that("compiled importance weights equal the R computation", {
         same, as.numeric(design %*% values$beta), scope$latent,
         scope$latent_map$columns,
         function(eta) {
-          compute_observation_log_likelihood(eta, case$y, case$units,
-                                             case$family, scope$linkf)
+          family_object(case$family, scope$linkf)$log_likelihood(
+            eta, case$y, case$units
+          )
         }
       )
       # The R code can carry a random effect's name on a single-row result.
@@ -1733,11 +1734,10 @@ test_that("a restarted fit equals one started from the same values", {
 test_that("the mode search says when it reaches its iteration limit", {
   latent_map <- make_latent_map(matrix(1:3, ncol = 1L), 3L)
   mode_with <- function(maximum_iterations) {
-    adaptive_laplace_mode(
-      mu = rep(0, 3), y = c(0, 1, 5), units_m = rep(5, 3),
-      latent_map = latent_map, precision = diag(3), family = "binomial",
-      linkf = make_inverse_link_functions("binomial", NULL, 3L),
-      start = rep(0, 3), maximum_iterations = maximum_iterations
+    find_latent_mode(
+      rep(0, 3), c(0, 1, 5), rep(5, 3), latent_map, diag(3),
+      make_family("binomial"),
+      rep(0, 3), maximum_iterations = maximum_iterations
     )
   }
   expect_true(mode_with(1L)$reached_limit)
@@ -1763,15 +1763,16 @@ test_that("a mode search that fails from the previous mode starts again from zer
   linkf <- make_inverse_link_functions("binomial", NULL, sites)
   mu <- rep(-4.6, sites)
   search_from <- function(start) {
-    adaptive_laplace_mode(mu, y, trials, latent_map, precision, "binomial",
-                          linkf, start)
+    find_latent_mode(
+      mu, y, trials, latent_map, precision, family_object("binomial", linkf),
+      start
+    )
   }
   # At a stale mode of -500 the probabilities are still positive, but the
   # curvature of the logit link underflows to 0 / 0, so the Hessian there is
   # not a number.
   stale <- rep(-500, sites)
-  stale_terms <- laplace_observation_terms(mu + stale, y, trials, "binomial",
-                                           linkf)
+  stale_terms <- family_object("binomial", linkf)$terms(mu + stale, y, trials)
   expect_false(is.null(stale_terms))
   expect_false(any(is.finite(stale_terms$curvature)))
   from_zero <- search_from(numeric(sites))

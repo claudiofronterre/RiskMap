@@ -505,8 +505,8 @@ read_family_link <- function(family, link) {
 ##' `family_traits()`. The Gaussian family is exact (`exact`), fitted without
 ##' the engine, so its object has only its traits, with no link, properties
 ##' of the engine or likelihood methods, and takes no `linkf` or `kernel`.
-##' `family_of_link()` and `as_family_object()`, through which the engine reads
-##' a family, refuse it. Where records have effects
+##' `check_family_object()`, through which the engine reads a family, refuses
+##' it. Where records have effects
 ##' integrated out, `kernel` is their kernel at the variances of the classes
 ##' (`make_integrated_kernel()`), which gives
 ##' the likelihood of the records in the place of the link, and the object
@@ -532,10 +532,10 @@ read_family_link <- function(family, link) {
 ##' Methods, for records with `y` events of `units_m` trials, or counts with
 ##' exposure `units_m`, at linear predictors `eta`.
 ##' - `terms(eta, y, units_m)`, the log-likelihood, score and curvature, or NULL
-##'   where they are not defined (`laplace_observation_terms()`).
+##'   where they are not defined, for the mode search (`find_latent_mode()`).
 ##' - `log_likelihood(eta, y, units_m)`, the log-likelihood of each row of a
 ##'   matrix of linear predictors, one column per record
-##'   (`compute_observation_log_likelihood()`).
+##'   (`compute_log_weights_in_r()`).
 ##' - `slope_parts(eta, y, units_m)`, the score and curvature of each record
 ##'   at each row of `eta` under the model's link, for the slope at a held
 ##'   variance, or NULL where a custom link cannot give them
@@ -545,7 +545,7 @@ read_family_link <- function(family, link) {
 ##'   `move_start_off_limits()`.
 ##' - `nonlinear_parts(centre, step, y, units_m)`, the part of each record's
 ##'   log-likelihood that is not linear in a step from `centre`, with the slope
-##'   at `centre`, for the global proposal (`compute_nonlinear_parts()`).
+##'   at `centre`, for the global proposal (`update_observation_factors()`).
 ##' - `kernel_arrays()`, the arrays of a custom link's kernel for the site
 ##'   table (`compute_custom_kernel_arrays()`), NULL for the canonical link.
 ##' @noRd
@@ -633,21 +633,6 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
   )
 }
 
-##' The family object for a family string and a link or an integrated kernel
-##'
-##' For the old entry points, which take in `linkf` either a link or the kernel
-##' of integrated records (`make_integrated_kernel()`). With a kernel the
-##' model's link is not known, and the object is built on the canonical link,
-##' so only its likelihood methods and its rules for the mode search mean
-##' anything, and the functions that read the link itself (`make_site_table()`,
-##' `make_independent_site_likelihood()`) refuse such an object. Removed with
-##' the old entry points in step 1d of #253.
-##' @noRd
-family_of_link <- function(family, linkf) {
-  if (is_integrated_link(linkf)) return(make_family(family, kernel = linkf))
-  refuse_exact_family(make_family(family, linkf))
-}
-
 ##' Stops if a family object is of an exact family, which the engine does not
 ##' fit, and otherwise returns it.
 ##' @noRd
@@ -658,27 +643,18 @@ refuse_exact_family <- function(object) {
   object
 }
 
-##' The family object that a function takes in its `family` argument
+##' The family object that an engine function takes in its `family` argument
 ##'
-##' The object itself, or for the callers that step 1 of #253 has not moved
-##' yet a family string with the link or integrated kernel `linkf` and the
-##' test of the canonical link `canonical` that they passed before. That test
-##' was the canonical link without a kernel, so it has to agree with the
-##' object's `assumes_concave`. An object comes alone, without `linkf` or
-##' `canonical`. The string form is removed in step 1d.
+##' Stops unless `family` is a family object (`make_family()`) that the engine
+##' can read, which an exact family's is not (`refuse_exact_family()`), and
+##' otherwise returns it. Since step 1d of #253 the engine's functions take the
+##' object only, not a family string with a link.
 ##' @noRd
-as_family_object <- function(family, linkf = NULL, canonical = NULL) {
-  if (inherits(family, "riskmap_family")) {
-    if (!is.null(linkf) || !is.null(canonical)) {
-      riskmap_bug("A family object takes no {.arg linkf} or {.arg canonical}.")
-    }
-    return(refuse_exact_family(family))
+check_family_object <- function(family) {
+  if (!inherits(family, "riskmap_family")) {
+    riskmap_bug("{.arg family} must be a family object from {.fn make_family}, not {.obj_type_friendly {family}}.")
   }
-  object <- family_of_link(family, linkf)
-  if (!is.null(canonical) && !identical(canonical, object$assumes_concave)) {
-    riskmap_bug("{.arg canonical} disagrees with the link.")
-  }
-  object
+  refuse_exact_family(family)
 }
 
 ##' The family object of a fitted model
@@ -696,7 +672,7 @@ fit_family <- function(fit) {
 
 ##' Observation terms of the canonical log link of the Poisson family
 ##'
-##' The arm of `laplace_observation_terms()` for the canonical Poisson link,
+##' The `terms()` of the family object for the canonical Poisson link,
 ##' with the formulas of `maxim_integrand()`, and the exact canonical terms
 ##' where those formulas fail at the limits of the link
 ##' (`replace_at_canonical_limits()`). NULL if a linear predictor or a mean is
@@ -723,7 +699,7 @@ canonical_poisson_terms <- function(eta, y, units_m, linkf) {
 
 ##' Observation terms of the canonical logit link of the binomial family
 ##'
-##' The arm of `laplace_observation_terms()` for the canonical binomial link,
+##' The `terms()` of the family object for the canonical binomial link,
 ##' with the formulas of `maxim_integrand()`, and the exact canonical terms
 ##' where those formulas fail at the limits of the link
 ##' (`replace_at_canonical_limits()`). NULL if a linear predictor is not
@@ -755,9 +731,10 @@ canonical_binomial_terms <- function(eta, y, units_m, linkf) {
 ##'
 ##' The inverse logit rounds to 0 below a linear predictor of about -709.8
 ##' and to 1 above about 36.74, and the mean of a count underflows to 0 below
-##' about -745. There the formulas of `laplace_observation_terms()` and
-##' `maxim_integrand()` divide zero by zero, although the likelihood is smooth
-##' and finite. Complete separation by a covariate takes the linear predictor
+##' about -745. There the formulas of `canonical_binomial_terms()`,
+##' `canonical_poisson_terms()` and `maxim_integrand()` divide zero by zero,
+##' although the likelihood is smooth and finite. Complete separation by a
+##' covariate takes the linear predictor
 ##' of locations where every individual is positive past 36.74 well inside the
 ##' bounds of the search, so the latent mode must be found there too. The
 ##' canonical forms need no division. With p = plogis(eta) they are
@@ -769,7 +746,7 @@ canonical_binomial_terms <- function(eta, y, units_m, linkf) {
 ##' where `at` is TRUE, so that terms away from the limits are unchanged bit
 ##' for bit. Short of the limits the usual formulas keep two weaknesses. Their
 ##' curvature is not finite between about -709.8 and -372 for the logit, or
-##' below -372 for a positive count, and `adaptive_laplace_mode()` rejects a
+##' below -372 for a positive count, and `find_latent_mode()` rejects a
 ##' step to such a point. They also bound log p, log(1 - p) and log(m mu)
 ##' below at log(.Machine$double.eps). The log-likelihood of an observation
 ##' with any positives is then flat below a linear predictor of about -36,
@@ -809,7 +786,7 @@ replace_at_canonical_limits <- function(terms, at, eta, y, units_m, family) {
 
 ##' Log-likelihood of every row of a matrix of linear predictors, custom link
 ##'
-##' The arm of `compute_observation_log_likelihood()` for a custom link. A draw
+##' The `log_likelihood()` of the family object for a custom link. A draw
 ##' whose mean is not finite or is outside the support has log-likelihood -Inf,
 ##' and a mean that has rounded to a limit of its range is inside the support
 ##' (`bound_log_probability()`).
@@ -832,7 +809,7 @@ compute_link_log_likelihood_rows <- function(eta, y, units_m, family, linkf) {
 
 ##' Nonlinear part of each record's log-likelihood, canonical binomial link
 ##'
-##' The arm of `compute_nonlinear_parts()` for the canonical binomial link. The
+##' The `nonlinear_parts()` of the family object for the canonical binomial link. The
 ##' difference is written with log1p and expm1 so that nearly equal
 ##' log-likelihood values are never subtracted, and for large steps the
 ##' logarithms of p and 1 - p are taken directly from the linear predictor,
@@ -859,7 +836,7 @@ canonical_binomial_nonlinear_parts <- function(centre, step, y, units_m) {
 
 ##' Nonlinear part of each record's log-likelihood, canonical Poisson link
 ##'
-##' The arm of `compute_nonlinear_parts()` for the canonical Poisson link.
+##' The `nonlinear_parts()` of the family object for the canonical Poisson link.
 ##' @noRd
 canonical_poisson_nonlinear_parts <- function(centre, step, y, units_m) {
   rate <- units_m * exp(centre)
@@ -870,7 +847,7 @@ canonical_poisson_nonlinear_parts <- function(centre, step, y, units_m) {
 
 ##' Nonlinear part of each record's log-likelihood, other links
 ##'
-##' The arm of `compute_nonlinear_parts()` for a custom link, the direct
+##' The `nonlinear_parts()` of the family object for a custom link, the direct
 ##' difference, with the slope from the observation terms
 ##' `observation_terms` of the family object.
 ##' @noRd
@@ -897,8 +874,8 @@ link_nonlinear_parts <- function(centre, step, y, units_m, family, linkf,
 
 ##' Score and curvature of each record at each row, canonical link
 ##'
-##' The closed forms of `compute_variance_slope_terms()` for the canonical
-##' links, one row per draw and one column per record.
+##' The closed forms of the `slope_parts()` of the family object for the
+##' canonical links, one row per draw and one column per record.
 ##' @noRd
 canonical_slope_parts <- function(eta, y, units_m, family) {
   rate <- if (identical(family, "poisson")) exp(eta) else stats::plogis(eta)
@@ -911,7 +888,7 @@ canonical_slope_parts <- function(eta, y, units_m, family) {
 
 ##' Score and curvature of each record at each row, custom link
 ##'
-##' The arm of `compute_variance_slope_terms()` for a custom link, through
+##' The `slope_parts()` of the family object for a custom link, through
 ##' `compute_custom_link_terms()`, or NULL where they cannot be computed.
 ##' @noRd
 custom_slope_parts <- function(eta, y, units_m, family, linkf) {
@@ -922,4 +899,81 @@ custom_slope_parts <- function(eta, y, units_m, family, linkf) {
   if (is.null(terms)) return(NULL)
   list(score = matrix(terms$score, nrow(eta)),
        curvature = matrix(terms$curvature, nrow(eta)))
+}
+
+##' The kernel of a custom link on a lattice of linear predictors
+##'
+##' Each record's log-likelihood is y A(eta) + m B(eta) + c, with A and B the
+##' same for every record, so one set of arrays serves all of them. For the
+##' binomial family A = log p - log(1 - p) and B = log(1 - p), and for the
+##' Poisson family A = log(mean) and B = -mean (with c = y log m). The
+##' arrays hold A, B and their first two derivatives from the link's own
+##' derivatives, on the lattice from `low` to `high` with step 0.25 / 128, so
+##' the coarsest steps of the table's rule fall on lattice points. As in the
+##' sampled form (`bound_log_probability()`), a probability that rounds to a
+##' limit is charged at the bound of 2^-53, where that logarithm is flat. Where
+##' the link is not finite, beyond the range on which it was checked, the
+##' kernel is continued from the nearest point where it is.
+##' @noRd
+compute_custom_kernel_arrays <- function(linkf, family, low = -100,
+                                         high = 80, step = 0.25 / 128) {
+  eta <- low + step * (0:round((high - low) / step))
+  mean <- suppressWarnings(linkf$inv(eta))
+  first <- suppressWarnings(linkf$d1(eta))
+  second <- suppressWarnings(linkf$d2(eta))
+  invalid <- !is.finite(mean) | !is.finite(first) | !is.finite(second) |
+    mean < 0 | (family == "binomial" & mean > 1)
+  if (all(invalid)) {
+    abort_input("{.arg invlink} gives no finite mean and derivatives at any of the points tried.", arg = "invlink")
+  }
+  if (any(invalid)) {
+    valid <- which(!invalid)
+    nearest <- valid[pmax(1L, findInterval(seq_along(eta), valid))]
+    below <- seq_along(eta) < valid[1L]
+    nearest[below] <- valid[1L]
+    mean[invalid] <- mean[nearest[invalid]]
+    first[invalid] <- 0
+    second[invalid] <- 0
+  }
+  if (family == "binomial") {
+    bound <- 2^-53
+    success <- mean > bound
+    failure <- 1 - mean > bound
+    log_success <- log(pmax(mean, bound))
+    log_failure <- log(pmax(1 - mean, bound))
+    success_first <- ifelse(success, first / mean, 0)
+    success_second <- ifelse(success, second / mean - (first / mean)^2, 0)
+    failure_first <- ifelse(failure, -first / (1 - mean), 0)
+    failure_second <- ifelse(failure,
+                             -second / (1 - mean) - (first / (1 - mean))^2, 0)
+    list(low = low, step = step, A = log_success - log_failure,
+         A1 = success_first - failure_first,
+         A2 = success_second - failure_second, B = log_failure,
+         B1 = failure_first, B2 = failure_second)
+  } else {
+    positive <- mean > 0
+    list(low = low, step = step, A = log(pmax(mean, .Machine$double.xmin)),
+         A1 = ifelse(positive, first / mean, 0),
+         A2 = ifelse(positive, second / mean - (first / mean)^2, 0),
+         B = -mean, B1 = -first, B2 = -second)
+  }
+}
+
+##' The largest term of each record of the likelihood over its linear predictor
+##'
+##' y log(y / m) + (m - y) log(1 - y / m) for a binomial record and
+##' y log(y) - y for a Poisson one, with 0 log 0 = 0, which bound the terms of
+##' the MCML engine for any link. The bounds of `bound_log_probability()` only
+##' move a probability within [0, 1], or a mean above zero, so they hold there
+##' too.
+##' @noRd
+compute_largest_record_terms <- function(y, units_m, family) {
+  if (identical(family, "poisson")) {
+    return(ifelse(y > 0, y * log(pmax(y, 1)) - y, 0))
+  }
+  proportion <- y / units_m
+  ifelse(y > 0, y * log(pmax(proportion, .Machine$double.xmin)), 0) +
+    ifelse(units_m > y,
+           (units_m - y) * log1p(-pmin(proportion, 1 - .Machine$double.eps)),
+           0)
 }

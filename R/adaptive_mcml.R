@@ -1,13 +1,3 @@
-##' Observation log-likelihood, score and curvature in the linear predictor
-##'
-##' The `terms()` of the family object (`make_family()`). Kept for the callers
-##' that steps 1b and 1c of #253 move to the object, and removed in 1d.
-##' `curvature` is the negative second derivative of the log-likelihood.
-##' @noRd
-laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
-  family_of_link(family, linkf)$terms(eta, y, units_m)
-}
-
 ##' Index structure mapping latent variables to observations
 ##'
 ##' `columns` holds, for each observation, the latent columns that enter its
@@ -209,19 +199,6 @@ find_latent_mode <- function(mu, y, units_m, latent_map, precision, kernel,
   c(found, list(restarted = restarted))
 }
 
-##' Conditional mode of the latent field for a family string and a link
-##'
-##' `find_latent_mode()` with the family object of `family` and `linkf`. Kept
-##' for the callers that step 1 of #253 has not moved yet, and removed in 1d.
-##' @noRd
-adaptive_laplace_mode <- function(mu, y, units_m, latent_map, precision,
-                                  family, linkf, start,
-                                  tolerance = 1e-10, maximum_iterations = 100L) {
-  find_latent_mode(mu, y, units_m, latent_map, precision,
-                   family_of_link(family, linkf), start, tolerance,
-                   maximum_iterations)
-}
-
 ##' Upper Cholesky factor of the inverse of a positive-definite matrix
 ##'
 ##' Returns the same factor as `chol(solve(hessian))` without forming the
@@ -282,16 +259,16 @@ defensive_rows <- function(n_draws, defensive_weight) {
 ##' variance leaves almost no effective draws.
 ##' @noRd
 build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
-                                    precision, family, linkf, canonical,
-                                    anchor, find_mode, stall_tolerance = NULL) {
-  kernel <- as_family_object(family, linkf, canonical)
+                                    precision, family, anchor, find_mode,
+                                    stall_tolerance = NULL) {
+  kernel <- check_family_object(family)
   approximation <- NULL
   global <- NULL
   failed <- FALSE
   stalled <- FALSE
   if (identical(type, "global") && !is.null(anchor)) {
     refitted <- refit_from_anchor(anchor, mu, y, units_m, latent_map,
-                                  precision, kernel, NULL, NULL)
+                                  precision, kernel)
     if (!refitted$failed) {
       return(list(centre = refitted$centre, precision = refitted$precision,
                   root = refitted$root, factors = refitted$factors,
@@ -310,8 +287,7 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
     approximation <- find_mode()
     global <- fit_global_proposal(
       mode = approximation$mode, mu = mu, y = y, units_m = units_m,
-      latent_map = latent_map, precision = precision, family = kernel,
-      linkf = NULL, canonical = NULL
+      latent_map = latent_map, precision = precision, family = kernel
     )
     stalled <- !is.null(global) && !global$converged &&
       !is.null(stall_tolerance) && is.finite(global$change) &&
@@ -332,19 +308,6 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
   list(centre = global$centre, precision = global$precision,
        root = global$root, factors = global$factors, failed = failed,
        failure = failure, stalled_change = if (stalled) global$change)
-}
-
-##' Log-likelihood of every row of a matrix of linear predictors
-##'
-##' The `log_likelihood()` of the family object (`make_family()`). `eta` has one
-##' row per draw and one column per observation. A draw whose mean is not
-##' finite or is outside the support has log-likelihood -Inf, and other draws
-##' are not affected. Kept for its callers outside the engine, and removed in
-##' step 1d of #253.
-##' @noRd
-compute_observation_log_likelihood <- function(eta, y, units_m, family,
-                                               linkf) {
-  family_of_link(family, linkf)$log_likelihood(eta, y, units_m)
 }
 
 ##' Deviations of draws from the centre under the prior of the latent effects
@@ -500,18 +463,6 @@ compute_slope_terms <- function(eta, y, units_m, kernel, group,
   }
   grouped <- rowsum(t(score), group, reorder = FALSE)
   0.5 * (colSums(grouped^2) - rowSums(curvature))
-}
-
-##' Terms of the slope at a held variance for a family string and a link
-##'
-##' `compute_slope_terms()` with the family object of `family` and `linkf`,
-##' NULL for the canonical link. Kept for its callers outside the engine, and
-##' removed in step 1d of #253.
-##' @noRd
-compute_variance_slope_terms <- function(eta, y, units_m, family, group,
-                                         linkf = NULL, derivatives = NULL) {
-  compute_slope_terms(eta, y, units_m, make_family(family, linkf), group,
-                      derivatives)
 }
 
 ##' Stages whose global iteration was accepted although it stopped at its limit
@@ -855,8 +806,7 @@ make_adaptive_mcml_engine <- function(
       approximation
     }
     gaussian <- build_gaussian_proposal(
-      type, mu, y, units_m, latent_map, precision, kernel, NULL, NULL,
-      anchor, find_mode,
+      type, mu, y, units_m, latent_map, precision, kernel, anchor, find_mode,
       if (integrated) stall_tolerance
     )
     builds <<- builds + 1L
