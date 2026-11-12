@@ -221,6 +221,8 @@
 ##'   \item{parameter_draws}{The number of parameter draws when parameter
 ##'     uncertainty was propagated, otherwise `NULL`.}
 ##'   \item{family}{The fitted response family.}
+##'   \item{link}{The link of the fit when it is not the canonical one, its
+##'     name or `"custom"`, and `NULL` for the canonical link.}
 ##'   \item{response_name}{Name of the response variable, used to label
 ##'     maps of Gaussian predictions.}
 ##'   \item{observed_locations}{Whether `newdata` was omitted.}
@@ -394,6 +396,7 @@ predict.RiskMap <- function(
       level = level,
       type = type,
       family = object$family,
+      link = fit_link(object),
       response_name = prediction_response_name(object),
       observed_locations = observed_locations,
       parameter_draws = parameter_draws,
@@ -437,6 +440,7 @@ predict.RiskMap <- function(
     level = level,
     type = type,
     family = object$family,
+    link = fit_link(object),
     response_name = prediction_response_name(object),
     observed_locations = observed_locations,
     parameter_draws = parameter_draws,
@@ -906,7 +910,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       samples = NULL, include = include, transform = names(transform),
       standardized = !is.null(standardize), aggregate = names(aggregate),
       summaries = names(summaries), thresholds = thresholds, level = level,
-      type = "joint", family = object$family,
+      type = "joint", family = object$family, link = fit_link(object),
       response_name = prediction_response_name(object),
       observed_locations = FALSE,
       parameter_draws = parameter_draws,
@@ -1061,6 +1065,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     level = level,
     type = "joint",
     family = object$family,
+    link = fit_link(object),
     response_name = prediction_response_name(object),
     observed_locations = FALSE,
     parameter_draws = parameter_draws,
@@ -4267,8 +4272,7 @@ print.RiskMap_assess_simulation <- function(x, ...) {
   failed <- if (!is.null(x$fits)) sum(x$fits$status != "ok") else 0L
   out_print(c(
     out_rule("Assessment of simulations"),
-    out_text(paste0(models, format_count(x$n_sim),
-                    if (x$n_sim == 1L) " simulation" else " simulations",
+    out_text(paste0(models, out_count(x$n_sim, "simulation"),
                     ", assessed ", paste(scales[!is.na(scales)],
                                          collapse = " and "),
                     " by ", paste(objectives, collapse = " and "), ".")),
@@ -4492,12 +4496,12 @@ format_pred_objective <- function(x) {
                      "simulations."), cc$mean, cc$n_valid, cc$n_sim)
     }
     c("", out_heading(paste("Classification by", model_name)),
-      "Averages over the simulations by category",
+      out_text("Averages over the simulations by category"),
       table(model_data$classify_res),
-      paste0("Valid simulations by category and metric, of ",
-             model_data$n_sim),
+      out_text(paste0("Valid simulations by category and metric, of ",
+                      model_data$n_sim)),
       table(model_data$n_valid),
-      "Proportion of correct classification across categories",
+      out_text("Proportion of correct classification across categories"),
       out_text(correct, indent = 2L))
   }))
   c(mse, classify)

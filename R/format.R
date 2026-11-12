@@ -158,9 +158,31 @@ out_capture <- function(expr, indent = 0L) {
 }
 
 #' Rows of labels and values, the labels padded to one width
+#'
+#' A value too long for its column wraps under its first line. Shorter
+#' values are kept as they are, so that numbers padded to one width stay
+#' aligned.
 #' @noRd
 out_pairs <- function(labels, values, indent = 0L) {
   if (!length(labels)) return(character())
-  width <- max(nchar(labels))
-  paste0(strrep(" ", indent), formatC(labels, width = -width), "  ", values)
+  label_width <- max(nchar(labels))
+  start <- indent + label_width + 2L
+  value_width <- max(20L, out_width() - start)
+  unlist(lapply(seq_along(labels), function(k) {
+    value <- values[[k]]
+    lines <- if (cli::ansi_nchar(value) <= value_width) value else
+      out_wrap(value, width = value_width)
+    if (!length(lines)) lines <- ""
+    c(paste0(strrep(" ", indent), formatC(labels[[k]], width = -label_width),
+             "  ", lines[1L]),
+      if (length(lines) > 1L) paste0(strrep(" ", start), lines[-1L]))
+  }))
+}
+
+#' A count and its noun, singular for one, as in "1 location" or
+#' "2,000 locations"
+#' @noRd
+out_count <- function(count, singular, plural = paste0(singular, "s")) {
+  paste(format(count, big.mark = ",", scientific = FALSE, trim = TRUE),
+        if (identical(as.numeric(count), 1)) singular else plural)
 }

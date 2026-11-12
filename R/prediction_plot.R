@@ -267,16 +267,12 @@ print.RiskMap_prediction <- function(x, ...) {
 #' The lines that print a prediction
 #' @noRd
 format_prediction <- function(x) {
-  locations <- nrow(x$predictions)
-  where <- paste0(format_count(locations),
-                  if (locations == 1L) " location" else " locations",
+  where <- paste0(out_count(nrow(x$predictions), "location"),
                   if (!is.null(x$boundaries)) {
-                    areas <- nrow(x$boundaries)
-                    paste0(" and ", format_count(areas),
-                           if (areas == 1L) " area" else " areas")
+                    paste(" and", out_count(nrow(x$boundaries), "area"))
                   })
   model <- if (!is.null(x$family)) {
-    paste0(model_title(fit_traits(x)), " of ",
+    paste0(model_title(fit_traits(x)), describe_link(x$link), " of ",
            prediction_quantity_label(x, "response"), ", at ")
   } else {
     "At "

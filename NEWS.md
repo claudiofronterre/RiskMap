@@ -127,6 +127,9 @@ simulations are printed in the same style. A model for simulation names its
 link as a fit does, and gives its parameters one per line. The summary of an
 assessment of simulations gives each spatial scale a rule of its own, and a
 failed model fit becomes a warning bullet.
+- The result of `predict()` records the link of its fit, when it is not the
+canonical one, in the new element `link`, so that its print names the link as
+the print of the fit does.
 
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.

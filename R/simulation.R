@@ -490,7 +490,7 @@ print.RiskMap_simulation_model <- function(x, ...) {
   out_print(c(
     out_rule("Geostatistical model for simulation"),
     out_text(paste0(simulation_model_title(x), ", ", deparse_formula(x$formula),
-                    ", at ", format_count(nrow(x$data)), " locations.")),
+                    ", at ", out_count(nrow(x$data), "location"), ".")),
     "",
     format_simulation_parameters(x$parameters, x$distance_units)
   ))
@@ -503,7 +503,7 @@ print.RiskMap_simulation_model <- function(x, ...) {
 print.RiskMap_simulation <- function(x, ...) {
   simulated <- vapply(x$what, function(name) {
     paste0("of the ", if (name == "data") "data" else "surface", " at ",
-           format_count(nrow(x$locations[[name]])), " locations")
+           out_count(nrow(x$locations[[name]]), "location"))
   }, character(1))
   extract <- paste0(out_fun("simulated_data"), ", ",
                     out_fun("simulated_surface"), " and ",
@@ -513,8 +513,7 @@ print.RiskMap_simulation <- function(x, ...) {
     out_text(c(
       paste0(simulation_model_title(x$model), ", ",
              deparse_formula(x$model$formula), "."),
-      paste0(format_count(x$nsim), if (x$nsim == 1L) " simulation" else
-               " simulations",
+      paste0(out_count(x$nsim, "simulation"),
              if (!is.null(x$seed)) paste0(" (seed ", x$seed, ")"), ", ",
              paste(simulated, collapse = " and "), ".")
     )),
@@ -532,12 +531,8 @@ print.RiskMap_simulation <- function(x, ...) {
 #' @noRd
 simulation_model_title <- function(model) {
   link <- if (is.list(model$invlink)) model$invlink$link
-  paste0(model_title(fit_traits(model)),
-         if (!is.null(link)) {
-           paste0(" with ", link, " link")
-         } else if (isTRUE(model$custom_link)) {
-           " with a custom link"
-         })
+  if (is.null(link) && isTRUE(model$custom_link)) link <- "custom"
+  paste0(model_title(fit_traits(model)), describe_link(link))
 }
 
 #' A formula on one line

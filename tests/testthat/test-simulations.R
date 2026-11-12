@@ -875,3 +875,33 @@ test_that("specify_glgpm combines several re() calls", {
   expect_identical(simulate_glgpm(two_calls, nsim = 2, seed = 1)$samples,
                    simulate_glgpm(one_call, nsim = 2, seed = 1)$samples)
 })
+
+test_that("simulations and assessments print counts in the singular and plural", {
+  model <- list(family = "gaussian", formula = y ~ gp(),
+                parameters = list(beta = c("(Intercept)" = 1), sigma2 = 1,
+                                  phi = 2),
+                distance_units = "km")
+  sim <- structure(list(model = model, what = "surface",
+                        locations = list(surface = data.frame(x = 1)),
+                        nsim = 1, seed = 3),
+                   class = "RiskMap_simulation")
+  expect_match(squish(capture.output(print(sim))),
+               "1 simulation (seed 3), of the surface at 1 location.",
+               fixed = TRUE)
+  assessment <- structure(list(fits = NULL, n_sim = 1, spatial_scale = "grid",
+                               pred_objective = list(grid = list(mse = NULL))),
+                          class = "RiskMap_assess_simulation")
+  expect_match(squish(capture.output(print(assessment))),
+               paste("Models refitted to 1 simulation, assessed on the grid",
+                     "by mean squared error."), fixed = TRUE)
+  # A long row of coefficients wraps under its column.
+  many <- model
+  many$parameters$beta <- stats::setNames(seq(0.1, 1.2, by = 0.1),
+                                          paste0("covariate_", 1:12))
+  many$data <- data.frame(x = 1:10)
+  class(many) <- "RiskMap_simulation_model"
+  withr::local_options(cli.width = 40L)
+  printed <- capture.output(print(many))
+  expect_lte(max(nchar(printed)), 40L)
+  expect_match(squish(printed), "covariate_12 = 1.2", fixed = TRUE)
+})
