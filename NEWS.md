@@ -122,6 +122,11 @@ each score.
 variogram of `variogram()` and the distances of `summarise_distance()` are
 printed in the same style. The variogram also says in how many distance
 classes it lies outside the envelope.
+- Predictions, models for simulation, simulations and assessments of
+simulations are printed in the same style. A model for simulation names its
+link as a fit does, and gives its parameters one per line. The summary of an
+assessment of simulations gives each spatial scale a rule of its own, and a
+failed model fit becomes a warning bullet.
 
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.

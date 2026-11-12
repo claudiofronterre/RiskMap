@@ -260,34 +260,50 @@ plot.RiskMap_prediction <- function(
 ##' @method print RiskMap_prediction
 ##' @export
 print.RiskMap_prediction <- function(x, ...) {
-  locations <- nrow(x$predictions)
-  cat("RiskMap prediction: ", locations, " location",
-      if (locations == 1L) "" else "s", sep = "")
-  if (!is.null(x$boundaries)) {
-    cat(" and", nrow(x$boundaries), "areas")
-  }
-  cat("\n")
-  if (!is.null(x$family)) {
-    cat("Response: ", prediction_quantity_label(x, "response"), " (",
-        x$family, " model)\n", sep = "")
-  }
-  if (!is.null(x$type)) cat("Draws:", x$type, "\n")
-  quantities <- unique(c("response", x$transform, "link", "spatial"))
-  cat("Quantities:", paste(quantities, collapse = ", "), "\n")
-  if (length(x$summaries)) {
-    cat("Summaries:", paste(x$summaries, collapse = ", "), "\n")
-  }
-  if (length(x$thresholds)) {
-    cat("Exceedance thresholds:", paste(x$thresholds, collapse = ", "), "\n")
-  }
-  if (length(x$aggregate)) {
-    cat("Area aggregations:", paste(x$aggregate, collapse = ", "), "\n")
-  }
-  cat("\nMap with plot(x, summary = \"", default_prediction_summary(x), "\")",
-      sep = "")
-  if (!is.null(x$boundaries)) cat(", adding spatial_scale = \"both\"")
-  cat(".\n")
+  out_print(format_prediction(x))
   invisible(x)
+}
+
+#' The lines that print a prediction
+#' @noRd
+format_prediction <- function(x) {
+  locations <- nrow(x$predictions)
+  where <- paste0(format_count(locations),
+                  if (locations == 1L) " location" else " locations",
+                  if (!is.null(x$boundaries)) {
+                    areas <- nrow(x$boundaries)
+                    paste0(" and ", format_count(areas),
+                           if (areas == 1L) " area" else " areas")
+                  })
+  model <- if (!is.null(x$family)) {
+    paste0(model_title(fit_traits(x)), " of ",
+           prediction_quantity_label(x, "response"), ", at ")
+  } else {
+    "At "
+  }
+  draws <- if (!is.null(x$type)) paste0(", with ", x$type, " draws")
+  quantities <- unique(c("response", x$transform, "link", "spatial"))
+  settings <- c(
+    Quantities = paste(quantities, collapse = ", "),
+    Summaries = if (length(x$summaries)) paste(x$summaries, collapse = ", "),
+    "Exceedance thresholds" = if (length(x$thresholds)) {
+      paste(x$thresholds, collapse = ", ")
+    },
+    "Area aggregations" = if (length(x$aggregate)) {
+      paste(x$aggregate, collapse = ", ")
+    }
+  )
+  map <- paste0("`plot(x, summary = \"", default_prediction_summary(x),
+                "\")` maps it",
+                if (!is.null(x$boundaries)) {
+                  ", and `spatial_scale = \"both\"` adds the areas"
+                }, ".")
+  c(out_rule("Prediction"),
+    out_text(paste0(model, where, draws, ".")),
+    "",
+    out_pairs(names(settings), settings),
+    "",
+    out_bullets(c(i = map)))
 }
 
 #' First summary requested in predict(), used as the default map

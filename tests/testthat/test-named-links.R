@@ -284,7 +284,7 @@ test_that("specify_glgpm() reads family objects", {
   probit <- specify(binomial("probit"))
   expect_identical(probit$invlink$link, "probit")
   expect_true(probit$custom_link)
-  expect_output(print(probit), "Family: binomial \\(probit link\\)")
+  expect_output(print(probit), "Binomial geostatistical model with probit link")
   draws <- simulate_glgpm(probit, nsim = 2, seed = 1)$samples$data
   expect_identical(draws[, , "mean"], pnorm(draws[, , "linear_predictor"]))
 
@@ -292,7 +292,8 @@ test_that("specify_glgpm() reads family objects", {
     simulate_glgpm(specify(binomial()), nsim = 2, seed = 1)$samples,
     simulate_glgpm(specify("binomial"), nsim = 2, seed = 1)$samples
   )
-  expect_output(print(specify(binomial())), "Family: binomial\n")
+  expect_output(print(specify(binomial())), "Binomial geostatistical model, y ~",
+                fixed = TRUE)
 
   from_fit <- simulation_model(named_fits$probit)
   expect_identical(from_fit$invlink$link, "probit")

@@ -240,7 +240,8 @@ test_that("predictions from a fitted model print and plot at both scales", {
                         seed = 1, messages = FALSE)
 
   expect_identical(prediction$response_name, "y")
-  expect_output(print(prediction), "Map with plot\\(x, summary = \"mean\"\\)")
+  expect_output(print(prediction), "`plot(x, summary = \"mean\")` maps it",
+                fixed = TRUE)
   expect_identical(legend_title(plot(prediction)), "Mean y")
   expect_no_error(ggplot_build(plot(prediction, spatial_scale = "both")))
 })

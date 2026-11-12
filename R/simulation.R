@@ -487,19 +487,13 @@ simulated_surface <- function(object, simulation = 1) {
 #' @method print RiskMap_simulation_model
 #' @export
 print.RiskMap_simulation_model <- function(x, ...) {
-  cat("Geostatistical model for simulation\n")
-  link <- if (is.list(x$invlink)) x$invlink$link
-  cat(sprintf("Family: %s%s\n", x$family,
-              if (!is.null(link)) {
-                sprintf(" (%s link)", link)
-              } else if (isTRUE(x$custom_link)) {
-                " (custom inverse link)"
-              } else {
-                ""
-              }))
-  cat(sprintf("Formula: %s\n", paste(deparse(x$formula), collapse = " ")))
-  cat(sprintf("Locations: %d\n", nrow(x$data)))
-  print_simulation_parameters(x$parameters, x$distance_units)
+  out_print(c(
+    out_rule("Geostatistical model for simulation"),
+    out_text(paste0(simulation_model_title(x), ", ", deparse_formula(x$formula),
+                    ", at ", format_count(nrow(x$data)), " locations.")),
+    "",
+    format_simulation_parameters(x$parameters, x$distance_units)
+  ))
   invisible(x)
 }
 
@@ -507,40 +501,71 @@ print.RiskMap_simulation_model <- function(x, ...) {
 #' @method print RiskMap_simulation
 #' @export
 print.RiskMap_simulation <- function(x, ...) {
-  cat(sprintf("Simulations from a %s geostatistical model\n", x$model$family))
-  cat(sprintf("Formula: %s\n", paste(deparse(x$model$formula), collapse = " ")))
-  cat(sprintf("Number of simulations: %d%s\n", x$nsim,
-              if (is.null(x$seed)) "" else sprintf(" (seed %s)", x$seed)))
-  for (name in x$what) {
-    cat(sprintf("Simulated %s at %d locations\n",
-                if (name == "data") "data" else "surface",
-                nrow(x$locations[[name]])))
-  }
-  print_simulation_parameters(x$model$parameters, x$model$distance_units)
-  cat("Extract them with simulated_data(), simulated_surface() or",
-      "simulated_values().\n")
+  simulated <- vapply(x$what, function(name) {
+    paste0("of the ", if (name == "data") "data" else "surface", " at ",
+           format_count(nrow(x$locations[[name]])), " locations")
+  }, character(1))
+  extract <- paste0(out_fun("simulated_data"), ", ",
+                    out_fun("simulated_surface"), " and ",
+                    out_fun("simulated_values"), " extract them.")
+  out_print(c(
+    out_rule("Simulations"),
+    out_text(c(
+      paste0(simulation_model_title(x$model), ", ",
+             deparse_formula(x$model$formula), "."),
+      paste0(format_count(x$nsim), if (x$nsim == 1L) " simulation" else
+               " simulations",
+             if (!is.null(x$seed)) paste0(" (seed ", x$seed, ")"), ", ",
+             paste(simulated, collapse = " and "), ".")
+    )),
+    "",
+    format_simulation_parameters(x$model$parameters,
+                                 x$model$distance_units),
+    "",
+    out_bullets(c(i = extract))
+  ))
   invisible(x)
 }
 
-#' Print the parameters of a simulation model
+#' The title of a model for simulation, naming a link other than the
+#' canonical one as `print.RiskMap()` does
 #' @noRd
-print_simulation_parameters <- function(parameters, distance_units) {
-  format_values <- function(values) {
-    labels <- names(values) %||% paste0("[", seq_along(values), "]")
-    paste(sprintf("%s = %s", labels, signif(values, 4)), collapse = ", ")
+simulation_model_title <- function(model) {
+  link <- if (is.list(model$invlink)) model$invlink$link
+  paste0(model_title(fit_traits(model)),
+         if (!is.null(link)) {
+           paste0(" with ", link, " link")
+         } else if (isTRUE(model$custom_link)) {
+           " with a custom link"
+         })
+}
+
+#' A formula on one line
+#' @noRd
+deparse_formula <- function(formula) {
+  paste(trimws(deparse(formula)), collapse = " ")
+}
+
+#' The lines of the parameters of a simulation model, one per parameter
+#' @noRd
+format_simulation_parameters <- function(parameters, distance_units) {
+  values <- function(v) {
+    labels <- names(v) %||% paste0("[", seq_along(v), "]")
+    paste(sprintf("%s = %s", labels, signif(v, 4)), collapse = ", ")
   }
-  cat("Parameters:\n")
-  cat(sprintf("  beta: %s\n", format_values(parameters$beta)))
-  spatial <- c(sigma2 = parameters$sigma2, phi = parameters$phi)
-  cat(sprintf("  %s (phi in %s)\n", format_values(spatial), distance_units))
   others <- unlist(parameters[intersect(c("tau2", "sigma2_me"),
                                         names(parameters))])
   others <- others[others != 0]
-  if (length(others)) cat(sprintf("  %s\n", format_values(others)))
-  if (length(parameters$sigma2_re)) {
-    cat(sprintf("  sigma2_re: %s\n", format_values(parameters$sigma2_re)))
-  }
-  invisible(NULL)
+  rows <- c(
+    beta = values(parameters$beta),
+    sigma2 = format(signif(parameters$sigma2, 4)),
+    phi = paste(signif(parameters$phi, 4), distance_units),
+    vapply(others, function(value) format(signif(value, 4)), character(1)),
+    sigma2_re = if (length(parameters$sigma2_re)) {
+      values(parameters$sigma2_re)
+    }
+  )
+  c(out_heading("Parameters"), out_pairs(names(rows), rows, indent = 2L))
 }
 
 #' Validate a simulation object and requested simulation indices
