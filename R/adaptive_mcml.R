@@ -588,12 +588,12 @@ summarise_stalled_anchors <- function(history) {
 ##' and add, but keeps their large working matrices off the R heap.
 ##' @noRd
 make_adaptive_mcml_engine <- function(
-    D, y, units_m, distances, family = c("binomial", "poisson"),
+    D, y, units_m, distances, family = "binomial",
     kappa = 0.5, cov_offset = NULL, ID_coords = NULL,
     fix_tau2 = FALSE, ID_re = NULL, invlink = NULL,
     defensive_weight = 0.05, proposal = c("global", "laplace"),
     integrate_noise = FALSE) {
-  family <- match.arg(family)
+  check_engine_family(family)
   default_proposal_type <- match.arg(proposal)
   proposal_failures <- 0L
   # The largest change of a factor at the last of the fixed refits of the
@@ -1459,9 +1459,7 @@ glgpm_nong_adaptive <- function(
     y, D, coords, units_m, kappa, reference_pars, cov_offset,
     ID_coords, ID_re, fix_tau2, family, invlink, control_mcml,
     seed, messages = TRUE, distance_scale = 1) {
-  if (!family %in% c("poisson", "binomial")) {
-    riskmap_bug("{.arg family} must be {.val poisson} or {.val binomial}.")
-  }
+  check_engine_family(family)
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
   fit_seed <- as.integer(seed)
@@ -1814,18 +1812,15 @@ report_numerically_independent <- function(record) {
 ##' can be done instead. `coefficient_names` names the regression coefficients.
 ##' @noRd
 report_no_maximum <- function(fit, coefficient_names, family) {
-  binomial <- identical(family, "binomial")
+  traits <- family_traits(family)
   returned <- "The estimate is where the optimiser stopped, and it is returned without standard errors or a Monte Carlo certificate. See {.fn check_fit}."
   separation <- fit$separation
   everywhere <- separation$everywhere
   if (!is.null(everywhere)) {
     none <- identical(everywhere, "no positives")
-    quantity <- if (binomial) "prevalence" else "mean"
-    what <- if (!binomial) "Every count is zero" else if (none) {
-      "None of the individuals tested is positive"
-    } else {
-      "Every individual tested is positive"
-    }
+    quantity <- traits$quantity
+    # Only a family with an upper limit has data with only positives.
+    what <- if (none) traits$none_everywhere else traits$every_everywhere
     limit <- if (none) "zero" else "one"
     riskmap_warn(c("{what}, so the likelihood increases as the fitted {quantity} tends to {limit} and has no maximum.", "i" = returned), class = "riskmap_warning_fit")
   } else if (!is.null(separation)) {
@@ -1834,8 +1829,7 @@ report_no_maximum <- function(fit, coefficient_names, family) {
     }
     observations <- c(
       if (separation$no_positives) describe(
-        separation$no_positives,
-        if (binomial) "with no positives" else "with a zero count"
+        separation$no_positives, traits$no_events
       ),
       if (separation$only_positives) describe(
         separation$only_positives, "where every individual is positive"

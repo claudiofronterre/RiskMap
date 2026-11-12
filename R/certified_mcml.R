@@ -1072,7 +1072,8 @@ find_separation <- function(D, y, units_m, family, tolerance = 1e-9) {
   if (!ncol(D)) return(NULL)
   informative <- units_m > 0
   none <- informative & y == 0
-  every <- informative & !none & family == "binomial" & y == units_m
+  every <- informative & !none & family_traits(family)$upper_limit &
+    y == units_m
   mixed <- informative & !none & !every
   if (!any(none | every)) return(NULL)
   signed <- (ifelse(every, 1, -1) * D)[none | every, , drop = FALSE]

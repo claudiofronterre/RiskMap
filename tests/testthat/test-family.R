@@ -49,9 +49,22 @@ test_that("an object with integrated records keeps the properties of its link", 
                class = "riskmap_error_internal")
 })
 
-test_that("a family object is defined only for the binomial and Poisson families", {
-  expect_error(make_family("gaussian"), "binomial and Poisson",
+test_that("the Gaussian object is exact and has no likelihood methods", {
+  gaussian <- make_family("gaussian")
+  expect_s3_class(gaussian, "riskmap_family")
+  expect_true(gaussian$exact)
+  expect_true(gaussian$measurement_error)
+  expect_null(gaussian$linkf)
+  expect_null(gaussian$terms)
+  expect_null(gaussian$log_likelihood)
+  expect_false(make_family("binomial")$exact)
+  expect_false(make_family("poisson")$exact)
+  expect_error(make_family("gaussian", probit_family_link()), "exact",
                class = "riskmap_error_internal")
+  expect_error(make_family("gamma"), "must be one of",
+               class = "riskmap_error_internal")
+  expect_identical(fit_family(gaussian_model)$family, "gaussian")
+  expect_true(fit_family(gaussian_model)$exact)
 })
 
 test_that("the methods of the canonical object agree with those of a custom logit", {
@@ -198,4 +211,44 @@ test_that("an object comes alone, and a kernel is refused where the link is read
                                                 1:3, numeric(3), "binomial",
                                                 linkf = kernel),
                "model's link", class = "riskmap_error_internal")
+})
+
+test_that("the traits of each family give the arithmetic of their callers", {
+  y <- c(0, 3, 5)
+  units_m <- c(5, 5, 6)
+  eta <- c(-1, 0.5, 2)
+  binomial <- family_traits("binomial")
+  poisson <- family_traits("poisson")
+  expect_identical(binomial$empirical_link(y, units_m),
+                   log((y + 0.5) / (units_m - y + 0.5)))
+  expect_identical(poisson$empirical_link(y, units_m),
+                   log((y + 0.5) / units_m))
+  expect_identical(binomial$transform_variance(y, units_m),
+                   median(1 / (y + 0.5) + 1 / (units_m - y + 0.5)))
+  expect_identical(poisson$transform_variance(y, units_m),
+                   median(1 / (y + 0.5)))
+  expect_identical(binomial$start_log_likelihood(eta, y, units_m),
+                   sum(y * eta - units_m * softplus(eta)))
+  expect_identical(poisson$start_log_likelihood(eta, y, units_m),
+                   sum(y * eta - units_m * exp(eta)))
+  expect_null(poisson$start_log_likelihood(c(eta, 800), c(y, 1),
+                                           c(units_m, 1)))
+  expect_identical(poisson$fitted_mean(c(0.1, 0.2), c(2, 3)), c(2, 3) * c(0.1, 0.2))
+  expect_identical(binomial$fitted_mean(c(0.1, 0.2), c(2, 3)), c(0.1, 0.2))
+  expect_error(binomial$validate(c(1, 7), c(5, 5)), "exceed")
+  expect_true(poisson$validate(c(1, 7), c(5, 5)))
+  expect_true(binomial$upper_limit)
+  expect_false(poisson$upper_limit)
+  expect_true(family_traits("gaussian")$exact)
+})
+
+test_that("only the families the engine fits pass its check", {
+  expect_identical(check_engine_family("poisson")$family, "poisson")
+  expect_error(check_engine_family("gaussian"),
+               class = "riskmap_error_internal")
+  expect_error(check_engine_family(c("binomial", "poisson")),
+               class = "riskmap_error_internal")
+  expect_null(fit_traits(list(family = "gamma")))
+  expect_true(fit_traits(gaussian_model)$exact)
+  expect_false(fit_traits(binomial_model)$exact)
 })

@@ -233,14 +233,278 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
   list(inv = inv, d1 = d1, d2 = d2, name = "custom", link = link)
 }
 
+##' The families of RiskMap and their links
+##'
+##' One entry for each family a user can give (#253, step 1c). `links` are the
+##' links `read_family_link()` accepts, `canonical_link` the one fitted on the
+##' canonical path, and `refused` the links of a stats family that it refuses,
+##' with the reason. The other fields do not depend on the link, and
+##' `family_traits()` gives them with the family's methods.
+##' - `exact`, the likelihood integrates the latent field out in closed form,
+##'   so the fit is exact and has no Monte Carlo (`glgpm_lm()`).
+##' - `measurement_error`, the model has a measurement error variance
+##'   `sigma2_me`, which an observation-level random effect or the nugget can
+##'   be confounded with.
+##' - `denominator`, what `denominator` gives, "trials" or "exposure", NULL
+##'   for a family without one, and `warn_missing_denominator`, whether a
+##'   missing denominator taken to be 1 is worth a warning.
+##' - `upper_limit`, the responses are bounded above by their denominators, so
+##'   a record can sit at the upper limit of its mean, with every trial
+##'   positive.
+##' - `mean_range`, the range of the mean that an inverse link must respect,
+##'   with `range_message`, the error when it does not.
+##' - `quantity`, `no_events`, `none_everywhere` and `every_everywhere`, the
+##'   words of `report_no_maximum()` for the fitted mean, a record without
+##'   events, and data with no events or only events.
+##' - `link_hint`, the advice when a stats family names a link that is not
+##'   accepted, NULL for the advice to give an inverse link in `invlink`.
+##' @noRd
+riskmap_families <- list(
+  gaussian = list(
+    links = "identity", canonical_link = "identity", refused = character(),
+    exact = TRUE, measurement_error = TRUE,
+    denominator = NULL, warn_missing_denominator = FALSE,
+    upper_limit = FALSE, mean_range = c(-Inf, Inf), range_message = NULL,
+    quantity = "mean", no_events = NULL, none_everywhere = NULL,
+    every_everywhere = NULL,
+    link_hint = "Gaussian responses are fitted with the identity link only."
+  ),
+  binomial = list(
+    links = c("logit", "probit", "cloglog", "cauchit"),
+    canonical_link = "logit",
+    refused = c(log = "the log link can give probabilities above 1"),
+    exact = FALSE, measurement_error = FALSE,
+    denominator = "trials", warn_missing_denominator = TRUE,
+    upper_limit = TRUE, mean_range = c(0, 1),
+    range_message = "For a binomial model, {.arg invlink} must return probabilities between 0 and 1.",
+    quantity = "prevalence", no_events = "with no positives",
+    none_everywhere = "None of the individuals tested is positive",
+    every_everywhere = "Every individual tested is positive",
+    link_hint = NULL
+  ),
+  poisson = list(
+    links = "log", canonical_link = "log",
+    refused = c(
+      identity = "the identity link can give negative means",
+      sqrt = paste("its inverse, the square of the linear",
+                   "predictor, gives the same mean to a positive",
+                   "and a negative linear predictor")
+    ),
+    exact = FALSE, measurement_error = FALSE,
+    denominator = "exposure", warn_missing_denominator = FALSE,
+    upper_limit = FALSE, mean_range = c(0, Inf),
+    range_message = "For a Poisson model, {.arg invlink} must return non-negative means.",
+    quantity = "mean", no_events = "with a zero count",
+    none_everywhere = "Every count is zero", every_everywhere = NULL,
+    link_hint = NULL
+  )
+)
+
+##' The properties and methods of a family that do not depend on its link
+##'
+##' The entry of `riskmap_families` for `family`, with `family` itself and
+##' the family's methods for its data, each the arithmetic its caller used
+##' before (#253, step 1c). For records with `y` events of `units_m` trials,
+##' or counts with exposure `units_m`, or Gaussian responses `y`,
+##' - `validate(y, units_m)`, stops if the responses are not of the family
+##'   (`check_binomial()`), and otherwise returns TRUE invisibly.
+##' - `start_coefficients(y, units_m, D, cov_offset, link, formula, data)`,
+##'   the starting regression coefficients of `glgpm()`, from least squares,
+##'   `binomial_start_regression()` with the link named `link`, or a Poisson
+##'   regression of `formula` on `data` with the log link.
+##' - `empirical_link(y, units_m)` and `transform_variance(y, units_m)`, the
+##'   empirical link of the transformed-Gaussian start and the median of its
+##'   delta-method variance (`select_nongaussian_start()`), NULL for an exact
+##'   family.
+##' - `start_log_likelihood(eta, y, units_m)`, the log-likelihood under the
+##'   canonical link that compares starting values
+##'   (`starting_laplace_log_marginal()`), up to a constant, or NULL where a
+##'   Poisson mean is not finite, which rules the candidate out. NULL for an
+##'   exact family.
+##' - `fitted_mean(mean, units_m)`, the fitted value of a record from the mean
+##'   of its inverse link, the expected count for the Poisson family.
+##' @noRd
+family_traits <- function(family) {
+  if (!is.character(family) || length(family) != 1L ||
+      !family %in% names(riskmap_families)) {
+    riskmap_bug("{.arg family} must be one of {.or {.val {names(riskmap_families)}}}.")
+  }
+  methods <- switch(
+    family,
+    gaussian = list(
+      validate = function(y, units_m) invisible(TRUE),
+      start_coefficients = function(y, units_m, D, cov_offset, link, formula,
+                                    data) {
+        linear_start_values(D, y)
+      },
+      empirical_link = NULL, transform_variance = NULL,
+      start_log_likelihood = NULL,
+      fitted_mean = function(mean, units_m) mean
+    ),
+    binomial = list(
+      validate = function(y, units_m) check_binomial(y, units_m),
+      start_coefficients = function(y, units_m, D, cov_offset, link, formula,
+                                    data) {
+        glm_fitted <- binomial_start_regression(y, units_m, D, cov_offset,
+                                                link = link)
+        coef(glm_fitted)
+      },
+      empirical_link = function(y, units_m) {
+        log((y + 0.5) / (units_m - y + 0.5))
+      },
+      transform_variance = function(y, units_m) {
+        median(1 / (y + 0.5) + 1 / (units_m - y + 0.5))
+      },
+      start_log_likelihood = function(eta, y, units_m) {
+        sum(y * eta - units_m * softplus(eta))
+      },
+      fitted_mean = function(mean, units_m) mean
+    ),
+    poisson = list(
+      validate = function(y, units_m) invisible(TRUE),
+      start_coefficients = function(y, units_m, D, cov_offset, link, formula,
+                                    data) {
+        pf_aux <- update(formula, . ~ . + offset(log(units_m)) +
+                           offset(cov_offset))
+        data_aux <- data
+        data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
+        glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
+        coef(glm_fitted)
+      },
+      empirical_link = function(y, units_m) log((y + 0.5) / units_m),
+      transform_variance = function(y, units_m) median(1 / (y + 0.5)),
+      start_log_likelihood = function(eta, y, units_m) {
+        means <- exp(eta)
+        if (any(!is.finite(means))) {
+          return(NULL)
+        }
+        sum(y * eta - units_m * means)
+      },
+      fitted_mean = function(mean, units_m) units_m * mean
+    )
+  )
+  c(list(family = family), riskmap_families[[family]], methods)
+}
+
+##' The traits of a family that the MCML engine fits
+##'
+##' Stops unless `family` is one string naming a family whose likelihood is not
+##' exact, binomial or Poisson, and otherwise returns its traits
+##' (`family_traits()`). For the engine's internal functions, whose callers
+##' have read the family already, so a failure is RiskMap's.
+##' @noRd
+check_engine_family <- function(family) {
+  exact <- vapply(riskmap_families, function(entry) entry$exact, logical(1))
+  engine_families <- names(riskmap_families)[!exact]
+  if (!is.character(family) || length(family) != 1L ||
+      !family %in% engine_families) {
+    riskmap_bug("{.arg family} must be {.or {.val {engine_families}}}.")
+  }
+  family_traits(family)
+}
+
+##' The traits of the family of a fitted model
+##'
+##' `family_traits()` of the family string the fit stores, or NULL if it is
+##' not one of RiskMap's families.
+##' @noRd
+fit_traits <- function(fit) {
+  family <- fit$family
+  if (!is.character(family) || length(family) != 1L ||
+      !family %in% names(riskmap_families)) {
+    return(NULL)
+  }
+  family_traits(family)
+}
+
+##' Read the response family and link that a user gives
+##'
+##' The one reader of `family` for every exported function that takes it.
+##' `family` is one of the strings `"gaussian"`, `"binomial"` and
+##' `"poisson"`, a family function such as `binomial`, or a family object
+##' such as `binomial("probit")`. A family object becomes its family string
+##' and, for a link other than the canonical one, the list form of `invlink`
+##' that `make_inverse_link_functions()` reads, with the link's name and its
+##' exact inverse and derivatives (`named_inverse_link()`). The canonical
+##' logit and log links keep `invlink = NULL`, so they take the canonical path
+##' and fit exactly as the strings do, and the identity link of the Gaussian
+##' family leaves nothing to carry. A string leaves `invlink` as it is, which
+##' keeps the internal list form open to refits.
+##' @param family What the user gave as `family`.
+##' @param invlink What the user gave as `invlink`.
+##' @param families The family strings the calling function accepts.
+##' @return A list with `family`, one of `families`, and `invlink`.
+##' @noRd
+read_family <- function(family, invlink = NULL,
+                        families = c("gaussian", "binomial", "poisson")) {
+  if (inherits(invlink, "link-glm")) {
+    link_name <- invlink$name
+    abort_input(c("{.arg invlink} must be an inverse-link function, not a {.cls link-glm} object.", "i" = "Give a named link in {.arg family}, as in {.code binomial(\"{link_name}\")}, or the inverse alone, as in {.code make.link(\"{link_name}\")$linkinv}."), arg = "invlink")
+  }
+  if (is.character(invlink)) {
+    abort_input(c("{.arg invlink} must be a function, not the name of a link.", "i" = "Give a named link in {.arg family}, as in {.code binomial(\"probit\")}."), arg = "invlink")
+  }
+  if (is.function(family)) {
+    family <- tryCatch(family(), error = function(e) NULL)
+  }
+  if (inherits(family, "family")) {
+    link <- read_family_link(family$family %||% "", family$link %||% "")
+    if (!is.null(link$invlink) && !is.null(invlink)) {
+      family_call <- paste0(family$family, "(\"", family$link, "\")")
+      abort_input("Give the link either in {.arg family}, as in {.code {family_call}}, or as a function in {.arg invlink}, not both.", arg = "invlink")
+    }
+    family <- link$family
+    if (is.null(invlink)) invlink <- link$invlink
+  }
+  if (!is.character(family) || length(family) != 1L ||
+      !family %in% families) {
+    abort_input("{.arg family} must be {.or {.val {families}}}, or a family object such as {.code binomial(\"probit\")}.", arg = "family")
+  }
+  list(family = family, invlink = invlink)
+}
+
+##' Family string and link of a family object
+##'
+##' Takes the `family` and `link` names of a stats family object and returns
+##' its family string and `invlink`, or stops with the reason the link is not
+##' accepted and what to give instead, from the links of `riskmap_families`.
+##' @noRd
+read_family_link <- function(family, link) {
+  object <- paste0(family, "(\"", link, "\")")
+  # A template, interpolated by the error that uses it.
+  use_invlink <- "Other links can be given as an inverse-link function in {.arg invlink}, with {.code family = \"{family}\"}."
+  if (startsWith(family, "quasi")) {
+    abort_input(c("{.fn {family}} is a quasi-likelihood family, which has no likelihood for RiskMap to maximise.", "i" = "Use {.fn binomial} or {.fn poisson}, and give a link they don't name as an inverse-link function in {.arg invlink}."), arg = "family")
+  }
+  if (!family %in% names(riskmap_families)) {
+    abort_input(c("{.arg family} must be a Gaussian, binomial or Poisson family, not {.val {family}}.", "i" = "For a binomial or Poisson response, any link can be given as an inverse-link function in {.arg invlink}."), arg = "family")
+  }
+  traits <- family_traits(family)
+  refused <- if (link %in% names(traits$refused)) traits$refused[[link]]
+  if (!is.null(refused)) {
+    abort_input(c("{.code {object}} can't be used, because {refused}.", "i" = use_invlink), arg = "family")
+  }
+  accepted <- traits$links
+  if (!link %in% accepted) {
+    hint <- traits$link_hint %||% use_invlink
+    abort_input(c("The {link} link isn't available for the {family} family, which takes {.or {.val {accepted}}}.", "i" = hint), arg = "family")
+  }
+  canonical <- identical(link, traits$canonical_link)
+  list(family = family,
+       invlink = if (!canonical) c(named_inverse_link(link), link = link))
+}
 
 ##' The family of a model and the likelihood of its records
 ##'
 ##' One object through which the MCML engine sees the family and the link of a
-##' model (#253). `family` is "binomial" or "poisson", and `linkf` the inverse
-##' link functions of `make_inverse_link_functions()`, NULL for the canonical
-##' link. Where records have effects integrated out, `kernel` is their kernel
-##' at the variances of the classes (`make_integrated_kernel()`), which gives
+##' model (#253). `family` is "gaussian", "binomial" or "poisson", and `linkf`
+##' the inverse link functions of `make_inverse_link_functions()`, NULL for the
+##' canonical link. The object has every field and method of
+##' `family_traits()`. The Gaussian family is exact (`exact`), fitted without
+##' the engine, so its object has the identity link and no likelihood
+##' methods, and takes no `linkf` or `kernel`. Where records have effects
+##' integrated out, `kernel` is their kernel at the variances of the classes
+##' (`make_integrated_kernel()`), which gives
 ##' the likelihood of the records in the place of the link, and the object
 ##' keeps every other property and method of the model's link. Each method is
 ##' the arithmetic the engine used before, moved without change, so that fits
@@ -282,8 +546,16 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   table (`compute_custom_kernel_arrays()`), NULL for the canonical link.
 ##' @noRd
 make_family <- function(family, linkf = NULL, kernel = NULL) {
-  if (!family %in% c("binomial", "poisson")) {
-    riskmap_bug("The family object is defined for the binomial and Poisson families only.")
+  traits <- family_traits(family)
+  if (traits$exact) {
+    if (!is.null(linkf) || !is.null(kernel)) {
+      riskmap_bug("The {family} family is exact and takes no {.arg linkf} or {.arg kernel}.")
+    }
+    return(structure(
+      c(traits, list(linkf = NULL, kernel = NULL, canonical = TRUE,
+                     integrated = FALSE, poisson = FALSE)),
+      class = "riskmap_family"
+    ))
   }
   if (is.null(linkf)) linkf <- make_inverse_link_functions(family, NULL, 1L)
   if (is_integrated_link(linkf)) {
@@ -342,8 +614,8 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
     function() compute_custom_kernel_arrays(linkf, family)
   }
   structure(
-    list(
-      family = family, linkf = linkf, kernel = kernel, canonical = canonical,
+    c(traits, list(
+      linkf = linkf, kernel = kernel, canonical = canonical,
       integrated = integrated, poisson = poisson, compiled = canonical,
       assumes_concave = canonical && !integrated,
       moves_start = !canonical && !integrated,
@@ -355,7 +627,7 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
         move_start_off_limits(latent, linear_predictor, y, units_m, family,
                               linkf, columns)
       }
-    ),
+    )),
     class = "riskmap_family"
   )
 }
@@ -401,7 +673,7 @@ as_family_object <- function(family, linkf = NULL, canonical = NULL) {
 ##' The family object of a fitted model
 ##'
 ##' Rebuilt from what the fit stores, the family string and the
-##' `link_function` list, for the binomial and Poisson families. It gives the
+##' `link_function` list, which is NULL for a Gaussian fit. It gives the
 ##' likelihood of the fit's records under its link. Where the fit integrated
 ##' effects out, the likelihood of those records also needs the fit's plan of
 ##' integrated records and the variances of its classes (`kernel`), which
