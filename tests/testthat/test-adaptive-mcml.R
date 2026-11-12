@@ -2221,7 +2221,7 @@ test_that("glgpm warns when the likelihood has no maximum", {
   expect_identical(optimizer$mcml_separation$coefficients, "cov")
   expect_identical(optimizer$mcml_separation$observations,
                    seq_len(nrow(binomial_data)))
-  expect_match(complete$warnings, "'cov' grows in absolute value",
+  expect_match(complete$warnings, "\"cov\" grows in absolute value",
                all = FALSE)
   expect_match(check_fit(complete$value)$checks$finding, "through 'cov'")
 
