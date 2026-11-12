@@ -2678,7 +2678,10 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' analytic gradient and Hessian of the integrand. The integrand includes terms
 ##' for the spatial process (`Sigma`), the unstructured random effects
 ##' (`sigma2_re`), and the log-likelihood of the responses for the specified
-##' family.
+##' family. With the canonical links, the terms of a response whose
+##' probability rounds to 0 or 1, or whose mean underflows to 0, are computed
+##' in their exact canonical form, so that the optimisation is not stopped
+##' there.
 ##'
 ##' @return A list with the mode (`mode`), the name of the inverse link used
 ##'   (`invlink_used`) and either the Hessian of the integrand at the mode
@@ -2765,37 +2768,45 @@ maxim_integrand <- function(
       return(list(g = terms$score, w = terms$curvature,
                   llik = terms$log_likelihood))
     }
+    if (any(!is.finite(eta))) {
+      stop("The linear predictor is not finite.", call. = FALSE)
+    }
     if (family == "poisson") {
       mu  <- inv_link(eta)
       mu1 <- inv1(eta)
       mu2 <- inv2(eta)
 
       if (any(!is.finite(mu))) stop("invlink produced non-finite values for Poisson.")
-      if (any(mu <= 0)) stop("invlink must return strictly positive means for Poisson.")
 
       g  <- (y / mu - units_m) * mu1
       l2 <- - y * (mu1^2) / (mu^2) + (y / mu - units_m) * mu2
-      w  <- -l2
-
-      llik <- sum(y * log(pmax(units_m * mu, .Machine$double.eps)) - units_m * mu)
-      list(g = g, w = w, llik = llik)
+      terms <- list(
+        log_likelihoods = y * log(pmax(units_m * mu, .Machine$double.eps)) -
+          units_m * mu,
+        score = g, curvature = -l2
+      )
+      at_limit <- mu <= 0
     } else { # binomial
       p  <- inv_link(eta)
       p1 <- inv1(eta)
       p2 <- inv2(eta)
 
-      if (any(!is.finite(p))) stop("invlink produced non-finite values for Binomial.")
-      if (any(p <= 0 | p >= 1)) stop("invlink must return values in (0,1) for Binomial.")
-
       den <- p * (1 - p)
       g  <- (y - units_m * p) * p1 / den
       l2 <- - units_m * (p1^2) / den + (y - units_m * p) * ( p2 / den - (p1^2) * (1 - 2 * p) / (den^2) )
-      w  <- -l2
-
-      llik <- sum(y * log(pmax(p, .Machine$double.eps)) +
-                    (units_m - y) * log(pmax(1 - p, .Machine$double.eps)))
-      list(g = g, w = w, llik = llik)
+      terms <- list(
+        log_likelihoods = y * log(pmax(p, .Machine$double.eps)) +
+          (units_m - y) * log(pmax(1 - p, .Machine$double.eps)),
+        score = g, curvature = -l2
+      )
+      at_limit <- p <= 0 | p >= 1
     }
+    # Where a probability rounds to 0 or 1, or a mean underflows to 0, the
+    # formulas above divide zero by zero.
+    terms <- replace_at_canonical_limits(terms, at_limit, eta, y, units_m,
+                                         family)
+    list(g = terms$score, w = terms$curvature,
+         llik = sum(terms$log_likelihoods))
   }
 
   # ---------- core functions ----------

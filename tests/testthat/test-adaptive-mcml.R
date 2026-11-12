@@ -2211,6 +2211,20 @@ test_that("glgpm warns when the likelihood has no maximum", {
                "fit to 3 observations with no positives.*'urban'",
                all = FALSE)
 
+  # Complete separation by a continuous covariate takes the linear predictor
+  # of the locations where every individual is positive past 36.74, where the
+  # inverse logit rounds to one, well inside the bounds of the search.
+  complete <- fit_to(transform(binomial_data,
+                               y = ifelse(cov > 0, denominator, 0)))
+  optimizer <- attr(complete$value, "optimizer")
+  expect_identical(optimizer$mcml_outcome, "no maximum")
+  expect_identical(optimizer$mcml_separation$coefficients, "cov")
+  expect_identical(optimizer$mcml_separation$observations,
+                   seq_len(nrow(binomial_data)))
+  expect_match(complete$warnings, "'cov' grows in absolute value",
+               all = FALSE)
+  expect_match(check_fit(complete$value)$checks$finding, "through 'cov'")
+
   # With one positive at an urban location the maximum is finite.
   urban$y[1L] <- 1
   near <- capture_warnings(glgpm(

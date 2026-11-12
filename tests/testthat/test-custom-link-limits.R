@@ -1,7 +1,8 @@
 ## Custom inverse links at the limits of their range and where the likelihood
 ## is not log-concave. Each of these failed a certified fit before the likelihood
 ## of a custom link was computed by bound_log_probability() and
-## compute_custom_link_terms().
+## compute_custom_link_terms(). The canonical links are checked at the same
+## limits, where their usual formulas divide zero by zero.
 
 make_link <- function(inv, d1, d2) {
   make_inverse_link_functions("binomial", list(inv = inv, d1 = d1, d2 = d2), 3L)
@@ -153,6 +154,54 @@ test_that("a custom link's terms agree with the canonical formula for logit", {
   expect_equal(custom$curvature, canonical$curvature, tolerance = 1e-10)
   expect_equal(custom$log_likelihood, canonical$log_likelihood,
                tolerance = 1e-10)
+})
+
+test_that("the canonical terms are exact where a probability or mean reaches a limit", {
+  # The inverse logit rounds to 0 below about -709.8 and to 1 above about
+  # 36.74, where the usual formulas divide zero by zero.
+  logit <- make_inverse_link_functions("binomial", NULL, 1L)
+  # Each limit has an observation whose score there is not zero.
+  eta <- c(-800, -750, -40, 0, 10, 40, 800)
+  y <- c(0, 3, 0, 9, 20, 20, 17)
+  units_m <- rep(20, 7)
+  expect_identical(plogis(eta[c(1L, 2L, 6L, 7L)]), c(0, 0, 1, 1))
+  log_likelihood <- function(point) {
+    sum(y * plogis(point, log.p = TRUE) +
+          (units_m - y) * plogis(point, lower.tail = FALSE, log.p = TRUE))
+  }
+  terms <- laplace_observation_terms(eta, y, units_m, "binomial", logit)
+  expect_equal(terms$log_likelihood, log_likelihood(eta), tolerance = 1e-12)
+  expect_equal(terms$score, numDeriv::grad(log_likelihood, eta),
+               tolerance = 1e-8)
+  # The curvature of the logit is m p (1 - p), whatever y is.
+  expect_equal(terms$curvature, units_m * plogis(eta) * plogis(-eta),
+               tolerance = 1e-10)
+  # Observations away from the limits keep the usual formulas.
+  expect_identical(terms$score[c(2L, 7L)], c(3, -3))
+  away <- laplace_observation_terms(eta[3:5], y[3:5], units_m[3:5],
+                                    "binomial", logit)
+  expect_identical(terms$score[3:5], away$score)
+  expect_identical(terms$curvature[3:5], away$curvature)
+
+  # The mean of a count underflows to 0 below about -745.
+  log_link <- make_inverse_link_functions("poisson", NULL, 1L)
+  eta <- c(-800, -800, -2, 1)
+  counts <- c(0, 2, 1, 3)
+  exposure <- c(1, 2, 1, 1)
+  expect_identical(exp(eta[1:2]), c(0, 0))
+  terms <- laplace_observation_terms(eta, counts, exposure, "poisson",
+                                     log_link)
+  expect_equal(terms$log_likelihood,
+               sum(counts * (log(exposure) + eta) - exposure * exp(eta)),
+               tolerance = 1e-12)
+  expect_identical(terms$score[1:2], c(0, 2))
+  expect_identical(terms$curvature[1:2], c(0, 0))
+  expect_equal(terms$score[3:4], counts[3:4] - exp(eta[3:4]),
+               tolerance = 1e-12)
+
+  # A linear predictor that is not finite has no terms.
+  expect_null(laplace_observation_terms(Inf, 20, 20, "binomial", logit))
+  expect_null(laplace_observation_terms(-Inf, 0, 1, "poisson", log_link))
 })
 
 test_that("the curvature survives far into the tails of the probability", {
@@ -345,6 +394,29 @@ test_that("maxim_integrand() is not stopped by a probability that rounds to one"
   )
   # Every trial is positive, so the likelihood is flat and the prior decides.
   expect_equal(found$mode, rep(0, sites), tolerance = 1e-6)
+})
+
+test_that("maxim_integrand() is not stopped at the limits of a canonical link", {
+  sites <- 5L
+  distances <- unname(as.matrix(dist(seq_len(sites))))
+  Sigma <- 3 * exp(-distances / 2)
+  mode_at <- function(y, units_m, mu, family) {
+    maxim_integrand(y = y, denominator = units_m, mu = rep(mu, sites),
+                    Sigma = Sigma, ID_coords = seq_len(sites), family = family)
+  }
+  # Beyond the limits the score is y - m p, or y - m mu for a count, which is
+  # 1 or -1 at every site here, and the curvature is 0. The mode is then
+  # Sigma times the score, and its covariance is Sigma.
+  one <- rep(1, sites)
+  expect_identical(plogis(c(-790, 790)), c(0, 1))
+  low <- mode_at(one, rep(20, sites), -800, "binomial")
+  expect_equal(low$mode, rowSums(Sigma), tolerance = 1e-6)
+  expect_equal(low$Sigma.tilde, Sigma, tolerance = 1e-10)
+  high <- mode_at(rep(19, sites), rep(20, sites), 800, "binomial")
+  expect_equal(high$mode, -rowSums(Sigma), tolerance = 1e-6)
+  expect_identical(exp(-790), 0)
+  counts <- mode_at(one, one, -800, "poisson")
+  expect_equal(counts$mode, rowSums(Sigma), tolerance = 1e-6)
 })
 
 test_that("the sampler is not stopped by a probability that rounds to one", {

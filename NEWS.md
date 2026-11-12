@@ -273,6 +273,21 @@ runs had been certified with an intercept of -30 and a standard error of about
 23,500. Surveys with at least one positive in each such category keep a finite
 maximum and are fitted as before.
 
+- A binomial fit whose covariate separates the data completely, such as one
+where every location with a positive covariate has only positives and every
+other location none, now ends with the outcome "no maximum" as intended. It
+stopped with "the estimated log-likelihood is not finite at the optimum",
+although the separation had been found. With the logit link, the linear
+predictor of a location where every individual is positive passes 36.74 well
+inside the bounds of the search, the inverse logit rounds to 1 there, and the
+formulas of the conditional mode of the latent effects divided zero by zero.
+The canonical links now use the exact form of each observation's
+log-likelihood, score and curvature where the probability rounds to 0 or 1 or
+the mean of a count underflows to 0, in the fit and in `maxim_integrand()`.
+The probit and complementary log-log links already ended such fits with "no
+maximum". Fits that never reach these limits are unchanged, since the new forms
+apply only where the previous ones could not be evaluated.
+
 - `maxim_integrand()` now takes `denominator` instead of `units_m`, matching
 `glgpm()`. Its documentation no longer lists the Gaussian family, which it has
 never supported, and describes the Newton-type optimisation it actually uses.

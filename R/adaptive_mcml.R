@@ -110,47 +110,110 @@ move_start_off_limits <- function(latent, linear_predictor, y, units_m, family,
 
 ##' Observation log-likelihood, score and curvature in the linear predictor
 ##'
-##' For the canonical links, with the formulas of `maxim_integrand()`. Custom
-##' links go through `compute_custom_link_terms()`, and records with the nugget
-##' integrated out through their table (`make_integrated_kernel()`).
-##' `curvature` is the negative second derivative of the log-likelihood.
+##' For the canonical links, with the formulas of `maxim_integrand()`, and
+##' the exact canonical terms where those formulas fail at the limits of the
+##' link (`replace_at_canonical_limits()`). NULL if a linear predictor or a
+##' Poisson mean is not finite. Custom links go through
+##' `compute_custom_link_terms()`, and records with the nugget integrated out
+##' through their table (`make_integrated_kernel()`). `curvature` is the
+##' negative second derivative of the log-likelihood.
 ##' @noRd
 laplace_observation_terms <- function(eta, y, units_m, family, linkf) {
   if (is_integrated_link(linkf)) return(linkf$terms(eta))
   if (!identical(linkf$name, "canonical")) {
     return(compute_custom_link_terms(eta, y, units_m, family, linkf))
   }
+  if (any(!is.finite(eta))) return(NULL)
   if (family == "poisson") {
     mean <- linkf$inv(eta)
-    if (any(!is.finite(mean)) || any(mean <= 0)) return(NULL)
+    if (any(!is.finite(mean))) return(NULL)
     first <- linkf$d1(eta)
     second <- linkf$d2(eta)
     residual <- y / mean - units_m
-    list(
-      log_likelihood = sum(y * log(pmax(units_m * mean, .Machine$double.eps)) -
-                             units_m * mean),
+    terms <- list(
+      log_likelihoods = y * log(pmax(units_m * mean, .Machine$double.eps)) -
+        units_m * mean,
       score = residual * first,
       curvature = y * first^2 / mean^2 - residual * second
     )
+    terms <- replace_at_canonical_limits(terms, mean <= 0, eta, y, units_m,
+                                         family)
   } else {
     probability <- linkf$inv(eta)
-    if (any(!is.finite(probability)) ||
-        any(probability <= 0 | probability >= 1)) return(NULL)
     first <- linkf$d1(eta)
     second <- linkf$d2(eta)
     variance <- probability * (1 - probability)
     residual <- y - units_m * probability
-    list(
-      log_likelihood = sum(
-        y * log(pmax(probability, .Machine$double.eps)) +
-          (units_m - y) * log(pmax(1 - probability, .Machine$double.eps))
-      ),
+    terms <- list(
+      log_likelihoods = y * log(pmax(probability, .Machine$double.eps)) +
+        (units_m - y) * log(pmax(1 - probability, .Machine$double.eps)),
       score = residual * first / variance,
       curvature = units_m * first^2 / variance -
         residual * (second / variance - first^2 * (1 - 2 * probability) /
                       variance^2)
     )
+    terms <- replace_at_canonical_limits(
+      terms, probability <= 0 | probability >= 1, eta, y, units_m, family
+    )
   }
+  list(log_likelihood = sum(terms$log_likelihoods), score = terms$score,
+       curvature = terms$curvature)
+}
+
+##' Exact observation terms of the canonical links at the limits of the link
+##'
+##' The inverse logit rounds to 0 below a linear predictor of about -709.8
+##' and to 1 above about 36.74, and the mean of a count underflows to 0 below
+##' about -745. There the formulas of `laplace_observation_terms()` and
+##' `maxim_integrand()` divide zero by zero, although the likelihood is smooth
+##' and finite. Complete separation by a covariate takes the linear predictor
+##' of locations where every individual is positive past 36.74 well inside the
+##' bounds of the search, so the latent mode must be found there too. The
+##' canonical forms need no division. With p = plogis(eta) they are
+##' log p = -softplus(-eta), log(1 - p) = -softplus(eta), the score
+##' y (1 - p) - (m - y) p and the curvature m p (1 - p). For the log link
+##' they are y log(m) + y eta - m exp(eta), y - m exp(eta) and m exp(eta),
+##' where y log(m) is the constant of the usual formula. They replace the
+##' per-observation `log_likelihoods`, `score` and `curvature` of `terms` only
+##' where `at` is TRUE, so that terms away from the limits are unchanged bit
+##' for bit. Short of the limits the usual formulas keep two weaknesses. Their
+##' curvature is not finite between about -709.8 and -372 for the logit, or
+##' below -372 for a positive count, and `adaptive_laplace_mode()` rejects a
+##' step to such a point. They also bound log p, log(1 - p) and log(m mu)
+##' below at log(.Machine$double.eps). The log-likelihood of an observation
+##' with any positives is then flat below a linear predictor of about -36,
+##' that of a binomial observation with any negatives is flat above about
+##' 36.04, and both fall where the exact forms take over. Neither is reached
+##' under complete separation, where the locations with positives have only
+##' positives and lie in the upper tail, and the others lie in the lower one.
+##' Exact forms throughout would remove both but would change every canonical
+##' fit by rounding.
+##' @noRd
+replace_at_canonical_limits <- function(terms, at, eta, y, units_m, family) {
+  if (!any(at)) return(terms)
+  eta <- eta[at]
+  y <- y[at]
+  units_m <- units_m[at]
+  if (family == "poisson") {
+    mean <- exp(eta)
+    log_likelihoods <- -units_m * mean
+    # An observation with no count adds no y log(m), even when m is zero.
+    positive <- y > 0
+    log_likelihoods[positive] <- log_likelihoods[positive] +
+      y[positive] * (log(units_m[positive]) + eta[positive])
+    score <- y - units_m * mean
+    curvature <- units_m * mean
+  } else {
+    success <- stats::plogis(eta)
+    failure <- stats::plogis(-eta)
+    log_likelihoods <- -y * softplus(-eta) - (units_m - y) * softplus(eta)
+    score <- y * failure - (units_m - y) * success
+    curvature <- units_m * success * failure
+  }
+  terms$log_likelihoods[at] <- log_likelihoods
+  terms$score[at] <- score
+  terms$curvature[at] <- curvature
+  terms
 }
 
 ##' Index structure mapping latent variables to observations
