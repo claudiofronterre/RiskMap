@@ -530,6 +530,109 @@ test_that("the largest term of a record bounds it for any probability", {
                    c(0, 4 * log(4) - 4))
 })
 
+test_that("the trapezium rule of a Poisson custom link matches integration", {
+  # The log link given as a function takes the custom path, whose Poisson
+  # kernel is y log(m mean) - m mean, with means above one inside its support
+  # and the bound y log(y) - y for the range.
+  log_link <- make_inverse_link_functions(
+    "poisson", list(inv = exp, d1 = exp, d2 = exp), 3L
+  )
+  location <- c(1L, 1L, 2L, 3L, 3L, 3L)
+  D <- cbind(1, c(-0.5, 0.4, 1.2, -1, 0, 0.8))
+  y <- c(0, 7, 15, 2, 4, 30)
+  exposure <- c(2, 3, 4, 1, 2, 5)
+  beta <- c(0.6, 0.5)
+  variance <- 0.9
+  sites <- make_independent_site_likelihood(D, y, exposure, location,
+                                            numeric(6), "poisson",
+                                            linkf = log_link)
+  linear <- drop(D %*% beta)
+  # Each location by integrate() over 12 prior standard deviations or more,
+  # scaled by the top of its log integrand.
+  exact <- vapply(1:3, function(site) {
+    rows <- which(location == site)
+    log_integrand <- function(effects) vapply(effects, function(effect) {
+      mean <- exposure[rows] * exp(linear[rows] + effect)
+      sum(y[rows] * log(mean) - mean) +
+        stats::dnorm(effect, 0, sqrt(variance), log = TRUE)
+    }, numeric(1))
+    top <- stats::optimize(log_integrand, c(-12, 12), maximum = TRUE)$objective
+    top + log(stats::integrate(function(effects) {
+      exp(log_integrand(effects) - top)
+    }, -12, 12, rel.tol = 1e-12)$value)
+  }, numeric(1))
+  at <- sites$log_likelihood(beta, log(variance))
+  expect_equal(unname(at$sites), exact, tolerance = 1e-9)
+  expect_equal(at$value, sum(exact), tolerance = 1e-9)
+  # A location whose mode, near 3.4, lies beyond the range that the cut alone
+  # gives at a variance of 0.05, so that only the bound reaches it.
+  far <- make_independent_site_likelihood(cbind(1), 100, 1, 1L, 0, "poisson",
+                                          linkf = log_link)
+  log_integrand <- function(effects) {
+    100 * effects - exp(effects) + stats::dnorm(effects, 0, sqrt(0.05),
+                                                log = TRUE)
+  }
+  top <- stats::optimize(log_integrand, c(0, 6), maximum = TRUE)$objective
+  far_exact <- top + log(stats::integrate(function(effects) {
+    exp(log_integrand(effects) - top)
+  }, 1, 6, rel.tol = 1e-12)$value)
+  expect_equal(far$log_likelihood(0, log(0.05))$value, far_exact,
+               tolerance = 1e-9)
+})
+
+test_that("points where a derivative of the link is not finite are dropped", {
+  # These links' first or second derivatives are not numbers beyond a linear
+  # predictor of 8 in either direction, where the integrand is negligible, so
+  # the rule drops those points of its range and its value is that of the
+  # logit link.
+  outside <- function(eta) abs(eta) > 8
+  second <- function(eta) stats::dlogis(eta) * (1 - 2 * stats::plogis(eta))
+  logit <- make_link(function(eta) stats::plogis(eta),
+                     function(eta) stats::dlogis(eta), second)
+  first_fails <- make_link(
+    function(eta) stats::plogis(eta),
+    function(eta) ifelse(outside(eta), NaN, stats::dlogis(eta)),
+    function(eta) ifelse(outside(eta), NaN, second(eta))
+  )
+  second_fails <- make_link(
+    function(eta) stats::plogis(eta),
+    function(eta) stats::dlogis(eta),
+    function(eta) ifelse(outside(eta), NaN, second(eta))
+  )
+  # The terms of the link fail as a whole wherever a point lies beyond 8.
+  expect_null(compute_custom_link_terms(c(0, 9), c(3, 3), c(10, 10),
+                                        "binomial", first_fails))
+  expect_null(compute_custom_link_terms(c(0, 9), c(3, 3), c(10, 10),
+                                        "binomial", second_fails))
+  screen_of <- function(link) {
+    make_independent_site_likelihood(cbind(1), 3, 10, 1L, 0, "binomial",
+                                     linkf = link)$log_likelihood(0, log(16))
+  }
+  plain <- screen_of(logit)
+  # The pass of the rule without curvatures meets a failure as well, from its
+  # node one coarse step beyond the last point that the first pass kept.
+  failed_without_curvature <- 0L
+  original <- compute_custom_link_terms
+  local_mocked_bindings(
+    compute_custom_link_terms = function(eta, y, units_m, family, linkf,
+                                         with_curvature = TRUE) {
+      observed <- original(eta, y, units_m, family, linkf, with_curvature)
+      if (is.null(observed) && !with_curvature) {
+        failed_without_curvature <<- failed_without_curvature + 1L
+      }
+      observed
+    }
+  )
+  for (link in list(first_fails, second_fails)) {
+    at <- screen_of(link)
+    expect_equal(at$value, integrate_one_site(logit, 3, 10, 0, 16),
+                 tolerance = 1e-8)
+    expect_equal(at$value, plain$value, tolerance = 1e-8)
+    expect_equal(at$gradient, plain$gradient, tolerance = 1e-6)
+  }
+  expect_gt(failed_without_curvature, 0L)
+})
+
 test_that("cloglog at high prevalence is certified", {
   skip_on_cran()
   set.seed(4)
