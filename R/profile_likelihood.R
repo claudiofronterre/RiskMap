@@ -132,12 +132,12 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             messages = getOption("RiskMap.messages", TRUE),
                             ...) {
   check_class(fitted, "RiskMap")
-  gaussian <- identical(fitted$family, "gaussian")
-  if (!gaussian && (!fitted$family %in% c("binomial", "poisson") ||
-                    is.null(fitted$mcml_history))) {
+  traits <- fit_traits(fitted)
+  exact <- isTRUE(traits$exact)
+  if (!exact && (is.null(traits) || is.null(fitted$mcml_history))) {
     abort_input("Profiles are available for Gaussian models, and for binomial and Poisson models fitted by certified Monte Carlo maximum likelihood.", arg = "fitted")
   }
-  check_profile_settings(n_points, n_grid, span, if (!gaussian) n_draws,
+  check_profile_settings(n_points, n_grid, span, if (!exact) n_draws,
                          level)
   check_positive_integer(cores)
   check_logical(messages)
@@ -150,7 +150,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
   }
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
-  if (gaussian) {
+  if (exact) {
     problem <- make_gaussian_profile_problem(fitted)
   } else {
     if (messages) {
@@ -229,7 +229,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
     estimate = problem$estimate, standard_errors = problem$standard_errors,
     labels = problem$labels, max_loglik = max_loglik,
     higher_than_estimate = higher, level = level,
-    settings = if (gaussian) list(span = span) else
+    settings = if (exact) list(span = span) else
       list(n_draws = n_draws, seed = seed, span = span)
   ), class = "RiskMap_profile")
 }

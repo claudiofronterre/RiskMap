@@ -1760,7 +1760,8 @@ preserve_random_seed <- function() {
 check_invlink_tails <- function(invlink, family,
                                 eta = seq(-50, 50, by = 0.5)) {
   mean <- invlink(eta)
-  outside <- is.na(mean) | mean < 0 | (family == "binomial" & mean > 1)
+  range <- family_traits(family)$mean_range
+  outside <- is.na(mean) | mean < range[1L] | mean > range[2L]
   if (any(outside)) {
     at <- eta[which(outside)[1L]]
     abort_input("{.arg invlink} returns a value that isn't a number, or is outside the range of the family, at a linear predictor of {at}.", arg = "invlink")
@@ -1794,11 +1795,9 @@ check_invlink <- function(invlink, family, eta = seq(-5, 5, length.out = 11)) {
   if (any(!is.finite(mu))) {
     abort_input(c("{.arg invlink} returns means that aren't finite.", "i" = "Check the model parameters and covariates."), arg = "invlink")
   }
-  if (family == "binomial" && any(mu < 0 | mu > 1)) {
-    abort_input("For a binomial model, {.arg invlink} must return probabilities between 0 and 1.", arg = "invlink")
-  }
-  if (family == "poisson" && any(mu < 0)) {
-    abort_input("For a Poisson model, {.arg invlink} must return non-negative means.", arg = "invlink")
+  traits <- family_traits(family)
+  if (any(mu < traits$mean_range[1L] | mu > traits$mean_range[2L])) {
+    abort_input(traits$range_message, arg = "invlink")
   }
   mu
 }

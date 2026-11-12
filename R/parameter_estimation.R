@@ -285,7 +285,7 @@ glgpm <- function(formula,
   family_link <- read_family(family, invlink)
   family <- family_link$family
   invlink <- family_link$invlink
-  not_gaussian <- family != "gaussian"
+  model <- family_traits(family)
 
   distance_units <- match_choice(distance_units)
   check_logical(return_samples)
@@ -293,7 +293,7 @@ glgpm <- function(formula,
   check_control(control_mcml, "set_control_mcml")
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
 
-  if (family == "gaussian") {
+  if (model$exact) {
     if (!is.null(invlink)) {
       abort_input("{.arg invlink} can't be given for a Gaussian model, which has the identity link.", arg = "invlink")
     }
@@ -328,11 +328,11 @@ glgpm <- function(formula,
   }
 
   # Define denominators for Binomial and Poisson distributions
-  if (not_gaussian) {
+  if (!model$exact) {
     sub_den <- substitute(denominator)
     if (is.null(sub_den)){
       units_m <- rep(1, nrow(data))
-      if (family == "binomial") {
+      if (model$warn_missing_denominator) {
         riskmap_warn("{.arg denominator} isn't given, so it is taken to be 1 for every observation.")
       }
     } else {
@@ -349,7 +349,7 @@ glgpm <- function(formula,
       abort_input("{.arg denominator} must name a numeric column, not {.obj_type_friendly {units_m}}.", arg = "denominator")
     }
     if (is.integer(units_m)) units_m <- as.numeric(units_m)
-    if (family == "binomial") check_binomial(y, units_m)
+    model$validate(y, units_m)
     check_control(control_mcmc, "set_control_mcmc")
   }
 
@@ -399,7 +399,7 @@ glgpm <- function(formula,
   fix_tau2 <- inter_f$gp_spec$nugget
 
   if(all(table(ID_coords) == 1) &&
-     family == "gaussian" &&
+     model$measurement_error &&
      isTRUE(fix_tau2) &&
      is.null(fix_var_me)){
     abort_input(c("The nugget and the measurement error variance can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} or a fixed nugget in {.fn gp}, or give {.arg fix_var_me}."), arg = "formula")
@@ -409,7 +409,7 @@ glgpm <- function(formula,
   # confounded with an estimated measurement-error variance. When there is
   # only one observation per location, it is also confounded with an estimated
   # nugget. Fixed variance components do not create this identifiability issue.
-  if (family == "gaussian" && n_re > 0) {
+  if (model$measurement_error && n_re > 0) {
     n_levels_re <- vapply(re_unique, length, integer(1))
     is_saturated_re <- n_levels_re == n
     confounded_with_me <- is.null(fix_var_me)
@@ -443,20 +443,11 @@ glgpm <- function(formula,
   ))
 
   if(is.null(start_pars[["beta"]])) {
-    if(family=="gaussian") {
-      start_pars[["beta"]] <- linear_start_values(D, y)
-    } else if(family=="binomial") {
-      glm_fitted <- binomial_start_regression(
-        y, units_m, D, cov_offset, link = if (is.list(invlink)) invlink$link
-      )
-      start_pars[["beta"]] <- coef(glm_fitted)
-    } else if(family=="poisson") {
-      pf_aux <- update(inter_f$pf, . ~ . + offset(log(units_m)) + offset(cov_offset))
-      data_aux <- data
-      data_aux$units_m <- units_m; data_aux$cov_offset <- cov_offset
-      glm_fitted <- glm(pf_aux, data = data_aux, family = poisson)
-      start_pars[["beta"]] <- coef(glm_fitted)
-    }
+    start_pars[["beta"]] <- model$start_coefficients(
+      y = y, units_m = if (!model$exact) units_m, D = D,
+      cov_offset = cov_offset, link = if (is.list(invlink)) invlink$link,
+      formula = inter_f$pf, data = data
+    )
   } else {
     if (!is.numeric(start_pars[["beta"]])) {
       abort_input("{.code start_pars$beta} must be numeric, not {.obj_type_friendly {start_pars[['beta']]}}.", arg = "start_pars")
@@ -514,7 +505,7 @@ glgpm <- function(formula,
     transformed_laplace = NA_real_,
     fallback_reason = NULL
   )
-  if (not_gaussian && !user_supplied_start) {
+  if (!model$exact && !user_supplied_start) {
     selection <- select_nongaussian_start(
       current = start_pars,
       y = y,
@@ -540,7 +531,7 @@ glgpm <- function(formula,
   res <- fit_glgpm_design(
     y = y, D = D, coords = coords, ID_coords = ID_coords, ID_re = ID_re,
     s_unique = s_unique, re_unique = re_unique,
-    units_m = if (not_gaussian) units_m, cov_offset = cov_offset,
+    units_m = if (!model$exact) units_m, cov_offset = cov_offset,
     kappa = kappa, fix_tau2 = fix_tau2,
     fix_var_me = fix_var_me, family = family, invlink = invlink,
     start_pars = start_pars, control_mcmc = control_mcmc,
@@ -551,7 +542,7 @@ glgpm <- function(formula,
   res$y <- y
   res$D <- original_D
   res$coords <- coords
-  if (not_gaussian) {
+  if (!model$exact) {
     attr(res, "starting_values") <- starting_diagnostics
   }
   res$ID_coords <- ID_coords
@@ -574,10 +565,10 @@ glgpm <- function(formula,
   res$data <- data
   res$input_crs <- input_crs
   res$kappa <- kappa
-  if(not_gaussian) res$units_m <- units_m
+  if (!model$exact) res$units_m <- units_m
   res$cov_offset <- cov_offset
   res$call <- match.call()
-  if (!not_gaussian) {
+  if (model$exact) {
     gaussian_fitted <- gaussian_conditional_fitted(res)
     res$linear_predictors <- gaussian_fitted
     res$fitted_values <- gaussian_fitted
@@ -604,7 +595,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
                              control_mcmc, control_mcml, seed,
                              return_samples, messages,
                              call = rlang::caller_env()) {
-  not_gaussian <- family != "gaussian"
+  exact <- family_traits(family)$exact
   n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
   spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
   fitting_coords <- spatial_scaling$coordinates
@@ -616,7 +607,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
     solve(design_scaling$coefficient_transform, start_pars[["beta"]])
   )
 
-  if(!not_gaussian) {
+  if (exact) {
     if(is.null(fix_var_me)) {
       if(is.null(start_pars[["sigma2_me"]])) {
         start_pars[["sigma2_me"]] <- 1
@@ -641,7 +632,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
     res["mcml_history"] <- list(NULL)
     res["mcml_certified"] <- list(NULL)
     res["mcml_selected_iteration"] <- list(NULL)
-  } else if(not_gaussian) {
+  } else {
     # Without a seed, draw one from the session's stream, which advances it
     # like any random call. Every random step of the fit derives from it.
     if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
@@ -723,7 +714,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
     log(spatial_scaling$distance_scale)
   attr(res, "design_scaling") <- design_scaling[c("center", "scale")]
   attr(res, "distance_scale") <- spatial_scaling$distance_scale
-  res["seed"] <- list(if (not_gaussian) seed)
+  res["seed"] <- list(if (!exact) seed)
   res
 }
 
@@ -1201,15 +1192,9 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
       offset <- offset + n_levels
     }
   }
-  log_likelihood <- if (family == "binomial") {
-    sum(y * eta - units_m * softplus(eta))
-  } else {
-    means <- exp(eta)
-    if (any(!is.finite(means))) {
-      return(-Inf)
-    }
-    sum(y * eta - units_m * means)
-  }
+  log_likelihood <- family_traits(family)$start_log_likelihood(eta, y,
+                                                                units_m)
+  if (is.null(log_likelihood)) return(-Inf)
   log_prior <- -0.5 * (
     nrow(covariance) * log(2 * pi) +
       log_determinant_from_cholesky(covariance_root) +
@@ -1268,22 +1253,15 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     return(list(start = current, diagnostics = diagnostics))
   }
 
+  traits <- family_traits(family)
   transformed_fit <- tryCatch({
-    transformed_response <- if (family == "binomial") {
-      log((y + 0.5) / (units_m - y + 0.5))
-    } else {
-      log((y + 0.5) / units_m)
-    }
+    transformed_response <- traits$empirical_link(y, units_m)
     # With one observation per location, transformed sampling variation and a
     # Gaussian nugget are otherwise confounded. The Gaussian engine currently
     # accepts a scalar measurement variance, so fix it at the median
     # delta-method variance when the nugget is estimated.
     transformed_measurement_variance <- if (isTRUE(fix_tau2)) {
-      if (family == "binomial") {
-        median(1 / (y + 0.5) + 1 / (units_m - y + 0.5))
-      } else {
-        median(1 / (y + 0.5))
-      }
+      traits$transform_variance(y, units_m)
     } else {
       NULL
     }
@@ -2357,97 +2335,6 @@ compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
   c(estimates)
 }
 
-##' Read the response family and link that a user gives
-##'
-##' The one reader of `family` for every exported function that takes it.
-##' `family` is one of the strings `"gaussian"`, `"binomial"` and
-##' `"poisson"`, a family function such as `binomial`, or a family object
-##' such as `binomial("probit")`. A family object becomes its family string
-##' and, for a link other than the canonical one, the list form of `invlink`
-##' that `make_inverse_link_functions()` reads, with the link's name and its
-##' exact inverse and derivatives (`named_inverse_link()`). The canonical
-##' logit and log links keep `invlink = NULL`, so they take the canonical path
-##' and fit exactly as the strings do, and the identity link of the Gaussian
-##' family leaves nothing to carry. A string leaves `invlink` as it is, which
-##' keeps the internal list form open to refits.
-##' @param family What the user gave as `family`.
-##' @param invlink What the user gave as `invlink`.
-##' @param families The family strings the calling function accepts.
-##' @return A list with `family`, one of `families`, and `invlink`.
-##' @noRd
-read_family <- function(family, invlink = NULL,
-                        families = c("gaussian", "binomial", "poisson")) {
-  if (inherits(invlink, "link-glm")) {
-    link_name <- invlink$name
-    abort_input(c("{.arg invlink} must be an inverse-link function, not a {.cls link-glm} object.", "i" = "Give a named link in {.arg family}, as in {.code binomial(\"{link_name}\")}, or the inverse alone, as in {.code make.link(\"{link_name}\")$linkinv}."), arg = "invlink")
-  }
-  if (is.character(invlink)) {
-    abort_input(c("{.arg invlink} must be a function, not the name of a link.", "i" = "Give a named link in {.arg family}, as in {.code binomial(\"probit\")}."), arg = "invlink")
-  }
-  if (is.function(family)) {
-    family <- tryCatch(family(), error = function(e) NULL)
-  }
-  if (inherits(family, "family")) {
-    link <- read_family_link(family$family %||% "", family$link %||% "")
-    if (!is.null(link$invlink) && !is.null(invlink)) {
-      family_call <- paste0(family$family, "(\"", family$link, "\")")
-      abort_input("Give the link either in {.arg family}, as in {.code {family_call}}, or as a function in {.arg invlink}, not both.", arg = "invlink")
-    }
-    family <- link$family
-    if (is.null(invlink)) invlink <- link$invlink
-  }
-  if (!is.character(family) || length(family) != 1L ||
-      !family %in% families) {
-    abort_input("{.arg family} must be {.or {.val {families}}}, or a family object such as {.code binomial(\"probit\")}.", arg = "family")
-  }
-  list(family = family, invlink = invlink)
-}
-
-##' Family string and link of a family object
-##'
-##' Takes the `family` and `link` names of a stats family object and returns
-##' its family string and `invlink`, or stops with the reason the link is not
-##' accepted and what to give instead.
-##' @noRd
-read_family_link <- function(family, link) {
-  object <- paste0(family, "(\"", link, "\")")
-  # A template, interpolated by the error that uses it.
-  use_invlink <- "Other links can be given as an inverse-link function in {.arg invlink}, with {.code family = \"{family}\"}."
-  if (startsWith(family, "quasi")) {
-    abort_input(c("{.fn {family}} is a quasi-likelihood family, which has no likelihood for RiskMap to maximise.", "i" = "Use {.fn binomial} or {.fn poisson}, and give a link they don't name as an inverse-link function in {.arg invlink}."), arg = "family")
-  }
-  if (!family %in% c("gaussian", "binomial", "poisson")) {
-    abort_input(c("{.arg family} must be a Gaussian, binomial or Poisson family, not {.val {family}}.", "i" = "For a binomial or Poisson response, any link can be given as an inverse-link function in {.arg invlink}."), arg = "family")
-  }
-  refused <- switch(
-    paste(family, link),
-    "binomial log" = "the log link can give probabilities above 1",
-    "poisson identity" = "the identity link can give negative means",
-    "poisson sqrt" = paste("its inverse, the square of the linear",
-                           "predictor, gives the same mean to a positive",
-                           "and a negative linear predictor"),
-    NULL
-  )
-  if (!is.null(refused)) {
-    abort_input(c("{.code {object}} can't be used, because {refused}.", "i" = use_invlink), arg = "family")
-  }
-  accepted <- switch(family,
-                     gaussian = "identity",
-                     binomial = c("logit", "probit", "cloglog", "cauchit"),
-                     poisson = "log")
-  if (!link %in% accepted) {
-    hint <- if (family == "gaussian") {
-      "Gaussian responses are fitted with the identity link only."
-    } else {
-      use_invlink
-    }
-    abort_input(c("The {link} link isn't available for the {family} family, which takes {.or {.val {accepted}}}.", "i" = hint), arg = "family")
-  }
-  canonical <- link %in% c("identity", "logit", "log")
-  list(family = family,
-       invlink = if (!canonical) c(named_inverse_link(link), link = link))
-}
-
 ##' The binomial regression that gives the starting regression coefficients
 ##'
 ##' A named link starts from a regression with its own link, since the
@@ -2602,61 +2489,22 @@ maxim_integrand <- function(
   n_tot <- n_loc + if (n_re > 0) sum(n_dim_re) else 0L
 
   linkf <- make_inverse_link_functions(family, invlink, n)
-  inv_link <- linkf$inv
-  inv1     <- linkf$d1
-  inv2     <- linkf$d2
+  model <- make_family(family, linkf)
 
   # Per-observation contributions for arbitrary inverse link
   contribs <- function(eta) {
-    if (!identical(linkf$name, "canonical")) {
-      terms <- compute_custom_link_terms(eta, y, units_m, family, linkf)
-      if (is.null(terms)) {
+    terms <- model$terms(eta, y, units_m)
+    if (is.null(terms)) {
+      if (!model$canonical) {
         riskmap_abort("{.arg invlink} gives a mean outside the support of the family, or a derivative that isn't finite, at the current linear predictor.", class = "riskmap_error_fit")
       }
-      return(list(g = terms$score, w = terms$curvature,
-                  llik = terms$log_likelihood))
-    }
-    if (any(!is.finite(eta))) {
-      riskmap_abort("The linear predictor isn't finite.", class = "riskmap_error_fit")
-    }
-    if (family == "poisson") {
-      mu  <- inv_link(eta)
-      mu1 <- inv1(eta)
-      mu2 <- inv2(eta)
-
-      if (any(!is.finite(mu))) {
-        riskmap_abort("The Poisson mean isn't finite at the current linear predictor.", class = "riskmap_error_fit")
+      if (any(!is.finite(eta))) {
+        riskmap_abort("The linear predictor isn't finite.", class = "riskmap_error_fit")
       }
-
-      g  <- (y / mu - units_m) * mu1
-      l2 <- - y * (mu1^2) / (mu^2) + (y / mu - units_m) * mu2
-      terms <- list(
-        log_likelihoods = y * log(pmax(units_m * mu, .Machine$double.eps)) -
-          units_m * mu,
-        score = g, curvature = -l2
-      )
-      at_limit <- mu <= 0
-    } else { # binomial
-      p  <- inv_link(eta)
-      p1 <- inv1(eta)
-      p2 <- inv2(eta)
-
-      den <- p * (1 - p)
-      g  <- (y - units_m * p) * p1 / den
-      l2 <- - units_m * (p1^2) / den + (y - units_m * p) * ( p2 / den - (p1^2) * (1 - 2 * p) / (den^2) )
-      terms <- list(
-        log_likelihoods = y * log(pmax(p, .Machine$double.eps)) +
-          (units_m - y) * log(pmax(1 - p, .Machine$double.eps)),
-        score = g, curvature = -l2
-      )
-      at_limit <- p <= 0 | p >= 1
+      # Only the canonical Poisson mean, exp(eta), overflows.
+      riskmap_abort("The Poisson mean isn't finite at the current linear predictor.", class = "riskmap_error_fit")
     }
-    # Where a probability rounds to 0 or 1, or a mean underflows to 0, the
-    # formulas above divide zero by zero.
-    terms <- replace_at_canonical_limits(terms, at_limit, eta, y, units_m,
-                                         family)
-    list(g = terms$score, w = terms$curvature,
-         llik = sum(terms$log_likelihoods))
+    list(g = terms$score, w = terms$curvature, llik = terms$log_likelihood)
   }
 
   # ---------- core functions ----------
@@ -2741,7 +2589,7 @@ maxim_integrand <- function(
 
   # ---------- optimize ----------
   start <- rep(0, n_tot)
-  if (!identical(linkf$name, "canonical")) {
+  if (model$moves_start) {
     start <- move_start_off_limits(
       start,
       function(S_tot) {
@@ -2875,9 +2723,7 @@ laplace_sampling_mcmc <- function(y,
                                   start_from_draw = TRUE,
                                   adapt_step = TRUE) {
 
-  if (length(family) != 1L || !family %in% c("poisson", "binomial")) {
-    riskmap_bug("{.arg family} must be {.val poisson} or {.val binomial}.")
-  }
+  traits <- check_engine_family(family)
 
   n <- length(y)
   n_loc <- nrow(Sigma)
@@ -2889,7 +2735,7 @@ laplace_sampling_mcmc <- function(y,
       any(!is.finite(units_m)) || any(units_m <= 0)) {
     abort_input("The denominators must be positive finite numbers, one for each response.", arg = "denominator")
   }
-  if (family == "binomial" && any(y > units_m)) {
+  if (traits$upper_limit && any(y > units_m)) {
     abort_input("Binomial responses can't exceed their denominators.", arg = "denominator")
   }
   if (!is.numeric(Sigma) || length(dim(Sigma)) != 2L ||
@@ -2949,6 +2795,7 @@ laplace_sampling_mcmc <- function(y,
   }
 
   linkf <- make_inverse_link_functions(family, invlink, n)
+  model <- make_family(family, linkf)
   structure <- sampler_latent_structure(Sigma, ID_coords, ID_re, sigma2_re)
   found <- tryCatch(
     find_sampler_mode(
@@ -2964,7 +2811,7 @@ laplace_sampling_mcmc <- function(y,
                                    ID_coords, ID_re, sigma2_re, family,
                                    invlink, linkf)
   }
-  link_terms <- if (!identical(linkf$name, "canonical")) {
+  link_terms <- if (!model$compiled) {
     # One call of the link per iteration, on all the linear predictors. A
     # point where the link fails or is not finite is rejected by the chain.
     function(eta) {
@@ -3092,15 +2939,14 @@ find_sampler_mode <- function(structure, y, units_m, mu, family, linkf,
   latent_map <- make_latent_map(structure$columns + 1L, structure$dimension)
   dense <- seq_len(structure$n_u)
   diagonal <- structure$n_u + seq_len(structure$n_d)
-  canonical <- identical(linkf$name, "canonical")
+  model <- make_family(family, linkf)
   prior_product <- function(latent) {
     c(as.numeric(structure$prior_u %*% latent[dense]),
       structure$prior_d * latent[diagonal])
   }
   terms_at <- function(latent) {
-    terms <- laplace_observation_terms(
-      mu + latent_linear_predictor(latent_map, latent),
-      y, units_m, family, linkf
+    terms <- model$terms(
+      mu + latent_linear_predictor(latent_map, latent), y, units_m
     )
     finite <- !is.null(terms) && is.finite(terms$log_likelihood) &&
       all(is.finite(terms$score)) && all(is.finite(terms$curvature))
@@ -3118,17 +2964,18 @@ find_sampler_mode <- function(structure, y, units_m, mu, family, linkf,
   # that is not log-concave with negative ones set to zero if the Hessian
   # has no Cholesky factor.
   usable_weights <- function(curvature) {
-    if (canonical || !is.null(solve_at(curvature, numeric(structure$dimension)))) {
+    if (model$assumes_concave ||
+        !is.null(solve_at(curvature, numeric(structure$dimension)))) {
       return(curvature)
     }
     pmax(curvature, 0)
   }
   search_from <- function(latent) {
-    if (!canonical) {
-      latent <- move_start_off_limits(
+    if (model$moves_start) {
+      latent <- model$move_start(
         latent,
         function(point) mu + latent_linear_predictor(latent_map, point),
-        y, units_m, family, linkf, latent_map$columns[, 1L]
+        y, units_m, latent_map$columns[, 1L]
       )
     }
     terms <- terms_at(latent)
@@ -3515,7 +3362,7 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
   response_mean <- colMeans(
     matrix(link_function$inv(as.numeric(eta)), nrow = nrow(eta))
   )
-  if (family == "poisson") response_mean <- units_m * response_mean
+  response_mean <- family_traits(family)$fitted_mean(response_mean, units_m)
 
   list(
     samples = do.call(cbind, sample_blocks),
