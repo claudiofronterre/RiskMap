@@ -2448,37 +2448,6 @@ read_family_link <- function(family, link) {
        invlink = if (!canonical) c(named_inverse_link(link), link = link))
 }
 
-##' Exact inverse and derivatives of a named binomial link
-##'
-##' The inverses are written without the clamping of [stats::binomial()],
-##' because `bound_log_probability()` already handles probabilities of 0 and
-##' 1, and the derivatives are exact so that no numerical differences are
-##' needed. The second derivative of the complementary log-log link is
-##' written as a difference of two exponentials, which stays finite where
-##' `exp(eta)` overflows.
-##' @noRd
-named_inverse_link <- function(link) {
-  switch(
-    link,
-    probit = list(
-      inv = function(eta) pnorm(eta),
-      d1 = function(eta) dnorm(eta),
-      d2 = function(eta) -eta * dnorm(eta)
-    ),
-    cloglog = list(
-      inv = function(eta) -expm1(-exp(eta)),
-      d1 = function(eta) exp(eta - exp(eta)),
-      d2 = function(eta) exp(eta - exp(eta)) - exp(2 * eta - exp(eta))
-    ),
-    cauchit = list(
-      inv = function(eta) pcauchy(eta),
-      d1 = function(eta) dcauchy(eta),
-      d2 = function(eta) -2 * eta / (pi * (1 + eta^2)^2)
-    ),
-    riskmap_bug("No inverse is defined for the {link} link.")
-  )
-}
-
 ##' The binomial regression that gives the starting regression coefficients
 ##'
 ##' A named link starts from a regression with its own link, since the
@@ -2522,100 +2491,6 @@ refit_invlink <- function(object) {
   }
   list(inv = link_function$inv, d1 = link_function$d1,
        d2 = link_function$d2, link = link_function$link)
-}
-
-##' Validate and construct inverse-link functions
-##'
-##' This is the single internal representation used by the conditional-mode,
-##' sampling and non-Gaussian likelihood code. Keeping the validation and
-##' derivative construction here prevents those paths from interpreting a
-##' user-supplied link differently.
-##'
-##' @noRd
-make_inverse_link_functions <- function(family, invlink, ncheck,
-                                        second_derivative = TRUE) {
-  # `what` names the function checked, with cli markup.
-  validate <- function(f, what) {
-    what <- cli::format_inline(what)
-    if (!is.function(f)) {
-      abort_input("{what} must be a function, not {.obj_type_friendly {f}}.", arg = "invlink")
-    }
-    x <- rep(0, ncheck)
-    out <- tryCatch(f(x), error = function(e) e)
-    if (inherits(out, "error")) {
-      abort_input("{what} failed on a numeric vector.", arg = "invlink", parent = out)
-    }
-    if (!is.numeric(out)) {
-      abort_input("{what} must return a numeric vector, not {.obj_type_friendly {out}}.", arg = "invlink")
-    }
-    if (length(out) != length(x)) {
-      abort_input("{what} must return a vector as long as its input.", arg = "invlink")
-    }
-    if (!all(is.finite(out))) {
-      abort_input("{what} returns values that aren't finite.", arg = "invlink")
-    }
-    invisible(TRUE)
-  }
-
-  if (is.null(invlink)) {
-    if (family == "poisson") {
-      inv <- function(x) exp(x)
-      d1 <- function(x) exp(x)
-      d2 <- if (second_derivative) function(x) exp(x) else NULL
-    } else {
-      inv <- function(x) plogis(x)
-      d1 <- function(x) {
-        probability <- inv(x)
-        probability * (1 - probability)
-      }
-      d2 <- if (second_derivative) function(x) {
-        probability <- inv(x)
-        derivative <- probability * (1 - probability)
-        derivative * (1 - 2 * probability)
-      } else NULL
-    }
-    validate(inv, "The canonical inverse link")
-    validate(d1, "The derivative of the canonical inverse link")
-    if (second_derivative) {
-      validate(d2, "The second derivative of the canonical inverse link")
-    }
-    return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical",
-                link = if (family == "poisson") "log" else "logit"))
-  }
-
-  # The list form is internal. It carries a named link from read_family(),
-  # and the stored link of a fit into its refits (refit_invlink()).
-  link <- NULL
-  if (is.function(invlink)) {
-    inv <- invlink
-    d1 <- NULL
-    d2 <- NULL
-  } else if (is.list(invlink)) {
-    unknown <- setdiff(names(invlink), c("inv", "d1", "d2", "link"))
-    if (is.null(names(invlink)) || length(unknown)) {
-      abort_input("A list in {.arg invlink} takes only the elements {.code inv}, {.code d1}, {.code d2} and {.code link}.", arg = "invlink")
-    }
-    inv <- invlink$inv
-    d1 <- invlink$d1
-    d2 <- invlink$d2
-    link <- invlink$link
-  } else {
-    abort_input("{.arg invlink} must be {.code NULL} or a function, not {.obj_type_friendly {invlink}}.", arg = "invlink")
-  }
-
-  validate(inv, "{.arg invlink}")
-  check_invlink(inv, family)
-  check_invlink_tails(inv, family)
-  if (is.null(d1)) d1 <- differentiate(inv, ncheck)
-  validate(d1, "The derivative of {.arg invlink}")
-  if (second_derivative) {
-    if (is.null(d2)) d2 <- differentiate(d1, ncheck)
-    validate(d2, "The second derivative of {.arg invlink}")
-  } else {
-    d2 <- NULL
-  }
-
-  list(inv = inv, d1 = d1, d2 = d2, name = "custom", link = link)
 }
 
 ##' Maximization of the Integrand for Generalized Linear Gaussian Process Models
@@ -3204,7 +3079,7 @@ sampler_latent_structure <- function(Sigma, ID_coords, ID_re, sigma2_re) {
 ##' order and with the structured factor of `sampler_latent_structure()`, so
 ##' that each step costs a factorisation of the size of the locations and
 ##' passes over the records, whatever the number of `re()` levels. It follows
-##' the rules of `adaptive_laplace_mode()`. For a link that is not
+##' the rules of `find_latent_mode()`. For a link that is not
 ##' log-concave, curvatures that leave the Hessian without a Cholesky factor
 ##' are set to zero, a search from a nonzero `start` that fails is repeated
 ##' from zero, and a custom link's search starts off the limits of the link.
@@ -3278,7 +3153,7 @@ find_sampler_mode <- function(structure, y, units_m, mu, family, linkf,
         }
       }
       if (!accepted) {
-        # As in adaptive_laplace_mode(), a point where the promised increase
+        # As in find_latent_mode(), a point where the promised increase
         # is within rounding is a mode that rounding keeps from confirming.
         if (sum(gradient * step) / 2 > 1e-12 * abs(current)) return(NULL)
         reached_limit <- FALSE
