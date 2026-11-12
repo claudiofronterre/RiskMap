@@ -125,6 +125,9 @@ SUSPICIOUS and PROBLEM, which stay in the column `status` of the element
 `checks`. Code that searched the printed checks for them should read that
 column.
 - RiskMap now needs cli 3.6.0 or later, for the links to help pages.
+- In a console with colours, the labels of rows that line up labels and
+values, such as the log-likelihood, the settings of a prediction or the
+evidence of `check_fit()`, are grey, so that the values stand out.
 - Printing the result of `assess_prediction()` gives the models, the test
 sets, how the parameters were set and the scores averaged over the test sets,
 instead of the whole list of scores and test sets. Its `summary()` gives the

@@ -170,7 +170,7 @@ Both helpers show progress only when `messages` is `TRUE` and the option `RiskMa
 - `out_heading()` marks the heading of a section, and `out_faint()` what matters less, such as the call.
 - `out_text()` wraps sentences to the console width, and `out_bullets()` gives lines a symbol as `cli_bullets()` does. Use `"v"` for a good verdict, `"!"` for one that needs care, `"x"` for a problem and `"i"` for a hint. `out_status_symbol()` gives the symbol of the status of a check.
 - `out_fun(name, topic)` names a RiskMap function and links it to its help page where the console supports such links.
-- `out_capture()` takes the lines of a table that R prints, such as a matrix or `printCoefmat()`, and `out_pairs()` lines up labels and values.
+- `out_capture()` takes the lines of a table that R prints, such as a matrix or `printCoefmat()`, and `out_pairs()` lines up labels and values, with the labels grey.
 
 Text is plain unless `markup = TRUE`, so that data such as a formula are printed as they are. Wrapping keeps code between backticks on one line. Build the lines in a separate function, as `format_fit()` does for `print.RiskMap()`, so that tests can read them. Snapshot tests run without colour and with ASCII symbols, and `test-format.R` also keeps one snapshot in Unicode.
 

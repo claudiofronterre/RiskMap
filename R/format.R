@@ -159,9 +159,9 @@ out_capture <- function(expr, indent = 0L) {
 
 #' Rows of labels and values, the labels padded to one width
 #'
-#' A value too long for its column wraps under its first line. Shorter
-#' values are kept as they are, so that numbers padded to one width stay
-#' aligned.
+#' The labels are faint, so that the values stand out. A value too long for
+#' its column wraps under its first line. Shorter values are kept as they are,
+#' so that numbers padded to one width stay aligned.
 #' @noRd
 out_pairs <- function(labels, values, indent = 0L) {
   if (!length(labels)) return(character())
@@ -173,8 +173,9 @@ out_pairs <- function(labels, values, indent = 0L) {
     lines <- if (cli::ansi_nchar(value) <= value_width) value else
       out_wrap(value, width = value_width)
     if (!length(lines)) lines <- ""
-    c(paste0(strrep(" ", indent), formatC(labels[[k]], width = -label_width),
-             "  ", lines[1L]),
+    c(paste0(strrep(" ", indent),
+             out_faint(formatC(labels[[k]], width = -label_width)), "  ",
+             lines[1L]),
       if (length(lines) > 1L) paste0(strrep(" ", start), lines[-1L]))
   }))
 }
