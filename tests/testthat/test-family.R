@@ -371,7 +371,12 @@ test_that("the family's simulator and scoring support take the draws of their ca
 test_that("a fit's family says whether it is exact and how its mean is named", {
   expect_true(fit_is_exact(gaussian_model))
   expect_false(fit_is_exact(binomial_model))
-  expect_false(fit_is_exact(list(family = "gamma")))
+  expect_error(fit_is_exact(list(family = "gamma")), "must be a fit",
+               class = "riskmap_error_input")
+  no_family <- binomial_model
+  no_family["family"] <- list(NULL)
+  expect_error(predict(no_family, binomial_model$data[1:2, ], seed = 1),
+               "must be a fit", class = "riskmap_error_input")
   expect_identical(family_traits("binomial")$response_quantity, "prevalence")
   expect_identical(family_traits("poisson")$response_quantity, "rate")
   expect_null(family_traits("gaussian")$response_quantity)

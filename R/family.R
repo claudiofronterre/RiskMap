@@ -451,11 +451,18 @@ check_engine_family <- function(family) {
 ##' Whether a fitted model's family is exact, fitted in closed form
 ##'
 ##' TRUE for a Gaussian fit, whose prediction conditions in closed form and
-##' which has no Monte Carlo error, and FALSE otherwise, also for an object
-##' whose family is not one of RiskMap's.
+##' which has no Monte Carlo error, and FALSE for a binomial or Poisson fit. A
+##' fit whose family is not one of RiskMap's, such as one whose `family` was
+##' removed, stops with an input error, so that it is not predicted or checked
+##' as if it were a binomial or Poisson fit.
 ##' @noRd
 fit_is_exact <- function(fit) {
-  isTRUE(fit_traits(fit)$exact)
+  traits <- fit_traits(fit)
+  if (is.null(traits)) {
+    families <- names(riskmap_families)
+    abort_input("{.arg object} must be a fit of the family {.or {.val {families}}}, but its {.field family} is {.obj_type_friendly {fit$family}}.", arg = "object")
+  }
+  traits$exact
 }
 
 ##' The traits of the family of a fitted model
