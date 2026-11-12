@@ -93,7 +93,7 @@ test_that("failed refits are recorded instead of stopping", {
                               message = "simulated failure"))
   expect_true(all(is.na(boot$estimates[2L, ])))
   expect_false(anyNA(boot$estimates[-2L, ]))
-  expect_output(print(boot), "1 refits failed")
+  expect_output(print(boot), "1 refit failed and is left out")
 
   local_mocked_bindings(fit_glgpm_design = function(...) stop("always fails"))
   error <- expect_error(

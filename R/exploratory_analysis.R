@@ -97,12 +97,16 @@ summarise_distance <- function(data,
 ##' @export
 print.RiskMap_distance_summary <- function(x, digits = 3, ...) {
   check_positive_integer(digits, "digits")
-  cat("Distances between ", attr(x, "n_locations"), " unique locations, in ",
-      attr(x, "distance_units"), "\n", sep = "")
   values <- formatC(as.numeric(x), digits = digits, format = "fg",
                     big.mark = ",")
   names(values) <- names(x)
-  print(noquote(values), right = TRUE)
+  out_print(c(
+    out_rule("Distances between locations"),
+    out_text(paste0(format_count(attr(x, "n_locations")),
+                    " unique locations, with distances in ",
+                    attr(x, "distance_units"), ".")),
+    out_capture(print(noquote(values), right = TRUE))
+  ))
   invisible(x)
 }
 
@@ -391,20 +395,41 @@ variogram <- function(data,
 ##' @method print RiskMap_variogram
 ##' @export
 print.RiskMap_variogram <- function(x, digits = 3, ...) {
-  cat("Empirical variogram with ", nrow(x$variogram),
-      " distance classes from ", signif(min(x$breaks), digits), " to ",
-      signif(max(x$breaks), digits), " ", x$distance_units, "\n", sep = "")
-  if (x$n_permutations > 0L) {
-    cat(100 * x$level, "% global envelope for spatial independence from ",
-        x$n_permutations, " permutations\n\n", sep = "")
+  out_print(format_variogram(x, digits, ...))
+  invisible(x)
+}
+
+##' The lines that print an empirical variogram
+##' @noRd
+format_variogram <- function(x, digits, ...) {
+  classes <- nrow(x$variogram)
+  envelope <- if (x$n_permutations > 0L) {
+    paste0("The ", 100 * x$level, "% global envelope for spatial ",
+           "independence is from ", format_count(x$n_permutations),
+           " permutations.")
   } else {
-    cat("No envelope (n_permutations = 0)\n\n")
+    "There is no envelope, since `n_permutations` is 0."
+  }
+  outside <- if (x$n_permutations > 0L) {
+    table <- x$variogram
+    beyond <- sum(table$semivariance < table$lower_envelope |
+                    table$semivariance > table$upper_envelope, na.rm = TRUE)
+    c(i = paste0("The variogram is outside the envelope in ", beyond, " of ",
+                 classes, " distance classes."))
   }
   # Counts are printed in full, whatever the number of digits
   variogram_table <- x$variogram
   variogram_table$n_pairs <- as.integer(variogram_table$n_pairs)
-  print(variogram_table, digits = digits, row.names = FALSE, ...)
-  invisible(x)
+  c(out_rule("Empirical variogram"),
+    out_text(paste0(classes, " distance classes from ",
+                    signif(min(x$breaks), digits), " to ",
+                    signif(max(x$breaks), digits), " ", x$distance_units,
+                    ". ", envelope)),
+    "",
+    out_capture(print(variogram_table, digits = digits, row.names = FALSE,
+                      ...)),
+    if (!is.null(outside)) "",
+    out_bullets(outside))
 }
 
 ##' @title Plot Method for RiskMap_variogram Objects

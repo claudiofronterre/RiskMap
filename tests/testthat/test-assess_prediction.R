@@ -816,7 +816,8 @@ test_that("assess_prediction reports how the parameters are treated", {
   )
   expect_true(out$keep_par_fixed)
   expect_output(print(summary(out)),
-                "Parameters: fixed at the estimates from all the data")
+                "Parameters are fixed at the estimates from all the data.",
+                fixed = TRUE)
 })
 
 test_that("assess_prediction warns when regularized test sets are smaller than 'size'", {

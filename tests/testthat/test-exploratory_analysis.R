@@ -78,7 +78,8 @@ test_that("summarise_distance prints rounded values and stores them in full", {
   expect_identical(result[["max"]], sqrt(2))
 
   printed <- capture.output(print(result))
-  expect_identical(printed[1], "Distances between 4 unique locations, in m")
+  expect_match(printed[1], "Distances between locations", fixed = TRUE)
+  expect_identical(printed[2], "4 unique locations, with distances in m.")
   expect_true(any(grepl("1.41", printed, fixed = TRUE)))
   expect_false(any(grepl("1.414", printed, fixed = TRUE)))
   expect_true(any(grepl("1.4142", capture.output(print(result, digits = 5)),
@@ -605,8 +606,13 @@ test_that("print.RiskMap_variogram describes the classes and the envelope", {
   output <- capture.output(printed <- print(result))
 
   expect_identical(printed, result)
-  expect_match(output[1], "Empirical variogram with 4 distance classes from 0 to")
-  expect_match(output[2], "95% global envelope for spatial independence from 99 permutations")
+  expect_match(output[1], "Empirical variogram", fixed = TRUE)
+  expect_match(squish(output), paste(
+    "4 distance classes from 0 to [0-9.]+ km. The 95% global envelope for",
+    "spatial independence is from 99 permutations."
+  ))
+  expect_match(squish(output),
+               "The variogram is outside the envelope in [0-4] of 4 distance")
   expect_true(any(grepl("semivariance", output)))
 
   # Counts stored as doubles are still printed in full
@@ -616,5 +622,8 @@ test_that("print.RiskMap_variogram describes the classes and the envelope", {
 
   result <- variogram(gaussian_data, variable = "y", n_bins = 4,
                       n_permutations = 0)
-  expect_match(capture.output(print(result))[2], "No envelope")
+  output <- capture.output(print(result))
+  expect_match(squish(output), "There is no envelope, since `n_permutations` is 0.",
+               fixed = TRUE)
+  expect_false(any(grepl("outside the envelope", output)))
 })

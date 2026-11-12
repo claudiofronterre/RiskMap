@@ -900,22 +900,38 @@ profile_intervals <- function(problem, marginal, level) {
 
 ##' @export
 print.RiskMap_profile <- function(x, ...) {
-  # A profile without draws is of a Gaussian fit, whose likelihood is exact.
-  cat("Profile likelihood of a RiskMap fit (",
-      if (is.null(x$settings$n_draws)) "exact likelihood" else
-        paste(x$settings$n_draws, "Monte Carlo draws"), ")\n", sep = "")
-  cat(round(100 * x$level), "% intervals; variances and the scale on their ",
-      "natural scale\n\n", sep = "")
-  cat(format_profile_table(x$intervals), sep = "\n")
-  if (anyNA(x$intervals[, c("profile_lower", "profile_upper")])) {
-    cat("\nNA: the profile does not reach the cut-off on that side within the",
-        "grid or the\nbounds of the parameter, so the interval is open there.\n")
-  }
-  if (x$higher_than_estimate > 0.01) {
-    cat("\nA point on the profile is higher than the estimate by",
-        signif(x$higher_than_estimate, 3), "log-likelihood units.\n")
-  }
+  out_print(format_profile(x))
   invisible(x)
+}
+
+##' The lines that print profile likelihoods
+##' @noRd
+format_profile <- function(x) {
+  # A profile without draws is of a Gaussian fit, whose likelihood is exact.
+  likelihood <- if (is.null(x$settings$n_draws)) {
+    "The likelihood is exact."
+  } else {
+    paste0("The likelihood is approximated with ",
+           format_count(x$settings$n_draws), " Monte Carlo draws.")
+  }
+  open <- if (anyNA(x$intervals[, c("profile_lower", "profile_upper")])) {
+    c(i = paste0("NA means that the profile does not reach the cut-off on ",
+                 "that side within the grid or the bounds of the parameter, ",
+                 "so the interval is open there."))
+  }
+  higher <- if (x$higher_than_estimate > 0.01) {
+    c("!" = paste0("A point on the profile is higher than the estimate by ",
+                   signif(x$higher_than_estimate, 3),
+                   " log-likelihood units."))
+  }
+  c(out_rule("Profile likelihood"),
+    out_text(paste0(likelihood, " The intervals are ", round(100 * x$level),
+                    "% intervals, with the variances and the scale on their ",
+                    "natural scale.")),
+    "",
+    format_profile_table(x$intervals),
+    if (!is.null(open) || !is.null(higher)) "",
+    out_bullets(c(open, higher)))
 }
 
 ##' Lines of the table of intervals printed by `print.RiskMap_profile()`
