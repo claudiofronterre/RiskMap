@@ -26,7 +26,7 @@ test_that("assess_prediction produces errors", {
     assess_prediction(list(gaussian_model),
                       method = "cluster",
                       fold = 0.1),
-    "'fold' must be a single positive integer"
+    "fold", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -48,7 +48,7 @@ test_that("assess_prediction produces errors", {
                       min_dist = 1,
                       size = 1,
                       iter = 2.1),
-    "'iter' must be a single positive integer"
+    "iter", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -66,7 +66,7 @@ test_that("assess_prediction produces errors", {
                       min_dist = -1,
                       size = 1
     ),
-    "'min_dist' must be a single positive"
+    "min_dist", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -75,7 +75,7 @@ test_that("assess_prediction produces errors", {
                       min_dist = 1,
                       size = 1.1
     ),
-    "'size' must be a single positive integer"
+    "size", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -85,7 +85,7 @@ test_that("assess_prediction produces errors", {
                       size = 1,
                       keep_par_fixed = "not logical"
     ),
-    "'keep_par_fixed' must be either TRUE or FALSE"
+    "keep_par_fixed", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -105,7 +105,7 @@ test_that("assess_prediction produces errors", {
                       size = 1,
                       plot_fold = "not true"
     ),
-    "'plot_fold' must be either TRUE or FALSE"
+    "plot_fold", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -115,7 +115,7 @@ test_that("assess_prediction produces errors", {
                       size = 1,
                       messages = "not true"
     ),
-    "'messages' must be either TRUE or FALSE"
+    "messages", class = "riskmap_error_input"
   )
 
   different_rows <- gaussian_model

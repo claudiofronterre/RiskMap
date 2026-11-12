@@ -53,7 +53,7 @@ test_that("Matérn correlations reject invalid scale parameters and distances", 
   for (kappa in c(0.5, 1)) {
     for (phi in c(0, -1, NA, Inf)) {
       expect_error(matern_correlation(c(0, 1), phi = phi, kappa = kappa),
-                   "'phi' must be a single finite number strictly between 0 and Inf")
+                   "phi", class = "riskmap_error_input")
     }
     for (distance in c(-1, NA, Inf)) {
       expect_error(matern_correlation(c(0, distance), phi = 1, kappa = kappa),

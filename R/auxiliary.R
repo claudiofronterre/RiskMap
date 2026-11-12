@@ -158,7 +158,7 @@ matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
   if (any(!is.finite(u) | u < 0)) {
     stop("'u' must contain only finite, non-negative distances", call. = FALSE)
   }
-  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+  check_range(phi, min = 0, allow_equal = FALSE, arg = "phi")
 
   input_dimensions <- if (is.matrix(u)) dim(u) else NULL
   if (is.vector(u))
@@ -208,7 +208,7 @@ matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 matern_gradient_phi <- function(u, phi, kappa) {
 
   stopifnot("'u' must be an output from 'stats::dist()'" = inherits(u, "dist"))
-  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+  check_range(phi, min = 0, allow_equal = FALSE, arg = "phi")
 
   der.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
@@ -251,7 +251,7 @@ matern_gradient_phi <- function(u, phi, kappa) {
 matern_hessian_phi <- function(u, phi, kappa) {
 
   stopifnot("'u' must be an output from 'stats::dist()'" = inherits(u, "dist"))
-  check_range(phi, min = 0, allow_equal = FALSE, name = "phi")
+  check_range(phi, min = 0, allow_equal = FALSE, arg = "phi")
 
   der2.phi <- function(u, phi, kappa) {
     u <- u + 10e-16
@@ -1735,31 +1735,6 @@ coordinates_in_units <- function(data, distance_units) {
   st_coordinates(data) * crs_to_distance_factor(data, distance_units)
 }
 
-#' @title check_positive_integer
-#' @description
-#'
-#' Check that a value is a single, positive integer and error if not
-#' @param x the value to check
-#' @param name the name of the parameter to return in error messages
-#' @param allow_null whether `NULL` is permitted
-#' @param allow_zero whether zero is permitted
-#' @return TRUE if the data is valid. Raise an error if not.
-#' @noRd
-#'
-check_positive_integer <- function(x, name, allow_null = FALSE,
-                                   allow_zero = FALSE) {
-  if (is.null(x) && allow_null) return(invisible(TRUE))
-  description <- if (allow_zero) "non-negative" else "positive"
-  invalid <- !is.numeric(x) || length(x) != 1L || is.na(x) ||
-    !is.finite(x) || x %% 1 != 0 || x < as.integer(!allow_zero) ||
-    x > .Machine$integer.max
-  if (invalid) {
-    stop("'", name, "' must be a single ", description, " integer",
-         call. = FALSE)
-  }
-  invisible(TRUE)
-}
-
 #' Preserve the caller's random-number state
 #'
 #' Capture the current random-number state and return a function that restores
@@ -1780,111 +1755,6 @@ preserve_random_seed <- function() {
     }
   }
 }
-
-#' @title check_positive_number
-#' @description
-#'
-#' Check that a value is a single, positive number and error if not
-#' @param x the value to check
-#' @param type the type of value being checked. Defaults to `"starting"`.
-#' @return TRUE if x is valid. Raise an error if not.
-#' @noRd
-#'
-check_positive_number <- function(x, type = "starting ") {
-  # extract name, removing any list
-  name <- gsub('.*\\[\\["([^"]+)"\\]\\].*', "\\1", deparse(substitute(x)))
-
-  if (!is.numeric(x) || length(x) != 1L || is.na(x) ||
-      !is.finite(x) || x <= 0) {
-    stop("The ", type, "value for '", name, "' must be a single positive number")
-  }
-
-  invisible(TRUE)
-}
-
-#' Check that a numeric value belongs to a range
-#'
-#' @param x The value to check.
-#' @param min Lower endpoint.
-#' @param max Upper endpoint.
-#' @param allow_equal Whether either endpoint is allowed.
-#' @param name The argument name to use in the error message. Defaults to the
-#'   expression supplied as `x`.
-#' @return `TRUE` invisibly when valid; otherwise raises an error.
-#' @noRd
-check_range <- function(x, min = -Inf, max = Inf, allow_equal = TRUE,
-                        name = deparse(substitute(x))) {
-  valid_number <- is.numeric(x) && length(x) == 1L && !is.na(x) &&
-    is.finite(x)
-  outside <- if (!valid_number) {
-    TRUE
-  } else if (allow_equal) {
-    x < min || x > max
-  } else {
-    x <= min || x >= max
-  }
-  invalid <- !valid_number || outside
-  if (invalid) {
-    interval <- if (allow_equal) "between" else "strictly between"
-    stop("'", name, "' must be a single finite number ", interval, " ",
-         min, " and ", max,
-         call. = FALSE)
-  }
-  invisible(TRUE)
-}
-
-#' Check that a value belongs to the closed unit interval
-#' @noRd
-check_zero_one <- function(x, name = deparse(substitute(x))) {
-  check_range(x, min = 0, max = 1, name = name)
-}
-
-
-#' @title check_logical
-#' @description
-#'
-#' Check that a value is a single, non-missing logical (`TRUE` or `FALSE`)
-#' and error if not
-#' @param x the value to check
-#' @return TRUE if x is valid. Raise an error if not.
-#' @noRd
-#'
-check_logical <- function(x) {
-  name <- deparse(substitute(x))
-
-  if (!isTRUE(x) && !isFALSE(x)) {
-    stop("'", name, "' must be either TRUE or FALSE", call. = FALSE)
-  }
-
-  invisible(TRUE)
-}
-
-
-#' @title check_crs
-#' @description
-#'
-#' Check that a CRS is valid
-#' @param crs the CRS to check
-#' @param name the argument name to use in the error message. Defaults to the
-#'   name of the variable passed as `crs`; callers wrapping this in another
-#'   function should pass their own argument's name explicitly, since
-#'   `substitute()` only sees the immediate call site.
-#' @return TRUE if the CRS is valid. Raise an error if not.
-#' @noRd
-#'
-check_crs <- function(crs, name = deparse(substitute(crs))){
-  tryCatch(
-    st_crs(crs),
-    warning = function(w) {
-      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
-    },
-    error = function(e){
-      stop("The '", name, "' provided is not a valid CRS", call. = FALSE)
-    }
-  )
-  invisible(TRUE)
-}
-
 
 #' Check that an inverse link stays in the range of its family in the tails
 #'

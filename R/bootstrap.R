@@ -114,7 +114,7 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
   }
   check_positive_integer(n_sim, "n_sim")
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level")
   check_positive_integer(cores, "cores")
   check_logical(messages)
   control_mcml <- attr(object, "control_mcml") %||% set_control_mcml()
@@ -385,7 +385,7 @@ bootstrap_positive <- function(names) !grepl("^beta\\.", names)
 ##' @export
 summary.RiskMap_bootstrap <- function(object, level = object$settings$level,
                                       ...) {
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level")
   alpha <- 1 - level
   limits <- c(alpha / 2, 1 - alpha / 2)
   rows <- lapply(names(object$estimate), function(name) {

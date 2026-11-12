@@ -286,8 +286,10 @@ prepare_simulation <- function(model, what, sample_locations = NULL,
 #' @inheritParams simulate_glgpm
 #' @return The `samples` of a `RiskMap_simulation`: one array per location
 #'   set, indexed by location, simulation and component.
+#' @param call The call named in input errors.
 #' @noRd
-draw_simulation <- function(prepared, nsim, seed = NULL) {
+draw_simulation <- function(prepared, nsim, seed = NULL,
+                            call = rlang::caller_env()) {
   model <- prepared$model
   inputs <- prepared$inputs
   sizes <- prepared$sizes
@@ -295,7 +297,8 @@ draw_simulation <- function(prepared, nsim, seed = NULL) {
   n_unique <- prepared$n_unique
   root <- prepared$root
   pars <- model$parameters
-  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
+  check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE,
+                         call = call)
   if (!is.null(seed)) {
     restore_seed <- preserve_random_seed()
     on.exit(restore_seed(), add = TRUE)

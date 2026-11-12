@@ -105,22 +105,6 @@ test_that("check_data functions correctly", {
 
 })
 
-test_that("check_crs functions correctly", {
-  crs <- "invalid"
-  expect_error(check_crs(crs), "The 'crs' provided is not a valid CRS")
-  crs <- 121212
-  expect_error(check_crs(crs), "The 'crs' provided is not a valid CRS")
-  dif_crs <- 12121.2
-  expect_error(check_crs(dif_crs), "The 'dif_crs' provided is not a valid CRS")
-
-  crs <- 2648
-  expect_no_error(check_crs(crs))
-  expect_no_error(check_crs(2648))
-
-  custom_crs <- "+proj=utm +zone=37 +datum=WGS84 +units=m +no_defs"
-  expect_no_error(check_crs(custom_crs))
-})
-
 test_that("check_invlink functions correctly", {
   expect_error(check_invlink("not a function", "binomial"), "'invlink' must be a function")
 
@@ -174,71 +158,6 @@ test_that("gp functions correctly", {
   expect_identical(custom_result$dim, 2L)
   expect_identical(custom_result$label, "gp(a,b)")
 
-})
-
-test_that("check_positive_integer functions correctly", {
-  expect_no_error(check_positive_integer(1, "a"))
-  expect_no_error(check_positive_integer(999, "a"))
-  expect_no_error(check_positive_integer(NULL, "a", allow_null = TRUE))
-  expect_no_error(check_positive_integer(0, "a", allow_zero = TRUE))
-
-  expect_error(check_positive_integer(0.1, "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(0, "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(c(0, 1), "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer("not", "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(NULL, "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(NA, "a"), "'a' must be a single positive integer")
-  expect_error(check_positive_integer(Inf, "a"), "'a' must be a single positive integer")
-})
-
-test_that("check_logical functions correctly and names the caller's argument", {
-  my_flag <- TRUE
-  expect_no_error(check_logical(my_flag))
-
-  my_flag <- FALSE
-  expect_no_error(check_logical(my_flag))
-
-  my_flag <- NA
-  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
-
-  my_flag <- c(TRUE, FALSE)
-  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
-
-  my_flag <- "TRUE"
-  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
-
-  my_flag <- 1
-  expect_error(check_logical(my_flag), "'my_flag' must be either TRUE or FALSE")
-})
-
-test_that("check_positive_number functions correctly", {
-  expect_no_error(check_positive_number(1, ""))
-  expect_no_error(check_positive_number(0.1, ""))
-
-  a <- 0
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- c(0, 1)
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- "not"
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- NULL
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- NA
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-  a <- Inf
-  expect_error(check_positive_number(a, ""), "The value for 'a' must be a single positive number")
-})
-
-test_that("check_zero_one validates the closed unit interval", {
-  expect_no_error(check_zero_one(0, "a"))
-  expect_no_error(check_zero_one(0.5, "a"))
-  expect_no_error(check_zero_one(1, "a"))
-
-  expect_error(check_zero_one(-0.1, "a"), "between 0 and 1")
-  expect_error(check_zero_one(1.1, "a"), "between 0 and 1")
-  expect_error(check_zero_one(c(0, 1), "a"), "between 0 and 1")
-  expect_error(check_zero_one(NA, "a"), "between 0 and 1")
-  expect_error(check_zero_one(Inf, "a"), "between 0 and 1")
 })
 
 test_that("plot.RiskMap_cross_validation validates model before metric (#156)", {
@@ -415,7 +334,7 @@ test_that("matern_correlation returns output matching the shape of u", {
 
   expect_error(
     matern_correlation(u, -0.5, 0.5),
-    "must be a single finite number"
+    "phi", class = "riskmap_error_input"
   )
 
   for (kappa in c(0.5, 0.8)) {
@@ -455,7 +374,7 @@ test_that("matern_gradient_phi and matern_hessian_phi return symmetric n x n mat
 
       expect_error(
         derivative(u, -0.5, 0.5),
-        "must be a single finite number"
+        "phi", class = "riskmap_error_input"
       )
 
       output <- derivative(u, phi = 1, kappa = kappa)

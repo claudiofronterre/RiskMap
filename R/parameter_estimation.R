@@ -589,13 +589,15 @@ glgpm <- function(formula,
 ##' covariates are rescaled for fitting and the estimate is returned in the
 ##' supplied units, with the seed used (`NULL` for Gaussian models) and the
 ##' scalings as attributes. It makes no call to sf, so it can run in forked
-##' processes, where GDAL and PROJ can deadlock.
+##' processes, where GDAL and PROJ can deadlock. `call` is the call named in
+##' input errors, [glgpm()] when it calls this function.
 ##' @noRd
 fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
                              re_unique, units_m, cov_offset, kappa, fix_tau2,
                              fix_var_me, family, invlink, start_pars,
                              control_mcmc, control_mcml, seed,
-                             return_samples, messages) {
+                             return_samples, messages,
+                             call = rlang::caller_env()) {
   not_gaussian <- family != "gaussian"
   n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
   spatial_scaling <- scale_spatial_coordinates(coords, start_pars[["phi"]])
@@ -613,7 +615,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
       if(is.null(start_pars[["sigma2_me"]])) {
         start_pars[["sigma2_me"]] <- 1
       } else {
-        check_positive_number(start_pars[["sigma2_me"]])
+        check_positive_number(start_pars[["sigma2_me"]], call = call)
       }
     }
     gaussian_layout <- cov_par_layout(ncol(D), fix_tau2 = fix_tau2,
@@ -3547,12 +3549,12 @@ set_control_mcml <- function(initial_samples = 1000L,
   check_logical(pc_prior)
   check_positive_number(pc_sigma_threshold, "")
   check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
-              name = "pc_sigma_probability")
+              arg = "pc_sigma_probability")
   if (!is.null(pc_scale_threshold)) {
     check_positive_number(pc_scale_threshold, "")
   }
   check_range(pc_scale_probability, 0, 1, allow_equal = FALSE,
-              name = "pc_scale_probability")
+              arg = "pc_scale_probability")
   if (max_samples < initial_samples) {
     stop("'max_samples' must be at least 'initial_samples'.", call. = FALSE)
   }

@@ -104,6 +104,7 @@ reference:
       - maxim.integrand
       - to_table
       - coef.RiskMap
+      - riskmap_conditions
 
   - title: Example Datasets
     contents:

@@ -19,11 +19,13 @@
 #'   distances. Defaults to `FALSE`.
 #' @return A numeric vector of pairwise distances, in `distance_units`, as
 #'   returned by `dist()`.
+#' @param call The call named in input errors, so that they name the exported
+#'   function that called this one.
 #' @noRd
 extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
-                              dedupe = FALSE) {
+                              dedupe = FALSE, call = rlang::caller_env()) {
   if (!is.null(crs)) {
-    check_crs(crs, name = crs_arg)
+    check_crs(crs, arg = crs_arg, call = call)
     data <- st_transform(data, crs = crs)
     if (st_is_longlat(data)) {
       stop("'", crs_arg, "' must be a projected CRS, not longitude/latitude", call. = FALSE)
@@ -259,10 +261,10 @@ variogram <- function(data,
   check_positive_integer(n_bins, "n_bins")
   if (!is.null(max_dist)) {
     check_range(max_dist, min = 0, max = Inf, allow_equal = FALSE,
-                name = "max_dist")
+                arg = "max_dist")
   }
   check_positive_integer(n_permutations, "n_permutations", allow_zero = TRUE)
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level")
   if (n_permutations > 0L &&
       n_permutations + 1L < ceiling(1 / (1 - level))) {
     stop("'n_permutations' is too small to construct a global envelope at ",

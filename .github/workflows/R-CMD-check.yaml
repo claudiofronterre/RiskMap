@@ -34,12 +34,17 @@ jobs:
           # Use PPM on macOS too, avoiding CRAN binaries with unsupported compression.
           use-public-rspm: always
 
+      # R-devel breaks packages before CRAN catches up, so a failure there,
+      # in the dependencies or in the check, is reported in the log as a
+      # warning instead of failing the job.
       - uses: r-lib/actions/setup-r-dependencies@v2
+        continue-on-error: ${{ matrix.config.r == 'devel' }}
         with:
           extra-packages: any::rcmdcheck
           needs: check
 
       - uses: r-lib/actions/check-r-package@v2
+        continue-on-error: ${{ matrix.config.r == 'devel' }}
         with:
           upload-snapshots: true
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
