@@ -105,9 +105,13 @@ Unicode fonts needs.
 certified." instead of "Certified:" or "Not certified:", `summary()` gives the
 link in one sentence, such as "The canonical logit link.", the log-likelihood
 and the AIC have no colon, and a fix follows an arrow instead of "Fix:".
-Argument and function names in the findings and fixes of `check_fit()` are
-quoted with backticks, as in RiskMap's messages. Code that matched the old
-printed text needs updating.
+Argument and function names in the findings and fixes of the default checks
+of `check_fit()` are quoted with backticks, as in RiskMap's messages. Code
+that matched the old printed text needs updating.
+- The printed checks give each status as its symbol instead of the words OK,
+SUSPICIOUS and PROBLEM, which stay in the column `status` of the element
+`checks`. Code that searched the printed checks for them should read that
+column.
 - RiskMap now needs cli 3.6.0 or later, for the links to help pages.
 
 ## Datasets

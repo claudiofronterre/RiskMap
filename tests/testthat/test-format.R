@@ -33,6 +33,12 @@ test_that("wrapping never breaks code between backticks", {
                    c("Consider refitting without it,", "`gp(nugget = FALSE)`."))
   expect_identical(as.character(out_wrap("plain text", width = 40L)),
                    "plain text")
+  # Code longer than the width breaks, so that no line sticks out.
+  long <- out_wrap(
+    "Refit with `control_mcml = set_control_mcml(pc_prior = TRUE)`.",
+    width = 30L
+  )
+  expect_lte(max(nchar(long)), 30L)
 })
 
 test_that("bullets carry cli's symbols and wrap under their text", {

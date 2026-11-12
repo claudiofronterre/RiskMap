@@ -262,9 +262,9 @@ capitalise_first <- function(text) {
 ##' @noRd
 describe_profile_pointer <- function(ran = FALSE) {
   if (ran) {
-    return(" in the check \"Profile likelihood\" and its panels in plot()")
+    return(" in the check \"Profile likelihood\" and its panels in `plot()`")
   }
-  ", check_fit(fit, extra = \"profile\")"
+  ", `check_fit(fit, extra = \"profile\")`"
 }
 
 ##' Where a fix sends the user for the check of the radius of the bound
@@ -274,7 +274,7 @@ describe_profile_pointer <- function(ran = FALSE) {
 ##' @noRd
 describe_radius_pointer <- function(ran = FALSE) {
   if (ran) return(" See the check \"Radius of the bound\".")
-  paste0(" The check of the radius, check_fit(fit, extra = \"radius\"), ",
+  paste0(" The check of the radius, `check_fit(fit, extra = \"radius\")`, ",
          "predicts whether it is too small.")
 }
 

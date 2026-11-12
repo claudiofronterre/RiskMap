@@ -110,7 +110,7 @@ test_that("the maxima check says what the check for other maxima found", {
   expect_identical(alarm$status, "PROBLEM")
   expect_match(alarm$finding, "not the maximum likelihood estimate")
   expect_identical(alarm$fix, paste0("Inspect the profile likelihood, ",
-                                     "check_fit(fit, extra = \"profile\")."))
+                                     "`check_fit(fit, extra = \"profile\")`."))
 
   check <- data.frame(
     maximum = 1:3, independent_log_likelihood = c(-12.1, -10.2, -10.3),
@@ -134,7 +134,7 @@ test_that("the maxima check says what the check for other maxima found", {
   expect_match(ambiguous$finding, "about equally well")
   expect_match(ambiguous$finding, "differ by 0.1 .* scale of 3 km")
   expect_match(ambiguous$fix,
-               "see the profile likelihood, check_fit(fit, extra = \"profile\").",
+               "see the profile likelihood, `check_fit(fit, extra = \"profile\")`.",
                fixed = TRUE)
   expect_identical(describe_other_maximum(NULL, FALSE), "")
 })
@@ -175,7 +175,7 @@ test_that("the scale check says whether the data determine the scale", {
   expect_match(short$finding, "shorter than the median distance")
   expect_match(short$finding, "(12.3 ", fixed = TRUE)
   expect_match(short$fix, paste0("^See the profile likelihood, ",
-                                 "check_fit\\(fit, extra = \"profile\"\\)\\. "))
+                                 "`check_fit\\(fit, extra = \"profile\"\\)`\\. "))
   expect_match(short$fix, "pc_prior = TRUE")
   penalised <- fit_check_spatial_scale(
     binomial_model, list(mcml_small_scale = TRUE, mcml_pc_prior = TRUE)
@@ -387,9 +387,12 @@ test_that("printing gives a check that needs a look in full and an OK one on a l
             "model suits the data."))
   )
   expect_false(any(grepl("^ +$", printed)))
-  withr::local_options(width = 60L)
+  # testthat sets cli.width with width, and the output follows cli.width.
+  withr::local_options(width = 60L, cli.width = 60L)
   narrow <- capture.output(print(checked))
-  expect_lte(max(nchar(narrow)), 80L)
+  expect_lte(max(nchar(narrow)), 60L)
+  withr::local_options(cli.width = NULL)
+  expect_lte(max(nchar(capture.output(print(checked)))), 60L)
   # A table made before the brief findings gives the findings.
   old <- checked
   old$checks$brief <- NULL
@@ -452,13 +455,13 @@ test_that("each OK check has a brief finding for its line", {
 
 test_that("a fix names the extra check that would settle it", {
   expect_identical(describe_profile_pointer(),
-                   ", check_fit(fit, extra = \"profile\")")
+                   ", `check_fit(fit, extra = \"profile\")`")
   expect_match(describe_profile_pointer(TRUE), "the check \"Profile likelihood\"",
                fixed = TRUE)
   heavy <- list(effective_draws = 94, pareto_k = 1.005)
   expect_match(fit_check_weights(heavy, radius = describe_radius_pointer())$fix,
                paste0("read the bound with caution. The check of the radius, ",
-                      "check_fit(fit, extra = \"radius\"), predicts whether it ",
+                      "`check_fit(fit, extra = \"radius\")`, predicts whether it ",
                       "is too small."), fixed = TRUE)
   expect_no_match(fit_check_weights(heavy)$fix, "extra")
 
@@ -478,7 +481,7 @@ test_that("a fix names the extra check that would settle it", {
   for (check in c("Spatial scale", "Other maxima")) {
     expect_no_match(profiled[[check]], "extra = ", fixed = TRUE)
     expect_match(profiled[[check]],
-                 "in the check \"Profile likelihood\" and its panels in plot()",
+                 "in the check \"Profile likelihood\" and its panels in `plot()`",
                  fixed = TRUE)
   }
   # The radius is named for a fit with a certificate, and not for a Gaussian

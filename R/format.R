@@ -22,9 +22,13 @@ out_print <- function(lines) {
 }
 
 #' The width of printed output
+#'
+#' The option `cli.width` when it is set, and otherwise R's `width`, the width
+#' at which R prints the tables within the output. RStudio keeps `width` at
+#' the width of its console.
 #' @noRd
 out_width <- function() {
-  max(40L, cli::console_width())
+  max(40L, getOption("cli.width", getOption("width", 80L)))
 }
 
 #' The first line of a printed object, a rule with its title
@@ -59,16 +63,19 @@ out_text <- function(text, markup = FALSE, indent = 0L,
   paste0(strrep(" ", indent), lines)
 }
 
-#' Wrap one paragraph to `width`, never inside code between backticks
+#' Wrap one paragraph to `width`, keeping code between backticks whole
 #'
 #' The spaces of code such as `` `gp(nugget = FALSE)` `` become non-breaking
-#' while the paragraph is wrapped, as cli does with its own inline code.
+#' while the paragraph is wrapped, as cli does with its own inline code. Code
+#' longer than `width` would then stick out, so it can break as text does.
 #' @noRd
 out_wrap <- function(text, width) {
   code <- gregexpr("`[^`]*`", text)
-  regmatches(text, code) <- lapply(regmatches(text, code), gsub,
-                                   pattern = " ", replacement = "\u00a0",
-                                   fixed = TRUE)
+  regmatches(text, code) <- lapply(regmatches(text, code), function(spans) {
+    fits <- nchar(spans) + 1L <= width
+    spans[fits] <- gsub(" ", "\u00a0", spans[fits], fixed = TRUE)
+    spans
+  })
   gsub("\u00a0", " ", cli::ansi_strwrap(text, width = width), fixed = TRUE)
 }
 
