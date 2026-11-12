@@ -22,12 +22,13 @@ gauss_hermite_rule <- function(nodes) {
 ##' evaluated on the engine's scale, with the observation terms of the MCML
 ##' engine and the same constants. `D` is the engine's design matrix,
 ##' `location` maps each observation to its location, and `offset` is the
-##' covariate offset.
+##' covariate offset. `family` is the family object, or a family string with a
+##' custom link `linkf` (`as_family_object()`).
 ##'
 ##' For the canonical links each location's log-density is concave, and its
 ##' integral is taken by adaptive Gauss-Hermite quadrature at the posterior
 ##' mode of the location's effect, found by Newton steps from zero. A custom
-##' link (`linkf`) can make that density flat where a probability rounds to a
+##' link can make that density flat where a probability rounds to a
 ##' limit (`bound_log_probability()`), where a search from zero finds no slope,
 ##' or give it more than one mode, where a rule at one mode misses the mass of
 ##' the others. Its integral is taken by the rule of the site table for a
@@ -47,7 +48,13 @@ gauss_hermite_rule <- function(nodes) {
 make_independent_site_likelihood <- function(D, y, units_m, location, offset,
                                              family, nodes = 60L,
                                              linkf = NULL) {
-  poisson <- identical(family, "poisson")
+  kernel <- as_family_object(family, linkf)
+  if (kernel$integrated) {
+    riskmap_bug("The likelihood with independent location effects is built from the model's link, not from a kernel of integrated records.")
+  }
+  family <- kernel$family
+  linkf <- if (!kernel$canonical) kernel$linkf
+  poisson <- kernel$poisson
   location <- as.integer(location)
   n_locations <- max(location)
   single <- identical(location, seq_len(length(y)))

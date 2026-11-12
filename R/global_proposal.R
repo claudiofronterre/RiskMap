@@ -18,60 +18,18 @@ build_normal_quadrature <- function(number_of_nodes = 20L) {
 ##' For an observation with linear predictor `centre + step`, returns
 ##' l(centre + step) - l(centre) - step * l'(centre), the part of the
 ##' log-likelihood that is not linear in the step, together with the slope
-##' l'(centre). For the canonical binomial and Poisson links the difference is
-##' written with log1p and expm1 so that nearly equal log-likelihood values are
-##' never subtracted; other links use the direct difference. For large binomial
-##' steps the logarithms of p and 1 - p are taken directly from the linear
-##' predictor, because p itself rounds to 0 or 1 when the predictor is
-##' extreme. Records with the nugget integrated out take the differences of
-##' their table (`make_integrated_kernel()`).
+##' l'(centre), from the `nonlinear_parts()` of the family object (`family`,
+##' `as_family_object()`). The canonical binomial and Poisson links write the
+##' difference with log1p and expm1, other links use the direct difference,
+##' and records with the nugget integrated out take the differences of their
+##' table (`make_integrated_kernel()`).
 ##' @param centre Linear predictor at the expansion point, one per observation.
 ##' @param step Matrix of steps, one row per observation.
 ##' @noRd
 compute_nonlinear_parts <- function(centre, step, y, units_m, family,
-                                       linkf, canonical) {
-  if (is_integrated_link(linkf)) return(linkf$nonlinear_parts(centre, step))
-  if (canonical && family == "binomial") {
-    probability <- stats::plogis(centre)
-    slope <- y - units_m * probability
-    # log(1 - p + p exp(step)), switching to log-sum-exp for large steps.
-    log_success <- stats::plogis(centre, log.p = TRUE) + step
-    log_failure <- matrix(
-      stats::plogis(centre, lower.tail = FALSE, log.p = TRUE),
-      nrow(step), ncol(step)
-    )
-    log_ratio <- ifelse(
-      abs(step) < 20,
-      log1p(probability * expm1(step)),
-      pmax(log_failure, log_success) +
-        log1p(exp(-abs(log_failure - log_success)))
-    )
-    nonlinear <- units_m * (probability * step - log_ratio)
-    return(list(nonlinear = nonlinear, slope = slope))
-  }
-  if (canonical && family == "poisson") {
-    rate <- units_m * exp(centre)
-    slope <- y - rate
-    nonlinear <- -rate * (expm1(step) - step)
-    return(list(nonlinear = nonlinear, slope = slope))
-  }
-  log_likelihood <- function(eta) {
-    mean <- linkf$inv(eta)
-    if (family == "poisson") {
-      y * log(pmax(units_m * mean, .Machine$double.xmin)) - units_m * mean
-    } else {
-      log_probability <- bound_log_probability(mean)
-      y * log_probability$success + (units_m - y) * log_probability$failure
-    }
-  }
-  terms <- laplace_observation_terms(centre, y, units_m, family, linkf)
-  if (is.null(terms)) {
-    riskmap_abort("The linear predictor at the centre of the global proposal is invalid.", class = "riskmap_error_fit")
-  }
-  per_observation_centre <- log_likelihood(centre)
-  nonlinear <- matrix(log_likelihood(as.vector(centre + step)), nrow(step)) -
-    per_observation_centre - step * terms$score
-  list(nonlinear = nonlinear, slope = terms$score)
+                                    linkf = NULL, canonical = NULL) {
+  as_family_object(family, linkf, canonical)$nonlinear_parts(centre, step, y,
+                                                             units_m)
 }
 
 ##' Weighted quadratic fit of every observation's log-likelihood
@@ -134,16 +92,17 @@ fit_observation_quadratics <- function(nonlinear, root_weights, nodes,
 ##' marginal distribution of s, weighted by the ratio of the observation's
 ##' likelihood to its current approximation. In standardised coordinates
 ##' s = m + sd z the fitted coefficients (a0, a1, a2) give C = a2 / sd^2 and
-##' b = l'(m) + a1 / sd + C m.
+##' b = l'(m) + a1 / sd + C m. `family` is the family object, or a family
+##' string with `linkf` and `canonical` (`as_family_object()`).
 ##' @noRd
 update_observation_factors <- function(marginal_mean, marginal_sd, offset,
                                        y, units_m, family, linkf, canonical,
                                        current_linear, current_curvature,
                                        quadrature) {
+  kernel <- as_family_object(family, linkf, canonical)
   nodes <- quadrature$nodes
   step <- outer(marginal_sd, nodes)
-  parts <- compute_nonlinear_parts(offset + marginal_mean, step, y,
-                                      units_m, family, linkf, canonical)
+  parts <- kernel$nonlinear_parts(offset + marginal_mean, step, y, units_m)
   # Log ratio of the likelihood to its current approximation at each node,
   # up to a constant per observation.
   log_ratio <- parts$nonlinear +
@@ -180,6 +139,7 @@ update_observation_factors <- function(marginal_mean, marginal_sd, offset,
 refit_global_factors <- function(factors, mu, y, units_m, latent_map,
                                  precision, family, linkf, canonical,
                                  quadrature, floor_curvature) {
+  kernel <- as_family_object(family, linkf, canonical)
   observations <- length(factors) / 2
   linear <- factors[seq_len(observations)]
   curvature <- factors[observations + seq_len(observations)]
@@ -193,16 +153,17 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
   }
   updated <- tryCatch(
     update_observation_factors(marginal_mean, sqrt(marginal_variance), mu,
-                               y, units_m, family, linkf, canonical,
+                               y, units_m, kernel, NULL, NULL,
                                linear, curvature, quadrature),
     error = function(error) NULL
   )
   if (is.null(updated)) return(NULL)
   # A quadratic fit with too few weighted nodes gives an NA curvature, which
-  # fails the refit for every link. An infinite curvature fails it for a custom
-  # link, and a canonical link's -Inf is left to the floor.
+  # fails the refit for every link. An infinite curvature fails it unless the
+  # kernel is concave (the canonical link without integrated records), whose
+  # -Inf is left to the floor.
   if (anyNA(updated$curvature) ||
-      (!canonical && any(!is.finite(updated$curvature)))) {
+      (!kernel$assumes_concave && any(!is.finite(updated$curvature)))) {
     return(NULL)
   }
   refitted <- c(updated$linear, floor_curvature(updated$curvature))
@@ -250,7 +211,8 @@ make_curvature_floor <- function(latent_map, precision) {
 refit_from_anchor <- function(anchor, mu, y, units_m, latent_map, precision,
                               family, linkf, canonical, count = 3L,
                               quadrature = build_normal_quadrature()) {
-  floor_curvature <- if (is_integrated_link(linkf)) {
+  kernel <- as_family_object(family, linkf, canonical)
+  floor_curvature <- if (kernel$integrated) {
     smooth_curvature_floor
   } else {
     make_curvature_floor(latent_map, precision)
@@ -260,7 +222,7 @@ refit_from_anchor <- function(anchor, mu, y, units_m, latent_map, precision,
   change <- NA_real_
   for (refit in seq_len(count)) {
     refitted <- refit_global_factors(factors, mu, y, units_m, latent_map,
-                                     precision, family, linkf, canonical,
+                                     precision, kernel, NULL, NULL,
                                      quadrature, floor_curvature)
     if (is.null(refitted)) {
       return(list(failed = TRUE, refits = refit, change = change))
@@ -334,18 +296,18 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 tolerance = 1e-8, maximum_iterations = 500L,
                                 quadrature = build_normal_quadrature(),
                                 memory = 3L) {
-  floor_curvature <- if (is_integrated_link(linkf)) {
+  kernel <- as_family_object(family, linkf, canonical)
+  floor_curvature <- if (kernel$integrated) {
     smooth_curvature_floor
   } else {
     make_curvature_floor(latent_map, precision)
   }
-  mode_terms <- laplace_observation_terms(
-    mu + latent_linear_predictor(latent_map, mode), y, units_m, family,
-    linkf
+  mode_terms <- kernel$terms(
+    mu + latent_linear_predictor(latent_map, mode), y, units_m
   )
   if (is.null(mode_terms)) return(NULL)
   # A link that is not log-concave can have negative curvature at the mode.
-  curvature <- if (canonical) {
+  curvature <- if (kernel$assumes_concave) {
     mode_terms$curvature
   } else {
     floor_curvature(mode_terms$curvature)
@@ -356,7 +318,7 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
   curvature_part <- observations + seq_len(observations)
   refit <- function(factors) {
     refit_global_factors(factors, mu, y, units_m, latent_map, precision,
-                         family, linkf, canonical, quadrature,
+                         kernel, NULL, NULL, quadrature,
                          floor_curvature)
   }
   factors <- c(linear, curvature)

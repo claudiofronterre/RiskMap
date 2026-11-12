@@ -194,9 +194,10 @@ plan_integrated_records <- function(y, units_m, D, cov_offset, ID_coords,
 ##' of its variances. By default every record is one of kind 1 in the first
 ##' class, or of kind 0 where `plain`. `patterns` gives the units (`y` and
 ##' `m`) of each nested record, and identical patterns share one table.
-##' Adaptive Gauss-Hermite quadrature uses 20 nodes. A custom link (`linkf`)
-##' is passed to the table as the arrays of its kernel
-##' (`compute_custom_kernel_arrays()`).
+##' Adaptive Gauss-Hermite quadrature uses 20 nodes. `family` is the family
+##' object, or a family string with the link `linkf` (`as_family_object()`),
+##' and a custom link is passed to the table as the arrays of its kernel
+##' (`kernel_arrays()`, `compute_custom_kernel_arrays()`).
 ##' @noRd
 make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
                             linkf = NULL, kind = ifelse(plain, 0L, 1L),
@@ -225,13 +226,15 @@ make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
     }, integer(1))
     index[nested] <- match(pattern_key, pattern_key[unique_pattern])
   }
-  quadrature <- build_normal_quadrature(20L)
-  custom <- if (!is.null(linkf) && !identical(linkf$name, "canonical")) {
-    compute_custom_kernel_arrays(linkf, family)
+  kernel <- as_family_object(family, linkf)
+  if (kernel$integrated) {
+    riskmap_bug("The site table is built from the model's link, not from a kernel of integrated records.")
   }
+  quadrature <- build_normal_quadrature(20L)
+  custom <- kernel$kernel_arrays()
   pointer <- cpp_site_table_create(
     as.numeric(all_y[distinct]), as.numeric(all_m[distinct]),
-    identical(family, "poisson"), quadrature$nodes / sqrt(2),
+    kernel$poisson, quadrature$nodes / sqrt(2),
     log(quadrature$weights) + 0.5 * log(pi), custom, pattern_list,
     as.integer(summed)
   )

@@ -39,7 +39,6 @@ test_that("an object with integrated records keeps the properties of its link", 
     expect_identical(integrated$needs_finite_weight, plain$needs_finite_weight)
     expect_false(integrated$assumes_concave)
     expect_false(integrated$moves_start)
-    expect_identical(integrated$legacy_link, kernel)
     expect_identical(integrated$terms(c(-1, 2, 0), y, units_m),
                      kernel$terms(c(-1, 2, 0)))
     eta <- matrix(c(-1, 2, 0, 0.5, 1, -2), 2, byrow = TRUE)
@@ -126,4 +125,77 @@ test_that("a fit's family object is rebuilt from what the fit stores", {
   probit_fit <- list(family = "binomial", link_function = probit_family_link())
   expect_false(fit_family(probit_fit)$canonical)
   expect_identical(fit_family(probit_fit)$linkf$link, "probit")
+})
+
+test_that("the nonlinear parts of the canonical links agree with the direct difference", {
+  set.seed(9)
+  centre <- rnorm(4, -0.5)
+  step <- matrix(rnorm(12, 0, 0.7), 4)
+  y <- c(2, 0, 5, 1)
+  units_m <- c(10, 4, 12, 3)
+  custom_logit <- make_inverse_link_functions(
+    "binomial",
+    list(inv = stats::plogis, d1 = stats::dlogis,
+         d2 = function(x) stats::dlogis(x) * (1 - 2 * stats::plogis(x))),
+    5L
+  )
+  canonical <- make_family("binomial")$nonlinear_parts(centre, step, y, units_m)
+  direct <- make_family("binomial", custom_logit)$nonlinear_parts(centre, step,
+                                                                  y, units_m)
+  expect_equal(direct$nonlinear, canonical$nonlinear, tolerance = 1e-10)
+  expect_equal(direct$slope, canonical$slope, tolerance = 1e-12)
+  rate <- units_m * exp(centre)
+  poisson <- make_family("poisson")$nonlinear_parts(centre, step, y, units_m)
+  expect_equal(poisson$nonlinear,
+               (y * (centre + step) - units_m * exp(centre + step)) -
+                 (y * centre - rate) - step * (y - rate),
+               tolerance = 1e-10)
+})
+
+test_that("an object with integrated records takes its nonlinear parts from the kernel", {
+  y <- c(0, 20, 3)
+  units_m <- c(20, 20, 20)
+  kernel <- make_integrated_kernel(make_site_table(y, units_m, "binomial"), 0.5)
+  integrated <- make_family("binomial", kernel = kernel)
+  step <- matrix(c(-0.5, 0.3, 0.1, 0.4, -0.2, 0.6), 3)
+  expect_identical(integrated$nonlinear_parts(c(-1, 2, 0), step, y, units_m),
+                   kernel$nonlinear_parts(c(-1, 2, 0), step))
+})
+
+test_that("only a custom link has kernel arrays for the site table", {
+  expect_null(make_family("binomial")$kernel_arrays())
+  arrays <- make_family("binomial", probit_family_link())$kernel_arrays()
+  expect_identical(arrays,
+                   compute_custom_kernel_arrays(probit_family_link(),
+                                                "binomial"))
+})
+
+test_that("a family string with a flag that disagrees with its link is refused", {
+  expect_identical(as_family_object("binomial", NULL, TRUE)$canonical, TRUE)
+  expect_error(as_family_object("binomial", NULL, FALSE), "disagrees",
+               class = "riskmap_error_internal")
+  expect_error(as_family_object("binomial", probit_family_link(), TRUE),
+               "disagrees", class = "riskmap_error_internal")
+  object <- make_family("poisson")
+  expect_identical(as_family_object(object), object)
+})
+
+test_that("an object comes alone, and a kernel is refused where the link is read", {
+  object <- make_family("binomial")
+  expect_error(as_family_object(object, probit_family_link(), FALSE),
+               "takes no", class = "riskmap_error_internal")
+  expect_error(as_family_object(object, NULL, TRUE), "takes no",
+               class = "riskmap_error_internal")
+  y <- c(0, 20, 3)
+  units_m <- c(20, 20, 20)
+  kernel <- make_integrated_kernel(make_site_table(y, units_m, "binomial"), 0.5)
+  expect_error(make_site_table(y, units_m, "binomial", linkf = kernel),
+               "model's link", class = "riskmap_error_internal")
+  expect_error(make_site_table(y, units_m, make_family("binomial",
+                                                        kernel = kernel)),
+               "model's link", class = "riskmap_error_internal")
+  expect_error(make_independent_site_likelihood(cbind(c(1, 1, 1)), y, units_m,
+                                                1:3, numeric(3), "binomial",
+                                                linkf = kernel),
+               "model's link", class = "riskmap_error_internal")
 })

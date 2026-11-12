@@ -284,13 +284,14 @@ defensive_rows <- function(n_draws, defensive_weight) {
 build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
                                     precision, family, linkf, canonical,
                                     anchor, find_mode, stall_tolerance = NULL) {
+  kernel <- as_family_object(family, linkf, canonical)
   approximation <- NULL
   global <- NULL
   failed <- FALSE
   stalled <- FALSE
   if (identical(type, "global") && !is.null(anchor)) {
     refitted <- refit_from_anchor(anchor, mu, y, units_m, latent_map,
-                                  precision, family, linkf, canonical)
+                                  precision, kernel, NULL, NULL)
     if (!refitted$failed) {
       return(list(centre = refitted$centre, precision = refitted$precision,
                   root = refitted$root, factors = refitted$factors,
@@ -309,8 +310,8 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
     approximation <- find_mode()
     global <- fit_global_proposal(
       mode = approximation$mode, mu = mu, y = y, units_m = units_m,
-      latent_map = latent_map, precision = precision, family = family,
-      linkf = linkf, canonical = canonical
+      latent_map = latent_map, precision = precision, family = kernel,
+      linkf = NULL, canonical = NULL
     )
     stalled <- !is.null(global) && !global$converged &&
       !is.null(stall_tolerance) && is.finite(global$change) &&
@@ -664,11 +665,8 @@ make_adaptive_mcml_engine <- function(
 
   linkf <- make_inverse_link_functions(family, invlink, n)
   model <- make_family(family, linkf)
-  # The proposal (build_gaussian_proposal()) still takes the test of the
-  # canonical link, until step 1b of #253 moves it to the object.
-  canonical <- model$canonical
   sites <- if (integrated) {
-    make_site_table(y, units_m, family, linkf = linkf, kind = plan$kind,
+    make_site_table(y, units_m, model, kind = plan$kind,
                     a = plan$a, b = plan$b, patterns = plan$patterns)
   }
   # A variance whose log parameter is at this value is held at exactly zero,
@@ -857,8 +855,8 @@ make_adaptive_mcml_engine <- function(
       approximation
     }
     gaussian <- build_gaussian_proposal(
-      type, mu, y, units_m, latent_map, precision, family, kernel$legacy_link,
-      canonical && !integrated, anchor, find_mode,
+      type, mu, y, units_m, latent_map, precision, kernel, NULL, NULL,
+      anchor, find_mode,
       if (integrated) stall_tolerance
     )
     builds <<- builds + 1L
@@ -1073,7 +1071,7 @@ make_adaptive_mcml_engine <- function(
        proposal_errors = function() {
          list(count = proposal_errors, first = first_error)
        },
-       linkf = linkf,
+       linkf = linkf, family_object = model,
        mode_search_counts = function() {
          list(searches = mode_searches, at_limit = mode_searches_at_limit,
               restarted = mode_searches_restarted)
@@ -1188,6 +1186,7 @@ make_switching_mcml_engine <- function(sampled, integrated, threshold = 0.1) {
   engine$latent_dimension <- sampled$latent_dimension
   engine$defensive_weight <- sampled$defensive_weight
   engine$linkf <- sampled$linkf
+  engine$family_object <- sampled$family_object
   engine$threshold <- threshold
   # Every validation bank is drawn in both forms and combined
   # (combine_validation_banks()), so both forms keep the anchor of the stage.
@@ -1549,8 +1548,7 @@ glgpm_nong_adaptive <- function(
         engine,
         make_independent_site_likelihood(
           D, y, units_m, ID_coords %||% seq_along(y),
-          cov_offset %||% numeric(length(y)), family,
-          linkf = if (!identical(engine$linkf$name, "canonical")) engine$linkf
+          cov_offset %||% numeric(length(y)), engine$family_object
         ),
         distances, kappa
       )

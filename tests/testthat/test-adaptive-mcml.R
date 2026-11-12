@@ -1134,8 +1134,8 @@ test_that("an anchored proposal is three plain refits from the anchor", {
   for (refit in 1:3) {
     previous <- factors
     factors <- refit_global_factors(
-      factors, mu, y, trials, inside$latent_map, precision, "binomial",
-      inside$linkf, inside$canonical, build_normal_quadrature(),
+      factors, mu, y, trials, inside$latent_map, precision, inside$model,
+      NULL, NULL, build_normal_quadrature(),
       make_curvature_floor(inside$latent_map, precision)
     )
   }
