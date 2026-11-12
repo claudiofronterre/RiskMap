@@ -1,45 +1,45 @@
 test_that("assess_prediction produces errors", {
 
-  expect_error(
+  expect_input_error(
     assess_prediction("not list"),
-    "'object' must be a list of fitted models of class 'RiskMap'"
+    "object"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(a = 1)),
-    "'object' must be a list of fitted models of class 'RiskMap'"
+    "object"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "random"),
-    "'method' must be either 'cluster', 'regularized' or 'user'"
+    "method"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "cluster"),
-    "when 'method' is 'cluster' you must supply 'fold'"
+    "fold", class = "riskmap_error_input"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "cluster",
                       fold = 0.1),
-    "'fold' must be a single positive integer"
+    "fold", class = "riskmap_error_input"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "regularized"),
-    "when 'method' is 'regularized' you must supply 'min_dist'"
+    "min_dist", class = "riskmap_error_input"
   )
 
   expect_error(
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1),
-    "when 'method' is 'regularized' you must supply 'size'"
+    "size", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -48,16 +48,16 @@ test_that("assess_prediction produces errors", {
                       min_dist = 1,
                       size = 1,
                       iter = 2.1),
-    "'iter' must be a single positive integer"
+    "iter", class = "riskmap_error_input"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1,
                       size = 1,
                       control_mcmc = "not sim"),
-    "'control_mcmc' must come from 'set_control_mcmc"
+    "control_mcmc"
   )
 
   expect_error(
@@ -66,7 +66,7 @@ test_that("assess_prediction produces errors", {
                       min_dist = -1,
                       size = 1
     ),
-    "'min_dist' must be a single positive"
+    "min_dist", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -75,7 +75,7 @@ test_that("assess_prediction produces errors", {
                       min_dist = 1,
                       size = 1.1
     ),
-    "'size' must be a single positive integer"
+    "size", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -85,17 +85,17 @@ test_that("assess_prediction produces errors", {
                       size = 1,
                       keep_par_fixed = "not logical"
     ),
-    "'keep_par_fixed' must be either TRUE or FALSE"
+    "keep_par_fixed", class = "riskmap_error_input"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "regularized",
                       min_dist = 1,
                       size = 1,
                       control_mcmc = "not mcmc"
     ),
-    "'control_mcmc' must come from 'set_control_mcmc"
+    "control_mcmc"
   )
 
   expect_error(
@@ -105,7 +105,7 @@ test_that("assess_prediction produces errors", {
                       size = 1,
                       plot_fold = "not true"
     ),
-    "'plot_fold' must be either TRUE or FALSE"
+    "plot_fold", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -115,7 +115,7 @@ test_that("assess_prediction produces errors", {
                       size = 1,
                       messages = "not true"
     ),
-    "'messages' must be either TRUE or FALSE"
+    "messages", class = "riskmap_error_input"
   )
 
   different_rows <- gaussian_model
@@ -128,7 +128,7 @@ test_that("assess_prediction produces errors", {
                       min_dist = 1,
                       size = 1
     ),
-    "All models in 'object' supplied must have the same number of observations"
+    "must be fitted to the same number of observations"
   )
 
   different_order <- gaussian_model
@@ -141,154 +141,154 @@ test_that("assess_prediction produces errors", {
                       min_dist = 1,
                       size = 1
     ),
-    "All models in 'object' must have data in the same row order and geometry"
+    "same rows in the same order"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(1:2, ncol = 1)),
-    "'user_split' matrix must have the same number of rows as the data in the model"
+    "user_split", "must have one row per observation"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(1:20, ncol = 2)),
-    "'user_split' matrix must have a number of columns equal to 'iter'"
+    "user_split", "columns, not 2"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(1, 2)),
-    "'user_split' list must have the same length as 'iter'"
+    "user_split", "elements, not 2"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = "not list or matrix"),
-    "'user_split' must be a matrix or a list"
+    "user_split", "must be a matrix or a list"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(sample(10))),
-    "must leave at least one observation for training"
+    "user_split", "must leave at least one observation for training"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(integer(0))),
-    "test indices must be non-empty"
+    "user_split", "must not be empty"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(0)),
-    "test indices must be row indices between 1 and the number of observations"
+    "user_split", "must be row numbers between 1 and"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(c(1.1, 2, 3.3))),
-    "test indices must contain whole numbers"
+    "user_split", "must be whole numbers"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(c(1, NA, 3))),
-    "test indices must be a non-missing numeric vector of row indices"
+    "user_split", "must be numeric row numbers without missing values"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(c(1, 1, 2))),
-    "test indices must not contain duplicate indices"
+    "user_split", "must not repeat a row"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(c(NA, rep(0, n - 1)), ncol = 1)),
-    "'user_split' matrix must not contain missing values"
+    "user_split", "must not have missing values"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(c(2, rep(0, n - 1)), ncol = 1)),
-    "'user_split' matrix must only contain 0s \\(training\\) and 1s \\(test\\)"
+    "user_split", "must hold only 0 for training and 1 for test"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(rep(0, n), ncol = 1)),
-    "must contain at least one training \\(0\\) and one test \\(1\\) observation"
+    "user_split", "one training observation (0) and one test observation (1)"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = matrix(rep(1, n), ncol = 1)),
-    "must contain at least one training \\(0\\) and one test \\(1\\) observation"
+    "user_split", "one training observation (0) and one test observation (1)"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, 2, 3), out_id = c(3, 4)))),
-    "'in_id' and 'out_id' must not overlap"
+    "user_split", "must not overlap"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, 1, 2), out_id = 3:n))),
-    "'in_id' must not contain duplicate indices"
+    "user_split", "must not repeat a row"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = 1:2, out_id = n + 1))),
-    "'out_id' must be row indices between 1 and the number of observations"
+    "user_split", "must be row numbers between 1 and"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = integer(0), out_id = 1:n))),
-    "'in_id' must be non-empty"
+    "user_split", "must not be empty"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, 2.5), out_id = 3:n))),
-    "'in_id' must contain whole numbers"
+    "user_split", "must be whole numbers"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c("1", "2"), out_id = 3:n))),
-    "'in_id' must be a non-missing numeric vector of row indices"
+    "user_split", "must be numeric row numbers without missing values"
   )
 
-  expect_error(
+  expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
                       user_split = list(list(in_id = c(1, NA), out_id = 3:n))),
-    "'in_id' must be a non-missing numeric vector of row indices"
+    "user_split", "must be numeric row numbers without missing values"
   )
 
 })
@@ -405,7 +405,7 @@ test_that("assess_prediction requires aligned model data", {
       messages = FALSE,
       metrics = "CRPS"
     ),
-    "same row order and geometry"
+    "same rows in the same order"
   )
 })
 
@@ -422,7 +422,7 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
       messages = FALSE,
       metrics = "CRPS"
     ),
-    "do not include the random effects"
+    "don't include the random effects"
   )
 
   expect_s3_class(out, "RiskMap_cross_validation")
@@ -752,7 +752,7 @@ test_that("assess_prediction refits with the model's link and records failed ref
       messages = FALSE,
       metrics = c("CRPS", "PIT")
     ),
-    "failed and their scores are missing"
+    "failed, and their scores are missing"
   )
 
   expect_equal(captured$invlink$inv(1), pnorm(1))
@@ -831,6 +831,6 @@ test_that("assess_prediction warns when regularized test sets are smaller than '
       messages = FALSE,
       metrics = "CRPS"
     ),
-    "fewer than 'size'"
+    "fewer than `size`"
   )
 })

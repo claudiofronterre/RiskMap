@@ -127,50 +127,56 @@ test_that("a named link is never differentiated", {
   expect_error(fit_binomial("binomial", pnorm), "differentiate\\(\\) was called")
 })
 
+# The message of an input error, which must name `invlink` as the way out.
+refused_message <- function(object) {
+  error <- expect_input_error({{ object }}, "family")
+  expect_match(conditionMessage(error), "`invlink`", fixed = TRUE)
+  conditionMessage(error)
+}
+
 test_that("links that can leave the range of the family are refused", {
-  expect_error(fit_binomial(binomial("log")),
-               paste0("binomial\\(\"log\"\\) is not accepted, because the ",
-                      "log link can give probabilities above 1.*'invlink'"))
-  expect_error(
-    glgpm(y ~ cov + gp(), data = poisson_data, family = poisson("identity"),
-          messages = FALSE),
-    paste0("poisson\\(\"identity\"\\) is not accepted, because the identity ",
-           "link can give negative means.*'invlink'")
+  expect_match(refused_message(fit_binomial(binomial("log"))),
+               "binomial(\"log\")` can't be used, because the log link can give probabilities above 1",
+               fixed = TRUE)
+  expect_match(
+    refused_message(glgpm(y ~ cov + gp(), data = poisson_data,
+                          family = poisson("identity"), messages = FALSE)),
+    "because the identity link can give negative means", fixed = TRUE
   )
-  expect_error(
-    glgpm(y ~ cov + gp(), data = poisson_data, family = poisson("sqrt"),
-          messages = FALSE),
-    "poisson\\(\"sqrt\"\\) is not accepted.*positive and a negative.*'invlink'"
+  expect_match(
+    refused_message(glgpm(y ~ cov + gp(), data = poisson_data,
+                          family = poisson("sqrt"), messages = FALSE)),
+    "a positive and a negative linear predictor", fixed = TRUE
   )
 })
 
 test_that("quasi and other families are refused", {
   for (family in list(quasibinomial(), quasipoisson(), quasi())) {
-    expect_error(fit_binomial(family),
-                 paste0("quasi-likelihood family, which has no likelihood.*",
-                        "'invlink'"))
+    expect_match(refused_message(fit_binomial(family)),
+                 "quasi-likelihood family, which has no likelihood")
   }
-  expect_error(fit_binomial(Gamma()),
-               "gaussian, binomial and poisson responses, not Gamma.*'invlink'")
-  expect_error(fit_binomial(gaussian("log")),
-               "The log link is not available for the gaussian family")
+  expect_match(refused_message(fit_binomial(Gamma())),
+               "Gaussian, binomial or Poisson family, not \"Gamma\"")
+  error <- expect_input_error(fit_binomial(gaussian("log")), "family")
+  expect_match(conditionMessage(error),
+               "The log link isn't available for the gaussian family")
   other_link <- make.link("inverse")
-  expect_error(fit_binomial(binomial(link = other_link)),
-               paste0("The inverse link is not available for the binomial ",
-                      "family.*'invlink'"))
-  expect_error(fit_binomial(1), "'family' must be \"gaussian\"")
+  expect_match(refused_message(fit_binomial(binomial(link = other_link))),
+               "The inverse link isn't available for the binomial family")
+  expect_input_error(fit_binomial(1), "family")
 })
 
 test_that("a link is given either in family or in invlink", {
-  expect_error(fit_binomial(binomial("probit"), pnorm),
-               "either in 'family'.*or as a function in 'invlink', not both")
-  expect_error(fit_binomial("binomial", "probit"),
-               "'invlink' takes a function, not the name of a link")
-  expect_error(fit_binomial("binomial", make.link("cloglog")),
-               "not a link-glm object.*binomial\\(\"cloglog\"\\)")
+  error <- expect_input_error(fit_binomial(binomial("probit"), pnorm),
+                              "invlink")
+  expect_match(conditionMessage(error), "not both", fixed = TRUE)
+  expect_input_error(fit_binomial("binomial", "probit"), "invlink")
+  error <- expect_input_error(fit_binomial("binomial", make.link("cloglog")),
+                              "invlink")
+  expect_match(conditionMessage(error), "binomial(\"cloglog\")", fixed = TRUE)
   # The internal list form of invlink takes one set of names.
   expect_error(fit_binomial("binomial", list(inv_link = plogis)),
-               "takes only the elements 'inv', 'd1', 'd2' and 'link'")
+               "takes only the elements `inv`, `d1`, `d2` and `link`")
 })
 
 test_that("print() and summary() name the link", {
@@ -287,7 +293,7 @@ test_that("specify_glgpm() reads family objects", {
   from_fit <- simulation_model(named_fits$probit)
   expect_identical(from_fit$invlink$link, "probit")
   expect_true(from_fit$custom_link)
-  expect_error(specify(poisson("identity")), "is not accepted")
+  expect_input_error(specify(poisson("identity")), "family")
 })
 
 test_that("maxim_integrand() reads family objects", {
@@ -303,5 +309,5 @@ test_that("maxim_integrand() reads family objects", {
   expect_identical(probit$invlink_used, "custom")
   expect_equal(probit$mode, mode("binomial", function(eta) pnorm(eta))$mode,
                tolerance = 1e-8)
-  expect_error(mode(gaussian()), "'family' must be \"binomial\" or \"poisson\"")
+  expect_input_error(mode(gaussian()), "family")
 })

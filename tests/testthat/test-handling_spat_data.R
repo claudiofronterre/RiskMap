@@ -9,16 +9,16 @@ square_coords <- c(40,40,
 
 test_that("create_grid produces errors", {
 
-  expect_error(create_grid("gaussian_data", 1), "'boundaries' must be of class 'sf'")
-  expect_error(create_grid(gaussian_data, 1), "'boundaries' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
-  expect_error(create_grid(sf_polygon, "not numeric"), "The value for 'spacing' must be a single positive number")
-  expect_error(create_grid(sf_polygon, 1, distance_units = "feet"),
-               "'distance_units' must be either 'km' or 'm'")
+  expect_input_error(create_grid("gaussian_data", 1), "boundaries")
+  expect_input_error(create_grid(gaussian_data, 1), "boundaries")
+  expect_error(create_grid(sf_polygon, "not numeric"), "spacing", class = "riskmap_error_input")
+  expect_input_error(create_grid(sf_polygon, 1, distance_units = "feet"),
+               "distance_units")
 
 
   square <- st_polygon(list(matrix(square_coords, ncol = 2, byrow = TRUE)))
   sf_square <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
-  expect_error(create_grid(sf_square, 1), "No grid cells fall within 'boundaries'")
+  expect_error(create_grid(sf_square, 1), "No grid cells fall within `boundaries`")
 })
 
 test_that("create_grid functions correctly", {
@@ -64,7 +64,7 @@ test_that("create_grid functions correctly", {
 test_that("create_grid converts longitude/latitude data automatically, like glgpm()", {
   expect_message(
     result <- create_grid(sf_polygon, 1),
-    "longitude/latitude"
+    "longitude and latitude"
   )
   expect_s3_class(result, "sf")
   expect_false(st_is_longlat(result))
@@ -161,7 +161,7 @@ test_that("create_grid() can keep cells that overlap the boundary", {
   expect_identical(attr(overlap, "grid_metadata")$keep, "overlap")
   expect_identical(attr(centre, "grid_metadata")$keep, "centre")
   expect_s3_class(attr(overlap, "grid_metadata")$boundary, "sfc")
-  expect_error(create_grid(boundary, 2, "m", keep = "all"), "should be one of")
+  expect_error(create_grid(boundary, 2, "m", keep = "all"), "must be one of")
 })
 
 test_that("create_grid uses the cells of a raster", {
@@ -204,12 +204,12 @@ test_that("create_grid checks the raster", {
   counts <- terra::rast(nrows = 2, ncols = 2, xmin = 0, xmax = 2000,
                         ymin = 0, ymax = 2000, crs = "EPSG:32637")
   terra::values(counts) <- 1:4
-  expect_error(create_grid(), "Supply 'boundaries', 'raster' or both")
+  expect_error(create_grid(), "`boundaries`, `raster` or both must be given")
   expect_error(create_grid(raster = as.matrix(counts)), "SpatRaster")
   expect_error(create_grid(raster = terra::rast(nrows = 2, ncols = 2)),
-               "projected CRS")
+               "projected coordinate reference system")
   oblong <- terra::rast(nrows = 2, ncols = 2, xmin = 0, xmax = 2000,
                         ymin = 0, ymax = 3000, crs = "EPSG:32637")
   expect_error(create_grid(raster = oblong), "square cells")
-  expect_error(create_grid(raster = counts, spacing = 5), "does not match")
+  expect_error(create_grid(raster = counts, spacing = 5), "must match the resolution")
 })

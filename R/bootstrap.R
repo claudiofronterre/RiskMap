@@ -19,7 +19,9 @@
 ##' @param cores Number of processes. With more than one, the replicates run
 ##'   in parallel by forking, which is not available on Windows, where they
 ##'   run one after another.
-##' @param messages Logical, whether to report progress.
+##' @param messages Logical, whether to report on the bootstrap, with a
+##'   progress bar as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##'
 ##' @details
 ##' Each replicate simulates a response at the original locations, with the
@@ -107,26 +109,27 @@
 ##' }
 ##' @export
 parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
-                                 level = 0.95, cores = 1, messages = TRUE) {
+                                 level = 0.95, cores = 1,
+                                 messages = getOption("RiskMap.messages", TRUE)) {
   if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a 'RiskMap' object returned by 'glgpm'",
-         call. = FALSE)
+    abort_input("{.arg object} must be a {.cls RiskMap} fit from {.fn glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
   check_positive_integer(n_sim, "n_sim")
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level")
   check_positive_integer(cores, "cores")
   check_logical(messages)
   control_mcml <- attr(object, "control_mcml") %||% set_control_mcml()
   seed_spacing <- bootstrap_seed_spacing(control_mcml$max_stages)
   if (n_sim > .Machine$integer.max %/% seed_spacing) {
-    stop("'n_sim' must be at most ", .Machine$integer.max %/% seed_spacing,
-         call. = FALSE)
+    most <- .Machine$integer.max %/% seed_spacing
+    abort_input("{.arg n_sim} must be at most {most}, not {n_sim}.", arg = "n_sim")
   }
   cores <- as.integer(cores)
   if (cores > 1L && .Platform$OS.type == "windows") {
-    if (messages) message("Parallel replicates need forking, which Windows ",
-                          "does not support, so they run on one core.")
+    if (messages) {
+      riskmap_inform("Parallel replicates need forking, which Windows doesn't support, so they run on one core.")
+    }
     cores <- 1L
   }
 
@@ -148,11 +151,20 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
 
   started <- proc.time()[["elapsed"]]
   if (messages) {
-    message("Simulating and refitting ", n_sim, " replicates",
-            if (cores > 1L) paste0(" on ", cores, " cores"), "...")
+    on_cores <- if (cores > 1L) paste0(" on ", cores, " cores") else ""
+    riskmap_inform("Simulating and refitting {n_sim} replicate{?s}{on_cores}.")
   }
-  results <- run_bootstrap_replicates(seq_len(n_sim), run_replicate, cores,
-                                      messages)
+  bar <- progress_bar("Refitting replicates", n_sim, messages)
+  results <- riskmap_map(seq_len(n_sim), run_replicate, cores = cores,
+                         progress = bar, errors = "return", one_thread = TRUE)
+  progress_done(bar)
+  # A replicate records its own failure, so an error here is a worker
+  # process that ended without returning a result.
+  lost <- vapply(results, inherits, logical(1), what = "error")
+  results[lost] <- lapply(results[lost], function(error) {
+    list(status = "failed", estimate = NULL, warnings = character(),
+         message = condition_text(error))
+  })
   elapsed <- proc.time()[["elapsed"]] - started
 
   out <- assemble_bootstrap(object, results, replicate_seeds)
@@ -163,16 +175,15 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
                        elapsed_seconds = elapsed)
   n_failed <- nrow(out$failures)
   if (n_failed == n_sim) {
-    stop("All ", n_sim, " refits failed. The first failure: ",
-         out$failures$message[1L], call. = FALSE)
+    failed <- if (n_sim == 1L) "The refit failed." else "All {n_sim} refits failed."
+    riskmap_abort(c(failed, "i" = "The first failure was {.val {out$failures$message[1L]}}."), class = "riskmap_error_fit")
   }
   if (n_failed > 0L) {
-    warning(n_failed, " of ", n_sim, " refits failed and are left out. ",
-            "See the 'failures' element of the result.", call. = FALSE)
+    riskmap_warn(c("{n_failed} of {n_sim} refits failed and are left out.", "i" = "See the {.code failures} element of the result."), class = "riskmap_warning_fit")
   }
   if (messages) {
-    message("Done in ", format_bootstrap_time(elapsed), ". ",
-            n_sim - n_failed, " of ", n_sim, " refits succeeded.")
+    took <- format_bootstrap_time(elapsed)
+    riskmap_inform("Done in {took}. {n_sim - n_failed} of {n_sim} refits succeeded.")
   }
   out
 }
@@ -190,9 +201,8 @@ parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
 bootstrap_seed_spacing <- function(max_stages) {
   spacing <- 10000L
   if (9000 + max_stages >= spacing) {
-    stop("parametric_bootstrap() supports fits with at most ",
-         spacing - 9001L, " stages of certified MCML ('max_stages' ",
-         "in set_control_mcml())", call. = FALSE)
+    most <- spacing - 9001L
+    abort_input(c("{.fn parametric_bootstrap} supports fits with at most {most} stages of certified Monte Carlo maximum likelihood.", "i" = "Set {.arg max_stages} in {.fn set_control_mcml} lower."), arg = "object")
   }
   spacing
 }
@@ -258,63 +268,13 @@ run_bootstrap_replicate <- function(prepared, refit, seed) {
     list(status = "ok", message = NA_character_,
          estimate = refit(response, seed))
   }, warning = function(w) {
-    warnings <<- c(warnings, conditionMessage(w))
+    warnings <<- c(warnings, condition_text(w))
     invokeRestart("muffleWarning")
   }), error = function(e) {
-    list(status = "failed", message = conditionMessage(e), estimate = NULL)
+    list(status = "failed", message = condition_text(e), estimate = NULL)
   })
   result$warnings <- unique(warnings)
   result
-}
-
-##' Run the bootstrap replicates, in parallel by forking when `cores` is
-##' above 1
-##'
-##' Every replicate runs with one BLAS and OpenMP thread when RhpcBLASctl is
-##' installed, so that its result does not depend on `cores`. The calling
-##' process switches to one thread before any replicate runs and restores the
-##' user's settings afterwards. It does so before forking too, because a
-##' worker forked from a process whose BLAS uses several threads can
-##' deadlock. One after another, progress is reported about ten times.
-##' @noRd
-run_bootstrap_replicates <- function(replicates, work, cores, messages) {
-  if (requireNamespace("RhpcBLASctl", quietly = TRUE)) {
-    blas_threads <- RhpcBLASctl::blas_get_num_procs()
-    omp_threads <- RhpcBLASctl::omp_get_max_threads()
-    on.exit({
-      RhpcBLASctl::blas_set_num_threads(blas_threads)
-      RhpcBLASctl::omp_set_num_threads(omp_threads)
-    }, add = TRUE)
-    RhpcBLASctl::blas_set_num_threads(1L)
-    RhpcBLASctl::omp_set_num_threads(1L)
-  }
-  if (cores > 1L && length(replicates) > 1L) {
-    results <- parallel::mclapply(replicates, work,
-                                  mc.cores = min(cores, length(replicates)),
-                                  mc.preschedule = TRUE)
-    # A worker that dies returns an error object in place of its results.
-    lost <- !vapply(results, is.list, logical(1))
-    results[lost] <- lapply(results[lost], function(result) {
-      list(status = "failed", estimate = NULL, warnings = character(),
-           message = paste("The worker process failed:",
-                           as.character(result)))
-    })
-    return(results)
-  }
-
-  started <- proc.time()[["elapsed"]]
-  report_every <- max(1L, length(replicates) %/% 10L)
-  results <- vector("list", length(replicates))
-  for (k in seq_along(replicates)) {
-    results[[k]] <- work(replicates[k])
-    if (messages && k %% report_every == 0L && k < length(replicates)) {
-      elapsed <- proc.time()[["elapsed"]] - started
-      message(k, " of ", length(replicates), " replicates done, about ",
-              format_bootstrap_time(elapsed / k * (length(replicates) - k)),
-              " left")
-    }
-  }
-  results
 }
 
 ##' @noRd
@@ -385,7 +345,7 @@ bootstrap_positive <- function(names) !grepl("^beta\\.", names)
 ##' @export
 summary.RiskMap_bootstrap <- function(object, level = object$settings$level,
                                       ...) {
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level")
   alpha <- 1 - level
   limits <- c(alpha / 2, 1 - alpha / 2)
   rows <- lapply(names(object$estimate), function(name) {
@@ -501,13 +461,12 @@ print.summary.RiskMap_bootstrap <- function(x, ...) {
 ##' @export
 plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30,
                                    log_scale = FALSE, ...) {
-  stopifnot(inherits(x, "RiskMap_bootstrap"))
+  check_class(x, "RiskMap_bootstrap")
   parameters <- parameters %||% names(x$estimate)
   unknown <- setdiff(parameters, names(x$estimate))
   if (length(unknown)) {
-    stop("Unknown parameter(s): ", paste(unknown, collapse = ", "),
-         ". Choose from: ", paste(names(x$estimate), collapse = ", "),
-         call. = FALSE)
+    known <- names(x$estimate)
+    abort_input(c("{.arg parameters} must name parameters of the bootstrap.", "x" = "{.val {unknown}} {cli::qty(length(unknown))}{?is/are} not among them.", "i" = "The parameters are {.val {known}}."), arg = "parameters")
   }
   check_positive_integer(bins, "bins")
   check_logical(log_scale)

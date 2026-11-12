@@ -1,141 +1,140 @@
 test_that("glgpm produces errors", {
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = c(0, 1), unknown = 1)),
-    "'unknown' is not a valid starting parameter",
-    fixed = TRUE
+    "start_pars"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm("not formula", data = gaussian_data, family = "gaussian"),
-    "'formula' must be a 'formula'"
+    "formula"
   )
 
   expect_error(
     glgpm(~ cov + gp(), data = gaussian_data, family = "gaussian", messages = FALSE),
-    "The 'formula' must specify a response"
+    "must have a response"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(nugget = TRUE), data = gaussian_data, family = "gaussian", messages = FALSE),
-    "When there is only one observation per location"
+    "formula"
   )
 
   expect_error(
     glgpm(y ~ cov + gp() + re(), data = gaussian_data, family = "gaussian", messages = FALSE),
-    "You need to provide at least one variable to re"
+    "needs at least one variable"
   )
 
   saturated_data <- gaussian_data
   saturated_data$row_id <- seq_len(nrow(saturated_data))
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp() + re(row_id), data = saturated_data, family = "gaussian", messages = FALSE),
-    "have one level per observation.*'gaussian'"
+    "formula"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = data, family = "gaussian"),
-    "'data' must be of class 'sf'"
+    "data"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "invalid"),
-    "'family' must be \"gaussian\", \"binomial\" or \"poisson\""
+    "family"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", invlink = function(x) x),
-    "'invlink' cannot be provided when 'family' is 'gaussian'"
+    "invlink"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = poisson_data, family = "poisson", invlink = "not func", messages = FALSE),
-    "'invlink' takes a function, not the name of a link"
+    "invlink"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", denominator = 1),
-    "'denominator' cannot be provided when 'family' is 'gaussian'"
+    "denominator"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", denominator = 1),
-    "'denominator' must be provided as an unquoted column name for a column in 'data'"
+    "denominator"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", denominator = not_present),
-    "the variable provided to 'denominator' is not present in 'data'"
+    "denominator"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", model_crs = 12345),
-    "The 'model_crs' provided is not a valid CRS"
+    "model_crs", class = "riskmap_error_input"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", distance_units = "not valid"),
-    "'distance_units' must be either 'km' or 'm'"
+    "distance_units"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = latlon_data, family = "gaussian", model_crs = 4326, messages = FALSE),
-    "'model_crs' must be a projected CRS, not longitude/latitude"
+    "model_crs"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", return_samples = "not logical"),
-    "'return_samples' must be either TRUE or FALSE"
+    "return_samples"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", messages = "not logical"),
-    "'messages' must be either TRUE or FALSE"
+    "messages"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", fix_var_me = 1),
-    "'fix_var_me' cannot be provided when 'family' is 'binomial'"
+    "fix_var_me"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = c(1, 2)),
-    "'fix_var_me' must be NULL or a single positive value or zero"
+    "fix_var_me"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = "not number"),
-    "'fix_var_me' must be NULL or a single positive value or zero"
+    "fix_var_me"
   )
 
-  expect_error(
+  expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = -1),
-    "'fix_var_me' must be NULL or a single positive value or zero"
+    "fix_var_me"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(invalid = 1), messages = FALSE),
-    "'invalid' is not a valid starting parameter"
+    "start_pars", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(invalid = 1, silly = 2), messages = FALSE),
-    "'invalid', 'silly' is not a valid starting parameter"
+    "\"invalid\" and \"silly\" are not among them", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = 1), messages = FALSE),
-    "number of starting values provided for 'beta' do not match"
+    "start_pars$beta` must have 2 values", fixed = TRUE
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           control_mcml = list(max_stages = 2), messages = FALSE),
-    "set_control_mcml"
+    "set_control_mcml", class = "riskmap_error_input"
   )
 
   expect_error(set_control_mcml(initial_samples = 0), "positive integer")
@@ -143,61 +142,61 @@ test_that("glgpm produces errors", {
   expect_error(set_control_mcml(tolerance = -1), "positive number")
   expect_error(
     set_control_mcml(initial_samples = 1000, max_samples = 500),
-    "at least 'initial_samples'"
+    "at least `initial_samples`", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = c("a", "b")), messages = FALSE),
-    "The starting values for 'beta' must be numeric"
+    "must be numeric", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2 = -1), messages = FALSE),
-    "The starting value for 'sigma2' must be a single positive number"
+    "sigma2", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2 = "a"), messages = FALSE),
-    "The starting value for 'sigma2' must be a single positive number"
+    "sigma2", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(phi = -1), messages = FALSE),
-    "The starting value for 'phi' must be a single positive number"
+    "phi", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(nugget = TRUE), data = gaussian_data, family = "gaussian",
           fix_var_me = 0, start_pars = list(tau2 = -1), messages = FALSE),
-    "The starting value for 'tau2' must be a single positive number"
+    "tau2", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(tau2 = 1), messages = FALSE),
-    "The starting value for 'tau2' cannot be provided when 'nugget'"
+    "tau2", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2_me = -1), messages = FALSE),
-    "The starting value for 'sigma2_me' must be a single positive number"
+    "sigma2_me", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2_re = c(1, 2)), messages = FALSE),
-    "Starting values for 'sigma2_re' cannot be provided when no random effects are included in the model"
+    "without random effects", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp() + re(i), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2_re = c(1, 2)), messages = FALSE),
-    "The starting values for 'sigma2_re' do not match the number"
+    "one for each random effect", class = "riskmap_error_input"
   )
 
 })
@@ -378,7 +377,7 @@ test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provi
           family = "gaussian",
           messages = FALSE,
           fix_var_me = 0.1),
-    "cannot be distinguished from the nugget"
+    "told apart from the nugget", class = "riskmap_error_input"
   )
 })
 
@@ -720,7 +719,7 @@ test_that("Gaussian fits store no seed and seeds are validated", {
   expect_error(
     glgpm(y ~ gp(), data = gaussian_data, family = "gaussian", seed = -1,
           messages = FALSE),
-    "'seed' must be a single non-negative integer"
+    "seed", class = "riskmap_error_input"
   )
   expect_error(set_control_mcmc(seed = 1), "unused argument")
 })
@@ -740,7 +739,7 @@ test_that("glgpm correctly reprojects to new CRS", {
                  family = "gaussian",
                  distance_units = "km",
                  messages = FALSE),
-    "automatically reprojecting to EPSG"
+    "projected to EPSG"
   )
 
   expect_identical(fit$input_crs, st_crs(latlon))
@@ -813,11 +812,11 @@ test_that("glgpm reads an offset alongside several re() calls and reports unusab
   expect_error(
     glgpm(y ~ cov + gp() + offset(log(denominator)), data = gaussian_data,
           family = "gaussian", messages = FALSE),
-    "must name a column of 'data'"
+    "must name a column of `data`"
   )
   expect_error(
     glgpm(y ~ gp() + offset(offset) + offset(cov), data = gaussian_data,
           family = "gaussian", messages = FALSE),
-    "only one 'offset\\(\\)' term"
+    "only one `offset\\(\\)` term"
   )
 })

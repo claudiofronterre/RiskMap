@@ -13,15 +13,13 @@ list_extra_checks <- function() {
 ##' `"all"` gives every one. An unknown name stops with the valid ones.
 ##' @noRd
 match_extra_checks <- function(extra) {
-  stopifnot("'extra' must be a character vector" =
-              is.character(extra) && !anyNA(extra))
+  if (!is.character(extra) || anyNA(extra)) {
+    abort_input("{.arg extra} must be a character vector without missing values.", arg = "extra")
+  }
   known <- names(list_extra_checks())
   unknown <- setdiff(extra, c(known, "all"))
   if (length(unknown)) {
-    stop("Unknown extra check", if (length(unknown) > 1L) "s", " ",
-         paste0("\"", unknown, "\"", collapse = ", "), ". The extra checks ",
-         "are ", paste0("\"", known, "\"", collapse = ", "),
-         ", or \"all\" for every one.", call. = FALSE)
+    abort_input(c("{.arg extra} has unknown extra check{?s} {.val {unknown}}.", "i" = "The extra checks are {.val {known}}, or {.val all} for every one."), arg = "extra")
   }
   if ("all" %in% extra) known else known[known %in% extra]
 }
@@ -34,14 +32,16 @@ match_extra_checks <- function(extra) {
 ##' @noRd
 check_given_profile <- function(profile, object) {
   if (is.null(profile)) return(invisible(TRUE))
-  message <- "'profile' must be a profile of this fit with a marginal profile"
-  if (!inherits(profile, "RiskMap_profile")) stop(message, call. = FALSE)
+  wrong_profile <- function() {
+    abort_input("{.arg profile} must be a profile of this fit with at least one marginal profile.", arg = "profile")
+  }
+  if (!inherits(profile, "RiskMap_profile")) wrong_profile()
   estimate <- unlist(object$estimate)
   shared <- intersect(names(profile$estimate), names(estimate))
   if (!length(profile$marginal) || !length(shared) ||
       !isTRUE(all.equal(unname(profile$estimate[shared]),
                         unname(estimate[shared])))) {
-    stop(message, call. = FALSE)
+    wrong_profile()
   }
   invisible(TRUE)
 }
@@ -71,7 +71,7 @@ run_extra_checks <- function(object, extra, profile = NULL, messages = TRUE,
   obstacles[given] <- NA_character_
   computed <- extra[is.na(obstacles) & !given]
   if (messages && length(computed)) {
-    message(describe_extra_check_time(object, computed, cores))
+    riskmap_inform("{describe_extra_check_time(object, computed, cores)}")
   }
   for (name in extra) {
     result <- if (is.na(obstacles[[name]])) {
@@ -82,7 +82,7 @@ run_extra_checks <- function(object, extra, profile = NULL, messages = TRUE,
       obstacles[[name]]
     } else if (inherits(result, "error")) {
       paste0("their computation stopped with the error \"",
-             conditionMessage(result), "\"")
+             condition_text(result), "\"")
     }
     if (is.null(reason)) {
       results[[name]] <- result

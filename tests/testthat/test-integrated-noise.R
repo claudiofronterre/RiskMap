@@ -592,9 +592,9 @@ test_that("stalled anchors are summarised over the stages", {
 test_that("set_control_mcml accepts an automatic choice of the form", {
   expect_identical(set_control_mcml(integrate_noise = "auto")$integrate_noise,
                    "auto")
-  expect_error(set_control_mcml(integrate_noise = "yes"),
-               "TRUE, FALSE or \"auto\"")
-  expect_error(set_control_mcml(integrate_noise = NA), "TRUE, FALSE or")
+  expect_input_error(set_control_mcml(integrate_noise = "yes"),
+                     "integrate_noise")
+  expect_input_error(set_control_mcml(integrate_noise = NA), "integrate_noise")
 })
 
 test_that("a switching engine takes its form from the nugget variance", {

@@ -508,11 +508,11 @@ test_that("the plot shows the stages, and a profile once it is computed", {
                "needs the extra check \"radius\", check_fit(fit, extra = \"radius\")",
                fixed = TRUE)
   expect_error(plot(checked, which = "radii"),
-               "Unknown panel \"radii\". The panels are \"certificate\"")
+               "unknown panel \"radii\"")
   expect_error(plot(checked, which = "radii"),
-               "\"held_variances\", \"screen\", \"radius\", \"profile_\"",
+               "\"held_variances\", \"screen\", or \"radius\"",
                fixed = TRUE)
-  expect_error(plot(checked, which = 1), "'which' must be a character vector")
+  expect_input_error(plot(checked, which = 1), "which")
 
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
                            n_draws = 200, messages = FALSE)

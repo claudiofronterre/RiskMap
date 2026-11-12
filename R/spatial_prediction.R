@@ -86,7 +86,9 @@
 ##'   needed for custom post-processing. Predictive samples are generated to
 ##'   calculate summaries regardless of this setting, but are discarded by
 ##'   default to limit memory use.
-##' @param messages Logical. Display progress messages.
+##' @param messages Logical. Display messages, and a progress bar while
+##'   predicting at many locations, as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param ... Additional arguments reserved for future prediction methods.
 ##'
 ##' @details
@@ -298,7 +300,7 @@ predict.RiskMap <- function(
     parameter_draws = 50L,
     seed = NULL,
     keep_samples = FALSE,
-    messages = TRUE,
+    messages = getOption("RiskMap.messages", TRUE),
     ...) {
 
   if (is.null(include)) include <- character()
@@ -345,16 +347,14 @@ predict.RiskMap <- function(
   }
   observed_locations <- is.null(newdata)
   if (observed_locations && "nugget" %in% include) {
-    stop("At observed locations the conditioned location-level effect already includes the nugget; do not request include = \"nugget\"",
-         call. = FALSE)
+    abort_input(c("{.arg include} can't contain {.val nugget} at the observed locations.", "i" = "There the effect of each location is drawn given the data, and it already includes the nugget."), arg = "include")
   }
   prediction_input <- validate_prediction_data(
     object, newdata, include, standardize
   )
   if (!is.null(boundaries)) {
     if (observed_locations) {
-      stop("'newdata' must be supplied when aggregating predictions over 'boundaries'",
-           call. = FALSE)
+      abort_input("{.arg newdata} must be given to aggregate predictions over {.arg boundaries}.", arg = "newdata")
     }
     return(predict_over_boundaries(
       object = object,
@@ -448,68 +448,62 @@ predict.RiskMap <- function(
 }
 
 #' Validate the unified prediction options
+#' @param call The call named in input errors, so that they name
+#'   `predict.RiskMap()`.
 #' @noRd
 validate_prediction_options <- function(object, type, include,
                                         boundaries, aggregate, summaries,
                                         thresholds, level, weights,
                                         control_mcmc, seed, keep_samples,
-                                        messages) {
-  type <- match.arg(type, c("auto", "marginal", "joint"))
+                                        messages, call = rlang::caller_env()) {
+  type <- match_choice(type, c("auto", "marginal", "joint"), arg = "type",
+                       call = call)
   if (!is.null(boundaries)) {
     check_data(boundaries, geometry = "polygon", type = "sf")
     if (type == "marginal") {
-      stop("When 'boundaries' are provided, 'type' must be \"joint\"",
-           call. = FALSE)
+      abort_input("{.arg type} must be {.val joint} when {.arg boundaries} are given.", arg = "type", call = call)
     }
     type <- "joint"
     if (is.null(aggregate)) {
-      stop("'aggregate' must be supplied when 'boundaries' is used; choose one or more of: ",
-           paste(shQuote(c("mean", "median", "sum", "min", "max")),
-                 collapse = ", "),
-           call. = FALSE)
+      choices <- c("mean", "median", "sum", "min", "max")
+      abort_input("{.arg aggregate} must be given with {.arg boundaries}, as one or more of {.or {.val {choices}}}.", arg = "aggregate", call = call)
     }
   } else {
     if (!is.null(aggregate)) {
-      stop("'aggregate' is used only when 'boundaries' are supplied",
-           call. = FALSE)
+      abort_input("{.arg aggregate} is used only with {.arg boundaries}.", arg = "aggregate", call = call)
     }
     if (type == "auto") type <- "marginal"
   }
   allowed_include <- c("random_effects", "nugget")
   if (!is.character(include) || anyNA(include) ||
       any(!include %in% allowed_include) || anyDuplicated(include)) {
-    stop("'include' must contain unique values chosen from: ",
-         paste(shQuote(allowed_include), collapse = ", "), call. = FALSE)
+    abort_input("{.arg include} must contain distinct values among {.val {allowed_include}}.", arg = "include", call = call)
   }
   if (prediction_operation_requested(summaries, "exceedance")) {
     if (!is.numeric(thresholds) || !length(thresholds) || anyNA(thresholds) ||
         any(!is.finite(thresholds)) || anyDuplicated(thresholds)) {
-      stop("'thresholds' must contain unique, finite numeric values when ",
-           "'summaries' includes 'exceedance'", call. = FALSE)
+      abort_input("{.arg thresholds} must be distinct finite numbers when {.arg summaries} includes {.val exceedance}.", arg = "thresholds", call = call)
     }
   } else if (!is.null(thresholds)) {
-    stop("'thresholds' is used only when 'summaries' includes 'exceedance'",
-         call. = FALSE)
+    abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds", call = call)
   }
-  check_range(level, min = 0, max = 1, allow_equal = FALSE, name = "level")
-  if (!is.null(control_mcmc) &&
-      !inherits(control_mcmc, "RiskMap_control_mcmc")) {
-    stop("'control_mcmc' must be NULL or an output from set_control_mcmc()",
-         call. = FALSE)
+  check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level",
+              call = call)
+  if (!is.null(control_mcmc)) {
+    check_control(control_mcmc, "set_control_mcmc", call = call)
   }
   check_positive_integer(seed, "seed", allow_null = TRUE,
-                         allow_zero = FALSE)
+                         allow_zero = FALSE, call = call)
   if (!is.null(weights) &&
       (!is.character(weights) || length(weights) != 1L || is.na(weights))) {
-    stop("'weights' must be NULL or the name of one column in 'newdata'",
-         call. = FALSE)
+    supplied <- describe_value(weights)
+    abort_input("{.arg weights} must be {.code NULL} or the name of one column of {.arg newdata}, not {supplied}.", arg = "weights", call = call)
   }
   if (!is.null(weights) && is.null(boundaries)) {
-    stop("'weights' is used only when 'boundaries' are supplied",
-         call. = FALSE)
+    abort_input("{.arg weights} is used only with {.arg boundaries}.", arg = "weights", call = call)
   }
-  check_logical(keep_samples)
-  check_logical(messages)
+  check_logical(keep_samples, call = call)
+  check_logical(messages, call = call)
   type
 }
 
@@ -519,27 +513,23 @@ normalise_prediction_operations <- function(x, allowed, argument_name,
                                             allow_null = FALSE) {
   if (is.null(x)) {
     if (allow_null) return(NULL)
-    stop("'", argument_name, "' cannot be NULL", call. = FALSE)
+    abort_input("{.arg {argument_name}} can't be {.code NULL}.", arg = argument_name)
   }
   if (is.character(x)) {
     if (!length(x) || anyNA(x) || any(!x %in% allowed) || anyDuplicated(x)) {
-      stop("'", argument_name, "' must contain unique values chosen from: ",
-           paste(shQuote(allowed), collapse = ", "),
-           ", or named custom functions", call. = FALSE)
+      abort_input("{.arg {argument_name}} must contain distinct values among {.val {allowed}}, or named functions.", arg = argument_name)
     }
     out <- as.list(x)
     names(out) <- x
     return(out)
   }
   if (!is.list(x) || !length(x)) {
-    stop("'", argument_name, "' must be a character vector or a named list of ",
-         "built-ins and functions", call. = FALSE)
+    abort_input("{.arg {argument_name}} must be a character vector, or a named list of the names of built-in operations and functions.", arg = argument_name)
   }
   operation_names <- names(x)
   if (is.null(operation_names) || anyNA(operation_names) ||
       any(!nzchar(operation_names)) || anyDuplicated(operation_names)) {
-    stop("Every entry in '", argument_name,
-         "' must have a unique, non-empty name", call. = FALSE)
+    abort_input("Every entry of {.arg {argument_name}} must have a distinct, non-empty name.", arg = argument_name)
   }
   valid <- vapply(x, function(operation) {
     is.function(operation) ||
@@ -547,8 +537,7 @@ normalise_prediction_operations <- function(x, allowed, argument_name,
          !is.na(operation) && operation %in% allowed)
   }, logical(1))
   if (!all(valid)) {
-    stop("Each entry in '", argument_name, "' must be a function or one of: ",
-         paste(shQuote(allowed), collapse = ", "), call. = FALSE)
+    abort_input("Each entry of {.arg {argument_name}} must be a function or one of {.or {.val {allowed}}}.", arg = argument_name)
   }
   x
 }
@@ -561,15 +550,13 @@ normalise_prediction_transforms <- function(transform) {
     all(nzchar(names(transform))) && !anyDuplicated(names(transform))
   if (!is.list(transform) || !length(transform) || !valid_names ||
       any(!vapply(transform, is.function, logical(1)))) {
-    stop("'transform' must be NULL or a named list of functions with unique, non-empty names",
-         call. = FALSE)
+    abort_input("{.arg transform} must be {.code NULL} or a list of functions with distinct, non-empty names.", arg = "transform")
   }
   reserved <- c("fixed", "offset", "spatial", "random_effects", "nugget",
                 "link", "response")
   conflicts <- intersect(names(transform), reserved)
   if (length(conflicts)) {
-    stop("Names in 'transform' cannot use reserved prediction quantities: ",
-         paste(shQuote(conflicts), collapse = ", "), call. = FALSE)
+    abort_input(c("The names in {.arg transform} can't be those of built-in prediction quantities.", "x" = "{.val {conflicts}} {cli::qty(length(conflicts))}{?is a built-in quantity/are built-in quantities}."), arg = "transform")
   }
   transform
 }
@@ -580,13 +567,11 @@ validate_prediction_standardize <- function(object, standardize) {
   if (is.null(standardize)) return(NULL)
   if (!is.data.frame(standardize) || inherits(standardize, "sf") ||
       !nrow(standardize)) {
-    stop("'standardize' must be a non-empty data frame without geometry",
-         call. = FALSE)
+    abort_input("{.arg standardize} must be a non-empty data frame without geometry, not {.obj_type_friendly {standardize}}.", arg = "standardize")
   }
   if (anyDuplicated(names(standardize)) || anyNA(names(standardize)) ||
       any(!nzchar(names(standardize)))) {
-    stop("'standardize' must have unique, non-empty column names",
-         call. = FALSE)
+    abort_input("{.arg standardize} must have distinct, non-empty column names.", arg = "standardize")
   }
   reference_names <- setdiff(names(standardize), ".weight")
   response <- as.character(object$formula[[2L]])
@@ -598,14 +583,14 @@ validate_prediction_standardize <- function(object, standardize) {
   )
   if (!length(reference_names) || any(!reference_names %in% fixed_names)) {
     invalid <- setdiff(reference_names, fixed_names)
-    stop("'standardize' must contain one or more fixed-effect predictors",
-         if (length(invalid)) paste0("; invalid column",
-           if (length(invalid) > 1L) "s" else "", ": ",
-           paste(shQuote(invalid), collapse = ", ")) else "",
-         call. = FALSE)
+    problem <- "{.arg standardize} must have one or more columns, each a covariate of the model."
+    if (length(invalid)) {
+      problem <- c(problem, "x" = "{.val {invalid}} {cli::qty(length(invalid))}{?is not a covariate/are not covariates}.")
+    }
+    abort_input(problem, arg = "standardize")
   }
   if (!all(complete.cases(standardize[reference_names]))) {
-    stop("'standardize' contains missing predictor values", call. = FALSE)
+    abort_input("{.arg standardize} has missing values.", arg = "standardize")
   }
   weights <- if (".weight" %in% names(standardize)) {
     standardize$.weight
@@ -614,8 +599,7 @@ validate_prediction_standardize <- function(object, standardize) {
   }
   if (!is.numeric(weights) || anyNA(weights) || any(!is.finite(weights)) ||
       any(weights < 0) || sum(weights) <= 0) {
-    stop("'.weight' in 'standardize' must contain finite, non-negative values with a positive total",
-         call. = FALSE)
+    abort_input("The column {.code .weight} of {.arg standardize} must hold finite, non-negative values with a positive total.", arg = "standardize")
   }
   list(
     data = standardize,
@@ -646,10 +630,19 @@ prediction_operation_requested <- function(operations, built_in) {
 validate_prediction_data <- function(object, newdata, include,
                                      standardize = NULL) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
-  check_data(prediction_data, geometry = "point", type = "sf")
+  data_arg <- if (is.null(newdata)) "object" else "newdata"
+  check_data(prediction_data, geometry = "point", type = "sf", arg = data_arg)
+  # The compiled distances need finite planar coordinates.
+  coordinates <- st_coordinates(prediction_data)
+  if (ncol(coordinates) != 2L) {
+    abort_input("The points of {.arg {data_arg}} must have two coordinates, without Z or M values.", arg = data_arg)
+  }
+  if (any(!is.finite(coordinates))) {
+    abort_input("The points of {.arg {data_arg}} must have finite coordinates, and none may be empty.", arg = data_arg)
+  }
   output_data <- prediction_data
   if (!isTRUE(st_crs(prediction_data) == st_crs(object$data))) {
-    message("Transforming 'newdata' to the fitted model CRS for prediction")
+    riskmap_inform("{.arg newdata} is projected to the coordinate reference system of the fit.")
     prediction_data <- st_transform(prediction_data, st_crs(object$data))
   }
   inter_f <- interpret_formula(object$formula)
@@ -663,8 +656,7 @@ validate_prediction_data <- function(object, newdata, include,
   required <- setdiff(required, standardized_names)
   missing_columns <- setdiff(required, names(prediction_data))
   if (length(missing_columns) > 0L) {
-    stop("'newdata' is missing required column", if (length(missing_columns) > 1L) "s" else "",
-         ": ", paste(shQuote(missing_columns), collapse = ", "), call. = FALSE)
+    abort_input("{.arg newdata} must have the column{?s} {.val {missing_columns}}, which the model uses.", arg = "newdata")
   }
   for (name in standardized_names) {
     prediction_data[[name]] <- standardize$data[[name]][1L]
@@ -675,9 +667,7 @@ validate_prediction_data <- function(object, newdata, include,
       unknown <- unique(supplied[!is.na(supplied) &
                                    !supplied %in% object$re[[name]]])
       if (length(unknown) > 0L) {
-        stop("'newdata' contains unknown levels for random effect ",
-             shQuote(name), ": ", paste(shQuote(unknown), collapse = ", "),
-             call. = FALSE)
+        abort_input(c("{.arg newdata} has levels of the random effect {.val {name}} that the fit doesn't know.", "x" = "The unknown {cli::qty(length(unknown))}level{?s} {?is/are} {.val {unknown}}."), arg = "newdata")
       }
     }
   }
@@ -687,11 +677,7 @@ validate_prediction_data <- function(object, newdata, include,
     rep(TRUE, nrow(prediction_data))
   }
   if (any(!valid_rows)) {
-    warning(
-      sum(!valid_rows), " prediction row", if (sum(!valid_rows) == 1L) "" else "s",
-      " contain missing required values; their predictions are returned as NA",
-      call. = FALSE
-    )
+    riskmap_warn("{sum(!valid_rows)} prediction row{?s} {?has/have} missing values, so {?its/their} predictions are {.code NA}.")
   }
   list(
     model_data = prediction_data[valid_rows, , drop = FALSE],
@@ -719,9 +705,7 @@ assign_prediction_locations <- function(model_data, boundaries) {
   membership <- st_within(model_data, boundaries)
   membership_count <- lengths(membership)
   if (any(membership_count > 1L)) {
-    stop(sum(membership_count > 1L), " prediction location",
-         if (sum(membership_count > 1L) == 1L) " belongs" else "s belong",
-         " to overlapping polygons in 'boundaries'", call. = FALSE)
+    abort_input("The polygons of {.arg boundaries} must not overlap, but {sum(membership_count > 1L)} prediction location{?s} {?lies/lie} in more than one.", arg = "boundaries")
   }
   boundary_candidates <- which(membership_count == 0L)
   if (length(boundary_candidates)) {
@@ -752,7 +736,7 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
       !is.numeric(metadata$cellsize) || length(metadata$cellsize) != 1L ||
       !is.finite(metadata$cellsize) || metadata$cellsize <= 0 ||
       is.null(metadata$grid_crs)) {
-    stop("'newdata' contains invalid RiskMap grid metadata", call. = FALSE)
+    abort_input(c("{.arg newdata} has invalid grid metadata.", "i" = "Make the grid with {.fn create_grid}, or drop its class {.cls RiskMap_grid}."), arg = "newdata")
   }
   if (!nrow(model_data)) {
     return(list(
@@ -769,7 +753,7 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
   overlaps <- st_overlaps(grid_boundaries)
   duplicates <- st_equals(grid_boundaries)
   if (any(lengths(overlaps) > 0L) || any(lengths(duplicates) > 1L)) {
-    stop("'boundaries' contains overlapping polygons", call. = FALSE)
+    abort_input("The polygons of {.arg boundaries} must not overlap.", arg = "boundaries")
   }
 
   grid_points <- st_transform(model_data, grid_crs)
@@ -788,7 +772,7 @@ assign_prediction_grid_cells <- function(model_data, boundaries, metadata) {
   )
   raster_cells <- terra::cellFromXY(cell_raster, coordinates)
   if (anyDuplicated(raster_cells)) {
-    stop("'newdata' contains duplicate RiskMap grid cells", call. = FALSE)
+    abort_input("{.arg newdata} has the same grid cell more than once.", arg = "newdata")
   }
   raster_values <- rep(NA_real_, terra::ncell(cell_raster))
   raster_values[raster_cells] <- seq_len(nrow(model_data))
@@ -862,7 +846,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   model_data <- prediction_input$model_data
   output_boundaries <- boundaries
   if (!isTRUE(st_crs(boundaries) == st_crs(object$data))) {
-    message("Transforming 'boundaries' to the fitted model CRS for aggregation")
+    riskmap_inform("{.arg boundaries} are projected to the coordinate reference system of the fit.")
     boundaries <- st_transform(boundaries, st_crs(object$data))
   }
 
@@ -871,26 +855,21 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   area_id <- assignment$area_id
   coverage <- assignment$coverage
   if (length(assignment$outside)) {
-    warning(length(assignment$outside), " prediction ",
-            if (assignment$method == "exact") "cell" else "location",
-            if (length(assignment$outside) == 1L) " lies" else "s lie",
-            " outside all polygons and will not contribute to areal summaries",
-            call. = FALSE)
+    unit <- if (assignment$method == "exact") "cell" else "location"
+    n_outside <- length(assignment$outside)
+    riskmap_warn("{n_outside} prediction {unit}{cli::qty(n_outside)}{?s} {?lies/lie} outside every polygon, so {?it doesn't/they don't} count in the summaries of the areas.")
   }
 
   if (is.null(weights)) {
     weight_values <- coverage
   } else {
     if (!weights %in% names(assigned_data)) {
-      stop("'newdata' does not contain the weights column ", shQuote(weights),
-           call. = FALSE)
+      abort_input("{.arg weights} must name a column of {.arg newdata}, and {.val {weights}} doesn't.", arg = "weights")
     }
     supplied_weights <- assigned_data[[weights]]
     if (!is.numeric(supplied_weights) || anyNA(supplied_weights) ||
         any(!is.finite(supplied_weights)) || any(supplied_weights < 0)) {
-      stop("The weights column ", shQuote(weights),
-           " must contain finite, non-negative values without missing values",
-           call. = FALSE)
+      abort_input("The column {.val {weights}} named by {.arg weights} must hold finite, non-negative values.", arg = "weights")
     }
     # Allocate each cell's supplied weight in proportion to polygon coverage.
     weight_values <- supplied_weights * coverage
@@ -900,13 +879,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   nonempty_areas <- as.integer(names(area_indices))
   single_location <- lengths(area_indices) == 1L
   if (any(single_location)) {
-    warning(sum(single_location), " polygon",
-            if (sum(single_location) == 1L) " contains" else "s contain",
-            " only one prediction ",
-            if (assignment$method == "exact") "cell" else "location",
-            "; ", if (sum(single_location) == 1L) "its" else "their",
-            " areal summaries are based on a single value",
-            call. = FALSE)
+    unit <- if (assignment$method == "exact") "cell" else "location"
+    n_single <- sum(single_location)
+    riskmap_warn("{n_single} polygon{?s} {?contains/contain} only one prediction {unit}, so {cli::qty(n_single)}{?its/their} summaries rest on a single value.")
   }
   zero_weight <- vapply(area_indices, function(index) {
     sum(weight_values[index]) <= 0
@@ -915,10 +890,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     is.character(operation) && operation %in% c("mean", "median", "sum")
   }, logical(1))
   if (!is.null(weights) && any(weighted_operations) && any(zero_weight)) {
-    warning(sum(zero_weight), " polygon",
-            if (sum(zero_weight) == 1L) " has" else "s have",
-            " zero total weight and will receive NA summaries for weighted ",
-            "means, medians and sums", call. = FALSE)
+    riskmap_warn("{sum(zero_weight)} polygon{?s} {?has/have} a total weight of zero, so {?its/their} weighted means, medians and sums are {.code NA}.")
   }
 
   if (!nrow(model_data)) {
@@ -1151,9 +1123,7 @@ build_prediction_components <- function(object, prediction_setup, include,
     values <- transform[[name]](link)
     if (!is.numeric(values) || !is.matrix(values) ||
         !identical(dim(values), dim(link))) {
-      stop("Transformation ", shQuote(name),
-           " must return a numeric matrix with the same dimensions as its input",
-           call. = FALSE)
+      abort_input("The function {.val {name}} in {.arg transform} must return a numeric matrix of the same dimensions as its input.", arg = "transform")
     }
     values
   })
@@ -1224,42 +1194,44 @@ prediction_sample_components <- function(object, prediction_data, prediction,
   per_draw <- max(1L, ceiling(n_total / parameter_draws))
   parameters <- draw_parameter_values(object, parameter_draws)
   if (messages) {
-    message("Propagating parameter uncertainty over ", parameter_draws,
-            " parameter draws")
+    riskmap_inform("Propagating parameter uncertainty over {parameter_draws} parameter draws.")
   }
   sampler <- if (object$family == "gaussian") NULL else
     parameter_conditioning_sampler(object)
   pieces <- vector("list", parameter_draws)
   acceptance <- rep(NA_real_, parameter_draws)
+  # A failure at one parameter value leaves that draw out. An input error
+  # would fail at every value, so it reaches the user as it is.
+  first_failure <- NULL
+  leave_out <- function(error) {
+    if (inherits(error, "riskmap_error_input")) riskmap_rethrow(error)
+    if (is.null(first_failure)) first_failure <<- error
+    NULL
+  }
   for (k in seq_len(parameter_draws)) {
     fit <- object
     fit$estimate <- utils::relist(parameters[k, ], skeleton = object$estimate)
     if (is.null(sampler)) {
       control <- set_control_mcmc(n_sim = per_draw, linear_model = TRUE)
     } else {
-      draws <- tryCatch(sampler(fit$estimate, per_draw),
-                        error = function(error) NULL)
+      draws <- tryCatch(sampler(fit$estimate, per_draw), error = leave_out)
       if (is.null(draws)) next
       fit$S_samples <- draws$samples
       acceptance[k] <- draws$acceptance
       control <- NULL
     }
-    pieces[[k]] <- tryCatch(components_at(fit, control),
-                            error = function(error) NULL)
+    pieces[[k]] <- tryCatch(components_at(fit, control), error = leave_out)
   }
   pieces <- pieces[!vapply(pieces, is.null, logical(1))]
   if (length(pieces) < parameter_draws / 2) {
-    stop("Prediction failed for most parameter draws; parameter uncertainty ",
-         "could not be propagated", call. = FALSE)
+    riskmap_abort("Prediction failed at most parameter draws, so parameter uncertainty can't be propagated.", class = "riskmap_error_fit", parent = first_failure)
   }
   if (length(pieces) < parameter_draws) {
-    warning(parameter_draws - length(pieces), " of ", parameter_draws,
-            " parameter draws were discarded because prediction failed at ",
-            "those values", call. = FALSE)
+    failed <- parameter_draws - length(pieces)
+    riskmap_warn("{failed} of {parameter_draws} parameter draws are left out, because prediction failed at those values.", class = "riskmap_warning_fit")
   }
   if (any(acceptance < 0.1, na.rm = TRUE)) {
-    warning("The Langevin sampler accepted few proposals for some parameter ",
-            "draws; predictive summaries may be noisy", call. = FALSE)
+    riskmap_warn("The Langevin sampler accepted few proposals at some parameter draws, so the predictive summaries may be noisy.", class = "riskmap_warning_fit")
   }
   pool_prediction_components(pieces)
 }
@@ -1313,23 +1285,18 @@ prediction_sample_size <- function(object, control_mcmc) {
 draw_parameter_values <- function(object, n_draws) {
   estimate <- unlist(object$estimate)
   covariance <- object$covariance
-  failure <- paste0(
-    "The covariance matrix of the parameter estimates is not available or ",
-    "not positive definite, so parameter uncertainty cannot be propagated. ",
-    "For binomial and Poisson models, refitting with ",
-    "'control_mcml = set_control_mcml(pc_prior = TRUE)' usually resolves this."
-  )
-  if (is.null(covariance)) stop(failure, call. = FALSE)
-  covariance <- as.matrix(covariance)
-  if (!identical(dim(covariance), rep(length(estimate), 2L))) {
-    stop(failure, call. = FALSE)
+  failure <- function() {
+    riskmap_abort(c("The covariance matrix of the estimates isn't available or isn't positive definite, so parameter uncertainty can't be propagated.", "i" = "For a binomial or Poisson model, refitting with {.code control_mcml = set_control_mcml(pc_prior = TRUE)} usually solves this."), class = "riskmap_error_fit")
   }
+  if (is.null(covariance)) failure()
+  covariance <- as.matrix(covariance)
+  if (!identical(dim(covariance), rep(length(estimate), 2L))) failure()
   free <- which(is.finite(diag(covariance)) & diag(covariance) > 0)
   block <- covariance[free, free, drop = FALSE]
   root <- if (length(free) && all(is.finite(block))) {
     tryCatch(chol((block + t(block)) / 2), error = function(error) NULL)
   }
-  if (is.null(root)) stop(failure, call. = FALSE)
+  if (is.null(root)) failure()
   draws <- matrix(estimate, nrow = n_draws, ncol = length(estimate),
                   byrow = TRUE, dimnames = list(NULL, names(estimate)))
   draws[, free] <- draws[, free, drop = FALSE] +
@@ -1414,8 +1381,7 @@ standardize_prediction_targets <- function(object, prediction_data,
                                            random_effects, nugget, transform,
                                            beta) {
   if (is.null(prediction_data)) {
-    stop("Internal error: prediction data are required for standardization",
-         call. = FALSE)
+    riskmap_bug("Prediction data are required for standardisation.")
   }
   plain_data <- as.data.frame(st_drop_geometry(prediction_data))
   n_locations <- nrow(spatial)
@@ -1465,9 +1431,7 @@ standardize_prediction_targets <- function(object, prediction_data,
         values <- transform[[name]](profile_link)
         if (!is.numeric(values) || !is.matrix(values) ||
             !identical(dim(values), dim(profile_link))) {
-          stop("Transformation ", shQuote(name),
-               " must return a numeric matrix with the same dimensions as its input",
-               call. = FALSE)
+          abort_input("The function {.val {name}} in {.arg transform} must return a numeric matrix of the same dimensions as its input.", arg = "transform")
         }
         transformed[[name]] <- transformed[[name]] + weight * values
       }
@@ -1507,8 +1471,7 @@ prediction_design_matrix <- function(object, predictors) {
   ))
   if (!identical(colnames(design), colnames(object$D)) ||
       ncol(design) != ncol(object$D)) {
-    stop("The prediction data produce a model matrix that does not match the fitted model",
-         call. = FALSE)
+    abort_input(c("{.arg newdata} gives a design matrix that doesn't match the one of the fit.", "i" = "Check that its covariates have the types and factor levels of the data the model was fitted to."), arg = "newdata")
   }
   design
 }
@@ -1539,8 +1502,7 @@ prediction_nugget_samples <- function(object, prediction_setup, n_locations,
     object, prediction_setup$par_hat
   )
   if (is.null(tau2) || !is.finite(tau2) || tau2 <= 0) {
-    stop("The fitted model does not contain a positive nugget variance",
-         call. = FALSE)
+    abort_input("{.arg include} can't contain {.val nugget}, because the fit has no positive nugget variance.", arg = "include")
   }
   sample_independent_gaussian(
     mean = rep(0, n_locations),
@@ -1566,8 +1528,7 @@ aggregate_prediction_values <- function(values, operation, weights) {
   if (is.function(operation)) {
     result <- operation(values, weights)
     if (!is.numeric(result) || length(result) != ncol(values)) {
-      stop("A custom aggregation function must return one numeric value per ",
-           "predictive draw", call. = FALSE)
+      abort_input("A function in {.arg aggregate} must return one number for each predictive draw.", arg = "aggregate")
     }
     return(matrix(as.numeric(result), nrow = 1L))
   }
@@ -1646,8 +1607,7 @@ tidy_prediction_summaries <- function(values, boundary_id, aggregate,
       summary_functions[[operation]](draws)
     }
     if (!is.numeric(value) || length(value) != 1L) {
-      stop("Custom summary ", shQuote(name),
-           " must return exactly one numeric value", call. = FALSE)
+      abort_input("The function {.val {name}} in {.arg summaries} must return a single number.", arg = "summaries")
     }
     data.frame(
       boundary_id = boundary_id,
@@ -1959,8 +1919,7 @@ summarise_prediction_matrix <- function(values, quantity, summaries, level,
       row_summaries[[operation]]
     }
     if (!is.numeric(value) || length(value) != nrow(values)) {
-      stop("Custom summary ", shQuote(name),
-           " must return exactly one numeric value", call. = FALSE)
+      abort_input("The function {.val {name}} in {.arg summaries} must return a single number.", arg = "summaries")
     }
     as.numeric(value)
   })
@@ -2001,8 +1960,7 @@ prediction_threshold_label <- function(thresholds) {
 stored_conditioning_sample <- function(object) {
   block_sizes <- c(nrow(object$coords), lengths(object$re))
   if (ncol(object$S_samples) != sum(block_sizes)) {
-    stop("Stored conditional samples are inconsistent with the fitted model",
-         call. = FALSE)
+    abort_input("The conditional samples stored in {.arg object} don't match its model.", arg = "object")
   }
   block_ends <- cumsum(block_sizes)
   block_starts <- c(1L, utils::head(block_ends, -1L) + 1L)
@@ -2025,7 +1983,7 @@ prediction_link_samples <- function(prediction, include_fixed = TRUE,
                                     include_offset = TRUE) {
   samples <- prediction$samples
   if (is.null(samples) || is.null(samples$spatial)) {
-    stop("Prediction samples were not retained", call. = FALSE)
+    riskmap_bug("The prediction has no samples.")
   }
 
   link <- samples$spatial
@@ -2145,8 +2103,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   pred_cov_offset <- NULL
   if (!observed_locations && !is.null(inter_f$offset)) {
     if (!inter_f$offset %in% names(plain_data)) {
-      stop("'newdata' is missing offset column '", inter_f$offset, "'",
-           call. = FALSE)
+      abort_input("{.arg newdata} must have the offset column {.val {inter_f$offset}}.", arg = "newdata")
     }
     pred_cov_offset <- plain_data[[inter_f$offset]]
   }
@@ -2154,12 +2111,10 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   if ("random_effects" %in% include) {
     random_names <- colnames(object$ID_re)
     if (!length(random_names)) {
-      stop("The fitted model does not contain unstructured random effects",
-           call. = FALSE)
+      abort_input("{.arg include} can't contain {.val random_effects}, because the model has no {.fn re} terms.", arg = "include")
     }
     if (prediction != "joint") {
-      stop("Random-effect prediction requires 'type = \"joint\"'",
-           call. = FALSE)
+      abort_input("{.arg type} must be {.val joint} to predict the random effects.", arg = "type")
     }
     prepare_random_effects(plain_data, random_names)
     re_predictors <- plain_data[random_names]
@@ -2168,15 +2123,12 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   # ---------------------------------------------------------------------------
   # validate inputs
   # ---------------------------------------------------------------------------
-  stopifnot("'object' must be of class RiskMap" = inherits(object, "RiskMap"))
+  if (!inherits(object, "RiskMap")) riskmap_bug("{.arg object} must be a {.cls RiskMap} fit.")
 
   model_crs <- st_crs(object$data)
 
   if (is.na(model_crs)) {
-    stop(
-      "The fitted model does not contain a valid coordinate reference system (CRS)",
-      call. = FALSE
-    )
+    abort_input("The data of {.arg object} must have a coordinate reference system.", arg = "object")
   }
 
   crs_label <- function(x) {
@@ -2187,29 +2139,24 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   if (!is.null(grid_pred)) {
     check_data(grid_pred, type = "sfc")
     if (!isTRUE(st_crs(grid_pred) == model_crs)) {
-      stop(
-        "The CRS of 'grid_pred' (", crs_label(grid_pred),
-        ") must match the fitted model CRS (", crs_label(model_crs),
-        "). Transform 'grid_pred' explicitly with sf::st_transform().",
-        call. = FALSE
-      )
+      riskmap_bug("The prediction locations are in {crs_label(grid_pred)}, not in {crs_label(model_crs)} as the fit.")
     }
   }
 
-  if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
-    stop("'control_mcmc' must be an output from 'set_control_mcmc()'")
+  check_control(control_mcmc, "set_control_mcmc")
 
-  if (!type %in% c("marginal", "joint"))
-    stop("'type' must be either 'marginal' or 'joint'")
+  if (!type %in% c("marginal", "joint")) {
+    riskmap_bug("{.arg type} must be {.val marginal} or {.val joint}.")
+  }
 
   grouped_joint <- !is.null(groups)
   if (grouped_joint) {
     if (type != "joint") {
-      stop("Grouped prediction requires 'type = \"joint\"'", call. = FALSE)
+      riskmap_bug("Grouped prediction needs {.code type = \"joint\"}.")
     }
     if (is.null(grid_pred) || length(groups) != length(grid_pred) ||
         anyNA(groups)) {
-      stop("'groups' must identify every prediction location", call. = FALSE)
+      riskmap_bug("{.arg groups} must give a group for every prediction location.")
     }
     group_indices <- unname(split(seq_along(groups), groups))
   } else {
@@ -2220,13 +2167,15 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     }))
   }
 
-  if (!is.null(grid_pred) && is.null(predictors) && ncol(object$D) > 1)
-    stop("'predictors' must be supplied if 'grid_pred' is supplied")
+  if (!is.null(grid_pred) && is.null(predictors) && ncol(object$D) > 1) {
+    riskmap_bug("Covariates must be given with the prediction locations.")
+  }
 
   obs_loc <- is.null(grid_pred)
   if (obs_loc) {
-    if (!is.null(predictors))
-      warning("You have set 'predictors' but not 'grid_pred' so 'predictors' will be ignored")
+    if (!is.null(predictors)) {
+      riskmap_bug("Covariates were given without prediction locations.")
+    }
     predictors <- as.data.frame(st_drop_geometry(object$data))
     grid_pred  <- st_as_sfc(object$data)
   }
@@ -2241,16 +2190,20 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     if (obs_loc){
       pred_cov_offset <- object$cov_offset
     } else {
-      if (is.null(pred_cov_offset))
-        stop("'pred_cov_offset' must be specified at each prediction location")
-      if (!inherits(pred_cov_offset, "numeric"))
-        stop("'pred_cov_offset' must be a numeric vector")
-      if (length(pred_cov_offset) != n_pred)
-        stop("The length of 'pred_cov_offset' does not match the number of prediction locations")
+      if (is.null(pred_cov_offset)) {
+        riskmap_bug("The offset must be given at the prediction locations.")
+      }
+      if (!is.numeric(pred_cov_offset)) {
+        abort_input("The offset column {.val {inter_f$offset}} of {.arg newdata} must be numeric.", arg = "newdata")
+      }
+      if (length(pred_cov_offset) != n_pred) {
+        riskmap_bug("The offset must have one value for each prediction location.")
+      }
     }
   } else {
-    if (!is.null(pred_cov_offset))
-      warning("You have set 'pred_cov_offset' but 'object' does not contain a cov_offset so this will be ignored")
+    if (!is.null(pred_cov_offset)) {
+      riskmap_warn("The offset of {.arg newdata} is ignored, because the offset of the fit is zero everywhere.")
+    }
     pred_cov_offset <- 0
   }
 
@@ -2264,8 +2217,9 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   intercept_only <- if (p == 1) prod(object$D[, 1] == 1) == 1 else FALSE
 
   n_re <- length(object$re)
-  if (n_re > 0 && type == "marginal" && !is.null(re_predictors))
-    stop("Random effect predictions require 'type' to be set to 'joint'")
+  if (n_re > 0 && type == "marginal" && !is.null(re_predictors)) {
+    riskmap_bug("Random effects are predicted only with {.code type = \"joint\"}.")
+  }
 
   # ---------------------------------------------------------------------------
   # Build mu_pred (fixed-effects linear predictor at prediction locations)
@@ -2279,12 +2233,11 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
       offset_names <- names(object$cov_offset)
       model_predictors <- setdiff(get_formula_terms(object$formula), c(response, re_names, offset_names))
 
-      if (!is.data.frame(predictors))
-        stop("'predictors' must be a data.frame")
-      if (!all(model_predictors %in% names(predictors)))
-        stop("The column names in 'predictors' do not match the variables in the model formula")
-      if (nrow(predictors) != n_predictors)
-        stop("The number of rows in 'predictors' does not match the number of locations in 'grid_pred'")
+      if (!is.data.frame(predictors) ||
+          !all(model_predictors %in% names(predictors)) ||
+          nrow(predictors) != n_predictors) {
+        riskmap_bug("The covariates must be a data frame with the columns of the model and one row per prediction location.")
+      }
       check_complete_data(predictors, model_predictors)
       prediction_design_matrix(object, predictors)
     }
@@ -2308,16 +2261,17 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
 
     if (!is.null(re_predictors)) {
       if (any(is.na(re_predictors))) {
-        warning("Missing values in 're_predictors'; removing affected locations")
+        riskmap_warn("Locations with missing levels of a random effect are left out.")
         ind_c       <- complete.cases(re_predictors)
         re_predictors <- re_predictors[ind_c, , drop = FALSE]
         grid_pred <- grid_pred[ind_c]
         grp <- coordinates_in_units(grid_pred, object$distance_units)
         n_pred <- nrow(grp)
       }
-      if (!is.data.frame(re_predictors)) stop("'re_predictors' must be a data.frame")
-      if (nrow(re_predictors) != n_pred)  stop("'re_predictors' rows do not match 'grid_pred'")
-      if (ncol(re_predictors) != n_re)    stop("'re_predictors' columns do not match number of random effects")
+      if (!is.data.frame(re_predictors) || nrow(re_predictors) != n_pred ||
+          ncol(re_predictors) != n_re) {
+        riskmap_bug("The random-effect levels must be a data frame with one column per random effect and one row per prediction location.")
+      }
 
       n_dim_re <- sapply(seq_len(n_re), function(i) length(unique(object$ID_re[, i])))
       build_re_design <- function(values, size) {
@@ -2428,7 +2382,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     if (reuse_fitted_samples) {
       simulation <- stored_conditioning_sample(object)
       if (messages) {
-        message("Reusing conditional samples stored in the fitted model")
+        riskmap_inform("Reusing the conditional samples stored in the fit.")
       }
     } else {
       simulation <- laplace_sampling_mcmc(
@@ -2448,11 +2402,14 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     if (obs_loc) {
       out$S_samples <- t(simulation$samples$S)
     } else if (batch_marginal) {
+      bar <- progress_bar("Predicting at locations", nrow(fitting_grp),
+                          messages)
       out$S_samples <- batched_marginal_prediction(
         fitting_grp, conditioning_coords, prediction_weights,
         t(simulation$samples$S), par_hat$sigma2, fitting_phi,
-        object$kappa, n_samples, marginal_batch_size
+        object$kappa, n_samples, marginal_batch_size, progress = bar
       )
+      progress_done(bar)
     } else if (grouped_joint) {
       out$S_samples <- grouped_joint_prediction(
         prediction_coordinates = fitting_grp,
@@ -2569,11 +2526,14 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     if (blockwise_random_effects) {
       # Samples were generated above from one shared fitted latent state.
     } else if (batch_marginal) {
+      bar <- progress_bar("Predicting at locations", nrow(fitting_grp),
+                          messages)
       out$S_samples <- batched_marginal_prediction(
         fitting_grp, conditioning_coords, prediction_weights, diff.y,
         par_hat$sigma2, fitting_phi, object$kappa, n_samples,
-        marginal_batch_size
+        marginal_batch_size, progress = bar
       )
+      progress_done(bar)
     } else if (grouped_joint) {
       out$S_samples <- grouped_joint_prediction(
         prediction_coordinates = fitting_grp,
@@ -2679,7 +2639,9 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
 }
 
 .anpit_area <- function(curve, u = seq(0, 1, length.out = length(curve))) {
-  if (length(curve) != length(u)) stop("'curve' and 'u' must have the same length")
+  if (length(curve) != length(u)) {
+    riskmap_bug("{.arg curve} and {.arg u} must have the same length.")
+  }
   if (length(curve) < 2) return(NA_real_)
 
   dx <- diff(u)
@@ -2798,7 +2760,9 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' When `NULL` (the default), the seeds are drawn from the session's random
 ##' number generator.
 ##' @param plot_fold Logical; whether to plot each iteration's test and training sets. Defaults to `TRUE`.
-##' @param messages Logical; whether to display progress messages. Defaults to `TRUE`.
+##' @param messages Logical, whether to report on the assessment, with a
+##'   progress bar as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param ... Additional arguments passed to clustering or subsampling functions.
 ##'
 ##' @return A list of class `RiskMap_cross_validation`, containing:
@@ -2907,7 +2871,7 @@ assess_prediction <- function(object,
                               control_mcmc = set_control_mcmc(),
                               seed = NULL,
                               plot_fold = TRUE,
-                              messages = TRUE,
+                              messages = getOption("RiskMap.messages", TRUE),
                               ...) {
 
   ## ─────────────────────────── helpers ─────────────────────────── ##
@@ -2943,37 +2907,40 @@ assess_prediction <- function(object,
   }
 
   ## ────────────────────── sanity checks (unchanged) ─────────────────────── ##
-  if (!is_list_of_riskmap(object))
-    stop("'object' must be a list of fitted models of class 'RiskMap'.")
-
-  if (!all(metrics %in% c("CRPS", "SCRPS", "PIT")))
-    stop("'metrics' must only contain 'CRPS', 'SCRPS' or 'PIT'")
-
-  if (!method %in% c("cluster", "regularized", "user"))
-    stop("'method' must be either 'cluster', 'regularized' or 'user'")
-
-  if (method == "cluster"){
-    if (is.null(fold)) stop("when 'method' is 'cluster' you must supply 'fold'")
+  if (!is_list_of_riskmap(object)) {
+    abort_input("{.arg object} must be a list of {.cls RiskMap} fits.", arg = "object")
+  }
+  allowed_metrics <- c("CRPS", "SCRPS", "PIT")
+  if (!is.null(metrics) &&
+      (!is.character(metrics) || !all(metrics %in% allowed_metrics))) {
+    abort_input("{.arg metrics} must contain only {.val {allowed_metrics}}.", arg = "metrics")
+  }
+  method <- match_choice(method, c("cluster", "regularized", "user"))
+  if (method == "cluster") {
+    if (is.null(fold)) {
+      abort_input("{.arg fold} must be given when {.arg method} is {.val cluster}.", arg = "fold")
+    }
     check_positive_integer(fold, "fold")
   }
-
   if (method == "regularized") {
-    if (is.null(min_dist)) stop("when 'method' is 'regularized' you must supply 'min_dist'")
-    if (is.null(size))     stop("when 'method' is 'regularized' you must supply 'size'")
+    if (is.null(min_dist)) {
+      abort_input("{.arg min_dist} must be given when {.arg method} is {.val regularized}.", arg = "min_dist")
+    }
+    if (is.null(size)) {
+      abort_input("{.arg size} must be given when {.arg method} is {.val regularized}.", arg = "size")
+    }
     check_positive_number(min_dist, "")
     check_positive_integer(size, "size")
   }
-
-  if (method == "user"){
-    if (is.null(user_split)) stop("when 'method' is 'user' you must supply 'user_split'")
+  if (method == "user" && is.null(user_split)) {
+    abort_input("{.arg user_split} must be given when {.arg method} is {.val user}.", arg = "user_split")
   }
 
   check_logical(keep_par_fixed)
 
   check_positive_integer(iter, "iter")
 
-  if (!inherits(control_mcmc, "RiskMap_control_mcmc"))
-    stop("'control_mcmc' must come from 'set_control_mcmc()'")
+  check_control(control_mcmc, "set_control_mcmc")
 
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
 
@@ -3005,11 +2972,11 @@ assess_prediction <- function(object,
   for (h in seq_along(object)) {
     fit_data <- object[[h]]$data
     if (nrow(fit_data) != n_obs) {
-      stop("All models in 'object' supplied must have the same number of observations")
+      abort_input("The models in {.arg object} must be fitted to the same number of observations.", arg = "object")
     }
     fit_geom <- st_geometry(fit_data)
     if (!identical(fit_geom, data_geom)) {
-      stop("All models in 'object' must have data in the same row order and geometry")
+      abort_input("The models in {.arg object} must be fitted to data with the same rows in the same order.", arg = "object")
     }
   }
 
@@ -3019,16 +2986,19 @@ assess_prediction <- function(object,
   # both call sites below (a bare vector of test indices, or an explicit
   # 'in_id'/'out_id').
   validate_split_vector <- function(v, what) {
-    if (!is.numeric(v) || anyNA(v))
-      stop(what, " must be a non-missing numeric vector of row indices")
-    if (length(v) == 0)
-      stop(what, " must be non-empty")
-    if (any(v != round(v)))
-      stop(what, " must contain whole numbers")
-    if (anyDuplicated(v))
-      stop(what, " must not contain duplicate indices")
-    if (!all(v %in% seq_len(n_obs)))
-      stop(what, " must be row indices between 1 and the number of observations")
+    if (!is.numeric(v) || anyNA(v)) {
+      abort_input("{what} must be numeric row numbers without missing values.", arg = "user_split")
+    }
+    if (length(v) == 0) abort_input("{what} must not be empty.", arg = "user_split")
+    if (any(v != round(v))) {
+      abort_input("{what} must be whole numbers.", arg = "user_split")
+    }
+    if (anyDuplicated(v)) {
+      abort_input("{what} must not repeat a row.", arg = "user_split")
+    }
+    if (!all(v %in% seq_len(n_obs))) {
+      abort_input("{what} must be row numbers between 1 and {n_obs}.", arg = "user_split")
+    }
     invisible(TRUE)
   }
 
@@ -3042,15 +3012,17 @@ assess_prediction <- function(object,
     tag <- sprintf("user_split[[%d]]", index)
 
     if (is.null(in_id)) {
-      validate_split_vector(out_id, sprintf("'%s' test indices", tag))
+      validate_split_vector(out_id, cli::format_inline("The test rows in {.code {tag}}"))
       in_id <- setdiff(seq_len(n_obs), out_id)
-      if (length(in_id) == 0)
-        stop("'", tag, "' must leave at least one observation for training")
+      if (length(in_id) == 0) {
+        abort_input("{.code {tag}} must leave at least one observation for training.", arg = "user_split")
+      }
     } else {
-      validate_split_vector(in_id, sprintf("'%s's 'in_id'", tag))
-      validate_split_vector(out_id, sprintf("'%s's 'out_id'", tag))
-      if (length(intersect(in_id, out_id)) > 0)
-        stop("'", tag, "'s 'in_id' and 'out_id' must not overlap")
+      validate_split_vector(in_id, cli::format_inline("The {.code in_id} of {.code {tag}}"))
+      validate_split_vector(out_id, cli::format_inline("The {.code out_id} of {.code {tag}}"))
+      if (length(intersect(in_id, out_id)) > 0) {
+        abort_input("The {.code in_id} and {.code out_id} of {.code {tag}} must not overlap.", arg = "user_split")
+      }
     }
 
     list(in_id = as.integer(in_id), out_id = as.integer(out_id))
@@ -3059,27 +3031,32 @@ assess_prediction <- function(object,
   make_splits_from_user <- function(usr, n_iter_expected) {
     spl <- vector("list", n_iter_expected)
     if (is.matrix(usr)) {
-      if (nrow(usr) != n_obs)
-        stop("'user_split' matrix must have the same number of rows as the data in the model")
-      if (ncol(usr) != n_iter_expected)
-        stop("'user_split' matrix must have a number of columns equal to 'iter'")
-      if (anyNA(usr))
-        stop("'user_split' matrix must not contain missing values")
-      if (!all(usr %in% c(0, 1)))
-        stop("'user_split' matrix must only contain 0s (training) and 1s (test)")
+      if (nrow(usr) != n_obs) {
+        abort_input("A matrix {.arg user_split} must have one row per observation ({n_obs}), not {nrow(usr)}.", arg = "user_split")
+      }
+      if (ncol(usr) != n_iter_expected) {
+        abort_input("A matrix {.arg user_split} must have {.arg iter} ({n_iter_expected}) columns, not {ncol(usr)}.", arg = "user_split")
+      }
+      if (anyNA(usr)) {
+        abort_input("A matrix {.arg user_split} must not have missing values.", arg = "user_split")
+      }
+      if (!all(usr %in% c(0, 1))) {
+        abort_input("A matrix {.arg user_split} must hold only 0 for training and 1 for test.", arg = "user_split")
+      }
       for (i in seq_len(n_iter_expected)) {
         out_id <- which(usr[, i] == 1)
         in_id  <- which(usr[, i] == 0)
-        if (length(in_id) == 0 || length(out_id) == 0)
-          stop("Column ", i, " of 'user_split' must contain at least one training (0) ",
-               "and one test (1) observation")
+        if (length(in_id) == 0 || length(out_id) == 0) {
+          abort_input("Column {i} of {.arg user_split} must have at least one training observation (0) and one test observation (1).", arg = "user_split")
+        }
         spl[[i]] <- list(in_id = in_id, out_id = out_id,
                          data = data_sf[in_id, ],
                          data_test = data_sf[out_id, ])
       }
     } else if (inherits(usr, "list")) {
-      if (length(usr) != n_iter_expected)
-        stop("'user_split' list must have the same length as 'iter'")
+      if (length(usr) != n_iter_expected) {
+        abort_input("A list {.arg user_split} must have {.arg iter} ({n_iter_expected}) elements, not {length(usr)}.", arg = "user_split")
+      }
       for (i in seq_len(n_iter_expected)) {
         ui <- usr[[i]]
         if (is.list(ui) && !is.null(ui$in_id) && !is.null(ui$out_id)) {
@@ -3091,14 +3068,14 @@ assess_prediction <- function(object,
           in_id  <- validated$in_id
           out_id <- validated$out_id
         } else {
-          stop("Each element of 'user_split' must be a vector of test indices or a list(in_id=..., out_id=...).")
+          abort_input("Each element of {.arg user_split} must be a vector of test rows or a list with {.code in_id} and {.code out_id}.", arg = "user_split")
         }
         spl[[i]] <- list(in_id = in_id, out_id = out_id,
                          data = data_sf[in_id, ],
                          data_test = data_sf[out_id, ])
       }
     } else {
-      stop("'user_split' must be a matrix or a list")
+      abort_input("{.arg user_split} must be a matrix or a list, not {.obj_type_friendly {usr}}.", arg = "user_split")
     }
     list(splits = spl)
   }
@@ -3150,9 +3127,7 @@ assess_prediction <- function(object,
     n_short <- sum(vapply(data_split$splits,
                           function(s) nrow(s$data_test) < size, logical(1)))
     if (n_short > 0) {
-      warning(n_short, " of ", n_iter, " test sets have fewer than 'size' = ",
-              size, " locations, because no more locations are at least ",
-              "'min_dist' apart.", call. = FALSE)
+      riskmap_warn("{n_short} of {n_iter} test set{cli::qty(n_short)}{?s} {?has/have} fewer than {.arg size} = {size} locations, because no more locations are at least {.arg min_dist} apart.")
     }
   }
 
@@ -3166,36 +3141,26 @@ assess_prediction <- function(object,
                            function(s) any(ids[s$out_id] %in% ids[s$in_id]),
                            logical(1)))
     if (length(shared) > 0) {
-      warning("In test set(s) ", paste(shared, collapse = ", "),
-              ", some locations also have training observations. Their ",
-              "predictions ignore the nugget effect observed in training, so ",
-              "the scores of models with a nugget are not reliable there.",
-              call. = FALSE)
+      riskmap_warn(c("In {cli::qty(length(shared))}test set{?s} {shared}, some locations also have training observations.", "i" = "Their predictions ignore the nugget seen in training, so the scores of models with a nugget aren't reliable there."))
     }
   }
 
   with_re <- names(object)[vapply(object, function(fit) !is.null(fit$ID_re),
                                   logical(1))]
   if (length(with_re) > 0) {
-    warning("The predictive distributions of the test observations do not ",
-            "include the random effects, so the scores of ",
-            paste(shQuote(with_re), collapse = ", "), " are not reliable.",
-            call. = FALSE)
+    riskmap_warn("The predictive distributions of the test observations don't include the random effects, so the scores of {.val {with_re}} aren't reliable.")
   }
 
   n_par <- vapply(object, function(fit) length(unlist(coef(fit))), integer(1))
   if (messages) {
     if (keep_par_fixed) {
-      message("Parameters are fixed at the estimates from all the data. Set ",
-              "'keep_par_fixed = FALSE' to re-estimate them in each training set.")
+      riskmap_inform(c("Parameters are fixed at the estimates from all the data.", "i" = "Set {.code keep_par_fixed = FALSE} to re-estimate them in each training set."))
       if (length(unique(n_par)) > 1) {
-        message("The models have different numbers of parameters. With fixed ",
-                "parameters the comparison tends to favour the model with more ",
-                "parameters, so 'keep_par_fixed = FALSE' is recommended.")
+        riskmap_inform("The models have different numbers of parameters. With fixed parameters the comparison tends to favour the model with more of them, so {.code keep_par_fixed = FALSE} is recommended.")
       }
     } else {
-      message("Parameters are re-estimated in each training set (",
-              n_iter * length(object), " model fits).")
+      n_fits <- n_iter * length(object)
+      riskmap_inform("Parameters are re-estimated in each training set ({n_fits} model fits).")
     }
   }
 
@@ -3207,8 +3172,7 @@ assess_prediction <- function(object,
     complete.cases(st_drop_geometry(fit$data)[, model_vars, drop = FALSE])
   }))
   if (!all(complete_rows)) {
-    warning(sum(!complete_rows), " observations with missing values in the ",
-            "model variables are not used as test observations.", call. = FALSE)
+    riskmap_warn("{sum(!complete_rows)} observation{?s} with missing values in the model variables {?is/are} not used as test observations.")
   }
 
   # One seed per test set, shared by the models so that their predictions use
@@ -3230,6 +3194,10 @@ assess_prediction <- function(object,
     out$test_set[[i]] <- data_sf[out_id[complete_rows[out_id]], ]
   }
 
+  bar <- progress_bar(if (keep_par_fixed) "Scoring test sets" else
+                        "Refitting and scoring test sets",
+                      n_models * n_iter, messages)
+
   ## ─────────────────────────── iterate over models ───────────────────────── ##
   for (h in seq_len(n_models)) {
 
@@ -3241,10 +3209,6 @@ assess_prediction <- function(object,
       identity
     } else {
       fit0$link_function$inv %||% switch(fam, binomial = plogis, poisson = exp)
-    }
-
-    if (messages) {
-      message(sprintf("\nModel '%s' (%s)", h, model_names[h]))
     }
 
     ## containers for this model
@@ -3259,8 +3223,6 @@ assess_prediction <- function(object,
     score_test_set <- function(i, in_id, out_id_i, data_test_i) {
       ## ----- refit or slice -----
       if (!keep_par_fixed) {
-
-        if (messages) message("\nRe-estimating model for subset ", i)
 
         refit_args <- list(
           formula        = fit0$formula,
@@ -3305,8 +3267,6 @@ assess_prediction <- function(object,
         ## recompute ID_coords mapping
         refit_i$ID_coords <- create_ids(refit_i$data)$ID_coords
       }
-
-      if (messages) message("\nModel: ", model_names[h], "\nSpatial prediction for subset ", i)
 
       ## ----- prediction over test set -----
       included_components <- if (
@@ -3404,7 +3364,7 @@ assess_prediction <- function(object,
         score_test_set(i, in_id, out_id_i, data_test_i),
         error = function(e) {
           failures[nrow(failures) + 1, ] <<- list(model_names[h], i,
-                                                  conditionMessage(e))
+                                                  condition_text(e))
           n_test <- length(out_id_i)
           list(CRPS = rep(NA_real_, n_test), y_CRPS = rep(NA_real_, n_test),
                SCRPS = rep(NA_real_, n_test), PIT = numeric(0),
@@ -3421,6 +3381,7 @@ assess_prediction <- function(object,
         PIT_area[[i]] <- scores_i$PIT_area
         if (fam == "gaussian") PIT[[i]] <- scores_i$PIT else AnPIT[[i]] <- scores_i$AnPIT
       }
+      progress_tick(bar)
 
     } # end i loop
 
@@ -3434,13 +3395,13 @@ assess_prediction <- function(object,
     }
 
   } # end h loop
+  progress_done(bar)
 
   out$failures <- failures
   if (nrow(failures) > 0) {
-    warning(nrow(failures), " of ", n_iter * n_models, " test-set assessments ",
-            "failed and their scores are missing. First error (model ",
-            shQuote(failures$model[1]), ", test set ", failures$test_set[1],
-            "): ", failures$message[1], call. = FALSE)
+    n_assessed <- n_iter * n_models
+    first <- failures[1, ]
+    riskmap_warn(c("{nrow(failures)} of {n_assessed} test-set assessments failed, and their scores are missing.", "i" = "The first failure, for model {.val {first$model}} and test set {first$test_set}, was {.val {first$message}}.", "i" = "See the {.code failures} element of the result."))
   }
 
   class(out) <- "RiskMap_cross_validation"
@@ -3495,10 +3456,13 @@ plot.RiskMap_simulation <- function(x, simulation = 1, palette = "viridis",
 ##' @param legend_title Character string used as the fill legend title.
 ##' @param palette,reverse_palette,limits,north_arrow,scale_bar,... Passed to
 ##' `add_map_layers()`.
+##' @param call The call named in input errors, so that they name the plot
+##' method.
 ##' @return A `ggplot` object.
 ##' @noRd
 plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
-                      limits, north_arrow, scale_bar, ...) {
+                      limits, north_arrow, scale_bar, ...,
+                      call = rlang::caller_env()) {
   grid_coordinates <- st_coordinates(grid)
   plot_data <- data.frame(x = grid_coordinates[, 1],
                           y = grid_coordinates[, 2],
@@ -3535,7 +3499,8 @@ plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
                  limits = limits,
                  north_arrow = north_arrow,
                  scale_bar = scale_bar,
-                 ...)
+                 ...,
+                 call = call)
 }
 
 ##' Spacing between the points of a regular grid along one axis
@@ -3554,17 +3519,21 @@ grid_spacing <- function(coordinates) {
 ##' @param palette Either the name of a palette in [grDevices::hcl.pals()] or a
 ##' character vector of two or more valid colours.
 ##' @param reverse_palette Logical; reverse the order of the colours.
+##' @param call The call named in input errors.
 ##' @return A character vector of colours.
 ##' @noRd
-palette_colours <- function(palette, reverse_palette = FALSE) {
-  stopifnot("'palette' must be a character vector" = is.character(palette))
-  check_logical(reverse_palette)
+palette_colours <- function(palette, reverse_palette = FALSE,
+                            call = rlang::caller_env()) {
+  if (!is.character(palette)) {
+    abort_input("{.arg palette} must be a character vector, not {.obj_type_friendly {palette}}.", arg = "palette", call = call)
+  }
+  check_logical(reverse_palette, call = call)
 
   if (length(palette) == 1) {
     # hcl.colors() ignores case, spaces and punctuation in palette names
     normalise_name <- function(name) tolower(gsub("[^[:alnum:]]", "", name))
     if (!normalise_name(palette) %in% normalise_name(grDevices::hcl.pals())) {
-      stop("'palette' must be one of grDevices::hcl.pals() or a vector of two or more colours")
+      abort_input("{.arg palette} must be the name of a palette in {.fn grDevices::hcl.pals} or two or more colours, not {.val {palette}}.", arg = "palette", call = call)
     }
     colours <- grDevices::hcl.colors(256, palette = palette)
   } else {
@@ -3572,8 +3541,8 @@ palette_colours <- function(palette, reverse_palette = FALSE) {
       !inherits(try(grDevices::col2rgb(colour), silent = TRUE), "try-error")
     }, logical(1))
     if (!all(valid_colour)) {
-      stop("'palette' contains invalid colours: ",
-           paste(shQuote(palette[!valid_colour]), collapse = ", "))
+      invalid <- palette[!valid_colour]
+      abort_input("{.arg palette} has {?an /}invalid colour{?s}, {.val {invalid}}.", arg = "palette", call = call)
     }
     colours <- palette
   }
@@ -3593,14 +3562,17 @@ palette_colours <- function(palette, reverse_palette = FALSE) {
 ##' @param limits `NULL` or a numeric vector of length two for the colour scale.
 ##' @param north_arrow,scale_bar Logical; whether to add each annotation.
 ##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()].
+##' @param call The call named in input errors.
 ##' @return The `ggplot` object with the layers added.
 ##' @noRd
 add_map_layers <- function(map, extent, crs, legend_title, palette,
-                           reverse_palette, limits, north_arrow, scale_bar, ...) {
-  check_logical(north_arrow)
-  check_logical(scale_bar)
+                           reverse_palette, limits, north_arrow, scale_bar, ...,
+                           call = rlang::caller_env()) {
+  check_logical(north_arrow, call = call)
+  check_logical(scale_bar, call = call)
   map <- map +
-    scale_fill_gradientn(colours = palette_colours(palette, reverse_palette),
+    scale_fill_gradientn(colours = palette_colours(palette, reverse_palette,
+                                                   call = call),
                          limits = limits, ...) +
     coord_sf(crs = crs,
              xlim = as.numeric(extent[c("xmin", "xmax")]),
@@ -3662,8 +3634,7 @@ pad_map_extent <- function(extent, north_arrow, scale_bar) {
 plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
                                            reverse_palette = FALSE,
                                            limits = NULL, ...) {
-  stopifnot("'x' must be of class RiskMap_simulated_surface" =
-              inherits(x, "RiskMap_simulated_surface"))
+  check_class(x, "RiskMap_simulated_surface")
 
   plot_grid(x,
             values = x$linear_predictor,
@@ -3694,7 +3665,9 @@ plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
 ##'   drawn from the session's random number generator.
 ##' @param spatial_scale The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or `c("grid", "area")`
 ##'   to compute both from a single fit-and-predict pass over the simulations.
-##' @param messages Logical, if `TRUE` messages will be displayed during processing. Default is `TRUE`.
+##' @param messages Logical, whether to report on the assessment, with a
+##'   progress bar as described in [riskmap_progress].
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param target A function that converts a numeric matrix of means to a
 ##'   numeric matrix of the scientific target, with the same dimensions. The
 ##'   mean is the probability for a binomial model, the mean per unit exposure
@@ -3797,7 +3770,7 @@ assess_simulation <- function(obj_sim,
                        control_mcmc = set_control_mcmc(),
                        seed = NULL,
                        spatial_scale,
-                       messages = TRUE,
+                       messages = getOption("RiskMap.messages", TRUE),
                        target = identity,
                        area_summary = NULL,
                        boundaries = NULL,
@@ -3806,21 +3779,19 @@ assess_simulation <- function(obj_sim,
                        categories = NULL) {
 
   if (!inherits(obj_sim, "RiskMap_simulation")) {
-    stop("'obj_sim' must be output from simulate_glgpm()")
+    abort_input("{.arg obj_sim} must be made by {.fn simulate_glgpm}, not {.obj_type_friendly {obj_sim}}.", arg = "obj_sim")
   }
   if (!is.character(pred_objective) || length(pred_objective) == 0 ||
       anyDuplicated(pred_objective) ||
       !all(pred_objective %in% c("mse", "classify"))) {
-    stop("'pred_objective' must be either 'mse', 'classify' or c('mse', 'classify')")
+    abort_input("{.arg pred_objective} must be {.val mse}, {.val classify} or both.", arg = "pred_objective")
   }
   if (!is.character(spatial_scale) || length(spatial_scale) == 0 ||
       anyDuplicated(spatial_scale) ||
       !all(spatial_scale %in% c("grid", "area"))) {
-    stop("'spatial_scale' must be set to 'grid', 'area', or c('grid', 'area')")
+    abort_input("{.arg spatial_scale} must be {.val grid}, {.val area} or both.", arg = "spatial_scale")
   }
-  if (!inherits(control_mcmc, "RiskMap_control_mcmc")) {
-    stop("'control_mcmc' must come from 'set_control_mcmc()'")
-  }
+  check_control(control_mcmc, "set_control_mcmc")
   check_positive_integer(seed, "seed", allow_null = TRUE, allow_zero = TRUE)
 
   want_grid <- "grid" %in% spatial_scale
@@ -3835,67 +3806,63 @@ assess_simulation <- function(obj_sim,
         inherits(model, "RiskMap") ||
           inherits(model, "RiskMap_simulation_model")
       }, logical(1)))) {
-    stop("'models' must be a non-empty, uniquely named list of objects returned by glgpm() or specify_glgpm().")
+    abort_input("{.arg models} must be a non-empty list, with distinct names, of fits from {.fn glgpm} or models from {.fn specify_glgpm}.", arg = "models")
   }
 
   if (want_area) {
     if (is.null(boundaries)) {
-      stop("if spatial_scale includes 'area' then an sf object of the area(s) must be passed to
-           'boundaries'")
+      abort_input("{.arg boundaries} must be given when {.arg spatial_scale} includes {.val area}.", arg = "boundaries")
     }
     check_data(boundaries, "polygon")
   }
 
   obj_sim <- simulation_assessment_data(obj_sim)
   if (!is.function(target)) {
-    stop("'target' must be a function of the mean, such as identity() ",
-         "for prevalence.", call. = FALSE)
+    abort_input("{.arg target} must be a function of the mean, such as {.fn identity} for prevalence.", arg = "target")
   }
 
   apply_target <- function(x, context) {
     result <- tryCatch(
       target(x),
       error = function(e) {
-        stop("'target' failed for ", context, ": ",
-             conditionMessage(e), call. = FALSE)
+        abort_input("{.arg target} failed for {context}.", arg = "target", parent = e)
       }
     )
     if (!is.numeric(result) || !is.matrix(result) ||
         !identical(dim(result), dim(x)) || anyNA(result) ||
         any(!is.finite(result))) {
-      stop("'target' must return a finite numeric matrix with the same dimensions as its input (failed for ",
-           context, ").", call. = FALSE)
+      abort_input("{.arg target} must return a finite numeric matrix of the same dimensions as its input, and didn't for {context}.", arg = "target")
     }
     result
   }
 
   if (want_classify) {
-    if (is.null(categories)) stop("if 'pred_objective' is 'classify', a value for 'categories' must be specified")
+    if (is.null(categories)) {
+      abort_input("{.arg categories} must be given when {.arg pred_objective} includes {.val classify}.", arg = "categories")
+    }
     if (!is.numeric(categories) || length(categories) < 3 ||
         anyNA(categories) || any(!is.finite(categories)) ||
         any(diff(categories) <= 0)) {
-      stop("'categories' must contain at least three unique, strictly increasing values.")
+      abort_input("{.arg categories} must be at least three finite, strictly increasing numbers.", arg = "categories")
     }
   }
   n_sim <- length(obj_sim$data_sim)
   n_models <- length(models)
 
   if(want_area && !is.function(area_summary)) {
-    stop("'area_summary' must be a function when 'spatial_scale' includes 'area'.")
+    abort_input("{.arg area_summary} must be a function when {.arg spatial_scale} includes {.val area}.", arg = "area_summary")
   }
 
   apply_area_summary <- function(x, context) {
     result <- tryCatch(
       area_summary(x),
       error = function(e) {
-        stop("'area_summary' failed for ", context, ": ",
-             conditionMessage(e), call. = FALSE)
+        abort_input("{.arg area_summary} failed for {context}.", arg = "area_summary", parent = e)
       }
     )
     if (!is.numeric(result) || length(result) != 1L || is.na(result) ||
         !is.finite(result)) {
-      stop("'area_summary' must return one finite numeric value (failed for ",
-           context, ").", call. = FALSE)
+      abort_input("{.arg area_summary} must return one finite number, and didn't for {context}.", arg = "area_summary")
     }
     as.numeric(result)
   }
@@ -3909,25 +3876,18 @@ assess_simulation <- function(obj_sim,
   for (i in seq_len(n_models)) {
     template_i <- models[[i]]
     if (template_i$family != obj_sim$family) {
-      stop("Model '", model_names[i], "' uses family '", template_i$family,
-           "', but the simulations use family '", obj_sim$family, "'.")
+      abort_input("The model {.val {model_names[i]}} has the {template_i$family} family, but the simulations have the {obj_sim$family} family.", arg = "models")
     }
     re_names <- if (inherits(template_i, "RiskMap")) names(template_i$re) else
       template_i$re_terms
     required <- setdiff(get_formula_terms(formulas[[i]]), c("y", re_names))
     missing_columns <- setdiff(required, names(grid))
     if (length(missing_columns) > 0) {
-      stop("The prediction grid has no column ",
-           paste(shQuote(missing_columns, type = "sh"), collapse = ", "),
-           ", which model '", model_names[i], "' uses.", call. = FALSE)
+      abort_input("The prediction grid of {.arg obj_sim} has no column{?s} {.val {missing_columns}}, which the model {.val {model_names[i]}} uses.", arg = "models")
     }
     n_incomplete <- sum(!complete.cases(st_drop_geometry(grid)[required]))
     if (n_incomplete > 0) {
-      stop("Model '", model_names[i], "' needs complete values of ",
-           paste(shQuote(required, type = "sh"), collapse = ", "),
-           " on the prediction grid, but ", n_incomplete, " grid locations ",
-           "have missing values. Remove them from the prediction grid ",
-           "before simulating.", call. = FALSE)
+      abort_input(c("The model {.val {model_names[i]}} needs complete values of {.val {required}} on the prediction grid, but {n_incomplete} grid location{?s} {?has/have} missing values.", "i" = "Remove them from the prediction grid before simulating."), arg = "models")
     }
   }
 
@@ -3938,21 +3898,18 @@ assess_simulation <- function(obj_sim,
       boundaries$region <- paste0("reg", 1:n_reg)
       col_names <- "region"
     } else if (!col_names %in% names(boundaries)) {
-      stop("'col_names' must name a column of 'boundaries'.", call. = FALSE)
+      abort_input("{.arg col_names} must name a column of {.arg boundaries}, and {.val {col_names}} doesn't.", arg = "col_names")
     }
     names_reg <- boundaries[[col_names]]
     if (anyDuplicated(names_reg)) {
-      stop("The column identified by 'col_names' must contain unique region ",
-           "names.", call. = FALSE)
+      abort_input("The column {.val {col_names}} of {.arg boundaries} must hold distinct names of areas.", arg = "col_names")
     }
     boundaries <- st_transform(boundaries, st_crs(grid))
     inter <- st_intersects(boundaries, grid)
     empty <- lengths(inter) == 0
     if (any(empty)) {
-      warning("No grid locations fall within ",
-              paste(shQuote(names_reg[empty], type = "sh"), collapse = ", "),
-              ", which ", if (sum(empty) == 1) "is" else "are",
-              " left out of the area-level assessment.", call. = FALSE)
+      empty_names <- names_reg[empty]
+      riskmap_warn("No grid locations fall within {.val {empty_names}}, so {cli::qty(length(empty_names))}{?it is/they are} left out of the assessment of areas.")
     }
     areas <- which(!empty)
     # Joint predictive draws are needed only within each area; areas that
@@ -3980,14 +3937,12 @@ assess_simulation <- function(obj_sim,
       values <- tryCatch(
         apply(target[inter[[h]], , drop = FALSE], 2, area_summary),
         error = function(e) {
-          stop("'area_summary' failed for area '", names_reg[h], "' in ",
-               context, ": ", conditionMessage(e), call. = FALSE)
+          abort_input("{.arg area_summary} failed for the area {.val {names_reg[h]}} in {context}.", arg = "area_summary", parent = e)
         }
       )
       if (!is.numeric(values) || length(values) != ncol(target) ||
           any(!is.finite(values))) {
-        stop("'area_summary' must return one finite numeric value (failed for ",
-             "area '", names_reg[h], "' in ", context, ").", call. = FALSE)
+        abort_input("{.arg area_summary} must return one finite number, and didn't for the area {.val {names_reg[h]}} in {context}.", arg = "area_summary")
       }
       values
     }, numeric(ncol(target))))
@@ -4121,21 +4076,33 @@ assess_simulation <- function(obj_sim,
       }
       scores
     }, warning = function(w) {
-      fit_warnings <<- c(fit_warnings, conditionMessage(w))
+      fit_warnings <<- c(fit_warnings, condition_text(w))
       invokeRestart("muffleWarning")
     }), error = function(e) {
-      list(status = "failed", message = conditionMessage(e))
+      list(status = "failed", message = condition_text(e))
     })
     result$warnings <- unique(fit_warnings)
     result
   }
 
-  assess_one_simulation <- function(j) {
-    if (messages) message("Simulation ", j, " of ", n_sim)
-    lapply(seq_len(n_models), assess_pair, j = j)
+  assess_one_simulation <- function(j, report) {
+    lapply(seq_len(n_models), function(i) {
+      result <- assess_pair(i, j)
+      report()
+      result
+    })
   }
 
-  results <- lapply(seq_len(n_sim), assess_one_simulation)
+  if (messages) {
+    riskmap_inform("Refitting {n_models} model{?s} to {n_sim} simulation{?s}.")
+  }
+  bar <- progress_bar("Refitting models to simulations", n_sim * n_models,
+                      messages)
+  results <- riskmap_map(seq_len(n_sim), assess_one_simulation,
+                         progress = bar, weights = rep(n_models, n_sim),
+                         reports_progress = TRUE,
+                         labels = paste("Simulation", seq_len(n_sim)))
+  progress_done(bar)
 
   fits <- data.frame(
     model = rep(model_names, times = n_sim),
@@ -4177,18 +4144,12 @@ assess_simulation <- function(obj_sim,
   n_failed <- sum(fits$status != "ok")
   if (n_failed > 0) {
     first <- which(fits$status != "ok")[1]
-    warning(n_failed, " of ", nrow(fits), " model fits failed and their ",
-            "results are missing. First error (model '", fits$model[first],
-            "', simulation ", fits$simulation[first], "): ",
-            fits$message[first], call. = FALSE)
+    riskmap_warn(c("{n_failed} of {nrow(fits)} model fits failed, and their results are missing.", "i" = "The first failure, for model {.val {fits$model[first]}} and simulation {fits$simulation[first]}, was {.val {fits$message[first]}}.", "i" = "See the {.code fits} element of the result."))
   }
   n_warned <- sum(!is.na(fits$warnings))
   if (n_warned > 0) {
     first <- which(!is.na(fits$warnings))[1]
-    warning(n_warned, " of ", nrow(fits), " model fits gave warnings, such ",
-            "as \"", fits$warnings[first], "\" (model '", fits$model[first],
-            "', simulation ", fits$simulation[first], "). See the 'fits' ",
-            "element of the result.", call. = FALSE)
+    riskmap_warn(c("{n_warned} of {nrow(fits)} model fits gave warnings.", "i" = "The first, for model {.val {fits$model[first]}} and simulation {fits$simulation[first]}, was {.val {fits$warnings[first]}}.", "i" = "See the {.code fits} element of the result."))
   }
 
   if(want_classify) {
@@ -4339,11 +4300,10 @@ print.RiskMap_assess_simulation <- function(x, ...) {
 ##' @method summary RiskMap_assess_simulation
 ##' @export
 summary.RiskMap_assess_simulation <- function(object, ...) {
-  stopifnot(inherits(object, "RiskMap_assess_simulation"))
+  check_class(object, "RiskMap_assess_simulation")
 
   if (identical(object$n_sim, 1L)) {
-    warning("The assessment contains one simulation. Point estimates are shown, ",
-            "but across-simulation uncertainty cannot be estimated.", call. = FALSE)
+    riskmap_warn("The assessment has one simulation, so point estimates are shown without their uncertainty across simulations.")
   }
 
   # `object$pred_objective` holds one element per requested spatial scale
@@ -4389,7 +4349,7 @@ summarize_pred_objective <- function(pred_objective) {
 
       results$mse <- mse_summary
     } else {
-      stop("mse_data must be a matrix.")
+      abort_input("The mean squared errors in {.arg object} must be a matrix.", arg = "object")
     }
   }
 

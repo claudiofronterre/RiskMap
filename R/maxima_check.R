@@ -50,9 +50,7 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
                                              linkf = NULL) {
   kernel <- as_family_object(family, linkf)
   if (kernel$integrated) {
-    stop("The likelihood with independent location effects is built from the ",
-         "model's link, not from a kernel of integrated records.",
-         call. = FALSE)
+    riskmap_bug("The likelihood with independent location effects is built from the model's link, not from a kernel of integrated records.")
   }
   family <- kernel$family
   linkf <- if (!kernel$canonical) kernel$linkf
@@ -106,8 +104,7 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
       observed <- if (any(valid)) observe(valid)
     }
     if (is.null(observed)) {
-      stop("the inverse link failed in the likelihood with independent ",
-           "location effects", call. = FALSE)
+      riskmap_abort("The inverse link failed in the likelihood with independent location effects.", class = "riskmap_error_fit")
     }
     observed
   }

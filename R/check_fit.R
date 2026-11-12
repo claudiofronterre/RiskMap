@@ -71,6 +71,7 @@
 ##'   computing one, whether or not `extra` names it.
 ##' @param messages Logical, whether to say how long the extra checks should
 ##'   take before they start.
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param cores Number of processes for the extra checks that can use
 ##'   several, passed to [profile.RiskMap()], whose results are the same on
 ##'   any number of cores.
@@ -133,15 +134,13 @@
 ##' }
 ##' @export
 check_fit <- function(object, extra = character(), profile = NULL,
-                      messages = TRUE, cores = 1L) {
-  stopifnot(inherits(object, "RiskMap"))
+                      messages = getOption("RiskMap.messages", TRUE),
+                      cores = 1L) {
+  check_class(object, "RiskMap")
   extra <- match_extra_checks(extra)
   check_given_profile(profile, object)
-  stopifnot("'messages' must be TRUE or FALSE" = isTRUE(messages) ||
-              isFALSE(messages),
-            "'cores' must be a positive whole number" =
-              is.numeric(cores) && length(cores) == 1L && isTRUE(cores >= 1) &&
-              cores == round(cores))
+  check_logical(messages)
+  check_positive_integer(cores)
   if (!is.null(profile)) extra <- union(extra, "profile")
   mcml <- summarise_mcml_fit(object)
   history <- object$mcml_history %||% attr(object, "optimizer")$mcml_history
@@ -826,7 +825,7 @@ summarise_estimate_moves <- function(object, history) {
 ##' @method print RiskMap_check
 ##' @export
 print.RiskMap_check <- function(x, ...) {
-  stopifnot(inherits(x, "RiskMap_check"))
+  check_class(x, "RiskMap_check")
   cat("Checks on this fit\n")
   if (!is.null(x$draws)) write_wrapped(x$draws)
   cat("\n")
@@ -931,20 +930,17 @@ print.RiskMap_check <- function(x, ...) {
 ##' @method plot RiskMap_check
 ##' @export
 plot.RiskMap_check <- function(x, which = NULL, ...) {
-  stopifnot(inherits(x, "RiskMap_check"))
+  check_class(x, "RiskMap_check")
   panel_names <- c("certificate", "effective_draws", "pareto_k", "moves",
                    "held_variances", "screen", "radius")
   if (!is.null(which)) {
-    stopifnot("'which' must be a character vector" =
-                is.character(which) && length(which) > 0L && !anyNA(which))
+    if (!is.character(which) || !length(which) || anyNA(which)) {
+      abort_input("{.arg which} must be a character vector, not {.obj_type_friendly {which}}.", arg = "which")
+    }
     unknown <- which[!which %in% c(panel_names, "profile") &
                        !startsWith(which, "profile_")]
     if (length(unknown)) {
-      stop("Unknown panel", if (length(unknown) > 1L) "s", " ",
-           paste0("\"", unknown, "\"", collapse = ", "), ". The panels are ",
-           paste0("\"", panel_names, "\"", collapse = ", "), ", \"profile_\" ",
-           "followed by a parameter, such as \"profile_phi\", and \"profile\" ",
-           "for every profile.", call. = FALSE)
+      abort_input(c("{.arg which} has unknown panel{?s} {.val {unknown}}.", "i" = "The panels are {.or {.val {panel_names}}}.", "i" = "{.val profile} gives every profile, and {.val profile_} followed by a parameter, such as {.val profile_phi}, gives one."), arg = "which")
     }
   }
   panels <- draw_check_panels(x)
@@ -956,9 +952,12 @@ plot.RiskMap_check <- function(x, which = NULL, ...) {
   empty <- requested[vapply(panels[requested], is.null, logical(1L))]
   reasons <- explain_missing_panels(x, empty)
   panels <- Filter(Negate(is.null), panels[requested])
-  if (!length(panels)) stop(paste(reasons, collapse = " "), call. = FALSE)
+  if (!length(panels)) {
+    explanation <- paste(reasons, collapse = " ")
+    abort_input("{explanation}", arg = if (is.null(which)) "x" else "which")
+  }
   # Without a choice of panels, those with nothing to show are left out quietly.
-  if (!is.null(which)) for (reason in reasons) message(reason)
+  if (!is.null(which)) for (reason in reasons) riskmap_inform("{reason}")
   print(patchwork::wrap_plots(panels, ncol = min(2L, length(panels))))
   invisible(panels)
 }

@@ -23,82 +23,82 @@ test_that("joint simulations share effects at overlapping locations", {
 })
 
 test_that("specify_glgpm returns errors as expected", {
-  expect_error(
+  expect_input_error(
     specify_glgpm("not a formula", gaussian_data, "gaussian",
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "'formula' must be a 'formula'"
+    "formula"
   )
 
   expect_error(
     specify_glgpm(y ~ cov, gaussian_data, "gaussian",
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "The 'formula' must contain a Gaussian Process term"
+    "must contain a Gaussian process term"
   )
 
   expect_error(
     specify_glgpm(y ~ gp(), "not spatial data", "gaussian",
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "class 'sf'"
+    "must be an <sf> object"
   )
 
-  expect_error(
+  expect_input_error(
     specify_glgpm(y ~ gp(), gaussian_data, "gaussian", model_crs = 4326,
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "'model_crs' must be a projected CRS"
+    "model_crs"
   )
 
   expect_message(
     specify_glgpm(y ~ gp(), latlon_data, "gaussian",
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "'data' are in longitude/latitude "
+    "are in longitude and latitude"
   )
 
   expect_error(
     specify_glgpm(y ~ gp(), gaussian_data, "not-a-family",
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "'family' must be \"gaussian\", \"binomial\" or \"poisson\""
+    "family", class = "riskmap_error_input"
   )
 
   expect_error(
     specify_glgpm(y ~ gp(), gaussian_data, "gaussian",
                   denominator = cov,
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "When 'family' is 'gaussian', neither 'denominator'"
+    "can't be given for a Gaussian model"
   )
 
   expect_error(
     specify_glgpm(y ~ gp(), gaussian_data, "gaussian",
                   invlink = plogis,
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "When 'family' is 'gaussian', neither 'denominator'"
+    "can't be given for a Gaussian model"
   )
 
   expect_error(
     specify_glgpm(y ~ gp(), gaussian_data, "gaussian",
                   list(sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "Missing simulation parameters: beta"
+    "must have the element \"beta\""
   )
 
-  expect_error(
+  expect_input_error(
     specify_glgpm(y ~ gp(), binomial_data, "binomial",
                   denominator = "d",
                   list(beta = 1, sigma2 = 1, phi = 1)),
-                  "'denominator' must be provided as an unquoted column"
+                  "denominator"
   )
 
-  expect_error(
+  expect_input_error(
     specify_glgpm(y ~ gp(), binomial_data, "binomial",
                   denominator = d,
                   list(beta = 1, sigma2 = 1, phi = 1)),
-    "'denominator' is not present in 'data'"
+    "denominator"
   )
 
-  expect_error(
+  expect_input_error(
     specify_glgpm(y ~ gp(), binomial_data, "binomial",
                   denominator = denominator,
                   invlink = "a",
                   list(beta = 1, sigma2 = 1, phi = 1)),
-    "'invlink' takes a function, not the name of a link"
+    "invlink"
   )
 
 })
@@ -110,21 +110,21 @@ test_that("specify_glgpm returns errors as expected", {
     "positive integer"
   )
 
-  expect_error(
+  expect_input_error(
     simulate_glgpm(gaussian_model, nsim = 1, what = "n"),
-    "'what' must be 'data', 'surface'"
+    "what"
   )
 
-  expect_error(
+  expect_input_error(
     simulate_glgpm(gaussian_model, nsim = 1, what = "surface",
                    sample_locations = gaussian_data),
-    "'sample_locations' requires 'data' in 'what'"
+    "sample_locations"
   )
 
-  expect_error(
+  expect_input_error(
     simulate_glgpm(gaussian_model, nsim = 1, what = "data",
                    prediction_grid = grid),
-    "'prediction_grid' requires 'surface' in 'what'"
+    "prediction_grid"
   )
 
 })
@@ -186,37 +186,37 @@ test_that("validation is informative and local seeds preserve RNG", {
   expect_message(
     transformed <- simulate_glgpm(gaussian_model,
                                   sample_locations = latlon_data),
-    "transformed to the model CRS"
+    "projected to the coordinate reference system of the model"
   )
   expect_identical(st_crs(transformed$locations$data), st_crs(gaussian_model$data))
-  expect_error(simulate_glgpm(binomial_model, sample_locations = binomial_data[, "cov"]),
-               "'i' is present in the model formula but not a column in 'sample_locations'")
-  expect_error(simulated_data(first, 2), "valid simulation")
-  expect_error(simulated_surface(first), "No surface")
-  expect_error(simulate_glgpm(list(gaussian_model)), "fitted RiskMap")
+  expect_input_error(simulate_glgpm(binomial_model, sample_locations = binomial_data[, "cov"]),
+               "sample_locations")
+  expect_error(simulated_data(first, 2), "must be one simulation number")
+  expect_error(simulated_surface(first), "has no simulated surface")
+  expect_error(simulate_glgpm(list(gaussian_model)), "<RiskMap> fit")
 })
 
 test_that("missing formula variables in prediction_grid or sample_locations are named clearly (#204)", {
   surface_missing_cov <- grid
-  expect_error(
+  expect_input_error(
     simulate_glgpm(gaussian_model, what = c("data", "surface"),
                    prediction_grid = surface_missing_cov,
                    sample_locations = gaussian_data),
-    "'cov', 'i' are present in the model formula but not a column in 'prediction_grid'"
+    "prediction_grid"
   )
 
   surface_missing_re <- grid
   surface_missing_re$cov <- rnorm(nrow(grid))
-  expect_error(
+  expect_input_error(
     simulate_glgpm(gaussian_model, what = c("data", "surface"),
                    prediction_grid = surface_missing_re,
                    sample_locations = gaussian_data),
-    "'i' is present in the model formula but not a column in 'prediction_grid'"
+    "prediction_grid"
   )
 
-  expect_error(
+  expect_input_error(
     simulate_glgpm(gaussian_model, sample_locations = gaussian_data[, "cov"]),
-    "'i' is present in the model formula but not a column in 'sample_locations'"
+    "sample_locations"
   )
 })
 
@@ -237,27 +237,27 @@ test_that("assess_simulation validates area boundaries", {
   expect_error(
     assess_simulation(obj_sim, models = list(model = y ~ gp()),
                       spatial_scale = "grid"),
-    "glgpm\\(\\) or specify_glgpm\\(\\)"
+    "`glgpm\\(\\)` or models from `specify_glgpm\\(\\)`"
   )
-  expect_error(
+  expect_input_error(
     assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
                       spatial_scale = character()),
-    "'spatial_scale' must be set"
+    "spatial_scale"
   )
-  expect_error(
+  expect_input_error(
     assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
                       spatial_scale = c("grid", "grid")),
-    "'spatial_scale' must be set"
+    "spatial_scale"
   )
-  expect_error(
+  expect_input_error(
     assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
                       spatial_scale = "grid", pred_objective = character()),
-    "'pred_objective' must be either"
+    "pred_objective"
   )
-  expect_error(assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
+  expect_input_error(assess_simulation(obj_sim, models = list(model = gaussian_intercept_model),
                                  spatial_scale = "area", boundaries = gaussian_data,
                                  area_summary = mean),
-               "'boundaries' can only contain 'POLYGON' or 'MULTIPOLYGON' geometry")
+               "boundaries")
 })
 
 test_that("assessment refits use fitted templates without reusing estimates #108", {
@@ -322,7 +322,7 @@ test_that("assess_simulation validates target and area function outputs #171", {
                         what = c("data", "surface"),
                         prediction_grid = gaussian_data, seed = 2)
 
-  expect_error(
+  expect_input_error(
     assess_simulation(
       sim,
       models = list(intercept = gaussian_intercept_model),
@@ -331,7 +331,7 @@ test_that("assess_simulation validates target and area function outputs #171", {
       pred_objective = "mse",
       messages = FALSE
     ),
-    "'target' must be a function of the mean"
+    "target"
   )
 
   expect_error(
@@ -369,7 +369,7 @@ test_that("assess_simulation validates target and area function outputs #171", {
       pred_objective = "mse",
       messages = FALSE
     ),
-    "one finite numeric value"
+    "must return one finite number"
   )
 })
 
@@ -448,7 +448,7 @@ test_that("assess_simulation computes grid and area objectives in one combined r
                       spatial_scale = "grid",
                       pred_objective = "classify", categories = c(-1, 0, 0),
                       messages = FALSE),
-    "unique, strictly increasing"
+    "finite, strictly increasing"
   )
 })
 
@@ -538,7 +538,7 @@ test_that("plot.RiskMap_simulation plots the simulated surface (#87)", {
                         prediction_grid = grid, seed = 1)
 
   expect_s3_class(sim, "RiskMap_simulation")
-  expect_error(plot(sim, simulation = 3), "must select valid simulation numbers")
+  expect_error(plot(sim, simulation = 3), "must be one simulation number")
   expect_no_error(plot(sim, simulation = 2))
 
   p <- plot(sim)
@@ -582,7 +582,7 @@ test_that("simulated_surface() output has a plot method matching plot.RiskMap_si
   expect_identical(ggplot2::ggplot_build(p)$data[[1]]$fill,
                    ggplot2::ggplot_build(plot(sim, simulation = 2, palette = "Blues",
                                               reverse_palette = TRUE))$data[[1]]$fill)
-  expect_error(plot.RiskMap_simulated_surface(sim), "must be of class RiskMap_simulated_surface")
+  expect_error(plot.RiskMap_simulated_surface(sim), "<RiskMap_simulated_surface>")
 })
 
 
@@ -638,7 +638,7 @@ test_that("assess_simulation leaves out areas without grid locations", {
       pred_objective = c("mse", "classify"), categories = c(-10, 0, 10),
       messages = FALSE
     ),
-    "'far', which is left out of the area-level assessment"
+    "\"far\", so it is left out of the assessment of areas"
   )
   expect_true(all(is.finite(result$pred_objective$area$mse)))
 })
@@ -656,7 +656,7 @@ test_that("assess_simulation requires unique area names", {
       area_summary = mean, boundaries = boundaries, col_names = "region",
       pred_objective = "mse", messages = FALSE
     ),
-    "unique region names"
+    "distinct names of areas"
   )
 })
 
@@ -675,7 +675,7 @@ test_that("assess_simulation names missing candidate covariates on the grid", {
       sim, models = list(candidate = candidate), spatial_scale = "grid",
       pred_objective = "mse", messages = FALSE
     ),
-    "needs complete values of 'cov' on the prediction grid"
+    "needs complete values of \"cov\" on the prediction grid"
   )
 })
 

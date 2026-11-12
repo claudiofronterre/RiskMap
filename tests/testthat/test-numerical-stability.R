@@ -28,7 +28,7 @@ test_that("linear_start_values uses a rank-aware least-squares solve", {
                unname(coef(lm(response ~ design[, 2]))))
   expect_error(
     linear_start_values(cbind(1, 1:3, 2 * (1:3)), response),
-    "model matrix is rank deficient"
+    "design matrix is rank deficient", class = "riskmap_error_input"
   )
 })
 

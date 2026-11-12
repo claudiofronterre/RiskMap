@@ -135,8 +135,7 @@ plot_mcmc <- function(object, check_mean = TRUE, component = NULL, ...) {
              !all(is.finite(component)) || any(component %% 1 != 0) ||
              any(component < 1) || any(component > n_locations) ||
              anyDuplicated(component) > 0L) {
-    stop("'component' must contain distinct whole numbers between 1 and ",
-         "the number of locations, ", n_locations, call. = FALSE)
+    abort_input("{.arg component} must be distinct whole numbers between 1 and the number of locations, {n_locations}.", arg = "component")
   }
   component <- as.integer(component)
 
@@ -167,16 +166,13 @@ plot_mcmc <- function(object, check_mean = TRUE, component = NULL, ...) {
 ##' @noRd
 mcmc_sample_blocks <- function(object) {
   if (!inherits(object, "RiskMap")) {
-    stop("'object' must be a 'RiskMap' object returned by 'glgpm'",
-         call. = FALSE)
+    abort_input("{.arg object} must be a {.cls RiskMap} fit from {.fn glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
   if (identical(object$family, "gaussian")) {
-    stop("'object' is a Gaussian model, which has no MCMC samples",
-         call. = FALSE)
+    abort_input("{.arg object} is a Gaussian model, which has no MCMC samples.", arg = "object")
   }
   if (is.null(object$S_samples)) {
-    stop("'object' does not contain any MCMC chains. Refit the model with ",
-         "glgpm(..., return_samples = TRUE)", call. = FALSE)
+    abort_input(c("{.arg object} has no MCMC chains.", "i" = "Refit the model with {.code glgpm(..., return_samples = TRUE)}."), arg = "object")
   }
   stored_conditioning_sample(object)$samples
 }
