@@ -303,3 +303,67 @@ test_that("the start of each family is the regression its caller ran", {
     linear_start_values(D, response)
   )
 })
+
+test_that("the family's simulator and scoring support take the draws of their callers", {
+  means <- c(0.2, 0.7, 0.5)
+  units_m <- c(4, 10, 6)
+  set.seed(3)
+  expected <- rbinom(3, size = units_m, prob = means)
+  set.seed(3)
+  expect_identical(family_traits("binomial")$simulate(means, units_m, NULL),
+                   expected)
+  set.seed(4)
+  expected <- rpois(3, lambda = means * units_m)
+  set.seed(4)
+  expect_identical(family_traits("poisson")$simulate(means, units_m, NULL),
+                   expected)
+  set.seed(5)
+  expected <- means + rnorm(3, sd = sqrt(0.3))
+  set.seed(5)
+  expect_identical(
+    family_traits("gaussian")$simulate(means, NULL, list(sigma2_me = 0.3)),
+    expected
+  )
+  draws <- c(0, 3, 9)
+  expect_identical(family_traits("binomial")$score_support(draws, 2, 10, means),
+                   0:10)
+  # Each of the three terms of the Poisson support is the largest once: the
+  # draws, the response, and the 0.999 quantile of the mean rate.
+  poisson <- family_traits("poisson")
+  expect_identical(poisson$score_support(draws, 4, 2, means), 0:9)
+  expect_identical(poisson$score_support(draws, 12, 2, means), 0:12)
+  rates <- c(6, 7, 8)
+  expect_gt(qpois(0.999, mean(4 * rates)), 12)
+  expect_identical(poisson$score_support(draws, 4, 4, rates),
+                   0:qpois(0.999, mean(4 * rates)))
+  # A matrix of means with a denominator for each row, as draw_simulation()
+  # passes them.
+  matrix_means <- matrix(c(0.2, 0.7, 0.5, 0.1, 0.9, 0.4), 3)
+  set.seed(6)
+  expected <- rbinom(6, size = units_m, prob = as.numeric(matrix_means))
+  set.seed(6)
+  expect_identical(
+    family_traits("binomial")$simulate(matrix_means, units_m, NULL), expected
+  )
+  set.seed(7)
+  expected <- rpois(6, lambda = as.numeric(matrix_means) * units_m)
+  set.seed(7)
+  expect_identical(
+    family_traits("poisson")$simulate(matrix_means, units_m, NULL), expected
+  )
+  expect_null(family_traits("gaussian")$score_support(draws, 1, 1, means))
+  expect_identical(family_traits("binomial")$inverse_link, stats::plogis)
+  expect_identical(family_traits("poisson")$inverse_link, exp)
+  expect_identical(family_traits("gaussian")$inverse_link, identity)
+  expect_false(family_traits("gaussian")$discrete)
+  expect_true(family_traits("poisson")$discrete)
+  expect_true(family_traits("binomial")$whole_denominator)
+  expect_false(family_traits("poisson")$whole_denominator)
+  # A fit or a template without a family is refused, not taken as inexact.
+  no_family <- binomial_model
+  no_family["family"] <- list(NULL)
+  expect_error(assessment_refit_args(no_family, no_family$formula,
+                                     no_family$data, control_mcmc),
+               class = "riskmap_error_internal")
+  expect_error(simulation_model(no_family), class = "riskmap_error_internal")
+})

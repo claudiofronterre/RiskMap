@@ -54,6 +54,7 @@ specify_glgpm <- function(formula, data, family, parameters,
   family_link <- read_family(family, invlink)
   family <- family_link$family
   invlink <- family_link$invlink
+  traits <- family_traits(family)
   custom_link <- !is.null(invlink)
   inter <- interpret_formula(formula)
 
@@ -68,13 +69,11 @@ specify_glgpm <- function(formula, data, family, parameters,
       abort_input(c("{.arg denominator} must name a column of {.arg data}.", "x" = "There is no column {.val {denominator_name}}."), arg = "denominator")
     }
   }
-  if (family == "gaussian" &&
+  if (traits$exact &&
       (!is.null(denominator_name) || !is.null(invlink))) {
     abort_input("{.arg denominator} and {.arg invlink} can't be given for a Gaussian model.", arg = if (is.null(invlink)) "denominator" else "invlink")
   }
-  if (is.null(invlink)) {
-    invlink <- switch(family, gaussian = identity, binomial = plogis, poisson = exp)
-  }
+  if (is.null(invlink)) invlink <- traits$inverse_link
   check_invlink(inverse_link_function(invlink), family)
   fixed_terms <- terms(update(inter$pf, NULL ~ .))
   mf <- model.frame(fixed_terms, data = data, na.action = na.fail)
@@ -328,12 +327,7 @@ draw_simulation <- function(prepared, nsim, seed = NULL,
     if (name == "data") {
       means <- mu[rows, , drop = FALSE]
       exposure <- inputs[[name]]$denominator
-      response <- switch(model$family,
-                         gaussian = as.numeric(means) + rnorm(length(means),
-                                                             sd = sqrt(pars$sigma2_me)),
-                         binomial = rbinom(length(means), size = exposure,
-                                           prob = as.numeric(means)),
-                         poisson = rpois(length(means), lambda = as.numeric(means) * exposure))
+      response <- family_traits(model$family)$simulate(means, exposure, pars)
       if (any(!is.finite(response))) {
         riskmap_abort(c("The simulated responses aren't all finite.", "i" = "Check the means and the denominators."), class = "riskmap_error_fit")
       }
@@ -626,8 +620,9 @@ simulation_parameters <- function(parameters, beta_names, re_terms, family, nugg
   if (length(unknown)) {
     abort_input("{.arg parameters} has unknown element{?s} {.val {unknown}}.", arg = "parameters")
   }
+  measurement_error <- family_traits(family)$measurement_error
   required <- c("beta", "sigma2", "phi", if (isTRUE(nugget)) "tau2",
-                 if (family == "gaussian") "sigma2_me", if (length(re_terms)) "sigma2_re")
+                 if (measurement_error) "sigma2_me", if (length(re_terms)) "sigma2_re")
   missing <- required[vapply(required, function(x) is.null(parameters[[x]]), logical(1))]
   if (length(missing)) {
     abort_input("{.arg parameters} must have the element{?s} {.val {missing}}.", arg = "parameters")
@@ -650,7 +645,7 @@ simulation_parameters <- function(parameters, beta_names, re_terms, family, nugg
       abort_input("{.code parameters$tau2} must agree with the nugget set in {.fn gp}.", arg = "parameters")
     }
   }
-  if (family != "gaussian" && parameters$sigma2_me != 0) {
+  if (!measurement_error && parameters$sigma2_me != 0) {
     abort_input("{.code parameters$sigma2_me} can be given only for a Gaussian model.", arg = "parameters")
   }
   beta <- parameters$beta
@@ -694,7 +689,8 @@ simulation_model <- function(object) {
   }
   pars <- coef(object)
   if (is.null(pars$tau2)) pars$tau2 <- object$fix_tau2
-  if (object$family == "gaussian" && !is.null(object$fix_var_me)) {
+  if (family_traits(object$family)$measurement_error &&
+      !is.null(object$fix_var_me)) {
     pars$sigma2_me <- object$fix_var_me
   }
   denominator <- if (!is.null(object$call$denominator)) {
@@ -794,11 +790,12 @@ simulation_inputs <- function(model, data, response, label, original = FALSE) {
   if (response && original && !is.null(model$original_denominator)) {
     den <- model$original_denominator
   }
+  whole <- family_traits(model$family)$whole_denominator
   if (response && (!is.numeric(den) || length(den) != nrow(data) ||
       any(!is.finite(den)) || any(den < 0) ||
-      (model$family == "binomial" && any(den != floor(den))))) {
+      (whole && any(den != floor(den))))) {
     arg <- simulation_location_arg(label)
-    kind <- if (model$family == "binomial") "whole numbers" else "numbers"
+    kind <- if (whole) "whole numbers" else "numbers"
     abort_input("The denominators in {.arg {arg}} must be finite non-negative {kind}.", arg = arg)
   }
   list(fixed = as.numeric(design %*% model$parameters$beta) + offset,

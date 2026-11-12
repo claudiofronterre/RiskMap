@@ -260,6 +260,11 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   events, and data with no events or only events.
 ##' - `link_hint`, the advice when a stats family names a link that is not
 ##'   accepted, NULL for the advice to give an inverse link in `invlink`.
+##' - `inverse_link`, the inverse of the canonical link as a function, which a
+##'   simulation model and the scores of a fit without a stored link use.
+##' - `discrete`, the responses are counts, so a prediction is scored by the
+##'   nonrandomised PIT (AnPIT) and the CRPS of a discrete distribution.
+##' - `whole_denominator`, the denominators are numbers of trials and so whole.
 ##' @noRd
 riskmap_families <- list(
   gaussian = list(
@@ -269,7 +274,8 @@ riskmap_families <- list(
     upper_limit = FALSE, mean_range = c(-Inf, Inf), range_message = NULL,
     quantity = "mean", no_events = NULL, none_everywhere = NULL,
     every_everywhere = NULL,
-    link_hint = "Gaussian responses are fitted with the identity link only."
+    link_hint = "Gaussian responses are fitted with the identity link only.",
+    inverse_link = identity, discrete = FALSE, whole_denominator = FALSE
   ),
   binomial = list(
     links = c("logit", "probit", "cloglog", "cauchit"),
@@ -282,7 +288,8 @@ riskmap_families <- list(
     quantity = "prevalence", no_events = "with no positives",
     none_everywhere = "None of the individuals tested is positive",
     every_everywhere = "Every individual tested is positive",
-    link_hint = NULL
+    link_hint = NULL,
+    inverse_link = stats::plogis, discrete = TRUE, whole_denominator = TRUE
   ),
   poisson = list(
     links = "log", default_link = "log",
@@ -298,7 +305,8 @@ riskmap_families <- list(
     range_message = "For a Poisson model, {.arg invlink} must return non-negative means.",
     quantity = "mean", no_events = "with a zero count",
     none_everywhere = "Every count is zero", every_everywhere = NULL,
-    link_hint = NULL
+    link_hint = NULL,
+    inverse_link = exp, discrete = TRUE, whole_denominator = FALSE
   )
 )
 
@@ -325,6 +333,13 @@ riskmap_families <- list(
 ##'   exact family.
 ##' - `fitted_mean(mean, units_m)`, the fitted value of a record from the mean
 ##'   of its inverse link, the expected count for the Poisson family.
+##' - `simulate(means, units_m, parameters)`, one response for each mean, from
+##'   `rbinom()` with `units_m` trials, `rpois()` with exposure `units_m`, or
+##'   `rnorm()` with the measurement error variance `parameters$sigma2_me`
+##'   (`draw_simulation()`, `assess_prediction()`).
+##' - `score_support(draws, y, units_m, means)`, the counts over which a
+##'   discrete prediction of a record is scored, from the draws of its
+##'   response and their means, NULL for a family that is not discrete.
 ##' @noRd
 family_traits <- function(family) {
   if (!is.character(family) || length(family) != 1L ||
@@ -341,7 +356,12 @@ family_traits <- function(family) {
       },
       empirical_link = NULL, transform_variance = NULL,
       start_log_likelihood = NULL,
-      fitted_mean = function(mean, units_m) mean
+      fitted_mean = function(mean, units_m) mean,
+      simulate = function(means, units_m, parameters) {
+        as.numeric(means) + rnorm(length(means),
+                                  sd = sqrt(parameters$sigma2_me))
+      },
+      score_support = function(draws, y, units_m, means) NULL
     ),
     binomial = list(
       validate = function(y, units_m) check_binomial(y, units_m),
@@ -360,7 +380,11 @@ family_traits <- function(family) {
       start_log_likelihood = function(eta, y, units_m) {
         sum(y * eta - units_m * softplus(eta))
       },
-      fitted_mean = function(mean, units_m) mean
+      fitted_mean = function(mean, units_m) mean,
+      simulate = function(means, units_m, parameters) {
+        rbinom(length(means), size = units_m, prob = as.numeric(means))
+      },
+      score_support = function(draws, y, units_m, means) 0:units_m
     ),
     poisson = list(
       validate = function(y, units_m) invisible(TRUE),
@@ -382,7 +406,14 @@ family_traits <- function(family) {
         }
         sum(y * eta - units_m * means)
       },
-      fitted_mean = function(mean, units_m) units_m * mean
+      fitted_mean = function(mean, units_m) units_m * mean,
+      simulate = function(means, units_m, parameters) {
+        rpois(length(means), lambda = as.numeric(means) * units_m)
+      },
+      score_support = function(draws, y, units_m, means) {
+        lambda <- units_m * means
+        0:max(max(draws), y, qpois(0.999, mean(lambda)))
+      }
     )
   )
   c(list(family = family), riskmap_families[[family]], methods)

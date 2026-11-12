@@ -3204,19 +3204,16 @@ assess_prediction <- function(object,
     fit0      <- object[[h]]
     fit_data_sf <- fit0$data
     den_name  <- as.character(fit0$call$denominator)
-    fam       <- fit0$family
-    linkfun   <- if (fam == "gaussian") {
-      identity
-    } else {
-      fit0$link_function$inv %||% switch(fam, binomial = plogis, poisson = exp)
-    }
+    traits    <- family_traits(fit0$family)
+    # A Gaussian fit stores no link, so its identity comes from the family.
+    linkfun   <- fit0$link_function$inv %||% traits$inverse_link
 
     ## containers for this model
     if (get_CRPS)   CRPS  <- vector("list", n_iter)
     if (get_SCRPS) { y_CRPS <- vector("list", n_iter); SCRPS <- vector("list", n_iter) }
     if (get_PIT) {
       PIT_area <- vector("list", n_iter)
-      if (fam == "gaussian") PIT <- vector("list", n_iter) else AnPIT <- vector("list", n_iter)
+      if (!traits$discrete) PIT <- vector("list", n_iter) else AnPIT <- vector("list", n_iter)
     }
 
     ## Scores of one test set: refit or slice, predict, score
@@ -3227,7 +3224,7 @@ assess_prediction <- function(object,
         refit_args <- list(
           formula        = fit0$formula,
           data           = fit_data_sf[in_id, ],
-          family         = fam,
+          family         = fit0$family,
           model_crs      = st_crs(fit0$data),
           distance_units = fit0$distance_units,
           control_mcmc   = control_mcmc,
@@ -3284,7 +3281,7 @@ assess_prediction <- function(object,
         messages = FALSE
       )
       eta_samp <- prediction_link_samples(prediction_i)
-      if (fam == "gaussian") {
+      if (traits$measurement_error) {
         sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
         restore_noise_seed <- preserve_random_seed()
         set.seed(noise_seeds[i])
@@ -3299,7 +3296,7 @@ assess_prediction <- function(object,
       crps_i   <- numeric(n_pred)
       y_crps_i <- numeric(n_pred)
       scrps_i  <- numeric(n_pred)
-      if (fam == "gaussian") {
+      if (!traits$discrete) {
         pit_i <- numeric(n_pred)
       } else {
         anpit_i <- matrix(NA_real_, nrow = length(u_val), ncol = n_pred)
@@ -3309,7 +3306,7 @@ assess_prediction <- function(object,
       y_i       <- fit0$y      [out_id_i]
 
       for (j in seq_len(n_pred)) {
-        if (fam == "gaussian") {
+        if (!traits$discrete) {
           mu_j <- mean(mu_samp[j, ])
           sd_j <- sd(mu_samp[j, ])
           if (sd_j > 0) {
@@ -3323,14 +3320,9 @@ assess_prediction <- function(object,
             pit_i[j]    <- as.numeric(y_i[j] >= mu_j)
           }
         } else {
-          if (fam == "binomial") {
-            y_samp  <- rbinom(n_draw, size = units_m_i[j], prob = mu_samp[j, ])
-            support <- 0:units_m_i[j]
-          } else { # Poisson
-            lambda  <- units_m_i[j] * mu_samp[j, ]
-            y_samp  <- rpois(n_draw, lambda)
-            support <- 0:max(max(y_samp), y_i[j], qpois(0.999, mean(lambda)))
-          }
+          y_samp  <- traits$simulate(mu_samp[j, ], units_m_i[j], NULL)
+          support <- traits$score_support(y_samp, y_i[j], units_m_i[j],
+                                          mu_samp[j, ])
           pk <- tabulate(y_samp + 1, nbins = length(support)) / n_draw
           Fk <- cumsum(pk)
           crps_i[j]   <- crps_discrete(y_i[j], Fk)
@@ -3340,7 +3332,7 @@ assess_prediction <- function(object,
         scrps_i[j] <- scrps(crps_i[j], y_crps_i[j])
       }
 
-      if (fam == "gaussian") {
+      if (!traits$discrete) {
         list(CRPS = crps_i, y_CRPS = y_crps_i, SCRPS = scrps_i, PIT = pit_i,
              PIT_area = .anpit_area(ecdf(pit_i)(u_val), u_val))
       } else {
@@ -3379,7 +3371,7 @@ assess_prediction <- function(object,
       }
       if (get_PIT) {
         PIT_area[[i]] <- scores_i$PIT_area
-        if (fam == "gaussian") PIT[[i]] <- scores_i$PIT else AnPIT[[i]] <- scores_i$AnPIT
+        if (!traits$discrete) PIT[[i]] <- scores_i$PIT else AnPIT[[i]] <- scores_i$AnPIT
       }
       progress_tick(bar)
 
@@ -3391,7 +3383,7 @@ assess_prediction <- function(object,
     if (get_SCRPS) out$model[[model_names[h]]]$metric$SCRPS <- SCRPS
     if (get_PIT) {
       out$model[[model_names[h]]]$metric$PIT_area <- PIT_area
-      if (fam == "gaussian") out$model[[model_names[h]]]$PIT <- PIT else out$model[[model_names[h]]]$AnPIT <- AnPIT
+      if (!traits$discrete) out$model[[model_names[h]]]$PIT <- PIT else out$model[[model_names[h]]]$AnPIT <- AnPIT
     }
 
   } # end h loop
@@ -4186,7 +4178,7 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
     fix_var_me = if (fitted_template) template$fix_var_me else NULL,
     messages = FALSE
   )
-  if (template$family != "gaussian") {
+  if (!family_traits(template$family)$exact) {
     args$denominator <- quote(units_m)
     if (fitted_template) {
       args$invlink <- refit_invlink(template)
