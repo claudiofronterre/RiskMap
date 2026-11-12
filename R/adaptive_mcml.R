@@ -98,6 +98,7 @@ latent_data_hessian <- function(latent_map, curvature) {
 find_latent_mode <- function(mu, y, units_m, latent_map, precision, kernel,
                              start, tolerance = 1e-10,
                              maximum_iterations = 100L) {
+  kernel <- check_family_object(kernel)
   objective <- function(latent, terms) {
     terms$log_likelihood - 0.5 * sum(latent * as.numeric(precision %*% latent))
   }
@@ -452,6 +453,7 @@ compute_log_weights_in_r <- function(draws, proposal, defensive,
 ##' @noRd
 compute_slope_terms <- function(eta, y, units_m, kernel, group,
                                 derivatives = NULL) {
+  kernel <- check_family_object(kernel)
   if (!is.null(derivatives)) {
     score <- derivatives$h1
     curvature <- -derivatives$h2

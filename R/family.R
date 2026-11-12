@@ -388,6 +388,13 @@ family_traits <- function(family) {
   c(list(family = family), riskmap_families[[family]], methods)
 }
 
+##' The families that the MCML engine fits, those whose likelihood is not exact
+##' @noRd
+engine_families <- function() {
+  exact <- vapply(riskmap_families, function(entry) entry$exact, logical(1))
+  names(riskmap_families)[!exact]
+}
+
 ##' The traits of a family that the MCML engine fits
 ##'
 ##' Stops unless `family` is one string naming a family whose likelihood is not
@@ -396,8 +403,7 @@ family_traits <- function(family) {
 ##' have read the family already, so a failure is RiskMap's.
 ##' @noRd
 check_engine_family <- function(family) {
-  exact <- vapply(riskmap_families, function(entry) entry$exact, logical(1))
-  engine_families <- names(riskmap_families)[!exact]
+  engine_families <- engine_families()
   if (!is.character(family) || length(family) != 1L ||
       !family %in% engine_families) {
     riskmap_bug("{.arg family} must be {.or {.val {engine_families}}}.")

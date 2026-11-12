@@ -2,8 +2,8 @@
 # family == "binomial". They are the output, prediction and simulation code of
 # steps 2 and 4 of #253. Remove a function from the list when it is converted.
 # test-family-strings.R fails if the list is out of date, so it can only shrink.
-assessment_refit_args
 assess_prediction
+assessment_refit_args
 build_prediction_components
 coef.RiskMap
 draw_prediction_samples
@@ -20,6 +20,7 @@ prediction_sample_components
 prediction_sample_size
 print.RiskMap
 print.summary.RiskMap
+print.summary.RiskMap_bootstrap
 run_profile_check
 simulation_inputs
 simulation_model

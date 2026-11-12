@@ -1,12 +1,16 @@
 # The family of a model is read through its family object (R/family.R, #253),
 # so a function outside R/family.R does not compare a family string, as in
-# family == "binomial" or switch(family, binomial = ...). This test reads every
-# function in the installed package and fails if one that is not the family's
-# own does, unless it is listed in family-strings-to-convert.txt, which may
-# only shrink.
+# family == "binomial" or switch(family, binomial = ...), nor look one up in a
+# table keyed by family, as in c(binomial = "a", poisson = "b")[[family]]. This
+# test reads every function in the installed package and fails if one that is
+# not the family's own does, unless it is listed in
+# family-strings-to-convert.txt, which may only shrink. It reads the code, not
+# what it means, so a "gaussian" that is not a family, such as a Gaussian
+# correlation, would be counted too.
 
 family_strings <- c("gaussian", "binomial", "poisson")
-comparing_calls <- c("==", "!=", "%in%", "identical", "match.arg")
+comparing_calls <- c("==", "!=", "%in%", "identical", "match.arg",
+                     "is.element", "startsWith", "endsWith")
 
 # The functions of R/family.R that compare family strings, where they belong.
 family_functions <- c(
@@ -29,16 +33,33 @@ holds_family_string <- function(x) {
   FALSE
 }
 
-# A default that offers several family strings, the choices of match.arg()
+# A vector or list of several family strings, or keyed by several of them,
+# the choices of a comparison or a table of the families
 offers_family_strings <- function(x) {
-  is.call(x) && identical(x[[1L]], as.name("c")) &&
-    sum(vapply(as.list(x)[-1L], is_family_string, logical(1))) > 1L
+  if (!is.call(x) || !is.name(x[[1L]]) ||
+      !as.character(x[[1L]]) %in% c("c", "list")) {
+    return(FALSE)
+  }
+  parts <- as.list(x)[-1L]
+  values <- sum(vapply(parts, is_family_string, logical(1)))
+  keys <- sum(names(parts) %in% family_strings)
+  values > 1L || keys > 1L
+}
+
+# The name of the function a call calls, also through `::` and `:::`
+called_name <- function(head) {
+  if (is.name(head)) return(as.character(head))
+  if (is.call(head) && length(head) == 3L &&
+      as.character(head[[1L]]) %in% c("::", ":::")) {
+    return(as.character(head[[3L]]))
+  }
+  NA_character_
 }
 
 # Whether a function, call or list of calls compares a family string, through
-# a comparison or match.arg() with a family string as an argument, a default
-# that offers family strings as choices, or a switch() with a family string as
-# the name of a case.
+# a comparison or match.arg() with a family string as an argument, several
+# family strings as choices or as the keys of a table, or a switch() with a
+# family string as the name of a case.
 compares_family_string <- function(expr) {
   if (is.function(expr)) {
     defaults <- as.list(formals(expr))
@@ -57,9 +78,9 @@ compares_family_string <- function(expr) {
     return(FALSE)
   }
   if (!is.call(expr)) return(FALSE)
-  head <- expr[[1L]]
-  if (is.name(head)) {
-    name <- as.character(head)
+  if (offers_family_strings(expr)) return(TRUE)
+  name <- called_name(expr[[1L]])
+  if (!is.na(name)) {
     arguments <- as.list(expr)[-1L]
     if (name %in% comparing_calls) {
       for (i in seq_along(arguments)) {
@@ -102,6 +123,22 @@ test_that("the check finds the ways a family string is compared", {
   ))
   expect_true(compares_family_string(
     function(family) function(y) if (family == "poisson") y
+  ))
+  expect_true(compares_family_string(
+    function(family) base::identical(family, "poisson")
+  ))
+  expect_true(compares_family_string(
+    function(family) is.element(family, c("binomial", "poisson"))
+  ))
+  expect_true(compares_family_string(function(family) {
+    engine <- c("binomial", "poisson")
+    family %in% engine
+  }))
+  expect_true(compares_family_string(
+    function(family) base::switch(family, poisson = 1, 2)
+  ))
+  expect_true(compares_family_string(
+    function(x) c(gaussian = "linear", binomial = "binomial")[[x$family]]
   ))
   expect_false(compares_family_string(function(family) family_traits(family)))
   expect_false(compares_family_string(

@@ -196,6 +196,15 @@ test_that("only a custom link has kernel arrays for the site table", {
 test_that("the engine takes a family object, not a family string", {
   object <- make_family("poisson")
   expect_identical(check_family_object(object), object)
+  latent_map <- make_latent_map(cbind(1L), 1L)
+  expect_error(find_latent_mode(0, 1, 5, latent_map, diag(1),
+                                make_family("gaussian"), 0),
+               "fitted exactly", class = "riskmap_error_internal")
+  expect_error(find_latent_mode(0, 1, 5, latent_map, diag(1), "binomial", 0),
+               "family object", class = "riskmap_error_internal")
+  expect_error(compute_slope_terms(matrix(0), 1, 5, make_family("gaussian"),
+                                   1L),
+               "fitted exactly", class = "riskmap_error_internal")
   expect_error(check_family_object("binomial"), "family object",
                class = "riskmap_error_internal")
   expect_error(make_site_table(c(0, 2), c(5, 5), "binomial"), "family object",

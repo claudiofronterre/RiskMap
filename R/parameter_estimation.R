@@ -2440,8 +2440,7 @@ maxim_integrand <- function(
   if (missing(denominator)) {
     abort_input("{.arg denominator} must be given.", arg = "denominator")
   }
-  family_link <- read_family(family, invlink,
-                             families = c("binomial", "poisson"))
+  family_link <- read_family(family, invlink, families = engine_families())
   family <- family_link$family
   invlink <- family_link$invlink
   # The integrand and its derivatives below refer to the denominator as
