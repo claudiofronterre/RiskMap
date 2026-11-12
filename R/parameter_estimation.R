@@ -2440,8 +2440,7 @@ maxim_integrand <- function(
   if (missing(denominator)) {
     abort_input("{.arg denominator} must be given.", arg = "denominator")
   }
-  family_link <- read_family(family, invlink,
-                             families = c("binomial", "poisson"))
+  family_link <- read_family(family, invlink, families = engine_families())
   family <- family_link$family
   invlink <- family_link$invlink
   # The integrand and its derivatives below refer to the denominator as
@@ -3048,8 +3047,8 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
   )
   mode <- maximum$mode[order(structure$position)]
   latent_map <- make_latent_map(structure$columns + 1L, structure$dimension)
-  terms <- laplace_observation_terms(
-    mu + latent_linear_predictor(latent_map, mode), y, units_m, family, linkf
+  terms <- make_family(family, linkf)$terms(
+    mu + latent_linear_predictor(latent_map, mode), y, units_m
   )
   if (is.null(terms) || !all(is.finite(terms$curvature))) {
     riskmap_abort("The search for the mode of the latent effects failed.", class = "riskmap_error_fit")

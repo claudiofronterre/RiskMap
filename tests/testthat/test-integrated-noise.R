@@ -22,7 +22,7 @@ test_that("the table of integrated sites matches numerical integration", {
     poisson <- family == "poisson"
     y <- if (poisson) c(0, 3, 40) else c(0, 3, 20)
     m <- if (poisson) c(1, 1, 2) else c(20, 20, 20)
-    sites <- make_site_table(y, m, family)
+    sites <- make_site_table(y, m, family_object(family))
     # Both rules, adaptive Gauss-Hermite up to v = 0.2 and the trapezium above,
     # inside the grid and beyond it.
     for (v in c(0.01, 0.15, 0.5, 12)) {
@@ -82,7 +82,7 @@ test_that("a large variance takes the flat side in closed form", {
     # walk stays short.
     y <- if (poisson) c(0, 3) else c(0, 20, 3)
     m <- if (poisson) c(1, 1) else c(20, 20, 20)
-    sites <- make_site_table(y, m, family)
+    sites <- make_site_table(y, m, family_object(family))
     for (v in c(300, 1e4, exp(20))) {
       # Values of -150 and 150 put the walk on a flat stretch well before the
       # bend at zero, and -1e5 and 1e5 far from it.
@@ -108,7 +108,9 @@ test_that("a large variance takes the flat side in closed form", {
   # The walk no longer grows with v, so a call at the upper bound of a log
   # variance's search, 20, is as quick as one at a small variance.
   skip_on_cran()
-  sites <- make_site_table(c(0, 20, 3), c(20, 20, 20), "binomial")
+  sites <- make_site_table(c(0, 20, 3), c(20, 20, 20), family_object(
+    "binomial"
+  ))
   eta <- matrix(seq(-300, 300, length.out = 60), 3L, 20L)
   seconds <- system.time(
     cpp_site_evaluate(sites$pointer, exp(20), sites$units, eta, TRUE, 0L)
@@ -117,7 +119,7 @@ test_that("a large variance takes the flat side in closed form", {
 })
 
 test_that("the table's derivatives are those of its interpolant", {
-  sites <- make_site_table(c(2, 7), c(20, 20), "binomial")
+  sites <- make_site_table(c(2, 7), c(20, 20), make_family("binomial"))
   x <- seq(-3, 2, by = 0.137)
   at <- function(x) {
     cpp_site_evaluate(sites$pointer, 0.8, sites$units, cbind(x, x), FALSE, 2L)
@@ -132,7 +134,7 @@ test_that("the table's derivatives are those of its interpolant", {
 })
 
 test_that("the table fills only the cells it needs and keeps 32 tables", {
-  sites <- make_site_table(c(1, 5), c(10, 10), "binomial")
+  sites <- make_site_table(c(1, 5), c(10, 10), make_family("binomial"))
   cpp_site_evaluate(sites$pointer, 0.3, sites$units, matrix(0.1, 2L, 1L), TRUE,
                     0L)
   info <- cpp_site_table_info(sites$pointer)
@@ -151,8 +153,9 @@ test_that("the table fills only the cells it needs and keeps 32 tables", {
 })
 
 test_that("a plain record or a zero variance takes the plain kernel", {
-  sites <- make_site_table(c(3, 3), c(20, 20), "binomial",
-                           plain = c(FALSE, TRUE))
+  sites <- make_site_table(c(3, 3), c(20, 20), make_family("binomial"), c(
+    FALSE, TRUE
+  ))
   expect_identical(unname(sites$units[, "kind"]), c(1L, 0L))
   expect_identical(unname(sites$units[, "index"]), c(1L, 1L))
   eta <- matrix(c(-1.2, 0.4), ncol = 1L)
@@ -301,7 +304,7 @@ test_that("the table of a custom link matches numerical integration", {
     linkf <- make_inverse_link_functions(family, inverse, 3L)
     y <- if (family == "poisson") c(0, 4, 30) else c(0, 3, 20)
     m <- if (family == "poisson") c(1, 1, 2) else c(20, 20, 20)
-    sites <- make_site_table(y, m, family, linkf = linkf)
+    sites <- make_site_table(y, m, family_object(family, linkf))
     for (v in c(0.004, 0.3, 4)) for (x in c(-4, -0.7, 1.2)) {
       values <- cpp_site_evaluate(sites$pointer, v, sites$units,
                                   matrix(x, 3L, 1L), TRUE, 0L)$h
@@ -393,7 +396,7 @@ test_that("a custom link takes the kernel beyond its lattice in closed form", {
     linkf <- make_inverse_link_functions(family, inverses[[family]], 3L)
     y <- if (family == "poisson") c(0, 3) else c(0, 20, 3)
     m <- if (family == "poisson") c(1, 1) else c(20, 20, 20)
-    sites <- make_site_table(y, m, family, linkf = linkf)
+    sites <- make_site_table(y, m, family_object(family, linkf))
     for (v in c(1e4, exp(20))) {
       # Inside the grid, beyond it, and beyond the lattice on both sides.
       for (x in c(-150, -6, 1.7, 25, 120)) {
@@ -415,8 +418,9 @@ test_that("a custom link takes the kernel beyond its lattice in closed form", {
   }
   skip_on_cran()
   linkf <- make_inverse_link_functions("binomial", stats::pnorm, 3L)
-  sites <- make_site_table(c(0, 20, 3), c(20, 20, 20), "binomial",
-                           linkf = linkf)
+  sites <- make_site_table(c(0, 20, 3), c(20, 20, 20), family_object(
+    "binomial", linkf
+  ))
   eta <- matrix(seq(-300, 300, length.out = 60), 3L, 20L)
   # The walk took about 4 s for these 60 values.
   seconds <- system.time(
@@ -500,8 +504,10 @@ test_that("a global iteration stopped near its fixed point is accepted only when
   find_mode <- function() list(mode = c(0, 0), hessian = diag(2))
   build <- function(change, tolerance) {
     local_mocked_bindings(fit_global_proposal = stopped(change))
-    build_gaussian_proposal("global", 0, 0, 1, NULL, diag(2), "binomial",
-                            NULL, TRUE, NULL, find_mode, tolerance)
+    build_gaussian_proposal(
+      "global", 0, 0, 1, NULL, diag(2), make_family("binomial"), NULL,
+      find_mode, tolerance
+    )
   }
   accepted <- build(5e-3, 1e-2)
   expect_false(accepted$failed)

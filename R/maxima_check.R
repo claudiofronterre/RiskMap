@@ -22,8 +22,8 @@ gauss_hermite_rule <- function(nodes) {
 ##' evaluated on the engine's scale, with the observation terms of the MCML
 ##' engine and the same constants. `D` is the engine's design matrix,
 ##' `location` maps each observation to its location, and `offset` is the
-##' covariate offset. `family` is the family object, or a family string with a
-##' custom link `linkf` (`as_family_object()`).
+##' covariate offset. `family` is the family object of the model's link
+##' (`make_family()`).
 ##'
 ##' For the canonical links each location's log-density is concave, and its
 ##' integral is taken by adaptive Gauss-Hermite quadrature at the posterior
@@ -46,9 +46,8 @@ gauss_hermite_rule <- function(nodes) {
 ##' Jensen bound can be judged the same way.
 ##' @noRd
 make_independent_site_likelihood <- function(D, y, units_m, location, offset,
-                                             family, nodes = 60L,
-                                             linkf = NULL) {
-  kernel <- as_family_object(family, linkf)
+                                             family, nodes = 60L) {
+  kernel <- check_family_object(family)
   if (kernel$integrated) {
     riskmap_bug("The likelihood with independent location effects is built from the model's link, not from a kernel of integrated records.")
   }
@@ -255,25 +254,6 @@ make_independent_site_likelihood <- function(D, y, units_m, location, offset,
   }
 
   list(log_likelihood = log_likelihood, maximise = maximise)
-}
-
-##' The largest term of each record of the likelihood over its linear predictor
-##'
-##' y log(y / m) + (m - y) log(1 - y / m) for a binomial record and
-##' y log(y) - y for a Poisson one, with 0 log 0 = 0, which bound the terms of
-##' the MCML engine for any link. The bounds of `bound_log_probability()` only
-##' move a probability within [0, 1], or a mean above zero, so they hold there
-##' too.
-##' @noRd
-compute_largest_record_terms <- function(y, units_m, family) {
-  if (identical(family, "poisson")) {
-    return(ifelse(y > 0, y * log(pmax(y, 1)) - y, 0))
-  }
-  proportion <- y / units_m
-  ifelse(y > 0, y * log(pmax(proportion, .Machine$double.xmin)), 0) +
-    ifelse(units_m > y,
-           (units_m - y) * log1p(-pmin(proportion, 1 - .Machine$double.eps)),
-           0)
 }
 
 ##' The largest value of each group, -Inf for a group without a finite value

@@ -1753,7 +1753,7 @@ preserve_random_seed <- function() {
 #' Check that an inverse link stays in the range of its family in the tails
 #'
 #' A draw whose mean is not a number or is outside the range has no weight
-#' (`compute_observation_log_likelihood()`), so a link that goes wrong only in
+#' (the `log_likelihood()` of the family object), so a link that goes wrong only in
 #' its tails would change the likelihood without any message. A mean that
 #' overflows to infinity for a Poisson model is a limit and is allowed.
 #' @noRd

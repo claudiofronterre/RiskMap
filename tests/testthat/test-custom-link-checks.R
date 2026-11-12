@@ -26,9 +26,9 @@ test_that("the slope terms of a custom link match those of the canonical link", 
   groups <- list(1:4, c(1L, 1L, 2L, 2L))
   for (group in groups) {
     expect_equal(
-      compute_variance_slope_terms(eta, y, units_m, "binomial", group,
-                                   logit_as_custom()),
-      compute_variance_slope_terms(eta, y, units_m, "binomial", group),
+      compute_slope_terms(eta, y, units_m,
+                          family_object("binomial", logit_as_custom()), group),
+      compute_slope_terms(eta, y, units_m, make_family("binomial"), group),
       tolerance = 1e-12
     )
   }
@@ -53,8 +53,8 @@ test_that("the slope terms of a probit link use its own derivatives", {
     0.5 * (sum(first^2) + sum(second))
   })
   expect_equal(
-    compute_variance_slope_terms(eta, y, units_m, "binomial", 1:4,
-                                 probit_link()),
+    compute_slope_terms(eta, y, units_m,
+                        family_object("binomial", probit_link()), 1:4),
     expected, tolerance = 1e-6
   )
 })
@@ -86,11 +86,13 @@ site_data <- function() {
 
 test_that("the independent-site likelihood of a custom logit matches the canonical one", {
   s <- site_data()
-  canonical <- make_independent_site_likelihood(s$D, s$y, s$units_m, s$location,
-                                                s$offset, "binomial")
-  custom <- make_independent_site_likelihood(s$D, s$y, s$units_m, s$location,
-                                             s$offset, "binomial",
-                                             linkf = logit_as_custom())
+  canonical <- make_independent_site_likelihood(
+    s$D, s$y, s$units_m, s$location, s$offset, make_family("binomial")
+  )
+  custom <- make_independent_site_likelihood(
+    s$D, s$y, s$units_m, s$location, s$offset,
+    family_object("binomial", logit_as_custom())
+  )
   a <- canonical$log_likelihood(c(-0.8, 0.4), log(0.7))
   b <- custom$log_likelihood(c(-0.8, 0.4), log(0.7))
   expect_equal(b$value, a$value, tolerance = 1e-10)
@@ -101,9 +103,10 @@ test_that("the independent-site likelihood of a custom logit matches the canonic
 
 test_that("the independent-site likelihood of a probit link matches integration", {
   s <- site_data()
-  sites <- make_independent_site_likelihood(s$D, s$y, s$units_m, s$location,
-                                            s$offset, "binomial",
-                                            linkf = probit_link())
+  sites <- make_independent_site_likelihood(
+    s$D, s$y, s$units_m, s$location, s$offset,
+    family_object("binomial", probit_link())
+  )
   beta <- c(-0.6, 0.5)
   variance <- 0.8
   exact <- sum(vapply(unique(s$location), function(site) {

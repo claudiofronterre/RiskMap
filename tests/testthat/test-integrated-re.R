@@ -108,8 +108,10 @@ test_that("an effect with one level per location is an outer term", {
 test_that("a nested pattern matches numerical integration", {
   y <- c(0, 2, 1)
   m <- c(5, 4, 6)
-  sites <- make_site_table(sum(y), sum(m), "binomial", kind = 2L, a = 1L,
-                           b = 2L, patterns = list(list(y = y, m = m)))
+  sites <- make_site_table(
+    sum(y), sum(m), make_family("binomial"), kind = 2L, a = 1L, b = 2L,
+    patterns = list(list(y = y, m = m))
+  )
   x <- c(-3.1, -0.6, 1.3)
   for (vo in c(0.1, 0.8)) for (vi in c(0.15, 0.5)) {
     values <- cpp_site_evaluate(sites$pointer, c(vo, vi), sites$units,
@@ -143,10 +145,11 @@ test_that("a nested pattern with large variances matches numerical integration",
   m <- c(5, 4, 6)
   probit <- make_inverse_link_functions("binomial", stats::pnorm, 3L)
   for (linkf in list(NULL, probit)) {
-    sites <- make_site_table(sum(y), sum(m), "binomial", linkf = linkf,
-                             kind = 2L, a = 1L, b = 2L,
-                             patterns = list(list(y = y, m = m)))
-    records <- make_site_table(y, m, "binomial", linkf = linkf)
+    sites <- make_site_table(
+      sum(y), sum(m), family_object("binomial", linkf), kind = 2L, a = 1L,
+      b = 2L, patterns = list(list(y = y, m = m))
+    )
+    records <- make_site_table(y, m, family_object("binomial", linkf))
     # A large outer or inner variance, or both, inside the grid and beyond.
     for (pair in list(c(1e4, 0.5), c(0.8, 1e4), c(50, 100), c(1e4, 1e4))) {
       x <- c(-15.789, 120)
@@ -162,21 +165,25 @@ test_that("a nested pattern with large variances matches numerical integration",
   # link, and 1e4 with the probit, where it took more than 60 s.
   skip_on_cran()
   x <- matrix(seq(-300, 300, length.out = 20), nrow = 1L)
-  sites <- make_site_table(sum(y), sum(m), "binomial", kind = 2L, a = 1L,
-                           b = 2L, patterns = list(list(y = y, m = m)))
+  sites <- make_site_table(
+    sum(y), sum(m), make_family("binomial"), kind = 2L, a = 1L, b = 2L,
+    patterns = list(list(y = y, m = m))
+  )
   expect_lt(system.time(cpp_site_evaluate(sites$pointer, rep(exp(20), 2L),
                                           sites$units, x, TRUE, 0L))[["elapsed"]], 3)
-  sites <- make_site_table(sum(y), sum(m), "binomial", linkf = probit,
-                           kind = 2L, a = 1L, b = 2L,
-                           patterns = list(list(y = y, m = m)))
+  sites <- make_site_table(
+    sum(y), sum(m), family_object("binomial", probit), kind = 2L, a = 1L,
+    b = 2L, patterns = list(list(y = y, m = m))
+  )
   expect_lt(system.time(cpp_site_evaluate(sites$pointer, c(1e4, 1e4),
                                           sites$units, x, TRUE, 0L))[["elapsed"]], 15)
 })
 
 test_that("a nested pattern's derivatives are those of its interpolant", {
-  sites <- make_site_table(3, 15, "binomial", kind = 2L, a = 1L, b = 2L,
-                           patterns = list(list(y = c(0, 2, 1),
-                                                m = c(5, 5, 5))))
+  sites <- make_site_table(
+    3, 15, make_family("binomial"), kind = 2L, a = 1L, b = 2L,
+    patterns = list(list(y = c(0, 2, 1), m = c(5, 5, 5)))
+  )
   x <- seq(-3, 2, by = 0.137)
   at <- function(x) {
     cpp_site_evaluate(sites$pointer, c(0.4, 0.6), sites$units,
@@ -197,9 +204,11 @@ test_that("a nested pattern's derivatives are those of its interpolant", {
 test_that("a nested pattern with a zero variance reduces to records", {
   y <- c(0, 2, 1)
   m <- c(5, 5, 5)
-  nested <- make_site_table(3, 15, "binomial", kind = 2L, a = 1L, b = 2L,
-                            patterns = list(list(y = y, m = m)))
-  records <- make_site_table(c(3, y), c(15, m), "binomial")
+  nested <- make_site_table(
+    3, 15, make_family("binomial"), kind = 2L, a = 1L, b = 2L,
+    patterns = list(list(y = y, m = m))
+  )
+  records <- make_site_table(c(3, y), c(15, m), make_family("binomial"))
   x <- c(-2.2, 0.3)
   # One column per record and one row per point.
   evaluate <- function(sites, classes, eta) {
@@ -207,12 +216,12 @@ test_that("a nested pattern with a zero variance reduces to records", {
   }
   # Households held at zero: the summed record with the whole nugget.
   held <- evaluate(nested, c(0.7, 0), matrix(x, ncol = 1L))
-  summed <- evaluate(make_site_table(3, 15, "binomial"), 0.7,
+  summed <- evaluate(make_site_table(3, 15, make_family("binomial")), 0.7,
                      matrix(x, ncol = 1L))
   expect_equal(held, summed)
   # The nugget held at zero: the households' own integrals at x.
   alone <- evaluate(nested, c(0, 0.6), matrix(x, ncol = 1L))
-  each <- evaluate(make_site_table(y, m, "binomial"), 0.6,
+  each <- evaluate(make_site_table(y, m, make_family("binomial")), 0.6,
                    matrix(x, length(x), 3L))
   expect_equal(as.numeric(alone$h), rowSums(each$h))
   expect_equal(as.numeric(alone$h1), rowSums(each$h1))
@@ -224,8 +233,10 @@ test_that("a nested pattern with a zero variance reduces to records", {
 test_that("a nested pattern's slope in its inner variance is its derivative", {
   y <- c(0, 2, 1)
   m <- c(5, 5, 5)
-  sites <- make_site_table(3, 15, "binomial", kind = 2L, a = 1L, b = 2L,
-                           patterns = list(list(y = y, m = m)))
+  sites <- make_site_table(
+    3, 15, make_family("binomial"), kind = 2L, a = 1L, b = 2L,
+    patterns = list(list(y = y, m = m))
+  )
   x <- matrix(c(-2.4, -0.5, 0.8), ncol = 1L)
   h_at <- function(vi) {
     as.numeric(nested_by_quadrature(y, m, as.numeric(x), 0.5, vi, 80L))

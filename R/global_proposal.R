@@ -13,25 +13,6 @@ build_normal_quadrature <- function(number_of_nodes = 20L) {
   list(nodes = decomposition$values, weights = decomposition$vectors[1L, ]^2)
 }
 
-##' Stable nonlinear part of each observation's log-likelihood
-##'
-##' For an observation with linear predictor `centre + step`, returns
-##' l(centre + step) - l(centre) - step * l'(centre), the part of the
-##' log-likelihood that is not linear in the step, together with the slope
-##' l'(centre), from the `nonlinear_parts()` of the family object (`family`,
-##' `as_family_object()`). The canonical binomial and Poisson links write the
-##' difference with log1p and expm1, other links use the direct difference,
-##' and records with the nugget integrated out take the differences of their
-##' table (`make_integrated_kernel()`).
-##' @param centre Linear predictor at the expansion point, one per observation.
-##' @param step Matrix of steps, one row per observation.
-##' @noRd
-compute_nonlinear_parts <- function(centre, step, y, units_m, family,
-                                    linkf = NULL, canonical = NULL) {
-  as_family_object(family, linkf, canonical)$nonlinear_parts(centre, step, y,
-                                                             units_m)
-}
-
 ##' Weighted quadratic fit of every observation's log-likelihood
 ##'
 ##' For each observation, fits the nonlinear part of its log-likelihood at
@@ -92,14 +73,15 @@ fit_observation_quadratics <- function(nonlinear, root_weights, nodes,
 ##' marginal distribution of s, weighted by the ratio of the observation's
 ##' likelihood to its current approximation. In standardised coordinates
 ##' s = m + sd z the fitted coefficients (a0, a1, a2) give C = a2 / sd^2 and
-##' b = l'(m) + a1 / sd + C m. `family` is the family object, or a family
-##' string with `linkf` and `canonical` (`as_family_object()`).
+##' b = l'(m) + a1 / sd + C m. `family` is the family object, whose
+##' `nonlinear_parts()` gives the part of each likelihood that is not linear in
+##' the step, with its slope.
 ##' @noRd
 update_observation_factors <- function(marginal_mean, marginal_sd, offset,
-                                       y, units_m, family, linkf, canonical,
+                                       y, units_m, family,
                                        current_linear, current_curvature,
                                        quadrature) {
-  kernel <- as_family_object(family, linkf, canonical)
+  kernel <- check_family_object(family)
   nodes <- quadrature$nodes
   step <- outer(marginal_sd, nodes)
   parts <- kernel$nonlinear_parts(offset + marginal_mean, step, y, units_m)
@@ -137,9 +119,9 @@ update_observation_factors <- function(marginal_mean, marginal_sd, offset,
 ##' quadratic fit with too few weighted nodes.
 ##' @noRd
 refit_global_factors <- function(factors, mu, y, units_m, latent_map,
-                                 precision, family, linkf, canonical,
-                                 quadrature, floor_curvature) {
-  kernel <- as_family_object(family, linkf, canonical)
+                                 precision, family, quadrature,
+                                 floor_curvature) {
+  kernel <- check_family_object(family)
   observations <- length(factors) / 2
   linear <- factors[seq_len(observations)]
   curvature <- factors[observations + seq_len(observations)]
@@ -153,8 +135,8 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
   }
   updated <- tryCatch(
     update_observation_factors(marginal_mean, sqrt(marginal_variance), mu,
-                               y, units_m, kernel, NULL, NULL,
-                               linear, curvature, quadrature),
+                               y, units_m, kernel, linear, curvature,
+                               quadrature),
     error = function(error) NULL
   )
   if (is.null(updated)) return(NULL)
@@ -209,9 +191,9 @@ make_curvature_floor <- function(latent_map, precision) {
 ##' no proposal) if a refit fails or the precision is not positive definite.
 ##' @noRd
 refit_from_anchor <- function(anchor, mu, y, units_m, latent_map, precision,
-                              family, linkf, canonical, count = 3L,
+                              family, count = 3L,
                               quadrature = build_normal_quadrature()) {
-  kernel <- as_family_object(family, linkf, canonical)
+  kernel <- check_family_object(family)
   floor_curvature <- if (kernel$integrated) {
     smooth_curvature_floor
   } else {
@@ -222,8 +204,8 @@ refit_from_anchor <- function(anchor, mu, y, units_m, latent_map, precision,
   change <- NA_real_
   for (refit in seq_len(count)) {
     refitted <- refit_global_factors(factors, mu, y, units_m, latent_map,
-                                     precision, kernel, NULL, NULL,
-                                     quadrature, floor_curvature)
+                                     precision, kernel, quadrature,
+                                     floor_curvature)
     if (is.null(refitted)) {
       return(list(failed = TRUE, refits = refit, change = change))
     }
@@ -292,11 +274,11 @@ take_anderson_step <- function(residuals, refits) {
 ##' factorisation fails.
 ##' @noRd
 fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
-                                family, linkf, canonical,
+                                family,
                                 tolerance = 1e-8, maximum_iterations = 500L,
                                 quadrature = build_normal_quadrature(),
                                 memory = 3L) {
-  kernel <- as_family_object(family, linkf, canonical)
+  kernel <- check_family_object(family)
   floor_curvature <- if (kernel$integrated) {
     smooth_curvature_floor
   } else {
@@ -318,8 +300,7 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
   curvature_part <- observations + seq_len(observations)
   refit <- function(factors) {
     refit_global_factors(factors, mu, y, units_m, latent_map, precision,
-                         kernel, NULL, NULL, quadrature,
-                         floor_curvature)
+                         kernel, quadrature, floor_curvature)
   }
   factors <- c(linear, curvature)
   refitted <- refit(factors)
