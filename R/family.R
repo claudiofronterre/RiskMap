@@ -265,6 +265,9 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' - `discrete`, the responses are counts, so a prediction is scored by the
 ##'   nonrandomised PIT (AnPIT) and the CRPS of a discrete distribution.
 ##' - `whole_denominator`, the denominators are numbers of trials and so whole.
+##' - `response_quantity`, the name of the predicted mean of the response in
+##'   plots, NULL for the name of the response itself, and `probability`, the
+##'   mean is a probability, shown as a percentage.
 ##' @noRd
 riskmap_families <- list(
   gaussian = list(
@@ -275,7 +278,8 @@ riskmap_families <- list(
     quantity = "mean", no_events = NULL, none_everywhere = NULL,
     every_everywhere = NULL,
     link_hint = "Gaussian responses are fitted with the identity link only.",
-    inverse_link = identity, discrete = FALSE, whole_denominator = FALSE
+    inverse_link = identity, discrete = FALSE, whole_denominator = FALSE,
+    response_quantity = NULL, probability = FALSE
   ),
   binomial = list(
     links = c("logit", "probit", "cloglog", "cauchit"),
@@ -289,7 +293,8 @@ riskmap_families <- list(
     none_everywhere = "None of the individuals tested is positive",
     every_everywhere = "Every individual tested is positive",
     link_hint = NULL,
-    inverse_link = stats::plogis, discrete = TRUE, whole_denominator = TRUE
+    inverse_link = stats::plogis, discrete = TRUE, whole_denominator = TRUE,
+    response_quantity = "prevalence", probability = TRUE
   ),
   poisson = list(
     links = "log", default_link = "log",
@@ -306,7 +311,8 @@ riskmap_families <- list(
     quantity = "mean", no_events = "with a zero count",
     none_everywhere = "Every count is zero", every_everywhere = NULL,
     link_hint = NULL,
-    inverse_link = exp, discrete = TRUE, whole_denominator = FALSE
+    inverse_link = exp, discrete = TRUE, whole_denominator = FALSE,
+    response_quantity = "rate", probability = FALSE
   )
 )
 
@@ -440,6 +446,16 @@ check_engine_family <- function(family) {
     riskmap_bug("{.arg family} must be {.or {.val {engine_families}}}.")
   }
   family_traits(family)
+}
+
+##' Whether a fitted model's family is exact, fitted in closed form
+##'
+##' TRUE for a Gaussian fit, whose prediction conditions in closed form and
+##' which has no Monte Carlo error, and FALSE otherwise, also for an object
+##' whose family is not one of RiskMap's.
+##' @noRd
+fit_is_exact <- function(fit) {
+  isTRUE(fit_traits(fit)$exact)
 }
 
 ##' The traits of the family of a fitted model

@@ -561,9 +561,8 @@ prediction_plot_palette <- function(palette) {
 #' @noRd
 prediction_quantity_label <- function(x, quantity) {
   if (identical(quantity, "response")) {
-    family <- x$family %||% ""
-    if (identical(family, "binomial")) return("prevalence")
-    if (identical(family, "poisson")) return("rate")
+    family_quantity <- fit_traits(x)$response_quantity
+    if (!is.null(family_quantity)) return(family_quantity)
     response_name <- x$response_name
     if (length(response_name) == 1L && !is.na(response_name)) {
       return(response_name)
@@ -584,7 +583,7 @@ prediction_quantity_label <- function(x, quantity) {
 #' @noRd
 prediction_is_probability <- function(x, quantity, summary) {
   identical(summary, "exceedance") ||
-    (identical(quantity, "response") && identical(x$family, "binomial") &&
+    (identical(quantity, "response") && isTRUE(fit_traits(x)$probability) &&
        !identical(summary, "cv"))
 }
 
