@@ -686,20 +686,31 @@ They were computed one value at a time, which made such a fit much slower than
 the same link written as `function(eta) pnorm(eta)`.
 
 - The numerical derivatives of a custom inverse link that `Deriv` cannot
-differentiate, such as a bare `invlink = pnorm` or
-`function(eta) 0.01 + 0.89 * plogis(eta)` for an imperfect test, are now
-accurate near a linear predictor of zero. Their steps were relative to the
-linear predictor down to 1.8e-5, so just above it they fell to about 2e-9, and
-the second derivative, the numerical derivative of the first, was wrong by up
-to about 2,000 for linear predictors between about 2e-5 and 1e-2 (-40 at 1e-4
-for the imperfect test, where it is -1.1e-5). No step is now below 1e-4,
-and the steps are unchanged where the linear predictor is at least 1 in
-absolute value. The second derivative enters the curvature of the mode search
-and of the proposals but not the importance weights, so estimates were valid,
-but fits with such a link take a different path. In 31 paired fits every
-outcome was the same and the estimates moved by at most 0.03 standard errors,
-while the starting values from the Laplace approximation were better in 25 of
-30, by up to 55 log-likelihood units.
+differentiate are now accurate near a linear predictor of zero. Their steps
+were relative to the linear predictor down to 1.8e-5, so just above it they
+fell to about 2e-9, and the second derivative, the numerical derivative of the
+first, was wrong by up to about 2,000 for linear predictors between about 2e-5
+and 1e-2 (-40 at 1e-4 for `function(eta) 0.01 + 0.89 * plogis(eta)`, where it
+is -1.1e-5). No step is now below 1e-4, and the steps are unchanged where the
+linear predictor is at least 1 in absolute value. The second derivative enters
+the curvature of the mode search and of the proposals but not the importance
+weights, so estimates were valid, but fits with such a link took a different
+path.
+
+- A custom inverse link built from `plogis`, `pt` or `pcauchy`, such as
+`function(eta) 0.01 + 0.89 * plogis(eta)` for an imperfect test or
+`function(eta) pt(eta, 4)`, and a bare `invlink = pnorm`, `plogis` or
+`pcauchy`, now has exact derivatives, as a link built from `pnorm` or `exp`
+already had. `Deriv` has no rules for these functions and cannot read the
+compiled body of a bare distribution function, so their derivatives were
+numerical. Numerical derivatives are accurate but not smooth, and the search
+for starting values by the Laplace approximation, which differences the
+approximation, could stop short of its maximum. A call of these functions
+with a location, scale, tail or logarithm other than the default is still
+differentiated numerically. In 31 paired fits every outcome was the same and
+the starting values were better in 24 of 30 and worse in none, and `plogis`
+given as a function now reproduces the fits of the canonical logit link to
+within 1e-6 standard errors.
 
 - `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
 in `family`, as `glm()` does, so a link can be named as in
