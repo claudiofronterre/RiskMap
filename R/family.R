@@ -302,6 +302,20 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   `kernel_family`, for a family whose records the MCML engine fits as
 ##'   those of another family, that family (`engine_records()`), NULL for a
 ##'   family the engine fits as itself.
+##' - `concave_links`, the links under which the log-likelihood of every
+##'   record is known to be concave in its linear predictor, so that the
+##'   latent effects have one conditional mode, from the table of
+##'   `integrated-general.md` in mcml-algorithm (#253, step 5). Concavity
+##'   cannot be shown numerically, so it is a list (`check_family()`). The
+##'   loglog link and the softplus link of counts are concave too, but RiskMap
+##'   names neither, so they can only be given as functions.
+##' - `radius_links`, the links for which it has been measured on simulated
+##'   surveys how often the radius of the certificate's bound is too small,
+##'   logit (19 surveys) and log for Poisson counts (16) in `radius-results.md`,
+##'   probit in `family-object-radius.md` and log for negative binomial counts
+##'   in `family-object-radius-nb.md`. The same note measured one link given
+##'   as a function, that of an imperfect test. `check_fit()` says when a fit's
+##'   link is on neither list.
 ##' @noRd
 riskmap_families <- list(
   gaussian = list(
@@ -321,7 +335,8 @@ riskmap_families <- list(
       natural = exp, working = log
     )),
     parameters_heading = "Measurement error",
-    specified = FALSE, kernel_family = NULL
+    specified = FALSE, kernel_family = NULL,
+    concave_links = "identity", radius_links = character()
   ),
   binomial = list(
     links = c("logit", "probit", "cloglog", "cauchit"),
@@ -340,7 +355,9 @@ riskmap_families <- list(
     title = "Binomial", inverse_link_formula = "1 / (1 + exp(-x))",
     default_is_canonical = TRUE,
     parameters = list(), parameters_heading = NULL, specified = FALSE,
-    kernel_family = NULL
+    kernel_family = NULL,
+    concave_links = c("logit", "probit", "cloglog"),
+    radius_links = c("logit", "probit")
   ),
   poisson = list(
     links = "log", default_link = "log",
@@ -362,7 +379,7 @@ riskmap_families <- list(
     title = "Poisson", inverse_link_formula = "exp(x)",
     default_is_canonical = TRUE,
     parameters = list(), parameters_heading = NULL, specified = FALSE,
-    kernel_family = NULL
+    kernel_family = NULL, concave_links = "log", radius_links = "log"
   ),
   # Its records go to the engine as binomial ones (engine_records()).
   negative_binomial = list(
@@ -385,7 +402,8 @@ riskmap_families <- list(
       limit_words = "inverse of the negative binomial size (1 / theta)"
     )),
     parameters_heading = "Dispersion",
-    specified = TRUE, kernel_family = "binomial"
+    specified = TRUE, kernel_family = "binomial",
+    concave_links = "log", radius_links = "log"
   )
 )
 
@@ -413,6 +431,11 @@ riskmap_families <- list(
 ##' - `fitted_mean(mean, units_m)`, the fitted value of a record from the mean
 ##'   of its inverse link, the expected count for the Poisson and negative
 ##'   binomial families.
+##' - `log_density(y, mean, units_m, parameters)`, the log density of
+##'   responses `y` at the mean `mean` of the inverse link, from `dnorm()`,
+##'   `dbinom()`, `dpois()` or `dnbinom()` with the exposure or trials and the
+##'   family's parameters as `simulate()` takes them. `check_family()` compares
+##'   the engine's log-likelihood and the simulator with it.
 ##' - `simulate(means, units_m, parameters)`, one response for each mean, from
 ##'   `rbinom()` with `units_m` trials, `rpois()` with exposure `units_m`,
 ##'   `rnbinom()` with exposure `units_m` and size `parameters$theta`, or
@@ -464,6 +487,9 @@ family_traits <- function(family) {
       empirical_link = NULL, transform_variance = NULL,
       start_log_likelihood = NULL,
       fitted_mean = function(mean, units_m) mean,
+      log_density = function(y, mean, units_m, parameters) {
+        dnorm(y, mean, sqrt(parameters$sigma2_me), log = TRUE)
+      },
       simulate = function(means, units_m, parameters) {
         as.numeric(means) + rnorm(length(means),
                                   sd = sqrt(parameters$sigma2_me))
@@ -488,6 +514,9 @@ family_traits <- function(family) {
         sum(y * eta - units_m * softplus(eta))
       },
       fitted_mean = function(mean, units_m) mean,
+      log_density = function(y, mean, units_m, parameters) {
+        dbinom(y, units_m, mean, log = TRUE)
+      },
       simulate = function(means, units_m, parameters) {
         rbinom(length(means), size = units_m, prob = as.numeric(means))
       },
@@ -516,6 +545,9 @@ family_traits <- function(family) {
         sum(y * eta - units_m * means)
       },
       fitted_mean = function(mean, units_m) units_m * mean,
+      log_density = function(y, mean, units_m, parameters) {
+        dpois(y, units_m * mean, log = TRUE)
+      },
       simulate = function(means, units_m, parameters) {
         rpois(length(means), lambda = as.numeric(means) * units_m)
       },
@@ -535,6 +567,10 @@ family_traits <- function(family) {
       empirical_link = NULL, transform_variance = NULL,
       start_log_likelihood = NULL,
       fitted_mean = function(mean, units_m) units_m * mean,
+      log_density = function(y, mean, units_m, parameters) {
+        dnbinom(y, size = family_size(parameters), mu = units_m * mean,
+                log = TRUE)
+      },
       simulate = function(means, units_m, parameters) {
         rnbinom(length(means), size = family_size(parameters),
                 mu = as.numeric(means) * units_m)

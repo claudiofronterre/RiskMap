@@ -206,32 +206,67 @@ test_that("check_fit() notes a link not known to be log-concave", {
     checks <- check_fit(fit)$checks
     checks[checks$check == "Link", ]
   }
-  for (fit in list(binomial_model, poisson_model, named_fits$probit,
-                   named_fits$cloglog)) {
+  # Logit, probit and log are known to be concave, and the radius has been
+  # measured for each.
+  for (fit in list(binomial_model, poisson_model, named_fits$probit)) {
     expect_identical(nrow(link_rows(fit)), 0L)
   }
+  measured <- paste0(
+    "How often the radius of the bound on the Monte Carlo error is too small ",
+    "has been measured on simulated surveys with the logit and probit links, ",
+    "but not with "
+  )
+  cloglog <- link_rows(named_fits$cloglog)
+  expect_identical(cloglog$status, "OK")
+  expect_match(cloglog$finding, paste0(
+    "^The cloglog link makes the likelihood of each location log-concave in ",
+    "its latent effect\\. ", measured, "the cloglog link\\."
+  ))
+  expect_identical(cloglog$brief, "cloglog, radius not measured.")
   cauchit <- link_rows(named_fits$cauchit)
   expect_identical(cauchit$status, "OK")
   expect_match(cauchit$finding, paste0(
     "^The cauchit link is not among those known to make the likelihood of ",
     "each location log-concave in its latent effect, so the latent effects ",
-    "can have more than one conditional mode"
+    "can have more than one conditional mode.*", measured, "the cauchit link\\."
   ))
   expect_identical(cauchit$fix, "")
   # The row is OK, so summary() does not count it among the checks to review.
   expect_identical(summarise_mcml_fit(named_fits$cauchit)$checks_to_review,
                    sum(check_fit(named_fits$cauchit)$checks$status != "OK"))
 
+  # A concave link given as a function is checked on a grid, which cannot show
+  # that it is concave everywhere.
   supplied <- link_rows(fit_binomial("binomial", link_functions$cloglog))
   expect_match(supplied$finding, paste0(
-    "^The link was given as a function, so it is not known whether.*as the ",
-    "logit, probit and cloglog links do\\. If it does not, the latent effects"
+    "^The link was given as a function, under which the log-likelihood of a ",
+    "record is concave at the linear predictors from -30 to 30 that were ",
+    "checked\\..*as the logit, probit and cloglog links do\\. If it does ",
+    "not, the latent effects.*", measured, "this one\\."
   ))
   expect_match(fit_check_link(list(name = "custom"), "poisson")$finding,
                "as the log link does\\.")
   # A refit receives the name of its link in the list form, so it is known.
   expect_null(fit_check_link(list(name = "custom", link = "probit"),
                              "binomial"))
+})
+
+test_that("check_fit() says where a link given as a function is convex", {
+  fit <- fit_binomial("binomial", function(eta) 0.01 + 0.89 * plogis(eta))
+  checked <- check_fit(fit)
+  row <- checked$checks[checked$checks$check == "Link", ]
+  expect_match(row$finding, paste0(
+    "^The link was given as a function, under which the log-likelihood of a ",
+    "record is convex near a linear predictor of -[3-6](\\.[0-9]+)?, so ",
+    "the likelihood of a location is not log-concave"
+  ))
+  expect_identical(row$brief,
+                   "A function, not log-concave, radius not measured.")
+  expect_output(print(summary(checked)), "Convex near a linear predictor of")
+  # With the check of the radius run, the row points to its row.
+  expect_match(fit_check_link(fit$link_function, "binomial",
+                              describe_radius_pointer(TRUE))$finding,
+               "See the check \"Radius of the bound\"\\.$")
 })
 
 test_that("a named link starts from a regression with its own link", {

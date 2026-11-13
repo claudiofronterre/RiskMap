@@ -90,7 +90,18 @@ collect_check_data <- function(check, object, mcml) {
       "Started again from zero after failing from the mode found before" =
         optimizer$mcml_mode_searches$restarted
     ),
-    "Link" = list("Link" = object$link_function$link %||% "a function"),
+    "Link" = {
+      known <- describe_link_knowledge(object$link_function, object$family)
+      list("Link" = known$link %||% "a function",
+           "Known to be log-concave" = if (isTRUE(known$log_concave)) {
+             "yes"
+           } else {
+             "no"
+           },
+           "Convex near a linear predictor of" = known$convex_at,
+           "Radius measured on simulated surveys" =
+             if (known$radius_measured) "yes" else "no")
+    },
     "Maximum of the likelihood" = list(
       "Every observation" = optimizer$mcml_separation$everywhere,
       "Covariates that separate the data" = optimizer$mcml_separation$coefficients,

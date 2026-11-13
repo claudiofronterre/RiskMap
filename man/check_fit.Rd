@@ -96,8 +96,15 @@ A Gaussian fit has no Monte Carlo error, so its only default check says so.
 A link other than logit, probit or cloglog for binomial data, or log for
 counts, adds a row saying that it is not known to make the likelihood of
 each location log-concave in its latent effect, so that the latent
-effects can have more than one conditional mode. That belongs to the
-model and not to how it was fitted, so the row is \code{OK}.
+effects can have more than one conditional mode. For a link given as a
+function the row says where the log-likelihood of a record was found to
+be convex, if it was, on a grid of linear predictors from -30 to 30,
+which cannot show that it is concave everywhere. The row also says when
+it has not been measured on simulated surveys how often the radius of
+the bound on the Monte Carlo error is too small, as it has for the logit
+and probit links of binomial data and the log link of counts, and points
+to the check of the radius, which predicts it for the fit. Neither is a
+fault of the fit, so the row is \code{OK}.
 
 The default checks use only what the fit stored, so they take no time.
 The extra checks compute something new and add a row each. Before they
