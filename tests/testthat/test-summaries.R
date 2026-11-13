@@ -615,3 +615,30 @@ test_that("summary.RiskMap_cross_validation weights every metric by test-set siz
                 "1 test-set assessment failed, and its scores are missing.",
                 fixed = TRUE)
 })
+
+test_that("the summary of a fit says where its starting values came from", {
+  expect_match(describe_starting_values("user"),
+               "given in `start_pars`, with RiskMap's defaults for any others.",
+               fixed = TRUE)
+  expect_match(describe_starting_values("transformed_gaussian"),
+               "Gaussian fit to the transformed data", fixed = TRUE)
+  expect_match(describe_starting_values("current"), "defaults", fixed = TRUE)
+  # A fit saved by an earlier version doesn't record it.
+  expect_null(describe_starting_values(NULL))
+  fitted <- summary(binomial_model)
+  selected <- attr(binomial_model, "starting_values")$selected
+  expect_false(is.null(selected))
+  expect_identical(fitted$mcml$starting_values, selected)
+  expect_match(squish(capture.output(print(fitted))),
+               describe_starting_values(selected), fixed = TRUE)
+  expect_null(summary(gaussian_model)$mcml)
+  # A start given only in part counts as given, with defaults for the rest.
+  given <- suppressWarnings(glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, start_pars = list(beta = c(0, 0.3)),
+    control_mcml = fixture_control_mcml, seed = fixture_seed, messages = FALSE
+  ))
+  expect_identical(summary(given)$mcml$starting_values, "user")
+  expect_match(squish(capture.output(print(summary(given)))),
+               describe_starting_values("user"), fixed = TRUE)
+})

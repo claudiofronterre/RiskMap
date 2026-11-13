@@ -239,22 +239,25 @@ without_crs_check <- function(code) {
 #'
 #' The convention of every function that computes distances. A CRS given by
 #' the user is used, and must be projected. Data in longitude and latitude
-#' without one are projected to the CRS from `propose_crs()`, with a message
-#' that reports it and its distortion. Projected data are used as they are.
-#' A warning of class `riskmap_warning_crs` is raised when the CRS used
-#' distorts distances by more than 1% over the data.
+#' without one are projected to the CRS from `propose_crs()`, with one
+#' message that names it, with the units of distance, and says how to choose
+#' another. Projected data are used as they are. A warning of class
+#' `riskmap_warning_crs` is raised when the CRS used distorts distances by
+#' more than 1% over the data, and only then is the distortion reported, as
+#' `crs_distortion()` gives it.
 #' @param data An `sf` object.
 #' @param crs `NULL` or the CRS given by the user.
 #' @param crs_arg The name of the argument that gives `crs`, or `NULL` if the
 #'   function has none, as `create_grid()`.
-#' @param purpose What the CRS is used for, ending the message, such as
-#'   `"for fitting"`.
+#' @param purpose What the CRS is used for, such as `"for fitting"`.
 #' @param data_arg The name of the argument that gives `data`.
+#' @param units The units of distance, `"km"` or `"m"`, named in the message,
+#'   or `NULL` to leave them out.
 #' @param call The call named in input errors.
 #' @return `data`, projected.
 #' @noRd
 project_for_distances <- function(data, crs, crs_arg, purpose,
-                                  data_arg = "data",
+                                  data_arg = "data", units = NULL,
                                   call = rlang::caller_env()) {
   if (!is.null(crs)) {
     check_crs(crs, arg = crs_arg, call = call)
@@ -273,26 +276,27 @@ project_for_distances <- function(data, crs, crs_arg, purpose,
   choice <- choose_crs(data)
   data <- st_transform(data, crs = choice$crs)
   label <- choice$label
-  pct <- format_distortion(choice$error)
   target <- if (choice$utm) {
     label
   } else {
     cli::format_inline("a custom {choice$family} projection ({.val {label}})")
   }
+  in_units <- if (is.null(units)) "" else paste0(", with distances in ", units)
   reason <- if (choice$utm) {
     ""
   } else {
     tolerance <- format_distortion(choice$tolerance)
-    paste0(", because no UTM zone keeps distances within ", tolerance)
+    paste0(" No UTM zone keeps distances within ", tolerance, " over them.")
   }
   hint <- if (is.null(crs_arg)) {
     "Project {.arg {data_arg}} yourself to choose the projection."
   } else {
     "Set {.arg {crs_arg}} to choose the projection."
   }
-  riskmap_inform(c(
-    "{.arg {data_arg}} are in longitude and latitude, so they are projected to {target} {purpose}{reason}. Distances are distorted by at most {pct} over the data.",
-    "i" = hint
+  # One message, so that a fit starts with as little as it needs to say.
+  riskmap_inform(paste0(
+    "{.arg {data_arg}} are in longitude and latitude, so they are projected ",
+    "to {target} {purpose}{in_units}.{reason} ", hint
   ))
   if (choice$error > crs_distortion_limit) {
     warn_region_too_wide(choice, data_arg)

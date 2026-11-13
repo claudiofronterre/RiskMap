@@ -43,7 +43,7 @@
 ##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
 ##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
 ##' reprojected to the CRS from [propose_crs()], a UTM zone or a projection centred on the data,
-##' and a message reports the conversion used and its distortion of distances.
+##' and a message names the CRS and the units of distance.
 ##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
 ##' A warning of class `riskmap_warning_crs` is raised when the CRS used distorts distances
 ##' by more than 1% over the data.
@@ -400,8 +400,11 @@ glgpm <- function(formula,
   # transform crs and extract coordinates
   input_crs <- st_crs(data)
   # The message on a projection is shown even with `messages = FALSE`,
-  # because it changes the model.
-  data <- project_for_distances(data, model_crs, "model_crs", "for fitting")
+  # because it changes the model. It names the units of distance, so that
+  # the fit has one message on where it is fitted.
+  projected_here <- is.null(model_crs) && isTRUE(st_is_longlat(data))
+  data <- project_for_distances(data, model_crs, "model_crs", "for fitting",
+                                units = distance_units)
 
   coords_o <- coordinates_in_units(
     data, distance_units, if (is.null(model_crs)) "data" else "model_crs"
@@ -466,7 +469,7 @@ glgpm <- function(formula,
     }
   }
 
-  if (messages) {
+  if (messages && !projected_here) {
     crs <- as.list(st_crs(data))$input
     riskmap_inform("The model is fitted in {crs}, with distances in {distance_units}.")
   }
@@ -579,7 +582,6 @@ glgpm <- function(formula,
       ID_re = ID_re,
       s_unique = s_unique,
       re_unique = re_unique,
-      messages = messages,
       family_parameters = start_family
     )
     # The transformed start has none of the family's parameters.
@@ -1334,7 +1336,6 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
                                      invlink, fix_tau2, n_re,
                                      ID_re = NULL, s_unique = NULL,
                                      re_unique = NULL,
-                                     messages = TRUE,
                                      family_parameters = NULL) {
   diagnostics <- list(
     selected = "current",
@@ -1453,10 +1454,8 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   if (is.finite(scores["transformed_gaussian"]) &&
       (!is.finite(scores["current"]) ||
        scores["transformed_gaussian"] > scores["current"])) {
+    # summary() reports the choice, so the fit doesn't announce it.
     diagnostics$selected <- "transformed_gaussian"
-    if (messages) {
-      riskmap_inform("Using transformed-Gaussian automatic starting values.")
-    }
     return(list(start = transformed, diagnostics = diagnostics))
   }
 
