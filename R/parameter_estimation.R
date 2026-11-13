@@ -631,8 +631,10 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
         check_positive_number(start_pars[["sigma2_me"]], call = call)
       }
     }
-    gaussian_layout <- cov_par_layout(ncol(D), fix_tau2 = fix_tau2,
-                                      sigma2_me = is.null(fix_var_me), n_re = n_re)
+    gaussian_layout <- cov_par_layout(
+      ncol(D), fix_tau2 = fix_tau2,
+      family_parameters = gaussian_family_block(fix_var_me), n_re = n_re
+    )
     res <- glgpm_lm(y = y-cov_offset, D, fitting_coords,
             kappa = kappa,
             ID_coords, ID_re, s_unique, re_unique,
@@ -642,7 +644,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
                                            sigma2    = start_pars[["sigma2"]],
                                            phi       = fitting_start_phi,
                                            nu2       = start_pars[["tau2"]],
-                                           sigma2_me = start_pars[["sigma2_me"]],
+                                           family = start_pars["sigma2_me"],
                                            sigma2_re = start_pars[["sigma2_re"]]),
             messages = messages)
     res["mcml_history"] <- list(NULL)
@@ -786,22 +788,26 @@ gaussian_conditional_fitted <- function(object) {
 ##'
 ##' Single source of truth for where each non-beta parameter sits in the flat
 ##' numeric vector used by the fitting engines: `sigma2`, `phi`,
-##' optionally `nu2` (only when the nugget is estimated), optionally
-##' `sigma2_me` (Gaussian models only, when the measurement error variance is
-##' not fixed), and finally one entry per unstructured random effect.
-##' Fixed-effect coefficients always occupy `1:p` and are handled separately.
+##' optionally `nu2` (only when the nugget is estimated), then the family
+##' block, the family's own parameters that are estimated (the measurement
+##' error variance `sigma2_me` of a Gaussian model whose variance is not
+##' fixed, #253 step 2), and finally one entry per unstructured random
+##' effect. Fixed-effect coefficients always occupy `1:p` and are handled
+##' separately.
 ##'
 ##' @param p Number of fixed-effect coefficients.
 ##' @param fix_tau2 Logical; `TRUE` when the nugget is estimated, so `nu2` is
 ##' a free parameter.
-##' @param sigma2_me Logical; `TRUE` when the (Gaussian) measurement-error
-##' variance is estimated.
+##' @param family_parameters The names of the family's own parameters that are
+##' estimated, in the order of `riskmap_families`.
 ##' @param n_re Number of unstructured random effects (`0` for none).
 ##' @return A list with `index` (a named list of integer positions: `beta`,
-##' `sigma2`, `phi`, and - only when applicable - `nu2`, `sigma2_me`,
-##' `sigma2_re`) and `length` (the total vector length, including `beta`).
+##' `sigma2`, `phi`, and - only when applicable - `nu2`, one for each family
+##' parameter, `sigma2_re`), `family`, the names of the family block, and
+##' `length` (the total vector length, including `beta`).
 ##' @noRd
-cov_par_layout <- function(p, fix_tau2, sigma2_me = FALSE, n_re = 0L) {
+cov_par_layout <- function(p, fix_tau2, family_parameters = character(),
+                           n_re = 0L) {
   index <- list(beta = seq_len(p), sigma2 = p + 1L, phi = p + 2L)
   idx   <- p + 2L
 
@@ -809,37 +815,49 @@ cov_par_layout <- function(p, fix_tau2, sigma2_me = FALSE, n_re = 0L) {
     idx <- idx + 1L
     index$nu2 <- idx
   }
-  if (isTRUE(sigma2_me)) {
+  for (name in family_parameters) {
     idx <- idx + 1L
-    index$sigma2_me <- idx
+    index[[name]] <- idx
   }
   if (n_re > 0) {
     index$sigma2_re <- idx + seq_len(n_re)
     idx <- idx + n_re
   }
 
-  list(index = index, length = idx)
+  list(index = index, family = family_parameters, length = idx)
+}
+
+##' The family parameters a Gaussian model estimates
+##'
+##' `"sigma2_me"` unless `fix_var_me` holds the measurement error variance,
+##' for the family block of `cov_par_layout()`.
+##' @noRd
+gaussian_family_block <- function(fix_var_me) {
+  if (is.null(fix_var_me)) "sigma2_me" else character()
 }
 
 ##' Pack working-scale starting values using a `cov_par_layout()` layout
 ##'
 ##' @param layout A layout from `cov_par_layout()`.
 ##' @param sigma2,phi Starting values (always required).
-##' @param nu2,sigma2_me,sigma2_re Starting values for the parameters the
-##' layout includes; only consulted when `layout$index` has a matching entry,
-##' so passing e.g. `sigma2_me` when the layout has no `sigma2_me` slot is
+##' @param nu2,sigma2_re Starting values for the parameters the layout
+##' includes; only consulted when `layout$index` has a matching entry.
+##' @param family Starting values of the family block, a named list, of which
+##' only the parameters the layout's family block includes are consulted, so
+##' passing e.g. `sigma2_me` when the layout has no `sigma2_me` slot is
 ##' silently ignored (matching this family/specification not using it).
 ##' @return A numeric vector of the non-beta working-scale parameters, in
 ##' `layout`'s order - the same contract `start_cov_pars` has always had.
 ##' @noRd
-pack_cov_pars <- function(layout, sigma2, phi, nu2 = NULL, sigma2_me = NULL, sigma2_re = NULL) {
+pack_cov_pars <- function(layout, sigma2, phi, nu2 = NULL, family = list(),
+                          sigma2_re = NULL) {
   p   <- length(layout$index$beta)
   out <- numeric(layout$length - p)
 
   out[layout$index$sigma2 - p] <- sigma2
   out[layout$index$phi - p]    <- phi
   if (!is.null(layout$index$nu2))       out[layout$index$nu2 - p]       <- nu2
-  if (!is.null(layout$index$sigma2_me)) out[layout$index$sigma2_me - p] <- sigma2_me
+  for (name in layout$family) out[layout$index[[name]] - p] <- family[[name]]
   if (!is.null(layout$index$sigma2_re)) out[layout$index$sigma2_re - p] <- sigma2_re
 
   out
@@ -864,9 +882,12 @@ pack_cov_pars <- function(layout, sigma2, phi, nu2 = NULL, sigma2_me = NULL, sig
 ##' disambiguates the same way (e.g. `"beta.sigma2"` vs `"sigma2"`).
 ##'
 ##' @noRd
-structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_names = NULL) {
+structure_estimate <- function(par, beta_names, fix_tau2,
+                               family_parameters = character(),
+                               re_names = NULL) {
   p      <- length(beta_names)
-  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = sigma2_me,
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
+                           family_parameters = family_parameters,
                            n_re = length(re_names))
 
   beta <- par[layout$index$beta]
@@ -877,7 +898,7 @@ structure_estimate <- function(par, beta_names, fix_tau2, sigma2_me = FALSE, re_
               phi    = unname(par[layout$index$phi]))
 
   if (!is.null(layout$index$nu2))       out$nu2       <- unname(par[layout$index$nu2])
-  if (!is.null(layout$index$sigma2_me)) out$sigma2_me <- unname(par[layout$index$sigma2_me])
+  for (name in layout$family) out[[name]] <- unname(par[layout$index[[name]]])
   if (!is.null(layout$index$sigma2_re)) {
     sigma2_re <- unname(par[layout$index$sigma2_re])
     names(sigma2_re) <- re_names
@@ -1448,7 +1469,9 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   C_g_m <- forceSymmetric(C_g_m)
 
 
-  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, sigma2_me = is.null(fix_var_me), n_re = n_re)
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
+                           family_parameters = gaussian_family_block(fix_var_me),
+                           n_re = n_re)
   ind_beta   <- layout$index$beta
   ind_sigma2 <- layout$index$sigma2
   ind_phi    <- layout$index$phi
@@ -2258,7 +2281,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     estim$par,
     beta_names = colnames(D),
     fix_tau2   = fix_tau2,
-    sigma2_me  = is.null(fix_var_me),
+    family_parameters = gaussian_family_block(fix_var_me),
     re_names   = if (n_re > 0) names(ID_re) else NULL
   )
   out$grad_MLE <- grad.log.lik(estim$par)

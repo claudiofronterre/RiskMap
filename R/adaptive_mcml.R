@@ -624,8 +624,7 @@ make_adaptive_mcml_engine <- function(
   } else {
     apply(ID_re, 2L, max)
   }
-  layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
-                           sigma2_me = FALSE, n_re = n_re)
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, n_re = n_re)
 
   linkf <- make_inverse_link_functions(family, invlink, n)
   model <- make_family(family, linkf)
@@ -1272,6 +1271,11 @@ describe_variance_parameters <- function(index, layout, re_names = NULL) {
       "random-effect variance for '", re_names, "'"
     )
   }
+  for (name in layout$family) {
+    labels[as.character(layout$index[[name]])] <- paste0(
+      family_parameter_words(name), " (", name, ")"
+    )
+  }
   # The scale is held only because the spatial variance is zero; it is
   # explained separately rather than listed as a variance component.
   index <- setdiff(index, layout$index$phi)
@@ -1659,7 +1663,7 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
   last <- fit$history[[length(fit$history)]]
   estimate <- structure_estimate(
     fit$estimate, beta_names = colnames(D), fix_tau2 = fix_tau2,
-    sigma2_me = FALSE, re_names = re_names
+    re_names = re_names
   )
   covariance <- fit$covariance
   if (is.null(covariance)) {

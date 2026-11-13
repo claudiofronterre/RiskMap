@@ -161,7 +161,7 @@ test_that("a covariate named after a parameter no longer corrupts estimates (#92
 })
 
 test_that("cov_par_layout() places sigma2_me before sigma2_re, consistently", {
-  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, sigma2_me = TRUE, n_re = 2)
+  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, family_parameters = "sigma2_me", n_re = 2)
 
   expect_identical(layout$index$beta, 1:2)
   expect_identical(layout$index$sigma2, 3)
@@ -173,23 +173,24 @@ test_that("cov_par_layout() places sigma2_me before sigma2_re, consistently", {
 })
 
 test_that("cov_par_layout() omits slots that don't apply", {
-  no_re <- cov_par_layout(p = 1, fix_tau2 = FALSE, sigma2_me = FALSE, n_re = 0)
+  no_re <- cov_par_layout(p = 1, fix_tau2 = FALSE, n_re = 0)
   expect_null(no_re$index$nu2)
   expect_null(no_re$index$sigma2_me)
   expect_null(no_re$index$sigma2_re)
   expect_identical(no_re$length, 3)
 
-  with_nugget <- cov_par_layout(p = 1, fix_tau2 = TRUE, sigma2_me = TRUE, n_re = 1)
+  with_nugget <- cov_par_layout(p = 1, fix_tau2 = TRUE, family_parameters = "sigma2_me", n_re = 1)
   expect_identical(with_nugget$index$nu2, 4)
   expect_identical(with_nugget$index$sigma2_me, 5)
   expect_identical(with_nugget$index$sigma2_re, 6)
 })
 
 test_that("pack_cov_pars() places deliberately different sigma2_re and sigma2_me at the layout's own positions (#135/#117)", {
-  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, sigma2_me = TRUE, n_re = 2)
+  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, family_parameters = "sigma2_me", n_re = 2)
 
   packed <- pack_cov_pars(layout, sigma2 = 1, phi = 2,
-                          sigma2_me = 999, sigma2_re = c(100, 200))
+                          family = list(sigma2_me = 999),
+                          sigma2_re = c(100, 200))
 
   ## pack_cov_pars() returns the non-beta parameters only (start_cov_pars's
   ## existing contract), so positions are offset by p = 2
@@ -213,13 +214,14 @@ test_that("structure_estimate() and the fitting engines' indices agree on sigma2
   ## the fitting engines use, so unpacking a vector built by pack_cov_pars()
   ## recovers exactly what was packed - the three steps  (packing, indexing,
   ## unpacking) now can't disagree with each other.
-  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, sigma2_me = TRUE, n_re = 2)
+  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, family_parameters = "sigma2_me", n_re = 2)
   packed <- pack_cov_pars(layout, sigma2 = 1, phi = 2,
-                          sigma2_me = 999, sigma2_re = c(100, 200))
+                          family = list(sigma2_me = 999),
+                          sigma2_re = c(100, 200))
   par <- c(10, 20, packed)  # arbitrary beta values prepended
 
   est <- structure_estimate(par, beta_names = c("(Intercept)", "cov"),
-                            fix_tau2 = FALSE, sigma2_me = TRUE,
+                            fix_tau2 = FALSE, family_parameters = "sigma2_me",
                             re_names = c("i", "j"))
 
   expect_identical(est$sigma2_me, 999)

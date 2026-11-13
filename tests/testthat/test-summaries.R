@@ -16,7 +16,7 @@ test_that("estimates are consistent between coef and summary", {
   expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
   expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
   expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
-  expect_equal(cof$sigma2_me, sum$me[1,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2_me, sum$family_parameters[1,1], ignore_attr = TRUE)
   expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
 
   sum <- summary(binomial_model)
@@ -42,7 +42,8 @@ test_that("summary.RiskMap returns the expected components for each family", {
   gaussian_summary <- summary(gaussian_model)
   expect_s3_class(gaussian_summary, "summary.RiskMap")
   expect_setequal(names(gaussian_summary),
-                  c("reg_coef", "me", "sp", "tau2", "ranef", "level",
+                  c("reg_coef", "family_parameters", "held_family_parameters",
+                    "sp", "tau2", "ranef", "level",
                     "family", "kappa", "log_lik", "cov_offset_used", "aic",
                     "call", "link_name", "invlink_expression"))
   expect_identical(gaussian_summary$family, "gaussian")
@@ -59,12 +60,13 @@ test_that("summary.RiskMap returns the expected components for each family", {
 
   binomial_summary <- summary(binomial_model)
   expect_identical(binomial_summary$link_name, "canonical (logit)")
-  expect_null(binomial_summary$me)
+  expect_null(binomial_summary$family_parameters)
+  expect_identical(binomial_summary$held_family_parameters, list())
   expect_null(binomial_summary$aic)
 
   poisson_summary <- summary(poisson_model)
   expect_identical(poisson_summary$link_name, "canonical (log)")
-  expect_null(poisson_summary$me)
+  expect_null(poisson_summary$family_parameters)
   expect_null(poisson_summary$aic)
 })
 
@@ -169,7 +171,7 @@ test_that("summary.RiskMap reports fixed and estimated nugget and measurement er
   offset_summary <- summary(gaussian_offset_model)
   expect_true(offset_summary$tau2)
   expect_true(offset_summary$cov_offset_used)
-  expect_identical(offset_summary$me, 0)
+  expect_identical(offset_summary$held_family_parameters, list(sigma2_me = 0))
   expect_identical(rownames(offset_summary$sp)[3], "Variance of the nugget")
   # the nugget is estimated as a ratio to sigma2 but reported as a variance
   expect_equal(offset_summary$sp["Variance of the nugget", "Estimate"],
@@ -205,8 +207,10 @@ test_that("summary.RiskMap reports fixed and estimated nugget and measurement er
   # gaussian_model: no nugget, estimated measurement error
   gaussian_summary <- summary(gaussian_model)
   expect_identical(gaussian_summary$tau2, 0)
-  expect_identical(rownames(gaussian_summary$me), "Measurement error var.")
-  expect_equal(gaussian_summary$me[, "Estimate"],
+  expect_identical(rownames(gaussian_summary$family_parameters),
+                   "Measurement error var.")
+  expect_identical(gaussian_summary$held_family_parameters, list())
+  expect_equal(gaussian_summary$family_parameters[, "Estimate"],
                coef(gaussian_model)$sigma2_me, ignore_attr = TRUE)
 })
 
@@ -239,7 +243,8 @@ build_summary_riskmap <- function(changes = list()) {
 
   summary_object <- list(
     reg_coef = reg_coef,
-    me = me,
+    family_parameters = me,
+    held_family_parameters = list(),
     sp = sp,
     tau2 = TRUE,
     ranef = ranef,
@@ -267,7 +272,10 @@ test_that("print.summary.RiskMap formats a gaussian model with every optional se
 })
 
 test_that("print.summary.RiskMap reports a fixed measurement error variance", {
-  summary_object <- build_summary_riskmap(list(me = 0.1, call = NULL))
+  summary_object <- build_summary_riskmap(list(
+    family_parameters = NULL, held_family_parameters = list(sigma2_me = 0.1),
+    call = NULL
+  ))
 
   expect_snapshot(print(summary_object))
 })
@@ -276,7 +284,7 @@ test_that("print.summary.RiskMap formats binomial and poisson models", {
   sp_without_nugget <- build_summary_riskmap()$sp[1:2, ]
 
   binomial_summary <- build_summary_riskmap(list(
-    family = "binomial", me = NULL, sp = sp_without_nugget, tau2 = 0,
+    family = "binomial", family_parameters = NULL, sp = sp_without_nugget, tau2 = 0,
     ranef = NULL, cov_offset_used = FALSE, aic = NULL, call = NULL,
     link_name = "canonical (logit)",
     invlink_expression = "Inverse link function = 1 / (1 + exp(-x))"
@@ -284,7 +292,7 @@ test_that("print.summary.RiskMap formats binomial and poisson models", {
   expect_snapshot(print(binomial_summary))
 
   poisson_summary <- build_summary_riskmap(list(
-    family = "poisson", me = NULL, sp = sp_without_nugget, tau2 = 0.25,
+    family = "poisson", family_parameters = NULL, sp = sp_without_nugget, tau2 = 0.25,
     ranef = NULL, cov_offset_used = FALSE, aic = NULL, call = NULL,
     link_name = "canonical (log)",
     invlink_expression = "Inverse link function = exp(x)"
@@ -300,7 +308,7 @@ test_that("print.summary.RiskMap reports the certificate and the checks to revie
                     fitting_draws = 1000L, validation_draws = 5000L,
                     checks_to_review = 0L)
   binomial_summary <- build_summary_riskmap(list(
-    family = "binomial", me = NULL, sp = sp_without_nugget, tau2 = 0,
+    family = "binomial", family_parameters = NULL, sp = sp_without_nugget, tau2 = 0,
     ranef = NULL, cov_offset_used = FALSE, aic = NULL, call = NULL,
     link_name = "canonical (logit)",
     invlink_expression = "Inverse link function = 1 / (1 + exp(-x))",

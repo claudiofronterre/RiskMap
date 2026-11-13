@@ -45,7 +45,8 @@ When the input is a "RiskMap" model object, the table includes:
 \item Regression coefficients with their estimates, confidence intervals, and p-values.
 \item Parameters for the spatial process.
 \item Random effect variances.
-\item Measurement error variance, if applicable.
+\item The parameters of the family that were estimated, such as the
+measurement error variance of a Gaussian model.
 }
 
 When the input is a cross-validation summary object ("summary.RiskMap_cross_validation"), the table includes:

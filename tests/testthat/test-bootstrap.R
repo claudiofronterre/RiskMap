@@ -154,7 +154,7 @@ test_that("plot draws one histogram per parameter", {
   summaries <- summary(gaussian_intercept_model)
   expect_identical(unname(boot$labels),
                    c(rownames(summaries$reg_coef), rownames(summaries$sp),
-                     rownames(summaries$me)))
+                     rownames(summaries$family_parameters)))
 })
 
 test_that("plot shows a natural axis unless log_scale is TRUE", {

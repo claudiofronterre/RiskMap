@@ -279,8 +279,24 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   shows it, and `default_is_canonical`, the default link is the canonical
 ##'   link of the family, which the log link of the negative binomial family is
 ##'   not.
-##' - `parameters`, the names of the family's own parameters, held at the
-##'   values given with the family (`negative_binomial()`), and
+##' - `parameters`, the family's own parameters (#253, step 2), each with its
+##'   `label` in tables of estimates, its `words` in sentences, and `natural`,
+##'   the function from its working scale, on which it is fitted, to its
+##'   natural scale. The measurement error variance `sigma2_me` of the
+##'   Gaussian family is fitted on the log scale, and the size `theta` of the
+##'   negative binomial family on that of log(1 / theta), so that a fit
+##'   drifting to the Poisson limit tends to minus infinity as a variance
+##'   drifting to zero does. Each map is `exp()` of the working value or of its
+##'   negative, so that the log-normal intervals of `summary()` hold, and the
+##'   names are unique across families and differ from those of the other
+##'   parameters, so that the output finds a parameter by its name
+##'   (`family_parameter()`). A fitted parameter is in the family block of the
+##'   layout (`cov_par_layout()`), and a held one is stored with the fit
+##'   (`held_family_parameters()`).
+##' - `parameters_heading`, the heading of the table of the parameters that
+##'   `summary()` gives, NULL for a family without parameters of its own.
+##' - `specified`, the family is given by its function with the values of its
+##'   parameters (`negative_binomial()`), not by its name, and
 ##'   `kernel_family`, for a family whose records the MCML engine fits as
 ##'   those of another family, that family (`engine_records()`), NULL for a
 ##'   family the engine fits as itself.
@@ -298,7 +314,12 @@ riskmap_families <- list(
     response_quantity = NULL, probability = FALSE,
     title = "Gaussian", inverse_link_formula = "x",
     default_is_canonical = TRUE,
-    parameters = character(), kernel_family = NULL
+    parameters = list(sigma2_me = list(
+      label = "Measurement error var.", words = "measurement error variance",
+      natural = exp
+    )),
+    parameters_heading = "Measurement error",
+    specified = FALSE, kernel_family = NULL
   ),
   binomial = list(
     links = c("logit", "probit", "cloglog", "cauchit"),
@@ -316,7 +337,8 @@ riskmap_families <- list(
     response_quantity = "prevalence", probability = TRUE,
     title = "Binomial", inverse_link_formula = "1 / (1 + exp(-x))",
     default_is_canonical = TRUE,
-    parameters = character(), kernel_family = NULL
+    parameters = list(), parameters_heading = NULL, specified = FALSE,
+    kernel_family = NULL
   ),
   poisson = list(
     links = "log", default_link = "log",
@@ -337,7 +359,8 @@ riskmap_families <- list(
     response_quantity = "rate", probability = FALSE,
     title = "Poisson", inverse_link_formula = "exp(x)",
     default_is_canonical = TRUE,
-    parameters = character(), kernel_family = NULL
+    parameters = list(), parameters_heading = NULL, specified = FALSE,
+    kernel_family = NULL
   ),
   # Internal until its size can be estimated (#253, step 6b). Its records go
   # to the engine as binomial ones (engine_records()).
@@ -354,7 +377,12 @@ riskmap_families <- list(
     response_quantity = "rate", probability = FALSE,
     title = "Negative binomial", inverse_link_formula = "exp(x)",
     default_is_canonical = FALSE,
-    parameters = "theta", kernel_family = "binomial"
+    parameters = list(theta = list(
+      label = "Negative binomial size", words = "size of the negative binomial",
+      natural = function(working) exp(-working)
+    )),
+    parameters_heading = "Dispersion",
+    specified = TRUE, kernel_family = "binomial"
   )
 )
 
@@ -727,6 +755,58 @@ negative_binomial <- function(theta) {
             class = "riskmap_family_specification")
 }
 
+##' The description of a family's own parameter, by its name
+##'
+##' From the `parameters` of `riskmap_families`, whose names are unique across
+##' the families (`test-family.R`), so that a fit's output finds the label,
+##' words and map of a parameter by its name alone. NULL for a name that is
+##' not a parameter of a family.
+##' @noRd
+family_parameter <- function(name) {
+  for (family in riskmap_families) {
+    descriptor <- family$parameters[[name]]
+    if (!is.null(descriptor)) return(descriptor)
+  }
+  NULL
+}
+
+##' The names of the families' own parameters
+##' @noRd
+family_parameter_names <- function() {
+  unlist(lapply(riskmap_families, function(family) names(family$parameters)),
+         use.names = FALSE)
+}
+
+##' The words of a family's own parameter, as "measurement error variance"
+##'
+##' NULL for a name that is not a parameter of a family.
+##' @noRd
+family_parameter_words <- function(name) family_parameter(name)$words
+
+##' The family's own parameters that a fit estimates
+##'
+##' The names of the family block of the fit's estimate, in its order
+##' (`cov_par_layout()`).
+##' @noRd
+estimated_family_parameters <- function(fit) {
+  descriptors <- fit_traits(fit)$parameters
+  intersect(names(fit$estimate), names(descriptors))
+}
+
+##' The family's own parameters that a fit holds at given values
+##'
+##' A named list, empty when the fit holds none. They are the `family_parameters`
+##' a fit stores for a family given with its parameters (`negative_binomial()`),
+##' and the measurement error variance `sigma2_me` of a Gaussian fit when
+##' `glgpm()` was given `fix_var_me`. Those the fit estimates are in its
+##' `estimate`, in the family block of the layout (`cov_par_layout()`).
+##' @noRd
+held_family_parameters <- function(fit) {
+  held <- fit$family_parameters %||% list()
+  if (is.numeric(fit$fix_var_me)) held$sigma2_me <- fit$fix_var_me
+  held
+}
+
 ##' The `family` argument that refits a fitted model
 ##'
 ##' The family string the fit stores, or for a family with parameters of its
@@ -735,19 +815,19 @@ negative_binomial <- function(theta) {
 ##' @noRd
 fit_family_argument <- function(fit) {
   traits <- fit_traits(fit)
-  if (is.null(traits) || !length(traits$parameters)) return(fit$family)
+  if (is.null(traits) || !traits$specified) return(fit$family)
   negative_binomial(theta = family_size(fit$family_parameters))
 }
 
 ##' The families among `families` that are given by their name
 ##'
-##' Those without parameters of their own, which are given only by their
-##' function (`negative_binomial()`), internal until #253, step 6b. These are
-##' the families that errors name.
+##' Those not `specified`, that is not given by their function with the values
+##' of their parameters (`negative_binomial()`, internal until #253, step 6b).
+##' These are the families that errors name.
 ##' @noRd
 string_families <- function(families = names(riskmap_families)) {
   families[vapply(families, function(name) {
-    !length(family_traits(name)$parameters)
+    !family_traits(name)$specified
   }, logical(1))]
 }
 
@@ -768,7 +848,7 @@ read_family_link <- function(family, link) {
     abort_input(c("{.arg family} must be a Gaussian, binomial or Poisson family, not {.val {family}}.", "i" = "For a binomial or Poisson response, any link can be given as an inverse-link function in {.arg invlink}."), arg = "family")
   }
   traits <- family_traits(family)
-  if (length(traits$parameters)) {
+  if (traits$specified) {
     riskmap_bug("The {family} family has parameters of its own, so it is given by its own function, not as a stats family.")
   }
   refused <- if (link %in% names(traits$refused)) traits$refused[[link]]

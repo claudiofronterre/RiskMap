@@ -26,7 +26,10 @@ the Newton correction of the last stage did not converge),
 last stage), \code{certification_bank} (the effective draws and Pareto
 shape of the certification draws) and \code{checks_to_review}, the number
 of checks of \code{\link{check_fit}} that need a look. \code{mcml} is
-\code{NULL} for Gaussian models.
+\code{NULL} for Gaussian models. The parameters of the family, such as
+the measurement error variance of a Gaussian model, are in
+\code{family_parameters}, a table of those that were estimated, and
+\code{held_family_parameters}, a list of those held at a given value.
 }
 \description{
 Provides a \code{summary} method for the "RiskMap" class that

@@ -145,6 +145,14 @@ failed model fit becomes a warning bullet.
 - The result of `predict()` records the link of its fit, when it is not the
 canonical one, in the new element `link`, so that its print names the link as
 the print of the fit does.
+- The `summary()` of a fit gives the parameters of its family, such as the
+measurement error variance of a Gaussian model, in the element
+`family_parameters`, a table of those that were estimated, and in
+`held_family_parameters`, a list of those held at a given value, such as
+`fix_var_me`. They replace the element `me`, which held either. So
+`to_table()` of a fit with `fix_var_me` no longer adds a row that repeats the
+fixed value in every column, and the row of the intercept of a fit with no
+covariates is named "(Intercept)", where it was blank.
 
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.

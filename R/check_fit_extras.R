@@ -137,12 +137,13 @@ make_extra_check_seed <- function(fit_seed, offset) {
 ##'
 ##' Every estimated parameter except the regression coefficients, so a fit
 ##' without a nugget or random effects has none to profile. The nugget of a
-##' Gaussian fit is profiled as its variance, `tau2`.
+##' fit whose likelihood is exact is profiled as its variance, `tau2`
+##' (`profile_gaussian.R`).
 ##' @noRd
 list_covariance_parameters <- function(object) {
   names <- names(unlist(object$estimate))
   names <- names[!startsWith(names, "beta.")]
-  if (identical(object$family, "gaussian")) names[names == "nu2"] <- "tau2"
+  if (isTRUE(fit_traits(object)$exact)) names[names == "nu2"] <- "tau2"
   names
 }
 
@@ -222,8 +223,9 @@ describe_profile_parameter <- function(name) {
     phi = "spatial scale",
     nu2 = "ratio of the nugget to the spatial variance",
     tau2 = "nugget variance",
-    sigma2_me = "measurement error variance",
-    if (startsWith(name, "sigma2_re.")) {
+    if (!is.null(family_parameter_words(name))) {
+      family_parameter_words(name)
+    } else if (startsWith(name, "sigma2_re.")) {
       paste0("random-effect variance for '", sub("^sigma2_re\\.", "", name), "'")
     } else if (startsWith(name, "beta.")) {
       paste0("coefficient of '", sub("^beta\\.", "", name), "'")

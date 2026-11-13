@@ -1,11 +1,6 @@
 # Functions outside R/family.R that still compare a family string, as in
-# family == "binomial". After step 4 of #253 they are the output code that
-# step 2 moves (summary(), print() and coef(), and the names of a profile),
-# the row of check_fit() for a likelihood without a maximum (step 2) and its
-# row "Link" (step 5). Remove a function from the list when it is converted.
-# test-family-strings.R fails if the list is out of date, so it can only shrink.
-coef.RiskMap
+# family == "binomial". After step 2 of #253 it is the row "Link" of
+# check_fit(), which step 5 moves. Remove a function from the list when it is
+# converted. test-family-strings.R fails if the list is out of date, so it can
+# only shrink.
 fit_check_link
-fit_check_no_maximum
-list_covariance_parameters
-summary.RiskMap
