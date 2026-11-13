@@ -11,9 +11,13 @@ has left.
 \code{\link[=assess_simulation]{assess_simulation()}} show a progress bar with the work done and an
 estimate of the time left.
 \item \code{\link[=predict.RiskMap]{predict.RiskMap()}} shows a bar while it predicts at many locations in
-blocks.
+blocks, and while it propagates parameter uncertainty over its parameter
+draws.
 \item \code{\link[=glgpm]{glgpm()}} shows a line for each stage of Monte Carlo maximum likelihood,
-with the time the stage took.
+with the time the stage took. While a stage runs, the line has a spinner
+and the time so far, which move each time the likelihood is evaluated.
+A step computed in one call to compiled code, such as the Langevin
+sampler, shows its line without them.
 }
 
 Progress is shown when the function's argument \code{messages} is \code{TRUE} and

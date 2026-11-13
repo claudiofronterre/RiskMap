@@ -925,6 +925,7 @@ make_adaptive_mcml_engine <- function(
                        proposal_type = default_proposal_type,
                        built_proposal = NULL, defensive = NULL,
                        defensive_share = NULL) {
+    progress_spin()
     # Keeping proposal_parameters fixed lets the calibration experiments
     # separate ordinary importance-sampling error from variability caused by
     # rebuilding the proposal as the optimizer moves.

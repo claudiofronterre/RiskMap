@@ -81,8 +81,20 @@ single positive finite number" instead of "strictly between 0 and Inf".
 - `parametric_bootstrap()`, `profile()`, `assess_prediction()` and
 `assess_simulation()` show a progress bar with the work done and an estimate
 of the time left, and `predict()` shows one while it predicts at many
-locations in blocks. `glgpm()` shows a line for each stage of Monte Carlo
-maximum likelihood, with the time the stage took. See `?riskmap_progress`.
+locations in blocks or propagates parameter uncertainty. `glgpm()` shows a
+line for each stage of Monte Carlo maximum likelihood, with the time the stage
+took. See `?riskmap_progress`.
+- While a step of a fit runs in the console, its line has a spinner and the
+time so far, which move each time the likelihood is evaluated, so a long stage
+shows it is still running. This applies to the starting values from the
+Laplace approximation, each stage of Monte Carlo maximum likelihood, and the
+re-maximisation that `profile()` does before profiling. A step computed in one
+call to compiled code keeps a still line. These are the conditional samples
+drawn at the estimate, and the Langevin sampler that `predict()` runs when
+given `control_mcmc`, which now has a line of its own. A line too wide for the
+console is shortened so that its time still shows.
+- `profile()` shows its re-maximisation as a step in the console, and as the
+message it was before where progress is hidden.
 - Progress is shown when `messages` is `TRUE` and the option
 `RiskMap.progress` allows it. The option's default is
 `rlang::is_interactive()`, so progress appears in the console but not in
@@ -695,20 +707,34 @@ They were computed one value at a time, which made such a fit much slower than
 the same link written as `function(eta) pnorm(eta)`.
 
 - The numerical derivatives of a custom inverse link that `Deriv` cannot
-differentiate, such as a bare `invlink = pnorm` or
-`function(eta) 0.01 + 0.89 * plogis(eta)` for an imperfect test, are now
-accurate near a linear predictor of zero. Their steps were relative to the
-linear predictor down to 1.8e-5, so just above it they fell to about 2e-9, and
-the second derivative, the numerical derivative of the first, was wrong by up
-to about 2,000 for linear predictors between about 2e-5 and 1e-2 (-40 at 1e-4
-for the imperfect test, where it is -1.1e-5). No step is now below 1e-4,
-and the steps are unchanged where the linear predictor is at least 1 in
-absolute value. The second derivative enters the curvature of the mode search
-and of the proposals but not the importance weights, so estimates were valid,
-but fits with such a link take a different path. In 31 paired fits every
-outcome was the same and the estimates moved by at most 0.03 standard errors,
-while the starting values from the Laplace approximation were better in 25 of
-30, by up to 55 log-likelihood units.
+differentiate are now accurate near a linear predictor of zero. Their steps
+were relative to the linear predictor down to 1.8e-5, so just above it they
+fell to about 2e-9, and the second derivative, the numerical derivative of the
+first, was wrong by up to about 2,000 for linear predictors between about 2e-5
+and 1e-2 (-40 at 1e-4 for `function(eta) 0.01 + 0.89 * plogis(eta)`, where it
+is -1.1e-5). No step is now below 1e-4, and the steps are unchanged where the
+linear predictor is at least 1 in absolute value. The second derivative enters
+the curvature of the mode search and of the proposals but not the importance
+weights, so estimates were valid, but fits with such a link took a different
+path.
+
+- A custom inverse link built from `plogis`, `pt` or `pcauchy`, such as
+`function(eta) 0.01 + 0.89 * plogis(eta)` for an imperfect test or
+`function(eta) pt(eta, 4)`, and a bare `invlink = pnorm`, `plogis`, `pcauchy`
+or `exp`, now has exact derivatives, as a link built from `pnorm` or `exp`
+already had. `Deriv` has no rules for these functions and cannot read the
+compiled body of a bare function, so their derivatives were numerical.
+Numerical derivatives are accurate but not smooth, and the search for
+starting values by the Laplace approximation, which differences the
+approximation, could stop short of its maximum. A call of these functions
+with a location, scale, tail or logarithm other than the default is still
+differentiated numerically. A link built inside another function, such as
+`make_link <- function(sens) function(eta) 0.01 + sens * plogis(eta)`, is now
+differentiated exactly too, where its derivatives were numerical because
+they could not find the link's own variables. In 31 paired fits every outcome was the same and
+the starting values were better in 24 of 30 and worse in none, and `plogis`
+given as a function now reproduces the fits of the canonical logit link to
+within 1e-6 standard errors.
 
 - `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
 in `family`, as `glm()` does, so a link can be named as in
