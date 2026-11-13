@@ -1352,7 +1352,8 @@ parameter_conditioning_sampler <- function(object, burnin = 100L, thin = 10L) {
         n_sim = burnin + n_samples * thin, burnin = burnin, thin = thin,
         h = step_size
       ),
-      invlink = invlink, start = last_mode, adapt_step = FALSE
+      invlink = invlink, start = last_mode, adapt_step = FALSE,
+      family_parameters = object$family_parameters
     )
     last_mode <<- simulation$mode
     list(samples = do.call(cbind, simulation$samples),
@@ -2400,7 +2401,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,
-        seed = mcmc_seed
+        seed = mcmc_seed, family_parameters = object$family_parameters
       )
     }
 
@@ -3231,7 +3232,7 @@ assess_prediction <- function(object,
         refit_args <- list(
           formula        = fit0$formula,
           data           = fit_data_sf[in_id, ],
-          family         = fit0$family,
+          family         = fit_family_argument(fit0),
           model_crs      = st_crs(fit0$data),
           distance_units = fit0$distance_units,
           control_mcmc   = control_mcmc,
@@ -3327,9 +3328,11 @@ assess_prediction <- function(object,
             pit_i[j]    <- as.numeric(y_i[j] >= mu_j)
           }
         } else {
-          y_samp  <- traits$simulate(mu_samp[j, ], units_m_i[j], NULL)
+          y_samp  <- traits$simulate(mu_samp[j, ], units_m_i[j],
+                                     fit0$family_parameters)
           support <- traits$score_support(y_samp, y_i[j], units_m_i[j],
-                                          mu_samp[j, ])
+                                          mu_samp[j, ],
+                                          fit0$family_parameters)
           pk <- tabulate(y_samp + 1, nbins = length(support)) / n_draw
           Fk <- cumsum(pk)
           crps_i[j]   <- crps_discrete(y_i[j], Fk)
@@ -4176,7 +4179,7 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
   fitted_template <- inherits(template, "RiskMap")
   args <- list(
     formula = formula,
-    family = template$family,
+    family = fit_family_argument(template),
     data = data,
     distance_units = template$distance_units,
     control_mcmc = control_mcmc,

@@ -344,16 +344,14 @@ format_fit <- function(x, digits) {
 ##' The title of a fitted model
 ##'
 ##' "Linear geostatistical model" for a family whose likelihood is exact, and
-##' otherwise the name of the family, as in "Binomial geostatistical model".
+##' otherwise the title of the family, as in "Binomial geostatistical model".
 ##' `traits` are those of `fit_traits()`, NULL for a family RiskMap doesn't
 ##' know.
 ##' @noRd
 model_title <- function(traits) {
   if (is.null(traits)) return("Geostatistical model")
   if (isTRUE(traits$exact)) return("Linear geostatistical model")
-  family <- traits$family
-  paste0(toupper(substr(family, 1L, 1L)), substring(family, 2L),
-         " geostatistical model")
+  paste(traits$title, "geostatistical model")
 }
 
 ##' The link of a fit when it is not the canonical one

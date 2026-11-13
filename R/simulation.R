@@ -97,6 +97,10 @@ specify_glgpm <- function(formula, data, family, parameters,
               xlevels = xlevels, re_terms = re_terms, offset = inter$offset,
               kappa = inter$gp_spec$kappa, response = inter$response,
               custom_link = custom_link)
+  # The family's own parameters, which its simulator takes with the model's.
+  if (!is.null(family_link$parameters)) {
+    out$family_parameters <- family_link$parameters
+  }
   model_coords <- unique(coordinates_in_units(data, distance_units))
   attr(out, "distance_scale") <- if (parameters$sigma2 > 0) {
     scale_spatial_coordinates(model_coords, parameters$phi)$distance_scale
@@ -332,7 +336,9 @@ draw_simulation <- function(prepared, nsim, seed = NULL,
     if (name == "data") {
       means <- mu[rows, , drop = FALSE]
       exposure <- inputs[[name]]$denominator
-      response <- family_traits(model$family)$simulate(means, exposure, pars)
+      response <- family_traits(model$family)$simulate(
+        means, exposure, c(pars, model$family_parameters)
+      )
       if (any(!is.finite(response))) {
         riskmap_abort(c("The simulated responses aren't all finite.", "i" = "Check the means and the denominators."), class = "riskmap_error_fit")
       }
@@ -727,9 +733,13 @@ simulation_model <- function(object) {
     NULL
   }
   # A named or custom link carries its derivatives and name, and a canonical
-  # link its stored inverse.
-  invlink <- refit_invlink(object) %||% object$link_function$inv
-  model <- specify_glgpm(object$formula, object$data, object$family, pars,
+  # link its stored inverse. A family with parameters of its own is given by
+  # its specification, which has its link.
+  family <- fit_family_argument(object)
+  invlink <- if (is.character(family)) {
+    refit_invlink(object) %||% object$link_function$inv
+  }
+  model <- specify_glgpm(object$formula, object$data, family, pars,
                          distance_units = object$distance_units,
                          invlink = invlink)
   attr(model, "distance_scale") <- attr(object, "distance_scale") %||%

@@ -488,6 +488,10 @@ summarise_stalled_anchors <- function(history) {
 
 ##' Construct the adaptive importance-sampling engine
 ##'
+##' The engine fits the records the family hands it (`engine_records()`), with
+##' the family's own `family_parameters`, so a negative binomial model is the
+##' binomial model of its records.
+##'
 ##' The standard-normal bank is held fixed within a stage, while the Gaussian
 ##' map from the bank to the latent effects changes smoothly with the trial
 ##' parameters. This preserves a deterministic common-random-number objective
@@ -545,8 +549,15 @@ make_adaptive_mcml_engine <- function(
     kappa = 0.5, cov_offset = NULL, ID_coords = NULL,
     fix_tau2 = FALSE, ID_re = NULL, invlink = NULL,
     defensive_weight = 0.05, proposal = c("global", "laplace"),
-    integrate_noise = FALSE) {
+    integrate_noise = FALSE, family_parameters = NULL) {
   check_engine_family(family)
+  # The records the engine fits, the negative binomial family's as binomial
+  # ones (engine_records()).
+  records <- engine_records(family, y, units_m, cov_offset, family_parameters,
+                            invlink)
+  family <- records$family
+  units_m <- records$units_m
+  cov_offset <- records$offset
   default_proposal_type <- match.arg(proposal)
   proposal_failures <- 0L
   # The largest change of a factor at the last of the fixed refits of the
@@ -1405,22 +1416,30 @@ make_working_start <- function(reference_pars, fix_tau2) {
 ##' certified Monte Carlo maximum likelihood (`fit_adaptive_mcml()`) from that
 ##' estimate and returns the corrected, certified estimate. Every Monte Carlo
 ##' stream of the fit is derived from `seed`, and the caller's random number
-##' state is restored on exit.
+##' state is restored on exit. The engine fits the records the family hands
+##' it (`engine_records()`), with the family's own `family_parameters`, and
+##' the reported log-likelihood adds the terms they leave out
+##' (`log_likelihood_constant()`).
 ##' @noRd
 glgpm_nong_adaptive <- function(
     y, D, coords, units_m, kappa, reference_pars, cov_offset,
     ID_coords, ID_re, fix_tau2, family, invlink, control_mcml,
-    seed, messages = TRUE, distance_scale = 1) {
+    seed, messages = TRUE, distance_scale = 1, family_parameters = NULL) {
   check_engine_family(family)
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
   fit_seed <- as.integer(seed)
 
+  # The engine fits the records of `records$family`, the negative binomial
+  # family's as binomial ones. The separation of the data, the messages and
+  # the fit's link are the model's.
+  records <- engine_records(family, y, units_m, cov_offset, family_parameters,
+                            invlink)
   distances <- as.matrix(pairwise_distances(coords))
   engine_with <- function(integrate_noise) {
     make_adaptive_mcml_engine(
-      D = D, y = y, units_m = units_m, distances = distances,
-      family = family, kappa = kappa, cov_offset = cov_offset,
+      D = D, y = records$y, units_m = records$units_m, distances = distances,
+      family = records$family, kappa = kappa, cov_offset = records$offset,
       ID_coords = ID_coords, fix_tau2 = fix_tau2, ID_re = ID_re,
       invlink = invlink,
       defensive_weight = control_mcml$defensive_weight %||% 0.05,
@@ -1497,8 +1516,8 @@ glgpm_nong_adaptive <- function(
       dispersed$screen <- make_short_scale_screen(
         engine,
         make_independent_site_likelihood(
-          D, y, units_m, ID_coords %||% seq_along(y),
-          cov_offset %||% numeric(length(y)), engine$family_object
+          D, records$y, records$units_m, ID_coords %||% seq_along(y),
+          records$offset %||% numeric(length(y)), engine$family_object
         ),
         distances, kappa
       )
@@ -1546,17 +1565,23 @@ glgpm_nong_adaptive <- function(
   }
   report_mcml_outcome(fit, engine$layout, control_mcml$tolerance, messages,
                       colnames(D), family)
-  assemble_mcml_result(fit, laplace, boundary_names, D, fix_tau2, re_names,
-                       family, invlink, length(y), pc_prior, fit_seed,
-                       small_scale,
-                       integration = list(
-                         used = engine$integrated,
-                         locations = engine$integrated_locations,
-                         of = nrow(distances),
-                         terms = engine$integrated_terms,
-                         counts = engine$integration_counts,
-                         forms = fit$forms
-                       ))
+  result <- assemble_mcml_result(
+    fit, laplace, boundary_names, D, fix_tau2, re_names, family, invlink,
+    length(y), pc_prior, fit_seed, small_scale,
+    integration = list(
+      used = engine$integrated,
+      locations = engine$integrated_locations,
+      of = nrow(distances),
+      terms = engine$integrated_terms,
+      counts = engine$integration_counts,
+      forms = fit$forms
+    )
+  )
+  # The terms the engine's records leave out, zero for a family it fits as
+  # itself.
+  result$log_lik <- result$log_lik +
+    log_likelihood_constant(family, y, family_parameters)
+  result
 }
 
 ##' The objective of certified MCML, with the PC penalty if requested

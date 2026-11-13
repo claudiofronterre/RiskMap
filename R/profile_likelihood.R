@@ -271,7 +271,8 @@ make_profile_problem <- function(fitted, n_draws, seed) {
   control_mcml <- attr(fitted, "control_mcml")
   engine <- make_adaptive_mcml_engine(
     D = design_scaling$design, y = fitted$y, units_m = fitted$units_m,
-    distances = distances, family = fitted$family, kappa = fitted$kappa,
+    distances = distances, family = fitted$family,
+    family_parameters = fitted$family_parameters, kappa = fitted$kappa,
     cov_offset = fitted$cov_offset, ID_coords = fitted$ID_coords,
     fix_tau2 = fitted$fix_tau2,
     ID_re = if (is.null(fitted$ID_re)) NULL else as.matrix(fitted$ID_re),

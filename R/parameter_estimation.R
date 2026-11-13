@@ -288,6 +288,7 @@ glgpm <- function(formula,
   family_link <- read_family(family, invlink)
   family <- family_link$family
   invlink <- family_link$invlink
+  family_parameters <- family_link$parameters
   model <- family_traits(family)
 
   distance_units <- match_choice(distance_units)
@@ -448,9 +449,13 @@ glgpm <- function(formula,
   ))
 
   if(is.null(start_pars[["beta"]])) {
+    # From the records the engine fits, the negative binomial family's as
+    # binomial ones (engine_records()).
+    records <- engine_records(family, y, if (!model$exact) units_m,
+                              cov_offset, family_parameters, invlink)
     start_pars[["beta"]] <- model$start_coefficients(
-      y = y, units_m = if (!model$exact) units_m, D = D,
-      cov_offset = cov_offset, link = if (is.list(invlink)) invlink$link,
+      y = records$y, units_m = records$units_m, D = D,
+      cov_offset = records$offset, link = if (is.list(invlink)) invlink$link,
       formula = inter_f$pf, data = data
     )
   } else {
@@ -527,7 +532,8 @@ glgpm <- function(formula,
       ID_re = ID_re,
       s_unique = s_unique,
       re_unique = re_unique,
-      messages = messages
+      messages = messages,
+      family_parameters = family_parameters
     )
     start_pars <- selection$start
     starting_diagnostics <- selection$diagnostics
@@ -541,7 +547,8 @@ glgpm <- function(formula,
     fix_var_me = fix_var_me, family = family, invlink = invlink,
     start_pars = start_pars, control_mcmc = control_mcmc,
     control_mcml = control_mcml, seed = seed,
-    return_samples = return_samples, messages = messages
+    return_samples = return_samples, messages = messages,
+    family_parameters = family_parameters
   )
 
   res$y <- y
@@ -563,6 +570,8 @@ glgpm <- function(formula,
   res["fix_var_me"] <- list(fix_var_me)
   res$formula <- formula
   res$family <- family
+  # The family's own parameters, held at the values given with it.
+  if (!is.null(family_parameters)) res$family_parameters <- family_parameters
   res$distance_units <- distance_units
   # Retain fitting controls as metadata so a fitted object can serve as a
   # complete specification when refitted to simulated or held-out data.
@@ -591,14 +600,16 @@ glgpm <- function(formula,
 ##' covariates are rescaled for fitting and the estimate is returned in the
 ##' supplied units, with the seed used (`NULL` for Gaussian models) and the
 ##' scalings as attributes. It makes no call to sf, so it can run in forked
-##' processes, where GDAL and PROJ can deadlock. `call` is the call named in
-##' input errors, [glgpm()] when it calls this function.
+##' processes, where GDAL and PROJ can deadlock. `family_parameters` are the
+##' family's own (`read_family()`), NULL for a family without them. `call` is
+##' the call named in input errors, [glgpm()] when it calls this function.
 ##' @noRd
 fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
                              re_unique, units_m, cov_offset, kappa, fix_tau2,
                              fix_var_me, family, invlink, start_pars,
                              control_mcmc, control_mcml, seed,
                              return_samples, messages,
+                             family_parameters = NULL,
                              call = rlang::caller_env()) {
   exact <- family_traits(family)$exact
   n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
@@ -650,7 +661,8 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
       cov_offset = cov_offset, ID_coords = ID_coords, ID_re = ID_re,
       fix_tau2 = fix_tau2, family = family, invlink = invlink,
       control_mcml = control_mcml, seed = seed,
-      messages = messages, distance_scale = spatial_scaling$distance_scale
+      messages = messages, distance_scale = spatial_scaling$distance_scale,
+      family_parameters = family_parameters
     )
     optimizer <- attr(res, "optimizer")
     mcml_history <- optimizer$mcml_history
@@ -679,7 +691,8 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
         kappa = kappa,
         control_mcmc = control_mcmc,
         seed = final_sampling_seed(seed, length(mcml_history)),
-        messages = messages
+        messages = messages,
+        family_parameters = family_parameters
       )
       progress_step_done(messages)
       res$linear_predictors <- final_draw$linear_predictors
@@ -1233,7 +1246,10 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
 ##'
 ##' The conservative eligibility conditions match the model structures used in
 ##' validation. All failures retain the existing start so that automatic
-##' initialisation cannot make a previously valid fit fail.
+##' initialisation cannot make a previously valid fit fail. Both starts are
+##' judged on the records the engine fits (`engine_records()`), with the
+##' family's own `family_parameters`, so a negative binomial model is started
+##' as the binomial model of its records.
 ##'
 ##' @noRd
 select_nongaussian_start <- function(current, y, units_m, D, coords,
@@ -1241,7 +1257,8 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
                                      invlink, fix_tau2, n_re,
                                      ID_re = NULL, s_unique = NULL,
                                      re_unique = NULL,
-                                     messages = TRUE) {
+                                     messages = TRUE,
+                                     family_parameters = NULL) {
   diagnostics <- list(
     selected = "current",
     current_laplace = NA_real_,
@@ -1258,6 +1275,11 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     return(list(start = current, diagnostics = diagnostics))
   }
 
+  records <- engine_records(family, y, units_m, cov_offset,
+                            family_parameters)
+  family <- records$family
+  units_m <- records$units_m
+  cov_offset <- records$offset
   traits <- family_traits(family)
   transformed_fit <- tryCatch({
     transformed_response <- traits$empirical_link(y, units_m)
@@ -2353,9 +2375,11 @@ compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
 ##' @param y,units_m The positives and the denominators.
 ##' @param D The design matrix of the model.
 ##' @param link The name of the link, NULL for a link given as a function.
+##' @param quasi Whether to regress with the quasi-binomial family, for the
+##'   records of a negative binomial model, whose trials need not be whole.
 ##' @noRd
 binomial_start_regression <- function(y, units_m, D, cov_offset,
-                                      link = NULL) {
+                                      link = NULL, quasi = FALSE) {
   regress <- function(glm_family) {
     glm.fit(x = D, y = cbind(y, units_m - y), offset = cov_offset,
             family = glm_family)
@@ -2365,7 +2389,10 @@ binomial_start_regression <- function(y, units_m, D, cov_offset,
                     error = function(e) NULL)
     if (isTRUE(own$converged)) return(own)
   }
-  regress(binomial())
+  # The quasi-binomial family gives the same estimates without glm()'s
+  # warning about trials that are not whole, as those of the negative
+  # binomial records are (engine_records()).
+  regress(if (quasi) stats::quasibinomial() else binomial())
 }
 
 ##' What a refit of a fitted model passes as `invlink`
@@ -2455,7 +2482,13 @@ maxim_integrand <- function(
   invlink <- family_link$invlink
   # The integrand and its derivatives below refer to the denominator as
   # `units_m`, the name used by the package's internal fitting functions.
-  units_m <- denominator
+  # The records are those the engine fits, the negative binomial family's as
+  # binomial ones, whose offset goes into `mu`.
+  records <- engine_records(family, y, denominator, mu,
+                            family_link$parameters, invlink)
+  family <- records$family
+  units_m <- records$units_m
+  mu <- records$offset
 
   # ---------- utilities ----------
   sum_by_group <- function(v, grp, nlev) {
@@ -2679,6 +2712,10 @@ maxim_integrand <- function(
 ##'   in many dimensions accepts almost nothing until its step has shrunk.
 ##' @param adapt_step Logical. If `FALSE`, the step is not tuned during burn-in
 ##'   and stays at `control_mcmc$h`, so that burn-in only discards draws.
+##' @param family_parameters The family's own parameters (`read_family()`),
+##'   NULL for a family without them. The chain samples the records the
+##'   engine fits (`engine_records()`), the negative binomial family's as
+##'   binomial ones.
 ##'
 ##' @details
 ##' The mode is found by Newton's method (`find_sampler_mode()`). The Laplace
@@ -2730,7 +2767,8 @@ laplace_sampling_mcmc <- function(y,
                                   start = NULL,
                                   average_step = TRUE,
                                   start_from_draw = TRUE,
-                                  adapt_step = TRUE) {
+                                  adapt_step = TRUE,
+                                  family_parameters = NULL) {
 
   traits <- check_engine_family(family)
 
@@ -2803,6 +2841,13 @@ laplace_sampling_mcmc <- function(y,
     riskmap_bug("{.arg start} must contain one finite value for each latent effect.")
   }
 
+  # The records the engine samples from, the negative binomial family's as
+  # binomial ones, whose offset goes into the linear predictors.
+  records <- engine_records(family, y, units_m, mu, family_parameters,
+                            invlink)
+  family <- records$family
+  units_m <- records$units_m
+  mu <- records$offset
   linkf <- make_inverse_link_functions(family, invlink, n)
   model <- make_family(family, linkf)
   structure <- sampler_latent_structure(Sigma, ID_coords, ID_re, sigma2_re)
@@ -3325,12 +3370,16 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 ##' The first block is the location-level Gaussian effect; when a nugget is
 ##' present it is included in that block. Subsequent blocks are unstructured
 ##' random effects, in the same layout historically used by `S_samples`.
+##' The records are the model's, with `family_parameters` for a family that
+##' has them, and the fitted values are their means under `link_function`,
+##' the link of the model's mean.
 ##'
 ##' @noRd
 sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
                                       cov_offset, ID_coords, ID_re,
                                       fix_tau2, family, link_function, kappa,
-                                      control_mcmc, seed = NULL, messages) {
+                                      control_mcmc, seed = NULL, messages,
+                                      family_parameters = NULL) {
   fitted_pars <- estimate_to_mcml_reference(estimate, fix_tau2)
   mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
   distances <- pairwise_distances(coords)
@@ -3353,7 +3402,8 @@ sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
     } else {
       link_function[c("inv", "d1", "d2")]
     },
-    control_mcmc = control_mcmc, seed = seed
+    control_mcmc = control_mcmc, seed = seed,
+    family_parameters = family_parameters
   )
 
   eta <- sweep(
