@@ -643,8 +643,14 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   the Newton correction of the last stage did not converge),
 ##'   \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
 ##'   last stage), \code{certification_bank} (the effective draws and Pareto
-##'   shape of the certification draws) and \code{checks_to_review}, the number
-##'   of checks of \code{\link{check_fit}} that need a look. \code{mcml} is
+##'   shape of the certification draws), \code{checks_to_review}, the number
+##'   of checks of \code{\link{check_fit}} that need a look,
+##'   \code{starting_values}, where the starting values came from
+##'   (\code{"user"}, given in \code{start_pars}, \code{"current"}, RiskMap's
+##'   defaults, or \code{"transformed_gaussian"}, a Gaussian fit to the
+##'   transformed data, see \code{\link{glgpm}}), and \code{starting_reason},
+##'   why the defaults were used without a comparison or after a failed one
+##'   (\code{NULL} when the two were compared). \code{mcml} is
 ##'   \code{NULL} for Gaussian models. The parameters of the family, such as
 ##'   the measurement error variance of a Gaussian model, are in
 ##'   \code{family_parameters}, a table of those that were estimated, and
@@ -942,6 +948,10 @@ format_fit_summary <- function(x) {
       out_heading("Monte Carlo maximum likelihood"),
       out_bullets(c(stats::setNames(describe_mcml_certificate(x$mcml),
                                     certificate_symbol(x$mcml)),
+                    out_as_bullets(
+                      describe_starting_values(x$mcml$starting_values,
+                                               x$mcml$starting_reason), "i"
+                    ),
                     describe_checks_to_review(x$mcml$checks_to_review))))
   }
   c(out_rule(title),
@@ -972,6 +982,52 @@ format_fit_summary <- function(x) {
     out_pairs(c("Log-likelihood", if (!is.null(x$aic)) "AIC"),
               format(c(x$log_lik, x$aic))),
     monte_carlo)
+}
+
+##' One sentence on where the starting values of a fit came from, and why
+##'
+##' `selected` and `reason` are those of `select_nongaussian_start()`.
+##' `NULL` for a fit that doesn't record them, such as one saved by an
+##' earlier version, which records no reason either.
+##' @noRd
+describe_starting_values <- function(selected, reason = NULL) {
+  if (is.null(selected)) return(NULL)
+  transformed <- "a Gaussian fit to the transformed data"
+  defaults <- "The starting values were RiskMap's defaults"
+  laplace <- "the Laplace approximation of the likelihood"
+  switch(
+    selected,
+    user = paste("The starting values were given in `start_pars`, with",
+                 "RiskMap's defaults for any it left out."),
+    transformed_gaussian = paste0("The starting values came from ",
+                                  transformed, ", which ", laplace,
+                                  " preferred to RiskMap's defaults."),
+    current = if (is.null(reason)) {
+      paste0(defaults, ", which ", laplace, " preferred to ", transformed,
+             ".")
+    } else {
+      paste0(defaults, switch(
+        reason,
+        re_terms = paste0(", which a model with `re()` terms takes without",
+                          " comparing them with ", transformed, "."),
+        link = paste0(", which a model with a link other than the",
+                      " canonical one takes without comparing them with ",
+                      transformed, "."),
+        transformed_failed = paste0(", because ", transformed, " failed."),
+        transformed_invalid = paste0(", because ", transformed,
+                                     " gave invalid values."),
+        comparison_failed = paste0(", because ", laplace,
+                                   " failed at one of the two starts."),
+        transformed_not_finite = paste0(", because ", laplace,
+                                        " was not finite at the start from ",
+                                        transformed, "."),
+        neither_finite = paste0(", because ", laplace,
+                                " was not finite at either start."),
+        "."
+      ))
+    },
+    NULL
+  )
 }
 
 ##' One sentence on the link of a summarised fit

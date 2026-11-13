@@ -137,7 +137,8 @@
 ##' the empirical link of the data (the empirical logit of a binomial model),
 ##' with one observation per location, the totals of the location where it has
 ##' several records, and starts from the one with the higher Laplace
-##' approximation of the likelihood.
+##' approximation of the likelihood. [summary.RiskMap()] says which starting
+##' values a fit used and why.
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
@@ -1332,7 +1333,8 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     fallback_reason = NULL,
     reason = NULL
   )
-  # The existing start, with the reason and its text.
+  # The existing start, with the reason (`describe_starting_values()`) and
+  # its text.
   keep_current <- function(reason, text) {
     diagnostics$reason <- reason
     diagnostics$fallback_reason <- text

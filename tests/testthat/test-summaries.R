@@ -615,3 +615,41 @@ test_that("summary.RiskMap_cross_validation weights every metric by test-set siz
                 "1 test-set assessment failed, and its scores are missing.",
                 fixed = TRUE)
 })
+
+test_that("the summary of a fit says where its starting values came from, and why", {
+  expect_identical(describe_starting_values("user"),
+                   paste("The starting values were given in `start_pars`,",
+                         "with RiskMap's defaults for any it left out."))
+  expect_match(describe_starting_values("transformed_gaussian"),
+               "came from a Gaussian fit to the transformed data, which the Laplace approximation of the likelihood preferred",
+               fixed = TRUE)
+  expect_match(describe_starting_values("current"),
+               "defaults, which the Laplace approximation of the likelihood preferred",
+               fixed = TRUE)
+  expect_match(describe_starting_values("current", "re_terms"),
+               "a model with `re()` terms takes without comparing them",
+               fixed = TRUE)
+  expect_match(describe_starting_values("current", "link"),
+               "a link other than the canonical one", fixed = TRUE)
+  expect_match(describe_starting_values("current", "transformed_failed"),
+               "because a Gaussian fit to the transformed data failed.",
+               fixed = TRUE)
+  # Every reason that select_nongaussian_start() records has its own words.
+  reasons <- c("re_terms", "link", "transformed_failed",
+               "transformed_invalid", "comparison_failed",
+               "transformed_not_finite", "neither_finite")
+  sentences <- vapply(reasons, describe_starting_values, character(1),
+                      selected = "current")
+  expect_identical(anyDuplicated(sentences), 0L)
+  expect_false(any(sentences == "The starting values were RiskMap's defaults."))
+  # A fit saved by an earlier version doesn't record them.
+  expect_null(describe_starting_values(NULL))
+
+  # The fixture has an re() term.
+  fitted <- summary(binomial_model)
+  expect_identical(fitted$mcml$starting_values, "current")
+  expect_identical(fitted$mcml$starting_reason, "re_terms")
+  expect_match(squish(capture.output(print(fitted))),
+               describe_starting_values("current", "re_terms"), fixed = TRUE)
+  expect_null(summary(gaussian_model)$mcml)
+})

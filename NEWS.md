@@ -146,6 +146,15 @@ failed model fit becomes a warning bullet.
 - The result of `predict()` records the link of its fit, when it is not the
 canonical one, in the new element `link`, so that its print names the link as
 the print of the fit does.
+- The `summary()` of a binomial, Poisson or negative binomial fit says where
+its starting values came from and why. They were given in `start_pars`, or
+were RiskMap's defaults, or came from a Gaussian fit to the transformed data,
+whichever the Laplace approximation of the likelihood preferred. When the
+defaults were used without that comparison, as for a model with `re()` terms
+or a link other than the canonical one, or after the comparison failed, the
+line says why. Before, a failure was recorded only in
+`attr(fit, "starting_values")$fallback_reason`. The choice and its reason are
+in `summary(fit)$mcml$starting_values` and `starting_reason`.
 - The `summary()` of a fit gives the parameters of its family, such as the
 measurement error variance of a Gaussian model, in the element
 `family_parameters`, a table of those that were estimated, and in

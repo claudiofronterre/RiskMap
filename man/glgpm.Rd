@@ -260,7 +260,8 @@ variance of each \code{re()} term. A model with the canonical link and without
 the empirical link of the data (the empirical logit of a binomial model),
 with one observation per location, the totals of the location where it has
 several records, and starts from the one with the higher Laplace
-approximation of the likelihood.
+approximation of the likelihood. \code{\link[=summary.RiskMap]{summary.RiskMap()}} says which starting
+values a fit used and why.
 }
 \examples{
 
