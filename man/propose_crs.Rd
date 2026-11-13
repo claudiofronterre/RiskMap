@@ -22,9 +22,12 @@ Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is unset.}
 }
 \value{
 The EPSG code of the UTM zone as an integer, or an \code{sf} \code{crs}
-object for a centred projection, whose name begins with "RiskMap". Either
-can be passed to \code{\link[sf:st_transform]{sf::st_transform()}} and to the \code{model_crs} argument of
-\code{\link[=glgpm]{glgpm()}}.
+object for a centred projection. Its name begins with "RiskMap" and gives
+the family, the centre (the standard parallel for the Lambert conformal
+conic projection), the azimuth of the oblique Mercator projection and the
+scale factor \code{k0}, for example "RiskMap oblique stereographic 23E 4.5S k0
+0.9952". Either can be passed to \code{\link[sf:st_transform]{sf::st_transform()}} and to the
+\code{model_crs} argument of \code{\link[=glgpm]{glgpm()}}.
 }
 \description{
 Proposes the projected coordinate reference system (CRS) that

@@ -104,6 +104,31 @@ test_that("propose_crs gives a centred projection for a wide region", {
   expect_true(is.integer(epsg))
 })
 
+test_that("the name of a centred projection identifies it", {
+  crs <- propose_crs(wide_points, messages = FALSE)
+  narrower <- lonlat_points(lon = c(13, 30, 13, 30, 21.5),
+                            lat = c(-12, -12, 4, 4, -4))
+  other <- propose_crs(narrower, messages = FALSE)
+  expect_false(crs == other)
+  expect_false(identical(crs$Name, other$Name))
+  expect_match(crs$Name, " k0 0\\.9[0-9]{3}$")
+})
+
+test_that("propose_crs does not depend on the axis order or on digits", {
+  crs <- propose_crs(wide_points, messages = FALSE)
+  axis_order <- st_axis_order(TRUE)
+  withr::defer(st_axis_order(axis_order))
+  expect_identical(propose_crs(wide_points, messages = FALSE)$wkt, crs$wkt)
+  expect_identical(propose_crs(lonlat_points(c(33, 34), c(5, 6)),
+                               messages = FALSE), 32636L)
+  st_axis_order(axis_order)
+
+  points <- lonlat_points(c(118, 129, 118, 129, 123.6), c(-13, -13, 5, 5, -4))
+  expected <- propose_crs(points, messages = FALSE)$wkt
+  withr::local_options(digits = 3)
+  expect_identical(propose_crs(points, messages = FALSE)$wkt, expected)
+})
+
 test_that("propose_crs is reproducible and shared by similar extents", {
   crs <- propose_crs(wide_points, messages = FALSE)
   expect_identical(propose_crs(wide_points, messages = FALSE)$wkt, crs$wkt)
@@ -124,10 +149,30 @@ test_that("propose_crs handles polygons and projected data", {
 
   # an sfc in a projected CRS gives the same as its longitude and latitude
   projected <- st_transform(st_geometry(wide_points), 3857)
-  expect_identical(propose_crs(projected, messages = FALSE)$Name,
-                   propose_crs(wide_points, messages = FALSE)$Name)
+  expect_identical(propose_crs(projected, messages = FALSE)$wkt,
+                   propose_crs(wide_points, messages = FALSE)$wkt)
   expect_identical(propose_crs(gaussian_data, messages = FALSE),
                    propose_crs(latlon_data, messages = FALSE))
+})
+
+test_that("propose_crs reports no infinite distortion for global data", {
+  global <- lonlat_points(rep(seq(-180, 120, 60), 3), rep(c(-60, 0, 60), each = 6))
+  texts <- character()
+  result <- tryCatch(
+    withCallingHandlers(
+      propose_crs(global),
+      riskmap_message = function(m) {
+        texts <<- c(texts, conditionMessage(m))
+        invokeRestart("muffleMessage")
+      },
+      riskmap_warning_crs = function(w) {
+        texts <<- c(texts, conditionMessage(w))
+        invokeRestart("muffleWarning")
+      }
+    ),
+    riskmap_error_input = function(e) e
+  )
+  expect_false(any(grepl("Inf", texts, fixed = TRUE)))
 })
 
 test_that("propose_crs warns for a region too wide for a planar CRS", {
@@ -184,6 +229,17 @@ test_that("a CRS that distorts distances by more than 1% is reported", {
   expect_no_warning(
     without_crs_check(summarise_distance(st_transform(europe, 3857)))
   )
+})
+
+test_that("create_grid checks the CRS of a raster", {
+  skip_if_not_installed("terra")
+  # Pseudo-Mercator over Europe
+  counts <- terra::rast(terra::ext(0, 1e6, 5.6e6, 7.4e6), resolution = 1e5,
+                        crs = "EPSG:3857")
+  terra::values(counts) <- seq_len(terra::ncell(counts))
+  names(counts) <- "count"
+  expect_warning(create_grid(raster = counts), "raster",
+                 class = "riskmap_warning_crs")
 })
 
 test_that("longitude and latitude are projected with the CRS reported", {

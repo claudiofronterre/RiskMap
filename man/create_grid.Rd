@@ -75,7 +75,8 @@ it is automatically reprojected to the CRS from \code{\link[=propose_crs]{propos
 message reports the conversion used and its distortion of distances;
 transform \code{boundaries} to a projected CRS yourself first to use a
 different one. A warning of class \code{riskmap_warning_crs} is raised when the
-CRS used distorts distances by more than 1\% over \code{boundaries}.
+CRS used distorts distances by more than 1\% over \code{boundaries}, or over the
+grid built from \code{raster}.
 }
 \examples{
 library(sf)

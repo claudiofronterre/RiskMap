@@ -50,7 +50,8 @@
 ##' message reports the conversion used and its distortion of distances;
 ##' transform `boundaries` to a projected CRS yourself first to use a
 ##' different one. A warning of class `riskmap_warning_crs` is raised when the
-##' CRS used distorts distances by more than 1% over `boundaries`.
+##' CRS used distorts distances by more than 1% over `boundaries`, or over the
+##' grid built from `raster`.
 ##'
 ##' @return
 ##' A `RiskMap_grid` and `sf` object containing the generated grid points. The
@@ -212,6 +213,8 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
   if (nrow(grid_out) == 0) {
     abort_input("No cells of {.arg raster} fall within {.arg boundaries} or have values.", arg = "raster")
   }
+
+  check_crs_distortion(grid_out, NULL, "raster")
 
   grid_out$grid_id <- seq_len(nrow(grid_out))
   attr(grid_out, "grid_metadata") <- list(

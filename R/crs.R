@@ -53,9 +53,12 @@
 ##' country's boundary and pass the result as `model_crs` or `distance_crs`.
 ##'
 ##' @return The EPSG code of the UTM zone as an integer, or an `sf` `crs`
-##' object for a centred projection, whose name begins with "RiskMap". Either
-##' can be passed to [sf::st_transform()] and to the `model_crs` argument of
-##' [glgpm()].
+##' object for a centred projection. Its name begins with "RiskMap" and gives
+##' the family, the centre (the standard parallel for the Lambert conformal
+##' conic projection), the azimuth of the oblique Mercator projection and the
+##' scale factor `k0`, for example "RiskMap oblique stereographic 23E 4.5S k0
+##' 0.9952". Either can be passed to [sf::st_transform()] and to the
+##' `model_crs` argument of [glgpm()].
 ##'
 ##' @references
 ##' Milnor J (1969). A problem in cartography. *American Mathematical Monthly*
@@ -92,10 +95,15 @@ propose_crs <- function(data, epsg_tolerance = 0.005,
       riskmap_inform("Proposed {label}, which distorts distances by at most {pct} over {.arg data}.")
     } else {
       utm_label <- choice$utm_label
-      utm_pct <- format_distortion(choice$utm_error)
+      utm_note <- if (is.finite(choice$utm_error)) {
+        utm_pct <- format_distortion(choice$utm_error)
+        "The best UTM zone, {utm_label}, distorts them by up to {utm_pct}, more than {.arg epsg_tolerance} allows."
+      } else {
+        "No UTM zone can be used, because the projection fails at some locations of {.arg data}."
+      }
       riskmap_inform(c(
         "Proposed a custom {choice$family} projection, {.val {label}}, which distorts distances by at most {pct} over {.arg data}.",
-        "i" = "The best UTM zone, {utm_label}, distorts them by up to {utm_pct}, more than {.arg epsg_tolerance} allows."
+        "i" = utm_note
       ))
     }
   }
@@ -353,8 +361,7 @@ warn_region_too_wide <- function(choice, data_arg) {
 #' A distortion, as a fraction, in percent to two significant digits
 #' @noRd
 format_distortion <- function(x) {
-  paste0(format(signif(100 * x, 2), scientific = FALSE,
-                drop0trailing = TRUE), "%")
+  paste0(trimws(formatC(signif(100 * x, 2), format = "fg", digits = 2)), "%")
 }
 
 #' A distance in kilometres, rounded to 100 km
@@ -387,7 +394,13 @@ choose_crs <- function(data, epsg_tolerance = 0.005) {
 
   centred <- centred_crs_candidates(region)
   errors <- vapply(centred, function(candidate) candidate$error, numeric(1))
-  if (!length(centred) || !any(is.finite(errors))) return(choice)
+  if (!length(centred) || !any(is.finite(errors))) {
+    if (is.finite(utm$error)) return(choice)
+    abort_input(c(
+      "The distortion of distances can't be computed over {.arg data} for any planar coordinate reference system.",
+      "i" = "The data may cover too much of the Earth. Project them yourself to use a planar one anyway."
+    ), arg = "data")
+  }
   best <- centred[[which.min(errors)]]
   if (is.finite(utm$error) && best$error >= utm$error) return(choice)
 
@@ -515,7 +528,8 @@ build_centred_crs <- function(candidate, lonlat) {
 
   name <- paste("RiskMap", candidate$family, format_lon(lon0),
                 format_lat(lat0))
-  if (!is.null(alpha)) name <- paste(name, "azimuth", format(alpha))
+  if (!is.null(alpha)) name <- paste(name, "azimuth", format_half(alpha))
+  name <- paste(name, "k0", sprintf("%.4f", k0))
   crs <- tryCatch(named_crs(proj(k0), name), error = function(e) NULL)
   if (is.null(crs)) return(NULL)
   list(crs = crs, family = candidate$family, error = error)
@@ -524,13 +538,24 @@ build_centred_crs <- function(candidate, lonlat) {
 #' Fill the parameters of a PROJ string template
 #' @noRd
 glue_parameters <- function(template, lon0, lat0, alpha = NULL) {
-  out <- sub("{lon0}", format(lon0), template, fixed = TRUE)
-  out <- gsub("{lat0}", format(lat0), out, fixed = TRUE)
-  if (!is.null(alpha)) out <- gsub("{alpha}", format(alpha), out, fixed = TRUE)
+  out <- sub("{lon0}", format_half(lon0), template, fixed = TRUE)
+  out <- gsub("{lat0}", format_half(lat0), out, fixed = TRUE)
+  if (!is.null(alpha)) {
+    out <- gsub("{alpha}", format_half(alpha), out, fixed = TRUE)
+  }
   out
 }
 
+#' A multiple of half a degree as text, such as 23.5 or 4, whatever the
+#' option `digits`
+#' @noRd
+format_half <- function(x) sub("\\.0$", "", sprintf("%.1f", x))
+
 #' A CRS from a PROJ string, with a name in its WKT
+#'
+#' The name gives the family, the centre (the standard parallel for the
+#' Lambert conformal conic projection), the azimuth of the oblique Mercator
+#' projection and the scale factor, so that it identifies the CRS.
 #' @noRd
 named_crs <- function(proj, name) {
   wkt <- st_crs(proj)$wkt
@@ -547,12 +572,14 @@ round_half <- function(x) round(2 * x) / 2
 #' @noRd
 format_lon <- function(x) {
   x <- ((x + 180) %% 360) - 180
-  paste0(format(abs(x)), if (x < 0) "W" else "E")
+  paste0(format_half(abs(x)), if (x < 0) "W" else "E")
 }
 
 #' @rdname format_lon
 #' @noRd
-format_lat <- function(x) paste0(format(abs(x)), if (x < 0) "S" else "N")
+format_lat <- function(x) {
+  paste0(format_half(abs(x)), if (x < 0) "S" else "N")
+}
 
 #' Minimise a function of one variable over an interval
 #'
@@ -683,6 +710,8 @@ oblique_mercator_parameters <- function(X, centre, meridian) {
 #'   kilometres (`diameter_km`).
 #' @noRd
 crs_region <- function(data, max_points = 2000L) {
+  axis_order <- st_axis_order(FALSE)
+  on.exit(st_axis_order(axis_order), add = TRUE)
   geometry <- st_geometry(data)
   geometry <- geometry[!st_is_empty(geometry)]
   if (!length(geometry)) {
@@ -729,7 +758,7 @@ crs_region <- function(data, max_points = 2000L) {
 
   points <- rbind(xy, boundary_xy, inner_xy)
   out <- sf_project(plane_crs$wkt, "EPSG:4326", points, keep = TRUE,
-                    warn = FALSE)
+                    warn = FALSE, authority_compliant = FALSE)
   out <- unique(out[is.finite(rowSums(out)), , drop = FALSE])
   out[, 1] <- ((out[, 1] + 180) %% 360) - 180
   out[, 2] <- pmin(pmax(out[, 2], -89.9), 89.9)
@@ -737,7 +766,8 @@ crs_region <- function(data, max_points = 2000L) {
   centre <- smallest_cap_centre(unit_vectors(out), centre)
 
   corners <- sf_project(plane_crs$wkt, "EPSG:4326", unique(hull_xy),
-                        keep = TRUE, warn = FALSE)
+                        keep = TRUE, warn = FALSE,
+                        authority_compliant = FALSE)
   corners <- corners[is.finite(rowSums(corners)), , drop = FALSE]
   cosines <- tcrossprod(unit_vectors(corners))
   diameter_km <- 6371.0088 * acos(max(-1, min(1, min(cosines))))
@@ -752,7 +782,8 @@ crs_region <- function(data, max_points = 2000L) {
 #' @param lonlat A matrix of longitudes and latitudes in degrees.
 #' @param crs A projected `crs` object.
 #' @return A matrix with the largest (`a`) and smallest (`b`) scale factor at
-#'   each location.
+#'   each location. Longitude comes first and the projected coordinates are
+#'   read as easting and northing, whatever `sf::st_axis_order()` says.
 #' @noRd
 tissot_scales <- function(lonlat, crs) {
   semi_major <- 6378137
@@ -770,7 +801,7 @@ tissot_scales <- function(lonlat, crs) {
   points <- rbind(cbind(lon + dlon, lat), cbind(lon - dlon, lat),
                   cbind(lon, lat + dlat), cbind(lon, lat - dlat))
   projected <- sf_project("EPSG:4326", crs$wkt, points, keep = TRUE,
-                          warn = FALSE)
+                          warn = FALSE, authority_compliant = FALSE)
   projected <- projected * crs_to_distance_factor(crs, "m", "crs")
   n <- length(lon)
   east <- (projected[seq_len(n), , drop = FALSE] -
