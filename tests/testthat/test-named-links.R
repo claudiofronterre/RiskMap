@@ -156,7 +156,8 @@ test_that("quasi and other families are refused", {
                  "quasi-likelihood family, which has no likelihood")
   }
   expect_match(refused_message(fit_binomial(Gamma())),
-               "Gaussian, binomial or Poisson family, not \"Gamma\"")
+               "Gaussian, binomial or Poisson family, or `negative_binomial()`, not \"Gamma\"",
+               fixed = TRUE)
   error <- expect_input_error(fit_binomial(gaussian("log")), "family")
   expect_match(conditionMessage(error),
                "The log link isn't available for the gaussian family")

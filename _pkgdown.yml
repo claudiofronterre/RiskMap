@@ -44,6 +44,7 @@ reference:
       - dast
       - gp
       - re
+      - negative_binomial
 
   - title: Simulation and MCMC
     contents:

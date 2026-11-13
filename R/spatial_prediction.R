@@ -118,7 +118,7 @@
 ##' log scale). For each value, conditional samples of the latent effects are
 ##' generated at that value and the prediction is repeated; the draws are then
 ##' pooled, so every summary, aggregation and derived target reflects both the
-##' latent and the parameter uncertainty. For binomial and Poisson models the
+##' latent and the parameter uncertainty. For binomial, Poisson and negative binomial models the
 ##' conditional samples at each parameter value come from a short run of the
 ##' same Langevin (MALA) sampler used for plug-in prediction, in coordinates
 ##' whitened by the Laplace approximation at that value, started from a draw
@@ -1291,7 +1291,7 @@ draw_parameter_values <- function(object, n_draws) {
   estimate <- unlist(object$estimate)
   covariance <- object$covariance
   failure <- function() {
-    riskmap_abort(c("The covariance matrix of the estimates isn't available or isn't positive definite, so parameter uncertainty can't be propagated.", "i" = "For a binomial or Poisson model, refitting with {.code control_mcml = set_control_mcml(pc_prior = TRUE)} usually solves this."), class = "riskmap_error_fit")
+    riskmap_abort(c("The covariance matrix of the estimates isn't available or isn't positive definite, so parameter uncertainty can't be propagated.", "i" = "For a binomial, Poisson or negative binomial model, refitting with {.code control_mcml = set_control_mcml(pc_prior = TRUE)} usually solves this."), class = "riskmap_error_fit")
   }
   if (is.null(covariance)) failure()
   covariance <- as.matrix(covariance)

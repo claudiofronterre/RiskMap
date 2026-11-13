@@ -34,7 +34,7 @@
 ##' the distance to the nearest sampled location, it accounts for the estimated
 ##' scale of spatial correlation and for clustering of the sampled locations. It depends
 ##' only on where the data were collected, not on the outcomes or on the number
-##' of individuals at each location. For binomial and Poisson outcomes, which
+##' of individuals at each location. For binomial, Poisson and negative binomial outcomes, which
 ##' carry less information than a noise-free observation of the linear
 ##' predictor, it is therefore an optimistic (lower) value.
 ##'

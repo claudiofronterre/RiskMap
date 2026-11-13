@@ -8,7 +8,7 @@ plot_mcmc(object, check_mean = TRUE, component = NULL, ...)
 }
 \arguments{
 \item{object}{A fitted \code{RiskMap} object returned by \code{\link[=glgpm]{glgpm()}} for a
-binomial or Poisson model with \code{return_samples = TRUE}.}
+binomial, Poisson or negative binomial model with \code{return_samples = TRUE}.}
 
 \item{check_mean}{Logical. If \code{TRUE} (the default), the chain of the mean
 of the spatial random effects over the locations is shown.}
@@ -25,7 +25,7 @@ modified like a \code{ggplot} object.
 }
 \description{
 Draws diagnostics of the Markov chain Monte Carlo (MCMC) samples of the
-random effects stored in a fitted binomial or Poisson model. For the mean
+random effects stored in a fitted binomial, Poisson or negative binomial model. For the mean
 of the spatial random effects over the locations, and for the location
 whose samples have the smallest effective sample size, it shows a trace
 plot and the autocorrelation function. A histogram of the effective sample

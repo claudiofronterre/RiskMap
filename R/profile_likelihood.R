@@ -4,8 +4,8 @@
 ##' chosen parameter, the log-likelihood maximised over all the other
 ##' parameters on a grid of values, and for each chosen pair, the same over a
 ##' grid of pairs. Profiles are available for linear geostatistical
-##' (Gaussian) models and for binomial and Poisson models fitted with
-##' certified Monte Carlo maximum likelihood. For a binomial or Poisson model
+##' (Gaussian) models and for binomial, Poisson and negative binomial models fitted with
+##' certified Monte Carlo maximum likelihood. For a binomial, Poisson or negative binomial model
 ##' the Monte Carlo likelihood is evaluated on one fixed bank of `n_draws`
 ##' standard normal draws with the importance distribution anchored at the
 ##' estimate, so the profiles are smooth functions of the parameters. Use
@@ -60,7 +60,7 @@
 ##'
 ##' Each point is a maximisation of the likelihood over the other
 ##' parameters, so the time grows with the number of points and of parameters.
-##' A binomial or Poisson model that takes a minute to fit can take tens of
+##' A binomial, Poisson or negative binomial model that takes a minute to fit can take tens of
 ##' seconds per point.
 ##' Joint profiles cost `n_grid^2` points each and are computed only when
 ##' `pairs` asks for them. With `messages = TRUE` a progress bar shows the
@@ -68,7 +68,7 @@
 ##' parallel.
 ##'
 ##' @param fitted A `RiskMap` object from [glgpm()] for a Gaussian model, or
-##'   for a binomial or Poisson model fitted with certified Monte Carlo
+##'   for a binomial, Poisson or negative binomial model fitted with certified Monte Carlo
 ##'   maximum likelihood.
 ##' @param parameters Names of the parameters to profile one at a time, as in
 ##'   `names(unlist(fitted$estimate))` (the prefix `beta.` can be left out).
@@ -135,7 +135,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
   traits <- fit_traits(fitted)
   exact <- isTRUE(traits$exact)
   if (!exact && (is.null(traits) || is.null(fitted$mcml_history))) {
-    abort_input("Profiles are available for Gaussian models, and for binomial and Poisson models fitted by certified Monte Carlo maximum likelihood.", arg = "fitted")
+    abort_input("Profiles are available for Gaussian models, and for binomial, Poisson and negative binomial models fitted by certified Monte Carlo maximum likelihood.", arg = "fitted")
   }
   check_profile_settings(n_points, n_grid, span, if (!exact) n_draws,
                          level)

@@ -38,8 +38,10 @@ response.}
 \item{ID_re}{Indices mapping response to unstructured random effects.}
 
 \item{family}{The distribution of the response, \code{"binomial"} or
-\code{"poisson"}, or a binomial or Poisson family object with one of the
-links that \code{\link[=glgpm]{glgpm()}} accepts, such as \code{binomial("probit")}.}
+\code{"poisson"}, a binomial or Poisson family object with one of the
+links that \code{\link[=glgpm]{glgpm()}} accepts, such as \code{binomial("probit")}, or
+\code{\link[=negative_binomial]{negative_binomial()}} with its size, such as
+\code{negative_binomial(theta = 2)}, with \code{denominator} the exposure.}
 
 \item{sigma2_re}{Variance of the unstructured random effects.}
 

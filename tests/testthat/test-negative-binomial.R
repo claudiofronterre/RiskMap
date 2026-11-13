@@ -91,9 +91,11 @@ test_that("the negative binomial family is given by its function only", {
   expect_input_error(negative_binomial(theta = c(1, 2)), "theta")
   expect_input_error(read_family(negative_binomial(2), invlink = exp),
                      "invlink", "log link only")
-  # A string has no size, and errors name only the families users can give.
+  # A string has no size, so it is refused, and the error names the function.
   error <- expect_input_error(read_family("negative_binomial"), "family")
-  expect_false(grepl("negative", conditionMessage(error)))
+  expect_match(conditionMessage(error), "negative_binomial()", fixed = TRUE)
+  expect_false(grepl("\"negative_binomial\"", conditionMessage(error),
+                     fixed = TRUE))
   no_family <- binomial_model
   no_family["family"] <- list(NULL)
   error <- expect_input_error(fit_is_exact(no_family), "object")
@@ -358,4 +360,41 @@ test_that("the refits of a negative binomial fit carry its size", {
   spread <- apply(fit$S_samples, 2L, stats::sd)
   expect_lt(max(abs(colMeans(draws$samples) - colMeans(fit$S_samples)) /
                   spread), 0.6)
+})
+
+test_that("a family object of MASS::negative.binomial() is read as a held size", {
+  # Built as MASS builds it, with the size in the environment of its
+  # functions, since MASS is not a dependency of RiskMap.
+  mass_family <- function(theta, link = "log") {
+    .Theta <- theta
+    structure(list(family = paste0("Negative Binomial(", theta, ")"),
+                   link = link, variance = function(mu) mu + mu^2 / .Theta),
+              class = "family")
+  }
+  expect_identical(read_family(mass_family(2)),
+                   read_family(negative_binomial(theta = 2)))
+  # The size comes from the environment, not from the name, which MASS
+  # rounds to four decimals.
+  third <- mass_family(1 / 3)
+  third$family <- paste0("Negative Binomial(", format(round(1 / 3, 4)), ")")
+  expect_identical(read_family(third)$parameters, list(theta = 1 / 3))
+  # Without the size in its own environment, it is taken from the name, and
+  # not from a `.Theta` found elsewhere.
+  named <- mass_family(3.5)
+  environment(named$variance) <- new.env(parent = globalenv())
+  withr::local_environment(list2env(list(.Theta = 0.5)))
+  expect_identical(read_family(named)$parameters, list(theta = 3.5))
+  expect_input_error(read_family(mass_family(2, "sqrt")), "family", "log")
+  # A size that is not one positive finite number is refused against
+  # `family`.
+  expect_input_error(read_family(mass_family(Inf)), "family", "one positive")
+  several <- mass_family(1)
+  several$family <- c("Negative Binomial(1)", "Negative Binomial(2)")
+  environment(several$variance) <- list2env(list(.Theta = c(1, 2)))
+  expect_input_error(read_family(several), "family")
+  # The function itself gives its default, with the size estimated.
+  expect_identical(read_family(negative_binomial),
+                   read_family(negative_binomial()))
+  expect_output(print(negative_binomial()), "size estimated")
+  expect_output(print(negative_binomial(theta = 2)), "held at 2")
 })

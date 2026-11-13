@@ -40,9 +40,9 @@
 ##'     more than half a log-likelihood unit between two maxima, and is then
 ##'     `SUSPICIOUS`. It is a `PROBLEM` when a point of a profile is above the
 ##'     estimate, which is then not the maximum likelihood estimate. The
-##'     profiles of a binomial or Poisson fit should take about 10 times as
+##'     profiles of a binomial, Poisson or negative binomial fit should take about 10 times as
 ##'     long as the fit for each parameter, less with `cores`.
-##'   * `"radius"`, for a binomial or Poisson fit, a prediction of how often
+##'   * `"radius"`, for a binomial, Poisson or negative binomial fit, a prediction of how often
 ##'     the radius in the bound on the Monte Carlo error is too small. The
 ##'     radius is estimated from the certification draws themselves, which
 ##'     can miss the rare draws of large importance weight. Short Markov

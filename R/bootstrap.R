@@ -6,7 +6,7 @@
 ##' bootstrap confidence interval.
 ##'
 ##' @param object A fitted `RiskMap` object returned by [glgpm()], from a
-##'   Gaussian, binomial or Poisson model, with or without a nugget and
+##'   Gaussian, binomial, Poisson or negative binomial model, with or without a nugget and
 ##'   [re()] terms.
 ##' @param n_sim Number of bootstrap replicates. Percentile intervals at the
 ##'   95% level need about 1000 for stable limits.
@@ -35,7 +35,7 @@
 ##' Replicate \eqn{i} uses one seed, \eqn{s_i = s + 10000 (i - 1)}, where
 ##' \eqn{s} is `seed`. It simulates its data with `simulate_glgpm(seed =` \eqn{s_i}`)`
 ##' and refits with `glgpm(seed =` \eqn{s_i}`)`. The Monte Carlo streams of a
-##' binomial or Poisson fit are derived from its seed by offsets between 1 and
+##' binomial, Poisson or negative binomial fit are derived from its seed by offsets between 1 and
 ##' about 6000, so consecutive integers would make replicates share streams,
 ##' and seeds 10000 apart do not. A replicate depends only on its seed, so the
 ##' results are identical for any number of `cores` and the first replicates

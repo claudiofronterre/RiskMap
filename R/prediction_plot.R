@@ -50,7 +50,7 @@
 ##' @details
 ##' The legend title names the mapped quantity and is the only title. For
 ##' binomial models the response is labelled as prevalence and for Poisson
-##' models as a rate. Probabilities are labelled as percentages. The title can
+##' and negative binomial models as a rate. Probabilities are labelled as percentages. The title can
 ##' be replaced with `labs(fill = ...)`.
 ##'
 ##' Grid cells created by [create_grid()] are drawn as squares clipped to the

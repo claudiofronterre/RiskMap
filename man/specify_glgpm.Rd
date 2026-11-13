@@ -25,8 +25,12 @@ include one \code{offset()} term that names a column of \code{data}, e.g. \code{
 
 \item{family}{The distribution of the response given the random effects,
 with its link. Either one of the strings \code{"gaussian"}, \code{"binomial"} and
-\code{"poisson"}, which take the identity, logit and log links, or a family
-object as in \code{\link[stats:glm]{stats::glm()}}, such as \code{binomial("probit")}. Binomial
+\code{"poisson"}, which take the identity, logit and log links, a family
+object as in \code{\link[stats:glm]{stats::glm()}}, such as \code{binomial("probit")}, or
+\code{\link[=negative_binomial]{negative_binomial()}} for overdispersed counts with the log link, whose
+size is estimated unless a value is given (\code{negative_binomial(theta = 2)}
+or \code{MASS::negative.binomial(2)}). Where nothing is estimated, as in
+\code{\link[=specify_glgpm]{specify_glgpm()}}, the size must be given. Binomial
 responses take the logit, probit, complementary log-log (\code{"cloglog"}) and
 Cauchy (\code{"cauchit"}) links, Poisson responses the log link and Gaussian
 responses the identity link. \code{binomial("log")} and \code{poisson("identity")}
@@ -45,9 +49,11 @@ when present. Supply \code{tau2} when \code{gp(nugget = TRUE)}, \code{sigma2_me}
 Gaussian measurement error, and \code{sigma2_re} for each \code{re()} term.
 Variances may be zero. \code{phi} is expressed in \code{distance_units}.}
 
-\item{denominator}{Optional denominator or exposure for binomial or Poisson distributions.
+\item{denominator}{Optional denominator for binomial distributions, or
+exposure for Poisson and negative binomial ones, the mean of a count being
+the exposure times the inverse link of the linear predictor.
 Passed as a bare/unquoted column name present in \code{data}.
-If not provided, defaults to \code{1} for binomial models.}
+If not provided, defaults to \code{1}.}
 
 \item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
 If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
