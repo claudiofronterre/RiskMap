@@ -289,6 +289,9 @@ glgpm <- function(formula,
   family <- family_link$family
   invlink <- family_link$invlink
   family_parameters <- family_link$parameters
+  # The family's own parameters that the fit estimates, as the size of a
+  # negative binomial family given without one.
+  estimated_family <- family_link$estimated %||% character()
   model <- family_traits(family)
 
   distance_units <- match_choice(distance_units)
@@ -432,12 +435,23 @@ glgpm <- function(formula,
     }
   }
 
+  # With one record per location, an estimated parameter of the family, such
+  # as the size of a negative binomial family, adds variation at each
+  # location as a nugget does, and only the shapes of their distributions
+  # tell them apart.
+  if (length(estimated_family) && all(table(ID_coords) == 1) &&
+      isTRUE(fix_tau2)) {
+    family_words <- family_parameter_words(estimated_family[1L])
+    abort_input(c("The nugget and the {family_words} can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} or a fixed nugget in {.fn gp}, or give the {family_words} in {.arg family}."), arg = "formula")
+  }
+
   if (messages) {
     crs <- as.list(st_crs(data))$input
     riskmap_inform("The model is fitted in {crs}, with distances in {distance_units}.")
   }
 
-  valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me")
+  valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me",
+                        estimated_family)
   invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
   if (length(invalid)) {
     abort_input(c("{.arg start_pars} must name parameters among {.val {valid_start_pars}}.", "x" = "{.val {invalid}} {?is/are} not among them."), arg = "start_pars")
@@ -448,11 +462,23 @@ glgpm <- function(formula,
     logical(1)
   ))
 
+  # The start of an estimated parameter of the family, from the regression
+  # without the latent effects, or from `start_pars`.
+  for (name in estimated_family) {
+    if (is.null(start_pars[[name]])) {
+      start_pars[[name]] <- model$start_parameters(y, units_m, D,
+                                                   cov_offset)[[name]]
+    } else {
+      check_positive_number(start_pars[[name]], arg = paste0("start_pars[[\"", name, "\"]]"))
+    }
+  }
+  # The family's parameters at the start, for the records of the start.
+  start_family <- c(family_parameters, start_pars[estimated_family])
   if(is.null(start_pars[["beta"]])) {
     # From the records the engine fits, the negative binomial family's as
     # binomial ones (engine_records()).
     records <- engine_records(family, y, if (!model$exact) units_m,
-                              cov_offset, family_parameters, invlink)
+                              cov_offset, start_family, invlink)
     start_pars[["beta"]] <- model$start_coefficients(
       y = records$y, units_m = records$units_m, D = D,
       cov_offset = records$offset, link = if (is.list(invlink)) invlink$link,
@@ -533,9 +559,11 @@ glgpm <- function(formula,
       s_unique = s_unique,
       re_unique = re_unique,
       messages = messages,
-      family_parameters = family_parameters
+      family_parameters = start_family
     )
-    start_pars <- selection$start
+    # The transformed start has none of the family's parameters.
+    start_pars <- utils::modifyList(selection$start,
+                                    start_pars[estimated_family])
     starting_diagnostics <- selection$diagnostics
   }
 
@@ -548,7 +576,8 @@ glgpm <- function(formula,
     start_pars = start_pars, control_mcmc = control_mcmc,
     control_mcml = control_mcml, seed = seed,
     return_samples = return_samples, messages = messages,
-    family_parameters = family_parameters
+    family_parameters = family_parameters,
+    estimated_family = estimated_family
   )
 
   res$y <- y
@@ -571,7 +600,7 @@ glgpm <- function(formula,
   res$formula <- formula
   res$family <- family
   # The family's own parameters, held at the values given with it.
-  if (!is.null(family_parameters)) res$family_parameters <- family_parameters
+  if (length(family_parameters)) res$family_parameters <- family_parameters
   res$distance_units <- distance_units
   # Retain fitting controls as metadata so a fitted object can serve as a
   # complete specification when refitted to simulated or held-out data.
@@ -610,6 +639,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
                              control_mcmc, control_mcml, seed,
                              return_samples, messages,
                              family_parameters = NULL,
+                             estimated_family = character(),
                              call = rlang::caller_env()) {
   exact <- family_traits(family)$exact
   n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
@@ -664,7 +694,8 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
       fix_tau2 = fix_tau2, family = family, invlink = invlink,
       control_mcml = control_mcml, seed = seed,
       messages = messages, distance_scale = spatial_scaling$distance_scale,
-      family_parameters = family_parameters
+      family_parameters = family_parameters,
+      estimated_family = estimated_family
     )
     optimizer <- attr(res, "optimizer")
     mcml_history <- optimizer$mcml_history
@@ -694,7 +725,11 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
         control_mcmc = control_mcmc,
         seed = final_sampling_seed(seed, length(mcml_history)),
         messages = messages,
-        family_parameters = family_parameters
+        # The records at the estimate of a parameter the fit estimates.
+        family_parameters = c(family_parameters, lapply(
+          stats::setNames(nm = estimated_family),
+          function(name) family_parameter(name)$natural(res$estimate[[name]])
+        ))
       )
       progress_step_done(messages)
       res$linear_predictors <- final_draw$linear_predictors

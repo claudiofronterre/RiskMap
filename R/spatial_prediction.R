@@ -1353,7 +1353,8 @@ parameter_conditioning_sampler <- function(object, burnin = 100L, thin = 10L) {
         h = step_size
       ),
       invlink = invlink, start = last_mode, adapt_step = FALSE,
-      family_parameters = object$family_parameters
+      # At the drawn estimate, so a size the fit estimates is drawn with it.
+      family_parameters = fit_family_values(fit)
     )
     last_mode <<- simulation$mode
     list(samples = do.call(cbind, simulation$samples),
@@ -2401,7 +2402,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         },
         ID_coords = object$ID_coords, ID_re = object$ID_re,
         family = object$family, control_mcmc = control_mcmc,
-        seed = mcmc_seed, family_parameters = object$family_parameters
+        seed = mcmc_seed, family_parameters = fit_family_values(object)
       )
     }
 
@@ -3289,6 +3290,9 @@ assess_prediction <- function(object,
         messages = FALSE
       )
       eta_samp <- prediction_link_samples(prediction_i)
+      # The family's own parameters of the refit, which a refit estimates
+      # again from its training set.
+      family_values <- fit_family_values(refit_i)
       if (traits$measurement_error) {
         sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
         restore_noise_seed <- preserve_random_seed()
@@ -3329,10 +3333,9 @@ assess_prediction <- function(object,
           }
         } else {
           y_samp  <- traits$simulate(mu_samp[j, ], units_m_i[j],
-                                     fit0$family_parameters)
+                                     family_values)
           support <- traits$score_support(y_samp, y_i[j], units_m_i[j],
-                                          mu_samp[j, ],
-                                          fit0$family_parameters)
+                                          mu_samp[j, ], family_values)
           pk <- tabulate(y_samp + 1, nbins = length(support)) / n_draw
           Fk <- cumsum(pk)
           crps_i[j]   <- crps_discrete(y_i[j], Fk)

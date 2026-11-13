@@ -282,7 +282,10 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' - `parameters`, the family's own parameters (#253, step 2), each with its
 ##'   `label` in tables of estimates, its `words` in sentences, and `natural`,
 ##'   the function from its working scale, on which it is fitted, to its
-##'   natural scale. The measurement error variance `sigma2_me` of the
+##'   natural scale, with `working` its inverse. `limit_words`, where given,
+##'   names the parameter whose working value tends to minus infinity at the
+##'   boundary, when that is not the parameter itself. The measurement error
+##'   variance `sigma2_me` of the
 ##'   Gaussian family is fitted on the log scale, and the size `theta` of the
 ##'   negative binomial family on that of log(1 / theta), so that a fit
 ##'   drifting to the Poisson limit tends to minus infinity as a variance
@@ -316,7 +319,7 @@ riskmap_families <- list(
     default_is_canonical = TRUE,
     parameters = list(sigma2_me = list(
       label = "Measurement error var.", words = "measurement error variance",
-      natural = exp
+      natural = exp, working = log
     )),
     parameters_heading = "Measurement error",
     specified = FALSE, kernel_family = NULL
@@ -379,7 +382,9 @@ riskmap_families <- list(
     default_is_canonical = FALSE,
     parameters = list(theta = list(
       label = "Negative binomial size", words = "size of the negative binomial",
-      natural = function(working) exp(-working)
+      natural = function(working) exp(-working),
+      working = function(natural) -log(natural),
+      limit_words = "inverse of the negative binomial size (1 / theta)"
     )),
     parameters_heading = "Dispersion",
     specified = TRUE, kernel_family = "binomial"
@@ -429,11 +434,21 @@ riskmap_families <- list(
 ##' - `engine_records(y, units_m, offset, parameters)`, the records of the
 ##'   binomial kernel, with `y` events of `y + theta` trials and the offset
 ##'   `offset + log(units_m / theta)`, for exposures `units_m`.
-##' - `log_likelihood_constant(y, parameters)`, the terms of the
-##'   log-likelihood that the binomial kernel leaves out,
-##'   `sum(lgamma(y + theta) - lgamma(theta))`. With them the log-likelihood
-##'   tends to the Poisson family's as `theta` grows, which also leaves out
-##'   `-lgamma(y + 1)`.
+##' - `log_likelihood_constant(y, units_m, parameters)`, the terms that bring
+##'   the binomial kernel of the records to the log-likelihood that RiskMap
+##'   reports, `sum(lgamma(y + theta) - lgamma(theta))`
+##'   (`negative_binomial_constant()`) less `sum(y * log(units_m))`. The
+##'   compiled Poisson kernel is y eta - m exp(eta), which leaves out
+##'   y log(m) - lgamma(y + 1), and the records keep y log(m) in their
+##'   offset, so with these terms the log-likelihood leaves out the same and
+##'   tends to the Poisson family's as `theta` grows, so the two can be
+##'   compared.
+##' - `start_parameters(y, units_m, D, cov_offset)`, the start of the size,
+##'   the maximum of the negative binomial regression without latent effects
+##'   (`negative_binomial_start_size()`).
+##' - `limit_slope(y, mean)`, the slope of each record's log-likelihood in
+##'   1 / theta at the Poisson limit, ((y - mean)^2 - y) / 2, for the test of a
+##'   size held at that limit (`assess_held_variances()`).
 ##' @noRd
 family_traits <- function(family) {
   if (!is.character(family) || length(family) != 1L ||
@@ -537,13 +552,62 @@ family_traits <- function(family) {
         offset <- offset %||% numeric(length(y))
         list(y = y, units_m = y + theta, offset = offset + log(units_m / theta))
       },
-      log_likelihood_constant = function(y, parameters) {
-        theta <- family_size(parameters)
-        sum(lgamma(y + theta) - lgamma(theta))
+      log_likelihood_constant = function(y, units_m, parameters) {
+        units_m <- units_m %||% rep(1, length(y))
+        negative_binomial_constant(y, family_size(parameters)) -
+          sum(y * log(units_m))
+      },
+      limit_slope = function(y, mean) ((y - mean)^2 - y) / 2,
+      start_parameters = function(y, units_m, D, cov_offset) {
+        list(theta = negative_binomial_start_size(y, units_m, D, cov_offset))
       }
     )
   )
   c(list(family = family), riskmap_families[[family]], methods)
+}
+
+##' The terms of a negative binomial log-likelihood that its records leave out
+##'
+##' `sum(lgamma(y + theta) - lgamma(theta))`, written as the sum over the
+##' records of y log(theta) + log(1 + 0 / theta) + ... + log(1 + (y - 1) /
+##' theta), which needs whole counts. Near the Poisson limit, where theta is
+##' about 10^9 and each log-gamma about 10^10, the difference of two log-gammas
+##' loses about 10^-6 a record, which the central differences of the score
+##' would multiply (#253, step 6b).
+##' @noRd
+negative_binomial_constant <- function(y, theta) {
+  counts <- y[y > 0]
+  if (!length(counts)) return(0)
+  steps <- sequence(counts) - 1
+  sum(counts) * log(theta) + sum(log1p(steps / theta))
+}
+
+##' The size at the maximum of the negative binomial regression
+##'
+##' The regression of the counts `y` with exposures `units_m` on `D` with the
+##' offset `cov_offset`, without latent effects, maximised over the size on
+##' a grid of its logarithm from 0.01 to 10^4 by `optimize()`, each size
+##' giving the coefficients of the quasi-binomial regression of its records
+##' (`engine_records()`). The latent effects take over part of the
+##' overdispersion, so the fit moves the size up from here.
+##' @noRd
+negative_binomial_start_size <- function(y, units_m, D, cov_offset) {
+  profile <- function(log_theta) {
+    theta <- exp(log_theta)
+    records <- engine_records("negative_binomial", y, units_m, cov_offset,
+                              list(theta = theta))
+    regression <- tryCatch(
+      suppressWarnings(binomial_start_regression(
+        y, records$units_m, D, records$offset, quasi = TRUE
+      )),
+      error = function(error) NULL
+    )
+    if (is.null(regression)) return(-Inf)
+    eta <- drop(D %*% regression$coefficients) + records$offset
+    sum(y * eta - records$units_m * softplus(eta)) +
+      negative_binomial_constant(y, theta)
+  }
+  exp(stats::optimize(profile, log(c(0.01, 1e4)), maximum = TRUE)$maximum)
 }
 
 ##' The size theta of a negative binomial family, from its `parameters`
@@ -617,10 +681,11 @@ engine_records <- function(family, y, units_m, offset, parameters = NULL,
 ##' Zero for a family the engine fits as itself, and otherwise the family's
 ##' `log_likelihood_constant()` (`engine_records()`).
 ##' @noRd
-log_likelihood_constant <- function(family, y, parameters = NULL) {
+log_likelihood_constant <- function(family, y, units_m = NULL,
+                                    parameters = NULL) {
   traits <- family_traits(family)
   if (is.null(traits$kernel_family)) return(0)
-  traits$log_likelihood_constant(y, parameters)
+  traits$log_likelihood_constant(y, units_m, parameters)
 }
 
 ##' The families that the MCML engine fits, those whose likelihood is not exact
@@ -715,7 +780,8 @@ read_family <- function(family, invlink = NULL,
       abort_input(family_traits(family$family)$link_hint, arg = "invlink")
     }
     return(list(family = family$family, invlink = NULL,
-                parameters = family$parameters))
+                parameters = family$parameters,
+                estimated = family$estimated))
   }
   families <- string_families(families)
   if (is.function(family)) {
@@ -737,21 +803,23 @@ read_family <- function(family, invlink = NULL,
   list(family = family, invlink = invlink)
 }
 
-##' The negative binomial family at a known size
+##' The negative binomial family
 ##'
 ##' Counts y with mean m exp(eta), for exposure m, and variance
-##' mu + mu^2 / theta, as in `MASS::negative.binomial(theta)`, with the size
-##' `theta` held at the value given. Internal until the size can be estimated
-##' (#253, step 6b), when it is to be exported with `theta` estimated by
-##' default. `read_family()` reads it.
-##' @param theta The size, a positive number.
-##' @return A specification of class `riskmap_family_specification`.
+##' mu + mu^2 / theta, as in `MASS::negative.binomial(theta)`. The size
+##' `theta` is estimated unless a value is given, at which it is held (#253,
+##' steps 6a and 6b). Internal until the radius of its certificate has been
+##' measured, when it is to be exported. `read_family()` reads it.
+##' @param theta The size, a positive number, or NULL to estimate it.
+##' @return A specification of class `riskmap_family_specification`, with the
+##'   held `parameters` and the names of the `estimated` ones.
 ##' @noRd
-negative_binomial <- function(theta) {
-  check_supplied(theta)
-  check_positive_number(theta, type = "")
+negative_binomial <- function(theta = NULL) {
+  if (!is.null(theta)) check_positive_number(theta, type = "")
   structure(list(family = "negative_binomial", link = "log",
-                 parameters = list(theta = theta)),
+                 parameters = if (!is.null(theta)) list(theta = theta) else
+                   list(),
+                 estimated = if (is.null(theta)) "theta" else character()),
             class = "riskmap_family_specification")
 }
 
@@ -807,16 +875,34 @@ held_family_parameters <- function(fit) {
   held
 }
 
+##' The values of the family's own parameters at a fit
+##'
+##' Those it holds (`held_family_parameters()`) and those it estimates, on
+##' their natural scale, for the records of a fit's prediction, simulation
+##' and scores (`engine_records()`).
+##' @noRd
+fit_family_values <- function(fit) {
+  values <- held_family_parameters(fit)
+  for (name in estimated_family_parameters(fit)) {
+    values[[name]] <- family_parameter(name)$natural(fit$estimate[[name]])
+  }
+  values
+}
+
 ##' The `family` argument that refits a fitted model
 ##'
 ##' The family string the fit stores, or for a family with parameters of its
-##' own its specification at the fit's values (`negative_binomial()`), for the
-##' exported functions that refit a fit, such as `assess_prediction()`.
+##' own its specification (`negative_binomial()`), for the exported functions
+##' that call `glgpm()` or `specify_glgpm()` again. A refit estimates again
+##' what the fit estimated, and with `hold = TRUE`, as for a model that
+##' simulates from the fit, every parameter is held at the fit's value.
 ##' @noRd
-fit_family_argument <- function(fit) {
+fit_family_argument <- function(fit, hold = FALSE) {
   traits <- fit_traits(fit)
   if (is.null(traits) || !traits$specified) return(fit$family)
-  negative_binomial(theta = family_size(fit$family_parameters))
+  estimated <- "theta" %in% estimated_family_parameters(fit)
+  if (estimated && !hold) return(negative_binomial())
+  negative_binomial(theta = family_size(fit_family_values(fit)))
 }
 
 ##' The families among `families` that are given by their name

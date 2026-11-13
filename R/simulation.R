@@ -722,6 +722,11 @@ simulation_model <- function(object) {
     abort_input("{.arg object} must be a {.cls RiskMap} fit or a model from {.fn specify_glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
   pars <- coef(object)
+  # A family given by its function carries its own parameters, held at the
+  # fit's values (fit_family_argument()).
+  if (isTRUE(fit_traits(object)$specified)) {
+    pars[names(fit_traits(object)$parameters)] <- NULL
+  }
   if (is.null(pars$tau2)) pars$tau2 <- object$fix_tau2
   if (family_traits(object$family)$measurement_error &&
       !is.null(object$fix_var_me)) {
@@ -735,7 +740,7 @@ simulation_model <- function(object) {
   # A named or custom link carries its derivatives and name, and a canonical
   # link its stored inverse. A family with parameters of its own is given by
   # its specification, which has its link.
-  family <- fit_family_argument(object)
+  family <- fit_family_argument(object, hold = TRUE)
   invlink <- if (is.character(family)) {
     refit_invlink(object) %||% object$link_function$inv
   }

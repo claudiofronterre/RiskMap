@@ -30,17 +30,27 @@ test_that("the records are the binomial kernel, with the constant they leave out
   expect_identical(records$units_m, y + theta)
   expect_identical(records$offset, eta + log(m / theta))
   direct <- dnbinom(y, size = theta, mu = m * exp(eta), log = TRUE)
-  constant <- log_likelihood_constant("negative_binomial", y, parameters)
-  expect_identical(constant, sum(lgamma(y + theta) - lgamma(theta)))
+  # The reported log-likelihood leaves out y log(m) - lgamma(y + 1), as the
+  # compiled Poisson kernel does, so the two can be compared.
+  constant <- log_likelihood_constant("negative_binomial", y, m, parameters)
+  expect_equal(constant, sum(lgamma(y + theta) - lgamma(theta)) -
+                 sum(y * log(m)), tolerance = 1e-14)
+  # Written as a sum of logarithms near 1, it keeps its digits near the
+  # Poisson limit, where a difference of two log-gammas loses them.
+  large <- 1e9
+  expect_equal(negative_binomial_constant(y, large),
+               sum(y) * log(large) + sum(sequence(y[y > 0]) - 1) / large,
+               tolerance = 1e-15)
   # The compiled kernel of the engine's weights, and the terms of its mode
   # search, at the records' linear predictors.
   kernel <- make_family("binomial")
   compiled <- kernel$log_likelihood(matrix(records$offset, 1L), y,
                                     records$units_m)
-  expect_equal(compiled + constant - sum(lgamma(y + 1)), sum(direct),
+  left_out <- sum(y * log(m)) - sum(lgamma(y + 1))
+  expect_equal(compiled + constant + left_out, sum(direct),
                tolerance = 1e-13)
   terms <- kernel$terms(records$offset, y, records$units_m)
-  expect_equal(terms$log_likelihood + constant - sum(lgamma(y + 1)),
+  expect_equal(terms$log_likelihood + constant + left_out,
                sum(direct), tolerance = 1e-13)
   # The score and curvature of each record in eta, as the derivatives of the
   # negative binomial log-likelihood written directly.
@@ -65,7 +75,13 @@ test_that("the negative binomial family is given by its function only", {
   expect_identical(
     read_family(negative_binomial(theta = 2)),
     list(family = "negative_binomial", invlink = NULL,
-         parameters = list(theta = 2))
+         parameters = list(theta = 2), estimated = character())
+  )
+  # Without a size, it is estimated.
+  expect_identical(
+    read_family(negative_binomial()),
+    list(family = "negative_binomial", invlink = NULL, parameters = list(),
+         estimated = "theta")
   )
   expect_identical(
     read_family(negative_binomial(theta = 2), families = engine_families()),
@@ -73,7 +89,6 @@ test_that("the negative binomial family is given by its function only", {
   )
   expect_input_error(negative_binomial(theta = 0), "theta")
   expect_input_error(negative_binomial(theta = c(1, 2)), "theta")
-  expect_input_error(negative_binomial(), "theta")
   expect_input_error(read_family(negative_binomial(2), invlink = exp),
                      "invlink", "log link only")
   # A string has no size, and errors name only the families users can give.
@@ -188,7 +203,8 @@ test_that("a negative binomial fit is the binomial fit of its records", {
   expect_identical(attr(fit, "starting_values"),
                    attr(binomial_fit, "starting_values"))
   expect_equal(fit$log_lik - binomial_fit$log_lik,
-               sum(lgamma(data$y + 2) - lgamma(2)), tolerance = 1e-14)
+               sum(lgamma(data$y + 2) - lgamma(2)) - sum(data$y * log(data$m)),
+               tolerance = 1e-14)
   # The fit keeps the model's records, link and size.
   expect_identical(fit$family, "negative_binomial")
   expect_identical(fit$family_parameters, list(theta = 2))
@@ -236,9 +252,10 @@ test_that("as the field vanishes the fit is the negative binomial regression", {
   expect_identical(attr(fit, "optimizer")$mcml_boundary,
                    "spatial variance (sigma2)")
   expect_equal(unname(fit$estimate$beta), regression$par, tolerance = 1e-6)
-  # The reported log-likelihood leaves out -lgamma(y + 1), as the Poisson
-  # family's does.
-  expect_equal(fit$log_lik - sum(lgamma(data$y + 1)), -regression$value,
+  # The reported log-likelihood leaves out y log(m) - lgamma(y + 1), as the
+  # Poisson family's does.
+  expect_equal(fit$log_lik + sum(data$y * log(data$m)) -
+                 sum(lgamma(data$y + 1)), -regression$value,
                tolerance = 1e-8)
 })
 
@@ -312,7 +329,7 @@ test_that("the refits of a negative binomial fit carry its size", {
                family = negative_binomial(theta = 2), denominator = m,
                distance_units = "m", control_mcmc = control_mcmc,
                messages = FALSE, seed = 5)
-  constant <- sum(lgamma(data$y + 2) - lgamma(2))
+  constant <- sum(lgamma(data$y + 2) - lgamma(2)) - sum(data$y * log(data$m))
   # parametric_bootstrap() refits the fit's own response, from the estimate,
   # back to the estimate.
   refit <- make_bootstrap_refit(fit)
@@ -321,8 +338,8 @@ test_that("the refits of a negative binomial fit carry its size", {
   # the estimate is the fit's, less the constant of its records. With the
   # size dropped they would stop, and at another size they are far off.
   problem <- make_profile_problem(fit, 2000L, 1L)
-  expect_equal(problem$value(problem$bank_estimate) + constant, fit$log_lik,
-               tolerance = 1e-4)
+  expect_lt(abs(problem$value(problem$bank_estimate) + constant -
+                  fit$log_lik), 0.01)
   wrong <- fit
   wrong$family_parameters <- list(theta = 50)
   wrong_problem <- make_profile_problem(wrong, 2000L, 1L)
@@ -331,8 +348,8 @@ test_that("the refits of a negative binomial fit carry its size", {
   last <- fit$mcml_history[[length(fit$mcml_history)]]
   bank <- draw_radius_bank(rebuild_certification_problem(fit, last), 3L)
   largest <- max(bank$log_weights)
-  expect_equal(largest + log(mean(exp(bank$log_weights - largest))) +
-                 constant, fit$log_lik, tolerance = 1e-4)
+  expect_lt(abs(largest + log(mean(exp(bank$log_weights - largest))) +
+                  constant - fit$log_lik), 0.01)
   # predict() with parameter uncertainty samples the latent effects of the
   # records at the size of the fit.
   sampler <- parameter_conditioning_sampler(fit)

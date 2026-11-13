@@ -254,7 +254,9 @@ rebuild_certification_problem <- function(object, last, form = "sampled") {
   engine <- make_adaptive_mcml_engine(
     D = design_scaling$design, y = object$y, units_m = object$units_m,
     distances = distances, family = object$family,
-    family_parameters = object$family_parameters, kappa = object$kappa,
+    family_parameters = object$family_parameters,
+    estimated_family = estimated_family_parameters(object),
+    kappa = object$kappa,
     cov_offset = object$cov_offset, ID_coords = object$ID_coords,
     fix_tau2 = object$fix_tau2,
     ID_re = if (is.null(object$ID_re)) NULL else as.matrix(object$ID_re),
