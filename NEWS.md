@@ -14,6 +14,7 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `check_mcmc` | `plot_mcmc` |
 | `compute_ID_coords` | `create_ids` |
 | `convex_hull_sf` | `create_convex_hull` |
+| `propose_utm` | `propose_crs` (chooses the CRS by its distortion of distances) |
 | `dast()` | Removed; will be replaced in a separate package |
 | `glgpm_sim` | `simulate_glgpm` |
 | `Laplace_sampling_MCMC` | Removed; the replacement is internal |
@@ -189,10 +190,9 @@ now names the CRS and reports its distortion.
 whether given, carried by the data or chosen, distorts distances by more than
 1% over the data. When no planar CRS can do better, as over sub-Saharan
 Africa, the warning says so.
-- `propose_utm()` is deprecated and warns with class
-`riskmap_warning_deprecated`. It now warns of a tie whenever two or more zones
-hold the most locations, where it warned only when every zone held the same
-number.
+- `propose_utm()` has been removed. Use `propose_crs()`, which returns the
+same UTM zone for data that a zone covers well. `propose_utm()` took the zone
+holding most locations, which could be far from the centre of the data.
 - In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and
 `scale_to_km` has been replaced with `distance_units` (`"km"` or `"m"`).
 

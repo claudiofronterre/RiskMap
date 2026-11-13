@@ -100,7 +100,6 @@ reference:
       - convex_hull_sf
       - propose_crs
       - crs_distortion
-      - propose_utm
       - matern_cor
       - matern.grad.phi
       - matern.hessian.phi

@@ -28,8 +28,6 @@ is not certified.
 \item \code{riskmap_warning_crs}, the projected coordinate reference system used
 distorts distances by more than 1\% over the data (see \code{\link[=propose_crs]{propose_crs()}}
 and \code{\link[=crs_distortion]{crs_distortion()}}).
-\item \code{riskmap_warning_deprecated}, a function is deprecated and will be
-removed in a later version.
 }
 \item \code{riskmap_message} is the class of every message. Functions that report
 on their progress take an argument \code{messages}, whose default is the
