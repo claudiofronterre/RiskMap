@@ -58,6 +58,7 @@ specify_glgpm <- function(formula, data, family, parameters,
   family_link <- read_family(family, invlink)
   family <- family_link$family
   invlink <- family_link$invlink
+  check_family_held(family_link)
   traits <- family_traits(family)
   custom_link <- !is.null(invlink)
   inter <- interpret_formula(formula)

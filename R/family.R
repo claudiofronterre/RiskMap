@@ -602,10 +602,15 @@ negative_binomial_start_size <- function(y, units_m, D, cov_offset) {
       )),
       error = function(error) NULL
     )
-    if (is.null(regression)) return(-Inf)
-    eta <- drop(D %*% regression$coefficients) + records$offset
-    sum(y * eta - records$units_m * softplus(eta)) +
+    if (is.null(regression)) return(-.Machine$double.xmax)
+    # An aliased column has no coefficient, and leaving it out gives the same
+    # fit.
+    coefficients <- regression$coefficients
+    coefficients[is.na(coefficients)] <- 0
+    eta <- drop(D %*% coefficients) + records$offset
+    value <- sum(y * eta - records$units_m * softplus(eta)) +
       negative_binomial_constant(y, theta)
+    if (is.finite(value)) value else -.Machine$double.xmax
   }
   exp(stats::optimize(profile, log(c(0.01, 1e4)), maximum = TRUE)$maximum)
 }
@@ -887,6 +892,19 @@ fit_family_values <- function(fit) {
     values[[name]] <- family_parameter(name)$natural(fit$estimate[[name]])
   }
   values
+}
+
+##' Stop unless every parameter of the family is held
+##'
+##' For the functions that need the family's parameters at a value, such as
+##' `specify_glgpm()` and `maxim_integrand()`, where nothing is estimated.
+##' `family_link` is what `read_family()` returns.
+##' @noRd
+check_family_held <- function(family_link, call = rlang::caller_env()) {
+  estimated <- family_link$estimated %||% character()
+  if (!length(estimated)) return(invisible(TRUE))
+  words <- family_parameter_words(estimated[1L])
+  abort_input(c("{.arg family} must give the {words}, since nothing is estimated here.", "i" = "Give it as in {.code negative_binomial(theta = 2)}."), arg = "family", call = call)
 }
 
 ##' The `family` argument that refits a fitted model

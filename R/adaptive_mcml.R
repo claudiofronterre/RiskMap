@@ -1635,12 +1635,16 @@ glgpm_nong_adaptive <- function(
     maximum_stages = control_mcml$max_stages,
     tolerance = control_mcml$tolerance,
     seed = fit_seed, lower = lower, upper = upper,
-    # A parameter of the family is held at its boundary as a variance is,
-    # the size of a negative binomial family at its Poisson limit.
     variance_index = unlist(engine$layout$index[c("sigma2", "nu2",
-                                                  "sigma2_re",
-                                                  estimated_family)],
+                                                  "sigma2_re")],
                             use.names = FALSE),
+    # A parameter of the family is held at its limit, the size of a negative
+    # binomial family at the Poisson limit. Its inverse adds mean / theta to
+    # the variance of a record relative to its mean, so it is judged on the
+    # scale of the mean count.
+    limit_index = unlist(engine$layout$index[estimated_family],
+                         use.names = FALSE),
+    limit_shift = log(max(1, mean(y))),
     linked_index = stats::setNames(
       list(engine$layout$index$phi), engine$layout$index$sigma2
     ),

@@ -444,6 +444,16 @@ glgpm <- function(formula,
     family_words <- family_parameter_words(estimated_family[1L])
     abort_input(c("The nugget and the {family_words} can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} or a fixed nugget in {.fn gp}, or give the {family_words} in {.arg family}."), arg = "formula")
   }
+  # So does a random effect with one level per observation, as it does with
+  # the measurement error of a Gaussian model.
+  if (length(estimated_family) && n_re > 0) {
+    saturated <- names_re[vapply(re_unique, length, integer(1)) == n]
+    if (length(saturated)) {
+      family_words <- family_parameter_words(estimated_family[1L])
+      n_saturated <- length(saturated)
+      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "{cli::qty(n_saturated)}{?It/They} can't be told apart from the {family_words}.", "i" = "Drop {cli::qty(n_saturated)}{?it/them} from {.arg formula}, or give the {family_words} in {.arg family}."), arg = "formula")
+    }
+  }
 
   if (messages) {
     crs <- as.list(st_crs(data))$input
@@ -2538,6 +2548,7 @@ maxim_integrand <- function(
   family_link <- read_family(family, invlink, families = engine_families())
   family <- family_link$family
   invlink <- family_link$invlink
+  check_family_held(family_link)
   # The integrand and its derivatives below refer to the denominator as
   # `units_m`, the name used by the package's internal fitting functions.
   # The records are those the engine fits, the negative binomial family's as

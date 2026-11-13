@@ -173,3 +173,80 @@ test_that("the size and a nugget need more than one record per location", {
   expect_false(attr(fit, "optimizer")$mcml_integrate_noise)
   expect_named(fit$estimate, c("beta", "sigma2", "phi", "nu2", "theta"))
 })
+
+test_that("the size is held only where its overdispersion is negligible", {
+  # An objective flat in the inverse of the size, whose information is
+  # singular. A variance at -4.1 would be held as near zero, but 1 / theta
+  # adds mean / theta to the variance of a record relative to its mean, so
+  # with counts of mean 50 a size of 60 is far from the Poisson limit.
+  objective <- function(parameters, bank) -0.5 * parameters[1]^2
+  limits <- list(variance_index = integer(), linked_index = list(),
+                 limit_index = 2L, limit_shift = log(50),
+                 near_zero_log_variance = -4)
+  information_at <- function(theta) {
+    compute_observed_information(objective, c(0, -log(theta)), NULL,
+                                 integer(), limits)
+  }
+  expect_identical(information_at(60)$free, 1:2)
+  expect_null(information_at(60)$root)
+  expect_identical(information_at(1e4)$free, 1L)
+})
+
+test_that("an estimated size is refused where nothing is estimated", {
+  data <- size_survey(20, 0, 2, seed = 10)
+  expect_input_error(
+    specify_glgpm(y ~ x + gp(nugget = FALSE), data, negative_binomial(),
+                  list(beta = c(0.5, 0.4), sigma2 = 0.5, phi = 20),
+                  denominator = m),
+    "family", "size of the negative binomial"
+  )
+  expect_input_error(
+    maxim_integrand(y = c(1, 4), denominator = c(1, 2), mu = c(0, 0.5),
+                    Sigma = diag(2), ID_coords = 1:2,
+                    family = negative_binomial()),
+    "family"
+  )
+  expect_type(
+    maxim_integrand(y = c(1, 4), denominator = c(1, 2), mu = c(0, 0.5),
+                    Sigma = diag(2), ID_coords = 1:2,
+                    family = negative_binomial(theta = 2))$mode,
+    "double"
+  )
+})
+
+test_that("a random effect with one level per record and the size are refused", {
+  data <- size_survey(30, 0.5, 2, seed = 11)
+  data$id <- seq_len(nrow(data))
+  expect_input_error(
+    glgpm(y ~ x + gp(nugget = FALSE) + re(id), data = data,
+          family = negative_binomial(), denominator = m, messages = FALSE),
+    "formula", "one level per observation"
+  )
+})
+
+test_that("the start of the size ignores an aliased column and takes start_pars", {
+  data <- size_survey(40, 0, 2, seed = 12)
+  design <- cbind(1, data$x)
+  expect_no_warning(
+    aliased <- negative_binomial_start_size(
+      data$y, data$m, cbind(design, 2 * data$x), numeric(nrow(data))
+    )
+  )
+  expect_equal(aliased,
+               negative_binomial_start_size(data$y, data$m, design,
+                                            numeric(nrow(data))))
+  # A valid start reaches the working start of the engine as log(1 / theta).
+  captured <- NULL
+  local_mocked_bindings(make_working_start = function(reference_pars,
+                                                      fix_tau2, family) {
+    captured <<- family_parameter("theta")$working(reference_pars$theta)
+    stop("captured the start")
+  })
+  expect_error(
+    glgpm(y ~ x + gp(nugget = FALSE), data = data,
+          family = negative_binomial(), denominator = m,
+          start_pars = list(theta = 3), messages = FALSE),
+    "captured the start"
+  )
+  expect_identical(captured, -log(3))
+})
