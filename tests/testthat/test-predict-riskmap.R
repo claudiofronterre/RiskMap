@@ -1308,6 +1308,33 @@ test_that("parameter uncertainty pools draws over parameter values", {
   expect_equal(pooled$predictions$fixed, rowMeans(pooled$samples$fixed))
 })
 
+test_that("parameter uncertainty moves a bar over its draws", {
+  withr::local_options(RiskMap.progress = TRUE, cli.dynamic = FALSE,
+                       cli.progress_show_after = 0)
+  fit <- with_parameter_covariance(binomial_model)
+  lines <- trimws(capture_messages(
+    predict(fit, newdata = binomial_data[1:4, ], parameter_uncertainty = TRUE,
+            parameter_draws = 10, seed = 5)
+  ))
+  bar <- grep("^Propagating parameter uncertainty", lines, value = TRUE)
+  expect_length(bar, 10L)
+  expect_match(bar[10L], "10/10", fixed = TRUE)
+})
+
+test_that("predict shows a step while it runs its own Langevin sampler", {
+  withr::local_options(RiskMap.progress = TRUE, cli.dynamic = FALSE)
+  lines <- trimws(capture_messages(
+    predict(binomial_model, newdata = binomial_data[1:4, ],
+            control_mcmc = set_control_mcmc(n_sim = 1200, burnin = 200,
+                                            thin = 10),
+            seed = 1)
+  ))
+  step <- grep("Running 1,200 iterations of the Langevin sampler", lines,
+               fixed = TRUE, value = TRUE)
+  expect_length(step, 2L)
+  expect_match(step[2L], "sampler [", fixed = TRUE)
+})
+
 test_that("parameter uncertainty is reproducible and works for polygons", {
   fit <- with_parameter_covariance(binomial_model)
   first <- predict(fit, newdata = binomial_data[1:4, ],

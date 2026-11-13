@@ -81,8 +81,20 @@ single positive finite number" instead of "strictly between 0 and Inf".
 - `parametric_bootstrap()`, `profile()`, `assess_prediction()` and
 `assess_simulation()` show a progress bar with the work done and an estimate
 of the time left, and `predict()` shows one while it predicts at many
-locations in blocks. `glgpm()` shows a line for each stage of Monte Carlo
-maximum likelihood, with the time the stage took. See `?riskmap_progress`.
+locations in blocks or propagates parameter uncertainty. `glgpm()` shows a
+line for each stage of Monte Carlo maximum likelihood, with the time the stage
+took. See `?riskmap_progress`.
+- While a step of a fit runs in the console, its line has a spinner and the
+time so far, which move each time the likelihood is evaluated, so a long stage
+shows it is still running. This applies to the starting values from the
+Laplace approximation, each stage of Monte Carlo maximum likelihood, and the
+re-maximisation that `profile()` does before profiling. A step computed in one
+call to compiled code keeps a still line. These are the conditional samples
+drawn at the estimate, and the Langevin sampler that `predict()` runs when
+given `control_mcmc`, which now has a line of its own. A line too wide for the
+console is shortened so that its time still shows.
+- `profile()` shows its re-maximisation as a step in the console, and as the
+message it was before where progress is hidden.
 - Progress is shown when `messages` is `TRUE` and the option
 `RiskMap.progress` allows it. The option's default is
 `rlang::is_interactive()`, so progress appears in the console but not in

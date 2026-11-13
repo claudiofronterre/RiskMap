@@ -1486,7 +1486,7 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
       engine$choose_form(current)
     }
     progress_step(paste0("Monte Carlo maximum likelihood, stage {stage} of ",
-                         "at most {maximum_stages}, with ",
+                         "at most {maximum_stages}, ",
                          "{format(budget, big.mark = ',')} draws"),
                   messages)
     run_stage <- function(offset) {

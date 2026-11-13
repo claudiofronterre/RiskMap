@@ -1213,6 +1213,8 @@ prediction_sample_components <- function(object, prediction_data, prediction,
     if (is.null(first_failure)) first_failure <<- error
     NULL
   }
+  bar <- progress_bar("Propagating parameter uncertainty", parameter_draws,
+                      messages)
   for (k in seq_len(parameter_draws)) {
     fit <- object
     fit$estimate <- utils::relist(parameters[k, ], skeleton = object$estimate)
@@ -1220,13 +1222,18 @@ prediction_sample_components <- function(object, prediction_data, prediction,
       control <- set_control_mcmc(n_sim = per_draw, linear_model = TRUE)
     } else {
       draws <- tryCatch(sampler(fit$estimate, per_draw), error = leave_out)
-      if (is.null(draws)) next
+      if (is.null(draws)) {
+        progress_tick(bar)
+        next
+      }
       fit$S_samples <- draws$samples
       acceptance[k] <- draws$acceptance
       control <- NULL
     }
     pieces[[k]] <- tryCatch(components_at(fit, control), error = leave_out)
+    progress_tick(bar)
   }
+  progress_done(bar)
   pieces <- pieces[!vapply(pieces, is.null, logical(1))]
   if (length(pieces) < parameter_draws / 2) {
     riskmap_abort("Prediction failed at most parameter draws, so parameter uncertainty can't be propagated.", class = "riskmap_error_fit", parent = first_failure)
@@ -2392,6 +2399,10 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         riskmap_inform("Reusing the conditional samples stored in the fit.")
       }
     } else {
+      progress_step(paste0("Running {format(control_mcmc$n_sim, ",
+                           "big.mark = ',')} iterations of the Langevin ",
+                           "sampler"),
+                    messages)
       simulation <- laplace_sampling_mcmc(
         y = object$y, units_m = object$units_m, mu = mu, Sigma = Sigma,
         sigma2_re = par_hat$sigma2_re,
@@ -2404,6 +2415,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         family = object$family, control_mcmc = control_mcmc,
         seed = mcmc_seed, family_parameters = fit_family_values(object)
       )
+      progress_step_done(messages)
     }
 
     if (obs_loc) {

@@ -159,3 +159,129 @@ test_that("a task that fails keeps its classes and arg", {
   skip_on_os("windows")
   expect_input_error(riskmap_map(1:3, failing, cores = 2), "n")
 })
+
+# The lines a step draws in a terminal, in order, without the carriage
+# returns that redraw them.
+step_frames <- function(code) {
+  frames <- trimws(gsub("\r", "", capture_messages(code), fixed = TRUE))
+  frames[nzchar(frames)]
+}
+
+local_terminal <- function(width = 80L, .env = parent.frame()) {
+  withr::local_options(RiskMap.progress = TRUE, cli.dynamic = TRUE,
+                       cli.unicode = FALSE, cli.num_colors = 1,
+                       cli.width = width, .local_envir = .env)
+}
+
+spinner_frame <- "^[-\\\\|/] "
+# A time as cli writes it, from "[5ms]" to "[1h 21m 58.7s]".
+time_so_far <- "\\[[0-9][0-9hms. ]*\\]$"
+
+test_that("in a terminal a step that moves shows a spinner and its time", {
+  local_terminal()
+  run <- function() {
+    progress_step("Stage 1, with 1,000 draws {{1}}")
+    progress_spin()
+    progress_step_done()
+  }
+  frames <- step_frames(run())
+  expect_identical(frames[1L], "i Stage 1, with 1,000 draws {1}")
+  expect_match(frames[2L], paste0(spinner_frame, "Stage 1, with 1,000 ",
+                                  "draws \\{1\\} ", time_so_far))
+  expect_match(frames[length(frames)],
+               paste0("^v Stage 1, with 1,000 draws \\{1\\} ", time_so_far))
+})
+
+test_that("a step that never moves keeps its information sign", {
+  local_terminal()
+  run <- function() {
+    progress_step("Drawing conditional samples")
+    progress_step_done()
+  }
+  frames <- step_frames(run())
+  expect_identical(frames[1L], "i Drawing conditional samples")
+  expect_false(any(grepl(spinner_frame, frames)))
+  expect_match(frames[length(frames)],
+               paste0("^v Drawing conditional samples ", time_so_far))
+})
+
+test_that("the spinner moves only for a step running in this process", {
+  local_terminal()
+  expect_no_message(progress_spin())
+  # A forked task sees the step of its parent, which it must not draw over.
+  forked <- function() {
+    progress_step("Refitting")
+    spinning_step$process <- -1L
+    progress_spin()
+    progress_step_done()
+  }
+  expect_false(any(grepl(spinner_frame, step_frames(forked()))))
+  # A step closed with its frame is forgotten at the next move.
+  closed <- function() progress_step("Closed with its frame")
+  step_frames(closed())
+  expect_no_error(progress_spin())
+  expect_null(spinning_step$id)
+  # Without progress there is no step to move.
+  withr::local_options(RiskMap.progress = FALSE)
+  hidden <- function() {
+    progress_step("Hidden")
+    progress_spin()
+    progress_step_done()
+  }
+  expect_no_message(hidden())
+})
+
+test_that("a step too wide for the console is shortened, keeping its time", {
+  withr::local_options(cli.num_colors = 1)
+  text <- "Monte Carlo maximum likelihood, stage 2 of at most 4, 16,000 draws"
+  # The longest times cli writes, past a minute and past an hour.
+  for (time in c("3ms", "1m 15.3s", "59m 59.4s", "1h 21m 58.7s")) {
+    for (width in c(40L, 60L, 80L)) {
+      line <- step_line("v", text, time, width = width)
+      expect_lte(cli::ansi_nchar(line), width)
+      expect_true(endsWith(line, paste0(" [", time, "]")))
+      expect_true(startsWith(line, "v Monte Carlo"))
+    }
+  }
+  # A text that fits is kept whole, and a line may have no time.
+  expect_identical(step_line("i", "Short", width = 40L), "i Short")
+  expect_identical(step_line("v", "Short", "2s", width = 40L), "v Short [2s]")
+  expect_match(step_line("v", text, "1h 21m 58.7s", width = 40L), "...",
+               fixed = TRUE)
+  # The lines drawn in a terminal are built this way.
+  local_terminal(width = 40L)
+  run <- function() {
+    progress_step(text)
+    progress_spin()
+    progress_step_done()
+  }
+  frames <- step_frames(run())
+  expect_lte(max(cli::ansi_nchar(frames)), 40L)
+  expect_match(frames[length(frames)], paste0("^v Monte Carlo.*", time_so_far))
+})
+
+test_that("a step that used to be a message stays one where progress is hidden", {
+  withr::local_options(RiskMap.progress = FALSE)
+  n_draws <- 2000L
+  expect_message(
+    progress_step("Re-maximising on a bank of {n_draws} draws", inform = TRUE),
+    "Re-maximising on a bank of 2000 draws.", fixed = TRUE
+  )
+  expect_no_message(progress_step("Re-maximising", messages = FALSE,
+                                  inform = TRUE))
+  expect_no_message(progress_step("Stage 1"))
+})
+
+test_that("each evaluation of the Monte Carlo likelihood moves the spinner", {
+  moves <- 0L
+  local_mocked_bindings(progress_spin = function() moves <<- moves + 1L)
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 1), y = 2, units_m = 5, distances = matrix(0),
+    family = "binomial"
+  )
+  withr::local_seed(1)
+  bank <- matrix(rnorm(200), ncol = 1)
+  engine$evaluate(c(-0.4, log(0.8), 0), bank)
+  engine$evaluate(c(-0.3, log(0.8), 0), bank)
+  expect_identical(moves, 2L)
+})

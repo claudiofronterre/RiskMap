@@ -153,10 +153,11 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
   if (exact) {
     problem <- make_gaussian_profile_problem(fitted)
   } else {
-    if (messages) {
-      riskmap_inform("Re-maximising the likelihood on a bank of {n_draws} draws.")
-    }
+    # A step in the console, and a message where progress is hidden.
+    progress_step("Re-maximising the likelihood on a bank of {n_draws} draws",
+                  messages, inform = TRUE)
     problem <- make_profile_problem(fitted, n_draws, seed)
+    progress_step_done(messages)
   }
   parameters <- match_profile_parameters(problem, parameters %||% problem$names)
   pairs <- lapply(pairs %||% list(), function(pair) {
