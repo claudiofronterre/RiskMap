@@ -122,9 +122,16 @@ riskmap_warn <- function(message, ..., class = NULL,
 }
 
 #' @rdname riskmap_abort
+#' @details A message whose first element has no bullet gets the information
+#'   sign, so that every message RiskMap shows starts with a symbol, as its
+#'   printed output does. Name it `"v"` for a step done or `"!"` for something
+#'   to note.
 #' @noRd
 riskmap_inform <- function(message, ..., class = NULL,
                            .envir = parent.frame()) {
+  bullets <- names(message) %||% rep("", length(message))
+  if (!nzchar(bullets[1L])) bullets[1L] <- "i"
+  names(message) <- bullets
   cli::cli_inform(message, ..., class = c(class, "riskmap_message"),
                   .envir = .envir)
 }

@@ -321,11 +321,12 @@ write_check_data <- function(data) {
   values <- vapply(data[!tables], format_check_value, character(1L))
   if (length(values)) {
     label_width <- max(nchar(names(values)))
-    write_indented(paste0(formatC(names(values), width = -label_width), "  ",
-                          values))
+    write_indented(paste0(out_faint(formatC(names(values),
+                                            width = -label_width)),
+                          "  ", values))
   }
   for (name in names(data)[tables]) {
-    write_indented(name)
+    write_indented(out_faint(name))
     write_indented(paste0("  ", utils::capture.output(
       print(data[[name]], digits = 4L, row.names = FALSE)
     )))
@@ -354,8 +355,8 @@ write_profile_evidence <- function(profile) {
   for (name in names(profile$marginal)) {
     points <- profile$marginal[[name]]
     points <- points[order(points$value), ]
-    write_indented(paste0("Points of the profile of ",
-                          describe_profile_parameter(name)))
+    write_indented(out_faint(paste0("Points of the profile of ",
+                                    describe_profile_parameter(name))))
     write_indented(paste0("  ", utils::capture.output(print(
       data.frame(value = profile_natural(name, points$value),
                  log_likelihood = points$loglik, deviance = points$deviance,

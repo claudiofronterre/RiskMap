@@ -73,6 +73,7 @@ extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
 summarise_distance <- function(data,
                            distance_crs = NULL,
                            distance_units = c("km", "m")) {
+  check_supplied(data)
 
   check_data(data)
 
@@ -235,6 +236,8 @@ variogram <- function(data,
                       seed = NULL,
                       distance_crs = NULL,
                       distance_units = c("km", "m")) {
+  check_supplied(data)
+  check_supplied(variable)
 
   check_data(data)
 

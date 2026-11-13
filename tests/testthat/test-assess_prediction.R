@@ -1,12 +1,13 @@
 test_that("assess_prediction produces errors", {
 
+  # A method is given, so that the check of `object` is the one reached.
   expect_input_error(
-    assess_prediction("not list"),
+    assess_prediction("not list", method = "cluster"),
     "object"
   )
 
   expect_input_error(
-    assess_prediction(list(a = 1)),
+    assess_prediction(list(a = 1), method = "cluster"),
     "object"
   )
 

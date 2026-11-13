@@ -3,7 +3,7 @@
     Code
       adults <- get_worldpop("LBR", 2011, ages = c(20, Inf), dest_dir = dest_dir)
     Message
-      WorldPop unconstrained 2000-2020 estimates at 100m, LBR 2011, aged 20 and over, in 26 files.
+      i WorldPop unconstrained 2000-2020 estimates at 100m, LBR 2011, aged 20 and over, in 26 files.
 
 # get_worldpop errors name get_worldpop and give hints
 

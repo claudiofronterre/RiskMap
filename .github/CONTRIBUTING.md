@@ -119,9 +119,13 @@ Choose the class by who can cause the problem and fix it.
 - Use `expect_snapshot(error = TRUE)` when the wording itself matters, for example for an error with hints. A snapshot records the message as users see it, including the function named. Review changes with `testthat::snapshot_review()`, and commit new snapshots, because a snapshot missing on CI fails there.
 - Do not match whole sentences, so that the wording can improve without breaking tests.
 
+### Required arguments and repeated warnings
+
+An exported function calls `check_supplied()` first, once for each argument without a default, so that a missing argument gives a RiskMap input error naming it. A loop that repeats a step that can warn, such as a factorisation for each block, warns once after the loop with what the steps found, as `grouped_joint_prediction()` does with `warn_jitter()`, rather than once for each step. Hiding repeated warnings in general would also hide them from the handlers that record the warnings of each refit, in the bootstrap and in `assess_simulation()`.
+
 ### Messages and the `messages` argument
 
-Functions that report progress or choices made for the user take `messages`. When it is `TRUE` they report with `riskmap_inform()`. Use `riskmap_warn()` instead for a result the user should doubt. Do not use `cat()` or `print()` for progress, because those can't be silenced like messages. Keep them for `print()` methods.
+Functions that report progress or choices made for the user take `messages`. When it is `TRUE` they report with `riskmap_inform()`. A message whose first element has no bullet gets the information sign. Name it `"v"` for a step done and `"!"` for something to note. Use `riskmap_warn()` instead for a result the user should doubt. Do not use `cat()` or `print()` for progress, because those can't be silenced like messages. Keep them for `print()` methods.
 
 The default of `messages` is the option `RiskMap.messages`, so that a script or a book chapter can silence RiskMap once with `options(RiskMap.messages = FALSE)`.
 
@@ -166,7 +170,7 @@ Both helpers show progress only when `messages` is `TRUE` and the option `RiskMa
 - `out_heading()` marks the heading of a section, and `out_faint()` what matters less, such as the call.
 - `out_text()` wraps sentences to the console width, and `out_bullets()` gives lines a symbol as `cli_bullets()` does. Use `"v"` for a good verdict, `"!"` for one that needs care, `"x"` for a problem and `"i"` for a hint. `out_status_symbol()` gives the symbol of the status of a check.
 - `out_fun(name, topic)` names a RiskMap function and links it to its help page where the console supports such links.
-- `out_capture()` takes the lines of a table that R prints, such as a matrix or `printCoefmat()`, and `out_pairs()` lines up labels and values.
+- `out_capture()` takes the lines of a table that R prints, such as a matrix or `printCoefmat()`, and `out_pairs()` lines up labels and values, with the labels grey.
 
 Text is plain unless `markup = TRUE`, so that data such as a formula are printed as they are. Wrapping keeps code between backticks on one line. Build the lines in a separate function, as `format_fit()` does for `print.RiskMap()`, so that tests can read them. Snapshot tests run without colour and with ASCII symbols, and `test-format.R` also keeps one snapshot in Unicode.
 

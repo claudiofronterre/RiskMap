@@ -58,6 +58,18 @@ of 0 for a variance of `re()` terms, and `predict()` rejects points with Z or
 M coordinates or empty points in `newdata`. `match.arg()` errors are replaced
 by RiskMap input errors, and a unique abbreviation is now accepted wherever a
 choice is made, as `match.arg()` allows.
+- Leaving out an argument that has no default gives a RiskMap input error
+that names the argument and the function, such as "`object` is missing, with
+no default." from `check_fit()`, instead of R's error where the argument is
+first used.
+- Messages start with a symbol, as the printed output does. Most have an
+information sign, a step done has a tick, such as a certified fit or a
+finished bootstrap, and something to note has an exclamation mark. `glgpm()`
+says in one line which coordinate reference system the model is fitted in and
+the units of distance, instead of two.
+- A joint prediction in blocks warns once when the covariances of some
+blocks needed a diagonal jitter to be factorised, with how many blocks and
+the largest jitter, instead of once for each block.
 - `get_worldpop()` takes the default of `messages` from the option
 `RiskMap.messages`, so `options(RiskMap.messages = FALSE)` silences it.
 - A `max_dist` or `phi` that isn't positive is now reported as "must be a
@@ -105,14 +117,17 @@ Unicode fonts needs.
 certified." instead of "Certified:" or "Not certified:", `summary()` gives the
 link in one sentence, such as "The canonical logit link.", the log-likelihood
 and the AIC have no colon, and a fix follows an arrow instead of "Fix:".
-Argument and function names in the findings and fixes of the default checks
-of `check_fit()` are quoted with backticks, as in RiskMap's messages. Code
-that matched the old printed text needs updating.
+Argument and function names in the findings and fixes of `check_fit()` are
+quoted with backticks, as in RiskMap's messages. Code that matched the old
+printed text needs updating.
 - The printed checks give each status as its symbol instead of the words OK,
 SUSPICIOUS and PROBLEM, which stay in the column `status` of the element
 `checks`. Code that searched the printed checks for them should read that
 column.
 - RiskMap now needs cli 3.6.0 or later, for the links to help pages.
+- In a console with colours, the labels of rows that line up labels and
+values, such as the log-likelihood, the settings of a prediction or the
+evidence of `check_fit()`, are grey, so that the values stand out.
 - Printing the result of `assess_prediction()` gives the models, the test
 sets, how the parameters were set and the scores averaged over the test sets,
 instead of the whole list of scores and test sets. Its `summary()` gives the

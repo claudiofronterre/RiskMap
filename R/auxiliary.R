@@ -27,6 +27,7 @@
 ##' plot(convex_hull_result, add = TRUE, border = 'red')
 ##' @export
 create_convex_hull <- function(sf_object) {
+  check_supplied(sf_object)
   # Check if the input is an sf object
   if (!inherits(sf_object, "sf")) {
     abort_input("{.arg sf_object} must be an {.cls sf} object, not {.obj_type_friendly {sf_object}}.", arg = "sf_object")
@@ -56,6 +57,8 @@ create_convex_hull <- function(sf_object) {
 ##' elogit(y, m)
 ##' @export
 elogit <- function(y, m) {
+  check_supplied(y)
+  check_supplied(m)
   if (!is.numeric(y)) abort_input("{.arg y} must be numeric, not {.obj_type_friendly {y}}.", arg = "y")
   if (!is.numeric(m)) abort_input("{.arg m} must be numeric, not {.obj_type_friendly {m}}.", arg = "m")
   if (anyNA(y)) abort_input("{.arg y} must not have missing values.", arg = "y")
@@ -91,6 +94,7 @@ elogit <- function(y, m) {
 ##'
 ##' @export
 propose_utm <- function(data) {
+  check_supplied(data)
 
   check_data(data, geometry = "any")
 
@@ -147,6 +151,9 @@ propose_utm <- function(data) {
 ##'
 ##' @export
 matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
+  check_supplied(u)
+  check_supplied(phi)
+  check_supplied(kappa)
   if (any(!is.finite(u) | u < 0)) {
     abort_input("{.arg u} must contain only finite, non-negative distances.", arg = "u")
   }
@@ -198,6 +205,9 @@ matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 ##' @export
 ##'
 matern_gradient_phi <- function(u, phi, kappa) {
+  check_supplied(u)
+  check_supplied(phi)
+  check_supplied(kappa)
 
   if (!inherits(u, "dist")) {
     abort_input("{.arg u} must be made by {.fn stats::dist}, not {.obj_type_friendly {u}}.", arg = "u")
@@ -243,6 +253,9 @@ matern_gradient_phi <- function(u, phi, kappa) {
 ##'
 ##' @export
 matern_hessian_phi <- function(u, phi, kappa) {
+  check_supplied(u)
+  check_supplied(phi)
+  check_supplied(kappa)
 
   if (!inherits(u, "dist")) {
     abort_input("{.arg u} must be made by {.fn stats::dist}, not {.obj_type_friendly {u}}.", arg = "u")
@@ -1042,6 +1055,7 @@ describe_summary_link <- function(link_name, invlink_expression) {
 ##' to_table(fit)
 ##' to_table(fit, digits = 1)
 to_table <- function(object, ...) {
+  check_supplied(object)
   UseMethod("to_table")
 }
 
@@ -1146,6 +1160,7 @@ to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
 ##'
 ##' @export
 create_ids <- function(data) {
+  check_supplied(data)
   check_data(data)
   coords_o <- st_coordinates(data)
   coords <- unique(coords_o)

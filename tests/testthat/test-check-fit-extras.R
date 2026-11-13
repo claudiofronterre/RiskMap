@@ -246,7 +246,8 @@ test_that("the radius check runs on request, from streams of the fit's seed", {
   before <- .Random.seed
   expect_message(
     checked <- check_fit(binomial_model, extra = "radius"),
-    paste0("^Computing the predictions of how often the radius of the bound ",
+    paste0("^", cli::symbol$info, " Computing the predictions of how often ",
+           "the radius of the bound ",
            "is too small, which should take about .*, from the .* the fit took")
   )
   expect_identical(.Random.seed, before)
@@ -356,7 +357,8 @@ test_that("a Gaussian profile needs no seed and can be plotted alone", {
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   expect_message(checked <- check_fit(gaussian_model, extra = "profile"),
-                 "^Computing the profiles of the 4 covariance parameters.$")
+                 paste0("^", cli::symbol$info, " Computing the profiles of ",
+                        "the 4 covariance parameters.$"))
   expect_null(make_extra_check_seed(gaussian_model$seed, 9600L))
   expect_identical(checked$checks$check,
                    c("Profile likelihood", "Monte Carlo accuracy"))
@@ -474,7 +476,7 @@ test_that("the profile row names each parameter that needs a look", {
   ))
   expect_identical(second$fix, paste0(
     "Use the profile interval of phi rather than the Wald interval, and see ",
-    "its panel in plot()."
+    "its panel in `plot()`."
   ))
 
   flat <- fit_check_profile(make_profiles(
@@ -493,7 +495,7 @@ test_that("the profile row names each parameter that needs a look", {
   ))
   expect_identical(flat$fix, paste0(
     "Use the profile intervals of phi, sigma2 and nu2 rather than the Wald ",
-    "intervals, and see their panels in plot(). Consider a scale fixed from ",
+    "intervals, and see their panels in `plot()`. Consider a scale fixed from ",
     "external knowledge. Or the penalty. A variance whose interval is open ",
     "below may be zero, so consider refitting without nu2."
   ))
@@ -531,7 +533,7 @@ test_that("the profile row names each parameter that needs a look", {
   ))
   expect_identical(higher$fix, paste0(
     "Refit with starting values at the highest point of that profile, through ",
-    "'start_pars' in glgpm(), and keep the fit with the higher log-likelihood."
+    "`start_pars` in `glgpm()`, and keep the fit with the higher log-likelihood."
   ))
   two_higher <- fit_check_profile(make_profiles(
     phi = profile_part(grid, c(-6, -2, 0, -2, 0.4, -5, -9), 1.2, 3.4),

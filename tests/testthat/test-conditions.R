@@ -67,3 +67,47 @@ test_that("conditions are raised through the RiskMap constructors", {
           paste(direct, collapse = ", "))
   )
 })
+
+test_that("leaving out a required argument gives a RiskMap input error", {
+  error <- expect_input_error(check_fit(), "object",
+                              "`object` is missing, with no default.")
+  expect_identical(as.character(error$call[[1L]]), "check_fit")
+  expect_input_error(glgpm(y ~ gp(), family = "gaussian"), "data")
+  expect_input_error(variogram(gaussian_data), "variable")
+  # An argument passed on without a value is missing too, and the error
+  # names the function the user called.
+  wrapper <- function(fit) check_fit(fit)
+  error <- expect_input_error(wrapper(), "object")
+  expect_identical(as.character(error$call[[1L]]), "check_fit")
+})
+
+test_that("a message without a bullet gets the information sign", {
+  plain <- rlang::catch_cnd(riskmap_inform("A plain message."))
+  expect_s3_class(plain, "riskmap_message")
+  expect_match(rlang::cnd_message(plain),
+               paste(cli::symbol$info, "A plain message."), fixed = TRUE)
+  done <- rlang::catch_cnd(riskmap_inform(c(v = "Done.")))
+  expect_match(rlang::cnd_message(done), paste(cli::symbol$tick, "Done."),
+               fixed = TRUE)
+})
+
+test_that("a prediction warns once for the blocks that needed a jitter", {
+  # Two blocks, each of two points at one place, so each block's covariance
+  # is singular and needs a jitter.
+  prediction <- rbind(c(0, 0), c(0, 0), c(5, 5), c(5, 5))
+  conditioning <- rbind(c(50, 50), c(60, 60))
+  no_weights <- function(cross) matrix(0, nrow(cross), ncol(cross))
+  warnings <- testthat::capture_warnings(grouped_joint_prediction(
+    prediction, conditioning, group_indices = list(1:2, 3:4),
+    weight_function = no_weights, conditional_signal = c(0, 0),
+    marginal_variance = 1, phi = 1, kappa = 0.5, n_samples = 3
+  ))
+  expect_length(warnings, 1L)
+  expect_match(warnings, paste("The conditional prediction covariance of 2",
+                               "of 2 blocks needed a diagonal jitter"),
+               fixed = TRUE)
+  # One matrix keeps the warning it always had.
+  expect_warning(warn_jitter("covariance matrix", 1e-12),
+                 "needed a diagonal jitter of 1e-12 to be factorised")
+  expect_no_warning(warn_jitter("covariance matrix", c(0, 0)))
+})

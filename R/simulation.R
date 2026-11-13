@@ -37,6 +37,10 @@
 specify_glgpm <- function(formula, data, family, parameters,
                          denominator = NULL, model_crs = NULL,
                          distance_units = c("km", "m"), invlink = NULL) {
+  check_supplied(formula)
+  check_supplied(data)
+  check_supplied(family)
+  check_supplied(parameters)
   distance_units <- match_choice(distance_units)
   check_data(data)
   check_formula(formula, data, response_required = FALSE)
@@ -180,6 +184,7 @@ specify_glgpm <- function(formula, data, family, parameters,
 simulate_glgpm <- function(object, nsim = 1, what = "data",
                           sample_locations = NULL, prediction_grid = NULL,
                           seed = NULL) {
+  check_supplied(object)
   check_positive_integer(nsim, "nsim")
   if (!is.character(what) || !length(what) || anyNA(what) ||
       any(!what %in% c("data", "surface")) || anyDuplicated(what)) {
@@ -378,6 +383,7 @@ draw_simulation <- function(prepared, nsim, seed = NULL,
 #' @export
 simulated_values <- function(object, component = NULL, simulation = NULL,
                              location_set = NULL) {
+  check_supplied(object)
   check_simulation(object, simulation)
   if (is.null(simulation)) simulation <- seq_len(object$nsim)
   if (is.null(location_set)) location_set <- names(object$samples)
@@ -441,6 +447,7 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
 #' simulated_data(sim, simulation = 1)
 #' @export
 simulated_data <- function(object, simulation = 1) {
+  check_supplied(object)
   check_simulation(object, simulation, single = TRUE)
   if (is.null(object$samples$data)) {
     abort_input(c("{.arg object} has no simulated responses.", "i" = "Simulate with {.arg what} including {.val data}."), arg = "object")
@@ -458,6 +465,7 @@ simulated_data <- function(object, simulation = 1) {
 #' @rdname simulated_data
 #' @export
 simulated_surface <- function(object, simulation = 1) {
+  check_supplied(object)
   check_simulation(object, simulation, single = TRUE)
   if (is.null(object$samples$surface)) {
     abort_input(c("{.arg object} has no simulated surface.", "i" = "Simulate with {.arg what} including {.val surface}."), arg = "object")
