@@ -177,6 +177,24 @@ make_curvature_floor <- function(latent_map, precision) {
   }
 }
 
+##' The floor of the factors' curvature in the global proposal
+##'
+##' The smooth floor at zero (`smooth_curvature_floor()`) for integrated
+##' records and for a link whose curvature can be negative, which keeps the
+##' proposal a smooth function of the parameters, as the theory of the
+##' certificate assumes, where a floor at a bound has a kink. Otherwise the
+##' floor at the Gershgorin bound (`make_curvature_floor()`), as before step 5b
+##' of #253, since under a link of the family's `concave_links` a curvature is
+##' negative only through rounding (`make_family()`, property `smooth_floor`).
+##' @noRd
+choose_curvature_floor <- function(kernel, latent_map, precision) {
+  if (kernel$smooth_floor) {
+    smooth_curvature_floor
+  } else {
+    make_curvature_floor(latent_map, precision)
+  }
+}
+
 ##' The global proposal from a fixed number of refits of an anchor
 ##'
 ##' At a parameter value other than the anchor's, the anchor's factors, carried
@@ -194,11 +212,7 @@ refit_from_anchor <- function(anchor, mu, y, units_m, latent_map, precision,
                               family, count = 3L,
                               quadrature = build_normal_quadrature()) {
   kernel <- check_family_object(family)
-  floor_curvature <- if (kernel$integrated) {
-    smooth_curvature_floor
-  } else {
-    make_curvature_floor(latent_map, precision)
-  }
+  floor_curvature <- choose_curvature_floor(kernel, latent_map, precision)
   factors <- c(anchor$linear - anchor$curvature * (mu - anchor$mu),
                anchor$curvature)
   change <- NA_real_
@@ -279,11 +293,7 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 quadrature = build_normal_quadrature(),
                                 memory = 3L) {
   kernel <- check_family_object(family)
-  floor_curvature <- if (kernel$integrated) {
-    smooth_curvature_floor
-  } else {
-    make_curvature_floor(latent_map, precision)
-  }
+  floor_curvature <- choose_curvature_floor(kernel, latent_map, precision)
   mode_terms <- kernel$terms(
     mu + latent_linear_predictor(latent_map, mode), y, units_m
   )

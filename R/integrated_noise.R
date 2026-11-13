@@ -281,13 +281,15 @@ make_integrated_kernel <- function(sites, classes) {
        })
 }
 
-##' A smooth floor at zero for the curvature of integrated sites
+##' A smooth floor at zero for the curvature of the global proposal's factors
 ##'
 ##' epsilon log(1 + exp(C / epsilon)), which equals C to within
 ##' epsilon exp(-C / epsilon) for C well above epsilon and is positive
 ##' everywhere. A floor with continuous derivatives keeps the fixed refits a
-##' smooth function of the parameters wherever an integrated site's
-##' log-likelihood is not concave, which cannot be ruled out numerically.
+##' smooth function of the parameters wherever a record's log-likelihood is
+##' not concave, for integrated sites, where that cannot be ruled out
+##' numerically, and for links not known to be log-concave
+##' (`choose_curvature_floor()`).
 ##' @noRd
 smooth_curvature_floor <- function(curvature, epsilon = 1e-3) {
   pmax(curvature, 0) + epsilon * log1p(exp(-abs(curvature) / epsilon))

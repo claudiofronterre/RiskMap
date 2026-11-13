@@ -26,6 +26,36 @@ test_that("the properties of a family object follow the link", {
   expect_true(probit$needs_finite_weight)
 })
 
+test_that("the global proposal floors smoothly a link not known to be concave", {
+  named <- function(link) {
+    make_inverse_link_functions("binomial",
+                                c(named_inverse_link(link), link = link), 5L)
+  }
+  # Links of concave_links keep the floor at the Gershgorin bound.
+  expect_false(make_family("binomial")$smooth_floor)
+  expect_false(make_family("poisson")$smooth_floor)
+  for (link in c("probit", "cloglog")) {
+    expect_false(make_family("binomial", named(link))$smooth_floor)
+  }
+  # Cauchit is not on the list, and a link given as a function is not known,
+  # even when it is the logit.
+  expect_true(make_family("binomial", named("cauchit"))$smooth_floor)
+  expect_true(make_family(
+    "binomial", make_inverse_link_functions("binomial", plogis, 5L)
+  )$smooth_floor)
+
+  precision <- diag(2)
+  latent_map <- list(columns = matrix(1:2, 2), dimension = 2L)
+  expect_identical(
+    choose_curvature_floor(make_family("binomial", named("cauchit")),
+                           latent_map, precision),
+    smooth_curvature_floor
+  )
+  gershgorin <- choose_curvature_floor(make_family("binomial", named("probit")),
+                                       latent_map, precision)
+  expect_identical(gershgorin(c(-1, 2)), c(-0.5, 2))
+})
+
 test_that("an object with integrated records keeps the properties of its link", {
   y <- c(0, 20, 3)
   units_m <- c(20, 20, 20)
@@ -41,6 +71,7 @@ test_that("an object with integrated records keeps the properties of its link", 
     expect_identical(integrated$needs_finite_weight, plain$needs_finite_weight)
     expect_false(integrated$assumes_concave)
     expect_false(integrated$moves_start)
+    expect_true(integrated$smooth_floor)
     expect_identical(integrated$terms(c(-1, 2, 0), y, units_m),
                      kernel$terms(c(-1, 2, 0)))
     eta <- matrix(c(-1, 2, 0, 0.5, 1, -2), 2, byrow = TRUE)
