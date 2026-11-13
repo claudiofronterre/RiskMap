@@ -108,52 +108,68 @@ describe_fit_integration <- function(optimizer) {
 
 ##' One sentence on the Monte Carlo certificate of a fit
 ##'
-##' `mcml` is the list of `summarise_mcml_fit()`.
+##' `mcml` is the list of `summarise_mcml_fit()`. The sentence is formatted
+##' with cli, so argument and function names look as in RiskMap's messages.
+##' `certificate_symbol()` gives the bullet it is printed with.
 ##' @noRd
 describe_mcml_certificate <- function(mcml) {
   bound <- signif(mcml$certificate, 2)
   level <- paste0(100 * mcml$level, "%")
-  switch(
+  tolerance <- mcml$tolerance
+  refit <- function(arguments) {
+    paste0("Refit with a larger ", arguments, " in {.fun set_control_mcml}.")
+  }
+  text <- switch(
     mcml$outcome,
     "certified" = paste0(
-      "Certified: the Monte Carlo error of the estimate is within ", bound,
-      " statistical standard errors (an approximate ", level, " bound, ",
-      "tolerance ", mcml$tolerance, ")."
+      "Certified. The Monte Carlo error of the estimate is within {bound} ",
+      "statistical standard errors (an approximate {level} bound, tolerance ",
+      "{tolerance})."
     ),
     "weak identification" = paste0(
-      "No certificate: the observed information is singular, so the Monte ",
+      "No certificate. The observed information is singular, so the Monte ",
       "Carlo precision of the estimate is not established."
     ),
     "numerically independent" = paste0(
-      "No certificate: the fit is numerically one of independent location ",
+      "No certificate. The fit is numerically one of independent location ",
       "effects, and the certificate needs an interior maximum."
     ),
     "no maximum" = paste0(
-      "No certificate: the likelihood has no maximum, so there is no ",
+      "No certificate. The likelihood has no maximum, so there is no ",
       "maximum likelihood estimate whose Monte Carlo error could be bounded."
     ),
     if (isTRUE(mcml$variance_rising)) {
       paste0(
-        "Not certified: the likelihood rises as a variance held at zero leaves ",
-        "it, so the estimate is not a maximum. Refit with a larger ",
-        "'max_samples' or 'max_stages' in set_control_mcml()."
+        "Not certified. The likelihood rises as a variance held at zero ",
+        "leaves it, so the estimate is not a maximum. ",
+        refit("{.arg max_samples} or {.arg max_stages}")
       )
     } else if (mcml$correction_refused) {
       paste0(
-        "Not certified: the Newton correction of the estimate did not ",
-        "converge on the validation draws, so the approximate ", level,
-        " bound of ", bound, " statistical standard errors may not hold. ",
-        "Refit with a larger 'max_samples' in set_control_mcml()."
+        "Not certified. The Newton correction of the estimate did not ",
+        "converge on the validation draws, so the approximate {level} bound ",
+        "of {bound} statistical standard errors may not hold. ",
+        refit("{.arg max_samples}")
       )
     } else {
       paste0(
-        "Not certified: the approximate ", level, " bound on the Monte Carlo ",
-        "error of the estimate is ", bound, " statistical standard errors, ",
-        "above the tolerance of ", mcml$tolerance, ". Refit with a larger ",
-        "'max_samples' or 'max_stages' in set_control_mcml()."
+        "Not certified. The approximate {level} bound on the Monte Carlo ",
+        "error of the estimate is {bound} statistical standard errors, above ",
+        "the tolerance of {tolerance}. ",
+        refit("{.arg max_samples} or {.arg max_stages}")
       )
     }
   )
+  cli::format_inline(text)
+}
+
+##' The bullet of the certificate of a fit, a tick only when it is certified
+##'
+##' Every other outcome is a problem in the check of the Monte Carlo accuracy
+##' of `check_fit()`, so it gets a cross.
+##' @noRd
+certificate_symbol <- function(mcml) {
+  if (identical(mcml$outcome, "certified")) "v" else "x"
 }
 
 ##' One sentence on the stages and draws of a certified MCML fit
@@ -225,25 +241,18 @@ describe_noise_forms <- function(forms) {
 
 ##' One sentence on how many checks of a fit need a look
 ##'
-##' NULL when the number is not known.
+##' With its bullet as its name, a tick when no check needs a look. NULL when
+##' the number is not known.
 ##' @noRd
 describe_checks_to_review <- function(count) {
   if (is.null(count)) return(NULL)
-  if (count == 0L) return("No check needs a look, see check_fit() for the details.")
-  paste0(count, if (count == 1L) " check needs" else " checks need",
-         " a look, see check_fit().")
-}
-
-##' Write sentences wrapped to the console width
-##'
-##' Each element of `text` starts a new line.
-##' @noRd
-write_wrapped <- function(text) {
-  width <- max(40L, getOption("width", 80L) - 2L)
-  for (sentence in text) {
-    cat(strwrap(sentence, width = width), sep = "\n")
+  check_fit <- out_fun("check_fit")
+  if (count == 0L) {
+    return(c(v = paste0("No check needs a look. See ", check_fit,
+                        " for the details.")))
   }
-  invisible(NULL)
+  c("!" = paste0(count, if (count == 1L) " check needs" else " checks need",
+                 " a look. See ", check_fit, "."))
 }
 
 ##' @title Print a Fitted RiskMap Model
@@ -275,24 +284,21 @@ print.RiskMap <- function(x, digits = max(3L, getOption("digits") - 3L),
                           ...) {
   check_class(x, "RiskMap")
   check_positive_integer(digits, "digits")
-  if (!is.null(x$call)) {
-    cat("Call:\n")
-    cat(paste(deparse(x$call), collapse = "\n"), "\n\n", sep = "")
-  }
-  model <- c(gaussian = "Linear", binomial = "Binomial",
-             poisson = "Poisson")[x$family]
+  out_print(format_fit(x, digits))
+  invisible(x)
+}
+
+##' The lines that print a fitted model
+##' @noRd
+format_fit <- function(x, digits) {
+  traits <- fit_traits(x)
   # Only a link other than the canonical one is named, since the
   # coefficients are then on another scale.
   link <- if (identical(x$link_function$name, "custom")) {
     paste0(" with ", x$link_function$link %||% "a custom", " link")
   }
-  cat(if (is.na(model)) "Geostatistical" else model, " geostatistical model",
-      link, ", ", length(x$y), " observations at ", NROW(x$coords),
-      " locations\n", sep = "")
-
+  title <- paste0(model_title(traits), link)
   estimates <- coef(x)
-  cat("\nRegression coefficients\n")
-  print_estimates(estimates$beta, digits)
   covariance <- c(
     "Spatial process var." = estimates$sigma2,
     stats::setNames(estimates$phi, paste0("Spatial corr. scale (",
@@ -304,31 +310,72 @@ print.RiskMap <- function(x, digits = max(3L, getOption("digits") - 3L),
                                   " (random eff. var.)")
     )
   )
-  cat("\nCovariance parameters (Matern, kappa = ", x$kappa, ")\n", sep = "")
-  print_estimates(covariance, digits)
-  if (is.numeric(x$fix_tau2)) {
-    cat("Variance of the nugget effect fixed at ", x$fix_tau2, "\n", sep = "")
-  }
-  if (identical(x$family, "gaussian") && is.numeric(x$fix_var_me)) {
-    cat("Measurement error var. fixed at ", x$fix_var_me, "\n", sep = "")
-  }
-
-  cat("\nLog-likelihood: ", format(x$log_lik, digits = digits + 3L), "\n",
-      sep = "")
+  fixed <- c(
+    if (is.numeric(x$fix_tau2)) {
+      paste0("Variance of the nugget effect fixed at ", x$fix_tau2)
+    },
+    if (isTRUE(traits$measurement_error) && is.numeric(x$fix_var_me)) {
+      paste0("Measurement error var. fixed at ", x$fix_var_me)
+    }
+  )
   mcml <- summarise_mcml_fit(x)
-  if (!is.null(mcml)) {
-    write_wrapped(c(describe_mcml_certificate(mcml),
-                    describe_checks_to_review(mcml$checks_to_review)))
+  certificate <- if (!is.null(mcml)) {
+    c(stats::setNames(describe_mcml_certificate(mcml),
+                      certificate_symbol(mcml)),
+      describe_checks_to_review(mcml$checks_to_review))
   }
-  cat("\nsummary() gives standard errors and confidence intervals.\n")
-  invisible(x)
+  summary_hint <- paste0(out_fun("summary", "summary.RiskMap"),
+                         " gives standard errors and confidence intervals.")
+  c(out_rule(title),
+    format_call(x$call),
+    out_text(paste0(format_count(length(x$y)), " observations at ",
+                    format_count(NROW(x$coords)), " locations.")),
+    "",
+    out_heading("Regression coefficients"),
+    format_estimates(estimates$beta, digits),
+    "",
+    out_heading(paste0("Covariance parameters (Matern, kappa = ", x$kappa,
+                       ")")),
+    format_estimates(covariance, digits),
+    out_text(fixed),
+    "",
+    out_pairs("Log-likelihood", format(x$log_lik, digits = digits + 3L)),
+    "",
+    out_bullets(c(certificate, i = summary_hint)))
 }
 
-##' Print named estimates as a column, each with its own notation
+##' The title of a fitted model
+##'
+##' "Linear geostatistical model" for a family whose likelihood is exact, and
+##' otherwise the name of the family, as in "Binomial geostatistical model".
+##' `traits` are those of `fit_traits()`, NULL for a family RiskMap doesn't
+##' know.
 ##' @noRd
-print_estimates <- function(values, digits) {
+model_title <- function(traits) {
+  if (is.null(traits)) return("Geostatistical model")
+  if (isTRUE(traits$exact)) return("Linear geostatistical model")
+  family <- traits$family
+  paste0(toupper(substr(family, 1L, 1L)), substring(family, 2L),
+         " geostatistical model")
+}
+
+##' The call of a fit, faint, as R deparses it
+##' @noRd
+format_call <- function(call) {
+  if (is.null(call)) return(character())
+  out_faint(sub("\\s+$", "", deparse(call)))
+}
+
+##' A count with a comma between thousands
+##' @noRd
+format_count <- function(count) {
+  format(count, big.mark = ",", scientific = FALSE, trim = TRUE)
+}
+
+##' Named estimates as a column, each with its own notation
+##' @noRd
+format_estimates <- function(values, digits) {
   column <- matrix(vapply(values, format, character(1), digits = digits),
                    ncol = 1L, dimnames = list(names(values), "Estimate"))
-  print.default(column, quote = FALSE, right = TRUE)
-  invisible(NULL)
+  out_capture(print.default(column, quote = FALSE, right = TRUE))
 }

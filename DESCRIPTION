@@ -25,7 +25,7 @@ Authors@R:
 Depends:
     R (>= 3.5.0)
 Imports:
-    cli (>= 3.4.0),
+    cli (>= 3.6.0),
     Deriv,
     dplyr,
     ggplot2,

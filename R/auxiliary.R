@@ -916,65 +916,79 @@ parameter_labels <- function(names, distance_units) {
 ##' @method print summary.RiskMap
 ##' @export
 print.summary.RiskMap <- function(x, ...) {
+  out_print(format_fit_summary(x))
+  invisible(x)
+}
 
-  if (!is.null(x$call)) {
-    cat("Call:\n")
-    cat(paste(deparse(x$call), collapse = "\n"), "\n\n", sep = "")
+##' The lines that print the summary of a fitted model
+##' @noRd
+format_fit_summary <- function(x) {
+  traits <- fit_traits(x)
+  title <- model_title(traits)
+  coefficients <- function(table, p_values) {
+    out_capture(printCoefmat(table, P.values = p_values,
+                             has.Pvalue = p_values))
   }
-
-  # ===========================================================================
-  # STANDARD RISKMAP MODELS
-  # ===========================================================================
-
-  if (identical(x$family, "gaussian")) {
-    cat("Linear geostatistical model\n")
-  } else if (identical(x$family, "binomial")) {
-    cat("Binomial geostatistical model\n")
-  } else if (identical(x$family, "poisson")) {
-    cat("Poisson geostatistical model\n")
+  nugget_estimated <- "Variance of the nugget" %in% rownames(x$sp)
+  monte_carlo <- if (!is.null(x$mcml)) {
+    c("",
+      out_heading("Monte Carlo maximum likelihood"),
+      out_bullets(c(stats::setNames(describe_mcml_certificate(x$mcml),
+                                    certificate_symbol(x$mcml)),
+                    describe_checks_to_review(x$mcml$checks_to_review))))
   }
+  c(out_rule(title),
+    format_call(x$call),
+    out_text(c(describe_summary_link(x$link_name, x$invlink_expression),
+               paste0("The limits are those of ", x$level * 100,
+                      "% confidence intervals."))),
+    "",
+    out_heading("Regression coefficients"),
+    coefficients(x$reg_coef, TRUE),
+    if (isTRUE(x$cov_offset_used)) {
+      out_text("Offset included in the linear predictor")
+    },
+    if (isTRUE(traits$measurement_error)) {
+      if (length(x$me) > 1) {
+        c("", out_heading("Measurement error"), coefficients(x$me, FALSE))
+      } else {
+        c("", out_text(paste0("Measurement error var. fixed at ", x$me)))
+      }
+    },
+    "",
+    out_heading(paste0("Spatial Gaussian process, Matern correlation with ",
+                       "kappa = ", x$kappa)),
+    coefficients(x$sp, FALSE),
+    if (!nugget_estimated && is.numeric(x$tau2)) {
+      out_text(paste0("Variance of the nugget effect fixed at ", x$tau2))
+    },
+    if (!is.null(x$ranef)) {
+      c("", out_heading("Unstructured random effects"),
+        coefficients(x$ranef, FALSE))
+    },
+    "",
+    out_pairs(c("Log-likelihood", if (!is.null(x$aic)) "AIC"),
+              format(c(x$log_lik, x$aic))),
+    monte_carlo)
+}
 
-  if (!is.null(x$link_name))        cat("Link:", x$link_name, "\n")
-  if (!is.null(x$invlink_expression)) cat(x$invlink_expression, "\n\n")
-
-  cat("'Lower limit' and 'Upper limit' refer to ",
-      x$level * 100, "% confidence intervals\n", sep = "")
-
-  cat("\nRegression coefficients\n")
-  printCoefmat(x$reg_coef, P.values = TRUE, has.Pvalue = TRUE)
-  if (isTRUE(x$cov_offset_used)) cat("Offset included in the linear predictor\n")
-
-  if (identical(x$family, "gaussian")) {
-    if (length(x$me) > 1) {
-      cat("\n"); printCoefmat(x$me, P.values = FALSE, has.Pvalue = FALSE)
-    } else {
-      cat("\nMeasurement error var. fixed at ", x$me, "\n", sep = "")
-    }
+##' One sentence on the link of a summarised fit
+##'
+##' The canonical links and the identity are named, and any other link is
+##' given with its inverse, as `summary()` records it.
+##' @noRd
+describe_summary_link <- function(link_name, invlink_expression) {
+  if (is.null(link_name)) return(NULL)
+  canonical <- regmatches(link_name, regexec("^canonical \\((.*)\\)$",
+                                             link_name))[[1L]]
+  if (length(canonical)) {
+    return(paste0("The canonical ", canonical[2L], " link."))
   }
-
-  cat("\nSpatial Gaussian process\n")
-  cat("Matern covariance parameters (kappa = ", x$kappa, ")\n", sep = "")
-
-  printCoefmat(x$sp, P.values = FALSE, has.Pvalue = FALSE)
-  if (!isTRUE(x$tau2))
-    cat("Variance of the nugget effect fixed at ", x$tau2, "\n", sep = "")
-
-  if (!is.null(x$ranef)) {
-    cat("\nUnstructured random effects\n")
-    printCoefmat(x$ranef, P.values = FALSE, has.Pvalue = FALSE)
-  }
-
-  cat("\nLog-likelihood: ", x$log_lik, "\n", sep = "")
-  if (identical(x$family, "gaussian") && !is.null(x$aic))
-    cat("AIC: ", x$aic, "\n", sep = "")
-
-  if (!is.null(x$mcml)) {
-    cat("\nMonte Carlo maximum likelihood\n")
-    write_wrapped(c(describe_mcml_certificate(x$mcml),
-                    describe_checks_to_review(x$mcml$checks_to_review)))
-  }
-
-  return(invisible(x))
+  if (identical(link_name, "identity")) return("The identity link.")
+  inverse <- sub("^Inverse link function = ", "", invlink_expression %||% "")
+  paste0(if (identical(link_name, "custom")) "A custom" else
+           paste("The", link_name),
+         " link", if (nzchar(inverse)) paste0(", with inverse ", inverse), ".")
 }
 
 ##' @title Format RiskMap Results as a Table

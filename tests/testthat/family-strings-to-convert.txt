@@ -8,7 +8,5 @@ coef.RiskMap
 fit_check_link
 fit_check_no_maximum
 list_covariance_parameters
-print.RiskMap
-print.summary.RiskMap
 print.summary.RiskMap_bootstrap
 summary.RiskMap

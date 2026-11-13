@@ -66,7 +66,7 @@ test_that("the Monte Carlo check follows the outcome of the fit", {
   )))
   expect_identical(above$status, "PROBLEM")
   expect_match(above$finding, "1.7 standard errors, above the limit of 0.1")
-  expect_match(above$fix, "'max_samples' or 'max_stages'")
+  expect_match(above$fix, "`max_samples` or `max_stages`")
 
   refused <- fit_check_monte_carlo(modifyList(certified_mcml, list(
     outcome = "not certified", correction_refused = TRUE
@@ -95,7 +95,7 @@ test_that("the weights check flags a heavy tail", {
   heavy <- fit_check_weights(list(effective_draws = 94, pareto_k = 1.005))
   expect_identical(heavy$status, "SUSPICIOUS")
   expect_match(heavy$finding, "tail shape of 1 (limit 0.7), which", fixed = TRUE)
-  expect_match(heavy$fix, "'max_samples'")
+  expect_match(heavy$fix, "`max_samples`")
   expect_identical(fit_check_weights(list(effective_draws = 1, pareto_k = NA))$status,
                    "SUSPICIOUS")
   expect_null(fit_check_weights(NULL))
@@ -110,7 +110,7 @@ test_that("the maxima check says what the check for other maxima found", {
   expect_identical(alarm$status, "PROBLEM")
   expect_match(alarm$finding, "not the maximum likelihood estimate")
   expect_identical(alarm$fix, paste0("Inspect the profile likelihood, ",
-                                     "check_fit(fit, extra = \"profile\")."))
+                                     "`check_fit(fit, extra = \"profile\")`."))
 
   check <- data.frame(
     maximum = 1:3, independent_log_likelihood = c(-12.1, -10.2, -10.3),
@@ -134,7 +134,7 @@ test_that("the maxima check says what the check for other maxima found", {
   expect_match(ambiguous$finding, "about equally well")
   expect_match(ambiguous$finding, "differ by 0.1 .* scale of 3 km")
   expect_match(ambiguous$fix,
-               "see the profile likelihood, check_fit(fit, extra = \"profile\").",
+               "see the profile likelihood, `check_fit(fit, extra = \"profile\")`.",
                fixed = TRUE)
   expect_identical(describe_other_maximum(NULL, FALSE), "")
 })
@@ -175,7 +175,7 @@ test_that("the scale check says whether the data determine the scale", {
   expect_match(short$finding, "shorter than the median distance")
   expect_match(short$finding, "(12.3 ", fixed = TRUE)
   expect_match(short$fix, paste0("^See the profile likelihood, ",
-                                 "check_fit\\(fit, extra = \"profile\"\\)\\. "))
+                                 "`check_fit\\(fit, extra = \"profile\"\\)`\\. "))
   expect_match(short$fix, "pc_prior = TRUE")
   penalised <- fit_check_spatial_scale(
     binomial_model, list(mcml_small_scale = TRUE, mcml_pc_prior = TRUE)
@@ -280,12 +280,14 @@ test_that("a fit without a maximum gets that check alone, with what to do", {
 
 test_that("the summary counts the checks that need a look", {
   expect_null(describe_checks_to_review(NULL))
-  expect_identical(describe_checks_to_review(0L),
-                   "No check needs a look, see check_fit() for the details.")
+  expect_identical(
+    describe_checks_to_review(0L),
+    c(v = "No check needs a look. See `check_fit()` for the details.")
+  )
   expect_identical(describe_checks_to_review(1L),
-                   "1 check needs a look, see check_fit().")
+                   c("!" = "1 check needs a look. See `check_fit()`."))
   expect_identical(describe_checks_to_review(2L),
-                   "2 checks need a look, see check_fit().")
+                   c("!" = "2 checks need a look. See `check_fit()`."))
   flagged <- with_flags(mcml_maxima_alarm = FALSE,
                         mcml_near_limit = TRUE,
                         mcml_boundary = "nugget variance (tau2)")
@@ -348,34 +350,49 @@ test_that("printing gives a check that needs a look in full and an OK one on a l
   withr::local_options(width = 80L)
   printed <- capture.output(result <- print(checked))
   expect_identical(result, checked)
-  expect_identical(printed[1L], "Checks on this fit")
+  expect_match(printed[1L], "Checks on this fit", fixed = TRUE)
   expect_match(printed[2L], "^Fitted in ")
-  expect_true(any(grepl("^SUSPICIOUS +Variances +The nugget", printed)))
-  expect_true(any(grepl("^ +Fix: Consider refitting without it", printed)))
+  # The symbol of a check that needs a look, then its name and finding, and
+  # under them the fix after an arrow.
+  suspicious <- out_status_symbol("SUSPICIOUS")
+  expect_true(any(startsWith(printed, paste0(suspicious, " Variances "))))
+  expect_true(any(grepl("The nugget", printed[startsWith(printed,
+                                                       suspicious)])))
+  arrow <- paste0(cli::symbol$arrow_right, " Consider refitting without it")
+  expect_true(any(grepl(arrow, printed, fixed = TRUE)))
   # Each OK check is one line with its brief finding, the next line starting
   # another check or the closing lines.
   checks <- checked$checks
   ok <- checks[checks$status == "OK", ]
   expect_gte(nrow(ok), 3L)
   for (row in seq_len(nrow(ok))) {
-    line <- which(startsWith(printed, paste0(formatC("OK", width = -10L), "  ",
+    line <- which(startsWith(printed, paste0(out_status_symbol("OK"), " ",
                                              ok$check[[row]], " ")))
     expect_length(line, 1L)
     expect_match(printed[[line]], paste0("  ", ok$brief[[row]]), fixed = TRUE)
     expect_false(startsWith(printed[[line + 1L]], " "))
   }
-  expect_true(any(grepl("^OK +Monte Carlo accuracy +Within [0-9.]+ standard errors\\.$",
-                        printed)))
+  expect_true(any(grepl(
+    paste0("^", out_status_symbol("OK"),
+           " Monte Carlo accuracy +Within [0-9.]+ standard errors\\.$"),
+    printed
+  )))
   expect_false(any(grepl("though it cannot rule one out", printed)))
+  info <- out_symbol("i")
   expect_identical(
     utils::tail(printed, 2L),
-    c("summary() of these checks gives the evidence behind each finding.",
-      "These checks concern the computation, not whether the model suits the data.")
+    c(paste(info, "`summary()` of these checks gives the evidence behind each",
+            "finding."),
+      paste(info, "These checks concern the computation, not whether the",
+            "model suits the data."))
   )
   expect_false(any(grepl("^ +$", printed)))
-  withr::local_options(width = 60L)
+  # testthat sets cli.width with width, and the output follows cli.width.
+  withr::local_options(width = 60L, cli.width = 60L)
   narrow <- capture.output(print(checked))
-  expect_lte(max(nchar(narrow)), 80L)
+  expect_lte(max(nchar(narrow)), 60L)
+  withr::local_options(cli.width = NULL)
+  expect_lte(max(nchar(capture.output(print(checked)))), 60L)
   # A table made before the brief findings gives the findings.
   old <- checked
   old$checks$brief <- NULL
@@ -438,13 +455,13 @@ test_that("each OK check has a brief finding for its line", {
 
 test_that("a fix names the extra check that would settle it", {
   expect_identical(describe_profile_pointer(),
-                   ", check_fit(fit, extra = \"profile\")")
+                   ", `check_fit(fit, extra = \"profile\")`")
   expect_match(describe_profile_pointer(TRUE), "the check \"Profile likelihood\"",
                fixed = TRUE)
   heavy <- list(effective_draws = 94, pareto_k = 1.005)
   expect_match(fit_check_weights(heavy, radius = describe_radius_pointer())$fix,
                paste0("read the bound with caution. The check of the radius, ",
-                      "check_fit(fit, extra = \"radius\"), predicts whether it ",
+                      "`check_fit(fit, extra = \"radius\")`, predicts whether it ",
                       "is too small."), fixed = TRUE)
   expect_no_match(fit_check_weights(heavy)$fix, "extra")
 
@@ -464,7 +481,7 @@ test_that("a fix names the extra check that would settle it", {
   for (check in c("Spatial scale", "Other maxima")) {
     expect_no_match(profiled[[check]], "extra = ", fixed = TRUE)
     expect_match(profiled[[check]],
-                 "in the check \"Profile likelihood\" and its panels in plot()",
+                 "in the check \"Profile likelihood\" and its panels in `plot()`",
                  fixed = TRUE)
   }
   # The radius is named for a fit with a certificate, and not for a Gaussian

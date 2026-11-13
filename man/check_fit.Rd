@@ -85,8 +85,11 @@ data, so \code{OK} does not mean that the model is adequate. They read what the
 fit recorded, and add no statistical judgement of their own. The status
 \code{PROBLEM} means that the estimate or its certificate should not be relied
 on as it stands. \code{SUSPICIOUS} means that the computation is valid but the
-result needs care. The limit of 0.7 on the tail shape of the importance
-weights, the Pareto shape, is that of Vehtari et al. (2024).
+result needs care. \code{print()} marks a check that is \code{OK} with a green
+tick, one that is \code{SUSPICIOUS} with a yellow exclamation mark and a
+\code{PROBLEM} with a red cross, and gives the fix after an arrow. The limit
+of 0.7 on the tail shape of the importance weights, the Pareto shape, is
+that of Vehtari et al. (2024).
 
 A Gaussian fit has no Monte Carlo error, so its only default check says so.
 
