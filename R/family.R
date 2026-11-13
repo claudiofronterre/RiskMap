@@ -286,7 +286,11 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   Gaussian family is fitted on the log scale, and the size `theta` of the
 ##'   negative binomial family on that of log(1 / theta), so that a fit
 ##'   drifting to the Poisson limit tends to minus infinity as a variance
-##'   drifting to zero does. A fitted parameter is in the family block of the
+##'   drifting to zero does. Each map is `exp()` of the working value or of its
+##'   negative, so that the log-normal intervals of `summary()` hold, and the
+##'   names are unique across families and differ from those of the other
+##'   parameters, so that the output finds a parameter by its name
+##'   (`family_parameter()`). A fitted parameter is in the family block of the
 ##'   layout (`cov_par_layout()`), and a held one is stored with the fit
 ##'   (`held_family_parameters()`).
 ##' - `parameters_heading`, the heading of the table of the parameters that
@@ -751,17 +755,33 @@ negative_binomial <- function(theta) {
             class = "riskmap_family_specification")
 }
 
+##' The description of a family's own parameter, by its name
+##'
+##' From the `parameters` of `riskmap_families`, whose names are unique across
+##' the families (`test-family.R`), so that a fit's output finds the label,
+##' words and map of a parameter by its name alone. NULL for a name that is
+##' not a parameter of a family.
+##' @noRd
+family_parameter <- function(name) {
+  for (family in riskmap_families) {
+    descriptor <- family$parameters[[name]]
+    if (!is.null(descriptor)) return(descriptor)
+  }
+  NULL
+}
+
+##' The names of the families' own parameters
+##' @noRd
+family_parameter_names <- function() {
+  unlist(lapply(riskmap_families, function(family) names(family$parameters)),
+         use.names = FALSE)
+}
+
 ##' The words of a family's own parameter, as "measurement error variance"
 ##'
 ##' NULL for a name that is not a parameter of a family.
 ##' @noRd
-family_parameter_words <- function(name) {
-  for (family in riskmap_families) {
-    words <- family$parameters[[name]]$words
-    if (!is.null(words)) return(words)
-  }
-  NULL
-}
+family_parameter_words <- function(name) family_parameter(name)$words
 
 ##' The family's own parameters that a fit estimates
 ##'

@@ -892,9 +892,22 @@ profile_intervals <- function(problem, marginal, level) {
                wald_upper = estimate + z * se)
   })
   intervals <- do.call(rbind, rows)
-  positive <- !grepl("^beta\\.", intervals$parameter)
+  # A parameter of a family goes to its natural scale through the family's
+  # map, which for the size of a negative binomial family decreases, so that
+  # the limits change places, and the variances and the scale through exp().
+  family <- intervals$parameter %in% family_parameter_names()
+  positive <- !grepl("^beta\\.", intervals$parameter) & !family
   columns <- c("estimate", "profile_lower", "profile_upper", "wald_lower", "wald_upper")
   intervals[positive, columns] <- exp(intervals[positive, columns])
+  for (row in which(family)) {
+    natural <- family_parameter(intervals$parameter[row])$natural
+    values <- natural(unlist(intervals[row, columns]))
+    if (natural(1) < natural(0)) {
+      values <- values[c("estimate", "profile_upper", "profile_lower",
+                         "wald_upper", "wald_lower")]
+    }
+    intervals[row, columns] <- as.list(unname(values))
+  }
   rownames(intervals) <- NULL
   intervals
 }

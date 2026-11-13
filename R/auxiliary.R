@@ -697,7 +697,10 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   last stage), \code{certification_bank} (the effective draws and Pareto
 ##'   shape of the certification draws) and \code{checks_to_review}, the number
 ##'   of checks of \code{\link{check_fit}} that need a look. \code{mcml} is
-##'   \code{NULL} for Gaussian models.
+##'   \code{NULL} for Gaussian models. The parameters of the family, such as
+##'   the measurement error variance of a Gaussian model, are in
+##'   \code{family_parameters}, a table of those that were estimated, and
+##'   \code{held_family_parameters}, a list of those held at a given value.
 ##' @method summary RiskMap
 ##' @examples
 ##' data(italy_sim)
@@ -1068,7 +1071,8 @@ describe_summary_link <- function(link_name, invlink_expression) {
 ##'   \item Regression coefficients with their estimates, confidence intervals, and p-values.
 ##'   \item Parameters for the spatial process.
 ##'   \item Random effect variances.
-##'   \item Measurement error variance, if applicable.
+##'   \item The parameters of the family that were estimated, such as the
+##'     measurement error variance of a Gaussian model.
 ##' }
 ##'
 ##' When the input is a cross-validation summary object ("summary.RiskMap_cross_validation"), the table includes:
@@ -1110,7 +1114,8 @@ to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
   }
   if (inherits(summary_out,
                what = "summary.RiskMap", which = FALSE)) {
-    tab <- rbind(summary_out$reg_coef[, 1:3], summary_out$sp, summary_out$ranef,
+    tab <- rbind(summary_out$reg_coef[, 1:3, drop = FALSE], summary_out$sp,
+                 summary_out$ranef,
                  summary_out$family_parameters)
     include_row_names <- TRUE
   } else if (inherits(summary_out,

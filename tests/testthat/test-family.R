@@ -414,3 +414,27 @@ test_that("each family describes its own parameters for the output", {
   expect_identical(held_family_parameters(binomial_model), list())
   expect_identical(estimated_family_parameters(gaussian_model), "sigma2_me")
 })
+
+test_that("the names of the families' parameters are unique and their own", {
+  # The output finds a parameter's label, words and map by its name alone.
+  names <- family_parameter_names()
+  expect_false(anyDuplicated(names) > 0)
+  expect_disjoint(names, c("beta", "sigma2", "phi", "nu2", "tau2",
+                           "sigma2_re"))
+  expect_identical(names, c("sigma2_me", "theta"))
+  expect_identical(family_parameter("theta")$label, "Negative binomial size")
+  expect_null(family_parameter("phi"))
+  # Each map is exp() of the working value or of its negative, which the
+  # log-normal intervals of summary() need.
+  for (name in names) {
+    natural <- family_parameter(name)$natural
+    expect_true(isTRUE(all.equal(natural(0.7), exp(0.7))) ||
+                  isTRUE(all.equal(natural(0.7), exp(-0.7))))
+  }
+  # A held variance is named by the family block of the engine's layout.
+  layout <- cov_par_layout(1L, fix_tau2 = FALSE,
+                           family_parameters = "sigma2_me")
+  expect_identical(describe_variance_parameters(layout$index$sigma2_me,
+                                                layout),
+                   "measurement error variance (sigma2_me)")
+})

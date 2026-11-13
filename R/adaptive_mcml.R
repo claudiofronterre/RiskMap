@@ -1271,6 +1271,11 @@ describe_variance_parameters <- function(index, layout, re_names = NULL) {
       "random-effect variance for '", re_names, "'"
     )
   }
+  for (name in layout$family) {
+    labels[as.character(layout$index[[name]])] <- paste0(
+      family_parameter_words(name), " (", name, ")"
+    )
+  }
   # The scale is held only because the spatial variance is zero; it is
   # explained separately rather than listed as a variance component.
   index <- setdiff(index, layout$index$phi)

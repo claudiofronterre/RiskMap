@@ -107,9 +107,15 @@ profile_theme <- function() {
 }
 
 ##' Values of a parameter on the scale shown to the user
+##'
+##' The coefficients as they are, a parameter of a family through its
+##' `natural` map (`riskmap_families`), and the variances and the scale
+##' through `exp()`.
 ##' @noRd
 profile_natural <- function(name, working) {
-  if (grepl("^beta\\.", name)) working else exp(working)
+  if (grepl("^beta\\.", name)) return(working)
+  natural <- family_parameter(name)$natural %||% exp
+  natural(working)
 }
 
 ##' One marginal profile, on the vertical scale of `axis` from

@@ -40,6 +40,19 @@ test_that("to_table formats model summaries directly", {
   expect_match(rendered, "Lower limit", fixed = TRUE)
 })
 
+test_that("to_table names the intercept and adds no row for a held parameter", {
+  # A fit with only an intercept, and one with fix_var_me, whose summary
+  # holds the fixed measurement error apart from the table (#253, step 2).
+  rendered <- paste(as.character(to_table(gaussian_intercept_model,
+                                          format = "pipe")), collapse = "\n")
+  expect_match(rendered, "(Intercept)", fixed = TRUE)
+  table <- to_table(gaussian_offset_model, format = "pipe")
+  rows <- as.character(table)[-(1:2)]
+  expect_length(rows, nrow(summary(gaussian_offset_model)$reg_coef) +
+                  nrow(summary(gaussian_offset_model)$sp))
+  expect_false(any(grepl("Measurement error", rows)))
+})
+
 test_that("to_table formats cross-validation summaries directly", {
   object <- table_test_cv()
   table <- to_table(object, digits = 3, format = "pipe")

@@ -216,6 +216,36 @@ test_that("profile intervals are exact for a quadratic log-likelihood", {
   expect_type(profile$second_start, "logical")
 })
 
+test_that("a parameter of a family is profiled on its working scale and shown on its own", {
+  # The size theta of a negative binomial family is fitted on the scale of
+  # log(1 / theta), so its limits change places on the natural scale.
+  centre <- -log(2)
+  problem <- make_toy_profile(function(w) {
+    -0.5 * (w[1] - centre)^2 - 0.5 * w[2]^2
+  })
+  problem$names <- c("theta", "b")
+  names(problem$estimate) <- problem$names
+  names(problem$standard_errors) <- problem$names
+  problem$labels <- list(theta = "Negative binomial size", b = "b")
+  problem$estimate[["theta"]] <- centre
+  best <- maximise_profile(problem, integer(), numeric(), c(centre, 0))
+  problem$bank_estimate <- best$par
+  problem$max_loglik <- best$value
+  profile <- profile_one_parameter(problem, "theta", 5L, 3)
+  intervals <- profile_intervals(
+    problem, list(theta = add_profile_deviance(profile, problem$max_loglik)),
+    0.95)
+  z <- stats::qnorm(0.975)
+  expect_equal(intervals$estimate, 2)
+  expect_equal(c(intervals$profile_lower, intervals$profile_upper),
+               2 * exp(c(-z, z)), tolerance = 1e-5)
+  expect_equal(c(intervals$wald_lower, intervals$wald_upper),
+               2 * exp(c(-z, z)), tolerance = 1e-12)
+  expect_identical(profile_natural("theta", -log(2)), exp(log(2)))
+  expect_identical(profile_natural("sigma2_me", log(3)), exp(log(3)))
+  expect_identical(profile_natural("beta.x", 0.5), 0.5)
+})
+
 test_that("a flat profile is extended with doubling steps and left open", {
   problem <- make_toy_profile(function(w) -0.001 * w[1]^2 - 0.5 * w[2]^2)
   profile <- profile_one_parameter(problem, "beta.a", 5L, 3)
