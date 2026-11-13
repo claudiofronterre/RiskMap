@@ -647,9 +647,9 @@ package's tests reaches this case, nor do fits of surveys from Liberia, Loa
 loa, Malawi and Tanzania, and those fits are unchanged.
 
 - A custom inverse link that `Deriv` cannot differentiate, such as a bare
-`invlink = pnorm`, now has its derivatives computed for all values at once, with
-the same values as before. They were computed one value at a time, which made
-such a fit much slower than the same link written as `function(eta) pnorm(eta)`.
+`invlink = pnorm`, now has its derivatives computed for all values at once.
+They were computed one value at a time, which made such a fit much slower than
+the same link written as `function(eta) pnorm(eta)`.
 
 - The numerical derivatives of a custom inverse link that `Deriv` cannot
 differentiate, such as a bare `invlink = pnorm` or
