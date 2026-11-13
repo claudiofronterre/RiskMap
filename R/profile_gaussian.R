@@ -96,7 +96,8 @@ make_gaussian_likelihood <- function(y, D, distances, kappa, ID_coords, ID_re,
   n_locations <- max(ID_coords)
   levels <- if (n_re > 0L) apply(ID_re, 2L, max) else integer()
   layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
-                           sigma2_me = is.null(fix_var_me), n_re = n_re)$index
+                           family_parameters = gaussian_family_block(fix_var_me),
+                           n_re = n_re)$index
   # Each evaluation fills the covariance matrix of the locations from the
   # distances of its lower triangle, with as few copies as possible: most of
   # the time of a small model goes to collecting discarded matrices.

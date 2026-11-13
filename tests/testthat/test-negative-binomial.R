@@ -202,6 +202,16 @@ test_that("a negative binomial fit is the binomial fit of its records", {
   expect_equal(fit$fitted_values, data$m * colMeans(exp(eta)),
                tolerance = 1e-10)
   expect_output(print(fit), "Negative binomial geostatistical model")
+  # The size is held, so it is reported as fixed and is not among the
+  # estimates (#253, step 2).
+  expect_output(print(fit), "Negative binomial size fixed at 2")
+  expect_null(coef(fit)$theta)
+  expect_identical(held_family_parameters(fit), list(theta = 2))
+  expect_identical(estimated_family_parameters(fit), character())
+  fit_summary <- summary(fit)
+  expect_null(fit_summary$family_parameters)
+  expect_identical(fit_summary$held_family_parameters, list(theta = 2))
+  expect_output(print(fit_summary), "Negative binomial size fixed at 2")
   # The log link is the family's default, not its canonical link.
   expect_output(print(summary(fit)), "The log link, with inverse exp\\(x\\)")
 })

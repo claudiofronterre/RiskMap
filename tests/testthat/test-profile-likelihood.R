@@ -434,7 +434,7 @@ test_that("Gaussian profiles have every parameter, with the labels of summary()"
   summaries <- summary(gaussian_model)
   expect_identical(profiles$intervals$label,
                    c(rownames(summaries$reg_coef), rownames(summaries$sp),
-                     rownames(summaries$me), rownames(summaries$ranef)))
+                     rownames(summaries$family_parameters), rownames(summaries$ranef)))
   inside <- with(profiles$intervals,
                  (is.na(profile_lower) | profile_lower <= estimate) &
                    (is.na(profile_upper) | estimate <= profile_upper))

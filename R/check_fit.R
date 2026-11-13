@@ -724,7 +724,10 @@ fit_check_link <- function(link_function, family) {
 ##' @noRd
 fit_check_no_maximum <- function(optimizer, family) {
   name <- "Maximum of the likelihood"
-  binomial <- identical(family, "binomial")
+  traits <- family_traits(family)
+  # Only records with an upper limit, binomial ones, are counts of
+  # individuals who can all be positive.
+  binomial <- traits$upper_limit
   closing <- paste0(" The estimate is where the optimiser stopped, so it has no ",
                     "standard errors.")
   separation <- optimizer$mcml_separation
@@ -747,7 +750,7 @@ fit_check_no_maximum <- function(optimizer, family) {
       paste0(
         "Maximum likelihood cannot fit the model to such data. An exact ",
         if (none) "upper" else "lower", " confidence limit for the ",
-        if (binomial) "prevalence" else "rate", ", or a Bayesian analysis with ",
+        traits$response_quantity, ", or a Bayesian analysis with ",
         "an informative prior on the intercept, can be used instead."
       )
     ))

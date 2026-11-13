@@ -296,12 +296,19 @@ format_fit <- function(x, digits) {
   # coefficients are then on another scale.
   title <- paste0(model_title(traits), describe_link(fit_link(x)))
   estimates <- coef(x)
+  # The family's own parameters that the fit estimates, under their labels.
+  family_names <- estimated_family_parameters(x)
+  family_values <- unlist(estimates[family_names])
+  if (length(family_values)) {
+    names(family_values) <- unname(parameter_labels(family_names,
+                                                    x$distance_units))
+  }
   covariance <- c(
     "Spatial process var." = estimates$sigma2,
     stats::setNames(estimates$phi, paste0("Spatial corr. scale (",
                                           x$distance_units, ")")),
     "Variance of the nugget" = estimates$tau2,
-    "Measurement error var." = estimates$sigma2_me,
+    family_values,
     if (!is.null(estimates$sigma2_re)) stats::setNames(
       estimates$sigma2_re, paste0(names(x$re) %||% names(estimates$sigma2_re),
                                   " (random eff. var.)")
@@ -311,9 +318,7 @@ format_fit <- function(x, digits) {
     if (is.numeric(x$fix_tau2)) {
       paste0("Variance of the nugget effect fixed at ", x$fix_tau2)
     },
-    if (isTRUE(traits$measurement_error) && is.numeric(x$fix_var_me)) {
-      paste0("Measurement error var. fixed at ", x$fix_var_me)
-    }
+    describe_held_family_parameters(held_family_parameters(x), traits)
   )
   mcml <- summarise_mcml_fit(x)
   certificate <- if (!is.null(mcml)) {

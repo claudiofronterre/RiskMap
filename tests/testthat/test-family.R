@@ -383,3 +383,34 @@ test_that("a fit's family says whether it is exact and how its mean is named", {
   expect_true(family_traits("binomial")$probability)
   expect_false(family_traits("poisson")$probability)
 })
+
+test_that("each family describes its own parameters for the output", {
+  gaussian <- family_traits("gaussian")$parameters$sigma2_me
+  expect_identical(gaussian$label, "Measurement error var.")
+  expect_identical(gaussian$natural(log(0.3)), exp(log(0.3)))
+  # The size is fitted on the scale of log(1 / theta), so a fit drifting to
+  # the Poisson limit tends to minus infinity there.
+  size <- family_traits("negative_binomial")$parameters$theta
+  expect_identical(size$natural(-log(2)), exp(log(2)))
+  expect_identical(size$label, "Negative binomial size")
+  expect_identical(family_traits("binomial")$parameters, list())
+  expect_identical(family_parameter_words("sigma2_me"),
+                   "measurement error variance")
+  expect_null(family_parameter_words("sigma2"))
+  expect_identical(parameter_labels(c("sigma2_me", "theta", "phi"), "km"),
+                   c(sigma2_me = "Measurement error var.",
+                     theta = "Negative binomial size",
+                     phi = "Spatial corr. scale (km)"))
+  # The family block sits after the nugget and before the random effects.
+  layout <- cov_par_layout(2L, fix_tau2 = TRUE, family_parameters = "theta",
+                           n_re = 1L)
+  expect_identical(layout$index$theta, 6L)
+  expect_identical(layout$family, "theta")
+  expect_identical(layout$index$sigma2_re, 7L)
+  expect_identical(gaussian_family_block(NULL), "sigma2_me")
+  expect_identical(gaussian_family_block(0.1), character())
+  expect_identical(held_family_parameters(gaussian_offset_model),
+                   list(sigma2_me = 0))
+  expect_identical(held_family_parameters(binomial_model), list())
+  expect_identical(estimated_family_parameters(gaussian_model), "sigma2_me")
+})

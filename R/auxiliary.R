@@ -633,8 +633,13 @@ coef.RiskMap <- function(object, ...) {
   res$sigma2 <- exp(estimate$sigma2)
   res$phi    <- exp(estimate$phi)
 
-  if (object$family == "gaussian" && !is.null(estimate$sigma2_me))
-    res$sigma2_me <- exp(estimate$sigma2_me)
+  # The family's own parameters that the fit estimates, on their natural
+  # scale.
+  for (name in estimated_family_parameters(object)) {
+    res[[name]] <- fit_traits(object)$parameters[[name]]$natural(
+      estimate[[name]]
+    )
+  }
 
   if (!is.null(estimate$nu2))
     ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add
@@ -725,6 +730,8 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
   # STANDARD RISKMAP MODELS (glgpm)
   # ===========================================================================
 
+  # NULL for a family RiskMap doesn't know.
+  traits <- fit_traits(object)
   link_name <- NULL
   inv_expr  <- NULL
   named_link <- if (identical(object$link_function$name, "custom")) {
@@ -744,7 +751,6 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
       object$link_function$inv, object$call$invlink
     ))
   } else {
-    traits <- fit_traits(object)
     if (!is.null(traits)) {
       link_name <- if (traits$exact || !traits$default_is_canonical) {
         traits$default_link
@@ -770,7 +776,7 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
 
   beta_flat_names <- paste0("beta.", beta_names)
   has_tau2      <- "nu2" %in% nm
-  has_sigma2_me <- object$family == "gaussian" && "sigma2_me" %in% nm
+  family_names  <- estimated_family_parameters(object)
   re_par_names  <- if (n_re > 0) paste0("sigma2_re.", re_names) else NULL
 
   ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add. This is
@@ -800,8 +806,14 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
     t(J[computable, free, drop = FALSE])
   se_par <- sqrt(diag(covariance_new))
 
-  non_beta <- setdiff(nm, beta_flat_names)
+  # The family's own parameters go to their natural scale through the
+  # family, and the other variances and the scale through exp().
+  non_beta <- setdiff(nm, c(beta_flat_names, family_names))
   estimate[non_beta] <- exp(estimate[non_beta])
+  descriptors <- traits$parameters
+  for (name in family_names) {
+    estimate[name] <- descriptors[[name]]$natural(estimate[[name]])
+  }
 
   se_beta <- se_par[beta_flat_names]
   zval <- estimate[beta_flat_names] / se_beta
@@ -815,21 +827,21 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
   )
   rownames(res$reg_coef) <- beta_names
 
-  if (object$family == "gaussian") {
-    if (has_sigma2_me) {
-      est_me <- estimate["sigma2_me"]
-      se_me  <- se_par["sigma2_me"]
-      res$me <- cbind(
-        Estimate      = est_me,
-        "Lower limit" = exp(log(est_me) - z_crit * se_me),
-        "Upper limit" = exp(log(est_me) + z_crit * se_me)
-      )
-      rownames(res$me) <- unname(parameter_labels("sigma2_me",
-                                                  object$distance_units))
-    } else {
-      res$me <- object$fix_var_me
-    }
+  # Each is positive and fitted on the log scale of itself or of its inverse,
+  # so its interval is log-normal, as those of the variances.
+  if (length(family_names)) {
+    est_family <- estimate[family_names]
+    se_family  <- se_par[family_names]
+    res$family_parameters <- cbind(
+      Estimate      = est_family,
+      "Lower limit" = exp(log(est_family) - z_crit * se_family),
+      "Upper limit" = exp(log(est_family) + z_crit * se_family)
+    )
+    rownames(res$family_parameters) <- unname(parameter_labels(
+      family_names, object$distance_units
+    ))
   }
+  res$held_family_parameters <- held_family_parameters(object)
 
   sp_names <- c("sigma2", "phi", if (has_tau2) "nu2")
   est_sp <- estimate[sp_names]
@@ -863,7 +875,8 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
   res$log_lik         <- object$log_lik
   res$cov_offset_used <- !(is.null(object$cov_offset) ||
                              all(object$cov_offset == 0))
-  if (object$family == "gaussian") {
+  # Only an exact likelihood, without Monte Carlo error, has an AIC.
+  if (isTRUE(traits$exact)) {
     res$aic <- 2 * length(unlist(object$estimate)) - 2 * res$log_lik
   }
 
@@ -913,11 +926,42 @@ parameter_labels <- function(names, distance_units) {
   labels[names == "phi"] <- paste0("Spatial corr. scale (",
                                    distance_units %||% "units", ")")
   labels[names == "tau2"] <- "Variance of the nugget"
-  labels[names == "sigma2_me"] <- "Measurement error var."
+  for (family in riskmap_families) {
+    for (name in names(family$parameters)) {
+      labels[names == name] <- family$parameters[[name]]$label
+    }
+  }
   random <- grepl("^sigma2_re\\.", names)
   labels[random] <- paste0(sub("^sigma2_re\\.", "", names[random]),
                            " (random eff. var.)")
   stats::setNames(labels, names)
+}
+
+##' The lines of `summary()` on the family's own parameters
+##'
+##' The table of those the fit estimates, under the family's
+##' `parameters_heading`, and a line for each that it holds at a given value.
+##' Nothing for a family without parameters of its own.
+##' @noRd
+format_family_parameters <- function(table, held, traits) {
+  held_lines <- describe_held_family_parameters(held, traits)
+  c(
+    if (!is.null(table)) {
+      c("", out_heading(traits$parameters_heading),
+        out_capture(printCoefmat(table, P.values = FALSE,
+                                 has.Pvalue = FALSE)))
+    },
+    if (length(held_lines)) c("", out_text(held_lines))
+  )
+}
+
+##' One sentence for each of the family's own parameters held at a value, as
+##' in "Measurement error var. fixed at 0.1"
+##' @noRd
+describe_held_family_parameters <- function(held, traits) {
+  vapply(names(held), function(name) {
+    paste0(traits$parameters[[name]]$label, " fixed at ", held[[name]])
+  }, character(1), USE.NAMES = FALSE)
 }
 
 ##' @title Print Summary of RiskMap Model
@@ -960,13 +1004,8 @@ format_fit_summary <- function(x) {
     if (isTRUE(x$cov_offset_used)) {
       out_text("Offset included in the linear predictor")
     },
-    if (isTRUE(traits$measurement_error)) {
-      if (length(x$me) > 1) {
-        c("", out_heading("Measurement error"), coefficients(x$me, FALSE))
-      } else {
-        c("", out_text(paste0("Measurement error var. fixed at ", x$me)))
-      }
-    },
+    format_family_parameters(x$family_parameters, x$held_family_parameters,
+                             traits),
     "",
     out_heading(paste0("Spatial Gaussian process, Matern correlation with ",
                        "kappa = ", x$kappa)),
@@ -1072,7 +1111,7 @@ to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
   if (inherits(summary_out,
                what = "summary.RiskMap", which = FALSE)) {
     tab <- rbind(summary_out$reg_coef[, 1:3], summary_out$sp, summary_out$ranef,
-                 summary_out$me)
+                 summary_out$family_parameters)
     include_row_names <- TRUE
   } else if (inherits(summary_out,
                       what = "summary.RiskMap_cross_validation", which = FALSE)) {

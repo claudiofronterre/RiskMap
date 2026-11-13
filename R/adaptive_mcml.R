@@ -624,8 +624,7 @@ make_adaptive_mcml_engine <- function(
   } else {
     apply(ID_re, 2L, max)
   }
-  layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
-                           sigma2_me = FALSE, n_re = n_re)
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, n_re = n_re)
 
   linkf <- make_inverse_link_functions(family, invlink, n)
   model <- make_family(family, linkf)
@@ -1659,7 +1658,7 @@ assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
   last <- fit$history[[length(fit$history)]]
   estimate <- structure_estimate(
     fit$estimate, beta_names = colnames(D), fix_tau2 = fix_tau2,
-    sigma2_me = FALSE, re_names = re_names
+    re_names = re_names
   )
   covariance <- fit$covariance
   if (is.null(covariance)) {

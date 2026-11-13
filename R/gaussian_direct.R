@@ -248,7 +248,7 @@ glgpm_lm_direct <- function(y, D, coords, kappa, ID_coords, ID_re,
   out <- list(
     estimate = structure_estimate(
       estimate$par, colnames(D), fix_tau2,
-      sigma2_me = is.null(fix_var_me),
+      family_parameters = gaussian_family_block(fix_var_me),
       re_names = if (n_re > 0L) colnames(ID_re) else NULL
     ),
     grad_MLE = score,
