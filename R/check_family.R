@@ -17,15 +17,18 @@
 ##' - and the draws of `simulate()`, on a fixed seed, have the mean and
 ##'   variance of the family's density, to within five standard errors.
 ##'
-##' A negative curvature that the central difference of the score confirms
-##' shows that the log-likelihood of a record is convex there, and the point
-##' where the curvature is lowest is returned, for the first record that has
-##' one. A link given as a function may compute its mean with a cancellation,
-##' as 1 - exp(-exp(eta)) does in its lower tail, where the relative error
-##' grows as the mean falls, so convexity is looked for only where the mean
-##' is at least 10^-6 inside its range, and the curvature and its difference
-##' must be below -10^-4 relative to the curvature's size, well above such
-##' rounding. No grid can show that a likelihood is concave, since a t link
+##' A second difference of a record's log-likelihood over three neighbouring
+##' points of the grid that is positive shows that it is convex somewhere
+##' between them, from the log-likelihood alone, whereas a curvature of a link
+##' given as a function rests on numerical derivatives that can lose its sign
+##' where two terms cancel. The point of the largest such difference is
+##' returned, for the first record that has one. A link given as a function
+##' may compute its mean with a cancellation, as 1 - exp(-exp(eta)) does in
+##' its lower tail, where the relative error grows as the mean falls, so
+##' convexity is looked for only where the mean is at least 10^-6 inside its
+##' range, and the difference must exceed 10^-8 times the size of the
+##' log-likelihoods and counts involved, about ten times what such rounding
+##' can give there. No grid can show that a likelihood is concave, since a t link
 ##' with 10,000 degrees of freedom looks concave from -50 to 30 while its
 ##' log F is convex below -101, so the links known to be concave are listed
 ##' in the table (`concave_links`). A probability given by its value loses the
@@ -38,12 +41,11 @@
 ##' `parameters`. The Gaussian family is exact, with no kernel, so only its
 ##' mean and simulator are checked, at the measurement error variance in
 ##' `parameters`. `linkf` is a link of `make_inverse_link_functions()`, NULL
-##' for the canonical one. The derivatives of the built-in links are exact,
-##' which the `tolerance` of 10^-6 suits. Those of a link given as a function
-##' come from `Deriv` or numerical differences, accurate to about 10^-5, so
-##' `check_fit()` reads only `convex_at` for such a link, where the central
-##' difference of the score, from the more accurate first derivative, must
-##' confirm the sign.
+##' for the family's own inverse link (`inverse_link`). The derivatives of the
+##' built-in links are exact, which the `tolerance` of 10^-6 suits. Those of a
+##' link given as a function come from `Deriv` or numerical differences,
+##' accurate to about 10^-5 and much worse near a linear predictor of zero,
+##' so `check_fit()` reads only `convex_at` for such a link.
 ##'
 ##' Returns a list with `problems`, a sentence for each check that fails,
 ##' empty if none does, and `convex_at`, NULL or the linear predictor at
@@ -54,11 +56,9 @@ check_family <- function(family, linkf = NULL, parameters = NULL,
                          eta = seq(-30, 30, by = 0.25), step = 1e-4,
                          tolerance = 1e-6, draws = 20000L) {
   traits <- family_traits(family)
-  if (is.null(linkf)) {
-    linkf <- make_inverse_link_functions(family, NULL, 1L)
-  }
+  inverse <- if (is.null(linkf)) traits$inverse_link else linkf$inv
   problems <- character()
-  mean <- linkf$inv(eta)
+  mean <- inverse(eta)
   range <- traits$mean_range
   outside <- is.na(mean) | mean < range[1L] | mean > range[2L]
   if (any(outside)) {
@@ -71,8 +71,8 @@ check_family <- function(family, linkf = NULL, parameters = NULL,
   if (!traits$exact) {
     records <- check_family_records(traits)
     for (record in split(records, seq_len(nrow(records)))) {
-      checked <- check_family_record(traits, linkf, parameters, eta,
-                                     record$y, record$units_m, step,
+      checked <- check_family_record(traits, linkf, inverse, parameters,
+                                     eta, record$y, record$units_m, step,
                                      tolerance)
       problems <- c(problems, checked$problems)
       if (is.null(convex_at) && !is.null(checked$convex_at)) {
@@ -81,8 +81,8 @@ check_family <- function(family, linkf = NULL, parameters = NULL,
       }
     }
   }
-  problems <- c(problems, check_family_simulator(traits, linkf, parameters,
-                                                 draws))
+  problems <- c(problems, check_family_simulator(traits, inverse,
+                                                 parameters, draws))
   list(problems = problems, convex_at = convex_at)
 }
 
@@ -104,12 +104,13 @@ check_family_records <- function(traits) {
 ##' The checks of `check_family()` on one record
 ##'
 ##' Each linear predictor of `eta` is a record of its own with `y` events of
-##' `units_m` trials, or a count with exposure `units_m`. Returns its
-##' `problems` and `convex_at`, the linear predictor where its log-likelihood
-##' is convex with the lowest curvature, or NULL.
+##' `units_m` trials, or a count with exposure `units_m`. `inverse` is the
+##' inverse link. Returns its `problems` and `convex_at`, the linear predictor
+##' where the second difference of its log-likelihood shows it most convex, or
+##' NULL.
 ##' @noRd
-check_family_record <- function(traits, linkf, parameters, eta, y, units_m,
-                                step, tolerance) {
+check_family_record <- function(traits, linkf, inverse, parameters, eta, y,
+                                units_m, step, tolerance) {
   # The engine sees a negative binomial record as a binomial one.
   kernel_family <- traits$kernel_family %||% traits$family
   object <- make_family(kernel_family,
@@ -148,7 +149,7 @@ check_family_record <- function(traits, linkf, parameters, eta, y, units_m,
   lower <- kernel_at(eta - step)
   upper <- kernel_at(eta + step)
   usable <- function(eta) {
-    mean <- linkf$inv(eta)
+    mean <- inverse(eta)
     (y == 0 | mean > 1e-200) &
       (!traits$upper_limit | y == units_m | 1 - mean > 1e-6)
   }
@@ -172,7 +173,7 @@ check_family_record <- function(traits, linkf, parameters, eta, y, units_m,
       "No linear predictor of the grid can be checked, ", describe, "."
     )), convex_at = NULL))
   }
-  mean <- linkf$inv(eta[used])
+  mean <- inverse(eta[used])
   density <- traits$log_density(y, mean, units_m, parameters)
   difference <- centre$log_likelihood[used] - density
   scale <- 1 + abs(centre$log_likelihood[used])
@@ -191,15 +192,42 @@ check_family_record <- function(traits, linkf, parameters, eta, y, units_m,
   problems <- c(problems,
                 first_failure(score_off, "The score differs from a central difference of the log-likelihood"),
                 first_failure(curvature_off, "The curvature differs from a central difference of the score"))
-  inside <- replace(logical(length(eta)), which(used),
-                    mean >= traits$mean_range[1L] + 1e-6 &
-                      mean <= traits$mean_range[2L] - 1e-6)
-  convexity <- -1e-4 * (1 + abs(centre$curvature))
-  convex <- inside & centre$curvature < convexity &
-    difference_curvature < convexity
-  list(problems = problems, convex_at = if (any(convex)) {
-    eta[convex][which.min(centre$curvature[convex])]
-  })
+  list(problems = problems,
+       convex_at = find_convex_point(traits, eta, centre$log_likelihood,
+                                     used, inverse, y, units_m))
+}
+
+##' Where the second difference of a record's log-likelihood shows it convex
+##'
+##' Over each three neighbouring points of `eta` that are `used` and whose
+##' mean is at least 10^-6 inside the range of the family, the second divided
+##' difference of `log_likelihood`, positive beyond 10^-8 times the size of
+##' the log-likelihoods and counts involved. Returns the middle point of the
+##' largest, or NULL if there is none.
+##' @noRd
+find_convex_point <- function(traits, eta, log_likelihood, used, inverse, y,
+                              units_m) {
+  count <- length(eta)
+  if (count < 3L) return(NULL)
+  mean <- inverse(eta)
+  inside <- used & mean >= traits$mean_range[1L] + 1e-6 &
+    mean <= traits$mean_range[2L] - 1e-6
+  before <- seq_len(count - 2L)
+  middle <- before + 1L
+  after <- before + 2L
+  rise <- (log_likelihood[after] - log_likelihood[middle]) /
+    (eta[after] - eta[middle]) -
+    (log_likelihood[middle] - log_likelihood[before]) /
+    (eta[middle] - eta[before])
+  second <- 2 * rise / (eta[after] - eta[before])
+  size <- abs(log_likelihood[before]) + abs(log_likelihood[middle]) +
+    abs(log_likelihood[after]) + 1 + y + units_m
+  spacing <- (eta[after] - eta[before]) / 2
+  convex <- inside[before] & inside[middle] & inside[after] &
+    second * spacing^2 > 1e-8 * size
+  convex[is.na(convex)] <- FALSE
+  if (!any(convex)) return(NULL)
+  eta[middle][convex][which.max(second[convex])]
 }
 
 ##' The check of a family's simulator in `check_family()`
@@ -212,14 +240,14 @@ check_family_record <- function(traits, linkf, parameters, eta, y, units_m,
 ##' either is more than five standard errors away. The random number state of
 ##' the session is left as it was.
 ##' @noRd
-check_family_simulator <- function(traits, linkf, parameters, draws) {
+check_family_simulator <- function(traits, inverse, parameters, draws) {
   restore <- preserve_random_seed()
   on.exit(restore(), add = TRUE)
   set.seed(1L)
   units_m <- if (traits$whole_denominator) 20 else 2
   problems <- character()
   for (eta in c(-1, 0, 1)) {
-    mean <- linkf$inv(eta)
+    mean <- inverse(eta)
     simulated <- traits$simulate(rep(mean, draws), rep(units_m, draws),
                                  parameters)
     moments <- if (traits$discrete) {

@@ -106,8 +106,11 @@ and probit links of binomial data and the log link of counts, and points
 to the check of the radius, which predicts it for the fit. Neither is a
 fault of the fit, so the row is \code{OK}.
 
-The default checks use only what the fit stored, so they take no time.
-The extra checks compute something new and add a row each. Before they
+The default checks use only what the fit stored, so they take no time,
+apart from evaluating a link given as a function on the grid of linear
+predictors, a fraction of a second. If that link cannot be evaluated,
+as when it uses a variable no longer defined in the session, the row
+says only that its concavity is not known. The extra checks compute something new and add a row each. Before they
 start, a message says how long they should take, from the time the fit
 took. The extra checks are
 \itemize{

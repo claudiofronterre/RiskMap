@@ -262,11 +262,49 @@ test_that("check_fit() says where a link given as a function is convex", {
   ))
   expect_identical(row$brief,
                    "A function, not log-concave, radius not measured.")
-  expect_output(print(summary(checked)), "Convex near a linear predictor of")
+  expect_output(print(summary(checked)), "convex near a linear predictor of")
   # With the check of the radius run, the row points to its row.
   expect_match(fit_check_link(fit$link_function, "binomial",
                               describe_radius_pointer(TRUE))$finding,
                "See the check \"Radius of the bound\"\\.$")
+
+  # A link that cannot be evaluated on the grid, as one whose variable is gone
+  # from the session, is said to be of unknown concavity, and print(),
+  # summary() and check_fit() still run.
+  sensitivity <- 0.9
+  fit <- fit_binomial("binomial", function(eta) sensitivity * plogis(eta))
+  rm(sensitivity)
+  expect_no_error(capture.output(print(fit), print(summary(fit))))
+  checked <- check_fit(fit)
+  row <- checked$checks[checked$checks$check == "Link", ]
+  expect_match(row$finding, paste0(
+    "^The link was given as a function, so it is not known whether it makes"
+  ))
+})
+
+test_that("the row on the link says only what the lists leave unknown", {
+  traits <- family_traits
+  cauchit <- list(name = "custom", link = "cauchit")
+  # A measured link that is not known to be concave gets no sentence on the
+  # radius.
+  local_mocked_bindings(family_traits = function(family) {
+    result <- traits(family)
+    result$radius_links <- c(result$radius_links, "cauchit")
+    result
+  })
+  row <- fit_check_link(cauchit, "binomial", describe_radius_pointer(FALSE))
+  expect_no_match(row$finding, "radius")
+  expect_identical(row$brief, "cauchit, not known to be log-concave.")
+  # A family with no measured link says so.
+  local_mocked_bindings(family_traits = function(family) {
+    result <- traits(family)
+    result$radius_links <- character()
+    result
+  })
+  expect_match(fit_check_link(cauchit, "binomial")$finding, paste0(
+    "has not been measured on simulated surveys for any link of this ",
+    "family\\.$"
+  ))
 })
 
 test_that("a named link starts from a regression with its own link", {

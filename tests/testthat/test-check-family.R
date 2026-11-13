@@ -77,6 +77,19 @@ test_that("the checks find a wrong score, curvature, density or simulator", {
   })
   expect_match(check_family("poisson")$problems,
                "The draws of the simulator do not have the mean", all = FALSE)
+  # The Gaussian family is checked at its identity link, with means of -1, 0
+  # and 1, so a simulator that keeps means within [0, 1] is found.
+  local_mocked_bindings(family_traits = function(family) {
+    result <- traits(family)
+    result$simulate <- function(means, units_m, parameters) {
+      pmin(pmax(as.numeric(means), 0), 1) +
+        rnorm(length(means), sd = sqrt(parameters$sigma2_me))
+    }
+    result
+  })
+  expect_match(check_family("gaussian",
+                            parameters = list(sigma2_me = 0.5))$problems,
+               "The draws of the simulator do not have the mean", all = FALSE)
   local_mocked_bindings(family_traits = traits)
 
   # A link whose mean leaves the range of the family.
@@ -99,8 +112,17 @@ test_that("the checks find where a link given as a function is convex", {
   expect_lt(convex_at$eta, -3)
   expect_identical(c(convex_at$y, convex_at$units_m), c(1, 1))
   # pnorm is log-concave, and the t link with 4 degrees of freedom is not.
-  probit <- make_inverse_link_functions("binomial", pnorm, 5L)
-  expect_null(check_family("binomial", probit)$convex_at)
+  # Deriv knows neither pnorm given bare nor plogis, so their derivatives
+  # are numerical, and the curvature of a record with failures, a difference
+  # of two terms near one, loses its sign far into the upper tail, which the
+  # second differences of the log-likelihood do not depend on. A cloglog
+  # written with a cancellation is rounded in its lower tail.
+  concave <- list(pnorm, plogis, function(eta) plogis(3 * eta),
+                  function(eta) 1 - exp(-exp(eta)))
+  for (inverse in concave) {
+    link <- make_inverse_link_functions("binomial", inverse, 5L)
+    expect_null(check_family("binomial", link)$convex_at)
+  }
   t_link <- make_inverse_link_functions("binomial",
                                         function(eta) pt(eta, 4), 5L)
   expect_false(is.null(check_family("binomial", t_link)$convex_at))

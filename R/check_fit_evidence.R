@@ -91,14 +91,16 @@ collect_check_data <- function(check, object, mcml) {
         optimizer$mcml_mode_searches$restarted
     ),
     "Link" = {
-      known <- describe_link_knowledge(object$link_function, object$family)
+      # The finding gives where a link given as a function is convex, so
+      # the grid is not run again here.
+      known <- describe_link_knowledge(object$link_function, object$family,
+                                       scan = FALSE)
       list("Link" = known$link %||% "a function",
            "Known to be log-concave" = if (isTRUE(known$log_concave)) {
              "yes"
            } else {
              "no"
            },
-           "Convex near a linear predictor of" = known$convex_at,
            "Radius measured on simulated surveys" =
              if (known$radius_measured) "yes" else "no")
     },

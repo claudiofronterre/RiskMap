@@ -32,8 +32,11 @@
 ##'   to the check of the radius, which predicts it for the fit. Neither is a
 ##'   fault of the fit, so the row is `OK`.
 ##'
-##'   The default checks use only what the fit stored, so they take no time.
-##'   The extra checks compute something new and add a row each. Before they
+##'   The default checks use only what the fit stored, so they take no time,
+##'   apart from evaluating a link given as a function on the grid of linear
+##'   predictors, a fraction of a second. If that link cannot be evaluated,
+##'   as when it uses a variable no longer defined in the session, the row
+##'   says only that its concavity is not known. The extra checks compute something new and add a row each. Before they
 ##'   start, a message says how long they should take, from the time the fit
 ##'   took. The extra checks are
 ##'   * `"profile"`, the marginal profile likelihood of each covariance
@@ -694,21 +697,27 @@ fit_check_mode_search <- function(counts) {
 ##' `log_concave` is TRUE for a link of `concave_links` in `riskmap_families`,
 ##' under which the log-likelihood of every record is concave in its linear
 ##' predictor, FALSE for a named link that is not, and NA for a link given as
-##' a function. For a link given as a function `convex_at` is where
-##' `check_family()` found the log-likelihood of a record convex, NULL where
-##' it found none or the link has no second derivative to check, and
-##' `scanned` says whether it looked. `radius_measured` is TRUE for a link of
+##' a function. For a link given as a function, with `scan`, `convex_at` is
+##' where `check_family()` found the log-likelihood of a record convex, NULL
+##' where it found none, and `scanned` says whether it looked, which it does
+##' not for a link without its derivatives or one that fails on the grid, as
+##' a function whose variables are gone from the session where the fit is
+##' read does. `radius_measured` is TRUE for a link of
 ##' `radius_links`, for which it has been measured on simulated surveys how
 ##' often the radius of the certificate's bound is too small (#253, step 5).
 ##' @noRd
-describe_link_knowledge <- function(link_function, family) {
+describe_link_knowledge <- function(link_function, family, scan = TRUE) {
   traits <- family_traits(family)
   link <- link_function$link %||%
     if (identical(link_function$name, "canonical")) traits$default_link
-  scanned <- is.null(link) && is.function(link_function$inv) &&
+  scanned <- scan && is.null(link) && is.function(link_function$inv) &&
     is.function(link_function$d1) && is.function(link_function$d2)
-  convex_at <- if (scanned) {
-    check_family(family, link_function)$convex_at$eta
+  convex_at <- NULL
+  if (scanned) {
+    checked <- tryCatch(check_family(family, link_function),
+                        error = function(error) NULL)
+    scanned <- !is.null(checked)
+    convex_at <- checked$convex_at$eta
   }
   list(link = link,
        log_concave = if (is.null(link)) {
@@ -782,26 +791,38 @@ fit_check_link <- function(link_function, family, radius = "") {
            "makes the likelihood of each location log-concave in its latent ",
            "effect, as ", concave_words, ". If it does not, ", consequence)
   }
-  measured_words <- paste0(
-    " How often the radius of the bound on the Monte Carlo error is too ",
-    "small has been measured on simulated surveys with the ",
-    join_words(traits$radius_links), " link",
-    if (length(traits$radius_links) > 1L) "s",
-    if (is.null(known$link)) {
-      ", but not with this one."
-    } else {
-      paste0(", but not with the ", known$link, " link.")
-    }
-  )
+  radius_links <- traits$radius_links
+  measured_words <- if (known$radius_measured) {
+    ""
+  } else if (!length(radius_links)) {
+    paste0(" How often the radius of the bound on the Monte Carlo error is ",
+           "too small has not been measured on simulated surveys for any ",
+           "link of this family.", radius)
+  } else {
+    paste0(
+      " How often the radius of the bound on the Monte Carlo error is too ",
+      "small has been measured on simulated surveys with the ",
+      join_words(radius_links), " link",
+      if (length(radius_links) > 1L) "s",
+      if (is.null(known$link)) {
+        ", but not with this one."
+      } else {
+        paste0(", but not with the ", known$link, " link.")
+      },
+      radius
+    )
+  }
   concavity_brief <- if (!is.null(known$convex_at)) {
     "not log-concave"
   } else if (!isTRUE(known$log_concave)) {
     "not known to be log-concave"
   }
-  fit_check_row("Link", "OK", paste0(concavity, measured_words, radius),
+  fit_check_row("Link", "OK", paste0(concavity, measured_words),
                 brief = paste0(known$link %||% "A function", ", ",
                                paste(c(concavity_brief,
-                                       "radius not measured"),
+                                       if (!known$radius_measured) {
+                                         "radius not measured"
+                                       }),
                                      collapse = ", "), "."))
 }
 

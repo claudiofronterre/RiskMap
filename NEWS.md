@@ -690,7 +690,7 @@ cloglog link, which makes the likelihood log-concave, now has the row for that
 reason. For a link given as a function in `invlink`, the row says where the
 log-likelihood of a record was found to be convex on a grid of linear
 predictors from -30 to 30, so that a link such as that of an imperfect test is
-known not to be log-concave, and `summary()` of the checks gives that point.
+known not to be log-concave.
 
 - A binomial model fitted without an intercept, such as
 `y ~ 0 + x1 + x2 + gp()`, now takes its automatic starting regression
