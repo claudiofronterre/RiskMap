@@ -453,7 +453,7 @@ glgpm <- function(formula,
     # binomial ones (engine_records()).
     records <- engine_records(family, y, if (!model$exact) units_m,
                               cov_offset, family_parameters, invlink)
-    start_pars[["beta"]] <- family_traits(records$family)$start_coefficients(
+    start_pars[["beta"]] <- model$start_coefficients(
       y = records$y, units_m = records$units_m, D = D,
       cov_offset = records$offset, link = if (is.list(invlink)) invlink$link,
       formula = inter_f$pf, data = data
@@ -2375,9 +2375,11 @@ compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
 ##' @param y,units_m The positives and the denominators.
 ##' @param D The design matrix of the model.
 ##' @param link The name of the link, NULL for a link given as a function.
+##' @param quasi Whether to regress with the quasi-binomial family, for the
+##'   records of a negative binomial model, whose trials need not be whole.
 ##' @noRd
 binomial_start_regression <- function(y, units_m, D, cov_offset,
-                                      link = NULL) {
+                                      link = NULL, quasi = FALSE) {
   regress <- function(glm_family) {
     glm.fit(x = D, y = cbind(y, units_m - y), offset = cov_offset,
             family = glm_family)
@@ -2390,8 +2392,7 @@ binomial_start_regression <- function(y, units_m, D, cov_offset,
   # The quasi-binomial family gives the same estimates without glm()'s
   # warning about trials that are not whole, as those of the negative
   # binomial records are (engine_records()).
-  whole <- all(units_m == round(units_m))
-  regress(if (whole) binomial() else stats::quasibinomial())
+  regress(if (quasi) stats::quasibinomial() else binomial())
 }
 
 ##' What a refit of a fitted model passes as `invlink`

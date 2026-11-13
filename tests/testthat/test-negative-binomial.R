@@ -79,6 +79,11 @@ test_that("the negative binomial family is given by its function only", {
   # A string has no size, and errors name only the families users can give.
   error <- expect_input_error(read_family("negative_binomial"), "family")
   expect_false(grepl("negative", conditionMessage(error)))
+  no_family <- binomial_model
+  no_family["family"] <- list(NULL)
+  error <- expect_input_error(fit_is_exact(no_family), "object")
+  expect_false(grepl("negative", conditionMessage(error)))
+  expect_identical(string_families(), c("gaussian", "binomial", "poisson"))
   expect_input_error(
     read_family("negative_binomial", families = engine_families()), "family"
   )
@@ -132,6 +137,10 @@ test_that("the traits of the negative binomial family give its closed forms", {
   expect_true(traits$validate(c(0, 5), c(0.5, 2)))
   expect_input_error(traits$validate(c(0, 1.5), c(1, 1)), "data",
                      "whole numbers")
+  expect_input_error(traits$validate(c(0, Inf), c(1, 1)), "data",
+                     "whole numbers")
+  expect_input_error(traits$validate(c(0, 3 + 1e-10), c(1, 1)), "data",
+                     "whole numbers")
   expect_input_error(traits$validate(c(0, 1), c(1, 0)), "denominator",
                      "positive")
   expect_false(traits$upper_limit)
@@ -139,7 +148,25 @@ test_that("the traits of the negative binomial family give its closed forms", {
   expect_identical(traits$response_quantity, "rate")
   expect_identical(model_title(traits),
                    "Negative binomial geostatistical model")
-  expect_null(traits$start_coefficients)
+  # The start regresses the records with the quasi-binomial family, without
+  # glm()'s warning about trials that are not whole.
+  y <- c(0, 3, 5, 2, 4)
+  D <- cbind(1, c(-1, 0, 1, 2, 0.5))
+  records <- engine_records("negative_binomial", y, c(1, 2, 0.5, 1, 3),
+                            numeric(5), list(theta = 1.5))
+  expect_no_warning(
+    start <- traits$start_coefficients(y, records$units_m, D, records$offset,
+                                       NULL, NULL, NULL)
+  )
+  expect_identical(start, stats::glm.fit(D, cbind(y, records$units_m - y),
+                                         offset = records$offset,
+                                         family = stats::quasibinomial())$coefficients)
+  # Binomial trials that are not whole keep glm()'s warning.
+  expect_warning(
+    family_traits("binomial")$start_coefficients(y, y + 1.5, D, numeric(5),
+                                                 NULL, NULL, NULL),
+    "non-integer"
+  )
 })
 
 test_that("a negative binomial fit is the binomial fit of its records", {
@@ -175,7 +202,8 @@ test_that("a negative binomial fit is the binomial fit of its records", {
   expect_equal(fit$fitted_values, data$m * colMeans(exp(eta)),
                tolerance = 1e-10)
   expect_output(print(fit), "Negative binomial geostatistical model")
-  expect_output(print(summary(fit)), "canonical log link")
+  # The log link is the family's default, not its canonical link.
+  expect_output(print(summary(fit)), "The log link, with inverse exp\\(x\\)")
 })
 
 test_that("as the field vanishes the fit is the negative binomial regression", {
@@ -266,4 +294,41 @@ test_that("the integrated form tabulates records whose trials are not whole", {
   expect_equal(unlist(integrated$estimate), unlist(sampled$estimate),
                tolerance = 0.01)
   expect_equal(integrated$log_lik, sampled$log_lik, tolerance = 1e-4)
+})
+
+test_that("the refits of a negative binomial fit carry its size", {
+  data <- negative_binomial_survey(30, 0.5, 2, seed = 41)
+  fit <- glgpm(y ~ x + gp(nugget = FALSE), data = data,
+               family = negative_binomial(theta = 2), denominator = m,
+               distance_units = "m", control_mcmc = control_mcmc,
+               messages = FALSE, seed = 5)
+  constant <- sum(lgamma(data$y + 2) - lgamma(2))
+  # parametric_bootstrap() refits the fit's own response, from the estimate,
+  # back to the estimate.
+  refit <- make_bootstrap_refit(fit)
+  expect_equal(refit(fit$y, 5L), unlist(coef(fit)), tolerance = 1e-6)
+  # profile() and the radius of check_fit() rebuild the likelihood, which at
+  # the estimate is the fit's, less the constant of its records. With the
+  # size dropped they would stop, and at another size they are far off.
+  problem <- make_profile_problem(fit, 2000L, 1L)
+  expect_equal(problem$value(problem$bank_estimate) + constant, fit$log_lik,
+               tolerance = 1e-4)
+  wrong <- fit
+  wrong$family_parameters <- list(theta = 50)
+  wrong_problem <- make_profile_problem(wrong, 2000L, 1L)
+  expect_gt(abs(wrong_problem$value(wrong_problem$bank_estimate) + constant -
+                  fit$log_lik), 10)
+  last <- fit$mcml_history[[length(fit$mcml_history)]]
+  bank <- draw_radius_bank(rebuild_certification_problem(fit, last), 3L)
+  largest <- max(bank$log_weights)
+  expect_equal(largest + log(mean(exp(bank$log_weights - largest))) +
+                 constant, fit$log_lik, tolerance = 1e-4)
+  # predict() with parameter uncertainty samples the latent effects of the
+  # records at the size of the fit.
+  sampler <- parameter_conditioning_sampler(fit)
+  set.seed(4)
+  draws <- sampler(fit$estimate, 2000L)
+  spread <- apply(fit$S_samples, 2L, stats::sd)
+  expect_lt(max(abs(colMeans(draws$samples) - colMeans(fit$S_samples)) /
+                  spread), 0.6)
 })

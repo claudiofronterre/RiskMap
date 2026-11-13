@@ -746,7 +746,7 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
   } else {
     traits <- fit_traits(object)
     if (!is.null(traits)) {
-      link_name <- if (traits$exact) {
+      link_name <- if (traits$exact || !traits$default_is_canonical) {
         traits$default_link
       } else {
         paste0("canonical (", traits$default_link, ")")

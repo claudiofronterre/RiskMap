@@ -274,9 +274,11 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' - `response_quantity`, the name of the predicted mean of the response in
 ##'   plots, NULL for the name of the response itself, and `probability`, the
 ##'   mean is a probability, shown as a percentage.
-##' - `title`, the family's name at the start of a model's title, and
-##'   `inverse_link_formula`, its canonical inverse link as `summary()` shows
-##'   it.
+##' - `title`, the family's name at the start of a model's title,
+##'   `inverse_link_formula`, the inverse of its default link as `summary()`
+##'   shows it, and `default_is_canonical`, the default link is the canonical
+##'   link of the family, which the log link of the negative binomial family is
+##'   not.
 ##' - `parameters`, the names of the family's own parameters, held at the
 ##'   values given with the family (`negative_binomial()`), and
 ##'   `kernel_family`, for a family whose records the MCML engine fits as
@@ -295,6 +297,7 @@ riskmap_families <- list(
     inverse_link = identity, discrete = FALSE, whole_denominator = FALSE,
     response_quantity = NULL, probability = FALSE,
     title = "Gaussian", inverse_link_formula = "x",
+    default_is_canonical = TRUE,
     parameters = character(), kernel_family = NULL
   ),
   binomial = list(
@@ -312,6 +315,7 @@ riskmap_families <- list(
     inverse_link = stats::plogis, discrete = TRUE, whole_denominator = TRUE,
     response_quantity = "prevalence", probability = TRUE,
     title = "Binomial", inverse_link_formula = "1 / (1 + exp(-x))",
+    default_is_canonical = TRUE,
     parameters = character(), kernel_family = NULL
   ),
   poisson = list(
@@ -332,6 +336,7 @@ riskmap_families <- list(
     inverse_link = exp, discrete = TRUE, whole_denominator = FALSE,
     response_quantity = "rate", probability = FALSE,
     title = "Poisson", inverse_link_formula = "exp(x)",
+    default_is_canonical = TRUE,
     parameters = character(), kernel_family = NULL
   ),
   # Internal until its size can be estimated (#253, step 6b). Its records go
@@ -348,6 +353,7 @@ riskmap_families <- list(
     inverse_link = exp, discrete = TRUE, whole_denominator = FALSE,
     response_quantity = "rate", probability = FALSE,
     title = "Negative binomial", inverse_link_formula = "exp(x)",
+    default_is_canonical = FALSE,
     parameters = "theta", kernel_family = "binomial"
   )
 )
@@ -386,9 +392,12 @@ riskmap_families <- list(
 ##'   response and their means, NULL for a family that is not discrete.
 ##'
 ##' The negative binomial family hands the engine its records as binomial ones
-##' (`engine_records()`), so the methods that start a fit, `start_coefficients`,
-##' `empirical_link`, `transform_variance` and `start_log_likelihood`, are the
-##' binomial family's on those records, and its own are NULL. It has two more.
+##' (`engine_records()`), so the methods that start a fit work on those
+##' records. Its `start_coefficients` is the binomial regression of the
+##' records, with the quasi-binomial family since their trials need not be
+##' whole, and `empirical_link`, `transform_variance` and
+##' `start_log_likelihood` are the binomial family's, its own being NULL. It
+##' has two more methods.
 ##' - `engine_records(y, units_m, offset, parameters)`, the records of the
 ##'   binomial kernel, with `y` events of `y + theta` trials and the offset
 ##'   `offset + log(units_m / theta)`, for exposures `units_m`.
@@ -476,8 +485,14 @@ family_traits <- function(family) {
     ),
     negative_binomial = list(
       validate = function(y, units_m) check_counts(y, units_m),
-      start_coefficients = NULL, empirical_link = NULL,
-      transform_variance = NULL, start_log_likelihood = NULL,
+      # On the records of engine_records().
+      start_coefficients = function(y, units_m, D, cov_offset, link, formula,
+                                    data) {
+        coef(binomial_start_regression(y, units_m, D, cov_offset,
+                                       quasi = TRUE))
+      },
+      empirical_link = NULL, transform_variance = NULL,
+      start_log_likelihood = NULL,
       fitted_mean = function(mean, units_m) units_m * mean,
       simulate = function(means, units_m, parameters) {
         rnbinom(length(means), size = family_size(parameters),
@@ -520,13 +535,14 @@ family_size <- function(parameters) {
 
 ##' Check counts and their exposures
 ##'
-##' Stops unless the responses `y` are non-negative whole numbers and the
-##' exposures `units_m` positive finite numbers, as the negative binomial
-##' family needs, whose records have the offset `log(units_m / theta)`.
+##' Stops unless the responses `y` are finite non-negative whole numbers, as
+##' the conditional sampler of the fit needs them exactly
+##' (`laplace_sampling_mcmc()`), and the exposures `units_m` positive finite
+##' numbers, as the negative binomial family needs, whose records have the
+##' offset `log(units_m / theta)`.
 ##' @noRd
 check_counts <- function(y, units_m) {
-  tolerance <- sqrt(.Machine$double.eps)
-  if (!all(y >= 0) || !all(abs(y - round(y)) < tolerance)) {
+  if (!all(is.finite(y)) || !all(y >= 0) || !all(y == round(y))) {
     abort_input("The responses of a negative binomial model must be non-negative whole numbers.", arg = "data")
   }
   if (!all(is.finite(units_m)) || !all(units_m > 0)) {
@@ -613,7 +629,7 @@ check_engine_family <- function(family) {
 fit_is_exact <- function(fit) {
   traits <- fit_traits(fit)
   if (is.null(traits)) {
-    families <- names(riskmap_families)
+    families <- string_families()
     abort_input("{.arg object} must be a fit of the family {.or {.val {families}}}, but its {.field family} is {.obj_type_friendly {fit$family}}.", arg = "object")
   }
   traits$exact
@@ -673,10 +689,7 @@ read_family <- function(family, invlink = NULL,
     return(list(family = family$family, invlink = NULL,
                 parameters = family$parameters))
   }
-  # A family with parameters of its own is not given as a string.
-  families <- families[vapply(families, function(name) {
-    !length(family_traits(name)$parameters)
-  }, logical(1))]
+  families <- string_families(families)
   if (is.function(family)) {
     family <- tryCatch(family(), error = function(e) NULL)
   }
@@ -724,6 +737,18 @@ fit_family_argument <- function(fit) {
   traits <- fit_traits(fit)
   if (is.null(traits) || !length(traits$parameters)) return(fit$family)
   negative_binomial(theta = family_size(fit$family_parameters))
+}
+
+##' The families among `families` that are given by their name
+##'
+##' Those without parameters of their own, which are given only by their
+##' function (`negative_binomial()`), internal until #253, step 6b. These are
+##' the families that errors name.
+##' @noRd
+string_families <- function(families = names(riskmap_families)) {
+  families[vapply(families, function(name) {
+    !length(family_traits(name)$parameters)
+  }, logical(1))]
 }
 
 ##' Family string and link of a family object
