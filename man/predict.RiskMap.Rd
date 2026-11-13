@@ -205,7 +205,7 @@ matrix, on the scale on which the model is estimated (log variances and
 log scale). For each value, conditional samples of the latent effects are
 generated at that value and the prediction is repeated; the draws are then
 pooled, so every summary, aggregation and derived target reflects both the
-latent and the parameter uncertainty. For binomial and Poisson models the
+latent and the parameter uncertainty. For binomial, Poisson and negative binomial models the
 conditional samples at each parameter value come from a short run of the
 same Langevin (MALA) sampler used for plug-in prediction, in coordinates
 whitened by the Laplace approximation at that value, started from a draw

@@ -32,8 +32,12 @@ include one \code{offset()} term that names a column of \code{data}, e.g. \code{
 
 \item{family}{The distribution of the response given the random effects,
 with its link. Either one of the strings \code{"gaussian"}, \code{"binomial"} and
-\code{"poisson"}, which take the identity, logit and log links, or a family
-object as in \code{\link[stats:glm]{stats::glm()}}, such as \code{binomial("probit")}. Binomial
+\code{"poisson"}, which take the identity, logit and log links, a family
+object as in \code{\link[stats:glm]{stats::glm()}}, such as \code{binomial("probit")}, or
+\code{\link[=negative_binomial]{negative_binomial()}} for overdispersed counts with the log link, whose
+size is estimated unless a value is given (\code{negative_binomial(theta = 2)}
+or \code{MASS::negative.binomial(2)}). Where nothing is estimated, as in
+\code{\link[=specify_glgpm]{specify_glgpm()}}, the size must be given. Binomial
 responses take the logit, probit, complementary log-log (\code{"cloglog"}) and
 Cauchy (\code{"cauchit"}) links, Poisson responses the log link and Gaussian
 responses the identity link. \code{binomial("log")} and \code{poisson("identity")}
@@ -55,9 +59,11 @@ importance sampler, so they affect the speed of a fit and not its
 estimates. Not applicable for Gaussian models, and not to be combined with
 a family object that names a link other than logit or log.}
 
-\item{denominator}{Optional denominator or exposure for binomial or Poisson distributions.
+\item{denominator}{Optional denominator for binomial distributions, or
+exposure for Poisson and negative binomial ones, the mean of a count being
+the exposure times the inverse link of the linear predictor.
 Passed as a bare/unquoted column name present in \code{data}.
-If not provided, defaults to \code{1} for binomial models.}
+If not provided, defaults to \code{1}.}
 
 \item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
 If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
@@ -106,6 +112,8 @@ the \code{nugget} term in \code{\link[=gp]{gp()}} is also set to \code{TRUE}.}
 \item{phi}{spatial correlation scale}
 \item{sigma2_me}{measurement error variance - only for Gaussian models}
 \item{sigma2_re}{random effects variances - only when random effects are included}
+\item{theta}{size of the negative binomial family - only when it is
+estimated (see \code{\link[=negative_binomial]{negative_binomial()}})}
 }}
 }
 \value{
@@ -187,13 +195,15 @@ fit, whether supplied or drawn. \code{NULL} for Gaussian models.}
 \description{
 Fits generalized linear Gaussian process models to spatial data,
 incorporating spatial Gaussian processes with a Matern correlation function.
-Supports Gaussian, binomial, and Poisson response families.
+Supports Gaussian, binomial, Poisson and negative binomial response families.
 }
 \details{
 Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
 spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs
-using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.
-In the case of the Binomial and Poisson families, a Monte Carlo maximum likelihood algorithm is used.
+using maximum likelihood methods, allowing for Gaussian, binomial, Poisson and negative binomial
+response families. In the case of the binomial, Poisson and negative binomial families, a Monte
+Carlo maximum likelihood algorithm is used. A negative binomial model is fitted as the binomial
+model of its counts at each value of its size (see \code{\link[=negative_binomial]{negative_binomial()}}).
 
 The spatial Gaussian process is modeled with a Matern correlation function, which is flexible and
 commonly used in geostatistical modeling. The function supports both spatial covariates and

@@ -1,13 +1,13 @@
 ##' Effective sample sizes of the MCMC samples of the random effects
 ##'
 ##' Computes the effective sample size of the Markov chain Monte Carlo (MCMC)
-##' samples of the random effects stored in a fitted binomial or Poisson
+##' samples of the random effects stored in a fitted binomial, Poisson or negative binomial
 ##' model, for the mean of the spatial random effects over the locations, for
 ##' the spatial random effect at each location and for each level of every
 ##' unstructured random effect.
 ##'
 ##' @param object A fitted `RiskMap` object returned by [glgpm()] for a
-##'   binomial or Poisson model with `return_samples = TRUE`.
+##'   binomial, Poisson or negative binomial model with `return_samples = TRUE`.
 ##'
 ##' @details
 ##' The samples are those drawn by [glgpm()] at the fitted parameter values,
@@ -76,7 +76,7 @@ summarise_mcmc <- function(object) {
 ##' Check the mixing of the MCMC samples of the random effects
 ##'
 ##' Draws diagnostics of the Markov chain Monte Carlo (MCMC) samples of the
-##' random effects stored in a fitted binomial or Poisson model. For the mean
+##' random effects stored in a fitted binomial, Poisson or negative binomial model. For the mean
 ##' of the spatial random effects over the locations, and for the location
 ##' whose samples have the smallest effective sample size, it shows a trace
 ##' plot and the autocorrelation function. A histogram of the effective sample

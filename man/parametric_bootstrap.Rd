@@ -15,7 +15,7 @@ parametric_bootstrap(
 }
 \arguments{
 \item{object}{A fitted \code{RiskMap} object returned by \code{\link[=glgpm]{glgpm()}}, from a
-Gaussian, binomial or Poisson model, with or without a nugget and
+Gaussian, binomial, Poisson or negative binomial model, with or without a nugget and
 \code{\link[=re]{re()}} terms.}
 
 \item{n_sim}{Number of bootstrap replicates. Percentile intervals at the
@@ -70,7 +70,7 @@ formula and the data are not evaluated again.
 Replicate \eqn{i} uses one seed, \eqn{s_i = s + 10000 (i - 1)}, where
 \eqn{s} is \code{seed}. It simulates its data with \verb{simulate_glgpm(seed =} \eqn{s_i}\verb{)}
 and refits with \verb{glgpm(seed =} \eqn{s_i}\verb{)}. The Monte Carlo streams of a
-binomial or Poisson fit are derived from its seed by offsets between 1 and
+binomial, Poisson or negative binomial fit are derived from its seed by offsets between 1 and
 about 6000, so consecutive integers would make replicates share streams,
 and seeds 10000 apart do not. A replicate depends only on its seed, so the
 results are identical for any number of \code{cores} and the first replicates

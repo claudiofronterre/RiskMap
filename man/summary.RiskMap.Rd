@@ -15,7 +15,7 @@
 }
 \value{
 A list of class \code{"summary.RiskMap"} with parameter estimates,
-standard errors, and confidence intervals. For binomial and Poisson
+standard errors, and confidence intervals. For binomial, Poisson and negative binomial
 models, its component \code{mcml} reports certified Monte Carlo maximum
 likelihood: \code{certificate} (an approximate bound, with probability
 \code{level}, on the Monte Carlo error of the estimate in statistical

@@ -218,6 +218,19 @@ native linear units rather than assuming metres.
 
 ## Model fitting
 
+- `glgpm()` fits negative binomial models of overdispersed counts, with
+`family = negative_binomial()`, the log link and the exposure in
+`denominator`. The size `theta` is estimated, starting from the negative
+binomial regression without random effects or from `start_pars$theta`, unless
+it is given, as in `negative_binomial(theta = 2)` or
+`MASS::negative.binomial(2)`, at which it is held. A size that goes to the
+Poisson limit is held there and reported by `check_fit()`. An estimated size
+can't be fitted with a nugget or a random effect with one level per
+observation when there is one observation per location. `predict()`,
+`simulate_glgpm()`, `specify_glgpm()`, `assess_prediction()`, `profile()`,
+`parametric_bootstrap()` and `check_fit()` take the size of a fit, and
+`maxim_integrand()` takes the family with its size. Its log-likelihood leaves
+out the same terms as that of a Poisson fit, so the two can be compared.
 - Several `re()` calls in a formula are now combined, so `re(a) + re(b)` is the
 same model as `re(a, b)`. Previously only the last call was fitted, with no
 warning. A second, different `gp()` term, which also used to replace the first

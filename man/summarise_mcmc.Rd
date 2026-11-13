@@ -8,7 +8,7 @@ summarise_mcmc(object)
 }
 \arguments{
 \item{object}{A fitted \code{RiskMap} object returned by \code{\link[=glgpm]{glgpm()}} for a
-binomial or Poisson model with \code{return_samples = TRUE}.}
+binomial, Poisson or negative binomial model with \code{return_samples = TRUE}.}
 }
 \value{
 A tibble with one row per chain and columns
@@ -23,7 +23,7 @@ The number of samples is stored in the attribute \code{"n_samples"}.
 }
 \description{
 Computes the effective sample size of the Markov chain Monte Carlo (MCMC)
-samples of the random effects stored in a fitted binomial or Poisson
+samples of the random effects stored in a fitted binomial, Poisson or negative binomial
 model, for the mean of the spatial random effects over the locations, for
 the spatial random effect at each location and for each level of every
 unstructured random effect.

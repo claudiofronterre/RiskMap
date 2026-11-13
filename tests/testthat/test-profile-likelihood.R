@@ -45,7 +45,7 @@ test_that("profiling restores the random number state", {
 test_that("profile rejects fits and settings it cannot handle", {
   uncertified <- binomial_model
   uncertified$mcml_history <- NULL
-  expect_error(profile(uncertified), "binomial and Poisson")
+  expect_error(profile(uncertified), "binomial, Poisson and negative binomial")
   expect_error(profile(binomial_model, parameters = "kappa", messages = FALSE),
                "must name parameters of the fit")
   expect_error(profile(binomial_model, n_points = 2), "n_points")

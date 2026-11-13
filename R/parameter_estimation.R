@@ -1,7 +1,7 @@
 ##' @title Estimation of Generalized Linear Gaussian Process Models
 ##' @description Fits generalized linear Gaussian process models to spatial data,
 ##' incorporating spatial Gaussian processes with a Matern correlation function.
-##' Supports Gaussian, binomial, and Poisson response families.
+##' Supports Gaussian, binomial, Poisson and negative binomial response families.
 ##' @param formula A formula object specifying the model to be fitted.
 ##' The formula should include fixed effects and spatial effects specified using
 ##' [gp()] and optionally, random effects specified using [re()]. It can also
@@ -9,8 +9,12 @@
 ##' @param data An sf object containing the variables in the model.
 ##' @param family The distribution of the response given the random effects,
 ##' with its link. Either one of the strings `"gaussian"`, `"binomial"` and
-##' `"poisson"`, which take the identity, logit and log links, or a family
-##' object as in [stats::glm()], such as `binomial("probit")`. Binomial
+##' `"poisson"`, which take the identity, logit and log links, a family
+##' object as in [stats::glm()], such as `binomial("probit")`, or
+##' [negative_binomial()] for overdispersed counts with the log link, whose
+##' size is estimated unless a value is given (`negative_binomial(theta = 2)`
+##' or `MASS::negative.binomial(2)`). Where nothing is estimated, as in
+##' [specify_glgpm()], the size must be given. Binomial
 ##' responses take the logit, probit, complementary log-log (`"cloglog"`) and
 ##' Cauchy (`"cauchit"`) links, Poisson responses the log link and Gaussian
 ##' responses the identity link. `binomial("log")` and `poisson("identity")`
@@ -30,9 +34,11 @@
 ##' importance sampler, so they affect the speed of a fit and not its
 ##' estimates. Not applicable for Gaussian models, and not to be combined with
 ##' a family object that names a link other than logit or log.
-##' @param denominator Optional denominator or exposure for binomial or Poisson distributions.
+##' @param denominator Optional denominator for binomial distributions, or
+##' exposure for Poisson and negative binomial ones, the mean of a count being
+##' the exposure times the inverse link of the linear predictor.
 ##' Passed as a bare/unquoted column name present in `data`.
-##' If not provided, defaults to `1` for binomial models.
+##' If not provided, defaults to `1`.
 ##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for model fitting.
 ##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
 ##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
@@ -72,12 +78,16 @@
 ##'   \item{phi}{spatial correlation scale}
 ##'   \item{sigma2_me}{measurement error variance - only for Gaussian models}
 ##'   \item{sigma2_re}{random effects variances - only when random effects are included}
+##'   \item{theta}{size of the negative binomial family - only when it is
+##'     estimated (see [negative_binomial()])}
 ##' }
 ##' @details
 ##' Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
 ##' spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs
-##' using maximum likelihood methods, allowing for Gaussian, binomial, and Poisson response families.
-##' In the case of the Binomial and Poisson families, a Monte Carlo maximum likelihood algorithm is used.
+##' using maximum likelihood methods, allowing for Gaussian, binomial, Poisson and negative binomial
+##' response families. In the case of the binomial, Poisson and negative binomial families, a Monte
+##' Carlo maximum likelihood algorithm is used. A negative binomial model is fitted as the binomial
+##' model of its counts at each value of its size (see [negative_binomial()]).
 ##'
 ##' The spatial Gaussian process is modeled with a Matern correlation function, which is flexible and
 ##' commonly used in geostatistical modeling. The function supports both spatial covariates and
@@ -2500,8 +2510,10 @@ refit_invlink <- function(object) {
 ##' @param ID_coords Indices mapping response to locations.
 ##' @param ID_re Indices mapping response to unstructured random effects.
 ##' @param family The distribution of the response, `"binomial"` or
-##'   `"poisson"`, or a binomial or Poisson family object with one of the
-##'   links that [glgpm()] accepts, such as `binomial("probit")`.
+##'   `"poisson"`, a binomial or Poisson family object with one of the
+##'   links that [glgpm()] accepts, such as `binomial("probit")`, or
+##'   [negative_binomial()] with its size, such as
+##'   `negative_binomial(theta = 2)`, with `denominator` the exposure.
 ##' @param sigma2_re Variance of the unstructured random effects.
 ##' @param hessian Logical; if TRUE, compute the Hessian matrix.
 ##' @param gradient Logical; if TRUE, compute the gradient vector.

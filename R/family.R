@@ -240,8 +240,7 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 
 ##' The families of RiskMap and their links
 ##'
-##' One entry for each family a user can give (#253, step 1c), and the
-##' negative binomial family, internal until step 6b. `links` are the
+##' One entry for each family a user can give (#253, step 1c). `links` are the
 ##' links `read_family_link()` accepts, `default_link` the canonical one, which
 ##' a family string implies and which is fitted on the canonical path, and
 ##' `refused` the links of a stats family that it refuses, with the reason.
@@ -365,8 +364,7 @@ riskmap_families <- list(
     parameters = list(), parameters_heading = NULL, specified = FALSE,
     kernel_family = NULL
   ),
-  # Internal until its size can be estimated (#253, step 6b). Its records go
-  # to the engine as binomial ones (engine_records()).
+  # Its records go to the engine as binomial ones (engine_records()).
   negative_binomial = list(
     links = "log", default_link = "log", refused = character(),
     exact = FALSE, measurement_error = FALSE,
@@ -760,10 +758,10 @@ fit_traits <- function(fit) {
 ##' and fit exactly as the strings do, and the identity link of the Gaussian
 ##' family leaves nothing to carry. A string leaves `invlink` as it is, which
 ##' keeps the internal list form open to refits. A family with parameters of
-##' its own is given only by its function, `negative_binomial()`, whose
+##' its own is given by its function, `negative_binomial()`, whose
 ##' specification is accepted by every caller and adds the family's
-##' `parameters`. It is internal until #253, step 6b, so it is not among the
-##' families that errors name.
+##' `parameters` and the names of the `estimated` ones, and
+##' `MASS::negative.binomial(theta)` is read as `negative_binomial(theta)`.
 ##' @param family What the user gave as `family`.
 ##' @param invlink What the user gave as `invlink`.
 ##' @param families The family strings the calling function accepts.
@@ -792,6 +790,10 @@ read_family <- function(family, invlink = NULL,
   if (is.function(family)) {
     family <- tryCatch(family(), error = function(e) NULL)
   }
+  if (inherits(family, "family") && startsWith(family$family %||% "",
+                                               "Negative Binomial(")) {
+    return(read_family(read_mass_negative_binomial(family), invlink))
+  }
   if (inherits(family, "family")) {
     link <- read_family_link(family$family %||% "", family$link %||% "")
     if (!is.null(link$invlink) && !is.null(invlink)) {
@@ -803,22 +805,49 @@ read_family <- function(family, invlink = NULL,
   }
   if (!is.character(family) || length(family) != 1L ||
       !family %in% families) {
-    abort_input("{.arg family} must be {.or {.val {families}}}, or a family object such as {.code binomial(\"probit\")}.", arg = "family")
+    abort_input("{.arg family} must be {.or {.val {families}}}, a family object such as {.code binomial(\"probit\")}, or {.fn negative_binomial}.", arg = "family")
   }
   list(family = family, invlink = invlink)
 }
 
-##' The negative binomial family
+##' @title The Negative Binomial Family
+##' @description Specifies a negative binomial response for [glgpm()],
+##'   [specify_glgpm()] and [maxim_integrand()], for counts that vary more than
+##'   a Poisson model allows. A count \eqn{y} with exposure \eqn{m} given the
+##'   random effects has mean \eqn{\mu = m \exp(\eta)}, with the log link,
+##'   and variance \eqn{\mu + \mu^2 / \theta}, as in
+##'   `MASS::negative.binomial(theta)`. The size \eqn{\theta} is estimated
+##'   unless a value is given, at which it is held.
+##' @param theta The size, a positive number at which it is held, or `NULL`
+##'   (the default) to estimate it.
+##' @details
+##' The exposure is given in the `denominator` of [glgpm()], and is 1 for
+##' every count when it is not given. As \eqn{\theta} grows the model tends
+##' to the Poisson model with the same mean, and a fit whose size goes to that
+##' limit holds it there, as a variance estimated as zero is held, and says so
+##' in [check_fit()]. A fit that estimates the size reports it in [coef()],
+##' [print()] and [summary()] as `theta`. Its start is the size of the
+##' negative binomial regression without the random effects, or
+##' `start_pars$theta` in [glgpm()]. With one observation per location, an
+##' estimated size can't be told apart from a nugget or from a random effect
+##' with one level per observation, so those are refused. A fit with an
+##' estimated size uses the sampled form of Monte Carlo maximum likelihood
+##' (see `integrate_noise` in [set_control_mcml()]), and its check for other
+##' maxima has no screen of short scales. `MASS::negative.binomial(theta)`
+##' is read as `negative_binomial(theta)`.
 ##'
-##' Counts y with mean m exp(eta), for exposure m, and variance
-##' mu + mu^2 / theta, as in `MASS::negative.binomial(theta)`. The size
-##' `theta` is estimated unless a value is given, at which it is held (#253,
-##' steps 6a and 6b). Internal until the radius of its certificate has been
-##' measured, when it is to be exported. `read_family()` reads it.
-##' @param theta The size, a positive number, or NULL to estimate it.
-##' @return A specification of class `riskmap_family_specification`, with the
-##'   held `parameters` and the names of the `estimated` ones.
-##' @noRd
+##' Given the size, the log-likelihood of a count is that of a binomial
+##' count of \eqn{y} successes in \eqn{y + \theta} trials with the logit
+##' link and the offset \eqn{\log(m / \theta)}, plus terms in \eqn{y} and
+##' \eqn{\theta}, which is how RiskMap fits it. The log-likelihood that a
+##' fit reports leaves out \eqn{y \log m - \log y!}, as that of a Poisson fit
+##' does, so the two can be compared.
+##' @return An object of class `riskmap_family_specification`.
+##' @seealso [glgpm()], [stats::poisson()]
+##' @examples
+##' negative_binomial()
+##' negative_binomial(theta = 2)
+##' @export
 negative_binomial <- function(theta = NULL) {
   if (!is.null(theta)) check_positive_number(theta, type = "")
   structure(list(family = "negative_binomial", link = "log",
@@ -826,6 +855,17 @@ negative_binomial <- function(theta = NULL) {
                    list(),
                  estimated = if (is.null(theta)) "theta" else character()),
             class = "riskmap_family_specification")
+}
+
+##' @export
+print.riskmap_family_specification <- function(x, ...) {
+  held <- x$parameters$theta
+  out_print(out_text(if (is.null(held)) {
+    "The negative binomial family with the log link and its size estimated."
+  } else {
+    paste0("The negative binomial family with the log link and its size held at ", held, ".")
+  }))
+  invisible(x)
 }
 
 ##' The description of a family's own parameter, by its name
@@ -926,13 +966,32 @@ fit_family_argument <- function(fit, hold = FALSE) {
 ##' The families among `families` that are given by their name
 ##'
 ##' Those not `specified`, that is not given by their function with the values
-##' of their parameters (`negative_binomial()`, internal until #253, step 6b).
-##' These are the families that errors name.
+##' of their parameters (`negative_binomial()`), which errors name apart.
 ##' @noRd
 string_families <- function(families = names(riskmap_families)) {
   families[vapply(families, function(name) {
     !family_traits(name)$specified
   }, logical(1))]
+}
+
+##' The specification of a family object of `MASS::negative.binomial()`
+##'
+##' Its size is the `.Theta` of the environment of its functions, and its
+##' name, as in "Negative Binomial(2)", gives it when that is missing. Only
+##' the log link is accepted.
+##' @noRd
+read_mass_negative_binomial <- function(family) {
+  if (!identical(family$link, "log")) {
+    abort_input(c("The {family$link} link isn't available for the negative binomial family, which takes {.val log}.", "i" = family_traits("negative_binomial")$link_hint), arg = "family")
+  }
+  theta <- tryCatch(get(".Theta", envir = environment(family$variance)),
+                    error = function(error) NULL)
+  if (!is.numeric(theta)) {
+    theta <- suppressWarnings(as.numeric(
+      sub("^Negative Binomial\\((.*)\\)$", "\\1", family$family)
+    ))
+  }
+  negative_binomial(theta = theta)
 }
 
 ##' Family string and link of a family object
@@ -949,7 +1008,7 @@ read_family_link <- function(family, link) {
     abort_input(c("{.fn {family}} is a quasi-likelihood family, which has no likelihood for RiskMap to maximise.", "i" = "Use {.fn binomial} or {.fn poisson}, and give a link they don't name as an inverse-link function in {.arg invlink}."), arg = "family")
   }
   if (!family %in% names(riskmap_families)) {
-    abort_input(c("{.arg family} must be a Gaussian, binomial or Poisson family, not {.val {family}}.", "i" = "For a binomial or Poisson response, any link can be given as an inverse-link function in {.arg invlink}."), arg = "family")
+    abort_input(c("{.arg family} must be a Gaussian, binomial or Poisson family, or {.fn negative_binomial}, not {.val {family}}.", "i" = "For a binomial or Poisson response, any link can be given as an inverse-link function in {.arg invlink}."), arg = "family")
   }
   traits <- family_traits(family)
   if (traits$specified) {
