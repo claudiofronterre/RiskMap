@@ -3,8 +3,8 @@
 # family == "binomial" or switch(family, binomial = ...), nor look one up in a
 # table keyed by family, as in c(binomial = "a", poisson = "b")[[family]]. This
 # test reads every function in the installed package and fails if one that is
-# not the family's own does, unless it is listed in
-# family-strings-to-convert.txt, which may only shrink. It reads the code, not
+# not the family's own does. Steps 1 to 5 of #253 converted the functions that
+# did, the last being the row "Link" of check_fit(). It reads the code, not
 # what it means, so a "gaussian" that is not a family, such as a Gaussian
 # correlation, would be counted too.
 
@@ -148,31 +148,18 @@ test_that("the check finds the ways a family string is compared", {
 })
 
 test_that("only the family's own functions compare family strings", {
-  listed <- readLines(test_path("family-strings-to-convert.txt"))
-  listed <- trimws(listed[!grepl("^#", listed) & nzchar(trimws(listed))])
   comparing <- functions_comparing_family_strings()
-  unlisted <- setdiff(comparing, c(family_functions, listed))
+  unlisted <- setdiff(comparing, family_functions)
   expect(
     length(unlisted) == 0L,
     paste("These functions compare a family string. Read the family through",
           "its object (R/family.R) instead.", paste(unlisted, collapse = ", "))
   )
-  converted <- setdiff(listed, comparing)
-  expect(
-    length(converted) == 0L,
-    paste("These functions no longer compare a family string. Remove them",
-          "from family-strings-to-convert.txt.",
-          paste(converted, collapse = ", "))
-  )
   # Where the source is kept, as with devtools::load_all(), the family's own
   # functions must be those of R/family.R.
-  files <- vapply(c(family_functions, listed), function(name) {
+  files <- vapply(family_functions, function(name) {
     file <- utils::getSrcFilename(get(name, envir = asNamespace("RiskMap")))
     if (length(file)) file else NA_character_
   }, character(1))
-  known <- !is.na(files)
-  expect_true(all(files[intersect(names(files)[known], family_functions)] ==
-                    "family.R"))
-  expect_false(any(files[intersect(names(files)[known], listed)] ==
-                     "family.R"))
+  expect_true(all(files[!is.na(files)] == "family.R"))
 })

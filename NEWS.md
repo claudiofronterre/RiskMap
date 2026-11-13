@@ -681,6 +681,17 @@ starting regression coefficients from a binomial regression with that link
 instead of a logit regression, and falls back on the logit regression if that
 one cannot be fitted.
 
+- The row "Link" of `check_fit()` also says when it has not been measured on
+simulated surveys how often the radius of the bound on the Monte Carlo error is
+too small, as it has for the logit and probit links of binomial data and the
+log link of Poisson and negative binomial counts, and points to
+`check_fit(extra = "radius")`, which predicts it for the fit. A fit with the
+cloglog link, which makes the likelihood log-concave, now has the row for that
+reason. For a link given as a function in `invlink`, the row says where the
+log-likelihood of a record was found to be convex on a grid of linear
+predictors from -30 to 30, so that a link such as that of an imperfect test is
+known not to be log-concave.
+
 - A binomial model fitted without an intercept, such as
 `y ~ 0 + x1 + x2 + gp()`, now takes its automatic starting regression
 coefficients from a regression without an intercept. The start regression

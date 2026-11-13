@@ -22,11 +22,21 @@
 ##'   A link other than logit, probit or cloglog for binomial data, or log for
 ##'   counts, adds a row saying that it is not known to make the likelihood of
 ##'   each location log-concave in its latent effect, so that the latent
-##'   effects can have more than one conditional mode. That belongs to the
-##'   model and not to how it was fitted, so the row is `OK`.
+##'   effects can have more than one conditional mode. For a link given as a
+##'   function the row says where the log-likelihood of a record was found to
+##'   be convex, if it was, on a grid of linear predictors from -30 to 30,
+##'   which cannot show that it is concave everywhere. The row also says when
+##'   it has not been measured on simulated surveys how often the radius of
+##'   the bound on the Monte Carlo error is too small, as it has for the logit
+##'   and probit links of binomial data and the log link of counts, and points
+##'   to the check of the radius, which predicts it for the fit. Neither is a
+##'   fault of the fit, so the row is `OK`.
 ##'
-##'   The default checks use only what the fit stored, so they take no time.
-##'   The extra checks compute something new and add a row each. Before they
+##'   The default checks use only what the fit stored, so they take no time,
+##'   apart from evaluating a link given as a function on the grid of linear
+##'   predictors, a fraction of a second. If that link cannot be evaluated,
+##'   as when it uses a variable no longer defined in the session, the row
+##'   says only that its concavity is not known. The extra checks compute something new and add a row each. Before they
 ##'   start, a message says how long they should take, from the time the fit
 ##'   took. The extra checks are
 ##'   * `"profile"`, the marginal profile likelihood of each covariance
@@ -219,7 +229,7 @@ run_fit_checks <- function(object, mcml, extras = character()) {
          fit_check_spatial_scale(object, optimizer, profile),
          fit_check_importance_distribution(optimizer),
          fit_check_mode_search(optimizer$mcml_mode_searches),
-         fit_check_link(object$link_function, object$family))
+         fit_check_link(object$link_function, object$family, radius))
   }
   rows <- Filter(Negate(is.null), rows)
   names(rows) <- vapply(rows, `[[`, "", "check")
@@ -681,43 +691,139 @@ fit_check_mode_search <- function(counts) {
                     "."))
 }
 
-##' Whether the link is one known to make the likelihood log-concave
+##' What is known of the link of a fit, from the lists of its family
 ##'
-##' With the logit, probit and complementary log-log links for binomial data,
-##' and the log link for counts, the likelihood of each location is
-##' log-concave in its latent effect, so the latent effects have one
-##' conditional mode. Other links can give more than one, which belongs to the
-##' model and the data, not to how the fit was computed, so the check is OK.
-##' Concavity cannot be established numerically, so the links come from a
-##' list. NULL for the links on it.
+##' `link` is the name of the link, NULL for one given as a function.
+##' `log_concave` is TRUE for a link of `concave_links` in `riskmap_families`,
+##' under which the log-likelihood of every record is concave in its linear
+##' predictor, FALSE for a named link that is not, and NA for a link given as
+##' a function. For a link given as a function, with `scan`, `convex_at` is
+##' where `check_family()` found the log-likelihood of a record convex, NULL
+##' where it found none, and `scanned` says whether it looked, which it does
+##' not for a link without its derivatives or one that fails on the grid, as
+##' a function whose variables are gone from the session where the fit is
+##' read does. `radius_measured` is TRUE for a link of
+##' `radius_links`, for which it has been measured on simulated surveys how
+##' often the radius of the certificate's bound is too small (#253, step 5).
 ##' @noRd
-fit_check_link <- function(link_function, family) {
-  if (!identical(link_function$name, "custom") ||
-      isTRUE(link_function$link %in% c("logit", "probit", "cloglog", "log"))) {
-    return(NULL)
+describe_link_knowledge <- function(link_function, family, scan = TRUE) {
+  traits <- family_traits(family)
+  link <- link_function$link %||%
+    if (identical(link_function$name, "canonical")) traits$default_link
+  scanned <- scan && is.null(link) && is.function(link_function$inv) &&
+    is.function(link_function$d1) && is.function(link_function$d2)
+  convex_at <- NULL
+  if (scanned) {
+    checked <- tryCatch(check_family(family, link_function),
+                        error = function(error) NULL)
+    scanned <- !is.null(checked)
+    convex_at <- checked$convex_at$eta
   }
+  list(link = link,
+       log_concave = if (is.null(link)) {
+         if (is.null(convex_at)) NA else FALSE
+       } else {
+         link %in% traits$concave_links
+       },
+       convex_at = convex_at, scanned = scanned,
+       radius_measured = !is.null(link) && link %in% traits$radius_links)
+}
+
+##' Words joined by commas, with "and" before the last
+##' @noRd
+join_words <- function(words) {
+  if (length(words) < 2L) return(words)
+  paste(paste(utils::head(words, -1L), collapse = ", "), "and",
+        utils::tail(words, 1L))
+}
+
+##' Whether the link is known to make the likelihood log-concave, and whether
+##' the radius of the certificate has been measured for it
+##'
+##' Under the links of `concave_links` in `riskmap_families` (logit, probit
+##' and cloglog for binomial data, and log for counts) the likelihood of each
+##' location is log-concave in its latent effect, so the latent effects have
+##' one conditional mode. Other links can give more than one, which belongs to
+##' the model and the data, not to how the fit was computed. Concavity cannot
+##' be established numerically, so the links come from a list, although for a
+##' link given as a function `check_family()` can find a record whose
+##' log-likelihood is convex, which the row then says. The row also says when
+##' the link is not among `radius_links`, those for which it has been
+##' measured on simulated surveys how often the radius of the certificate's
+##' bound is too small, and points to the check of the radius with `radius`
+##' (`describe_radius_pointer()`), empty where that check does not apply.
+##' Neither is a fault of the fit, so the row is OK. NULL for a link on both
+##' lists.
+##' @noRd
+fit_check_link <- function(link_function, family, radius = "") {
+  known <- describe_link_knowledge(link_function, family)
+  if (isTRUE(known$log_concave) && known$radius_measured) return(NULL)
+  traits <- family_traits(family)
   consequence <- paste0(
     "the latent effects can have more than one conditional mode. Every check ",
     "still runs, but the importance distribution can fit less well, so the ",
     "fit may take longer to certify."
   )
-  finding <- if (is.null(link_function$link)) {
+  concave_links <- traits$concave_links
+  concave_words <- paste0("the ", join_words(concave_links), " link",
+                          if (length(concave_links) > 1L) "s do" else " does")
+  concavity <- if (isTRUE(known$log_concave)) {
+    paste0("The ", known$link, " link makes the likelihood of each location ",
+           "log-concave in its latent effect.")
+  } else if (!is.null(known$link)) {
+    paste0("The ", known$link, " link is not among those known to make the ",
+           "likelihood of each location log-concave in its latent effect, ",
+           "so ", consequence)
+  } else if (!is.null(known$convex_at)) {
+    paste0("The link was given as a function, under which the ",
+           "log-likelihood of a record is convex near a linear predictor of ",
+           format(known$convex_at), ", so the likelihood of a location is ",
+           "not log-concave in its latent effect, and ", consequence)
+  } else if (known$scanned) {
+    paste0("The link was given as a function, under which the ",
+           "log-likelihood of a record is concave at the linear predictors ",
+           "from -30 to 30 that were checked. No such check shows that it is ",
+           "concave everywhere, so it is not known whether the link makes ",
+           "the likelihood of each location log-concave in its latent ",
+           "effect, as ", concave_words, ". If it does not, ", consequence)
+  } else {
     paste0("The link was given as a function, so it is not known whether it ",
            "makes the likelihood of each location log-concave in its latent ",
-           "effect, as ", if (identical(family, "poisson")) {
-             "the log link does"
-           } else {
-             "the logit, probit and cloglog links do"
-           }, ". If it does not, ",
-           consequence)
-  } else {
-    paste0("The ", link_function$link, " link is not among those known to ",
-           "make the likelihood of each location log-concave in its latent ",
-           "effect, so ", consequence)
+           "effect, as ", concave_words, ". If it does not, ", consequence)
   }
-  fit_check_row("Link", "OK", finding, brief = paste0(
-    link_function$link %||% "A function", ", not known to be log-concave."
-  ))
+  radius_links <- traits$radius_links
+  measured_words <- if (known$radius_measured) {
+    ""
+  } else if (!length(radius_links)) {
+    paste0(" How often the radius of the bound on the Monte Carlo error is ",
+           "too small has not been measured on simulated surveys for any ",
+           "link of this family.", radius)
+  } else {
+    paste0(
+      " How often the radius of the bound on the Monte Carlo error is too ",
+      "small has been measured on simulated surveys with the ",
+      join_words(radius_links), " link",
+      if (length(radius_links) > 1L) "s",
+      if (is.null(known$link)) {
+        ", but not with this one."
+      } else {
+        paste0(", but not with the ", known$link, " link.")
+      },
+      radius
+    )
+  }
+  concavity_brief <- if (!is.null(known$convex_at)) {
+    "not log-concave"
+  } else if (!isTRUE(known$log_concave)) {
+    "not known to be log-concave"
+  }
+  fit_check_row("Link", "OK", paste0(concavity, measured_words),
+                brief = paste0(known$link %||% "A function", ", ",
+                               paste(c(concavity_brief,
+                                       if (!known$radius_measured) {
+                                         "radius not measured"
+                                       }),
+                                     collapse = ", "), "."))
 }
 
 ##' Why the likelihood has no maximum, and what can be done instead

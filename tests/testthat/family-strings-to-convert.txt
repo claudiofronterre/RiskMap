@@ -1,6 +1,0 @@
-# Functions outside R/family.R that still compare a family string, as in
-# family == "binomial". After step 2 of #253 it is the row "Link" of
-# check_fit(), which step 5 moves. Remove a function from the list when it is
-# converted. test-family-strings.R fails if the list is out of date, so it can
-# only shrink.
-fit_check_link

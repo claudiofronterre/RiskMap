@@ -442,10 +442,10 @@ test_that("each OK check has a brief finding for its line", {
     "At its limit in 3, restarted in 2 of 4,000 searches."
   )
   expect_identical(fit_check_link(list(name = "custom"), "binomial")$brief,
-                   "A function, not known to be log-concave.")
+                   "A function, not known to be log-concave, radius not measured.")
   expect_identical(
     fit_check_link(list(name = "custom", link = "cauchit"), "binomial")$brief,
-    "cauchit, not known to be log-concave."
+    "cauchit, not known to be log-concave, radius not measured."
   )
   # The brief of a check that needs a look is its finding, which print()
   # gives in full.
