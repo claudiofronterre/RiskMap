@@ -25,7 +25,8 @@
 #' @noRd
 extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
                               dedupe = FALSE, call = rlang::caller_env()) {
-  data <- project_for_distances(data, crs, crs_arg, paste("for", purpose),
+  data <- project_for_distances(data, crs, crs_arg,
+                                paste("for", purpose, "in", distance_units),
                                 call = call)
   coords <- coordinates_in_units(data, distance_units,
                                  if (is.null(crs)) "data" else crs_arg)

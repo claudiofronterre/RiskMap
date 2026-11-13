@@ -24,8 +24,13 @@ standard errors, \code{NA} when there is none), \code{tolerance},
 the Newton correction of the last stage did not converge),
 \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
 last stage), \code{certification_bank} (the effective draws and Pareto
-shape of the certification draws) and \code{checks_to_review}, the number
-of checks of \code{\link{check_fit}} that need a look. \code{mcml} is
+shape of the certification draws), \code{checks_to_review}, the number
+of checks of \code{\link{check_fit}} that need a look, and
+\code{starting_values}, where the starting values came from:
+\code{"user"} (given in \code{start_pars}), \code{"current"} (RiskMap's
+defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the
+transformed data, which \code{glgpm()} uses when the Laplace
+approximation of the likelihood prefers it to the defaults). \code{mcml} is
 \code{NULL} for Gaussian models. The parameters of the family, such as
 the measurement error variance of a Gaussian model, are in
 \code{family_parameters}, a table of those that were estimated, and

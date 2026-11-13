@@ -615,3 +615,20 @@ test_that("summary.RiskMap_cross_validation weights every metric by test-set siz
                 "1 test-set assessment failed, and its scores are missing.",
                 fixed = TRUE)
 })
+
+test_that("the summary of a fit says where its starting values came from", {
+  expect_identical(describe_starting_values("user"),
+                   "The starting values were given in `start_pars`.")
+  expect_match(describe_starting_values("transformed_gaussian"),
+               "Gaussian fit to the transformed data", fixed = TRUE)
+  expect_match(describe_starting_values("current"), "defaults", fixed = TRUE)
+  # A fit saved by an earlier version doesn't record it.
+  expect_null(describe_starting_values(NULL))
+  fitted <- summary(binomial_model)
+  selected <- attr(binomial_model, "starting_values")$selected
+  expect_false(is.null(selected))
+  expect_identical(fitted$mcml$starting_values, selected)
+  expect_match(squish(capture.output(print(fitted))),
+               describe_starting_values(selected), fixed = TRUE)
+  expect_null(summary(gaussian_model)$mcml)
+})

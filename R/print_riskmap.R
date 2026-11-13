@@ -42,7 +42,8 @@ summarise_mcml_fit <- function(object) {
     integration = describe_fit_integration(optimizer),
     noise_forms = optimizer$mcml_noise_forms,
     refit_change = last$refit_change %||% NA_real_,
-    suggest_integration = suggests_integration(object, optimizer)
+    suggest_integration = suggests_integration(object, optimizer),
+    starting_values = attr(object, "starting_values")$selected
   )
   mcml$checks_to_review <- sum(list_fit_checks(object, mcml)$status != "OK")
   mcml

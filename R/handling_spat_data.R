@@ -112,7 +112,8 @@ create_grid <- function(boundaries = NULL,
   input_crs <- st_crs(boundaries)
   boundaries <- project_for_distances(boundaries, NULL, NULL,
                                       "to create the grid",
-                                      data_arg = "boundaries")
+                                      data_arg = "boundaries",
+                                      units = distance_units)
 
   cellsize <- spacing / crs_to_distance_factor(boundaries, distance_units,
                                                "boundaries")

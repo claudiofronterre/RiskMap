@@ -643,8 +643,13 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   the Newton correction of the last stage did not converge),
 ##'   \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
 ##'   last stage), \code{certification_bank} (the effective draws and Pareto
-##'   shape of the certification draws) and \code{checks_to_review}, the number
-##'   of checks of \code{\link{check_fit}} that need a look. \code{mcml} is
+##'   shape of the certification draws), \code{checks_to_review}, the number
+##'   of checks of \code{\link{check_fit}} that need a look, and
+##'   \code{starting_values}, where the starting values came from:
+##'   \code{"user"} (given in \code{start_pars}), \code{"current"} (RiskMap's
+##'   defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the
+##'   transformed data, which \code{glgpm()} uses when the Laplace
+##'   approximation of the likelihood prefers it to the defaults). \code{mcml} is
 ##'   \code{NULL} for Gaussian models. The parameters of the family, such as
 ##'   the measurement error variance of a Gaussian model, are in
 ##'   \code{family_parameters}, a table of those that were estimated, and
@@ -942,6 +947,9 @@ format_fit_summary <- function(x) {
       out_heading("Monte Carlo maximum likelihood"),
       out_bullets(c(stats::setNames(describe_mcml_certificate(x$mcml),
                                     certificate_symbol(x$mcml)),
+                    out_as_bullets(
+                      describe_starting_values(x$mcml$starting_values), "i"
+                    ),
                     describe_checks_to_review(x$mcml$checks_to_review))))
   }
   c(out_rule(title),
@@ -972,6 +980,21 @@ format_fit_summary <- function(x) {
     out_pairs(c("Log-likelihood", if (!is.null(x$aic)) "AIC"),
               format(c(x$log_lik, x$aic))),
     monte_carlo)
+}
+
+##' One sentence on where the starting values of a fit came from
+##'
+##' `NULL` for a fit that doesn't record it, such as one saved by an earlier
+##' version.
+##' @noRd
+describe_starting_values <- function(selected) {
+  if (is.null(selected)) return(NULL)
+  switch(selected,
+         transformed_gaussian = paste("The starting values came from a",
+                                      "Gaussian fit to the transformed data."),
+         current = "The starting values were RiskMap's defaults.",
+         user = "The starting values were given in `start_pars`.",
+         NULL)
 }
 
 ##' One sentence on the link of a summarised fit

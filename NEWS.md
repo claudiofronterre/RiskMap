@@ -66,8 +66,10 @@ first used.
 - Messages start with a symbol, as the printed output does. Most have an
 information sign, a step done has a tick, such as a certified fit or a
 finished bootstrap, and something to note has an exclamation mark. `glgpm()`
-says in one line which coordinate reference system the model is fitted in and
-the units of distance, instead of two.
+says in one message which coordinate reference system the model is fitted in
+and the units of distance. For data in longitude and latitude this is the
+message on their projection, which also says how to choose another, so a fit
+starts with one message where it had three.
 - A joint prediction in blocks warns once when the covariances of some
 blocks needed a diagonal jitter to be factorised, with how many blocks and
 the largest jitter, instead of once for each block.
@@ -138,6 +140,13 @@ SUSPICIOUS and PROBLEM, which stay in the column `status` of the element
 `checks`. Code that searched the printed checks for them should read that
 column.
 - RiskMap now needs cli 3.6.0 or later, for the links to help pages.
+- The `summary()` of a binomial, Poisson or negative binomial fit says where
+its starting values came from. They were given in `start_pars`, or were
+RiskMap's defaults, or came from a Gaussian fit to the transformed data, which
+`glgpm()` uses when the Laplace approximation of the likelihood prefers them.
+The choice is in the new element `starting_values` of `mcml`. `glgpm()` no
+longer says "Using transformed-Gaussian automatic starting values." when it
+makes that choice.
 - In a console with colours, the labels of rows that line up labels and
 values, such as the log-likelihood, the settings of a prediction or the
 evidence of `check_fit()`, are grey, so that the values stand out.
@@ -204,7 +213,9 @@ less than 0.5%. Data that a UTM zone covers well get the zone at their centre,
 which may differ from the zone used before. Fits, distances and grids of data
 in longitude and latitude can therefore change. Set `model_crs` or
 `distance_crs`, or project the data first, to keep a given CRS. The message
-now names the CRS and reports its distortion.
+names the CRS and the units of distance, and says how to choose another CRS.
+It doesn't give the distortion, which the warning below reports when it is
+above 1%, and which `crs_distortion()` measures for any CRS.
 - These functions warn, with class `riskmap_warning_crs`, when the CRS used,
 whether given, carried by the data or chosen, distorts distances by more than
 1% over the data. When no planar CRS can do better, as over sub-Saharan
