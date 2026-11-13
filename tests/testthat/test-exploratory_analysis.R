@@ -93,7 +93,7 @@ test_that("summarise_distance prints rounded values and stores them in full", {
 test_that("summarise_distance follows the glgpm() CRS convention", {
 
   latlon <- st_transform(gaussian_data, 4326)
-  suggested_crs <- propose_utm(latlon)
+  suggested_crs <- propose_crs(latlon, messages = FALSE)
 
   expect_message(
     result <- summarise_distance(latlon, distance_units = "m"),
@@ -115,7 +115,11 @@ test_that("summarise_distance derives distance units from a non-metre CRS", {
   foot_data <- st_transform(gaussian_data, 2263)
   coords <- coordinates_in_units(foot_data, "m")
 
-  result <- summarise_distance(foot_data, distance_units = "m")
+  # New York's state plane is far from the data, so it distorts distances
+  expect_warning(
+    result <- summarise_distance(foot_data, distance_units = "m"),
+    class = "riskmap_warning_crs"
+  )
   expect_identical(result[["max"]], max(dist(unique(coords))))
 })
 

@@ -58,8 +58,11 @@ If not provided, defaults to \code{1}.}
 \item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
 If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
 If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
-reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
-If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
+reprojected to the CRS from \code{\link[=propose_crs]{propose_crs()}}, a UTM zone or a projection centred on the data,
+and a message reports the conversion used and its distortion of distances.
+If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.
+A warning of class \code{riskmap_warning_crs} is raised when the CRS used distorts distances
+by more than 1\% over the data.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
 for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates in
@@ -88,8 +91,9 @@ on their natural scale and remain fixed across simulations.
 \details{
 The response in \code{formula} need not exist in \code{data}. CRS handling
 follows \code{\link[=glgpm]{glgpm()}}: \code{model_crs} is used when supplied, otherwise
-longitude/latitude data are transformed to an automatically selected UTM
-CRS. A message reports automatic transformations.
+longitude/latitude data are transformed to the CRS from \code{\link[=propose_crs]{propose_crs()}}.
+A message reports automatic transformations, and a warning a CRS that
+distorts distances by more than 1\% over the data.
 }
 \examples{
 library(sf)

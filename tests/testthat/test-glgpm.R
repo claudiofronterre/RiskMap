@@ -729,7 +729,7 @@ test_that("glgpm correctly reprojects to new CRS", {
 
   latlon <- st_transform(gaussian_data, 4326)
 
-  suggested_crs <- propose_utm(latlon)
+  suggested_crs <- propose_crs(latlon, messages = FALSE)
   sf_reproj <- st_transform(latlon, suggested_crs)
   scaled_coords <- coordinates_in_units(sf_reproj, "km")
 

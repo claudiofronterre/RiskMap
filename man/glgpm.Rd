@@ -68,8 +68,11 @@ If not provided, defaults to \code{1}.}
 \item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
 If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
 If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
-reprojected to an appropriate UTM zone (see \code{\link[=propose_utm]{propose_utm()}}) and a message reports the conversion used.
-If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.}
+reprojected to the CRS from \code{\link[=propose_crs]{propose_crs()}}, a UTM zone or a projection centred on the data,
+and a message reports the conversion used and its distortion of distances.
+If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.
+A warning of class \code{riskmap_warning_crs} is raised when the CRS used distorts distances
+by more than 1\% over the data.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
 for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates in
@@ -224,7 +227,7 @@ in capturing complex spatial patterns.
 
 The \code{model_crs} argument can be used to reproject the spatial coordinates to a different, projected
 CRS for model fitting. If \code{data} are in longitude/latitude and \code{model_crs} is not supplied, the
-coordinates are automatically reprojected to an appropriate UTM zone and a message details the
+coordinates are automatically reprojected to the CRS from \code{\link[=propose_crs]{propose_crs()}} and a message details the
 conversion; automatic projection is avoided for \code{model_crs} explicitly supplied in longitude/latitude,
 which raises an error.
 The \code{distance_units} argument controls whether distances between locations (and so parameters such

@@ -25,6 +25,9 @@ the request.
 \item \code{riskmap_warning_fit}, a fit may not be reliable, for example because
 the optimiser did not converge or the Monte Carlo error of the estimate
 is not certified.
+\item \code{riskmap_warning_crs}, the projected coordinate reference system used
+distorts distances by more than 1\% over the data (see \code{\link[=propose_crs]{propose_crs()}}
+and \code{\link[=crs_distortion]{crs_distortion()}}).
 }
 \item \code{riskmap_message} is the class of every message. Functions that report
 on their progress take an argument \code{messages}, whose default is the

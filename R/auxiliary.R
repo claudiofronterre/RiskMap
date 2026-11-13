@@ -83,58 +83,6 @@ elogit <- function(y, m) {
 }
 
 
-##' @title EPSG of the UTM Zone
-##' @description Suggests the EPSG code for the UTM zone where the majority of the data falls.
-##' @param data An object of class \code{sf} containing the coordinates.
-##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
-##' @return An integer indicating the EPSG code of the UTM zone.
-##' @examples
-##' data("infect_sma")
-##' propose_utm(infect_sma)
-##'
-##' @export
-propose_utm <- function(data) {
-  check_supplied(data)
-
-  check_data(data, geometry = "any")
-
-  # Transform to WGS84 (EPSG:4326) to ensure coordinates are in lon/lat
-  data <- st_transform(data, crs = 4326)
-
-  # Calculate UTM Zone
-  utm_z <- floor((st_coordinates(data)[, 1] + 180)/6) + 1
-  utm_z_u <- unique(utm_z)
-
-  if (length(utm_z_u) > 1) {
-    tab_utm <- table(utm_z)
-    if (all(diff(tab_utm) == 0))
-      riskmap_warn("The same number of locations falls in more than one UTM zone, so the lowest-numbered of them is used.")
-    utm_z_u <- as.numeric(names(which.max(tab_utm)))
-  }
-
-  # Determine Hemisphere (fixing the latitude check)
-  # latitude 0 (the Equator) is treated as northern hemisphere, per UTM convention
-  ns <- ifelse(st_coordinates(data)[, 2] >= 0, 1, -1)  # Use latitude, not longitude
-  ns_u <- unique(ns)
-
-  if (length(ns_u) > 1) {
-    tab_ns <- table(ns)
-    if (all(diff(tab_ns) == 0))
-      riskmap_warn("The same number of locations falls north and south of the Equator, so the southern zone is used.")
-    ns_u <- as.numeric(names(which.max(tab_ns)))
-  }
-
-  # Construct EPSG code for UTM zone
-  if (ns_u == 1) {
-    out <- as.numeric(paste0(326, utm_z_u))  # Northern Hemisphere
-  } else if (ns_u == -1) {
-    out <- as.numeric(paste0(327, utm_z_u))  # Southern Hemisphere
-  }
-
-  return(out)
-}
-
-
 ##' @title Matern Correlation Function
 ##' @description Computes the Matern correlation function.
 ##' @param u A vector or matrix of distances between pairs of data locations.

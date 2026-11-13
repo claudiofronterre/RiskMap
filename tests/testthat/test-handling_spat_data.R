@@ -23,7 +23,11 @@ test_that("create_grid produces errors", {
 
 test_that("create_grid functions correctly", {
 
-  result <- create_grid(st_transform(sf_polygon, 32638), 10)
+  # UTM zone 38N is 40 degrees east of the polygon, so it distorts distances
+  expect_warning(
+    result <- create_grid(st_transform(sf_polygon, 32638), 10),
+    class = "riskmap_warning_crs"
+  )
   expect_s3_class(result, "RiskMap_grid")
   expect_s3_class(result, "sf")
   expect_identical(as.character(unique(st_geometry_type(result))), "POINT")

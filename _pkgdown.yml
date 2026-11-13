@@ -98,7 +98,8 @@ reference:
       - create_grid
       - compute_ID_coords
       - convex_hull_sf
-      - propose_utm
+      - propose_crs
+      - crs_distortion
       - matern_cor
       - matern.grad.phi
       - matern.hessian.phi
