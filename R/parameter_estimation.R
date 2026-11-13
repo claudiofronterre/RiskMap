@@ -2435,11 +2435,12 @@ differentiate <- function(f, ncheck) {
 ##' and just above that tolerance the step falls to about 2e-9. The rounding
 ##' error of `f`, about 1e-16, divided by such a step is then about 1e-7 in a
 ##' first derivative, and a second derivative taken as the derivative of that
-##' first derivative was wrong by up to several hundred (-40 at a linear
+##' first derivative was wrong by up to about 2,000 (-40 at a linear
 ##' predictor of 1e-4 for an inverse link of 0.01 + 0.89 plogis(eta), where it
-##' is -1.1e-5). With a tolerance of 1 no step is below `eps` = 1e-4, so the
-##' errors are below 1e-11 in a first derivative and 1e-6 in a second, and
-##' from `|eta|` = 1 the steps are numDeriv's own.
+##' is -1.1e-5). With a tolerance of 1 no step is below `eps` = 1e-4, and for
+##' the logit, probit, cauchit, t and imperfect-test links of the tests the
+##' errors from -30 to 30 are then at most about 1e-11 in a first derivative
+##' and 1e-6 in a second. From `|eta|` = 1 the steps are numDeriv's own.
 ##' @noRd
 compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
                                           zero_tolerance = 1,

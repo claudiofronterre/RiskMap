@@ -99,7 +99,7 @@ test_that("numerical derivatives of a link are accurate near a linear predictor 
   ## None of these is differentiated by Deriv, so d1 is numerical and d2 is
   ## the numerical derivative of d1. With numDeriv's default zero tolerance
   ## the steps fell to about 2e-9 just above 1.8e-5, and d2 was wrong by up to
-  ## several hundred there (-40 at 1e-4 for the imperfect test, where it is
+  ## about 2,000 there (-40 at 1e-4 for the imperfect test, where it is
   ## -1.1e-5).
   links <- list(
     imperfect = list(inv = function(eta) 0.01 + 0.89 * plogis(eta),
