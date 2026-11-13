@@ -134,7 +134,10 @@
 ##' regression coefficients on the scale of the supplied covariates), \code{sigma2},
 ##' \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
 ##' estimated, \code{sigma2_me} for Gaussian models with an estimated
-##' measurement error variance, and \code{sigma2_re} (a named vector, one
+##' measurement error variance, \code{theta} for negative binomial models whose
+##' size is estimated, stored as \eqn{\log(1/\theta)}, the opposite sign to the
+##' logarithm of a variance (\code{coef()} gives \eqn{\theta}), and
+##' \code{sigma2_re} (a named vector, one
 ##' entry per random effect) when random effects are included. Keeping these
 ##' in separate list elements - rather than one flat named vector - avoids a
 ##' covariate whose name collides with a parameter name (e.g. a covariate
@@ -152,6 +155,8 @@
 ##' \item{ID_re}{Index of random effects if `re()` is included in `formula`}
 ##' \item{fix_tau2}{Fixed nugget effect variance}
 ##' \item{fix_var_me}{Fixed measurement error variance}
+##' \item{family_parameters}{For a negative binomial model whose size is held,
+##' the size as \code{list(theta = )}. Absent otherwise.}
 ##' \item{formula}{Model formula}
 ##' \item{family}{Response family}
 ##' \item{link_function}{For binomial and Poisson models, the inverse link
@@ -162,7 +167,8 @@
 ##' \item{data}{The `sf` data used for model fitting, in the CRS used internally}
 ##' \item{input_crs}{The CRS of the input data}
 ##' \item{kappa}{Spatial correlation parameter}
-##' \item{units_m}{Distribution offset if `family` is `binomial` or `poisson`}
+##' \item{units_m}{The denominators or exposures of a binomial, Poisson or
+##' negative binomial model}
 ##' \item{cov_offset}{Covariate offset}
 ##' \item{call}{Matched call}
 ##' \item{S_samples}{For non-Gaussian models, fresh conditional MCMC samples
@@ -175,8 +181,9 @@
 ##' latent samples and are `NULL` when `return_samples = FALSE`; for Gaussian
 ##' models they use the conditional latent mean.}
 ##' \item{fitted_values}{Conditional fitted response means. Binomial models
-##' return probabilities; Poisson models return expected counts and therefore
-##' include any supplied exposure in `denominator`. These are `NULL` for
+##' return probabilities; Poisson and negative binomial models return expected
+##' counts and therefore include any supplied exposure in `denominator`. These
+##' are `NULL` for
 ##' non-Gaussian models when `return_samples = FALSE`.}
 ##' \item{mcml_history}{For non-Gaussian models, one entry per stage of
 ##' certified Monte Carlo maximum likelihood (see [set_control_mcml()]),

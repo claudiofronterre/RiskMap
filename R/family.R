@@ -778,6 +778,10 @@ read_family <- function(family, invlink = NULL,
   if (is.character(invlink)) {
     abort_input(c("{.arg invlink} must be a function, not the name of a link.", "i" = "Give a named link in {.arg family}, as in {.code binomial(\"probit\")}."), arg = "invlink")
   }
+  # A family function, as `poisson` or `negative_binomial`, gives its default.
+  if (is.function(family)) {
+    family <- tryCatch(family(), error = function(e) NULL)
+  }
   if (inherits(family, "riskmap_family_specification")) {
     if (!is.null(invlink)) {
       abort_input(family_traits(family$family)$link_hint, arg = "invlink")
@@ -787,11 +791,10 @@ read_family <- function(family, invlink = NULL,
                 estimated = family$estimated))
   }
   families <- string_families(families)
-  if (is.function(family)) {
-    family <- tryCatch(family(), error = function(e) NULL)
-  }
-  if (inherits(family, "family") && startsWith(family$family %||% "",
-                                               "Negative Binomial(")) {
+  # A family object of MASS::negative.binomial(), or one like it with several
+  # sizes, which its reader refuses.
+  if (inherits(family, "family") && is.character(family$family) &&
+      any(startsWith(family$family, "Negative Binomial("))) {
     return(read_family(read_mass_negative_binomial(family), invlink))
   }
   if (inherits(family, "family")) {
@@ -984,12 +987,19 @@ read_mass_negative_binomial <- function(family) {
   if (!identical(family$link, "log")) {
     abort_input(c("The {family$link} link isn't available for the negative binomial family, which takes {.val log}.", "i" = family_traits("negative_binomial")$link_hint), arg = "family")
   }
-  theta <- tryCatch(get(".Theta", envir = environment(family$variance)),
-                    error = function(error) NULL)
+  # From the family's own environment only, not from wherever else a
+  # `.Theta` might be found.
+  environment <- environment(family$variance)
+  theta <- if (is.environment(environment)) {
+    get0(".Theta", envir = environment, inherits = FALSE)
+  }
   if (!is.numeric(theta)) {
     theta <- suppressWarnings(as.numeric(
       sub("^Negative Binomial\\((.*)\\)$", "\\1", family$family)
     ))
+  }
+  if (length(theta) != 1L || !is.finite(theta) || theta <= 0) {
+    abort_input(c("{.arg family} must be a negative binomial family with one positive finite size.", "i" = "Give it as in {.code negative_binomial(theta = 2)}, or {.code negative_binomial()} to estimate the size, or {.code \"poisson\"} for the Poisson limit."), arg = "family")
   }
   negative_binomial(theta = theta)
 }
