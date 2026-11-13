@@ -2374,8 +2374,9 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##' when it cannot process `f`'s body (e.g. a call it has no derivative rule
 ##' for), so its construction is wrapped in `tryCatch()`, and a derivative
 ##' that fails validation is dropped. If either fails, falls back to
-##' numerical differentiation by the method of `numDeriv::grad()`, applied to
-##' all elements of `eta` at once (`compute_richardson_derivative()`).
+##' numerical differentiation by the method of `numDeriv::grad()`, with the
+##' steps of `compute_richardson_derivative()`, applied to all elements of
+##' `eta` at once.
 ##'
 ##' @param f Function of a single argument `eta`, returning a numeric vector.
 ##' @param ncheck Length of the probe vector used to validate a candidate
@@ -2401,7 +2402,9 @@ differentiate <- function(f, ncheck) {
   # differentiated one value at a time, as numDeriv::grad() requires.
   shared <- function(eta) compute_richardson_derivative(f, eta)
   one_at_a_time <- function(eta) {
-    vapply(eta, function(z) numDeriv::grad(f, z), numeric(1))
+    vapply(eta, function(z) {
+      numDeriv::grad(f, z, method.args = list(zero.tol = 1))
+    }, numeric(1))
   }
   probe <- c(-2.5, -0.7, 0, 0.3, 1.9)
   agrees <- tryCatch(
@@ -2414,16 +2417,27 @@ differentiate <- function(f, ncheck) {
 ##' Derivative of an elementwise function by Richardson extrapolation
 ##'
 ##' The default method of `numDeriv::grad()` (central differences with
-##' `rounds` halvings of the step and Richardson extrapolation, with its
-##' default settings) applied to every element of `eta` at once. For a
-##' function that acts element by element it gives the same values as
-##' `numDeriv::grad()` called on each element, with `2 * rounds` calls of `f`
-##' in all in place of `2 * rounds` per element.
+##' `rounds` halvings of the step and Richardson extrapolation) applied to
+##' every element of `eta` at once. For a function that acts element by
+##' element it gives the same values as `numDeriv::grad()` called on each
+##' element with `method.args = list(zero.tol = 1)`, with `2 * rounds` calls
+##' of `f` in all in place of `2 * rounds` per element.
+##'
+##' The first step is `d * |eta|`, plus `eps` where `|eta|` is below
+##' `zero_tolerance`. numDeriv's default tolerance, about 1.8e-5, suits a
+##' parameter of any scale, but a linear predictor has the scale of its link,
+##' and just above that tolerance the step falls to about 2e-9. The rounding
+##' error of `f`, about 1e-16, divided by such a step is then about 1e-7 in a
+##' first derivative, and a second derivative taken as the derivative of that
+##' first derivative was wrong by up to about 2,000 (-40 at a linear
+##' predictor of 1e-4 for an inverse link of 0.01 + 0.89 plogis(eta), where it
+##' is -1.1e-5). With a tolerance of 1 no step is below `eps` = 1e-4, and for
+##' the logit, probit, cauchit, t and imperfect-test links of the tests the
+##' errors from -30 to 30 are then at most about 1e-11 in a first derivative
+##' and 1e-6 in a second. From `|eta|` = 1 the steps are numDeriv's own.
 ##' @noRd
 compute_richardson_derivative <- function(f, eta, eps = 1e-4, d = 1e-4,
-                                          zero_tolerance = sqrt(
-                                            .Machine$double.eps / 7e-7
-                                          ),
+                                          zero_tolerance = 1,
                                           rounds = 4L, ratio = 2) {
   step <- abs(d * eta) + eps * (abs(eta) < zero_tolerance)
   estimates <- matrix(NA_real_, rounds, length(eta))

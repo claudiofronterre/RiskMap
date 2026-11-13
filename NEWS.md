@@ -681,9 +681,25 @@ package's tests reaches this case, nor do fits of surveys from Liberia, Loa
 loa, Malawi and Tanzania, and those fits are unchanged.
 
 - A custom inverse link that `Deriv` cannot differentiate, such as a bare
-`invlink = pnorm`, now has its derivatives computed for all values at once, with
-the same values as before. They were computed one value at a time, which made
-such a fit much slower than the same link written as `function(eta) pnorm(eta)`.
+`invlink = pnorm`, now has its derivatives computed for all values at once.
+They were computed one value at a time, which made such a fit much slower than
+the same link written as `function(eta) pnorm(eta)`.
+
+- The numerical derivatives of a custom inverse link that `Deriv` cannot
+differentiate, such as a bare `invlink = pnorm` or
+`function(eta) 0.01 + 0.89 * plogis(eta)` for an imperfect test, are now
+accurate near a linear predictor of zero. Their steps were relative to the
+linear predictor down to 1.8e-5, so just above it they fell to about 2e-9, and
+the second derivative, the numerical derivative of the first, was wrong by up
+to about 2,000 for linear predictors between about 2e-5 and 1e-2 (-40 at 1e-4
+for the imperfect test, where it is -1.1e-5). No step is now below 1e-4,
+and the steps are unchanged where the linear predictor is at least 1 in
+absolute value. The second derivative enters the curvature of the mode search
+and of the proposals but not the importance weights, so estimates were valid,
+but fits with such a link take a different path. In 31 paired fits every
+outcome was the same and the estimates moved by at most 0.03 standard errors,
+while the starting values from the Laplace approximation were better in 25 of
+30, by up to 55 log-likelihood units.
 
 - `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
 in `family`, as `glm()` does, so a link can be named as in

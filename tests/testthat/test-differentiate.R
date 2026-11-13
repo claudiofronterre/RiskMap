@@ -67,8 +67,9 @@ test_that("the numeric fallback matches numDeriv on each value, in one pass", {
   ## Equality with numDeriv to the last bit shows that the fallback ran.
   d <- differentiate(pnorm, 5)
   eta <- c(-30, -8.3, -1, 0, 1e-12, 0.4, 3.6, 8.3)
-  expect_identical(d(eta), vapply(eta, function(z) numDeriv::grad(pnorm, z),
-                                  numeric(1)))
+  expect_identical(d(eta), vapply(eta, function(z) {
+    numDeriv::grad(pnorm, z, method.args = list(zero.tol = 1))
+  }, numeric(1)))
 
   ## Every element shares each evaluation of the link: 2 x 4 calls in all.
   af <- approxfun(c(-50, 50), c(0.01, 0.99), rule = 2)
@@ -89,8 +90,65 @@ test_that("a function that is not elementwise is differentiated value by value",
   f <- function(eta) af(eta - mean(eta))
   d <- differentiate(f, 5)
   eta <- c(-1, 0, 2)
-  expect_identical(d(eta), vapply(eta, function(z) numDeriv::grad(f, z),
-                                  numeric(1)))
+  expect_identical(d(eta), vapply(eta, function(z) {
+    numDeriv::grad(f, z, method.args = list(zero.tol = 1))
+  }, numeric(1)))
+})
+
+test_that("numerical derivatives of a link are accurate near a linear predictor of 0", {
+  ## The numerical d1 of each link and d2, the numerical derivative of d1,
+  ## taken directly, so that the steps stay tested if Deriv learns these
+  ## links. With numDeriv's default zero tolerance the steps fell to about 2e-9
+  ## just above 1.8e-5, and d2 was wrong by up to about 2,000 there (-40 at
+  ## 1e-4 for the imperfect test, where it is -1.1e-5).
+  links <- list(
+    imperfect = list(inv = function(eta) 0.01 + 0.89 * plogis(eta),
+                     d1 = function(eta) 0.89 * dlogis(eta),
+                     d2 = function(eta) {
+                       p <- plogis(eta)
+                       0.89 * p * (1 - p) * (1 - 2 * p)
+                     }),
+    logit = list(inv = plogis, d1 = dlogis, d2 = function(eta) {
+      p <- plogis(eta)
+      p * (1 - p) * (1 - 2 * p)
+    }),
+    probit = list(inv = pnorm, d1 = dnorm,
+                  d2 = function(eta) -eta * dnorm(eta)),
+    t4 = list(inv = function(eta) pt(eta, 4), d1 = function(eta) dt(eta, 4),
+              d2 = function(eta) -5 * eta * dt(eta, 4) / (4 + eta^2)),
+    cauchit = list(inv = pcauchy, d1 = dcauchy,
+                   d2 = function(eta) -2 * eta / (pi * (1 + eta^2)^2))
+  )
+  near_zero <- c(0, 1e-8, 1e-6, 2e-5, 1e-4, 1e-3, 1e-2)
+  eta <- sort(unique(c(seq(-30, 30, by = 0.25), near_zero, -near_zero)))
+  for (name in names(links)) {
+    link <- links[[name]]
+    numerical_d1 <- function(eta) compute_richardson_derivative(link$inv, eta)
+    numerical_d2 <- function(eta) {
+      compute_richardson_derivative(numerical_d1, eta)
+    }
+    ## Deriv knows none of these links today, so a fit uses these values.
+    derived <- make_inverse_link_functions("binomial", link$inv, 5)
+    expect_identical(derived$d1(eta), numerical_d1(eta),
+                     label = paste(name, "d1 of a fit"))
+    expect_identical(derived$d2(eta), numerical_d2(eta),
+                     label = paste(name, "d2 of a fit"))
+    probability <- link$inv(eta)
+    error_d1 <- abs(numerical_d1(eta) - link$d1(eta))
+    error_d2 <- abs(numerical_d2(eta) - link$d2(eta))
+    expect_lt(max(error_d1), 1e-9, label = paste(name, "d1"))
+    expect_lt(max(error_d2), 1e-5, label = paste(name, "d2"))
+    ## The curvature of the log-likelihood divides d2 by the probability and
+    ## by one minus it (compute_custom_link_terms()), so the error is also
+    ## small relative to each. Above a probability of 0.999 the rounding of
+    ## 1 - p, which the differences of the link carry, limits the second.
+    lower <- probability < 0.5
+    upper <- probability >= 0.5 & 1 - probability >= 1e-3
+    expect_lt(max(error_d2[lower] / probability[lower]), 1e-4,
+              label = paste(name, "d2 relative to the probability"))
+    expect_lt(max(error_d2[upper] / (1 - probability[upper])), 1e-4,
+              label = paste(name, "d2 relative to one minus the probability"))
+  }
 })
 
 test_that("the numeric fallback stops on a link that returns NA", {
