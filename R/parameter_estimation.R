@@ -128,8 +128,16 @@
 ##' reproduces a fit exactly.
 ##'
 ##' The `start_pars` argument allows starting values to be supplied explicitly.
-##' Otherwise, binomial and Poisson models compare two automatic candidates
-##' and use the one with the better Laplace approximation.
+##' Otherwise a binomial, Poisson or negative binomial model starts from
+##' RiskMap's defaults, which are the coefficients of the regression without
+##' latent effects, `sigma2 = 1`, `phi` at the 10th percentile of the distances
+##' between locations, and 1 for an estimated nugget variance and for the
+##' variance of each `re()` term. A model with the canonical link and without
+##' `re()` terms compares them with the estimates of a Gaussian model fitted to
+##' the empirical link of the data (the empirical logit of a binomial model),
+##' with one observation per location, the totals of the location where it has
+##' several records, and starts from the one with the higher Laplace
+##' approximation of the likelihood.
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
 ##'
@@ -560,7 +568,8 @@ glgpm <- function(formula,
     selected = if (user_supplied_start) "user" else "current",
     current_laplace = NA_real_,
     transformed_laplace = NA_real_,
-    fallback_reason = NULL
+    fallback_reason = NULL,
+    reason = NULL
   )
   if (!model$exact && !user_supplied_start) {
     selection <- select_nongaussian_start(
@@ -576,9 +585,7 @@ glgpm <- function(formula,
       invlink = invlink,
       fix_tau2 = fix_tau2,
       n_re = n_re,
-      ID_re = ID_re,
       s_unique = s_unique,
-      re_unique = re_unique,
       messages = messages,
       family_parameters = start_family
     )
@@ -1237,13 +1244,14 @@ softplus <- function(x) {
 ##'
 ##' Constants that do not depend on the candidate are retained for clarity.
 ##' The comparison is only used to choose an initial posterior reference; it is
-##' not reported as the fitted model likelihood.
+##' not reported as the fitted model likelihood. The model has no `re()`
+##' terms (`select_nongaussian_start()`). The value is unnamed, since
+##' `select_nongaussian_start()` reads the two values by name.
 ##'
 ##' @noRd
 starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
                                           ID_coords, family, kappa,
-                                          cov_offset, ID_re = NULL,
-                                          fix_tau2 = FALSE) {
+                                          cov_offset, fix_tau2 = FALSE) {
   distances <- pairwise_distances(coords)
   covariance <- candidate$sigma2 * matern_correlation(
     distances,
@@ -1272,51 +1280,25 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
     mu = mu,
     Sigma = covariance,
     ID_coords = ID_coords,
-    ID_re = ID_re,
-    sigma2_re = candidate$sigma2_re,
     family = family
   )
   mode <- laplace$mode
   eta <- mu + mode[ID_coords]
-  if (!is.null(ID_re)) {
-    offset <- nrow(covariance)
-    for (j in seq_len(ncol(ID_re))) {
-      n_levels <- max(ID_re[, j])
-      indices <- offset + seq_len(n_levels)
-      eta <- eta + mode[indices][ID_re[, j]]
-      offset <- offset + n_levels
-    }
-  }
   log_likelihood <- family_traits(family)$start_log_likelihood(eta, y,
                                                                 units_m)
   if (is.null(log_likelihood)) return(-Inf)
   log_prior <- -0.5 * (
     nrow(covariance) * log(2 * pi) +
       log_determinant_from_cholesky(covariance_root) +
-      sum(mode[seq_len(nrow(covariance))] * solve_from_cholesky(
-        covariance_root, mode[seq_len(nrow(covariance))]
-      ))
+      sum(mode * solve_from_cholesky(covariance_root, mode))
   )
-  if (!is.null(ID_re)) {
-    offset <- nrow(covariance)
-    for (j in seq_len(ncol(ID_re))) {
-      n_levels <- max(ID_re[, j])
-      random_mode <- mode[offset + seq_len(n_levels)]
-      variance <- candidate$sigma2_re[j]
-      log_prior <- log_prior - 0.5 * (
-        n_levels * log(2 * pi * variance) +
-          sum(random_mode^2) / variance
-      )
-      offset <- offset + n_levels
-    }
-  }
   laplace_root <- factor_covariance(
     laplace$Sigma.tilde,
     "starting-value Laplace covariance"
   )
-  log_likelihood + log_prior +
-    0.5 * length(mode) * log(2 * pi) +
-    0.5 * log_determinant_from_cholesky(laplace_root)
+  unname(log_likelihood + log_prior +
+           0.5 * length(mode) * log(2 * pi) +
+           0.5 * log_determinant_from_cholesky(laplace_root))
 }
 
 ##' Select between the existing and transformed-Gaussian starting values
@@ -1328,28 +1310,45 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
 ##' family's own `family_parameters`, so a negative binomial model is started
 ##' as the binomial model of its records.
 ##'
+##' A model with `re()` terms keeps the existing start without a comparison.
+##' Its transformed-Gaussian candidate needed the covariance of all the
+##' records, or of all the levels of the terms, in dense matrices, which on a
+##' survey of households took longer than the fit or more memory than the
+##' laptop had. The comparison could never choose that candidate either. Its
+##' Laplace value carried the name of the term, so
+##' `scores["transformed_gaussian"]` was missing and the existing start was
+##' kept.
+##'
 ##' @noRd
 select_nongaussian_start <- function(current, y, units_m, D, coords,
                                      ID_coords, family, kappa, cov_offset,
                                      invlink, fix_tau2, n_re,
-                                     ID_re = NULL, s_unique = NULL,
-                                     re_unique = NULL,
-                                     messages = TRUE,
+                                     s_unique = NULL, messages = TRUE,
                                      family_parameters = NULL) {
   diagnostics <- list(
     selected = "current",
     current_laplace = NA_real_,
     transformed_laplace = NA_real_,
-    fallback_reason = NULL
+    fallback_reason = NULL,
+    reason = NULL
   )
-  ineligible_reason <- if (!is.null(invlink)) {
-    "custom inverse links are not supported by the transformed initializer"
-  } else {
-    NULL
+  # The existing start, with the reason and its text.
+  keep_current <- function(reason, text) {
+    diagnostics$reason <- reason
+    diagnostics$fallback_reason <- text
+    list(start = current, diagnostics = diagnostics)
   }
-  if (!is.null(ineligible_reason)) {
-    diagnostics$fallback_reason <- ineligible_reason
-    return(list(start = current, diagnostics = diagnostics))
+  if (!is.null(invlink)) {
+    return(keep_current(
+      "link",
+      "custom inverse links are not supported by the transformed initializer"
+    ))
+  }
+  if (n_re > 0L) {
+    return(keep_current(
+      "re_terms",
+      "models with re() terms are not compared with the transformed initializer"
+    ))
   }
 
   records <- engine_records(family, y, units_m, cov_offset,
@@ -1358,26 +1357,30 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   units_m <- records$units_m
   cov_offset <- records$offset
   traits <- family_traits(family)
+  # The Gaussian model is fitted to one record per location, the totals of
+  # the location where it has several records, so that it is no larger than
+  # the locations.
+  totals <- location_totals(y, units_m, D, cov_offset, ID_coords, s_unique)
   transformed_fit <- tryCatch({
-    transformed_response <- traits$empirical_link(y, units_m)
+    transformed_response <- traits$empirical_link(totals$y, totals$units_m)
     # With one observation per location, transformed sampling variation and a
     # Gaussian nugget are otherwise confounded. The Gaussian engine currently
     # accepts a scalar measurement variance, so fix it at the median
     # delta-method variance when the nugget is estimated.
     transformed_measurement_variance <- if (isTRUE(fix_tau2)) {
-      traits$transform_variance(y, units_m)
+      traits$transform_variance(totals$y, totals$units_m)
     } else {
       NULL
     }
     glgpm_lm(
-      y = transformed_response - cov_offset,
-      D = D,
+      y = transformed_response - totals$offset,
+      D = totals$D,
       coords = coords,
       kappa = kappa,
-      ID_coords = ID_coords,
-      ID_re = ID_re,
-      s_unique = s_unique,
-      re_unique = re_unique,
+      ID_coords = totals$ID_coords,
+      ID_re = NULL,
+      s_unique = totals$s_unique,
+      re_unique = NULL,
       fix_var_me = transformed_measurement_variance,
       fix_tau2 = fix_tau2,
       start_beta = current$beta,
@@ -1385,18 +1388,17 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
         current$sigma2,
         current$phi,
         if (isTRUE(fix_tau2)) current$tau2,
-        if (is.null(transformed_measurement_variance)) 1,
-        current$sigma2_re
+        if (is.null(transformed_measurement_variance)) 1
       ),
       messages = FALSE
     )
   }, error = identity)
   if (inherits(transformed_fit, "error")) {
-    diagnostics$fallback_reason <- paste(
-      "transformed Gaussian fit failed:",
-      condition_text(transformed_fit)
-    )
-    return(list(start = current, diagnostics = diagnostics))
+    return(keep_current(
+      "transformed_failed",
+      paste("transformed Gaussian fit failed:",
+            condition_text(transformed_fit))
+    ))
   }
 
   transformed <- current
@@ -1407,45 +1409,40 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     transformed$tau2 <- transformed$sigma2 *
       exp(transformed_fit$estimate$nu2)
   }
-  if (n_re > 0L) {
-    transformed$sigma2_re <- exp(transformed_fit$estimate$sigma2_re)
-  }
   candidate_values <- c(
     transformed$beta,
     transformed$sigma2,
     transformed$phi,
-    transformed$tau2,
-    transformed$sigma2_re
+    transformed$tau2
   )
   if (any(!is.finite(candidate_values)) ||
       transformed$sigma2 <= 0 || transformed$phi <= 0 ||
-      (!is.null(transformed$tau2) && transformed$tau2 <= 0) ||
-      (!is.null(transformed$sigma2_re) &&
-       any(transformed$sigma2_re <= 0))) {
-    diagnostics$fallback_reason <-
+      (!is.null(transformed$tau2) && transformed$tau2 <= 0)) {
+    return(keep_current(
+      "transformed_invalid",
       "transformed Gaussian fit returned invalid starting values"
-    return(list(start = current, diagnostics = diagnostics))
+    ))
   }
 
   scores <- tryCatch(
     c(
       current = starting_laplace_log_marginal(
         current, y, units_m, D, coords, ID_coords, family, kappa, cov_offset,
-        ID_re, fix_tau2
+        fix_tau2
       ),
       transformed_gaussian = starting_laplace_log_marginal(
         transformed, y, units_m, D, coords, ID_coords, family, kappa,
-        cov_offset, ID_re, fix_tau2
+        cov_offset, fix_tau2
       )
     ),
     error = identity
   )
   if (inherits(scores, "error")) {
-    diagnostics$fallback_reason <- paste(
-      "starting-value Laplace comparison failed:",
-      condition_text(scores)
-    )
-    return(list(start = current, diagnostics = diagnostics))
+    return(keep_current(
+      "comparison_failed",
+      paste("starting-value Laplace comparison failed:",
+            condition_text(scores))
+    ))
   }
   diagnostics$current_laplace <- unname(scores["current"])
   diagnostics$transformed_laplace <-
@@ -1461,13 +1458,43 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
   }
 
   if (!is.finite(scores["current"])) {
+    diagnostics$reason <- "neither_finite"
     diagnostics$fallback_reason <-
       "neither automatic starting candidate had a finite Laplace value"
   } else if (!is.finite(scores["transformed_gaussian"])) {
+    diagnostics$reason <- "transformed_not_finite"
     diagnostics$fallback_reason <-
       "transformed Gaussian candidate had a non-finite Laplace value"
   }
   list(start = current, diagnostics = diagnostics)
+}
+
+##' The records of the transformed-Gaussian start, one per location
+##'
+##' Where every location has one record, the records as they are. Otherwise
+##' the totals of each location, in the order of the rows of `coords`: the
+##' sums of the responses and of the denominators, and the rows of the design
+##' matrix and the offsets averaged with the denominators as weights. The
+##' Gaussian model fitted to them has no more observations than locations,
+##' and the empirical link of a total follows the proportion at the location,
+##' where that of a binary record, as of a child in a household, is always
+##' log(3) or -log(3).
+##' @noRd
+location_totals <- function(y, units_m, D, offset, ID_coords, s_unique) {
+  if (!anyDuplicated(ID_coords)) {
+    return(list(y = y, units_m = units_m, D = D, offset = offset,
+                ID_coords = ID_coords, s_unique = s_unique))
+  }
+  location <- factor(ID_coords, levels = seq_len(max(ID_coords)))
+  total <- function(values) {
+    rowsum(as.matrix(values), location, reorder = TRUE)
+  }
+  units <- as.numeric(total(units_m))
+  design <- total(D * units_m) / units
+  dimnames(design) <- list(NULL, colnames(D))
+  list(y = as.numeric(total(y)), units_m = units, D = design,
+       offset = as.numeric(total(offset * units_m)) / units,
+       ID_coords = seq_along(units), s_unique = seq_along(units))
 }
 
 ##' @importFrom Matrix Matrix forceSymmetric
