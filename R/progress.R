@@ -164,14 +164,7 @@ progress_step <- function(message, messages = TRUE, inform = FALSE,
   }
   text <- cli::format_inline(message, .envir = .envir)
   if (cli::is_dynamic_tty()) {
-    # cli cuts a line wider than the console at its end, which would take
-    # the time with it, so the text is shortened instead. A symbol, a space,
-    # and a time such as " [59m 59s]" take at most 12 characters.
-    shown <- cli::ansi_strtrim(text, max(20L, cli::console_width() - 12L))
-    # Already formatted, so cli must not interpolate it again.
-    literal <- gsub("}", "}}", gsub("{", "{{", shown, fixed = TRUE),
-                    fixed = TRUE)
-    open_spinning_step(literal, .envir)
+    open_spinning_step(text, .envir)
   } else {
     end_log_step(.envir)
     riskmap_inform(c("i" = "{text}"))
@@ -189,30 +182,54 @@ spinning_step <- new.env(parent = emptyenv())
 #'
 #' The running line starts with cli's information sign until the first
 #' `progress_spin()`, and then with a spinner, followed at the end of the line
-#' by the time so far. The line that ends the step is cli's, a tick or a cross
-#' with the time the step took.
+#' by the time so far. The line that ends the step is a tick, or a cross after
+#' an error, with the time the step took, as cli's own steps end. cli builds
+#' each line when it draws it, through the functions in `extra`, so that the
+#' text is shortened to the console against the time shown at that moment.
+#' The text is passed as data, so braces in it are printed as they are.
 #' @noRd
-open_spinning_step <- function(literal, .envir) {
-  spinning <- "isTRUE(cli::pb_extra$spinning)"
-  lead <- paste0("{if (", spinning, ") cli::pb_spin else ",
-                 "cli::col_cyan(cli::symbol$info)} ")
-  clock <- paste0("{if (", spinning, ") ",
-                  "cli::col_grey(paste0(' [', cli::pb_elapsed, ']')) ",
-                  "else ''}")
-  took <- " {.timestamp {cli::pb_elapsed}}"
+open_spinning_step <- function(text, .envir) {
+  running <- function() {
+    if (isTRUE(cli::pb_extra$spinning)) {
+      step_line(cli::pb_spin, text, cli::pb_elapsed)
+    } else {
+      step_line(cli::col_cyan(cli::symbol$info), text)
+    }
+  }
+  ended <- function(sign) {
+    force(sign)
+    function() step_line(sign, text, cli::pb_elapsed)
+  }
   restore <- options(cli.progress_show_after = 0)
   on.exit(options(restore), add = TRUE)
   id <- cli::cli_progress_bar(
-    type = "custom", format = paste0(lead, literal, clock),
-    format_done = paste0("{.alert-success ", literal, took, "}"),
-    format_failed = paste0("{.alert-danger ", literal, took, "}"),
-    clear = FALSE, extra = list(spinning = FALSE), .envir = .envir
+    type = "custom", format = "{cli::pb_extra$running()}",
+    format_done = "{cli::pb_extra$done()}",
+    format_failed = "{cli::pb_extra$failed()}",
+    clear = FALSE,
+    extra = list(spinning = FALSE, running = running,
+                 done = ended(cli::col_green(cli::symbol$tick)),
+                 failed = ended(cli::col_red(cli::symbol$cross))),
+    .envir = .envir
   )
   cli::cli_progress_update(id = id, force = TRUE, .envir = .envir)
   spinning_step$id <- id
   spinning_step$process <- Sys.getpid()
   spinning_step$spinning <- FALSE
   invisible(id)
+}
+
+#' One line of a step, shortened to fit the console with its time
+#'
+#' cli cuts a line wider than the console at its end, which would take the
+#' time with it, so the text is shortened instead, against the width of the
+#' time shown, which grows from "[5ms]" to "[1h 21m 58.7s]". `time` is `NULL`
+#' for a line without one.
+#' @noRd
+step_line <- function(sign, text, time = NULL, width = cli::console_width()) {
+  clock <- if (is.null(time)) "" else cli::col_grey(paste0(" [", time, "]"))
+  room <- width - cli::ansi_nchar(sign) - 1L - cli::ansi_nchar(clock)
+  paste0(sign, " ", cli::ansi_strtrim(text, max(1L, room)), clock)
 }
 
 #' Move the spinner of the running step

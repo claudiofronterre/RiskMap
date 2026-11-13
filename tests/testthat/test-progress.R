@@ -174,7 +174,8 @@ local_terminal <- function(width = 80L, .env = parent.frame()) {
 }
 
 spinner_frame <- "^[-\\\\|/] "
-time_so_far <- "\\[[0-9.]+m?s\\]$"
+# A time as cli writes it, from "[5ms]" to "[1h 21m 58.7s]".
+time_so_far <- "\\[[0-9][0-9hms. ]*\\]$"
 
 test_that("in a terminal a step that moves shows a spinner and its time", {
   local_terminal()
@@ -231,17 +232,32 @@ test_that("the spinner moves only for a step running in this process", {
 })
 
 test_that("a step too wide for the console is shortened, keeping its time", {
+  withr::local_options(cli.num_colors = 1)
+  text <- "Monte Carlo maximum likelihood, stage 2 of at most 4, 16,000 draws"
+  # The longest times cli writes, past a minute and past an hour.
+  for (time in c("3ms", "1m 15.3s", "59m 59.4s", "1h 21m 58.7s")) {
+    for (width in c(40L, 60L, 80L)) {
+      line <- step_line("v", text, time, width = width)
+      expect_lte(cli::ansi_nchar(line), width)
+      expect_true(endsWith(line, paste0(" [", time, "]")))
+      expect_true(startsWith(line, "v Monte Carlo"))
+    }
+  }
+  # A text that fits is kept whole, and a line may have no time.
+  expect_identical(step_line("i", "Short", width = 40L), "i Short")
+  expect_identical(step_line("v", "Short", "2s", width = 40L), "v Short [2s]")
+  expect_match(step_line("v", text, "1h 21m 58.7s", width = 40L), "...",
+               fixed = TRUE)
+  # The lines drawn in a terminal are built this way.
   local_terminal(width = 40L)
   run <- function() {
-    progress_step(paste("Monte Carlo maximum likelihood, stage 2 of at most",
-                        "4, 16,000 draws"))
+    progress_step(text)
     progress_spin()
     progress_step_done()
   }
   frames <- step_frames(run())
   expect_lte(max(cli::ansi_nchar(frames)), 40L)
-  expect_match(frames[length(frames)], time_so_far)
-  expect_match(frames[length(frames)], "...", fixed = TRUE)
+  expect_match(frames[length(frames)], paste0("^v Monte Carlo.*", time_so_far))
 })
 
 test_that("a step that used to be a message stays one where progress is hidden", {
