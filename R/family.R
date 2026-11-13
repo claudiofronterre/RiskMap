@@ -173,7 +173,12 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
   }
 
   if (is.null(invlink)) {
-    if (family == "poisson") {
+    # The log link of the Poisson and negative binomial families, and
+    # otherwise the logit. A negative binomial fit keeps the log link of its
+    # mean, although the engine fits its records with the logit
+    # (engine_records()).
+    log_link <- identical(family_traits(family)$default_link, "log")
+    if (log_link) {
       inv <- function(x) exp(x)
       d1 <- function(x) exp(x)
       d2 <- if (second_derivative) function(x) exp(x) else NULL
@@ -195,7 +200,7 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
       validate(d2, "The second derivative of the canonical inverse link")
     }
     return(list(inv = inv, d1 = d1, d2 = d2, name = "canonical",
-                link = if (family == "poisson") "log" else "logit"))
+                link = if (log_link) "log" else "logit"))
   }
 
   # The list form is internal. It carries a named link from read_family(),
@@ -235,7 +240,8 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 
 ##' The families of RiskMap and their links
 ##'
-##' One entry for each family a user can give (#253, step 1c). `links` are the
+##' One entry for each family a user can give (#253, step 1c), and the
+##' negative binomial family, internal until step 6b. `links` are the
 ##' links `read_family_link()` accepts, `default_link` the canonical one, which
 ##' a family string implies and which is fitted on the canonical path, and
 ##' `refused` the links of a stats family that it refuses, with the reason.
@@ -268,6 +274,14 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' - `response_quantity`, the name of the predicted mean of the response in
 ##'   plots, NULL for the name of the response itself, and `probability`, the
 ##'   mean is a probability, shown as a percentage.
+##' - `title`, the family's name at the start of a model's title, and
+##'   `inverse_link_formula`, its canonical inverse link as `summary()` shows
+##'   it.
+##' - `parameters`, the names of the family's own parameters, held at the
+##'   values given with the family (`negative_binomial()`), and
+##'   `kernel_family`, for a family whose records the MCML engine fits as
+##'   those of another family, that family (`engine_records()`), NULL for a
+##'   family the engine fits as itself.
 ##' @noRd
 riskmap_families <- list(
   gaussian = list(
@@ -279,7 +293,9 @@ riskmap_families <- list(
     every_everywhere = NULL,
     link_hint = "Gaussian responses are fitted with the identity link only.",
     inverse_link = identity, discrete = FALSE, whole_denominator = FALSE,
-    response_quantity = NULL, probability = FALSE
+    response_quantity = NULL, probability = FALSE,
+    title = "Gaussian", inverse_link_formula = "x",
+    parameters = character(), kernel_family = NULL
   ),
   binomial = list(
     links = c("logit", "probit", "cloglog", "cauchit"),
@@ -294,7 +310,9 @@ riskmap_families <- list(
     every_everywhere = "Every individual tested is positive",
     link_hint = NULL,
     inverse_link = stats::plogis, discrete = TRUE, whole_denominator = TRUE,
-    response_quantity = "prevalence", probability = TRUE
+    response_quantity = "prevalence", probability = TRUE,
+    title = "Binomial", inverse_link_formula = "1 / (1 + exp(-x))",
+    parameters = character(), kernel_family = NULL
   ),
   poisson = list(
     links = "log", default_link = "log",
@@ -312,7 +330,25 @@ riskmap_families <- list(
     none_everywhere = "Every count is zero", every_everywhere = NULL,
     link_hint = NULL,
     inverse_link = exp, discrete = TRUE, whole_denominator = FALSE,
-    response_quantity = "rate", probability = FALSE
+    response_quantity = "rate", probability = FALSE,
+    title = "Poisson", inverse_link_formula = "exp(x)",
+    parameters = character(), kernel_family = NULL
+  ),
+  # Internal until its size can be estimated (#253, step 6b). Its records go
+  # to the engine as binomial ones (engine_records()).
+  negative_binomial = list(
+    links = "log", default_link = "log", refused = character(),
+    exact = FALSE, measurement_error = FALSE,
+    warn_missing_denominator = FALSE,
+    upper_limit = FALSE, mean_range = c(0, Inf),
+    range_message = "For a negative binomial model, {.arg invlink} must return non-negative means.",
+    quantity = "mean", no_events = "with a zero count",
+    none_everywhere = "Every count is zero", every_everywhere = NULL,
+    link_hint = "Negative binomial responses are fitted with the log link only.",
+    inverse_link = exp, discrete = TRUE, whole_denominator = FALSE,
+    response_quantity = "rate", probability = FALSE,
+    title = "Negative binomial", inverse_link_formula = "exp(x)",
+    parameters = "theta", kernel_family = "binomial"
   )
 )
 
@@ -338,14 +374,29 @@ riskmap_families <- list(
 ##'   Poisson mean is not finite, which rules the candidate out. NULL for an
 ##'   exact family.
 ##' - `fitted_mean(mean, units_m)`, the fitted value of a record from the mean
-##'   of its inverse link, the expected count for the Poisson family.
+##'   of its inverse link, the expected count for the Poisson and negative
+##'   binomial families.
 ##' - `simulate(means, units_m, parameters)`, one response for each mean, from
-##'   `rbinom()` with `units_m` trials, `rpois()` with exposure `units_m`, or
+##'   `rbinom()` with `units_m` trials, `rpois()` with exposure `units_m`,
+##'   `rnbinom()` with exposure `units_m` and size `parameters$theta`, or
 ##'   `rnorm()` with the measurement error variance `parameters$sigma2_me`
 ##'   (`draw_simulation()`, `assess_prediction()`).
-##' - `score_support(draws, y, units_m, means)`, the counts over which a
-##'   discrete prediction of a record is scored, from the draws of its
+##' - `score_support(draws, y, units_m, means, parameters)`, the counts over
+##'   which a discrete prediction of a record is scored, from the draws of its
 ##'   response and their means, NULL for a family that is not discrete.
+##'
+##' The negative binomial family hands the engine its records as binomial ones
+##' (`engine_records()`), so the methods that start a fit, `start_coefficients`,
+##' `empirical_link`, `transform_variance` and `start_log_likelihood`, are the
+##' binomial family's on those records, and its own are NULL. It has two more.
+##' - `engine_records(y, units_m, offset, parameters)`, the records of the
+##'   binomial kernel, with `y` events of `y + theta` trials and the offset
+##'   `offset + log(units_m / theta)`, for exposures `units_m`.
+##' - `log_likelihood_constant(y, parameters)`, the terms of the
+##'   log-likelihood that the binomial kernel leaves out,
+##'   `sum(lgamma(y + theta) - lgamma(theta))`. With them the log-likelihood
+##'   tends to the Poisson family's as `theta` grows, which also leaves out
+##'   `-lgamma(y + 1)`.
 ##' @noRd
 family_traits <- function(family) {
   if (!is.character(family) || length(family) != 1L ||
@@ -367,7 +418,7 @@ family_traits <- function(family) {
         as.numeric(means) + rnorm(length(means),
                                   sd = sqrt(parameters$sigma2_me))
       },
-      score_support = function(draws, y, units_m, means) NULL
+      score_support = function(draws, y, units_m, means, parameters) NULL
     ),
     binomial = list(
       validate = function(y, units_m) check_binomial(y, units_m),
@@ -390,7 +441,9 @@ family_traits <- function(family) {
       simulate = function(means, units_m, parameters) {
         rbinom(length(means), size = units_m, prob = as.numeric(means))
       },
-      score_support = function(draws, y, units_m, means) 0:units_m
+      score_support = function(draws, y, units_m, means, parameters) {
+        0:units_m
+      }
     ),
     poisson = list(
       validate = function(y, units_m) invisible(TRUE),
@@ -416,13 +469,114 @@ family_traits <- function(family) {
       simulate = function(means, units_m, parameters) {
         rpois(length(means), lambda = as.numeric(means) * units_m)
       },
-      score_support = function(draws, y, units_m, means) {
+      score_support = function(draws, y, units_m, means, parameters) {
         lambda <- units_m * means
         0:max(max(draws), y, qpois(0.999, mean(lambda)))
+      }
+    ),
+    negative_binomial = list(
+      validate = function(y, units_m) check_counts(y, units_m),
+      start_coefficients = NULL, empirical_link = NULL,
+      transform_variance = NULL, start_log_likelihood = NULL,
+      fitted_mean = function(mean, units_m) units_m * mean,
+      simulate = function(means, units_m, parameters) {
+        rnbinom(length(means), size = family_size(parameters),
+                mu = as.numeric(means) * units_m)
+      },
+      score_support = function(draws, y, units_m, means, parameters) {
+        lambda <- units_m * means
+        0:max(max(draws), y, qnbinom(0.999, size = family_size(parameters),
+                                     mu = mean(lambda)))
+      },
+      engine_records = function(y, units_m, offset, parameters) {
+        theta <- family_size(parameters)
+        units_m <- units_m %||% rep(1, length(y))
+        offset <- offset %||% numeric(length(y))
+        list(y = y, units_m = y + theta, offset = offset + log(units_m / theta))
+      },
+      log_likelihood_constant = function(y, parameters) {
+        theta <- family_size(parameters)
+        sum(lgamma(y + theta) - lgamma(theta))
       }
     )
   )
   c(list(family = family), riskmap_families[[family]], methods)
+}
+
+##' The size theta of a negative binomial family, from its `parameters`
+##'
+##' Stops if `parameters` has no single positive finite `theta`, which
+##' `negative_binomial()` checks when a user gives it, so that a caller that
+##' lost the family's parameters fails rather than fitting another model.
+##' @noRd
+family_size <- function(parameters) {
+  theta <- parameters$theta
+  if (!is.numeric(theta) || length(theta) != 1L || !is.finite(theta) ||
+      theta <= 0) {
+    riskmap_bug("The negative binomial family needs its size {.code theta} in {.arg parameters}.")
+  }
+  theta
+}
+
+##' Check counts and their exposures
+##'
+##' Stops unless the responses `y` are non-negative whole numbers and the
+##' exposures `units_m` positive finite numbers, as the negative binomial
+##' family needs, whose records have the offset `log(units_m / theta)`.
+##' @noRd
+check_counts <- function(y, units_m) {
+  tolerance <- sqrt(.Machine$double.eps)
+  if (!all(y >= 0) || !all(abs(y - round(y)) < tolerance)) {
+    abort_input("The responses of a negative binomial model must be non-negative whole numbers.", arg = "data")
+  }
+  if (!all(is.finite(units_m)) || !all(units_m > 0)) {
+    abort_input("The denominators of a negative binomial model must be positive finite numbers.", arg = "denominator")
+  }
+  invisible(TRUE)
+}
+
+##' The records that the MCML engine fits, and the family it fits them as
+##'
+##' For a family with a `kernel_family`, its records as that family's
+##' (`family_traits()`), and the kernel family. For the negative binomial
+##' family with log link and size theta, the log-likelihood of a count y with
+##' mean m exp(eta) is
+##' y eta' - (y + theta) log(1 + exp(eta')) + lgamma(y + theta) -
+##' lgamma(theta) - lgamma(y + 1), with eta' = eta + log(m / theta),
+##' which is the binomial logit kernel of y events of y + theta trials with
+##' the offset log(m / theta) (#253, step 6a). So the engine fits these
+##' records with every part of the canonical binomial path, compiled weights,
+##' tables of integrated records and checks, and no code of its own. The
+##' constant is added to the reported log-likelihood
+##' (`log_likelihood_constant()`). `offset` is the offset of the records, or
+##' their linear predictors where a caller passes them. A family the engine
+##' fits as itself returns its records unchanged. `invlink` must be NULL for a
+##' family with a kernel family, whose link is the log, and `parameters` are
+##' the family's own (`negative_binomial()`).
+##' @return A list with `family`, `y`, `units_m` and `offset`.
+##' @noRd
+engine_records <- function(family, y, units_m, offset, parameters = NULL,
+                           invlink = NULL) {
+  traits <- family_traits(family)
+  if (is.null(traits$kernel_family)) {
+    return(list(family = family, y = y, units_m = units_m, offset = offset))
+  }
+  if (!is.null(invlink)) {
+    riskmap_bug("The {family} family has the log link only, and takes no {.arg invlink}.")
+  }
+  c(list(family = traits$kernel_family),
+    traits$engine_records(y, units_m, offset, parameters))
+}
+
+##' The terms of a model's log-likelihood that its engine records leave out
+##'
+##' Zero for a family the engine fits as itself, and otherwise the family's
+##' `log_likelihood_constant()` (`engine_records()`).
+##' @noRd
+log_likelihood_constant <- function(family, y, parameters = NULL) {
+  traits <- family_traits(family)
+  if (is.null(traits$kernel_family)) return(0)
+  traits$log_likelihood_constant(y, parameters)
 }
 
 ##' The families that the MCML engine fits, those whose likelihood is not exact
@@ -491,11 +645,17 @@ fit_traits <- function(fit) {
 ##' logit and log links keep `invlink = NULL`, so they take the canonical path
 ##' and fit exactly as the strings do, and the identity link of the Gaussian
 ##' family leaves nothing to carry. A string leaves `invlink` as it is, which
-##' keeps the internal list form open to refits.
+##' keeps the internal list form open to refits. A family with parameters of
+##' its own is given only by its function, `negative_binomial()`, whose
+##' specification is accepted by every caller and adds the family's
+##' `parameters`. It is internal until #253, step 6b, so it is not among the
+##' families that errors name.
 ##' @param family What the user gave as `family`.
 ##' @param invlink What the user gave as `invlink`.
 ##' @param families The family strings the calling function accepts.
-##' @return A list with `family`, one of `families`, and `invlink`.
+##' @return A list with `family`, one of `families` or a family given by its
+##'   specification, and `invlink`, with `parameters` for a family that has
+##'   them.
 ##' @noRd
 read_family <- function(family, invlink = NULL,
                         families = c("gaussian", "binomial", "poisson")) {
@@ -506,6 +666,17 @@ read_family <- function(family, invlink = NULL,
   if (is.character(invlink)) {
     abort_input(c("{.arg invlink} must be a function, not the name of a link.", "i" = "Give a named link in {.arg family}, as in {.code binomial(\"probit\")}."), arg = "invlink")
   }
+  if (inherits(family, "riskmap_family_specification")) {
+    if (!is.null(invlink)) {
+      abort_input(family_traits(family$family)$link_hint, arg = "invlink")
+    }
+    return(list(family = family$family, invlink = NULL,
+                parameters = family$parameters))
+  }
+  # A family with parameters of its own is not given as a string.
+  families <- families[vapply(families, function(name) {
+    !length(family_traits(name)$parameters)
+  }, logical(1))]
   if (is.function(family)) {
     family <- tryCatch(family(), error = function(e) NULL)
   }
@@ -525,6 +696,36 @@ read_family <- function(family, invlink = NULL,
   list(family = family, invlink = invlink)
 }
 
+##' The negative binomial family at a known size
+##'
+##' Counts y with mean m exp(eta), for exposure m, and variance
+##' mu + mu^2 / theta, as in `MASS::negative.binomial(theta)`, with the size
+##' `theta` held at the value given. Internal until the size can be estimated
+##' (#253, step 6b), when it is to be exported with `theta` estimated by
+##' default. `read_family()` reads it.
+##' @param theta The size, a positive number.
+##' @return A specification of class `riskmap_family_specification`.
+##' @noRd
+negative_binomial <- function(theta) {
+  check_supplied(theta)
+  check_positive_number(theta, type = "")
+  structure(list(family = "negative_binomial", link = "log",
+                 parameters = list(theta = theta)),
+            class = "riskmap_family_specification")
+}
+
+##' The `family` argument that refits a fitted model
+##'
+##' The family string the fit stores, or for a family with parameters of its
+##' own its specification at the fit's values (`negative_binomial()`), for the
+##' exported functions that refit a fit, such as `assess_prediction()`.
+##' @noRd
+fit_family_argument <- function(fit) {
+  traits <- fit_traits(fit)
+  if (is.null(traits) || !length(traits$parameters)) return(fit$family)
+  negative_binomial(theta = family_size(fit$family_parameters))
+}
+
 ##' Family string and link of a family object
 ##'
 ##' Takes the `family` and `link` names of a stats family object and returns
@@ -542,6 +743,9 @@ read_family_link <- function(family, link) {
     abort_input(c("{.arg family} must be a Gaussian, binomial or Poisson family, not {.val {family}}.", "i" = "For a binomial or Poisson response, any link can be given as an inverse-link function in {.arg invlink}."), arg = "family")
   }
   traits <- family_traits(family)
+  if (length(traits$parameters)) {
+    riskmap_bug("The {family} family has parameters of its own, so it is given by its own function, not as a stats family.")
+  }
   refused <- if (link %in% names(traits$refused)) traits$refused[[link]]
   if (!is.null(refused)) {
     abort_input(c("{.code {object}} can't be used, because {refused}.", "i" = use_invlink), arg = "family")
@@ -611,6 +815,9 @@ read_family_link <- function(family, link) {
 ##' @noRd
 make_family <- function(family, linkf = NULL, kernel = NULL) {
   traits <- family_traits(family)
+  if (!is.null(traits$kernel_family)) {
+    riskmap_bug("The engine fits the records of the {family} family as {traits$kernel_family} ones ({.fn engine_records}), so it has no family object of its own.")
+  }
   if (traits$exact) {
     if (!is.null(linkf) || !is.null(kernel)) {
       riskmap_bug("The {family} family is exact and takes no {.arg linkf} or {.arg kernel}.")

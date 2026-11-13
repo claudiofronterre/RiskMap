@@ -744,15 +744,14 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
       object$link_function$inv, object$call$invlink
     ))
   } else {
-    if (identical(object$family, "poisson")) {
-      link_name <- "canonical (log)"
-      inv_expr  <- "Inverse link function = exp(x)"
-    } else if (identical(object$family, "binomial")) {
-      link_name <- "canonical (logit)"
-      inv_expr  <- "Inverse link function = 1 / (1 + exp(-x))"
-    } else if (identical(object$family, "gaussian")) {
-      link_name <- "identity"
-      inv_expr  <- "Inverse link function = x"
+    traits <- fit_traits(object)
+    if (!is.null(traits)) {
+      link_name <- if (traits$exact) {
+        traits$default_link
+      } else {
+        paste0("canonical (", traits$default_link, ")")
+      }
+      inv_expr <- paste("Inverse link function =", traits$inverse_link_formula)
     }
   }
 
