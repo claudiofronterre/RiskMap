@@ -12,7 +12,7 @@ An sf object with 116 rows and 6 variables:
 \item{An.gambiae}{Counts of \emph{Anopheles gambiae}.}
 \item{Total}{Total counts of \emph{Anopheles coluzzii} and \emph{Anopheles gambiae}.}
 \item{elevation}{Elevation in meters of the sampled location.}
-\item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in degrees latitude and longitude}
+\item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
 }
 }
 \source{
@@ -28,6 +28,7 @@ Counts of \emph{Anopheles gambiae} and
 \emph{Anopheles coluzzii} in Southern Cameroon.
 }
 \details{
-The coordinate reference system is 3857.
+The coordinate reference system is WGS 84 / UTM zone 32N
+(EPSG:32632), which distorts distances by less than 0.1\% over the data.
 }
 \keyword{datasets}

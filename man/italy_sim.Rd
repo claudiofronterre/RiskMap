@@ -22,6 +22,7 @@ data(italy_sim)
 Simulated dataset over Italy for a continuous outcome.
 }
 \details{
-The coordinate reference system is 32634.
+The coordinate reference system is WGS 84 / UTM zone 33N
+(EPSG:32633), which distorts distances by less than 0.5\% over the data.
 }
 \keyword{datasets}
