@@ -8,9 +8,13 @@
 #'   [assess_simulation()] show a progress bar with the work done and an
 #'   estimate of the time left.
 #' - [predict.RiskMap()] shows a bar while it predicts at many locations in
-#'   blocks.
+#'   blocks, and while it propagates parameter uncertainty over its parameter
+#'   draws.
 #' - [glgpm()] shows a line for each stage of Monte Carlo maximum likelihood,
-#'   with the time the stage took.
+#'   with the time the stage took. While a stage runs, the line has a spinner
+#'   and the time so far, which move each time the likelihood is evaluated.
+#'   A step computed in one call to compiled code, such as the Langevin
+#'   sampler, shows its line without them.
 #'
 #' Progress is shown when the function's argument `messages` is `TRUE` and
 #' the option `RiskMap.progress` is `TRUE`. The option's default is
@@ -136,21 +140,38 @@ progress_done <- function(bar) {
 #'
 #' In a terminal, cli shows the step while it runs and then a tick with the
 #' time it took, when the next step of `.envir` starts, when
-#' `progress_step_done()` is called, or when the frame `.envir` exits. In a
-#' log, where cli would add a blank line after each step, the step writes a
-#' line when it starts and another, with its time, when the next step of
-#' `.envir` starts or `progress_step_done()` is called. `message` is
-#' formatted with cli inline markup in `.envir` when the step starts, so the
-#' line that ends it reads the same.
+#' `progress_step_done()` is called, or when the frame `.envir` exits. The
+#' line starts with an information sign, and once the computation calls
+#' `progress_spin()` it shows a spinner and the time so far instead, so that a
+#' long step shows it is still running. In a log, where cli would add a blank
+#' line after each step, the step writes a line when it starts and another,
+#' with its time, when the next step of `.envir` starts or
+#' `progress_step_done()` is called. `message` is formatted with cli inline
+#' markup in `.envir` when the step starts, so the line that ends it reads the
+#' same.
+#' @param inform When progress is hidden but `messages` is `TRUE`, write
+#'   `message` as an ordinary message instead, with a full stop, for a step
+#'   that used to be a message.
 #' @noRd
-progress_step <- function(message, messages = TRUE, .envir = parent.frame()) {
-  if (!progress_enabled(messages)) return(invisible(NULL))
+progress_step <- function(message, messages = TRUE, inform = FALSE,
+                          .envir = parent.frame()) {
+  if (!progress_enabled(messages)) {
+    if (inform && isTRUE(messages)) {
+      text <- cli::format_inline(message, .envir = .envir)
+      riskmap_inform("{text}.")
+    }
+    return(invisible(NULL))
+  }
   text <- cli::format_inline(message, .envir = .envir)
   if (cli::is_dynamic_tty()) {
+    # cli cuts a line wider than the console at its end, which would take
+    # the time with it, so the text is shortened instead. A symbol, a space,
+    # and a time such as " [59m 59s]" take at most 12 characters.
+    shown <- cli::ansi_strtrim(text, max(20L, cli::console_width() - 12L))
     # Already formatted, so cli must not interpolate it again.
-    literal <- gsub("}", "}}", gsub("{", "{{", text, fixed = TRUE),
+    literal <- gsub("}", "}}", gsub("{", "{{", shown, fixed = TRUE),
                     fixed = TRUE)
-    cli::cli_progress_step(literal, .envir = .envir)
+    open_spinning_step(literal, .envir)
   } else {
     end_log_step(.envir)
     riskmap_inform(c("i" = "{text}"))
@@ -160,12 +181,75 @@ progress_step <- function(message, messages = TRUE, .envir = parent.frame()) {
   invisible(NULL)
 }
 
+#' The step that `progress_spin()` moves, and the process that opened it
+#' @noRd
+spinning_step <- new.env(parent = emptyenv())
+
+#' Open a step in a terminal, as `cli::cli_progress_step()` does
+#'
+#' The running line starts with cli's information sign until the first
+#' `progress_spin()`, and then with a spinner, followed at the end of the line
+#' by the time so far. The line that ends the step is cli's, a tick or a cross
+#' with the time the step took.
+#' @noRd
+open_spinning_step <- function(literal, .envir) {
+  spinning <- "isTRUE(cli::pb_extra$spinning)"
+  lead <- paste0("{if (", spinning, ") cli::pb_spin else ",
+                 "cli::col_cyan(cli::symbol$info)} ")
+  clock <- paste0("{if (", spinning, ") ",
+                  "cli::col_grey(paste0(' [', cli::pb_elapsed, ']')) ",
+                  "else ''}")
+  took <- " {.timestamp {cli::pb_elapsed}}"
+  restore <- options(cli.progress_show_after = 0)
+  on.exit(options(restore), add = TRUE)
+  id <- cli::cli_progress_bar(
+    type = "custom", format = paste0(lead, literal, clock),
+    format_done = paste0("{.alert-success ", literal, took, "}"),
+    format_failed = paste0("{.alert-danger ", literal, took, "}"),
+    clear = FALSE, extra = list(spinning = FALSE), .envir = .envir
+  )
+  cli::cli_progress_update(id = id, force = TRUE, .envir = .envir)
+  spinning_step$id <- id
+  spinning_step$process <- Sys.getpid()
+  spinning_step$spinning <- FALSE
+  invisible(id)
+}
+
+#' Move the spinner of the running step
+#'
+#' Called where a long step does its work again and again, such as each
+#' evaluation of the Monte Carlo likelihood. It does nothing when no step is
+#' running in a terminal, or in a forked process, which must not draw over
+#' the line of its parent. cli redraws the line only a few times a second, so
+#' a call costs a few microseconds.
+#' @noRd
+progress_spin <- function() {
+  id <- spinning_step$id
+  if (is.null(id) || !identical(spinning_step$process, Sys.getpid())) {
+    return(invisible(NULL))
+  }
+  first <- !isTRUE(spinning_step$spinning)
+  spinning_step$spinning <- TRUE
+  # The step may have closed with its frame, and cli then no longer knows it.
+  tryCatch(
+    if (first) {
+      cli::cli_progress_update(id = id, extra = list(spinning = TRUE),
+                               force = TRUE)
+    } else {
+      cli::cli_progress_update(id = id)
+    },
+    error = function(error) spinning_step$id <- NULL
+  )
+  invisible(NULL)
+}
+
 #' Close the current step of `.envir`
 #' @noRd
 progress_step_done <- function(messages = TRUE, .envir = parent.frame()) {
   if (!progress_enabled(messages)) return(invisible(NULL))
   if (cli::is_dynamic_tty()) {
     cli::cli_progress_done(.envir = .envir)
+    spinning_step$id <- NULL
   } else {
     end_log_step(.envir)
   }
