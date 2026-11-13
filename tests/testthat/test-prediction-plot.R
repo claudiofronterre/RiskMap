@@ -240,7 +240,8 @@ test_that("predictions from a fitted model print and plot at both scales", {
                         seed = 1, messages = FALSE)
 
   expect_identical(prediction$response_name, "y")
-  expect_output(print(prediction), "Map with plot\\(x, summary = \"mean\"\\)")
+  expect_output(print(prediction), "`plot(x, summary = \"mean\")` maps it",
+                fixed = TRUE)
   expect_identical(legend_title(plot(prediction)), "Mean y")
   expect_no_error(ggplot_build(plot(prediction, spatial_scale = "both")))
 })
@@ -344,4 +345,38 @@ test_that("several quantities are drawn in one call", {
                "several quantities or several summaries")
   expect_error(plot(prediction, quantity = c("spatial", "spatial")),
                "distinct names of predicted quantities")
+})
+
+test_that("the print of a prediction names the model, the places and the draws", {
+  prediction <- function(...) {
+    structure(modifyList(list(predictions = data.frame(id = 1:2),
+                              family = "gaussian", response_name = "y",
+                              type = "marginal", summaries = "mean"),
+                         list(...)),
+              class = "RiskMap_prediction")
+  }
+  expect_match(squish(capture.output(print(prediction()))),
+               "Linear geostatistical model of y, at 2 locations, with marginal draws.",
+               fixed = TRUE)
+  one <- prediction(type = "joint", boundaries = data.frame(area = 1:3))
+  one$predictions <- data.frame(id = 1)
+  expect_match(squish(capture.output(print(one))),
+               "at 1 location and 3 areas, with joint draws.", fixed = TRUE)
+  # A link other than the canonical one is named, as in the print of the fit.
+  probit <- prediction(family = "binomial", link = "probit")
+  expect_match(squish(capture.output(print(probit))),
+               "Binomial geostatistical model with probit link of ",
+               fixed = TRUE)
+  custom <- prediction(family = "binomial", link = "custom")
+  expect_match(squish(capture.output(print(custom))),
+               "with a custom link of ", fixed = TRUE)
+  # A prediction without a family says only where and how.
+  plain <- prediction(family = NULL, type = NULL)
+  expect_match(squish(capture.output(print(plain))), "Prediction -* At 2 locations.")
+})
+
+test_that("predict() records a link other than the canonical one", {
+  data <- gaussian_data
+  expect_null(predict(gaussian_model, newdata = data[1:2, ],
+                      messages = FALSE)$link)
 })

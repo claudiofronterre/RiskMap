@@ -210,81 +210,67 @@
     Code
       print(summary_object)
     Output
-      Summary of Simulation Results
+      -- Results of the simulation study ---------------------------------------------
       
-      Mean Squared Error (MSE):
+      Mean squared error
         Model n_sim n_valid MSE_mean     MSE_sd
       1 model     2       2     0.15 0.04242641
       
-      Classification Results:
-      
-      Model: model
-      
-      Averages across simulations by Category:
+      Classification by model
+      Averages over the simulations by category
         Class Sensitivity Specificity PPV  NPV   CC
       1   low         0.6         0.8 0.6 0.90 0.75
       2  high         0.5         0.7 0.5 0.85 0.75
-      
-      Number of valid simulations by Category and metric (out of 2):
+      Valid simulations by category and metric, of 2
         Class Sensitivity Specificity PPV NPV CC
       1   low           2           2   2   2  2
       2  high           2           2   2   2  2
-      
-      Proportion of Correct Classification (CC) across categories:
-      Mean: 0.750, SD: 0.071, 95% simulation interval: [0.702, 0.798] (n_valid = 2 of 2)
-      
+      Proportion of correct classification across categories
+        Mean 0.750, SD 0.071 and 95% simulation interval 0.702 to 0.798, from 2 of 2
+        simulations.
 
 # print.summary.RiskMap_assess_simulation labels each spatial scale
 
     Code
       print(summary_object)
     Output
-      Summary of Simulation Results
+      -- Results of the simulation study ---------------------------------------------
       
-      == Grid-level results ==
+      -- Grid ------------------------------------------------------------------------
       
-      Mean Squared Error (MSE):
+      Mean squared error
         Model n_sim n_valid MSE_mean     MSE_sd
       1 model     2       2     0.15 0.04242641
       
-      Classification Results:
-      
-      Model: model
-      
-      Averages across simulations by Category:
+      Classification by model
+      Averages over the simulations by category
         Class Sensitivity Specificity PPV  NPV   CC
       1   low         0.6         0.8 0.6 0.90 0.75
       2  high         0.5         0.7 0.5 0.85 0.75
-      
-      Number of valid simulations by Category and metric (out of 2):
+      Valid simulations by category and metric, of 2
         Class Sensitivity Specificity PPV NPV CC
       1   low           2           2   2   2  2
       2  high           2           2   2   2  2
+      Proportion of correct classification across categories
+        Mean 0.750, SD 0.071 and 95% simulation interval 0.702 to 0.798, from 2 of 2
+        simulations.
       
-      Proportion of Correct Classification (CC) across categories:
-      Mean: 0.750, SD: 0.071, 95% simulation interval: [0.702, 0.798] (n_valid = 2 of 2)
+      -- Areas -----------------------------------------------------------------------
       
-      == Area-level results ==
-      
-      Mean Squared Error (MSE):
+      Mean squared error
         Model n_sim n_valid MSE_mean     MSE_sd
       1 model     2       2     0.15 0.04242641
       
-      Classification Results:
-      
-      Model: model
-      
-      Averages across simulations by Category:
+      Classification by model
+      Averages over the simulations by category
         Class Sensitivity Specificity PPV  NPV   CC
       1   low         0.6         0.8 0.6 0.90 0.75
       2  high         0.5         0.7 0.5 0.85 0.75
-      
-      Number of valid simulations by Category and metric (out of 2):
+      Valid simulations by category and metric, of 2
         Class Sensitivity Specificity PPV NPV CC
       1   low           2           2   2   2  2
       2  high           2           2   2   2  2
-      
-      Proportion of Correct Classification (CC) across categories:
-      Mean: 0.750, SD: 0.071, 95% simulation interval: [0.702, 0.798] (n_valid = 2 of 2)
-      
+      Proportion of correct classification across categories
+        Mean 0.750, SD 0.071 and 95% simulation interval 0.702 to 0.798, from 2 of 2
+        simulations.
 

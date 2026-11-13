@@ -294,10 +294,7 @@ format_fit <- function(x, digits) {
   traits <- fit_traits(x)
   # Only a link other than the canonical one is named, since the
   # coefficients are then on another scale.
-  link <- if (identical(x$link_function$name, "custom")) {
-    paste0(" with ", x$link_function$link %||% "a custom", " link")
-  }
-  title <- paste0(model_title(traits), link)
+  title <- paste0(model_title(traits), describe_link(fit_link(x)))
   estimates <- coef(x)
   covariance <- c(
     "Spatial process var." = estimates$sigma2,
@@ -357,6 +354,26 @@ model_title <- function(traits) {
   family <- traits$family
   paste0(toupper(substr(family, 1L, 1L)), substring(family, 2L),
          " geostatistical model")
+}
+
+##' The link of a fit when it is not the canonical one
+##'
+##' The name of a named link, such as "probit", or "custom" for an inverse
+##' link given as a function. NULL for the canonical link, whose coefficients
+##' are on the usual scale.
+##' @noRd
+fit_link <- function(fit) {
+  if (!identical(fit$link_function$name, "custom")) return(NULL)
+  fit$link_function$link %||% "custom"
+}
+
+##' The words that add a link other than the canonical one to a title, as in
+##' " with probit link" or " with a custom link", and nothing for NULL
+##' @noRd
+describe_link <- function(link) {
+  if (is.null(link)) return("")
+  if (identical(link, "custom")) return(" with a custom link")
+  paste0(" with ", link, " link")
 }
 
 ##' The call of a fit, faint, as R deparses it

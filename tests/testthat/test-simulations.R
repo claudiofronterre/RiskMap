@@ -421,8 +421,9 @@ test_that("assess_simulation computes grid and area objectives in one combined r
   s <- summary(combined)
   expect_setequal(names(s), c("grid", "area", "fits"))
   expect_s3_class(s, "summary.RiskMap_assess_simulation")
-  expect_output(print(s), "Grid-level results")
-  expect_output(print(s), "Area-level results")
+  # Each spatial scale has its own section, the grid first.
+  expect_match(squish(capture.output(print(s))),
+               "Grid -+ Mean squared error .* Areas -+ Mean squared error")
 
   combined_classify <- assess_simulation(sim, models = list(intercept = gaussian_intercept_model),
                                          control_mcmc = control_mcmc,
@@ -616,8 +617,9 @@ test_that("assess_simulation records a failed fit instead of stopping", {
   expect_true(all(is.finite(result$pred_objective$grid$mse[1, c(1, 3)])))
   expect_true(all(is.na(result$estimates$intercept[2, ])))
   expect_output(print(summary(result)),
-                "Failed model fits \\(results missing\\): 1 of 3")
-  expect_output(print(result), "Failed model fits: 1 of 3")
+                "1 of 3 model fits failed, so their results are missing.",
+                fixed = TRUE)
+  expect_output(print(result), "1 of 3 model fits failed.", fixed = TRUE)
 })
 
 test_that("assess_simulation leaves out areas without grid locations", {
@@ -841,13 +843,15 @@ test_that("simulation objects print briefly", {
   sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
                         what = c("data", "surface"),
                         prediction_grid = gaussian_data, seed = 2)
-  expect_output(print(sim), "Simulations from a gaussian geostatistical model")
-  expect_output(print(sim), "Number of simulations: 2 \\(seed 2\\)")
+  expect_output(print(sim), "Linear geostatistical model, y ~ gp().",
+                fixed = TRUE)
+  expect_output(print(sim), "2 simulations (seed 2)", fixed = TRUE)
   model <- specify_glgpm(
     y ~ cov + gp(), gaussian_data, family = "gaussian",
     parameters = list(beta = c(1, 0.5), sigma2 = 1, phi = 2, sigma2_me = 0.1)
   )
-  expect_output(print(model), "beta: \\(Intercept\\) = 1, cov = 0.5")
+  expect_output(print(model), "beta +\\(Intercept\\) = 1, cov = 0.5")
+  expect_output(print(model), "phi +2 km")
 })
 
 test_that("simulated surfaces can be plotted with fixed colour limits", {
@@ -870,4 +874,34 @@ test_that("specify_glgpm combines several re() calls", {
   expect_identical(two_calls$re_terms, c("i", "j"))
   expect_identical(simulate_glgpm(two_calls, nsim = 2, seed = 1)$samples,
                    simulate_glgpm(one_call, nsim = 2, seed = 1)$samples)
+})
+
+test_that("simulations and assessments print counts in the singular and plural", {
+  model <- list(family = "gaussian", formula = y ~ gp(),
+                parameters = list(beta = c("(Intercept)" = 1), sigma2 = 1,
+                                  phi = 2),
+                distance_units = "km")
+  sim <- structure(list(model = model, what = "surface",
+                        locations = list(surface = data.frame(x = 1)),
+                        nsim = 1, seed = 3),
+                   class = "RiskMap_simulation")
+  expect_match(squish(capture.output(print(sim))),
+               "1 simulation (seed 3), of the surface at 1 location.",
+               fixed = TRUE)
+  assessment <- structure(list(fits = NULL, n_sim = 1, spatial_scale = "grid",
+                               pred_objective = list(grid = list(mse = NULL))),
+                          class = "RiskMap_assess_simulation")
+  expect_match(squish(capture.output(print(assessment))),
+               paste("Models refitted to 1 simulation, assessed on the grid",
+                     "by mean squared error."), fixed = TRUE)
+  # A long row of coefficients wraps under its column.
+  many <- model
+  many$parameters$beta <- stats::setNames(seq(0.1, 1.2, by = 0.1),
+                                          paste0("covariate_", 1:12))
+  many$data <- data.frame(x = 1:10)
+  class(many) <- "RiskMap_simulation_model"
+  withr::local_options(cli.width = 40L)
+  printed <- capture.output(print(many))
+  expect_lte(max(nchar(printed)), 40L)
+  expect_match(squish(printed), "covariate_12 = 1.2", fixed = TRUE)
 })

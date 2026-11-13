@@ -29,7 +29,7 @@ test_that("prediction objects use one stable output schema", {
   expected_output <- c(
     "predictions", "boundaries", "boundary_summary", "samples", "include",
     "transform", "standardized", "aggregate", "summaries", "thresholds",
-    "level", "type", "family", "response_name", "observed_locations",
+    "level", "type", "family", "link", "response_name", "observed_locations",
     "parameter_draws", "coverage", "weights"
   )
 

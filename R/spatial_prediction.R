@@ -221,6 +221,8 @@
 ##'   \item{parameter_draws}{The number of parameter draws when parameter
 ##'     uncertainty was propagated, otherwise `NULL`.}
 ##'   \item{family}{The fitted response family.}
+##'   \item{link}{The link of the fit when it is not the canonical one, its
+##'     name or `"custom"`, and `NULL` for the canonical link.}
 ##'   \item{response_name}{Name of the response variable, used to label
 ##'     maps of Gaussian predictions.}
 ##'   \item{observed_locations}{Whether `newdata` was omitted.}
@@ -394,6 +396,7 @@ predict.RiskMap <- function(
       level = level,
       type = type,
       family = object$family,
+      link = fit_link(object),
       response_name = prediction_response_name(object),
       observed_locations = observed_locations,
       parameter_draws = parameter_draws,
@@ -437,6 +440,7 @@ predict.RiskMap <- function(
     level = level,
     type = type,
     family = object$family,
+    link = fit_link(object),
     response_name = prediction_response_name(object),
     observed_locations = observed_locations,
     parameter_draws = parameter_draws,
@@ -906,7 +910,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       samples = NULL, include = include, transform = names(transform),
       standardized = !is.null(standardize), aggregate = names(aggregate),
       summaries = names(summaries), thresholds = thresholds, level = level,
-      type = "joint", family = object$family,
+      type = "joint", family = object$family, link = fit_link(object),
       response_name = prediction_response_name(object),
       observed_locations = FALSE,
       parameter_draws = parameter_draws,
@@ -1061,6 +1065,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     level = level,
     type = "joint",
     family = object$family,
+    link = fit_link(object),
     response_name = prediction_response_name(object),
     observed_locations = FALSE,
     parameter_draws = parameter_draws,
@@ -4251,21 +4256,34 @@ simulation_classification_metrics <- function(true_values, samples, breaks, labe
 ##' @export
 print.RiskMap_assess_simulation <- function(x, ...) {
   model_names <- unique(x$fits$model %||% character())
-  cat(sprintf("Assessment of %d model%s over %d simulations\n",
-              length(model_names), if (length(model_names) == 1) "" else "s",
-              x$n_sim))
-  if (length(model_names)) {
-    cat(sprintf("Models: %s\n", paste(model_names, collapse = ", ")))
-  }
+  n_models <- length(model_names)
   objectives <- unique(unlist(lapply(x$pred_objective, names)))
-  cat(sprintf("Spatial scale: %s; objectives: %s\n",
-              paste(x$spatial_scale, collapse = ", "),
-              paste(objectives, collapse = ", ")))
-  if (!is.null(x$fits)) {
-    cat(sprintf("Failed model fits: %d of %d\n",
-                sum(x$fits$status != "ok"), nrow(x$fits)))
+  objective_names <- c(mse = "mean squared error",
+                       classify = "classification")
+  objectives <- ifelse(objectives %in% names(objective_names),
+                       objective_names[objectives], objectives)
+  scales <- c(grid = "on the grid", area = "in areas")[x$spatial_scale]
+  models <- if (n_models) {
+    paste0(n_models, if (n_models == 1L) " model" else " models", " (",
+           paste(model_names, collapse = ", "), ") refitted to ")
+  } else {
+    "Models refitted to "
   }
-  cat("Use summary() to see the results.\n")
+  failed <- if (!is.null(x$fits)) sum(x$fits$status != "ok") else 0L
+  out_print(c(
+    out_rule("Assessment of simulations"),
+    out_text(paste0(models, out_count(x$n_sim, "simulation"),
+                    ", assessed ", paste(scales[!is.na(scales)],
+                                         collapse = " and "),
+                    " by ", paste(objectives, collapse = " and "), ".")),
+    out_bullets(if (failed > 0L) {
+      c("!" = paste0(failed, " of ", nrow(x$fits), " model fits failed."))
+    }),
+    "",
+    out_bullets(c(i = paste0(out_fun("summary",
+                                     "summary.RiskMap_assess_simulation"),
+                             " gives the results.")))
+  ))
   invisible(x)
 }
 
@@ -4425,19 +4443,19 @@ summarize_simulation_metric <- function(x, n_sim = length(x)) {
 ##' @method print summary.RiskMap_assess_simulation
 ##' @export
 print.summary.RiskMap_assess_simulation <- function(x, ...) {
-  cat("Summary of Simulation Results\n\n")
-  if (!is.null(x$fits) && x$fits[["failed"]] > 0) {
-    cat(sprintf("Failed model fits (results missing): %d of %d\n\n",
-                x$fits[["failed"]], x$fits[["n"]]))
+  failed <- if (!is.null(x$fits) && x$fits[["failed"]] > 0) {
+    c("!" = paste0(x$fits[["failed"]], " of ", x$fits[["n"]],
+                   " model fits failed, so their results are missing."))
   }
-
-  scale_label <- c(grid = "Grid", area = "Area")
+  scale_label <- c(grid = "Grid", area = "Areas")
   scales <- intersect(c("grid", "area"), names(x))
-  for (scale in scales) {
-    if (length(scales) > 1) cat(sprintf("== %s-level results ==\n\n", scale_label[[scale]]))
-    print_pred_objective(x[[scale]])
-  }
-
+  results <- unlist(lapply(scales, function(scale) {
+    c(if (length(scales) > 1L) c("", out_rule(scale_label[[scale]])),
+      format_pred_objective(x[[scale]]))
+  }))
+  out_print(c(out_rule("Results of the simulation study"),
+              out_bullets(failed),
+              results))
   invisible(x)
 }
 
@@ -4455,51 +4473,38 @@ print_text_table <- function(df) {
   invisible(df)
 }
 
-##' Print one spatial scale's `mse`/`classify` summary
+##' The lines of one spatial scale's `mse`/`classify` summary
 ##'
 ##' @param x An element of a `summary.RiskMap_assess_simulation` object, as
 ##'   returned by `summarize_pred_objective()`.
-##' @return Invisibly returns `x`.
+##' @return A character vector of lines.
 ##' @noRd
-print_pred_objective <- function(x) {
-  if (!is.null(x$mse)) {
-    cat("Mean Squared Error (MSE):\n")
-    print_text_table(x$mse)
-    cat("\n")
+format_pred_objective <- function(x) {
+  table <- function(df) out_capture(print_text_table(df))
+  mse <- if (!is.null(x$mse)) {
+    c("", out_heading("Mean squared error"), table(x$mse))
   }
-
-  if (!is.null(x$classify)) {
-    cat("Classification Results:\n")
-
-    # Iterate over each model in classify results
-    for (model_name in names(x$classify)) {
-      model_data <- x$classify[[model_name]]
-
-      cat(sprintf("\nModel: %s\n", model_name))
-
-      cat("\nAverages across simulations by Category:\n")
-      print_text_table(model_data$classify_res)
-
-      cat("\nNumber of valid simulations by Category and metric ",
-          sprintf("(out of %d):\n", model_data$n_sim), sep = "")
-      print_text_table(model_data$n_valid)
-
-      cat("\nProportion of Correct Classification (CC) across categories:\n")
-      cc_summary <- model_data$cc_summary
-      if (cc_summary$n_valid >= 2L) {
-        cat(sprintf("Mean: %.3f, SD: %.3f, 95%% simulation interval: [%.3f, %.3f] ",
-                    cc_summary$mean, cc_summary$sd,
-                    cc_summary$lower, cc_summary$upper))
-      } else {
-        cat(sprintf("Mean: %.3f, uncertainty unavailable ", cc_summary$mean))
-      }
-      cat(sprintf("(n_valid = %d of %d)\n",
-                  cc_summary$n_valid, cc_summary$n_sim))
+  classify <- unlist(lapply(names(x$classify), function(model_name) {
+    model_data <- x$classify[[model_name]]
+    cc <- model_data$cc_summary
+    correct <- if (cc$n_valid >= 2L) {
+      sprintf(paste0("Mean %.3f, SD %.3f and 95%% simulation interval %.3f ",
+                     "to %.3f, from %d of %d simulations."),
+              cc$mean, cc$sd, cc$lower, cc$upper, cc$n_valid, cc$n_sim)
+    } else {
+      sprintf(paste0("Mean %.3f, with uncertainty unavailable from %d of %d ",
+                     "simulations."), cc$mean, cc$n_valid, cc$n_sim)
     }
-    cat("\n")
-  }
-
-  invisible(x)
+    c("", out_heading(paste("Classification by", model_name)),
+      out_text("Averages over the simulations by category"),
+      table(model_data$classify_res),
+      out_text(paste0("Valid simulations by category and metric, of ",
+                      model_data$n_sim)),
+      table(model_data$n_valid),
+      out_text("Proportion of correct classification across categories"),
+      out_text(correct, indent = 2L))
+  }))
+  c(mse, classify)
 }
 
 #' Name of the response variable, used to label prediction maps
