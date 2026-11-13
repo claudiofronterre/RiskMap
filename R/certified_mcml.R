@@ -451,6 +451,10 @@ optimise_on_bank <- function(objective, start, fit_bank, lower, upper,
   boundary <- adaptive_boundary_parameters(fit$par, limits$variance_index,
                                            limits$boundary_log_variance,
                                            limits$linked_index)
+  limit_index <- limits$limit_index %||% integer()
+  at_limit <- limit_index[fit$par[limit_index] <=
+                            limits$boundary_log_variance - limits$limit_shift]
+  boundary <- sort(unique(c(boundary, at_limit)))
   list(fit = fit, boundary = boundary, restarted = restart$restarted,
        restart_improved = isTRUE(restart$restart_improved))
 }
@@ -525,8 +529,11 @@ compute_observed_information <- function(objective, estimate, fit_bank,
   free <- setdiff(seq_along(estimate), boundary)
   root <- factor_free(free)
   variance_index <- limits$variance_index
+  limit_index <- limits$limit_index %||% integer()
   near_zero <- setdiff(
-    variance_index[estimate[variance_index] <= limits$near_zero_log_variance],
+    c(variance_index[estimate[variance_index] <= limits$near_zero_log_variance],
+      limit_index[estimate[limit_index] <=
+                    limits$near_zero_log_variance - limits$limit_shift]),
     boundary
   )
   if (is.null(root) && !is.null(information) && length(near_zero)) {
@@ -1445,13 +1452,19 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               linked_index = list(),
                               boundary_log_variance = -9,
                               near_zero_log_variance = -4,
+                              limit_index = integer(), limit_shift = 0,
                               coefficient_index = integer(),
                               separation = NULL, messages = FALSE) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   validation_budget <- as.integer(validation_budget)
+  # A parameter of the family held at a limit, the inverse of the size of a
+  # negative binomial family, is judged by the variance thresholds less
+  # `limit_shift`, since what it adds to the variance of a record is relative
+  # to the record's mean.
   limits <- list(
     variance_index = variance_index, linked_index = linked_index,
+    limit_index = limit_index, limit_shift = limit_shift,
     boundary_log_variance = boundary_log_variance,
     near_zero_log_variance = near_zero_log_variance, tolerance = tolerance,
     dispersed = dispersed, coefficient_index = coefficient_index,

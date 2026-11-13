@@ -246,7 +246,8 @@ make_bootstrap_refit <- function(object) {
       fix_var_me = object$fix_var_me, family = family, invlink = invlink,
       start_pars = start, control_mcmc = set_control_mcmc(),
       control_mcml = control_mcml, seed = seed, return_samples = FALSE,
-      messages = FALSE, family_parameters = object$family_parameters
+      messages = FALSE, family_parameters = object$family_parameters,
+      estimated_family = estimated_family_parameters(object)
     )
     fit$D <- design
     fit$family <- family

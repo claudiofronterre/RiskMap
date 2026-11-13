@@ -549,15 +549,33 @@ make_adaptive_mcml_engine <- function(
     kappa = 0.5, cov_offset = NULL, ID_coords = NULL,
     fix_tau2 = FALSE, ID_re = NULL, invlink = NULL,
     defensive_weight = 0.05, proposal = c("global", "laplace"),
-    integrate_noise = FALSE, family_parameters = NULL) {
+    integrate_noise = FALSE, family_parameters = NULL,
+    estimated_family = character()) {
   check_engine_family(family)
   # The records the engine fits, the negative binomial family's as binomial
-  # ones (engine_records()).
-  records <- engine_records(family, y, units_m, cov_offset, family_parameters,
-                            invlink)
-  family <- records$family
-  units_m <- records$units_m
-  cov_offset <- records$offset
+  # ones (engine_records()). With a parameter of the family estimated, as the
+  # size of a negative binomial family, they change with it, so they are
+  # taken at the values of each parameter (records_at()), and the model's own
+  # records are kept for that.
+  model_family <- family
+  model_y <- y
+  model_units <- units_m
+  model_offset <- cov_offset
+  if (length(estimated_family)) {
+    if (is.null(family_traits(family)$kernel_family)) {
+      riskmap_bug("Only a family whose records the engine fits as those of another family can have a parameter estimated by the engine.")
+    }
+    if (isTRUE(integrate_noise)) {
+      riskmap_bug("The tables of the integrated form are built for one set of records, so they can't be used while a parameter of the family is estimated.")
+    }
+    family <- family_traits(family)$kernel_family
+  } else {
+    records <- engine_records(family, y, units_m, cov_offset,
+                              family_parameters, invlink)
+    family <- records$family
+    units_m <- records$units_m
+    cov_offset <- records$offset
+  }
   default_proposal_type <- match.arg(proposal)
   proposal_failures <- 0L
   # The largest change of a factor at the last of the fixed refits of the
@@ -624,7 +642,34 @@ make_adaptive_mcml_engine <- function(
   } else {
     apply(ID_re, 2L, max)
   }
-  layout <- cov_par_layout(p, fix_tau2 = fix_tau2, n_re = n_re)
+  layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
+                           family_parameters = estimated_family, n_re = n_re)
+  # The records at the values of a parameter, with the terms of the
+  # log-likelihood they leave out when those change with an estimated
+  # parameter of the family. Otherwise the records are fixed and the terms
+  # are added to the reported log-likelihood only (glgpm_nong_adaptive()).
+  fixed_records <- list(units_m = units_m, offset = cov_offset)
+  records_at <- if (!length(estimated_family)) {
+    function(values) fixed_records
+  } else {
+    function(values) {
+      parameters <- c(family_parameters, values$family)
+      records <- engine_records(model_family, model_y, model_units,
+                                model_offset %||% numeric(length(model_y)),
+                                parameters)
+      list(units_m = records$units_m, offset = records$offset,
+           constant = log_likelihood_constant(model_family, model_y,
+                                              model_units, parameters))
+    }
+  }
+  # A parameter of the family held at its limit has a slope there
+  # (`limit_slope()`), so the held-variance test can ask whether the
+  # likelihood rises as it leaves it.
+  model_traits <- family_traits(model_family)
+  limit_index <- if (length(estimated_family) &&
+                     is.function(model_traits$limit_slope)) {
+    unlist(layout$index[estimated_family], use.names = FALSE)
+  }
 
   linkf <- make_inverse_link_functions(family, invlink, n)
   model <- make_family(family, linkf)
@@ -655,6 +700,12 @@ make_adaptive_mcml_engine <- function(
       phi = exp(parameters[layout$index$phi]), nugget_ratio = nugget,
       sigma2_re = if (n_re) exp(parameters[layout$index$sigma2_re]) else NULL
     )
+    # The estimated parameters of the family, on their natural scale.
+    if (length(estimated_family)) {
+      values$family <- stats::setNames(lapply(estimated_family, function(name) {
+        family_parameter(name)$natural(parameters[layout$index[[name]]])
+      }), estimated_family)
+    }
     if (integrated) {
       # The variance of each term, zero where it is held, the variances of the
       # classes of integrated records, and the nugget ratio left in the prior
@@ -798,13 +849,14 @@ make_adaptive_mcml_engine <- function(
         precision[cbind(index, index)] <- 1 / values$sigma2_re[j]
       }
     }
-    mu <- as.numeric(D %*% values$beta + cov_offset)
+    records <- records_at(values)
+    mu <- as.numeric(D %*% values$beta + records$offset)
     kernel <- kernel_at(values)
     # A search that fails stops with an error, so the next one starts from
     # the last mode that was found.
     find_mode <- function() {
       approximation <- find_latent_mode(
-        mu = mu, y = y, units_m = units_m, latent_map = latent_map,
+        mu = mu, y = y, units_m = records$units_m, latent_map = latent_map,
         precision = precision, kernel = kernel, start = last_mode
       )
       last_mode <<- approximation$mode
@@ -818,7 +870,8 @@ make_adaptive_mcml_engine <- function(
       approximation
     }
     gaussian <- build_gaussian_proposal(
-      type, mu, y, units_m, latent_map, precision, kernel, anchor, find_mode,
+      type, mu, y, records$units_m, latent_map, precision, kernel, anchor,
+      find_mode,
       if (integrated) stall_tolerance
     )
     builds <<- builds + 1L
@@ -854,7 +907,8 @@ make_adaptive_mcml_engine <- function(
                      spatial_root = prior$root,
                      type = if (is.null(gaussian$factors)) "laplace" else
                        "global",
-                     mu = mu, factors = gaussian$factors)
+                     mu = mu, units_m = records$units_m,
+                     factors = gaussian$factors)
     cached_parameters <<- parameters
     cached_type <<- type
     cached_proposal <<- proposal
@@ -904,14 +958,15 @@ make_adaptive_mcml_engine <- function(
       )
     }
     if (is.null(spatial_root)) return(failed)
-    linear_offset <- as.numeric(D %*% values$beta + cov_offset)
+    target <- records_at(values)
+    linear_offset <- as.numeric(D %*% values$beta + target$offset)
     log_weights <- if (model$compiled) {
       cpp_importance_log_weights(
         draws, proposal$root, proposal$centre, defensive, defensive_share,
         proposal$spatial_root, as.numeric(proposal$values$sigma2_re),
         spatial_root, as.numeric(values$sigma2_re), same_parameters,
         linear_offset, latent_map$columns, random_first, random_size, y,
-        units_m, model$poisson, sites$pointer,
+        target$units_m, model$poisson, sites$pointer,
         values$class_variances %||% numeric(),
         sites$units %||% matrix(0L, 0L, 4L)
       )
@@ -919,9 +974,14 @@ make_adaptive_mcml_engine <- function(
       compute_log_weights_in_r(
         draws, proposal, defensive, defensive_share, values, spatial_root,
         same_parameters, linear_offset, latent, latent_map$columns,
-        function(eta) kernel_at(values)$log_likelihood(eta, y, units_m)
+        function(eta) {
+          kernel_at(values)$log_likelihood(eta, y, target$units_m)
+        }
       )
     }
+    # The terms the records leave out, which change with an estimated
+    # parameter of the family and so belong to every weight.
+    if (length(estimated_family)) log_weights <- log_weights + target$constant
     if (log_weights_only) return(log_weights)
     maximum <- max(log_weights)
     if (model$needs_finite_weight && identical(maximum, -Inf)) return(failed)
@@ -944,7 +1004,8 @@ make_adaptive_mcml_engine <- function(
   # With the spatial variance at zero the nugget ratio says nothing about the
   # nugget itself, so only the other effects can be tested.
   testable_variances <- function(boundary) {
-    tested <- intersect(boundary, as.integer(names(slope_groups)))
+    tested <- intersect(boundary, c(as.integer(names(slope_groups)),
+                                    limit_index))
     if (layout$index$sigma2 %in% boundary) {
       tested <- setdiff(tested, layout$index$nu2)
     }
@@ -970,17 +1031,26 @@ make_adaptive_mcml_engine <- function(
       cpp_site_evaluate(sites$pointer, classes, sites$units, eta, FALSE, 2L)
     }
     vapply(tested, function(parameter) {
+      if (parameter %in% limit_index) {
+        # The slope in 1 / theta at the Poisson limit, from the model's mean
+        # theta exp(eta) of each record, eta being the linear predictor of
+        # its binomial record.
+        theta <- proposal$values$family$theta
+        slopes <- model_traits$limit_slope(rep(y, each = nrow(eta)),
+                                           theta * exp(as.vector(eta)))
+        return(rowSums(matrix(slopes, nrow(eta))))
+      }
       group <- slope_groups[[as.character(parameter)]]
       inner <- inner_records[[as.character(parameter)]]
       if (!length(inner)) {
-        return(compute_slope_terms(eta, y, units_m, model, group,
+        return(compute_slope_terms(eta, y, proposal$units_m, model, group,
                                    derivatives))
       }
       # Records whose term is an inner one take their own slope, and the
       # others the grouped form.
       keep <- !is.na(group)
       grouped <- compute_slope_terms(
-        eta[, keep, drop = FALSE], y[keep], units_m[keep], model,
+        eta[, keep, drop = FALSE], y[keep], proposal$units_m[keep], model,
         group[keep],
         if (!is.null(derivatives)) {
           list(h1 = derivatives$h1[, keep, drop = FALSE],
@@ -995,6 +1065,7 @@ make_adaptive_mcml_engine <- function(
   }
 
   list(evaluate = evaluate, proposal_at = proposal_at, layout = layout,
+       records_at = records_at,
        latent_dimension = latent$dimension, unpack = unpack,
        testable_variances = testable_variances,
        variance_slope_terms = variance_slope_terms,
@@ -1271,10 +1342,12 @@ describe_variance_parameters <- function(index, layout, re_names = NULL) {
       "random-effect variance for '", re_names, "'"
     )
   }
+  # A family parameter held at its boundary, which for the size of a
+  # negative binomial family is its inverse held at zero.
   for (name in layout$family) {
-    labels[as.character(layout$index[[name]])] <- paste0(
-      family_parameter_words(name), " (", name, ")"
-    )
+    descriptor <- family_parameter(name)
+    labels[as.character(layout$index[[name]])] <- descriptor$limit_words %||%
+      paste0(descriptor$words, " (", name, ")")
   }
   # The scale is held only because the spatial variance is zero; it is
   # explained separately rather than listed as a variance component.
@@ -1399,14 +1472,19 @@ penalise_engine <- function(evaluate, penalty) {
 ##' Starting values on the working scale of the MCML engine
 ##'
 ##' Regression coefficients, then the log spatial variance and log scale,
-##' the log nugget ratio when the nugget is estimated, and the log
-##' random-effect variances.
+##' the log nugget ratio when the nugget is estimated, the estimated
+##' parameters of the family named in `family` on their working scale, and
+##' the log random-effect variances.
 ##' @noRd
-make_working_start <- function(reference_pars, fix_tau2) {
+make_working_start <- function(reference_pars, fix_tau2,
+                               family = character()) {
   start <- c(reference_pars$beta, log(reference_pars$sigma2),
              log(reference_pars$phi))
   if (isTRUE(fix_tau2)) {
     start <- c(start, log(reference_pars$tau2 / reference_pars$sigma2))
+  }
+  for (name in family) {
+    start <- c(start, family_parameter(name)$working(reference_pars[[name]]))
   }
   if (length(reference_pars$sigma2_re)) {
     start <- c(start, log(reference_pars$sigma2_re))
@@ -1428,7 +1506,8 @@ make_working_start <- function(reference_pars, fix_tau2) {
 glgpm_nong_adaptive <- function(
     y, D, coords, units_m, kappa, reference_pars, cov_offset,
     ID_coords, ID_re, fix_tau2, family, invlink, control_mcml,
-    seed, messages = TRUE, distance_scale = 1, family_parameters = NULL) {
+    seed, messages = TRUE, distance_scale = 1, family_parameters = NULL,
+    estimated_family = character()) {
   check_engine_family(family)
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
@@ -1436,9 +1515,16 @@ glgpm_nong_adaptive <- function(
 
   # The engine fits the records of `records$family`, the negative binomial
   # family's as binomial ones. The separation of the data, the messages and
-  # the fit's link are the model's.
-  records <- engine_records(family, y, units_m, cov_offset, family_parameters,
-                            invlink)
+  # the fit's link are the model's. With a parameter of the family estimated
+  # the records change with it, so the engine takes the model's records and
+  # builds its own at each value (make_adaptive_mcml_engine()).
+  estimating <- length(estimated_family) > 0L
+  records <- if (estimating) {
+    list(family = family, y = y, units_m = units_m, offset = cov_offset)
+  } else {
+    engine_records(family, y, units_m, cov_offset, family_parameters,
+                   invlink)
+  }
   distances <- as.matrix(pairwise_distances(coords))
   engine_with <- function(integrate_noise) {
     make_adaptive_mcml_engine(
@@ -1448,7 +1534,9 @@ glgpm_nong_adaptive <- function(
       invlink = invlink,
       defensive_weight = control_mcml$defensive_weight %||% 0.05,
       proposal = control_mcml$proposal %||% "global",
-      integrate_noise = integrate_noise
+      integrate_noise = integrate_noise,
+      family_parameters = if (estimating) family_parameters,
+      estimated_family = estimated_family
     )
   }
   # With integrate_noise = "auto", a model with an re() term that can be
@@ -1457,8 +1545,12 @@ glgpm_nong_adaptive <- function(
   # such term is the nugget builds the sampled and the integrated form, and
   # each stage uses one of them (make_switching_mcml_engine()). The threshold
   # can be changed through control_mcml$integrate_threshold, for experiments.
-  automatic <- identical(control_mcml$integrate_noise, "auto")
-  engine <- engine_with(isTRUE(control_mcml$integrate_noise) || automatic)
+  # The tables of the integrated form are built for one set of records, so a
+  # fit that estimates a parameter of the family is sampled.
+  automatic <- identical(control_mcml$integrate_noise, "auto") && !estimating
+  engine <- engine_with(
+    (isTRUE(control_mcml$integrate_noise) && !estimating) || automatic
+  )
   if (automatic && !isTRUE(engine$integrated)) {
     engine <- engine_with(FALSE)
   } else if (automatic && setequal(engine$integrated_terms, "nugget")) {
@@ -1467,7 +1559,8 @@ glgpm_nong_adaptive <- function(
       threshold = control_mcml$integrate_threshold %||% 0.1
     )
   }
-  start <- make_working_start(reference_pars, fix_tau2)
+  start <- make_working_start(reference_pars, fix_tau2,
+                              family = estimated_family)
   # Coordinates and the initial scale are rescaled before this function is
   # called. These broad bounds prevent overflow without constraining any
   # scientifically plausible fit on the internal scale.
@@ -1516,7 +1609,10 @@ glgpm_nong_adaptive <- function(
     # The screen of short scales and the exact alarms need the likelihood
     # with independent location effects, computed exactly without
     # unstructured random effects. A custom link supplies its own terms.
-    if (is.null(ID_re)) {
+    # They also take the records at one value of the family's parameters.
+    if (estimating) {
+      dispersed$screen_unavailable <- "an estimated parameter of the family"
+    } else if (is.null(ID_re)) {
       dispersed$screen <- make_short_scale_screen(
         engine,
         make_independent_site_likelihood(
@@ -1542,6 +1638,13 @@ glgpm_nong_adaptive <- function(
     variance_index = unlist(engine$layout$index[c("sigma2", "nu2",
                                                   "sigma2_re")],
                             use.names = FALSE),
+    # A parameter of the family is held at its limit, the size of a negative
+    # binomial family at the Poisson limit. Its inverse adds mean / theta to
+    # the variance of a record relative to its mean, so it is judged on the
+    # scale of the mean count.
+    limit_index = unlist(engine$layout$index[estimated_family],
+                         use.names = FALSE),
+    limit_shift = log(max(1, mean(y))),
     linked_index = stats::setNames(
       list(engine$layout$index$phi), engine$layout$index$sigma2
     ),
@@ -1572,6 +1675,7 @@ glgpm_nong_adaptive <- function(
   result <- assemble_mcml_result(
     fit, laplace, boundary_names, D, fix_tau2, re_names, family, invlink,
     length(y), pc_prior, fit_seed, small_scale,
+    family_block = estimated_family,
     integration = list(
       used = engine$integrated,
       locations = engine$integrated_locations,
@@ -1582,9 +1686,12 @@ glgpm_nong_adaptive <- function(
     )
   )
   # The terms the engine's records leave out, zero for a family it fits as
-  # itself.
-  result$log_lik <- result$log_lik +
-    log_likelihood_constant(family, y, family_parameters)
+  # itself, and already in the weights when they change with an estimated
+  # parameter of the family.
+  if (!estimating) {
+    result$log_lik <- result$log_lik +
+      log_likelihood_constant(family, y, units_m, family_parameters)
+  }
   result
 }
 
@@ -1659,11 +1766,12 @@ compute_practical_range_factor <- function(kappa, correlation = 0.05) {
 assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
                                  re_names, family, invlink, n_observations,
                                  pc_prior, fit_seed, small_scale = NULL,
-                                 integration = NULL) {
+                                 integration = NULL,
+                                 family_block = character()) {
   last <- fit$history[[length(fit$history)]]
   estimate <- structure_estimate(
     fit$estimate, beta_names = colnames(D), fix_tau2 = fix_tau2,
-    re_names = re_names
+    family_parameters = family_block, re_names = re_names
   )
   covariance <- fit$covariance
   if (is.null(covariance)) {
