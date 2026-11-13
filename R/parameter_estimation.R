@@ -1246,8 +1246,7 @@ softplus <- function(x) {
 ##' Constants that do not depend on the candidate are retained for clarity.
 ##' The comparison is only used to choose an initial posterior reference; it is
 ##' not reported as the fitted model likelihood. The model has no `re()`
-##' terms (`select_nongaussian_start()`). The value is unnamed, since
-##' `select_nongaussian_start()` reads the two values by name.
+##' terms (`select_nongaussian_start()`).
 ##'
 ##' @noRd
 starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
@@ -1297,9 +1296,9 @@ starting_laplace_log_marginal <- function(candidate, y, units_m, D, coords,
     laplace$Sigma.tilde,
     "starting-value Laplace covariance"
   )
-  unname(log_likelihood + log_prior +
-           0.5 * length(mode) * log(2 * pi) +
-           0.5 * log_determinant_from_cholesky(laplace_root))
+  log_likelihood + log_prior +
+    0.5 * length(mode) * log(2 * pi) +
+    0.5 * log_determinant_from_cholesky(laplace_root)
 }
 
 ##' Select between the existing and transformed-Gaussian starting values
@@ -1426,16 +1425,19 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     ))
   }
 
+  # The two values are read by name, so their own names are dropped. With
+  # re() terms the second carried the name of the term, which made
+  # scores["transformed_gaussian"] missing.
   scores <- tryCatch(
     c(
-      current = starting_laplace_log_marginal(
+      current = unname(starting_laplace_log_marginal(
         current, y, units_m, D, coords, ID_coords, family, kappa, cov_offset,
         fix_tau2
-      ),
-      transformed_gaussian = starting_laplace_log_marginal(
+      )),
+      transformed_gaussian = unname(starting_laplace_log_marginal(
         transformed, y, units_m, D, coords, ID_coords, family, kappa,
         cov_offset, fix_tau2
-      )
+      ))
     ),
     error = identity
   )
@@ -1476,7 +1478,8 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
 ##' Where every location has one record, the records as they are. Otherwise
 ##' the totals of each location, in the order of the rows of `coords`: the
 ##' sums of the responses and of the denominators, and the rows of the design
-##' matrix and the offsets averaged with the denominators as weights. The
+##' matrix and the offsets averaged with the denominators as weights, or with
+##' equal weights at a location whose denominators are all zero. The
 ##' Gaussian model fitted to them has no more observations than locations,
 ##' and the empirical link of a total follows the proportion at the location,
 ##' where that of a binary record, as of a child in a household, is always
@@ -1492,10 +1495,12 @@ location_totals <- function(y, units_m, D, offset, ID_coords, s_unique) {
     rowsum(as.matrix(values), location, reorder = TRUE)
   }
   units <- as.numeric(total(units_m))
-  design <- total(D * units_m) / units
+  weights <- ifelse(units[ID_coords] > 0, units_m, 1)
+  weight_totals <- as.numeric(total(weights))
+  design <- total(D * weights) / weight_totals
   dimnames(design) <- list(NULL, colnames(D))
   list(y = as.numeric(total(y)), units_m = units, D = design,
-       offset = as.numeric(total(offset * units_m)) / units,
+       offset = as.numeric(total(offset * weights)) / weight_totals,
        ID_coords = seq_along(units), s_unique = seq_along(units))
 }
 

@@ -46,10 +46,22 @@ summarise_mcml_fit <- function(object) {
     refit_change = last$refit_change %||% NA_real_,
     suggest_integration = suggests_integration(object, optimizer),
     starting_values = attr(object, "starting_values")$selected,
-    starting_reason = attr(object, "starting_values")$reason
+    starting_reason = starting_reason(attr(object, "starting_values"))
   )
   mcml$checks_to_review <- sum(list_fit_checks(object, mcml)$status != "OK")
   mcml
+}
+
+##' Why a fit kept the default starting values, from its diagnostics
+##'
+##' The `reason` that `select_nongaussian_start()` records, or
+##' `"not_recorded"` for a fit saved before reasons were recorded that kept
+##' the defaults with a `fallback_reason`, as every fit with `re()` terms did.
+##' NULL when there is no reason, as when the comparison chose the start.
+##' @noRd
+starting_reason <- function(diagnostics) {
+  if (!is.null(diagnostics$reason)) return(diagnostics$reason)
+  if (!is.null(diagnostics$fallback_reason)) "not_recorded"
 }
 
 ##' Whether `check_fit()` suggests integrating the nugget out

@@ -30,8 +30,12 @@ of checks of \code{\link{check_fit}} that need a look,
 (\code{"user"}, given in \code{start_pars}, \code{"current"}, RiskMap's
 defaults, or \code{"transformed_gaussian"}, a Gaussian fit to the
 transformed data, see \code{\link{glgpm}}), and \code{starting_reason},
-why the defaults were used without a comparison or after a failed one
-(\code{NULL} when the two were compared). \code{mcml} is
+why the defaults were kept other than by being preferred in that
+comparison, such as \code{"re_terms"} when it is not made for a model
+with \code{re()} terms, \code{"transformed_failed"} when the Gaussian fit
+failed, or \code{"not_recorded"} for a fit saved by an earlier version
+that did not record why (\code{NULL} when the comparison chose the
+start). \code{mcml} is
 \code{NULL} for Gaussian models. The parameters of the family, such as
 the measurement error variance of a Gaussian model, are in
 \code{family_parameters}, a table of those that were estimated, and

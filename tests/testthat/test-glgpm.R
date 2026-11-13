@@ -474,10 +474,16 @@ test_that("glgpm produces expected output for binomial models", {
 test_that("a model with re() terms keeps the default start without fitting a Gaussian model", {
   # The transformed-Gaussian candidate of such a model was fitted with dense
   # matrices over all the records or all the levels of the terms, and the
-  # comparison could never choose it.
+  # comparison could never choose it. The calls are counted, since an error
+  # in either would only be caught as a failed comparison.
+  calls <- 0L
   local_mocked_bindings(
-    glgpm_lm = function(...) stop("the Gaussian model was fitted"),
+    glgpm_lm = function(...) {
+      calls <<- calls + 1L
+      stop("the Gaussian model was fitted")
+    },
     starting_laplace_log_marginal = function(...) {
+      calls <<- calls + 1L
       stop("the starting values were compared")
     }
   )
@@ -493,7 +499,9 @@ test_that("a model with re() terms keeps the default start without fitting a Gau
   }
   for (family in c("binomial", "poisson")) {
     fit <- fit_with(family)
+    expect_identical(calls, 0L)
     expect_identical(attr(fit, "starting_values")$selected, "current")
+    expect_identical(attr(fit, "starting_values")$reason, "re_terms")
     # The default start, as when it is given.
     given <- fit_with(family, list(sigma2_re = 1))
     expect_identical(fit$estimate, given$estimate)
@@ -520,6 +528,12 @@ test_that("the transformed-Gaussian start is fitted to the totals of each locati
   expect_equal(totals$offset, c(0, 6 / 8))
   expect_identical(totals$ID_coords, 1:2)
   expect_identical(totals$s_unique, 1:2)
+  # A location whose denominators are all zero averages with equal weights.
+  totals <- location_totals(c(1, 0, 0, 0), c(2, 6, 0, 0), design,
+                            c(0, 1, 0, 1), c(2L, 2L, 1L, 1L), c(2L, 1L))
+  expect_identical(totals$units_m, c(0, 8))
+  expect_equal(totals$D[1, ], c("(Intercept)" = 1, x = 3))
+  expect_equal(totals$offset, c(0.5, 6 / 8))
 
   # In a fit, the Gaussian model has one observation per location.
   data <- binomial_data[rep(seq_len(nrow(binomial_data)), each = 2), ]
@@ -536,18 +550,24 @@ test_that("the transformed-Gaussian start is fitted to the totals of each locati
   expect_match(attr(fit, "starting_values")$fallback_reason, "recorded")
 })
 
-test_that("the Laplace value of a starting candidate is unnamed", {
-  # A named value made scores["transformed_gaussian"] missing.
-  candidate <- list(beta = c(a = 0.2, b = 0.3), sigma2 = c(s = 1),
-                    phi = c(p = 2000))
-  value <- starting_laplace_log_marginal(
-    candidate, binomial_data$y, binomial_data$denominator,
-    cbind(1, binomial_data$cov), sf::st_coordinates(binomial_data),
-    seq_len(nrow(binomial_data)), "binomial", 0.5,
-    numeric(nrow(binomial_data))
-  )
-  expect_null(names(value))
-  expect_true(is.finite(value))
+test_that("the comparison of starts reads named Laplace values", {
+  # With re() terms the transformed candidate's value carried the name of the
+  # term, so scores["transformed_gaussian"] was missing and the defaults were
+  # always kept.
+  value <- 0
+  local_mocked_bindings(starting_laplace_log_marginal = function(...) {
+    value <<- value + 1
+    c(hh = -10 + value)
+  })
+  fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+               denominator = denominator, control_mcmc = control_mcmc,
+               seed = fixture_seed, control_mcml = fixture_control_mcml,
+               return_samples = FALSE, messages = FALSE)
+  diagnostics <- attr(fit, "starting_values")
+  expect_identical(diagnostics$selected, "transformed_gaussian")
+  expect_identical(diagnostics$current_laplace, -9)
+  expect_identical(diagnostics$transformed_laplace, -8)
+  expect_null(diagnostics$reason)
 })
 
 test_that("transformed starts preserve an estimated nugget", {

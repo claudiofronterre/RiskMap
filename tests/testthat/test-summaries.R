@@ -644,6 +644,21 @@ test_that("the summary of a fit says where its starting values came from, and wh
   expect_false(any(sentences == "The starting values were RiskMap's defaults."))
   # A fit saved by an earlier version doesn't record them.
   expect_null(describe_starting_values(NULL))
+  expect_identical(describe_starting_values("current", "not_recorded"),
+                   "The starting values were RiskMap's defaults.")
+  # One saved after the comparison was added but before reasons were, with
+  # re() terms, kept the defaults with a fallback reason and no other.
+  old <- binomial_model
+  attr(old, "starting_values") <- list(
+    selected = "current", current_laplace = -100, transformed_laplace = NA,
+    fallback_reason = "transformed Gaussian candidate had a non-finite Laplace value"
+  )
+  expect_identical(summary(old)$mcml$starting_reason, "not_recorded")
+  expect_match(squish(capture.output(print(summary(old)))),
+               "The starting values were RiskMap's defaults.", fixed = TRUE)
+  # One where the comparison chose the defaults records neither.
+  attr(old, "starting_values")$fallback_reason <- NULL
+  expect_null(summary(old)$mcml$starting_reason)
 
   # The fixture has an re() term.
   fitted <- summary(binomial_model)
