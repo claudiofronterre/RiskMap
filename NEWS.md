@@ -68,8 +68,7 @@ information sign, a step done has a tick, such as a certified fit or a
 finished bootstrap, and something to note has an exclamation mark. `glgpm()`
 says in one message which coordinate reference system the model is fitted in
 and the units of distance. For data in longitude and latitude this is the
-message on their projection, which also says how to choose another, so a fit
-starts with one message where it had three.
+message on their projection, which also says how to choose another.
 - A joint prediction in blocks warns once when the covariances of some
 blocks needed a diagonal jitter to be factorised, with how many blocks and
 the largest jitter, instead of once for each block.
@@ -141,12 +140,13 @@ SUSPICIOUS and PROBLEM, which stay in the column `status` of the element
 column.
 - RiskMap now needs cli 3.6.0 or later, for the links to help pages.
 - The `summary()` of a binomial, Poisson or negative binomial fit says where
-its starting values came from. They were given in `start_pars`, or were
-RiskMap's defaults, or came from a Gaussian fit to the transformed data, which
-`glgpm()` uses when the Laplace approximation of the likelihood prefers them.
-The choice is in the new element `starting_values` of `mcml`. `glgpm()` no
-longer says "Using transformed-Gaussian automatic starting values." when it
-makes that choice.
+its starting values came from. Either they were given in `start_pars`, with
+RiskMap's defaults for any not given, or they were all RiskMap's defaults, or
+they came from a Gaussian fit to the transformed data, which `glgpm()` uses
+when the Laplace approximation of the likelihood prefers them. The choice is
+in the new element `starting_values` of `mcml`. `glgpm()` no longer says
+"Using transformed-Gaussian automatic starting values." when it makes that
+choice.
 - In a console with colours, the labels of rows that line up labels and
 values, such as the log-likelihood, the settings of a prediction or the
 evidence of `check_fit()`, are grey, so that the values stand out.

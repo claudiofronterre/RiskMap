@@ -298,8 +298,14 @@ test_that("a fit in longitude and latitude says where it is fitted once", {
                fixed = TRUE)
   # The fit records where its starting values came from, and summary() says
   # it, so the fit doesn't announce it.
-  expect_false(is.null(attr(lonlat$value, "starting_values")$selected))
+  # This fit takes the transformed-Gaussian start, the case that had a
+  # message, so its absence here shows the message is gone.
+  expect_identical(attr(lonlat$value, "starting_values")$selected,
+                   "transformed_gaussian")
   expect_false(any(grepl("starting values", lonlat$messages, fixed = TRUE)))
+  expect_match(squish(capture.output(print(summary(lonlat$value)))),
+               "The starting values came from a Gaussian fit to the transformed data.",
+               fixed = TRUE)
   # Projected data get the line on where the model is fitted instead.
   projected <- fit_to(binomial_data)
   expect_identical(grep("EPSG|fitted in", projected$messages, value = TRUE),

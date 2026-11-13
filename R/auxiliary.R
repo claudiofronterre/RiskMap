@@ -646,7 +646,8 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   shape of the certification draws), \code{checks_to_review}, the number
 ##'   of checks of \code{\link{check_fit}} that need a look, and
 ##'   \code{starting_values}, where the starting values came from:
-##'   \code{"user"} (given in \code{start_pars}), \code{"current"} (RiskMap's
+##'   \code{"user"} (some or all given in \code{start_pars}, with RiskMap's
+##'   defaults for the others), \code{"current"} (RiskMap's
 ##'   defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the
 ##'   transformed data, which \code{glgpm()} uses when the Laplace
 ##'   approximation of the likelihood prefers it to the defaults). \code{mcml} is
@@ -993,7 +994,8 @@ describe_starting_values <- function(selected) {
          transformed_gaussian = paste("The starting values came from a",
                                       "Gaussian fit to the transformed data."),
          current = "The starting values were RiskMap's defaults.",
-         user = "The starting values were given in `start_pars`.",
+         user = paste("The starting values were those given in",
+                      "`start_pars`, with RiskMap's defaults for any others."),
          NULL)
 }
 

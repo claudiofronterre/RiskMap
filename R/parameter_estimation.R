@@ -43,7 +43,7 @@
 ##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
 ##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
 ##' reprojected to the CRS from [propose_crs()], a UTM zone or a projection centred on the data,
-##' and a message reports the conversion used and its distortion of distances.
+##' and a message names the CRS and the units of distance.
 ##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
 ##' A warning of class `riskmap_warning_crs` is raised when the CRS used distorts distances
 ##' by more than 1% over the data.

@@ -48,8 +48,8 @@ caller's random-number state is restored before the function returns.}
 
 \item{distance_crs}{\code{NULL} to retain an existing projected CRS, or
 automatically reproject longitude/latitude data to the CRS from
-\code{\link[=propose_crs]{propose_crs()}} (with a message reporting the choice and its distortion of
-distances). Alternatively, a CRS to reproject \code{data} to, which must itself
+\code{\link[=propose_crs]{propose_crs()}} (with a message naming the CRS and the units of
+distance). Alternatively, a CRS to reproject \code{data} to, which must itself
 be projected. A warning of class \code{riskmap_warning_crs} is raised when the
 CRS used distorts distances by more than 1\% over the data.}
 

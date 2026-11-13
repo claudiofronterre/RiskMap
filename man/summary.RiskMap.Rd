@@ -27,7 +27,8 @@ last stage), \code{certification_bank} (the effective draws and Pareto
 shape of the certification draws), \code{checks_to_review}, the number
 of checks of \code{\link{check_fit}} that need a look, and
 \code{starting_values}, where the starting values came from:
-\code{"user"} (given in \code{start_pars}), \code{"current"} (RiskMap's
+\code{"user"} (some or all given in \code{start_pars}, with RiskMap's
+defaults for the others), \code{"current"} (RiskMap's
 defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the
 transformed data, which \code{glgpm()} uses when the Laplace
 approximation of the likelihood prefers it to the defaults). \code{mcml} is

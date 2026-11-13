@@ -47,7 +47,7 @@
 ##' The CRS is inherited from `boundaries`, or from `raster` when it is
 ##' supplied. If `boundaries` is in longitude/latitude and no raster is given,
 ##' it is automatically reprojected to the CRS from [propose_crs()] and a
-##' message reports the conversion used and its distortion of distances;
+##' message names the CRS and the units of distance;
 ##' transform `boundaries` to a projected CRS yourself first to use a
 ##' different one. A warning of class `riskmap_warning_crs` is raised when the
 ##' CRS used distorts distances by more than 1% over `boundaries`, or over the
