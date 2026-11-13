@@ -177,6 +177,7 @@ test_that("common links given as functions are differentiated exactly", {
   within_rounding <- function(value, truth) {
     max(abs(value - truth) / (1e-12 * abs(truth) + 1e-16))
   }
+  rules_before <- as.list(Deriv::drule, all.names = TRUE)
   for (name in names(links)) {
     link <- links[[name]]
     derived <- make_inverse_link_functions("binomial", link$inv, 5)
@@ -185,29 +186,70 @@ test_that("common links given as functions are differentiated exactly", {
     expect_lt(within_rounding(derived$d2(eta), link$d2(eta)), 1,
               label = paste(name, "d2"))
   }
+  ## A bare exp, the inverse of the log link of counts.
+  derived <- make_inverse_link_functions("poisson", exp, 5)
+  expect_lt(within_rounding(derived$d1(eta), exp(eta)), 1, label = "exp d1")
+  expect_lt(within_rounding(derived$d2(eta), exp(eta)), 1, label = "exp d2")
   ## Deriv's own table is left as it was.
-  for (name in c("plogis", "dlogis", "pt", "dt", "pcauchy", "dcauchy")) {
-    expect_null(Deriv::drule[[name]], label = name)
-  }
+  expect_identical(as.list(Deriv::drule, all.names = TRUE), rules_before)
 })
 
 test_that("a call with arguments outside the rules is differentiated numerically", {
   ## Deriv applies a rule for the first argument whatever the others, so it
   ## would give dlogis(eta) for each of the first four. The check against the
   ## numerical derivative sends them to the numerical path instead.
+  ## The last three are close to the defaults or small, which a check by the
+  ## mean relative difference let through.
   outside <- list(
     function(eta) plogis(eta, location = 1),
     function(eta) plogis(eta, 0, 2),
     function(eta) plogis(eta, lower.tail = FALSE),
     function(eta) plogis(eta, log.p = TRUE),
     function(eta) pt(eta, 4, ncp = 1),
-    function(eta) pcauchy(eta, scale = 3)
+    function(eta) pcauchy(eta, scale = 3),
+    function(eta) plogis(eta, location = 3e-4),
+    function(eta) plogis(eta, scale = 1.0001),
+    function(eta) 5e-4 * plogis(eta, scale = 2)
   )
   eta <- c(-4, -1, -1e-3, 0, 0.5, 2, 7)
   for (f in outside) {
     expect_identical(differentiate(f, 5)(eta),
                      compute_richardson_derivative(f, eta),
                      label = deparse(body(f)))
+  }
+})
+
+test_that("a link's own variables are found, whatever their names", {
+  ## The derivative is evaluated under the link's environment, so a link
+  ## built inside a function is differentiated exactly, and a variable named
+  ## like one of differentiate()'s does not change it.
+  make_link <- function(sens) function(eta) 0.01 + sens * plogis(eta)
+  shadowed <- local({
+    exact <- 0.89
+    probe <- 2
+    numerical <- 1
+    named <- "x"
+    function(eta) 0.01 + exact * plogis(eta)
+  })
+  eta <- c(-30, -2, -1e-4, 0, 0.5, 3, 30)
+  for (link in list(make_link(0.89), shadowed)) {
+    derived <- make_inverse_link_functions("binomial", link, 100)
+    expect_identical(derived$d1(eta), 0.89 * dlogis(eta))
+    ## Deriv orders the product by the variable's name, so only rounding
+    ## differs.
+    expect_equal(derived$d2(eta), 0.89 * ((1 - 2 * plogis(eta)) * dlogis(eta)),
+                 tolerance = 1e-14)
+  }
+})
+
+test_that("a link that Deriv differentiates with its own rules keeps that derivative", {
+  ## The check against the numerical derivative is only for the new rules,
+  ## so a link with a kink at a point of its probe keeps Deriv's derivative.
+  laplace <- function(eta) ifelse(eta < 0, 0.5 * exp(eta), 1 - 0.5 * exp(-eta))
+  eta <- c(-2, -2e-5, -1e-6, 0, 1e-6, 2e-5, 2)
+  for (f in list(laplace, function(eta) pnorm(eta))) {
+    expected <- Deriv::Deriv(function(eta) f(eta), "eta")
+    expect_identical(differentiate(f, 5)(eta), expected(eta))
   }
 })
 

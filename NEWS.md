@@ -699,15 +699,18 @@ path.
 
 - A custom inverse link built from `plogis`, `pt` or `pcauchy`, such as
 `function(eta) 0.01 + 0.89 * plogis(eta)` for an imperfect test or
-`function(eta) pt(eta, 4)`, and a bare `invlink = pnorm`, `plogis` or
-`pcauchy`, now has exact derivatives, as a link built from `pnorm` or `exp`
+`function(eta) pt(eta, 4)`, and a bare `invlink = pnorm`, `plogis`, `pcauchy`
+or `exp`, now has exact derivatives, as a link built from `pnorm` or `exp`
 already had. `Deriv` has no rules for these functions and cannot read the
-compiled body of a bare distribution function, so their derivatives were
-numerical. Numerical derivatives are accurate but not smooth, and the search
-for starting values by the Laplace approximation, which differences the
+compiled body of a bare function, so their derivatives were numerical.
+Numerical derivatives are accurate but not smooth, and the search for
+starting values by the Laplace approximation, which differences the
 approximation, could stop short of its maximum. A call of these functions
 with a location, scale, tail or logarithm other than the default is still
-differentiated numerically. In 31 paired fits every outcome was the same and
+differentiated numerically. A link built inside another function, such as
+`make_link <- function(sens) function(eta) 0.01 + sens * plogis(eta)`, is now
+differentiated exactly too, where its derivatives were numerical because
+they could not find the link's own variables. In 31 paired fits every outcome was the same and
 the starting values were better in 24 of 30 and worse in none, and `plogis`
 given as a function now reproduces the fits of the canonical logit link to
 within 1e-6 standard errors.
