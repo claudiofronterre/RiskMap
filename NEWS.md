@@ -113,6 +113,15 @@ SUSPICIOUS and PROBLEM, which stay in the column `status` of the element
 `checks`. Code that searched the printed checks for them should read that
 column.
 - RiskMap now needs cli 3.6.0 or later, for the links to help pages.
+- Printing the result of `assess_prediction()` gives the models, the test
+sets, how the parameters were set and the scores averaged over the test sets,
+instead of the whole list of scores and test sets. Its `summary()` gives the
+averages and the scores of each test set as tables, instead of a line for
+each score.
+- The summary of `parametric_bootstrap()`, the profiles of `profile()`, the
+variogram of `variogram()` and the distances of `summarise_distance()` are
+printed in the same style. The variogram also says in how many distance
+classes it lies outside the envelope.
 
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.

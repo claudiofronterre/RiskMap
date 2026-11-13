@@ -397,14 +397,13 @@ print.RiskMap_bootstrap <- function(x, ...) {
 ##' @method print summary.RiskMap_bootstrap
 ##' @export
 print.summary.RiskMap_bootstrap <- function(x, ...) {
-  family <- c(gaussian = "linear", binomial = "binomial",
-              poisson = "Poisson")[[x$family]]
-  cat("Parametric bootstrap of a ", family, " geostatistical model: ",
-      x$n_sim, " replicates (seed ", x$seed, ")\n", sep = "")
-  if (x$n_failed > 0L) {
-    cat(x$n_failed, " refits failed and are left out\n", sep = "")
-  }
-  cat("Variances and the scale on their natural scale\n")
+  out_print(format_bootstrap_summary(x))
+  invisible(x)
+}
+
+##' The lines that print the summary of a parametric bootstrap
+##' @noRd
+format_bootstrap_summary <- function(x) {
   significant <- function(values) {
     ifelse(is.na(values), "NA", vapply(signif(values, 4), format, ""))
   }
@@ -417,9 +416,6 @@ print.summary.RiskMap_bootstrap <- function(x, ...) {
     Below = sprintf("%.2f", x$table$below),
     check.names = FALSE
   )
-  cat("\nBootstrap distribution (bias: mean minus estimate; below: proportion",
-      "below the\nestimate)\n")
-  print(distribution, row.names = FALSE, right = TRUE)
   intervals <- data.frame(
     Parameter = x$table$label,
     "Percentile lower" = significant(x$table$percentile_lower),
@@ -428,14 +424,32 @@ print.summary.RiskMap_bootstrap <- function(x, ...) {
     "BC upper" = significant(x$table$bc_upper),
     check.names = FALSE
   )
-  cat("\n", round(100 * x$level), "% intervals: percentile and ",
-      "bias-corrected (BC)\n", sep = "")
-  print(intervals, row.names = FALSE, right = TRUE)
-  if (anyNA(x$table[, c("bc_lower", "bc_upper")])) {
-    cat("\nNA: every bootstrap estimate is on one side of the estimate, so",
-        "the BC interval\nis not available.\n")
+  failed <- if (x$n_failed > 0L) {
+    c("!" = paste0(x$n_failed, if (x$n_failed == 1L) " refit" else " refits",
+                   " failed and ", if (x$n_failed == 1L) "is" else "are",
+                   " left out."))
   }
-  invisible(x)
+  no_bc <- if (anyNA(x$table[, c("bc_lower", "bc_upper")])) {
+    c(i = paste0("NA means that every bootstrap estimate is on one side of ",
+                 "the estimate, so the BC interval is not available."))
+  }
+  c(out_rule("Parametric bootstrap"),
+    out_text(paste0(model_title(fit_traits(x)), ", ",
+                    format_count(x$n_sim), " replicates (seed ", x$seed,
+                    "). Variances and the scale are on their natural ",
+                    "scale.")),
+    out_bullets(failed),
+    "",
+    out_heading("Bootstrap distribution"),
+    out_capture(print(distribution, row.names = FALSE, right = TRUE)),
+    out_bullets(c(i = paste0("Bias is the mean of the bootstrap estimates ",
+                             "minus the estimate, and Below the proportion ",
+                             "of them below the estimate."))),
+    "",
+    out_heading(paste0(round(100 * x$level), "% intervals, percentile and ",
+                       "bias-corrected (BC)")),
+    out_capture(print(intervals, row.names = FALSE, right = TRUE)),
+    out_bullets(no_bc))
 }
 
 ##' Plot a parametric bootstrap

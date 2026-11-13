@@ -179,48 +179,31 @@
     Code
       print(scores)
     Output
-      Summary of Cross-Validation Scores
-      ----------------------------------
-      Model: model_a
-        Test Set 1:
-          CRPS: 0.2500
-          SCRPS: -0.7500
-        Test Set 2:
-          CRPS: 0.3500
-          SCRPS: -0.8500
-        Overall average across test sets:
-          CRPS: 0.3000
-          SCRPS: -0.8000
+      -- Cross-validation scores -----------------------------------------------------
       
-      Model: model_b
-        Test Set 1:
-          CRPS: 0.4000
-          SCRPS: -0.9000
-        Test Set 2:
-          CRPS: 0.5000
-          SCRPS: -1.0000
-        Overall average across test sets:
-          CRPS: 0.4500
-          SCRPS: -0.9500
+      Averages over the test sets, weighted by their sizes
+         Model   CRPS   SCRPS
+       model_a 0.3000 -0.8000
+       model_b 0.4500 -0.9500
       
+      By test set
+         Model Test set   CRPS   SCRPS
+       model_a        1 0.2500 -0.7500
+       model_a        2 0.3500 -0.8500
+       model_b        1 0.4000 -0.9000
+       model_b        2 0.5000 -1.0000
 
 ---
 
     Code
       print(scores)
     Output
-      Summary of Cross-Validation Scores
-      ----------------------------------
-      Model: model_a
-        Overall average across test sets:
-          CRPS: 0.3000
-          SCRPS: -0.8000
+      -- Cross-validation scores -----------------------------------------------------
       
-      Model: model_b
-        Overall average across test sets:
-          CRPS: 0.4500
-          SCRPS: -0.9500
-      
+      Averages over the test sets, weighted by their sizes
+         Model   CRPS   SCRPS
+       model_a 0.3000 -0.8000
+       model_b 0.4500 -0.9500
 
 # print.summary.RiskMap_assess_simulation formats one spatial scale
 

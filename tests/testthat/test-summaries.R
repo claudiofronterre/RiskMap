@@ -411,6 +411,38 @@ test_that("summary.RiskMap_cross_validation summarises assess_prediction output"
   expect_true(all(is.finite(cross_validation_summary)))
 })
 
+test_that("print.RiskMap_cross_validation gives the averages, not the raw list", {
+  printed <- capture.output(result <- print(cross_validation))
+  expect_identical(result, cross_validation)
+  expect_match(printed[1L], "Cross-validation", fixed = TRUE)
+  sizes <- vapply(cross_validation$test_set, NROW, integer(1))
+  expect_match(squish(printed),
+               paste0("2 models assessed on ", length(sizes), " test sets? of "))
+  expect_true(any(startsWith(trimws(printed), "model_a ")))
+  expect_true(any(startsWith(trimws(printed), "model_b ")))
+  expect_match(squish(printed), paste(
+    "`summary()` gives the scores of each test set, and `plot()` maps the",
+    "scores at the test locations and draws the calibration curve."
+  ), fixed = TRUE)
+  expect_lt(length(printed), 20L)
+  expect_false(any(grepl("$test_set", printed, fixed = TRUE)))
+})
+
+test_that("the print of a cross-validation describes its test sets", {
+  expect_identical(describe_test_sets(c(80L, 20L)),
+                   "2 test sets of 80 and 20 observations")
+  expect_identical(describe_test_sets(rep(50L, 10L)),
+                   "10 test sets of 50 observations each")
+  expect_identical(describe_test_sets(1L), "1 test set of 1 observation")
+  expect_identical(describe_test_sets(rep(1L, 20L)),
+                   "20 test sets of 1 observation each")
+  expect_identical(describe_test_sets(c(8L, 12L, 9L, 10L)),
+                   "4 test sets of 8 to 12 observations")
+  # A failed assessment leaves no scores, printed as NA and not NaN.
+  expect_identical(format_cv_score(c(0.12345, NaN, NA)),
+                   c("0.1235", "NA", "NA"))
+})
+
 test_that("print.summary.RiskMap_cross_validation formats scores by model", {
   scores <- matrix(c(0.3, 0.45, -0.8, -0.95), nrow = 2,
                    dimnames = list(c("model_a", "model_b"), c("CRPS", "SCRPS")))
@@ -568,7 +600,10 @@ test_that("summary.RiskMap_cross_validation weights every metric by test-set siz
   expect_equal(pit_summary["model_a", "PIT_area"], (0.1 + 3 * 0.3) / 4)
   expect_false(attr(pit_summary, "keep_par_fixed"))
   expect_identical(attr(pit_summary, "n_failed"), 1L)
-  expect_output(print(pit_summary), "Parameters: re-estimated in each training set")
   expect_output(print(pit_summary),
-                "Failed test-set assessments \\(scores missing\\): 1")
+                "Parameters are re-estimated in each training set.",
+                fixed = TRUE)
+  expect_output(print(pit_summary),
+                "1 test-set assessment failed, and its scores are missing.",
+                fixed = TRUE)
 })

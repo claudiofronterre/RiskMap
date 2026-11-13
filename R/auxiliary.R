@@ -1259,57 +1259,135 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
 ##' @export
 ##' @method print summary.RiskMap_cross_validation
 print.summary.RiskMap_cross_validation <- function(x, ...) {
-  # Extract attributes
-  test_set_means <- attr(x, "test_set_means")
-  overall_averages <- attr(x, "overall_averages")
-  view_all <- attr(x, "view_all")
-
-  cat("Summary of Cross-Validation Scores\n")
-  cat("----------------------------------\n")
-
-  keep_par_fixed <- attr(x, "keep_par_fixed")
-  if (!is.null(keep_par_fixed)) {
-    cat(sprintf("Parameters: %s\n", if (keep_par_fixed) {
-      "fixed at the estimates from all the data"
-    } else {
-      "re-estimated in each training set"
-    }))
-  }
-  n_failed <- attr(x, "n_failed")
-  if (!is.null(n_failed) && n_failed > 0) {
-    cat(sprintf("Failed test-set assessments (scores missing): %d\n", n_failed))
-  }
-  if (!is.null(keep_par_fixed) || isTRUE(n_failed > 0)) cat("\n")
-
-  for (model_name in names(test_set_means)) {
-    cat(sprintf("Model: %s\n", model_name))
-
-    if (view_all) {
-      # Print scores for each test set
-      model_test_set_means <- test_set_means[[model_name]]
-      n_test_sets <- length(model_test_set_means[[1]])  # Number of test sets (assumes all metrics have same length)
-
-      for (test_set_idx in seq_len(n_test_sets)) {
-        cat(sprintf("  Test Set %d:\n", test_set_idx))
-        for (metric_idx in seq_along(model_test_set_means)) {
-          metric_name <- colnames(x)[metric_idx]
-          test_set_value <- model_test_set_means[[metric_idx]][test_set_idx]
-          cat(sprintf("    %s: %.4f\n", metric_name, test_set_value))
-        }
-      }
-    }
-
-    # Print overall average across test sets for the model
-    cat("  Overall average across test sets:\n")
-    for (metric_idx in seq_along(overall_averages)) {
-      metric_name <- colnames(x)[metric_idx]
-      overall_avg <- x[model_name, metric_idx]
-      cat(sprintf("    %s: %.4f\n", metric_name, overall_avg))
-    }
-    cat("\n")
-  }
-
+  out_print(format_cv_summary(x))
   invisible(x)
+}
+
+##' The lines that print the summary of a cross-validation
+##' @noRd
+format_cv_summary <- function(x) {
+  c(out_rule("Cross-validation scores"),
+    format_cv_settings(attr(x, "keep_par_fixed"), attr(x, "n_failed")),
+    "",
+    format_cv_averages(x),
+    if (isTRUE(attr(x, "view_all"))) c("", format_cv_test_sets(x)))
+}
+
+##' How the parameters were set and how many assessments failed
+##' @noRd
+format_cv_settings <- function(keep_par_fixed, n_failed, before = NULL) {
+  parameters <- if (!is.null(keep_par_fixed)) {
+    if (keep_par_fixed) {
+      "Parameters are fixed at the estimates from all the data."
+    } else {
+      "Parameters are re-estimated in each training set."
+    }
+  }
+  failed <- if (isTRUE(n_failed > 0)) {
+    c("!" = paste0(n_failed, " test-set assessment",
+                   if (n_failed == 1L) " failed, and its scores are" else
+                     "s failed, and their scores are", " missing."))
+  }
+  sentences <- c(before, parameters)
+  c(if (length(sentences)) out_text(paste(sentences, collapse = " ")),
+    out_bullets(failed))
+}
+
+##' The scores of each model averaged over the test sets
+##' @noRd
+format_cv_averages <- function(x) {
+  scores <- data.frame(Model = rownames(x), check.names = FALSE)
+  for (metric in colnames(x)) {
+    scores[[metric]] <- format_cv_score(x[, metric])
+  }
+  c(out_heading("Averages over the test sets, weighted by their sizes"),
+    out_capture(print(scores, row.names = FALSE, right = TRUE)))
+}
+
+##' Scores to four decimals, NA where a failed assessment left none
+##'
+##' The mean of no scores is `NaN`, which is printed as NA, as the missing
+##' scores it stands for.
+##' @noRd
+format_cv_score <- function(values) {
+  ifelse(is.finite(values), sprintf("%.4f", values), "NA")
+}
+
+##' The scores of each model in each test set
+##' @noRd
+format_cv_test_sets <- function(x) {
+  means <- attr(x, "test_set_means")
+  rows <- lapply(names(means), function(model) {
+    scores <- means[[model]]
+    table <- data.frame(Model = model, "Test set" = seq_along(scores[[1L]]),
+                        check.names = FALSE)
+    for (k in seq_along(scores)) {
+      table[[colnames(x)[k]]] <- format_cv_score(scores[[k]])
+    }
+    table
+  })
+  c(out_heading("By test set"),
+    out_capture(print(do.call(rbind, rows), row.names = FALSE, right = TRUE)))
+}
+
+##' @title Print the Results of a Spatial Cross-Validation
+##' @description Print method for objects of class
+##'   \code{"RiskMap_cross_validation"} from \code{\link{assess_prediction}}.
+##'   It gives the models, the test sets, how the parameters were set and the
+##'   scores of each model averaged over the test sets.
+##'   \code{\link{summary.RiskMap_cross_validation}} gives the scores of each
+##'   test set, and \code{\link{plot.RiskMap_cross_validation}} maps the scores
+##'   at the test locations and draws the calibration curve.
+##' @param x An object of class \code{"RiskMap_cross_validation"}.
+##' @param ... Not used.
+##' @return Invisibly returns \code{x}.
+##' @method print RiskMap_cross_validation
+##' @export
+print.RiskMap_cross_validation <- function(x, ...) {
+  check_class(x, "RiskMap_cross_validation")
+  out_print(format_cross_validation(x))
+  invisible(x)
+}
+
+##' The number of test sets and their sizes, as in "2 test sets of 80 and 20
+##' observations" or "10 test sets of 50 observations each"
+##' @noRd
+describe_test_sets <- function(sizes) {
+  n <- length(sizes)
+  sets <- paste0(n, if (n == 1L) " test set" else " test sets")
+  if (length(unique(sizes)) == 1L) {
+    return(paste0(sets, " of ", format_count(sizes[1L]),
+                  if (sizes[1L] == 1L) " observation" else " observations",
+                  if (n > 1L) " each"))
+  }
+  observations <- if (n <= 3L) {
+    paste(paste(format_count(utils::head(sizes, -1L)), collapse = ", "),
+          "and", format_count(utils::tail(sizes, 1L)))
+  } else {
+    paste(format_count(min(sizes)), "to", format_count(max(sizes)))
+  }
+  paste0(sets, " of ", observations, " observations")
+}
+
+##' The lines that print the results of a cross-validation
+##' @noRd
+format_cross_validation <- function(x) {
+  scores <- summary(x, view_all = FALSE)
+  n_models <- length(x$model)
+  sizes <- vapply(x$test_set, NROW, integer(1))
+  setting <- paste0(n_models, if (n_models == 1L) " model" else " models",
+                    " assessed on ", describe_test_sets(sizes), ".")
+  hint <- paste0(out_fun("summary", "summary.RiskMap_cross_validation"),
+                 " gives the scores of each test set, and ",
+                 out_fun("plot", "plot.RiskMap_cross_validation"),
+                 " maps the scores at the test locations and draws the ",
+                 "calibration curve.")
+  c(out_rule("Cross-validation"),
+    format_cv_settings(x$keep_par_fixed, NROW(x$failures), before = setting),
+    "",
+    format_cv_averages(scores),
+    "",
+    out_bullets(c(i = hint)))
 }
 
 ##' Name a predictive-performance metric as it should appear on a plot
