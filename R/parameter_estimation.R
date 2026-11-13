@@ -2369,14 +2369,35 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 ##'
 ##' Used to auto-derive a missing `d1`/`d2` from a user-supplied inverse link
 ##' (or from an already-derived `d1`, for `d2`). Tries symbolic
-##' differentiation via `Deriv::Deriv()` first, since the result is fast and
-##' stable when evaluated repeatedly. `Deriv::Deriv()` raises a hard error
-##' when it cannot process `f`'s body (e.g. a call it has no derivative rule
-##' for), so its construction is wrapped in `tryCatch()`, and a derivative
-##' that fails validation is dropped. If either fails, falls back to
-##' numerical differentiation by the method of `numDeriv::grad()`, with the
-##' steps of `compute_richardson_derivative()`, applied to all elements of
-##' `eta` at once.
+##' differentiation via `Deriv::Deriv()` first, since the result is exact,
+##' fast, and smooth in `eta`. Numerical derivatives are accurate but not
+##' smooth, and the Laplace start's optimiser, which differences the Laplace
+##' approximation and so the curvature, can stop short on them.
+##' `Deriv::Deriv()` raises a hard error when it cannot process `f`'s body
+##' (e.g. a call it has no derivative rule for), so it is wrapped in
+##' `tryCatch()`, and a derivative that fails validation is dropped.
+##'
+##' A function that `Deriv::Deriv()` differentiates with its own rules gets
+##' that derivative, as before. Otherwise, and for a bare function of
+##' `link_functions_by_name()`, whose compiled body it cannot read and which
+##' is called by its name instead, it is tried again with the rules of
+##' `link_derivative_rules()`. Since `Deriv::Deriv()` applies a rule for the
+##' first argument of a call whatever its other arguments, and so would
+##' differentiate `plogis(eta, location = 1)` as `dlogis(eta)`, such a
+##' derivative is kept only if it agrees on a probe with the numerical
+##' derivative of `f` to 1e-7 of the largest value there. `f` is then exact
+##' or symbolic, so its numerical derivative is accurate to about 1e-10 of
+##' that value, and a rule applied to a call with other arguments is off by
+##' more, unless those arguments are within about 1e-7 of the defaults.
+##'
+##' The derivative is evaluated in an environment holding only `f`, under
+##' `f`'s own, so that a link built inside a function finds its variables
+##' and no variable of this function hides one of the user's.
+##'
+##' If none of this succeeds, falls back to numerical differentiation by the
+##' method of `numDeriv::grad()`, with the steps of
+##' `compute_richardson_derivative()`, applied to all elements of `eta` at
+##' once.
 ##'
 ##' @param f Function of a single argument `eta`, returning a numeric vector.
 ##' @param ncheck Length of the probe vector used to validate a candidate
@@ -2388,14 +2409,26 @@ differentiate <- function(f, ncheck) {
     out <- tryCatch(d(rep(0, ncheck)), error = function(e) NULL)
     is.numeric(out) && length(out) == ncheck && all(is.finite(out))
   }
+  symbolic_with <- function(wrapped, rules) {
+    derivative <- tryCatch(Deriv::Deriv(wrapped, "eta", drule = rules),
+                           error = function(e) NULL)
+    if (!is.null(derivative) && is_valid(derivative)) derivative
+  }
 
-  symbolic <- tryCatch({
-    wrapped <- function(eta) f(eta)
-    Deriv::Deriv(wrapped, "eta")
-  }, error = function(e) NULL)
-  if (!is.null(symbolic) && !is_valid(symbolic)) symbolic <- NULL
-
-  if (!is.null(symbolic)) return(symbolic)
+  named <- Find(function(name) identical(f, link_functions_by_name()[[name]]),
+                names(link_functions_by_name()))
+  home <- new.env(parent = environment(f) %||% baseenv())
+  assign(".riskmap_link", f, envir = home)
+  wrapped <- eval(quote(function(eta) .riskmap_link(eta)), home)
+  if (is.null(named)) {
+    symbolic <- symbolic_with(wrapped, Deriv::drule)
+    if (!is.null(symbolic)) return(symbolic)
+  } else {
+    # Called with its default arguments, as the link is.
+    wrapped <- eval(call("function", as.pairlist(alist(eta = )),
+                         call(named, quote(eta))), asNamespace("stats"))
+  }
+  symbolic <- symbolic_with(wrapped, link_derivative_rules())
 
   # An inverse link acts element by element, so every element can share each
   # evaluation of `f`. A function that does not is caught on a probe and
@@ -2407,11 +2440,62 @@ differentiate <- function(f, ncheck) {
     }, numeric(1))
   }
   probe <- c(-2.5, -0.7, 0, 0.3, 1.9)
-  agrees <- tryCatch(
-    isTRUE(all.equal(shared(probe), one_at_a_time(probe), tolerance = 1e-10)),
+  numerical <- tryCatch(shared(probe), error = function(e) NULL)
+
+  if (!is.null(symbolic) && !is.null(numerical)) {
+    exact <- tryCatch(symbolic(probe), error = function(e) NULL)
+    if (is.numeric(exact) && length(exact) == length(probe) &&
+        all(abs(exact - numerical) <=
+            1e-7 * max(abs(numerical), .Machine$double.xmin))) {
+      return(symbolic)
+    }
+  }
+
+  agrees <- !is.null(numerical) && tryCatch(
+    isTRUE(all.equal(numerical, one_at_a_time(probe), tolerance = 1e-10)),
     error = function(e) FALSE
   )
   if (agrees) shared else one_at_a_time
+}
+
+##' The functions that a link can be given as bare and differentiated by name
+##'
+##' A bare `pnorm`, `plogis` or `pcauchy` of stats, or `exp` of base, has a
+##' compiled body that `Deriv::Deriv()` cannot read, so `differentiate()`
+##' recognises it and differentiates a call by its name with its default
+##' arguments. A bare `pt` cannot be a link, since it needs its degrees of
+##' freedom.
+##' @noRd
+link_functions_by_name <- function() {
+  list(pnorm = stats::pnorm, plogis = stats::plogis,
+       pcauchy = stats::pcauchy, exp = base::exp)
+}
+
+##' Derivative rules for `Deriv::Deriv()` with the distribution functions of links
+##'
+##' A copy of `Deriv::drule`, which is never changed, with rules for
+##' `plogis`, `pt` and `pcauchy` in their first argument and for their
+##' densities, which their second derivatives need, each added only where
+##' `Deriv` has no rule of its own. Each holds only for the default location
+##' and scale, the lower tail and probabilities that are not logged (and for
+##' `pt`, a central distribution), and `differentiate()` checks the result,
+##' so a call with other arguments is differentiated numerically.
+##' @noRd
+link_derivative_rules <- function() {
+  rules <- list2env(as.list(Deriv::drule, all.names = TRUE),
+                    envir = new.env(parent = emptyenv()))
+  added <- list(
+    plogis = alist(q = dlogis(q)),
+    dlogis = alist(x = (1 - 2 * plogis(x)) * dlogis(x)),
+    pt = alist(q = dt(q, df)),
+    dt = alist(x = -(df + 1) * x / (df + x^2) * dt(x, df)),
+    pcauchy = alist(q = dcauchy(q)),
+    dcauchy = alist(x = -2 * x / (1 + x^2) * dcauchy(x))
+  )
+  for (name in names(added)) {
+    if (is.null(rules[[name]])) rules[[name]] <- added[[name]]
+  }
+  rules
 }
 
 ##' Derivative of an elementwise function by Richardson extrapolation

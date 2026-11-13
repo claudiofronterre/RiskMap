@@ -43,9 +43,9 @@
 ##' `parameters`. `linkf` is a link of `make_inverse_link_functions()`, NULL
 ##' for the family's own inverse link (`inverse_link`). The derivatives of the
 ##' built-in links are exact, which the `tolerance` of 10^-6 suits. Those of a
-##' link given as a function come from `Deriv` or numerical differences,
-##' accurate to about 10^-5 and much worse near a linear predictor of zero,
-##' so `check_fit()` reads only `convex_at` for such a link.
+##' link given as a function come from `Deriv` or from numerical differences,
+##' whose second derivative is accurate only to about 10^-6, so `check_fit()`
+##' reads only `convex_at` for such a link.
 ##'
 ##' Returns a list with `problems`, a sentence for each check that fails,
 ##' empty if none does, and `convex_at`, NULL or the linear predictor at
