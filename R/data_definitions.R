@@ -52,9 +52,10 @@ NULL
 ##'  \item{An.gambiae}{Counts of *Anopheles gambiae*.}
 ##'  \item{Total}{Total counts of *Anopheles coluzzii* and *Anopheles gambiae*.}
 ##'  \item{elevation}{Elevation in meters of the sampled location.}
-##'  \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in degrees latitude and longitude}
+##'  \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
 ##' }
-##' @details The coordinate reference system is 3857.
+##' @details The coordinate reference system is WGS 84 / UTM zone 32N
+##'   (EPSG:32632), which distorts distances by less than 0.1% over the data.
 ##' @source Tene Fossog, B., Ayala, D., Acevedo, P., Kengne, P., Ngomo Abeso Mebuy,
 ##' I., Makanga, B., et al. (2015) Habitat segregation and ecological character displacement in cryptic African malaria
 ##' mosquitoes. *Evolutionary Applications*, 8 (4), 326-345.
@@ -134,7 +135,11 @@ NULL
 ##'  \item{ID_loc}{an ID identifying the location to which the observation belong.}
 ##'  \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
 ##' }
-##' @details The coordinate reference system is 32634.
+##' @details The coordinate reference system is WGS 84 / UTM zone 33N
+##'   (EPSG:32633), which distorts distances by less than 0.5% over the data.
+##'   The outcome was simulated in UTM zone 34N (EPSG:32634), so its spatial
+##'   correlation is isotropic in those coordinates, and its range in the
+##'   coordinates of the data varies by up to about 1.4% over Italy.
 NULL
 
 ##' @title River-blindness in Liberia

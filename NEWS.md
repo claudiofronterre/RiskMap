@@ -157,6 +157,13 @@ covariates is named "(Intercept)", where it was blank.
 
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.
+- `anopheles` is now in WGS 84 / UTM zone 32N (EPSG:32632), where it was in
+Pseudo-Mercator (EPSG:3857), and `italy_sim` in WGS 84 / UTM zone 33N
+(EPSG:32633), where it was in UTM zone 34N. The old CRSs distorted distances by
+up to 1.0% and 1.4% over the data, and the new ones by less than 0.1% and 0.5%.
+Distances, and so fits, variograms and grids made from these datasets, change
+slightly. Pseudo-Mercator is also not conformal, so it stretched distances
+more north-south than east-west.
 
 ## Coordinate reference systems
 
