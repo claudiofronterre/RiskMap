@@ -3250,7 +3250,8 @@ assess_prediction <- function(object,
           refit_args$denominator <- as.name(den_name)
         }
         refit_args$invlink <- refit_invlink(fit0)
-        refit_i <- do.call(glgpm, refit_args)
+        # The CRS of the fit was checked when it was fitted.
+        refit_i <- without_crs_check(do.call(glgpm, refit_args))
       } else {
         ## quick slice without re-fitting
         refit_i <- fit0
@@ -4051,7 +4052,7 @@ assess_simulation <- function(obj_sim,
       )
       refit_args$seed <- fit_seeds[j]
       refit_args$return_samples <- FALSE
-      fit_ij <- do.call(glgpm, refit_args)
+      fit_ij <- without_crs_check(do.call(glgpm, refit_args))
 
       include_ij <- if (include_nugget && fitted_nugget_variance(fit_ij) > 0) {
         "nugget"

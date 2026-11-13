@@ -19,6 +19,11 @@
 #'   - `riskmap_warning_fit`, a fit may not be reliable, for example because
 #'     the optimiser did not converge or the Monte Carlo error of the estimate
 #'     is not certified.
+#'   - `riskmap_warning_crs`, the projected coordinate reference system used
+#'     distorts distances by more than 1% over the data (see [propose_crs()]
+#'     and [crs_distortion()]).
+#'   - `riskmap_warning_deprecated`, a function is deprecated and will be
+#'     removed in a later version.
 #' - `riskmap_message` is the class of every message. Functions that report
 #'   on their progress take an argument `messages`, whose default is the
 #'   option `RiskMap.messages`, so that `options(RiskMap.messages = FALSE)`

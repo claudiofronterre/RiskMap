@@ -42,8 +42,11 @@
 ##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for model fitting.
 ##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
 ##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
-##' reprojected to an appropriate UTM zone (see [propose_utm()]) and a message reports the conversion used.
+##' reprojected to the CRS from [propose_crs()], a UTM zone or a projection centred on the data,
+##' and a message reports the conversion used and its distortion of distances.
 ##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
+##' A warning of class `riskmap_warning_crs` is raised when the CRS used distorts distances
+##' by more than 1% over the data.
 ##' @param distance_units Character string, either `"km"` or `"m"`, indicating the units used
 ##' for internal coordinate distances and spatial parameters such as `phi`. The coordinates in
 ##' the returned `data` retain the linear units declared by its CRS.
@@ -101,7 +104,7 @@
 ##'
 ##' The `model_crs` argument can be used to reproject the spatial coordinates to a different, projected
 ##' CRS for model fitting. If `data` are in longitude/latitude and `model_crs` is not supplied, the
-##' coordinates are automatically reprojected to an appropriate UTM zone and a message details the
+##' coordinates are automatically reprojected to the CRS from [propose_crs()] and a message details the
 ##' conversion; automatic projection is avoided for `model_crs` explicitly supplied in longitude/latitude,
 ##' which raises an error.
 ##' The `distance_units` argument controls whether distances between locations (and so parameters such
@@ -396,18 +399,9 @@ glgpm <- function(formula,
 
   # transform crs and extract coordinates
   input_crs <- st_crs(data)
-  if(!is.null(model_crs)) {
-    check_crs(model_crs)
-    data <- st_transform(data, crs = model_crs)
-    if(st_is_longlat(data)) {
-      abort_input("{.arg model_crs} must be a projected coordinate reference system, not longitude and latitude.", arg = "model_crs")
-    }
-  } else if(st_is_longlat(data)) {
-    auto_crs <- propose_utm(data)
-    data <- st_transform(data, crs = auto_crs)
-    # Shown even with `messages = FALSE`, because it changes the model.
-    riskmap_inform(c("{.arg data} are in longitude and latitude, so they are projected to EPSG:{auto_crs} for fitting.", "i" = "Set {.arg model_crs} to choose the projection."))
-  }
+  # The message on a projection is shown even with `messages = FALSE`,
+  # because it changes the model.
+  data <- project_for_distances(data, model_crs, "model_crs", "for fitting")
 
   coords_o <- coordinates_in_units(
     data, distance_units, if (is.null(model_crs)) "data" else "model_crs"

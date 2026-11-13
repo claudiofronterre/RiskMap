@@ -12,3 +12,12 @@ expect_input_error <- function(object, arg, message = NULL) {
   }
   invisible(condition)
 }
+
+# Evaluate code that calls a deprecated function, without its deprecation
+# warning, so that the warnings it is tested for can be seen.
+without_deprecation <- function(code) {
+  withCallingHandlers(
+    code,
+    riskmap_warning_deprecated = function(w) invokeRestart("muffleWarning")
+  )
+}

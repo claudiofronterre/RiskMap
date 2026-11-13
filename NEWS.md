@@ -161,11 +161,38 @@ covariates is named "(Intercept)", where it was blank.
 
 - Datasets must have a coordinate reference system. When coordinates are in
 latitude/longitude and `model_crs` is not supplied, they are now automatically
-reprojected to an appropriate UTM zone. `predict()`, `simulate_glgpm()` and
+reprojected to the CRS from `propose_crs()`. `predict()`, `simulate_glgpm()` and
 `assess_prediction()` have been updated to match; `simulate_glgpm()`'s own 
 `convert_to_crs`/`scale_to_km` arguments have likewise been replaced with
 `model_crs`/`distance_units`.
 - providing `model_crs` in longitude/latitude now raises an error.
+- The new `propose_crs()` chooses the projected CRS that distorts distances
+least over the data. It compares the WGS 84 UTM zone at the centre of the data
+and its two neighbours with four conformal projections centred on the data
+(oblique stereographic, transverse Mercator, oblique Mercator and Lambert
+conformal conic), whose parameters minimise the largest scale error over the
+region. It returns the EPSG code of the best UTM zone when that zone distorts
+distances by at most 0.5% (`epsg_tolerance`), and otherwise a `crs` object for
+the best centred projection, named "RiskMap ..." in its WKT. The new
+`crs_distortion()` measures the distortion of any projected CRS over the data.
+- `glgpm()`, `summarise_distance()`, `variogram()`, `create_grid()` and
+`specify_glgpm()` now project data in longitude and latitude with
+`propose_crs()`. Earlier development versions used the UTM zone holding most
+locations, which could distort distances by more than 3%, for example over the
+Democratic Republic of the Congo, where the CRS now chosen distorts them by
+less than 0.5%. Data that a UTM zone covers well get the zone at their centre,
+which may differ from the zone used before. Fits, distances and grids of data
+in longitude and latitude can therefore change. Set `model_crs` or
+`distance_crs`, or project the data first, to keep a given CRS. The message
+now names the CRS and reports its distortion.
+- These functions warn, with class `riskmap_warning_crs`, when the CRS used,
+whether given, carried by the data or chosen, distorts distances by more than
+1% over the data. When no planar CRS can do better, as over sub-Saharan
+Africa, the warning says so.
+- `propose_utm()` is deprecated and warns with class
+`riskmap_warning_deprecated`. It now warns of a tie whenever two or more zones
+hold the most locations, where it warned only when every zone held the same
+number.
 - In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and
 `scale_to_km` has been replaced with `distance_units` (`"km"` or `"m"`).
 

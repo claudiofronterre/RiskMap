@@ -1,14 +1,15 @@
 #' Resolve the CRS and compute pairwise distances for distance-based computations
 #'
 #' Projected data retain their CRS; longitude/latitude data are automatically
-#' reprojected to an appropriate UTM CRS, with an informative message. This is
-#' the same convention used by `glgpm()`'s `model_crs`, applied here to
+#' reprojected to the CRS from `propose_crs()`, with an informative message
+#' (`project_for_distances()`). This is the same convention used by
+#' `glgpm()`'s `model_crs`, applied here to
 #' functions with no fitted model of their own (`summarise_distance()`,
 #' `variogram()`).
 #'
 #' @param data An `sf` object.
-#' @param crs `NULL` to retain an existing projected CRS or auto-select UTM
-#'   for longitude/latitude data, or a CRS (must be projected) to reproject
+#' @param crs `NULL` to retain an existing projected CRS or choose one with
+#'   `propose_crs()` for longitude/latitude data, or a CRS (must be projected) to reproject
 #'   `data` to.
 #' @param crs_arg The name of the caller's CRS argument, used in messages and
 #'   errors.
@@ -24,17 +25,8 @@
 #' @noRd
 extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
                               dedupe = FALSE, call = rlang::caller_env()) {
-  if (!is.null(crs)) {
-    check_crs(crs, arg = crs_arg, call = call)
-    data <- st_transform(data, crs = crs)
-    if (st_is_longlat(data)) {
-      abort_input("{.arg {crs_arg}} must be a projected coordinate reference system, not longitude and latitude.", arg = crs_arg, call = call)
-    }
-  } else if (st_is_longlat(data)) {
-    auto_crs <- propose_utm(data)
-    data <- st_transform(data, crs = auto_crs)
-    riskmap_inform(c("{.arg data} are in longitude and latitude, so they are projected to EPSG:{auto_crs} for {purpose}.", "i" = "Set {.arg {crs_arg}} to choose the projection."))
-  }
+  data <- project_for_distances(data, crs, crs_arg, paste("for", purpose),
+                                call = call)
   coords <- coordinates_in_units(data, distance_units,
                                  if (is.null(crs)) "data" else crs_arg)
   if (dedupe) coords <- unique(coords)
@@ -46,9 +38,11 @@ extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
 ##'
 ##' @param data an object of class `sf` containing point geometries.
 ##' @param distance_crs `NULL` to retain an existing projected CRS, or
-##' automatically reproject longitude/latitude data to an appropriate UTM CRS
-##' (with a message reporting the choice). Alternatively, a CRS to reproject
-##' `data` to, which must itself be projected.
+##' automatically reproject longitude/latitude data to the CRS from
+##' [propose_crs()] (with a message reporting the choice and its distortion of
+##' distances). Alternatively, a CRS to reproject `data` to, which must itself
+##' be projected. A warning of class `riskmap_warning_crs` is raised when the
+##' CRS used distorts distances by more than 1% over the data.
 ##' @param distance_units Character string, either `"km"` or `"m"`, indicating whether the
 ##' distances used are expressed in kilometers or meters. Defaults to `"km"`.
 ##'
@@ -179,9 +173,11 @@ global_rank_envelope <- function(curves, level) {
 ##' @param seed an optional non-negative integer seed for the permutations. The
 ##' caller's random-number state is restored before the function returns.
 ##' @param distance_crs `NULL` to retain an existing projected CRS, or
-##' automatically reproject longitude/latitude data to an appropriate UTM CRS
-##' (with a message reporting the choice). Alternatively, a CRS to reproject
-##' `data` to, which must itself be projected.
+##' automatically reproject longitude/latitude data to the CRS from
+##' [propose_crs()] (with a message reporting the choice and its distortion of
+##' distances). Alternatively, a CRS to reproject `data` to, which must itself
+##' be projected. A warning of class `riskmap_warning_crs` is raised when the
+##' CRS used distorts distances by more than 1% over the data.
 ##' @param distance_units Character string, either \code{"km"} or \code{"m"}, indicating whether
 ##' the distances used in the variogram are expressed in kilometers or meters.
 ##' By default \code{distance_units = "km"}, as in \code{\link{glgpm}}.

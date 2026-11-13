@@ -13,13 +13,28 @@ propose_utm(data)
 An integer indicating the EPSG code of the UTM zone.
 }
 \description{
-Suggests the EPSG code for the UTM zone where the majority of the data falls.
+Deprecated. Use \code{\link[=propose_crs]{propose_crs()}}, which chooses the projected
+CRS that distorts distances least over the data and reports how much it
+distorts them.
+
+Suggests the EPSG code for the UTM zone where the majority of the data
+falls.
 }
 \details{
-The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
+The function determines the UTM zone and hemisphere where the
+majority of the data points are located and proposes the corresponding
+EPSG code. When two or more zones hold the most locations, the
+lowest-numbered of them is used, with a warning. When as many locations
+fall north as south of the Equator, the southern zone is used, with a
+warning.
+
+The zone holding most locations can be far from the centre of the data,
+and a UTM zone distorts distances by more than 1\% over a region wider
+than about 1,000 km, which \code{\link[=propose_crs]{propose_crs()}} avoids. Calling
+\code{propose_utm()} raises a warning of class \code{riskmap_warning_deprecated}.
 }
 \examples{
 data("infect_sma")
-propose_utm(infect_sma)
+suppressWarnings(propose_utm(infect_sma))
 
 }

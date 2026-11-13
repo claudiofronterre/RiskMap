@@ -84,19 +84,40 @@ elogit <- function(y, m) {
 
 
 ##' @title EPSG of the UTM Zone
-##' @description Suggests the EPSG code for the UTM zone where the majority of the data falls.
+##' @description Deprecated. Use [propose_crs()], which chooses the projected
+##'   CRS that distorts distances least over the data and reports how much it
+##'   distorts them.
+##'
+##'   Suggests the EPSG code for the UTM zone where the majority of the data
+##'   falls.
 ##' @param data An object of class \code{sf} containing the coordinates.
-##' @details The function determines the UTM zone and hemisphere where the majority of the data points are located and proposes the corresponding EPSG code.
+##' @details The function determines the UTM zone and hemisphere where the
+##'   majority of the data points are located and proposes the corresponding
+##'   EPSG code. When two or more zones hold the most locations, the
+##'   lowest-numbered of them is used, with a warning. When as many locations
+##'   fall north as south of the Equator, the southern zone is used, with a
+##'   warning.
+##'
+##'   The zone holding most locations can be far from the centre of the data,
+##'   and a UTM zone distorts distances by more than 1% over a region wider
+##'   than about 1,000 km, which [propose_crs()] avoids. Calling
+##'   `propose_utm()` raises a warning of class `riskmap_warning_deprecated`.
 ##' @return An integer indicating the EPSG code of the UTM zone.
 ##' @examples
 ##' data("infect_sma")
-##' propose_utm(infect_sma)
+##' suppressWarnings(propose_utm(infect_sma))
 ##'
 ##' @export
 propose_utm <- function(data) {
   check_supplied(data)
 
   check_data(data, geometry = "any")
+
+  riskmap_warn(
+    c("{.fn propose_utm} is deprecated and will be removed in a later version of RiskMap.",
+      "i" = "Use {.fn propose_crs}, which chooses the projected CRS that distorts distances least over the data."),
+    class = "riskmap_warning_deprecated"
+  )
 
   # Transform to WGS84 (EPSG:4326) to ensure coordinates are in lon/lat
   data <- st_transform(data, crs = 4326)
@@ -107,7 +128,7 @@ propose_utm <- function(data) {
 
   if (length(utm_z_u) > 1) {
     tab_utm <- table(utm_z)
-    if (all(diff(tab_utm) == 0))
+    if (sum(tab_utm == max(tab_utm)) > 1)
       riskmap_warn("The same number of locations falls in more than one UTM zone, so the lowest-numbered of them is used.")
     utm_z_u <- as.numeric(names(which.max(tab_utm)))
   }
@@ -119,7 +140,7 @@ propose_utm <- function(data) {
 
   if (length(ns_u) > 1) {
     tab_ns <- table(ns)
-    if (all(diff(tab_ns) == 0))
+    if (sum(tab_ns == max(tab_ns)) > 1)
       riskmap_warn("The same number of locations falls north and south of the Equator, so the southern zone is used.")
     ns_u <- as.numeric(names(which.max(tab_ns)))
   }

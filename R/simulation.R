@@ -15,8 +15,9 @@
 #'   information, random-effect terms, offset, Matern smoothness and response.
 #' @details The response in `formula` need not exist in `data`. CRS handling
 #'   follows [glgpm()]: `model_crs` is used when supplied, otherwise
-#'   longitude/latitude data are transformed to an automatically selected UTM
-#'   CRS. A message reports automatic transformations.
+#'   longitude/latitude data are transformed to the CRS from [propose_crs()].
+#'   A message reports automatic transformations, and a warning a CRS that
+#'   distorts distances by more than 1% over the data.
 #' @examples
 #' library(sf)
 #' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
@@ -44,17 +45,8 @@ specify_glgpm <- function(formula, data, family, parameters,
   distance_units <- match_choice(distance_units)
   check_data(data)
   check_formula(formula, data, response_required = FALSE)
-  if (!is.null(model_crs)) {
-    check_crs(model_crs)
-    data <- st_transform(data, crs = model_crs)
-    if (st_is_longlat(data)) {
-      abort_input("{.arg model_crs} must be a projected coordinate reference system, not longitude and latitude.", arg = "model_crs")
-    }
-  } else if (st_is_longlat(data)) {
-    model_crs <- propose_utm(data)
-    data <- st_transform(data, crs = model_crs)
-    riskmap_inform(c("{.arg data} are in longitude and latitude, so they are projected to EPSG:{model_crs} for simulation.", "i" = "Set {.arg model_crs} to choose the projection."))
-  }
+  data <- project_for_distances(data, model_crs, "model_crs",
+                                "for simulation")
   family_link <- read_family(family, invlink)
   family <- family_link$family
   invlink <- family_link$invlink
@@ -745,9 +737,12 @@ simulation_model <- function(object) {
   invlink <- if (is.character(family)) {
     refit_invlink(object) %||% object$link_function$inv
   }
-  model <- specify_glgpm(object$formula, object$data, family, pars,
-                         distance_units = object$distance_units,
-                         invlink = invlink)
+  # The CRS of the fit was checked when it was fitted.
+  model <- without_crs_check(
+    specify_glgpm(object$formula, object$data, family, pars,
+                  distance_units = object$distance_units,
+                  invlink = invlink)
+  )
   attr(model, "distance_scale") <- attr(object, "distance_scale") %||%
     attr(model, "distance_scale")
   model$denominator <- denominator

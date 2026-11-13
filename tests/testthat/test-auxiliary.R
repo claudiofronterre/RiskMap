@@ -210,9 +210,16 @@ test_that("propose_utm generates errors", {
   expect_input_error(propose_utm("a"), "data")
 })
 
+test_that("propose_utm is deprecated", {
+  expect_warning(epsg <- propose_utm(gaussian_data),
+                 class = "riskmap_warning_deprecated")
+  # the locations are in zone 36, west of zone 37
+  expect_identical(epsg, 32636)
+})
+
 test_that("propose_utm handles both polygons and points", {
-  expect_no_error(propose_utm(areal))
-  expect_no_error(propose_utm(gaussian_data))
+  expect_no_error(without_deprecation(propose_utm(areal)))
+  expect_no_error(without_deprecation(propose_utm(gaussian_data)))
 })
 
 test_that("propose_utm warns when locations are split equally", {
@@ -222,26 +229,43 @@ test_that("propose_utm warns when locations are split equally", {
 
   # longitudes 33 and 39 fall in UTM zones 36 and 37
   expect_warning(
-    epsg <- propose_utm(lonlat_points(lon = c(33, 39), lat = c(5, 5))),
+    epsg <- without_deprecation(
+      propose_utm(lonlat_points(lon = c(33, 39), lat = c(5, 5)))
+    ),
     "more than one UTM zone"
   )
   # default to min
   expect_identical(epsg, 32636)
 
+  # the two largest counts tie although a third zone has fewer locations
   expect_warning(
-    epsg <- propose_utm(lonlat_points(lon = c(33, 33), lat = c(5, -5))),
+    epsg <- without_deprecation(
+      propose_utm(lonlat_points(lon = c(33, 33, 39, 39, 45), lat = 5))
+    ),
+    "more than one UTM zone"
+  )
+  expect_identical(epsg, 32636)
+
+  expect_warning(
+    epsg <- without_deprecation(
+      propose_utm(lonlat_points(lon = c(33, 33), lat = c(5, -5)))
+    ),
     "north and south of the Equator"
   )
   # default to south
   expect_identical(epsg, 32736)
 
   expect_no_warning(
-    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 39), lat = c(5, 5, 5)))
+    epsg <- without_deprecation(
+      propose_utm(lonlat_points(lon = c(33, 33, 39), lat = c(5, 5, 5)))
+    )
   )
   expect_identical(epsg, 32636)
 
   expect_no_warning(
-    epsg <- propose_utm(lonlat_points(lon = c(33, 33, 33, 33), lat = c(5, 6, 7, -5)))
+    epsg <- without_deprecation(
+      propose_utm(lonlat_points(lon = c(33, 33, 33, 33), lat = c(5, 6, 7, -5)))
+    )
   )
   expect_identical(epsg, 32636)
 })
