@@ -20,8 +20,9 @@
 ##' (`refit_change`), whether to suggest integrating the nugget out
 ##' (`suggest_integration`, `suggests_integration()`), the number of checks
 ##' of `check_fit()` that need a look (`checks_to_review`), and where the
-##' starting values came from (`starting_values`) and why
-##' (`starting_reason`, `describe_starting_values()`).
+##' starting values came from (`starting_values`, `NULL` for a fit saved
+##' before it was recorded) and why (`starting_reason`,
+##' `describe_starting_values()`).
 ##' @noRd
 summarise_mcml_fit <- function(object) {
   optimizer <- attr(object, "optimizer")

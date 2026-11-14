@@ -26,10 +26,12 @@ the Newton correction of the last stage did not converge),
 last stage), \code{certification_bank} (the effective draws and Pareto
 shape of the certification draws), \code{checks_to_review}, the number
 of checks of \code{\link{check_fit}} that need a look,
-\code{starting_values}, where the starting values came from
-(\code{"user"}, given in \code{start_pars}, \code{"current"}, RiskMap's
-defaults, or \code{"transformed_gaussian"}, a Gaussian fit to the
-transformed data, see \code{\link{glgpm}}), and \code{starting_reason},
+\code{starting_values}, where the starting values came from, either
+\code{"user"} (some or all given in \code{start_pars}, with RiskMap's
+defaults for the others), \code{"current"} (RiskMap's defaults) or
+\code{"transformed_gaussian"} (a Gaussian fit to the transformed data,
+which \code{glgpm()} uses when the Laplace approximation of the
+likelihood prefers it to the defaults), and \code{starting_reason},
 why the defaults were kept other than by being preferred in that
 comparison, such as \code{"re_terms"} when it is not made for a model
 with \code{re()} terms, \code{"transformed_failed"} when the Gaussian fit

@@ -257,13 +257,57 @@ test_that("longitude and latitude are projected with the CRS reported", {
   result <- messages_of(summarise_distance(wide_points))
   expect_length(result$messages, 1)
   expect_match(result$messages, "projected to a custom", fixed = TRUE)
-  expect_match(result$messages, "Distances are distorted by at most 0.6",
+  expect_match(result$messages, "for computing distances in km.", fixed = TRUE)
+  expect_match(result$messages, "No UTM zone keeps distances within 0.5% over them.",
                fixed = TRUE)
+  expect_match(result$messages, "Set `distance_crs` to choose the projection.",
+               fixed = TRUE)
+  # The distortion is left to the warning above 1% and to crs_distortion().
+  expect_no_match(result$messages, "distorted", fixed = TRUE)
 
   result <- messages_of(create_grid(lonlat_box(-10, -8, 6, 8), spacing = 50))
+  expect_length(result$messages, 1)
   expect_match(result$messages,
-               "projected to EPSG:32629 (WGS 84 / UTM zone 29N) to create the grid.",
+               "projected to EPSG:32629 (WGS 84 / UTM zone 29N) to create the grid, with distances in km.",
                fixed = TRUE)
   expect_match(result$messages, "Project `boundaries` yourself", fixed = TRUE)
   expect_identical(st_crs(result$value), st_crs(32629))
+})
+
+test_that("a fit in longitude and latitude says where it is fitted once", {
+  messages_of <- function(code) {
+    texts <- character()
+    value <- withCallingHandlers(code, riskmap_message = function(m) {
+      texts <<- c(texts, gsub("\\s+", " ", cli::ansi_strip(conditionMessage(m))))
+      invokeRestart("muffleMessage")
+    })
+    list(value = value, messages = texts)
+  }
+  fit_to <- function(data) {
+    messages_of(suppressWarnings(glgpm(
+      y ~ cov + gp(), data = data, family = "binomial",
+      denominator = denominator, control_mcml = fixture_control_mcml,
+      seed = fixture_seed, messages = TRUE
+    )))
+  }
+  lonlat <- fit_to(sf::st_transform(binomial_data, 4326))
+  crs_messages <- grep("EPSG|fitted in", lonlat$messages, value = TRUE)
+  expect_length(crs_messages, 1L)
+  expect_match(crs_messages, "for fitting, with distances in km.", fixed = TRUE)
+  expect_match(crs_messages, "Set `model_crs` to choose the projection.",
+               fixed = TRUE)
+  # The fit records where its starting values came from, and summary() says
+  # it, so the fit doesn't announce it.
+  # This fit takes the transformed-Gaussian start, the case that had a
+  # message, so its absence here shows the message is gone.
+  expect_identical(attr(lonlat$value, "starting_values")$selected,
+                   "transformed_gaussian")
+  expect_false(any(grepl("starting values", lonlat$messages, fixed = TRUE)))
+  expect_match(squish(capture.output(print(summary(lonlat$value)))),
+               describe_starting_values("transformed_gaussian"),
+               fixed = TRUE)
+  # Projected data get the line on where the model is fitted instead.
+  projected <- fit_to(binomial_data)
+  expect_identical(grep("EPSG|fitted in", projected$messages, value = TRUE),
+                   "i The model is fitted in EPSG:32637, with distances in km.")
 })

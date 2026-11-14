@@ -72,7 +72,7 @@ may have missing values, for example over water.
 The CRS is inherited from \code{boundaries}, or from \code{raster} when it is
 supplied. If \code{boundaries} is in longitude/latitude and no raster is given,
 it is automatically reprojected to the CRS from \code{\link[=propose_crs]{propose_crs()}} and a
-message reports the conversion used and its distortion of distances;
+message names the CRS and the units of distance;
 transform \code{boundaries} to a projected CRS yourself first to use a
 different one. A warning of class \code{riskmap_warning_crs} is raised when the
 CRS used distorts distances by more than 1\% over \code{boundaries}, or over the

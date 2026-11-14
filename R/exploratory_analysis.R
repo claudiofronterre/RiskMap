@@ -25,7 +25,8 @@
 #' @noRd
 extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
                               dedupe = FALSE, call = rlang::caller_env()) {
-  data <- project_for_distances(data, crs, crs_arg, paste("for", purpose),
+  data <- project_for_distances(data, crs, crs_arg,
+                                paste("for", purpose, "in", distance_units),
                                 call = call)
   coords <- coordinates_in_units(data, distance_units,
                                  if (is.null(crs)) "data" else crs_arg)
@@ -39,8 +40,8 @@ extract_distances <- function(data, crs, crs_arg, purpose, distance_units,
 ##' @param data an object of class `sf` containing point geometries.
 ##' @param distance_crs `NULL` to retain an existing projected CRS, or
 ##' automatically reproject longitude/latitude data to the CRS from
-##' [propose_crs()] (with a message reporting the choice and its distortion of
-##' distances). Alternatively, a CRS to reproject `data` to, which must itself
+##' [propose_crs()] (with a message naming the CRS and the units of
+##' distance). Alternatively, a CRS to reproject `data` to, which must itself
 ##' be projected. A warning of class `riskmap_warning_crs` is raised when the
 ##' CRS used distorts distances by more than 1% over the data.
 ##' @param distance_units Character string, either `"km"` or `"m"`, indicating whether the
@@ -174,8 +175,8 @@ global_rank_envelope <- function(curves, level) {
 ##' caller's random-number state is restored before the function returns.
 ##' @param distance_crs `NULL` to retain an existing projected CRS, or
 ##' automatically reproject longitude/latitude data to the CRS from
-##' [propose_crs()] (with a message reporting the choice and its distortion of
-##' distances). Alternatively, a CRS to reproject `data` to, which must itself
+##' [propose_crs()] (with a message naming the CRS and the units of
+##' distance). Alternatively, a CRS to reproject `data` to, which must itself
 ##' be projected. A warning of class `riskmap_warning_crs` is raised when the
 ##' CRS used distorts distances by more than 1% over the data.
 ##' @param distance_units Character string, either \code{"km"} or \code{"m"}, indicating whether
