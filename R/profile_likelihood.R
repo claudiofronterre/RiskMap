@@ -307,19 +307,20 @@ make_profile_problem <- function(fitted, n_draws, seed) {
     if (is.finite(result) && result > -1e99) result else NA_real_
   }
   value <- function(working) value_internal(to_internal(working))
-  others <- length(estimate) - p - 2L
+  parameters <- fit_parameter_table(fitted)
+  bounds <- parameter_bounds(parameters, log_scale)
+  internal_bounds <- parameter_bounds(parameters)
   problem <- list(
     value = value, estimate = estimate, names = names(estimate),
-    labels = profile_labels(names(estimate), fitted$distance_units),
+    labels = profile_labels(parameters, names(estimate)),
     standard_errors = sqrt(pmax(diag(fitted$covariance), 0)),
-    lower = c(rep(-30, p), -20, -20 + log_scale, rep(-20, others)),
-    upper = c(rep(30, p), 20, 10 + log_scale, rep(20, others)),
+    lower = bounds$lower, upper = bounds$upper,
     # The optimiser works on the engine's scale (standardised covariates,
     # rescaled distances), as the fit does, with the bounds of the fit.
     internal = list(value = value_internal, to = to_internal,
                     from = from_internal, transform = transform, p = p,
-                    lower = c(rep(-30, p), -20, -20, rep(-20, others)),
-                    upper = c(rep(30, p), 20, 10, rep(20, others))),
+                    lower = internal_bounds$lower,
+                    upper = internal_bounds$upper),
     predict_starts = TRUE
   )
   names(problem$standard_errors) <- names(estimate)
@@ -353,14 +354,13 @@ profile_scale_maps <- function(transform, log_scale, p) {
 
 ##' Readable labels for the parameters of a fitted model
 ##'
-##' The labels of `summary()`, for every family. The nugget of a binomial or
-##' Poisson fit is profiled as `nu2`, its ratio to the spatial variance, which
-##' `summary()` does not report.
+##' The labels of `summary()`, for every family, from the fit's parameter
+##' table. The nugget of a binomial or Poisson fit is profiled as `nu2`, its
+##' ratio to the spatial variance, which `summary()` does not report, and
+##' that of a Gaussian fit as `tau2`, its variance.
 ##' @noRd
-profile_labels <- function(names, distance_units) {
-  labels <- parameter_labels(names, distance_units)
-  labels[names == "nu2"] <- "Nugget variance ratio"
-  as.list(labels)
+profile_labels <- function(parameters, names) {
+  as.list(table_labels(parameters, names))
 }
 
 ##' Match user-supplied parameter names to those of the fit
@@ -898,8 +898,9 @@ profile_intervals <- function(problem, marginal, level) {
   # A parameter of a family goes to its natural scale through the family's
   # map, which for the size of a negative binomial family decreases, so that
   # the limits change places, and the variances and the scale through exp().
-  family <- intervals$parameter %in% family_parameter_names()
-  positive <- !grepl("^beta\\.", intervals$parameter) & !family
+  block <- parameter_block(intervals$parameter)
+  family <- block == "family"
+  positive <- block %in% c("covariance", "random_effects")
   columns <- c("estimate", "profile_lower", "profile_upper", "wald_lower", "wald_upper")
   intervals[positive, columns] <- exp(intervals[positive, columns])
   for (row in which(family)) {

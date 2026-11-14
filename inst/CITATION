@@ -1,0 +1,16 @@
+# The year comes from the CRAN publication date, or the date the package was
+# built, and otherwise from today's date, so the reference always has one.
+date <- meta$`Date/Publication`
+if (is.null(date)) date <- meta$Packaged
+year <- if (is.null(date)) format(Sys.Date(), "%Y") else substr(date, 1, 4)
+
+bibentry(
+  bibtype = "Manual",
+  title = "{RiskMap}: Geostatistical Modeling of Spatially Referenced Data",
+  author = c(person("Emanuele", "Giorgi"),
+             person("Claudio", "Fronterre"),
+             person("Simon", "Smart")),
+  year = year,
+  note = paste("R package version", meta$Version),
+  url = "https://claudiofronterre.github.io/RiskMap/"
+)

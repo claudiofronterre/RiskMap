@@ -483,6 +483,14 @@ glgpm <- function(formula,
     riskmap_inform("The model is fitted in {crs}, with distances in {distance_units}.")
   }
 
+  # The parameters of the model, from its design, nugget, family and holds.
+  parameters <- model_parameter_table(
+    colnames(D), fix_tau2 = fix_tau2, exact = model$exact,
+    fix_var_me = fix_var_me, estimated_family = estimated_family,
+    family_parameters = family_parameters, re_names = names_re,
+    distance_units = distance_units
+  )
+
   valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me",
                         estimated_family)
   invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
@@ -527,20 +535,20 @@ glgpm <- function(formula,
   }
 
   if(is.null(start_pars[["sigma2"]])) {
-    start_pars[["sigma2"]] <- 1
+    start_pars[["sigma2"]] <- default_start(parameters, "sigma2")
   } else {
     check_positive_number(start_pars[["sigma2"]])
   }
 
   if(is.null(start_pars[["phi"]])) {
-    start_pars[["phi"]] <- quantile(pairwise_distances(coords), 0.1)
+    start_pars[["phi"]] <- default_start(parameters, "phi", coords)
   } else {
     check_positive_number(start_pars[["phi"]])
   }
 
   if(isTRUE(fix_tau2)) {
     if(is.null(start_pars[["tau2"]])) {
-      start_pars[["tau2"]] <- 1
+      start_pars[["tau2"]] <- default_start(parameters, "tau2")
     } else {
       check_positive_number(start_pars[["tau2"]])
     }
@@ -551,7 +559,7 @@ glgpm <- function(formula,
 
   if(n_re > 0) {
     if(is.null(start_pars[["sigma2_re"]])) {
-      start_pars[["sigma2_re"]] <- rep(1,n_re)
+      start_pars[["sigma2_re"]] <- default_start(parameters, "sigma2_re")
     } else {
       if (length(start_pars[["sigma2_re"]]) != n_re) {
         abort_input("{.code start_pars$sigma2_re} must have {n_re} value{?s}, one for each random effect, not {length(start_pars[['sigma2_re']])}.", arg = "start_pars")
@@ -604,6 +612,7 @@ glgpm <- function(formula,
     units_m = if (!model$exact) units_m, cov_offset = cov_offset,
     kappa = kappa, fix_tau2 = fix_tau2,
     fix_var_me = fix_var_me, family = family, invlink = invlink,
+    parameters = parameters,
     start_pars = start_pars, control_mcmc = control_mcmc,
     control_mcml = control_mcml, seed = seed,
     return_samples = return_samples, messages = messages,
@@ -661,12 +670,14 @@ glgpm <- function(formula,
 ##' supplied units, with the seed used (`NULL` for Gaussian models) and the
 ##' scalings as attributes. It makes no call to sf, so it can run in forked
 ##' processes, where GDAL and PROJ can deadlock. `family_parameters` are the
-##' family's own (`read_family()`), NULL for a family without them. `call` is
+##' family's own (`read_family()`), NULL for a family without them.
+##' `parameters` is the model's parameter table (`parameter_table()`). `call` is
 ##' the call named in input errors, [glgpm()] when it calls this function.
 ##' @noRd
 fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
                              re_unique, units_m, cov_offset, kappa, fix_tau2,
-                             fix_var_me, family, invlink, start_pars,
+                             fix_var_me, family, invlink, parameters,
+                             start_pars,
                              control_mcmc, control_mcml, seed,
                              return_samples, messages,
                              family_parameters = NULL,
@@ -687,26 +698,18 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
   if (exact) {
     if(is.null(fix_var_me)) {
       if(is.null(start_pars[["sigma2_me"]])) {
-        start_pars[["sigma2_me"]] <- 1
+        start_pars[["sigma2_me"]] <- default_start(parameters, "sigma2_me")
       } else {
         check_positive_number(start_pars[["sigma2_me"]], call = call)
       }
     }
-    gaussian_layout <- cov_par_layout(
-      ncol(D), fix_tau2 = fix_tau2,
-      family_parameters = gaussian_family_block(fix_var_me), n_re = n_re
-    )
+    fitting_start <- start_pars
+    fitting_start$phi <- fitting_start_phi
     res <- glgpm_lm(y = y-cov_offset, D, fitting_coords,
             kappa = kappa,
             ID_coords, ID_re, s_unique, re_unique,
             fix_var_me, fix_tau2,
-            start_beta = start_pars[["beta"]],
-            start_cov_pars = pack_cov_pars(gaussian_layout,
-                                           sigma2    = start_pars[["sigma2"]],
-                                           phi       = fitting_start_phi,
-                                           nu2       = start_pars[["tau2"]],
-                                           family = start_pars["sigma2_me"],
-                                           sigma2_re = start_pars[["sigma2_re"]]),
+            parameters = parameters, start = fitting_start,
             messages = messages)
     res["mcml_history"] <- list(NULL)
     res["mcml_certified"] <- list(NULL)
@@ -723,6 +726,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
       kappa = kappa, reference_pars = fitting_reference,
       cov_offset = cov_offset, ID_coords = ID_coords, ID_re = ID_re,
       fix_tau2 = fix_tau2, family = family, invlink = invlink,
+      parameters = parameters,
       control_mcml = control_mcml, seed = seed,
       messages = messages, distance_scale = spatial_scaling$distance_scale,
       family_parameters = family_parameters,
@@ -741,7 +745,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
       # fitted values as well as user-facing diagnostics.
       progress_step("Drawing conditional samples at the estimate", messages)
       final_draw <- sample_at_nongaussian_fit(
-        estimate = res$estimate,
+        estimate = res$estimate, parameters = parameters,
         y = y,
         units_m = units_m,
         D = D,
@@ -749,7 +753,6 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
         cov_offset = cov_offset,
         ID_coords = ID_coords,
         ID_re = ID_re,
-        fix_tau2 = fix_tau2,
         family = family,
         link_function = res$link_function,
         kappa = kappa,
@@ -900,78 +903,6 @@ cov_par_layout <- function(p, fix_tau2, family_parameters = character(),
 ##' @noRd
 gaussian_family_block <- function(fix_var_me) {
   if (is.null(fix_var_me)) "sigma2_me" else character()
-}
-
-##' Pack working-scale starting values using a `cov_par_layout()` layout
-##'
-##' @param layout A layout from `cov_par_layout()`.
-##' @param sigma2,phi Starting values (always required).
-##' @param nu2,sigma2_re Starting values for the parameters the layout
-##' includes; only consulted when `layout$index` has a matching entry.
-##' @param family Starting values of the family block, a named list, of which
-##' only the parameters the layout's family block includes are consulted, so
-##' passing e.g. `sigma2_me` when the layout has no `sigma2_me` slot is
-##' silently ignored (matching this family/specification not using it).
-##' @return A numeric vector of the non-beta working-scale parameters, in
-##' `layout`'s order - the same contract `start_cov_pars` has always had.
-##' @noRd
-pack_cov_pars <- function(layout, sigma2, phi, nu2 = NULL, family = list(),
-                          sigma2_re = NULL) {
-  p   <- length(layout$index$beta)
-  out <- numeric(layout$length - p)
-
-  out[layout$index$sigma2 - p] <- sigma2
-  out[layout$index$phi - p]    <- phi
-  if (!is.null(layout$index$nu2))       out[layout$index$nu2 - p]       <- nu2
-  for (name in layout$family) out[layout$index[[name]] - p] <- family[[name]]
-  if (!is.null(layout$index$sigma2_re)) out[layout$index$sigma2_re - p] <- sigma2_re
-
-  out
-}
-
-##' Structure the raw parameter vector returned by the optimizer
-##'
-##' Splits the working-scale (i.e. not yet exponentiated) vector of estimates
-##' returned by the fitting engines into a named list, using the same
-##' `cov_par_layout()` those fitting engines build their `ind_*` positions
-##' from, so this can never drift out of step with them (see #135/#117).
-##'
-##' A flat named vector (as used prior to #92) can't safely be keyed by
-##' parameter name: a covariate literally named e.g. `"sigma2"` collides with
-##' the spatial variance parameter's own name, silently corrupting name-based
-##' lookups. Structuring `estimate` as a list instead - `estimate$beta` for
-##' the regression coefficients, `estimate$sigma2` for the spatial variance,
-##' etc. - keeps those namespaces separate. `coef.RiskMap()`/`summary.RiskMap()`
-##' read from this list directly; `summary.RiskMap()` additionally needs a
-##' *flat* vector to line up against `covariance` (which is estimated as one
-##' joint matrix over every parameter) - `unlist()` provides that, and
-##' disambiguates the same way (e.g. `"beta.sigma2"` vs `"sigma2"`).
-##'
-##' @noRd
-structure_estimate <- function(par, beta_names, fix_tau2,
-                               family_parameters = character(),
-                               re_names = NULL) {
-  p      <- length(beta_names)
-  layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
-                           family_parameters = family_parameters,
-                           n_re = length(re_names))
-
-  beta <- par[layout$index$beta]
-  names(beta) <- beta_names
-
-  out <- list(beta = beta,
-              sigma2 = unname(par[layout$index$sigma2]),
-              phi    = unname(par[layout$index$phi]))
-
-  if (!is.null(layout$index$nu2))       out$nu2       <- unname(par[layout$index$nu2])
-  for (name in layout$family) out[[name]] <- unname(par[layout$index[[name]]])
-  if (!is.null(layout$index$sigma2_re)) {
-    sigma2_re <- unname(par[layout$index$sigma2_re])
-    names(sigma2_re) <- re_names
-    out$sigma2_re <- sigma2_re
-  }
-
-  out
 }
 
 ##' Compute the nugget-to-spatial variance ratio
@@ -1375,6 +1306,20 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     } else {
       NULL
     }
+    # The transformed model is Gaussian, with its measurement error variance
+    # held where the nugget is estimated and started at 1 otherwise.
+    transformed_parameters <- model_parameter_table(
+      colnames(totals$D), fix_tau2 = fix_tau2, exact = TRUE,
+      fix_var_me = transformed_measurement_variance,
+      estimated_family = character(), family_parameters = NULL,
+      re_names = NULL, distance_units = NULL
+    )
+    transformed_start <- current[c("beta", "sigma2", "phi")]
+    if (isTRUE(fix_tau2)) transformed_start$tau2 <- current$tau2
+    if (is.null(transformed_measurement_variance)) {
+      transformed_start$sigma2_me <- default_start(transformed_parameters,
+                                                   "sigma2_me")
+    }
     glgpm_lm(
       y = transformed_response - totals$offset,
       D = totals$D,
@@ -1386,13 +1331,8 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
       re_unique = NULL,
       fix_var_me = transformed_measurement_variance,
       fix_tau2 = fix_tau2,
-      start_beta = current$beta,
-      start_cov_pars = c(
-        current$sigma2,
-        current$phi,
-        if (isTRUE(fix_tau2)) current$tau2,
-        if (is.null(transformed_measurement_variance)) 1
-      ),
+      parameters = transformed_parameters,
+      start = transformed_start,
       messages = FALSE
     )
   }, error = identity)
@@ -1404,6 +1344,9 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
     ))
   }
 
+  # The nugget is the spatial variance times exp(nu2), not exp(nu2 +
+  # log(sigma2)) as natural_values() gives it, which differs in the last
+  # bits and would move the fits that start here (step 2b of the table).
   transformed <- current
   transformed$beta <- unname(transformed_fit$estimate$beta)
   transformed$sigma2 <- exp(transformed_fit$estimate$sigma2)
@@ -1504,10 +1447,18 @@ location_totals <- function(y, units_m, D, offset, ID_coords, s_unique) {
        ID_coords = seq_along(units), s_unique = seq_along(units))
 }
 
+##' Fit a Gaussian model by maximum likelihood
+##'
+##' `parameters` is the model's parameter table (`parameter_table()`) and
+##' `start` the starting values on their natural scale, named as users name
+##' them, with the scale in the fitting units. Up to three observations per
+##' latent effect the observed covariance is factorised directly
+##' (`glgpm_lm_direct()`), and beyond that the Woodbury identity works in the
+##' dimension of the latent effects.
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @noRd
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
-                     fix_var_me, fix_tau2, start_beta, start_cov_pars, messages) {
+                     fix_var_me, fix_tau2, parameters, start, messages) {
 
   latent_dimension <- nrow(coords)
   if (!is.null(ID_re)) {
@@ -1519,7 +1470,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
   )) {
     return(glgpm_lm_direct(
       y, D, coords, kappa, ID_coords, ID_re,
-      fix_var_me, fix_tau2, start_beta, start_cov_pars, messages
+      fix_var_me, fix_tau2, parameters, start, messages
     ))
   }
 
@@ -2356,8 +2307,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     return(H)
   }
 
-  start_cov_pars[-(1:2)] <- start_cov_pars[-(1:2)]/start_cov_pars[1]
-  start_par <- c(start_beta, log(start_cov_pars))
+  start_par <- woodbury_start(parameters, start)
 
   out <- list()
   objective <- safe_optimizer_objective(function(x) -log.lik(x))
@@ -2367,13 +2317,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
                   function(x) -hessian.log.lik(x),
                   control = list(trace = 1 * messages))
 
-  out$estimate <- structure_estimate(
-    estim$par,
-    beta_names = colnames(D),
-    fix_tau2   = fix_tau2,
-    family_parameters = gaussian_family_block(fix_var_me),
-    re_names   = if (n_re > 0) names(ID_re) else NULL
-  )
+  out$estimate <- working_estimate(parameters, estim$par)
   out$grad_MLE <- grad.log.lik(estim$par)
   hess.MLE <- hessian.log.lik(estim$par)
   information <- -hess.MLE
@@ -3558,25 +3502,6 @@ final_sampling_seed <- function(seed, mcml_stages) {
   as.integer(((seed - 1 + offset) %% .Machine$integer.max) + 1)
 }
 
-##' Convert a working-scale estimate into the next MCML reference point
-##' @noRd
-estimate_to_mcml_reference <- function(estimate, fix_tau2) {
-  out <- list(
-    beta = unname(estimate$beta),
-    sigma2 = exp(estimate$sigma2),
-    phi = exp(estimate$phi)
-  )
-  if (isTRUE(fix_tau2)) {
-    out$tau2 <- exp(estimate$sigma2 + estimate$nu2)
-  } else {
-    out$tau2 <- fix_tau2
-  }
-  if (!is.null(estimate$sigma2_re)) {
-    out$sigma2_re <- exp(estimate$sigma2_re)
-  }
-  out
-}
-
 ##' Draw latent effects and fitted values at a non-Gaussian fitted estimate
 ##'
 ##' MCML samples belong to its importance-sampling reference distribution.
@@ -3586,15 +3511,17 @@ estimate_to_mcml_reference <- function(estimate, fix_tau2) {
 ##' random effects, in the same layout historically used by `S_samples`.
 ##' The records are the model's, with `family_parameters` for a family that
 ##' has them, and the fitted values are their means under `link_function`,
-##' the link of the model's mean.
+##' the link of the model's mean. The parameters are those of the model's
+##' table (`parameter_table()`), at their natural values, with the nugget at
+##' its held value when it is not estimated.
 ##'
 ##' @noRd
-sample_at_nongaussian_fit <- function(estimate, y, units_m, D, coords,
-                                      cov_offset, ID_coords, ID_re,
-                                      fix_tau2, family, link_function, kappa,
+sample_at_nongaussian_fit <- function(estimate, parameters, y, units_m, D,
+                                      coords, cov_offset, ID_coords, ID_re,
+                                      family, link_function, kappa,
                                       control_mcmc, seed = NULL, messages,
                                       family_parameters = NULL) {
-  fitted_pars <- estimate_to_mcml_reference(estimate, fix_tau2)
+  fitted_pars <- natural_values(parameters, estimate, held = TRUE)
   mu <- as.numeric(D %*% fitted_pars$beta + cov_offset)
   distances <- pairwise_distances(coords)
   Sigma <- fitted_pars$sigma2 * matern_correlation(

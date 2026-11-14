@@ -21,6 +21,11 @@ authors:
     given-names: Simon
     email: simon.smart@cantab.net
     orcid: "https://orcid.org/0000-0002-3624-8951"
+contact:
+  - family-names: Fronterre
+    given-names: Claudio
+    email: c.fronterre@bham.ac.uk
+    orcid: "https://orcid.org/0000-0001-6723-9727"
 license: MIT
 repository-code: "https://github.com/claudiofronterre/RiskMap"
 url: "https://claudiofronterre.github.io/RiskMap/"
