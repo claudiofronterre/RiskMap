@@ -16,8 +16,12 @@ for ref in "$@"; do
   git archive --format=tar "${sha}" | tar -x -C "${scratch}/${sha}"
   local_sum=$(cd "${scratch}/${sha}" && eval "${checksum}")
   target="${REMOTE}/src/${sha}"
-  if remote "test -d '${target}'"; then
+  state=$(remote "if [ -d '${target}' ]; then echo present; else echo absent; fi") || state=unreachable
+  if [ "${state}" = present ]; then
     echo "${sha} is already on Wayland"
+  elif [ "${state}" != absent ]; then
+    echo "cannot reach Wayland to check ${target}" >&2
+    exit 1
   else
     git archive --format=tar "${sha}" |
       remote "mkdir -p '${target}.partial' && tar -x -C '${target}.partial' && mv '${target}.partial' '${target}'"
