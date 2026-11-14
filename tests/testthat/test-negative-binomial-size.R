@@ -239,9 +239,8 @@ test_that("the start of the size ignores an aliased column and takes start_pars"
                                             numeric(nrow(data))))
   # A valid start reaches the working start of the engine as log(1 / theta).
   captured <- NULL
-  local_mocked_bindings(make_working_start = function(reference_pars,
-                                                      fix_tau2, family) {
-    captured <<- family_parameter("theta")$working(reference_pars$theta)
+  local_mocked_bindings(working_start = function(table, start) {
+    captured <<- family_parameter("theta")$working(start$theta)
     stop("captured the start")
   })
   expect_error(

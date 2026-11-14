@@ -83,11 +83,7 @@ suggests_integration <- function(object, optimizer, threshold = 0.1) {
       !is.null(optimizer$mcml_noise_forms)) {
     return(FALSE)
   }
-  variance <- if (is.numeric(object$fix_tau2)) {
-    object$fix_tau2
-  } else if (!is.null(object$estimate$nu2)) {
-    exp(object$estimate$nu2 + object$estimate$sigma2)
-  }
+  variance <- fit_nugget_variance(object)
   if (isTRUE(variance >= threshold)) return(TRUE)
   ID_re <- object$ID_re
   re_variances <- exp(unlist(object$estimate$sigma2_re %||% numeric()))
@@ -312,24 +308,15 @@ format_fit <- function(x, digits) {
   # Only a link other than the canonical one is named, since the
   # coefficients are then on another scale.
   title <- paste0(model_title(traits), describe_link(fit_link(x)))
-  estimates <- coef(x)
-  # The family's own parameters that the fit estimates, under their labels.
-  family_names <- estimated_family_parameters(x)
-  family_values <- unlist(estimates[family_names])
-  if (length(family_values)) {
-    names(family_values) <- unname(parameter_labels(family_names,
-                                                    x$distance_units))
-  }
-  covariance <- c(
-    "Spatial process var." = estimates$sigma2,
-    stats::setNames(estimates$phi, paste0("Spatial corr. scale (",
-                                          x$distance_units, ")")),
-    "Variance of the nugget" = estimates$tau2,
-    family_values,
-    if (!is.null(estimates$sigma2_re)) stats::setNames(
-      estimates$sigma2_re, paste0(names(x$re) %||% names(estimates$sigma2_re),
-                                  " (random eff. var.)")
-    )
+  # Every estimated parameter but the coefficients, on its natural scale,
+  # under its label, in the order of the working vector.
+  parameters <- fit_parameter_table(x)
+  rows <- estimated_rows(parameters)
+  rows <- rows[rows$block != "coefficients", , drop = FALSE]
+  estimates <- natural_values(parameters, x$estimate)
+  covariance <- stats::setNames(
+    unlist(estimates[setdiff(names(estimates), "beta")], use.names = FALSE),
+    rows$label
   )
   fixed <- c(
     if (is.numeric(x$fix_tau2)) {
