@@ -90,7 +90,7 @@ fit <- glgpm(
 )
 checked <- check_fit(fit, extra = "all")
 #> ℹ Computing the profiles of the 2 covariance parameters and the predictions of
-#>   how often the radius of the bound is too small, which should take about 46
+#>   how often the radius of the bound is too small, which should take about 37
 #>   seconds, from the 2 seconds the fit took.
 plot(checked)
 
