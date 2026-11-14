@@ -10,7 +10,7 @@ It moved here from the MCML paper's repository (`theory/family-object-golden.R` 
 |---|---|
 | `run.R` | The tasks and the runner. One output file per task. |
 | `compare.R` | The comparison of two arms. |
-| `groups.txt` | The tasks in seven lines, for parallel runs. |
+| `groups.txt` | The tasks in eight lines, for parallel runs. |
 | `data/surveys.rds` | Two surveys from the MCML paper's studies, saved exactly (see below). |
 | `hpc/push.sh` | Copies a commit's archive to Wayland and checks its md5 sums (run on the laptop). |
 | `hpc/submit.sh` | Submits the install and the run of one arm (run on the Wayland login node). |
@@ -21,9 +21,10 @@ It moved here from the MCML paper's repository (`theory/family-object-golden.R` 
 `Rscript --vanilla tools/golden/run.R --list` lists them.
 
 - **F01 to F29, fits.** Binomial, Poisson and Gaussian fits with and without a nugget, an `re()` term, households, held nuggets, integrated and sampled noise, named links and links given as functions, an imperfect test, and the edge cases (no positives, separation, sparse and nearly all positive surveys). A fit task keeps the fit, `check_fit()` and the printed fit, summary and check.
-- **D tasks, downstream of five fits** (logit, Poisson, probit, integrated nugget, Gaussian). Each refits its base fit and keeps one of `predict()` and `simulate_glgpm()`, `parametric_bootstrap()`, `profile()`, `check_fit(extra = )`, or `assess_prediction()` with `assess_simulation()`.
+- **F30 to F46, fits added on 14 November 2026** for the gaps that the architecture review listed. They are the negative binomial with its size estimated and held, Poisson with an offset, a fixed nugget (`gp(nugget = 0.5)`), Gaussian fits on the Woodbury path with a nugget, with an `re()` term and with `fix_var_me`, two `re()` terms of which one crosses locations, κ = 1.5, the PC prior, the Laplace proposal and a partial `start_pars`. F42 to F46 are household surveys with one record per child and a child covariate (sex), for the integration of such households (proposal 3), with variants for probit, for the nugget alone, for `re(household)` alone, and one whose children share their sex at each location, which today's rules integrate already.
+- **D tasks, downstream of five fits** (logit, Poisson, probit, integrated nugget, Gaussian). Each refits its base fit and keeps one of `predict()` and `simulate_glgpm()`, `parametric_bootstrap()`, `profile()`, `check_fit(extra = )`, or `assess_prediction()` with `assess_simulation()`. The Gaussian fit with an `re()` term (F35) has its bootstrap and its cross-validation.
 - **L01 to L03, low-level.** Links, observation terms, likelihoods and engines evaluated at fixed inputs through internals, and the adaptive MCML driver at a bound. They reach internals through `asNamespace("RiskMap")` and follow whichever entry points the commit has, so older commits can still be run.
-- **`--smoke`.** Thirteen of them (fits of each family, a nugget, an `re()` term, a named link, both saved surveys, two predictions and the low-level tasks), about a minute on one Wayland core.
+- **`--smoke`.** Fifteen of them (fits of each family, a nugget, an `re()` term, a named link, both saved surveys, a Gaussian fit on each path, two predictions and the low-level tasks), about a minute on one Wayland core.
 
 Each output file is a record with the task's status, its value (what is compared), the time and garbage-collection time, the environment (commit, RiskMap version and path, R, BLAS, host, thread settings, the versions of every loaded package) and `fits`, the fits the task made at its top level, which the tolerance mode reads. A failed task is saved with its message and compared like any other.
 
