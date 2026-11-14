@@ -757,6 +757,16 @@ probit, cloglog and log links are unchanged. In 56 paired fits every certified
 fit kept its certificate and its stages, and its estimates moved by at most
 2e-6 standard errors.
 
+- Fits with the probit, cloglog or cauchit link named in `family`, such as
+`family = binomial("probit")`, now compute their importance weights in
+compiled code, as the canonical logit and log links do. Each weight takes half
+the time it did in R, and such fits are 1.3 to 1.8 times faster on surveys of
+200 to 400 sites, from 90 to 65 seconds for probit on the Tanzania survey of
+387 sites and from 29 to 16 minutes for a cauchit fit that needs two stages.
+The compiled weights repeat the R computation operation for operation, so fits
+are unchanged (to the last bit on x86-64). An inverse link given as a function
+in `invlink` still computes its weights in R.
+
 - `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
 in `family`, as `glm()` does, so a link can be named as in
 `family = binomial("probit")`. Binomial models take the logit, probit, cloglog
