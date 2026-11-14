@@ -1310,7 +1310,9 @@ parameters have been renamed to `metric`/`model`.
 
 - Claudio Fronterre, a contributor to 1.0.0, is now an author and the
 maintainer of RiskMap, and Simon Smart joins as an author. Emanuele Giorgi,
-the maintainer of 1.0.0, remains an author.
+the maintainer of 1.0.0, remains an author. `citation("RiskMap")` names all
+three and always gives a year, which it left out for a package installed from
+its source folder.
 - Argument checks in the compiled MALA, likelihood and distance kernels have
 been removed or moved to their R callers, following the contributing guide;
 the R functions already validated everything the MALA and likelihood kernels
