@@ -12,3 +12,6 @@ CLAUDE.md
 ^dev$
 ^CITATION\.cff$
 ^\.codex$
+^vignettes/articles$
+^docs$
+^pkgdown$

@@ -1,76 +1,112 @@
-# RiskMap
+
+<!-- README.md is generated from README.Rmd. Please edit that file. -->
+
+# RiskMap <img src="man/figures/logo.png" align="right" height="139" alt="RiskMap hex sticker" />
 
 <!-- badges: start -->
 
 [![CRAN
-version](https://www.r-pkg.org/badges/version/RiskMap)](https://cran.r-project.org/package=RiskMap)
+status](https://www.r-pkg.org/badges/version/RiskMap)](https://CRAN.R-project.org/package=RiskMap)
 [![R-CMD-check](https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml)
-[![CRAN
-downloads](https://cranlogs.r-pkg.org/badges/RiskMap)](https://cran.r-project.org/package=RiskMap)
-[![Total
-downloads](https://cranlogs.r-pkg.org/badges/grand-total/RiskMap)](https://cran.r-project.org/package=RiskMap)
-[![lifecycle](https://img.shields.io/badge/lifecycle-maturing-blue.svg)](https://lifecycle.r-lib.org/articles/stages.html)
 <!-- badges: end -->
 
-## Overview
+RiskMap fits geostatistical models to spatially referenced data and uses
+them to map risk, at single locations and over areas. It was written for
+problems in public health, such as mapping the prevalence of a disease
+from surveys in scattered villages, but it applies to any continuous or
+count outcome measured at points in space.
 
-`RiskMap` provides tools for model-based geostatistical analysis of
-continuous, binomial and Poisson outcomes.
+The models are generalised linear models with a stationary Gaussian
+process of Matérn correlation and, optionally, unstructured random
+effects. The response can be Gaussian, binomial, Poisson or negative
+binomial, and a binomial or Poisson model can take any link through its
+inverse. Linear Gaussian models are fitted by maximum likelihood and the
+others by Monte Carlo maximum likelihood, which measures the Monte Carlo
+error of the estimates and enlarges its samples until that error is
+small compared with their standard errors.
 
-- Fit spatial and spatio-temporal Gaussian process models.
-- Generate predictive surfaces and target summaries.
-- Run simulation-based diagnostics and validation workflows.
+With RiskMap you can
 
-The methodology is described in *Model-based Geostatistics for Global
-Public Health* by Diggle and Giorgi.
-
-## Start Here: MBG-R Book
-
-For a full applied guide to using `RiskMap` in real public health
-workflows, see the online book by **Emanuele Giorgi and Claudio
-Fronterre**:
-
-**Model-based geostatistics for global public health using R**
-<https://www.mbgr.org/>
+- choose a projected coordinate reference system that keeps distances
+  accurate, and download population counts from WorldPop,
+- explore spatial correlation with the empirical variogram,
+- fit models with `glgpm()` and check them with profile likelihoods and
+  the parametric bootstrap,
+- predict with `predict()` at new locations or over areas, for targets
+  such as prevalence, the probability of exceeding a threshold or a
+  population-weighted average,
+- assess predictive performance by spatial cross-validation and on
+  simulated data.
 
 ## Installation
 
-Install the stable version from CRAN:
-
-``` r
-install.packages("RiskMap")
-```
-
-Install the development version from GitHub:
+RiskMap 2.0 is not yet on CRAN, so install it from GitHub. It contains
+C++ code, which needs
+[Rtools](https://cran.r-project.org/bin/windows/Rtools/) on Windows and
+the Xcode command line tools on macOS.
 
 ``` r
 # install.packages("remotes")
 remotes::install_github("claudiofronterre/RiskMap")
 ```
 
-## Quickstart
+`install.packages("RiskMap")` installs RiskMap 1.0.0 from CRAN, whose
+interface is different.
 
-A minimal linear Gaussian geostatistical model of the form
-$Y(x) = \beta_0 + S(x)$, where $S(x)$ is a spatial Gaussian process can
-be fitted with:
+## An example
+
+The `liberia` data give, for 90 villages in Liberia, the number of
+people examined for the nodules of river blindness and the number found
+with them. This fits a binomial model with a Gaussian process to the
+counts and maps the predicted prevalence over the area the villages
+span.
 
 ``` r
 library(RiskMap)
+library(sf)
 
-data(italy_sim)
+data(liberia)
+liberia <- st_as_sf(liberia,
+                    coords = c("long", "lat"),
+                    crs = 4326)
+liberia <- st_transform(liberia, propose_crs(liberia))
 
-fit <- glgpm(
-  formula = y ~ gp(x1, x2),
-  data = italy_sim,
-  family = "gaussian",
-  messages = FALSE
-)
-
+fit <- glgpm(npos ~ gp(),
+             data = liberia,
+             family = "binomial",
+             denominator = ntest)
 summary(fit)
+
+grid <- create_grid(create_convex_hull(liberia), spacing = 5)
+prediction <- predict(fit, newdata = grid)
+plot(prediction)
 ```
 
-## Learn More
+## Learning RiskMap
 
-- MBG-R book: <https://www.mbgr.org/>
-- Package website: <https://claudiofronterre.github.io/RiskMap/>
-- Issue tracker: <https://github.com/claudiofronterre/RiskMap/issues>
+The book [*Model-based geostatistics for global public health using
+R*](https://www.mbgr.org/), by Emanuele Giorgi and Claudio Fronterre,
+teaches model-based geostatistics with RiskMap through analyses of real
+data from public health, and is free to read online. The methods are set
+out in Diggle and Giorgi (2019).
+
+## RiskMap 2.0
+
+RiskMap 2.0 is a redesign of version 1.0.0. Many functions have been
+renamed, merged or removed, and prediction at locations and over areas
+now goes through a single `predict()` method, so code written for 1.0.0
+needs changing. The
+[NEWS](https://claudiofronterre.github.io/RiskMap/news/) describes every
+change and has a table of the functions of 1.0.0 with their
+replacements.
+
+## Citation
+
+Run `citation("RiskMap")` in R for the reference to the package. If you
+use the methods, please also cite
+
+Diggle, P. J. and Giorgi, E. (2019). *Model-based Geostatistics for
+Global Public Health: Methods and Applications*. Chapman and Hall/CRC.
+
+Please report bugs and suggest features in the [issue
+tracker](https://github.com/claudiofronterre/RiskMap/issues).
