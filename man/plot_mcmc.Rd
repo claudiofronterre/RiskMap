@@ -4,7 +4,7 @@
 \alias{plot_mcmc}
 \title{Check the mixing of the MCMC samples of the random effects}
 \usage{
-plot_mcmc(object, check_mean = TRUE, component = NULL, ...)
+plot_mcmc(object, check_mean = TRUE, locations = NULL, ...)
 }
 \arguments{
 \item{object}{A fitted \code{RiskMap} object returned by \code{\link[=glgpm]{glgpm()}} for a
@@ -13,11 +13,12 @@ binomial, Poisson or negative binomial model with \code{return_samples = TRUE}.}
 \item{check_mean}{Logical. If \code{TRUE} (the default), the chain of the mean
 of the spatial random effects over the locations is shown.}
 
-\item{component}{The locations whose chains are shown, numbered as the
+\item{locations}{The locations whose chains are shown, numbered as the
 rows of \code{object$coords}. The default, \code{NULL}, shows the location with
 the smallest effective sample size.}
 
-\item{...}{Further arguments passed to \code{\link[stats:acf]{stats::acf()}}, such as \code{lag.max}.}
+\item{...}{Further arguments passed to \code{\link[stats:acf]{stats::acf()}}, such as \code{lag.max}.
+Other arguments are an error.}
 }
 \value{
 A \code{patchwork} object, which is drawn when printed and can be
@@ -57,7 +58,7 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
              data = liberia, model_crs = 32629, family = "binomial",
              messages = FALSE)
 plot_mcmc(fit)
-plot_mcmc(fit, check_mean = FALSE, component = c(10, 20))
+plot_mcmc(fit, check_mean = FALSE, locations = c(10, 20))
 }
 }
 \seealso{

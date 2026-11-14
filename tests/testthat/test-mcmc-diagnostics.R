@@ -21,13 +21,19 @@ test_that("MCMC diagnostics reject fits without samples", {
 test_that("plot_mcmc checks its arguments", {
   # The model has 10 locations followed by 5 levels of re(i), whose samples
   # are not locations.
-  for (component in list(11, 20, 10.5, 0, "no", c(1, 1), Inf, integer())) {
+  for (locations in list(11, 20, 10.5, 0, "no", c(1, 1), Inf, integer())) {
     expect_input_error(plot_mcmc(poisson_model, check_mean = FALSE,
-                           component = component),
-                 "component")
+                                 locations = locations),
+                       "locations")
   }
   expect_error(plot_mcmc(poisson_model, check_mean = NA),
                "check_mean", class = "riskmap_error_input")
+  # acf() ignores arguments it doesn't know, so plot_mcmc() stops on them,
+  # among them the component of check_mcmc() in RiskMap 1.0.0.
+  expect_input_error(plot_mcmc(poisson_model, component = 10), "component",
+                     "Give the locations whose chains are shown in `locations`.")
+  expect_input_error(plot_mcmc(poisson_model, lag_max = 5), "lag_max",
+                     "have no argument `lag_max`.")
 })
 
 test_that("plot_mcmc shows the mean and the location with the smallest ESS", {
@@ -53,15 +59,15 @@ test_that("plot_mcmc shows the mean and the location with the smallest ESS", {
   expect_identical(unique(correlations$data$lag), as.numeric(0:5))
 })
 
-test_that("plot_mcmc keeps the book's call for one chosen location", {
-  diagnostics <- plot_mcmc(poisson_model, check_mean = FALSE, component = 10)
+test_that("plot_mcmc shows the chains of the chosen locations", {
+  diagnostics <- plot_mcmc(poisson_model, check_mean = FALSE, locations = 10)
   traces <- diagnostics[[1L]][[1L]]
 
   expect_identical(levels(traces$data$chain), "S at location 10")
   expect_equal(traces$data$value, poisson_model$S_samples[, 10])
   expect_no_error(print(diagnostics))
   expect_identical(
-    levels(plot_mcmc(poisson_model, component = c(3, 1))[[1L]][[1L]]$data$chain),
+    levels(plot_mcmc(poisson_model, locations = c(3, 1))[[1L]][[1L]]$data$chain),
     c("Mean of S over 10 locations", "S at location 3", "S at location 1")
   )
 })
@@ -85,7 +91,8 @@ test_that("summarise_mcmc returns the ESS of the mean and of every component", {
   summary <- summarise_mcmc(poisson_model)
   samples <- poisson_model$S_samples
 
-  expect_s3_class(summary, "tbl_df")
+  expect_identical(class(summary), "data.frame")
+  expect_identical(.row_names_info(summary), -16L)
   expect_named(summary, c("effect", "component", "ess"))
   expect_identical(summary$effect,
                    c("mean of S", rep("S", 10), rep("i", 5)))

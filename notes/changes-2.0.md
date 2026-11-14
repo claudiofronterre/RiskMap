@@ -333,14 +333,16 @@ function of the mean of the spatial random effects and of the location with
 the smallest effective sample size, with a histogram of the effective sample
 sizes at all the locations. The trace plots show the iterations at which the
 samples were kept, so fits now record the `n_sim`, `burnin` and `thin` of
-their samples in `attr(fit, "mcmc")`. `component` now defaults to the
+their samples in `attr(fit, "mcmc")`. The chains shown are chosen with
+`locations`, which was `component` in `check_mcmc()`. It defaults to the
 location with the smallest effective sample size, can select several
-locations and can be given together with `check_mean = TRUE`. The mean and
-`component` previously included the levels of unstructured random effects,
-which are stored after the locations in `S_samples`. They now refer to the
-locations only.
+locations and can be given together with `check_mean = TRUE`. The mean and the chosen chains previously
+included the levels of unstructured random effects, which are stored after
+the locations in `S_samples`. They now refer to the locations only. An
+argument in `...` that `acf()` doesn't take, such as `component`, is an
+error, since `acf()` would ignore it.
 
-- The new `summarise_mcmc()` returns a tibble of the effective sample sizes of
+- The new `summarise_mcmc()` returns a data frame of the effective sample sizes of
 the mean of the spatial random effects, of each location and of each level of
 an unstructured random effect. They are computed with the initial monotone
 sequence estimator of Geyer (1992), so the package no longer depends on sns.
@@ -1325,6 +1327,15 @@ parameters have been renamed to `metric`/`model`.
   Poisson responses use exposure times the inverse-link mean.
   Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
   extract results.
+
+- `specify_glgpm()` takes the projected CRS in which distances are measured
+  in `distance_crs`, as `summarise_distance()` and `variogram()` do, instead
+  of `model_crs`. Its arguments are now `formula`, `data`, `family`,
+  `parameters`, `invlink`, `denominator`, `distance_crs` and
+  `distance_units`, with `invlink` moved from last, so calls that give the
+  later arguments by position must name them. `simulated_values()` returns a
+  data frame instead of a tibble, as every other table RiskMap returns.
+  Simulations with a given seed are unchanged.
 
 - `assess_simulation()` scores every model on the scale of the mean, each
   through its own inverse link. The truth is the simulated mean, which the

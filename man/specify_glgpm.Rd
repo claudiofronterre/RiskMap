@@ -9,10 +9,10 @@ specify_glgpm(
   data,
   family,
   parameters,
+  invlink = NULL,
   denominator = NULL,
-  model_crs = NULL,
-  distance_units = c("km", "m"),
-  invlink = NULL
+  distance_crs = NULL,
+  distance_units = c("km", "m")
 )
 }
 \arguments{
@@ -49,26 +49,6 @@ when present. Supply \code{tau2} when \code{gp(nugget = TRUE)}, \code{sigma2_me}
 Gaussian measurement error, and \code{sigma2_re} for each \code{re()} term.
 Variances may be zero. \code{phi} is expressed in \code{distance_units}.}
 
-\item{denominator}{Optional denominator for binomial distributions, or
-exposure for Poisson and negative binomial ones, the mean of a count being
-the exposure times the inverse link of the linear predictor.
-Passed as a bare/unquoted column name present in \code{data}.
-If not provided, defaults to \code{1}.}
-
-\item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
-If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
-If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
-reprojected to the CRS from \code{\link[=propose_crs]{propose_crs()}}, a UTM zone or a projection centred on the data,
-and a message names the CRS and the units of distance.
-If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.
-A warning of class \code{riskmap_warning_crs} is raised when the CRS used distorts distances
-by more than 1\% over the data.}
-
-\item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
-for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates in
-the returned \code{data} retain the linear units declared by its CRS.
-Defaults to \code{"km"}.}
-
 \item{invlink}{A function that maps the linear predictor to the mean of
 the response given the random effects, for a binomial or Poisson model
 whose link is not one of those that \code{family} names, such as a link for an
@@ -77,6 +57,24 @@ symbolically where possible and numerically otherwise. They only steer the
 importance sampler, so they affect the speed of a fit and not its
 estimates. Not applicable for Gaussian models, and not to be combined with
 a family object that names a link other than logit or log.}
+
+\item{denominator}{Optional denominator for binomial distributions, or
+exposure for Poisson and negative binomial ones, the mean of a count being
+the exposure times the inverse link of the linear predictor.
+Passed as a bare/unquoted column name present in \code{data}.
+If not provided, defaults to \code{1}.}
+
+\item{distance_crs}{The projected coordinate reference system in which
+distances, and so \code{phi}, are measured, for example an EPSG code. \code{data}
+are transformed to it. The default, \code{NULL}, keeps projected data as they
+are and projects longitude/latitude data to the CRS from \code{\link[=propose_crs]{propose_crs()}},
+with a message naming it. A warning of class \code{riskmap_warning_crs} is
+raised when the CRS used distorts distances by more than 1\% over the data.}
+
+\item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
+for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates in
+the returned \code{data} retain the linear units declared by its CRS.
+Defaults to \code{"km"}.}
 }
 \value{
 A validated \code{RiskMap_simulation_model} for \code{\link[=simulate_glgpm]{simulate_glgpm()}}. It
@@ -89,11 +87,7 @@ Defines a data-generating model without fitting it. Parameters are supplied
 on their natural scale and remain fixed across simulations.
 }
 \details{
-The response in \code{formula} need not exist in \code{data}. CRS handling
-follows \code{\link[=glgpm]{glgpm()}}: \code{model_crs} is used when supplied, otherwise
-longitude/latitude data are transformed to the CRS from \code{\link[=propose_crs]{propose_crs()}}.
-A message reports automatic transformations, and a warning a CRS that
-distorts distances by more than 1\% over the data.
+The response in \code{formula} need not exist in \code{data}.
 }
 \examples{
 library(sf)

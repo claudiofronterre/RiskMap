@@ -20,6 +20,25 @@ test_that("joint simulations share effects at overlapping locations", {
                              sim$samples$surface[, 2, "spatial_effect"]))
   expect_identical(simulated_surface(sim, 1)$mean, as.numeric(sim$samples$surface[, 1, "mean"]))
   expect_identical(nrow(simulated_values(sim, "response")), 6L)
+  expect_identical(class(tidy), "data.frame")
+  expect_identical(.row_names_info(tidy), -6L)
+  expect_named(tidy, c("simulation", "location_set", "location_id",
+                       "component", "value"))
+})
+
+test_that("specify_glgpm takes invlink after parameters and the CRS in distance_crs", {
+  expect_identical(names(formals(specify_glgpm)),
+                   c("formula", "data", "family", "parameters", "invlink",
+                     "denominator", "distance_crs", "distance_units"))
+  parameters <- list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0.1)
+  # A CRS given in distance_crs is used without a message.
+  expect_no_message(
+    model <- specify_glgpm(y ~ gp(), latlon_data, "gaussian", parameters,
+                           distance_crs = 32637)
+  )
+  expect_identical(st_crs(model$data), st_crs(32637))
+  expect_equal(st_coordinates(model$data), st_coordinates(gaussian_data),
+               tolerance = 1e-6)
 })
 
 test_that("specify_glgpm returns errors as expected", {
@@ -42,9 +61,9 @@ test_that("specify_glgpm returns errors as expected", {
   )
 
   expect_input_error(
-    specify_glgpm(y ~ gp(), gaussian_data, "gaussian", model_crs = 4326,
+    specify_glgpm(y ~ gp(), gaussian_data, "gaussian", distance_crs = 4326,
                   list(beta = 1, sigma2 = 1, phi = 1, sigma2_me = 0)),
-    "model_crs"
+    "distance_crs"
   )
 
   expect_message(
