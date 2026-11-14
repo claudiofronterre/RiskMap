@@ -52,6 +52,10 @@
 <p><code>tests/testthat/helper-data.R</code> is sourced automatically before the test suite runs and defines the shared fixtures used across most test files: <code>gaussian_data</code>, <code>binomial_data</code>, <code>poisson_data</code> (small, <code>n = 10</code>, synthetic datasets) and pre-fitted models <code>gaussian_model</code>, <code>gaussian_offset_model</code>, <code>gaussian_intercept_model</code>, <code>binomial_model</code>, <code>poisson_model</code>, plus <code>control_mcmc</code> (a reduced-iteration <code><a href="reference/set_control_mcmc.html">set_control_mcmc()</a></code> for fast fits). Prefer reusing these over creating new fixtures, unless a test specifically needs different data (e.g. a covariate name collision, or a formula shape none of the fixtures cover). If you ever need to produce examples of bugs, use these same objects.</p>
 </div>
 <div class="section level2">
+<h2 id="golden-battery">Golden battery<a class="anchor" aria-label="anchor" href="#golden-battery"></a></h2>
+<p><code>tools/golden/</code> (outside the built package, see <code>.Rbuildignore</code>) runs a fixed set of fits, predictions, profiles, bootstraps and engine evaluations and compares two installs of RiskMap task by task. A PR that is meant to change no number must leave every task identical bit for bit, and a PR that moves fits shows by how much with the declared paths or the tolerance mode of <code>compare.R</code>. Run both arms with the same battery, from installs of clean <code>git archive</code>s (never <code>load_all()</code>), with one BLAS thread and on one machine type, on Wayland with <code>tools/golden/hpc/push.sh</code> and <code>submit.sh</code>. Say in the PR which arms were compared and what the comparison found. <code>tools/golden/README.md</code> has the details and the current reference.</p>
+</div>
+<div class="section level2">
 <h2 id="commit-messages">Commit messages<a class="anchor" aria-label="anchor" href="#commit-messages"></a></h2>
 <p>Reference the issue number where one exists, e.g. <code>fix thing #92</code>.</p>
 </div>
