@@ -258,8 +258,8 @@ fits <- list(
                                                      denominator = m, data = dataset("child_households"),
                                                      family = "binomial", distance_units = "km", messages = FALSE,
                                                      seed = 42L, return_samples = FALSE),
-  # Variants of F42 on its first 40 locations, agreed with the session that integrates such households (proposal 3
-  # of the review), since each takes a different path of the new rule. Probit uses the trapezium rule of custom
+  # Variants of F42 on its first 40 locations, for the integration of such households (proposal 3 of the review),
+  # since each takes a different path of the new rule. Probit uses the trapezium rule of custom
   # links. Without re(), each location is one group of children with differing predictors under the nugget. Without
   # the nugget, each household is a record of its own and the households at a location share the field. With every
   # child at a location given the same sex, today's rules already integrate the households and the nugget everywhere,
