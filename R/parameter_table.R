@@ -261,8 +261,9 @@ fit_nugget_variance <- function(fit) {
 ##' them (`tau2` for the nugget). Coefficients are kept, variances and the
 ##' scale go to the log scale, the nugget to the logarithm of its ratio to
 ##' the spatial variance (`nugget_working()`), and the family's parameters
-##' through their own maps. The MCML engine and the direct Gaussian path
-##' start from it.
+##' through their own maps. The MCML engine and both Gaussian paths start
+##' from it, so the start of each parameter is on the scale on which its
+##' likelihood reads it.
 ##' @noRd
 working_start <- function(table, start) {
   out <- start_value(table, start, "beta")
@@ -292,29 +293,6 @@ start_value <- function(table, start, name) {
     riskmap_bug("The start of {.code {user}} has {length(value)} values, not {wanted}.")
   }
   value
-}
-
-##' Starting values on the working scale of the Woodbury Gaussian path
-##'
-##' As `glgpm_lm()` has always read them, which differs from
-##' `working_start()`: every covariance parameter after the scale is divided
-##' by the spatial variance before its logarithm is taken, the measurement
-##' error and random-effect variances as well as the nugget, while the
-##' likelihood reads only the nugget as a ratio. Kept apart for step 2b of
-##' the parameter table, which changes the numbers of fits on this path
-##' whose start of the spatial variance is not 1.
-##' @noRd
-woodbury_start <- function(table, start) {
-  rows <- estimated_rows(table)
-  covariance <- numeric(sum(rows$block != "coefficients"))
-  position <- 0L
-  for (name in setdiff(estimate_names(table), "beta")) {
-    value <- start_value(table, start, name)
-    covariance[position + seq_along(value)] <- value
-    position <- position + length(value)
-  }
-  covariance[-(1:2)] <- covariance[-(1:2)] / covariance[1]
-  unname(c(start_value(table, start, "beta"), log(covariance)))
 }
 
 ##' Split the working vector of the fitting engines into the estimate
