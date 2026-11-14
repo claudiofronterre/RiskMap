@@ -61,7 +61,10 @@
 // predictors (set_relative()) as well as on the variances, up to 6 of each
 // kind. Each group and location holds only the grid cells it has needed, in a
 // strip that grows as the draws reach further. A cell is a pure function of
-// the state, the variances and its grid point, as in the tables above.
+// the state, the variances and its grid point, as in the tables above. Within
+// a location, a group of one member, such as a household of one child, takes
+// its record's h at x + r_j from the record table at v, which does not depend
+// on the coefficients and is shared by every record with its pair.
 
 namespace riskmap_site {
 
@@ -791,12 +794,14 @@ struct GroupTerms {
 // The sum over a location's groups of h_g at the group table `inner` (or of
 // the groups' kernels when it is null) and its first two derivatives at eta,
 // and with has_extra the sum of (h'' + h'^2) / 2, the derivative of the sum
-// in the inner variance.
+// in the inner variance. A group of one member takes the record table
+// `records` at the same variance.
 template <bool Extra>
 struct LocationTerms {
   static constexpr bool has_extra = Extra;
   SiteTable& sites;
   StripTable* inner;
+  Table* records;
   const int location;
   const double* relative;
   mutable double last_extra = 0.0;
@@ -957,29 +962,47 @@ class SiteTable {
   }
 
   // H_l at x from the location table, whose groups take the group table
-  // `inner` at the location table's vi and state.
+  // `inner` at the location table's vi and state, and those of one member
+  // the record table `records` at vi.
   Moments evaluate_location(StripTable& table, StripTable& inner,
-                            const int location, const double x,
-                            const int order) {
+                            Table& records, const int location,
+                            const double x, const int order) {
     const double* relative = table.relative->data();
     const double vo = table.v;
     return strip_evaluate(table.strips[location], x, order,
                           location_cells_filled_, [&](const double at) {
-                            return location_cell(&inner, location, at, vo,
-                                                 relative);
+                            return location_cell(&inner, &records, location,
+                                                 at, vo, relative);
                           });
   }
 
-  // The sum over a location's groups of h_g at the group table `inner`, or of
-  // the groups' kernels when it is null, with derivatives up to `order`, and
-  // for order 2 in `extra` the sum of (h'' + h'^2) / 2.
-  Moments location_sum(StripTable* inner, const int location,
+  // h_g at eta, from the group table `inner`, or from the record table
+  // `records` at the same variance for a group of one member, whose h_g is
+  // that of its record at eta + r_j, or the group's kernel when `inner` is
+  // null.
+  Moments group_moments(StripTable* inner, Table* records, const int group,
+                        const double* relative, const double eta,
+                        const int order) {
+    if (inner == nullptr) return group_plain(group, relative, eta);
+    const int first = group_start_[group];
+    if (records != nullptr && group_start_[group + 1] == first + 1) {
+      return evaluate(*records, member_pair_[first], eta + relative[first],
+                      order);
+    }
+    return evaluate_group(*inner, group, eta, order);
+  }
+
+  // The sum over a location's groups of h_g at the group table `inner` and
+  // record table `records`, or of the groups' kernels when `inner` is null,
+  // with derivatives up to `order`, and for order 2 in `extra` the sum of
+  // (h'' + h'^2) / 2.
+  Moments location_sum(StripTable* inner, Table* records, const int location,
                        const double* relative, const double eta,
                        const int order) {
     Moments out{0.0, 0.0, 0.0, 0.0};
     for (const int g : locations_[location]) {
-      const Moments m = inner == nullptr ? group_plain(g, relative, eta) :
-        evaluate_group(*inner, g, eta, order);
+      const Moments m = group_moments(inner, records, g, relative, eta,
+                                      order);
       out.h += m.h;
       out.h1 += m.h1;
       out.h2 += m.h2;
@@ -991,11 +1014,12 @@ class SiteTable {
   // The tilted mean, under the location's outer integral at vo, of the sum
   // over its groups of (h'' + h'^2) / 2 at the group table `inner`, which is
   // the derivative of H_l in the inner variance, computed directly at x.
-  // `inner` is null for an inner variance of zero.
-  double location_inner_slope(StripTable* inner, const int location,
-                              const double x, const double vo,
-                              const double* relative) {
-    const LocationTerms<true> terms{*this, inner, location, relative};
+  // `inner` and `records` are null for an inner variance of zero.
+  double location_inner_slope(StripTable* inner, Table* records,
+                              const int location, const double x,
+                              const double vo, const double* relative) {
+    const LocationTerms<true> terms{*this, inner, records, location,
+                                    relative};
     if (kernel_.custom != nullptr) {
       double low = 0, high = 0, step_cap = 0;
       location_flat_range(inner, location, relative, low, high, step_cap);
@@ -1269,9 +1293,11 @@ class SiteTable {
       uniform_cell(terms, x, v);
   }
 
-  Moments location_cell(StripTable* inner, const int location, const double x,
-                        const double vo, const double* relative) {
-    const LocationTerms<false> terms{*this, inner, location, relative};
+  Moments location_cell(StripTable* inner, Table* records, const int location,
+                        const double x, const double vo,
+                        const double* relative) {
+    const LocationTerms<false> terms{*this, inner, records, location,
+                                     relative};
     if (kernel_.custom != nullptr) {
       double low = 0, high = 0, step_cap = 0;
       location_flat_range(inner, location, relative, low, high, step_cap);
@@ -1472,7 +1498,8 @@ inline void GroupTerms::operator()(const double eta, double& k, double& k1,
 template <bool Extra>
 inline void LocationTerms<Extra>::operator()(const double eta, double& k,
                                              double& k1, double& k2) const {
-  const Moments sum = sites.location_sum(inner, location, relative, eta, 2);
+  const Moments sum = sites.location_sum(inner, records, location, relative,
+                                         eta, 2);
   k = sum.h;
   k1 = sum.h1;
   k2 = sum.h2;
@@ -1551,6 +1578,7 @@ class Evaluator {
             out.mode = 7;
             out.strip = location_table(vo, vi);
             out.inner = group_table(vi);
+            out.table = record_table(unit.b);
           } else if (vo > 0) {
             // With the groups' variance at zero the location is one group
             // of all its members at vo.
@@ -1559,6 +1587,7 @@ class Evaluator {
           } else if (vi > 0) {
             out.mode = 9;
             out.inner = group_table(vi);
+            out.table = record_table(unit.b);
           } else {
             out.mode = 10;
           }
@@ -1587,15 +1616,16 @@ class Evaluator {
     case 6:
       return sites_.group_plain(r.index, relative_->data(), eta);
     case 7:
-      return sites_.evaluate_location(*r.strip, *r.inner, r.index, eta, order);
+      return sites_.evaluate_location(*r.strip, *r.inner, *r.table, r.index,
+                                      eta, order);
     case 8:
       return sites_.evaluate_group(*r.strip, sites_.whole_group(r.index), eta,
                                    order);
     default:
       // Modes 9 and 10, the sum of the groups' h at their variance, or of
       // their kernels.
-      return sites_.location_sum(r.inner, r.index, relative_->data(), eta,
-                                 order);
+      return sites_.location_sum(r.inner, r.table, r.index, relative_->data(),
+                                 eta, order);
     }
   }
 
@@ -1616,12 +1646,13 @@ class Evaluator {
     if (r.mode == 7 || r.mode == 8) {
       // With the groups' variance at zero the slope is that of their kernels.
       return sites_.location_inner_slope(r.mode == 7 ? r.inner : nullptr,
+                                         r.mode == 7 ? r.table : nullptr,
                                          r.index, eta, r.vo,
                                          relative_->data());
     }
     if (r.mode == 9 || r.mode == 10) {
-      return sites_.location_sum(r.inner, r.index, relative_->data(), eta,
-                                 2).extra;
+      return sites_.location_sum(r.inner, r.table, r.index, relative_->data(),
+                                 eta, 2).extra;
     }
     return 0.0;
   }
