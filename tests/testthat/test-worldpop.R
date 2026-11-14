@@ -116,7 +116,20 @@ test_that("get_worldpop uses the both-sexes layers when available", {
 test_that("get_worldpop downloads from WorldPop", {
   skip_on_cran()
   skip_if_offline("hub.worldpop.org")
-  total <- get_worldpop("LBR", 2011, resolution = "1km",
-                        dest_dir = withr::local_tempdir(), messages = FALSE)
+  # The host can resolve and answer while the request still fails, as when
+  # its SSL certificate has expired. That is a failure of the service rather
+  # than of RiskMap, so skip when the error carries the failed request as its
+  # parent. An error without a parent means WorldPop answered with something
+  # unexpected, and the test still fails.
+  dest_dir <- withr::local_tempdir()
+  total <- tryCatch(
+    get_worldpop("LBR", 2011, resolution = "1km", dest_dir = dest_dir,
+                 messages = FALSE),
+    riskmap_error_worldpop = function(error) {
+      if (is.null(error$parent)) stop(error)
+      skip(paste("WorldPop can't be reached.",
+                 conditionMessage(error$parent)))
+    }
+  )
   expect_gt(terra::global(total, "sum", na.rm = TRUE)[[1]], 3e6)
 })
