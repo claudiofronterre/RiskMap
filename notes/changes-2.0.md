@@ -232,6 +232,14 @@ same UTM zone for data that a zone covers well. `propose_utm()` took the zone
 holding most locations, which could be far from the centre of the data.
 - In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and
 `scale_to_km` has been replaced with `distance_units` (`"km"` or `"m"`).
+- `create_grid()` gains `distance_crs`, which projects `boundaries` as it
+projects the data in `variogram()` and `summarise_distance()`, so the CRS of
+distances has one name in all three. With `raster` it must be `NULL` or the
+CRS of the raster. It comes before `distance_units`, so a call that gave
+`distance_units` by position must now name it. The message for boundaries in
+longitude and latitude now says to set `distance_crs`.
+- `propose_crs()`'s `epsg_tolerance` is now `utm_tolerance`, since it is the
+largest distortion for which a UTM zone is proposed.
 
 ## Exploratory analysis
 
@@ -279,6 +287,13 @@ native linear units rather than assuming metres.
   `plot_variogram()` (now `plot.RiskMap_variogram()`) shows the envelope by
   default and warns when it was omitted with `n_permutations = 0`.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
+- `plot()` of a variogram takes `envelope` and `colour` instead of
+`plot_envelope` and `color`, in the British spelling of RiskMap's other
+names. It now stops when `...` is given anything, and so does `print()` of
+`summarise_distance()` results, so that an old name or a misspelt one is not
+ignored.
+- `variogram()` takes `seed` last, after `distance_crs` and `distance_units`.
+- `create_convex_hull()` takes `data` instead of `sf_object`.
 
 ## Model fitting
 
@@ -1287,6 +1302,15 @@ Gaussian models also take 2,000 independent draws by default, including with
   in the last binary digit. On the 8,740 cells of `tz_covariates`, a
   `predict()` with the default summaries is about twice as fast, and one with
   every summary about three times as fast.
+- A grid from `create_grid()` keeps its class and the metadata of its cells
+when its columns are selected with `[`, `dplyr::select()`, `mutate()` or a
+dplyr join (#214). Before, `predict()` with `boundaries` then assigned each
+point to the polygon containing it without a word, instead of weighting cells
+by their coverage, which changed areal estimates. `cbind()`, `merge()` and
+`st_as_sf()` still drop the class, and so does keeping only the geometry
+column. `rbind()` keeps the cells of its first grid. `predict()` now says
+when it assigns points to polygons one by one although they lie on a square
+lattice, as the centres of a grid's cells do.
 
 ## Cross validation
 
