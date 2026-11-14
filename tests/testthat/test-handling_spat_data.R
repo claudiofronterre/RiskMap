@@ -218,6 +218,14 @@ test_that("points on a square lattice are recognised", {
   expect_false(on_square_lattice(row))
   expect_false(on_square_lattice(square_lattice[1:3, ]))
   expect_false(on_square_lattice(gaussian_data))
+
+  # Scattered sites in whole metres are on a lattice of 1 m, but not a grid
+  data(galicia, package = "RiskMap", envir = environment())
+  expect_false(on_square_lattice(galicia))
+  rounded <- st_as_sf(data.frame(x = c(0, 1, 7, 40, 41, 95, 130, 200),
+                                 y = c(3, 90, 4, 55, 56, 12, 180, 2)),
+                      coords = c("x", "y"), crs = 32637)
+  expect_false(on_square_lattice(rounded))
 })
 
 test_that("predict() says when points on a grid are assigned whole to polygons (#214)", {
@@ -238,6 +246,23 @@ test_that("predict() says when points on a grid are assigned whole to polygons (
 
   expect_no_message(predict_over(grid))
   expect_no_message(suppressWarnings(predict_over(gaussian_data)))
+
+  # A grid in another CRS than the fit's is recognised before it is
+  # projected, which predict() also reports
+  messages_of <- function(newdata) {
+    texts <- character()
+    withCallingHandlers(suppressWarnings(predict_over(newdata)),
+                        riskmap_message = function(m) {
+                          texts <<- c(texts, conditionMessage(m))
+                          invokeRestart("muffleMessage")
+                        })
+    texts
+  }
+  other_grid <- suppressWarnings(create_grid(st_transform(hull, 32636), 3))
+  other_combined <- cbind(other_grid, value = 1)
+  expect_false(on_square_lattice(st_transform(other_combined, 32637)))
+  expect_true(any(grepl("regular grid", messages_of(other_combined))))
+  expect_false(any(grepl("regular grid", messages_of(other_grid))))
 })
 
 test_that("create_grid projects boundaries to distance_crs", {

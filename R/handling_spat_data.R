@@ -196,16 +196,20 @@ as_riskmap_grid <- function(grid) {
 
 #' Say that points on a regular grid are assigned to polygons one by one
 #'
-#' Called by `predict()` when it aggregates over polygons at points that are
-#' not a grid from `create_grid()`. Points on a square lattice are probably
-#' such a grid that lost its cells, for example through `cbind()`, or one
-#' made with `sf::st_make_grid()`, so the message says how to have each cell
-#' weighted by its coverage instead (#214). The points are those passed to
-#' the model, in its CRS, so a grid made in another CRS is not recognised.
-#' @param points The prediction locations, an `sf` object.
+#' Called by `predict()` when it aggregates over polygons. Points that are
+#' not a grid from `create_grid()` with its cells but lie on a square lattice
+#' are probably such a grid that lost its cells, for example through
+#' `cbind()`, or one made with `sf::st_make_grid()`, so the message says how
+#' to have each cell weighted by its coverage instead (#214).
+#' @param points The prediction locations as the user gave them, in their own
+#'   CRS, since a lattice is no longer one once projected to another.
 #' @return Whether the message was given, invisibly.
 #' @noRd
 inform_point_assignment <- function(points) {
+  if (inherits(points, "RiskMap_grid") &&
+      !is.null(attr(points, "grid_metadata", exact = TRUE))) {
+    return(invisible(FALSE))
+  }
   if (!on_square_lattice(points)) return(invisible(FALSE))
   riskmap_inform(c(
     "{.arg newdata} lie on a regular grid that doesn't come from {.fn create_grid}, so each point counts fully in the polygon that contains it.",
@@ -219,7 +223,10 @@ inform_point_assignment <- function(points) {
 #' The points are distinct, at least four, in at least two rows and two
 #' columns, and their coordinates are whole multiples of one spacing from the
 #' first row and column, as the centres of the cells of a square grid, of
-#' which some may be missing.
+#' which some may be missing. At least half of the gaps between neighbouring
+#' rows, and between neighbouring columns, are one spacing, as in a grid.
+#' Scattered locations whose coordinates are whole metres are on a lattice of
+#' 1 m, but their rows and columns are mostly further apart.
 #' @param points An `sf` object.
 #' @noRd
 on_square_lattice <- function(points) {
@@ -237,7 +244,9 @@ on_square_lattice <- function(points) {
     if (!length(gaps)) return(NA_real_)
     step <- min(gaps)
     positions <- (values - values[1L]) / step
-    if (any(abs(positions - round(positions)) > 1e-6)) NA_real_ else step
+    on_lattice <- all(abs(positions - round(positions)) <= 1e-6)
+    adjacent <- mean(abs(gaps / step - 1) <= 1e-6) >= 0.5
+    if (on_lattice && adjacent) step else NA_real_
   })
   all(is.finite(steps)) && abs(steps[1L] - steps[2L]) <= 1e-6 * max(steps)
 }
