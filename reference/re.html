@@ -3,11 +3,11 @@
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
-    <nav class="navbar navbar-expand-lg fixed-top bg-light" data-bs-theme="light" aria-label="Site navigation"><div class="container">
+    <nav class="navbar navbar-expand-lg fixed-top bg-primary" data-bs-theme="dark" aria-label="Site navigation"><div class="container">
 
     <a class="navbar-brand me-2" href="../index.html">RiskMap</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -16,8 +16,8 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
-      </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
- <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
+      </ul><ul class="navbar-nav"><li class="nav-item"><a class="external-link nav-link" href="https://www.mbgr.org/">MBG-R (Giorgi, Fronterre)</a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/claudiofronterre/RiskMap" aria-label="GitHub repository"><span class="fa fab fa-github"></span></a></li>
       </ul></div>
 
 
@@ -27,7 +27,7 @@
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Random Effect Model Specification</h1>
-
+      <small class="dont-index">Source: <a href="https://github.com/claudiofronterre/RiskMap/blob/main/R/auxiliary.R" class="external-link"><code>R/auxiliary.R</code></a></small>
       <div class="d-none name"><code>re.Rd</code></div>
     </div>
 
@@ -45,12 +45,12 @@
 
 
 <dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Variables representing the random effects in the model.</p></dd>
+<dd><p>Variables representing the random effects in the model. Each variable adds its own independent random effect.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A list of class <code>re.spec</code> containing the following elements:</p>
+    <p>A list of class <code>RiskMap_re_spec</code> containing the following elements:</p>
 <dl><dt>term</dt>
 <dd><p>A character vector of the specified terms.</p></dd>
 
@@ -63,28 +63,51 @@
 </dl></div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>The function constructs a list that includes the specified terms for the random effects. This list can be used as a specification for a random effect model.</p>
+    <p>The function constructs a list that includes the specified terms for the random effects. This list can be used as a specification for a random effect model.
+Several <code>re()</code> calls in a formula are combined, so <code>re(region) + re(province)</code> is the same model as <code>re(region, province)</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="note">Note<a class="anchor" aria-label="anchor" href="#note"></a></h2>
     <p>At least one variable must be provided as input.</p>
     </div>
-    <div class="section level2">
-    <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
-    <p>Emanuele Giorgi <a href="mailto:e.giorgi@lancaster.ac.uk">e.giorgi@lancaster.ac.uk</a></p>
-<p>Claudio Fronterre <a href="mailto:c.fronterr@lancaster.ac.uk">c.fronterr@lancaster.ac.uk</a></p>
-    </div>
 
+    <div class="section level2">
+    <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># this function is not intended for use by itself</span></span></span>
+<span class="r-in"><span><span class="fu">re</span><span class="op">(</span><span class="va">province</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $term</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "province"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $dim</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $label</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "re(province)"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> attr(,"class")</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "RiskMap_re_spec"</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># use in a model formula</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">italy_sim</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="glgpm.html">glgpm</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>  formula <span class="op">=</span> <span class="va">y</span> <span class="op">~</span> <span class="fu"><a href="gp.html">gp</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span> <span class="fu">re</span><span class="op">(</span><span class="va">province</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  data <span class="op">=</span> <span class="va">italy_sim</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">100</span>,<span class="op">]</span>,</span></span>
+<span class="r-in"><span>  family <span class="op">=</span> <span class="st">"gaussian"</span>,</span></span>
+<span class="r-in"><span>  messages <span class="op">=</span> <span class="cn">FALSE</span></span></span>
+<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span></span></span>
+</code></pre></div>
+    </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Emanuele Giorgi.</p>
+  <p>Developed by the RiskMap team: Emanuele Giorgi and Claudio Fronterre.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
+  <p>Learn RiskMap with <a href="https://www.mbgr.org/" class="external-link">MBG-R</a>.</p>
 </div>
 
     </footer></div>

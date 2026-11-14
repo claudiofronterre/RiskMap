@@ -3,11 +3,11 @@
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
-    <nav class="navbar navbar-expand-lg fixed-top bg-light" data-bs-theme="light" aria-label="Site navigation"><div class="container">
+    <nav class="navbar navbar-expand-lg fixed-top bg-primary" data-bs-theme="dark" aria-label="Site navigation"><div class="container">
 
     <a class="navbar-brand me-2" href="../index.html">RiskMap</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -16,8 +16,8 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
-      </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
- <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
+      </ul><ul class="navbar-nav"><li class="nav-item"><a class="external-link nav-link" href="https://www.mbgr.org/">MBG-R (Giorgi, Fronterre)</a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/claudiofronterre/RiskMap" aria-label="GitHub repository"><span class="fa fab fa-github"></span></a></li>
       </ul></div>
 
 
@@ -30,7 +30,7 @@
     </div>
 
     <div class="section level2">
-      <h2 id="all-functions">All functions<a class="anchor" aria-label="anchor" href="#all-functions"></a></h2>
+      <h2 id="package">Package<a class="anchor" aria-label="anchor" href="#package"></a></h2>
 
 
 
@@ -41,108 +41,105 @@
 
       <dl><dt>
 
-          <code><a href="Laplace_sampling_MCMC.html">Laplace_sampling_MCMC()</a></code>
+          <code><a href="RiskMap-package.html">RiskMap</a></code> <code><a href="RiskMap-package.html">RiskMap-package</a></code>
 
         </dt>
-        <dd>Laplace-sampling MCMC for Generalized Linear Gaussian Process Models</dd>
+        <dd>RiskMap: Geostatistical Modeling of Spatially Referenced Data</dd>
+      </dl></div><div class="section level2">
+      <h2 id="data-projections-and-distances">Data, projections and distances<a class="anchor" aria-label="anchor" href="#data-projections-and-distances"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="propose_crs.html">propose_crs()</a></code>
+
+        </dt>
+        <dd>Propose a projected CRS for the data</dd>
 
         <dt>
 
-          <code><a href="abund_sma.html">abund_sma</a></code>
+          <code><a href="crs_distortion.html">crs_distortion()</a></code>
 
         </dt>
-        <dd>Female Culex pipiens abundance (collections) in the Sacramento Metropolitan Area</dd>
-
-        <dt>
-
-          <code><a href="anopheles.html">anopheles</a></code>
-
-        </dt>
-        <dd>Anopheles mosquitoes in Southern Cameroon</dd>
-
-        <dt>
-
-          <code><a href="assess_pp.html">assess_pp()</a></code>
-
-        </dt>
-        <dd>Assess Predictive Performance via Spatial Cross-Validation</dd>
-
-        <dt>
-
-          <code><a href="assess_sim.html">assess_sim()</a></code>
-
-        </dt>
-        <dd>Assess Simulations</dd>
-
-        <dt>
-
-          <code><a href="check_mcmc.html">check_mcmc()</a></code>
-
-        </dt>
-        <dd>Check MCMC Convergence for Spatial Random Effects</dd>
-
-        <dt>
-
-          <code><a href="coef.RiskMap.html">coef(<i>&lt;RiskMap&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Extract Parameter Estimates from a "RiskMap" Model Fit</dd>
-
-        <dt>
-
-          <code><a href="compute_ID_coords.html">compute_ID_coords()</a></code>
-
-        </dt>
-        <dd>Compute Unique Coordinate Identifiers</dd>
-
-        <dt>
-
-          <code><a href="convex_hull_sf.html">convex_hull_sf()</a></code>
-
-        </dt>
-        <dd>Convex Hull of an sf Object</dd>
+        <dd>Distortion of distances by a projected CRS</dd>
 
         <dt>
 
           <code><a href="create_grid.html">create_grid()</a></code>
 
         </dt>
-        <dd>Create Grid of Points Within Shapefile</dd>
+        <dd>Create Grid of Points Within Boundaries</dd>
 
         <dt>
 
-          <code><a href="dast.html">dast()</a></code>
+          <code><a href="create_convex_hull.html">create_convex_hull()</a></code>
 
         </dt>
-        <dd>Fitting of decay-adjusted spatio-temporal (DAST) model</dd>
+        <dd>Convex Hull of an sf Object</dd>
 
         <dt>
 
-          <code><a href="dist_summaries.html">dist_summaries()</a></code>
+          <code><a href="create_ids.html">create_ids()</a></code>
+
+        </dt>
+        <dd>Compute Unique Coordinate Identifiers</dd>
+
+        <dt>
+
+          <code><a href="get_worldpop.html">get_worldpop()</a></code>
+
+        </dt>
+        <dd>Download gridded population counts from WorldPop</dd>
+
+        <dt>
+
+          <code><a href="summarise_distance.html">summarise_distance()</a></code> <code><a href="summarise_distance.html">print(<i>&lt;RiskMap_distance_summary&gt;</i>)</a></code>
 
         </dt>
         <dd>Summaries of the distances</dd>
 
         <dt>
 
-          <code><a href="galicia.html">galicia</a></code>
+          <code><a href="variogram.html">variogram()</a></code>
 
         </dt>
-        <dd>Heavy metal biomonitoring in Galicia</dd>
+        <dd>Empirical variogram with a global permutation envelope</dd>
 
         <dt>
+
+          <code><a href="print.RiskMap_variogram.html">print(<i>&lt;RiskMap_variogram&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print Method for RiskMap_variogram Objects</dd>
+
+        <dt>
+
+          <code><a href="plot.RiskMap_variogram.html">plot(<i>&lt;RiskMap_variogram&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Plot Method for RiskMap_variogram Objects</dd>
+      </dl></div><div class="section level2">
+      <h2 id="specifying-and-fitting-models">Specifying and fitting models<a class="anchor" aria-label="anchor" href="#specifying-and-fitting-models"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
 
           <code><a href="glgpm.html">glgpm()</a></code>
 
         </dt>
         <dd>Estimation of Generalized Linear Gaussian Process Models</dd>
-
-        <dt>
-
-          <code><a href="glgpm_sim.html">glgpm_sim()</a></code>
-
-        </dt>
-        <dd>Simulation from Generalized Linear Gaussian Process Models</dd>
 
         <dt>
 
@@ -153,17 +150,456 @@
 
         <dt>
 
+          <code><a href="re.html">re()</a></code>
+
+        </dt>
+        <dd>Random Effect Model Specification</dd>
+
+        <dt>
+
+          <code><a href="negative_binomial.html">negative_binomial()</a></code>
+
+        </dt>
+        <dd>The Negative Binomial Family</dd>
+
+        <dt>
+
+          <code><a href="set_control_mcml.html">set_control_mcml()</a></code>
+
+        </dt>
+        <dd>Set control parameters for certified MCML estimation</dd>
+
+        <dt>
+
+          <code><a href="set_control_mcmc.html">set_control_mcmc()</a></code>
+
+        </dt>
+        <dd>Set Control Parameters for Simulation</dd>
+
+        <dt>
+
+          <code><a href="elogit.html">elogit()</a></code>
+
+        </dt>
+        <dd>Empirical Logit Transformation for Binomial Data</dd>
+
+        <dt>
+
+          <code><a href="matern_correlation.html">matern_correlation()</a></code>
+
+        </dt>
+        <dd>Matern Correlation Function</dd>
+
+        <dt>
+
+          <code><a href="matern_gradient_phi.html">matern_gradient_phi()</a></code>
+
+        </dt>
+        <dd>First Derivative with Respect to \(\phi\)</dd>
+
+        <dt>
+
+          <code><a href="matern_hessian_phi.html">matern_hessian_phi()</a></code>
+
+        </dt>
+        <dd>Second Derivative with Respect to \(\phi\)</dd>
+
+        <dt>
+
+          <code><a href="maxim_integrand.html">maxim_integrand()</a></code>
+
+        </dt>
+        <dd>Maximization of the Integrand for Generalized Linear Gaussian Process Models</dd>
+      </dl></div><div class="section level2">
+      <h2 id="fitted-models">Fitted models<a class="anchor" aria-label="anchor" href="#fitted-models"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="print.RiskMap.html">print(<i>&lt;RiskMap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print a Fitted RiskMap Model</dd>
+
+        <dt>
+
+          <code><a href="summary.RiskMap.html">summary(<i>&lt;RiskMap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Summarize Model Fits</dd>
+
+        <dt>
+
+          <code><a href="print.summary.RiskMap.html">print(<i>&lt;summary.RiskMap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print Summary of RiskMap Model</dd>
+
+        <dt>
+
+          <code><a href="coef.RiskMap.html">coef(<i>&lt;RiskMap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Extract Parameter Estimates from a "RiskMap" Model Fit</dd>
+
+        <dt>
+
+          <code><a href="fitted.RiskMap.html">fitted(<i>&lt;RiskMap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Extract fitted values from a RiskMap model</dd>
+
+        <dt>
+
+          <code><a href="to_table.html">to_table()</a></code>
+
+        </dt>
+        <dd>Format RiskMap Results as a Table</dd>
+      </dl></div><div class="section level2">
+      <h2 id="checking-a-fit">Checking a fit<a class="anchor" aria-label="anchor" href="#checking-a-fit"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="check_fit.html">check_fit()</a></code>
+
+        </dt>
+        <dd>Check How a Fitted Model Was Computed</dd>
+
+        <dt>
+
+          <code><a href="print.RiskMap_check.html">print(<i>&lt;RiskMap_check&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print the Checks on a Fitted Model</dd>
+
+        <dt>
+
+          <code><a href="summary.RiskMap_check.html">summary(<i>&lt;RiskMap_check&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Summarise the Checks on a Fitted Model</dd>
+
+        <dt>
+
+          <code><a href="print.summary.RiskMap_check.html">print(<i>&lt;summary.RiskMap_check&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print the Summary of the Checks on a Fitted Model</dd>
+
+        <dt>
+
+          <code><a href="plot.RiskMap_check.html">plot(<i>&lt;RiskMap_check&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Plot the Checks on a Fitted Model</dd>
+
+        <dt>
+
+          <code><a href="profile.RiskMap.html">profile(<i>&lt;RiskMap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Profile likelihood of a fitted geostatistical model</dd>
+
+        <dt>
+
+          <code><a href="plot.RiskMap_profile.html">plot(<i>&lt;RiskMap_profile&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Plot profile likelihoods of a fitted geostatistical model</dd>
+
+        <dt>
+
+          <code><a href="parametric_bootstrap.html">parametric_bootstrap()</a></code>
+
+        </dt>
+        <dd>Parametric bootstrap of a fitted geostatistical model</dd>
+
+        <dt>
+
+          <code><a href="print.RiskMap_bootstrap.html">print(<i>&lt;RiskMap_bootstrap&gt;</i>)</a></code> <code><a href="print.RiskMap_bootstrap.html">print(<i>&lt;summary.RiskMap_bootstrap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print a parametric bootstrap</dd>
+
+        <dt>
+
+          <code><a href="summary.RiskMap_bootstrap.html">summary(<i>&lt;RiskMap_bootstrap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Summarise a parametric bootstrap</dd>
+
+        <dt>
+
+          <code><a href="plot.RiskMap_bootstrap.html">plot(<i>&lt;RiskMap_bootstrap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Plot a parametric bootstrap</dd>
+
+        <dt>
+
+          <code><a href="plot_mcmc.html">plot_mcmc()</a></code>
+
+        </dt>
+        <dd>Check the mixing of the MCMC samples of the random effects</dd>
+
+        <dt>
+
+          <code><a href="summarise_mcmc.html">summarise_mcmc()</a></code>
+
+        </dt>
+        <dd>Effective sample sizes of the MCMC samples of the random effects</dd>
+
+        <dt>
+
+          <code><a href="riskmap_conditions.html">riskmap_conditions</a></code>
+
+        </dt>
+        <dd>Conditions raised by RiskMap</dd>
+
+        <dt>
+
+          <code><a href="riskmap_progress.html">riskmap_progress</a></code>
+
+        </dt>
+        <dd>Progress of long computations</dd>
+      </dl></div><div class="section level2">
+      <h2 id="prediction">Prediction<a class="anchor" aria-label="anchor" href="#prediction"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="predict.RiskMap.html">predict(<i>&lt;RiskMap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Spatial prediction from a fitted RiskMap model</dd>
+
+        <dt>
+
+          <code><a href="print.RiskMap_prediction.html">print(<i>&lt;RiskMap_prediction&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print a RiskMap prediction</dd>
+
+        <dt>
+
+          <code><a href="plot.RiskMap_prediction.html">plot(<i>&lt;RiskMap_prediction&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Plot a RiskMap prediction</dd>
+
+        <dt>
+
+          <code><a href="to_table.RiskMap_prediction.html">to_table(<i>&lt;RiskMap_prediction&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Table of polygon predictions</dd>
+
+        <dt>
+
+          <code><a href="assess_extrapolation.html">assess_extrapolation()</a></code>
+
+        </dt>
+        <dd>Assess where predictions extrapolate beyond the data</dd>
+
+        <dt>
+
+          <code><a href="plot.RiskMap_extrapolation.html">plot(<i>&lt;RiskMap_extrapolation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Map indicators of extrapolation</dd>
+      </dl></div><div class="section level2">
+      <h2 id="assessment">Assessment<a class="anchor" aria-label="anchor" href="#assessment"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="assess_prediction.html">assess_prediction()</a></code>
+
+        </dt>
+        <dd>Assess Predictive Performance via Spatial Cross-Validation</dd>
+
+        <dt>
+
+          <code><a href="print.RiskMap_cross_validation.html">print(<i>&lt;RiskMap_cross_validation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print the Results of a Spatial Cross-Validation</dd>
+
+        <dt>
+
+          <code><a href="summary.RiskMap_cross_validation.html">summary(<i>&lt;RiskMap_cross_validation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Summarize Cross-Validation Scores for Spatial RiskMap Models</dd>
+
+        <dt>
+
+          <code><a href="print.summary.RiskMap_cross_validation.html">print(<i>&lt;summary.RiskMap_cross_validation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print Summary of RiskMap Spatial Cross-Validation Scores</dd>
+
+        <dt>
+
+          <code><a href="plot.RiskMap_cross_validation.html">plot(<i>&lt;RiskMap_cross_validation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Plot Method for RiskMap_cross_validation Objects</dd>
+
+        <dt>
+
+          <code><a href="assess_simulation.html">assess_simulation()</a></code>
+
+        </dt>
+        <dd>Assess Simulations</dd>
+
+        <dt>
+
+          <code><a href="print.RiskMap_assess_simulation.html">print(<i>&lt;RiskMap_assess_simulation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print an Assessment of Simulations</dd>
+
+        <dt>
+
+          <code><a href="summary.RiskMap_assess_simulation.html">summary(<i>&lt;RiskMap_assess_simulation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Summarize Simulation Results</dd>
+
+        <dt>
+
+          <code><a href="print.summary.RiskMap_assess_simulation.html">print(<i>&lt;summary.RiskMap_assess_simulation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print Simulation Results</dd>
+      </dl></div><div class="section level2">
+      <h2 id="simulation">Simulation<a class="anchor" aria-label="anchor" href="#simulation"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="specify_glgpm.html">specify_glgpm()</a></code>
+
+        </dt>
+        <dd>Specify a model for simulation</dd>
+
+        <dt>
+
+          <code><a href="print.RiskMap_simulation_model.html">print(<i>&lt;RiskMap_simulation_model&gt;</i>)</a></code> <code><a href="print.RiskMap_simulation_model.html">print(<i>&lt;RiskMap_simulation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Print a simulation model or simulations</dd>
+
+        <dt>
+
+          <code><a href="simulate_glgpm.html">simulate_glgpm()</a></code>
+
+        </dt>
+        <dd>Simulate replicated data and spatial surfaces</dd>
+
+        <dt>
+
+          <code><a href="plot.RiskMap_simulation.html">plot(<i>&lt;RiskMap_simulation&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Plot Method for RiskMap_simulation Objects</dd>
+
+        <dt>
+
+          <code><a href="plot.RiskMap_simulated_surface.html">plot(<i>&lt;RiskMap_simulated_surface&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Plot Method for RiskMap_simulated_surface Objects</dd>
+
+        <dt>
+
+          <code><a href="simulated_data.html">simulated_data()</a></code> <code><a href="simulated_data.html">simulated_surface()</a></code>
+
+        </dt>
+        <dd>Extract a simulated dataset or surface</dd>
+
+        <dt>
+
+          <code><a href="simulated_values.html">simulated_values()</a></code>
+
+        </dt>
+        <dd>Extract simulated values in tidy form</dd>
+      </dl></div><div class="section level2">
+      <h2 id="example-datasets">Example datasets<a class="anchor" aria-label="anchor" href="#example-datasets"></a></h2>
+
+
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="abund_sma.html">abund_sma</a></code>
+
+        </dt>
+        <dd>Female <em>Culex pipiens</em> abundance (collections) in the Sacramento Metropolitan Area</dd>
+
+        <dt>
+
+          <code><a href="anopheles.html">anopheles</a></code>
+
+        </dt>
+        <dd><em>Anopheles</em> mosquitoes in Southern Cameroon</dd>
+
+        <dt>
+
+          <code><a href="galicia.html">galicia</a></code>
+
+        </dt>
+        <dd>Heavy metal biomonitoring in Galicia</dd>
+
+        <dt>
+
           <code><a href="infect_sma.html">infect_sma</a></code>
 
         </dt>
-        <dd>West Nile virus pool tests for female *Culex pipiens* in the Sacramento Metropolitan Area</dd>
+        <dd>West Nile virus pool tests for female <em>Culex pipiens</em> in the Sacramento Metropolitan Area</dd>
 
         <dt>
 
           <code><a href="italy_sim.html">italy_sim</a></code>
 
         </dt>
-        <dd>Simulated data-set on the Italian peninsula</dd>
+        <dd>Simulated dataset on the Italian peninsula</dd>
 
         <dt>
 
@@ -195,188 +631,6 @@
 
         <dt>
 
-          <code><a href="matern.grad.phi.html">matern.grad.phi()</a></code>
-
-        </dt>
-        <dd>First Derivative with Respect to \(\phi\)</dd>
-
-        <dt>
-
-          <code><a href="matern.hessian.phi.html">matern.hessian.phi()</a></code>
-
-        </dt>
-        <dd>Second Derivative with Respect to \(\phi\)</dd>
-
-        <dt>
-
-          <code><a href="matern_cor.html">matern_cor()</a></code>
-
-        </dt>
-        <dd>Matern Correlation Function</dd>
-
-        <dt>
-
-          <code><a href="maxim.integrand.html">maxim.integrand()</a></code>
-
-        </dt>
-        <dd>Maximization of the Integrand for Generalized Linear Gaussian Process Models</dd>
-
-        <dt>
-
-          <code><a href="plot.RiskMap_pred_target_grid.html">plot(<i>&lt;RiskMap_pred_target_grid&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Plot Method for RiskMap_pred_target_grid Objects</dd>
-
-        <dt>
-
-          <code><a href="plot.RiskMap_pred_target_shp.html">plot(<i>&lt;RiskMap_pred_target_shp&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Plot Method for RiskMap_pred_target_shp Objects</dd>
-
-        <dt>
-
-          <code><a href="plot_AnPIT.html">plot_AnPIT()</a></code>
-
-        </dt>
-        <dd>Plot Calibration Curves (AnPIT / PIT) from Spatial Cross-Validation</dd>
-
-        <dt>
-
-          <code><a href="plot_mda.html">plot_mda()</a></code>
-
-        </dt>
-        <dd>Plot the estimated MDA impact function</dd>
-
-        <dt>
-
-          <code><a href="plot_s_variogram.html">plot_s_variogram()</a></code>
-
-        </dt>
-        <dd>Plotting the empirical variogram</dd>
-
-        <dt>
-
-          <code><a href="plot_score.html">plot_score()</a></code>
-
-        </dt>
-        <dd>Plot Spatial Scores for a Specific Model and Metric</dd>
-
-        <dt>
-
-          <code><a href="plot_sim_surf.html">plot_sim_surf()</a></code>
-
-        </dt>
-        <dd>Plot simulated surface data for a given simulation</dd>
-
-        <dt>
-
-          <code><a href="pred_over_grid.html">pred_over_grid()</a></code>
-
-        </dt>
-        <dd>Prediction of the random effects components and covariates effects over a spatial grid using a fitted generalized linear Gaussian process model</dd>
-
-        <dt>
-
-          <code><a href="pred_target_grid.html">pred_target_grid()</a></code>
-
-        </dt>
-        <dd>Predictive Target Over a Regular Spatial Grid</dd>
-
-        <dt>
-
-          <code><a href="pred_target_shp.html">pred_target_shp()</a></code>
-
-        </dt>
-        <dd>Predictive Targets over a Shapefile (grid-aggregated)</dd>
-
-        <dt>
-
-          <code><a href="print.summary.RiskMap.html">print(<i>&lt;summary.RiskMap&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Print Summary of RiskMap Model</dd>
-
-        <dt>
-
-          <code><a href="print.summary.RiskMap.sim.res.html">print(<i>&lt;summary.RiskMap.sim.res&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Print Simulation Results</dd>
-
-        <dt>
-
-          <code><a href="print.summary.RiskMap.spatial.cv.html">print(<i>&lt;summary.RiskMap.spatial.cv&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Print Summary of RiskMap Spatial Cross-Validation Scores</dd>
-
-        <dt>
-
-          <code><a href="propose_utm.html">propose_utm()</a></code>
-
-        </dt>
-        <dd>EPSG of the UTM Zone</dd>
-
-        <dt>
-
-          <code><a href="re.html">re()</a></code>
-
-        </dt>
-        <dd>Random Effect Model Specification</dd>
-
-        <dt>
-
-          <code><a href="s_variogram.html">s_variogram()</a></code>
-
-        </dt>
-        <dd>Empirical variogram</dd>
-
-        <dt>
-
-          <code><a href="set_control_sim.html">set_control_sim()</a></code>
-
-        </dt>
-        <dd>Set Control Parameters for Simulation</dd>
-
-        <dt>
-
-          <code><a href="summary.RiskMap.html">summary(<i>&lt;RiskMap&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Summarize Model Fits</dd>
-
-        <dt>
-
-          <code><a href="summary.RiskMap.sim.res.html">summary(<i>&lt;RiskMap.sim.res&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Summarize Simulation Results</dd>
-
-        <dt>
-
-          <code><a href="summary.RiskMap.spatial.cv.html">summary(<i>&lt;RiskMap.spatial.cv&gt;</i>)</a></code>
-
-        </dt>
-        <dd>Summarize Cross-Validation Scores for Spatial RiskMap Models</dd>
-
-        <dt>
-
-          <code><a href="surf_sim.html">surf_sim()</a></code>
-
-        </dt>
-        <dd>Simulate surface data based on a spatial model</dd>
-
-        <dt>
-
-          <code><a href="to_table.html">to_table()</a></code>
-
-        </dt>
-        <dd>Generate LaTeX Tables from RiskMap Model Fits and Validation</dd>
-
-        <dt>
-
           <code><a href="tz_covariates.html">tz_covariates</a></code>
 
         </dt>
@@ -388,23 +642,17 @@
 
         </dt>
         <dd>Malaria Dataset from Tanzania Demographic Health Surveys 2015</dd>
-
-        <dt>
-
-          <code><a href="update_predictors.html">update_predictors()</a></code>
-
-        </dt>
-        <dd>Update Predictors for a RiskMap Prediction Object</dd>
       </dl></div>
-  </main></div>
+  </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
+    </nav></aside></div>
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Emanuele Giorgi.</p>
+  <p>Developed by the RiskMap team: Emanuele Giorgi and Claudio Fronterre.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
+  <p>Learn RiskMap with <a href="https://www.mbgr.org/" class="external-link">MBG-R</a>.</p>
 </div>
 
     </footer></div>

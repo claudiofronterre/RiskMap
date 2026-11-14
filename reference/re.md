@@ -12,11 +12,12 @@ re(...)
 
 - ...:
 
-  Variables representing the random effects in the model.
+  Variables representing the random effects in the model. Each variable
+  adds its own independent random effect.
 
 ## Value
 
-A list of class `re.spec` containing the following elements:
+A list of class `RiskMap_re_spec` containing the following elements:
 
 - term:
 
@@ -35,14 +36,36 @@ A list of class `re.spec` containing the following elements:
 
 The function constructs a list that includes the specified terms for the
 random effects. This list can be used as a specification for a random
-effect model.
+effect model. Several `re()` calls in a formula are combined, so
+`re(region) + re(province)` is the same model as `re(region, province)`.
 
 ## Note
 
 At least one variable must be provided as input.
 
-## Author
+## Examples
 
-Emanuele Giorgi <e.giorgi@lancaster.ac.uk>
+``` r
+# this function is not intended for use by itself
+re(province)
+#> $term
+#> [1] "province"
+#> 
+#> $dim
+#> [1] 1
+#> 
+#> $label
+#> [1] "re(province)"
+#> 
+#> attr(,"class")
+#> [1] "RiskMap_re_spec"
 
-Claudio Fronterre <c.fronterr@lancaster.ac.uk>
+# use in a model formula
+data(italy_sim)
+fit <- glgpm(
+  formula = y ~ gp() + re(province),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+```

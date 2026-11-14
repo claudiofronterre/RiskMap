@@ -3,7 +3,7 @@
 This `coef` method for the "RiskMap" class extracts the maximum
 likelihood estimates from model fits obtained from the
 [`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
-function.
+functions.
 
 ## Usage
 
@@ -25,7 +25,7 @@ coef(object, ...)
 
 ## Value
 
-A list containing the maximum likelihood estimates:
+A list containing the maximum likelihood estimates. For standard models:
 
 - beta:
 
@@ -37,7 +37,8 @@ A list containing the maximum likelihood estimates:
 
 - phi:
 
-  The estimate for the spatial range parameter \\\phi\\.
+  The estimate for the scale parameter \\\phi\\ of the spatial
+  correlation function.
 
 - tau2:
 
@@ -51,24 +52,29 @@ A list containing the maximum likelihood estimates:
 
 - sigma2_re:
 
-  A vector of variance estimates for the random effects, if applicable.
+  A named vector of variance estimates for the random effects, if
+  applicable.
 
-## Details
+- beta:
 
-The function processes the `RiskMap` object to extract and name the
-estimated parameters appropriately, transforming them if necessary.
+  Coefficient estimates for log mean worm burden.
 
-## Note
+- k:
 
-This function handles both Gaussian and non-Gaussian families, and
-accounts for fixed and random effects in the model.
+  Negative binomial overdispersion parameter.
+
+- rho:
+
+  Egg detection rate (fecundity).
+
+- sigma2:
+
+  Spatial process variance.
+
+- phi:
+
+  Spatial correlation scale.
 
 ## See also
 
 [`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
-
-## Author
-
-Emanuele Giorgi <e.giorgi@lancaster.ac.uk>
-
-Claudio Fronterre <c.fronterr@lancaster.ac.uk>

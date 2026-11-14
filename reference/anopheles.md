@@ -1,23 +1,7 @@
-# Anopheles mosquitoes in Southern Cameroon
+# *Anopheles* mosquitoes in Southern Cameroon
 
-These data contain 116 georeferenced locations on the counts of
-Anopheles gambiae and Anopheles coluzzii in Southern Cameroon.
-
-- web_x x-coordinate of the spatial locations.
-
-- web_y y-coordinate of the spatial locations.
-
-- Locality: name of the place of the sampled location.
-
-- An.coluzzii: counts of Anopheles coluzzi.
-
-- An.gambiae: counts of Anopheles gambiae.
-
-- Total: total counts of Anopheles coluzzi and Anopheles gambiae.
-
-- elevation: elevation in meters of the sampled location.
-
-The coordinate reference system is 3857.
+Counts of *Anopheles gambiae* and *Anopheles coluzzii* in Southern
+Cameroon.
 
 ## Usage
 
@@ -27,11 +11,41 @@ data(anopheles)
 
 ## Format
 
-A data frame with 116 rows and 7 variables
+An sf object with 116 rows and 6 variables:
+
+- Locality:
+
+  Name of the place of the sampled location.
+
+- An.coluzzii:
+
+  Counts of *Anopheles coluzzii*.
+
+- An.gambiae:
+
+  Counts of *Anopheles gambiae*.
+
+- Total:
+
+  Total counts of *Anopheles coluzzii* and *Anopheles gambiae*.
+
+- elevation:
+
+  Elevation in meters of the sampled location.
+
+- geometry:
+
+  Simple feature geometry (POINT) giving the sampling coordinates in
+  metres
 
 ## Source
 
 Tene Fossog, B., Ayala, D., Acevedo, P., Kengne, P., Ngomo Abeso Mebuy,
 I., Makanga, B., et al. (2015) Habitat segregation and ecological
 character displacement in cryptic African malaria mosquitoes.
-Evolutionary Applications, 8 (4), 326-345.
+*Evolutionary Applications*, 8 (4), 326-345.
+
+## Details
+
+The coordinate reference system is WGS 84 / UTM zone 32N (EPSG:32632),
+which distorts distances by less than 0.1% over the data.

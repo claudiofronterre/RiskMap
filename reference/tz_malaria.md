@@ -1,21 +1,23 @@
 # Malaria Dataset from Tanzania Demographic Health Surveys 2015
 
-This dataset contains information on malaria prevalence and associated
-variables from the 2015 Tanzania Demographic Health Surveys. The data
-includes geographical, demographic, environmental, and health-related
-variables.
+Malaria prevalence and associated variables from the 2015 Tanzania
+Demographic Health Surveys. The data includes geographical, demographic,
+environmental, and health-related variables.
+
+## Usage
+
+``` r
+data(tz_malaria)
+```
+
+## Format
+
+An sf object with 387 rows and 18 columns, containing the following
+variables:
 
 - cluster.number:
 
   Cluster number, identifying the survey cluster.
-
-- Lat:
-
-  Latitude of the survey cluster.
-
-- Long:
-
-  Longitude of the survey cluster.
 
 - MM:
 
@@ -80,26 +82,15 @@ variables.
 
   Indicator of whether the area is urban ('U') or rural ('R').
 
-- utm_x:
+- elogit:
 
-  UTM (Universal Transverse Mercator) x-coordinate of the survey
-  cluster.
+  Empirical logit transformation of the positive cases -
+  `elogit(Pf, Ex)`
 
-- utm_y:
+- geometry:
 
-  UTM (Universal Transverse Mercator) y-coordinate of the survey
-  cluster.
-
-## Usage
-
-``` r
-data(tz_malaria)
-```
-
-## Format
-
-A data frame with 387 rows and 20 columns, containing the following
-variables: The CRS of the UTM coordinates is 32736.
+  Simple feature geometry (POINT) giving the sampling coordinates in
+  metres
 
 ## Source
 
@@ -109,3 +100,7 @@ Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ.
 disease prevalence mapping in low-resource settings: to explain and to
 predict. J. R. Soc. Interface 18: 20210104.
 [doi:10.1098/rsif.2021.0104](https://doi.org/10.1098/rsif.2021.0104)
+
+## Details
+
+The coordinate reference system is 32736.
