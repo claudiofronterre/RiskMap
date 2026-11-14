@@ -215,7 +215,7 @@ Bootstrap</em>. Chapman &amp; Hall, New York.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>   standard errors (an approximate 95% bound, tolerance 0.1).</span>
 <span class="r-in"><span><span class="va">bootstrap</span> <span class="op">&lt;-</span> <span class="fu">parametric_bootstrap</span><span class="op">(</span><span class="va">fit</span>, n_sim <span class="op">=</span> <span class="fl">100</span>, seed <span class="op">=</span> <span class="fl">2026</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Simulating and refitting 100 replicates.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> Done in 3 minutes. 100 of 100 refits succeeded.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> Done in 4 minutes. 100 of 100 refits succeeded.</span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">bootstrap</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ── <span style="font-weight: bold;">Parametric bootstrap</span> ────────────────────────────────────────────────────────</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Binomial geostatistical model, 100 replicates (seed 2026). Variances and the</span>
@@ -223,7 +223,7 @@ Bootstrap</em>. Chapman &amp; Hall, New York.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Bootstrap distribution</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                 Parameter Estimate  Median      Bias Std. error Below</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>               (Intercept)   -3.196  -3.164  -0.01584      0.379  0.47</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>               (Intercept)   -3.196  -3.164  -0.01585      0.379  0.47</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            log(elevation)   0.3375  0.3317  0.003452    0.07406  0.54</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>      Spatial process var.  0.08825 0.07013 -0.007931    0.03844  0.65</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  Spatial corr. scale (km)    45.67   34.06    -8.778      25.36  0.78</span>
@@ -235,7 +235,7 @@ Bootstrap</em>. Chapman &amp; Hall, New York.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span>               (Intercept)           -3.864           -2.386   -3.975   -2.531</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            log(elevation)           0.1929           0.4728   0.2024   0.5116</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>      Spatial process var.          0.02343           0.1654  0.04143   0.1972</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  Spatial corr. scale (km)           0.2235            95.72    26.44    134.9</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  Spatial corr. scale (km)           0.2079            95.72    26.44    134.9</span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">bootstrap</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="parametric_bootstrap-1.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
