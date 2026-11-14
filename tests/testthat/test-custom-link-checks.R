@@ -186,7 +186,7 @@ test_that("the later samplers get the derivatives the fit used", {
     units_m = binomial_model$units_m, D = binomial_model$D,
     coords = binomial_model$coords, cov_offset = numeric(length(binomial_model$y)),
     ID_coords = binomial_model$ID_coords, ID_re = NULL,
-    fix_tau2 = binomial_model$fix_tau2, family = "binomial",
+    parameters = fit_parameter_table(binomial_model), family = "binomial",
     link_function = link_function, kappa = 0.5,
     control_mcmc = control_mcmc, messages = FALSE
   ), "captured")

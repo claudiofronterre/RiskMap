@@ -233,6 +233,7 @@ make_bootstrap_refit <- function(object) {
   invlink <- refit_invlink(object)
   design <- as.matrix(object$D)
   re_unique <- if (!is.null(object$ID_re)) lapply(object$re, seq_along)
+  parameters <- fit_parameter_table(object)
   start <- coef(object)
   control_mcml <- attr(object, "control_mcml") %||% set_control_mcml()
 
@@ -244,6 +245,7 @@ make_bootstrap_refit <- function(object) {
       units_m = object$units_m, cov_offset = object$cov_offset,
       kappa = object$kappa, fix_tau2 = object$fix_tau2,
       fix_var_me = object$fix_var_me, family = family, invlink = invlink,
+      parameters = parameters,
       start_pars = start, control_mcmc = set_control_mcmc(),
       control_mcml = control_mcml, seed = seed, return_samples = FALSE,
       messages = FALSE, family_parameters = object$family_parameters,
@@ -318,7 +320,7 @@ assemble_bootstrap <- function(object, results, replicate_seeds) {
   out <- list(
     estimates = estimates,
     estimate = estimate,
-    labels = parameter_labels(names(estimate), object$distance_units),
+    labels = table_labels(fit_parameter_table(object), names(estimate)),
     failures = data.frame(replicate = failed, seed = replicate_seeds[failed],
                           message = failure_messages),
     warnings = warnings
@@ -327,10 +329,13 @@ assemble_bootstrap <- function(object, results, replicate_seeds) {
   out
 }
 
-##' Variances and the scale, which are positive and can be shown on a log
-##' scale
+##' Variances, the scale and the family's parameters, which are positive and
+##' can be shown on a log scale, every block of the parameter table but the
+##' coefficients
 ##' @noRd
-bootstrap_positive <- function(names) !grepl("^beta\\.", names)
+bootstrap_positive <- function(names) {
+  parameter_block(names) != "coefficients"
+}
 
 ##' @title Summarise a parametric bootstrap
 ##' @description Computes, for each parameter, the bootstrap median, bias,

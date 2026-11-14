@@ -35,31 +35,32 @@ make_gaussian_profile_problem <- function(fitted) {
   }
   value <- function(working) value_internal(maps$to(working))
 
+  parameters <- fit_parameter_table(fitted)
   estimate <- unlist(fitted$estimate)
   variances <- diag(fitted$covariance)
   nugget <- match("nu2", names(estimate))
-  if (!is.na(nugget)) {
+  if (nugget_estimated(parameters)) {
     # log tau2 = log nu2 + log sigma2, with its variance by the delta method,
-    # as in summary().
+    # as in summary() (parameter_jacobian()), summed as it always was here.
     estimate[nugget] <- estimate[nugget] + estimate[["sigma2"]]
     variances[nugget] <- variances[nugget] + variances[["sigma2"]] +
       2 * fitted$covariance["nu2", "sigma2"]
     names(estimate)[nugget] <- "tau2"
   }
   log_scale <- log(spatial_scaling$distance_scale)
-  others <- length(estimate) - p - 2L
+  # The coefficients are solved in closed form and need no bounds.
+  bounds <- parameter_bounds(parameters, log_scale, coefficients = c(-Inf, Inf))
+  internal_bounds <- parameter_bounds(parameters, coefficients = c(-Inf, Inf))
   problem <- list(
     value = value, estimate = estimate, names = names(estimate),
-    labels = profile_labels(names(estimate), fitted$distance_units),
+    labels = profile_labels(parameters, names(estimate)),
     standard_errors = stats::setNames(sqrt(pmax(variances, 0)),
                                       names(estimate)),
-    # The coefficients are solved in closed form and need no bounds.
-    lower = c(rep(-Inf, p), -20, -20 + log_scale, rep(-20, others)),
-    upper = c(rep(Inf, p), 20, 10 + log_scale, rep(20, others)),
+    lower = bounds$lower, upper = bounds$upper,
     internal = list(value = value_internal, to = maps$to, from = maps$from,
                     transform = design_scaling$coefficient_transform, p = p,
-                    lower = c(rep(-Inf, p), -20, -20, rep(-20, others)),
-                    upper = c(rep(Inf, p), 20, 10, rep(20, others)),
+                    lower = internal_bounds$lower,
+                    upper = internal_bounds$upper,
                     concentrate = likelihood$coefficients),
     predict_starts = TRUE, exact = TRUE, max_step = 1
   )
@@ -81,9 +82,10 @@ make_gaussian_profile_problem <- function(fitted) {
 ##' weighted by the inverse of `V`, so these are computed once and give both
 ##' the log-likelihood at any coefficients and the coefficients that maximise
 ##' it (`coefficients()`). The internal parameters are the standardised
-##' coefficients followed by the covariance parameters in the layout of
-##' `cov_par_layout()`, with the logarithm of `tau2` in the place of the
-##' nugget ratio.
+##' coefficients followed by the covariance parameters in the order of the
+##' parameter table (`parameter_table()`), found by the names users give them,
+##' with the logarithm of the nugget variance `tau2` in the place where a fit
+##' keeps the logarithm of the nugget ratio.
 ##'
 ##' As in [glgpm()], `V` is factorised directly unless there are more than
 ##' three observations per latent effect, when the Woodbury identity works in
@@ -95,9 +97,11 @@ make_gaussian_likelihood <- function(y, D, distances, kappa, ID_coords, ID_re,
   n_re <- if (is.null(ID_re)) 0L else ncol(ID_re)
   n_locations <- max(ID_coords)
   levels <- if (n_re > 0L) apply(ID_re, 2L, max) else integer()
-  layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
-                           family_parameters = gaussian_family_block(fix_var_me),
-                           n_re = n_re)$index
+  rows <- estimated_rows(parameter_table(
+    colnames(D), fix_tau2 = fix_tau2,
+    estimated_family = gaussian_family_block(fix_var_me), p = p, n_re = n_re
+  ))
+  layout <- split(rows$index, factor(rows$name, unique(rows$name)))
   # Each evaluation fills the covariance matrix of the locations from the
   # distances of its lower triangle, with as few copies as possible: most of
   # the time of a small model goes to collecting discarded matrices.
@@ -120,7 +124,7 @@ make_gaussian_likelihood <- function(y, D, distances, kappa, ID_coords, ID_re,
   covariance_parameters <- function(internal) {
     list(sigma2 = exp(internal[layout$sigma2]),
          phi = exp(internal[layout$phi]),
-         tau2 = if (isTRUE(fix_tau2)) exp(internal[layout$nu2]) else
+         tau2 = if (isTRUE(fix_tau2)) exp(internal[layout$tau2]) else
            as.numeric(fix_tau2 %||% 0),
          omega2 = if (is.null(fix_var_me)) exp(internal[layout$sigma2_me]) else
            fix_var_me,

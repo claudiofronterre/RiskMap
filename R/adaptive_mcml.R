@@ -1513,29 +1513,6 @@ penalise_engine <- function(evaluate, penalty) {
   }
 }
 
-##' Starting values on the working scale of the MCML engine
-##'
-##' Regression coefficients, then the log spatial variance and log scale,
-##' the log nugget ratio when the nugget is estimated, the estimated
-##' parameters of the family named in `family` on their working scale, and
-##' the log random-effect variances.
-##' @noRd
-make_working_start <- function(reference_pars, fix_tau2,
-                               family = character()) {
-  start <- c(reference_pars$beta, log(reference_pars$sigma2),
-             log(reference_pars$phi))
-  if (isTRUE(fix_tau2)) {
-    start <- c(start, log(reference_pars$tau2 / reference_pars$sigma2))
-  }
-  for (name in family) {
-    start <- c(start, family_parameter(name)$working(reference_pars[[name]]))
-  }
-  if (length(reference_pars$sigma2_re)) {
-    start <- c(start, log(reference_pars$sigma2_re))
-  }
-  start
-}
-
 ##' Fit a non-Gaussian geostatistical model by certified MCML
 ##'
 ##' Maximises the Laplace approximation from the supplied start, then runs
@@ -1545,13 +1522,15 @@ make_working_start <- function(reference_pars, fix_tau2,
 ##' state is restored on exit. The engine fits the records the family hands
 ##' it (`engine_records()`), with the family's own `family_parameters`, and
 ##' the reported log-likelihood adds the terms they leave out
-##' (`log_likelihood_constant()`).
+##' (`log_likelihood_constant()`). `parameters` is the model's parameter table
+##' (`parameter_table()`), from which the start, the bounds and the
+##' parameters that can be held at a limit are read.
 ##' @noRd
 glgpm_nong_adaptive <- function(
     y, D, coords, units_m, kappa, reference_pars, cov_offset,
     ID_coords, ID_re, fix_tau2, family, invlink, control_mcml,
-    seed, messages = TRUE, distance_scale = 1, family_parameters = NULL,
-    estimated_family = character()) {
+    seed, parameters, messages = TRUE, distance_scale = 1,
+    family_parameters = NULL, estimated_family = character()) {
   check_engine_family(family)
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
@@ -1603,15 +1582,13 @@ glgpm_nong_adaptive <- function(
       threshold = control_mcml$integrate_threshold %||% 0.1
     )
   }
-  start <- make_working_start(reference_pars, fix_tau2,
-                              family = estimated_family)
+  start <- working_start(parameters, reference_pars)
   # Coordinates and the initial scale are rescaled before this function is
-  # called. These broad bounds prevent overflow without constraining any
-  # scientifically plausible fit on the internal scale.
-  lower <- c(rep(-30, ncol(D)), -20, -20,
-             rep(-20, length(start) - ncol(D) - 2L))
-  upper <- c(rep(30, ncol(D)), 20, 10,
-             rep(20, length(start) - ncol(D) - 2L))
+  # called. The table's broad bounds prevent overflow without constraining
+  # any scientifically plausible fit on the internal scale.
+  bounds <- parameter_bounds(parameters)
+  lower <- bounds$lower
+  upper <- bounds$upper
   pc_prior <- isTRUE(control_mcml$pc_prior)
   penalised <- make_mcml_objective(engine, control_mcml, distances,
                                    distance_scale)
@@ -1679,15 +1656,12 @@ glgpm_nong_adaptive <- function(
     maximum_stages = control_mcml$max_stages,
     tolerance = control_mcml$tolerance,
     seed = fit_seed, lower = lower, upper = upper,
-    variance_index = unlist(engine$layout$index[c("sigma2", "nu2",
-                                                  "sigma2_re")],
-                            use.names = FALSE),
+    variance_index = variance_index(parameters),
     # A parameter of the family is held at its limit, the size of a negative
     # binomial family at the Poisson limit. Its inverse adds mean / theta to
     # the variance of a record relative to its mean, so it is judged on the
     # scale of the mean count.
-    limit_index = unlist(engine$layout$index[estimated_family],
-                         use.names = FALSE),
+    limit_index = limit_index(parameters),
     limit_shift = log(max(1, mean(y))),
     linked_index = stats::setNames(
       list(engine$layout$index$phi), engine$layout$index$sigma2
@@ -1717,9 +1691,8 @@ glgpm_nong_adaptive <- function(
   report_mcml_outcome(fit, engine$layout, control_mcml$tolerance, messages,
                       colnames(D), family)
   result <- assemble_mcml_result(
-    fit, laplace, boundary_names, D, fix_tau2, re_names, family, invlink,
+    fit, laplace, boundary_names, D, parameters, family, invlink,
     length(y), pc_prior, fit_seed, small_scale,
-    family_block = estimated_family,
     integration = list(
       used = engine$integrated,
       locations = engine$integrated_locations,
@@ -1807,16 +1780,12 @@ compute_practical_range_factor <- function(kappa, correlation = 0.05) {
 ##' `terms` were integrated out with the `counts` of their levels, and for an
 ##' automatic choice of the form the `forms` of the stages.
 ##' @noRd
-assemble_mcml_result <- function(fit, laplace, boundary_names, D, fix_tau2,
-                                 re_names, family, invlink, n_observations,
+assemble_mcml_result <- function(fit, laplace, boundary_names, D,
+                                 parameters, family, invlink, n_observations,
                                  pc_prior, fit_seed, small_scale = NULL,
-                                 integration = NULL,
-                                 family_block = character()) {
+                                 integration = NULL) {
   last <- fit$history[[length(fit$history)]]
-  estimate <- structure_estimate(
-    fit$estimate, beta_names = colnames(D), fix_tau2 = fix_tau2,
-    family_parameters = family_block, re_names = re_names
-  )
+  estimate <- working_estimate(parameters, fit$estimate)
   covariance <- fit$covariance
   if (is.null(covariance)) {
     covariance <- matrix(

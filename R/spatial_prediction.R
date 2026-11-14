@@ -1382,7 +1382,8 @@ conditioning_covariance <- function(object, parameters, distances,
     distances, phi = parameters$phi / distance_scale, kappa = object$kappa,
     return_sym_matrix = TRUE
   )
-  ratio <- fitted_nugget_variance(object, parameters) / parameters$sigma2
+  ratio <- nugget_ratio_natural(fitted_nugget_variance(object, parameters),
+                                parameters$sigma2)
   if (ratio == 0) ratio <- 1e-10
   diag(correlation) <- diag(correlation) + ratio
   parameters$sigma2 * correlation
@@ -2370,7 +2371,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   # glgpm: existing behaviour
   # ---------------------------------------------------------------------------
   tau2 <- fitted_nugget_variance(object, par_hat)
-  nu2 <- tau2 / par_hat$sigma2
+  nu2 <- nugget_ratio_natural(tau2, par_hat$sigma2)
   if (nu2 == 0) nu2 <- 1e-10
   diag(R) <- diag(R) + nu2
 
