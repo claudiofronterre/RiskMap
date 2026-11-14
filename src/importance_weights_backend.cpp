@@ -16,7 +16,8 @@
 using namespace Rcpp;
 
 // Log importance weights of a bank of standard-normal draws for the adaptive
-// MCML engine with a canonical link, in one pass and without temporary copies
+// MCML engine with a link whose log-likelihood is compiled (canonical logit or
+// log, probit, cloglog or cauchit), in one pass and without temporary copies
 // on the R heap. It reproduces the R code of the engine's evaluate() and
 // log_mixture_proposal() step by step: the same BLAS calls R makes for `%*%`
 // and forwardsolve(), and the long double accumulation R uses in rowSums(),
@@ -419,6 +420,9 @@ NumericVector cpp_importance_log_weights(
     const NumericVector& y, const NumericVector& units, const int link,
     SEXP site_table, const NumericVector& site_classes,
     const IntegerMatrix& site_units) {
+  if (!is_link_code(link)) {
+    stop("The link code %d has no compiled kernel.", link);
+  }
   std::unique_ptr<riskmap_site::Evaluator> sites;
   std::vector<riskmap_site::Unit> site_records;
   if (!Rf_isNull(site_table)) {

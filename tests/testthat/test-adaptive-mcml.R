@@ -1490,6 +1490,96 @@ test_that("compiled importance weights equal the R computation", {
   }
 })
 
+test_that("compiled weights of named links equal R's where the bounds act and with an integrated nugget", {
+  # The weights of a named link are R's to the last bit where the compiler
+  # does not fuse multiply and add, as on x86-64.
+  same_as_r <- function(compiled, in_r) {
+    if (identical(R.version$arch, "x86_64")) {
+      expect_identical(compiled, unname(in_r))
+    } else {
+      expect_equal(compiled, unname(in_r), tolerance = 1e-12)
+    }
+  }
+  set.seed(33)
+  locations <- 15
+  distances <- as.matrix(dist(matrix(runif(2 * locations), ncol = 2)))
+  design <- cbind(1, rnorm(locations))
+  y <- rep(c(0, 3, 10), 5)
+  units <- rep(10, locations)
+  for (link in c("probit", "cloglog", "cauchit")) {
+    engine <- make_adaptive_mcml_engine(
+      D = design, y = y, units_m = units, distances = distances,
+      family = "binomial", invlink = c(named_inverse_link(link), link = link)
+    )
+    scope <- environment(engine$evaluate)
+    expect_true(scope$model$compiled)
+    parameters <- c(0, 0.3, log(0.5), log(0.3))
+    proposal <- engine$proposal_at(parameters)
+    # Intercepts at which probabilities round to 0 or 1, so that the bounds
+    # of bound_log_probability() act on every record.
+    for (intercept in c(-38.5, -10, 9, 40)) {
+      target <- c(intercept, 0.3, log(0.5), log(0.3))
+      draws <- matrix(rnorm(40 * engine$latent_dimension), 40)
+      values <- scope$unpack(target)
+      defensive <- defensive_rows(40L, 0.05)
+      in_r <- compute_log_weights_in_r(
+        draws, proposal, defensive, mean(defensive), values,
+        factor_covariance(scope$covariance_at(values)), FALSE,
+        as.numeric(design %*% values$beta), scope$latent,
+        scope$latent_map$columns,
+        function(eta) {
+          compute_link_log_likelihood_rows(eta, y, units, "binomial",
+                                           scope$linkf)
+        }
+      )
+      same_as_r(engine$evaluate(target, draws, log_weights_only = TRUE,
+                                proposal_parameters = parameters), in_r)
+    }
+  }
+
+  # With the nugget integrated out, the compiled weights take each record's
+  # log-likelihood from its table, as the R weights do.
+  n <- 30L
+  coordinates <- cbind(runif(n), runif(n)) * 50
+  distances <- as.matrix(dist(coordinates))
+  x <- rnorm(n)
+  field <- drop(t(chol(1.2 * exp(-distances / 8) + diag(1e-9, n))) %*% rnorm(n))
+  units <- rep(20, n)
+  y <- rbinom(n, 20, pnorm(-1.5 + 0.3 * x + field + rnorm(n, 0, sqrt(0.7))))
+  design <- cbind(1, x)
+  parameters <- c(-1.5, 0.3, log(1.2), log(8), log(0.7 / 1.2))
+  for (link in c("probit", "cloglog", "cauchit")) {
+    engine <- make_adaptive_mcml_engine(
+      design, y, units, distances, family = "binomial", fix_tau2 = TRUE,
+      integrate_noise = TRUE,
+      invlink = c(named_inverse_link(link), link = link)
+    )
+    scope <- environment(engine$evaluate)
+    expect_true(scope$model$compiled && scope$integrated)
+    proposal <- engine$proposal_at(parameters)
+    for (shift in c(0, 0.05)) {
+      target <- parameters + c(0, 0, shift, -shift, shift)
+      draws <- matrix(rnorm(50 * engine$latent_dimension), 50)
+      same <- identical(target, parameters)
+      values <- if (same) proposal$values else scope$unpack(target)
+      spatial_root <- if (same) proposal$spatial_root else
+        factor_covariance(scope$covariance_at(values))
+      defensive <- defensive_rows(50L, scope$defensive_weight)
+      records <- scope$records_at(values)
+      in_r <- compute_log_weights_in_r(
+        draws, proposal, defensive, mean(defensive), values, spatial_root,
+        same, as.numeric(design %*% values$beta + records$offset),
+        scope$latent, scope$latent_map$columns,
+        function(eta) {
+          scope$kernel_at(values)$log_likelihood(eta, y, records$units_m)
+        }
+      )
+      same_as_r(engine$evaluate(target, draws, log_weights_only = TRUE,
+                                proposal_parameters = parameters), in_r)
+    }
+  }
+})
+
 test_that("a late proposal failure repeats the stage on fresh streams", {
   failures <- 0L
   type <- "global"

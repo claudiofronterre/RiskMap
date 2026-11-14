@@ -1099,7 +1099,8 @@ read_family_link <- function(family, link) {
 ##' - `code`, the number of the link in the compiled code (`LinkCode` in
 ##'   `src/likelihood_kernel.h`), 0 for canonical logit, 1 for the canonical
 ##'   log link of the Poisson family, and 2, 3 and 4 for the named binomial
-##'   links probit, cloglog and cauchit, NA for any other link (#253, step 3).
+##'   links probit, cloglog and cauchit whose inverse is that of
+##'   `named_inverse_link()`, NA for any other link (#253, step 3).
 ##' - `compiled`, the weights and rows of the log-likelihood are compiled
 ##'   (`cpp_importance_log_weights()`, `cpp_link_log_likelihood()`), with
 ##'   `code` as their link, for every link with a `code`. Under a named link
@@ -1159,10 +1160,17 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
   canonical <- identical(linkf$name, "canonical")
   integrated <- !is.null(kernel)
   poisson <- family == "poisson"
+  # A named link has compiled code only if its inverse is the named one, so
+  # that a list in `invlink` labelled with a name but carrying another inverse
+  # keeps its own likelihood.
+  named <- match(linkf$link %||% "", c("probit", "cloglog", "cauchit"))
   code <- if (canonical) {
     if (poisson) 1L else 0L
-  } else if (identical(family, "binomial")) {
-    match(linkf$link %||% "", c("probit", "cloglog", "cauchit")) + 1L
+  } else if (identical(family, "binomial") && !is.na(named) &&
+             identical(linkf$inv, named_inverse_link(linkf$link)$inv,
+                       ignore.environment = TRUE, ignore.bytecode = TRUE,
+                       ignore.srcref = TRUE)) {
+    named + 1L
   } else {
     NA_integer_
   }

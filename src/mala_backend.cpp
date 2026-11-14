@@ -31,6 +31,9 @@ NumericVector cpp_link_log_likelihood(const NumericMatrix eta_r,
                                       const NumericVector y_r,
                                       const NumericVector units_r,
                                       const int link) {
+  if (!is_link_code(link)) {
+    Rcpp::stop("The link code %d has no compiled kernel.", link);
+  }
   const int n_samples = eta_r.nrow();
   const int n = eta_r.ncol();
   NumericVector log_likelihood(n_samples);

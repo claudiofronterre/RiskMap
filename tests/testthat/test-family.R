@@ -28,6 +28,17 @@ test_that("the properties of a family object follow the link", {
   expect_identical(make_family(
     "binomial", make_inverse_link_functions("binomial", plogis, 5L)
   )$code, NA_integer_)
+  # A list labelled with a named link but carrying another inverse keeps its
+  # own likelihood, in R.
+  relabelled <- make_inverse_link_functions(
+    "binomial", list(inv = function(eta) 0.05 + 0.9 * pnorm(eta),
+                     link = "probit"), 5L
+  )
+  expect_identical(make_family("binomial", relabelled)$code, NA_integer_)
+  expect_false(make_family("binomial", relabelled)$compiled)
+  # The link of a fit saved and read again keeps its compiled kernel.
+  stored <- unserialize(serialize(probit_family_link(), NULL))
+  expect_identical(make_family("binomial", stored)$code, 2L)
   expect_false(probit$assumes_concave)
   expect_true(probit$moves_start)
   expect_true(probit$needs_finite_weight)

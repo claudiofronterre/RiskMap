@@ -45,16 +45,23 @@ inline double canonical_log_likelihood(const double eta, const double y,
     y * eta - units * softplus(eta);
 }
 
+inline bool is_link_code(const int code) {
+  return code >= link_logit && code <= link_cauchit;
+}
+
 // The inverse of a named binomial link, as named_inverse_link() writes it in
-// R, with the same functions of R's library.
+// R, with the same functions of R's library. Any other code gives NaN, which
+// named_link_log_likelihood() treats as a mean outside the family's range.
 inline double named_inverse_link(const double eta, const int code) {
   switch (code) {
   case link_probit:
     return Rf_pnorm5(eta, 0.0, 1.0, 1, 0);
   case link_cloglog:
     return -std::expm1(-std::exp(eta));
-  default:
+  case link_cauchit:
     return Rf_pcauchy(eta, 0.0, 1.0, 1, 0);
+  default:
+    return std::nan("");
   }
 }
 
