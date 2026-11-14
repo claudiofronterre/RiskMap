@@ -1,0 +1,237 @@
+/* RiskMap site styles, beyond what the bslib theme in _pkgdown.yml sets.
+   The brand colours come from the sticker, two inks (navy and terracotta)
+   on paper. When the sticker changes, update them here, in template.bslib
+   of _pkgdown.yml and in pkgdown/card.html. */
+
+:root {
+  --rm-ink: #1d3557;
+  --rm-accent: #bf5230;
+  --rm-heading: var(--rm-ink);
+  /* the sea and the five risk classes of the sticker's map, low to high */
+  --rm-ramp: linear-gradient(90deg,
+    #bfc6cf 0 20%, #ecd5c6 20% 36%, #dfb09b 36% 52%,
+    #d28a70 52% 68%, #c66749 68% 84%, #bf5230 84% 100%);
+}
+
+[data-bs-theme="dark"] {
+  --rm-accent: #d9825d;
+  --rm-heading: #9db4da;
+}
+
+/* Navbar ------------------------------------------------------------------ */
+
+/* A navy navbar in both modes, with a thin strip of the sticker's risk
+   classes under it. pkgdown sets no navbar colours when the light switch is
+   on, so they are set here through Bootstrap's navbar variables. */
+.navbar {
+  background: var(--rm-ink);
+  border-bottom: 4px solid transparent;
+  border-image: var(--rm-ramp) 1;
+  --bs-navbar-color: rgba(255, 255, 255, 0.8);
+  --bs-navbar-hover-color: #fff;
+  --bs-navbar-active-color: #fff;
+  --bs-navbar-brand-color: #fff;
+  --bs-navbar-brand-hover-color: #fff;
+  --bs-navbar-toggler-border-color: rgba(255, 255, 255, 0.3);
+  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255,255,255,0.85%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+.navbar .nav-text.text-muted {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.navbar .nav-item.active .nav-link,
+.navbar .nav-item .nav-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.navbar .form-control {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.navbar .form-control::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* The logo before the package name. pkgdown copies man/figures/logo.png to
+   the root of the site, next to this file. On the navy navbar, and on dark
+   pages, the night sticker (pkgdown/assets/logo-night.png) keeps its frame
+   visible. */
+.navbar-brand::before {
+  content: "";
+  display: inline-block;
+  width: 1.75rem;
+  height: 2rem;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  background: url(logo-night.png) center / contain no-repeat;
+}
+
+[data-bs-theme="dark"] img.logo {
+  content: url(logo-night.png);
+}
+
+/* Text -------------------------------------------------------------------- */
+
+/* JetBrains Mono would draw R's <- as an arrow */
+code, pre, kbd {
+  font-variant-ligatures: none;
+}
+
+/* Code on a lighter paper instead of the code theme's grey */
+[data-bs-theme="light"] pre {
+  background-color: var(--bs-tertiary-bg);
+}
+
+[data-bs-theme="dark"] .btn-primary {
+  --bs-btn-bg: #c0583a;
+  --bs-btn-border-color: #c0583a;
+  --bs-btn-hover-bg: #a8452a;
+  --bs-btn-hover-border-color: #a8452a;
+}
+
+[data-bs-theme="dark"] .btn-outline-primary {
+  --bs-btn-color: #e8b08e;
+  --bs-btn-border-color: #e8b08e;
+  --bs-btn-hover-bg: #e8b08e;
+  --bs-btn-hover-border-color: #e8b08e;
+  --bs-btn-hover-color: #0b1a2b;
+}
+
+:is(h1, h2, h3, h4) {
+  color: var(--rm-heading);
+}
+
+/* Home page --------------------------------------------------------------- */
+
+/* The home page is a landing page across the width of the page, narrow
+   enough for its short paragraphs to read comfortably */
+.template-home .row > #main {
+  width: 100%;
+  max-width: 62rem;
+}
+
+.template-home .row > aside {
+  display: none;
+}
+
+.template-home .page-header {
+  border-bottom: 0;
+  margin-bottom: 0.5rem;
+}
+
+.template-home .page-header h1 {
+  font-size: calc(2.6rem + 1.6vw);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.template-home img.logo {
+  width: 150px;
+}
+
+@media (min-width: 992px) {
+  .template-home img.logo {
+    width: 210px;
+  }
+}
+
+.rm-badges p {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.rm-pitch {
+  font-size: 1.35rem;
+  line-height: 1.45;
+  max-width: 34em;
+  color: var(--bs-secondary-color);
+}
+
+.rm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.rm-rule {
+  height: 6px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--rm-ramp);
+  opacity: 1;
+  margin: 2.25rem 0 1.5rem;
+  clear: both;
+}
+
+.rm-caption {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--bs-secondary-color);
+}
+
+.rm-figure img,
+img.rm-figure {
+  width: 100%;
+  height: auto;
+  border-radius: var(--bs-border-radius-lg);
+  border: 1px solid var(--bs-border-color);
+  background: #fff;
+}
+
+.rm-cards .card {
+  height: 100%;
+  padding: 1.25rem 1.25rem 0.75rem;
+  background: var(--bs-tertiary-bg);
+  border-color: var(--bs-border-color-translucent);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rm-cards .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0.5rem 1.25rem rgba(29, 53, 87, 0.14);
+}
+
+.rm-cards .card h3 {
+  font-size: 1.2rem;
+  margin-top: 0.5rem;
+}
+
+.rm-icon {
+  font-size: 1.6rem;
+  color: var(--rm-accent);
+}
+
+.rm-callout {
+  padding: 1.25rem 1.5rem;
+  margin: 1.5rem 0;
+  border-left: 4px solid var(--bs-primary);
+  border-radius: var(--bs-border-radius);
+  background: var(--bs-tertiary-bg);
+}
+
+.rm-callout > :last-child {
+  margin-bottom: 0;
+}
+
+/* Phones ------------------------------------------------------------------ */
+
+@media (max-width: 575.98px) {
+  .template-home img.logo {
+    width: 96px;
+  }
+
+  .rm-pitch {
+    font-size: 1.15rem;
+  }
+
+  .rm-actions .btn {
+    font-size: 1rem;
+    padding: 0.45rem 0.9rem;
+  }
+}

@@ -32,20 +32,15 @@ jobs:
         with:
           use-public-rspm: true
 
-      - name: Install system dependencies for TMB/Eigen
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libeigen3-dev
-
-      - name: Install cmdstanr
-        run: |
-          install.packages("cmdstanr", repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
-        shell: Rscript {0}
-
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: any::pkgdown, local::.
           needs: website
+
+      # pkgdown publishes every Markdown file at the top of the repository,
+      # and these notes for developers are not pages of the website.
+      - name: Leave developer notes out of the site
+        run: rm -f CLAUDE.md AGENTS.md
 
       - name: Clean site
         run: pkgdown::clean_site(force = TRUE)
@@ -59,6 +54,8 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: JamesIves/github-pages-deploy-action@v4.5.0
         with:
-          clean: false
+          # Remove pages that the new build no longer has, such as the
+          # reference pages of functions removed since 1.0.0.
+          clean: true
           branch: gh-pages
           folder: docs
