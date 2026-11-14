@@ -123,7 +123,7 @@ A PR that changes no number keeps the reference. A PR that moves numbers or adds
 
 ## Adding a task
 
-- Add it to `fits`, `downstream` or the low-level list of `run.R` with fixed seeds, and to a line of `groups.txt`. Keep it to a minute or two on one core where possible.
+- Add it to `fits`, `downstream` (which every base fit runs), `re_downstream` (which only F35 runs, in its own block of `tasks`) or the low-level list of `run.R` with fixed seeds, and to a line of `groups.txt`. A downstream task for another single fit can follow the pattern of `re_downstream`. Keep it to a minute or two on one core where possible.
 - Never change the call, data or seed of an existing task, since arms are compared by task name. Give a changed task a new name instead.
 - Keep data in the script or, when it cannot be simulated, small in `data/`.
 - Take a new reference that includes the task, by running the base commit with the new battery.

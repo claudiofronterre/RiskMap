@@ -52,50 +52,71 @@ saved_survey <- function(name) {
   s <- readRDS(file.path(option("data", file.path(here, "data")), "surveys.rds"))[[name]]
   st_as_sf(s$frame, coords = c("east", "north"), crs = s$epsg)
 }
-# The surveys of the tasks added on 14 November 2026 (F30 to F42 and the Gaussian re() tasks). Sites are uniform on a
-# square of 100 km with an exponential field of variance 1 and scale 15 km, unless said otherwise.
-field_sites <- function(n, seed) {
+# The surveys of the tasks F30 to F46. Sites are uniform on a square of 100 km with an exponential field of variance
+# 1, and each survey is designed so that the parameter its tasks are for is estimated away from its boundary.
+field_sites <- function(n, seed, scale) {
   set.seed(seed); coords <- cbind(runif(n), runif(n)) * 100
-  list(coords = coords, S = as.numeric(rnorm(n) %*% chol(exp(-as.matrix(dist(coords)) / 15))))
+  list(coords = coords, S = as.numeric(rnorm(n) %*% chol(exp(-as.matrix(dist(coords)) / scale))))
 }
 as_sites <- function(frame, coords) {
   frame$east <- coords[, 1] * 1000; frame$north <- coords[, 2] * 1000
   st_as_sf(frame, coords = c("east", "north"), crs = 32632)
 }
-# Counts at 120 sites with an exposure between 0.5 and 2, Poisson or negative binomial of the given size.
-sim_counts <- function(size, seed) {
-  sites <- field_sites(120, seed); x <- rnorm(120); exposure <- runif(120, 0.5, 2)
-  mu <- exposure * exp(0.5 + 0.3 * x + sites$S)
-  y <- if (is.null(size)) rpois(120, mu) else rnbinom(120, size = size, mu = mu)
+# Poisson counts at 120 sites (field of scale 15 km) with an exposure between 0.5 and 2, for the offset of F32.
+sim_counts <- function(seed) {
+  sites <- field_sites(120, seed, 15); x <- rnorm(120); exposure <- runif(120, 0.5, 2)
+  y <- rpois(120, exposure * exp(0.5 + 0.3 * x + sites$S))
   as_sites(data.frame(y = y, m = 1, x = x, log_exposure = log(exposure)), sites$coords)
 }
-# A Gaussian survey of 8 records at each of 60 sites, with a nugget of variance 0.2, an effect of variance 0.3 for
-# each of 12 clusters of 5 sites, and measurement error of variance 0.25. Records outnumber latent effects by more
-# than three to one, so Gaussian fits take the Woodbury path.
+# Negative binomial counts of size 2, five records at each of 60 sites (field of scale 25 km), each record with its
+# own exposure between 0.5 and 2, which the fits take as the denominator. Repeated records let the size be told apart
+# from the field.
+sim_counts_nb <- function(seed) {
+  sites <- field_sites(60, seed, 25); site <- rep(seq_len(60), each = 5)
+  x <- rnorm(300); exposure <- runif(300, 0.5, 2)
+  y <- rnbinom(300, size = 2, mu = exposure * exp(0.8 + 0.3 * x + sites$S[site]))
+  as_sites(data.frame(y = y, exposure = exposure, x = x), sites$coords[site, ])
+}
+# A Gaussian survey of 8 records at each of 60 sites (field of scale 30 km), with a nugget of variance 0.5, an effect
+# of variance 0.3 for each of 12 clusters of 5 sites, and measurement error of variance 0.25. Records outnumber latent
+# effects by more than three to one, so Gaussian fits take the Woodbury path.
 sim_replicated_gaussian <- function(seed) {
-  sites <- field_sites(60, seed); location <- rep(seq_len(60), each = 8)
+  sites <- field_sites(60, seed, 30); location <- rep(seq_len(60), each = 8)
   cluster <- rep(seq_len(12), length.out = 60)[location]
-  nugget <- rnorm(60, 0, sqrt(0.2)); cluster_effect <- rnorm(12, 0, sqrt(0.3)); x <- rnorm(480)
+  nugget <- rnorm(60, 0, sqrt(0.5)); cluster_effect <- rnorm(12, 0, sqrt(0.3)); x <- rnorm(480)
   z <- 1 + 0.5 * x + sites$S[location] + nugget[location] + cluster_effect[cluster] + rnorm(480, 0, 0.5)
   as_sites(data.frame(z = z, x = x, cluster = cluster), sites$coords[location, ])
 }
+# Households at 100 locations (field of scale 15 km), 1 + Poisson(3) at each with 1 + Poisson(2) tested in each, one
+# record per household, in 20 districts of 5 locations drawn at random. Households and districts have effects of
+# variance 0.5, x is at the location (coefficient 0.3) and the prevalence is 25%. A district crosses locations.
+sim_district_households <- function(seed) {
+  sites <- field_sites(100, seed, 15); district <- sample(rep(seq_len(20), each = 5))
+  location <- rep(seq_len(100), 1L + rpois(100, 3)); n <- length(location)
+  m <- 1L + rpois(n, 2); x_location <- rnorm(100)
+  district_effect <- rnorm(20, 0, sqrt(0.5)); household_effect <- rnorm(n, 0, sqrt(0.5))
+  rest <- 0.3 * x_location[location] + sites$S[location] + district_effect[district[location]] + household_effect
+  b <- uniroot(function(b) mean(plogis(b + rest)) - 0.25, c(-20, 20))$root
+  as_sites(data.frame(y = rbinom(n, m, plogis(b + rest)), m = m, x = x_location[location], household = seq_len(n),
+                      district = district[location], location = location), sites$coords[location, ])
+}
 # A household survey with one record per child, in the style of the re() study's surveys. There are 80 locations with
 # 1 + Poisson(3) households each and 1 + Poisson(2) children in each household, an exponential field of variance 1
-# and scale 12 km, a nugget of variance 0.5, a household effect of variance 0.8, x at the location (coefficient 0.3)
-# and sex at the child (coefficient 0.4), and a prevalence of 10%. Siblings differ in sex, so a household holds
-# several units of different linear predictors.
+# and scale 12 km, a nugget of variance 1, a household effect of variance 0.8, x at the location (coefficient 0.3)
+# and sex at the child (coefficient 0.4), and a prevalence of 30%, at which the nugget is estimated away from zero.
+# Siblings differ in sex, so a household holds several units of different linear predictors.
 sim_child_households <- function(seed, locations = 80L) {
   set.seed(seed)
   coords <- cbind(runif(locations), runif(locations)) * 100
   S <- drop(t(chol(exp(-as.matrix(dist(coords)) / 12) + diag(1e-9, locations))) %*% rnorm(locations))
-  nugget <- rnorm(locations, 0, sqrt(0.5))
+  nugget <- rnorm(locations, 0, 1)
   location <- rep(seq_len(locations), 1L + rpois(locations, 3))
   household <- rep(seq_along(location), 1L + rpois(length(location), 2))
   x_location <- rnorm(locations); sex <- rbinom(length(household), 1, 0.5)
   effect <- rnorm(length(location), 0, sqrt(0.8))
   site <- location[household]
   rest <- 0.3 * x_location[site] + 0.4 * sex + S[site] + nugget[site] + effect[household]
-  b <- uniroot(function(b) mean(plogis(b + rest)) - 0.1, c(-20, 20))$root
+  b <- uniroot(function(b) mean(plogis(b + rest)) - 0.3, c(-20, 20))$root
   y <- rbinom(length(household), 1, plogis(b + rest))
   as_sites(data.frame(y = y, m = 1L, x = x_location[site], sex = sex, household = household, location = site),
            coords[site, ])
@@ -118,12 +139,13 @@ dataset <- function(name) {
     tz_malaria = { data("tz_malaria", package = "RiskMap", envir = environment()); tz_malaria },
     n05_2 = saved_survey("n05_2"),
     households = saved_survey("households"),
-    counts_nb = sim_counts(2, 30), counts_poisson = sim_counts(NULL, 32),
+    counts_nb = sim_counts_nb(30), counts_poisson = sim_counts(32),
     replicated_gaussian = sim_replicated_gaussian(34),
-    districts = { d <- dataset("households"); d$district <- (d$location - 1L) %/% 10L + 1L; d },
+    district_households = sim_district_households(37),
     child_households = sim_child_households(42),
     child_households_40 = { d <- dataset("child_households"); d[d$location <= 40L, ] },
-    same_sex_locations = { d <- dataset("child_households_40"); d$sex <- ave(d$sex, d$location, FUN = function(s) s[1]); d },
+    same_sex_locations = { d <- dataset("child_households_40")
+                           d$sex <- ave(d$sex, d$location, FUN = function(s) s[1]); d },
     stop("unknown data set ", name))
   assign(name, value, envir = data_cache)
   value
@@ -204,10 +226,11 @@ fits <- list(
                                             control_mcml = set_control_mcml(integrate_noise = FALSE)),
   F29_gaussian = function() glgpm(z ~ x + gp(), data = dataset("gaussian"), family = "gaussian",
                                   distance_units = "km", messages = FALSE),
-  F30_negative_binomial_estimated = function() glgpm(y ~ x + gp(), denominator = m, data = dataset("counts_nb"),
-                                                     family = negative_binomial(), distance_units = "km",
-                                                     messages = FALSE, seed = 30L, control_mcmc = ctrl),
-  F31_negative_binomial_held = function() glgpm(y ~ x + gp(), denominator = m, data = dataset("counts_nb"),
+  F30_negative_binomial_estimated = function() glgpm(y ~ x + gp(), denominator = exposure,
+                                                     data = dataset("counts_nb"), family = negative_binomial(),
+                                                     distance_units = "km", messages = FALSE, seed = 30L,
+                                                     control_mcmc = ctrl),
+  F31_negative_binomial_held = function() glgpm(y ~ x + gp(), denominator = exposure, data = dataset("counts_nb"),
                                                 family = negative_binomial(2), distance_units = "km",
                                                 messages = FALSE, seed = 31L, control_mcmc = ctrl),
   F32_poisson_offset = function() glgpm(y ~ x + offset(log_exposure) + gp(), denominator = m,
@@ -222,8 +245,9 @@ fits <- list(
                                               family = "gaussian", distance_units = "km", messages = FALSE,
                                               fix_var_me = 0.25),
   F37_two_re_crossing = function() glgpm(y ~ x + gp(kappa = 0.5) + re(household) + re(district), denominator = m,
-                                         data = dataset("districts"), family = "binomial", distance_units = "km",
-                                         messages = FALSE, seed = 37L, return_samples = FALSE),
+                                         data = dataset("district_households"), family = "binomial",
+                                         distance_units = "km", messages = FALSE, seed = 37L,
+                                         return_samples = FALSE),
   F38_kappa_1_5 = function() fit_binomial(y ~ x + gp(kappa = 1.5), "d1", seed = 38L),
   F39_pc_prior = function() fit_binomial(y ~ x + gp(), "d1", seed = 39L,
                                          control_mcml = set_control_mcml(pc_prior = TRUE)),
