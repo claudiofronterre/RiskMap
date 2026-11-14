@@ -117,7 +117,14 @@ Each task gets one line, `identical`, `DIFFERENT value`, `DIFFERENT text`, `MISS
 
 ## The reference
 
-The reference for `main` at 6010772 is `arms/kernel-a2b307e-wayland` on Wayland (a2b307e has the tree of 6010772), taken by the MCML paper's battery on a 64core256G node. `arms/golden-e1fd248`, taken by this battery as #314 merged it, is identical to it in all 57 tasks and also records the fits of the downstream tasks and the package versions, so it is the better reference for the tolerance mode. The reference of all 76 tasks is `arms/golden-707e26e`, taken on comp10-09 (64core256G) with the code of `main` after #311 and #314 and the battery that added F30 to F46. Its first 57 tasks are identical to `golden-e1fd248`, and its 19 new tasks were identical when run a second time on another node (`arms/repeat-707e26e`). Compare PRs against it.
+Compare PRs against `arms/main-99fb030` on Wayland, all 76 tasks of `main` at 99fb030 (after #311, #314, #317 and #318) on comp05-00 (64core256G). The earlier references and how they relate to it are these.
+
+| Arm | Code | Tasks | Relation |
+|---|---|---|---|
+| `kernel-a2b307e-wayland` | 6010772 | 57 | taken by the MCML paper's battery |
+| `golden-e1fd248` | 6010772 | 57 | identical to `kernel-a2b307e-wayland`, and records the fits of downstream tasks and the package versions |
+| `golden-707e26e` | `main` after #311 and #314 | 76 | its 57 old tasks identical to `golden-e1fd248`, its 19 new tasks identical when run again on another node (`repeat-707e26e`) |
+| `main-99fb030` | `main` after #317 and #318 | 76 | identical to `golden-707e26e` in 72 tasks, F46 among them. F42 to F45, whose households #317 integrates, are within a tolerance of 0.01 standard errors, 5% on the standard errors and 0.02 on the log-likelihood (largest shift 0.0064 standard errors), with the sentences and check that report the integration declared (`^F4[2-5] ^/text/[34]$`, `^F4[2-5] ^/check/draws$`) and, for F44, the bank its certificate's radius comes from (`^F44 radius_from$`) |
 
 A PR that changes no number keeps the reference. A PR that moves numbers or adds tasks takes a new one at its merge commit, noted here.
 
