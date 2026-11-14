@@ -1260,6 +1260,41 @@
   to 0.007 integrated. A model without such terms is fitted exactly as
   before.
 
+- `integrate_noise` now also integrates out households whose members
+  differ in covariates, such as children of a household who differ in
+  sex or birth order, which were sampled before. At a location whose
+  units differ in their covariates or offset, the units are integrated
+  out in groups when every term but one has a single level shared by all
+  of them and the levels of that one lie within the location. Each
+  level, a household for instance, is integrated over its own effect
+  with each member’s own linear predictor, and the nugget over the
+  households’ integrals, so the latent effects are the spatial effects
+  at the locations. Where every term is shared, the location is one
+  group under its nugget, which covers a nugget with child covariates
+  and no
+  [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
+  term. The integrals depend on the regression coefficients, so they are
+  filled again as these change, except that a household of one member
+  takes the record’s own table, a household’s integral is kept while
+  only the coefficients of covariates its members share change, and
+  households alike in their members’ outcomes and covariate differences
+  share one. On 200 clusters of a Demographic and Health Survey, a fit
+  with 8 child and household covariates, a nugget and household effects
+  took 23 minutes and one stage, at a bound of 0.008 with 4,830
+  effective draws, instead of 83 minutes and three stages, at 0.086 with
+  1,350, with every estimate within 0.03 standard errors. On a simulated
+  survey of that shape, with 28,471 children in 16,614 households at
+  1,375 locations, a fit with a nugget and household effects certified
+  at the first stage in 9 minutes on one core. On simulated surveys of
+  200 locations with about 800 households of children who differ in sex,
+  a fit with a nugget and household effects took 36 to 45 seconds and
+  one stage against about 180 seconds and two stages with the households
+  sampled. Under a link not known to be log-concave, such as that of an
+  imperfect test, the households take the general trapezium rule, and
+  small surveys fit more slowly than with the households sampled (72
+  against 13 seconds on 40 locations). A fit whose units share their
+  covariates and offset at every location is unchanged.
+
 - The integral over the independent effects of a record or a location,
   which `integrate_noise` tables, no longer slows down as a variance
   grows. Records with no events, or with every trial an event, have a
