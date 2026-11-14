@@ -7,10 +7,10 @@
 re(...)
 }
 \arguments{
-\item{...}{Variables representing the random effects in the model.}
+\item{...}{Variables representing the random effects in the model. Each variable adds its own independent random effect.}
 }
 \value{
-A list of class \code{re.spec} containing the following elements:
+A list of class \code{RiskMap_re_spec} containing the following elements:
 \item{term}{A character vector of the specified terms.}
 \item{dim}{The number of specified terms.}
 \item{label}{A character string representing the full call for the random effect model.}
@@ -20,12 +20,22 @@ Specifies the terms for a random effect model.
 }
 \details{
 The function constructs a list that includes the specified terms for the random effects. This list can be used as a specification for a random effect model.
+Several \code{re()} calls in a formula are combined, so \code{re(region) + re(province)} is the same model as \code{re(region, province)}.
 }
 \note{
 At least one variable must be provided as input.
 }
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
+\examples{
+# this function is not intended for use by itself
+re(province)
 
-Claudio Fronterre \email{c.fronterr@lancaster.ac.uk}
+# use in a model formula
+data(italy_sim)
+fit <- glgpm(
+  formula = y ~ gp() + re(province),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
 }

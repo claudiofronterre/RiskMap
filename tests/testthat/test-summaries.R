@@ -1,0 +1,695 @@
+# Tests for the summary() methods and their print() methods.
+#
+# The print methods only format summary objects, so their tests build the
+# summaries by hand with fixed values. Snapshots of summaries from real fits
+# would change with platform, BLAS or optimiser details rather than with the
+# formatting being tested.
+
+# summary.RiskMap ------------------------------------------------------------
+
+test_that("estimates are consistent between coef and summary", {
+
+  sum <- summary(gaussian_model)
+  cof <- coef(gaussian_model)
+
+  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
+  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
+  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2_me, sum$family_parameters[1,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
+
+  sum <- summary(binomial_model)
+  cof <- coef(binomial_model)
+
+  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
+  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
+  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
+
+  sum <- summary(poisson_model)
+  cof <- coef(poisson_model)
+
+  expect_equal(cof$beta[1], sum$reg_coef[1,1], ignore_attr = TRUE)
+  expect_equal(cof$beta[2], sum$reg_coef[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2, sum$sp[1,1], ignore_attr = TRUE)
+  expect_equal(cof$phi, sum$sp[2,1], ignore_attr = TRUE)
+  expect_equal(cof$sigma2_re, sum$ranef[1,1], ignore_attr = TRUE)
+})
+
+test_that("summary.RiskMap returns the expected components for each family", {
+  gaussian_summary <- summary(gaussian_model)
+  expect_s3_class(gaussian_summary, "summary.RiskMap")
+  expect_setequal(names(gaussian_summary),
+                  c("reg_coef", "family_parameters", "held_family_parameters",
+                    "sp", "tau2", "ranef", "level",
+                    "family", "kappa", "log_lik", "cov_offset_used", "aic",
+                    "call", "link_name", "invlink_expression"))
+  expect_identical(gaussian_summary$family, "gaussian")
+  expect_identical(gaussian_summary$link_name, "identity")
+  expect_identical(gaussian_summary$call, gaussian_model$call)
+  expect_identical(gaussian_summary$log_lik, gaussian_model$log_lik)
+  expect_identical(gaussian_summary$kappa, gaussian_model$kappa)
+  expect_false(gaussian_summary$cov_offset_used)
+  expect_equal(gaussian_summary$aic,
+               2 * length(unlist(gaussian_model$estimate)) - 2 * gaussian_model$log_lik)
+  expect_identical(rownames(gaussian_summary$ranef), "i (random eff. var.)")
+  expect_identical(rownames(gaussian_summary$sp),
+                   c("Spatial process var.", "Spatial corr. scale (km)"))
+
+  binomial_summary <- summary(binomial_model)
+  expect_identical(binomial_summary$link_name, "canonical (logit)")
+  expect_null(binomial_summary$family_parameters)
+  expect_identical(binomial_summary$held_family_parameters, list())
+  expect_null(binomial_summary$aic)
+
+  poisson_summary <- summary(poisson_model)
+  expect_identical(poisson_summary$link_name, "canonical (log)")
+  expect_null(poisson_summary$family_parameters)
+  expect_null(poisson_summary$aic)
+})
+
+test_that("summary.RiskMap reports a custom inverse link", {
+  custom_link <- list(
+    inv = function(x) 1 / (1 + exp(-x)),
+    d1 = function(x) plogis(x) * (1 - plogis(x)),
+    d2 = function(x) {
+      probability <- plogis(x)
+      probability * (1 - probability) * (1 - 2 * probability)
+    }
+  )
+  fit <- glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+               denominator = denominator, control_mcmc = control_mcmc,
+               seed = fixture_seed,
+                     control_mcml = fixture_control_mcml,
+               invlink = custom_link, messages = FALSE)
+
+  fit_summary <- summary(fit)
+  expect_identical(fit_summary$link_name, "custom")
+  expect_identical(fit_summary$invlink_expression,
+                   "Inverse link function = 1/(1 + exp(-x))")
+})
+
+test_that("summary.RiskMap names a package or primitive inverse link", {
+  # The fit is used only for its structure, so its link is replaced.
+  fit <- binomial_model
+  fit$link_function <- list(inv = pnorm, name = "custom")
+  fit$call$invlink <- quote(pnorm)
+  expect_identical(summary(fit)$invlink_expression,
+                   "Inverse link function = pnorm(x)")
+  fit$call$invlink <- quote(stats::pnorm)
+  expect_identical(summary(fit)$invlink_expression,
+                   "Inverse link function = stats::pnorm(x)")
+  fit$link_function$inv <- exp
+  fit$call$invlink <- quote(exp)
+  expect_identical(summary(fit)$invlink_expression,
+                   "Inverse link function = exp(x)")
+  # A refit's call holds the function itself, not its name.
+  fit$call$invlink <- exp
+  expect_identical(summary(fit)$invlink_expression,
+                   "Inverse link function = <user-supplied function>")
+})
+
+test_that("summary.RiskMap computes standard errors and confidence intervals", {
+  fit_summary <- summary(binomial_model)
+  estimate <- unlist(binomial_model$estimate)
+  standard_error <- sqrt(diag(binomial_model$covariance))
+  is_beta <- startsWith(names(estimate), "beta.")
+  z_crit <- qnorm(0.975)
+
+  reg_coef <- fit_summary$reg_coef
+  expect_identical(colnames(reg_coef),
+                   c("Estimate", "Lower limit", "Upper limit", "StdErr",
+                     "z.value", "p.value"))
+  expect_identical(rownames(reg_coef), colnames(binomial_model$D))
+  expect_equal(reg_coef[, "Estimate"], estimate[is_beta], ignore_attr = TRUE)
+  expect_equal(reg_coef[, "StdErr"], standard_error[is_beta], ignore_attr = TRUE)
+  expect_equal(reg_coef[, "Lower limit"],
+               estimate[is_beta] - z_crit * standard_error[is_beta],
+               ignore_attr = TRUE)
+  expect_equal(reg_coef[, "z.value"],
+               estimate[is_beta] / standard_error[is_beta], ignore_attr = TRUE)
+  expect_equal(reg_coef[, "p.value"],
+               2 * pnorm(-abs(reg_coef[, "z.value"])))
+
+  # covariance parameters are estimated on the log scale, so their intervals
+  # are log-normal
+  sp_index <- match(c("sigma2", "phi"), names(estimate))
+  expect_equal(fit_summary$sp[, "Estimate"], exp(estimate[sp_index]),
+               ignore_attr = TRUE)
+  expect_equal(fit_summary$sp[, "Lower limit"],
+               exp(estimate[sp_index] - z_crit * standard_error[sp_index]),
+               ignore_attr = TRUE)
+  expect_equal(fit_summary$sp[, "Upper limit"],
+               exp(estimate[sp_index] + z_crit * standard_error[sp_index]),
+               ignore_attr = TRUE)
+
+  re_index <- match("sigma2_re.i", names(estimate))
+  expect_equal(fit_summary$ranef[, "Upper limit"],
+               exp(estimate[re_index] + z_crit * standard_error[re_index]),
+               ignore_attr = TRUE)
+})
+
+test_that("summary.RiskMap respects level", {
+  default_summary <- summary(gaussian_model)
+  narrow_summary <- summary(gaussian_model, level = 0.9)
+
+  expect_identical(narrow_summary$level, 0.9)
+  expect_equal(narrow_summary$reg_coef[, "Estimate"],
+               default_summary$reg_coef[, "Estimate"])
+  default_width <- default_summary$reg_coef[, "Upper limit"] -
+    default_summary$reg_coef[, "Lower limit"]
+  narrow_width <- narrow_summary$reg_coef[, "Upper limit"] -
+    narrow_summary$reg_coef[, "Lower limit"]
+  expect_equal(narrow_width / default_width,
+               rep(qnorm(0.95) / qnorm(0.975), 2), ignore_attr = TRUE)
+})
+
+test_that("summary.RiskMap reports fixed and estimated nugget and measurement error", {
+  # gaussian_offset_model: gp(nugget = TRUE), fix_var_me = 0, offset
+  offset_summary <- summary(gaussian_offset_model)
+  expect_true(offset_summary$tau2)
+  expect_true(offset_summary$cov_offset_used)
+  expect_identical(offset_summary$held_family_parameters, list(sigma2_me = 0))
+  expect_identical(rownames(offset_summary$sp)[3], "Variance of the nugget")
+  # the nugget is estimated as a ratio to sigma2 but reported as a variance
+  expect_equal(offset_summary$sp["Variance of the nugget", "Estimate"],
+               coef(gaussian_offset_model)$tau2)
+
+  # log(tau2) = nu2 + sigma2 on the working scale, so its standard error
+  # comes from the delta method with both parameters
+  covariance <- gaussian_offset_model$covariance
+  gradient <- setNames(numeric(nrow(covariance)), rownames(covariance))
+  gradient[c("sigma2", "nu2")] <- 1
+  log_tau2_se <- sqrt(drop(gradient %*% covariance %*% gradient))
+  tau2 <- coef(gaussian_offset_model)$tau2
+  expect_equal(
+    offset_summary$sp["Variance of the nugget",
+                      c("Lower limit", "Upper limit")],
+    exp(log(tau2) + c(-1, 1) * qnorm(0.975) * log_tau2_se),
+    ignore_attr = TRUE
+  )
+
+  # A nugget without a standard error, as when it is estimated at zero,
+  # leaves the intervals of the other parameters unchanged
+  no_nugget_se <- gaussian_offset_model
+  no_nugget_se$covariance["nu2", ] <- NA
+  no_nugget_se$covariance[, "nu2"] <- NA
+  missing_summary <- summary(no_nugget_se)
+  expect_equal(missing_summary$reg_coef, offset_summary$reg_coef)
+  expect_equal(missing_summary$sp[1:2, ], offset_summary$sp[1:2, ])
+  expect_true(all(is.na(
+    missing_summary$sp["Variance of the nugget",
+                       c("Lower limit", "Upper limit")]
+  )))
+
+  # gaussian_model: no nugget, estimated measurement error
+  gaussian_summary <- summary(gaussian_model)
+  expect_identical(gaussian_summary$tau2, 0)
+  expect_identical(rownames(gaussian_summary$family_parameters),
+                   "Measurement error var.")
+  expect_identical(gaussian_summary$held_family_parameters, list())
+  expect_equal(gaussian_summary$family_parameters[, "Estimate"],
+               coef(gaussian_model)$sigma2_me, ignore_attr = TRUE)
+})
+
+# A summary.RiskMap for a gaussian model; 'changes' replaces fields, and
+# setting a field to NULL removes it.
+build_summary_riskmap <- function(changes = list()) {
+  reg_coef <- cbind(
+    Estimate      = c(1.2, -0.4),
+    "Lower limit" = c(0.8, -0.9),
+    "Upper limit" = c(1.6, 0.1),
+    StdErr        = c(0.2, 0.25),
+    z.value       = c(6, -1.6),
+    p.value       = c(1.97e-09, 0.1096)
+  )
+  rownames(reg_coef) <- c("(Intercept)", "cov")
+
+  me <- cbind(Estimate = 0.3, "Lower limit" = 0.1, "Upper limit" = 0.9)
+  rownames(me) <- "Measurement error var."
+
+  sp <- cbind(
+    Estimate      = c(0.5, 0.2, 0.1),
+    "Lower limit" = c(0.25, 0.05, 0.02),
+    "Upper limit" = c(1, 0.8, 0.5)
+  )
+  rownames(sp) <- c("Spatial process var.", "Spatial corr. scale (km)",
+                    "Variance of the nugget")
+
+  ranef <- cbind(Estimate = 0.4, "Lower limit" = 0.2, "Upper limit" = 0.8)
+  rownames(ranef) <- "i (random eff. var.)"
+
+  summary_object <- list(
+    reg_coef = reg_coef,
+    family_parameters = me,
+    held_family_parameters = list(),
+    sp = sp,
+    tau2 = TRUE,
+    ranef = ranef,
+    level = 0.95,
+    family = "gaussian",
+    kappa = 0.5,
+    log_lik = -12.3456,
+    cov_offset_used = TRUE,
+    aic = 38.6912,
+    call = quote(glgpm(formula = y ~ cov + gp(nugget = TRUE) + re(i),
+                       data = gaussian_data, family = "gaussian")),
+    link_name = "identity",
+    invlink_expression = "Inverse link function = x"
+  )
+  summary_object <- modifyList(summary_object, changes)
+  class(summary_object) <- "summary.RiskMap"
+  summary_object
+}
+
+test_that("print.summary.RiskMap formats a gaussian model with every optional section", {
+  summary_object <- build_summary_riskmap()
+
+  expect_snapshot(print(summary_object))
+  expect_output(expect_invisible(print(summary_object)))
+})
+
+test_that("print.summary.RiskMap reports a fixed measurement error variance", {
+  summary_object <- build_summary_riskmap(list(
+    family_parameters = NULL, held_family_parameters = list(sigma2_me = 0.1),
+    call = NULL
+  ))
+
+  expect_snapshot(print(summary_object))
+})
+
+test_that("print.summary.RiskMap formats binomial and poisson models", {
+  sp_without_nugget <- build_summary_riskmap()$sp[1:2, ]
+
+  binomial_summary <- build_summary_riskmap(list(
+    family = "binomial", family_parameters = NULL, sp = sp_without_nugget, tau2 = 0,
+    ranef = NULL, cov_offset_used = FALSE, aic = NULL, call = NULL,
+    link_name = "canonical (logit)",
+    invlink_expression = "Inverse link function = 1 / (1 + exp(-x))"
+  ))
+  expect_snapshot(print(binomial_summary))
+
+  poisson_summary <- build_summary_riskmap(list(
+    family = "poisson", family_parameters = NULL, sp = sp_without_nugget, tau2 = 0.25,
+    ranef = NULL, cov_offset_used = FALSE, aic = NULL, call = NULL,
+    link_name = "canonical (log)",
+    invlink_expression = "Inverse link function = exp(x)"
+  ))
+  expect_snapshot(print(poisson_summary))
+})
+
+test_that("print.summary.RiskMap reports the certificate and the checks to review", {
+  sp_without_nugget <- build_summary_riskmap()$sp[1:2, ]
+  certified <- list(certificate = 0.0594, level = 0.95, tolerance = 0.1,
+                    certified = TRUE, outcome = "certified",
+                    correction_refused = FALSE, stages = 1L,
+                    fitting_draws = 1000L, validation_draws = 5000L,
+                    checks_to_review = 0L)
+  binomial_summary <- build_summary_riskmap(list(
+    family = "binomial", family_parameters = NULL, sp = sp_without_nugget, tau2 = 0,
+    ranef = NULL, cov_offset_used = FALSE, aic = NULL, call = NULL,
+    link_name = "canonical (logit)",
+    invlink_expression = "Inverse link function = 1 / (1 + exp(-x))",
+    mcml = certified
+  ))
+  expect_snapshot(print(binomial_summary))
+
+  refused <- modifyList(certified, list(
+    certificate = 0.0412, certified = FALSE, outcome = "not certified",
+    correction_refused = TRUE, stages = 4L, fitting_draws = 2500L,
+    validation_draws = 12500L, checks_to_review = 2L
+  ))
+  binomial_summary$mcml <- refused
+  expect_snapshot(print(binomial_summary))
+})
+
+test_that("summary.RiskMap reads the certificate of a non-Gaussian fit", {
+  expect_null(summary(gaussian_model)$mcml)
+  optimizer <- attr(binomial_model, "optimizer")
+  mcml <- summary(binomial_model)$mcml
+  expect_identical(mcml$certificate, optimizer$mcml_certificate)
+  expect_identical(mcml$certified, isTRUE(optimizer$mcml_certified))
+  expect_identical(mcml$outcome, optimizer$mcml_outcome)
+  expect_identical(mcml$stages, optimizer$mcml_stages)
+  expect_identical(mcml$tolerance,
+                   attr(binomial_model, "control_mcml")$tolerance)
+  expect_identical(mcml$fitting_draws, optimizer$mcml_budget)
+  expect_identical(mcml$validation_draws, optimizer$mcml_validation_budget)
+  expect_output(print(summary(binomial_model)),
+                "Monte Carlo maximum likelihood")
+})
+
+test_that("print.RiskMap is short and gives the certificate", {
+  printed <- capture.output(result <- print(binomial_model))
+  expect_identical(result, binomial_model)
+  expect_lt(length(printed), 30L)
+  expect_match(printed[1L], "Binomial geostatistical model")
+  expect_true(any(grepl("^10 observations at ", printed)))
+  expect_true(any(grepl("Regression coefficients", printed, fixed = TRUE)))
+  expect_true(any(grepl("certified", printed, ignore.case = TRUE)))
+  expect_false(any(grepl("concerns the maximum found", printed)))
+  estimates <- coef(binomial_model)
+  variance <- grep("^Spatial process var.", printed, value = TRUE)
+  expect_equal(as.numeric(sub("^Spatial process var. +", "", variance)),
+               estimates$sigma2, tolerance = 1e-3)
+  expect_true(any(grepl("`summary()` gives standard errors", printed,
+                        fixed = TRUE)))
+
+  gaussian_printed <- capture.output(print(gaussian_model))
+  expect_lt(length(gaussian_printed), 30L)
+  expect_true(any(grepl("i (random eff. var.)", gaussian_printed,
+                        fixed = TRUE)))
+  expect_false(any(grepl("Monte Carlo", gaussian_printed)))
+  expect_output(print(poisson_model), "glgpm(formula = y ~ cov", fixed = TRUE)
+})
+
+test_that("print.summary.RiskMap labels a summary of a real fit", {
+  expect_output(print(summary(gaussian_model)), "Linear geostatistical model")
+  expect_output(print(summary(gaussian_model)), "Unstructured random effects")
+  expect_output(print(summary(binomial_model)), "Binomial geostatistical model")
+  expect_output(print(summary(poisson_model)), "Poisson geostatistical model")
+})
+
+# summary.RiskMap_cross_validation -------------------------------------------
+
+# A RiskMap_cross_validation with two models, two metrics and two test sets
+# of sizes 1 and 3, so the overall scores are weighted by test set size.
+build_cross_validation <- function() {
+  list(model = list(
+    model_a = list(metric = list(CRPS = list(0.2, c(0.3, 0.4, 0.5)),
+                                 SCRPS = list(-0.5, c(-0.6, -0.7, -0.8)))),
+    model_b = list(metric = list(CRPS = list(0.6, c(0.1, 0.2, 0.3)),
+                                 SCRPS = list(-1, c(-0.2, -0.3, -0.4))))
+  ))
+}
+
+test_that("summary.RiskMap_cross_validation weights test sets by their size", {
+  cross_validation_summary <- summary.RiskMap_cross_validation(build_cross_validation())
+
+  expect_s3_class(cross_validation_summary, "summary.RiskMap_cross_validation")
+  expect_identical(dimnames(cross_validation_summary),
+                   list(c("model_a", "model_b"), c("CRPS", "SCRPS")))
+  expect_equal(cross_validation_summary["model_a", "CRPS"], (0.2 + 3 * 0.4) / 4)
+  expect_equal(cross_validation_summary["model_b", "SCRPS"], (-1 + 3 * -0.3) / 4)
+
+  test_set_means <- attr(cross_validation_summary, "test_set_means")
+  expect_named(test_set_means, c("model_a", "model_b"))
+  # scores per test set are stored by metric position, in column order
+  expect_equal(test_set_means$model_a[[1]], c(0.2, 0.4))
+  expect_equal(attr(cross_validation_summary, "overall_averages"),
+               colMeans(cross_validation_summary))
+  expect_true(attr(cross_validation_summary, "view_all"))
+
+  expect_false(attr(summary.RiskMap_cross_validation(build_cross_validation(),
+                                                     view_all = FALSE),
+                    "view_all"))
+})
+
+test_that("summary.RiskMap_cross_validation errors when no metrics were computed", {
+  no_metrics <- list(model = list(model_a = list(metric = list())))
+  expect_error(summary.RiskMap_cross_validation(no_metrics),
+               "has no metrics of predictive performance")
+})
+
+test_that("summary.RiskMap_cross_validation summarises assess_prediction output", {
+  cross_validation_summary <- summary(cross_validation)
+  expect_identical(rownames(cross_validation_summary), c("model_a", "model_b"))
+  expect_true(all(is.finite(cross_validation_summary)))
+})
+
+test_that("print.RiskMap_cross_validation gives the averages, not the raw list", {
+  printed <- capture.output(result <- print(cross_validation))
+  expect_identical(result, cross_validation)
+  expect_match(printed[1L], "Cross-validation", fixed = TRUE)
+  sizes <- vapply(cross_validation$test_set, NROW, integer(1))
+  expect_match(squish(printed),
+               paste0("2 models assessed on ", length(sizes), " test sets? of "))
+  expect_true(any(startsWith(trimws(printed), "model_a ")))
+  expect_true(any(startsWith(trimws(printed), "model_b ")))
+  expect_match(squish(printed), paste(
+    "`summary()` gives the scores of each test set, and `plot()` maps the",
+    "scores at the test locations and draws the calibration curve."
+  ), fixed = TRUE)
+  expect_lt(length(printed), 20L)
+  expect_false(any(grepl("$test_set", printed, fixed = TRUE)))
+})
+
+test_that("the print of a cross-validation describes its test sets", {
+  expect_identical(describe_test_sets(c(80L, 20L)),
+                   "2 test sets of 80 and 20 observations")
+  expect_identical(describe_test_sets(rep(50L, 10L)),
+                   "10 test sets of 50 observations each")
+  expect_identical(describe_test_sets(1L), "1 test set of 1 observation")
+  expect_identical(describe_test_sets(rep(1L, 20L)),
+                   "20 test sets of 1 observation each")
+  expect_identical(describe_test_sets(c(8L, 12L, 9L, 10L)),
+                   "4 test sets of 8 to 12 observations")
+  # A failed assessment leaves no scores, printed as NA and not NaN.
+  expect_identical(format_cv_score(c(0.12345, NaN, NA)),
+                   c("0.1235", "NA", "NA"))
+})
+
+test_that("print.summary.RiskMap_cross_validation formats scores by model", {
+  scores <- matrix(c(0.3, 0.45, -0.8, -0.95), nrow = 2,
+                   dimnames = list(c("model_a", "model_b"), c("CRPS", "SCRPS")))
+  attr(scores, "test_set_means") <- list(
+    model_a = list(CRPS = c(0.25, 0.35), SCRPS = c(-0.75, -0.85)),
+    model_b = list(CRPS = c(0.4, 0.5), SCRPS = c(-0.9, -1))
+  )
+  attr(scores, "overall_averages") <- colMeans(scores)
+  class(scores) <- "summary.RiskMap_cross_validation"
+
+  attr(scores, "view_all") <- TRUE
+  expect_snapshot(print(scores))
+  expect_output(expect_invisible(print(scores)))
+
+  attr(scores, "view_all") <- FALSE
+  expect_snapshot(print(scores))
+})
+
+# summary.RiskMap_assess_simulation -------------------------------------------
+
+# A RiskMap_assess_simulation with two simulations of one model; summary()
+# of it is deterministic, so it is used to build the object being printed.
+build_assess_simulation <- function(spatial_scale) {
+  classify_result <- function(sensitivity, cc) {
+    data.frame(Class = c("low", "high"), Sensitivity = sensitivity,
+               Specificity = c(0.8, 0.7), PPV = c(0.6, 0.5),
+               NPV = c(0.9, 0.85), CC = cc)
+  }
+  scale_results <- list(
+    mse = matrix(c(0.12, 0.18), nrow = 1,
+                 dimnames = list("model", c("sim_1", "sim_2"))),
+    classify = list(
+      model = list(by_cat = list(classify_result(c(0.5, 0.6), c(0.7, 0.7)),
+                                 classify_result(c(0.7, 0.4), c(0.8, 0.8))),
+                   CC = c(0.7, 0.8)),
+      Class = factor(c("low", "high"), levels = c("low", "high"))
+    )
+  )
+  pred_objective <- rep(list(scale_results), length(spatial_scale))
+  names(pred_objective) <- spatial_scale
+
+  structure(
+    list(pred_objective = pred_objective, n_sim = 2L,
+         spatial_scale = spatial_scale),
+    class = "RiskMap_assess_simulation"
+  )
+}
+
+test_that("classification summaries handle one simulation and metric-wise missingness #108", {
+  one_result <- data.frame(
+    Class = c("low", "high"),
+    Sensitivity = c(0.5, NA),
+    Specificity = c(NA, 0.75),
+    PPV = c(0.4, NA),
+    NPV = c(NA, 0.8),
+    CC = c(0.6, 0.7)
+  )
+  one_simulation <- structure(
+    list(
+      pred_objective = list(
+        grid = list(
+          classify = list(
+            model = list(by_cat = list(one_result), CC = 0.65),
+            Class = factor(c("low", "high"), levels = c("low", "high"))
+          )
+        )
+      ),
+      n_sim = 1L,
+      spatial_scale = "grid"
+    ),
+    class = "RiskMap_assess_simulation"
+  )
+
+  expect_warning(summary_one <- summary(one_simulation), "one simulation")
+  model_one <- summary_one$grid$classify$model
+  expect_identical(model_one$classify_res$Sensitivity, c(0.5, NA))
+  expect_identical(model_one$n_valid$Sensitivity, c(1L, 0L))
+  expect_identical(model_one$cc_summary$mean, 0.65)
+  expect_true(is.na(model_one$cc_summary$sd))
+  expect_true(is.na(model_one$cc_summary$lower))
+  expect_output(print(summary_one), "uncertainty unavailable")
+
+  second_result <- one_result
+  second_result$Sensitivity <- c(NA, 0.25)
+  second_result$Specificity <- c(0.5, NA)
+  two_simulations <- one_simulation
+  two_simulations$n_sim <- 2L
+  two_simulations$pred_objective$grid$classify$model$by_cat <-
+    list(one_result, second_result)
+  two_simulations$pred_objective$grid$classify$model$CC <- c(0.65, 0.75)
+
+  summary_two <- summary(two_simulations)$grid$classify$model
+  expect_identical(summary_two$classify_res$Sensitivity, c(0.5, 0.25))
+  expect_identical(summary_two$n_valid$Sensitivity, c(1L, 1L))
+  expect_identical(summary_two$n_valid$Specificity, c(1L, 1L))
+  expect_identical(summary_two$cc_summary$n_valid, 2L)
+  expect_identical(summary_two$cc_summary$n_sim, 2L)
+})
+
+test_that("summary.RiskMap_assess_simulation summarises MSE and classification", {
+  assessment <- build_assess_simulation(c("grid", "area"))
+  assessment$pred_objective$grid$mse[1, 2] <- NA
+
+  expect_error(summary.RiskMap_assess_simulation(list()), "RiskMap_assess_simulation")
+
+  simulation_summary <- summary(assessment)
+  expect_s3_class(simulation_summary, "summary.RiskMap_assess_simulation")
+  expect_named(simulation_summary, c("grid", "area"))
+
+  # non-finite MSE values are dropped from the mean and counted as invalid
+  expect_identical(simulation_summary$grid$mse$n_sim, 2L)
+  expect_identical(simulation_summary$grid$mse$n_valid, 1)
+  expect_identical(simulation_summary$grid$mse$MSE_mean, 0.12)
+  expect_true(is.na(simulation_summary$grid$mse$MSE_sd))
+  expect_equal(simulation_summary$area$mse$MSE_mean, 0.15)
+  expect_equal(simulation_summary$area$mse$MSE_sd, sd(c(0.12, 0.18)))
+
+  model_summary <- simulation_summary$grid$classify$model
+  expect_identical(model_summary$classify_res$Class, c("low", "high"))
+  expect_equal(model_summary$classify_res$Sensitivity, c(0.6, 0.5))
+  expect_equal(model_summary$cc_summary$mean, 0.75)
+  expect_equal(model_summary$cc_summary$lower,
+               unname(quantile(c(0.7, 0.8), 0.025)))
+
+  assessment$pred_objective$grid$mse <- c(0.12, 0.18)
+  expect_error(summary(assessment), "must be a matrix")
+})
+
+test_that("print.summary.RiskMap_assess_simulation formats one spatial scale", {
+  summary_object <- summary(build_assess_simulation("grid"))
+
+  expect_snapshot(print(summary_object))
+  expect_output(expect_invisible(print(summary_object)))
+})
+
+test_that("print.summary.RiskMap_assess_simulation labels each spatial scale", {
+  summary_object <- summary(build_assess_simulation(c("grid", "area")))
+
+  expect_snapshot(print(summary_object))
+})
+
+test_that("summary.RiskMap_cross_validation weights every metric by test-set size and skips failed test sets", {
+  cross_validation_pit <- list(
+    test_set = list(gaussian_data[1, ], gaussian_data[2:4, ],
+                    gaussian_data[5:6, ]),
+    model = list(model_a = list(metric = list(
+      PIT_area = list(0.1, 0.3, NA_real_)
+    ))),
+    keep_par_fixed = FALSE,
+    failures = data.frame(model = "model_a", test_set = 3L,
+                          message = "failed")
+  )
+  pit_summary <- summary.RiskMap_cross_validation(cross_validation_pit)
+
+  expect_equal(pit_summary["model_a", "PIT_area"], (0.1 + 3 * 0.3) / 4)
+  expect_false(attr(pit_summary, "keep_par_fixed"))
+  expect_identical(attr(pit_summary, "n_failed"), 1L)
+  expect_output(print(pit_summary),
+                "Parameters are re-estimated in each training set.",
+                fixed = TRUE)
+  expect_output(print(pit_summary),
+                "1 test-set assessment failed, and its scores are missing.",
+                fixed = TRUE)
+})
+
+test_that("the summary of a fit says where its starting values came from", {
+  expect_match(describe_starting_values("user"),
+               "given in `start_pars`, with RiskMap's defaults for any others.",
+               fixed = TRUE)
+  expect_match(describe_starting_values("transformed_gaussian"),
+               "Gaussian fit to the transformed data", fixed = TRUE)
+  expect_match(describe_starting_values("current"), "defaults", fixed = TRUE)
+  # A fit saved by an earlier version doesn't record it.
+  expect_null(describe_starting_values(NULL))
+  fitted <- summary(binomial_model)
+  selected <- attr(binomial_model, "starting_values")$selected
+  expect_false(is.null(selected))
+  expect_identical(fitted$mcml$starting_values, selected)
+  expect_match(squish(capture.output(print(fitted))),
+               describe_starting_values(selected, fitted$mcml$starting_reason),
+               fixed = TRUE)
+  expect_null(summary(gaussian_model)$mcml)
+  # A start given only in part counts as given, with defaults for the rest.
+  given <- suppressWarnings(glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, start_pars = list(beta = c(0, 0.3)),
+    control_mcml = fixture_control_mcml, seed = fixture_seed, messages = FALSE
+  ))
+  expect_identical(summary(given)$mcml$starting_values, "user")
+  expect_match(squish(capture.output(print(summary(given)))),
+               describe_starting_values("user"), fixed = TRUE)
+})
+
+test_that("the summary of a fit says why it kept the default starting values", {
+  expect_match(describe_starting_values("transformed_gaussian"),
+               "came from a Gaussian fit to the transformed data, which the Laplace approximation of the likelihood preferred",
+               fixed = TRUE)
+  expect_match(describe_starting_values("current"),
+               "defaults, which the Laplace approximation of the likelihood preferred",
+               fixed = TRUE)
+  expect_match(describe_starting_values("current", "re_terms"),
+               "a model with `re()` terms takes without comparing them",
+               fixed = TRUE)
+  expect_match(describe_starting_values("current", "link"),
+               "a link other than the canonical one", fixed = TRUE)
+  expect_match(describe_starting_values("current", "transformed_failed"),
+               "because a Gaussian fit to the transformed data failed.",
+               fixed = TRUE)
+  # Every reason that select_nongaussian_start() records has its own words.
+  reasons <- c("re_terms", "link", "transformed_failed",
+               "transformed_invalid", "comparison_failed",
+               "transformed_not_finite", "neither_finite")
+  sentences <- vapply(reasons, describe_starting_values, character(1),
+                      selected = "current")
+  expect_identical(anyDuplicated(sentences), 0L)
+  expect_false(any(sentences == "The starting values were RiskMap's defaults."))
+  # A fit saved by an earlier version doesn't record them.
+  expect_null(describe_starting_values(NULL))
+  expect_identical(describe_starting_values("current", "not_recorded"),
+                   "The starting values were RiskMap's defaults.")
+  # One saved after the comparison was added but before reasons were, with
+  # re() terms, kept the defaults with a fallback reason and no other.
+  old <- binomial_model
+  attr(old, "starting_values") <- list(
+    selected = "current", current_laplace = -100, transformed_laplace = NA,
+    fallback_reason = "transformed Gaussian candidate had a non-finite Laplace value"
+  )
+  expect_identical(summary(old)$mcml$starting_reason, "not_recorded")
+  expect_match(squish(capture.output(print(summary(old)))),
+               "The starting values were RiskMap's defaults.", fixed = TRUE)
+  # One where the comparison chose the defaults records neither.
+  attr(old, "starting_values")$fallback_reason <- NULL
+  expect_null(summary(old)$mcml$starting_reason)
+
+  # The fixture has an re() term.
+  fitted <- summary(binomial_model)
+  expect_identical(fitted$mcml$starting_values, "current")
+  expect_identical(fitted$mcml$starting_reason, "re_terms")
+  expect_match(squish(capture.output(print(fitted))),
+               describe_starting_values("current", "re_terms"), fixed = TRUE)
+  expect_null(summary(gaussian_model)$mcml)
+})

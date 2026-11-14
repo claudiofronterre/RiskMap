@@ -1,4 +1,142 @@
 url: https://claudiofronterre.github.io/RiskMap/
+
 template:
   bootstrap: 5
+  bslib:
+    bootswatch: flatly
 
+home:
+  title: RiskMap
+  description: >
+    Geostatistical modelling and prediction for global public health using
+    Gaussian process models in R.
+  links:
+    - text: MBG-R book (Giorgi, Fronterre)
+      href: https://www.mbgr.org/
+    - text: Source code on GitHub
+      href: https://github.com/claudiofronterre/RiskMap
+
+navbar:
+  structure:
+    left: [home, reference]
+    right: [book, github]
+  components:
+    book:
+      text: MBG-R (Giorgi, Fronterre)
+      href: https://www.mbgr.org/
+    github:
+      icon: fab fa-github
+      href: https://github.com/claudiofronterre/RiskMap
+      aria-label: GitHub repository
+
+footer:
+  structure:
+    left: [team]
+    right: [book]
+  components:
+    team: "Developed by the RiskMap team: Emanuele Giorgi and Claudio Fronterre."
+    book: "Learn RiskMap with [MBG-R](https://www.mbgr.org/)."
+
+reference:
+  - title: Package
+    contents:
+      - RiskMap-package
+
+  - title: Data, projections and distances
+    contents:
+      - propose_crs
+      - crs_distortion
+      - create_grid
+      - create_convex_hull
+      - create_ids
+      - get_worldpop
+      - summarise_distance
+      - variogram
+      - print.RiskMap_variogram
+      - plot.RiskMap_variogram
+
+  - title: Specifying and fitting models
+    contents:
+      - glgpm
+      - gp
+      - re
+      - negative_binomial
+      - set_control_mcml
+      - set_control_mcmc
+      - elogit
+      - matern_correlation
+      - matern_gradient_phi
+      - matern_hessian_phi
+      - maxim_integrand
+
+  - title: Fitted models
+    contents:
+      - print.RiskMap
+      - summary.RiskMap
+      - print.summary.RiskMap
+      - coef.RiskMap
+      - fitted.RiskMap
+      - to_table
+
+  - title: Checking a fit
+    contents:
+      - check_fit
+      - print.RiskMap_check
+      - summary.RiskMap_check
+      - print.summary.RiskMap_check
+      - plot.RiskMap_check
+      - profile.RiskMap
+      - plot.RiskMap_profile
+      - parametric_bootstrap
+      - print.RiskMap_bootstrap
+      - summary.RiskMap_bootstrap
+      - plot.RiskMap_bootstrap
+      - plot_mcmc
+      - summarise_mcmc
+      - riskmap_conditions
+      - riskmap_progress
+
+  - title: Prediction
+    contents:
+      - predict.RiskMap
+      - print.RiskMap_prediction
+      - plot.RiskMap_prediction
+      - to_table.RiskMap_prediction
+      - assess_extrapolation
+      - plot.RiskMap_extrapolation
+
+  - title: Assessment
+    contents:
+      - assess_prediction
+      - print.RiskMap_cross_validation
+      - summary.RiskMap_cross_validation
+      - print.summary.RiskMap_cross_validation
+      - plot.RiskMap_cross_validation
+      - assess_simulation
+      - print.RiskMap_assess_simulation
+      - summary.RiskMap_assess_simulation
+      - print.summary.RiskMap_assess_simulation
+
+  - title: Simulation
+    contents:
+      - specify_glgpm
+      - print.RiskMap_simulation_model
+      - simulate_glgpm
+      - plot.RiskMap_simulation
+      - plot.RiskMap_simulated_surface
+      - simulated_data
+      - simulated_values
+
+  - title: Example datasets
+    contents:
+      - abund_sma
+      - anopheles
+      - galicia
+      - infect_sma
+      - italy_sim
+      - liberia
+      - loaloa
+      - malkenya
+      - malnutrition
+      - tz_covariates
+      - tz_malaria

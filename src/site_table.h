@@ -1,0 +1,1176 @@
+#ifndef RISKMAP_SITE_TABLE_H
+#define RISKMAP_SITE_TABLE_H
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <list>
+#include <vector>
+#include "likelihood_kernel.h"
+
+// The log-likelihood of a record with its independent effects integrated out,
+//   h(x; v) = log integral of exp(k(x + e)) N(e; 0, v) de,
+// for the binomial and Poisson kernels k of any link, with y events of m
+// trials or exposure m. A table holds h and its first two derivatives in x
+// on the grid -50, -49.75, ..., 30 for each distinct pair (y, m) and one value
+// of v, and the quintic Hermite interpolant through them gives h with two
+// continuous derivatives between grid points. A cell is filled the first time
+// it is needed, and it is a pure function of (y, m, x, v), so the result does
+// not depend on the order in which cells are filled. Beyond the grid the
+// integral is evaluated directly. Up to 32 tables are kept, keyed on the exact
+// value of v, and the least recently used is dropped.
+//
+// For the canonical links the rule is adaptive Gauss-Hermite quadrature with
+// 20 nodes up to v = 0.2, and above it the trapezium rule on the lattice of
+// multiples of a step of at most 0.25 (for a nested pattern with an inner
+// variance vi above 16, at most sqrt(vi) / 16) and at most half the integrand's
+// width at its mode (Trefethen and Weideman, 2014), walked out from the mode
+// until a term is negligible, which is safe because the integrand is
+// log-concave. Where the kernel is flat on one side and v is large, the rest
+// of that side is taken in closed form (uniform_cell()). A custom link takes
+// the trapezium rule of custom_cell(), which assumes no mode. The
+// derivatives are those of Stein's identity, h' = E k' and
+// h'' = E k'' + Var k' under the tilted distribution, which have no
+// cancellation as v goes to zero.
+//
+// A nested pattern is a location whose units (records after identical ones
+// are summed) share their linear predictor x and each carry an effect of
+// variance vi of their own, such as households, under a shared effect of
+// variance vo, such as the nugget. Its log-likelihood is
+//   H(x; vo, vi) = log integral of N(e; 0, vo) prod_u g(y_u, m_u, x + e; vi) de,
+// computed by the same rules applied to the outer integral, with the inner
+// h_u from their record table at vi, and tabled in the same way, one table per
+// exact pair (vo, vi), up to 16 of them.
+
+namespace riskmap_site {
+
+inline double logistic(const double t) { return 1.0 / (1.0 + std::exp(-t)); }
+
+// The quintic Hermite interpolant on [0, 1] through values f, first
+// derivatives d and second derivatives s at both ends (in units of the
+// interval), with its first two derivatives in t.
+inline void quintic(const double t, const double f0, const double f1,
+                    const double d0, const double d1, const double s0,
+                    const double s1, double& value, double& first,
+                    double& second) {
+  const double t2 = t * t, t3 = t2 * t, t4 = t3 * t, t5 = t4 * t;
+  const double tail = 10 * t3 - 15 * t4 + 6 * t5;
+  value = (1 - tail) * f0 + tail * f1 +
+    (t - 6 * t3 + 8 * t4 - 3 * t5) * d0 + (-4 * t3 + 7 * t4 - 3 * t5) * d1 +
+    0.5 * (t2 - 3 * t3 + 3 * t4 - t5) * s0 + 0.5 * (t3 - 2 * t4 + t5) * s1;
+  first = (30 * t2 - 60 * t3 + 30 * t4) * (f1 - f0) +
+    (1 - 18 * t2 + 32 * t3 - 15 * t4) * d0 +
+    (-12 * t2 + 28 * t3 - 15 * t4) * d1 +
+    0.5 * (2 * t - 9 * t2 + 12 * t3 - 5 * t4) * s0 +
+    0.5 * (3 * t2 - 8 * t3 + 5 * t4) * s1;
+  second = (60 * t - 180 * t2 + 120 * t3) * (f1 - f0) +
+    (-36 * t + 96 * t2 - 60 * t3) * d0 + (-24 * t + 84 * t2 - 60 * t3) * d1 +
+    0.5 * (2 - 18 * t + 36 * t2 - 20 * t3) * s0 +
+    0.5 * (6 * t - 24 * t2 + 20 * t3) * s1;
+}
+
+// The kernel of a custom link written as k(eta) = y A(eta) + m B(eta) + c,
+// with A, B and their first two derivatives on a lattice from `low` with
+// `step`, computed once from the link's R functions, and c = y log(m) for the
+// Poisson family. Between lattice points they are interpolated by quintic
+// Hermite polynomials, and beyond the lattice they are constant.
+struct CustomArrays {
+  double low = 0, step = 1;
+  std::vector<double> A, A1, A2, B, B1, B2;
+  bool poisson = false;
+};
+
+// The log-likelihood kernel of one record in its linear predictor.
+struct Kernel {
+  bool poisson = false;
+  const CustomArrays* custom = nullptr;
+
+  // k, k' and k'' at eta.
+  void terms(const double y, const double m, const double eta, double& k,
+             double& k1, double& k2) const {
+    if (custom != nullptr) {
+      custom_terms(y, m, eta, k, k1, k2);
+      return;
+    }
+    // k is the shared canonical kernel (likelihood_kernel.h). The derivatives
+    // keep this table's logistic, which differs from the Langevin sampler's
+    // in the last bits for negative eta.
+    k = canonical_log_likelihood(eta, y, m, poisson);
+    if (poisson) {
+      const double mean = m * std::exp(eta);
+      k1 = y - mean;
+      k2 = -mean;
+    } else {
+      const double p = logistic(eta);
+      k1 = y - m * p;
+      k2 = -m * p * (1.0 - p);
+    }
+  }
+
+ private:
+  void custom_terms(const double y, const double m, const double eta,
+                    double& k, double& k1, double& k2) const {
+    const CustomArrays& c = *custom;
+    const long last = static_cast<long>(c.A.size()) - 1;
+    const double position = (eta - c.low) / c.step;
+    double a = 0, a1 = 0, a2 = 0, b = 0, b1 = 0, b2 = 0;
+    if (!(position > 0.0)) {
+      a = c.A[0]; b = c.B[0];
+    } else if (!(position < last)) {
+      a = c.A[last]; b = c.B[last];
+    } else {
+      const long at = static_cast<long>(position);
+      const double t = position - at;
+      const double h = c.step, h2 = c.step * c.step;
+      quintic(t, c.A[at], c.A[at + 1], h * c.A1[at], h * c.A1[at + 1],
+              h2 * c.A2[at], h2 * c.A2[at + 1], a, a1, a2);
+      quintic(t, c.B[at], c.B[at + 1], h * c.B1[at], h * c.B1[at + 1],
+              h2 * c.B2[at], h2 * c.B2[at + 1], b, b1, b2);
+      a1 /= h; b1 /= h; a2 /= h2; b2 /= h2;
+    }
+    k = y * a + m * b + (c.poisson && m > 0 ? y * std::log(m) : 0.0);
+    k1 = y * a1 + m * b1;
+    k2 = y * a2 + m * b2;
+  }
+};
+
+// h and its first two derivatives, and for a nested pattern's slope the
+// tilted mean of an extra quantity (cell_rules below).
+struct Moments {
+  double h, h1, h2;
+  double extra = 0.0;
+};
+
+struct Rule {
+  std::vector<double> z;      // nodes of Gauss-Hermite for exp(-z^2)
+  std::vector<double> log_w;  // their log weights
+};
+
+// The terms of one record's kernel at eta, for the rules below.
+struct RecordTerms {
+  static constexpr bool has_extra = false;
+  const Kernel& kernel;
+  const double y, m;
+  void operator()(const double eta, double& k, double& k1, double& k2) const {
+    kernel.terms(y, m, eta, k, k1, k2);
+  }
+  double extra() const { return 0.0; }
+};
+
+// The mode of k(eta) - (eta - x)^2 / (2 v), by Newton's method from x with
+// steps of at most 3, and the curvature of the integrand there. `Terms` gives
+// k and its first two derivatives at eta, for a record or a nested pattern.
+// Newton's method can fail to arrive: a mode beyond the 600 that 200 steps of
+// 3 reach, where k is nearly linear and v large, a Poisson kernel far above
+// its mean, where it moves by about 1 per step, or one that overflows, above a
+// linear predictor of about 709. If a step is not finite or the last one is
+// above 1e-6, the mode is found instead by bisection on the slope of the log
+// integrand, which decreases since the integrand is log-concave, in a bracket
+// found by doubling steps from x. Wherever Newton's method arrives, as in
+// every ordinary fit, its mode is kept, since the rule of aghq_cell() places
+// its nodes at the mode itself.
+template <class Terms>
+inline double integrand_mode(const Terms& terms, const double x,
+                             const double v, double& curvature) {
+  double t = x, k = 0, k1 = 0, k2 = 0, last = 0;
+  bool finite = true;
+  for (int iteration = 0; iteration < 200; ++iteration) {
+    terms(t, k, k1, k2);
+    double step = (k1 - (t - x) / v) / (-k2 + 1.0 / v);
+    if (!std::isfinite(step)) {
+      finite = false;
+      break;
+    }
+    step = std::max(std::min(step, 3.0), -3.0);
+    t += step;
+    last = step;
+    if (std::fabs(step) < 1e-11) break;
+  }
+  if (!finite || std::fabs(last) > 1e-6) {
+    // The slope of the log integrand, minus infinity where k overflows.
+    const auto slope_at = [&](const double at) {
+      terms(at, k, k1, k2);
+      const double slope = k1 - (at - x) / v;
+      return std::isnan(slope) ? -std::numeric_limits<double>::infinity() :
+        slope;
+    };
+    double low = x, high = x, width = 1.0;
+    if (slope_at(x) > 0) {
+      for (int doubling = 0; doubling < 2100; ++doubling, width *= 2.0) {
+        high = x + width;
+        if (!(slope_at(high) > 0)) break;
+        low = high;
+      }
+    } else {
+      for (int doubling = 0; doubling < 2100; ++doubling, width *= 2.0) {
+        low = x - width;
+        if (slope_at(low) > 0) break;
+        high = low;
+      }
+    }
+    for (int iteration = 0; iteration < 200 &&
+           high - low > 1e-12 * std::max(1.0, std::fabs(low)); ++iteration) {
+      const double middle = 0.5 * (low + high);
+      if (slope_at(middle) > 0) low = middle; else high = middle;
+    }
+    t = 0.5 * (low + high);
+  }
+  terms(t, k, k1, k2);
+  curvature = -k2 + 1.0 / v;
+  return t;
+}
+
+// With Terms::has_extra, each rule also gives the tilted mean of
+// terms.extra(), read after each call of terms() at a node.
+template <class Terms>
+inline Moments aghq_cell(const Terms& terms, const double x, const double v,
+                         const Rule& rule) {
+  double curvature = 0;
+  const double t = integrand_mode(terms, x, v, curvature);
+  const double a = 1.0 / std::sqrt(curvature);
+  const double constant = -0.5 * std::log(2.0 * M_PI * v);
+  const int nodes = rule.z.size();
+  std::vector<double> log_f(nodes), score(nodes), second(nodes),
+    extra(Terms::has_extra ? nodes : 0);
+  double top = -std::numeric_limits<double>::infinity();
+  for (int j = 0; j < nodes; ++j) {
+    const double eta = t + M_SQRT2 * a * rule.z[j];
+    const double e = eta - x;
+    double k = 0, k1 = 0, k2 = 0;
+    terms(eta, k, k1, k2);
+    if constexpr (Terms::has_extra) extra[j] = terms.extra();
+    log_f[j] = k - e * e / (2.0 * v) + constant + rule.log_w[j] +
+      rule.z[j] * rule.z[j];
+    score[j] = k1;
+    second[j] = k1 * k1 + k2;
+    top = std::max(top, log_f[j]);
+  }
+  double total = 0, first = 0, square = 0, sum_extra = 0;
+  for (int j = 0; j < nodes; ++j) {
+    const double w = std::exp(log_f[j] - top);
+    total += w;
+    first += w * score[j];
+    square += w * second[j];
+    if constexpr (Terms::has_extra) sum_extra += w * extra[j];
+  }
+  const double mean = first / total;
+  return {top + std::log(M_SQRT2 * a * total), mean,
+          square / total - mean * mean, sum_extra / total};
+}
+
+// log(Phi(z) exp(z^2 / 2)) for z <= 0, with Phi the standard normal
+// distribution function, by the complementary error function down to -30 and
+// by the asymptotic series of Mills' ratio below it, whose first omitted term
+// is below 2e-12 there.
+inline double log_scaled_normal_tail(const double z) {
+  if (z > -30.0) return 0.5 * z * z + std::log(0.5 * std::erfc(-z / M_SQRT2));
+  const double r = 1.0 / (z * z);
+  return -std::log(-z) - 0.5 * std::log(2.0 * M_PI) +
+    std::log1p(r * (-1.0 + r * (3.0 + r * (-15.0 + r * 105.0))));
+}
+
+// The trapezium rule walks out from the mode until a term is negligible, and
+// with a large v the integrand stays near its top for about sqrt(80 v) on the
+// side where the kernel flattens (no events, or as many events as trials, for
+// a binomial record), so the walk would grow with the square root of v. The
+// canonical kernels bend only near a linear predictor of zero (the logit) or
+// above it (the log), and so do sums of their integrals. After
+// `rest_after_nodes` nodes on one side, where the kernel is linear to within
+// its curvature `linear_curvature`, a stretch over which it stays linear is
+// taken in closed form, the integral of the Gaussian factor times the
+// exponential of the kernel's tangent. Beyond zero that stretch is the rest of
+// the side. Before zero it runs to the last node short of the bend, found by
+// bisection on the curvature and checked against the tangent, and the walk
+// resumes there. Each node where such a stretch starts or ends takes half its
+// weight, with the Euler-Maclaurin term of order delta^2 for that end. A walk
+// shorter than `rest_after_nodes` on both sides, which is every walk for v up
+// to about 125, is unchanged.
+constexpr long rest_after_nodes = 400;
+constexpr double linear_curvature = 1e-12;
+
+template <class Terms>
+inline Moments uniform_cell(const Terms& terms, const double x,
+                            const double v, const double step_cap = 0.25) {
+  double curvature = 0;
+  const double t = integrand_mode(terms, x, v, curvature);
+  const double width = 1.0 / std::sqrt(curvature);
+  double delta = step_cap;
+  while (delta > 0.5 * width && delta > 1e-6) delta *= 0.5;
+  const double constant = -0.5 * std::log(2.0 * M_PI * v);
+  const double sd = std::sqrt(v);
+  const double cut = 40.0;
+  const long centre = std::lround(t / delta);
+  std::vector<double> log_f, score, second, extra;
+  double top = -std::numeric_limits<double>::infinity();
+  // A stretch taken in closed form: the node where it starts and, unless it
+  // is the rest of its side, the node where it ends, its log mass, the
+  // kernel's slope and the extra quantity over it, and the slopes of the log
+  // integrand at its ends.
+  struct Stretch {
+    std::size_t start = 0, end = 0;
+    bool ends_at_node = false;
+    double log_mass = 0, k1 = 0, extra = 0, start_slope = 0, end_slope = 0;
+  };
+  std::vector<Stretch> stretches;
+  for (int direction = 0; direction < 2; ++direction) {
+    const long sign = direction == 0 ? 1 : -1;
+    long walked = 0;
+    bool tried = false;
+    for (long j = direction == 0 ? centre : centre - 1;; j += sign) {
+      const double eta = j * delta;
+      const double e = eta - x;
+      double k = 0, k1 = 0, k2 = 0;
+      terms(eta, k, k1, k2);
+      const double value = k - e * e / (2.0 * v) + constant;
+      if (!std::isfinite(value)) break;
+      top = std::max(top, value);
+      log_f.push_back(value);
+      score.push_back(k1);
+      second.push_back(k1 * k1 + k2);
+      if constexpr (Terms::has_extra) extra.push_back(terms.extra());
+      if (value < top - cut || log_f.size() > 4000000) break;
+      // The slope of the log integrand, negative going up from the mode and
+      // positive going down.
+      const double slope = k1 - e / v;
+      if (++walked < rest_after_nodes ||
+          !(std::fabs(k2) <= linear_curvature) || !(sign * slope < 0)) {
+        continue;
+      }
+      Stretch stretch;
+      stretch.start = log_f.size() - 1;
+      stretch.k1 = k1;
+      if constexpr (Terms::has_extra) stretch.extra = extra.back();
+      stretch.start_slope = slope;
+      // With k linear beyond eta, the Gaussian factor times exp(k) beyond it
+      // in the walk's direction is Phi(z) times
+      // exp(value + log(2 pi v) / 2 + z^2 / 2), z = -|slope| sqrt(v).
+      const double z = -std::fabs(slope) * sd;
+      if (sign * eta > 0) {
+        stretch.log_mass = value - constant + log_scaled_normal_tail(z);
+        stretches.push_back(stretch);
+        break;
+      }
+      if (tried) continue;
+      tried = true;
+      // Before zero, the last node short of the bend, by bisection between
+      // this node and the one at zero, worth a stretch if 64 or more ahead.
+      long low = j, high = 0;
+      double end_k = 0, end_k1 = 0, end_k2 = 0;
+      terms(0.0, end_k, end_k1, end_k2);
+      if (std::fabs(end_k2) <= linear_curvature) {
+        low = high;
+      } else {
+        while (sign * (high - low) > 1) {
+          const long middle = low + (high - low) / 2;
+          terms(middle * delta, end_k, end_k1, end_k2);
+          if (std::fabs(end_k2) <= linear_curvature) {
+            low = middle;
+          } else {
+            high = middle;
+          }
+        }
+      }
+      if (sign * (low - j) < 64) continue;
+      // The tangent at this node must still hold at the end of the stretch.
+      const double end_eta = low * delta;
+      terms(end_eta, end_k, end_k1, end_k2);
+      if (!(std::fabs(end_k - (k + k1 * (end_eta - eta))) <=
+            1e-9 * std::max(1.0, std::fabs(end_k)))) {
+        continue;
+      }
+      // From z here to z - |end_eta - eta| / sqrt(v) at the end, the mass is
+      // that of the rest less that beyond the end.
+      const double z_end = z - std::fabs(end_eta - eta) / sd;
+      stretch.ends_at_node = true;
+      stretch.end = log_f.size();
+      stretch.end_slope = end_k1 - (end_eta - x) / v;
+      stretch.log_mass = value - constant + log_scaled_normal_tail(z) +
+        std::log1p(-std::exp(log_scaled_normal_tail(z_end) -
+                             log_scaled_normal_tail(z) -
+                             0.5 * (z_end * z_end - z * z)));
+      stretches.push_back(stretch);
+      // The loop's step lands on the end of the stretch.
+      j = low - sign;
+    }
+  }
+  double total = 0, first = 0, square = 0, sum_extra = 0;
+  for (std::size_t j = 0; j < log_f.size(); ++j) {
+    const double w = std::exp(log_f[j] - top);
+    total += w;
+    first += w * score[j];
+    square += w * second[j];
+    if constexpr (Terms::has_extra) sum_extra += w * extra[j];
+  }
+  // In units of the trapezium's weights, which are multiplied by delta below:
+  // half of each end node's weight off with its end term delta^2 / 12 |f'|,
+  // added where the stretch starts and taken off where it ends, and the
+  // closed-form mass, over which k' is constant and k'' zero.
+  const auto adjust = [&](const std::size_t node, const double weight) {
+    total += weight;
+    first += weight * score[node];
+    square += weight * second[node];
+    if constexpr (Terms::has_extra) sum_extra += weight * extra[node];
+  };
+  for (const Stretch& stretch : stretches) {
+    const double w = std::exp(log_f[stretch.start] - top);
+    adjust(stretch.start, -0.5 * w +
+             delta / 12.0 * w * std::fabs(stretch.start_slope));
+    if (stretch.ends_at_node && stretch.end < log_f.size()) {
+      const double w_end = std::exp(log_f[stretch.end] - top);
+      adjust(stretch.end, -0.5 * w_end -
+               delta / 12.0 * w_end * std::fabs(stretch.end_slope));
+    }
+    const double mass = std::exp(stretch.log_mass - top) / delta;
+    total += mass;
+    first += mass * stretch.k1;
+    square += mass * stretch.k1 * stretch.k1;
+    if constexpr (Terms::has_extra) sum_extra += mass * stretch.extra;
+  }
+  const double mean = first / total;
+  return {top + std::log(total * delta), mean, square / total - mean * mean,
+          sum_extra / total};
+}
+
+// log Phi(z) for any z, with Phi the standard normal distribution function.
+inline double log_normal_cdf(const double z) {
+  if (z <= 0.0) return log_scaled_normal_tail(z) - 0.5 * z * z;
+  return std::log1p(-std::exp(log_scaled_normal_tail(-z) - 0.5 * z * z));
+}
+
+// The rule of custom_cell() for a kernel that is constant below `flat_low`
+// and above `flat_high`, as a custom link's is beyond its lattice, when the
+// range to search, x - reach to x + reach, passes one of them. The part
+// beyond each end it passes is exp(k) times the Gaussian tail there, in closed
+// form. The rest, from the larger of x - reach and flat_low to the smaller of
+// x + reach and flat_high, is searched by a coarse pass with steps of at most
+// `step_cap`, which finds where the integrand is not negligible and the
+// largest curvature of k there, and that part is summed by the trapezium rule
+// on nodes that include its ends, with a step of at most `step_cap` and at
+// most half the narrowest width of the integrand on it, and half weights at
+// the ends. With a step cap above 0.25, for a nested pattern, the curvature is
+// taken in absolute value, since its kernel bends upwards where it meets its
+// constant tail. Where that part reaches flat_low or flat_high, the
+// Euler-Maclaurin term of order step^2 is added there, with the kernel's slope
+// from inside, since it can jump at the end of the lattice. Beyond the ends k'
+// and k'' are zero, or negligible for a nested pattern.
+template <class Terms>
+inline Moments custom_flat_cell(const Terms& terms, const double x,
+                                const double v, const double reach,
+                                const double flat_low, const double flat_high,
+                                const double step_cap) {
+  const double cut = 40.0;
+  const double sd = std::sqrt(v);
+  const double constant = -0.5 * std::log(2.0 * M_PI * v);
+  const double from = std::max(x - reach, flat_low);
+  const double to = std::min(x + reach, flat_high);
+  double k = 0, k1 = 0, k2 = 0;
+  // The pieces beyond the ends: log mass, and k', k'' + k'^2 and the extra
+  // quantity there.
+  struct Piece {
+    double log_mass = -std::numeric_limits<double>::infinity();
+    double score = 0, second = 0, extra = 0;
+  } pieces[2];
+  if (x - reach < flat_low) {
+    terms(flat_low, k, k1, k2);
+    pieces[0].log_mass = k + log_normal_cdf((flat_low - x) / sd);
+    pieces[0].score = k1;
+    pieces[0].second = k1 * k1 + k2;
+    pieces[0].extra = terms.extra();
+  }
+  if (x + reach > flat_high) {
+    terms(flat_high, k, k1, k2);
+    pieces[1].log_mass = k + log_normal_cdf((x - flat_high) / sd);
+    pieces[1].score = k1;
+    pieces[1].second = k1 * k1 + k2;
+    pieces[1].extra = terms.extra();
+  }
+  double peak = std::max(pieces[0].log_mass, pieces[1].log_mass);
+  std::vector<double> fine, score, second, extra;
+  double step = 0, low = from, high = to;
+  if (from < to) {
+    const double coarse = std::min(step_cap, (to - from) / 400.0);
+    const long nodes = static_cast<long>(std::ceil((to - from) / coarse));
+    std::vector<double> log_f(nodes + 1), worst(nodes + 1);
+    double top = -std::numeric_limits<double>::infinity();
+    for (long j = 0; j <= nodes; ++j) {
+      const double eta = std::min(from + j * coarse, to), e = eta - x;
+      terms(eta, k, k1, k2);
+      log_f[j] = k - e * e / (2.0 * v) + constant;
+      worst[j] = step_cap > 0.25 ? std::fabs(k2) : -k2;
+      if (std::isfinite(log_f[j])) top = std::max(top, log_f[j]);
+    }
+    long first = nodes + 1, last = -1;
+    double largest = 0;
+    for (long j = 0; j <= nodes; ++j) {
+      const double e = std::fabs(std::min(from + j * coarse, to) - x);
+      const double slack = (coarse * coarse + 2.0 * coarse * e) / (2.0 * v);
+      if (log_f[j] > top - cut - slack) {
+        first = std::min(first, j);
+        last = std::max(last, j);
+        largest = std::max(largest, worst[j]);
+      }
+    }
+    if (first <= last) {
+      low = std::max(from, from + (first - 1) * coarse);
+      high = std::min(to, from + (last + 1) * coarse);
+      const double width = 1.0 / std::sqrt(largest + 1.0 / v);
+      double delta = step_cap;
+      while (delta > 0.5 * width && delta > 1e-7) delta *= 0.5;
+      const long count = std::max(1L, static_cast<long>(std::ceil(
+        (high - low) / delta)));
+      step = (high - low) / count;
+      fine.resize(count + 1);
+      score.resize(count + 1);
+      second.resize(count + 1);
+      extra.resize(Terms::has_extra ? count + 1 : 0);
+      for (long j = 0; j <= count; ++j) {
+        const double eta = j == count ? high : low + j * step, e = eta - x;
+        terms(eta, k, k1, k2);
+        fine[j] = k - e * e / (2.0 * v) + constant;
+        score[j] = k1;
+        second[j] = k1 * k1 + k2;
+        if constexpr (Terms::has_extra) extra[j] = terms.extra();
+        if (std::isfinite(fine[j])) peak = std::max(peak, fine[j]);
+      }
+    }
+  }
+  // Sums in units of exp(peak) times the step, or exp(peak) without nodes.
+  const double unit = step > 0 ? step : 1.0;
+  double total = 0, sum_first = 0, sum_square = 0, sum_extra = 0;
+  const long last = static_cast<long>(fine.size()) - 1;
+  for (long j = 0; j <= last; ++j) {
+    const double w = (j == 0 || j == last ? 0.5 : 1.0) *
+      std::exp(fine[j] - peak);
+    total += w;
+    sum_first += w * score[j];
+    sum_square += w * second[j];
+    if constexpr (Terms::has_extra) sum_extra += w * extra[j];
+  }
+  // The Euler-Maclaurin term -step^2 / 12 (f'(high) - f'(low)) at an end of
+  // the flat range, with f' = f (k' - (eta - x) / v) from inside.
+  const double inside = 1e-9 * std::max(1.0, std::max(std::fabs(low),
+                                                      std::fabs(high)));
+  if (last >= 0 && low == flat_low) {
+    terms(low + inside, k, k1, k2);
+    total += step / 12.0 * std::exp(fine[0] - peak) * (k1 - (low - x) / v);
+  }
+  if (last >= 0 && high == flat_high) {
+    terms(high - inside, k, k1, k2);
+    total -= step / 12.0 * std::exp(fine[last] - peak) * (k1 - (high - x) / v);
+  }
+  for (const Piece& piece : pieces) {
+    const double mass = std::exp(piece.log_mass - peak) / unit;
+    total += mass;
+    sum_first += mass * piece.score;
+    sum_square += mass * piece.second;
+    if constexpr (Terms::has_extra) sum_extra += mass * piece.extra;
+  }
+  const double mean = sum_first / total;
+  return {peak + std::log(total * unit), mean,
+          sum_square / total - mean * mean, sum_extra / total};
+}
+
+// The rule for a custom link, which assumes no mode, since concavity cannot be
+// established numerically. The integrand exp(k(eta) - (eta - x)^2 / (2 v))
+// is negligible where (eta - x)^2 / (2 v) exceeds sup k - k(x) plus the cut,
+// which bounds the search. A coarse pass over that range finds where the
+// integrand is not negligible and the largest curvature of k there, and the
+// trapezium rule then sums that range with a step of at most `step_cap` and at
+// most half the narrowest width of the integrand on it. The cap is 0.25, and
+// larger only for a nested pattern with an inner variance above 16
+// (SiteTable::pattern_step_cap()), whose curvature is then taken in absolute
+// value. A record's kernel is
+// constant beyond its lattice, and a nested pattern's beyond a wider range
+// (SiteTable::pattern_flat_range()), from `flat_low` to `flat_high`. Where the
+// range would reach beyond `flat_reach` and past one of them, which needs a
+// variance above 150 at least and above 3000 near the kernel's top, the parts
+// beyond them are taken in closed form (custom_flat_cell(), with steps of at
+// most `step_cap`), so the work no longer grows with v.
+constexpr double flat_reach = 500.0;
+
+template <class Terms>
+inline Moments custom_cell(const Terms& terms, const double x, const double v,
+                           const double kernel_sup,
+                           const double flat_low =
+                             -std::numeric_limits<double>::infinity(),
+                           const double flat_high =
+                             std::numeric_limits<double>::infinity(),
+                           const double step_cap = 0.25) {
+  const double cut = 40.0;
+  double k = 0, k1 = 0, k2 = 0;
+  terms(x, k, k1, k2);
+  const double reach = std::sqrt(2.0 * v * (std::max(kernel_sup - k, 0.0) +
+                                            cut + 2.0));
+  if (reach > flat_reach && (x - reach < flat_low || x + reach > flat_high)) {
+    return custom_flat_cell(terms, x, v, reach, flat_low, flat_high,
+                            step_cap);
+  }
+  const double coarse = std::min(step_cap, reach / 400.0);
+  const long nodes = static_cast<long>(std::ceil(reach / coarse));
+  std::vector<double> log_f(2 * nodes + 1), worst(2 * nodes + 1);
+  double top = -std::numeric_limits<double>::infinity();
+  for (long j = -nodes; j <= nodes; ++j) {
+    const double e = j * coarse;
+    terms(x + e, k, k1, k2);
+    log_f[j + nodes] = k - e * e / (2.0 * v);
+    worst[j + nodes] = step_cap > 0.25 ? std::fabs(k2) : -k2;
+    if (std::isfinite(log_f[j + nodes])) top = std::max(top, log_f[j + nodes]);
+  }
+  // A peak between coarse nodes can be missed by at most the change of the
+  // Gaussian factor over one coarse step.
+  long first = 2 * nodes + 1, last = -1;
+  double largest = 0;
+  for (long j = -nodes; j <= nodes; ++j) {
+    const double e = std::fabs(j * coarse);
+    const double slack = (coarse * coarse + 2.0 * coarse * e) / (2.0 * v);
+    if (log_f[j + nodes] > top - cut - slack) {
+      first = std::min(first, j);
+      last = std::max(last, j);
+      largest = std::max(largest, worst[j + nodes]);
+    }
+  }
+  const double width = 1.0 / std::sqrt(largest + 1.0 / v);
+  double delta = step_cap;
+  while (delta > 0.5 * width && delta > 1e-7) delta *= 0.5;
+  const double from = x + (first - 1) * coarse, to = x + (last + 1) * coarse;
+  const long start = static_cast<long>(std::floor(from / delta));
+  const long end = static_cast<long>(std::ceil(to / delta));
+  const double constant = -0.5 * std::log(2.0 * M_PI * v);
+  std::vector<double> fine(end - start + 1), score(end - start + 1),
+    second(end - start + 1), extra(Terms::has_extra ? end - start + 1 : 0);
+  double peak = -std::numeric_limits<double>::infinity();
+  for (long j = start; j <= end; ++j) {
+    const double eta = j * delta, e = eta - x;
+    terms(eta, k, k1, k2);
+    fine[j - start] = k - e * e / (2.0 * v) + constant;
+    score[j - start] = k1;
+    second[j - start] = k1 * k1 + k2;
+    if constexpr (Terms::has_extra) extra[j - start] = terms.extra();
+    if (std::isfinite(fine[j - start])) peak = std::max(peak, fine[j - start]);
+  }
+  double total = 0, sum_first = 0, sum_square = 0, sum_extra = 0;
+  for (std::size_t j = 0; j < fine.size(); ++j) {
+    const double difference = fine[j] - peak;
+    if (!(difference > -cut)) continue;
+    const double w = std::exp(difference);
+    total += w;
+    sum_first += w * score[j];
+    sum_square += w * second[j];
+    if constexpr (Terms::has_extra) sum_extra += w * extra[j];
+  }
+  const double mean = sum_first / total;
+  return {peak + std::log(total * delta), mean,
+          sum_square / total - mean * mean, sum_extra / total};
+}
+
+const double grid_low = -50.0, grid_step = 0.25;
+const int grid_points = 321;
+
+// The quintic interpolant of tabled values at position t of the interval from
+// the grid point `left` (an index into H, H1 and H2), with its derivatives up
+// to `order`.
+inline Moments interpolate(const std::vector<double>& H,
+                           const std::vector<double>& H1,
+                           const std::vector<double>& H2,
+                           const std::size_t left, const double t,
+                           const int order) {
+  const double h0 = H[left], h1 = H[left + 1];
+  const double d0 = H1[left], d1 = H1[left + 1];
+  const double s0 = H2[left], s1 = H2[left + 1];
+  const double step = grid_step, step2 = grid_step * grid_step;
+  const double t2 = t * t, t3 = t2 * t, t4 = t3 * t, t5 = t4 * t;
+  const double tail = 10 * t3 - 15 * t4 + 6 * t5;
+  Moments out;
+  out.h = (1 - tail) * h0 + tail * h1 +
+    step * ((t - 6 * t3 + 8 * t4 - 3 * t5) * d0 +
+            (-4 * t3 + 7 * t4 - 3 * t5) * d1) +
+    step2 * (0.5 * (t2 - 3 * t3 + 3 * t4 - t5) * s0 +
+             0.5 * (t3 - 2 * t4 + t5) * s1);
+  out.h1 = 0;
+  out.h2 = 0;
+  if (order >= 1) {
+    const double tail1 = 30 * t2 - 60 * t3 + 30 * t4;
+    out.h1 = (tail1 * (h1 - h0) +
+              step * ((1 - 18 * t2 + 32 * t3 - 15 * t4) * d0 +
+                      (-12 * t2 + 28 * t3 - 15 * t4) * d1) +
+              step2 * (0.5 * (2 * t - 9 * t2 + 12 * t3 - 5 * t4) * s0 +
+                       0.5 * (3 * t2 - 8 * t3 + 5 * t4) * s1)) / step;
+  }
+  if (order >= 2) {
+    const double tail2 = 60 * t - 180 * t2 + 120 * t3;
+    out.h2 = (tail2 * (h1 - h0) +
+              step * ((-36 * t + 96 * t2 - 60 * t3) * d0 +
+                      (-24 * t + 84 * t2 - 60 * t3) * d1) +
+              step2 * (0.5 * (2 - 18 * t + 36 * t2 - 20 * t3) * s0 +
+                       0.5 * (6 * t - 24 * t2 + 20 * t3) * s1)) / step2;
+  }
+  return out;
+}
+
+struct Table {
+  double v = 0;
+  std::uint64_t used = 0;
+  std::vector<double> H, H1, H2;
+  std::vector<unsigned char> filled;
+};
+
+struct NestedTable {
+  double vo = 0, vi = 0;
+  std::uint64_t used = 0;
+  std::vector<double> H, H1, H2;
+  std::vector<unsigned char> filled;
+};
+
+class SiteTable;
+
+// The sum over a pattern's units of h at vi (or of the plain kernel when
+// `inner` is null) and its first two derivatives at eta, and with has_extra
+// the sum of (h'' + h'^2) / 2, the derivative of the sum in vi.
+template <bool Extra>
+struct PatternTerms {
+  static constexpr bool has_extra = Extra;
+  SiteTable& sites;
+  Table* inner;
+  const int pattern;
+  mutable double last_extra = 0.0;
+  void operator()(const double eta, double& k, double& k1, double& k2) const;
+  double extra() const { return last_extra; }
+};
+
+class SiteTable {
+ public:
+  // `patterns` holds the 0-based pairs of each nested pattern's units and
+  // `summed` the 0-based pair of each pattern's units summed into one record.
+  SiteTable(std::vector<double> y, std::vector<double> m, const bool poisson,
+            Rule rule, CustomArrays custom = CustomArrays(),
+            const bool has_custom = false,
+            std::vector<std::vector<int>> patterns = {},
+            std::vector<int> summed = {})
+      : y_(std::move(y)), m_(std::move(m)), rule_(std::move(rule)),
+        custom_(std::move(custom)), patterns_(std::move(patterns)),
+        summed_(std::move(summed)) {
+    kernel_.poisson = poisson;
+    if (has_custom) {
+      custom_.poisson = poisson;
+      kernel_.custom = &custom_;
+      // The largest value of each pair's kernel on the lattice, plus one for
+      // a peak between lattice points.
+      sup_.resize(y_.size());
+      for (std::size_t pair = 0; pair < y_.size(); ++pair) {
+        double largest = -std::numeric_limits<double>::infinity();
+        for (std::size_t j = 0; j < custom_.A.size(); ++j) {
+          largest = std::max(largest, y_[pair] * custom_.A[j] +
+                                        m_[pair] * custom_.B[j]);
+        }
+        sup_[pair] = largest + 1.0 +
+          (poisson && m_[pair] > 0 ? y_[pair] * std::log(m_[pair]) : 0.0);
+      }
+    }
+    // Each pattern's bound on its units' log-likelihood, for custom links,
+    // and the constant by which the plain kernel of its summed record falls
+    // short of the sum of its units' plain kernels, which is zero for the
+    // canonical links and y log(m) terms for a custom Poisson link.
+    pattern_sup_.assign(patterns_.size(), 0.0);
+    pattern_constant_.assign(patterns_.size(), 0.0);
+    for (std::size_t p = 0; p < patterns_.size(); ++p) {
+      double total = 0;
+      for (const int pair : patterns_[p]) {
+        if (!sup_.empty()) pattern_sup_[p] += sup_[pair];
+        total += plain(pair, 0.0).h;
+      }
+      pattern_constant_[p] = total - plain(summed_[p], 0.0).h;
+    }
+  }
+  SiteTable(const SiteTable&) = delete;
+  SiteTable& operator=(const SiteTable&) = delete;
+
+  int pairs() const { return y_.size(); }
+  int pattern_count() const { return patterns_.size(); }
+  long cells_filled() const { return cells_filled_; }
+  int tables_built() const { return tables_built_; }
+  long nested_cells_filled() const { return nested_cells_filled_; }
+  int nested_tables_built() const { return nested_tables_built_; }
+
+  // The table for v, built empty if it is not kept. Tables are kept in a
+  // list, so a reference stays valid until its table is dropped, and the
+  // least recently used one is dropped first.
+  Table& table(const double v) {
+    ++clock_;
+    for (Table& kept : tables_) {
+      if (kept.v == v) {
+        kept.used = clock_;
+        return kept;
+      }
+    }
+    if (tables_.size() >= 32) {
+      auto oldest = tables_.begin();
+      for (auto it = tables_.begin(); it != tables_.end(); ++it) {
+        if (it->used < oldest->used) oldest = it;
+      }
+      tables_.erase(oldest);
+    }
+    Table fresh;
+    fresh.v = v;
+    fresh.used = clock_;
+    const std::size_t size = static_cast<std::size_t>(grid_points) * pairs();
+    fresh.H.assign(size, 0.0);
+    fresh.H1.assign(size, 0.0);
+    fresh.H2.assign(size, 0.0);
+    fresh.filled.assign(size, 0);
+    tables_.push_back(std::move(fresh));
+    ++tables_built_;
+    return tables_.back();
+  }
+
+  // The nested table for the pair (vo, vi), built empty if it is not kept.
+  NestedTable& nested(const double vo, const double vi) {
+    ++clock_;
+    for (NestedTable& kept : nested_) {
+      if (kept.vo == vo && kept.vi == vi) {
+        kept.used = clock_;
+        return kept;
+      }
+    }
+    if (nested_.size() >= 16) {
+      auto oldest = nested_.begin();
+      for (auto it = nested_.begin(); it != nested_.end(); ++it) {
+        if (it->used < oldest->used) oldest = it;
+      }
+      nested_.erase(oldest);
+    }
+    NestedTable fresh;
+    fresh.vo = vo;
+    fresh.vi = vi;
+    fresh.used = clock_;
+    const std::size_t size = static_cast<std::size_t>(grid_points) *
+      patterns_.size();
+    fresh.H.assign(size, 0.0);
+    fresh.H1.assign(size, 0.0);
+    fresh.H2.assign(size, 0.0);
+    fresh.filled.assign(size, 0);
+    nested_.push_back(std::move(fresh));
+    ++nested_tables_built_;
+    return nested_.back();
+  }
+
+  // h and, if `order` is 1 or 2, its derivatives at x for the 0-based pair.
+  Moments evaluate(Table& table, const int pair, const double x,
+                   const int order) {
+    const double v = table.v;
+    const double position = (x - grid_low) / grid_step;
+    if (!(position >= 0.0 && position <= grid_points - 1.0)) {
+      if (!std::isfinite(x)) {
+        return {-std::numeric_limits<double>::infinity(), 0.0, 0.0};
+      }
+      return cell(pair, x, v);
+    }
+    const int at = std::min(static_cast<int>(position), grid_points - 2);
+    const double t = position - at;
+    const std::size_t left = static_cast<std::size_t>(pair) * grid_points + at;
+    fill(table, pair, at, left);
+    fill(table, pair, at + 1, left + 1);
+    return interpolate(table.H, table.H1, table.H2, left, t, order);
+  }
+
+  // H of the 0-based pattern at x from its nested table, whose inner pairs
+  // take the record table `inner` at the table's vi.
+  Moments evaluate_nested(NestedTable& table, Table& inner, const int pattern,
+                          const double x, const int order) {
+    const double position = (x - grid_low) / grid_step;
+    if (!(position >= 0.0 && position <= grid_points - 1.0)) {
+      if (!std::isfinite(x)) {
+        return {-std::numeric_limits<double>::infinity(), 0.0, 0.0};
+      }
+      return nested_cell(&inner, pattern, x, table.vo);
+    }
+    const int at = std::min(static_cast<int>(position), grid_points - 2);
+    const double t = position - at;
+    const std::size_t left =
+      static_cast<std::size_t>(pattern) * grid_points + at;
+    fill_nested(table, inner, pattern, at, left);
+    fill_nested(table, inner, pattern, at + 1, left + 1);
+    return interpolate(table.H, table.H1, table.H2, left, t, order);
+  }
+
+  // The tilted mean, under the pattern's outer integral at vo, of the sum
+  // over its units of (h'' + h'^2) / 2 at vi, which is the derivative of H in
+  // vi, computed directly at x. `inner` is null for vi = 0.
+  double nested_inner_slope(Table* inner, const int pattern, const double x,
+                            const double vo) {
+    const PatternTerms<true> terms{*this, inner, pattern};
+    if (kernel_.custom != nullptr) {
+      double low = 0, high = 0, step_cap = 0;
+      pattern_flat_range(inner, pattern, low, high, step_cap);
+      return custom_cell(terms, x, vo, pattern_sup_[pattern], low, high,
+                         step_cap).extra;
+    }
+    return vo <= 0.2 ? aghq_cell(terms, x, vo, rule_).extra :
+      uniform_cell(terms, x, vo, pattern_step_cap(inner)).extra;
+  }
+
+  // The sum over a pattern's units of h at the record table `inner`, or of
+  // the plain kernel when it is null, with derivatives up to `order`, and for
+  // order 2 in `extra` the sum of (h'' + h'^2) / 2.
+  Moments pattern_sum(Table* inner, const int pattern, const double eta,
+                      const int order) {
+    Moments out{0.0, 0.0, 0.0, 0.0};
+    for (const int pair : patterns_[pattern]) {
+      const Moments m = inner == nullptr ? plain(pair, eta) :
+        evaluate(*inner, pair, eta, order);
+      out.h += m.h;
+      out.h1 += m.h1;
+      out.h2 += m.h2;
+      if (order >= 2) out.extra += 0.5 * (m.h2 + m.h1 * m.h1);
+    }
+    return out;
+  }
+
+  // The pattern's units summed into one record with the whole variance vo
+  // (the record table `outer`, or the plain kernel when it is null), which is
+  // the pattern's H when vi = 0.
+  Moments pattern_summed(Table* outer, const int pattern, const double eta,
+                         const int order) {
+    Moments out = outer == nullptr ? plain(summed_[pattern], eta) :
+      evaluate(*outer, summed_[pattern], eta, order);
+    out.h += pattern_constant_[pattern];
+    return out;
+  }
+
+  // The plain kernel of the 0-based pair, for records whose effects are not
+  // integrated and for variances held at zero.
+  Moments plain(const int pair, const double eta) const {
+    Moments out;
+    kernel_.terms(y_[pair], m_[pair], eta, out.h, out.h1, out.h2);
+    return out;
+  }
+
+ private:
+  // For a custom link, the range beyond which a nested pattern's kernel, the
+  // sum of its units' h at the inner variance vi (or of their kernels when
+  // `inner` is null), is constant, and the largest step for its outer
+  // integral. Each unit's kernel is constant beyond the lattice, and its h at
+  // vi differs from that constant by at most exp(D) Phi(-c) relative, a
+  // distance c sqrt(vi) past the lattice, with D the rise of its kernel above
+  // its value at that end of the lattice. With D the pattern's rise, which
+  // bounds every unit's, and c^2 / 2 = 40 + D, that is about exp(-40) / c.
+  // The step is that of pattern_step_cap().
+  void pattern_flat_range(const Table* inner, const int pattern, double& low,
+                          double& high, double& step_cap) const {
+    low = custom_.low;
+    high = custom_.low +
+      static_cast<double>(custom_.A.size() - 1) * custom_.step;
+    step_cap = 0.25;
+    if (inner == nullptr || !(inner->v > 0.0)) return;
+    double at_low = 0, at_high = 0;
+    for (const int pair : patterns_[pattern]) {
+      at_low += plain(pair, low).h;
+      at_high += plain(pair, high).h;
+    }
+    const double sd = std::sqrt(inner->v);
+    low -= std::sqrt(2.0 * (40.0 + std::max(pattern_sup_[pattern] - at_low,
+                                            0.0))) * sd;
+    high += std::sqrt(2.0 * (40.0 + std::max(pattern_sup_[pattern] - at_high,
+                                             0.0))) * sd;
+    step_cap = pattern_step_cap(inner);
+  }
+
+  // The largest step of a nested pattern's outer integral. Its kernel is a sum
+  // of h at the inner variance vi, and for a log-concave kernel h'' is the
+  // tilted variance over vi^2 minus 1 / vi, between -1 / vi and 0, so it
+  // varies on the scale of sqrt(vi) and the step may grow to sqrt(vi) / 16.
+  // A custom link's kernel need not be log-concave, so custom_cell() also
+  // takes its curvature in absolute value with such a step. Up to vi = 16 the
+  // step stays at most 0.25.
+  static double pattern_step_cap(const Table* inner) {
+    if (inner == nullptr || !(inner->v > 0.0)) return 0.25;
+    return std::max(0.25, std::sqrt(inner->v) / 16.0);
+  }
+
+  Moments cell(const int pair, const double x, const double v) const {
+    const RecordTerms terms{kernel_, y_[pair], m_[pair]};
+    if (kernel_.custom != nullptr) {
+      // Beyond the lattice of the custom kernel it is constant.
+      const double high = custom_.low +
+        static_cast<double>(custom_.A.size() - 1) * custom_.step;
+      return custom_cell(terms, x, v, sup_[pair], custom_.low, high);
+    }
+    return v <= 0.2 ? aghq_cell(terms, x, v, rule_) :
+      uniform_cell(terms, x, v);
+  }
+
+  Moments nested_cell(Table* inner, const int pattern, const double x,
+                      const double vo) {
+    const PatternTerms<false> terms{*this, inner, pattern};
+    if (kernel_.custom != nullptr) {
+      double low = 0, high = 0, step_cap = 0;
+      pattern_flat_range(inner, pattern, low, high, step_cap);
+      return custom_cell(terms, x, vo, pattern_sup_[pattern], low, high,
+                         step_cap);
+    }
+    return vo <= 0.2 ? aghq_cell(terms, x, vo, rule_) :
+      uniform_cell(terms, x, vo, pattern_step_cap(inner));
+  }
+
+  void fill(Table& table, const int pair, const int g, const std::size_t at) {
+    if (table.filled[at]) return;
+    const Moments filled = cell(pair, grid_low + g * grid_step, table.v);
+    table.H[at] = filled.h;
+    table.H1[at] = filled.h1;
+    table.H2[at] = filled.h2;
+    table.filled[at] = 1;
+    ++cells_filled_;
+  }
+
+  void fill_nested(NestedTable& table, Table& inner, const int pattern,
+                   const int g, const std::size_t at) {
+    if (table.filled[at]) return;
+    const Moments filled = nested_cell(&inner, pattern,
+                                       grid_low + g * grid_step, table.vo);
+    table.H[at] = filled.h;
+    table.H1[at] = filled.h1;
+    table.H2[at] = filled.h2;
+    table.filled[at] = 1;
+    ++nested_cells_filled_;
+  }
+
+  std::vector<double> y_, m_;
+  Rule rule_;
+  CustomArrays custom_;
+  Kernel kernel_;
+  std::vector<double> sup_;
+  std::vector<std::vector<int>> patterns_;
+  std::vector<int> summed_;
+  std::vector<double> pattern_sup_, pattern_constant_;
+  std::list<Table> tables_;
+  std::list<NestedTable> nested_;
+  std::uint64_t clock_ = 0;
+  long cells_filled_ = 0, nested_cells_filled_ = 0;
+  int tables_built_ = 0, nested_tables_built_ = 0;
+};
+
+template <bool Extra>
+inline void PatternTerms<Extra>::operator()(const double eta, double& k,
+                                            double& k1, double& k2) const {
+  const Moments sum = sites.pattern_sum(inner, pattern, eta, 2);
+  k = sum.h;
+  k1 = sum.h1;
+  k2 = sum.h2;
+  last_extra = sum.extra;
+}
+
+// How the engine's records are evaluated. Each record is plain (kind 0, the
+// plain kernel of pair `index`), a record (kind 1, pair `index` at the
+// variance of class `a`, plain if that is zero) or a nested pattern (kind 2,
+// pattern `index` with the outer variance of class `a` and the inner variance
+// of class `b`). Indices are 0-based.
+struct Unit {
+  int kind, index, a, b;
+};
+
+// The likelihood of the engine's records at one set of class variances. The
+// tables are found once, on construction, and stay valid while the evaluator
+// lives, since at most a handful are found and the least recently used are
+// dropped first.
+class Evaluator {
+ public:
+  Evaluator(SiteTable& sites, const std::vector<double>& classes,
+            const std::vector<Unit>& units)
+      : sites_(sites), units_(units) {
+    std::vector<Table*> by_class(classes.size(), nullptr);
+    auto record_table = [&](const int c) -> Table* {
+      if (!(classes[c] > 0)) return nullptr;
+      if (by_class[c] == nullptr) by_class[c] = &sites_.table(classes[c]);
+      return by_class[c];
+    };
+    resolved_.resize(units_.size());
+    for (std::size_t r = 0; r < units_.size(); ++r) {
+      const Unit& unit = units_[r];
+      Resolved& out = resolved_[r];
+      out.index = unit.index;
+      if (unit.kind == 0) {
+        out.mode = 0;
+      } else if (unit.kind == 1) {
+        out.table = record_table(unit.a);
+        out.mode = out.table == nullptr ? 0 : 1;
+      } else {
+        const double vo = classes[unit.a], vi = classes[unit.b];
+        out.vo = vo;
+        if (vo > 0 && vi > 0) {
+          out.mode = 2;
+          out.table = record_table(unit.b);
+          out.nested = nested_table(vo, vi);
+        } else if (vo > 0) {
+          out.mode = 3;
+          out.table = record_table(unit.a);
+        } else {
+          out.mode = 4;
+          out.table = record_table(unit.b);
+        }
+      }
+    }
+  }
+
+  Moments moments(const int record, const double eta, const int order) {
+    Resolved& r = resolved_[record];
+    switch (r.mode) {
+    case 0:
+      return sites_.plain(r.index, eta);
+    case 1:
+      return sites_.evaluate(*r.table, r.index, eta, order);
+    case 2:
+      return sites_.evaluate_nested(*r.nested, *r.table, r.index, eta, order);
+    case 3:
+      return sites_.pattern_summed(r.table, r.index, eta, order);
+    default:
+      return sites_.pattern_sum(r.table, r.index, eta, order);
+    }
+  }
+
+  double log_likelihood(const int record, const double eta) {
+    return moments(record, eta, 0).h;
+  }
+
+  // The derivative of a nested pattern's H in its inner variance at eta, and
+  // zero for the other records.
+  double inner_slope(const int record, const double eta) {
+    const Resolved& r = resolved_[record];
+    if (r.mode == 2 || r.mode == 3) {
+      // With vi = 0 the inner variance's slope is that of the plain kernels.
+      return sites_.nested_inner_slope(r.mode == 2 ? r.table : nullptr,
+                                       r.index, eta, r.vo);
+    }
+    if (r.mode == 4) return sites_.pattern_sum(r.table, r.index, eta, 2).extra;
+    return 0.0;
+  }
+
+ private:
+  struct Resolved {
+    int mode = 0, index = 0;
+    double vo = 0;
+    Table* table = nullptr;
+    NestedTable* nested = nullptr;
+  };
+
+  NestedTable* nested_table(const double vo, const double vi) {
+    for (std::size_t k = 0; k < nested_keys_.size(); ++k) {
+      if (nested_keys_[k].first == vo && nested_keys_[k].second == vi) {
+        return nested_found_[k];
+      }
+    }
+    NestedTable* found = &sites_.nested(vo, vi);
+    nested_keys_.emplace_back(vo, vi);
+    nested_found_.push_back(found);
+    return found;
+  }
+
+  SiteTable& sites_;
+  const std::vector<Unit>& units_;
+  std::vector<Resolved> resolved_;
+  std::vector<std::pair<double, double>> nested_keys_;
+  std::vector<NestedTable*> nested_found_;
+};
+
+}  // namespace riskmap_site
+
+#endif

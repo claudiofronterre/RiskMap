@@ -1,0 +1,2370 @@
+test_that("adaptive importance likelihood agrees with one-dimensional quadrature", {
+  y <- 2
+  trials <- 5
+  beta <- -0.4
+  sigma2 <- 0.8
+  parameters <- c(beta, log(sigma2), log(1))
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 1), y = y, units_m = trials,
+    distances = matrix(0), family = "binomial"
+  )
+  exact <- log(integrate(
+    function(spatial_effect) {
+      linear_predictor <- beta + spatial_effect
+      exp(y * linear_predictor - trials * softplus(linear_predictor)) *
+        dnorm(spatial_effect, sd = sqrt(sigma2))
+    },
+    lower = -Inf, upper = Inf, rel.tol = 1e-12
+  )$value)
+
+  set.seed(8128)
+  bank <- matrix(rnorm(20000), ncol = 1)
+  observed <- engine$evaluate(parameters, bank)
+
+  expect_equal(observed, exact, tolerance = 0.005)
+})
+
+test_that("a certified stage corrects the fit and certifies the correction", {
+  coordinate <- seq(0, 1, length.out = 30)
+  covariate <- seq(-1, 1, length.out = 30)
+  trials <- rep(20, 30)
+  y <- round(trials * plogis(-0.4 + 0.5 * covariate +
+                               0.4 * sin(2 * pi * coordinate)))
+  engine <- make_adaptive_mcml_engine(
+    D = cbind(1, covariate), y = y,
+    units_m = trials, distances = as.matrix(dist(coordinate)),
+    family = "binomial"
+  )
+  fit <- fit_adaptive_mcml(
+    engine = engine, start = c(-0.4, 0.5, log(0.8), log(0.4)),
+    initial_budget = 1000, validation_budget = 2000, maximum_budget = 1000,
+    maximum_stages = 1, seed = 2718,
+    lower = c(-10, -10, -8, -8), upper = c(10, 10, 4, 4)
+  )
+  stage <- fit$history[[1L]]
+
+  expect_identical(stage$proposal, "global")
+  expect_identical(stage$proposal_failures, 0L)
+  expect_true(is.finite(stage$certificate))
+  expect_equal(stage$certificate,
+               stage$certificate_distance + stage$certificate_radius)
+  expect_identical(fit$certified, stage$certificate <= 0.1)
+  expect_identical(fit$outcome,
+                   if (fit$certified) "certified" else "not certified")
+  # The returned estimate is the corrected one, not the optimum of the bank.
+  expect_identical(fit$estimate, stage$estimate)
+  expect_false(identical(stage$estimate, stage$fitted_estimate))
+  expect_equal(fit$score, stage$second_validation$score)
+  expect_identical(fit$validation_budget, 2000L)
+})
+
+test_that("boundary variance components and their linked scale parameter are detected", {
+  estimate <- c(0.1, 0.2, -12, 1.5, -0.5)
+  expect_identical(
+    adaptive_boundary_parameters(estimate, c(3L, 5L), -9),
+    3L
+  )
+  expect_identical(
+    adaptive_boundary_parameters(estimate, c(3L, 5L), -9,
+                                 linked_index = list(`3` = 4L)),
+    c(3L, 4L)
+  )
+  expect_identical(
+    adaptive_boundary_parameters(c(0.1, 0.2, -1, 1.5), 3L, -9,
+                                 linked_index = list(`3` = 4L)),
+    integer()
+  )
+})
+
+test_that("variance parameters are described in plain language", {
+  layout <- cov_par_layout(2L, fix_tau2 = TRUE, n_re = 1L)
+  expect_identical(
+    describe_variance_parameters(c(5L, 6L), layout, re_names = "village"),
+    c("nugget variance (tau2)", "random-effect variance for 'village'")
+  )
+  expect_identical(describe_variance_parameters(integer(), layout),
+                   character())
+})
+
+test_that("the Laplace start returns the Laplace value at its estimate", {
+  coordinate <- seq(0, 1, length.out = 25)
+  covariate <- seq(-1, 1, length.out = 25)
+  trials <- rep(15, 25)
+  y <- round(trials * plogis(-0.3 + 0.4 * covariate +
+                               0.5 * sin(2 * pi * coordinate)))
+  distances <- as.matrix(dist(coordinate))
+  engine <- make_adaptive_mcml_engine(
+    D = cbind(1, covariate), y = y, units_m = trials,
+    distances = distances, family = "binomial", proposal = "laplace"
+  )
+  start <- c(0, 0, log(0.5), log(0.3))
+  laplace <- maximise_laplace(engine$evaluate, start, 25,
+                              lower = c(-10, -10, -8, -8),
+                              upper = c(10, 10, 4, 4))
+  zero <- matrix(0, nrow = 1, ncol = 25)
+
+  expect_equal(laplace$log_likelihood,
+               engine$evaluate(laplace$estimate, zero))
+  expect_gte(laplace$log_likelihood, engine$evaluate(start, zero))
+})
+
+test_that("a zero spatial variance is held at the boundary without escalation", {
+  set.seed(31)
+  coordinate <- seq(0, 1, length.out = 60)
+  covariate <- rnorm(60)
+  trials <- rep(25, 60)
+  # No spatial effect: the maximum likelihood spatial variance is zero.
+  y <- rbinom(60, trials, plogis(-0.5 + 0.6 * covariate))
+  engine <- make_adaptive_mcml_engine(
+    D = cbind(1, covariate), y = y, units_m = trials,
+    distances = as.matrix(dist(coordinate)), family = "binomial"
+  )
+  fit <- fit_adaptive_mcml(
+    engine = engine, start = c(-0.5, 0.6, -14, log(0.2)),
+    initial_budget = 1000, validation_budget = 2000, maximum_budget = 8000,
+    maximum_stages = 4, seed = 99,
+    lower = c(-10, -10, -20, -8), upper = c(10, 10, 4, 4),
+    variance_index = 3L, linked_index = list(`3` = 4L)
+  )
+
+  expect_identical(fit$boundary_parameters, c(3L, 4L))
+  expect_identical(fit$outcome, "certified")
+  expect_identical(fit$budget, 1000L)
+  # Held parameters are not corrected.
+  expect_identical(fit$estimate[3:4], fit$history[[1L]]$fitted_estimate[3:4])
+  expect_true(all(is.finite(diag(fit$covariance)[1:2])))
+  expect_true(all(is.na(diag(fit$covariance)[3:4])))
+})
+
+test_that("set_control_mcml validates laplace_start and integrate_noise", {
+  expect_null(set_control_mcml()$laplace_start)
+  expect_true(set_control_mcml(laplace_start = TRUE)$laplace_start)
+  expect_false(set_control_mcml(laplace_start = FALSE)$laplace_start)
+  expect_error(set_control_mcml(laplace_start = NA), "laplace_start")
+  expect_error(set_control_mcml(laplace_start = "yes"), "laplace_start")
+  expect_identical(set_control_mcml()$integrate_noise, "auto")
+  expect_true(set_control_mcml(integrate_noise = TRUE)$integrate_noise)
+  expect_error(set_control_mcml(integrate_noise = NA), "integrate_noise")
+})
+
+test_that("median nearest-neighbour distance ignores duplicate locations", {
+  distances <- as.matrix(dist(c(0, 0, 1, 3)))
+  expect_identical(median_nearest_neighbour_distance(distances), 1)
+})
+
+test_that("a scale smaller than the location spacing is reported, not held", {
+  fit <- list(estimate = c(0, 0, log(0.5), log(0.3)),
+              boundary_parameters = integer())
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  distances <- as.matrix(dist(seq(0, 10, length.out = 11)))
+  small <- detect_small_scale(fit, layout, distances, kappa = 0.5,
+                               distance_scale = 2)
+  expect_equal(small, c(scale = 0.6, practical_range = 0.6 * -log(0.05),
+                        spacing = 2), tolerance = 1e-8)
+  # With the spatial variance at zero the scale is meaningless and is not
+  # reported as small.
+  fit$boundary_parameters <- 3:4
+  expect_null(detect_small_scale(fit, layout, distances, 0.5, 2))
+
+  outcome <- list(boundary_parameters = integer(), budget = 1000L,
+                  validation_budget = 5000L, outcome = "certified",
+                  certified = TRUE, certificate = 0.05, history = list(1))
+  # A short scale does not change how a certified fit is read, so check_fit()
+  # reports it and the fit does not warn.
+  expect_no_warning(report_mcml_outcome(outcome, layout, tolerance = 0.1,
+                                        messages = FALSE))
+})
+
+test_that("only a spatial variance at zero warns", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  outcome <- list(boundary_parameters = layout$index$nu2, budget = 1000L,
+                  validation_budget = 5000L, outcome = "certified",
+                  certified = TRUE, certificate = 0.05, history = list(1))
+  expect_no_warning(report_mcml_outcome(outcome, layout, tolerance = 0.1,
+                                        messages = FALSE))
+  outcome$boundary_parameters <- layout$index$sigma2
+  expect_warning(report_mcml_outcome(outcome, layout, tolerance = 0.1,
+                                     messages = FALSE),
+                 "spatial scale cannot be estimated.",
+                 fixed = TRUE)
+})
+
+test_that("a refused Newton correction is reported, not a large bound", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  outcome <- list(boundary_parameters = integer(), budget = 2500L,
+                  validation_budget = 12500L, outcome = "not certified",
+                  certified = FALSE, certificate = 0.04,
+                  history = list(list(residual_refused = TRUE)))
+  refused <- tryCatch(
+    report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE),
+    warning = conditionMessage
+  )
+  expect_match(refused, "Newton correction of the estimate did not converge")
+  expect_no_match(refused, "above the tolerance")
+  outcome$history <- list(list(residual_refused = FALSE))
+  outcome$certificate <- 0.4
+  expect_warning(
+    report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE),
+    "0.4 statistical standard errors, above the tolerance of 0.1.",
+    fixed = TRUE
+  )
+})
+
+test_that("the practical range factor matches the exponential correlation", {
+  expect_equal(compute_practical_range_factor(0.5), -log(0.05),
+               tolerance = 1e-8)
+  expect_gt(compute_practical_range_factor(1.5),
+            compute_practical_range_factor(0.5))
+})
+
+test_that("the PC penalty is a proper density on the working scale", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  penalty <- make_pc_penalty(layout, scale_threshold = 2,
+                             sigma_threshold = 1, sigma_probability = 0.05,
+                             scale_probability = 0.05)
+  at <- function(log_sigma2, log_phi) penalty(c(0, 0, log_sigma2, log_phi))
+  density_sigma <- function(a) exp(vapply(a, at, 0, log_phi = 0))
+  density_range <- function(b) exp(vapply(b, function(x) at(0, x), 0))
+  sigma_total <- integrate(density_sigma, -40, 15)$value
+  range_total <- integrate(density_range, -30, 30)$value
+  # The penalty is separable, log pi = g(log sigma^2) + h(log phi), so it
+  # integrates to one exactly when sigma_total * range_total = exp(g(0) + h(0)).
+  expect_equal(sigma_total * range_total, exp(at(0, 0)), tolerance = 1e-6)
+  # Tail probabilities match the specification.
+  expect_equal(integrate(density_sigma, log(1), 15)$value / sigma_total, 0.05,
+               tolerance = 1e-6)
+  expect_equal(integrate(density_range, -30, log(2))$value / range_total, 0.05,
+               tolerance = 1e-6)
+})
+
+test_that("penalising the engine leaves importance weights unchanged", {
+  coordinate <- seq(0, 1, length.out = 20)
+  covariate <- seq(-1, 1, length.out = 20)
+  trials <- rep(10, 20)
+  y <- round(trials * plogis(-0.2 + 0.3 * covariate))
+  engine <- make_adaptive_mcml_engine(
+    D = cbind(1, covariate), y = y, units_m = trials,
+    distances = as.matrix(dist(coordinate)), family = "binomial"
+  )
+  penalty <- function(parameters) -sum(parameters^2)
+  penalised <- penalise_engine(engine$evaluate, penalty)
+  theta <- c(-0.2, 0.3, log(0.5), log(0.3))
+  set.seed(3)
+  z <- matrix(rnorm(200 * 20), 200)
+  expect_identical(penalised(theta, z, log_weights_only = TRUE),
+                   engine$evaluate(theta, z, log_weights_only = TRUE))
+  expect_equal(penalised(theta, z), engine$evaluate(theta, z) + penalty(theta))
+})
+
+test_that("set_control_mcml validates the PC prior options", {
+  expect_false(set_control_mcml()$pc_prior)
+  control <- set_control_mcml(pc_prior = TRUE, pc_scale_threshold = 5)
+  expect_true(control$pc_prior)
+  expect_identical(control$pc_scale_threshold, 5)
+  expect_error(set_control_mcml(pc_prior = NA), "pc_prior")
+  expect_error(set_control_mcml(pc_sigma_probability = 1),
+               "pc_sigma_probability")
+})
+
+test_that("glgpm fits with the PC prior and reports the unpenalised likelihood", {
+  fit <- suppressWarnings(glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+    control_mcml = set_control_mcml(
+      initial_samples = 500, validation_samples = 500, max_samples = 500,
+      max_stages = 1, pc_prior = TRUE
+    ),
+    messages = FALSE
+  ))
+  expect_true(attr(fit, "optimizer")$mcml_pc_prior)
+  expect_true(all(is.finite(unlist(fit$estimate))))
+  expect_true(is.finite(fit$log_lik))
+})
+
+test_that("defensive rows are spread evenly and absent from a single row", {
+  expect_identical(sum(defensive_rows(1, 0.05)), 0L)
+  expect_identical(sum(defensive_rows(19, 0.05)), 0L)
+  expect_identical(which(defensive_rows(60, 0.05)), c(20L, 40L, 60L))
+  expect_identical(sum(defensive_rows(1000, 0.05)), 50L)
+  expect_false(any(defensive_rows(1000, 0)))
+})
+
+test_that("defensive mixture weights use the full mixture density", {
+  coordinate <- seq(0, 1, length.out = 6)
+  trials <- rep(10, 6)
+  y <- c(1, 3, 2, 6, 4, 5)
+  distances <- as.matrix(dist(coordinate))
+  parameters <- c(-0.3, log(0.7), log(0.3))
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 6), y = y, units_m = trials,
+    distances = distances, family = "binomial", defensive_weight = 0.25
+  )
+  set.seed(31)
+  bank <- matrix(rnorm(8 * 6), nrow = 8)
+  log_weights <- engine$evaluate(parameters, bank, log_weights_only = TRUE)
+
+  proposal <- engine$proposal_at(parameters)
+  gaussian_covariance <- crossprod(proposal$root)
+  prior_covariance <- proposal$covariance
+  defensive <- defensive_rows(8, 0.25)
+  draws <- bank %*% proposal$root
+  draws[defensive, ] <- bank[defensive, ] %*% chol(prior_covariance)
+  draws <- sweep(draws, 2L, proposal$centre, "+")
+  log_normal <- function(x, mean, covariance) {
+    root <- chol(covariance)
+    residual <- backsolve(root, x - mean, transpose = TRUE)
+    -0.5 * (length(x) * log(2 * pi) + 2 * sum(log(diag(root))) +
+              sum(residual^2))
+  }
+  expected <- vapply(seq_len(8), function(row) {
+    u <- draws[row, ]
+    # The engine omits the binomial coefficients, which do not depend on the
+    # parameters.
+    linear_predictor <- -0.3 + u
+    log_target <- sum(y * linear_predictor -
+                        trials * softplus(linear_predictor)) +
+      log_normal(u, numeric(6), prior_covariance)
+    log_proposal <- log(
+      0.75 * exp(log_normal(u, proposal$centre, gaussian_covariance)) +
+        0.25 * exp(log_normal(u, proposal$centre, prior_covariance))
+    )
+    log_target - log_proposal
+  }, numeric(1))
+
+  expect_equal(log_weights, expected, tolerance = 1e-8)
+})
+
+test_that("defensive mixture keeps the Laplace fit and the likelihood", {
+  y <- 2
+  trials <- 5
+  beta <- -0.4
+  sigma2 <- 0.8
+  parameters <- c(beta, log(sigma2), log(1))
+  engine_for <- function(weight) {
+    make_adaptive_mcml_engine(
+      D = matrix(1, nrow = 1), y = y, units_m = trials,
+      distances = matrix(0), family = "binomial", defensive_weight = weight,
+      proposal = "laplace"
+    )
+  }
+  laplace_only <- engine_for(0)
+  defensive <- engine_for(0.05)
+  exact <- log(integrate(
+    function(spatial_effect) {
+      linear_predictor <- beta + spatial_effect
+      exp(y * linear_predictor - trials * softplus(linear_predictor)) *
+        dnorm(spatial_effect, sd = sqrt(sigma2))
+    },
+    lower = -Inf, upper = Inf, rel.tol = 1e-12
+  )$value)
+
+  zero <- matrix(0, nrow = 1, ncol = 1)
+  expect_identical(defensive$evaluate(parameters, zero),
+                   laplace_only$evaluate(parameters, zero))
+
+  set.seed(8128)
+  bank <- matrix(rnorm(20000), ncol = 1)
+  expect_equal(defensive$evaluate(parameters, bank), exact, tolerance = 0.005)
+})
+
+test_that("set_control_mcml validates the defensive weight", {
+  expect_identical(set_control_mcml()$defensive_weight, 0.05)
+  expect_identical(set_control_mcml(defensive_weight = 0)$defensive_weight, 0)
+  expect_error(set_control_mcml(defensive_weight = 1), "defensive_weight")
+  expect_error(set_control_mcml(defensive_weight = -0.1), "defensive_weight")
+  expect_error(set_control_mcml(defensive_weight = c(0.1, 0.2)),
+               "defensive_weight")
+})
+
+test_that("stable nonlinear parts equal direct likelihood differences", {
+  centre <- c(-3, 0.2, 2)
+  step <- outer(c(0.5, 1, 2), seq(-3, 3, length.out = 7))
+  y <- c(0, 4, 9)
+  units_m <- c(20, 10, 10)
+  direct <- function(family) {
+    linkf <- make_inverse_link_functions(family, NULL, 3)
+    log_likelihood <- function(eta) {
+      if (family == "poisson") {
+        y * eta - units_m * exp(eta)
+      } else {
+        y * eta - units_m * log1p(exp(eta))
+      }
+    }
+    terms <- family_object(family, linkf)$terms(centre, y, units_m)
+    matrix(log_likelihood(as.vector(centre + step)), 3) -
+      log_likelihood(centre) - step * terms$score
+  }
+  for (family in c("binomial", "poisson")) {
+    stable <- make_family(family)$nonlinear_parts(centre, step, y, units_m)
+    expect_equal(stable$nonlinear, direct(family), tolerance = 1e-10)
+  }
+  # Very large steps switch to the log-sum-exp form without overflow.
+  extreme <- make_family("binomial")$nonlinear_parts(
+    0, matrix(c(-800, 800), 1), 1, 10
+  )
+  expect_true(all(is.finite(extreme$nonlinear)))
+})
+
+test_that("binomial nonlinear parts stay exact for extreme linear predictors", {
+  # At these centres p rounds to 0 or 1, so log(p) and log(1 - p) must come
+  # from the linear predictor itself.
+  centre <- c(40, -750, 30, -30, 40)
+  step <- matrix(c(-50, 800, -35, 35, -10), ncol = 1)
+  softplus_stable <- function(x) pmax(x, 0) + log1p(exp(-abs(x)))
+  exact <- -softplus_stable(centre + step) + softplus_stable(centre) +
+    step * stats::plogis(centre)
+  stable <- make_family("binomial")$nonlinear_parts(
+    centre, step, rep(0, 5), rep(1, 5)
+  )
+  expect_equal(stable$nonlinear, exact, tolerance = 1e-10)
+  expect_equal(stable$nonlinear[1:2], c(-10.0000454, -50), tolerance = 1e-7)
+})
+
+test_that("weighted quadratic fits are exact and use QR when needed", {
+  quadrature <- build_normal_quadrature()
+  nodes <- quadrature$nodes
+  expect_equal(sum(quadrature$weights), 1)
+  expect_equal(sum(quadrature$weights * nodes^2), 1)
+  coefficients <- rbind(c(0.3, -1, 2), c(1, 0.5, 0.1))
+  basis <- cbind(1, nodes, -0.5 * nodes^2)
+  values <- coefficients %*% t(basis)
+  root_weights <- rbind(sqrt(quadrature$weights),
+                        sqrt(quadrature$weights * exp(-nodes^2)))
+  fitted <- fit_observation_quadratics(values, root_weights, nodes)
+  expect_equal(unname(fitted), coefficients, tolerance = 1e-8)
+  # The QR refit, used for badly conditioned rows, agrees with the closed
+  # form; a minimum condition of one sends every row to QR.
+  expect_equal(fit_observation_quadratics(values, root_weights, nodes,
+                                          minimum_condition = 1),
+               fitted, tolerance = 1e-10)
+  # Weight on two nodes only: the fit is not identified.
+  concentrated <- matrix(0, 1, length(nodes))
+  concentrated[1, 10:11] <- 1
+  expect_false(all(is.finite(suppressWarnings(
+    fit_observation_quadratics(values[1, , drop = FALSE], concentrated,
+                               nodes)[1, ]
+  ))))
+})
+
+test_that("the global proposal keeps more effective draws than Laplace", {
+  # A sparse site: twenty tested and none positive, so the conditional
+  # distribution of its latent effect is skewed.
+  parameters <- c(-1, log(4), log(1))
+  engine_for <- function(proposal) {
+    make_adaptive_mcml_engine(
+      D = matrix(1, nrow = 1), y = 0, units_m = 20, distances = matrix(0),
+      family = "binomial", defensive_weight = 0, proposal = proposal
+    )
+  }
+  set.seed(5)
+  bank <- matrix(rnorm(20000), ncol = 1)
+  relative_ess <- function(proposal) {
+    summarise_importance_weights(engine_for(proposal)$evaluate(
+      parameters, bank, log_weights_only = TRUE
+    ))$relative_ess
+  }
+  exact <- log(integrate(function(u) {
+    dbinom(0, 20, plogis(-1 + u)) * dnorm(u, sd = 2)
+  }, -Inf, Inf, rel.tol = 1e-12)$value)
+
+  # Over 20 banks of this size the relative effective sample size averages
+  # 0.94 for the global proposal and 0.70 for the Laplace one.
+  expect_gt(relative_ess("global"), relative_ess("laplace") + 0.1)
+  expect_gt(relative_ess("global"), 0.9)
+  expect_equal(engine_for("global")$evaluate(parameters, bank), exact,
+               tolerance = 0.005)
+})
+
+test_that("the global proposal works through a random-effects latent map", {
+  set.seed(12)
+  n <- 40
+  coordinate <- runif(n)
+  village <- rep(1:8, each = 5)
+  trials <- rep(15, n)
+  y <- rbinom(n, trials, plogis(-1 + rnorm(8, sd = 0.5)[village]))
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = n), y = y, units_m = trials,
+    distances = as.matrix(dist(coordinate)), family = "binomial",
+    ID_re = cbind(village = village)
+  )
+  proposal <- engine$proposal_at(c(-1, log(0.5), log(0.3), log(0.25)))
+  expect_identical(proposal$type, "global")
+  expect_identical(engine$proposal_failures(), 0L)
+  expect_length(proposal$centre, n + 8)
+})
+
+test_that("certificate algebra matches its definition", {
+  information <- matrix(c(4, 1, 1, 3), 2)
+  score <- c(0.2, -0.1)
+  covariance <- matrix(c(0.01, 0.002, 0.002, 0.02), 2)
+  certificate <- certify_estimate(chol(information), score, covariance)
+  expect_equal(certificate$correction, solve(information, score))
+  expect_equal(certificate$distance,
+               sqrt(sum(score * solve(information, score))))
+  expect_equal(certificate$bound, certificate$distance + certificate$radius)
+  # With C = c H the radius is sqrt(c times the 95% point of chi-square(2)).
+  radius <- compute_validation_radius(chol(information), 0.01 * information)
+  expect_equal(radius, sqrt(0.01 * qchisq(0.95, 2)), tolerance = 0.01)
+})
+
+test_that("the predicted residual of the correction is that of a Newton step", {
+  information <- matrix(c(4, 1, 1, 3), 2)
+  centre <- c(0.5, -0.2)
+  quadratic <- function(parameters) {
+    -0.5 * drop(t(parameters - centre) %*% information %*%
+                  (parameters - centre))
+  }
+  step <- c(0.3, 0.1)
+  expect_equal(predict_correction_residual(quadratic, c(0, 0), step, 1:2,
+                                           chol(information), step, 0.1),
+               0, tolerance = 1e-6)
+  # Along exp(x) - x the score at the corrected point is left over.
+  curved <- function(parameters) -(exp(parameters[1]) - parameters[1]) -
+    parameters[2]^2
+  curvature <- diag(c(exp(1), 2))
+  step <- c(-0.5, 0)
+  left <- exp(1) / 2 - exp(0.5)
+  expect_equal(predict_correction_residual(curved, c(1, 0), c(0.5, 0), 1:2,
+                                           chol(curvature), step, 0.1),
+               abs(left) / sqrt(exp(1)) / 0.1, tolerance = 1e-6)
+})
+
+test_that("repeated corrections reach the maximum of the correction bank", {
+  log_likelihood <- function(parameters) {
+    -(exp(parameters[1]) - 2 * parameters[1]) - (parameters[2] - 1)^2 / 2
+  }
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, ...) {
+      list(score = c(2 - exp(parameters[1]), 1 - parameters[2])[free])
+    }
+  )
+  repeated <- repeat_correction(NULL, NULL, c(1.2, 1), chol(diag(2)), 1:2,
+                                10L, 1L, log_likelihood, c(-10, -10),
+                                c(10, 10), radius = 0.01)
+  expect_equal(repeated$estimate, c(log(2), 1), tolerance = 1e-8)
+  expect_true(repeated$converged)
+  expect_true(all(diff(repeated$lengths) < 0))
+  # The curvature is the fitting bank's at the last point it was computed.
+  expect_equal(repeated$information[2, 2], 1, tolerance = 1e-5)
+})
+
+test_that("the correction continues only past its check", {
+  # The correction bank's score is exact, so one Newton step reaches the
+  # maximum of a quadratic and falls short along exp(x) - 2x.
+  correct <- function(log_likelihood, score, start, variance = 1e-6) {
+    local_mocked_bindings(
+      score_validation_bank = function(engine, parameters, free, ...) {
+        list(score = score(parameters)[free],
+             covariance = diag(variance, length(free)), log_likelihood = 0,
+             seconds = 0)
+      }
+    )
+    information <- compute_bank_curvature(log_likelihood, start, 1:2)
+    information$gradient <- compute_central_gradient(log_likelihood, start)
+    correct_and_certify(NULL, NULL, start,
+                        c(information, list(free = 1:2)), 10L, 1:3,
+                        c(-10, -10), c(10, 10), 0.1,
+                        bank_objective = log_likelihood)
+  }
+  quadratic <- function(parameters) -sum((parameters - c(0.5, 1))^2) / 2
+  quadratic_score <- function(parameters) c(0.5, 1) - parameters
+  corrected <- correct(quadratic, quadratic_score, c(1.5, 0))
+  expect_equal(corrected$estimate, c(0.5, 1), tolerance = 1e-6)
+  expect_identical(corrected$correction_steps, 1L)
+  expect_lt(corrected$predicted_residual, 0.25)
+  expect_null(corrected$correction_lengths)
+  expect_false(corrected$residual_refused)
+  curved <- function(parameters) {
+    -(exp(parameters[1]) - 2 * parameters[1]) - (parameters[2] - 1)^2 / 2
+  }
+  curved_score <- function(parameters) {
+    c(2 - exp(parameters[1]), 1 - parameters[2])
+  }
+  # One step from 1.5 in the curvature exp(1.5) ends at 0.5 + 2 exp(-1.5).
+  one_step <- c(0.5 + 2 * exp(-1.5), 1)
+  corrected <- correct(curved, curved_score, c(1.5, 0))
+  expect_gt(corrected$predicted_residual, 0.25)
+  expect_equal(corrected$estimate, c(log(2), 1), tolerance = 1e-6)
+  expect_gt(corrected$correction_steps, 2L)
+  expect_true(corrected$correction_converged)
+  expect_true(corrected$certified)
+  # The certificate is measured in the curvature at the last step.
+  expect_equal(corrected$information[1, 1], 2, tolerance = 1e-5)
+  # Below the floor of the radius the check does not act, whatever the
+  # prediction, since there it divides rounding error by the radius.
+  exact <- correct(curved, curved_score, c(1.5, 0), variance = 1e-30)
+  expect_gt(exact$predicted_residual, 0.25)
+  expect_identical(exact$correction_steps, 1L)
+  expect_equal(exact$estimate, one_step, tolerance = 1e-6)
+  expect_false(exact$residual_refused)
+  # Repeated corrections that stop far from the bank's maximum are discarded
+  # and the estimate of the first step is not certified.
+  local_mocked_bindings(repeat_correction = function(engine, penalty,
+                                                     corrected, root, ...) {
+    list(estimate = corrected + 3, root = root / 2, information = diag(2),
+         lengths = 3, converged = FALSE, remaining = 5)
+  })
+  stopped <- correct(curved, curved_score, c(1.5, 0))
+  expect_equal(stopped$estimate, one_step, tolerance = 1e-6)
+  expect_null(stopped$information)
+  expect_true(stopped$residual_refused)
+  expect_false(stopped$certified)
+  expect_identical(stopped$correction_steps, 2L)
+})
+
+test_that("the certificate takes the larger radius of two banks", {
+  # The mocked bank's covariance grows with its seed, and it moves the random
+  # number state as a real bank does.
+  seeds_used <- integer()
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, n_draws, seed,
+                                     ...) {
+      seeds_used <<- c(seeds_used, seed)
+      set.seed(seed)
+      stats::runif(1)
+      list(score = numeric(length(free)),
+           covariance = diag(seed / 100, length(free)), log_likelihood = 0,
+           relative_ess = 0.5, maximum_weight = 0.01, pareto_k = 0.2,
+           seconds = 0)
+    }
+  )
+  root <- diag(2)
+  second <- list(score = c(0.03, 0.04), covariance = diag(0.04, 2))
+  certify <- function(...) {
+    certify_with_replicate(NULL, NULL, c(0, 0), root, 1:2, second, 10L, ...)
+  }
+  set.seed(5)
+  before <- .Random.seed
+  larger <- certify(9L)
+  expect_identical(.Random.seed, before)
+  expect_identical(seeds_used, 9L)
+  expect_identical(larger$radius_from, "replicate")
+  expect_equal(larger$radii[["certification"]],
+               compute_validation_radius(root, diag(0.04, 2)))
+  expect_equal(larger$radius, compute_validation_radius(root, diag(0.09, 2)))
+  # The distance is the certification bank's.
+  expect_equal(larger$distance, 0.05)
+  expect_equal(larger$bound, larger$distance + larger$radius)
+  expect_identical(larger$replicate$pareto_k, 0.2)
+  smaller <- certify(1L)
+  expect_identical(smaller$radius_from, "certification")
+  expect_equal(smaller$radius, smaller$radii[["certification"]])
+  expect_gt(smaller$radius, smaller$radii[["replicate"]])
+  # Without a stream for the replicate, the radius is the certification bank's.
+  alone <- certify()
+  expect_identical(alone$radius_from, "certification")
+  expect_true(is.na(alone$radii[["replicate"]]))
+  expect_null(alone$replicate)
+  expect_equal(alone$bound, 0.05 + alone$radii[["certification"]])
+  # A replicate whose score cannot be computed leaves no certificate, as the
+  # other banks do.
+  local_mocked_bindings(score_validation_bank = function(...) NULL)
+  expect_null(certify(9L))
+})
+
+test_that("repeated corrections stop when a step does not contract", {
+  # The fitting bank's curvature is a tenth of the correction bank's, so the
+  # steps overshoot by more each time.
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, ...) {
+      list(score = 1 - parameters)
+    }
+  )
+  repeated <- repeat_correction(NULL, NULL, 0, chol(matrix(0.1)), 1L, 10L,
+                                1L, function(parameters) -parameters^2 / 20,
+                                -1000, 1000, radius = 1)
+  expect_false(repeated$converged)
+  expect_length(repeated$lengths, 1L)
+  expect_gt(repeated$remaining, repeated$lengths)
+  expect_equal(repeated$estimate, 10, tolerance = 1e-6)
+})
+
+test_that("a correction past the upper bound of a covariance parameter is not applied", {
+  # Along the second parameter the curvature is 1e-4, as along a log variance
+  # near zero, so the exact score of the correction bank asks for a step to
+  # `target`, past a bound of 20 in absolute value.
+  scored <- 0L
+  correct <- function(target, coefficient_index) {
+    log_likelihood <- function(parameters) {
+      -(parameters[1] - 0.5)^2 / 2 - 1e-4 * (parameters[2] - target)^2 / 2
+    }
+    local_mocked_bindings(
+      score_validation_bank = function(engine, parameters, free, ...) {
+        scored <<- scored + 1L
+        list(score = c(0.5 - parameters[1],
+                       1e-4 * (target - parameters[2]))[free],
+             covariance = diag(1e-6, length(free)), log_likelihood = 0,
+             seconds = 0)
+      }
+    )
+    information <- compute_bank_curvature(log_likelihood, c(0, 0), 1:2)
+    information$gradient <- compute_central_gradient(log_likelihood, c(0, 0))
+    list(information = information,
+         result = correct_and_certify(NULL, NULL, c(0, 0),
+                                      c(information, list(free = 1:2)), 10L,
+                                      1:3, c(-30, -20), c(30, 20), 0.1,
+                                      bank_objective = log_likelihood,
+                                      coefficient_index = coefficient_index))
+  }
+  # As a covariance parameter, the correction is discarded after the first
+  # bank, and the fitted estimate is not certified, with that bank's bound.
+  upward <- correct(100, 1L)
+  left <- upward$result
+  expect_identical(scored, 1L)
+  expect_true(left$correction_left_bounds)
+  expect_identical(left$estimate, c(0, 0))
+  expect_false(left$certified)
+  expect_false(left$residual_refused)
+  expect_null(left$second_validation)
+  first <- certify_estimate(upward$information$root, c(0.5, 0.01),
+                            diag(1e-6, 2))
+  expect_equal(left$certificate, first$bound, tolerance = 1e-6)
+  # Past the lower bound it is clamped there, a component near zero.
+  downward <- correct(-100, 1L)$result
+  expect_null(downward$correction_left_bounds)
+  expect_identical(downward$estimate[2], -20)
+  # As a coefficient, it is clamped to the bound, where run_certified_stage()
+  # reports the likelihood as having no maximum.
+  clamped <- correct(100, 2L)$result
+  expect_null(clamped$correction_left_bounds)
+  expect_identical(clamped$estimate[2], 20)
+})
+
+test_that("repeated corrections stop before a step past a guarded upper bound", {
+  evaluated <- 0L
+  local_mocked_bindings(
+    score_validation_bank = function(engine, parameters, free, ...) {
+      evaluated <<- evaluated + 1L
+      list(score = 0.01)
+    }
+  )
+  flat <- function(parameters) -1e-4 * parameters^2 / 2
+  # The step of 0.01 / 1e-4 = 100 would leave the bound of 20, so it is not
+  # taken, nothing is evaluated past it, and its length is the residual left.
+  stopped <- repeat_correction(NULL, NULL, 0, chol(matrix(1e-4)), 1L, 10L,
+                               1L, flat, -20, 20, radius = 1, guarded = 1L)
+  expect_identical(evaluated, 1L)
+  expect_identical(stopped$estimate, 0)
+  expect_length(stopped$lengths, 0L)
+  expect_false(stopped$converged)
+  expect_equal(stopped$remaining, 1, tolerance = 1e-6)
+  # Unguarded, the step is clamped to the bound and the steps go on there.
+  clamped <- repeat_correction(NULL, NULL, 0, chol(matrix(1e-4)), 1L, 10L,
+                               1L, flat, -20, 20, radius = 1)
+  expect_identical(clamped$estimate, 20)
+  expect_gt(evaluated, 2L)
+})
+
+test_that("the validation radius leaves the caller's random numbers", {
+  set.seed(77)
+  before <- .Random.seed
+  compute_validation_radius(chol(diag(2)), diag(2))
+  expect_identical(.Random.seed, before)
+})
+
+test_that("a bank evaluated in blocks of rows gives the same weights", {
+  coordinate <- seq(0, 1, length.out = 15)
+  trials <- rep(10, 15)
+  y <- c(0, 1, 0, 2, 3, 1, 0, 4, 5, 2, 1, 0, 3, 2, 1)
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 15), y = y, units_m = trials,
+    distances = as.matrix(dist(coordinate)), family = "binomial"
+  )
+  parameters <- c(-1.5, log(0.6), log(0.2))
+  set.seed(4)
+  bank <- matrix(rnorm(1000 * 15), 1000)
+  whole <- engine$evaluate(parameters, bank, log_weights_only = TRUE)
+  # Blocks of ten rows, most of them without a defensive row, use the share
+  # of defensive rows in the whole bank.
+  defensive <- defensive_rows(1000, engine$defensive_weight)
+  blocks <- unlist(lapply(split(1:1000, rep(1:100, each = 10)), function(rows) {
+    engine$evaluate(parameters, bank[rows, , drop = FALSE],
+                    log_weights_only = TRUE, defensive = defensive[rows],
+                    defensive_share = mean(defensive))
+  }), use.names = FALSE)
+  expect_equal(blocks, whole)
+  # A single block is the bank drawn as one matrix from the same seed.
+  score <- score_validation_bank(engine, parameters, 1:3, 1000, seed = 4,
+                            block_rows = 1000)
+  expect_equal(score$log_likelihood, engine$evaluate(parameters, bank))
+  blocked <- score_validation_bank(engine, parameters, 1:3, 1000, seed = 4,
+                              block_rows = 100)
+  expect_true(all(is.finite(blocked$score)))
+  expect_identical(dim(blocked$covariance), c(3L, 3L))
+})
+
+test_that("the budget rule targets the tolerance and respects the limit", {
+  budgets <- plan_next_budgets(1000L, 5000L, certificate = 0.2,
+                               tolerance = 0.1, maximum_budget = 16000L)
+  expect_identical(budgets$budget, 5000L)
+  expect_identical(budgets$validation_budget, 25000L)
+  capped <- plan_next_budgets(1000L, 5000L, certificate = 1,
+                              tolerance = 0.1, maximum_budget = 16000L)
+  expect_identical(capped$budget, 16000L)
+  small <- plan_next_budgets(1000L, 5000L, certificate = 0.101,
+                             tolerance = 0.1, maximum_budget = 16000L)
+  expect_identical(small$budget, 1500L)
+  # Certificates far above the tolerance, or not finite, go to the largest
+  # budget instead of overflowing the integer range.
+  for (certificate in c(200, Inf, NaN)) {
+    largest <- plan_next_budgets(1000L, 5000L, certificate = certificate,
+                                 tolerance = 0.1, maximum_budget = 16000L)
+    expect_identical(largest$budget, 16000L)
+    expect_identical(largest$validation_budget, 80000L)
+  }
+})
+
+test_that("a failed global proposal is counted and the engine can switch", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  expect_identical(engine$proposal_type(), "global")
+  local_mocked_bindings(fit_global_proposal = function(...) NULL)
+  proposal <- engine$proposal_at(c(0, 0, 0))
+  expect_identical(proposal$type, "laplace")
+  expect_identical(engine$proposal_failures(), 1L)
+  engine$reset_proposal_failures()
+  engine$use_proposal("laplace")
+  expect_identical(engine$proposal_type(), "laplace")
+  engine$proposal_at(c(0.1, 0, 0))
+  expect_identical(engine$proposal_failures(), 0L)
+})
+
+test_that("set_control_mcml validates the certification settings", {
+  control <- set_control_mcml()
+  expect_identical(control$initial_samples, 1000L)
+  expect_identical(control$validation_samples, 5000L)
+  expect_identical(control$max_samples, 16000L)
+  expect_identical(control$max_stages, 4L)
+  expect_identical(control$tolerance, 0.1)
+  expect_identical(control$proposal, "global")
+  expect_identical(set_control_mcml(proposal = "laplace")$proposal, "laplace")
+  expect_input_error(set_control_mcml(proposal = "mean"), "proposal")
+  expect_error(set_control_mcml(tolerance = 0), "positive number")
+  expect_error(set_control_mcml(validation_samples = 0), "positive integer")
+})
+
+test_that("the accelerated global iteration reaches the plain fixed point", {
+  set.seed(21)
+  coordinate <- runif(40)
+  trials <- rep(15, 40)
+  y <- rbinom(40, trials, plogis(-2 + rnorm(40, sd = 0.8)))
+  precision <- solve(0.8 * exp(-as.matrix(dist(coordinate)) / 0.2))
+  latent_map <- make_latent_map(cbind(seq_len(40)), 40)
+  linkf <- make_inverse_link_functions("binomial", NULL, 40)
+  mu <- rep(-2, 40)
+  mode <- find_latent_mode(
+    mu, y, trials, latent_map, precision, family_object("binomial", linkf),
+    numeric(40)
+  )$mode
+  fit <- function(memory) {
+    fit_global_proposal(
+      mode, mu, y, trials, latent_map, precision,
+      family_object("binomial", linkf), memory = memory
+    )
+  }
+  plain <- fit(0L)
+  accelerated <- fit(3L)
+  expect_true(plain$converged && accelerated$converged)
+  expect_lte(accelerated$iterations, plain$iterations)
+  expect_equal(accelerated$centre, plain$centre, tolerance = 1e-6)
+  expect_equal(accelerated$precision, plain$precision, tolerance = 1e-6)
+})
+
+test_that("dispersed starts span the site spacing and half the extent", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  distances <- as.matrix(dist(c(0, 1, 2, 3, 10)))
+  dispersed <- make_dispersed_starts(layout, distances)
+  expect_equal(exp(dispersed$log_phi), c(1, 1, 5, 5))
+  expect_equal(exp(dispersed$log_sigma2), c(0.25, 4, 0.25, 4))
+  expect_equal(dispersed$trigger, log(0.5))
+  expect_identical(dispersed$phi_index, 4L)
+})
+
+test_that("the check for maxima finds a higher one at a longer scale", {
+  # Two maxima in the log scale: a local one at -3 and a higher one at 2.
+  objective <- function(parameters, z) {
+    log(exp(-(parameters[2] + 3)^2) + 3 * exp(-(parameters[2] - 2)^2)) -
+      parameters[1]^2
+  }
+  # A stand-in engine whose estimated log-likelihood on any bank is exactly
+  # the objective, so the independent comparison has no Monte Carlo error.
+  engine <- list(latent_dimension = 1L,
+                 evaluate = function(parameters, z, log_weights_only) {
+                   rep(objective(parameters, z), nrow(z))
+                 })
+  limits <- list(variance_index = integer(), linked_index = list(),
+                 boundary_log_variance = -9, tolerance = 0.1,
+                 dispersed = list(sigma2_index = 1L, phi_index = 2L,
+                                  log_sigma2 = log(c(0.25, 4, 0.25, 4)),
+                                  log_phi = log(c(1, 1, 50, 50)),
+                                  labels = c("a", "b", "c", "d"),
+                                  trigger = log(0.5)))
+  lower <- c(-10, -10)
+  upper <- c(10, 10)
+  local <- optimise_on_bank(objective, c(0, -3.2), NULL, lower, upper,
+                            TRUE, limits)
+  expect_equal(local$fit$par[2], -3, tolerance = 1e-3)
+  checked <- check_other_maxima(engine, objective, NULL, local, NULL,
+                                    lower, upper, limits, 100L, 1L)
+  expect_true(checked$separate)
+  expect_false(checked$ambiguous)
+  expect_false(checked$check$chosen[1])
+  expect_equal(checked$optimised$fit$par[2], 2, tolerance = 1e-3)
+  expect_gt(checked$check$distance_from_fitted[checked$check$chosen], 0.1)
+
+  higher <- optimise_on_bank(objective, c(0, 1.5), NULL, lower, upper, TRUE,
+                             limits)
+  unchecked <- check_other_maxima(engine, objective, NULL, higher, NULL,
+                                      lower, upper, limits, 100L, 1L)
+  expect_null(unchecked$check)
+})
+
+test_that("a stage whose optimiser returns non-finite values has no valid fit", {
+  # The Laplace fallback on a ridge returned NaN for every parameter with a
+  # convergence code of zero, and the check for other maxima then failed on
+  # the comparison of the scale with its trigger.
+  engine <- list(latent_dimension = 1L,
+                 proposal_type = function() "laplace",
+                 proposal_failures = function() 0L,
+                 evaluate = function(...) stop("evaluated at an invalid fit"))
+  limits <- list(dispersed = list(sigma2_index = 1L, phi_index = 2L,
+                                  trigger = log(0.5)))
+  local_mocked_bindings(
+    optimise_on_bank = function(...) {
+      list(fit = list(par = c(NaN, NaN), objective = 1e100, convergence = 0L),
+           boundary = integer(), restarted = FALSE, restart_improved = FALSE)
+    },
+    check_other_maxima = function(...) stop("checked an invalid fit")
+  )
+  stage <- run_certified_stage(engine, function(...) 0, NULL, c(0, 0), 10L,
+                               10L, 1:4, c(-10, -10), c(10, 10), TRUE, limits)
+  expect_identical(stage$outcome, "no valid fit")
+  expect_match(stage$reason, "non-finite")
+  expect_null(stage$maxima_check)
+  expect_null(stage$fit_diagnostics)
+})
+
+test_that("the check for other maxima leaves out refits that fail", {
+  objective <- function(parameters, z) {
+    log(exp(-(parameters[2] + 3)^2) + 3 * exp(-(parameters[2] - 2)^2)) -
+      parameters[1]^2
+  }
+  engine <- list(latent_dimension = 1L,
+                 evaluate = function(parameters, z, log_weights_only) {
+                   rep(objective(parameters, z), nrow(z))
+                 })
+  limits <- list(variance_index = integer(), linked_index = list(),
+                 boundary_log_variance = -9, tolerance = 0.1,
+                 dispersed = list(sigma2_index = 1L, phi_index = 2L,
+                                  log_sigma2 = log(c(0.25, 4, 0.25, 4)),
+                                  log_phi = log(c(1, 1, 50, 50)),
+                                  labels = c("a", "b", "c", "d"),
+                                  trigger = log(0.5)))
+  lower <- c(-10, -10)
+  upper <- c(10, 10)
+  local <- optimise_on_bank(objective, c(0, -3.2), NULL, lower, upper,
+                            TRUE, limits)
+  original <- optimise_on_bank
+  # Refits from the long-scale starts fail as the Laplace fallback did.
+  local_mocked_bindings(optimise_on_bank = function(objective, start, ...) {
+    if (start[2] > 3) {
+      return(list(fit = list(par = c(NaN, NaN), objective = 1e100),
+                  boundary = integer()))
+    }
+    original(objective, start, ...)
+  })
+  checked <- check_other_maxima(engine, objective, NULL, local, NULL,
+                                    lower, upper, limits, 100L, 1L)
+  expect_identical(checked$check$start, c("fitted", "a", "b"))
+  expect_true(all(is.finite(checked$check$log_likelihood)))
+  expect_true(all(is.finite(checked$optimised$fit$par)))
+})
+
+test_that("candidate maxima are tied, separate or ambiguous", {
+  engine <- list(latent_dimension = 1L,
+                 evaluate = function(parameters, z, log_weights_only) {
+                   # Equal likelihoods at the two separated points, with
+                   # Monte Carlo noise from the bank.
+                   -abs(parameters[1]) * 0 + z[, 1] * 0.01
+                 })
+  information <- diag(100, 2)
+  # Within 0.1 standard errors (0.01 apart with information 100): one maximum.
+  tied <- choose_maximum(engine, NULL, list(c(0, 0), c(0.005, 0)),
+                         c(-10, -9.999), information, 50L, 1L, 0.1)
+  expect_false(tied$separate)
+  expect_false(tied$ambiguous)
+  expect_identical(tied$chosen, 2L)
+  expect_true(all(is.na(tied$table$independent_log_likelihood)))
+  # Far apart with equal likelihoods on independent draws: ambiguous.
+  separated <- choose_maximum(engine, NULL, list(c(0, 0), c(1, 0)),
+                              c(-10, -9.999), information, 50L, 1L, 0.1)
+  expect_true(separated$ambiguous)
+  expect_identical(sum(is.finite(separated$table$independent_log_likelihood)),
+                   2L)
+})
+
+test_that("set_control_mcml validates check_maxima", {
+  expect_true(set_control_mcml()$check_maxima)
+  expect_false(set_control_mcml(check_maxima = FALSE)$check_maxima)
+  expect_error(set_control_mcml(check_maxima = NA), "check_maxima")
+})
+
+test_that("Newton steps with a known curvature reach the maximum", {
+  curvature <- matrix(c(4, 1, 1, 3), 2)
+  centre <- c(0.7, -1.2)
+  negative <- function(parameters) {
+    0.5 * sum((parameters - centre) * (curvature %*% (parameters - centre)))
+  }
+  exact <- run_newton_steps(negative, c(0, 0), chol(curvature), c(-5, -5),
+                          c(5, 5))
+  expect_true(exact$converged)
+  expect_equal(exact$par, centre, tolerance = 1e-6)
+  # A badly scaled curvature can stall the steps; the optimisation as a
+  # whole still reaches the maximum because nlminb() finishes it.
+  limits <- list(variance_index = integer(), linked_index = list(),
+                 boundary_log_variance = -9)
+  rough <- optimise_on_bank(function(parameters, z) -negative(parameters),
+                            c(0, 0), NULL, c(-5, -5), c(5, 5), FALSE, limits,
+                            curvature_root = chol(diag(c(1, 50))))
+  expect_equal(rough$fit$par, centre, tolerance = 1e-5)
+  # Steps are kept within the bounds.
+  bounded <- run_newton_steps(negative, c(0, 0), chol(curvature), c(-5, -1),
+                            c(5, 5))
+  expect_gte(min(bounded$par[2]), -1)
+  expect_false(bounded$converged)
+})
+
+test_that("the optimisation finishes with nlminb after Newton steps", {
+  negative_objective <- function(parameters, z) {
+    -sum((parameters - c(1, 2))^2) - 3
+  }
+  limits <- list(variance_index = integer(), linked_index = list(),
+                 boundary_log_variance = -9)
+  plain <- optimise_on_bank(negative_objective, c(0, 0), NULL, c(-5, -5),
+                            c(5, 5), FALSE, limits)
+  seeded <- optimise_on_bank(negative_objective, c(0, 0), NULL, c(-5, -5),
+                             c(5, 5), FALSE, limits,
+                             curvature_root = chol(diag(2, 2)))
+  expect_identical(plain$fit$method, "nlminb")
+  expect_identical(seeded$fit$method, "newton, then nlminb")
+  expect_equal(seeded$fit$par, c(1, 2), tolerance = 1e-6)
+  expect_equal(plain$fit$par, seeded$fit$par, tolerance = 1e-6)
+})
+
+test_that("curvatures are reused only when well conditioned", {
+  expect_null(factor_curvature(NULL))
+  expect_null(factor_curvature(diag(c(1, 1e-12))))
+  expect_null(factor_curvature(matrix(c(1, 2, 2, 1), 2)))
+  expect_equal(factor_curvature(diag(c(4, 9))), diag(c(2, 3)))
+})
+
+test_that("the stopping tolerance is fixed in log-likelihood units", {
+  expect_identical(make_optimiser_control()$rel.tol, 1e-10)
+  expect_equal(make_optimiser_control(1000)$rel.tol, 1e-7)
+  expect_equal(make_optimiser_control(10)$rel.tol, 1e-6)
+  expect_equal(make_optimiser_control(1e9)$rel.tol, 1e-12)
+  expect_identical(make_optimiser_control(Inf)$rel.tol, 1e-10)
+})
+
+test_that("the one-round central Hessian matches an exact quadratic", {
+  curvature <- matrix(c(3, -1, 0.5, -1, 2, 0.2, 0.5, 0.2, 1), 3)
+  objective <- function(point) {
+    0.5 * sum(point * (curvature %*% point)) + sum(point^3) / 6
+  }
+  point <- c(0.3, -0.4, 1.2)
+  expected <- curvature + diag(point)
+  expect_equal(compute_central_hessian(objective, point), expected,
+               tolerance = 1e-6)
+  both <- compute_central_hessian(objective, point, with_gradient = TRUE)
+  expect_identical(both$hessian, compute_central_hessian(objective, point))
+  expect_equal(both$gradient, drop(curvature %*% point) + point^2 / 2,
+               tolerance = 1e-6)
+})
+
+test_that("weight diagnostics survive degenerate banks", {
+  none <- summarise_importance_weights(rep(-Inf, 10))
+  expect_identical(none$log_likelihood, -Inf)
+  expect_identical(none$relative_ess, 0)
+  single <- summarise_importance_weights(c(-Inf, 0))
+  expect_equal(single$log_likelihood, log(0.5))
+  expect_true(is.na(single$pareto_k) || is.finite(single$pareto_k))
+})
+
+test_that("a failed evaluation gives every draw zero weight", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  local_mocked_bindings(
+    cpp_spatial_prior_factors = function(...) stop("not positive")
+  )
+  bank <- matrix(rnorm(12), 4)
+  expect_identical(engine$evaluate(c(0, 0, 0), bank, log_weights_only = TRUE),
+                   rep(-Inf, 4))
+  expect_identical(engine$evaluate(c(0, 0, 0), bank), -1e100)
+})
+
+test_that("an anchored proposal is three plain refits from the anchor", {
+  set.seed(14)
+  coordinate <- runif(30)
+  trials <- rep(20, 30)
+  y <- rbinom(30, trials, plogis(-1.5 + rnorm(30, sd = 0.7)))
+  engine_for <- function() {
+    make_adaptive_mcml_engine(
+      D = matrix(1, nrow = 30), y = y, units_m = trials,
+      distances = as.matrix(dist(coordinate)), family = "binomial"
+    )
+  }
+  anchored <- engine_for()
+  expect_true(anchored$set_anchor(c(-1.4, log(0.5), log(0.2))))
+  expect_identical(anchored$largest_refit_change(), NA_real_)
+  parameters <- c(-1.6, log(0.6), log(0.25))
+  proposal <- anchored$proposal_at(parameters)
+
+  inside <- environment(anchored$proposal_at)
+  values <- inside$unpack(parameters)
+  precision <- inside$spatial_prior_at(values)$precision
+  mu <- as.numeric(inside$D %*% values$beta + inside$cov_offset)
+  anchor <- inside$anchor
+  factors <- c(anchor$linear - anchor$curvature * (mu - anchor$mu),
+               anchor$curvature)
+  for (refit in 1:3) {
+    previous <- factors
+    factors <- refit_global_factors(
+      factors, mu, y, trials, inside$latent_map, precision,
+      family_object(inside$model), build_normal_quadrature(),
+      make_curvature_floor(inside$latent_map, precision)
+    )
+  }
+  half <- length(factors) / 2
+  by_hand <- cpp_global_proposal_factors(
+    precision, factors[seq_len(half)], factors[half + seq_len(half)],
+    inside$latent_map$columns
+  )
+  expect_identical(proposal$type, "global")
+  expect_identical(proposal$centre, by_hand$centre)
+  expect_identical(anchored$largest_refit_change(),
+                   max(abs(factors - previous)))
+  # Three refits come close to the fixed point that the iteration from the
+  # mode reaches.
+  converged <- engine_for()$proposal_at(parameters)
+  expect_equal(proposal$centre, converged$centre, tolerance = 1e-4)
+  anchored$reset_proposal_failures()
+  expect_identical(anchored$largest_refit_change(), NA_real_)
+})
+
+test_that("a refit from the anchor that fails gives the Laplace proposal", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  expect_true(engine$set_anchor(c(0, 0, 0)))
+  local_mocked_bindings(refit_global_factors = function(...) NULL)
+  expect_identical(engine$proposal_at(c(0.1, 0, 0))$type, "laplace")
+  expect_identical(engine$proposal_failures(), 1L)
+  expect_identical(engine$first_proposal_failure(),
+                   list(reason = "a refit failed", refits = 1L,
+                        change = NA_real_))
+  expect_identical(engine$largest_refit_change(), NA_real_)
+})
+
+test_that("a canonical quadratic fit without enough weighted nodes fails", {
+  # The first site has 400 trials but a factor with almost no curvature, so its
+  # marginal under the proposal is about 200 times wider than its likelihood
+  # and only the two central nodes keep any weight.
+  sites <- 3L
+  y <- c(200, 5, 5)
+  units_m <- c(400, 20, 20)
+  mu <- c(0, -1, -1)
+  precision <- diag(0.01, sites)
+  latent_map <- make_latent_map(cbind(seq_len(sites)), sites)
+  linkf <- make_inverse_link_functions("binomial", NULL, sites)
+  linear <- numeric(sites)
+  curvature <- c(1e-6, 3, 3)
+  quadrature <- build_normal_quadrature()
+  marginals <- cpp_global_marginals(precision, linear, curvature,
+                                    latent_map$columns)
+  updated <- update_observation_factors(
+    marginals$marginal_mean, sqrt(marginals$marginal_variance), mu, y, units_m,
+    family_object("binomial", linkf), linear, curvature, quadrature
+  )
+  # No other curvature is negative, the case that stopped at the `if` of the
+  # curvature floor with "missing value where TRUE/FALSE needed".
+  expect_identical(is.na(updated$curvature), c(TRUE, FALSE, FALSE))
+  expect_true(all(updated$curvature[-1L] > 0))
+  expect_null(refit_global_factors(
+    c(linear, curvature), mu, y, units_m, latent_map, precision,
+    family_object("binomial", linkf), quadrature,
+    make_curvature_floor(latent_map, precision)
+  ))
+  refitted <- refit_from_anchor(
+    list(mu = mu, linear = linear, curvature = curvature), mu, y, units_m,
+    latent_map, precision, family_object("binomial", linkf)
+  )
+  expect_identical(refitted, list(failed = TRUE, refits = 1L,
+                                  change = NA_real_))
+})
+
+# A survey of 30 locations at low prevalence with one location of 2,000 tested
+# and half of them positive. With the spatial variance near zero, the prior
+# holds the latent effect at that location far below the peak of its
+# likelihood, and the factor fitted there places a refit at a larger variance
+# about 26 likelihood widths beyond the peak. One quadrature node then carries
+# all the weight, and the quadratic fit has too few weighted nodes.
+make_outlier_survey <- function() {
+  set.seed(3)
+  sites <- 30L
+  coordinates <- cbind(runif(sites), runif(sites))
+  units_m <- c(2000, rep(20, sites - 1L))
+  list(y = c(1000, rbinom(sites - 1L, 20, 0.01)), units_m = units_m,
+       distances = as.matrix(dist(coordinates)))
+}
+
+test_that("a canonical refit without enough weighted nodes is a failure", {
+  survey <- make_outlier_survey()
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, length(survey$y), 1), y = survey$y, units_m = survey$units_m,
+    distances = survey$distances, family = "binomial"
+  )
+  expect_true(engine$set_anchor(c(-4, -6, log(0.2))))
+  # It was an error inside the proposal, which gave the parameter value no
+  # weight. It is now a failed refit, so the Laplace proposal is used there and
+  # the failure is counted, as for a custom link.
+  expect_identical(engine$proposal_at(c(-4, 1.5, log(0.2)))$type, "laplace")
+  expect_identical(engine$proposal_failures(), 1L)
+  expect_identical(engine$first_proposal_failure(),
+                   list(reason = "a refit failed", refits = 1L,
+                        change = NA_real_))
+  expect_identical(engine$proposal_errors(), list(count = 0L, first = NULL))
+})
+
+test_that("failed canonical refits make the stage use the Laplace proposal", {
+  skip_on_cran()
+  survey <- make_outlier_survey()
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, length(survey$y), 1), y = survey$y, units_m = survey$units_m,
+    distances = survey$distances, family = "binomial"
+  )
+  fit <- fit_adaptive_mcml(
+    engine = engine, start = c(-4, -6, log(0.2)), initial_budget = 1000,
+    validation_budget = 2000, seed = 5, lower = c(-30, -20, -20),
+    upper = c(30, 20, 10), variance_index = 2L, linked_index = list(`2` = 3L),
+    coefficient_index = 1L
+  )
+  first <- fit$history[[1L]]
+  expect_true(first$proposal_fallback)
+  expect_identical(first$proposal, "laplace")
+  expect_identical(first$proposal_failure$reason, "a refit failed")
+  expect_identical(engine$proposal_errors()$count, 0L)
+  # Every trial value with a larger variance was an error before, so the
+  # search stayed near the start, the spatial variance was taken as
+  # effectively zero and only the intercept was certified, at a log-likelihood
+  # 240 units below this fit.
+  expect_identical(fit$outcome, "certified")
+  expect_length(fit$boundary_parameters, 0L)
+  expect_gt(fit$estimate[[2L]], 0)
+})
+
+test_that("the check for other maxima warns about a move and an ambiguity", {
+  moved <- list(better_maximum = TRUE, ambiguous_maxima = FALSE)
+  expect_warning(report_maxima_check(moved),
+                 "found a maximum higher.*See `check_fit\\(\\)`")
+  ambiguous <- list(better_maximum = FALSE, ambiguous_maxima = TRUE)
+  expect_warning(report_maxima_check(ambiguous),
+                 "fit about equally well.*See `check_fit\\(\\)`")
+  expect_silent(report_maxima_check(list(better_maximum = FALSE,
+                                         ambiguous_maxima = FALSE)))
+})
+
+test_that("the objective carries the PC penalty only when asked", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 4), y = c(0, 1, 2, 1), units_m = rep(5, 4),
+    distances = as.matrix(dist(1:4)), family = "binomial"
+  )
+  plain <- make_mcml_objective(engine, set_control_mcml(),
+                               as.matrix(dist(1:4)), 1)
+  expect_null(plain$penalty)
+  penalised <- make_mcml_objective(engine, set_control_mcml(pc_prior = TRUE),
+                                   as.matrix(dist(1:4)), 1)
+  zero <- matrix(0, 1, 4)
+  parameters <- c(-1, 0, 0)
+  expect_equal(penalised$objective(parameters, zero),
+               engine$evaluate(parameters, zero) +
+                 penalised$penalty(parameters))
+})
+
+test_that("the table of the check for other maxima is restored to user units", {
+  history <- list(list(estimate = c(0, 0, 1, log(2)),
+                       maxima_check = data.frame(log_phi = log(c(0.1, 3)))))
+  restored <- restore_mcml_history_scale(history, diag(2), distance_scale = 10)
+  expect_equal(restored[[1]]$maxima_check$log_phi, log(c(1, 30)))
+  expect_equal(restored[[1]]$estimate[4], log(20))
+})
+
+# The R computations that the compiled routines of the engine replaced. The
+# compiled versions must reproduce them exactly.
+reference_inverse_cholesky_factor <- function(hessian) {
+  dimension <- nrow(hessian)
+  reversed <- dimension:1
+  root <- chol(hessian[reversed, reversed, drop = FALSE])
+  inverse_root <- backsolve(root, diag(dimension))
+  t(inverse_root)[reversed, reversed, drop = FALSE]
+}
+
+make_compiled_test_problem <- function(with_random_effect) {
+  set.seed(31)
+  locations <- 12
+  coordinates <- matrix(runif(2 * locations), ncol = 2)
+  precision <- chol2inv(chol(exp(-as.matrix(dist(coordinates)) / 0.3)))
+  levels <- 4
+  dimension <- locations + if (with_random_effect) levels else 0
+  if (with_random_effect) {
+    full <- matrix(0, dimension, dimension)
+    full[seq_len(locations), seq_len(locations)] <- precision
+    full[cbind(locations + 1:levels, locations + 1:levels)] <- 2
+    precision <- full
+  }
+  observations <- 20
+  columns <- cbind(sample(locations, observations, replace = TRUE))
+  if (with_random_effect) {
+    columns <- cbind(columns, locations + sample(levels, observations,
+                                                 replace = TRUE))
+  }
+  list(precision = precision, latent_map = make_latent_map(columns, dimension),
+       linear = rnorm(observations), curvature = runif(observations, 0.1, 2))
+}
+
+test_that("compiled marginals of the global iteration equal the R code", {
+  for (with_random_effect in c(FALSE, TRUE)) {
+    problem <- make_compiled_test_problem(with_random_effect)
+    latent_map <- problem$latent_map
+    proposal_precision <- problem$precision +
+      latent_data_hessian(latent_map, problem$curvature)
+    inverse <- chol2inv(chol(proposal_precision))
+    centre <- as.numeric(inverse %*%
+                           latent_gradient(latent_map, problem$linear))
+    compiled <- cpp_global_marginals(problem$precision, problem$linear,
+                                     problem$curvature, latent_map$columns)
+    expect_identical(compiled$marginal_mean,
+                     latent_linear_predictor(latent_map, centre))
+    expect_identical(compiled$marginal_variance, as.numeric(rowsum(
+      inverse[latent_map$pair_linear], latent_map$pair_observation,
+      reorder = FALSE
+    )))
+  }
+  expect_null(cpp_global_marginals(-diag(3), numeric(3), numeric(3),
+                                   cbind(1:3)))
+})
+
+test_that("the compiled converged proposal equals the R code", {
+  for (with_random_effect in c(FALSE, TRUE)) {
+    problem <- make_compiled_test_problem(with_random_effect)
+    latent_map <- problem$latent_map
+    proposal_precision <- problem$precision +
+      latent_data_hessian(latent_map, problem$curvature)
+    proposal_precision <- (proposal_precision + t(proposal_precision)) / 2
+    root <- chol(proposal_precision)
+    compiled <- cpp_global_proposal_factors(
+      problem$precision, problem$linear, problem$curvature, latent_map$columns
+    )
+    expect_identical(compiled$precision, proposal_precision)
+    expect_identical(compiled$centre, as.numeric(backsolve(root, forwardsolve(
+      t(root), latent_gradient(latent_map, problem$linear)
+    ))))
+    expect_identical(compiled$root,
+                     reference_inverse_cholesky_factor(proposal_precision))
+    expect_identical(inverse_cholesky_factor(proposal_precision),
+                     compiled$root)
+  }
+  expect_null(cpp_global_proposal_factors(-diag(3), numeric(3), numeric(3),
+                                          cbind(1:3)))
+  expect_error(inverse_cholesky_factor(-diag(3)), "not positive definite")
+})
+
+test_that("the compiled spatial prior equals the R code and defers jitter", {
+  set.seed(32)
+  distances <- as.matrix(dist(matrix(runif(20), ncol = 2)))
+  for (kappa in c(0.5, 1.5, 2.5)) {
+    compiled <- cpp_spatial_prior_factors(as.numeric(distances), 10L, 0.4,
+                                          kappa, 1.7, 0.2)
+    correlation <- matrix(cpp_half_integer_matern(as.numeric(distances), 0.4,
+                                                  kappa), 10, 10)
+    diag(correlation) <- diag(correlation) + 0.2
+    covariance <- 1.7 * correlation
+    root <- factor_covariance(covariance)
+    expect_identical(compiled$covariance, covariance)
+    expect_identical(compiled$root, root)
+    expect_identical(compiled$precision, chol2inv(root))
+  }
+  # Two sites at the same place without a nugget give a singular covariance,
+  # which the engine factorises with jitter as before.
+  repeated <- as.matrix(dist(c(0, 0, 1)))
+  singular <- cpp_spatial_prior_factors(as.numeric(repeated), 3L, 1, 0.5, 1, 0)
+  expect_null(singular$root)
+  expect_identical(singular$covariance, unname(exp(-repeated)))
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(1, 2, 1), units_m = rep(4, 3),
+    distances = repeated, family = "binomial", proposal = "laplace"
+  )
+  expect_warning(proposal <- engine$proposal_at(c(0, 0, 0)), "jitter")
+  expect_gt(attr(proposal$spatial_root, "jitter"), 0)
+})
+
+test_that("compiled importance weights equal the R computation", {
+  set.seed(33)
+  locations <- 15
+  distances <- as.matrix(dist(matrix(runif(2 * locations), ncol = 2)))
+  cluster <- sample(4, locations, replace = TRUE)
+  design <- cbind(1, rnorm(locations))
+  linear_predictor <- -0.5 + 0.3 * design[, 2] + rnorm(locations, sd = 0.5)
+  cases <- list(
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = NULL, defensive = 0.05),
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = cbind(cluster), defensive = 0.05),
+    list(family = "poisson", y = rpois(locations, exp(linear_predictor + 1)),
+         units = rep(1, locations), random = cbind(cluster), defensive = 0.05),
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = NULL, defensive = 0),
+    # Named links, whose weights are compiled since step 3 of #253.
+    list(family = "binomial", y = rbinom(locations, 10, pnorm(linear_predictor)),
+         units = rep(10, locations), random = cbind(cluster), defensive = 0.05,
+         link = "probit"),
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = NULL, defensive = 0.05,
+         link = "cloglog"),
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = NULL, defensive = 0,
+         link = "cauchit")
+  )
+  for (case in cases) {
+    engine <- make_adaptive_mcml_engine(
+      D = design, y = case$y, units_m = case$units, distances = distances,
+      family = case$family, ID_re = case$random,
+      defensive_weight = case$defensive,
+      invlink = if (!is.null(case$link)) {
+        c(named_inverse_link(case$link), link = case$link)
+      }
+    )
+    expect_true(environment(engine$evaluate)$model$compiled)
+    scope <- environment(engine$evaluate)
+    parameters <- c(-0.5, 0.3, log(0.5), log(0.3),
+                    if (!is.null(case$random)) log(0.4))
+    for (shift in c(0, 0.05)) for (rows in c(1L, 40L)) {
+      target <- parameters + c(0, 0, shift, -shift,
+                               if (!is.null(case$random)) shift)
+      draws <- matrix(rnorm(rows * engine$latent_dimension), rows)
+      proposal <- engine$proposal_at(parameters)
+      same <- identical(target, parameters)
+      values <- if (same) proposal$values else scope$unpack(target)
+      spatial_root <- if (same) proposal$spatial_root else
+        factor_covariance(scope$covariance_at(values))
+      defensive <- defensive_rows(rows, case$defensive)
+      in_r <- compute_log_weights_in_r(
+        draws, proposal, defensive, mean(defensive), values, spatial_root,
+        same, as.numeric(design %*% values$beta), scope$latent,
+        scope$latent_map$columns,
+        function(eta) {
+          if (is.null(case$link)) {
+            family_object(case$family, scope$linkf)$log_likelihood(
+              eta, case$y, case$units
+            )
+          } else {
+            compute_link_log_likelihood_rows(eta, case$y, case$units,
+                                             case$family, scope$linkf)
+          }
+        }
+      )
+      # The R code can carry a random effect's name on a single-row result.
+      # The weights are identical where the compiler does not fuse multiply
+      # and add, as on x86-64. Where it does, as on arm64, the compiled sums
+      # differ from R's in the last bits.
+      expect_equal(
+        engine$evaluate(target, draws, log_weights_only = TRUE,
+                        proposal_parameters = parameters),
+        unname(in_r), tolerance = 1e-12
+      )
+    }
+  }
+})
+
+test_that("compiled weights of named links equal R's where the bounds act and with an integrated nugget", {
+  # The weights of a named link are R's to the last bit where the compiler
+  # does not fuse multiply and add, as on x86-64.
+  same_as_r <- function(compiled, in_r) {
+    if (identical(R.version$arch, "x86_64")) {
+      expect_identical(compiled, unname(in_r))
+    } else {
+      expect_equal(compiled, unname(in_r), tolerance = 1e-12)
+    }
+  }
+  set.seed(33)
+  locations <- 15
+  distances <- as.matrix(dist(matrix(runif(2 * locations), ncol = 2)))
+  design <- cbind(1, rnorm(locations))
+  y <- rep(c(0, 3, 10), 5)
+  units <- rep(10, locations)
+  for (link in c("probit", "cloglog", "cauchit")) {
+    engine <- make_adaptive_mcml_engine(
+      D = design, y = y, units_m = units, distances = distances,
+      family = "binomial", invlink = c(named_inverse_link(link), link = link)
+    )
+    scope <- environment(engine$evaluate)
+    expect_true(scope$model$compiled)
+    parameters <- c(0, 0.3, log(0.5), log(0.3))
+    proposal <- engine$proposal_at(parameters)
+    # Intercepts at which probabilities round to 0 or 1, so that the bounds
+    # of bound_log_probability() act on every record.
+    for (intercept in c(-38.5, -10, 9, 40)) {
+      target <- c(intercept, 0.3, log(0.5), log(0.3))
+      draws <- matrix(rnorm(40 * engine$latent_dimension), 40)
+      values <- scope$unpack(target)
+      defensive <- defensive_rows(40L, 0.05)
+      in_r <- compute_log_weights_in_r(
+        draws, proposal, defensive, mean(defensive), values,
+        factor_covariance(scope$covariance_at(values)), FALSE,
+        as.numeric(design %*% values$beta), scope$latent,
+        scope$latent_map$columns,
+        function(eta) {
+          compute_link_log_likelihood_rows(eta, y, units, "binomial",
+                                           scope$linkf)
+        }
+      )
+      same_as_r(engine$evaluate(target, draws, log_weights_only = TRUE,
+                                proposal_parameters = parameters), in_r)
+    }
+  }
+
+  # With the nugget integrated out, the compiled weights take each record's
+  # log-likelihood from its table, as the R weights do.
+  n <- 30L
+  coordinates <- cbind(runif(n), runif(n)) * 50
+  distances <- as.matrix(dist(coordinates))
+  x <- rnorm(n)
+  field <- drop(t(chol(1.2 * exp(-distances / 8) + diag(1e-9, n))) %*% rnorm(n))
+  units <- rep(20, n)
+  y <- rbinom(n, 20, pnorm(-1.5 + 0.3 * x + field + rnorm(n, 0, sqrt(0.7))))
+  design <- cbind(1, x)
+  parameters <- c(-1.5, 0.3, log(1.2), log(8), log(0.7 / 1.2))
+  for (link in c("probit", "cloglog", "cauchit")) {
+    engine <- make_adaptive_mcml_engine(
+      design, y, units, distances, family = "binomial", fix_tau2 = TRUE,
+      integrate_noise = TRUE,
+      invlink = c(named_inverse_link(link), link = link)
+    )
+    scope <- environment(engine$evaluate)
+    expect_true(scope$model$compiled && scope$integrated)
+    proposal <- engine$proposal_at(parameters)
+    for (shift in c(0, 0.05)) {
+      target <- parameters + c(0, 0, shift, -shift, shift)
+      draws <- matrix(rnorm(50 * engine$latent_dimension), 50)
+      same <- identical(target, parameters)
+      values <- if (same) proposal$values else scope$unpack(target)
+      spatial_root <- if (same) proposal$spatial_root else
+        factor_covariance(scope$covariance_at(values))
+      defensive <- defensive_rows(50L, scope$defensive_weight)
+      records <- scope$records_at(values)
+      in_r <- compute_log_weights_in_r(
+        draws, proposal, defensive, mean(defensive), values, spatial_root,
+        same, as.numeric(design %*% values$beta + records$offset),
+        scope$latent, scope$latent_map$columns,
+        function(eta) {
+          scope$kernel_at(values)$log_likelihood(eta, y, records$units_m)
+        }
+      )
+      same_as_r(engine$evaluate(target, draws, log_weights_only = TRUE,
+                                proposal_parameters = parameters), in_r)
+    }
+  }
+})
+
+test_that("a late proposal failure repeats the stage on fresh streams", {
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  calls <- list()
+  scenario <- "late"
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      calls[[length(calls) + 1L]] <<- seeds
+      global <- identical(type, "global")
+      before <- if (global && scenario == "early") 1L else 0L
+      failures <<- before + if (global && scenario == "late") 1L else 0L
+      list(estimate = start, outcome = "certified", certified = TRUE,
+           certificate = 0.01, free = seq_along(start),
+           information = diag(length(start)),
+           information_root = diag(length(start)),
+           failures_before_validation = before)
+    }
+  )
+  run <- function(which) {
+    scenario <<- which
+    calls <<- list()
+    type <<- "global"
+    fit_adaptive_mcml(engine, start = c(0, 0, 0), seed = 7L)
+  }
+  late <- run("late")
+  expect_length(calls, 2L)
+  expect_true(all(calls[[1]] != calls[[2]]))
+  # No stream of the repeated stage was drawn in the first attempt, the
+  # replicate's included.
+  expect_false(any(calls[[2]] %in% calls[[1]]))
+  expect_identical(calls[[1]][[7L]], 7L + 8001L)
+  expect_identical(calls[[2]][[7L]], 7L + 9001L)
+  expect_true(late$history[[1]]$late_fallback)
+  expect_identical(late$proposal, "laplace")
+  early <- run("early")
+  expect_length(calls, 2L)
+  expect_identical(calls[[1]], calls[[2]])
+  expect_false(early$history[[1]]$late_fallback)
+  none <- run("none")
+  expect_length(calls, 1L)
+  expect_null(none$history[[1]]$proposal_fallback)
+})
+
+test_that("every stream of a fit stays below 10,000 after its seed", {
+  # Runs whose seeds are 10,000 apart then share no bank, even when every
+  # stage is repeated after a late failure.
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  calls <- list()
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      calls[[length(calls) + 1L]] <<- seeds
+      failures <<- if (identical(type, "global")) 1L else 0L
+      list(estimate = start, outcome = "not certified", certified = FALSE,
+           certificate = 0.11, free = seq_along(start),
+           information = diag(length(start)),
+           information_root = diag(length(start)),
+           failures_before_validation = 0L)
+    }
+  )
+  fit <- fit_adaptive_mcml(engine, start = c(0, 0, 0), seed = 7L,
+                           maximum_budget = 1000000L, maximum_stages = 4L)
+  expect_length(fit$history, 4L)
+  expect_true(all(vapply(fit$history, function(stage) {
+    isTRUE(stage$late_fallback)
+  }, logical(1L))))
+  expect_length(calls, 8L)
+  streams <- unlist(calls) - 7L
+  expect_identical(anyDuplicated(streams), 0L)
+  expect_lt(max(streams), 10000L)
+})
+
+test_that("a stage whose global proposal fails at the start ends at once", {
+  failures <- 0L
+  engine <- list(latent_dimension = 1L,
+                 proposal_type = function() "global",
+                 set_anchor = function(parameters) {
+                   failures <<- failures + 1L
+                   invisible(FALSE)
+                 },
+                 proposal_failures = function() failures)
+  local_mocked_bindings(
+    optimise_on_bank = function(...) stop("the condemned stage was fitted")
+  )
+  stage <- run_certified_stage(engine, function(...) 0, NULL, c(0, 0), 10L,
+                               10L, 1:5, c(-10, -10), c(10, 10), TRUE, list())
+  expect_identical(stage$outcome, "no valid fit")
+  expect_match(stage$reason, "failed at the start")
+  expect_null(stage$failures_before_validation)
+})
+
+test_that("a failure at the Laplace estimate restarts from the starting values", {
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  laplace_estimate <- c(1, 1, 1)
+  automatic <- c(0, 0, 0)
+  calls <- list()
+  failing_starts <- list()
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      calls[[length(calls) + 1L]] <<- list(start = start, type = type,
+                                           seeds = seeds)
+      fails <- identical(type, "global") &&
+        any(vapply(failing_starts, identical, logical(1L), start))
+      if (fails) {
+        failures <<- 1L
+        return(list(estimate = start, outcome = "no valid fit",
+                    certified = FALSE, certificate = NA_real_,
+                    failed_at_start = TRUE))
+      }
+      list(estimate = start + 0.5, outcome = "certified", certified = TRUE,
+           certificate = 0.01, free = seq_along(start),
+           information = diag(length(start)),
+           information_root = diag(length(start)))
+    }
+  )
+  run <- function(fail_at, restart_start = automatic) {
+    failing_starts <<- fail_at
+    calls <<- list()
+    type <<- "global"
+    fit_adaptive_mcml(engine, start = laplace_estimate, seed = 7L,
+                      restart_start = restart_start)
+  }
+  starts_and_types <- function() {
+    list(starts = lapply(calls, `[[`, "start"),
+         types = vapply(calls, `[[`, "", "type"))
+  }
+
+  none <- run(list())
+  expect_length(calls, 1L)
+  expect_identical(calls[[1]]$start, laplace_estimate)
+  expect_false(none$start_replaced)
+  expect_identical(none$proposal_fallbacks, integer())
+
+  restarted <- run(list(laplace_estimate))
+  expect_identical(starts_and_types(), list(
+    starts = list(laplace_estimate, automatic),
+    types = c("global", "global")
+  ))
+  # No bank has been drawn when the first attempt ends.
+  expect_identical(calls[[1]]$seeds, calls[[2]]$seeds)
+  expect_true(restarted$start_replaced)
+  expect_identical(restarted$proposal, "global")
+  expect_identical(restarted$estimate, automatic + 0.5)
+  expect_identical(restarted$history[[1]]$proposal_failures, 0L)
+
+  both <- run(list(laplace_estimate, automatic))
+  expect_identical(starts_and_types(), list(
+    starts = list(laplace_estimate, automatic, laplace_estimate),
+    types = c("global", "global", "laplace")
+  ))
+  expect_false(both$start_replaced)
+  expect_identical(both$proposal_fallbacks, 1L)
+  expect_identical(both$proposal, "laplace")
+
+  without <- run(list(laplace_estimate), restart_start = NULL)
+  expect_identical(starts_and_types(), list(
+    starts = list(laplace_estimate, laplace_estimate),
+    types = c("global", "laplace")
+  ))
+  expect_false(without$start_replaced)
+})
+
+test_that("the stage after a fallback tries the global proposal again", {
+  failures <- 0L
+  type <- "global"
+  engine <- list(
+    reset_proposal_failures = function() failures <<- 0L,
+    proposal_failures = function() failures,
+    proposal_type = function() type,
+    use_proposal = function(new) type <<- new
+  )
+  types <- character()
+  local_mocked_bindings(
+    run_certified_stage = function(engine, objective, penalty, start, budget,
+                                   validation_budget, seeds, ...) {
+      types <<- c(types, type)
+      stage <- length(types)
+      if (stage == 1L) failures <<- 1L
+      list(estimate = start, certified = stage == 3L,
+           outcome = if (stage == 3L) "certified" else "not certified",
+           certificate = if (stage == 3L) 0.01 else 1,
+           free = seq_along(start), information = diag(length(start)),
+           information_root = diag(length(start)),
+           failures_before_validation = if (stage == 1L) 1L else 0L)
+    }
+  )
+  fit <- fit_adaptive_mcml(engine, start = c(0, 0, 0), seed = 7L)
+  expect_identical(types, c("global", "laplace", "global"))
+  expect_identical(fit$proposal, "global")
+  expect_identical(fit$proposal_fallbacks, 1L)
+  expect_true(fit$history[[1]]$proposal_fallback)
+  expect_null(fit$history[[2]]$proposal_fallback)
+})
+
+test_that("a restarted fit equals one started from the same values", {
+  coordinate <- seq(0, 1, length.out = 30)
+  covariate <- seq(-1, 1, length.out = 30)
+  trials <- rep(20, 30)
+  y <- round(trials * plogis(-0.4 + 0.5 * covariate +
+                               0.4 * sin(2 * pi * coordinate)))
+  make <- function() {
+    make_adaptive_mcml_engine(
+      D = cbind(1, covariate), y = y, units_m = trials,
+      distances = as.matrix(dist(coordinate)), family = "binomial"
+    )
+  }
+  automatic <- c(-0.4, 0.5, log(0.8), log(0.4))
+  laplace_estimate <- c(-1, 0.5, log(2), log(0.1))
+  fit <- function(engine, start, ...) {
+    fit_adaptive_mcml(
+      engine = engine, start = start, initial_budget = 1000,
+      validation_budget = 2000, maximum_budget = 1000, maximum_stages = 1,
+      seed = 2718, lower = c(-10, -10, -8, -8), upper = c(10, 10, 4, 4), ...
+    )
+  }
+  direct <- fit(make(), automatic)
+  real_iteration <- fit_global_proposal
+  calls <- 0L
+  local_mocked_bindings(fit_global_proposal = function(...) {
+    calls <<- calls + 1L
+    if (calls == 1L) {
+      return(list(converged = FALSE, change = 1e-4, iterations = 500L))
+    }
+    real_iteration(...)
+  })
+  expect_true(is.finite(direct$history[[1]]$refit_change))
+  restarted <- fit(make(), laplace_estimate, restart_start = automatic)
+  expect_true(restarted$start_replaced)
+  expect_identical(restarted$history[[1]]$start_failure,
+                   list(reason = "no convergence", refits = 500L,
+                        change = 1e-4))
+  # The search for the mode starts from where the failed attempt left it, and
+  # this survey leaves the scale nearly flat with the spatial variance at its
+  # bound, so the fits agree to the precision of the optimiser there.
+  expect_equal(restarted$estimate, direct$estimate, tolerance = 1e-3)
+  expect_equal(restarted$certificate, direct$certificate, tolerance = 0.05)
+})
+
+test_that("the mode search says when it reaches its iteration limit", {
+  latent_map <- make_latent_map(matrix(1:3, ncol = 1L), 3L)
+  mode_with <- function(maximum_iterations) {
+    find_latent_mode(
+      rep(0, 3), c(0, 1, 5), rep(5, 3), latent_map, diag(3),
+      make_family("binomial"),
+      rep(0, 3), maximum_iterations = maximum_iterations
+    )
+  }
+  expect_true(mode_with(1L)$reached_limit)
+  expect_false(mode_with(100L)$reached_limit)
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  engine$proposal_at(c(0, 0, 0), "laplace")
+  expect_identical(engine$mode_search_counts(),
+                   list(searches = 1L, at_limit = 0L, restarted = 0L))
+})
+
+test_that("a mode search that fails from the previous mode starts again from zero", {
+  set.seed(208)
+  sites <- 30L
+  coordinate <- runif(sites)
+  trials <- rep(50, sites)
+  y <- rbinom(sites, trials, 0.01)
+  precision <- solve(5 * exp(-as.matrix(dist(coordinate)) / 0.2) +
+                       diag(0.8, sites))
+  latent_map <- make_latent_map(cbind(seq_len(sites)), sites)
+  linkf <- make_inverse_link_functions("binomial", NULL, sites)
+  mu <- rep(-4.6, sites)
+  search_from <- function(start) {
+    find_latent_mode(
+      mu, y, trials, latent_map, precision, family_object("binomial", linkf),
+      start
+    )
+  }
+  # At a stale mode of -500 the probabilities are still positive, but the
+  # curvature of the logit link underflows to 0 / 0, so the Hessian there is
+  # not a number.
+  stale <- rep(-500, sites)
+  stale_terms <- family_object("binomial", linkf)$terms(mu + stale, y, trials)
+  expect_false(is.null(stale_terms))
+  expect_false(any(is.finite(stale_terms$curvature)))
+  from_zero <- search_from(numeric(sites))
+  from_stale <- search_from(stale)
+  expect_false(from_zero$restarted)
+  expect_true(from_stale$restarted)
+  expect_true(all(is.finite(from_stale$mode)))
+  expect_true(all(is.finite(from_stale$hessian)))
+  expect_identical(from_stale[c("mode", "hessian", "iterations",
+                                "reached_limit")],
+                   from_zero[c("mode", "hessian", "iterations",
+                               "reached_limit")])
+  # A start at the mode needs no restart.
+  expect_false(search_from(from_zero$mode)$restarted)
+})
+
+test_that("an importance distribution that is not finite gives no weight", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial",
+    proposal = "laplace"
+  )
+  # The compiled factor of a Hessian that is not a number is not a number
+  # either, without an error.
+  local_mocked_bindings(
+    inverse_cholesky_factor = function(hessian) hessian * NaN
+  )
+  draws <- matrix(0, nrow = 1L, ncol = engine$latent_dimension)
+  expect_error(engine$proposal_at(c(0, 0, 0)), "is not finite")
+  expect_identical(engine$evaluate(c(0, 0, 0), draws), -1e100)
+  expect_identical(engine$evaluate(c(0, 0, 0), draws, log_weights_only = TRUE),
+                   -Inf)
+  expect_identical(engine$proposal_errors(),
+                   list(count = 2L,
+                        first = "The importance distribution is not finite."))
+})
+
+test_that("a failed global proposal records why it failed", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  local_mocked_bindings(fit_global_proposal = function(...) NULL)
+  engine$proposal_at(c(0, 0, 0))
+  expect_identical(engine$first_proposal_failure(),
+                   list(reason = "a refit failed", refits = NA_integer_,
+                        change = NA_real_))
+  engine$reset_proposal_failures()
+  expect_null(engine$first_proposal_failure())
+})
+
+test_that("failures set aside from a mark are neither counted nor reused", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  global_fit <- fit_global_proposal
+  builds <- 0L
+  # The global fit fails wherever the intercept is above 4.
+  local_mocked_bindings(fit_global_proposal = function(mode, mu, ...) {
+    builds <<- builds + 1L
+    if (mu[1] > 4) NULL else global_fit(mode, mu, ...)
+  })
+  # An evaluation whose global fit fails uses the Laplace proposal.
+  set.seed(1)
+  draws <- matrix(stats::rnorm(60), nrow = 20)
+  expect_equal(engine$evaluate(c(5, 0, 0), draws),
+               engine$evaluate(c(5, 0, 0), draws, proposal_type = "laplace"),
+               tolerance = 1e-8)
+  engine$reset_proposal_failures()
+  engine$proposal_at(c(5, 1, 0))
+  failure <- engine$first_proposal_failure()
+  mark <- engine$mark_proposal_failures()
+  engine$proposal_at(c(6, 0, 0))
+  engine$proposal_at(c(0, 0, 0))
+  expect_identical(engine$proposal_failures(), 2L)
+  expect_identical(engine$restore_proposal_failures(mark), 1L)
+  expect_identical(engine$proposal_failures(), 1L)
+  expect_identical(engine$first_proposal_failure(), failure)
+  # A proposal that succeeded stays cached.
+  built <- builds
+  engine$proposal_at(c(0, 0, 0))
+  expect_identical(builds, built)
+  # A failed proposal built since the mark is built, and counted, again.
+  mark <- engine$mark_proposal_failures()
+  engine$proposal_at(c(6, 0, 0))
+  engine$restore_proposal_failures(mark)
+  engine$proposal_at(c(6, 0, 0))
+  expect_identical(engine$proposal_failures(), 2L)
+  # One built before the mark was counted then, and stays cached.
+  mark <- engine$mark_proposal_failures()
+  expect_identical(engine$restore_proposal_failures(mark), 0L)
+  built <- builds
+  engine$proposal_at(c(6, 0, 0))
+  expect_identical(builds, built)
+  expect_identical(engine$proposal_failures(), 2L)
+})
+
+test_that("a global failure only within the check for other maxima is set aside", {
+  engine <- make_adaptive_mcml_engine(
+    D = matrix(1, nrow = 3), y = c(0, 1, 2), units_m = c(5, 5, 5),
+    distances = as.matrix(dist(1:3)), family = "binomial"
+  )
+  global_fit <- fit_global_proposal
+  refit <- refit_from_anchor
+  # The global fit fails only at the screened point, whose intercept is 5, and
+  # so do the fixed refits from the stage's anchor that build the proposal there.
+  screened <- c(5, 0, -6)
+  kept <- "fitted"
+  screened_value <- NULL
+  as_optimised <- function(parameters) {
+    list(fit = list(par = parameters, objective = 1, convergence = 0L),
+         boundary = integer(), restarted = FALSE, restart_improved = FALSE)
+  }
+  local_mocked_bindings(
+    fit_global_proposal = function(mode, mu, ...) {
+      if (mu[1] > 4) NULL else global_fit(mode, mu, ...)
+    },
+    refit_from_anchor = function(anchor, mu, ...) {
+      if (mu[1] > 4) {
+        list(failed = TRUE, refits = 1L, change = NA_real_)
+      } else {
+        refit(anchor, mu, ...)
+      }
+    },
+    optimise_on_bank = function(objective, start, ...) as_optimised(start),
+    check_other_maxima = function(engine, objective, penalty, optimised,
+                                  fit_bank, ...) {
+      screened_value <<- objective(screened, fit_bank)
+      checked <- list(optimised = optimised, check = NULL, separate = FALSE,
+                      ambiguous = FALSE, screen = list(gate = "closed"),
+                      numerically_independent = FALSE)
+      if (identical(kept, "refit")) {
+        checked$optimised <- as_optimised(c(0.5, 0, 0))
+        checked$check <- data.frame(chosen = c(FALSE, TRUE))
+        checked$separate <- TRUE
+      }
+      checked
+    },
+    compute_observed_information = function(...) list(information = NULL)
+  )
+  run <- function() {
+    engine$use_proposal("global")
+    fit_adaptive_mcml(engine, start = c(0, 0, 0), dispersed = list(),
+                      initial_budget = 20L, validation_budget = 20L,
+                      maximum_stages = 1L)
+  }
+  fit <- run()
+  expect_true(is.finite(screened_value))
+  expect_identical(fit$proposal, "global")
+  expect_identical(fit$proposal_fallbacks, integer())
+  expect_null(fit$history[[1]]$proposal_fallback)
+  expect_identical(fit$history[[1]]$proposal_failures, 0L)
+  expect_identical(fit$history[[1]]$set_aside_failures, 1L)
+  # A refit that the check keeps is the fit of the stage, so its failures
+  # count and the stage is repeated with the Laplace proposal.
+  kept <- "refit"
+  fit <- run()
+  expect_identical(fit$proposal, "laplace")
+  expect_identical(fit$proposal_fallbacks, 1L)
+  expect_identical(fit$history[[1]]$proposal_failures, 1L)
+  expect_null(fit$history[[1]]$set_aside_failures)
+})
+
+test_that("a certified fit says one line and a refused one a short warning", {
+  light <- list(second_validation = list(relative_ess = 0.5, pareto_k = 0.3),
+                validation_budget = 5000L)
+  expect_equal(summarise_certification_bank(light),
+               list(effective_draws = 2500, pareto_k = 0.3))
+  expect_null(summarise_certification_bank(list()))
+  expect_identical(
+    describe_mcml_draws(list(stages = 3L, fitting_draws = 5000L,
+                             validation_draws = 25000L)),
+    paste0("Fitted in 3 stages, with 5,000 fitting and 25,000 validation draws ",
+           "at the last stage.")
+  )
+
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  outcome <- list(boundary_parameters = integer(), budget = 2500L,
+                  validation_budget = 5000L, outcome = "certified",
+                  certified = TRUE, certificate = 0.05, history = list(light),
+                  estimate = c(0, 0, 0, 0), start_replaced = TRUE,
+                  proposal_fallbacks = 1L,
+                  mode_searches = list(searches = 40L, at_limit = 3L))
+  reported <- capture_messages(
+    report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = TRUE)
+  )
+  expect_identical(
+    reported,
+    paste0(cli::symbol$tick, " Certified. The Monte Carlo error of the ",
+           "estimate is within 0.05 statistical standard errors (an ",
+           "approximate 95% bound, tolerance 0.1).")
+  )
+  expect_silent(
+    report_mcml_outcome(outcome, layout, tolerance = 0.1, messages = FALSE)
+  )
+  refused <- outcome
+  refused$certified <- FALSE
+  refused$outcome <- "not certified"
+  expect_warning(
+    report_mcml_outcome(refused, layout, tolerance = 0.1, messages = FALSE),
+    "Its approximate 95% bound is 0.05",
+    fixed = TRUE
+  )
+})
+
+test_that("reusing the spatial factorisation leaves the likelihood unchanged", {
+  make <- function() {
+    make_adaptive_mcml_engine(
+      D = cbind(1, c(-1, 0.5, 2, -0.3, 1.1)), y = c(0, 3, 5, 1, 2),
+      units_m = rep(6, 5), distances = as.matrix(dist(cbind(1:5, c(2, 1, 4, 3, 5)))),
+      family = "binomial"
+    )
+  }
+  set.seed(4)
+  bank <- matrix(stats::rnorm(50 * 5), nrow = 50)
+  first <- c(-0.5, 0.2, 0, log(2))
+  second <- replace(first, 2, 0.4)
+  reused <- make()
+  invisible(reused$evaluate(first, bank))
+  # The engine also starts each mode search from the previous mode, so the
+  # two paths agree to rounding, not to the last bit.
+  expect_equal(reused$evaluate(second, bank), make()$evaluate(second, bank),
+               tolerance = 1e-10)
+})
+
+# A survey of 40 locations with 20 tested each, a covariate and an indicator
+# of 12 urban locations, on the design scale that glgpm() passes to the fit.
+make_separation_survey <- function() {
+  set.seed(11)
+  sites <- 40L
+  covariate <- rnorm(sites)
+  urban <- rep(c(0, 1), c(28L, 12L))
+  trials <- rep(20, sites)
+  list(
+    D = standardize_design_matrix(
+      cbind("(Intercept)" = 1, x = covariate, urban = urban)
+    )$design,
+    y = rbinom(sites, trials, plogis(-1 + 0.5 * covariate)),
+    trials = trials, urban = urban,
+    distances = as.matrix(dist(cbind(runif(sites), runif(sites))))
+  )
+}
+
+capture_warnings <- function(expression) {
+  warnings <- character()
+  value <- withCallingHandlers(expression, warning = function(warning) {
+    warnings <<- c(warnings, conditionMessage(warning))
+    invokeRestart("muffleWarning")
+  })
+  list(value = value, warnings = warnings)
+}
+
+test_that("data without positives or without negatives are separated", {
+  survey <- make_separation_survey()
+  none <- find_separation(survey$D, 0 * survey$y, survey$trials, "binomial")
+  expect_identical(none$everywhere, "no positives")
+  expect_identical(none$observations, seq_len(40L))
+  expect_identical(none$no_positives, 40L)
+  expect_identical(none$coefficients, integer())
+  every <- find_separation(survey$D, survey$trials, survey$trials,
+                           "binomial")
+  expect_identical(every$everywhere, "only positives")
+  expect_identical(every$only_positives, 40L)
+  counts <- find_separation(survey$D, 0 * survey$y, rep(1, 40), "poisson")
+  expect_identical(counts$everywhere, "no positives")
+  # A location where nobody was tested carries no information.
+  untested <- find_separation(survey$D, 0 * survey$y,
+                              replace(survey$trials, 1L, 0), "binomial")
+  expect_identical(untested$observations, 2:40)
+  # Without an intercept, a covariate of both signs has a finite maximum.
+  expect_null(find_separation(survey$D[, "x", drop = FALSE], 0 * survey$y,
+                              survey$trials, "binomial"))
+})
+
+test_that("separating covariates are found, and near separation is not", {
+  survey <- make_separation_survey()
+  expect_null(find_separation(survey$D, survey$y, survey$trials, "binomial"))
+  separated <- replace(survey$y, survey$urban == 1, 0)
+  found <- find_separation(survey$D, separated, survey$trials, "binomial")
+  expect_identical(found$coefficients, 3L)
+  expect_identical(found$observations, which(survey$urban == 1))
+  expect_identical(found$no_positives, 12L)
+  expect_null(found$everywhere)
+  # One positive among the urban locations gives a finite maximum.
+  expect_null(find_separation(survey$D, replace(separated, 40L, 1),
+                              survey$trials, "binomial"))
+
+  # Individual data, where every observation has no positives or only
+  # positives, so the search runs over every coefficient.
+  set.seed(12)
+  people <- 600L
+  covariate <- rnorm(people)
+  urban <- rbinom(people, 1, 0.2)
+  D <- standardize_design_matrix(
+    cbind("(Intercept)" = 1, x = covariate, urban = urban)
+  )$design
+  y <- rbinom(people, 1, plogis(-1 + 0.5 * covariate))
+  single <- rep(1, people)
+  expect_null(find_separation(D, y, single, "binomial"))
+  separated <- replace(y, urban == 1, 0)
+  expect_identical(
+    find_separation(D, separated, single, "binomial")$coefficients, 3L
+  )
+  expect_null(find_separation(D, replace(separated, which(urban == 1)[1L], 1),
+                              single, "binomial"))
+  complete <- find_separation(D, as.numeric(covariate > 0.3), single,
+                              "binomial")
+  expect_identical(complete$coefficients, 2L)
+  expect_identical(complete$observations, seq_len(people))
+})
+
+test_that("coefficients at the bound of the search are found", {
+  limits <- list(coefficient_index = 1:2)
+  lower <- c(-30, -30, -20, -20)
+  upper <- c(30, 30, 20, 10)
+  expect_identical(find_coefficients_at_bound(c(-29.63, 0.1, -2, 0), limits,
+                                              lower, upper), 1L)
+  expect_identical(find_coefficients_at_bound(c(-3, 30, -20, 10), limits,
+                                              lower, upper), 2L)
+  # Covariance parameters at their bounds are not regression coefficients.
+  expect_identical(find_coefficients_at_bound(c(-3, 2, -20, 10), limits,
+                                              lower, upper), integer())
+  expect_identical(find_coefficients_at_bound(c(-30, 2, -2, 1), list(),
+                                              lower, upper), integer())
+})
+
+test_that("a fit to separated data ends without information or certificate", {
+  survey <- make_separation_survey()
+  y <- 0 * survey$y
+  engine <- make_adaptive_mcml_engine(
+    D = survey$D, y = y, units_m = survey$trials,
+    distances = survey$distances, family = "binomial"
+  )
+  # The check for other maxima has nothing to compare.
+  local_mocked_bindings(
+    check_other_maxima = function(...) stop("the check for other maxima ran")
+  )
+  arguments <- list(
+    engine = engine, start = c(-3, 0, 0, log(0.5), log(0.2)),
+    dispersed = list(), initial_budget = 500, validation_budget = 500,
+    seed = 5, lower = c(-30, -30, -30, -20, -20),
+    upper = c(30, 30, 30, 20, 10), variance_index = 4L,
+    linked_index = list(`4` = 5L), coefficient_index = 1:3,
+    separation = find_separation(survey$D, y, survey$trials, "binomial")
+  )
+  fit <- do.call(fit_adaptive_mcml, arguments)
+
+  expect_identical(fit$outcome, "no maximum")
+  expect_false(fit$certified)
+  expect_identical(fit$certificate, NA_real_)
+  expect_null(fit$covariance)
+  expect_length(fit$history, 1L)
+  expect_null(fit$history[[1L]]$information)
+  expect_identical(fit$separation$everywhere, "no positives")
+  expect_match(fit$reason, "separated")
+
+  # Without the separation, a coefficient that reaches its bound ends the fit
+  # in the same way.
+  arguments$separation <- NULL
+  arguments$dispersed <- NULL
+  arguments$lower[1L] <- -5
+  bounded <- do.call(fit_adaptive_mcml, arguments)
+  expect_identical(bounded$outcome, "no maximum")
+  expect_identical(bounded$coefficients_at_bound, 1L)
+  expect_identical(bounded$certificate, NA_real_)
+  expect_match(bounded$reason, "reached the bound")
+})
+
+test_that("a correction that reaches a bound is not certified", {
+  survey <- make_separation_survey()
+  engine <- make_adaptive_mcml_engine(
+    D = survey$D, y = survey$y, units_m = survey$trials,
+    distances = survey$distances, family = "binomial"
+  )
+  local_mocked_bindings(
+    correct_and_certify = function(engine, penalty, estimate, ...) {
+      list(estimate = replace(estimate, 1L, -30), certified = TRUE,
+           certificate = 1e-5, first_validation = list(seconds = 0),
+           second_validation = list(seconds = 0, score = numeric(5),
+                                    log_likelihood = 0))
+    }
+  )
+  fit <- fit_adaptive_mcml(
+    engine, start = c(-1, 0.5, 0, log(0.5), log(0.2)), initial_budget = 500,
+    validation_budget = 500, seed = 5, lower = c(-30, -30, -30, -20, -20),
+    upper = c(30, 30, 30, 20, 10), coefficient_index = 1:3
+  )
+
+  expect_identical(fit$outcome, "no maximum")
+  expect_false(fit$certified)
+  expect_identical(fit$certificate, NA_real_)
+  expect_null(fit$covariance)
+  expect_identical(fit$coefficients_at_bound, 1L)
+})
+
+test_that("glgpm warns when the likelihood has no maximum", {
+  fit_to <- function(data) {
+    capture_warnings(glgpm(
+      y ~ cov + gp(), data = data, family = "binomial",
+      denominator = denominator, control_mcmc = control_mcmc,
+      seed = fixture_seed,
+      control_mcml = fixture_control_mcml, messages = FALSE
+    ))
+  }
+  zero <- fit_to(transform(binomial_data, y = 0))
+  optimizer <- attr(zero$value, "optimizer")
+  expect_identical(optimizer$mcml_outcome, "no maximum")
+  expect_false(optimizer$mcml_certified)
+  expect_identical(optimizer$mcml_certificate, NA_real_)
+  expect_true(optimizer$mcml_no_maximum)
+  expect_true(all(is.na(diag(zero$value$covariance))))
+  expect_match(zero$warnings,
+               "None of the individuals tested is positive.*no maximum",
+               all = FALSE)
+  expect_false(any(grepl("maximum likelihood estimate\\.", zero$warnings)))
+  expect_output(print(zero$value), "No certificate. The likelihood has no maximum",
+                fixed = TRUE)
+  expect_match(check_fit(zero$value)$checks$finding,
+               "no individual tested is positive")
+
+  every <- fit_to(transform(binomial_data, y = denominator))
+  expect_identical(attr(every$value, "optimizer")$mcml_outcome, "no maximum")
+  expect_match(every$warnings, "Every individual tested is positive",
+               all = FALSE)
+
+  urban <- transform(binomial_data, urban = as.numeric(seq_along(y) <= 3L))
+  urban$y[urban$urban == 1] <- 0
+  separated <- capture_warnings(glgpm(
+    y ~ cov + urban + gp(), data = urban, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+    control_mcml = fixture_control_mcml, messages = FALSE
+  ))
+  optimizer <- attr(separated$value, "optimizer")
+  expect_identical(optimizer$mcml_outcome, "no maximum")
+  expect_identical(optimizer$mcml_separation$coefficients, "urban")
+  expect_identical(optimizer$mcml_separation$observations, 1:3)
+  expect_match(separated$warnings,
+               "fit to 3 observations with no positives.*\"urban\"",
+               all = FALSE)
+
+  # Complete separation by a continuous covariate takes the linear predictor
+  # of the locations where every individual is positive past 36.74, where the
+  # inverse logit rounds to one, well inside the bounds of the search.
+  complete <- fit_to(transform(binomial_data,
+                               y = ifelse(cov > 0, denominator, 0)))
+  optimizer <- attr(complete$value, "optimizer")
+  expect_identical(optimizer$mcml_outcome, "no maximum")
+  expect_identical(optimizer$mcml_separation$coefficients, "cov")
+  expect_identical(optimizer$mcml_separation$observations,
+                   seq_len(nrow(binomial_data)))
+  expect_match(complete$warnings, "\"cov\" grows in absolute value",
+               all = FALSE)
+  expect_match(check_fit(complete$value)$checks$finding, "through 'cov'")
+
+  # With one positive at an urban location the maximum is finite.
+  urban$y[1L] <- 1
+  near <- capture_warnings(glgpm(
+    y ~ cov + urban + gp(), data = urban, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+    control_mcml = fixture_control_mcml, messages = FALSE
+  ))
+  optimizer <- attr(near$value, "optimizer")
+  expect_false(optimizer$mcml_outcome == "no maximum")
+  expect_null(optimizer$mcml_separation)
+  expect_true(is.finite(optimizer$mcml_certificate))
+})
+
+test_that("the warning names coefficients that reached the bound", {
+  layout <- cov_par_layout(2L, fix_tau2 = FALSE)
+  bounded <- list(outcome = "no maximum", separation = NULL,
+                  coefficients_at_bound = 2L)
+  expect_warning(
+    report_mcml_outcome(bounded, layout, 0.1, FALSE,
+                        coefficient_names = c("(Intercept)", "x")),
+    "regression coefficient of \"x\" reached the bound of the search"
+  )
+  counts <- list(outcome = "no maximum",
+                 separation = list(everywhere = "no positives"))
+  expect_warning(
+    report_mcml_outcome(counts, layout, 0.1, FALSE,
+                        coefficient_names = c("(Intercept)", "x"),
+                        family = "poisson"),
+    "Every count is zero.*fitted mean tends to zero"
+  )
+})

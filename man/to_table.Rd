@@ -2,45 +2,71 @@
 % Please edit documentation in R/auxiliary.R
 \name{to_table}
 \alias{to_table}
-\title{Generate LaTeX Tables from RiskMap Model Fits and Validation}
+\alias{to_table.default}
+\title{Format RiskMap Results as a Table}
 \usage{
 to_table(object, ...)
+
+\method{to_table}{default}(object, digits = 3, col_names = NULL, ...)
 }
 \arguments{
-\item{object}{An object of class "RiskMap" resulting from a call to \code{\link{glgpm}}, or a summary object of class "summary.RiskMap.spatial.cv" containing cross-validation results.}
+\item{object}{An object of class "RiskMap" resulting from a call to
+\code{\link{glgpm}}, a "summary.RiskMap" object, a
+"summary.RiskMap_cross_validation" object, or a "RiskMap_prediction"
+object (see \code{\link{to_table.RiskMap_prediction}}).}
 
-\item{...}{Additional arguments to be passed to \code{\link[xtable]{xtable}} for customization.}
+\item{...}{Additional arguments passed to \code{\link[knitr]{kable}}.}
+
+\item{digits}{A non-negative integer giving the number of decimal places
+used to display numeric results.}
+
+\item{col_names}{Optional column names, replacing the default headers.}
 }
 \value{
-An object of class "xtable", which contains the formatted table as a \code{data.frame} and several attributes specifying table formatting options.
+An object of class "knitr_kable" that can be rendered directly.
 }
 \description{
-Converts a fitted "RiskMap" model or cross-validation results into an \code{xtable} object, formatted for easy export to LaTeX or HTML.
+Converts a fitted "RiskMap" model, cross-validation
+results or polygon predictions into a table that renders directly in
+Quarto, R Markdown, HTML, LaTeX and the R console.
 }
 \details{
-This function creates a summary table from a fitted "RiskMap" model or cross-validation results for multiple models, returning it as an \code{xtable} object.
+This function creates a presentation-ready summary table from a
+fitted "RiskMap" model or cross-validation results for multiple models.
+Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
+required for further analysis. Numeric values use fixed notation with
+\code{digits} decimal places, except when scientific notation is needed to
+represent very large or very small values clearly. Values that are
+compared share one notation: the estimate and confidence limits of a
+parameter, and one metric across models.
 
 When the input is a "RiskMap" model object, the table includes:
 \itemize{
-  \item Regression coefficients with their estimates, confidence intervals, and p-values.
-  \item Parameters for the spatial process.
-  \item Random effect variances.
-  \item Measurement error variance, if applicable.
+\item Regression coefficients with their estimates, confidence intervals, and p-values.
+\item Parameters for the spatial process.
+\item Random effect variances.
+\item The parameters of the family that were estimated, such as the
+measurement error variance of a Gaussian model.
 }
 
-When the input is a cross-validation summary object ("summary.RiskMap.spatial.cv"), the table includes:
+When the input is a cross-validation summary object ("summary.RiskMap_cross_validation"), the table includes:
 \itemize{
-  \item A row for each model being compared.
-  \item Performance metrics such as CRPS and SCRPS for each model.
+\item A row for each model being compared.
+\item Performance metrics such as CRPS and SCRPS for each model.
 }
+}
+\examples{
+data(italy_sim)
 
-The resulting \code{xtable} object can be further customized with additional formatting options and printed as a LaTeX or HTML table for reports or publications.
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+to_table(fit)
+to_table(fit, digits = 1)
 }
 \seealso{
-\code{\link{glgpm}}, \code{\link[xtable]{xtable}}, \code{\link{summary.RiskMap.spatial.cv}}
-}
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
-
-Claudio Fronterre \email{c.fronterr@lancaster.ac.uk}
+\code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
 }

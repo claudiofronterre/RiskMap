@@ -1,0 +1,375 @@
+#' Fast pairwise distances
+#'
+#' Compute Euclidean distances using the same ordering and attributes as
+#' [stats::dist()].
+#'
+#' @param coordinates Numeric matrix with locations in rows.
+#' @return A `dist` object.
+#' @noRd
+pairwise_distances <- function(coordinates) {
+  coordinates <- as.matrix(coordinates)
+  check_coordinates(coordinates)
+  distances <- cpp_pairwise_distances(coordinates)
+
+  structure(distances,
+            Size = nrow(coordinates),
+            Diag = FALSE,
+            Upper = FALSE,
+            method = "euclidean",
+            call = match.call(),
+            class = "dist")
+}
+
+#' Fast distances between two sets of locations
+#'
+#' @param first Numeric matrix with the first set of locations in rows.
+#' @param second Numeric matrix with the second set of locations in rows.
+#' @return A matrix with one row per location in `first` and one column per
+#'   location in `second`.
+#' @noRd
+cross_distances <- function(first, second) {
+  first <- as.matrix(first)
+  second <- as.matrix(second)
+  check_coordinates(first)
+  check_coordinates(second)
+  if (ncol(first) != ncol(second)) {
+    riskmap_bug("Coordinate matrices must have the same number of columns.")
+  }
+  cpp_cross_distances(first, second)
+}
+
+#' Check that coordinates are a finite numeric matrix
+#'
+#' The compiled distance kernels assume this, as argument checks are made on
+#' the R side.
+#' @param coordinates Numeric matrix with locations in rows.
+#' @return `TRUE`, invisibly. Raises an error otherwise.
+#' @noRd
+check_coordinates <- function(coordinates) {
+  if (!is.numeric(coordinates) || any(!is.finite(coordinates))) {
+    abort_input("The coordinates of the locations must be finite numbers.", arg = "data")
+  }
+  invisible(TRUE)
+}
+
+#' Index repeated two-dimensional coordinates
+#'
+#' @param coordinates Numeric matrix with locations in rows.
+#' @return A list containing unique locations in first-occurrence order and an
+#'   integer index mapping every input row to its unique location.
+#' @noRd
+index_coordinate_rows <- function(coordinates) {
+  coordinates <- as.matrix(coordinates)
+  if (ncol(coordinates) != 2L) {
+    abort_input("The locations must have two coordinates, without Z or M values.", arg = "data")
+  }
+
+  # Complex values provide an exact, collision-free key for a pair of finite
+  # doubles and avoid an O(n^2) row-by-row search.
+  keys <- complex(real = coordinates[, 1], imaginary = coordinates[, 2])
+  unique_rows <- !duplicated(keys)
+  unique_keys <- keys[unique_rows]
+
+  list(
+    coordinates = coordinates[unique_rows, , drop = FALSE],
+    index = match(keys, unique_keys)
+  )
+}
+
+#' Rescale spatial coordinates and the spatial scale
+#'
+#' The maximum observed pairwise distance is used for both fitting and future
+#' prediction locations. Rescaling the coordinates and the scale phi by the
+#' same value leaves every ratio of distance to scale unchanged.
+#'
+#' @param coordinates Numeric matrix containing observed locations.
+#' @param phi Optional scale parameter in the coordinate units.
+#' @return A list containing scaled coordinates, scaled `phi` when supplied,
+#'   and the distance scale.
+#' @noRd
+scale_spatial_coordinates <- function(coordinates, phi = NULL) {
+  coordinates <- as.matrix(coordinates)
+  if (nrow(coordinates) < 2) {
+    abort_input("The data must have at least two distinct locations.", arg = "data")
+  }
+  distance_scale <- max(pairwise_distances(coordinates))
+
+  if (!is.finite(distance_scale) || distance_scale <= 0) {
+    abort_input("The data must have at least two distinct locations.", arg = "data")
+  }
+
+  list(coordinates = coordinates / distance_scale,
+       phi = if (is.null(phi)) NULL else phi / distance_scale,
+       distance_scale = distance_scale)
+}
+
+#' Stable Cholesky factorisation
+#'
+#' Symmetrise a covariance matrix and factorise it. Scale-aware diagonal jitter
+#' is attempted only after the unmodified matrix fails.
+#'
+#' @param covariance Numeric square covariance matrix.
+#' @param context Short description used in diagnostics.
+#' @param allow_jitter Whether to try reported scale-aware diagonal jitter after
+#'   an unmodified factorisation fails.
+#' @param warn Whether to warn when a jitter was needed. A caller that
+#'   factorises many matrices warns once itself, from their `jitter`
+#'   attributes.
+#' @return An upper-triangular Cholesky factor. The applied jitter is stored in
+#'   the `jitter` attribute.
+#' @noRd
+factor_covariance <- function(covariance, context = "covariance matrix",
+                              allow_jitter = TRUE, warn = TRUE) {
+  covariance <- as.matrix(covariance)
+  if (nrow(covariance) != ncol(covariance)) {
+    riskmap_bug("The {context} must be square.")
+  }
+
+  covariance <- (covariance + t(covariance)) / 2
+  root <- tryCatch(chol(covariance), error = function(error) NULL)
+  if (!is.null(root)) {
+    attr(root, "jitter") <- 0
+    return(root)
+  }
+
+  if (!allow_jitter) {
+    riskmap_abort("The {context} is not positive definite.", class = "riskmap_error_fit")
+  }
+
+  covariance_scale <- max(abs(diag(covariance)), 1)
+  relative_jitter <- 10^seq(-12, -6)
+  for (relative_value in relative_jitter) {
+    jitter <- relative_value * covariance_scale
+    adjusted <- covariance
+    diag(adjusted) <- diag(adjusted) + jitter
+    root <- tryCatch(chol(adjusted), error = function(error) NULL)
+    if (!is.null(root)) {
+      attr(root, "jitter") <- jitter
+      if (warn) warn_jitter(context, jitter)
+      return(root)
+    }
+  }
+
+  riskmap_abort("The {context} is not positive definite, even with a diagonal jitter.", class = "riskmap_error_fit")
+}
+
+#' Warn that a factorisation needed a diagonal jitter
+#'
+#' `jitter` holds the jitter of each matrix factorised, 0 where none was
+#' needed. One matrix gives the jitter it needed, and several give how many
+#' needed one and the largest.
+#' @noRd
+warn_jitter <- function(context, jitter) {
+  needed <- sum(jitter > 0)
+  if (needed == 0L) return(invisible(NULL))
+  added <- format(max(jitter), scientific = TRUE)
+  if (length(jitter) == 1L) {
+    riskmap_warn("The {context} needed a diagonal jitter of {added} to be factorised.", class = "riskmap_warning_fit")
+  } else {
+    blocks <- length(jitter)
+    riskmap_warn("The {context} of {needed} of {blocks} blocks needed a diagonal jitter, of up to {added}, to be factorised.", class = "riskmap_warning_fit")
+  }
+  invisible(NULL)
+}
+
+#' Solve a positive-definite system from its Cholesky factor
+#'
+#' @param root Upper-triangular factor returned by factor_covariance().
+#' @param right_hand_side Numeric vector or matrix.
+#' @return Solution to `crossprod(root) %*% x = right_hand_side`.
+#' @noRd
+solve_from_cholesky <- function(root, right_hand_side) {
+  backsolve(root, forwardsolve(t(root), right_hand_side))
+}
+
+#' Compute a positive-definite log determinant from its Cholesky factor
+#'
+#' @param root Upper-triangular factor returned by factor_covariance().
+#' @return Log determinant of the original covariance matrix.
+#' @noRd
+log_determinant_from_cholesky <- function(root) {
+  2 * sum(log(diag(root)))
+}
+
+#' Compute prediction weights without forming a covariance inverse
+#'
+#' @param cross_covariance Prediction-by-observation cross-covariance matrix.
+#' @param root Upper-triangular Cholesky factor of the observation covariance.
+#' @return `cross_covariance %*% solve(covariance)`.
+#' @noRd
+cholesky_prediction_weights <- function(cross_covariance, root) {
+  t(solve_from_cholesky(root, t(cross_covariance)))
+}
+
+#' Validate conditional marginal variances
+#'
+#' @param marginal_variance Unconditional marginal variance.
+#' @param weights Prediction weights.
+#' @param cross_covariance Prediction-by-observation cross-covariance matrix.
+#' @return Non-negative conditional variances.
+#' @noRd
+conditional_variances <- function(marginal_variance, weights,
+                                  cross_covariance) {
+  variance <- marginal_variance - rowSums(weights * cross_covariance)
+  tolerance <- 100 * .Machine$double.eps *
+    max(1, abs(marginal_variance), abs(variance))
+
+  if (any(variance < -tolerance)) {
+    riskmap_abort("The conditional covariance gives clearly negative variances.", class = "riskmap_error_fit")
+  }
+
+  pmax(variance, 0)
+}
+
+#' Draw independent conditional Gaussian samples
+#'
+#' @param mean Numeric vector or matrix of conditional means.
+#' @param standard_deviation Numeric vector of conditional standard deviations.
+#' @param n_samples Number of samples.
+#' @return Matrix with prediction locations in rows and samples in columns.
+#' @noRd
+sample_independent_gaussian <- function(mean, standard_deviation, n_samples) {
+  n_prediction <- length(standard_deviation)
+  noise <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
+  mean + standard_deviation * noise
+}
+
+#' Draw correlated conditional Gaussian samples
+#'
+#' @param mean Numeric vector or matrix of conditional means.
+#' @param lower_root Lower-triangular covariance factor.
+#' @param n_samples Number of samples.
+#' @return Matrix with prediction locations in rows and samples in columns.
+#' @noRd
+sample_correlated_gaussian <- function(mean, lower_root, n_samples) {
+  n_prediction <- nrow(lower_root)
+  noise <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
+  mean + lower_root %*% noise
+}
+
+#' Draw joint predictions independently within spatial groups
+#'
+#' The conditioning calculation is shared across groups, while each group gets
+#' its own conditional covariance factorisation. Results are written into one
+#' preallocated matrix in the original row order, avoiding list-valued
+#' prediction data and a potentially much larger all-location covariance.
+#'
+#' @param prediction_coordinates Coordinates for all prediction locations.
+#' @param conditioning_coordinates Coordinates for the conditioning process.
+#' @param group_indices List of integer row indices, one per joint block.
+#' @param weight_function Function mapping cross-covariances to prediction
+#'   weights.
+#' @param conditional_signal Vector or matrix multiplied by those weights.
+#' @param marginal_variance Unconditional spatial variance.
+#' @param phi Matérn scale parameter on the internal coordinate scale.
+#' @param kappa Matérn smoothness.
+#' @param n_samples Number of predictive draws.
+#' @return Matrix with prediction locations in rows and samples in columns.
+#' @noRd
+grouped_joint_prediction <- function(
+    prediction_coordinates, conditioning_coordinates, group_indices,
+    weight_function, conditional_signal, marginal_variance, phi, kappa,
+    n_samples) {
+  samples <- matrix(
+    NA_real_, nrow = nrow(prediction_coordinates), ncol = n_samples
+  )
+  # The jitter each block needed, reported once after the loop.
+  jitter <- numeric(length(group_indices))
+
+  for (block in seq_along(group_indices)) {
+    index <- group_indices[[block]]
+    block_coordinates <- prediction_coordinates[index, , drop = FALSE]
+    distance <- cross_distances(block_coordinates, conditioning_coordinates)
+    cross_covariance <- marginal_variance * matern_correlation(
+      distance, phi = phi, kappa = kappa
+    )
+    weights <- weight_function(cross_covariance)
+    conditional_mean <- weights %*% conditional_signal
+    if (is.null(dim(conditional_signal))) {
+      conditional_mean <- as.numeric(conditional_mean)
+    }
+    prediction_covariance <- marginal_variance * matern_correlation(
+      pairwise_distances(block_coordinates), phi = phi, kappa = kappa,
+      return_sym_matrix = TRUE
+    )
+    conditional_covariance <- prediction_covariance -
+      weights %*% t(cross_covariance)
+    root <- factor_covariance(
+      conditional_covariance, "conditional prediction covariance",
+      warn = FALSE
+    )
+    jitter[block] <- attr(root, "jitter")
+    samples[index, ] <- sample_correlated_gaussian(
+      conditional_mean, t(root), n_samples
+    )
+  }
+  warn_jitter("conditional prediction covariance", jitter)
+
+  samples
+}
+
+#' Select an internal marginal-prediction batch size
+#'
+#' Keep each dense prediction-by-observation intermediate near 64 MiB. Small
+#' problems remain unbatched.
+#'
+#' @param n_prediction Number of prediction locations.
+#' @param n_conditioning Number of conditioning locations or observations.
+#' @param target_bytes Target size of one dense intermediate matrix.
+#' @return Integer batch size.
+#' @noRd
+marginal_prediction_batch_size <- function(
+    n_prediction, n_conditioning, target_bytes = 64 * 1024^2) {
+  if (n_prediction == 0 || n_conditioning == 0) {
+    return(n_prediction)
+  }
+
+  max(1L, min(n_prediction, floor(target_bytes / (8 * n_conditioning))))
+}
+
+#' Compute marginal spatial predictions in location batches
+#'
+#' @param prediction_coordinates Prediction coordinates.
+#' @param conditioning_coordinates Coordinates defining cross-covariances.
+#' @param weight_function Function mapping cross-covariances to weights.
+#' @param conditional_signal Vector or matrix multiplied by the weights.
+#' @param marginal_variance Unconditional spatial variance.
+#' @param phi Matérn scale parameter on the internal coordinate scale.
+#' @param kappa Matérn smoothness.
+#' @param n_samples Number of predictive samples.
+#' @param batch_size Number of prediction locations per batch.
+#' @param progress A bar from `progress_bar()`, moved by the locations of
+#'   each batch, or `NULL`.
+#' @return Matrix with prediction locations in rows and samples in columns.
+#' @noRd
+batched_marginal_prediction <- function(
+    prediction_coordinates, conditioning_coordinates, weight_function,
+    conditional_signal, marginal_variance, phi, kappa, n_samples,
+    batch_size, progress = NULL) {
+  n_prediction <- nrow(prediction_coordinates)
+  samples <- matrix(rnorm(n_prediction * n_samples), nrow = n_prediction)
+
+  for (start in seq.int(1L, n_prediction, by = batch_size)) {
+    index <- start:min(start + batch_size - 1L, n_prediction)
+    distance <- cross_distances(
+      prediction_coordinates[index, , drop = FALSE],
+      conditioning_coordinates
+    )
+    cross_covariance <- marginal_variance * matern_correlation(
+      distance, phi = phi, kappa = kappa
+    )
+    weights <- weight_function(cross_covariance)
+    conditional_mean <- weights %*% conditional_signal
+    if (is.null(dim(conditional_signal))) {
+      conditional_mean <- as.numeric(conditional_mean)
+    }
+    conditional_sd <- sqrt(conditional_variances(
+      marginal_variance, weights, cross_covariance
+    ))
+    samples[index, ] <- conditional_mean +
+      conditional_sd * samples[index, , drop = FALSE]
+    progress_tick(progress, length(index))
+  }
+
+  samples
+}

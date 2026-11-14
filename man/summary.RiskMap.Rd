@@ -4,43 +4,60 @@
 \alias{summary.RiskMap}
 \title{Summarize Model Fits}
 \usage{
-\method{summary}{RiskMap}(object, ..., conf_level = 0.95)
+\method{summary}{RiskMap}(object, ..., level = 0.95)
 }
 \arguments{
-\item{object}{An object of class "RiskMap" obtained as a result of a call to \code{\link{glgpm}}.}
+\item{object}{An object of class "RiskMap" from \code{\link{glgpm}}}
 
 \item{...}{other parameters.}
 
-\item{conf_level}{The confidence level for the intervals (default is 0.95).}
+\item{level}{Confidence level for intervals (default 0.95).}
 }
 \value{
-A list containing:
-\item{reg_coef}{A matrix with the estimates, standard errors, z-values, p-values, and confidence intervals for the regression coefficients.}
-\item{me}{A matrix with the estimates and confidence intervals for the measurement error variance, if applicable.}
-\item{sp}{A matrix with the estimates and confidence intervals for the spatial process parameters.}
-\item{tau2}{The fixed nugget variance, if applicable.}
-\item{ranef}{A matrix with the estimates and confidence intervals for the random effects variances, if applicable.}
-\item{conf_level}{The confidence level used for the intervals.}
-\item{family}{The family of the model (e.g., "gaussian").}
-\item{kappa}{The kappa parameter of the model.}
-\item{log.lik}{The log-likelihood of the model fit.}
-\item{cov_offset_used}{A logical indicating if a covariance offset was used.}
-\item{aic}{The Akaike Information Criterion (AIC) for the model, if applicable.}
+A list of class \code{"summary.RiskMap"} with parameter estimates,
+standard errors, and confidence intervals. For binomial, Poisson and negative binomial
+models, its component \code{mcml} reports certified Monte Carlo maximum
+likelihood: \code{certificate} (an approximate bound, with probability
+\code{level}, on the Monte Carlo error of the estimate in statistical
+standard errors, \code{NA} when there is none), \code{tolerance},
+\code{certified}, \code{outcome}, \code{correction_refused} (whether
+the Newton correction of the last stage did not converge),
+\code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
+last stage), \code{certification_bank} (the effective draws and Pareto
+shape of the certification draws), \code{checks_to_review}, the number
+of checks of \code{\link{check_fit}} that need a look,
+\code{starting_values}, where the starting values came from, either
+\code{"user"} (some or all given in \code{start_pars}, with RiskMap's
+defaults for the others), \code{"current"} (RiskMap's defaults) or
+\code{"transformed_gaussian"} (a Gaussian fit to the transformed data,
+which \code{glgpm()} uses when the Laplace approximation of the
+likelihood prefers it to the defaults), and \code{starting_reason},
+why the defaults were kept other than by being preferred in that
+comparison, such as \code{"re_terms"} when it is not made for a model
+with \code{re()} terms, \code{"transformed_failed"} when the Gaussian fit
+failed, or \code{"not_recorded"} for a fit saved by an earlier version
+that did not record why (\code{NULL} when the comparison chose the
+start). \code{mcml} is
+\code{NULL} for Gaussian models. The parameters of the family, such as
+the measurement error variance of a Gaussian model, are in
+\code{family_parameters}, a table of those that were estimated, and
+\code{held_family_parameters}, a list of those held at a given value.
 }
 \description{
-Provides a \code{summary} method for the "RiskMap" class that computes the standard errors and p-values for likelihood-based model fits.
+Provides a \code{summary} method for the "RiskMap" class that
+computes standard errors and confidence intervals for likelihood-based
+model fits
 }
-\details{
-This function computes the standard errors and p-values for the parameters of a "RiskMap" model, adjusting for the covariance structure if needed.
-}
-\note{
-Handles both Gaussian and non-Gaussian families, and accounts for fixed and random effects in the model.
-}
-\seealso{
-\code{\link{glgpm}}, \code{\link{coef.RiskMap}}
-}
-\author{
-Emanuele Giorgi \email{e.giorgi@lancaster.ac.uk}
+\examples{
+data(italy_sim)
 
-Claudio Fronterre \email{c.fronterr@lancaster.ac.uk}
+fit <- glgpm(
+  formula = y ~ gp(),
+  data = italy_sim[1:100,],
+  family = "gaussian",
+  messages = FALSE
+)
+
+summary(fit)
+summary(fit, level = 0.98)
 }

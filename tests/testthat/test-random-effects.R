@@ -1,0 +1,163 @@
+test_that("random effects are encoded consistently across data containers", {
+  base_data <- data.frame(
+    region = factor(
+      c("north", "south", "north", "south"),
+      levels = c("north", "south", "unused")
+    ),
+    province = c(10, 30, 10, 20),
+    x = seq_len(4),
+    y = seq_len(4)
+  )
+  tibble_data <- tibble::as_tibble(base_data)
+  gaussian_data <- st_as_sf(
+    base_data,
+    coords = c("x", "y"),
+    crs = 32634
+  )
+  sf_tibble <- st_as_sf(
+    tibble_data,
+    coords = c("x", "y"),
+    crs = 32634
+  )
+
+  expected <- prepare_random_effects(
+    base_data,
+    c("region", "province")
+  )
+
+  expect_identical(
+    prepare_random_effects(tibble_data, c("region", "province")),
+    expected
+  )
+  expect_identical(
+    prepare_random_effects(gaussian_data, c("region", "province")),
+    expected
+  )
+  expect_identical(
+    prepare_random_effects(sf_tibble, c("region", "province")),
+    expected
+  )
+  expect_identical(
+    expected$ID_re,
+    matrix(
+      c(1L, 2L, 1L, 2L, 1L, 2L, 1L, 3L),
+      ncol = 2L,
+      dimnames = list(NULL, c("region", "province"))
+    )
+  )
+  expect_identical(expected$re_unique$region, seq_len(2))
+  expect_identical(expected$re_unique_f$region, c("north", "south"))
+  expect_identical(expected$re_unique$province, seq_len(3))
+  expect_identical(expected$re_unique_f$province, c(10, 30, 20))
+})
+
+test_that("supported random-effect types retain their labels and ordering", {
+  data <- data.frame(
+    ordered_group = ordered(
+      c("medium", "low", "high"),
+      levels = c("low", "medium", "high")
+    ),
+    character_group = c("beta", "alpha", "beta"),
+    integer_group = c(20L, 10L, 20L)
+  )
+
+  result <- prepare_random_effects(
+    data,
+    c("ordered_group", "character_group", "integer_group")
+  )
+
+  expect_identical(result$ID_re[, "ordered_group"], c(2L, 1L, 3L))
+  expect_identical(
+    result$re_unique_f$ordered_group,
+    c("low", "medium", "high")
+  )
+  expect_identical(result$ID_re[, "character_group"], c(1L, 2L, 1L))
+  expect_identical(result$re_unique_f$character_group, c("beta", "alpha"))
+  expect_identical(result$ID_re[, "integer_group"], c(1L, 2L, 1L))
+  expect_identical(result$re_unique_f$integer_group, c(20L, 10L))
+})
+
+test_that("a single random effect retains a matrix index", {
+  result <- prepare_random_effects(
+    data.frame(group = factor(c("a", "b", "a"))),
+    "group"
+  )
+
+  expect_identical(dim(result$ID_re), c(3L, 1L))
+  expect_identical(colnames(result$ID_re), "group")
+  expect_identical(result$ID_re[, 1], c(1L, 2L, 1L))
+})
+
+test_that("one-row data retain all random-effect columns", {
+  result <- prepare_random_effects(
+    data.frame(
+      region = factor("north"),
+      province = 10
+    ),
+    c("region", "province")
+  )
+
+  expect_identical(dim(result$ID_re), c(1L, 2L))
+  expect_identical(colnames(result$ID_re), c("region", "province"))
+  expect_identical(result$ID_re[1, ], c(region = 1L, province = 1L))
+})
+
+test_that("no random effects return the established null representation", {
+  result <- prepare_random_effects(data.frame(value = 1:3), NULL)
+
+  expect_identical(result$n_re, 0L)
+  expect_null(result$names_re)
+  expect_null(result$ID_re)
+  expect_null(result$re_unique)
+  expect_null(result$re_unique_f)
+})
+
+test_that("invalid random-effect variables fail informatively", {
+  expect_error(
+    prepare_random_effects(
+      data.frame(group = c("a", NA)),
+      "group"
+    ),
+    "has missing values",
+    fixed = TRUE
+  )
+  expect_error(
+    prepare_random_effects(
+      data.frame(group = c(1, Inf)),
+      "group"
+    ),
+    "has values that aren't finite",
+    fixed = TRUE
+  )
+  expect_error(
+    prepare_random_effects(
+      data.frame(group = c(TRUE, FALSE)),
+      "group"
+    ),
+    "must be a factor, character, integer or numeric vector",
+    fixed = TRUE
+  )
+  expect_error(
+    prepare_random_effects(data.frame(value = 1:2), "group"),
+    "must have the random-effect column",
+    fixed = TRUE
+  )
+})
+
+test_that("glgpm simulations support random effects in tibble-backed sf data", {
+  data <- tibble::tibble(
+    y = 0,
+    group = factor(c("a", "a", "b", "b")),
+    x = c(0, 1, 0, 1),
+    z = c(0, 0, 1, 1)
+  )
+  data <- st_as_sf(data, coords = c("x", "z"), crs = 32634)
+
+  model <- specify_glgpm(y ~ gp(kappa = 0.5) + re(group), data, "gaussian",
+                         list(beta = 0, sigma2 = 1, phi = 1,
+                              sigma2_me = 0.1, sigma2_re = 0.2))
+  result <- simulate_glgpm(model, nsim = 2, seed = 1)
+  expect_identical(result$samples$data[1, , "group_effect"],
+               result$samples$data[2, , "group_effect"])
+  expect_identical(unname(result$model$parameters$sigma2_re), 0.2)
+})

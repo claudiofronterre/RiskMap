@@ -1,0 +1,238 @@
+## Validation for issue #92: `estimate` is a named list (beta, sigma2, phi,
+## [nu2], [sigma2_me], [sigma2_re]) built directly by the fitting engines
+## (glgpm_lm()/glgpm_nong(), via structure_estimate()), and coef.RiskMap()/
+## summary.RiskMap() read from it directly rather than recomputing positions
+## themselves.
+##
+## A flat named vector can't be keyed safely by name: a covariate literally
+## named e.g. "sigma2" collides with the spatial variance parameter's own
+## name, silently corrupting name-based lookups (reported against the
+## flat-vector version of this fix - see the last test below). Nesting
+## `estimate` keeps those namespaces separate; `unlist(estimate)` (used
+## internally by summary.RiskMap() to line up against `covariance`, which is
+## estimated as one joint matrix over every parameter) disambiguates the same
+## way, e.g. "beta.sigma2" vs "sigma2".
+
+test_that("estimate is a list with numeric beta/sigma2/phi for every model configuration", {
+  fits <- list(gaussian_model, gaussian_offset_model, gaussian_intercept_model,
+               binomial_model, poisson_model)
+
+  for (fit in fits) {
+    expect_type(fit$estimate, "list")
+    expect_type(fit$estimate$beta, "double")
+    expect_type(fit$estimate$sigma2, "double")
+    expect_type(fit$estimate$phi, "double")
+  }
+})
+
+test_that("covariance is named to match unlist(estimate) on both dimensions", {
+  fits <- list(gaussian_model, gaussian_offset_model, gaussian_intercept_model,
+               binomial_model, poisson_model)
+
+  for (fit in fits) {
+    flat_names <- names(unlist(fit$estimate))
+    expect_identical(dimnames(fit$covariance), list(flat_names, flat_names))
+  }
+})
+
+test_that("estimate reproduces coef.RiskMap() for a model with random effects (no nugget)", {
+  co <- coef(gaussian_model)
+  est <- gaussian_model$estimate
+
+  expect_setequal(names(est), c("beta", "sigma2", "phi", "sigma2_me", "sigma2_re"))
+  expect_equal(est$beta, co$beta, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2), co$sigma2, ignore_attr = TRUE)
+  expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2_me), co$sigma2_me, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2_re), co$sigma2_re, ignore_attr = TRUE)
+  expect_named(co$sigma2_re, "i")
+})
+
+test_that("estimate reproduces coef.RiskMap() for an intercept-only model", {
+  co <- coef(gaussian_intercept_model)
+  est <- gaussian_intercept_model$estimate
+
+  expect_setequal(names(est), c("beta", "sigma2", "phi", "sigma2_me"))
+  expect_equal(est$beta, co$beta, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2), co$sigma2, ignore_attr = TRUE)
+  expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
+  expect_equal(exp(est$sigma2_me), co$sigma2_me, ignore_attr = TRUE)
+})
+
+test_that("coef.RiskMap() does not mislabel a single covariate as the intercept when the model has none (#92)", {
+  ## Bug: coef.RiskMap() used to relabel beta to "Intercept" whenever there
+  ## was exactly one coefficient, regardless of whether it actually was the
+  ## intercept - so `y ~ 0 + cov + gp()` (no intercept, one covariate)
+  ## reported "Intercept" instead of "cov".
+  ##
+  ## Skipped on Windows: this fit's optimizer path pushes `phi` far enough
+  ## that the Matern correlation matrix built inside log.lik() comes out
+  ## singular under Windows' BLAS/LAPACK (but not macOS/Linux's) - a
+  ## pre-existing numerical fragility unrelated to the naming bug this test
+  ## checks (#92).
+  skip_on_os("windows")
+
+  fit <- glgpm(y ~ 0 + cov + gp(), data = gaussian_data, family = "gaussian",
+              messages = FALSE)
+
+  expect_identical(colnames(fit$D), "cov")
+  expect_named(fit$estimate$beta, "cov")
+  expect_named(coef(fit)$beta, "cov")
+  expect_identical(rownames(summary(fit)$reg_coef), "cov")
+})
+
+test_that("estimate reproduces coef.RiskMap() for a model with an estimated nugget and fix_var_me", {
+  ## gaussian_offset_model: gp(nugget = TRUE), fix_var_me = 0, no random effects
+  co <- coef(gaussian_offset_model)
+  est <- gaussian_offset_model$estimate
+
+  expect_setequal(names(est), c("beta", "sigma2", "phi", "nu2"))
+  ## tau2 isn't a raw parameter: the engines fit nu2 = tau2 / sigma2 on the log
+  ## scale, so reconstructing tau2 needs both entries added before exp()
+  expect_equal(exp(est$nu2 + est$sigma2), co$tau2, ignore_attr = TRUE)
+})
+
+test_that("estimate reproduces coef.RiskMap() for binomial and poisson models with random effects", {
+  for (fit in list(binomial_model, poisson_model)) {
+    co <- coef(fit)
+    est <- fit$estimate
+
+    expect_setequal(names(est), c("beta", "sigma2", "phi", "sigma2_re"))
+    expect_equal(est$beta, co$beta, ignore_attr = TRUE)
+    expect_equal(exp(est$sigma2), co$sigma2, ignore_attr = TRUE)
+    expect_equal(exp(est$phi), co$phi, ignore_attr = TRUE)
+    expect_equal(exp(est$sigma2_re), co$sigma2_re, ignore_attr = TRUE)
+    expect_named(co$sigma2_re, "i")
+  }
+})
+
+test_that("estimate correctly names sigma2_me even when the nugget is also estimated", {
+  ## Before the #92 name-based swap-over, coef.RiskMap() never assigned the
+  ## name "sigma2_me" internally in this combination (nugget estimated +
+  ## sigma2_me estimated) - see the #92 issue comment. Its *value* was still
+  ## extracted correctly by position, so output was numerically unaffected;
+  ## this guards against that gap reappearing now that lookup is name-based.
+  set.seed(2)
+  n_loc <- 6
+  coords_u <- cbind(runif(n_loc, 0, 10000), runif(n_loc, 0, 10000))
+  coords_rep <- coords_u[rep(seq_len(n_loc), each = 2), ]
+  d <- data.frame(x = coords_rep[, 1], z = coords_rep[, 2], cov = rnorm(2 * n_loc))
+  d$y <- 1 + 0.5 * d$cov + rnorm(2 * n_loc)
+  dup_data <- sf::st_as_sf(d, coords = c("x", "z"), crs = 32637)
+
+  fit <- glgpm(y ~ cov + gp(nugget = TRUE), data = dup_data, family = "gaussian",
+              messages = FALSE)
+
+  co <- coef(fit)
+  est <- fit$estimate
+
+  expect_setequal(names(est), c("beta", "sigma2", "phi", "nu2", "sigma2_me"))
+  expect_equal(exp(est$sigma2_me), co$sigma2_me, ignore_attr = TRUE)
+  expect_equal(exp(est$nu2 + est$sigma2), co$tau2, ignore_attr = TRUE)
+})
+
+test_that("a covariate named after a parameter no longer corrupts estimates (#92)", {
+  ## Regression test for the bug a colleague reported: with `estimate` as one
+  ## flat named vector, a covariate literally called "sigma2" collided with
+  ## the spatial variance parameter's own name, and name-based lookups (e.g.
+  ## estimate["sigma2"] in coef.RiskMap()) silently returned the wrong value
+  ## - the covariate's beta coefficient, exponentiated, instead of the actual
+  ## spatial variance. Structuring `estimate` as a list (beta$sigma2 vs
+  ## top-level $sigma2) keeps those namespaces separate.
+  clashing_data <- gaussian_data
+  clashing_data$sigma2 <- clashing_data$cov
+
+  fit_clash <- glgpm(y ~ sigma2 + gp() + re(i), data = clashing_data,
+                     family = "gaussian", messages = FALSE)
+  fit_ref   <- glgpm(y ~ cov + gp() + re(i), data = gaussian_data,
+                     family = "gaussian", messages = FALSE)
+
+  co_clash <- coef(fit_clash)
+  co_ref   <- coef(fit_ref)
+
+  expect_identical(co_clash$sigma2, co_ref$sigma2)
+  expect_identical(co_clash$phi, co_ref$phi)
+  expect_equal(co_clash$beta, co_ref$beta, ignore_attr = TRUE)
+  expect_equal(co_clash$sigma2_re, co_ref$sigma2_re, ignore_attr = TRUE)
+
+  ## summary()'s standard errors go through the separate unlist()-based
+  ## delta-method path, so check that's unaffected by the name clash too
+  expect_equal(summary(fit_clash)$sp, summary(fit_ref)$sp, ignore_attr = TRUE)
+})
+
+test_that("cov_par_layout() places sigma2_me before sigma2_re, consistently", {
+  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, family_parameters = "sigma2_me", n_re = 2)
+
+  expect_identical(layout$index$beta, 1:2)
+  expect_identical(layout$index$sigma2, 3)
+  expect_identical(layout$index$phi, 4)
+  expect_identical(layout$index$sigma2_me, 5)
+  expect_identical(layout$index$sigma2_re, c(6, 7))
+  expect_identical(layout$length, 7)
+  expect_null(layout$index$nu2)
+})
+
+test_that("cov_par_layout() omits slots that don't apply", {
+  no_re <- cov_par_layout(p = 1, fix_tau2 = FALSE, n_re = 0)
+  expect_null(no_re$index$nu2)
+  expect_null(no_re$index$sigma2_me)
+  expect_null(no_re$index$sigma2_re)
+  expect_identical(no_re$length, 3)
+
+  with_nugget <- cov_par_layout(p = 1, fix_tau2 = TRUE, family_parameters = "sigma2_me", n_re = 1)
+  expect_identical(with_nugget$index$nu2, 4)
+  expect_identical(with_nugget$index$sigma2_me, 5)
+  expect_identical(with_nugget$index$sigma2_re, 6)
+})
+
+test_that("pack_cov_pars() places deliberately different sigma2_re and sigma2_me at the layout's own positions (#135/#117)", {
+  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, family_parameters = "sigma2_me", n_re = 2)
+
+  packed <- pack_cov_pars(layout, sigma2 = 1, phi = 2,
+                          family = list(sigma2_me = 999),
+                          sigma2_re = c(100, 200))
+
+  ## pack_cov_pars() returns the non-beta parameters only (start_cov_pars's
+  ## existing contract), so positions are offset by p = 2
+  p <- length(layout$index$beta)
+  expect_identical(packed[layout$index$sigma2 - p], 1)
+  expect_identical(packed[layout$index$phi - p], 2)
+  expect_identical(packed[layout$index$sigma2_me - p], 999)
+  expect_identical(packed[layout$index$sigma2_re - p], c(100, 200))
+
+  ## the specific bug: before the fix, reading this same vector back with the
+  ## *indexing* order (sigma2_me before sigma2_re) would have returned the
+  ## first sigma2_re value where sigma2_me belongs, and sigma2_me's value
+  ## folded into sigma2_re - i.e. exactly what packing and indexing now both
+  ## agree not to do
+  expect_false(isTRUE(all.equal(unname(packed[layout$index$sigma2_me - p]),
+                                unname(packed[layout$index$sigma2_re - p][1]))))
+})
+
+test_that("structure_estimate() and the fitting engines' indices agree on sigma2_me vs sigma2_re", {
+  ## structure_estimate() builds its positions from the same cov_par_layout()
+  ## the fitting engines use, so unpacking a vector built by pack_cov_pars()
+  ## recovers exactly what was packed - the three steps  (packing, indexing,
+  ## unpacking) now can't disagree with each other.
+  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, family_parameters = "sigma2_me", n_re = 2)
+  packed <- pack_cov_pars(layout, sigma2 = 1, phi = 2,
+                          family = list(sigma2_me = 999),
+                          sigma2_re = c(100, 200))
+  par <- c(10, 20, packed)  # arbitrary beta values prepended
+
+  est <- structure_estimate(par, beta_names = c("(Intercept)", "cov"),
+                            fix_tau2 = FALSE, family_parameters = "sigma2_me",
+                            re_names = c("i", "j"))
+
+  expect_identical(est$sigma2_me, 999)
+  expect_identical(unname(est$sigma2_re), c(100, 200))
+})
+
+test_that("glgpm fits gaussian re() + estimated measurement error with deliberately different sigma2_re/sigma2_me starting values (#135/#117)", {
+  fit <- glgpm(y ~ cov + gp() + re(i, j), data = gaussian_data, family = "gaussian",
+              messages = FALSE,
+              start_pars = list(sigma2_re = c(5, 10), sigma2_me = 0.01))
+
+  expect_s3_class(fit, "RiskMap")
+  expect_true(all(is.finite(unlist(fit$estimate))))
+})

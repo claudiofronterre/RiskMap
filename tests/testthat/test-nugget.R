@@ -1,0 +1,97 @@
+test_that("nugget and fix_var_me cannot both be estimated when family is gaussian", {
+  data <- data.frame(
+    x = c(1, 2, 3),
+    y = c(0, 1, 2),
+    z = c(0, 1, 2),
+    denominator = c(4, 4, 4)
+  )
+
+  gaussian_data <- sf::st_as_sf(data, coords = c("x", "y"), crs = sf::st_crs(4326))
+
+  expect_input_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", messages = FALSE), "formula")
+  expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fix_var_me = 1, messages = FALSE))
+  zero_error_fit <- glgpm(
+    z ~ gp(), gaussian_data, "gaussian", fix_var_me = 0, messages = FALSE
+  )
+  expect_identical(zero_error_fit$fix_var_me, 0)
+  expect_lt(max(abs(zero_error_fit$grad_MLE)), 0.001)
+  expect_no_error(suppressWarnings(glgpm(
+    z ~ gp(nugget = TRUE), gaussian_data, "binomial",
+    denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
+    control_mcml = fixture_control_mcml, messages = FALSE
+  )))
+
+  two_location_data <- rbind(data,
+                             data.frame(
+                              x = 1,
+                              y = 0,
+                              z = 3,
+                              denominator = 4
+                            ))
+
+  gaussian_data <- sf::st_as_sf(two_location_data, coords = c("x", "y"), crs = sf::st_crs(4326))
+
+  expect_error(
+    glgpm(z ~ gp(), gaussian_data, "gaussian", fix_var_me = 0,
+          messages = FALSE),
+    "is singular, whatever the parameters"
+  )
+
+  expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", messages = FALSE))
+
+  result <- glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fix_var_me = 1, messages = FALSE)
+  expect_true("tau2" %in% names(coef(result)))
+
+  result <- glgpm(z ~ gp(nugget = 1), gaussian_data, "gaussian", messages = FALSE)
+  expect_identical(summary(result)$tau2, 1)
+  expect_lt(max(abs(result$grad_MLE)), 0.001)
+
+})
+
+test_that("nugget_ratio distinguishes estimated and fixed nuggets", {
+  expect_identical(nugget_ratio(FALSE, sigma2 = 2), 0)
+  expect_identical(nugget_ratio(0.6, sigma2 = 2), 0.3)
+  expect_equal(nugget_ratio(TRUE, sigma2 = 2, log_nu2 = log(0.3)), 0.3)
+  expect_error(
+    nugget_ratio(TRUE, sigma2 = 2),
+    class = "riskmap_error_internal"
+  )
+})
+
+test_that("a non-Gaussian estimated nugget uses the global proposal", {
+  set.seed(2029)
+  n <- 80L
+  denominator <- sample(10:50, n, replace = TRUE)
+  covariate <- rnorm(n)
+  data <- data.frame(
+    y = rbinom(n, denominator, plogis(-0.5 + 0.4 * covariate)),
+    covariate = covariate,
+    denominator = denominator,
+    x = runif(n, 0, 100000),
+    z = runif(n, 0, 100000)
+  )
+  spatial_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32630)
+  control <- set_control_mcmc(
+    n_sim = 500,
+    burnin = 100,
+    thin = 4
+  )
+
+  fit <- glgpm(
+    y ~ covariate + gp(nugget = TRUE),
+    data = spatial_data,
+    denominator = denominator,
+    family = "binomial",
+    control_mcmc = control,
+    control_mcml = fixture_control_mcml,
+    seed = 2029,
+    messages = FALSE
+  )
+
+  expect_true(all(is.finite(fit$grad_MLE)))
+  expect_true(is.finite(coef(fit)[["tau2"]]))
+  stage <- fit$mcml_history[[1L]]
+  expect_identical(stage$proposal, "global")
+  expect_true(is.finite(stage$certificate))
+  expect_lte(stage$fit_diagnostics$relative_ess, 1)
+})
