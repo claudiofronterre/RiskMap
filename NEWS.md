@@ -738,6 +738,16 @@ the starting values were better in 24 of 30 and worse in none, and `plogis`
 given as a function now reproduces the fits of the canonical logit link to
 within 1e-6 standard errors.
 
+- With a link not known to make the likelihood log-concave, cauchit or an
+inverse link given in `invlink`, the global proposal now floors the curvature
+of its factors smoothly at the bound that keeps its precision positive
+definite, so that the proposal is a smooth function of the parameters, as the
+certificate assumes. The floor had a kink where it starts to act, which it
+does in nearly every refit under cauchit and the imperfect test. Fits with the
+logit, probit, cloglog and log links are unchanged. In 56 paired fits every
+certified fit kept its certificate and its stages, and its estimates moved by
+at most 2e-6 standard errors.
+
 - `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
 in `family`, as `glm()` does, so a link can be named as in
 `family = binomial("probit")`. Binomial models take the logit, probit, cloglog
