@@ -37,8 +37,9 @@ jobs:
           extra-packages: any::pkgdown, local::.
           needs: website
 
-      # Notes for agents working on the code are not part of the website.
-      - name: Leave agent notes out of the site
+      # pkgdown publishes every Markdown file at the top of the repository,
+      # and these notes for developers are not pages of the website.
+      - name: Leave developer notes out of the site
         run: rm -f CLAUDE.md AGENTS.md
 
       - name: Clean site
