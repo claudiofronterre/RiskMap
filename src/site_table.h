@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <limits>
 #include <list>
+#include <memory>
+#include <stdexcept>
 #include <vector>
 #include "likelihood_kernel.h"
 
@@ -42,6 +44,24 @@
 // computed by the same rules applied to the outer integral, with the inner
 // h_u from their record table at vi, and tabled in the same way, one table per
 // exact pair (vo, vi), up to 16 of them.
+//
+// A group is a set of units at one location whose linear predictors differ,
+// such as the children of a household who differ in sex or birth order, under
+// an effect of variance v that they share. Its members are units j with pair
+// (y_j, m_j) and linear predictor x + r_j, where x is the linear predictor of
+// the group's record and r_j the member's relative linear predictor, which
+// depends on the regression coefficients. Its log-likelihood
+//   h_g(x; v) = log integral of N(u; 0, v) prod_j g(y_j, m_j, x + r_j + u) du
+// is that of a record whose kernel is the sum of its members' kernels, so it
+// takes the rules above. A location of groups nests them under an outer
+// effect of variance vo, such as the nugget,
+//   H_l(x; vo, v) = log integral of N(z; 0, vo) prod_g exp(h_g(x + z; v)) dz,
+// as a nested pattern nests units that share x. Since r depends on the
+// coefficients, these tables are keyed on the state of the relative linear
+// predictors (set_relative()) as well as on the variances, up to 6 of each
+// kind. Each group and location holds only the grid cells it has needed, in a
+// strip that grows as the draws reach further. A cell is a pure function of
+// the state, the variances and its grid point, as in the tables above.
 
 namespace riskmap_site {
 
@@ -738,18 +758,77 @@ struct PatternTerms {
   double extra() const { return last_extra; }
 };
 
+// The cells of one group or location filled so far, for the grid points from
+// `first` on.
+struct Strip {
+  int first = 0;
+  std::vector<double> H, H1, H2;
+  std::vector<unsigned char> filled;
+};
+
+// The strips of every group, or of every location of groups, at one state of
+// the relative linear predictors (`relative`, numbered `state`) and the
+// variance v of the groups, or the outer variance v and inner variance vi of
+// the locations.
+struct StripTable {
+  long state = 0;
+  double v = 0, vi = 0;
+  std::uint64_t used = 0;
+  std::shared_ptr<const std::vector<double>> relative;
+  std::vector<Strip> strips;
+};
+
+// The sum over a group's members of their kernels at eta + r_j.
+struct GroupTerms {
+  static constexpr bool has_extra = false;
+  const SiteTable& sites;
+  const int group;
+  const double* relative;
+  void operator()(const double eta, double& k, double& k1, double& k2) const;
+  double extra() const { return 0.0; }
+};
+
+// The sum over a location's groups of h_g at the group table `inner` (or of
+// the groups' kernels when it is null) and its first two derivatives at eta,
+// and with has_extra the sum of (h'' + h'^2) / 2, the derivative of the sum
+// in the inner variance.
+template <bool Extra>
+struct LocationTerms {
+  static constexpr bool has_extra = Extra;
+  SiteTable& sites;
+  StripTable* inner;
+  const int location;
+  const double* relative;
+  mutable double last_extra = 0.0;
+  void operator()(const double eta, double& k, double& k1, double& k2) const;
+  double extra() const { return last_extra; }
+};
+
 class SiteTable {
  public:
   // `patterns` holds the 0-based pairs of each nested pattern's units and
   // `summed` the 0-based pair of each pattern's units summed into one record.
+  // `groups` holds the 0-based pairs of each group's members, whose relative
+  // linear predictors are numbered in that order across the groups,
+  // `locations` the 0-based groups of each location of groups, and `whole`
+  // for each location the 0-based group of all its members together.
   SiteTable(std::vector<double> y, std::vector<double> m, const bool poisson,
             Rule rule, CustomArrays custom = CustomArrays(),
             const bool has_custom = false,
             std::vector<std::vector<int>> patterns = {},
-            std::vector<int> summed = {})
+            std::vector<int> summed = {},
+            const std::vector<std::vector<int>>& groups = {},
+            std::vector<std::vector<int>> locations = {},
+            std::vector<int> whole = {})
       : y_(std::move(y)), m_(std::move(m)), rule_(std::move(rule)),
         custom_(std::move(custom)), patterns_(std::move(patterns)),
-        summed_(std::move(summed)) {
+        summed_(std::move(summed)), locations_(std::move(locations)),
+        whole_(std::move(whole)) {
+    group_start_.assign(1, 0);
+    for (const std::vector<int>& members : groups) {
+      member_pair_.insert(member_pair_.end(), members.begin(), members.end());
+      group_start_.push_back(static_cast<int>(member_pair_.size()));
+    }
     kernel_.poisson = poisson;
     if (has_custom) {
       custom_.poisson = poisson;
@@ -781,6 +860,20 @@ class SiteTable {
       }
       pattern_constant_[p] = total - plain(summed_[p], 0.0).h;
     }
+    // Each group's and location's bound on its members' log-likelihood, for
+    // custom links.
+    group_sup_.assign(group_count(), 0.0);
+    if (!sup_.empty()) {
+      for (int g = 0; g < group_count(); ++g) {
+        for (int j = group_start_[g]; j < group_start_[g + 1]; ++j) {
+          group_sup_[g] += sup_[member_pair_[j]];
+        }
+      }
+    }
+    location_sup_.assign(locations_.size(), 0.0);
+    for (std::size_t l = 0; l < locations_.size(); ++l) {
+      for (const int g : locations_[l]) location_sup_[l] += group_sup_[g];
+    }
   }
   SiteTable(const SiteTable&) = delete;
   SiteTable& operator=(const SiteTable&) = delete;
@@ -791,6 +884,128 @@ class SiteTable {
   int tables_built() const { return tables_built_; }
   long nested_cells_filled() const { return nested_cells_filled_; }
   int nested_tables_built() const { return nested_tables_built_; }
+  int group_count() const { return static_cast<int>(group_start_.size()) - 1; }
+  int location_count() const { return locations_.size(); }
+  int member_count() const { return member_pair_.size(); }
+  long group_cells_filled() const { return group_cells_filled_; }
+  int group_tables_built() const { return group_tables_built_; }
+  long location_cells_filled() const { return location_cells_filled_; }
+  int location_tables_built() const { return location_tables_built_; }
+  int whole_group(const int location) const { return whole_[location]; }
+
+  // The relative linear predictors of the members, the state of the group
+  // and location tables built from now on. A state equal to one of the last
+  // four keeps its number, and so its tables while they are kept.
+  void set_relative(const std::vector<double>& relative) {
+    if (static_cast<int>(relative.size()) != member_count()) {
+      throw std::invalid_argument(
+        "One relative linear predictor is needed for each member of a group.");
+    }
+    if (current_ != nullptr && *current_ == relative) return;
+    for (auto it = states_.begin(); it != states_.end(); ++it) {
+      if (*it->second == relative) {
+        current_state_ = it->first;
+        current_ = it->second;
+        states_.splice(states_.end(), states_, it);
+        return;
+      }
+    }
+    current_ = std::make_shared<const std::vector<double>>(relative);
+    current_state_ = ++state_clock_;
+    states_.emplace_back(current_state_, current_);
+    if (states_.size() > 4) states_.pop_front();
+  }
+  const std::shared_ptr<const std::vector<double>>& relative() const {
+    return current_;
+  }
+
+  // The group table at the current state and v, or the location table at the
+  // current state and (vo, vi), built empty if it is not kept.
+  StripTable& group_table(const double v) {
+    return strip_table(group_tables_, v, 0.0, group_count(),
+                       group_tables_built_);
+  }
+  StripTable& location_table(const double vo, const double vi) {
+    return strip_table(location_tables_, vo, vi, location_count(),
+                       location_tables_built_);
+  }
+
+  // The sum over a group's members of their kernels at eta + r_j.
+  Moments group_plain(const int group, const double* relative,
+                      const double eta) const {
+    Moments out{0.0, 0.0, 0.0, 0.0};
+    for (int j = group_start_[group]; j < group_start_[group + 1]; ++j) {
+      double k = 0, k1 = 0, k2 = 0;
+      const int pair = member_pair_[j];
+      kernel_.terms(y_[pair], m_[pair], eta + relative[j], k, k1, k2);
+      out.h += k;
+      out.h1 += k1;
+      out.h2 += k2;
+    }
+    return out;
+  }
+
+  // h_g at x from the group table, with derivatives up to `order`.
+  Moments evaluate_group(StripTable& table, const int group, const double x,
+                         const int order) {
+    const double* relative = table.relative->data();
+    const double v = table.v;
+    return strip_evaluate(table.strips[group], x, order,
+                          group_cells_filled_, [&](const double at) {
+                            return group_cell(group, at, v, relative);
+                          });
+  }
+
+  // H_l at x from the location table, whose groups take the group table
+  // `inner` at the location table's vi and state.
+  Moments evaluate_location(StripTable& table, StripTable& inner,
+                            const int location, const double x,
+                            const int order) {
+    const double* relative = table.relative->data();
+    const double vo = table.v;
+    return strip_evaluate(table.strips[location], x, order,
+                          location_cells_filled_, [&](const double at) {
+                            return location_cell(&inner, location, at, vo,
+                                                 relative);
+                          });
+  }
+
+  // The sum over a location's groups of h_g at the group table `inner`, or of
+  // the groups' kernels when it is null, with derivatives up to `order`, and
+  // for order 2 in `extra` the sum of (h'' + h'^2) / 2.
+  Moments location_sum(StripTable* inner, const int location,
+                       const double* relative, const double eta,
+                       const int order) {
+    Moments out{0.0, 0.0, 0.0, 0.0};
+    for (const int g : locations_[location]) {
+      const Moments m = inner == nullptr ? group_plain(g, relative, eta) :
+        evaluate_group(*inner, g, eta, order);
+      out.h += m.h;
+      out.h1 += m.h1;
+      out.h2 += m.h2;
+      if (order >= 2) out.extra += 0.5 * (m.h2 + m.h1 * m.h1);
+    }
+    return out;
+  }
+
+  // The tilted mean, under the location's outer integral at vo, of the sum
+  // over its groups of (h'' + h'^2) / 2 at the group table `inner`, which is
+  // the derivative of H_l in the inner variance, computed directly at x.
+  // `inner` is null for an inner variance of zero.
+  double location_inner_slope(StripTable* inner, const int location,
+                              const double x, const double vo,
+                              const double* relative) {
+    const LocationTerms<true> terms{*this, inner, location, relative};
+    if (kernel_.custom != nullptr) {
+      double low = 0, high = 0, step_cap = 0;
+      location_flat_range(inner, location, relative, low, high, step_cap);
+      return custom_cell(terms, x, vo, location_sup_[location], low, high,
+                         step_cap).extra;
+    }
+    return vo <= 0.2 ? aghq_cell(terms, x, vo, rule_).extra :
+      uniform_cell(terms, x, vo, inner_step_cap(inner == nullptr ? 0.0 :
+                                                inner->v)).extra;
+  }
 
   // The table for v, built empty if it is not kept. Tables are kept in a
   // list, so a reference stays valid until its table is dropped, and the
@@ -983,8 +1198,181 @@ class SiteTable {
   // takes its curvature in absolute value with such a step. Up to vi = 16 the
   // step stays at most 0.25.
   static double pattern_step_cap(const Table* inner) {
-    if (inner == nullptr || !(inner->v > 0.0)) return 0.25;
-    return std::max(0.25, std::sqrt(inner->v) / 16.0);
+    return inner_step_cap(inner == nullptr ? 0.0 : inner->v);
+  }
+  static double inner_step_cap(const double vi) {
+    if (!(vi > 0.0)) return 0.25;
+    return std::max(0.25, std::sqrt(vi) / 16.0);
+  }
+
+  // For a custom link, the range beyond which a group's kernel, the sum of
+  // its members' kernels at x + r_j, is constant, since each member's kernel
+  // is constant beyond the lattice.
+  void group_flat_range(const int group, const double* relative, double& low,
+                        double& high) const {
+    double top = -std::numeric_limits<double>::infinity();
+    double bottom = std::numeric_limits<double>::infinity();
+    for (int j = group_start_[group]; j < group_start_[group + 1]; ++j) {
+      top = std::max(top, relative[j]);
+      bottom = std::min(bottom, relative[j]);
+    }
+    low = custom_.low - top;
+    high = custom_.low +
+      static_cast<double>(custom_.A.size() - 1) * custom_.step - bottom;
+  }
+
+  // For a custom link, the range beyond which a location's kernel, the sum
+  // over its groups of h_g at the inner variance vi (or of their kernels
+  // when `inner` is null), is constant, and the largest step for its outer
+  // integral, as pattern_flat_range() gives them for a nested pattern. The
+  // plain sum over all the location's members is constant beyond `low` and
+  // `high` below, and each h_g at vi differs from its constant by at most
+  // about exp(-40) / c a distance c sqrt(vi) beyond them, with c^2 / 2 = 40 +
+  // D and D the location's rise, which bounds each group's.
+  void location_flat_range(const StripTable* inner, const int location,
+                           const double* relative, double& low, double& high,
+                           double& step_cap) const {
+    double top = -std::numeric_limits<double>::infinity();
+    double bottom = std::numeric_limits<double>::infinity();
+    for (const int g : locations_[location]) {
+      for (int j = group_start_[g]; j < group_start_[g + 1]; ++j) {
+        top = std::max(top, relative[j]);
+        bottom = std::min(bottom, relative[j]);
+      }
+    }
+    low = custom_.low - top;
+    high = custom_.low +
+      static_cast<double>(custom_.A.size() - 1) * custom_.step - bottom;
+    step_cap = 0.25;
+    if (inner == nullptr || !(inner->v > 0.0)) return;
+    double at_low = 0, at_high = 0;
+    for (const int g : locations_[location]) {
+      at_low += group_plain(g, relative, low).h;
+      at_high += group_plain(g, relative, high).h;
+    }
+    const double sd = std::sqrt(inner->v);
+    const double sup = location_sup_[location];
+    low -= std::sqrt(2.0 * (40.0 + std::max(sup - at_low, 0.0))) * sd;
+    high += std::sqrt(2.0 * (40.0 + std::max(sup - at_high, 0.0))) * sd;
+    step_cap = inner_step_cap(inner->v);
+  }
+
+  Moments group_cell(const int group, const double x, const double v,
+                     const double* relative) const {
+    const GroupTerms terms{*this, group, relative};
+    if (kernel_.custom != nullptr) {
+      double low = 0, high = 0;
+      group_flat_range(group, relative, low, high);
+      return custom_cell(terms, x, v, group_sup_[group], low, high);
+    }
+    return v <= 0.2 ? aghq_cell(terms, x, v, rule_) :
+      uniform_cell(terms, x, v);
+  }
+
+  Moments location_cell(StripTable* inner, const int location, const double x,
+                        const double vo, const double* relative) {
+    const LocationTerms<false> terms{*this, inner, location, relative};
+    if (kernel_.custom != nullptr) {
+      double low = 0, high = 0, step_cap = 0;
+      location_flat_range(inner, location, relative, low, high, step_cap);
+      return custom_cell(terms, x, vo, location_sup_[location], low, high,
+                         step_cap);
+    }
+    return vo <= 0.2 ? aghq_cell(terms, x, vo, rule_) :
+      uniform_cell(terms, x, vo, inner_step_cap(inner == nullptr ? 0.0 :
+                                                inner->v));
+  }
+
+  // The strip table of `kept` at the current state and (v, vi), built empty
+  // with `count` strips if it is not kept, the least recently used of 6
+  // dropped first.
+  StripTable& strip_table(std::list<StripTable>& kept, const double v,
+                          const double vi, const int count, int& built) {
+    if (current_ == nullptr) {
+      throw std::logic_error(
+        "The relative linear predictors of the groups are not set.");
+    }
+    ++clock_;
+    for (StripTable& table : kept) {
+      if (table.state == current_state_ && table.v == v && table.vi == vi) {
+        table.used = clock_;
+        return table;
+      }
+    }
+    if (kept.size() >= 6) {
+      auto oldest = kept.begin();
+      for (auto it = kept.begin(); it != kept.end(); ++it) {
+        if (it->used < oldest->used) oldest = it;
+      }
+      kept.erase(oldest);
+    }
+    StripTable fresh;
+    fresh.state = current_state_;
+    fresh.v = v;
+    fresh.vi = vi;
+    fresh.used = clock_;
+    fresh.relative = current_;
+    fresh.strips.resize(count);
+    kept.push_back(std::move(fresh));
+    ++built;
+    return kept.back();
+  }
+
+  // The strip extended, if needed, to hold the grid points from `low` to
+  // `high`, with a margin of 8 points where it grows.
+  static void cover(Strip& strip, const int low, const int high) {
+    const int first = strip.first;
+    const int end = first + static_cast<int>(strip.H.size());
+    if (!strip.H.empty() && low >= first && high < end) return;
+    const int from = strip.H.empty() || low < first ?
+      std::max(0, low - 8) : first;
+    const int to = strip.H.empty() || high >= end ?
+      std::min(grid_points, high + 9) : end;
+    const std::size_t size = static_cast<std::size_t>(to - from);
+    std::vector<double> H(size, 0.0), H1(size, 0.0), H2(size, 0.0);
+    std::vector<unsigned char> filled(size, 0);
+    for (std::size_t j = 0; j < strip.H.size(); ++j) {
+      const std::size_t at = j + static_cast<std::size_t>(first - from);
+      H[at] = strip.H[j];
+      H1[at] = strip.H1[j];
+      H2[at] = strip.H2[j];
+      filled[at] = strip.filled[j];
+    }
+    strip.first = from;
+    strip.H.swap(H);
+    strip.H1.swap(H1);
+    strip.H2.swap(H2);
+    strip.filled.swap(filled);
+  }
+
+  // The interpolant at x through the strip's cells, filled by `cell` where
+  // they are not yet, or the cell itself beyond the grid. `counter` counts
+  // the cells filled.
+  template <class Cell>
+  static Moments strip_evaluate(Strip& strip, const double x, const int order,
+                                long& counter, const Cell& cell) {
+    const double position = (x - grid_low) / grid_step;
+    if (!(position >= 0.0 && position <= grid_points - 1.0)) {
+      if (!std::isfinite(x)) {
+        return {-std::numeric_limits<double>::infinity(), 0.0, 0.0};
+      }
+      return cell(x);
+    }
+    const int at = std::min(static_cast<int>(position), grid_points - 2);
+    const double t = position - at;
+    cover(strip, at, at + 1);
+    for (int g = at; g <= at + 1; ++g) {
+      const std::size_t index = static_cast<std::size_t>(g - strip.first);
+      if (strip.filled[index]) continue;
+      const Moments filled = cell(grid_low + g * grid_step);
+      strip.H[index] = filled.h;
+      strip.H1[index] = filled.h1;
+      strip.H2[index] = filled.h2;
+      strip.filled[index] = 1;
+      ++counter;
+    }
+    return interpolate(strip.H, strip.H1, strip.H2,
+                       static_cast<std::size_t>(at - strip.first), t, order);
   }
 
   Moments cell(const int pair, const double x, const double v) const {
@@ -1047,6 +1435,20 @@ class SiteTable {
   std::uint64_t clock_ = 0;
   long cells_filled_ = 0, nested_cells_filled_ = 0;
   int tables_built_ = 0, nested_tables_built_ = 0;
+  // The groups: each one's members are member_pair_[group_start_[g]] up to
+  // group_start_[g + 1], numbered as their relative linear predictors are.
+  std::vector<int> member_pair_, group_start_;
+  std::vector<std::vector<int>> locations_;
+  std::vector<int> whole_;
+  std::vector<double> group_sup_, location_sup_;
+  std::list<StripTable> group_tables_, location_tables_;
+  // The current state of the relative linear predictors and the last four.
+  std::shared_ptr<const std::vector<double>> current_;
+  long current_state_ = 0, state_clock_ = 0;
+  std::list<std::pair<long, std::shared_ptr<const std::vector<double>>>>
+    states_;
+  long group_cells_filled_ = 0, location_cells_filled_ = 0;
+  int group_tables_built_ = 0, location_tables_built_ = 0;
 };
 
 template <bool Extra>
@@ -1059,11 +1461,32 @@ inline void PatternTerms<Extra>::operator()(const double eta, double& k,
   last_extra = sum.extra;
 }
 
+inline void GroupTerms::operator()(const double eta, double& k, double& k1,
+                                   double& k2) const {
+  const Moments sum = sites.group_plain(group, relative, eta);
+  k = sum.h;
+  k1 = sum.h1;
+  k2 = sum.h2;
+}
+
+template <bool Extra>
+inline void LocationTerms<Extra>::operator()(const double eta, double& k,
+                                             double& k1, double& k2) const {
+  const Moments sum = sites.location_sum(inner, location, relative, eta, 2);
+  k = sum.h;
+  k1 = sum.h1;
+  k2 = sum.h2;
+  last_extra = sum.extra;
+}
+
 // How the engine's records are evaluated. Each record is plain (kind 0, the
 // plain kernel of pair `index`), a record (kind 1, pair `index` at the
-// variance of class `a`, plain if that is zero) or a nested pattern (kind 2,
+// variance of class `a`, plain if that is zero), a nested pattern (kind 2,
 // pattern `index` with the outer variance of class `a` and the inner variance
-// of class `b`). Indices are 0-based.
+// of class `b`), a group (kind 3, group `index` at the variance of class `a`,
+// the plain sum of its members' kernels if that is zero) or a location of
+// groups (kind 4, location `index` with the outer variance of class `a` and
+// the groups' variance of class `b`). Indices are 0-based.
 struct Unit {
   int kind, index, a, b;
 };
@@ -1071,7 +1494,9 @@ struct Unit {
 // The likelihood of the engine's records at one set of class variances. The
 // tables are found once, on construction, and stay valid while the evaluator
 // lives, since at most a handful are found and the least recently used are
-// dropped first.
+// dropped first. Groups and locations of groups take the current state of
+// the relative linear predictors (SiteTable::set_relative()), which must be
+// set.
 class Evaluator {
  public:
   Evaluator(SiteTable& sites, const std::vector<double>& classes,
@@ -1093,7 +1518,7 @@ class Evaluator {
       } else if (unit.kind == 1) {
         out.table = record_table(unit.a);
         out.mode = out.table == nullptr ? 0 : 1;
-      } else {
+      } else if (unit.kind == 2) {
         const double vo = classes[unit.a], vi = classes[unit.b];
         out.vo = vo;
         if (vo > 0 && vi > 0) {
@@ -1107,6 +1532,39 @@ class Evaluator {
           out.mode = 4;
           out.table = record_table(unit.b);
         }
+      } else if (unit.kind == 3 || unit.kind == 4) {
+        if (relative_ == nullptr) {
+          relative_ = sites_.relative();
+          if (relative_ == nullptr) {
+            throw std::logic_error(
+              "The relative linear predictors of the groups are not set.");
+          }
+        }
+        if (unit.kind == 3) {
+          const double v = classes[unit.a];
+          out.mode = v > 0 ? 5 : 6;
+          if (v > 0) out.strip = group_table(v);
+        } else {
+          const double vo = classes[unit.a], vi = classes[unit.b];
+          out.vo = vo;
+          if (vo > 0 && vi > 0) {
+            out.mode = 7;
+            out.strip = location_table(vo, vi);
+            out.inner = group_table(vi);
+          } else if (vo > 0) {
+            // With the groups' variance at zero the location is one group
+            // of all its members at vo.
+            out.mode = 8;
+            out.strip = group_table(vo);
+          } else if (vi > 0) {
+            out.mode = 9;
+            out.inner = group_table(vi);
+          } else {
+            out.mode = 10;
+          }
+        }
+      } else {
+        throw std::invalid_argument("A record has an unknown kind.");
       }
     }
   }
@@ -1122,8 +1580,22 @@ class Evaluator {
       return sites_.evaluate_nested(*r.nested, *r.table, r.index, eta, order);
     case 3:
       return sites_.pattern_summed(r.table, r.index, eta, order);
-    default:
+    case 4:
       return sites_.pattern_sum(r.table, r.index, eta, order);
+    case 5:
+      return sites_.evaluate_group(*r.strip, r.index, eta, order);
+    case 6:
+      return sites_.group_plain(r.index, relative_->data(), eta);
+    case 7:
+      return sites_.evaluate_location(*r.strip, *r.inner, r.index, eta, order);
+    case 8:
+      return sites_.evaluate_group(*r.strip, sites_.whole_group(r.index), eta,
+                                   order);
+    default:
+      // Modes 9 and 10, the sum of the groups' h at their variance, or of
+      // their kernels.
+      return sites_.location_sum(r.inner, r.index, relative_->data(), eta,
+                                 order);
     }
   }
 
@@ -1131,8 +1603,8 @@ class Evaluator {
     return moments(record, eta, 0).h;
   }
 
-  // The derivative of a nested pattern's H in its inner variance at eta, and
-  // zero for the other records.
+  // The derivative of a nested pattern's H, or of a location's H_l, in its
+  // inner variance at eta, and zero for the other records.
   double inner_slope(const int record, const double eta) {
     const Resolved& r = resolved_[record];
     if (r.mode == 2 || r.mode == 3) {
@@ -1141,6 +1613,16 @@ class Evaluator {
                                        r.index, eta, r.vo);
     }
     if (r.mode == 4) return sites_.pattern_sum(r.table, r.index, eta, 2).extra;
+    if (r.mode == 7 || r.mode == 8) {
+      // With the groups' variance at zero the slope is that of their kernels.
+      return sites_.location_inner_slope(r.mode == 7 ? r.inner : nullptr,
+                                         r.index, eta, r.vo,
+                                         relative_->data());
+    }
+    if (r.mode == 9 || r.mode == 10) {
+      return sites_.location_sum(r.inner, r.index, relative_->data(), eta,
+                                 2).extra;
+    }
     return 0.0;
   }
 
@@ -1150,6 +1632,8 @@ class Evaluator {
     double vo = 0;
     Table* table = nullptr;
     NestedTable* nested = nullptr;
+    StripTable* strip = nullptr;
+    StripTable* inner = nullptr;
   };
 
   NestedTable* nested_table(const double vo, const double vi) {
@@ -1164,11 +1648,40 @@ class Evaluator {
     return found;
   }
 
+  StripTable* group_table(const double v) {
+    for (std::size_t k = 0; k < group_keys_.size(); ++k) {
+      if (group_keys_[k] == v) return group_found_[k];
+    }
+    StripTable* found = &sites_.group_table(v);
+    group_keys_.push_back(v);
+    group_found_.push_back(found);
+    return found;
+  }
+
+  StripTable* location_table(const double vo, const double vi) {
+    for (std::size_t k = 0; k < location_keys_.size(); ++k) {
+      if (location_keys_[k].first == vo && location_keys_[k].second == vi) {
+        return location_found_[k];
+      }
+    }
+    StripTable* found = &sites_.location_table(vo, vi);
+    location_keys_.emplace_back(vo, vi);
+    location_found_.push_back(found);
+    return found;
+  }
+
   SiteTable& sites_;
   const std::vector<Unit>& units_;
   std::vector<Resolved> resolved_;
   std::vector<std::pair<double, double>> nested_keys_;
   std::vector<NestedTable*> nested_found_;
+  // The state of the relative linear predictors, kept while the evaluator
+  // lives, and the group and location tables it uses.
+  std::shared_ptr<const std::vector<double>> relative_;
+  std::vector<double> group_keys_;
+  std::vector<StripTable*> group_found_;
+  std::vector<std::pair<double, double>> location_keys_;
+  std::vector<StripTable*> location_found_;
 };
 
 }  // namespace riskmap_site

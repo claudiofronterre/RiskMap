@@ -37,8 +37,12 @@ cpp_latent_mala <- function(y_r, units_r, mu_r, columns_r, n_u, n_d, prior_u_r, 
     .Call(`_RiskMap_cpp_latent_mala`, y_r, units_r, mu_r, columns_r, n_u, n_d, prior_u_r, prior_d_r, weights_r, mode_r, family, link_terms, n_sim, burnin, thin, step_size, adaptation_scale, adaptation_exponent, average_step, start_from_draw)
 }
 
-cpp_site_table_create <- function(y, m, poisson, z, log_w, custom, patterns, summed) {
-    .Call(`_RiskMap_cpp_site_table_create`, y, m, poisson, z, log_w, custom, patterns, summed)
+cpp_site_table_create <- function(y, m, poisson, z, log_w, custom, patterns, summed, groups, locations, whole) {
+    .Call(`_RiskMap_cpp_site_table_create`, y, m, poisson, z, log_w, custom, patterns, summed, groups, locations, whole)
+}
+
+cpp_site_set_relative <- function(table, relative) {
+    invisible(.Call(`_RiskMap_cpp_site_set_relative`, table, relative))
 }
 
 cpp_site_evaluate <- function(table, classes, units, eta, by_row, order) {

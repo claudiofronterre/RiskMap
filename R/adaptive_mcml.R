@@ -688,7 +688,8 @@ make_adaptive_mcml_engine <- function(
   model <- make_family(family, linkf)
   sites <- if (integrated) {
     make_site_table(y, units_m, model, kind = plan$kind,
-                    a = plan$a, b = plan$b, patterns = plan$patterns)
+                    a = plan$a, b = plan$b, patterns = plan$patterns,
+                    groups = plan$groups)
   }
   # A variance whose log parameter is at this value is held at exactly zero,
   # and the records it entered lose it from their integrated variance.
@@ -849,11 +850,14 @@ make_adaptive_mcml_engine <- function(
   # proposal and target parameters coincide.
   last_mode <- numeric(latent$dimension)
   # The likelihood of the records at one parameter value: the link, or with
-  # the nugget integrated out the records' table at the nugget variance.
+  # the nugget integrated out the records' table at the nugget variance. The
+  # tables of groups whose members differ in covariates depend on the
+  # regression coefficients too.
   kernel_at <- function(values) {
     if (!integrated) return(model)
     make_family(family, linkf,
-                kernel = make_integrated_kernel(sites, values$class_variances))
+                kernel = make_integrated_kernel(sites, values$class_variances,
+                                                values$beta))
   }
   # Converged global factors at a fixed parameter value (set by
   # set_anchor()), used to start the global iteration at other values.
@@ -1000,7 +1004,7 @@ make_adaptive_mcml_engine <- function(
         proposal$spatial_root, as.numeric(proposal$values$sigma2_re),
         spatial_root, as.numeric(values$sigma2_re), same_parameters,
         linear_offset, latent_map$columns, random_first, random_size, y,
-        target$units_m, model$code, sites$pointer,
+        target$units_m, model$code, site_pointer_at(sites, values$beta),
         values$class_variances %||% numeric(),
         sites$units %||% matrix(0L, 0L, 4L)
       )
@@ -1061,8 +1065,12 @@ make_adaptive_mcml_engine <- function(
       eta <- eta + latent_level_samples(samples, latent_map$columns[, j + 1L])
     }
     classes <- proposal$values$class_variances
-    derivatives <- if (integrated && any(classes > 0)) {
-      cpp_site_evaluate(sites$pointer, classes, sites$units, eta, FALSE, 2L)
+    # Groups whose members differ in covariates take their derivatives from
+    # their table even where their variance is held at zero.
+    derivatives <- if (integrated && (any(classes > 0) ||
+                                      !is.null(sites$relative))) {
+      cpp_site_evaluate(site_pointer_at(sites, proposal$values$beta), classes,
+                        sites$units, eta, FALSE, 2L)
     }
     vapply(tested, function(parameter) {
       if (parameter %in% limit_index) {
@@ -1091,7 +1099,9 @@ make_adaptive_mcml_engine <- function(
                h2 = derivatives$h2[, keep, drop = FALSE])
         }
       )
-      slopes <- cpp_site_inner_slopes(sites$pointer, classes,
+      slopes <- cpp_site_inner_slopes(site_pointer_at(sites,
+                                                      proposal$values$beta),
+                                      classes,
                                       sites$units[inner, , drop = FALSE],
                                       eta[, inner, drop = FALSE])
       grouped + rowSums(slopes)

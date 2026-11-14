@@ -167,18 +167,22 @@ test_that("a plain record or a zero variance takes the plain kernel", {
   expect_equal(as.numeric(held), as.numeric(plain))
 })
 
-test_that("identical records at a location are summed and others flagged", {
+test_that("identical records at a location are summed and others grouped", {
   D <- cbind(1, c(0.5, 0.5, 1, 2))
   plan <- plan_integrated_records(
     y = c(1, 2, 3, 4), units_m = c(10, 10, 10, 10), D = D,
     cov_offset = numeric(4), ID_coords = c(1L, 1L, 2L, 2L), ID_re = NULL,
     n_loc = 3L, allowed = c(nugget = TRUE)
   )
-  expect_identical(plan$y, c(3, 3, 4))
-  expect_identical(plan$units_m, c(20, 10, 10))
-  expect_identical(plan$ID_coords, c(1L, 2L, 2L))
-  expect_identical(plan$nugget_integrated, c(TRUE, FALSE, FALSE))
-  expect_identical(plan$kind, c(1L, 0L, 0L))
+  expect_identical(plan$y, c(3, 7))
+  expect_identical(plan$units_m, c(20, 20))
+  expect_identical(plan$ID_coords, c(1L, 2L))
+  expect_identical(plan$nugget_integrated, c(TRUE, TRUE, FALSE))
+  # The records at location 2 differ in their covariate, so the location is
+  # one group under the nugget (rule (c)).
+  expect_identical(plan$kind, c(1L, 3L))
+  expect_identical(plan$groups[[2L]][[1L]]$y, c(3, 4))
+  expect_identical(plan$groups[[2L]][[1L]]$D, cbind(0, c(0, 1)))
 })
 
 # A small survey with a nugget, for both forms.
@@ -229,7 +233,7 @@ test_that("both forms estimate the same likelihood", {
   }
 })
 
-test_that("the nugget stays sampled where a location keeps several records", {
+test_that("a location whose records differ is integrated as one group", {
   survey <- integrated_survey("binomial")
   # A second record at location 1, with another covariate value.
   D <- rbind(survey$D, c(1, 2))
@@ -243,7 +247,7 @@ test_that("the nugget stays sampled where a location keeps several records", {
   }
   sampled <- make(FALSE)
   integrated <- make(TRUE)
-  expect_identical(integrated$integrated_locations, 39L)
+  expect_identical(integrated$integrated_locations, 40L)
   set.seed(12)
   draws <- matrix(rnorm(20000 * 40), ncol = 40)
   a <- estimate_log_likelihood(sampled, survey$parameters, draws)
