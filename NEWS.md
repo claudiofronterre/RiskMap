@@ -45,10 +45,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   small and reports a bound on that error.
 - In binomial and Poisson fits, household effects whose children differ in
   covariates are now integrated out, so such fits are much faster.
-- Gaussian fits with more than three records per latent effect now start the
-  measurement error and random-effect variances at the values given, so such
-  fits given `start_pars`, and their parametric bootstraps, can move very
-  slightly.
+- Gaussian fits with more than three records per latent effect start the
+  measurement error and random-effect variances at the values given in
+  `start_pars`. Such fits given a spatial variance other than 1, and parametric
+  bootstraps of such models, can move very slightly.
 - `check_fit()` reports how a fit was computed and flags anything that needs
   attention. `profile()` gives profile likelihoods and `parametric_bootstrap()`
   bootstrap intervals for the parameters.

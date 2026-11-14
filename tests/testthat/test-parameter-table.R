@@ -346,19 +346,19 @@ test_that("the Jacobian places the nugget by name, whatever the order", {
 
 test_that("both Gaussian paths start each variance on the scale its likelihood reads", {
   # Six copies of the fixture give more than three observations per latent
-  # effect, so the fit takes the Woodbury path unless told otherwise. Its
-  # likelihood reads the measurement error and random-effect variances on
-  # their own scale, so they start at the values given, not divided by the
-  # spatial variance.
+  # effect, so the fit takes the Woodbury path unless told otherwise. Both
+  # likelihoods read the nugget as its ratio to the spatial variance and the
+  # measurement error and random-effect variances on their own scale, so
+  # those start at the values given, not divided by the spatial variance.
   set.seed(2)
   replicated <- do.call(rbind, replicate(6, gaussian_data, simplify = FALSE))
   replicated$y <- replicated$y + rnorm(nrow(replicated), sd = 0.3)
-  start_pars <- list(sigma2 = 2, sigma2_me = 0.5, sigma2_re = 0.3)
-  start_of <- function(path) {
+  start_of <- function(formula, start_pars, path, fix_var_me = NULL) {
     captured <- NULL
     try(with_mocked_bindings(
-      glgpm(y ~ cov + gp() + re(i), data = replicated, family = "gaussian",
-            start_pars = start_pars, messages = FALSE),
+      glgpm(formula, data = replicated, family = "gaussian",
+            start_pars = start_pars, fix_var_me = fix_var_me,
+            messages = FALSE),
       nlminb = function(start, ...) {
         captured <<- start
         stop("captured the start")
@@ -372,12 +372,29 @@ test_that("both Gaussian paths start each variance on the scale its likelihood r
     ), silent = TRUE)
     captured
   }
-  woodbury <- start_of("woodbury")
-  direct <- start_of("direct")
-  # The coefficients, log sigma2, log phi, log sigma2_me, log sigma2_re.
-  expect_length(woodbury, 6L)
-  expect_identical(woodbury[c(3L, 5L, 6L)],
-                   log(c(start_pars$sigma2, start_pars$sigma2_me,
-                         start_pars$sigma2_re)))
-  expect_identical(woodbury, direct)
+  cases <- list(
+    # The coefficients, log sigma2, log phi, log sigma2_me, log sigma2_re.
+    list(formula = y ~ cov + gp() + re(i),
+         start = list(sigma2 = 2, sigma2_me = 0.5, sigma2_re = 0.3),
+         positions = c(3L, 5L, 6L), expected = log(c(2, 0.5, 0.3))),
+    # The nugget before the measurement error, as log(tau2 / sigma2).
+    list(formula = y ~ cov + gp(nugget = TRUE) + re(i),
+         start = list(sigma2 = 2, tau2 = 0.4, sigma2_me = 0.5,
+                      sigma2_re = 0.3),
+         positions = c(3L, 5L, 6L, 7L),
+         expected = c(log(2), log(0.4 / 2), log(0.5), log(0.3))),
+    # A held measurement error and two re() terms.
+    list(formula = y ~ cov + gp() + re(i, j),
+         start = list(sigma2 = 2, sigma2_re = c(0.3, 0.6)),
+         fix_var_me = 0.1, positions = c(3L, 5L, 6L),
+         expected = log(c(2, 0.3, 0.6)))
+  )
+  for (case in cases) {
+    woodbury <- start_of(case$formula, case$start, "woodbury",
+                         case$fix_var_me)
+    direct <- start_of(case$formula, case$start, "direct", case$fix_var_me)
+    expect_length(woodbury, max(case$positions))
+    expect_identical(woodbury[case$positions], case$expected)
+    expect_identical(woodbury, direct)
+  }
 })

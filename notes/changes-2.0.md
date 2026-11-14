@@ -870,7 +870,8 @@ logit of a total follows the proportion at the location, where that of a
 binary record is always log(3) or -log(3).
 
 - On the Woodbury path of Gaussian fits, which `glgpm()` takes above three
-records per latent effect, the starts of the measurement error and random-effect
+records per latent effect unless the nugget is held at a positive value or the
+measurement error variance at zero, the starts of the measurement error and random-effect
 variances were divided by the start of the spatial variance, while its
 likelihood reads them on their own scale. Only the nugget, which every engine
 fits as its ratio to the spatial variance, should be divided. Every engine now
