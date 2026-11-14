@@ -6,21 +6,32 @@
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>RiskMap • RiskMap</title>
-<script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<!-- favicons --><link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
+<link rel="icon" type="”image/svg+xml”" href="favicon.svg">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="icon" sizes="any" href="favicon.ico">
+<link rel="manifest" href="site.webmanifest">
+<script src="lightswitch.js"></script><script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
-<script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/Source_Sans_3-0.4.10/font.css" rel="stylesheet">
+<link href="deps/JetBrains_Mono-0.4.10/font.css" rel="stylesheet">
+<link href="deps/Libertinus_Serif-0.4.10/font.css" rel="stylesheet">
+<link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="RiskMap">
-<meta name="description" content="Geostatistical modelling and prediction for global public health using Gaussian process models in R.
+<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><link href="extra.css" rel="stylesheet">
+<meta property="og:title" content="RiskMap">
+<meta name="description" content="Model-based geostatistics in R. Fit spatial Gaussian process models to continuous and count data, and map risk with its uncertainty.
 ">
-<meta property="og:description" content="Geostatistical modelling and prediction for global public health using Gaussian process models in R.
+<meta property="og:description" content="Model-based geostatistics in R. Fit spatial Gaussian process models to continuous and count data, and map risk with its uncertainty.
 ">
+<meta property="og:image" content="https://claudiofronterre.github.io/RiskMap/card.png">
+<meta property="og:image:alt" content="RiskMap, model-based geostatistics in R">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
-    <nav class="navbar navbar-expand-lg fixed-top bg-primary" data-bs-theme="dark" aria-label="Site navigation"><div class="container">
+    <nav class="navbar navbar-expand-lg fixed-top " aria-label="Site navigation"><div class="container">
 
     <a class="navbar-brand me-2" href="index.html">RiskMap</a>
 
@@ -34,10 +45,22 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+<li class="nav-item"><a class="nav-link" href="news/index.html">News</a></li>
       </ul>
 <ul class="navbar-nav">
-<li class="nav-item"><a class="external-link nav-link" href="https://www.mbgr.org/">MBG-R (Giorgi, Fronterre)</a></li>
+<li class="nav-item"><form class="form-inline" role="search">
+ <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="search.json">
+</form></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://www.mbgr.org/" aria-label="The book Model-based geostatistics for global public health using R"><span class="fa fa-book-open"></span> Book</a></li>
 <li class="nav-item"><a class="external-link nav-link" href="https://github.com/claudiofronterre/RiskMap" aria-label="GitHub repository"><span class="fa fab fa-github"></span></a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-lightswitch" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true" aria-label="Light switch"><span class="fa fa-sun"></span></button>
+  <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdown-lightswitch">
+<li><button class="dropdown-item" data-bs-theme-value="light"><span class="fa fa-sun"></span> Light</button></li>
+    <li><button class="dropdown-item" data-bs-theme-value="dark"><span class="fa fa-moon"></span> Dark</button></li>
+    <li><button class="dropdown-item" data-bs-theme-value="auto"><span class="fa fa-adjust"></span> Auto</button></li>
+  </ul>
+</li>
       </ul>
 </div>
 
@@ -46,132 +69,151 @@
 </nav><div class="container template-home">
 <div class="row">
   <main id="main" class="col-md-9"><div class="section level1">
-<div class="page-header"><h1 id="riskmap">RiskMap<a class="anchor" aria-label="anchor" href="#riskmap"></a>
-</h1></div>
+<div class="page-header">
+<img src="logo.png" class="logo" alt=""><h1 id="riskmap">RiskMap<a class="anchor" aria-label="anchor" href="#riskmap"></a>
+</h1>
+</div>
+<p class="rm-pitch">
+Model-based geostatistics in R. Fit spatial models to survey data, predict disease risk at locations and over areas, and quantify its uncertainty.
+</p>
+<div class="rm-actions">
+<p><a class="btn btn-primary btn-lg" href="#get-started">Get started</a> <a class="external-link btn btn-outline-primary btn-lg" href="https://www.mbgr.org/"><i class="fa-solid fa-book-open" aria-hidden="true"></i> Read the book</a> <a class="btn btn-outline-secondary btn-lg" href="reference/index.html">Reference</a></p>
+</div>
+<div class="rm-badges">
 <!-- badges: start -->
-
-<div class="section level2">
-<h2 id="overview">Overview<a class="anchor" aria-label="anchor" href="#overview"></a>
-</h2>
-<p><code>RiskMap</code> provides tools for model-based geostatistical analysis of continuous, binomial and Poisson outcomes.</p>
-<ul>
-<li>Fit spatial and spatio-temporal Gaussian process models.</li>
-<li>Generate predictive surfaces and target summaries.</li>
-<li>Run simulation-based diagnostics and validation workflows.</li>
-</ul>
-<p>The methodology is described in <em>Model-based Geostatistics for Global Public Health</em> by Diggle and Giorgi.</p>
+<p><a href="https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a> <a href="https://CRAN.R-project.org/package=RiskMap" class="external-link"><img src="https://www.r-pkg.org/badges/version/RiskMap" alt="CRAN status"></a> <!-- badges: end --></p>
 </div>
-<div class="section level2">
-<h2 id="start-here-mbg-r-book">Start Here: MBG-R Book<a class="anchor" aria-label="anchor" href="#start-here-mbg-r-book"></a>
-</h2>
-<p>For a full applied guide to using <code>RiskMap</code> in real public health workflows, see the online book by <strong>Emanuele Giorgi and Claudio Fronterre</strong>:</p>
-<p><strong>Model-based geostatistics for global public health using R</strong> <a href="https://www.mbgr.org/" class="external-link uri">https://www.mbgr.org/</a></p>
-</div>
+<p>RiskMap implements generalised linear geostatistical models for Gaussian, binomial, Poisson and negative binomial outcomes, fitted by Monte Carlo maximum likelihood, or by exact maximum likelihood for Gaussian outcomes. It was developed for public health, for example to map the prevalence of a disease from surveys, and applies to any outcome measured at geo-referenced locations.</p>
+<hr class="rm-rule">
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>Install the stable version from CRAN:</p>
+<p>RiskMap 2.0 is not yet on CRAN, so install it from GitHub. It contains C++ code, which needs <a href="https://cran.r-project.org/bin/windows/Rtools/" class="external-link">Rtools</a> on Windows and the Xcode command line tools on macOS.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"RiskMap"</span><span class="op">)</span></span></code></pre></div>
-<p>Install the development version from GitHub:</p>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"claudiofronterre/RiskMap"</span><span class="op">)</span></span></code></pre></div>
+<p><code>install.packages("RiskMap")</code> installs RiskMap 1.0.0 from CRAN, whose interface is different.</p>
 </div>
 <div class="section level2">
-<h2 id="quickstart">Quickstart<a class="anchor" aria-label="anchor" href="#quickstart"></a>
+<h2 id="get-started">Get started<a class="anchor" aria-label="anchor" href="#get-started"></a>
 </h2>
-<p>A minimal linear Gaussian geostatistical model of the form <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>Y</mi><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo><mo>=</mo><msub><mi>β</mi><mn>0</mn></msub><mo>+</mo><mi>S</mi><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">Y(x) = \beta_0 + S(x)</annotation></semantics></math>, where <math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mrow><mi>S</mi><mo stretchy="false" form="prefix">(</mo><mi>x</mi><mo stretchy="false" form="postfix">)</mo></mrow><annotation encoding="application/x-tex">S(x)</annotation></semantics></math> is a spatial Gaussian process can be fitted with:</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<p>The <code>liberia</code> data give, for 90 villages, the number of people examined for the nodules of river blindness and the number found with them. This example fits a binomial geostatistical model to the counts and maps the predicted prevalence across Liberia.</p>
+<div class="row g-4 align-items-center">
+<div class="col-xl-7">
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://claudiofronterre.github.io/RiskMap/">RiskMap</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://r-spatial.github.io/sf/" class="external-link">sf</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://dieghernan.github.io/geobounds/" class="external-link">geobounds</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">italy_sim</span><span class="op">)</span></span>
+<span><span class="co"># Load the survey data as points</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">liberia</span><span class="op">)</span></span>
+<span><span class="va">liberia</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://r-spatial.github.io/sf/reference/st_as_sf.html" class="external-link">st_as_sf</a></span><span class="op">(</span><span class="va">liberia</span>,</span>
+<span>                    coords <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"long"</span>, <span class="st">"lat"</span><span class="op">)</span>,</span>
+<span>                    crs <span class="op">=</span> <span class="fl">4326</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/glgpm.html">glgpm</a></span><span class="op">(</span></span>
-<span>  formula <span class="op">=</span> <span class="va">y</span> <span class="op">~</span> <span class="fu"><a href="reference/gp.html">gp</a></span><span class="op">(</span><span class="va">x1</span>, <span class="va">x2</span><span class="op">)</span>,</span>
-<span>  data <span class="op">=</span> <span class="va">italy_sim</span>,</span>
-<span>  family <span class="op">=</span> <span class="st">"gaussian"</span>,</span>
-<span>  messages <span class="op">=</span> <span class="cn">FALSE</span></span>
-<span><span class="op">)</span></span>
+<span><span class="co"># Choose a projection and project the data and the border</span></span>
+<span><span class="va">crs</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/propose_crs.html">propose_crs</a></span><span class="op">(</span><span class="va">liberia</span><span class="op">)</span></span>
+<span><span class="va">liberia</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://r-spatial.github.io/sf/reference/st_transform.html" class="external-link">st_transform</a></span><span class="op">(</span><span class="va">liberia</span>, <span class="va">crs</span><span class="op">)</span></span>
+<span><span class="va">border</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://r-spatial.github.io/sf/reference/st_transform.html" class="external-link">st_transform</a></span><span class="op">(</span><span class="fu">gb_get_adm0</span><span class="op">(</span><span class="st">"Liberia"</span><span class="op">)</span>, <span class="va">crs</span><span class="op">)</span></span>
 <span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span></code></pre></div>
+<span><span class="co"># Fit a binomial model with a spatial Gaussian process</span></span>
+<span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/glgpm.html">glgpm</a></span><span class="op">(</span><span class="va">npos</span> <span class="op">~</span> <span class="fu"><a href="reference/gp.html">gp</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>             data <span class="op">=</span> <span class="va">liberia</span>,</span>
+<span>             family <span class="op">=</span> <span class="st">"binomial"</span>,</span>
+<span>             denominator <span class="op">=</span> <span class="va">ntest</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Predict prevalence on a 2.5 km grid and map it</span></span>
+<span><span class="va">grid</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/create_grid.html">create_grid</a></span><span class="op">(</span><span class="va">border</span>, spacing <span class="op">=</span> <span class="fl">2.5</span><span class="op">)</span></span>
+<span><span class="va">prediction</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span><span class="va">fit</span>, newdata <span class="op">=</span> <span class="va">grid</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">prediction</span><span class="op">)</span></span></code></pre></div>
+</div>
+<div class="col-xl-5">
+<img src="reference/figures/README-example-1.png" class="rm-figure" alt="Map of the predicted prevalence of river blindness nodules across Liberia, from about 5% on the south coast to over 25% in the north-west."><p class="rm-caption">
+Predicted prevalence of nodules across Liberia. Boundary from <a href="https://www.geoboundaries.org/" class="external-link">geoBoundaries</a> (UNMIL and OCHA ROWCA), CC BY 3.0 IGO.
+</p>
+</div>
+</div>
 </div>
 <div class="section level2">
-<h2 id="learn-more">Learn More<a class="anchor" aria-label="anchor" href="#learn-more"></a>
+<h2 id="what-riskmap-does">What RiskMap does<a class="anchor" aria-label="anchor" href="#what-riskmap-does"></a>
 </h2>
-<ul>
-<li>MBG-R book: <a href="https://www.mbgr.org/" class="external-link uri">https://www.mbgr.org/</a>
-</li>
-<li>Package website: <a href="https://claudiofronterre.github.io/RiskMap/" class="uri">https://claudiofronterre.github.io/RiskMap/</a>
-</li>
-<li>Issue tracker: <a href="https://github.com/claudiofronterre/RiskMap/issues" class="external-link uri">https://github.com/claudiofronterre/RiskMap/issues</a>
-</li>
-</ul>
+<div class="row row-cols-1 row-cols-md-2 g-3 rm-cards">
+<div class="col">
+<div class="card">
+<p><i class="fa-solid fa-magnifying-glass-location rm-icon" aria-hidden="true"></i></p>
+<div class="section level3">
+<h3 id="explore">Explore<a class="anchor" aria-label="anchor" href="#explore"></a>
+</h3>
+<p>Choose a projection that keeps distances accurate with <code><a href="reference/propose_crs.html">propose_crs()</a></code>, look for spatial correlation with <code><a href="reference/variogram.html">variogram()</a></code>, and build prediction grids and population weights with <code><a href="reference/create_grid.html">create_grid()</a></code> and <code><a href="reference/get_worldpop.html">get_worldpop()</a></code>.</p>
+<p><a href="reference/index.html#data-and-projections">Data and projections</a></p>
 </div>
 </div>
-  </main><aside class="col-md-3"><div class="links">
-<h2 data-toc-skip>Links</h2>
-<ul class="list-unstyled">
-<li><a href="https://cloud.r-project.org/package=RiskMap" class="external-link">View on CRAN</a></li>
-<li><a href="https://github.com/claudiofronterre/RiskMap/" class="external-link">Browse source code</a></li>
-<li><a href="https://github.com/claudiofronterre/RiskMap/issues" class="external-link">Report a bug</a></li>
-<li><a href="https://www.mbgr.org/" class="external-link">MBG-R book (Giorgi, Fronterre)</a></li>
-<li><a href="https://github.com/claudiofronterre/RiskMap" class="external-link">Source code on GitHub</a></li>
-</ul>
 </div>
-
-<div class="license">
-<h2 data-toc-skip>License</h2>
-<ul class="list-unstyled">
-<li><a href="LICENSE.html">Full license</a></li>
-<li><small><a href="https://opensource.org/licenses/mit-license.php" class="external-link">MIT</a> + file <a href="LICENSE-text.html">LICENSE</a></small></li>
-</ul>
+<div class="col">
+<div class="card">
+<p><i class="fa-solid fa-chart-line rm-icon" aria-hidden="true"></i></p>
+<div class="section level3">
+<h3 id="fit">Fit<a class="anchor" aria-label="anchor" href="#fit"></a>
+</h3>
+<p>Write the model as a formula with a spatial Gaussian process, <code><a href="reference/gp.html">gp()</a></code>, and random effects, <code><a href="reference/re.html">re()</a></code>, and fit it with <code><a href="reference/glgpm.html">glgpm()</a></code>. <code><a href="reference/check_fit.html">check_fit()</a></code> flags anything in the fit that needs attention.</p>
+<p><a href="reference/index.html#specifying-and-fitting">Specifying and fitting</a></p>
 </div>
-
-<div class="community">
-<h2 data-toc-skip>Community</h2>
-<ul class="list-unstyled">
-<li><a href="CONTRIBUTING.html">Contributing guide</a></li>
-</ul>
 </div>
-
-<div class="citation">
-<h2 data-toc-skip>Citation</h2>
-<ul class="list-unstyled">
-<li><a href="authors.html#citation">Citing RiskMap</a></li>
-</ul>
 </div>
-
-<div class="developers">
-<h2 data-toc-skip>Developers</h2>
-<ul class="list-unstyled">
-<li>Emanuele Giorgi <br><small class="roles"> Author </small> <a href="https://orcid.org/0000-0003-0640-181X" target="orcid.widget" aria-label="ORCID" class="external-link"><span class="fab fa-orcid orcid" aria-hidden="true"></span></a>  </li>
-<li>Claudio Fronterre <br><small class="roles"> Author, maintainer </small> <a href="https://orcid.org/0000-0001-6723-9727" target="orcid.widget" aria-label="ORCID" class="external-link"><span class="fab fa-orcid orcid" aria-hidden="true"></span></a>  </li>
-<li>Simon Smart <br><small class="roles"> Author </small> <a href="https://orcid.org/0000-0002-3624-8951" target="orcid.widget" aria-label="ORCID" class="external-link"><span class="fab fa-orcid orcid" aria-hidden="true"></span></a>  </li>
-</ul>
+<div class="col">
+<div class="card">
+<p><i class="fa-solid fa-map-location-dot rm-icon" aria-hidden="true"></i></p>
+<div class="section level3">
+<h3 id="predict">Predict<a class="anchor" aria-label="anchor" href="#predict"></a>
+</h3>
+<p>Predict prevalence at new locations or over areas with <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>, with exceedance probabilities and averages weighted by population from <code><a href="reference/get_worldpop.html">get_worldpop()</a></code>.</p>
+<p><a href="reference/index.html#prediction">Prediction</a></p>
 </div>
-
-<div class="dev-status">
-<h2 data-toc-skip>Dev status</h2>
-<ul class="list-unstyled">
-<li><a href="https://cran.r-project.org/package=RiskMap" class="external-link"><img src="https://www.r-pkg.org/badges/version/RiskMap" alt="CRAN version"></a></li>
-<li><a href="https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
-<li><a href="https://cran.r-project.org/package=RiskMap" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/RiskMap" alt="CRAN downloads"></a></li>
-<li><a href="https://cran.r-project.org/package=RiskMap" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/grand-total/RiskMap" alt="Total downloads"></a></li>
-<li><a href="https://lifecycle.r-lib.org/articles/stages.html" class="external-link"><img src="https://img.shields.io/badge/lifecycle-maturing-blue.svg" alt="lifecycle"></a></li>
-</ul>
 </div>
-
-  </aside>
+</div>
+<div class="col">
+<div class="card">
+<p><i class="fa-solid fa-bullseye rm-icon" aria-hidden="true"></i></p>
+<div class="section level3">
+<h3 id="assess">Assess<a class="anchor" aria-label="anchor" href="#assess"></a>
+</h3>
+<p>Compare models by spatial cross-validation with <code><a href="reference/assess_prediction.html">assess_prediction()</a></code>, and test prediction targets on simulated data with <code><a href="reference/assess_simulation.html">assess_simulation()</a></code>.</p>
+<p><a href="reference/index.html#assessment">Assessment</a></p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="section level2">
+<h2 id="learn-with-the-book">Learn with the book<a class="anchor" aria-label="anchor" href="#learn-with-the-book"></a>
+</h2>
+<div class="rm-callout">
+<p><strong><a href="https://www.mbgr.org/" class="external-link">Model-based geostatistics for global public health using R</a></strong>, by Emanuele Giorgi and Claudio Fronterre, teaches model-based geostatistics with RiskMap through analyses of real data from public health. It is free to read online.</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="riskmap-20">RiskMap 2.0<a class="anchor" aria-label="anchor" href="#riskmap-20"></a>
+</h2>
+<p>RiskMap 2.0 is a redesign of version 1.0.0. Many functions have been renamed, merged or removed, and prediction at locations and over areas now goes through a single <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> method, so code written for 1.0.0 needs changing. The <a href="news/index.html">NEWS</a> lists the main changes, with a table of the functions of 1.0.0 and their replacements.</p>
+</div>
+<div class="section level2">
+<h2 id="citation">Citation<a class="anchor" aria-label="anchor" href="#citation"></a>
+</h2>
+<p>To cite RiskMap, please use</p>
+<p>Giorgi, E., Fronterre, C. and Smart, S. (2026). <em>RiskMap: Geostatistical Modeling of Spatially Referenced Data</em>. R package version 2.0.0. <a href="https://claudiofronterre.github.io/RiskMap/" class="uri">https://claudiofronterre.github.io/RiskMap/</a></p>
+<p><code>citation("RiskMap")</code> in R, or <a href="authors.html#citation">Citing RiskMap</a>, gives the same reference with a BibTeX entry. Please report bugs and suggest features in the <a href="https://github.com/claudiofronterre/RiskMap/issues" class="external-link">issue tracker</a>.</p>
+</div>
+</div>
+  </main><aside class="col-md-3"></aside>
 </div>
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by the RiskMap team: Emanuele Giorgi and Claudio Fronterre.</p>
+  <p>Developed by Emanuele Giorgi, Claudio Fronterre, Simon Smart.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Learn RiskMap with <a href="https://www.mbgr.org/" class="external-link">MBG-R</a>.</p>
+  <p>Learn RiskMap with the book <a href="https://www.mbgr.org/" class="external-link">Model-based geostatistics for global public health using R</a>. Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer>
