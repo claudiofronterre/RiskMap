@@ -37,18 +37,33 @@ make_card <- function(out = "pkgdown/assets/card.png") {
   }
   dir.create(dirname(out), showWarnings = FALSE, recursive = TRUE)
   profile <- tempfile("chrome-")
-  on.exit(unlink(profile, recursive = TRUE), add = TRUE)
-  system2(chrome[[1]], c(
+  shot <- tempfile("card-", fileext = ".png")
+  on.exit(unlink(c(profile, shot), recursive = TRUE), add = TRUE)
+  status <- system2(chrome[[1]], shQuote(c(
     "--headless=new", "--disable-gpu", "--hide-scrollbars",
     paste0("--user-data-dir=", profile),
     "--virtual-time-budget=5000", "--window-size=1200,630",
-    paste0("--screenshot=", normalizePath(out, mustWork = FALSE)),
+    paste0("--screenshot=", shot),
     paste0("file://", normalizePath("pkgdown/card.html"))
-  ), stdout = FALSE, stderr = FALSE)
+  )), stdout = FALSE, stderr = FALSE)
+  if (!identical(status, 0L) || !file.exists(shot)) {
+    stop("Chrome did not draw the card, so ", out, " is unchanged.",
+         call. = FALSE)
+  }
+  file.copy(shot, out, overwrite = TRUE)
   invisible(out)
 }
 
 # Favicons made from the logo by pkgdown, through realfavicongenerator.net.
-make_favicons <- function() {
+# The web manifest it writes points at the root of the domain and has no
+# name, so the site, which lives under /RiskMap/, gets relative paths.
+make_favicons <- function(manifest = "pkgdown/favicon/site.webmanifest") {
   pkgdown::build_favicons(overwrite = TRUE)
+  lines <- readLines(manifest)
+  lines <- sub('"src": "/', '"src": "', lines, fixed = TRUE)
+  lines <- sub('"name": ""', '"name": "RiskMap"', lines, fixed = TRUE)
+  lines <- sub('"short_name": ""', '"short_name": "RiskMap"', lines,
+               fixed = TRUE)
+  writeLines(lines, manifest)
+  invisible(manifest)
 }

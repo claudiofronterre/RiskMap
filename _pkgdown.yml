@@ -28,11 +28,8 @@ home:
   title: RiskMap
   sidebar: false
   description: >
-    Model-based geostatistics in R for continuous and count data, with
-    Gaussian process models fitted by Monte Carlo maximum likelihood.
-  links:
-    - text: Model-based geostatistics for global public health using R
-      href: https://www.mbgr.org/
+    Model-based geostatistics in R. Fit spatial Gaussian process models to
+    continuous and count data, and map risk with its uncertainty.
 
 # "intro" links vignettes/articles/RiskMap.Rmd as "Get started" once it
 # exists, and the Articles menu appears with the first article.

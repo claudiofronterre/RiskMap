@@ -53,6 +53,8 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: JamesIves/github-pages-deploy-action@v4.5.0
         with:
-          clean: false
+          # Remove pages that the new build no longer has, such as the
+          # reference pages of functions removed since 1.0.0.
+          clean: true
           branch: gh-pages
           folder: docs
