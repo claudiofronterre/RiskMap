@@ -194,6 +194,54 @@ as_riskmap_grid <- function(grid) {
   as_riskmap_grid(out)
 }
 
+#' Say that points on a regular grid are assigned to polygons one by one
+#'
+#' Called by `predict()` when it aggregates over polygons at points that are
+#' not a grid from `create_grid()`. Points on a square lattice are probably
+#' such a grid that lost its cells, for example through `cbind()`, or one
+#' made with `sf::st_make_grid()`, so the message says how to have each cell
+#' weighted by its coverage instead (#214). The points are those passed to
+#' the model, in its CRS, so a grid made in another CRS is not recognised.
+#' @param points The prediction locations, an `sf` object.
+#' @return Whether the message was given, invisibly.
+#' @noRd
+inform_point_assignment <- function(points) {
+  if (!on_square_lattice(points)) return(invisible(FALSE))
+  riskmap_inform(c(
+    "{.arg newdata} lie on a regular grid that doesn't come from {.fn create_grid}, so each point counts fully in the polygon that contains it.",
+    "i" = "Make the grid with {.fn create_grid} to weight each cell by the fraction of it within each polygon. Add columns to it with {.code $<-} or {.fn dplyr::mutate}, since {.fn cbind} and {.fn merge} drop its cells."
+  ))
+  invisible(TRUE)
+}
+
+#' Whether points lie on a square lattice
+#'
+#' The points are distinct, at least four, in at least two rows and two
+#' columns, and their coordinates are whole multiples of one spacing from the
+#' first row and column, as the centres of the cells of a square grid, of
+#' which some may be missing.
+#' @param points An `sf` object.
+#' @noRd
+on_square_lattice <- function(points) {
+  geometry <- st_geometry(points)
+  if (length(geometry) < 4L ||
+      !all(st_geometry_type(geometry) == "POINT")) {
+    return(FALSE)
+  }
+  coordinates <- unique(st_coordinates(geometry)[, 1:2, drop = FALSE])
+  if (nrow(coordinates) < 4L || !all(is.finite(coordinates))) return(FALSE)
+  steps <- apply(coordinates, 2L, function(values) {
+    values <- sort(unique(values))
+    gaps <- diff(values)
+    gaps <- gaps[gaps > 1e-8 * max(abs(values), 1)]
+    if (!length(gaps)) return(NA_real_)
+    step <- min(gaps)
+    positions <- (values - values[1L]) / step
+    if (any(abs(positions - round(positions)) > 1e-6)) NA_real_ else step
+  })
+  all(is.finite(steps)) && abs(steps[1L] - steps[2L]) <= 1e-6 * max(steps)
+}
+
 #' Keep the grid cells that lie in, or overlap, a study boundary
 #' @noRd
 keep_grid_cells <- function(grid_box, study_boundary, cellsize, keep) {
@@ -272,4 +320,47 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
     boundary = study_boundary
   )
   as_riskmap_grid(grid_out)
+}
+
+##' @title Convex Hull of an sf Object
+##'
+##' @description Computes the convex hull of an `sf` object, returning the boundaries of the smallest polygon that can enclose all geometries in the input.
+##'
+##' @param data An `sf` data frame object containing geometries.
+##'
+##' @return An `sf` object representing the convex hull of the input geometries.
+##'
+##' @details The convex hull is the smallest convex polygon that encloses all points in the input `sf` object. This function computes the convex hull by first uniting all geometries in the input using `st_union()`, and then applying `st_convex_hull()` to obtain the polygonal boundary. The result is returned as an `sf` object containing the convex hull geometry.
+##'
+##' @seealso \code{\link[sf]{st_convex_hull}}, \code{\link[sf]{st_union}}
+##'
+##' @examples
+##' library(sf)
+##'
+##' # Create example sf object
+##' points <- st_sfc(st_point(c(0,0)), st_point(c(1,1)), st_point(c(2,2)), st_point(c(0,2)))
+##' sf_points <- st_sf(geometry = points)
+##'
+##' # Calculate the convex hull
+##' convex_hull_result <- create_convex_hull(sf_points)
+##'
+##' # Plot the result
+##' plot(sf_points, col = 'blue', pch = 19)
+##' plot(convex_hull_result, add = TRUE, border = 'red')
+##' @export
+create_convex_hull <- function(data) {
+  check_supplied(data)
+  # Check if the input is an sf object
+  if (!inherits(data, "sf")) {
+    abort_input("{.arg data} must be an {.cls sf} object, not {.obj_type_friendly {data}}.", arg = "data")
+  }
+
+  # Get the geometry from the sf object
+  geometry <- st_geometry(data)
+
+  # Compute the convex hull
+  convex_hull <- st_convex_hull(st_union(geometry))
+
+  # Return the convex hull as an sf object
+  return(st_sf(geometry = convex_hull))
 }

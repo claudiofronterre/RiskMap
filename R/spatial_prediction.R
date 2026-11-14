@@ -705,6 +705,9 @@ assign_prediction_locations <- function(model_data, boundaries) {
   if (inherits(model_data, "RiskMap_grid") && !is.null(metadata)) {
     return(assign_prediction_grid_cells(model_data, boundaries, metadata))
   }
+  # Points on a grid that has lost its cells are said to be counted whole
+  # (#214)
+  inform_point_assignment(model_data)
 
   membership <- st_within(model_data, boundaries)
   membership_count <- lengths(membership)

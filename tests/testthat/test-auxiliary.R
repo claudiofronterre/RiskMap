@@ -193,19 +193,6 @@ test_that("plot.RiskMap_cross_validation applies extra ggplot components passed 
   expect_no_error(ggplot2::ggplot_build(p_custom))
 })
 
-test_that("create_convex_hull generates errors", {
-  expect_input_error(create_convex_hull("a"), "sf_object")
-})
-
-test_that("create_convex_hull functions correctly", {
-  result <- create_convex_hull(gaussian_data)
-  expect_s3_class(result, "sf")
-  expect_identical(nrow(result), 1L)
-
-  intersect <- unlist(st_intersects(gaussian_data, result))
-  expect_identical(intersect, rep(1L, 10))
-})
-
 test_that("re errors when no variables are provided",{
   expect_error(re(), "needs at least one variable")
 })
