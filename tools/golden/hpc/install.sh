@@ -33,7 +33,7 @@ in_container Rscript --vanilla -e "
   if (length(missing)) install.packages(missing, lib = '${DEPS}', repos = 'https://cloud.r-project.org')"
 # --preclean so that no object file of an earlier build is reused, --clean so that the source stays as unpacked.
 in_container R CMD INSTALL --preclean --clean -l "${LIBRARY}" "${SOURCE}" 2>&1 | tee "${LIBRARY}.install.log"
-echo "compiled $(grep -c -E '^(g\+\+|gcc) ' "${LIBRARY}.install.log") source files"
+echo "compiled $(grep -c -E '^(g\+\+|gcc) .* -c ' "${LIBRARY}.install.log") source files"
 in_container Rscript --vanilla -e "
   library(RiskMap, lib.loc = '${LIBRARY}')
   cat('RiskMap', as.character(packageVersion('RiskMap')), 'from', find.package('RiskMap'), '\n')"
