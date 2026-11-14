@@ -75,12 +75,13 @@ fit <- glgpm(npos ~ gp(),
              data = liberia,
              family = "binomial",
              denominator = ntest)
-summary(fit)
 
-grid <- create_grid(create_convex_hull(liberia), spacing = 5)
+grid <- create_grid(create_convex_hull(liberia), spacing = 2.5)
 prediction <- predict(fit, newdata = grid)
 plot(prediction)
 ```
+
+<img src="man/figures/README-example-1.png" alt="Map of the predicted prevalence of river blindness nodules over the area of the Liberian villages, from under 10% in the south to over 30% in the north-west."  />
 
 ## Learning RiskMap
 

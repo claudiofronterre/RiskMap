@@ -1,0 +1,218 @@
+/* RiskMap site styles, beyond what the bslib theme in _pkgdown.yml sets.
+   The brand colours come from the sticker. When the sticker changes, update
+   them here and in template.bslib of _pkgdown.yml. */
+
+:root {
+  --rm-navy: #022345;
+  --rm-accent: #f26b1d;
+  /* the prevalence scale of the sticker's map, from low to high */
+  --rm-gradient: linear-gradient(90deg, #6bc673, #f6c31f 40%, #fb6f14 70%, #ed1a0b);
+}
+
+/* Navbar ------------------------------------------------------------------ */
+
+/* A navy navbar in both modes, with a thin strip of the prevalence scale
+   under it. pkgdown sets no navbar colours when the light switch is on, so
+   they are set here through Bootstrap's navbar variables. */
+.navbar {
+  background: var(--rm-navy);
+  border-bottom: 3px solid transparent;
+  border-image: var(--rm-gradient) 1;
+  --bs-navbar-color: rgba(255, 255, 255, 0.8);
+  --bs-navbar-hover-color: #fff;
+  --bs-navbar-active-color: #fff;
+  --bs-navbar-brand-color: #fff;
+  --bs-navbar-brand-hover-color: #fff;
+  --bs-navbar-toggler-border-color: rgba(255, 255, 255, 0.3);
+  --bs-navbar-toggler-icon-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28255,255,255,0.85%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+.navbar .nav-text.text-muted {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+.navbar .nav-item.active .nav-link,
+.navbar .nav-item .nav-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.navbar .form-control {
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.navbar .form-control::placeholder {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* The logo before the package name. pkgdown copies man/figures/logo.png to
+   the root of the site, next to this file. */
+.navbar-brand::before {
+  content: "";
+  display: inline-block;
+  width: 1.75rem;
+  height: 2rem;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  background: url(logo.png) center / contain no-repeat;
+}
+
+/* Text -------------------------------------------------------------------- */
+
+/* JetBrains Mono would draw R's <- as an arrow */
+code, pre, kbd {
+  font-variant-ligatures: none;
+}
+
+[data-bs-theme="dark"] .btn-outline-primary {
+  --bs-btn-color: #6db7e3;
+  --bs-btn-border-color: #6db7e3;
+  --bs-btn-hover-bg: #6db7e3;
+  --bs-btn-hover-border-color: #6db7e3;
+  --bs-btn-hover-color: #0b1a2b;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.01em;
+}
+
+[data-bs-theme="light"] :is(h1, h2, h3) {
+  color: var(--rm-navy);
+}
+
+/* Home page --------------------------------------------------------------- */
+
+/* The home page is a landing page across the full width, with its prose kept
+   to a readable measure */
+.template-home .row > #main {
+  width: 100%;
+  max-width: 66rem;
+}
+
+.template-home #main p,
+.template-home #main ul {
+  max-width: 46rem;
+}
+
+.template-home .row > aside {
+  display: none;
+}
+
+.template-home .page-header {
+  border-bottom: 0;
+  margin-bottom: 0.5rem;
+}
+
+.template-home .page-header h1 {
+  font-size: calc(2.4rem + 1.5vw);
+  font-weight: 700;
+}
+
+.template-home img.logo {
+  width: 150px;
+}
+
+@media (min-width: 992px) {
+  .template-home img.logo {
+    width: 210px;
+  }
+}
+
+.rm-badges p {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.rm-pitch {
+  font-size: 1.35rem;
+  line-height: 1.45;
+  max-width: 34em;
+  color: var(--bs-secondary-color);
+}
+
+.rm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 1.5rem 0 1rem;
+}
+
+.rm-rule {
+  height: 4px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--rm-gradient);
+  opacity: 1;
+  margin: 2.25rem 0 1.5rem;
+  clear: both;
+}
+
+.rm-caption {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--bs-secondary-color);
+}
+
+.rm-figure img,
+img.rm-figure {
+  width: 100%;
+  height: auto;
+  border-radius: var(--bs-border-radius-lg);
+  border: 1px solid var(--bs-border-color);
+  background: #fff;
+}
+
+.rm-cards .card {
+  height: 100%;
+  padding: 1.25rem 1.25rem 0.75rem;
+  background: var(--bs-tertiary-bg);
+  border-color: var(--bs-border-color-translucent);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rm-cards .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0.5rem 1.25rem rgba(2, 35, 69, 0.12);
+}
+
+.rm-cards .card h3 {
+  font-size: 1.2rem;
+  margin-top: 0.5rem;
+}
+
+.rm-icon {
+  font-size: 1.6rem;
+  color: var(--rm-accent);
+}
+
+.rm-callout {
+  padding: 1.25rem 1.5rem;
+  margin: 1.5rem 0;
+  border-left: 4px solid var(--bs-primary);
+  border-radius: var(--bs-border-radius);
+  background: var(--bs-tertiary-bg);
+}
+
+.rm-callout > :last-child {
+  margin-bottom: 0;
+}
+
+/* Phones ------------------------------------------------------------------ */
+
+@media (max-width: 575.98px) {
+  .template-home img.logo {
+    width: 96px;
+  }
+
+  .rm-pitch {
+    font-size: 1.15rem;
+  }
+
+  .rm-actions .btn {
+    font-size: 1rem;
+    padding: 0.45rem 0.9rem;
+  }
+}

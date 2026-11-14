@@ -2,11 +2,31 @@ url: https://claudiofronterre.github.io/RiskMap/
 
 template:
   bootstrap: 5
+  light-switch: true
   bslib:
-    bootswatch: flatly
+    # Brand colours, taken from the sticker. When the sticker changes, update
+    # these and the custom properties at the top of pkgdown/extra.css.
+    primary: "#116D9C"      # the blue of the sticker's map
+    dark: "#022345"         # the navy of the sticker
+    body-bg-dark: "#0B1A2B"
+    body-secondary-bg-dark: "#11243A"
+    body-tertiary-bg-dark: "#0E1F33"
+    link-color-dark: "#6DB7E3"
+    border-radius: 0.5rem
+    font-size-base: 1.0625rem
+    base_font: {google: "Source Sans 3"}
+    heading_font: {google: "Inter"}
+    code_font: {google: "JetBrains Mono"}
+  opengraph:
+    image:
+      src: card.png
+      alt: "RiskMap, model-based geostatistics in R"
 
+# The home page is pkgdown/index.md, a landing page without the sidebar.
+# README.md is the page on GitHub and CRAN.
 home:
   title: RiskMap
+  sidebar: false
   description: >
     Model-based geostatistics in R for continuous and count data, with
     Gaussian process models fitted by Monte Carlo maximum likelihood.
@@ -19,13 +39,14 @@ home:
 navbar:
   structure:
     left: [intro, reference, articles, news]
-    right: [search, book, github]
+    right: [search, book, github, lightswitch]
   components:
     news:
       text: News
       href: news/index.html
     book:
       text: Book
+      icon: fa-book-open
       href: https://www.mbgr.org/
       aria-label: The book Model-based geostatistics for global public health using R
     github:
@@ -71,6 +92,9 @@ reference:
       - glgpm
 
   - subtitle: Model terms
+    desc: >
+      The spatial Gaussian process and unstructured random effects, as terms
+      of the model formula.
     contents:
       - gp
       - re
@@ -84,11 +108,17 @@ reference:
       - negative_binomial
 
   - subtitle: Controls
+    desc: >
+      Settings of Monte Carlo maximum likelihood and of the MCMC sampler of the
+      random effects.
     contents:
       - set_control_mcml
       - set_control_mcmc
 
   - subtitle: Fitted models
+    desc: >
+      Print, summarise and tabulate a fit, and extract its estimates and fitted
+      values.
     contents:
       - print.RiskMap
       - summary.RiskMap
