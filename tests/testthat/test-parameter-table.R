@@ -306,14 +306,65 @@ test_that("the default starts are those glgpm() used", {
                class = "riskmap_error_internal")
 })
 
-test_that("a fit's table matches the table its fit was built from", {
-  for (fit in list(gaussian_model, gaussian_offset_model, binomial_model,
-                   poisson_model)) {
-    parameters <- fit_parameter_table(fit)
-    expect_identical(estimated_rows(parameters)$stored,
+test_that("a fit's table is the one glgpm() built, with the engines' layout", {
+  # The table glgpm() builds from the model's settings, before any estimate
+  # exists, and the one rebuilt from the fit must agree, since the bootstrap
+  # refits with the rebuilt table and an engine that builds its own layout
+  # from the same settings.
+  for (fit in list(gaussian_model, gaussian_offset_model,
+                   gaussian_intercept_model, binomial_model, poisson_model)) {
+    exact <- isTRUE(fit_traits(fit)$exact)
+    built <- model_parameter_table(
+      colnames(fit$D), fix_tau2 = fit$fix_tau2, exact = exact,
+      fix_var_me = fit$fix_var_me, estimated_family = character(),
+      family_parameters = fit$family_parameters, re_names = names(fit$re),
+      distance_units = fit$distance_units
+    )
+    rebuilt <- fit_parameter_table(fit)
+    expect_identical(rebuilt, built)
+    engine <- cov_par_layout(
+      ncol(fit$D), fix_tau2 = fit$fix_tau2,
+      family_parameters = if (exact) gaussian_family_block(fit$fix_var_me) else
+        estimated_family_parameters(fit),
+      n_re = length(fit$re)
+    )
+    expect_identical(rebuilt$layout[c("index", "length")],
+                     engine[c("index", "length")])
+    expect_identical(estimated_rows(rebuilt)$stored,
                      names(unlist(fit$estimate)))
-    expect_identical(working_estimate(parameters,
-                                      unname(unlist(fit$estimate))),
+    expect_identical(working_estimate(rebuilt, unname(unlist(fit$estimate))),
                      fit$estimate)
   }
+  # A model without a nugget has none in its table, whatever it estimates.
+  expect_identical(gaussian_model$fix_tau2, 0)
+  expect_false(nugget_estimated(fit_parameter_table(gaussian_model)))
+  expect_null(gaussian_model$estimate$nu2)
+})
+
+test_that("a start that is missing or of the wrong length stops", {
+  parameters <- model_parameter_table(
+    c("(Intercept)", "x"), fix_tau2 = TRUE, exact = TRUE, fix_var_me = NULL,
+    estimated_family = character(), family_parameters = NULL,
+    re_names = c("g", "h"), distance_units = "km"
+  )
+  start <- list(beta = c(1, 0.5), sigma2 = 1.9, phi = 0.21, tau2 = 0.37,
+                sigma2_me = 0.11, sigma2_re = c(0.6, 2.2))
+  for (make in list(working_start, woodbury_start)) {
+    expect_error(make(parameters, start[names(start) != "tau2"]),
+                 class = "riskmap_error_internal")
+    expect_error(make(parameters, utils::modifyList(start, list(
+      sigma2_re = 0.6
+    ))), class = "riskmap_error_internal")
+    expect_error(make(parameters, utils::modifyList(start, list(beta = 1))),
+                 class = "riskmap_error_internal")
+  }
+})
+
+test_that("the Jacobian places the nugget by name, whatever the order", {
+  parameters <- table_with_everything()
+  shuffled <- parameters$rows$stored[c(1, 2, 3, 4, 6, 5, 7, 8)]
+  J <- parameter_jacobian(parameters, shuffled)
+  expect_identical(dimnames(J), list(shuffled, shuffled))
+  expect_identical(J["nu2", "sigma2"], 1)
+  expect_identical(sum(J), 9)
 })

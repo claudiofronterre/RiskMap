@@ -64,6 +64,9 @@ parameter_table <- function(beta_names, fix_tau2,
                             held_family = list(), re_names = NULL,
                             p = length(beta_names), n_re = length(re_names),
                             distance_units = NULL) {
+  # NULL, as estimated_family_parameters() gives for a family without
+  # parameters, is no parameter, as character() is.
+  estimated_family <- as.character(estimated_family)
   layout <- cov_par_layout(p, fix_tau2 = fix_tau2,
                            family_parameters = estimated_family, n_re = n_re)
   nugget <- isTRUE(fix_tau2)
@@ -262,16 +265,33 @@ fit_nugget_variance <- function(fit) {
 ##' start from it.
 ##' @noRd
 working_start <- function(table, start) {
-  out <- start$beta
+  out <- start_value(table, start, "beta")
   for (name in setdiff(estimate_names(table), "beta")) {
+    value <- start_value(table, start, name)
     out <- c(out, switch(
       name,
-      sigma2 = , phi = , sigma2_re = log(start[[name]]),
-      nu2 = nugget_working(start$tau2, start$sigma2),
-      family_parameter(name)$working(start[[name]])
+      sigma2 = , phi = , sigma2_re = log(value),
+      nu2 = nugget_working(value, start$sigma2),
+      family_parameter(name)$working(value)
     ))
   }
   unname(out)
+}
+
+##' The start of one parameter, checked to have a value for each of its rows
+##'
+##' `name` is as the estimate names it, so `nu2` reads the start of `tau2`. A
+##' start that is missing or of the wrong length would shift every later
+##' parameter in the working vector, so it stops as a bug.
+##' @noRd
+start_value <- function(table, start, name) {
+  user <- if (name == "nu2") "tau2" else name
+  value <- start[[user]]
+  wanted <- sum(estimated_rows(table)$name == user)
+  if (length(value) != wanted) {
+    riskmap_bug("The start of {.code {user}} has {length(value)} values, not {wanted}.")
+  }
+  value
 }
 
 ##' Starting values on the working scale of the Woodbury Gaussian path
@@ -289,12 +309,12 @@ woodbury_start <- function(table, start) {
   covariance <- numeric(sum(rows$block != "coefficients"))
   position <- 0L
   for (name in setdiff(estimate_names(table), "beta")) {
-    value <- switch(name, nu2 = start$tau2, start[[name]])
+    value <- start_value(table, start, name)
     covariance[position + seq_along(value)] <- value
     position <- position + length(value)
   }
   covariance[-(1:2)] <- covariance[-(1:2)] / covariance[1]
-  unname(c(start$beta, log(covariance)))
+  unname(c(start_value(table, start, "beta"), log(covariance)))
 }
 
 ##' Split the working vector of the fitting engines into the estimate
@@ -379,13 +399,15 @@ coef_order <- function(table) {
 ##' On the scale on which `summary()` forms its intervals, every parameter is
 ##' its working value except the nugget, whose logarithm is the sum of the
 ##' working values of the nugget and the spatial variance. Rows and columns
-##' are named by `stored`.
+##' are named by `names`, the flat names of the estimate, `stored` by
+##' default, and the nugget's entry is placed by name, so that it lands on
+##' the right row whatever the order of the estimate.
 ##' @noRd
-parameter_jacobian <- function(table) {
+parameter_jacobian <- function(table, names = estimated_rows(table)$stored) {
+  J <- diag(length(names))
+  dimnames(J) <- list(names, names)
   rows <- estimated_rows(table)
-  J <- diag(nrow(rows))
-  dimnames(J) <- list(rows$stored, rows$stored)
-  nugget <- rows$stored[rows$scale == "nugget"]
+  nugget <- intersect(rows$stored[rows$scale == "nugget"], names)
   if (length(nugget)) J[nugget, "sigma2"] <- 1
   J
 }

@@ -724,8 +724,7 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
   ## isn't just an exp(); its covariance is obtained via the delta method
   ## below (J, from the parameter table), alongside the other, unchanged
   ## parameters.
-  J <- parameter_jacobian(parameters)
-  dimnames(J) <- list(nm, nm)
+  J <- parameter_jacobian(parameters, nm)
   if (has_tau2) {
     estimate["nu2"] <- estimate["nu2"] + estimate["sigma2"]
   }
