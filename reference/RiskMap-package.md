@@ -17,15 +17,15 @@ Useful links:
 
 ## Author
 
-**Maintainer**: Emanuele Giorgi <e.giorgi@bham.ac.uk>
-([ORCID](https://orcid.org/0000-0003-0640-181X))
+**Maintainer**: Claudio Fronterre <c.fronterre@bham.ac.uk>
+([ORCID](https://orcid.org/0000-0001-6723-9727))
 
 Authors:
 
-- Emanuele Giorgi <e.giorgi@bham.ac.uk>
-  ([ORCID](https://orcid.org/0000-0003-0640-181X))
-
 - Claudio Fronterre <c.fronterre@bham.ac.uk>
   ([ORCID](https://orcid.org/0000-0001-6723-9727))
+
+- Emanuele Giorgi <e.giorgi@bham.ac.uk>
+  ([ORCID](https://orcid.org/0000-0003-0640-181X))
 
 - Simon Smart ([ORCID](https://orcid.org/0000-0002-3624-8951))
