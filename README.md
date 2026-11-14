@@ -10,28 +10,21 @@ status](https://www.r-pkg.org/badges/version/RiskMap)](https://CRAN.R-project.or
 [![R-CMD-check](https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-RiskMap fits geostatistical models to spatially referenced data and uses
-them to map risk, at single locations and over areas. It was written for
-problems in public health, such as mapping the prevalence of a disease
-from surveys in scattered villages, but it applies to any continuous or
-count outcome measured at points in space.
+Model-based geostatistics in R. Fit spatial models to survey data,
+predict disease risk at locations and over areas, and quantify its
+uncertainty.
 
-The models are generalised linear models with a stationary Gaussian
-process of Matérn correlation and, optionally, unstructured random
-effects. The response can be Gaussian, binomial, Poisson or negative
-binomial, and a binomial or Poisson model can take any link through its
-inverse. Linear Gaussian models are fitted by maximum likelihood and the
-others by Monte Carlo maximum likelihood, which measures the Monte Carlo
-error of the estimates and enlarges its samples until that error is
-small compared with their standard errors.
+RiskMap implements generalised linear geostatistical models for
+Gaussian, binomial, Poisson and negative binomial outcomes. It was
+developed for public health, for example to map the prevalence of a
+disease from surveys, and applies to any outcome measured at
+geo-referenced locations.
 
 With RiskMap you can
 
-- choose a projected coordinate reference system that keeps distances
-  accurate, and download population counts from WorldPop,
-- explore spatial correlation with the empirical variogram,
-- fit models with `glgpm()` and check them with profile likelihoods and
-  the parametric bootstrap,
+- choose a projection that keeps distances accurate, explore spatial
+  correlation, and download population counts from WorldPop,
+- fit models with `glgpm()` and check them with `check_fit()`,
 - predict with `predict()` at new locations or over areas, for targets
   such as prevalence, the probability of exceeding a threshold or a
   population-weighted average,
@@ -53,43 +46,47 @@ remotes::install_github("claudiofronterre/RiskMap")
 `install.packages("RiskMap")` installs RiskMap 1.0.0 from CRAN, whose
 interface is different.
 
-## An example
+## Get started
 
-The `liberia` data give, for 90 villages in Liberia, the number of
-people examined for the nodules of river blindness and the number found
-with them. This fits a binomial model with a Gaussian process to the
-counts and maps the predicted prevalence over the area the villages
-span.
+The `liberia` data give, for 90 villages, the number of people examined
+for the nodules of river blindness and the number found with them. This
+example fits a binomial geostatistical model to the counts and maps the
+predicted prevalence across Liberia.
 
 ``` r
 library(RiskMap)
 library(sf)
+library(geobounds)
 
 data(liberia)
 liberia <- st_as_sf(liberia,
                     coords = c("long", "lat"),
                     crs = 4326)
-liberia <- st_transform(liberia, propose_crs(liberia))
+crs <- propose_crs(liberia)
+liberia <- st_transform(liberia, crs)
+border <- st_transform(gb_get_adm0("Liberia"), crs)
 
 fit <- glgpm(npos ~ gp(),
              data = liberia,
              family = "binomial",
              denominator = ntest)
 
-grid <- create_grid(create_convex_hull(liberia), spacing = 2.5)
+grid <- create_grid(border, spacing = 2.5)
 prediction <- predict(fit, newdata = grid)
 plot(prediction)
 ```
 
-<img src="man/figures/README-example-1.png" alt="Map of the predicted prevalence of river blindness nodules over the area of the Liberian villages, from under 10% in the south to over 30% in the north-west."  />
+<img src="man/figures/README-example-1.png" alt="Map of the predicted prevalence of river blindness nodules across Liberia, from about 5% on the south coast to over 25% in the north-west."  />
+
+The boundary is from [geoBoundaries](https://www.geoboundaries.org/)
+(UNMIL and OCHA ROWCA), under CC BY 3.0 IGO.
 
 ## Learning RiskMap
 
 The book [*Model-based geostatistics for global public health using
 R*](https://www.mbgr.org/), by Emanuele Giorgi and Claudio Fronterre,
 teaches model-based geostatistics with RiskMap through analyses of real
-data from public health, and is free to read online. The methods are set
-out in Diggle and Giorgi (2019).
+data from public health, and is free to read online.
 
 ## RiskMap 2.0
 
@@ -97,9 +94,8 @@ RiskMap 2.0 is a redesign of version 1.0.0. Many functions have been
 renamed, merged or removed, and prediction at locations and over areas
 now goes through a single `predict()` method, so code written for 1.0.0
 needs changing. The
-[NEWS](https://claudiofronterre.github.io/RiskMap/news/) describes every
-change and has a table of the functions of 1.0.0 with their
-replacements.
+[NEWS](https://claudiofronterre.github.io/RiskMap/news/) lists the main
+changes, with a table of the functions of 1.0.0 and their replacements.
 
 ## Citation
 
@@ -110,10 +106,5 @@ Modeling of Spatially Referenced Data*. R package version 2.0.0.
 <https://claudiofronterre.github.io/RiskMap/>
 
 `citation("RiskMap")` in R gives the same reference with a BibTeX entry.
-If you use the methods, please also cite
-
-Diggle, P. J. and Giorgi, E. (2019). *Model-based Geostatistics for
-Global Public Health: Methods and Applications*. Chapman and Hall/CRC.
-
 Please report bugs and suggest features in the [issue
 tracker](https://github.com/claudiofronterre/RiskMap/issues).

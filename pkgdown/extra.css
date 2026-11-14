@@ -106,16 +106,11 @@ code, pre, kbd {
 
 /* Home page --------------------------------------------------------------- */
 
-/* The home page is a landing page across the full width, with its prose kept
-   to a readable measure */
+/* The home page is a landing page across the width of the page, narrow
+   enough for its short paragraphs to read comfortably */
 .template-home .row > #main {
   width: 100%;
-  max-width: 66rem;
-}
-
-.template-home #main p,
-.template-home #main ul {
-  max-width: 46rem;
+  max-width: 62rem;
 }
 
 .template-home .row > aside {
