@@ -116,7 +116,7 @@ Each task gets one line, `identical`, `DIFFERENT value`, `DIFFERENT text`, `MISS
 
 ## The reference
 
-The reference for `main` at 6010772 is `arms/kernel-a2b307e-wayland` on Wayland (a2b307e has the tree of 6010772), taken by the MCML paper's battery on a 64core256G node. `arms/golden-749e18c`, the first arm of this battery, is identical to it in all 57 tasks and also records the fits of every task, so it is the better reference for the tolerance mode. A PR that changes no number keeps the reference. A PR that moves numbers or adds tasks takes a new one at its merge commit, noted here.
+The reference for `main` at 6010772 is `arms/kernel-a2b307e-wayland` on Wayland (a2b307e has the tree of 6010772), taken by the MCML paper's battery on a 64core256G node. `arms/golden-e1fd248`, taken by this battery as #314 merged it, is identical to it in all 57 tasks and also records the fits of the downstream tasks and the package versions, so it is the better reference for the tolerance mode. A PR that changes no number keeps the reference. A PR that moves numbers or adds tasks takes a new one at its merge commit, noted here.
 
 ## Adding a task
 
