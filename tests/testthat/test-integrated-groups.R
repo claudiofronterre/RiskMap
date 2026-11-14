@@ -203,6 +203,36 @@ test_that("groups and locations of groups match numerical integration", {
   }
 })
 
+test_that("Poisson groups match numerical integration", {
+  # Counts of children with their own exposures and covariates.
+  survey <- group_survey()
+  survey$y <- c(0, 3, 1, 2, 0)
+  survey$m <- c(1, 2, 0.5, 1, 3)
+  poisson_kernel <- function(y, m, eta) y * eta - m * exp(eta)
+  x <- c(-1.4, 0.2)
+  for (outer in c(TRUE, FALSE)) {
+    table <- group_table(survey, c(nugget = outer, "re(household)" = TRUE),
+                         family = make_family("poisson"))
+    for (variances in list(c(0.1, 0.15), c(0.6, 1.2))) {
+      vo <- if (outer) variances[1L] else 0
+      classes <- as.numeric((table$plan$classes + 0) %*%
+                              c(vo, variances[2L]))
+      eta <- matrix(rep(table$mu, each = length(x)) + x, length(x))
+      values <- cpp_site_evaluate(table$sites$pointer, classes,
+                                  table$sites$units, eta, FALSE, 0L)$h
+      for (r in seq_along(table$plan$kind)) {
+        # The counts make the integrand narrower than the rule of 80 nodes
+        # resolves to 1e-8, so the reference takes 200.
+        reference <- nested_groups_by_quadrature(
+          table$members[[r]], eta[, r], vo, variances[2L], poisson_kernel,
+          nodes = 200L
+        )
+        expect_equal(values[, r], reference, tolerance = 1e-8)
+      }
+    }
+  }
+})
+
 test_that("a location of groups has the slope of its inner variance", {
   survey <- group_survey()
   table <- group_table(survey, c(nugget = TRUE, "re(household)" = TRUE))
