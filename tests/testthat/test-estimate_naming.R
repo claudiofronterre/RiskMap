@@ -185,47 +185,51 @@ test_that("cov_par_layout() omits slots that don't apply", {
   expect_identical(with_nugget$index$sigma2_re, 6)
 })
 
-test_that("pack_cov_pars() places deliberately different sigma2_re and sigma2_me at the layout's own positions (#135/#117)", {
-  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, family_parameters = "sigma2_me", n_re = 2)
+test_that("working_start() places deliberately different sigma2_re and sigma2_me at the layout's own positions (#135/#117)", {
+  parameters <- parameter_table(c("(Intercept)", "cov"), fix_tau2 = FALSE,
+                                estimated_family = "sigma2_me",
+                                re_names = c("i", "j"))
+  index <- parameters$layout$index
 
-  packed <- pack_cov_pars(layout, sigma2 = 1, phi = 2,
-                          family = list(sigma2_me = 999),
-                          sigma2_re = c(100, 200))
+  start <- working_start(parameters, list(
+    beta = c(10, 20), sigma2 = 1, phi = 2, sigma2_me = 999,
+    sigma2_re = c(100, 200)
+  ))
 
-  ## pack_cov_pars() returns the non-beta parameters only (start_cov_pars's
-  ## existing contract), so positions are offset by p = 2
-  p <- length(layout$index$beta)
-  expect_identical(packed[layout$index$sigma2 - p], 1)
-  expect_identical(packed[layout$index$phi - p], 2)
-  expect_identical(packed[layout$index$sigma2_me - p], 999)
-  expect_identical(packed[layout$index$sigma2_re - p], c(100, 200))
+  expect_identical(start[index$beta], c(10, 20))
+  expect_identical(start[index$sigma2], log(1))
+  expect_identical(start[index$phi], log(2))
+  expect_identical(start[index$sigma2_me], log(999))
+  expect_identical(start[index$sigma2_re], log(c(100, 200)))
 
   ## the specific bug: before the fix, reading this same vector back with the
   ## *indexing* order (sigma2_me before sigma2_re) would have returned the
   ## first sigma2_re value where sigma2_me belongs, and sigma2_me's value
   ## folded into sigma2_re - i.e. exactly what packing and indexing now both
   ## agree not to do
-  expect_false(isTRUE(all.equal(unname(packed[layout$index$sigma2_me - p]),
-                                unname(packed[layout$index$sigma2_re - p][1]))))
+  expect_false(isTRUE(all.equal(start[index$sigma2_me],
+                                start[index$sigma2_re][1])))
 })
 
-test_that("structure_estimate() and the fitting engines' indices agree on sigma2_me vs sigma2_re", {
-  ## structure_estimate() builds its positions from the same cov_par_layout()
-  ## the fitting engines use, so unpacking a vector built by pack_cov_pars()
+test_that("working_estimate() and the fitting engines' indices agree on sigma2_me vs sigma2_re", {
+  ## working_estimate() reads its positions from the same cov_par_layout()
+  ## the fitting engines use, so unpacking a vector built by working_start()
   ## recovers exactly what was packed - the three steps  (packing, indexing,
-  ## unpacking) now can't disagree with each other.
-  layout <- cov_par_layout(p = 2, fix_tau2 = FALSE, family_parameters = "sigma2_me", n_re = 2)
-  packed <- pack_cov_pars(layout, sigma2 = 1, phi = 2,
-                          family = list(sigma2_me = 999),
-                          sigma2_re = c(100, 200))
-  par <- c(10, 20, packed)  # arbitrary beta values prepended
+  ## unpacking) can't disagree with each other.
+  parameters <- parameter_table(c("(Intercept)", "cov"), fix_tau2 = FALSE,
+                                estimated_family = "sigma2_me",
+                                re_names = c("i", "j"))
+  par <- working_start(parameters, list(
+    beta = c(10, 20), sigma2 = 1, phi = 2, sigma2_me = 999,
+    sigma2_re = c(100, 200)
+  ))
 
-  est <- structure_estimate(par, beta_names = c("(Intercept)", "cov"),
-                            fix_tau2 = FALSE, family_parameters = "sigma2_me",
-                            re_names = c("i", "j"))
+  est <- working_estimate(parameters, par)
 
-  expect_identical(est$sigma2_me, 999)
-  expect_identical(unname(est$sigma2_re), c(100, 200))
+  expect_identical(est$sigma2_me, log(999))
+  expect_identical(unname(est$sigma2_re), log(c(100, 200)))
+  expect_named(est$sigma2_re, c("i", "j"))
+  expect_named(est$beta, c("(Intercept)", "cov"))
 })
 
 test_that("glgpm fits gaussian re() + estimated measurement error with deliberately different sigma2_re/sigma2_me starting values (#135/#117)", {

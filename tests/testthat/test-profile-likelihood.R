@@ -28,9 +28,12 @@ test_that("profiles of a binomial fit have the labels of summary()", {
                      rownames(summaries$ranef)))
   expect_identical(profiles$intervals$label, "Spatial process var.")
   # The ratio of the nugget to the spatial variance has no label in summary().
-  expect_identical(profile_labels(c("sigma2", "nu2"), "km"),
+  nugget <- parameter_table("(Intercept)", fix_tau2 = TRUE,
+                            distance_units = "km")
+  expect_identical(profile_labels(nugget, c("sigma2", "nu2", "tau2")),
                    list(sigma2 = "Spatial process var.",
-                        nu2 = "Nugget variance ratio"))
+                        nu2 = "Nugget variance ratio",
+                        tau2 = "Variance of the nugget"))
 })
 
 test_that("profiling restores the random number state", {

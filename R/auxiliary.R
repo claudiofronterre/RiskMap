@@ -569,34 +569,10 @@ check_formula <- function(formula, data, response_required = TRUE){
 ##' @export
 ##'
 coef.RiskMap <- function(object, ...) {
-
-  estimate <- object$estimate
-
-  beta_names <- colnames(as.matrix(object$D))
-
-  res      <- list()
-  res$beta <- estimate$beta
-  names(res$beta) <- beta_names
-
-  res$sigma2 <- exp(estimate$sigma2)
-  res$phi    <- exp(estimate$phi)
-
-  # The family's own parameters that the fit estimates, on their natural
-  # scale.
-  for (name in estimated_family_parameters(object)) {
-    res[[name]] <- fit_traits(object)$parameters[[name]]$natural(
-      estimate[[name]]
-    )
-  }
-
-  if (!is.null(estimate$nu2))
-    ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add
-    res$tau2 <- exp(estimate$nu2 + estimate$sigma2)
-
-  if (!is.null(estimate$sigma2_re))
-    res$sigma2_re <- exp(estimate$sigma2_re)
-
-  return(res)
+  # The natural values of the parameter table, the nugget as its variance,
+  # in the order coef() has always given them.
+  parameters <- fit_parameter_table(object)
+  natural_values(parameters, object$estimate)[coef_order(parameters)]
 }
 
 ##' Extract fitted values from a RiskMap model
@@ -737,20 +713,21 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
   estimate <- unlist(object$estimate)
   nm       <- names(estimate)
 
+  parameters <- fit_parameter_table(object)
   beta_flat_names <- paste0("beta.", beta_names)
-  has_tau2      <- "nu2" %in% nm
-  family_names  <- estimated_family_parameters(object)
+  has_tau2      <- nugget_estimated(parameters)
+  family_names  <- parameters$layout$family
   re_par_names  <- if (n_re > 0) paste0("sigma2_re.", re_names) else NULL
 
   ## tau2 = nu2 * sigma2, so on the log scale their raw estimates add. This is
   ## the one linear reparametrisation of the working-scale parameters that
   ## isn't just an exp(); its covariance is obtained via the delta method
-  ## below (J), alongside the other, unchanged parameters.
-  J <- diag(length(estimate))
+  ## below (J, from the parameter table), alongside the other, unchanged
+  ## parameters.
+  J <- parameter_jacobian(parameters)
   dimnames(J) <- list(nm, nm)
   if (has_tau2) {
     estimate["nu2"] <- estimate["nu2"] + estimate["sigma2"]
-    J["nu2", "sigma2"] <- 1
   }
 
   ## The new parameters are J times the working-scale ones, so their
@@ -800,8 +777,8 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
       "Lower limit" = exp(log(est_family) - z_crit * se_family),
       "Upper limit" = exp(log(est_family) + z_crit * se_family)
     )
-    rownames(res$family_parameters) <- unname(parameter_labels(
-      family_names, object$distance_units
+    rownames(res$family_parameters) <- unname(table_labels(
+      parameters, family_names
     ))
   }
   res$held_family_parameters <- held_family_parameters(object)
@@ -815,9 +792,9 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
     "Upper limit" = exp(log(est_sp) + z_crit * se_sp)
   )
   # nu2 is reported as tau2, the variance of the nugget.
-  rownames(res$sp) <- unname(parameter_labels(c("sigma2", "phi",
-                                                if (has_tau2) "tau2"),
-                                              object$distance_units))
+  rownames(res$sp) <- unname(table_labels(parameters,
+                                          c("sigma2", "phi",
+                                            if (has_tau2) "tau2")))
   if (!is.null(object$fix_tau2)) res$tau2 <- object$fix_tau2
 
   if (n_re > 0) {
@@ -828,8 +805,7 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
       "Lower limit" = exp(log(est_re) - z_crit * se_re),
       "Upper limit" = exp(log(est_re) + z_crit * se_re)
     )
-    rownames(res$ranef) <- unname(parameter_labels(re_par_names,
-                                                   object$distance_units))
+    rownames(res$ranef) <- unname(table_labels(parameters, re_par_names))
   }
 
   res$level           <- level

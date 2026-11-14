@@ -283,7 +283,10 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##'   the function from its working scale, on which it is fitted, to its
 ##'   natural scale, with `working` its inverse. `limit_words`, where given,
 ##'   names the parameter whose working value tends to minus infinity at the
-##'   boundary, when that is not the parameter itself. The measurement error
+##'   boundary, when that is not the parameter itself. `start` is the rule of
+##'   its start in the parameter table (`parameter_table()`), `one`, or
+##'   `family_regression` for the family's regression without the latent
+##'   effects (`start_parameters`). The measurement error
 ##'   variance `sigma2_me` of the
 ##'   Gaussian family is fitted on the log scale, and the size `theta` of the
 ##'   negative binomial family on that of log(1 / theta), so that a fit
@@ -332,7 +335,7 @@ riskmap_families <- list(
     default_is_canonical = TRUE,
     parameters = list(sigma2_me = list(
       label = "Measurement error var.", words = "measurement error variance",
-      natural = exp, working = log
+      natural = exp, working = log, start = "one"
     )),
     parameters_heading = "Measurement error",
     specified = FALSE, kernel_family = NULL,
@@ -399,7 +402,8 @@ riskmap_families <- list(
       label = "Negative binomial size", words = "size of the negative binomial",
       natural = function(working) exp(-working),
       working = function(natural) -log(natural),
-      limit_words = "inverse of the negative binomial size (1 / theta)"
+      limit_words = "inverse of the negative binomial size (1 / theta)",
+      start = "family_regression"
     )),
     parameters_heading = "Dispersion",
     specified = TRUE, kernel_family = "binomial",
