@@ -4,18 +4,26 @@ template:
   bootstrap: 5
   light-switch: true
   bslib:
-    # Brand colours, taken from the sticker. When the sticker changes, update
-    # these and the custom properties at the top of pkgdown/extra.css.
-    primary: "#116D9C"      # the blue of the sticker's map
-    dark: "#022345"         # the navy of the sticker
+    # Brand colours, from the sticker's two inks (navy and terracotta) on
+    # paper. When the sticker changes, update these and the top of
+    # pkgdown/extra.css and pkgdown/card.html.
+    primary: "#A8452A"      # terracotta, a shade darker so it passes as text
+    dark: "#1D3557"         # navy ink
+    body-color: "#1D3557"
+    body-bg: "#F5EFE3"      # paper
+    body-secondary-bg: "#ECE3D2"
+    body-tertiary-bg: "#FBF8F1"
+    border-color: "#DED3BF"
     body-bg-dark: "#0B1A2B"
-    body-secondary-bg-dark: "#11243A"
-    body-tertiary-bg-dark: "#0E1F33"
-    link-color-dark: "#6DB7E3"
+    body-color-dark: "#E4E9F0"
+    body-secondary-bg-dark: "#14263D"
+    body-tertiary-bg-dark: "#102035"
+    link-color-dark: "#E8B08E"
     border-radius: 0.5rem
     font-size-base: 1.0625rem
+    headings-font-weight: 600
     base_font: {google: "Source Sans 3"}
-    heading_font: {google: "Inter"}
+    heading_font: {google: {family: "Libertinus Serif", wght: [400, 600, 700]}}
     code_font: {google: "JetBrains Mono"}
   opengraph:
     image:

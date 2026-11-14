@@ -1,23 +1,32 @@
 /* RiskMap site styles, beyond what the bslib theme in _pkgdown.yml sets.
-   The brand colours come from the sticker. When the sticker changes, update
-   them here and in template.bslib of _pkgdown.yml. */
+   The brand colours come from the sticker, two inks (navy and terracotta)
+   on paper. When the sticker changes, update them here, in template.bslib
+   of _pkgdown.yml and in pkgdown/card.html. */
 
 :root {
-  --rm-navy: #022345;
-  --rm-accent: #f26b1d;
-  /* the prevalence scale of the sticker's map, from low to high */
-  --rm-gradient: linear-gradient(90deg, #6bc673, #f6c31f 40%, #fb6f14 70%, #ed1a0b);
+  --rm-ink: #1d3557;
+  --rm-accent: #bf5230;
+  --rm-heading: var(--rm-ink);
+  /* the sea and the five risk classes of the sticker's map, low to high */
+  --rm-ramp: linear-gradient(90deg,
+    #bfc6cf 0 20%, #ecd5c6 20% 36%, #dfb09b 36% 52%,
+    #d28a70 52% 68%, #c66749 68% 84%, #bf5230 84% 100%);
+}
+
+[data-bs-theme="dark"] {
+  --rm-accent: #d9825d;
+  --rm-heading: #9db4da;
 }
 
 /* Navbar ------------------------------------------------------------------ */
 
-/* A navy navbar in both modes, with a thin strip of the prevalence scale
-   under it. pkgdown sets no navbar colours when the light switch is on, so
-   they are set here through Bootstrap's navbar variables. */
+/* A navy navbar in both modes, with a thin strip of the sticker's risk
+   classes under it. pkgdown sets no navbar colours when the light switch is
+   on, so they are set here through Bootstrap's navbar variables. */
 .navbar {
-  background: var(--rm-navy);
-  border-bottom: 3px solid transparent;
-  border-image: var(--rm-gradient) 1;
+  background: var(--rm-ink);
+  border-bottom: 4px solid transparent;
+  border-image: var(--rm-ramp) 1;
   --bs-navbar-color: rgba(255, 255, 255, 0.8);
   --bs-navbar-hover-color: #fff;
   --bs-navbar-active-color: #fff;
@@ -47,7 +56,9 @@
 }
 
 /* The logo before the package name. pkgdown copies man/figures/logo.png to
-   the root of the site, next to this file. */
+   the root of the site, next to this file. On the navy navbar, and on dark
+   pages, the night sticker (pkgdown/assets/logo-night.png) keeps its frame
+   visible. */
 .navbar-brand::before {
   content: "";
   display: inline-block;
@@ -55,7 +66,11 @@
   height: 2rem;
   margin-right: 0.5rem;
   vertical-align: middle;
-  background: url(logo.png) center / contain no-repeat;
+  background: url(logo-night.png) center / contain no-repeat;
+}
+
+[data-bs-theme="dark"] img.logo {
+  content: url(logo-night.png);
 }
 
 /* Text -------------------------------------------------------------------- */
@@ -65,20 +80,28 @@ code, pre, kbd {
   font-variant-ligatures: none;
 }
 
+/* Code on a lighter paper instead of the code theme's grey */
+[data-bs-theme="light"] pre {
+  background-color: var(--bs-tertiary-bg);
+}
+
+[data-bs-theme="dark"] .btn-primary {
+  --bs-btn-bg: #c0583a;
+  --bs-btn-border-color: #c0583a;
+  --bs-btn-hover-bg: #a8452a;
+  --bs-btn-hover-border-color: #a8452a;
+}
+
 [data-bs-theme="dark"] .btn-outline-primary {
-  --bs-btn-color: #6db7e3;
-  --bs-btn-border-color: #6db7e3;
-  --bs-btn-hover-bg: #6db7e3;
-  --bs-btn-hover-border-color: #6db7e3;
+  --bs-btn-color: #e8b08e;
+  --bs-btn-border-color: #e8b08e;
+  --bs-btn-hover-bg: #e8b08e;
+  --bs-btn-hover-border-color: #e8b08e;
   --bs-btn-hover-color: #0b1a2b;
 }
 
-h1, h2, h3, h4 {
-  letter-spacing: -0.01em;
-}
-
-[data-bs-theme="light"] :is(h1, h2, h3) {
-  color: var(--rm-navy);
+:is(h1, h2, h3, h4) {
+  color: var(--rm-heading);
 }
 
 /* Home page --------------------------------------------------------------- */
@@ -105,8 +128,9 @@ h1, h2, h3, h4 {
 }
 
 .template-home .page-header h1 {
-  font-size: calc(2.4rem + 1.5vw);
+  font-size: calc(2.6rem + 1.6vw);
   font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .template-home img.logo {
@@ -141,10 +165,10 @@ h1, h2, h3, h4 {
 }
 
 .rm-rule {
-  height: 4px;
+  height: 6px;
   border: 0;
-  border-radius: 2px;
-  background: var(--rm-gradient);
+  border-radius: 3px;
+  background: var(--rm-ramp);
   opacity: 1;
   margin: 2.25rem 0 1.5rem;
   clear: both;
@@ -175,7 +199,7 @@ img.rm-figure {
 
 .rm-cards .card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0.5rem 1.25rem rgba(2, 35, 69, 0.12);
+  box-shadow: 0 0.5rem 1.25rem rgba(29, 53, 87, 0.14);
 }
 
 .rm-cards .card h3 {
