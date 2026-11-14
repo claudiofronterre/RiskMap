@@ -49,6 +49,8 @@ summarise_mcml_fit <- function(object) {
     starting_values = attr(object, "starting_values")$selected,
     starting_reason = starting_reason(attr(object, "starting_values"))
   )
+  # The parameters given in `start_pars`, absent when none was.
+  mcml$starting_given <- attr(object, "starting_values")$given
   mcml$checks_to_review <- sum(list_fit_checks(object, mcml)$status != "OK")
   mcml
 }

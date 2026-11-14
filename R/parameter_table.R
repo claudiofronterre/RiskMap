@@ -477,3 +477,160 @@ default_start <- function(table, name, coords = NULL) {
     riskmap_bug("The start of {.code {name}} comes from the model's regression.")
   )
 }
+
+##' Read the starting values given in `start_pars`
+##'
+##' `start_pars` is NULL or a named list over any of the model's estimated
+##' parameters, named as users name them (`beta`, `sigma2`, `phi`, `tau2`,
+##' `sigma2_me`, `theta`, `sigma2_re`) or by the flat names of
+##' `unlist(coef(fit))`, such as `"beta.x"` and `"sigma2_re.household"`, so
+##' that `start_pars = coef(fit)` and a name copied from any output both work.
+##' `beta` is matched by the names of the design's columns, or by position
+##' when it is unnamed and has a value for every column. `sigma2_re` is
+##' matched by the names of the `re()` terms, or by position when it is
+##' unnamed and has a value for every term. Every value must be finite, and
+##' those of the variances, the scale and the family's parameters positive.
+##' A name the model lacks stops with the names it has, and a start of `phi`
+##' below a hundredth of the smallest distance between the locations or above
+##' ten times the largest gives a warning.
+##'
+##' @param table The model's parameter table.
+##' @param coords The unique coordinates, in `distance_units`, for the check
+##'   of `phi`.
+##' @return A named list over the parameters given, `beta` and `sigma2_re` as
+##'   named vectors of the elements given, the others as single values.
+##' @noRd
+read_start_pars <- function(table, start_pars, coords = NULL,
+                            distance_units = NULL,
+                            call = rlang::caller_env()) {
+  if (is.null(start_pars)) return(list())
+  keys <- names(start_pars)
+  if (!is.list(start_pars) || (length(start_pars) &&
+                               (is.null(keys) || any(!nzchar(keys))))) {
+    supplied <- describe_value(start_pars)
+    abort_input("{.arg start_pars} must be a named list of starting values, not {supplied}.", arg = "start_pars", call = call)
+  }
+  rows <- estimated_rows(table)
+  held <- table$rows[is.na(table$rows$index), , drop = FALSE]
+  model_names <- unique(rows$name)
+  vectors <- c(beta = "coefficients", sigma2_re = "random_effects")
+  given <- list()
+  add <- function(name, element, value, key) {
+    old <- given[[name]]
+    if (name %in% names(vectors)) {
+      if (any(element %in% names(old))) {
+        abort_input("{.arg start_pars} gives the start of {.val {paste0(name, '.', intersect(element, names(old)))}} twice.", arg = "start_pars", call = call)
+      }
+      given[[name]] <<- c(old, stats::setNames(value, element))
+    } else {
+      if (!is.null(old)) {
+        abort_input("{.arg start_pars} gives the start of {.code {name}} twice.", arg = "start_pars", call = call)
+      }
+      given[[name]] <<- value
+    }
+  }
+  check_values <- function(value, key, positive) {
+    bad <- !is.numeric(value) || !length(value) || any(!is.finite(value)) ||
+      (positive && any(value <= 0))
+    if (bad) {
+      supplied <- describe_value(value)
+      what <- if (positive) "positive finite numbers" else "finite numbers"
+      abort_input("The starting values in {.code start_pars${key}} must be {what}, not {supplied}.", arg = "start_pars", call = call)
+    }
+  }
+  for (key in keys) {
+    value <- start_pars[[key]]
+    if (is.null(value)) next
+    if (key %in% model_names && key %in% names(vectors)) {
+      elements <- rows$element[rows$name == key]
+      check_values(value, key, positive = key != "beta")
+      supplied <- names(value)
+      if (is.null(supplied)) {
+        if (length(value) != length(elements)) {
+          what <- if (key == "beta") "column of the design matrix" else
+            "`re()` term"
+          abort_input(c("An unnamed {.code start_pars${key}} must have a value for each {what}, {length(elements)}, not {length(value)}.", "i" = "Name its values to give some of them, among {.val {elements}}."), arg = "start_pars", call = call)
+        }
+        supplied <- elements
+      } else if (any(!nzchar(supplied)) || any(!supplied %in% elements)) {
+        unknown <- setdiff(supplied, elements)
+        abort_input(c("{.code start_pars${key}} must be named by {if (key == 'beta') 'the columns of the design matrix' else 'the `re()` terms'}.", "x" = "{.val {unknown}} {?is/are} not among them.", "i" = "They are {.val {elements}}."), arg = "start_pars", call = call)
+      }
+      add(key, supplied, unname(value), key)
+    } else if (key %in% model_names) {
+      check_values(value, key, positive = TRUE)
+      if (length(value) != 1L) {
+        abort_input("{.code start_pars${key}} must be a single number, not {length(value)} numbers.", arg = "start_pars", call = call)
+      }
+      add(key, NULL, unname(value), key)
+    } else if (key %in% rows$reported) {
+      row <- rows[rows$reported == key, , drop = FALSE]
+      check_values(value, key, positive = row$block != "coefficients")
+      if (length(value) != 1L) {
+        abort_input("{.code start_pars${key}} must be a single number, not {length(value)} numbers.", arg = "start_pars", call = call)
+      }
+      add(row$name, if (row$name %in% names(vectors)) row$element, unname(value), key)
+    } else if (key %in% held$name) {
+      value <- held$held[held$name == key]
+      abort_input(c("{.code start_pars} can't give a start for {.code {key}}, which the model holds at {value}.", "i" = "Drop it from {.arg start_pars}."), arg = "start_pars", call = call)
+    } else {
+      bad <- key
+      abort_input(c("{.arg start_pars} must name parameters of the model.", "x" = "{.val {bad}} is not one of them.", "i" = "The model's parameters are {.val {model_names}}.", "i" = "{.fn glgpm_parameters} lists them with their elements."), arg = "start_pars", call = call)
+    }
+  }
+  # Values of beta and sigma2_re in the order of the design and the terms.
+  for (name in intersect(names(vectors), names(given))) {
+    elements <- rows$element[rows$name == name]
+    given[[name]] <- given[[name]][intersect(elements, names(given[[name]]))]
+  }
+  if (!is.null(given$phi) && !is.null(coords) && nrow(coords) > 1L) {
+    distances <- as.numeric(pairwise_distances(coords))
+    distances <- distances[distances > 0]
+    smallest <- min(distances)
+    largest <- max(distances)
+    if (given$phi < smallest / 100 || given$phi > 10 * largest) {
+      units <- distance_units %||% "the model's units"
+      riskmap_warn(c("The start of {.code phi}, {signif(given$phi, 3)} {units}, is far from the distances between the locations.", "i" = "They range from {signif(smallest, 3)} to {signif(largest, 3)} {units}, so {.code phi} may be in other units."))
+    }
+  }
+  given
+}
+
+##' Put the starting values given in `start_pars` in place of others
+##'
+##' `start` is a complete start, as `glgpm()` builds it, and `given` what
+##' `read_start_pars()` read. A coefficient or random-effect variance given
+##' replaces its element, found by name.
+##' @noRd
+apply_given_start <- function(table, start, given) {
+  for (name in names(given)) {
+    value <- given[[name]]
+    if (name == "beta") {
+      start$beta[match(names(value), table$beta_names)] <- unname(value)
+    } else if (name == "sigma2_re") {
+      start$sigma2_re[match(names(value), table$re_names)] <- unname(value)
+    } else {
+      start[[name]] <- value
+    }
+  }
+  start
+}
+
+##' Whether `start_pars` gives every estimated parameter
+##' @noRd
+all_starts_given <- function(table, given) {
+  rows <- estimated_rows(table)
+  vectors <- rows$name %in% c("beta", "sigma2_re")
+  scalars <- unique(rows$name[!vectors])
+  all(scalars %in% names(given)) &&
+    all(rows$element[rows$name == "beta"] %in% names(given$beta)) &&
+    all(rows$element[rows$name == "sigma2_re"] %in% names(given$sigma2_re))
+}
+
+##' The flat names of the parameters given in `start_pars`, as
+##' `unlist(coef(fit))` names them
+##' @noRd
+given_start_names <- function(given) {
+  if (!length(given)) return(NULL)
+  names(unlist(given))
+}

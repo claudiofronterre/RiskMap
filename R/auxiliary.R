@@ -622,14 +622,17 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   shape of the certification draws), \code{checks_to_review}, the number
 ##'   of checks of \code{\link{check_fit}} that need a look,
 ##'   \code{starting_values}, where the starting values came from, either
-##'   \code{"user"} (some or all given in \code{start_pars}, with RiskMap's
-##'   defaults for the others), \code{"current"} (RiskMap's defaults) or
-##'   \code{"transformed_gaussian"} (a Gaussian fit to the transformed data,
-##'   which \code{glgpm()} uses when the Laplace approximation of the
-##'   likelihood prefers it to the defaults), and \code{starting_reason},
+##'   \code{"user"} (all given in \code{start_pars}), \code{"current"}
+##'   (RiskMap's defaults) or \code{"transformed_gaussian"} (a Gaussian fit to
+##'   the transformed data, which \code{glgpm()} uses when the Laplace
+##'   approximation of the likelihood prefers it to the defaults), for the
+##'   parameters not given, \code{starting_given}, the names of those given in
+##'   \code{start_pars} (absent when none was), and \code{starting_reason},
 ##'   why the defaults were kept other than by being preferred in that
 ##'   comparison, such as \code{"re_terms"} when it is not made for a model
-##'   with \code{re()} terms, \code{"transformed_failed"} when the Gaussian fit
+##'   with \code{re()} terms, \code{"not_compared"} when
+##'   \code{set_control_mcml(start_comparison = FALSE)} skips it,
+##'   \code{"transformed_failed"} when the Gaussian fit
 ##'   failed, or \code{"not_recorded"} for a fit saved by an earlier version
 ##'   that did not record why (\code{NULL} when the comparison chose the
 ##'   start). \code{mcml} is
@@ -931,7 +934,8 @@ format_fit_summary <- function(x) {
                                     certificate_symbol(x$mcml)),
                     out_as_bullets(
                       describe_starting_values(x$mcml$starting_values,
-                                               x$mcml$starting_reason), "i"
+                                               x$mcml$starting_reason,
+                                               x$mcml$starting_given), "i"
                     ),
                     describe_checks_to_review(x$mcml$checks_to_review))))
   }
@@ -965,21 +969,42 @@ format_fit_summary <- function(x) {
     monte_carlo)
 }
 
+##' Names written as code and joined, as "`phi`, `sigma2` and `tau2`"
+##' @noRd
+format_code_list <- function(names) {
+  names <- paste0("`", names, "`")
+  if (length(names) < 2L) return(names)
+  paste(paste(names[-length(names)], collapse = ", "), "and",
+        names[length(names)])
+}
+
 ##' One sentence on where the starting values of a fit came from, and why
 ##'
-##' `selected` and `reason` are those of `select_nongaussian_start()`.
+##' `selected` and `reason` are those of `select_nongaussian_start()`, and
+##' `given` the flat names of the parameters given in `start_pars`.
 ##' `NULL` for a fit that doesn't record them, such as one saved by an
-##' earlier version, which records no reason either.
+##' earlier version, which records no reason either. A fit saved before
+##' `start_pars` could be partial records `"user"` without `given`.
 ##' @noRd
-describe_starting_values <- function(selected, reason = NULL) {
+describe_starting_values <- function(selected, reason = NULL, given = NULL) {
   if (is.null(selected)) return(NULL)
   transformed <- "a Gaussian fit to the transformed data"
   defaults <- "The starting values were RiskMap's defaults"
   laplace <- "the Laplace approximation of the likelihood"
+  if (length(given) && !identical(selected, "user")) {
+    others <- sub("^The starting values", "The other starting values",
+                  describe_starting_values(selected, reason))
+    return(paste0("The starting values of ", format_code_list(given),
+                  " were given in `start_pars`. ", others))
+  }
   switch(
     selected,
-    user = paste("The starting values were those given in",
-                 "`start_pars`, with RiskMap's defaults for any others."),
+    user = if (length(given)) {
+      "The starting values were all given in `start_pars`."
+    } else {
+      paste("The starting values were those given in",
+            "`start_pars`, with RiskMap's defaults for any others.")
+    },
     transformed_gaussian = paste0("The starting values came from ",
                                   transformed, ", which ", laplace,
                                   " preferred to RiskMap's defaults."),
@@ -1004,6 +1029,9 @@ describe_starting_values <- function(selected, reason = NULL) {
                                         transformed, "."),
         neither_finite = paste0(", because ", laplace,
                                 " was not finite at either start."),
+        not_compared = paste0(", which `set_control_mcml(start_comparison",
+                              " = FALSE)` keeps without comparing them with ",
+                              transformed, "."),
         not_recorded = ".",
         "."
       ))
