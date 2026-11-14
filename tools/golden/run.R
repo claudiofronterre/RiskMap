@@ -123,6 +123,8 @@ dataset <- function(name) {
     replicated_gaussian = sim_replicated_gaussian(34),
     districts = { d <- dataset("households"); d$district <- (d$location - 1L) %/% 10L + 1L; d },
     child_households = sim_child_households(42),
+    child_households_40 = { d <- dataset("child_households"); d[d$location <= 40L, ] },
+    same_sex_locations = { d <- dataset("child_households_40"); d$sex <- ave(d$sex, d$location, FUN = function(s) s[1]); d },
     stop("unknown data set ", name))
   assign(name, value, envir = data_cache)
   value
@@ -232,7 +234,30 @@ fits <- list(
   F42_households_child_covariates = function() glgpm(y ~ x + sex + gp(kappa = 0.5, nugget = TRUE) + re(household),
                                                      denominator = m, data = dataset("child_households"),
                                                      family = "binomial", distance_units = "km", messages = FALSE,
-                                                     seed = 42L, return_samples = FALSE)
+                                                     seed = 42L, return_samples = FALSE),
+  # Variants of F42 on its first 40 locations, agreed with the session that integrates such households (proposal 3
+  # of the review), since each takes a different path of the new rule. Probit uses the trapezium rule of custom
+  # links. Without re(), each location is one group of children with differing predictors under the nugget. Without
+  # the nugget, each household is a record of its own and the households at a location share the field. With every
+  # child at a location given the same sex, today's rules already integrate the households and the nugget everywhere,
+  # so the new rule must leave the fit identical. With the same sex only within each household, the nugget would
+  # still be sampled at the locations whose households differ.
+  F43_households_child_probit = function() glgpm(y ~ x + sex + gp(kappa = 0.5, nugget = TRUE) + re(household),
+                                                 denominator = m, data = dataset("child_households_40"),
+                                                 family = binomial("probit"), distance_units = "km",
+                                                 messages = FALSE, seed = 43L, return_samples = FALSE),
+  F44_households_child_nugget = function() glgpm(y ~ x + sex + gp(kappa = 0.5, nugget = TRUE), denominator = m,
+                                                 data = dataset("child_households_40"), family = "binomial",
+                                                 distance_units = "km", messages = FALSE, seed = 44L,
+                                                 return_samples = FALSE),
+  F45_households_child_re = function() glgpm(y ~ x + sex + gp(kappa = 0.5) + re(household), denominator = m,
+                                             data = dataset("child_households_40"), family = "binomial",
+                                             distance_units = "km", messages = FALSE, seed = 45L,
+                                             return_samples = FALSE),
+  F46_same_sex_locations = function() glgpm(y ~ x + sex + gp(kappa = 0.5, nugget = TRUE) + re(household),
+                                            denominator = m, data = dataset("same_sex_locations"),
+                                            family = "binomial", distance_units = "km", messages = FALSE,
+                                            seed = 46L, return_samples = FALSE)
 )
 
 # What a fit task keeps: the object itself (compared after timings and closures are removed) and its printed text.
