@@ -1287,8 +1287,10 @@ Gaussian models also take 2,000 independent draws by default, including with
   instead of 0.8. A location is then classed as spatial extrapolation when
   its share is above the largest share left at a sampled location by the data
   of the others, v_-j = 1 / [(R + W / sigma2)^-1]_jj - w_j / sigma2, which
-  comes from the same factor. A number strictly between 0 and 1 still gives a
-  fixed threshold. The result keeps the threshold in the attribute
+  comes from the same factor. A number strictly between 0 and 1 gives a fixed
+  threshold, where 0 and 1 were accepted before. When a sampled location
+  shares no correlation with the others the threshold is 1, nothing is
+  flagged, and `print()` says so. The result keeps the threshold in the attribute
   `spatial_threshold`, with `spatial_rule` and `sampling_noise`, and has a
   `print()` method that counts the locations in each class and states the
   thresholds. In Liberia the threshold is 0.844 and 1.1% of the grid is
@@ -1296,7 +1298,9 @@ Gaussian models also take 2,000 independent draws by default, including with
 - `plot()` of predictions takes `summaries` and `thresholds` instead of
   `summary` and `threshold`, the names that `predict()` and `to_table()` use.
   Several thresholds give one exceedance map each, arranged as several
-  summaries are, and `print()` of a prediction names the new argument.
+  summaries are, and `print()` of a prediction names the new argument. A call
+  that names `summary` stops with an error naming `summaries`, while
+  `threshold` still reaches `thresholds` by partial matching.
 - `create_grid()` gains `raster`. The grid then consists of the cells of a
   projected `SpatRaster` with square cells: their centres are the grid points
   and the raster's layers become columns, so values such as population counts

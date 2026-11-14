@@ -130,6 +130,9 @@ test_that("unexplained spatial variance uses fixed variance components", {
 })
 
 test_that("the unexplained share includes the binomial sampling noise", {
+  # The fixture's scale leaves its locations almost uncorrelated, so a longer
+  # one gives a leave-one-out threshold well below 1.
+  binomial_model$estimate$phi <- log(4)
   parameters <- coef(binomial_model)
   sigma2 <- parameters$sigma2
   observed <- binomial_model$coords
@@ -174,8 +177,12 @@ test_that("the unexplained share includes the binomial sampling noise", {
                       coords = c("x", "z"), crs = 32637)
   extrapolation <- assess_extrapolation(binomial_model, newdata)
   expect_equal(extrapolation$spatial_unexplained, expected, tolerance = 1e-5)
+  expect_lt(max(left_out), 0.95)
   expect_equal(attr(extrapolation, "spatial_threshold"), max(left_out),
-               tolerance = 1e-5)
+               tolerance = 1e-6)
+  at_sites <- assess_extrapolation(binomial_model, binomial_data)
+  expect_identical(as.character(at_sites$extrapolation),
+                   rep("Supported", nrow(binomial_data)))
   expect_identical(attr(extrapolation, "spatial_rule"), "leave_one_out")
   expect_true(attr(extrapolation, "sampling_noise"))
   expect_identical(
@@ -247,6 +254,17 @@ test_that("the print of indicators states the classes and the thresholds", {
   expect_match(printed, "more than 50% of the spatial variance left unexplained",
                fixed = TRUE)
   expect_match(printed, "leaves out the sampling noise", fixed = TRUE)
+  # A location that shares no correlation with the others sets the
+  # threshold at 1, and the print says that nothing can be flagged.
+  far <- st_as_sf(data.frame(x = 1e7, z = 1e7, cov = 0), coords = c("x", "z"),
+                  crs = 32637)
+  isolated <- assess_extrapolation(gaussian_model, far)
+  expect_identical(attr(isolated, "spatial_threshold"), 1)
+  expect_identical(as.character(isolated$extrapolation), "Supported")
+  expect_match(squish(capture.output(print(isolated))),
+               "shares no spatial correlation with the others", fixed = TRUE)
+  expect_no_match(squish(capture.output(print(given))),
+                  "shares no spatial correlation", fixed = TRUE)
   # A subset without the classes prints as an sf object.
   expect_output(print(extrapolation[1:2, "covariates_outside"]),
                 "Simple feature collection")

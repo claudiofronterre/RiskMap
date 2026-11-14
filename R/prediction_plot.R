@@ -102,6 +102,11 @@ plot.RiskMap_prediction <- function(
   if (!inherits(x, "RiskMap_prediction")) {
     abort_input("{.arg x} must be a {.cls RiskMap_prediction} object, not {.obj_type_friendly {x}}.", arg = "x")
   }
+  # `summary` is not a prefix of `summaries`, so the old name would reach the
+  # fill scale through `...`.
+  if ("summary" %in% names(match.call(expand.dots = FALSE)$...)) {
+    abort_input("{.arg summary} is now {.arg summaries}, as in {.fn predict}.", arg = "summary")
+  }
   spatial_scale <- match_choice(spatial_scale)
   spatial_scale_given <- !identical(spatial_scale, "auto")
   check_plot_flag(north_arrow, "north_arrow")

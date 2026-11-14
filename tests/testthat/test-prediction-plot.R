@@ -421,4 +421,11 @@ test_that("plot() takes summaries and thresholds as predict() names them", {
                           thresholds = "0.2"), "thresholds")
   expect_input_error(plot(prediction, summaries = c("mean", "mean")),
                      "summaries")
+  # The old name stops with the new one, and `threshold` partially matches.
+  expect_input_error(plot(prediction, summary = "mean"), "summary",
+                     "`summaries`")
+  expect_identical(
+    legend_title(plot(prediction, summaries = "exceedance", threshold = 0.5)),
+    "Probability prevalence > 50%"
+  )
 })

@@ -68,7 +68,10 @@
 ##' the share left at \eqn{s_j} by the data of the other locations.
 ##' Leave-one-out cross-validation predicts at each sampled location from the
 ##' others, so a location above this threshold has less spatial information
-##' than any prediction that held-out data could check. This is the rule of
+##' than any prediction that held-out data could check. A sampled location too
+##' far from the others to share any correlation with them makes the threshold
+##' 1, and then no location is classed as spatial extrapolation, so a fixed
+##' `spatial_threshold` is then more informative. This is the rule of
 ##' the covariate indicators, which compare each covariate with its observed
 ##' range and the leverage with its largest value in the data. The two
 ##' classes are kept separate because they call for different responses: more
@@ -330,6 +333,13 @@ format_extrapolation <- function(x, threshold) {
            "any sampled location when its own data are left out (",
            share, ").")
   }
+  isolated <- if (!identical(attr(x, "spatial_rule"), "given") &&
+                  threshold >= 1 - 1e-8) {
+    c("!" = paste0("A sampled location shares no spatial correlation with ",
+                   "the others, so no location is classed as spatial ",
+                   "extrapolation. A number in `spatial_threshold` gives a ",
+                   "fixed threshold."))
+  }
   noise <- if (isFALSE(attr(x, "sampling_noise"))) {
     c(i = "The share leaves out the sampling noise of the outcomes.")
   }
@@ -341,6 +351,7 @@ format_extrapolation <- function(x, threshold) {
     "",
     out_bullets(c(
       i = spatial,
+      isolated,
       i = paste0("Covariate: a covariate outside its range in the data, or ",
                  "a leverage above its largest value there."),
       noise,

@@ -115,7 +115,10 @@ the threshold is the largest over the sampled locations \eqn{s_j} of
 the share left at \eqn{s_j} by the data of the other locations.
 Leave-one-out cross-validation predicts at each sampled location from the
 others, so a location above this threshold has less spatial information
-than any prediction that held-out data could check. This is the rule of
+than any prediction that held-out data could check. A sampled location too
+far from the others to share any correlation with them makes the threshold
+1, and then no location is classed as spatial extrapolation, so a fixed
+\code{spatial_threshold} is then more informative. This is the rule of
 the covariate indicators, which compare each covariate with its observed
 range and the leverage with its largest value in the data. The two
 classes are kept separate because they call for different responses: more
