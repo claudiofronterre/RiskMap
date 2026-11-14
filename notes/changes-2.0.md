@@ -869,6 +869,26 @@ With several records at a location the other start changes, and the empirical
 logit of a total follows the proportion at the location, where that of a
 binary record is always log(3) or -log(3).
 
+- On the Woodbury path of Gaussian fits, which `glgpm()` takes above three
+records per latent effect, the starts of the measurement error and random-effect
+variances were divided by the start of the spatial variance, while its
+likelihood reads them on their own scale. Only the nugget, which every engine
+fits as its ratio to the spatial variance, should be divided. Every engine now
+takes its start from the parameter table (`working_start()`). A fit whose start
+of the spatial variance is 1, the default, is unchanged. Fits given `start_pars`
+change, and so do the refits of `parametric_bootstrap()`, which start from
+`coef()`. On 20 simulated surveys of 8 records at each of 60 locations, with a
+cluster effect, with and without a nugget, and started from `coef()` of the fit,
+from a spatial variance of 3 or from one of 0.3, every fit converged with and
+without the change, with about as many evaluations, its estimates moved by at
+most 3e-4 standard errors and its log-likelihood by at most 1e-8. In bootstraps
+of ten replicates of five of them, 292 of the 300 replicate estimates moved by at
+most 1e-6 of their value, and the other 8, cluster variances estimated below
+1e-4, moved along the nearly flat likelihood there. On the golden battery only
+the bootstrap of the Gaussian fit with an `re()` term changes, its replicate
+estimates by at most 2e-7 of their value except a cluster variance estimated near
+1e-10.
+
 - Certified MCML now builds every global proposal of a stage, other than the one
 at its start, from three plain refits of the factors found at the start, in place
 of iterating with Anderson acceleration until no factor moves by more than 1e-8.
