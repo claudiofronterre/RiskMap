@@ -157,40 +157,53 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
 ##'
 ##' For C >= c < 0, A' diag(C) A >= c A'A, and by Gershgorin the largest
 ##' eigenvalue of A'A is at most the number of latent columns per observation
-##' times the largest number of observations sharing a latent column. Returns a
-##' function that floors a vector of curvatures at that bound, which it computes
-##' only if a curvature is negative. With `smooth`, the floor is
-##' c + smooth_curvature_floor(C - c, |c| / 10), which is above c everywhere,
-##' has continuous derivatives, and adds at most |c| exp(-10) / 10, about
-##' 4.5e-6 |c|, to a curvature that is not negative, so it computes the bound
-##' at its first call. A smooth floor moves a value it has already floored, so
-##' its attribute `candidate_floor`, pmax(C, c), is what the anchor iteration
-##' applies to the candidates of its acceleration (`fit_global_proposal()`).
-##' Flooring them smoothly again would keep every iterate above the fixed
-##' point by up to |c| log(2) / 10, and the iteration would not converge.
+##' times the largest number of observations sharing a latent column, so
+##' c = -lambda / (2 s) keeps Q positive definite, with lambda the smallest
+##' eigenvalue of the prior precision P and s that number. Returns a function
+##' that gives c, computing it at its first call only, so that a floor which
+##' never needs it never pays for the eigenvalues. `smallest_prior`, a function
+##' that gives lambda, lets the engine keep it with its prior across
+##' proposals.
 ##' @noRd
-make_curvature_floor <- function(latent_map, precision, smooth = FALSE) {
-  curvature_floor <- NULL
-  bound <- function() {
-    if (is.null(curvature_floor)) {
+make_curvature_bound <- function(latent_map, precision,
+                                 smallest_prior = NULL) {
+  bound <- NULL
+  function() {
+    if (is.null(bound)) {
       columns <- latent_map$columns
       largest_column_sum <- ncol(columns) *
         max(tabulate(columns, nbins = latent_map$dimension))
-      smallest_prior <- min(eigen(precision, symmetric = TRUE,
-                                  only.values = TRUE)$values)
-      curvature_floor <<- -0.5 * smallest_prior / largest_column_sum
+      lambda <- if (is.null(smallest_prior)) {
+        min(eigen(precision, symmetric = TRUE, only.values = TRUE)$values)
+      } else {
+        smallest_prior()
+      }
+      bound <<- -0.5 * lambda / largest_column_sum
     }
-    curvature_floor
+    bound
   }
+}
+
+##' The floor of the factors' curvature at the Gershgorin bound
+##'
+##' Floors a vector of curvatures at the bound c of `make_curvature_bound()`,
+##' as pmax(C, c), which needs c only if a curvature is negative. With
+##' `smooth`, the floor is c + smooth_curvature_floor(C - c, |c| / 10), which is
+##' never below c, has continuous derivatives in C, and adds at most
+##' |c| exp(-10) / 10, about 4.5e-6 |c|, to a curvature that is not negative.
+##' Where c is not negative, as when rounding leaves the smallest eigenvalue of
+##' the prior precision at zero or below, the floor is pmax(C, c), since the
+##' width |c| / 10 would be zero or negative.
+##' @noRd
+make_curvature_floor <- function(latent_map, precision, smooth = FALSE,
+                                 bound = make_curvature_bound(latent_map,
+                                                              precision)) {
   if (smooth) {
-    floor_smoothly <- function(curvature) {
+    return(function(curvature) {
       lowest <- bound()
+      if (!isTRUE(lowest < 0)) return(pmax(curvature, lowest))
       lowest + smooth_curvature_floor(curvature - lowest, -lowest / 10)
-    }
-    attr(floor_smoothly, "candidate_floor") <- function(curvature) {
-      pmax(curvature, bound())
-    }
-    return(floor_smoothly)
+    })
   }
   function(curvature) {
     if (all(curvature >= 0)) return(curvature)
@@ -198,28 +211,41 @@ make_curvature_floor <- function(latent_map, precision, smooth = FALSE) {
   }
 }
 
-##' The floor of the factors' curvature in the global proposal
+##' The floors of the factors' curvature in the global proposal
 ##'
-##' The smooth floor at zero (`smooth_curvature_floor()`) for integrated
-##' records. For a link whose curvature can be negative, the smooth floor at
-##' the Gershgorin bound (`make_curvature_floor()` with `smooth`), which keeps
-##' the proposal a smooth function of the parameters, as the theory of the
-##' certificate assumes, where a floor with a kink does not, and leaves a
-##' convex record the room the bound gives it. Otherwise the floor at the
-##' Gershgorin bound, as before step 5b of #253, since under a link of the
-##' family's `concave_links` a curvature is negative only through rounding
-##' (`make_family()`, property `smooth_floor`). A smooth floor at zero for such
-##' links, as integrated records have, made the proposal too narrow where many
-##' records sit at a limit of the link.
+##' Returns `refit`, the floor applied to each refit of the factors, and
+##' `candidate`, the floor that the anchor iteration of `fit_global_proposal()`
+##' applies to the candidates of its acceleration. For integrated records both
+##' are the smooth floor at zero (`smooth_curvature_floor()`). For a link not on
+##' the family's `concave_links` (`make_family()`, property `smooth_floor`),
+##' whose curvature can be negative, `refit` is the smooth floor at the
+##' Gershgorin bound c (`make_curvature_floor()` with `smooth`), and `candidate`
+##' is pmax(C, c). The smooth floor keeps the proposal a smooth function of the
+##' curvatures, where a floor with a kink does not, and leaves a convex record
+##' the room the bound gives it. The bound itself, from the smallest eigenvalue
+##' of the prior precision, has a kink in the parameters where the smallest
+##' eigenvalues of two blocks of the prior cross, as with `re()` terms. A smooth
+##' floor moves a value it has already floored, so applied to the candidates
+##' too it would keep each of them above the fixed point by up to
+##' |c| log(2) / 10 and the iteration would not converge. Under a link of
+##' `concave_links` a curvature is negative only through rounding, and both are
+##' the floor at the Gershgorin bound, as before step 5b of #253.
+##' `smallest_prior` is passed to `make_curvature_bound()`.
 ##' @noRd
-choose_curvature_floor <- function(kernel, latent_map, precision) {
+choose_curvature_floor <- function(kernel, latent_map, precision,
+                                   smallest_prior = NULL) {
   if (kernel$integrated) {
-    smooth_curvature_floor
-  } else if (kernel$smooth_floor) {
-    make_curvature_floor(latent_map, precision, smooth = TRUE)
-  } else {
-    make_curvature_floor(latent_map, precision)
+    return(list(refit = smooth_curvature_floor,
+                candidate = smooth_curvature_floor))
   }
+  bound <- make_curvature_bound(latent_map, precision, smallest_prior)
+  pointwise <- make_curvature_floor(latent_map, precision, bound = bound)
+  if (!kernel$smooth_floor) {
+    return(list(refit = pointwise, candidate = pointwise))
+  }
+  list(refit = make_curvature_floor(latent_map, precision, smooth = TRUE,
+                                    bound = bound),
+       candidate = pointwise)
 }
 
 ##' The global proposal from a fixed number of refits of an anchor
@@ -234,12 +260,16 @@ choose_curvature_floor <- function(kernel, latent_map, precision) {
 ##' factors as `fit_global_proposal()` does, with the number of `refits`, the
 ##' largest `change` of a factor at the last refit, and `failed = TRUE` (with
 ##' no proposal) if a refit fails or the precision is not positive definite.
+##' `smallest_prior` is passed to the floor of the curvature
+##' (`choose_curvature_floor()`).
 ##' @noRd
 refit_from_anchor <- function(anchor, mu, y, units_m, latent_map, precision,
                               family, count = 3L,
-                              quadrature = build_normal_quadrature()) {
+                              quadrature = build_normal_quadrature(),
+                              smallest_prior = NULL) {
   kernel <- check_family_object(family)
-  floor_curvature <- choose_curvature_floor(kernel, latent_map, precision)
+  floor_curvature <- choose_curvature_floor(kernel, latent_map, precision,
+                                            smallest_prior)$refit
   factors <- c(anchor$linear - anchor$curvature * (mu - anchor$mu),
                anchor$curvature)
   change <- NA_real_
@@ -312,19 +342,21 @@ take_anderson_step <- function(residuals, refits) {
 ##' `converged = FALSE` so that the caller can decide whether to fall back to
 ##' the Laplace proposal. The returned `root` is the upper factor of Q^-1 that
 ##' maps standard-normal draws (`inverse_cholesky_factor()`), or NULL if that
-##' factorisation fails.
+##' factorisation fails. `smallest_prior` is passed to the floors of the
+##' curvature (`choose_curvature_floor()`).
 ##' @noRd
 fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 family,
                                 tolerance = 1e-8, maximum_iterations = 500L,
                                 quadrature = build_normal_quadrature(),
-                                memory = 3L) {
+                                memory = 3L, smallest_prior = NULL) {
   kernel <- check_family_object(family)
-  floor_curvature <- choose_curvature_floor(kernel, latent_map, precision)
-  # The candidates of the acceleration are floored at the bound only, which
-  # leaves a floored value as it is (make_curvature_floor()).
-  floor_candidate <- attr(floor_curvature, "candidate_floor")
-  if (is.null(floor_candidate)) floor_candidate <- floor_curvature
+  # The candidates of the acceleration have a floor of their own, which leaves
+  # a floored value as it is (choose_curvature_floor()).
+  floors <- choose_curvature_floor(kernel, latent_map, precision,
+                                   smallest_prior)
+  floor_curvature <- floors$refit
+  floor_candidate <- floors$candidate
   mode_terms <- kernel$terms(
     mu + latent_linear_predictor(latent_map, mode), y, units_m
   )
