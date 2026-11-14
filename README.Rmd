@@ -30,9 +30,10 @@ Model-based geostatistics in R. Fit spatial models to survey data, predict
 disease risk at locations and over areas, and quantify its uncertainty.
 
 RiskMap implements generalised linear geostatistical models for Gaussian,
-binomial, Poisson and negative binomial outcomes. It was developed for public
-health, for example to map the prevalence of a disease from surveys, and
-applies to any outcome measured at geo-referenced locations.
+binomial, Poisson and negative binomial outcomes, fitted by Monte Carlo maximum
+likelihood, or by exact maximum likelihood for Gaussian outcomes. It was
+developed for public health, for example to map the prevalence of a disease
+from surveys, and applies to any outcome measured at geo-referenced locations.
 
 With RiskMap you can
 
@@ -71,19 +72,24 @@ library(RiskMap)
 library(sf)
 library(geobounds)
 
+# Load the survey data as points
 data(liberia)
 liberia <- st_as_sf(liberia,
                     coords = c("long", "lat"),
                     crs = 4326)
+
+# Choose a projection and project the data and the border
 crs <- propose_crs(liberia)
 liberia <- st_transform(liberia, crs)
 border <- st_transform(gb_get_adm0("Liberia"), crs)
 
+# Fit a binomial model with a spatial Gaussian process
 fit <- glgpm(npos ~ gp(),
              data = liberia,
              family = "binomial",
              denominator = ntest)
 
+# Predict prevalence on a 2.5 km grid and map it
 grid <- create_grid(border, spacing = 2.5)
 prediction <- predict(fit, newdata = grid)
 plot(prediction)
