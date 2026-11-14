@@ -46,7 +46,7 @@ specify_glgpm <- function(formula, data, family, parameters,
   check_data(data)
   check_formula(formula, data, response_required = FALSE)
   data <- project_for_distances(data, model_crs, "model_crs",
-                                "for simulation")
+                                "for simulation", units = distance_units)
   family_link <- read_family(family, invlink)
   family <- family_link$family
   invlink <- family_link$invlink

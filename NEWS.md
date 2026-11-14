@@ -66,8 +66,9 @@ first used.
 - Messages start with a symbol, as the printed output does. Most have an
 information sign, a step done has a tick, such as a certified fit or a
 finished bootstrap, and something to note has an exclamation mark. `glgpm()`
-says in one line which coordinate reference system the model is fitted in and
-the units of distance, instead of two.
+says in one message which coordinate reference system the model is fitted in
+and the units of distance. For data in longitude and latitude this is the
+message on their projection, which also says how to choose another.
 - A joint prediction in blocks warns once when the covariances of some
 blocks needed a diagonal jitter to be factorised, with how many blocks and
 the largest jitter, instead of once for each block.
@@ -81,8 +82,20 @@ single positive finite number" instead of "strictly between 0 and Inf".
 - `parametric_bootstrap()`, `profile()`, `assess_prediction()` and
 `assess_simulation()` show a progress bar with the work done and an estimate
 of the time left, and `predict()` shows one while it predicts at many
-locations in blocks. `glgpm()` shows a line for each stage of Monte Carlo
-maximum likelihood, with the time the stage took. See `?riskmap_progress`.
+locations in blocks or propagates parameter uncertainty. `glgpm()` shows a
+line for each stage of Monte Carlo maximum likelihood, with the time the stage
+took. See `?riskmap_progress`.
+- While a step of a fit runs in the console, its line has a spinner and the
+time so far, which move each time the likelihood is evaluated, so a long stage
+shows it is still running. This applies to the starting values from the
+Laplace approximation, each stage of Monte Carlo maximum likelihood, and the
+re-maximisation that `profile()` does before profiling. A step computed in one
+call to compiled code keeps a still line. These are the conditional samples
+drawn at the estimate, and the Langevin sampler that `predict()` runs when
+given `control_mcmc`, which now has a line of its own. A line too wide for the
+console is shortened so that its time still shows.
+- `profile()` shows its re-maximisation as a step in the console, and as the
+message it was before where progress is hidden.
 - Progress is shown when `messages` is `TRUE` and the option
 `RiskMap.progress` allows it. The option's default is
 `rlang::is_interactive()`, so progress appears in the console but not in
@@ -126,6 +139,14 @@ SUSPICIOUS and PROBLEM, which stay in the column `status` of the element
 `checks`. Code that searched the printed checks for them should read that
 column.
 - RiskMap now needs cli 3.6.0 or later, for the links to help pages.
+- The `summary()` of a binomial, Poisson or negative binomial fit says where
+its starting values came from. Either they were given in `start_pars`, with
+RiskMap's defaults for any not given, or they were all RiskMap's defaults, or
+they came from a Gaussian fit to the transformed data, which `glgpm()` uses
+when the Laplace approximation of the likelihood prefers them. The choice is
+in the new element `starting_values` of `mcml`. `glgpm()` no longer says
+"Using transformed-Gaussian automatic starting values." when it makes that
+choice.
 - In a console with colours, the labels of rows that line up labels and
 values, such as the log-likelihood, the settings of a prediction or the
 evidence of `check_fit()`, are grey, so that the values stand out.
@@ -192,7 +213,9 @@ less than 0.5%. Data that a UTM zone covers well get the zone at their centre,
 which may differ from the zone used before. Fits, distances and grids of data
 in longitude and latitude can therefore change. Set `model_crs` or
 `distance_crs`, or project the data first, to keep a given CRS. The message
-now names the CRS and reports its distortion.
+names the CRS and the units of distance, and says how to choose another CRS.
+It doesn't give the distortion, which the warning below reports when it is
+above 1%, and which `crs_distortion()` measures for any CRS.
 - These functions warn, with class `riskmap_warning_crs`, when the CRS used,
 whether given, carried by the data or chosen, distorts distances by more than
 1% over the data. When no planar CRS can do better, as over sub-Saharan

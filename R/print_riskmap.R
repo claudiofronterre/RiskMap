@@ -18,8 +18,10 @@
 ##' (`noise_forms`), the largest
 ##' change of a factor at the last fixed refit of the last stage
 ##' (`refit_change`), whether to suggest integrating the nugget out
-##' (`suggest_integration`, `suggests_integration()`) and the number of checks
-##' of `check_fit()` that need a look (`checks_to_review`).
+##' (`suggest_integration`, `suggests_integration()`), the number of checks
+##' of `check_fit()` that need a look (`checks_to_review`), and where the
+##' starting values came from (`starting_values`, `NULL` for a fit saved
+##' before it was recorded).
 ##' @noRd
 summarise_mcml_fit <- function(object) {
   optimizer <- attr(object, "optimizer")
@@ -42,7 +44,8 @@ summarise_mcml_fit <- function(object) {
     integration = describe_fit_integration(optimizer),
     noise_forms = optimizer$mcml_noise_forms,
     refit_change = last$refit_change %||% NA_real_,
-    suggest_integration = suggests_integration(object, optimizer)
+    suggest_integration = suggests_integration(object, optimizer),
+    starting_values = attr(object, "starting_values")$selected
   )
   mcml$checks_to_review <- sum(list_fit_checks(object, mcml)$status != "OK")
   mcml

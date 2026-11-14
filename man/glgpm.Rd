@@ -69,7 +69,7 @@ If not provided, defaults to \code{1}.}
 If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
 If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
 reprojected to the CRS from \code{\link[=propose_crs]{propose_crs()}}, a UTM zone or a projection centred on the data,
-and a message reports the conversion used and its distortion of distances.
+and a message names the CRS and the units of distance.
 If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.
 A warning of class \code{riskmap_warning_crs} is raised when the CRS used distorts distances
 by more than 1\% over the data.}
