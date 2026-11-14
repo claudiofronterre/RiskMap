@@ -17,8 +17,8 @@ of the spatial random effects over the locations is shown.}
 rows of \code{object$coords}. The default, \code{NULL}, shows the location with
 the smallest effective sample size.}
 
-\item{...}{Further arguments passed to \code{\link[stats:acf]{stats::acf()}}, such as \code{lag.max}.
-Other arguments are an error.}
+\item{...}{Further arguments passed to \code{\link[stats:acf]{stats::acf()}}, namely \code{lag.max},
+\code{type}, \code{na.action} or \code{demean}. Other arguments are an error.}
 }
 \value{
 A \code{patchwork} object, which is drawn when printed and can be

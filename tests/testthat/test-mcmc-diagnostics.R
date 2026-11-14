@@ -32,8 +32,13 @@ test_that("plot_mcmc checks its arguments", {
   # among them the component of check_mcmc() in RiskMap 1.0.0.
   expect_input_error(plot_mcmc(poisson_model, component = 10), "component",
                      "Give the locations whose chains are shown in `locations`.")
+  expect_input_error(plot_mcmc(poisson_model, comp = 10), "comp",
+                     "Give the locations whose chains are shown in `locations`.")
   expect_input_error(plot_mcmc(poisson_model, lag_max = 5), "lag_max",
-                     "have no argument `lag_max`.")
+                     "can't pass `lag_max` to `stats::acf()`.")
+  # plot_mcmc() sets acf()'s plot itself.
+  expect_input_error(plot_mcmc(poisson_model, plot = TRUE), "plot",
+                     "can't pass `plot` to `stats::acf()`.")
 })
 
 test_that("plot_mcmc shows the mean and the location with the smallest ESS", {
@@ -57,6 +62,9 @@ test_that("plot_mcmc shows the mean and the location with the smallest ESS", {
 
   correlations <- plot_mcmc(poisson_model, lag.max = 5)[[1L]][[2L]]
   expect_identical(unique(correlations$data$lag), as.numeric(0:5))
+  # Names are matched partially, as acf() matches them.
+  correlations <- plot_mcmc(poisson_model, lag = 3)[[1L]][[2L]]
+  expect_identical(unique(correlations$data$lag), as.numeric(0:3))
 })
 
 test_that("plot_mcmc shows the chains of the chosen locations", {

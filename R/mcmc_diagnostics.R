@@ -88,8 +88,8 @@ summarise_mcmc <- function(object) {
 ##' @param locations The locations whose chains are shown, numbered as the
 ##'   rows of `object$coords`. The default, `NULL`, shows the location with
 ##'   the smallest effective sample size.
-##' @param ... Further arguments passed to [stats::acf()], such as `lag.max`.
-##'   Other arguments are an error.
+##' @param ... Further arguments passed to [stats::acf()], namely `lag.max`,
+##'   `type`, `na.action` or `demean`. Other arguments are an error.
 ##'
 ##' @details
 ##' Inspecting the mean \eqn{\bar{S} = \sum_{i=1}^n S(x_i) / n} avoids
@@ -173,15 +173,17 @@ plot_mcmc <- function(object, check_mean = TRUE, locations = NULL, ...) {
 ##' @noRd
 check_acf_arguments <- function(..., call = rlang::caller_env()) {
   supplied <- names(list(...))
+  supplied <- supplied[nzchar(supplied)]
   accepted <- setdiff(names(formals(stats::acf)), c("x", "plot", "..."))
-  unknown <- setdiff(supplied[nzchar(supplied)], accepted)
+  # acf() matches its arguments partially, as in lag = 20 for lag.max.
+  unknown <- supplied[is.na(pmatch(supplied, accepted, duplicates.ok = TRUE))]
   if (length(unknown)) {
-    hint <- if ("component" %in% unknown) {
+    hint <- if (any(startsWith("component", unknown))) {
       c("i" = "Give the locations whose chains are shown in {.arg locations}.")
     } else {
-      c("i" = "{.fn stats::acf} takes {.arg {accepted}}.")
+      c("i" = "It passes on {.arg {accepted}}.")
     }
-    abort_input(c("{.fn plot_mcmc} and {.fn stats::acf} have no argument{?s} {.arg {unknown}}.", hint), arg = unknown[1], call = call)
+    abort_input(c("{.fn plot_mcmc} can't pass {.arg {unknown}} to {.fn stats::acf}.", hint), arg = unknown[1], call = call)
   }
   invisible(NULL)
 }
