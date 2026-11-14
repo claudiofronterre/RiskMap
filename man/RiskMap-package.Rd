@@ -17,12 +17,12 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
+\strong{Maintainer}: Claudio Fronterre \email{c.fronterre@bham.ac.uk} (\href{https://orcid.org/0000-0001-6723-9727}{ORCID})
 
 Authors:
 \itemize{
-  \item Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
   \item Claudio Fronterre \email{c.fronterre@bham.ac.uk} (\href{https://orcid.org/0000-0001-6723-9727}{ORCID})
+  \item Emanuele Giorgi \email{e.giorgi@bham.ac.uk} (\href{https://orcid.org/0000-0003-0640-181X}{ORCID})
   \item Simon Smart (\href{https://orcid.org/0000-0002-3624-8951}{ORCID})
 }
 
