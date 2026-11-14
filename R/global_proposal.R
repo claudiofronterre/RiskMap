@@ -159,12 +159,15 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
 ##' eigenvalue of A'A is at most the number of latent columns per observation
 ##' times the largest number of observations sharing a latent column. Returns a
 ##' function that floors a vector of curvatures at that bound, which it computes
-##' only if a curvature is negative.
+##' only if a curvature is negative. With `smooth`, the floor is
+##' c + smooth_curvature_floor(C - c, |c| / 10), which is above c everywhere,
+##' has continuous derivatives, and adds at most |c| exp(-10) / 10, about
+##' 4.5e-6 |c|, to a curvature that is not negative, so it computes the bound
+##' at its first call.
 ##' @noRd
-make_curvature_floor <- function(latent_map, precision) {
+make_curvature_floor <- function(latent_map, precision, smooth = FALSE) {
   curvature_floor <- NULL
-  function(curvature) {
-    if (all(curvature >= 0)) return(curvature)
+  bound <- function() {
     if (is.null(curvature_floor)) {
       columns <- latent_map$columns
       largest_column_sum <- ncol(columns) *
@@ -173,23 +176,39 @@ make_curvature_floor <- function(latent_map, precision) {
                                   only.values = TRUE)$values)
       curvature_floor <<- -0.5 * smallest_prior / largest_column_sum
     }
-    pmax(curvature, curvature_floor)
+    curvature_floor
+  }
+  if (smooth) {
+    return(function(curvature) {
+      lowest <- bound()
+      lowest + smooth_curvature_floor(curvature - lowest, -lowest / 10)
+    })
+  }
+  function(curvature) {
+    if (all(curvature >= 0)) return(curvature)
+    pmax(curvature, bound())
   }
 }
 
 ##' The floor of the factors' curvature in the global proposal
 ##'
 ##' The smooth floor at zero (`smooth_curvature_floor()`) for integrated
-##' records and for a link whose curvature can be negative, which keeps the
-##' proposal a smooth function of the parameters, as the theory of the
-##' certificate assumes, where a floor at a bound has a kink. Otherwise the
-##' floor at the Gershgorin bound (`make_curvature_floor()`), as before step 5b
-##' of #253, since under a link of the family's `concave_links` a curvature is
-##' negative only through rounding (`make_family()`, property `smooth_floor`).
+##' records. For a link whose curvature can be negative, the smooth floor at
+##' the Gershgorin bound (`make_curvature_floor()` with `smooth`), which keeps
+##' the proposal a smooth function of the parameters, as the theory of the
+##' certificate assumes, where a floor with a kink does not, and leaves a
+##' convex record the room the bound gives it. Otherwise the floor at the
+##' Gershgorin bound, as before step 5b of #253, since under a link of the
+##' family's `concave_links` a curvature is negative only through rounding
+##' (`make_family()`, property `smooth_floor`). A smooth floor at zero for such
+##' links, as integrated records have, made the proposal too narrow where many
+##' records sit at a limit of the link.
 ##' @noRd
 choose_curvature_floor <- function(kernel, latent_map, precision) {
-  if (kernel$smooth_floor) {
+  if (kernel$integrated) {
     smooth_curvature_floor
+  } else if (kernel$smooth_floor) {
+    make_curvature_floor(latent_map, precision, smooth = TRUE)
   } else {
     make_curvature_floor(latent_map, precision)
   }

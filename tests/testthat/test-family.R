@@ -44,16 +44,22 @@ test_that("the global proposal floors smoothly a link not known to be concave", 
     "binomial", make_inverse_link_functions("binomial", plogis, 5L)
   )$smooth_floor)
 
+  # One latent column per record and a prior of unit precision put the
+  # Gershgorin bound at -0.5.
   precision <- diag(2)
   latent_map <- list(columns = matrix(1:2, 2), dimension = 2L)
-  expect_identical(
-    choose_curvature_floor(make_family("binomial", named("cauchit")),
-                           latent_map, precision),
-    smooth_curvature_floor
-  )
   gershgorin <- choose_curvature_floor(make_family("binomial", named("probit")),
                                        latent_map, precision)
   expect_identical(gershgorin(c(-1, 2)), c(-0.5, 2))
+  # Under cauchit the floor is smooth at the same bound, with a width of a
+  # tenth of it, so it is never below the bound and leaves a positive
+  # curvature as it is.
+  smooth <- choose_curvature_floor(make_family("binomial", named("cauchit")),
+                                   latent_map, precision)
+  expect_equal(smooth(c(-Inf, -1, -0.5, 2)),
+               c(-0.5, -0.5 + 0.05 * log1p(exp(-10)), -0.5 + 0.05 * log(2), 2),
+               tolerance = 1e-14)
+  expect_true(all(smooth(seq(-3, 3, by = 0.01)) >= -0.5))
 })
 
 test_that("an object with integrated records keeps the properties of its link", {
