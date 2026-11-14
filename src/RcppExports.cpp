@@ -174,8 +174,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // cpp_site_table_create
-SEXP cpp_site_table_create(const NumericVector& y, const NumericVector& m, const bool poisson, const NumericVector& z, const NumericVector& log_w, SEXP custom, const List& patterns, const IntegerVector& summed, const List& groups, const List& locations, const IntegerVector& whole);
-RcppExport SEXP _RiskMap_cpp_site_table_create(SEXP ySEXP, SEXP mSEXP, SEXP poissonSEXP, SEXP zSEXP, SEXP log_wSEXP, SEXP customSEXP, SEXP patternsSEXP, SEXP summedSEXP, SEXP groupsSEXP, SEXP locationsSEXP, SEXP wholeSEXP) {
+SEXP cpp_site_table_create(const NumericVector& y, const NumericVector& m, const bool poisson, const NumericVector& z, const NumericVector& log_w, SEXP custom, const List& patterns, const IntegerVector& summed, const List& groups, const List& locations, const IntegerVector& whole, const bool concave);
+RcppExport SEXP _RiskMap_cpp_site_table_create(SEXP ySEXP, SEXP mSEXP, SEXP poissonSEXP, SEXP zSEXP, SEXP log_wSEXP, SEXP customSEXP, SEXP patternsSEXP, SEXP summedSEXP, SEXP groupsSEXP, SEXP locationsSEXP, SEXP wholeSEXP, SEXP concaveSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -190,7 +190,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const List& >::type groups(groupsSEXP);
     Rcpp::traits::input_parameter< const List& >::type locations(locationsSEXP);
     Rcpp::traits::input_parameter< const IntegerVector& >::type whole(wholeSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_site_table_create(y, m, poisson, z, log_w, custom, patterns, summed, groups, locations, whole));
+    Rcpp::traits::input_parameter< const bool >::type concave(concaveSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_site_table_create(y, m, poisson, z, log_w, custom, patterns, summed, groups, locations, whole, concave));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -322,7 +323,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_RiskMap_cpp_structured_solve", (DL_FUNC) &_RiskMap_cpp_structured_solve, 7},
     {"_RiskMap_cpp_structured_factor_matrix", (DL_FUNC) &_RiskMap_cpp_structured_factor_matrix, 6},
     {"_RiskMap_cpp_latent_mala", (DL_FUNC) &_RiskMap_cpp_latent_mala, 20},
-    {"_RiskMap_cpp_site_table_create", (DL_FUNC) &_RiskMap_cpp_site_table_create, 11},
+    {"_RiskMap_cpp_site_table_create", (DL_FUNC) &_RiskMap_cpp_site_table_create, 12},
     {"_RiskMap_cpp_site_set_relative", (DL_FUNC) &_RiskMap_cpp_site_set_relative, 2},
     {"_RiskMap_cpp_site_evaluate", (DL_FUNC) &_RiskMap_cpp_site_evaluate, 6},
     {"_RiskMap_cpp_site_row_sums", (DL_FUNC) &_RiskMap_cpp_site_row_sums, 4},

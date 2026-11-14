@@ -46,13 +46,14 @@ std::vector<Unit> units_from(const IntegerMatrix& units) {
 // pattern's units summed into one record. `groups` holds the 1-based pairs of
 // each group's members, `locations` the 1-based groups of each location of
 // groups, and `whole` the 1-based group of all of each location's members.
+// `concave` says that a custom link is log-concave (SiteTable).
 // [[Rcpp::export]]
 SEXP cpp_site_table_create(const NumericVector& y, const NumericVector& m,
                            const bool poisson, const NumericVector& z,
                            const NumericVector& log_w, SEXP custom,
                            const List& patterns, const IntegerVector& summed,
                            const List& groups, const List& locations,
-                           const IntegerVector& whole) {
+                           const IntegerVector& whole, const bool concave) {
   riskmap_site::Rule rule;
   rule.z.assign(z.begin(), z.end());
   rule.log_w.assign(log_w.begin(), log_w.end());
@@ -121,7 +122,7 @@ SEXP cpp_site_table_create(const NumericVector& y, const NumericVector& m,
                                    has_custom, std::move(pattern_pairs),
                                    std::move(summed_pairs), group_pairs,
                                    std::move(location_groups),
-                                   std::move(whole_groups));
+                                   std::move(whole_groups), concave);
   return XPtr<SiteTable>(table, true);
 }
 

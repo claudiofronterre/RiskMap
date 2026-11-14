@@ -57,7 +57,12 @@
 // depends on the regression coefficients. Its log-likelihood
 //   h_g(x; v) = log integral of N(u; 0, v) prod_j g(y_j, m_j, x + r_j + u) du
 // is that of a record whose kernel is the sum of its members' kernels, so it
-// takes the rules above. A location of groups nests them under an outer
+// takes the rules above, except that under a custom link known to be
+// log-concave, the named probit and cloglog links, it takes the trapezium
+// rule walked out from its mode (uniform_cell()) at every variance, since
+// custom_cell(), which assumes no mode, is built for tables filled once per
+// variance and these are filled again as the coefficients change. A location
+// of groups nests them under an outer
 // effect of variance vo, such as the nugget,
 //   H_l(x; vo, v) = log integral of N(z; 0, vo) prod_g exp(h_g(x + z; v)) dz,
 // as a nested pattern nests units that share x. Since r depends on the
@@ -868,6 +873,9 @@ class SiteTable {
   // linear predictors are numbered in that order across the groups,
   // `locations` the 0-based groups of each location of groups, and `whole`
   // for each location the 0-based group of all its members together.
+  // `concave` says that a custom link is known to be log-concave, as the
+  // named probit and cloglog links are, so that the integrals of groups and
+  // locations can take the trapezium rule walked out from their mode.
   SiteTable(std::vector<double> y, std::vector<double> m, const bool poisson,
             Rule rule, CustomArrays custom = CustomArrays(),
             const bool has_custom = false,
@@ -875,11 +883,11 @@ class SiteTable {
             std::vector<int> summed = {},
             const std::vector<std::vector<int>>& groups = {},
             std::vector<std::vector<int>> locations = {},
-            std::vector<int> whole = {})
+            std::vector<int> whole = {}, const bool concave = false)
       : y_(std::move(y)), m_(std::move(m)), rule_(std::move(rule)),
         custom_(std::move(custom)), patterns_(std::move(patterns)),
         summed_(std::move(summed)), locations_(std::move(locations)),
-        whole_(std::move(whole)) {
+        whole_(std::move(whole)), concave_(concave) {
     group_start_.assign(1, 0);
     for (const std::vector<int>& members : groups) {
       member_pair_.insert(member_pair_.end(), members.begin(), members.end());
@@ -1138,13 +1146,14 @@ class SiteTable {
                               const int location, const double x,
                               const double vo, const double vi) {
     const LocationTerms<true> terms{*this, groups, inner, records};
-    if (kernel_.custom != nullptr) {
+    if (kernel_.custom != nullptr && !concave_) {
       double low = 0, high = 0, step_cap = 0;
       location_flat_range(groups, inner ? vi : 0.0, low, high, step_cap);
       return custom_cell(terms, x, vo, location_sup_[location], low, high,
                          step_cap).extra;
     }
-    return vo <= 0.2 ? aghq_cell(terms, x, vo, rule_).extra :
+    return vo <= 0.2 && kernel_.custom == nullptr ?
+      aghq_cell(terms, x, vo, rule_).extra :
       uniform_cell(terms, x, vo, inner_step_cap(inner ? vi : 0.0)).extra;
   }
 
@@ -1398,13 +1407,13 @@ class SiteTable {
   Moments group_cell(const Pattern& pattern, const double x) const {
     const GroupTerms terms{*this, pattern};
     const double v = pattern.v;
-    if (kernel_.custom != nullptr) {
+    if (kernel_.custom != nullptr && !concave_) {
       double low = 0, high = 0;
       group_flat_range(pattern, low, high);
       return custom_cell(terms, x, v, pattern.sup, low, high);
     }
-    return v <= 0.2 ? aghq_cell(terms, x, v, rule_) :
-      uniform_cell(terms, x, v);
+    return v <= 0.2 && kernel_.custom == nullptr ?
+      aghq_cell(terms, x, v, rule_) : uniform_cell(terms, x, v);
   }
 
   static std::uint64_t bits(const double value) {
@@ -1417,13 +1426,14 @@ class SiteTable {
                         Table* records, const int location, const double x,
                         const double vo, const double vi) {
     const LocationTerms<false> terms{*this, groups, inner, records};
-    if (kernel_.custom != nullptr) {
+    if (kernel_.custom != nullptr && !concave_) {
       double low = 0, high = 0, step_cap = 0;
       location_flat_range(groups, inner ? vi : 0.0, low, high, step_cap);
       return custom_cell(terms, x, vo, location_sup_[location], low, high,
                          step_cap);
     }
-    return vo <= 0.2 ? aghq_cell(terms, x, vo, rule_) :
+    return vo <= 0.2 && kernel_.custom == nullptr ?
+      aghq_cell(terms, x, vo, rule_) :
       uniform_cell(terms, x, vo, inner_step_cap(inner ? vi : 0.0));
   }
 
@@ -1581,6 +1591,7 @@ class SiteTable {
   std::vector<double> group_sup_, location_sup_;
   std::vector<Entries> location_entries_;
   std::vector<double> key_;
+  bool concave_ = false;
   // The patterns of groups, keyed on the bits of their variance, pairs and
   // relative linear predictors, with the scratch of their keys.
   std::unordered_map<std::vector<std::uint64_t>, Pattern, KeyHash>

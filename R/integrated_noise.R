@@ -345,7 +345,10 @@ plan_integrated_records <- function(y, units_m, D, cov_offset, ID_coords,
 ##' exactly zero. Adaptive Gauss-Hermite quadrature uses 20 nodes. `family` is
 ##' the family object of the model's link (`make_family()`), and a custom link
 ##' is passed to the table as the arrays of its kernel (`kernel_arrays()`,
-##' `compute_custom_kernel_arrays()`).
+##' `compute_custom_kernel_arrays()`). A named link with compiled code on the
+##' family's `concave_links`, probit or cloglog, is passed as log-concave, so
+##' that its groups and locations take the trapezium rule walked out from
+##' their mode.
 ##' @noRd
 make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
                             kind = ifelse(plain, 0L, 1L),
@@ -413,7 +416,9 @@ make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
     kernel$poisson, quadrature$nodes / sqrt(2),
     log(quadrature$weights) + 0.5 * log(pi), custom, pattern_list,
     as.integer(summed), group_pairs, unname(location_groups),
-    as.integer(whole)
+    as.integer(whole),
+    isTRUE(kernel$compiled) &&
+      isTRUE(kernel$linkf$link %in% kernel$concave_links)
   )
   units <- cbind(kind = as.integer(kind), index = as.integer(index),
                  a = as.integer(a), b = as.integer(b))
