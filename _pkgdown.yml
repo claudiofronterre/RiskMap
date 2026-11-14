@@ -38,46 +38,48 @@ footer:
     book: "Learn RiskMap with [MBG-R](https://www.mbgr.org/)."
 
 reference:
-  - title: Model Fitting
+  - title: Package
+    contents:
+      - RiskMap-package
+
+  - title: Data, projections and distances
+    contents:
+      - propose_crs
+      - crs_distortion
+      - create_grid
+      - create_convex_hull
+      - create_ids
+      - get_worldpop
+      - summarise_distance
+      - variogram
+      - print.RiskMap_variogram
+      - plot.RiskMap_variogram
+
+  - title: Specifying and fitting models
     contents:
       - glgpm
-      - dast
       - gp
       - re
       - negative_binomial
+      - set_control_mcml
+      - set_control_mcmc
+      - elogit
+      - matern_correlation
+      - matern_gradient_phi
+      - matern_hessian_phi
+      - maxim_integrand
 
-  - title: Simulation and MCMC
+  - title: Fitted models
     contents:
-      - set_control_sim
-      - Laplace_sampling_MCMC
-      - glgpm_sim
-      - dast_sim
-      - surf_sim
-
-  - title: Prediction and Targets
-    contents:
-      - predict.RiskMap
-      - assess_extrapolation
-      - plot.RiskMap_extrapolation
-      - get_worldpop
-      - to_table.RiskMap_prediction
-
-  - title: Diagnostics and Assessment
-    contents:
-      - check_mcmc
-      - assess_pp
-      - assess_sim
-      - plot_AnPIT
-      - plot_score
-      - dist_summaries
-      - s_variogram
-      - plot_s_variogram
-      - plot_sim_surf
-      - plot_mda
-
-  - title: Summaries and Plot Methods
-    contents:
+      - print.RiskMap
       - summary.RiskMap
+      - print.summary.RiskMap
+      - coef.RiskMap
+      - fitted.RiskMap
+      - to_table
+
+  - title: Checking a fit
+    contents:
       - check_fit
       - print.RiskMap_check
       - summary.RiskMap_check
@@ -85,31 +87,47 @@ reference:
       - plot.RiskMap_check
       - profile.RiskMap
       - plot.RiskMap_profile
-      - summary.RiskMap.sim.res
-      - summary.RiskMap.spatial.cv
-      - print.summary.RiskMap
-      - print.summary.RiskMap.sim.res
-      - print.summary.RiskMap.spatial.cv
-      - plot.RiskMap_pred_target_grid
-      - plot.RiskMap_pred_target_shp
-
-  - title: Core Utilities
-    contents:
-      - create_grid
-      - compute_ID_coords
-      - convex_hull_sf
-      - propose_crs
-      - crs_distortion
-      - matern_cor
-      - matern.grad.phi
-      - matern.hessian.phi
-      - maxim.integrand
-      - to_table
-      - coef.RiskMap
+      - parametric_bootstrap
+      - print.RiskMap_bootstrap
+      - summary.RiskMap_bootstrap
+      - plot.RiskMap_bootstrap
+      - plot_mcmc
+      - summarise_mcmc
       - riskmap_conditions
       - riskmap_progress
 
-  - title: Example Datasets
+  - title: Prediction
+    contents:
+      - predict.RiskMap
+      - print.RiskMap_prediction
+      - plot.RiskMap_prediction
+      - to_table.RiskMap_prediction
+      - assess_extrapolation
+      - plot.RiskMap_extrapolation
+
+  - title: Assessment
+    contents:
+      - assess_prediction
+      - print.RiskMap_cross_validation
+      - summary.RiskMap_cross_validation
+      - print.summary.RiskMap_cross_validation
+      - plot.RiskMap_cross_validation
+      - assess_simulation
+      - print.RiskMap_assess_simulation
+      - summary.RiskMap_assess_simulation
+      - print.summary.RiskMap_assess_simulation
+
+  - title: Simulation
+    contents:
+      - specify_glgpm
+      - print.RiskMap_simulation_model
+      - simulate_glgpm
+      - plot.RiskMap_simulation
+      - plot.RiskMap_simulated_surface
+      - simulated_data
+      - simulated_values
+
+  - title: Example datasets
     contents:
       - abund_sma
       - anopheles
