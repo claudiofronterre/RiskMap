@@ -288,8 +288,8 @@ make_integrated_kernel <- function(sites, classes) {
 ##' everywhere. A floor with continuous derivatives keeps the fixed refits a
 ##' smooth function of the parameters wherever a record's log-likelihood is
 ##' not concave, for integrated sites, where that cannot be ruled out
-##' numerically, and for links not known to be log-concave
-##' (`choose_curvature_floor()`).
+##' numerically, and, moved to the Gershgorin bound, for links not known to be
+##' log-concave (`make_curvature_floor()`, `choose_curvature_floor()`).
 ##' @noRd
 smooth_curvature_floor <- function(curvature, epsilon = 1e-3) {
   pmax(curvature, 0) + epsilon * log1p(exp(-abs(curvature) / epsilon))
