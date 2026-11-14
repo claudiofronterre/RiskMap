@@ -141,3 +141,14 @@ test_that("get_worldpop downloads from WorldPop", {
                         dest_dir = withr::local_tempdir(), messages = FALSE)
   expect_gt(terra::global(total, "sum", na.rm = TRUE)[[1]], 3e6)
 })
+
+test_that("the WorldPop catalogue asks for jsonlite before going online", {
+  local_mocked_bindings(
+    check_installed = function(pkg, ...) {
+      rlang::abort(pkg, class = "test_package_asked")
+    },
+    .package = "rlang"
+  )
+  expect_error(worldpop_catalogue("pop/wpgp", "LBR"), "jsonlite",
+               class = "test_package_asked")
+})

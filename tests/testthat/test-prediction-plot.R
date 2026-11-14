@@ -429,3 +429,29 @@ test_that("plot() takes summaries and thresholds as predict() names them", {
     "Probability prevalence > 50%"
   )
 })
+
+test_that("a north arrow and a scale bar ask for ggspatial, and only they do", {
+  points <- st_sf(
+    response_mean = c(0.1, 0.4, 0.8),
+    geometry = st_sfc(
+      st_point(c(0, 0)), st_point(c(1, 0)), st_point(c(2, 0)), crs = 32631
+    )
+  )
+  prediction <- structure(list(predictions = points, boundaries = NULL,
+                               boundary_summary = NULL),
+                          class = "RiskMap_prediction")
+  asked <- character()
+  local_mocked_bindings(
+    check_installed = function(pkg, ...) {
+      asked <<- c(asked, pkg)
+      invisible(TRUE)
+    },
+    .package = "rlang"
+  )
+  plain <- plot(prediction)
+  expect_identical(asked, character())
+  skip_if_not_installed("ggspatial")
+  decorated <- plot(prediction, north_arrow = TRUE, scale_bar = TRUE)
+  expect_identical(asked, "ggspatial")
+  expect_length(decorated$layers, length(plain$layers) + 2L)
+})

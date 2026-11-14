@@ -29,9 +29,7 @@ Imports:
     Deriv,
     dplyr,
     ggplot2,
-    ggspatial,
     gridExtra,
-    jsonlite,
     knitr,
     loo,
     Matrix,
@@ -51,6 +49,8 @@ LinkingTo:
     Rcpp,
     RcppEigen
 Suggests:
+    ggspatial,
+    jsonlite,
     RhpcBLASctl,
     testthat (>= 3.0.0),
     withr
