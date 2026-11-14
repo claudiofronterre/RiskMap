@@ -8,7 +8,10 @@
 #include <limits>
 #include <list>
 #include <memory>
+#include <cstring>
+#include <numeric>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 #include "likelihood_kernel.h"
 
@@ -58,11 +61,14 @@
 // effect of variance vo, such as the nugget,
 //   H_l(x; vo, v) = log integral of N(z; 0, vo) prod_g exp(h_g(x + z; v)) dz,
 // as a nested pattern nests units that share x. Since r depends on the
-// coefficients, each group keeps its integral for up to 3 keys, the variance
-// and its members' linear predictors relative to its first member, so that
-// h_g(x) is the kept integral at x plus that member's r. A change of the
-// coefficients of covariates that its members share, such as those of the
-// household or the location, leaves a group's key unchanged. Each location of
+// coefficients, a group's integral is that of its pattern, the variance and
+// its members' pairs and linear predictors relative to a reference member,
+// computed from the differences of their covariates, so that h_g(x) is the
+// pattern's integral at x plus that member's r. A change of the coefficients
+// of covariates that its members share, such as those of the household or the
+// location, leaves a group's pattern unchanged, and every group with the same
+// pattern, such as households of two children without deaths who differ in
+// sex, shares its integral. Each location of
 // groups keeps up to 3 integrals in the same way, keyed on its variances and
 // the relative linear predictors of all its members. Each kept integral holds
 // only the grid cells it has needed, in a strip that grows as the draws reach
@@ -791,25 +797,48 @@ struct Entry {
 constexpr int entries_kept = 3;
 using Entries = std::array<Entry, entries_kept>;
 
-// A group as its location's integral reads it: its entry at the inner
+// The integral of a pattern of members at one variance v: the pairs of a
+// group's members and their linear predictors relative to a reference member,
+// in a canonical order, with the bound on their log-likelihood for a custom
+// link. Every group with that pattern shares it, whatever its household or
+// location, as households of two children with no deaths and different sexes
+// do.
+struct Pattern {
+  double v = 0;
+  std::vector<int> pairs;
+  std::vector<double> relative;
+  double sup = 0;
+  std::uint64_t generation = 0;
+  Strip strip;
+};
+
+struct KeyHash {
+  std::size_t operator()(const std::vector<std::uint64_t>& key) const {
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (const std::uint64_t word : key) {
+      hash ^= word + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+    }
+    return static_cast<std::size_t>(hash);
+  }
+};
+
+// A group as its location's integral reads it: its pattern at the inner
 // variance, null for a group of one member, which takes the record table, or
 // for an inner variance of zero, the shift of its argument, which is the
-// relative linear predictor of its first member, and its members' relative
-// linear predictors.
+// relative linear predictor of its pattern's reference member, and its
+// members' relative linear predictors.
 struct GroupRef {
   int group = 0;
-  Entry* entry = nullptr;
+  Pattern* pattern = nullptr;
   double shift = 0;
   const double* relative = nullptr;
 };
 
-// The sum over a group's members of their kernels at eta + r_j, with
-// `relative` the members' r_j in order.
+// The sum over a pattern's members of their kernels at eta + r_j.
 struct GroupTerms {
   static constexpr bool has_extra = false;
   const SiteTable& sites;
-  const int group;
-  const double* relative;
+  const Pattern& pattern;
   void operator()(const double eta, double& k, double& k1, double& k2) const;
   double extra() const { return 0.0; }
 };
@@ -901,7 +930,6 @@ class SiteTable {
     for (std::size_t l = 0; l < locations_.size(); ++l) {
       for (const int g : locations_[l]) location_sup_[l] += group_sup_[g];
     }
-    group_entries_.resize(group_count());
     location_entries_.resize(locations_.size());
   }
   SiteTable(const SiteTable&) = delete;
@@ -946,17 +974,64 @@ class SiteTable {
     return locations_[location];
   }
 
-  // The entry of a group at v for the current relative linear predictors,
-  // keyed on its members' predictors relative to its first member, and in
-  // `shift` that first member's relative predictor, so that the group's h at
-  // x is the entry's at x + shift. A household's entry so stays the same when
-  // only coefficients of covariates shared by its members change.
-  Entry& group_entry(const int group, const double v, double& shift) {
+  // Starts the resolution of an evaluator's records: patterns not used by
+  // this evaluator or the two before it are dropped once more than about four
+  // per group are kept, so that a pattern stays valid while an evaluator
+  // that resolved it lives.
+  void begin_resolution() {
+    ++generation_;
+    const std::size_t cap = 4 * static_cast<std::size_t>(group_count()) + 256;
+    if (patterns_shared_.size() <= cap) return;
+    for (auto it = patterns_shared_.begin(); it != patterns_shared_.end();) {
+      if (it->second.generation + 2 < generation_) {
+        it = patterns_shared_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  // The pattern of a group at v for the current relative linear predictors,
+  // its members in the order of their linear predictors relative to the
+  // first member of the group, which come from the differences of their
+  // covariates, and then of their pairs, with the first in that order as the
+  // reference member. In `shift` the reference member's relative linear
+  // predictor, so that the group's h at x is the pattern's at x + shift. A
+  // household's pattern so stays the same when only coefficients of
+  // covariates shared by its members change, and households alike in their
+  // members' outcomes and covariate differences share it.
+  Pattern& group_pattern(const int group, const double v, double& shift) {
     const int first = group_start_[group];
-    shift = (*current_)[first];
+    const int size = group_size(group);
     const double* within = current_->data() + member_count() + first;
-    key_.assign(within, within + group_size(group));
-    return resolve(group_entries_[group], v, 0.0, key_, group_tables_built_);
+    order_.resize(size);
+    std::iota(order_.begin(), order_.end(), 0);
+    std::sort(order_.begin(), order_.end(), [&](const int a, const int b) {
+      if (within[a] != within[b]) return within[a] < within[b];
+      return member_pair_[first + a] < member_pair_[first + b];
+    });
+    const int reference = order_[0];
+    shift = (*current_)[first + reference];
+    words_.assign(1, bits(v));
+    for (const int j : order_) {
+      words_.push_back(static_cast<std::uint64_t>(member_pair_[first + j]));
+      words_.push_back(bits(within[j] - within[reference]));
+    }
+    auto found = patterns_shared_.find(words_);
+    if (found == patterns_shared_.end()) {
+      Pattern fresh;
+      fresh.v = v;
+      for (const int j : order_) {
+        const int pair = member_pair_[first + j];
+        fresh.pairs.push_back(pair);
+        fresh.relative.push_back(within[j] - within[reference]);
+        if (!sup_.empty()) fresh.sup += sup_[pair];
+      }
+      found = patterns_shared_.emplace(words_, std::move(fresh)).first;
+      ++group_tables_built_;
+    }
+    found->second.generation = generation_;
+    return found->second;
   }
 
   // The entry of a location of groups at (vo, vi), keyed on the relative
@@ -970,6 +1045,20 @@ class SiteTable {
     }
     return resolve(location_entries_[location], vo, vi, key_,
                    location_tables_built_);
+  }
+
+  // The sum over a pattern's members of their kernels at eta + r_j.
+  Moments pattern_plain(const Pattern& pattern, const double eta) const {
+    Moments out{0.0, 0.0, 0.0, 0.0};
+    for (std::size_t j = 0; j < pattern.pairs.size(); ++j) {
+      double k = 0, k1 = 0, k2 = 0;
+      const int pair = pattern.pairs[j];
+      kernel_.terms(y_[pair], m_[pair], eta + pattern.relative[j], k, k1, k2);
+      out.h += k;
+      out.h1 += k1;
+      out.h2 += k2;
+    }
+    return out;
   }
 
   // The sum over a group's members of their kernels at eta + r_j, with
@@ -989,14 +1078,12 @@ class SiteTable {
     return out;
   }
 
-  // The integral of a group's entry at t, its argument shifted by the
-  // entry's shift, with derivatives up to `order`.
-  Moments evaluate_group(Entry& entry, const int group, const double t,
-                         const int order) {
-    return strip_evaluate(entry.strip, t, order, group_cells_filled_,
+  // The integral of a pattern at t, a group's argument shifted by its
+  // shift, with derivatives up to `order`.
+  Moments evaluate_group(Pattern& pattern, const double t, const int order) {
+    return strip_evaluate(pattern.strip, t, order, group_cells_filled_,
                           [&](const double at) {
-                            return group_cell(group, at, entry.v,
-                                              entry.key.data());
+                            return group_cell(pattern, at);
                           });
   }
 
@@ -1019,11 +1106,11 @@ class SiteTable {
   Moments group_moments(const GroupRef& ref, const bool inner,
                         Table* records, const double eta, const int order) {
     if (!inner) return group_plain(ref.group, ref.relative, eta);
-    if (ref.entry == nullptr) {
+    if (ref.pattern == nullptr) {
       return evaluate(*records, member_pair_[group_start_[ref.group]],
                       eta + ref.shift, order);
     }
-    return evaluate_group(*ref.entry, ref.group, eta + ref.shift, order);
+    return evaluate_group(*ref.pattern, eta + ref.shift, order);
   }
 
   // The sum over a location's groups of h_g at the inner variance, or of the
@@ -1259,20 +1346,16 @@ class SiteTable {
     return std::max(0.25, std::sqrt(vi) / 16.0);
   }
 
-  // For a custom link, the range beyond which a group's kernel, the sum of
+  // For a custom link, the range beyond which a pattern's kernel, the sum of
   // its members' kernels at x + r_j, is constant, since each member's kernel
-  // is constant beyond the lattice.
-  void group_flat_range(const int group, const double* relative, double& low,
+  // is constant beyond the lattice. Its members are in increasing order of
+  // r_j.
+  void group_flat_range(const Pattern& pattern, double& low,
                         double& high) const {
-    double top = -std::numeric_limits<double>::infinity();
-    double bottom = std::numeric_limits<double>::infinity();
-    for (int j = 0; j < group_size(group); ++j) {
-      top = std::max(top, relative[j]);
-      bottom = std::min(bottom, relative[j]);
-    }
-    low = custom_.low - top;
+    low = custom_.low - pattern.relative.back();
     high = custom_.low +
-      static_cast<double>(custom_.A.size() - 1) * custom_.step - bottom;
+      static_cast<double>(custom_.A.size() - 1) * custom_.step -
+      pattern.relative.front();
   }
 
   // For a custom link, the range beyond which a location's kernel, the sum
@@ -1312,16 +1395,22 @@ class SiteTable {
     step_cap = inner_step_cap(vi);
   }
 
-  Moments group_cell(const int group, const double x, const double v,
-                     const double* relative) const {
-    const GroupTerms terms{*this, group, relative};
+  Moments group_cell(const Pattern& pattern, const double x) const {
+    const GroupTerms terms{*this, pattern};
+    const double v = pattern.v;
     if (kernel_.custom != nullptr) {
       double low = 0, high = 0;
-      group_flat_range(group, relative, low, high);
-      return custom_cell(terms, x, v, group_sup_[group], low, high);
+      group_flat_range(pattern, low, high);
+      return custom_cell(terms, x, v, pattern.sup, low, high);
     }
     return v <= 0.2 ? aghq_cell(terms, x, v, rule_) :
       uniform_cell(terms, x, v);
+  }
+
+  static std::uint64_t bits(const double value) {
+    std::uint64_t out = 0;
+    std::memcpy(&out, &value, sizeof(out));
+    return out;
   }
 
   Moments location_cell(const std::vector<GroupRef>& groups, const bool inner,
@@ -1490,8 +1579,15 @@ class SiteTable {
   std::vector<std::vector<int>> locations_;
   std::vector<int> whole_;
   std::vector<double> group_sup_, location_sup_;
-  std::vector<Entries> group_entries_, location_entries_;
+  std::vector<Entries> location_entries_;
   std::vector<double> key_;
+  // The patterns of groups, keyed on the bits of their variance, pairs and
+  // relative linear predictors, with the scratch of their keys.
+  std::unordered_map<std::vector<std::uint64_t>, Pattern, KeyHash>
+    patterns_shared_;
+  std::vector<std::uint64_t> words_;
+  std::vector<int> order_;
+  std::uint64_t generation_ = 0;
   // The current relative linear predictors of the members.
   std::shared_ptr<const std::vector<double>> current_;
   long group_cells_filled_ = 0, location_cells_filled_ = 0;
@@ -1510,7 +1606,7 @@ inline void PatternTerms<Extra>::operator()(const double eta, double& k,
 
 inline void GroupTerms::operator()(const double eta, double& k, double& k1,
                                    double& k2) const {
-  const Moments sum = sites.group_plain(group, relative, eta);
+  const Moments sum = sites.pattern_plain(pattern, eta);
   k = sum.h;
   k1 = sum.h1;
   k2 = sum.h2;
@@ -1586,12 +1682,13 @@ class Evaluator {
             throw std::logic_error(
               "The relative linear predictors of the groups are not set.");
           }
+          sites_.begin_resolution();
         }
         if (unit.kind == 3) {
           const double v = classes[unit.a];
           out.mode = v > 0 ? 5 : 6;
           if (v > 0) {
-            out.entry = &sites_.group_entry(unit.index, v, out.shift);
+            out.pattern = &sites_.group_pattern(unit.index, v, out.shift);
           } else {
             out.relative = relative_->data() + sites_.group_start(unit.index);
           }
@@ -1603,8 +1700,8 @@ class Evaluator {
             // With the groups' variance at zero the location is one group
             // of all its members at vo.
             out.mode = 8;
-            out.entry = &sites_.group_entry(sites_.whole_group(unit.index), vo,
-                                            out.shift);
+            out.pattern = &sites_.group_pattern(sites_.whole_group(unit.index),
+                                                vo, out.shift);
           } else {
             out.mode = vo > 0 ? 7 : vi > 0 ? 9 : 10;
           }
@@ -1615,7 +1712,7 @@ class Evaluator {
             ref.relative = relative_->data() + sites_.group_start(g);
             ref.shift = ref.relative[0];
             if (vi > 0 && sites_.group_size(g) > 1) {
-              ref.entry = &sites_.group_entry(g, vi, ref.shift);
+              ref.pattern = &sites_.group_pattern(g, vi, ref.shift);
             }
             out.groups.push_back(ref);
           }
@@ -1644,15 +1741,14 @@ class Evaluator {
     case 4:
       return sites_.pattern_sum(r.table, r.index, eta, order);
     case 5:
-      return sites_.evaluate_group(*r.entry, r.index, eta + r.shift, order);
+      return sites_.evaluate_group(*r.pattern, eta + r.shift, order);
     case 6:
       return sites_.group_plain(r.index, r.relative, eta);
     case 7:
       return sites_.evaluate_location(*r.entry, r.groups, *r.table, r.index,
                                       eta, order);
     case 8:
-      return sites_.evaluate_group(*r.entry, sites_.whole_group(r.index),
-                                   eta + r.shift, order);
+      return sites_.evaluate_group(*r.pattern, eta + r.shift, order);
     default:
       // Modes 9 and 10, the sum of the groups' h at their variance, or of
       // their kernels.
@@ -1693,8 +1789,9 @@ class Evaluator {
     Table* table = nullptr;
     NestedTable* nested = nullptr;
     double vi = 0, shift = 0;
-    // A group's or location's entry, a plain group's relative linear
+    // A group's pattern, a location's entry, a plain group's relative linear
     // predictors, and a location's groups.
+    Pattern* pattern = nullptr;
     Entry* entry = nullptr;
     const double* relative = nullptr;
     std::vector<GroupRef> groups;
