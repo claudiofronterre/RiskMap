@@ -1,15 +1,17 @@
 # Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
 # Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
 #
-# Pull requests into main run the three current-release jobs, which are the
-# checks that auto-merge requires. Pushes to main, the weekly schedule and
-# manual runs also check R-devel and the previous release (oldrel-1).
-# A new push to a pull request cancels the run for its older commit.
+# Pull requests run the three current-release jobs, which are the checks
+# that auto-merge requires. They run whatever the base branch, so a stacked
+# pull request already has them when GitHub retargets it to main. Pushes to
+# main, the weekly schedule and manual runs also check R-devel and the
+# previous release (oldrel-1). A new push to a pull request cancels the run
+# for its older commit. Every other run has its own concurrency group, so
+# none is cancelled.
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   schedule:
     - cron: '0 5 * * 1'
   workflow_dispatch:
@@ -19,7 +21,7 @@ name: R-CMD-check
 permissions: read-all
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
