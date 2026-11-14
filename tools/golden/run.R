@@ -52,6 +52,75 @@ saved_survey <- function(name) {
   s <- readRDS(file.path(option("data", file.path(here, "data")), "surveys.rds"))[[name]]
   st_as_sf(s$frame, coords = c("east", "north"), crs = s$epsg)
 }
+# The surveys of the tasks F30 to F46. Sites are uniform on a square of 100 km with an exponential field of variance
+# 1, and each survey is designed so that the parameter its tasks are for is estimated away from its boundary.
+field_sites <- function(n, seed, scale) {
+  set.seed(seed); coords <- cbind(runif(n), runif(n)) * 100
+  list(coords = coords, S = as.numeric(rnorm(n) %*% chol(exp(-as.matrix(dist(coords)) / scale))))
+}
+as_sites <- function(frame, coords) {
+  frame$east <- coords[, 1] * 1000; frame$north <- coords[, 2] * 1000
+  st_as_sf(frame, coords = c("east", "north"), crs = 32632)
+}
+# Poisson counts at 120 sites (field of scale 15 km) with an exposure between 0.5 and 2, for the offset of F32.
+sim_counts <- function(seed) {
+  sites <- field_sites(120, seed, 15); x <- rnorm(120); exposure <- runif(120, 0.5, 2)
+  y <- rpois(120, exposure * exp(0.5 + 0.3 * x + sites$S))
+  as_sites(data.frame(y = y, m = 1, x = x, log_exposure = log(exposure)), sites$coords)
+}
+# Negative binomial counts of size 2, five records at each of 60 sites (field of scale 25 km), each record with its
+# own exposure between 0.5 and 2, which the fits take as the denominator. Repeated records let the size be told apart
+# from the field.
+sim_counts_nb <- function(seed) {
+  sites <- field_sites(60, seed, 25); site <- rep(seq_len(60), each = 5)
+  x <- rnorm(300); exposure <- runif(300, 0.5, 2)
+  y <- rnbinom(300, size = 2, mu = exposure * exp(0.8 + 0.3 * x + sites$S[site]))
+  as_sites(data.frame(y = y, exposure = exposure, x = x), sites$coords[site, ])
+}
+# A Gaussian survey of 8 records at each of 60 sites (field of scale 30 km), with a nugget of variance 0.5, an effect
+# of variance 0.3 for each of 12 clusters of 5 sites, and measurement error of variance 0.25. Records outnumber latent
+# effects by more than three to one, so Gaussian fits take the Woodbury path.
+sim_replicated_gaussian <- function(seed) {
+  sites <- field_sites(60, seed, 30); location <- rep(seq_len(60), each = 8)
+  cluster <- rep(seq_len(12), length.out = 60)[location]
+  nugget <- rnorm(60, 0, sqrt(0.5)); cluster_effect <- rnorm(12, 0, sqrt(0.3)); x <- rnorm(480)
+  z <- 1 + 0.5 * x + sites$S[location] + nugget[location] + cluster_effect[cluster] + rnorm(480, 0, 0.5)
+  as_sites(data.frame(z = z, x = x, cluster = cluster), sites$coords[location, ])
+}
+# Households at 100 locations (field of scale 15 km), 1 + Poisson(3) at each with 1 + Poisson(2) tested in each, one
+# record per household, in 20 districts of 5 locations drawn at random. Households and districts have effects of
+# variance 0.5, x is at the location (coefficient 0.3) and the prevalence is 25%. A district crosses locations.
+sim_district_households <- function(seed) {
+  sites <- field_sites(100, seed, 15); district <- sample(rep(seq_len(20), each = 5))
+  location <- rep(seq_len(100), 1L + rpois(100, 3)); n <- length(location)
+  m <- 1L + rpois(n, 2); x_location <- rnorm(100)
+  district_effect <- rnorm(20, 0, sqrt(0.5)); household_effect <- rnorm(n, 0, sqrt(0.5))
+  rest <- 0.3 * x_location[location] + sites$S[location] + district_effect[district[location]] + household_effect
+  b <- uniroot(function(b) mean(plogis(b + rest)) - 0.25, c(-20, 20))$root
+  as_sites(data.frame(y = rbinom(n, m, plogis(b + rest)), m = m, x = x_location[location], household = seq_len(n),
+                      district = district[location], location = location), sites$coords[location, ])
+}
+# A household survey with one record per child, in the style of the re() study's surveys. There are 80 locations with
+# 1 + Poisson(3) households each and 1 + Poisson(2) children in each household, an exponential field of variance 1
+# and scale 12 km, a nugget of variance 1, a household effect of variance 0.8, x at the location (coefficient 0.3)
+# and sex at the child (coefficient 0.4), and a prevalence of 30%, at which the nugget is estimated away from zero.
+# Siblings differ in sex, so a household holds several units of different linear predictors.
+sim_child_households <- function(seed, locations = 80L) {
+  set.seed(seed)
+  coords <- cbind(runif(locations), runif(locations)) * 100
+  S <- drop(t(chol(exp(-as.matrix(dist(coords)) / 12) + diag(1e-9, locations))) %*% rnorm(locations))
+  nugget <- rnorm(locations, 0, 1)
+  location <- rep(seq_len(locations), 1L + rpois(locations, 3))
+  household <- rep(seq_along(location), 1L + rpois(length(location), 2))
+  x_location <- rnorm(locations); sex <- rbinom(length(household), 1, 0.5)
+  effect <- rnorm(length(location), 0, sqrt(0.8))
+  site <- location[household]
+  rest <- 0.3 * x_location[site] + 0.4 * sex + S[site] + nugget[site] + effect[household]
+  b <- uniroot(function(b) mean(plogis(b + rest)) - 0.3, c(-20, 20))$root
+  y <- rbinom(length(household), 1, plogis(b + rest))
+  as_sites(data.frame(y = y, m = 1L, x = x_location[site], sex = sex, household = household, location = site),
+           coords[site, ])
+}
 data_cache <- new.env()
 dataset <- function(name) {
   if (!is.null(data_cache[[name]])) return(data_cache[[name]])
@@ -70,6 +139,13 @@ dataset <- function(name) {
     tz_malaria = { data("tz_malaria", package = "RiskMap", envir = environment()); tz_malaria },
     n05_2 = saved_survey("n05_2"),
     households = saved_survey("households"),
+    counts_nb = sim_counts_nb(30), counts_poisson = sim_counts(32),
+    replicated_gaussian = sim_replicated_gaussian(34),
+    district_households = sim_district_households(37),
+    child_households = sim_child_households(42),
+    child_households_40 = { d <- dataset("child_households"); d[d$location <= 40L, ] },
+    same_sex_locations = { d <- dataset("child_households_40")
+                           d$sex <- ave(d$sex, d$location, FUN = function(s) s[1]); d },
     stop("unknown data set ", name))
   assign(name, value, envir = data_cache)
   value
@@ -149,7 +225,62 @@ fits <- list(
                                             return_samples = FALSE,
                                             control_mcml = set_control_mcml(integrate_noise = FALSE)),
   F29_gaussian = function() glgpm(z ~ x + gp(), data = dataset("gaussian"), family = "gaussian",
-                                  distance_units = "km", messages = FALSE)
+                                  distance_units = "km", messages = FALSE),
+  F30_negative_binomial_estimated = function() glgpm(y ~ x + gp(), denominator = exposure,
+                                                     data = dataset("counts_nb"), family = negative_binomial(),
+                                                     distance_units = "km", messages = FALSE, seed = 30L,
+                                                     control_mcmc = ctrl),
+  F31_negative_binomial_held = function() glgpm(y ~ x + gp(), denominator = exposure, data = dataset("counts_nb"),
+                                                family = negative_binomial(2), distance_units = "km",
+                                                messages = FALSE, seed = 31L, control_mcmc = ctrl),
+  F32_poisson_offset = function() glgpm(y ~ x + offset(log_exposure) + gp(), denominator = m,
+                                        data = dataset("counts_poisson"), family = "poisson", distance_units = "km",
+                                        messages = FALSE, seed = 32L, control_mcmc = ctrl),
+  F33_fixed_nugget = function() fit_binomial(y ~ x + gp(nugget = 0.5), "d2", seed = 33L),
+  F34_gaussian_nugget = function() glgpm(z ~ x + gp(nugget = TRUE), data = dataset("replicated_gaussian"),
+                                         family = "gaussian", distance_units = "km", messages = FALSE),
+  F35_gaussian_re = function() glgpm(z ~ x + gp() + re(cluster), data = dataset("replicated_gaussian"),
+                                     family = "gaussian", distance_units = "km", messages = FALSE),
+  F36_gaussian_fixed_error = function() glgpm(z ~ x + gp(), data = dataset("replicated_gaussian"),
+                                              family = "gaussian", distance_units = "km", messages = FALSE,
+                                              fix_var_me = 0.25),
+  F37_two_re_crossing = function() glgpm(y ~ x + gp(kappa = 0.5) + re(household) + re(district), denominator = m,
+                                         data = dataset("district_households"), family = "binomial",
+                                         distance_units = "km", messages = FALSE, seed = 37L,
+                                         return_samples = FALSE),
+  F38_kappa_1_5 = function() fit_binomial(y ~ x + gp(kappa = 1.5), "d1", seed = 38L),
+  F39_pc_prior = function() fit_binomial(y ~ x + gp(), "d1", seed = 39L,
+                                         control_mcml = set_control_mcml(pc_prior = TRUE)),
+  F40_laplace_proposal = function() fit_binomial(y ~ x + gp(), "d1", seed = 40L,
+                                                 control_mcml = set_control_mcml(proposal = "laplace")),
+  F41_partial_start = function() fit_binomial(y ~ x + gp(), "d1", seed = 41L, start_pars = list(phi = 20)),
+  F42_households_child_covariates = function() glgpm(y ~ x + sex + gp(kappa = 0.5, nugget = TRUE) + re(household),
+                                                     denominator = m, data = dataset("child_households"),
+                                                     family = "binomial", distance_units = "km", messages = FALSE,
+                                                     seed = 42L, return_samples = FALSE),
+  # Variants of F42 on its first 40 locations, agreed with the session that integrates such households (proposal 3
+  # of the review), since each takes a different path of the new rule. Probit uses the trapezium rule of custom
+  # links. Without re(), each location is one group of children with differing predictors under the nugget. Without
+  # the nugget, each household is a record of its own and the households at a location share the field. With every
+  # child at a location given the same sex, today's rules already integrate the households and the nugget everywhere,
+  # so the new rule must leave the fit identical. With the same sex only within each household, the nugget would
+  # still be sampled at the locations whose households differ.
+  F43_households_child_probit = function() glgpm(y ~ x + sex + gp(kappa = 0.5, nugget = TRUE) + re(household),
+                                                 denominator = m, data = dataset("child_households_40"),
+                                                 family = binomial("probit"), distance_units = "km",
+                                                 messages = FALSE, seed = 43L, return_samples = FALSE),
+  F44_households_child_nugget = function() glgpm(y ~ x + sex + gp(kappa = 0.5, nugget = TRUE), denominator = m,
+                                                 data = dataset("child_households_40"), family = "binomial",
+                                                 distance_units = "km", messages = FALSE, seed = 44L,
+                                                 return_samples = FALSE),
+  F45_households_child_re = function() glgpm(y ~ x + sex + gp(kappa = 0.5) + re(household), denominator = m,
+                                             data = dataset("child_households_40"), family = "binomial",
+                                             distance_units = "km", messages = FALSE, seed = 45L,
+                                             return_samples = FALSE),
+  F46_same_sex_locations = function() glgpm(y ~ x + sex + gp(kappa = 0.5, nugget = TRUE) + re(household),
+                                            denominator = m, data = dataset("same_sex_locations"),
+                                            family = "binomial", distance_units = "km", messages = FALSE,
+                                            seed = 46L, return_samples = FALSE)
 )
 
 # What a fit task keeps: the object itself (compared after timings and closures are removed) and its printed text.
@@ -201,6 +332,15 @@ downstream <- list(
     assessed <- assess_simulation(simulated, models = list(candidate = fit), control_mcmc = ctrl, seed = 53L,
                                   spatial_scale = "grid", pred_objective = "mse", messages = FALSE)
     list(cv = cv, assessed = assessed)
+  }
+)
+# The Gaussian fit with an re() term on the Woodbury path (F35) has its bootstrap and its cross-validation. A
+# simulation from it would need its clusters on the prediction grid, so it has no task of assess_simulation().
+re_downstream <- list(
+  bootstrap = downstream$bootstrap,
+  cv = function(fit, data) {
+    list(cv = assess_prediction(list(model = fit), method = "cluster", fold = 2, iter = 1, control_mcmc = ctrl,
+                                seed = 51L, plot_fold = FALSE, messages = FALSE))
   }
 )
 
@@ -305,14 +445,23 @@ tasks <- c(
       }
     }), paste0("D_", base, "_", names(downstream)))
   }), recursive = FALSE),
+  stats::setNames(lapply(names(re_downstream), function(what) {
+    force(what); function() {
+      fit <- quiet(fits$F35_gaussian_re())
+      keep_fit("base", fit)
+      quiet(re_downstream[[what]](fit, dataset("replicated_gaussian")))
+    }
+  }), paste0("D_gaussian_re_", names(re_downstream))),
   list(L01_low_binomial = function() low_level("binomial"), L02_low_poisson = function() low_level("poisson"),
        L03_bounded_driver = bounded_driver)
 )
 
-# The smoke subset, about a minute on one Wayland core and a few on a laptop: fits of each family, a nugget, an re()
-# term, a named link, both saved surveys, a prediction of a sampled and of a Gaussian fit, and the low-level tasks.
+# The smoke subset, about a minute on one Wayland core and a few on a laptop. It has fits of each family, a nugget,
+# an re() term, a named link, both saved surveys, a Gaussian fit on each path, predictions from a sampled and a
+# Gaussian fit, and the low-level tasks.
 smoke <- c("F01_binomial", "F02_binomial_nugget", "F04_binomial_re", "F05_poisson_nugget", "F19_named_probit",
-           "F26_households", "F27_held_nugget_logit", "F29_gaussian", "D_logit_predict", "D_gaussian_predict",
+           "F26_households", "F27_held_nugget_logit", "F29_gaussian", "F30_negative_binomial_estimated",
+           "F35_gaussian_re", "D_logit_predict", "D_gaussian_predict",
            "L01_low_binomial", "L02_low_poisson", "L03_bounded_driver")
 
 if (flag("list")) { cat(names(tasks), sep = "\n"); quit(save = "no") }
