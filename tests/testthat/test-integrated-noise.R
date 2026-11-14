@@ -587,6 +587,48 @@ test_that("a sampled fit keeps the release's rule when the global iteration stal
   expect_identical(integrated$mcml_stalled_anchors$stages, 1L)
 })
 
+test_that("the anchor iteration of integrated records converges where curvatures are small", {
+  # Twenty of thirty sites with no positive of 20 at a linear predictor of -10
+  # give integrated factors with curvatures below 0.0115, which a second
+  # application of the smooth floor at zero lifts by more than the tolerance.
+  sites <- 30L
+  coords <- cbind(rep(seq(0, 1, length.out = 6), 5),
+                  rep(seq(0, 1, length.out = 5), each = 6))
+  precision <- solve(exp(-as.matrix(dist(coords)) / 0.3) + diag(0.01, sites))
+  y <- c(rep(8, 10), rep(0, 20))
+  units_m <- rep(20, sites)
+  mu <- rep(-10, sites)
+  latent_map <- make_latent_map(cbind(seq_len(sites)), sites)
+  kernel <- make_integrated_kernel(
+    make_site_table(y, units_m, make_family("binomial")), 0.5
+  )
+  family <- make_family("binomial", kernel = kernel)
+  fit <- function() {
+    fit_global_proposal(numeric(sites), mu, y, units_m, latent_map, precision,
+                        family)
+  }
+  proposal <- fit()
+  expect_true(proposal$converged)
+  expect_lt(proposal$iterations, 50L)
+  expect_lt(min(proposal$factors$curvature), 0.0115)
+  # Floored smoothly again, the candidates of the acceleration sit above the
+  # fixed point, and the iteration runs to its limit with a last change that
+  # the integrated engine would accept as a stall. Its factors are those of
+  # the same fixed point, to within that change.
+  floors <- choose_curvature_floor
+  local_mocked_bindings(choose_curvature_floor = function(...) {
+    chosen <- floors(...)
+    chosen$candidate <- chosen$refit
+    chosen
+  })
+  stalled <- fit()
+  expect_false(stalled$converged)
+  expect_gt(stalled$change, 1e-8)
+  expect_lt(stalled$change, 1e-2)
+  expect_lt(max(abs(stalled$factors$curvature - proposal$factors$curvature)),
+            10 * stalled$change)
+})
+
 test_that("stalled anchors are summarised over the stages", {
   expect_null(summarise_stalled_anchors(list(list(), list())))
   history <- list(list(), list(stalled_anchors = 2L, stalled_change = 4e-3),

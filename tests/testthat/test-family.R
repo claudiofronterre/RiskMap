@@ -80,11 +80,13 @@ test_that("the global proposal floors smoothly a link not known to be concave", 
                                    smallest_prior = function() lambda)
     expect_identical(flat$refit(c(-1, 0, 0.5)), pmax(c(-1, 0, 0.5), lambda / -2))
   }
-  # Integrated records keep the smooth floor at zero for both.
+  # Integrated records keep the smooth floor at zero for the refits, and their
+  # candidates are floored at zero only, so a floored value is left as it is.
   integrated <- choose_curvature_floor(list(integrated = TRUE), latent_map,
                                        precision)
   expect_identical(integrated$refit, smooth_curvature_floor)
-  expect_identical(integrated$candidate, smooth_curvature_floor)
+  expect_identical(integrated$candidate(c(-1, smooth_curvature_floor(-1), 2)),
+                   c(0, smooth_curvature_floor(-1), 2))
 })
 
 test_that("an object with integrated records keeps the properties of its link", {

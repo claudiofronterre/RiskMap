@@ -257,7 +257,11 @@ defensive_rows <- function(n_draws, defensive_weight) {
 ##' anchor therefore changes how efficient the importance sampler is, not
 ##' whether its estimate or its certificate is valid. Without it the stage would
 ##' repeat with the Laplace proposal, which on surveys with a large spatial
-##' variance leaves almost no effective draws.
+##' variance leaves almost no effective draws. The tolerance was introduced
+##' when the iteration floored its candidates with the smooth floor, which
+##' kept it from converging wherever a curvature was below about 0.0115. Since
+##' the candidates are floored with pmax() (`choose_curvature_floor()`), it
+##' stays as a safety net for iterations that settle slowly.
 ##'
 ##' `smallest_prior`, a function that gives the smallest eigenvalue of
 ##' `precision`, is passed to the floors of the global proposal's curvature
