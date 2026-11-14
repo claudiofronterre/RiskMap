@@ -159,8 +159,15 @@ functions of 1.0.0 with their replacements.
 
 ## Citation
 
-Run `citation("RiskMap")` in R, or see [Citing RiskMap](authors.html#citation),
-for the reference to the package. If you use the methods, please also cite
+To cite RiskMap, please use
+
+Giorgi, E., Fronterre, C. and Smart, S. (2026). *RiskMap: Geostatistical
+Modeling of Spatially Referenced Data*. R package version 2.0.0.
+<https://claudiofronterre.github.io/RiskMap/>
+
+`citation("RiskMap")` in R, or [Citing RiskMap](authors.html#citation), gives
+the same reference with a BibTeX entry. If you use the methods, please also
+cite
 
 Diggle, P. J. and Giorgi, E. (2019). *Model-based Geostatistics for Global
 Public Health: Methods and Applications*. Chapman and Hall/CRC.
