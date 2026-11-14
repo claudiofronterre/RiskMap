@@ -7,10 +7,10 @@
 \method{plot}{RiskMap_prediction}(
   x,
   quantity = "response",
-  summary = NULL,
+  summaries = NULL,
   spatial_scale = c("auto", "location", "area", "both"),
   aggregate = NULL,
-  threshold = NULL,
+  thresholds = NULL,
   palette = NULL,
   limits = NULL,
   breaks = NULL,
@@ -27,13 +27,13 @@
 name of a target supplied through \code{transform} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
 Several quantities can be supplied, for example
 \code{c("fixed", "spatial")}, and are arranged like several summaries. Supply
-several quantities or several summaries, not both.}
+several quantities, or several summaries or thresholds, not both.}
 
-\item{summary}{Summary to display, such as \code{"mean"}, \code{"median"}, \code{"lower"},
-\code{"upper"}, \code{"sd"}, \code{"cv"}, \code{"interval_width"}, or \code{"exceedance"}. When
-\code{NULL} (the default), the first summary requested in
-\code{\link[=predict.RiskMap]{predict.RiskMap()}} is shown. Several summaries can be supplied; they are
-then arranged in two columns, or one per row when
+\item{summaries}{Summaries to display, such as \code{"mean"}, \code{"median"},
+\code{"lower"}, \code{"upper"}, \code{"sd"}, \code{"cv"}, \code{"interval_width"}, or
+\code{"exceedance"}, as in \code{\link[=predict.RiskMap]{predict.RiskMap()}}. When \code{NULL} (the default), the
+first summary requested in \code{\link[=predict.RiskMap]{predict.RiskMap()}} is shown. Several
+summaries are arranged in two columns, or one per row when
 \code{spatial_scale = "both"}.
 Ignored for \code{"fixed"} and \code{"offset"}, which have a single value.}
 
@@ -47,8 +47,10 @@ colour scale.}
 such as \code{"mean"} or \code{"sum"}. When \code{NULL}, the first aggregation
 calculated is used.}
 
-\item{threshold}{For an exceedance map, the response-scale threshold to
-display. It may be omitted when only one threshold was calculated.}
+\item{thresholds}{For exceedance maps, the response-scale thresholds to
+display, among those given to \code{\link[=predict.RiskMap]{predict.RiskMap()}}. They may be omitted
+when only one threshold was calculated. Several thresholds give one map
+each, arranged like several summaries.}
 
 \item{palette}{Colour palette. \code{NULL} selects a default that depends on
 what the map shows: a calm-to-alarm sequential palette for predicted
@@ -76,8 +78,9 @@ such as \code{c(0, 0.05, 0.1, 0.2, 1)}.}
 example \code{transform = "sqrt"} for skewed values.}
 }
 \value{
-A \code{ggplot} object. When several quantities or summaries are
-requested, a \code{patchwork} object combining one \code{ggplot} per map.
+A \code{ggplot} object. When several quantities, summaries or
+thresholds are requested, a \code{patchwork} object combining one \code{ggplot}
+per map.
 }
 \description{
 Draws a publication-ready map from the location-level or polygon-level

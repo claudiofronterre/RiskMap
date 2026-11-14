@@ -11,8 +11,12 @@ test_that("extrapolation indicators separate spatial and covariate novelty", {
     ),
     coords = c("x", "z"), crs = 32637
   )
+  # The fixture's short scale leaves a sampled location with no spatial
+  # information from the others, so the classes are checked with a fixed
+  # threshold.
   expect_warning(
-    extrapolation <- assess_extrapolation(gaussian_model, newdata),
+    extrapolation <- assess_extrapolation(gaussian_model, newdata,
+                                          spatial_threshold = 0.8),
     "missing values, so"
   )
 
@@ -123,4 +127,133 @@ test_that("unexplained spatial variance uses fixed variance components", {
       assess_extrapolation(gaussian_intercept_model,
                            gaussian_data)$spatial_unexplained
   ))
+})
+
+test_that("the unexplained share includes the binomial sampling noise", {
+  parameters <- coef(binomial_model)
+  sigma2 <- parameters$sigma2
+  observed <- binomial_model$coords
+  correlation <- matern_correlation(as.matrix(dist(observed)),
+                                    phi = parameters$phi,
+                                    kappa = binomial_model$kappa)
+  # The conditional mode of the effects at the estimates, found by
+  # maxim_integrand(), and the binomial information m p (1 - p) there.
+  ratio <- nugget_ratio_natural(fitted_nugget_variance(binomial_model),
+                                sigma2)
+  mode <- maxim_integrand(
+    y = binomial_model$y, denominator = binomial_model$units_m,
+    mu = as.numeric(binomial_model$D %*% parameters$beta),
+    Sigma = sigma2 * (correlation + diag(max(ratio, 1e-10), nrow(observed))),
+    ID_coords = binomial_model$ID_coords, ID_re = binomial_model$ID_re,
+    sigma2_re = parameters$sigma2_re, family = "binomial"
+  )$mode
+  eta <- as.numeric(binomial_model$D %*% parameters$beta) +
+    mode[binomial_model$ID_coords] +
+    mode[nrow(observed) + binomial_model$ID_re[, 1L]]
+  p <- stats::plogis(eta)
+  information <- rowsum(binomial_model$units_m * p * (1 - p),
+                        binomial_model$ID_coords)[, 1L]
+  noisy <- correlation
+  diag(noisy) <- 1 + ratio + 1 / (information * sigma2)
+  point <- observed[1, , drop = FALSE] + c(0.4, 0.2)
+  cross <- matern_correlation(
+    sqrt(colSums((t(observed) - as.numeric(point))^2)),
+    phi = parameters$phi, kappa = binomial_model$kappa
+  )
+  expected <- 1 - drop(cross %*% solve(noisy, cross))
+  # Each location left out in turn, from the other locations' data
+  left_out <- vapply(seq_len(nrow(observed)), function(j) {
+    1 - drop(correlation[j, -j] %*%
+               solve(noisy[-j, -j], correlation[-j, j]))
+  }, numeric(1))
+
+  factor <- crs_to_distance_factor(binomial_data,
+                                   binomial_model$distance_units)
+  newdata <- st_as_sf(data.frame(x = point[1] / factor, z = point[2] / factor,
+                                 cov = binomial_data$cov[1]),
+                      coords = c("x", "z"), crs = 32637)
+  extrapolation <- assess_extrapolation(binomial_model, newdata)
+  expect_equal(extrapolation$spatial_unexplained, expected, tolerance = 1e-5)
+  expect_equal(attr(extrapolation, "spatial_threshold"), max(left_out),
+               tolerance = 1e-5)
+  expect_identical(attr(extrapolation, "spatial_rule"), "leave_one_out")
+  expect_true(attr(extrapolation, "sampling_noise"))
+  expect_identical(
+    as.character(extrapolation$extrapolation),
+    if (expected > max(left_out)) "Spatial" else "Supported"
+  )
+
+  # Without the noise, the share is that of the locations and the nugget,
+  # which is lower everywhere.
+  without <- assess_extrapolation(binomial_model, binomial_data,
+                                  sampling_noise = FALSE)
+  with_noise <- assess_extrapolation(binomial_model, binomial_data)
+  expect_false(attr(without, "sampling_noise"))
+  expect_true(all(without$spatial_unexplained <
+                    with_noise$spatial_unexplained))
+  expect_equal(without$spatial_unexplained, rep(0, nrow(binomial_data)),
+               tolerance = 1e-6)
+})
+
+test_that("a Gaussian share is the kriging variance with the records averaged", {
+  repeated <- rbind(gaussian_data, gaussian_data[1:3, ])
+  withr::with_seed(3, repeated$y <- repeated$y + stats::rnorm(nrow(repeated),
+                                                              sd = 0.3))
+  fit <- glgpm(y ~ gp(), data = repeated, family = "gaussian",
+               messages = FALSE)
+  expect_identical(nrow(fit$coords), nrow(gaussian_data))
+  parameters <- coef(fit)
+  observed <- fit$coords
+  records <- observed[fit$ID_coords, ]
+  point <- observed[2, , drop = FALSE] + c(0.3, 0.1)
+  correlation <- function(a, b) {
+    distances <- sqrt(pmax(outer(rowSums(a^2), rowSums(b^2), "+") -
+                             2 * a %*% t(b), 0))
+    matern_correlation(distances, phi = parameters$phi, kappa = fit$kappa)
+  }
+  same_location <- outer(fit$ID_coords, fit$ID_coords, "==")
+  covariance <- parameters$sigma2 * correlation(records, records) +
+    fitted_nugget_variance(fit, parameters) * same_location +
+    diag(parameters$sigma2_me, nrow(records))
+  cross <- parameters$sigma2 * correlation(point, records)
+  expected <- 1 - drop(cross %*% solve(covariance, t(cross))) /
+    parameters$sigma2
+
+  factor <- crs_to_distance_factor(repeated, fit$distance_units)
+  newdata <- st_as_sf(data.frame(x = point[1] / factor, z = point[2] / factor),
+                      coords = c("x", "z"), crs = 32637)
+  expect_equal(assess_extrapolation(fit, newdata)$spatial_unexplained,
+               expected, tolerance = 1e-8)
+})
+
+test_that("the print of indicators states the classes and the thresholds", {
+  extrapolation <- assess_extrapolation(binomial_model, binomial_data)
+  printed <- capture.output(print(extrapolation))
+  expect_match(printed[1L], "Extrapolation")
+  expect_true("Indicators at 10 locations." %in% printed)
+  expect_match(squish(printed), paste0(
+    "Spatial: more of the spatial variance left unexplained than at any ",
+    "sampled location when its own data are left out \\("
+  ))
+  printed_again <- capture.output(shown <- withVisible(print(extrapolation)))
+  expect_false(shown$visible)
+  expect_identical(shown$value, extrapolation)
+  given <- assess_extrapolation(binomial_model, binomial_data,
+                                spatial_threshold = 0.5,
+                                sampling_noise = FALSE)
+  expect_identical(attr(given, "spatial_threshold"), 0.5)
+  expect_identical(attr(given, "spatial_rule"), "given")
+  printed <- squish(capture.output(print(given)))
+  expect_match(printed, "more than 50% of the spatial variance left unexplained",
+               fixed = TRUE)
+  expect_match(printed, "leaves out the sampling noise", fixed = TRUE)
+  # A subset without the classes prints as an sf object.
+  expect_output(print(extrapolation[1:2, "covariates_outside"]),
+                "Simple feature collection")
+  expect_input_error(assess_extrapolation(binomial_model, binomial_data,
+                                          spatial_threshold = 1),
+                     "spatial_threshold")
+  expect_input_error(assess_extrapolation(binomial_model, binomial_data,
+                                          sampling_noise = NA),
+                     "sampling_noise")
 })

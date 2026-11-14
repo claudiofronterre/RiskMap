@@ -10,8 +10,11 @@
 \item{x}{A \code{RiskMap_extrapolation} object.}
 
 \item{indicator}{Indicator to map: \code{"extrapolation"} (the default, the
-four classes), \code{"spatial_unexplained"}, \code{"covariate_novelty"} or
-\code{"covariate_leverage"}. Several indicators are arranged in two columns.}
+four classes, with the thresholds that \code{\link[=assess_extrapolation]{assess_extrapolation()}} used),
+\code{"spatial_unexplained"} (the share of the spatial variance left
+unexplained by the data, on a scale from 0 to 1), \code{"covariate_novelty"}
+or \code{"covariate_leverage"}. Several indicators are arranged in two
+columns.}
 
 \item{...}{Not used.}
 }
