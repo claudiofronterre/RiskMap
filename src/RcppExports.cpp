@@ -67,8 +67,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // cpp_importance_log_weights
-NumericVector cpp_importance_log_weights(const NumericMatrix& draws, const NumericMatrix& root, const NumericVector& centre, const LogicalVector& defensive, const double share, const NumericMatrix& proposal_spatial_root, const NumericVector& proposal_sigma2_re, const NumericMatrix& target_spatial_root, const NumericVector& target_sigma2_re, const bool same_parameters, const NumericVector& linear_offset, const IntegerMatrix& columns, const IntegerVector& random_first, const IntegerVector& random_size, const NumericVector& y, const NumericVector& units, const bool poisson, SEXP site_table, const NumericVector& site_classes, const IntegerMatrix& site_units);
-RcppExport SEXP _RiskMap_cpp_importance_log_weights(SEXP drawsSEXP, SEXP rootSEXP, SEXP centreSEXP, SEXP defensiveSEXP, SEXP shareSEXP, SEXP proposal_spatial_rootSEXP, SEXP proposal_sigma2_reSEXP, SEXP target_spatial_rootSEXP, SEXP target_sigma2_reSEXP, SEXP same_parametersSEXP, SEXP linear_offsetSEXP, SEXP columnsSEXP, SEXP random_firstSEXP, SEXP random_sizeSEXP, SEXP ySEXP, SEXP unitsSEXP, SEXP poissonSEXP, SEXP site_tableSEXP, SEXP site_classesSEXP, SEXP site_unitsSEXP) {
+NumericVector cpp_importance_log_weights(const NumericMatrix& draws, const NumericMatrix& root, const NumericVector& centre, const LogicalVector& defensive, const double share, const NumericMatrix& proposal_spatial_root, const NumericVector& proposal_sigma2_re, const NumericMatrix& target_spatial_root, const NumericVector& target_sigma2_re, const bool same_parameters, const NumericVector& linear_offset, const IntegerMatrix& columns, const IntegerVector& random_first, const IntegerVector& random_size, const NumericVector& y, const NumericVector& units, const int link, SEXP site_table, const NumericVector& site_classes, const IntegerMatrix& site_units);
+RcppExport SEXP _RiskMap_cpp_importance_log_weights(SEXP drawsSEXP, SEXP rootSEXP, SEXP centreSEXP, SEXP defensiveSEXP, SEXP shareSEXP, SEXP proposal_spatial_rootSEXP, SEXP proposal_sigma2_reSEXP, SEXP target_spatial_rootSEXP, SEXP target_sigma2_reSEXP, SEXP same_parametersSEXP, SEXP linear_offsetSEXP, SEXP columnsSEXP, SEXP random_firstSEXP, SEXP random_sizeSEXP, SEXP ySEXP, SEXP unitsSEXP, SEXP linkSEXP, SEXP site_tableSEXP, SEXP site_classesSEXP, SEXP site_unitsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -88,25 +88,25 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const IntegerVector& >::type random_size(random_sizeSEXP);
     Rcpp::traits::input_parameter< const NumericVector& >::type y(ySEXP);
     Rcpp::traits::input_parameter< const NumericVector& >::type units(unitsSEXP);
-    Rcpp::traits::input_parameter< const bool >::type poisson(poissonSEXP);
+    Rcpp::traits::input_parameter< const int >::type link(linkSEXP);
     Rcpp::traits::input_parameter< SEXP >::type site_table(site_tableSEXP);
     Rcpp::traits::input_parameter< const NumericVector& >::type site_classes(site_classesSEXP);
     Rcpp::traits::input_parameter< const IntegerMatrix& >::type site_units(site_unitsSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_importance_log_weights(draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson, site_table, site_classes, site_units));
+    rcpp_result_gen = Rcpp::wrap(cpp_importance_log_weights(draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, link, site_table, site_classes, site_units));
     return rcpp_result_gen;
 END_RCPP
 }
-// cpp_canonical_log_likelihood
-NumericVector cpp_canonical_log_likelihood(const NumericMatrix eta_r, const NumericVector y_r, const NumericVector units_r, const bool poisson);
-RcppExport SEXP _RiskMap_cpp_canonical_log_likelihood(SEXP eta_rSEXP, SEXP y_rSEXP, SEXP units_rSEXP, SEXP poissonSEXP) {
+// cpp_link_log_likelihood
+NumericVector cpp_link_log_likelihood(const NumericMatrix eta_r, const NumericVector y_r, const NumericVector units_r, const int link);
+RcppExport SEXP _RiskMap_cpp_link_log_likelihood(SEXP eta_rSEXP, SEXP y_rSEXP, SEXP units_rSEXP, SEXP linkSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const NumericMatrix >::type eta_r(eta_rSEXP);
     Rcpp::traits::input_parameter< const NumericVector >::type y_r(y_rSEXP);
     Rcpp::traits::input_parameter< const NumericVector >::type units_r(units_rSEXP);
-    Rcpp::traits::input_parameter< const bool >::type poisson(poissonSEXP);
-    rcpp_result_gen = Rcpp::wrap(cpp_canonical_log_likelihood(eta_r, y_r, units_r, poisson));
+    Rcpp::traits::input_parameter< const int >::type link(linkSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_link_log_likelihood(eta_r, y_r, units_r, link));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -304,7 +304,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_RiskMap_cpp_inverse_cholesky_factor", (DL_FUNC) &_RiskMap_cpp_inverse_cholesky_factor, 1},
     {"_RiskMap_cpp_spatial_prior_factors", (DL_FUNC) &_RiskMap_cpp_spatial_prior_factors, 6},
     {"_RiskMap_cpp_importance_log_weights", (DL_FUNC) &_RiskMap_cpp_importance_log_weights, 20},
-    {"_RiskMap_cpp_canonical_log_likelihood", (DL_FUNC) &_RiskMap_cpp_canonical_log_likelihood, 4},
+    {"_RiskMap_cpp_link_log_likelihood", (DL_FUNC) &_RiskMap_cpp_link_log_likelihood, 4},
     {"_RiskMap_cpp_structured_solve", (DL_FUNC) &_RiskMap_cpp_structured_solve, 7},
     {"_RiskMap_cpp_structured_factor_matrix", (DL_FUNC) &_RiskMap_cpp_structured_factor_matrix, 6},
     {"_RiskMap_cpp_latent_mala", (DL_FUNC) &_RiskMap_cpp_latent_mala, 20},

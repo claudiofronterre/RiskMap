@@ -180,7 +180,10 @@ std::vector<double> compute_deviations(const Bank& bank,
 
 // Log density of each draw under the target: the prior of the latent effects
 // (spatial block standardised by the target factor, random effects with the
-// target variances) plus the canonical log-likelihood. Returns the
+// target variances) plus the log-likelihood of the link `link` (a LinkCode of
+// likelihood_kernel.h). Under a named link the observations of a draw are
+// summed in long double, as rowSums() sums them in R, so that the weights are
+// those of compute_log_weights_in_r() to the last bit. Returns the
 // standardised spatial samples in `standardised` for reuse by the mixture.
 std::vector<double> compute_log_target(
     const std::vector<double>& deviations, const NumericVector& centre,
@@ -188,9 +191,11 @@ std::vector<double> compute_log_target(
     const NumericVector& sigma2_re, const IntegerVector& random_first,
     const IntegerVector& random_size, const NumericVector& linear_offset,
     const IntegerMatrix& columns, const NumericVector& y,
-    const NumericVector& units, const bool poisson,
+    const NumericVector& units, const int link,
     std::vector<double>& standardised,
     riskmap_site::Evaluator* sites = nullptr) {
+  const bool poisson = link == link_log;
+  const bool named = sites == nullptr && !is_canonical_link(link);
   const int locations = spatial_root.nrow();
   std::vector<int> all_rows(rows);
   for (int row = 0; row < rows; ++row) all_rows[row] = row;
@@ -226,6 +231,8 @@ std::vector<double> compute_log_target(
     }
   }
   std::vector<double> log_likelihood(rows, 0.0);
+  std::vector<long double> named_sum(named ? rows : 0, 0.0L);
+  std::vector<char> outside(named ? rows : 0, 0);
   std::vector<double> eta(rows);
   for (int observation = 0; observation < columns.nrow(); ++observation) {
     const R_xlen_t location = columns(observation, 0) - 1;
@@ -246,10 +253,27 @@ std::vector<double> compute_log_target(
       }
       continue;
     }
+    if (named) {
+      for (int row = 0; row < rows; ++row) {
+        bool out = false;
+        named_sum[row] += named_link_log_likelihood(
+          eta[row], y[observation], units[observation], link, out
+        );
+        if (out) outside[row] = 1;
+      }
+      continue;
+    }
     for (int row = 0; row < rows; ++row) {
       log_likelihood[row] += canonical_log_likelihood(
         eta[row], y[observation], units[observation], poisson
       );
+    }
+  }
+  if (named) {
+    for (int row = 0; row < rows; ++row) {
+      log_likelihood[row] = outside[row] ?
+        -std::numeric_limits<double>::infinity() :
+        static_cast<double>(named_sum[row]);
     }
   }
   for (int row = 0; row < rows; ++row) {
@@ -366,7 +390,9 @@ std::vector<double> compute_log_proposal(
 } // namespace
 
 // Log importance weights log p(y, u) - log q(u) of each row of `draws` for a
-// canonical binomial or Poisson model. `root`, `centre`, `proposal_spatial_root`
+// model whose link has a compiled log-likelihood, `link` a LinkCode of
+// likelihood_kernel.h (canonical logit or log, probit, cloglog or cauchit).
+// `root`, `centre`, `proposal_spatial_root`
 // and `proposal_sigma2_re` define the proposal and its defensive component,
 // with `defensive` marking the rows drawn from the prior and `share` their
 // share of the whole bank. The target is given by `target_spatial_root`,
@@ -390,7 +416,7 @@ NumericVector cpp_importance_log_weights(
     const NumericVector& target_sigma2_re, const bool same_parameters,
     const NumericVector& linear_offset, const IntegerMatrix& columns,
     const IntegerVector& random_first, const IntegerVector& random_size,
-    const NumericVector& y, const NumericVector& units, const bool poisson,
+    const NumericVector& y, const NumericVector& units, const int link,
     SEXP site_table, const NumericVector& site_classes,
     const IntegerMatrix& site_units) {
   std::unique_ptr<riskmap_site::Evaluator> sites;
@@ -423,7 +449,7 @@ NumericVector cpp_importance_log_weights(
   std::vector<double> standardised;
   const std::vector<double> log_target = compute_log_target(
     deviations, centre, bank.rows, target_spatial_root, target_sigma2_re,
-    random_first, random_size, linear_offset, columns, y, units, poisson,
+    random_first, random_size, linear_offset, columns, y, units, link,
     standardised, sites.get()
   );
   const std::vector<double> log_proposal = compute_log_proposal(

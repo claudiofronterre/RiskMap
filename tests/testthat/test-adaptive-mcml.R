@@ -1427,14 +1427,28 @@ test_that("compiled importance weights equal the R computation", {
     list(family = "poisson", y = rpois(locations, exp(linear_predictor + 1)),
          units = rep(1, locations), random = cbind(cluster), defensive = 0.05),
     list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
-         units = rep(10, locations), random = NULL, defensive = 0)
+         units = rep(10, locations), random = NULL, defensive = 0),
+    # Named links, whose weights are compiled since step 3 of #253.
+    list(family = "binomial", y = rbinom(locations, 10, pnorm(linear_predictor)),
+         units = rep(10, locations), random = cbind(cluster), defensive = 0.05,
+         link = "probit"),
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = NULL, defensive = 0.05,
+         link = "cloglog"),
+    list(family = "binomial", y = rbinom(locations, 10, plogis(linear_predictor)),
+         units = rep(10, locations), random = NULL, defensive = 0,
+         link = "cauchit")
   )
   for (case in cases) {
     engine <- make_adaptive_mcml_engine(
       D = design, y = case$y, units_m = case$units, distances = distances,
       family = case$family, ID_re = case$random,
-      defensive_weight = case$defensive
+      defensive_weight = case$defensive,
+      invlink = if (!is.null(case$link)) {
+        c(named_inverse_link(case$link), link = case$link)
+      }
     )
+    expect_true(environment(engine$evaluate)$model$compiled)
     scope <- environment(engine$evaluate)
     parameters <- c(-0.5, 0.3, log(0.5), log(0.3),
                     if (!is.null(case$random)) log(0.4))
@@ -1453,9 +1467,14 @@ test_that("compiled importance weights equal the R computation", {
         same, as.numeric(design %*% values$beta), scope$latent,
         scope$latent_map$columns,
         function(eta) {
-          family_object(case$family, scope$linkf)$log_likelihood(
-            eta, case$y, case$units
-          )
+          if (is.null(case$link)) {
+            family_object(case$family, scope$linkf)$log_likelihood(
+              eta, case$y, case$units
+            )
+          } else {
+            compute_link_log_likelihood_rows(eta, case$y, case$units,
+                                             case$family, scope$linkf)
+          }
         }
       )
       # The R code can carry a random effect's name on a single-row result.

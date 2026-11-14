@@ -3079,7 +3079,7 @@ laplace_sampling_mcmc <- function(y,
                                    ID_coords, ID_re, sigma2_re, family,
                                    invlink, linkf)
   }
-  link_terms <- if (!model$compiled) {
+  link_terms <- if (!model$canonical) {
     # One call of the link per iteration, on all the linear predictors. A
     # point where the link fails or is not finite is rejected by the chain.
     function(eta) {

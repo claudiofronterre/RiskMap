@@ -11,8 +11,7 @@ test_that("compiled log-likelihood agrees with stable R calculations", {
       sweep(log1p(exp(-abs(eta))) + pmax(eta, 0), 2, binomial_units, `*`)
   )
   expect_equal(
-    cpp_canonical_log_likelihood(eta, binomial_y, binomial_units,
-                                 poisson = FALSE),
+    cpp_link_log_likelihood(eta, binomial_y, binomial_units, 0L),
     expected_binomial, tolerance = 1e-12
   )
 
@@ -24,8 +23,7 @@ test_that("compiled log-likelihood agrees with stable R calculations", {
       sweep(exp(poisson_eta), 2, exposure, `*`)
   )
   expect_equal(
-    cpp_canonical_log_likelihood(poisson_eta, poisson_y, exposure,
-                                 poisson = TRUE),
+    cpp_link_log_likelihood(poisson_eta, poisson_y, exposure, 1L),
     expected_poisson, tolerance = 1e-12
   )
 })
@@ -83,11 +81,35 @@ test_that("a canonical link given as a function gives the same chain", {
 test_that("compiled log-likelihood guards Poisson overflow", {
   overflow <- matrix(c(0, 800), nrow = 2)
   expect_identical(
-    cpp_canonical_log_likelihood(overflow, 1, 1, poisson = TRUE)[2], -Inf
+    cpp_link_log_likelihood(overflow, 1, 1, 1L)[2], -Inf
   )
 })
 
 test_that("final conditional sampling uses the compiled kernel for canonical links", {
   expect_identical(attr(binomial_model, "mcmc")$invlink_used, "canonical")
   expect_identical(attr(poisson_model, "mcmc")$invlink_used, "canonical")
+})
+
+test_that("the compiled rows of a named link are R's", {
+  # Linear predictors where the probability rounds to 0 or 1 and the bounds of
+  # bound_log_probability() act, a missing one that gives -Inf, and records
+  # with no events and with every trial an event.
+  eta <- rbind(seq(-40, 40, length.out = 6), c(-8, -1, 0, 1, 8, 39),
+               c(-0.3, 0.2, NaN, 1.5, -2, 0))
+  y <- c(0, 1, 3, 7, 10, 10)
+  units <- c(1, 4, 6, 9, 10, 10)
+  for (link in c("probit", "cloglog", "cauchit")) {
+    linkf <- make_inverse_link_functions(
+      "binomial", c(named_inverse_link(link), link = link), 5L
+    )
+    expected <- compute_link_log_likelihood_rows(eta, y, units, "binomial",
+                                                 linkf)
+    code <- make_family("binomial", linkf)$code
+    expect_identical(code, match(link, c("probit", "cloglog", "cauchit")) + 1L)
+    # Equal to R's to the last bit where the compiler does not fuse multiply
+    # and add, as on x86-64.
+    expect_equal(cpp_link_log_likelihood(eta, y, units, code), expected,
+                 tolerance = 1e-14)
+    expect_identical(cpp_link_log_likelihood(eta, y, units, code)[3], -Inf)
+  }
 })

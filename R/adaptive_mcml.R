@@ -994,7 +994,7 @@ make_adaptive_mcml_engine <- function(
         proposal$spatial_root, as.numeric(proposal$values$sigma2_re),
         spatial_root, as.numeric(values$sigma2_re), same_parameters,
         linear_offset, latent_map$columns, random_first, random_size, y,
-        target$units_m, model$poisson, sites$pointer,
+        target$units_m, model$code, sites$pointer,
         values$class_variances %||% numeric(),
         sites$units %||% matrix(0L, 0L, 4L)
       )

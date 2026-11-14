@@ -1096,10 +1096,16 @@ read_family_link <- function(family, link) {
 ##' Properties.
 ##' - `canonical`, `poisson`, of the model's link, and `integrated`, whether
 ##'   `kernel` is given.
+##' - `code`, the number of the link in the compiled code (`LinkCode` in
+##'   `src/likelihood_kernel.h`), 0 for canonical logit, 1 for the canonical
+##'   log link of the Poisson family, and 2, 3 and 4 for the named binomial
+##'   links probit, cloglog and cauchit, NA for any other link (#253, step 3).
 ##' - `compiled`, the weights and rows of the log-likelihood are compiled
-##'   (`cpp_importance_log_weights()`, `cpp_canonical_log_likelihood()`), with
-##'   `poisson` as their flag. The compiled weights evaluate an integrated
-##'   kernel through its table themselves.
+##'   (`cpp_importance_log_weights()`, `cpp_link_log_likelihood()`), with
+##'   `code` as their link, for every link with a `code`. Under a named link
+##'   they are those of `compute_log_weights_in_r()` and
+##'   `compute_link_log_likelihood_rows()` to the last bit. The compiled
+##'   weights evaluate an integrated kernel through its table themselves.
 ##' - `assumes_concave`, the mode search factorises its Hessian without a
 ##'   guard and returns it unfloored, for the canonical link without a kernel.
 ##' - `moves_start`, the mode search starts off the limits of a custom link
@@ -1153,6 +1159,14 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
   canonical <- identical(linkf$name, "canonical")
   integrated <- !is.null(kernel)
   poisson <- family == "poisson"
+  code <- if (canonical) {
+    if (poisson) 1L else 0L
+  } else if (identical(family, "binomial")) {
+    match(linkf$link %||% "", c("probit", "cloglog", "cauchit")) + 1L
+  } else {
+    NA_integer_
+  }
+  compiled <- !is.na(code)
   terms <- if (integrated) {
     function(eta, y, units_m) kernel$terms(eta)
   } else if (!canonical) {
@@ -1166,10 +1180,8 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
   }
   log_likelihood <- if (integrated) {
     function(eta, y, units_m) kernel$log_likelihood(eta)
-  } else if (canonical) {
-    function(eta, y, units_m) {
-      cpp_canonical_log_likelihood(eta, y, units_m, poisson = poisson)
-    }
+  } else if (compiled) {
+    function(eta, y, units_m) cpp_link_log_likelihood(eta, y, units_m, code)
   } else {
     function(eta, y, units_m) {
       compute_link_log_likelihood_rows(eta, y, units_m, family, linkf)
@@ -1205,7 +1217,8 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
   structure(
     c(traits, list(
       linkf = linkf, kernel = kernel, canonical = canonical,
-      integrated = integrated, poisson = poisson, compiled = canonical,
+      integrated = integrated, poisson = poisson, code = code,
+      compiled = compiled,
       assumes_concave = canonical && !integrated,
       moves_start = !canonical && !integrated,
       needs_finite_weight = !canonical,

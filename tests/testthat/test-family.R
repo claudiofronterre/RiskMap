@@ -20,7 +20,14 @@ test_that("the properties of a family object follow the link", {
 
   probit <- make_family("binomial", probit_family_link())
   expect_false(probit$canonical)
-  expect_false(probit$compiled)
+  # Named binomial links have compiled weights and rows since step 3 of #253.
+  expect_true(probit$compiled)
+  expect_identical(probit$code, 2L)
+  expect_identical(logit$code, 0L)
+  expect_identical(make_family("poisson")$code, 1L)
+  expect_identical(make_family(
+    "binomial", make_inverse_link_functions("binomial", plogis, 5L)
+  )$code, NA_integer_)
   expect_false(probit$assumes_concave)
   expect_true(probit$moves_start)
   expect_true(probit$needs_finite_weight)
