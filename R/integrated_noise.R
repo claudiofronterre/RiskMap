@@ -339,7 +339,10 @@ plan_integrated_records <- function(y, units_m, D, cov_offset, ID_coords,
 ##' to the record's are `relative$D` times the coefficients plus
 ##' `relative$offset`, one row per member (`relative_predictors()`), with the
 ##' members of each location's groups repeated at the end as the group of all
-##' its members. Adaptive Gauss-Hermite quadrature uses 20 nodes. `family` is
+##' its members. `relative$within` and `relative$within_offset` give them
+##' relative to the first member of their group, from the differences of
+##' their own rows, so that a covariate shared by a group's members adds
+##' exactly zero. Adaptive Gauss-Hermite quadrature uses 20 nodes. `family` is
 ##' the family object of the model's link (`make_family()`), and a custom link
 ##' is passed to the table as the arrays of its kernel (`kernel_arrays()`,
 ##' `compute_custom_kernel_arrays()`).
@@ -415,8 +418,13 @@ make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
   units <- cbind(kind = as.integer(kind), index = as.integer(index),
                  a = as.integer(a), b = as.integer(b))
   relative <- if (length(group_list)) {
+    within <- function(rows) sweep(rows, 2L, rows[1L, ])
     list(D = do.call(rbind, lapply(group_list, `[[`, "D")),
-         offset = unlist(lapply(group_list, `[[`, "offset")))
+         offset = unlist(lapply(group_list, `[[`, "offset")),
+         within = do.call(rbind, lapply(group_list, function(g) within(g$D))),
+         within_offset = unlist(lapply(group_list, function(g) {
+           g$offset - g$offset[1L]
+         })))
   }
   list(pointer = pointer, units = units, relative = relative)
 }
@@ -424,11 +432,15 @@ make_site_table <- function(y, units_m, family, plain = rep(FALSE, length(y)),
 ##' The relative linear predictors of the members of a site table's groups
 ##'
 ##' At the regression coefficients `beta`, in the order of the members
-##' (`make_site_table()`), or NULL for a table without groups.
+##' (`make_site_table()`), each member's relative to its record and then each
+##' member's relative to the first member of its group, as
+##' `cpp_site_set_relative()` takes them, or NULL for a table without groups.
 ##' @noRd
 relative_predictors <- function(sites, beta) {
   if (is.null(sites$relative)) return(NULL)
-  as.numeric(sites$relative$D %*% beta + sites$relative$offset)
+  c(as.numeric(sites$relative$D %*% beta + sites$relative$offset),
+    as.numeric(sites$relative$within %*% beta +
+                 sites$relative$within_offset))
 }
 
 ##' The pointer of a site table, with its groups at the coefficients `beta`

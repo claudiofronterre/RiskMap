@@ -125,8 +125,10 @@ SEXP cpp_site_table_create(const NumericVector& y, const NumericVector& m,
   return XPtr<SiteTable>(table, true);
 }
 
-// Sets the relative linear predictors of the groups' members, in the order of
-// their groups, which the group and location tables built from then on take.
+// Sets the linear predictors of the groups' members, in the order of their
+// groups, which the group and location integrals resolved from then on take:
+// first each member's relative to its record, then each member's relative to
+// the first member of its group (SiteTable::set_relative()).
 // [[Rcpp::export]]
 void cpp_site_set_relative(SEXP table, const NumericVector& relative) {
   SiteTable& sites = site_table_from(table);

@@ -300,6 +300,39 @@ test_that("group tables are a function of the coefficients alone", {
   expect_gt(info$location_cells_filled, 0)
 })
 
+test_that("a household keeps its integral when shared coefficients change", {
+  # Two households at one location with a household covariate, whose
+  # children differ in sex.
+  survey <- list(location = rep(1L, 4L), household = c(1L, 1L, 2L, 2L),
+                 D = cbind(1, sex = c(0, 1, 0, 1), wealth = c(0, 0, 1, 1)),
+                 y = c(1, 0, 0, 1), m = rep(1, 4))
+  table <- group_table(survey, c(nugget = TRUE, "re(household)" = TRUE),
+                       beta = c(-0.6, 0.5, 0.2))
+  sites <- table$sites
+  eta <- matrix(table$mu + c(-0.5, 0.5), ncol = 1L)
+  evaluate <- function() {
+    cpp_site_evaluate(sites$pointer, c(0.4, 0.7), sites$units, eta, FALSE,
+                      0L)$h
+  }
+  evaluate()
+  before <- cpp_site_table_info(sites$pointer)
+  # A new coefficient of the household covariate moves the second household
+  # relative to the first but changes neither household's own integral.
+  cpp_site_set_relative(sites$pointer,
+                        relative_predictors(sites, c(-0.6, 0.5, 0.9)))
+  evaluate()
+  after <- cpp_site_table_info(sites$pointer)
+  expect_identical(after$group_tables_built, before$group_tables_built)
+  expect_identical(after$location_tables_built,
+                   before$location_tables_built + 1L)
+  # A new coefficient of sex changes both.
+  cpp_site_set_relative(sites$pointer,
+                        relative_predictors(sites, c(-0.6, 0.1, 0.9)))
+  evaluate()
+  expect_identical(cpp_site_table_info(sites$pointer)$group_tables_built,
+                   after$group_tables_built + 2L)
+})
+
 test_that("a table with groups needs its relative predictors", {
   survey <- group_survey()
   plan <- plan_integrated_records(
