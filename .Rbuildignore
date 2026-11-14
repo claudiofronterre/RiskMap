@@ -16,3 +16,4 @@ CLAUDE.md
 ^docs$
 ^pkgdown$
 ^tools/golden$
+^notes$

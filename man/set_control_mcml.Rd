@@ -79,7 +79,7 @@ how the same maximum is found. Sparse surveys with a large nugget, or with
 household effects, then keep far more effective draws. The terms are the
 nugget, whose levels are the locations, and each \code{re()} term. Records at a
 location with the same covariates, offset and random-effect levels are
-first combined into one unit. Then three rules apply.
+first combined into one unit. Then four rules apply.
 \itemize{
 \item A level of an \code{re()} term that holds a single unit, such as a
 household with one record or with records that do not differ, is
@@ -90,12 +90,20 @@ well, through an integral over the nugget of the units' own integrals,
 when the units share their covariates and offset and differ only in the
 levels of \code{re()} terms that each hold a single unit, as households of a
 village with covariates measured at the village do.
+\item At a location with several units whose covariates or offsets
+differ, the units are integrated out in groups when every term but one
+has a single level shared by all of them and the levels of that one lie
+within the location. Its levels are the groups, such as the households
+of a cluster whose children differ in sex or birth order, each
+integrated over its own effect with its units' own covariates, and the
+nugget is integrated over the groups' integrals. Where every term is
+shared, the location is one group under its nugget.
 \item At any other location the nugget stays sampled.
 }
 Every other level stays sampled. That includes the levels of an \code{re()}
 term that span several locations, such as villages or districts with
-several sampled points, and levels that hold units with different
-covariates, such as a household of individuals of different ages. A term
+several sampled points, and the levels at a location where two \code{re()}
+terms vary, such as households and the individuals within them. A term
 can be integrated out at some of its levels and sampled at others.
 \code{check_fit()} reports, for each term, at how many levels it was integrated
 out and at how many it stayed sampled. It works with any link, including a
