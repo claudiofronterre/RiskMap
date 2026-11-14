@@ -12,3 +12,4 @@ CLAUDE.md
 ^dev$
 ^CITATION\.cff$
 ^\.codex$
+^tools/golden$
