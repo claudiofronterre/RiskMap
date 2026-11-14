@@ -53,6 +53,54 @@ saved_survey <- function(name) {
   s <- readRDS(file.path(option("data", file.path(here, "data")), "surveys.rds"))[[name]]
   st_as_sf(s$frame, coords = c("east", "north"), crs = s$epsg)
 }
+# The surveys of the tasks added on 14 November 2026 (F30 to F42 and the Gaussian re() tasks). Sites are uniform on a
+# square of 100 km with an exponential field of variance 1 and scale 15 km, unless said otherwise.
+field_sites <- function(n, seed) {
+  set.seed(seed); coords <- cbind(runif(n), runif(n)) * 100
+  list(coords = coords, S = as.numeric(rnorm(n) %*% chol(exp(-as.matrix(dist(coords)) / 15))))
+}
+as_sites <- function(frame, coords) {
+  frame$east <- coords[, 1] * 1000; frame$north <- coords[, 2] * 1000
+  st_as_sf(frame, coords = c("east", "north"), crs = 32632)
+}
+# Counts at 120 sites with an exposure between 0.5 and 2, Poisson or negative binomial of the given size.
+sim_counts <- function(size, seed) {
+  sites <- field_sites(120, seed); x <- rnorm(120); exposure <- runif(120, 0.5, 2)
+  mu <- exposure * exp(0.5 + 0.3 * x + sites$S)
+  y <- if (is.null(size)) rpois(120, mu) else rnbinom(120, size = size, mu = mu)
+  as_sites(data.frame(y = y, m = 1, x = x, log_exposure = log(exposure)), sites$coords)
+}
+# A Gaussian survey of 8 records at each of 60 sites, with a nugget of variance 0.2, an effect of variance 0.3 for
+# each of 12 clusters of 5 sites, and measurement error of variance 0.25. Records outnumber latent effects by more
+# than three to one, so Gaussian fits take the Woodbury path.
+sim_replicated_gaussian <- function(seed) {
+  sites <- field_sites(60, seed); location <- rep(seq_len(60), each = 8)
+  cluster <- rep(seq_len(12), length.out = 60)[location]
+  nugget <- rnorm(60, 0, sqrt(0.2)); cluster_effect <- rnorm(12, 0, sqrt(0.3)); x <- rnorm(480)
+  z <- 1 + 0.5 * x + sites$S[location] + nugget[location] + cluster_effect[cluster] + rnorm(480, 0, 0.5)
+  as_sites(data.frame(z = z, x = x, cluster = cluster), sites$coords[location, ])
+}
+# A household survey with one record per child, in the style of the re() study's surveys. There are 80 locations with
+# 1 + Poisson(3) households each and 1 + Poisson(2) children in each household, an exponential field of variance 1
+# and scale 12 km, a nugget of variance 0.5, a household effect of variance 0.8, x at the location (coefficient 0.3)
+# and sex at the child (coefficient 0.4), and a prevalence of 10%. Siblings differ in sex, so a household holds
+# several units of different linear predictors.
+sim_child_households <- function(seed, locations = 80L) {
+  set.seed(seed)
+  coords <- cbind(runif(locations), runif(locations)) * 100
+  S <- drop(t(chol(exp(-as.matrix(dist(coords)) / 12) + diag(1e-9, locations))) %*% rnorm(locations))
+  nugget <- rnorm(locations, 0, sqrt(0.5))
+  location <- rep(seq_len(locations), 1L + rpois(locations, 3))
+  household <- rep(seq_along(location), 1L + rpois(length(location), 2))
+  x_location <- rnorm(locations); sex <- rbinom(length(household), 1, 0.5)
+  effect <- rnorm(length(location), 0, sqrt(0.8))
+  site <- location[household]
+  rest <- 0.3 * x_location[site] + 0.4 * sex + S[site] + nugget[site] + effect[household]
+  b <- uniroot(function(b) mean(plogis(b + rest)) - 0.1, c(-20, 20))$root
+  y <- rbinom(length(household), 1, plogis(b + rest))
+  as_sites(data.frame(y = y, m = 1L, x = x_location[site], sex = sex, household = household, location = site),
+           coords[site, ])
+}
 data_cache <- new.env()
 dataset <- function(name) {
   if (!is.null(data_cache[[name]])) return(data_cache[[name]])
@@ -71,6 +119,10 @@ dataset <- function(name) {
     tz_malaria = { data("tz_malaria", package = "RiskMap", envir = environment()); tz_malaria },
     n05_2 = saved_survey("n05_2"),
     households = saved_survey("households"),
+    counts_nb = sim_counts(2, 30), counts_poisson = sim_counts(NULL, 32),
+    replicated_gaussian = sim_replicated_gaussian(34),
+    districts = { d <- dataset("households"); d$district <- (d$location - 1L) %/% 10L + 1L; d },
+    child_households = sim_child_households(42),
     stop("unknown data set ", name))
   assign(name, value, envir = data_cache)
   value
@@ -150,7 +202,37 @@ fits <- list(
                                             return_samples = FALSE,
                                             control_mcml = set_control_mcml(integrate_noise = FALSE)),
   F29_gaussian = function() glgpm(z ~ x + gp(), data = dataset("gaussian"), family = "gaussian",
-                                  distance_units = "km", messages = FALSE)
+                                  distance_units = "km", messages = FALSE),
+  F30_negative_binomial_estimated = function() glgpm(y ~ x + gp(), denominator = m, data = dataset("counts_nb"),
+                                                     family = negative_binomial(), distance_units = "km",
+                                                     messages = FALSE, seed = 30L, control_mcmc = ctrl),
+  F31_negative_binomial_held = function() glgpm(y ~ x + gp(), denominator = m, data = dataset("counts_nb"),
+                                                family = negative_binomial(2), distance_units = "km",
+                                                messages = FALSE, seed = 31L, control_mcmc = ctrl),
+  F32_poisson_offset = function() glgpm(y ~ x + offset(log_exposure) + gp(), denominator = m,
+                                        data = dataset("counts_poisson"), family = "poisson", distance_units = "km",
+                                        messages = FALSE, seed = 32L, control_mcmc = ctrl),
+  F33_fixed_nugget = function() fit_binomial(y ~ x + gp(nugget = 0.5), "d2", seed = 33L),
+  F34_gaussian_nugget = function() glgpm(z ~ x + gp(nugget = TRUE), data = dataset("replicated_gaussian"),
+                                         family = "gaussian", distance_units = "km", messages = FALSE),
+  F35_gaussian_re = function() glgpm(z ~ x + gp() + re(cluster), data = dataset("replicated_gaussian"),
+                                     family = "gaussian", distance_units = "km", messages = FALSE),
+  F36_gaussian_fixed_error = function() glgpm(z ~ x + gp(), data = dataset("replicated_gaussian"),
+                                              family = "gaussian", distance_units = "km", messages = FALSE,
+                                              fix_var_me = 0.25),
+  F37_two_re_crossing = function() glgpm(y ~ x + gp(kappa = 0.5) + re(household) + re(district), denominator = m,
+                                         data = dataset("districts"), family = "binomial", distance_units = "km",
+                                         messages = FALSE, seed = 37L, return_samples = FALSE),
+  F38_kappa_1_5 = function() fit_binomial(y ~ x + gp(kappa = 1.5), "d1", seed = 38L),
+  F39_pc_prior = function() fit_binomial(y ~ x + gp(), "d1", seed = 39L,
+                                         control_mcml = set_control_mcml(pc_prior = TRUE)),
+  F40_laplace_proposal = function() fit_binomial(y ~ x + gp(), "d1", seed = 40L,
+                                                 control_mcml = set_control_mcml(proposal = "laplace")),
+  F41_partial_start = function() fit_binomial(y ~ x + gp(), "d1", seed = 41L, start_pars = list(phi = 20)),
+  F42_households_child_covariates = function() glgpm(y ~ x + sex + gp(kappa = 0.5, nugget = TRUE) + re(household),
+                                                     denominator = m, data = dataset("child_households"),
+                                                     family = "binomial", distance_units = "km", messages = FALSE,
+                                                     seed = 42L, return_samples = FALSE)
 )
 
 # What a fit task keeps: the object itself (compared after timings and closures are removed) and its printed text.
@@ -202,6 +284,15 @@ downstream <- list(
     assessed <- assess_simulation(simulated, models = list(candidate = fit), control_mcmc = ctrl, seed = 53L,
                                   spatial_scale = "grid", pred_objective = "mse", messages = FALSE)
     list(cv = cv, assessed = assessed)
+  }
+)
+# The Gaussian fit with an re() term on the Woodbury path (F35) has its bootstrap and its cross-validation. A
+# simulation from it would need its clusters on the prediction grid, so it has no task of assess_simulation().
+re_downstream <- list(
+  bootstrap = downstream$bootstrap,
+  cv = function(fit, data) {
+    list(cv = assess_prediction(list(model = fit), method = "cluster", fold = 2, iter = 1, control_mcmc = ctrl,
+                                seed = 51L, plot_fold = FALSE, messages = FALSE))
   }
 )
 
@@ -306,14 +397,23 @@ tasks <- c(
       }
     }), paste0("D_", base, "_", names(downstream)))
   }), recursive = FALSE),
+  stats::setNames(lapply(names(re_downstream), function(what) {
+    force(what); function() {
+      fit <- quiet(fits$F35_gaussian_re())
+      keep_fit("base", fit)
+      quiet(re_downstream[[what]](fit, dataset("replicated_gaussian")))
+    }
+  }), paste0("D_gaussian_re_", names(re_downstream))),
   list(L01_low_binomial = function() low_level("binomial"), L02_low_poisson = function() low_level("poisson"),
        L03_bounded_driver = bounded_driver)
 )
 
-# The smoke subset, about a minute on one Wayland core and a few on a laptop: fits of each family, a nugget, an re()
-# term, a named link, both saved surveys, a prediction of a sampled and of a Gaussian fit, and the low-level tasks.
+# The smoke subset, about a minute on one Wayland core and a few on a laptop. It has fits of each family, a nugget,
+# an re() term, a named link, both saved surveys, a Gaussian fit on each path, predictions from a sampled and a
+# Gaussian fit, and the low-level tasks.
 smoke <- c("F01_binomial", "F02_binomial_nugget", "F04_binomial_re", "F05_poisson_nugget", "F19_named_probit",
-           "F26_households", "F27_held_nugget_logit", "F29_gaussian", "D_logit_predict", "D_gaussian_predict",
+           "F26_households", "F27_held_nugget_logit", "F29_gaussian", "F30_negative_binomial_estimated",
+           "F35_gaussian_re", "D_logit_predict", "D_gaussian_predict",
            "L01_low_binomial", "L02_low_poisson", "L03_bounded_driver")
 
 if (flag("list")) { cat(names(tasks), sep = "\n"); quit(save = "no") }
