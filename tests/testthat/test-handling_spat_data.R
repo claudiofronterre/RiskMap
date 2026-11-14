@@ -150,6 +150,91 @@ test_that("RiskMap grids and their predictions work with dplyr", {
   expect_no_error(dplyr::filter(prediction$predictions, grid_id <= 2))
 })
 
+test_that("selecting columns of a grid keeps its cells (#214)", {
+  square <- st_polygon(list(matrix(square_coords * 1000,
+                                   ncol = 2, byrow = TRUE)))
+  square_m <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
+  square_grid <- create_grid(square_m, spacing = 2.5)
+  square_grid$value <- seq_len(nrow(square_grid))
+  metadata <- attr(square_grid, "grid_metadata")
+  extra <- data.frame(grid_id = square_grid$grid_id, extra = 1)
+
+  selections <- list(
+    "[, j]" = square_grid[, "grid_id"],
+    "[j]" = square_grid["value"],
+    "[i, j]" = square_grid[1:3, "value"],
+    "[i, ]" = square_grid[1:3, ],
+    "select" = dplyr::select(square_grid, value),
+    "mutate" = dplyr::mutate(square_grid, double = 2 * value),
+    "left_join" = dplyr::left_join(square_grid, extra, by = "grid_id"),
+    "rbind of parts" = rbind(square_grid[1:3, ], square_grid[4:6, ])
+  )
+  for (name in names(selections)) {
+    selection <- selections[[name]]
+    expect_identical(class(selection), class(square_grid), label = name)
+    expect_identical(attr(selection, "grid_metadata"), metadata, label = name)
+  }
+
+  # Without geometry the result is not a grid
+  expect_null(attr(square_grid[, c("grid_id", "value"), drop = TRUE],
+                   "grid_metadata"))
+  expect_identical(square_grid[, "value", drop = TRUE], square_grid$value)
+})
+
+test_that("areal predictions on a grid with selected columns use its cells (#214)", {
+  areas <- st_sf(geometry = squares)
+  full <- predict(gaussian_intercept_model, newdata = grid,
+                  boundaries = areas, aggregate = "mean",
+                  messages = FALSE, seed = 1)
+  selected <- predict(gaussian_intercept_model, newdata = grid[, "grid_id"],
+                      boundaries = areas, aggregate = "mean",
+                      messages = FALSE, seed = 1)
+  expect_identical(full$coverage, "exact")
+  expect_identical(selected$coverage, "exact")
+  expect_identical(selected$boundary_summary, full$boundary_summary)
+})
+
+test_that("create_grid projects boundaries to distance_crs", {
+  lonlat <- st_sf(geometry = st_sfc(st_polygon(list(rbind(
+    c(-10, 6), c(-9.8, 6), c(-9.8, 6.2), c(-10, 6.2), c(-10, 6)
+  ))), crs = 4326))
+
+  expect_no_message(
+    result <- create_grid(lonlat, spacing = 5, distance_crs = 32629)
+  )
+  expect_identical(st_crs(result), st_crs(32629))
+  metadata <- attr(result, "grid_metadata")
+  expect_identical(metadata$grid_crs, st_crs(32629))
+  expect_identical(metadata$input_crs, st_crs(4326))
+  expect_identical(
+    st_coordinates(result),
+    st_coordinates(create_grid(st_transform(lonlat, 32629), spacing = 5))
+  )
+
+  # Projected boundaries are projected again
+  projected <- create_grid(st_transform(lonlat, 32628), spacing = 5,
+                           distance_crs = 32629)
+  expect_identical(st_crs(projected), st_crs(32629))
+
+  expect_input_error(create_grid(lonlat, 5, distance_crs = 4326),
+                     "distance_crs")
+  expect_input_error(create_grid(lonlat, 5, distance_crs = "not a CRS"),
+                     "distance_crs")
+})
+
+test_that("create_grid takes the CRS of a raster", {
+  counts <- terra::rast(nrows = 2, ncols = 2, xmin = 0, xmax = 2000,
+                        ymin = 0, ymax = 2000, crs = "EPSG:32637")
+  terra::values(counts) <- 1:4
+
+  expect_identical(create_grid(raster = counts, distance_crs = 32637),
+                   create_grid(raster = counts))
+  expect_input_error(create_grid(raster = counts, distance_crs = 32636),
+                     "distance_crs")
+  expect_input_error(create_grid(raster = counts, distance_crs = "not a CRS"),
+                     "distance_crs")
+})
+
 test_that("create_grid() can keep cells that overlap the boundary", {
   boundary <- st_sf(geometry = st_sfc(
     st_polygon(list(rbind(c(0, 0), c(10, 0), c(10, 10), c(0, 0)))),
@@ -165,7 +250,8 @@ test_that("create_grid() can keep cells that overlap the boundary", {
   expect_identical(attr(overlap, "grid_metadata")$keep, "overlap")
   expect_identical(attr(centre, "grid_metadata")$keep, "centre")
   expect_s3_class(attr(overlap, "grid_metadata")$boundary, "sfc")
-  expect_error(create_grid(boundary, 2, "m", keep = "all"), "must be one of")
+  expect_error(create_grid(boundary, 2, distance_units = "m", keep = "all"),
+               "must be one of")
 })
 
 test_that("create_grid uses the cells of a raster", {

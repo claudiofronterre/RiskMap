@@ -12,9 +12,9 @@ variogram(
   max_dist = NULL,
   n_permutations = 999L,
   level = 0.95,
-  seed = NULL,
   distance_crs = NULL,
-  distance_units = c("km", "m")
+  distance_units = c("km", "m"),
+  seed = NULL
 )
 }
 \arguments{
@@ -43,9 +43,6 @@ By default \code{n_permutations = 999}; set it to zero to omit the envelope.}
 \item{level}{the simultaneous coverage probability of the global envelope.
 By default \code{level = 0.95}.}
 
-\item{seed}{an optional non-negative integer seed for the permutations. The
-caller's random-number state is restored before the function returns.}
-
 \item{distance_crs}{\code{NULL} to retain an existing projected CRS, or
 automatically reproject longitude/latitude data to the CRS from
 \code{\link[=propose_crs]{propose_crs()}} (with a message naming the CRS and the units of
@@ -56,6 +53,9 @@ CRS used distorts distances by more than 1\% over the data.}
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether
 the distances used in the variogram are expressed in kilometers or meters.
 By default \code{distance_units = "km"}, as in \code{\link{glgpm}}.}
+
+\item{seed}{an optional non-negative integer seed for the permutations. The
+caller's random-number state is restored before the function returns.}
 }
 \value{
 an object of class \code{RiskMap_variogram} which is a list containing the following components:

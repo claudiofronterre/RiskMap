@@ -7,6 +7,7 @@
 create_grid(
   boundaries = NULL,
   spacing = NULL,
+  distance_crs = NULL,
   distance_units = c("km", "m"),
   keep = c("centre", "overlap"),
   raster = NULL
@@ -20,6 +21,14 @@ when \code{raster} is supplied.}
 \item{spacing}{A single positive number specifying the distance between
 grid-point centres. Taken from the resolution of \code{raster} when that is
 supplied.}
+
+\item{distance_crs}{\code{NULL} to keep the CRS of projected \code{boundaries}, or
+to project \code{boundaries} in longitude and latitude to the CRS from
+\code{\link[=propose_crs]{propose_crs()}} (with a message naming the CRS and the units of
+distance). Alternatively, a projected CRS to project \code{boundaries} to,
+as in \code{\link[=variogram]{variogram()}} and \code{\link[=summarise_distance]{summarise_distance()}}. A grid built from
+\code{raster} takes the CRS of the raster, so \code{distance_crs} must then be
+\code{NULL} or that CRS.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, giving the units of \code{spacing}. Defaults to \code{"km"}.}
 
@@ -69,14 +78,22 @@ counts to the resolution of the grid with \code{\link[terra:aggregate]{terra::ag
 at least one non-missing value are kept. Cells kept inside \code{boundaries}
 may have missing values, for example over water.
 
-The CRS is inherited from \code{boundaries}, or from \code{raster} when it is
-supplied. If \code{boundaries} is in longitude/latitude and no raster is given,
-it is automatically reprojected to the CRS from \code{\link[=propose_crs]{propose_crs()}} and a
-message names the CRS and the units of distance;
-transform \code{boundaries} to a projected CRS yourself first to use a
-different one. A warning of class \code{riskmap_warning_crs} is raised when the
-CRS used distorts distances by more than 1\% over \code{boundaries}, or over the
-grid built from \code{raster}.
+The CRS of the grid is \code{distance_crs} when it is given, and otherwise that
+of \code{boundaries}, or of \code{raster} when it is supplied. If \code{boundaries} is in
+longitude and latitude and neither \code{distance_crs} nor a raster is given,
+it is projected to the CRS from \code{\link[=propose_crs]{propose_crs()}} and a message names the
+CRS and the units of distance. A warning of class
+\code{riskmap_warning_crs} is raised when the CRS used distorts distances by
+more than 1\% over \code{boundaries}, or over the grid built from \code{raster}.
+
+The grid keeps its cells when rows or columns are selected with \code{[} or
+with dplyr verbs such as \code{select()} and \code{filter()}, unless only the
+geometry column is kept. Functions that build a new \code{sf} object, such as
+\code{cbind()}, \code{merge()} and \code{\link[sf:st_as_sf]{sf::st_as_sf()}}, drop the class \code{RiskMap_grid},
+and \code{\link[=predict.RiskMap]{predict.RiskMap()}} then assigns each point to the polygon that
+contains it. Add columns with \verb{$<-}, \code{dplyr::mutate()} or a dplyr join
+instead. \code{rbind()} keeps the cells of its first grid, so use it only to
+join parts of one grid.
 }
 \examples{
 library(sf)

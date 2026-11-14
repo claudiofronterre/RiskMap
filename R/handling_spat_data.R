@@ -11,6 +11,13 @@
 ##' @param spacing A single positive number specifying the distance between
 ##'   grid-point centres. Taken from the resolution of `raster` when that is
 ##'   supplied.
+##' @param distance_crs `NULL` to keep the CRS of projected `boundaries`, or
+##'   to project `boundaries` in longitude and latitude to the CRS from
+##'   [propose_crs()] (with a message naming the CRS and the units of
+##'   distance). Alternatively, a projected CRS to project `boundaries` to,
+##'   as in [variogram()] and [summarise_distance()]. A grid built from
+##'   `raster` takes the CRS of the raster, so `distance_crs` must then be
+##'   `NULL` or that CRS.
 ##' @param distance_units Character string, either `"km"` or `"m"`, giving the units of `spacing`. Defaults to `"km"`.
 ##' @param keep Which cells to keep. `"centre"` (the default) keeps cells
 ##'   whose centre lies within `boundaries`. `"overlap"` keeps every cell that
@@ -44,14 +51,22 @@
 ##' at least one non-missing value are kept. Cells kept inside `boundaries`
 ##' may have missing values, for example over water.
 ##'
-##' The CRS is inherited from `boundaries`, or from `raster` when it is
-##' supplied. If `boundaries` is in longitude/latitude and no raster is given,
-##' it is automatically reprojected to the CRS from [propose_crs()] and a
-##' message names the CRS and the units of distance;
-##' transform `boundaries` to a projected CRS yourself first to use a
-##' different one. A warning of class `riskmap_warning_crs` is raised when the
-##' CRS used distorts distances by more than 1% over `boundaries`, or over the
-##' grid built from `raster`.
+##' The CRS of the grid is `distance_crs` when it is given, and otherwise that
+##' of `boundaries`, or of `raster` when it is supplied. If `boundaries` is in
+##' longitude and latitude and neither `distance_crs` nor a raster is given,
+##' it is projected to the CRS from [propose_crs()] and a message names the
+##' CRS and the units of distance. A warning of class
+##' `riskmap_warning_crs` is raised when the CRS used distorts distances by
+##' more than 1% over `boundaries`, or over the grid built from `raster`.
+##'
+##' The grid keeps its cells when rows or columns are selected with `[` or
+##' with dplyr verbs such as `select()` and `filter()`, unless only the
+##' geometry column is kept. Functions that build a new `sf` object, such as
+##' `cbind()`, `merge()` and [sf::st_as_sf()], drop the class `RiskMap_grid`,
+##' and [predict.RiskMap()] then assigns each point to the polygon that
+##' contains it. Add columns with `$<-`, `dplyr::mutate()` or a dplyr join
+##' instead. `rbind()` keeps the cells of its first grid, so use it only to
+##' join parts of one grid.
 ##'
 ##' @return
 ##' A `RiskMap_grid` and `sf` object containing the generated grid points. The
@@ -93,6 +108,7 @@
 ##'
 create_grid <- function(boundaries = NULL,
                         spacing = NULL,
+                        distance_crs = NULL,
                         distance_units = c("km", "m"),
                         keep = c("centre", "overlap"),
                         raster = NULL) {
@@ -101,7 +117,7 @@ create_grid <- function(boundaries = NULL,
   keep <- match_choice(keep)
   if (!is.null(raster)) {
     return(create_grid_from_raster(raster, boundaries, spacing,
-                                   distance_units, keep))
+                                   distance_crs, distance_units, keep))
   }
   if (is.null(boundaries)) {
     abort_input("{.arg boundaries}, {.arg raster} or both must be given.", arg = "boundaries")
@@ -110,8 +126,8 @@ create_grid <- function(boundaries = NULL,
   check_positive_number(spacing, "")
 
   input_crs <- st_crs(boundaries)
-  boundaries <- project_for_distances(boundaries, NULL, NULL,
-                                      "to create the grid",
+  boundaries <- project_for_distances(boundaries, distance_crs,
+                                      "distance_crs", "to create the grid",
                                       data_arg = "boundaries",
                                       units = distance_units)
 
@@ -159,6 +175,25 @@ as_riskmap_grid <- function(grid) {
   grid
 }
 
+#' Keep the cells of a grid when its rows or columns are selected
+#'
+#' `[.sf` comes first, since "sf" comes before "RiskMap_grid". It removes the
+#' class "sf", selects with `[`, which reaches this method, and then adds the
+#' geometry back with `st_sf()`, which keeps the class and attributes of the
+#' data frame it is given. `[.data.frame` drops the metadata when columns are
+#' selected, so it is restored here (#214). sf's dplyr verbs select with `[`
+#' too, so they need no method of their own. With `drop = TRUE`, `[.sf` adds
+#' no geometry back, so nothing is restored.
+#' @noRd
+#' @export
+`[.RiskMap_grid` <- function(x, ..., drop = FALSE) {
+  metadata <- attr(x, "grid_metadata", exact = TRUE)
+  out <- NextMethod()
+  if (drop || !is.data.frame(out) || is.null(metadata)) return(out)
+  attr(out, "grid_metadata") <- metadata
+  as_riskmap_grid(out)
+}
+
 #' Keep the grid cells that lie in, or overlap, a study boundary
 #' @noRd
 keep_grid_cells <- function(grid_box, study_boundary, cellsize, keep) {
@@ -173,7 +208,7 @@ keep_grid_cells <- function(grid_box, study_boundary, cellsize, keep) {
 #' Grid points at the centres of the cells of a raster
 #' @noRd
 create_grid_from_raster <- function(raster, boundaries, spacing,
-                                    distance_units, keep) {
+                                    distance_crs, distance_units, keep) {
   if (!inherits(raster, "SpatRaster")) {
     abort_input("{.arg raster} must be a {.cls SpatRaster} from the {.pkg terra} package, not {.obj_type_friendly {raster}}.", arg = "raster")
   }
@@ -186,6 +221,12 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
   }
   cellsize <- resolution[1]
   grid_crs <- st_crs(terra::crs(raster))
+  if (!is.null(distance_crs)) {
+    check_crs(distance_crs, arg = "distance_crs")
+    if (st_crs(distance_crs) != grid_crs) {
+      abort_input(c("{.arg distance_crs} must be the coordinate reference system of {.arg raster}, or {.code NULL}.", "i" = "A grid built from {.arg raster} has the cells of the raster, so it takes its CRS. Project the raster first, for example with {.fn terra::project}, to build the grid in another CRS."), arg = "distance_crs")
+    }
+  }
   centres <- terra::xyFromCell(raster, seq_len(terra::ncell(raster)))
   grid_box <- st_as_sf(
     cbind(as.data.frame(centres), terra::values(raster, dataframe = TRUE)),
