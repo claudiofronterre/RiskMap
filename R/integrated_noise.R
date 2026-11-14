@@ -200,7 +200,7 @@ plan_integrated_records <- function(y, units_m, D, cov_offset, ID_coords,
   # The groups of each group and location of groups, with their members'
   # design rows and offsets relative to the record's.
   groups <- vector("list", n_records)
-  members_of <- split(seq_len(n_units), record_of)
+  members_of <- split(seq_len(n_units), factor(record_of, levels = record_unit))
   describe <- function(u, lead) {
     list(y = unit_y[u], m = unit_m[u],
          D = sweep(unit_D[u, , drop = FALSE], 2L, unit_D[lead, ]),
@@ -208,7 +208,7 @@ plan_integrated_records <- function(y, units_m, D, cov_offset, ID_coords,
   }
   for (r in which(group_record | location_group_record)) {
     lead <- record_unit[r]
-    u <- members_of[[as.character(lead)]]
+    u <- members_of[[r]]
     records_y[r] <- sum(unit_y[u])
     records_m[r] <- sum(unit_m[u])
     groups[[r]] <- if (group_record[r]) {
@@ -474,7 +474,9 @@ site_pointer_at <- function(sites, beta) {
 ##' predictors with one column per record. A class whose variance is zero
 ##' takes the plain kernel. A table with groups (`make_site_table()`) takes
 ##' the regression coefficients `beta`, at which each method first sets the
-##' relative linear predictors of the groups' members (`site_pointer_at()`).
+##' relative linear predictors of the groups' members (`site_pointer_at()`),
+##' and `pointer_at()` gives the table's pointer after setting them, so that
+##' no caller reads the table at another kernel's coefficients.
 ##' @noRd
 make_integrated_kernel <- function(sites, classes, beta = NULL) {
   units <- sites$units
@@ -491,7 +493,6 @@ make_integrated_kernel <- function(sites, classes, beta = NULL) {
       sites$pointer
     }
   }
-  pointer <- sites$pointer
   terms <- function(eta) {
     pointer <- pointer_at()
     values <- cpp_site_evaluate(pointer, classes, units,
@@ -509,7 +510,7 @@ make_integrated_kernel <- function(sites, classes, beta = NULL) {
     list(nonlinear = around - as.numeric(at_centre$h) - step * slope,
          slope = slope)
   }
-  list(name = "integrated", classes = classes, pointer = pointer,
+  list(name = "integrated", classes = classes, pointer_at = pointer_at,
        units = units, terms = terms, nonlinear_parts = nonlinear_parts,
        log_likelihood = function(eta) {
          cpp_site_row_sums(pointer_at(), classes, units, eta)

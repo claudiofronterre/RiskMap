@@ -438,8 +438,68 @@ test_that("both forms estimate the same likelihood with groups", {
     b <- estimate(integrated, draws_integrated)
     expect_lt(abs(a[["estimate"]] - b[["estimate"]]),
               4 * sqrt(a[["se"]]^2 + b[["se"]]^2))
-    # The compiled weights and those in R agree.
-    proposal <- integrated$proposal_at(parameters)
-    expect_true(is.finite(sum(proposal$centre)))
+  }
+})
+
+test_that("the weights take the target's coefficients, not the proposal's", {
+  survey <- child_survey()
+  engine <- make_adaptive_mcml_engine(
+    survey$D, survey$y, survey$units, survey$distances, family = "binomial",
+    ID_coords = survey$ID_coords, ID_re = survey$ID_re, fix_tau2 = TRUE,
+    integrate_noise = TRUE
+  )
+  target <- survey$parameters
+  # The coefficient of sex, which differs between siblings, moved by 0.6.
+  other <- replace(target, 2L, target[2L] + 0.6)
+  set.seed(15)
+  draws <- matrix(rnorm(20000 * 25), 20000)
+  estimate <- function(parameters, proposal_parameters) {
+    log_weights <- engine$evaluate(parameters, draws, log_weights_only = TRUE,
+                                   proposal_parameters = proposal_parameters)
+    top <- max(log_weights)
+    weights <- exp(log_weights - top)
+    c(estimate = top + log(mean(weights)),
+      se = stats::sd(weights) / mean(weights) / sqrt(length(weights)))
+  }
+  # The likelihood at the target from a proposal built at the other
+  # coefficients agrees with that from its own proposal, and differs from the
+  # likelihood at the other coefficients.
+  own <- estimate(target, target)
+  borrowed <- estimate(target, other)
+  at_other <- estimate(other, other)
+  expect_lt(abs(own[["estimate"]] - borrowed[["estimate"]]),
+            4 * sqrt(own[["se"]]^2 + borrowed[["se"]]^2))
+  expect_gt(abs(at_other[["estimate"]] - own[["estimate"]]),
+            20 * sqrt(own[["se"]]^2 + at_other[["se"]]^2))
+})
+
+test_that("the slope of a held household variance is its derivative", {
+  survey <- child_survey()
+  for (nugget in c(TRUE, FALSE)) {
+    parameters <- if (nugget) survey$parameters else survey$parameters[-5L]
+    index <- length(parameters)
+    engine <- make_adaptive_mcml_engine(
+      survey$D, survey$y, survey$units, survey$distances,
+      family = "binomial", ID_coords = survey$ID_coords,
+      ID_re = survey$ID_re, fix_tau2 = nugget, integrate_noise = TRUE
+    )
+    # Held at zero, the households are locations of groups with the nugget,
+    # and groups of their plain kernels without it.
+    held <- replace(parameters, index, -20)
+    proposal <- engine$proposal_at(held)
+    set.seed(16)
+    draws <- matrix(rnorm(200 * 25), 200)
+    defensive <- defensive_rows(nrow(draws), engine$defensive_weight)
+    terms <- engine$variance_slope_terms(draws, proposal, defensive, index)
+    # The same draws at a small household variance, from the same proposal,
+    # change each weight by the step times its slope.
+    step <- 1e-4
+    at_zero <- engine$evaluate(held, draws, log_weights_only = TRUE,
+                               proposal_parameters = held)
+    at_step <- engine$evaluate(replace(held, index, log(step)), draws,
+                               log_weights_only = TRUE,
+                               proposal_parameters = held)
+    expect_equal(as.numeric(terms), (at_step - at_zero) / step,
+                 tolerance = 1e-2)
   }
 })

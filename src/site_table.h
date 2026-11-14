@@ -790,7 +790,7 @@ struct Strip {
 // variance v of a group, or the outer variance v and inner variance vi of a
 // location, and the key of relative linear predictors it was filled for, a
 // group's relative to its first member and a location's relative to its
-// record. Each group and location keeps 3, the least recently used replaced
+// record. Each location of groups keeps 3, the least recently used replaced
 // first.
 struct Entry {
   bool kept = false;
@@ -1014,10 +1014,16 @@ class SiteTable {
     const double* within = current_->data() + member_count() + first;
     order_.resize(size);
     std::iota(order_.begin(), order_.end(), 0);
-    std::sort(order_.begin(), order_.end(), [&](const int a, const int b) {
-      if (within[a] != within[b]) return within[a] < within[b];
-      return member_pair_[first + a] < member_pair_[first + b];
-    });
+    // A predictor that is not a number has no order, and the members then
+    // keep theirs.
+    if (std::all_of(within, within + size, [](const double value) {
+          return !std::isnan(value);
+        })) {
+      std::sort(order_.begin(), order_.end(), [&](const int a, const int b) {
+        if (within[a] != within[b]) return within[a] < within[b];
+        return member_pair_[first + a] < member_pair_[first + b];
+      });
+    }
     const int reference = order_[0];
     shift = (*current_)[first + reference];
     words_.assign(1, bits(v));

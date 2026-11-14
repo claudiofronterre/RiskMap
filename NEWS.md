@@ -1006,8 +1006,8 @@ against about 180 seconds and two stages with the households sampled. Under a
 link not known to be log-concave, such as that of an imperfect test, the
 households take the general trapezium rule, and small surveys fit more
 slowly than with the households sampled (72 against 13 seconds on 40
-locations). A fit whose units share their covariates at every location is
-unchanged.
+locations). A fit whose units share their covariates and offset at every
+location is unchanged.
 
 - The integral over the independent effects of a record or a location, which
 `integrate_noise` tables, no longer slows down as a variance grows. Records
