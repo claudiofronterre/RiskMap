@@ -43,6 +43,8 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 - Non-Gaussian models are fitted by certified Monte Carlo maximum likelihood,
   which enlarges its samples until the Monte Carlo error of the estimates is
   small and reports a bound on that error.
+- In binomial and Poisson fits, household effects whose children differ in
+  covariates are now integrated out, so such fits are much faster.
 - `check_fit()` reports how a fit was computed and flags anything that needs
   attention. `profile()` gives profile likelihoods and `parametric_bootstrap()`
   bootstrap intervals for the parameters.
