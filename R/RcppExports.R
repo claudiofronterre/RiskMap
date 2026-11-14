@@ -17,12 +17,12 @@ cpp_spatial_prior_factors <- function(distances, dimension, phi, kappa, sigma2, 
     .Call(`_RiskMap_cpp_spatial_prior_factors`, distances, dimension, phi, kappa, sigma2, nugget_ratio)
 }
 
-cpp_importance_log_weights <- function(draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson, site_table, site_classes, site_units) {
-    .Call(`_RiskMap_cpp_importance_log_weights`, draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, poisson, site_table, site_classes, site_units)
+cpp_importance_log_weights <- function(draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, link, site_table, site_classes, site_units) {
+    .Call(`_RiskMap_cpp_importance_log_weights`, draws, root, centre, defensive, share, proposal_spatial_root, proposal_sigma2_re, target_spatial_root, target_sigma2_re, same_parameters, linear_offset, columns, random_first, random_size, y, units, link, site_table, site_classes, site_units)
 }
 
-cpp_canonical_log_likelihood <- function(eta_r, y_r, units_r, poisson) {
-    .Call(`_RiskMap_cpp_canonical_log_likelihood`, eta_r, y_r, units_r, poisson)
+cpp_link_log_likelihood <- function(eta_r, y_r, units_r, link) {
+    .Call(`_RiskMap_cpp_link_log_likelihood`, eta_r, y_r, units_r, link)
 }
 
 cpp_structured_solve <- function(columns_r, n_u, n_d, prior_u_r, prior_d_r, weights_r, right_hand_side_r) {

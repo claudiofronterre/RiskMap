@@ -93,14 +93,16 @@ struct Kernel {
       custom_terms(y, m, eta, k, k1, k2);
       return;
     }
+    // k is the shared canonical kernel (likelihood_kernel.h). The derivatives
+    // keep this table's logistic, which differs from the Langevin sampler's
+    // in the last bits for negative eta.
+    k = canonical_log_likelihood(eta, y, m, poisson);
     if (poisson) {
       const double mean = m * std::exp(eta);
-      k = y * eta - mean;
       k1 = y - mean;
       k2 = -mean;
     } else {
       const double p = logistic(eta);
-      k = y * eta - m * softplus(eta);
       k1 = y - m * p;
       k2 = -m * p * (1.0 - p);
     }

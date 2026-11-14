@@ -549,8 +549,10 @@ summarise_stalled_anchors <- function(history) {
 ##' last reset and the largest such change. The sampled form keeps the rule of
 ##' the release, so its fits are unchanged.
 ##'
-##' The prior factors, the global proposal's dense algebra and, for canonical
-##' links, the importance weights are computed in compiled code, which
+##' The prior factors, the global proposal's dense algebra and, for the links
+##' with a compiled kernel (canonical logit and log, probit, cloglog and
+##' cauchit, the family object's `code`), the importance weights are computed
+##' in compiled code, which
 ##' reproduces the R computations (`compute_log_weights_in_r()` for the
 ##' weights) exactly, or to the last bits where the compiler fuses multiply
 ##' and add, but keeps their large working matrices off the R heap.
@@ -998,7 +1000,7 @@ make_adaptive_mcml_engine <- function(
         proposal$spatial_root, as.numeric(proposal$values$sigma2_re),
         spatial_root, as.numeric(values$sigma2_re), same_parameters,
         linear_offset, latent_map$columns, random_first, random_size, y,
-        target$units_m, model$poisson, sites$pointer,
+        target$units_m, model$code, sites$pointer,
         values$class_variances %||% numeric(),
         sites$units %||% matrix(0L, 0L, 4L)
       )

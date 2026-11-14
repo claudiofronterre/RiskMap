@@ -19,20 +19,49 @@ using Rcpp::NumericMatrix;
 using Rcpp::NumericVector;
 
 
-// Log-likelihood only, for every row of eta (draws x observations). The
-// family branch is resolved once, no score or curvature matrices are
-// allocated, and a Poisson mean that overflows gives -Inf for that draw, as in
-// the R implementation.
+// Log-likelihood only, for every row of eta (draws x observations), under
+// the link `link` (a LinkCode of likelihood_kernel.h). The link is resolved
+// once and no score or curvature matrices are allocated. A canonical Poisson
+// mean that overflows gives -Inf for that draw. Under a named link the
+// observations of a draw are summed in long double, as rowSums() sums them in
+// compute_link_log_likelihood_rows(), so that the rows are R's to the last
+// bit, and a draw with a probability outside [0, 1] gives -Inf.
 // [[Rcpp::export]]
-NumericVector cpp_canonical_log_likelihood(const NumericMatrix eta_r,
-                                           const NumericVector y_r,
-                                           const NumericVector units_r,
-                                           const bool poisson) {
+NumericVector cpp_link_log_likelihood(const NumericMatrix eta_r,
+                                      const NumericVector y_r,
+                                      const NumericVector units_r,
+                                      const int link) {
+  if (!is_link_code(link)) {
+    Rcpp::stop("The link code %d has no compiled kernel.", link);
+  }
   const int n_samples = eta_r.nrow();
   const int n = eta_r.ncol();
   NumericVector log_likelihood(n_samples);
   const double* eta = eta_r.begin();
   double* total = log_likelihood.begin();
+  if (!is_canonical_link(link)) {
+    std::vector<long double> sum(n_samples, 0.0L);
+    std::vector<char> outside(n_samples, 0);
+    for (int observation = 0; observation < n; ++observation) {
+      const double y = y_r[observation];
+      const double units = units_r[observation];
+      const double* column =
+        eta + static_cast<R_xlen_t>(observation) * n_samples;
+      for (int sample = 0; sample < n_samples; ++sample) {
+        bool out = false;
+        sum[sample] += named_link_log_likelihood(column[sample], y, units,
+                                                 link, out);
+        if (out) outside[sample] = 1;
+      }
+    }
+    for (int sample = 0; sample < n_samples; ++sample) {
+      total[sample] = outside[sample] ?
+        -std::numeric_limits<double>::infinity() :
+        static_cast<double>(sum[sample]);
+    }
+    return log_likelihood;
+  }
+  const bool poisson = link == link_log;
   for (int observation = 0; observation < n; ++observation) {
     const double y = y_r[observation];
     const double units = units_r[observation];
@@ -342,13 +371,16 @@ List cpp_latent_mala(const NumericVector y_r, const NumericVector units_r,
     double log_likelihood = 0.0;
     if (canonical) {
       for (int r = 0; r < n; ++r) {
+        // The log-likelihood is the shared canonical kernel. The score keeps
+        // this sampler's logistic, which differs from the site tables' in
+        // the last bits for negative eta.
+        log_likelihood += canonical_log_likelihood(eta[r], y_r[r],
+                                                   units_r[r], poisson);
         if (poisson) {
           const double mean = std::exp(eta[r]);
           if (!std::isfinite(mean)) return R_NegInf;
-          log_likelihood += y_r[r] * eta[r] - units_r[r] * mean;
           score[r] = y_r[r] - units_r[r] * mean;
         } else {
-          log_likelihood += y_r[r] * eta[r] - units_r[r] * softplus(eta[r]);
           score[r] = y_r[r] - units_r[r] * logistic(eta[r]);
         }
       }
