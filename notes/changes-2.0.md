@@ -997,9 +997,10 @@ own table, a household's integral is kept while only the coefficients of
 covariates its members share change, and households alike in their members'
 outcomes and covariate differences share one. On 200 clusters of a
 Demographic and Health Survey, a fit with 8 child and household covariates,
-a nugget and household effects took 23 minutes and one stage, at a bound of
-0.008 with 4,830 effective draws, instead of 83 minutes and three stages, at
-0.086 with 1,350, with every estimate within 0.03 standard errors. On a
+a nugget and household effects took 23 minutes and one stage instead of 6
+hours and three, on the same node, at a bound of 0.008 with 4,830 effective
+draws against 0.086 with 1,350, with every estimate within 0.03 standard
+errors. On a
 simulated survey of that shape, with 28,471 children in 16,614
 households at 1,375 locations, a fit with a nugget and household effects
 certified at the first stage in 9 minutes on one core. On simulated surveys
