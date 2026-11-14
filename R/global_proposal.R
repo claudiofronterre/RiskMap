@@ -234,8 +234,8 @@ make_curvature_floor <- function(latent_map, precision, smooth = FALSE,
 ##' this often, on every survey of Tanzania with a nugget for instance, and
 ##' stopped at the limit of refits, so their candidates are floored with pmax()
 ##' too (#253, after step 5b). The fixed point, and with it the proposal, is
-##' still the smooth floor's, whose values are positive and which pmax() leaves
-##' as they are. Under a link of `concave_links` a curvature is negative only
+##' still the smooth floor's, whose values are not negative and which pmax()
+##' leaves as they are. Under a link of `concave_links` a curvature is negative only
 ##' through rounding, and both are the floor at the Gershgorin bound, as before
 ##' step 5b of #253. `smallest_prior` is passed to `make_curvature_bound()`.
 ##' @noRd

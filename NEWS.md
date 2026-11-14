@@ -768,11 +768,16 @@ measured, among them every fit of the Tanzania survey with a nugget, and under
 form. The candidates are now floored with `pmax()` at zero, as those of links
 not known to be log-concave are floored at their bound, so the proposal is the
 same fixed point, now reached in a median of 9 refits. In the paired fits no
-iteration stalled, every certified fit stayed certified in the same stages
-with its certificate within 1.3%, and estimates moved by at most 2.5e-4
-standard errors, apart from three fits of one survey whose spatial variance
-was held at its limit and one under an imperfect test (up to 0.08). A global iteration that stops
-just short of its tolerance is still accepted.
+iteration stalled, and every certified fit stayed certified in the same stages
+with its certificate within 1.3%. The estimates of certified fits moved by at
+most 2.5e-4 standard errors, apart from three fits of one survey whose spatial
+variance was held at its limit and one under an imperfect test (up to 0.08).
+Imperfect-test fits that certified in neither version moved more, by up to
+0.25 standard errors on a simulated survey at 5% prevalence and up to 5.6 on
+degenerate ones, as much as a new seed moves them, and one of them was
+reported as weakly identified after one stage rather than as having no maximum
+after two.
+A global iteration that stops just short of its tolerance is still accepted.
 
 - `glgpm()`, `specify_glgpm()` and `maxim_integrand()` now take a family object
 in `family`, as `glm()` does, so a link can be named as in
