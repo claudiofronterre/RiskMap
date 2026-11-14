@@ -163,7 +163,11 @@ refit_global_factors <- function(factors, mu, y, units_m, latent_map,
 ##' c + smooth_curvature_floor(C - c, |c| / 10), which is above c everywhere,
 ##' has continuous derivatives, and adds at most |c| exp(-10) / 10, about
 ##' 4.5e-6 |c|, to a curvature that is not negative, so it computes the bound
-##' at its first call.
+##' at its first call. A smooth floor moves a value it has already floored, so
+##' its attribute `candidate_floor`, pmax(C, c), is what the anchor iteration
+##' applies to the candidates of its acceleration (`fit_global_proposal()`).
+##' Flooring them smoothly again would keep every iterate above the fixed
+##' point by up to |c| log(2) / 10, and the iteration would not converge.
 ##' @noRd
 make_curvature_floor <- function(latent_map, precision, smooth = FALSE) {
   curvature_floor <- NULL
@@ -179,10 +183,14 @@ make_curvature_floor <- function(latent_map, precision, smooth = FALSE) {
     curvature_floor
   }
   if (smooth) {
-    return(function(curvature) {
+    floor_smoothly <- function(curvature) {
       lowest <- bound()
       lowest + smooth_curvature_floor(curvature - lowest, -lowest / 10)
-    })
+    }
+    attr(floor_smoothly, "candidate_floor") <- function(curvature) {
+      pmax(curvature, bound())
+    }
+    return(floor_smoothly)
   }
   function(curvature) {
     if (all(curvature >= 0)) return(curvature)
@@ -313,6 +321,10 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
                                 memory = 3L) {
   kernel <- check_family_object(family)
   floor_curvature <- choose_curvature_floor(kernel, latent_map, precision)
+  # The candidates of the acceleration are floored at the bound only, which
+  # leaves a floored value as it is (make_curvature_floor()).
+  floor_candidate <- attr(floor_curvature, "candidate_floor")
+  if (is.null(floor_candidate)) floor_candidate <- floor_curvature
   mode_terms <- kernel$terms(
     mu + latent_linear_predictor(latent_map, mode), y, units_m
   )
@@ -345,7 +357,7 @@ fit_global_proposal <- function(mode, mu, y, units_m, latent_map, precision,
     residuals <- cbind(residuals, refitted - factors)[, keep, drop = FALSE]
     history <- cbind(history, refitted)[, keep, drop = FALSE]
     candidate <- take_anderson_step(residuals, history)
-    candidate[curvature_part] <- floor_curvature(candidate[curvature_part])
+    candidate[curvature_part] <- floor_candidate(candidate[curvature_part])
     next_refit <- refit(candidate)
     refits <- refits + 1L
     if (is.null(next_refit) ||

@@ -60,6 +60,11 @@ test_that("the global proposal floors smoothly a link not known to be concave", 
                c(-0.5, -0.5 + 0.05 * log1p(exp(-10)), -0.5 + 0.05 * log(2), 2),
                tolerance = 1e-14)
   expect_true(all(smooth(seq(-3, 3, by = 0.01)) >= -0.5))
+  # The acceleration's candidates are floored at the bound only, so a floored
+  # value is left as it is.
+  candidate_floor <- attr(smooth, "candidate_floor")
+  expect_identical(candidate_floor(c(-1, smooth(-1), 2)), c(-0.5, smooth(-1), 2))
+  expect_null(attr(gershgorin, "candidate_floor"))
 })
 
 test_that("an object with integrated records keeps the properties of its link", {
