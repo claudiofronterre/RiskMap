@@ -142,8 +142,13 @@ make_extra_check_seed <- function(fit_seed, offset) {
 ##' @noRd
 list_covariance_parameters <- function(object) {
   names <- names(unlist(object$estimate))
-  names <- names[!startsWith(names, "beta.")]
-  if (isTRUE(fit_traits(object)$exact)) names[names == "nu2"] <- "tau2"
+  names <- names[parameter_block(names) != "coefficients"]
+  if (isTRUE(fit_traits(object)$exact)) {
+    # The nugget under the name coef() reports, from the parameter table.
+    rows <- estimated_rows(fit_parameter_table(object))
+    nugget <- rows$scale == "nugget"
+    names[names %in% rows$stored[nugget]] <- rows$reported[nugget]
+  }
   names
 }
 
