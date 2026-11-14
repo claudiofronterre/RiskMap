@@ -302,6 +302,39 @@ test_that("the global proposal starts from a positive definite precision", {
   expect_no_error(chol(proposal$precision))
 })
 
+test_that("the smooth floor of a link not known to be concave lets the anchor iteration converge", {
+  # Under cauchit, ten of thirty sites with 8 positives of 20 at a linear
+  # predictor of -6 have convex records, whose curvatures settle at the bound.
+  sites <- 30L
+  coords <- cbind(rep(seq(0, 1, length.out = 6), 5),
+                  rep(seq(0, 1, length.out = 5), each = 6))
+  precision <- solve(exp(-as.matrix(dist(coords)) / 0.3) + diag(0.01, sites))
+  y <- c(rep(8, 10), rep(0, 20))
+  units_m <- rep(20, sites)
+  mu <- rep(-6, sites)
+  latent_map <- make_latent_map(cbind(seq_len(sites)), sites)
+  cauchit <- make_family("binomial", make_inverse_link_functions(
+    "binomial", c(named_inverse_link("cauchit"), link = "cauchit"), 5L
+  ))
+  expect_true(cauchit$smooth_floor)
+  fit <- function() {
+    fit_global_proposal(numeric(sites), mu, y, units_m, latent_map, precision,
+                        cauchit)
+  }
+  proposal <- fit()
+  expect_true(proposal$converged)
+  expect_lt(min(proposal$factors$curvature), 0)
+  # Floored smoothly again, the candidates of the acceleration sit above the
+  # fixed point and the iteration runs to its limit.
+  floors <- choose_curvature_floor
+  local_mocked_bindings(choose_curvature_floor = function(...) {
+    chosen <- floors(...)
+    chosen$candidate <- chosen$refit
+    chosen
+  })
+  expect_false(fit()$converged)
+})
+
 test_that("a quadratic fit without enough weighted nodes is a failed refit", {
   sites <- 3L
   precision <- diag(0.25, sites)

@@ -1106,6 +1106,13 @@ read_family_link <- function(family, link) {
 ##'   without a kernel (`move_start_off_limits()`).
 ##' - `needs_finite_weight`, a bank with no finite weight is a failed
 ##'   evaluation.
+##' - `smooth_floor`, the global proposal floors the curvature of its factors
+##'   smoothly (`choose_curvature_floor()`), at zero for integrated records and
+##'   at the Gershgorin bound for a link not on the family's `concave_links`,
+##'   cauchit or one given as a function, whose curvature can be negative.
+##'   Under a link of the list a curvature is negative only through rounding,
+##'   and the floor at the Gershgorin bound (`make_curvature_floor()`) keeps
+##'   the fits as they were (#253, step 5b).
 ##'
 ##' Methods, for records with `y` events of `units_m` trials, or counts with
 ##' exposure `units_m`, at linear predictors `eta`.
@@ -1202,6 +1209,8 @@ make_family <- function(family, linkf = NULL, kernel = NULL) {
       assumes_concave = canonical && !integrated,
       moves_start = !canonical && !integrated,
       needs_finite_weight = !canonical,
+      smooth_floor = integrated ||
+        !isTRUE(linkf$link %in% traits$concave_links),
       terms = terms, log_likelihood = log_likelihood,
       slope_parts = slope_parts, nonlinear_parts = nonlinear_parts,
       kernel_arrays = kernel_arrays,

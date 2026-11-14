@@ -258,10 +258,15 @@ defensive_rows <- function(n_draws, defensive_weight) {
 ##' whether its estimate or its certificate is valid. Without it the stage would
 ##' repeat with the Laplace proposal, which on surveys with a large spatial
 ##' variance leaves almost no effective draws.
+##'
+##' `smallest_prior`, a function that gives the smallest eigenvalue of
+##' `precision`, is passed to the floors of the global proposal's curvature
+##' (`choose_curvature_floor()`).
 ##' @noRd
 build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
                                     precision, family, anchor, find_mode,
-                                    stall_tolerance = NULL) {
+                                    stall_tolerance = NULL,
+                                    smallest_prior = NULL) {
   kernel <- check_family_object(family)
   approximation <- NULL
   global <- NULL
@@ -269,7 +274,8 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
   stalled <- FALSE
   if (identical(type, "global") && !is.null(anchor)) {
     refitted <- refit_from_anchor(anchor, mu, y, units_m, latent_map,
-                                  precision, kernel)
+                                  precision, kernel,
+                                  smallest_prior = smallest_prior)
     if (!refitted$failed) {
       return(list(centre = refitted$centre, precision = refitted$precision,
                   root = refitted$root, factors = refitted$factors,
@@ -288,7 +294,8 @@ build_gaussian_proposal <- function(type, mu, y, units_m, latent_map,
     approximation <- find_mode()
     global <- fit_global_proposal(
       mode = approximation$mode, mu = mu, y = y, units_m = units_m,
-      latent_map = latent_map, precision = precision, family = kernel
+      latent_map = latent_map, precision = precision, family = kernel,
+      smallest_prior = smallest_prior
     )
     stalled <- !is.null(global) && !global$converged &&
       !is.null(stall_tolerance) && is.finite(global$change) &&
@@ -802,6 +809,25 @@ make_adaptive_mcml_engine <- function(
     root <- factor_covariance(covariance, "adaptive MCML target")
     list(covariance = covariance, root = root, precision = chol2inv(root))
   }
+  # The smallest eigenvalue of the prior precision, which the floor of the
+  # global proposal's curvature needs (make_curvature_bound()). It is computed
+  # when a floor first asks for it and kept with the parameters of the prior,
+  # since a move of the regression coefficients alone leaves it unchanged.
+  smallest_cache <- NULL
+  smallest_prior_at <- function(values, precision) {
+    key <- c(values$phi, values$sigma2, latent_ratio(values),
+             values$sigma2_re)
+    function() {
+      if (is.null(smallest_cache) || !identical(key, smallest_cache$key)) {
+        smallest_cache <<- list(
+          key = key,
+          value = min(eigen(precision, symmetric = TRUE,
+                            only.values = TRUE)$values)
+        )
+      }
+      smallest_cache$value
+    }
+  }
 
   # Index map from latent variables (spatial locations, then random-effect
   # levels) to observations, built once.
@@ -872,7 +898,8 @@ make_adaptive_mcml_engine <- function(
     gaussian <- build_gaussian_proposal(
       type, mu, y, records$units_m, latent_map, precision, kernel, anchor,
       find_mode,
-      if (integrated) stall_tolerance
+      if (integrated) stall_tolerance,
+      smallest_prior_at(values, precision)
     )
     builds <<- builds + 1L
     if (!is.null(gaussian$stalled_change)) {

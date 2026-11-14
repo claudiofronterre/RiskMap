@@ -26,6 +26,67 @@ test_that("the properties of a family object follow the link", {
   expect_true(probit$needs_finite_weight)
 })
 
+test_that("the global proposal floors smoothly a link not known to be concave", {
+  named <- function(link) {
+    make_inverse_link_functions("binomial",
+                                c(named_inverse_link(link), link = link), 5L)
+  }
+  # Links of concave_links keep the floor at the Gershgorin bound.
+  expect_false(make_family("binomial")$smooth_floor)
+  expect_false(make_family("poisson")$smooth_floor)
+  for (link in c("probit", "cloglog")) {
+    expect_false(make_family("binomial", named(link))$smooth_floor)
+  }
+  # Cauchit is not on the list, and a link given as a function is not known,
+  # even when it is the logit.
+  expect_true(make_family("binomial", named("cauchit"))$smooth_floor)
+  expect_true(make_family(
+    "binomial", make_inverse_link_functions("binomial", plogis, 5L)
+  )$smooth_floor)
+
+  # One latent column per record and a prior of unit precision put the
+  # Gershgorin bound at -0.5.
+  precision <- diag(2)
+  latent_map <- list(columns = matrix(1:2, 2), dimension = 2L)
+  probit <- choose_curvature_floor(make_family("binomial", named("probit")),
+                                   latent_map, precision)
+  expect_identical(probit$refit(c(-1, 2)), c(-0.5, 2))
+  expect_identical(probit$candidate, probit$refit)
+  # Under cauchit the floor of the refits is smooth at the same bound, with a
+  # width of a tenth of it, so it is never below the bound and leaves a
+  # positive curvature as it is.
+  cauchit <- choose_curvature_floor(make_family("binomial", named("cauchit")),
+                                    latent_map, precision)
+  smooth <- cauchit$refit
+  expect_equal(smooth(c(-Inf, -1, -0.5, 2)),
+               c(-0.5, -0.5 + 0.05 * log1p(exp(-10)), -0.5 + 0.05 * log(2), 2),
+               tolerance = 1e-14)
+  expect_true(all(smooth(seq(-3, 3, by = 0.01)) >= -0.5))
+  # The acceleration's candidates are floored at the bound only, so a floored
+  # value is left as it is.
+  expect_identical(cauchit$candidate(c(-1, smooth(-1), 2)),
+                   c(-0.5, smooth(-1), 2))
+  # A smallest eigenvalue given by the engine replaces the eigenvalues of the
+  # precision.
+  given <- choose_curvature_floor(make_family("binomial", named("probit")),
+                                  latent_map, precision,
+                                  smallest_prior = function() 4)
+  expect_identical(given$refit(c(-3, 2)), c(-2, 2))
+  # Where rounding leaves the smallest eigenvalue at zero or below, the bound
+  # is not negative and the smooth floor is pmax(), not a floor of no width.
+  for (lambda in c(0, -1e-14)) {
+    flat <- choose_curvature_floor(make_family("binomial", named("cauchit")),
+                                   latent_map, precision,
+                                   smallest_prior = function() lambda)
+    expect_identical(flat$refit(c(-1, 0, 0.5)), pmax(c(-1, 0, 0.5), lambda / -2))
+  }
+  # Integrated records keep the smooth floor at zero for both.
+  integrated <- choose_curvature_floor(list(integrated = TRUE), latent_map,
+                                       precision)
+  expect_identical(integrated$refit, smooth_curvature_floor)
+  expect_identical(integrated$candidate, smooth_curvature_floor)
+})
+
 test_that("an object with integrated records keeps the properties of its link", {
   y <- c(0, 20, 3)
   units_m <- c(20, 20, 20)
@@ -41,6 +102,7 @@ test_that("an object with integrated records keeps the properties of its link", 
     expect_identical(integrated$needs_finite_weight, plain$needs_finite_weight)
     expect_false(integrated$assumes_concave)
     expect_false(integrated$moves_start)
+    expect_true(integrated$smooth_floor)
     expect_identical(integrated$terms(c(-1, 2, 0), y, units_m),
                      kernel$terms(c(-1, 2, 0)))
     eta <- matrix(c(-1, 2, 0, 0.5, 1, -2), 2, byrow = TRUE)
