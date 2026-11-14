@@ -13,3 +13,4 @@ CLAUDE.md
 ^CITATION\.cff$
 ^\.codex$
 ^tools/golden$
+^notes$
