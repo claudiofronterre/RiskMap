@@ -2,28 +2,58 @@ url: https://claudiofronterre.github.io/RiskMap/
 
 template:
   bootstrap: 5
+  light-switch: true
   bslib:
-    bootswatch: flatly
+    # Brand colours, from the sticker's two inks (navy and terracotta) on
+    # paper. When the sticker changes, update these and the top of
+    # pkgdown/extra.css and pkgdown/card.html.
+    primary: "#A8452A"      # terracotta, a shade darker so it passes as text
+    dark: "#1D3557"         # navy ink
+    body-color: "#1D3557"
+    body-bg: "#F5EFE3"      # paper
+    body-secondary-bg: "#ECE3D2"
+    body-tertiary-bg: "#FBF8F1"
+    border-color: "#DED3BF"
+    body-bg-dark: "#0B1A2B"
+    body-color-dark: "#E4E9F0"
+    body-secondary-bg-dark: "#14263D"
+    body-tertiary-bg-dark: "#102035"
+    link-color-dark: "#E8B08E"
+    border-radius: 0.5rem
+    font-size-base: 1.0625rem
+    headings-font-weight: 600
+    base_font: {google: "Source Sans 3"}
+    heading_font: {google: {family: "Libertinus Serif", wght: [400, 600, 700]}}
+    code_font: {google: "JetBrains Mono"}
+  opengraph:
+    image:
+      src: card.png
+      alt: "RiskMap, model-based geostatistics in R"
 
+# The home page is pkgdown/index.md, a landing page without the sidebar.
+# README.md is the page on GitHub and CRAN.
 home:
   title: RiskMap
+  sidebar: false
   description: >
-    Geostatistical modelling and prediction for global public health using
-    Gaussian process models in R.
-  links:
-    - text: MBG-R book (Giorgi, Fronterre)
-      href: https://www.mbgr.org/
-    - text: Source code on GitHub
-      href: https://github.com/claudiofronterre/RiskMap
+    Model-based geostatistics in R. Fit spatial Gaussian process models to
+    continuous and count data, and map risk with its uncertainty.
 
+# "intro" links vignettes/articles/RiskMap.Rmd as "Get started" once it
+# exists, and the Articles menu appears with the first article.
 navbar:
   structure:
-    left: [home, reference]
-    right: [book, github]
+    left: [intro, reference, articles, news]
+    right: [search, book, github, lightswitch]
   components:
+    news:
+      text: News
+      href: news/index.html
     book:
-      text: MBG-R (Giorgi, Fronterre)
+      text: Book
+      icon: fa-book-open
       href: https://www.mbgr.org/
+      aria-label: The book Model-based geostatistics for global public health using R
     github:
       icon: fab fa-github
       href: https://github.com/claudiofronterre/RiskMap
@@ -31,45 +61,69 @@ navbar:
 
 footer:
   structure:
-    left: [team]
-    right: [book]
+    left: [developed_by]
+    right: [book, built_with]
   components:
-    team: "Developed by the RiskMap team: Emanuele Giorgi and Claudio Fronterre."
-    book: "Learn RiskMap with [MBG-R](https://www.mbgr.org/)."
+    book: "Learn RiskMap with the book [Model-based geostatistics for global public health using R](https://www.mbgr.org/)."
 
+# Every exported function, method and dataset with a help page must be
+# listed here, or the site fails to build.
 reference:
-  - title: Package
-    contents:
-      - RiskMap-package
-
-  - title: Data, projections and distances
+  - title: Data and projections
+    desc: >
+      Choose a projected coordinate reference system, summarise the
+      distances between locations, and build prediction grids and covariates.
     contents:
       - propose_crs
       - crs_distortion
+      - summarise_distance
       - create_grid
       - create_convex_hull
-      - create_ids
       - get_worldpop
-      - summarise_distance
+
+  - title: Exploratory analysis
+    desc: >
+      Look at the data and their spatial correlation before fitting a model.
+    contents:
+      - elogit
       - variogram
       - print.RiskMap_variogram
-      - plot.RiskMap_variogram
 
-  - title: Specifying and fitting models
+  - title: Specifying and fitting
+    desc: >
+      Write the model as a formula with a Gaussian process and random effects,
+      choose the family and link, and fit it by maximum likelihood.
     contents:
       - glgpm
+
+  - subtitle: Model terms
+    desc: >
+      The spatial Gaussian process and unstructured random effects, as terms
+      of the model formula.
+    contents:
       - gp
       - re
+
+  - subtitle: Families and links
+    desc: >
+      Gaussian, binomial and Poisson responses use the families of the stats
+      package, such as `binomial("probit")`, and other links can be given to
+      `glgpm()` as an inverse link function.
+    contents:
       - negative_binomial
+
+  - subtitle: Controls
+    desc: >
+      Settings of Monte Carlo maximum likelihood and of the MCMC sampler of the
+      random effects.
+    contents:
       - set_control_mcml
       - set_control_mcmc
-      - elogit
-      - matern_correlation
-      - matern_gradient_phi
-      - matern_hessian_phi
-      - maxim_integrand
 
-  - title: Fitted models
+  - subtitle: Fitted models
+    desc: >
+      Print, summarise and tabulate a fit, and extract its estimates and fitted
+      values.
     contents:
       - print.RiskMap
       - summary.RiskMap
@@ -79,55 +133,74 @@ reference:
       - to_table
 
   - title: Checking a fit
+    desc: >
+      See how a fit was computed, check the Monte Carlo samples, and measure
+      the uncertainty of the estimates by profile likelihood or the
+      parametric bootstrap.
     contents:
       - check_fit
       - print.RiskMap_check
       - summary.RiskMap_check
       - print.summary.RiskMap_check
-      - plot.RiskMap_check
+      - plot_mcmc
+      - summarise_mcmc
       - profile.RiskMap
-      - plot.RiskMap_profile
       - parametric_bootstrap
       - print.RiskMap_bootstrap
       - summary.RiskMap_bootstrap
-      - plot.RiskMap_bootstrap
-      - plot_mcmc
-      - summarise_mcmc
-      - riskmap_conditions
-      - riskmap_progress
 
   - title: Prediction
+    desc: >
+      Predict the spatial process, the linear predictor and targets on the
+      scale of the response, at new locations or aggregated over areas.
     contents:
       - predict.RiskMap
       - print.RiskMap_prediction
-      - plot.RiskMap_prediction
       - to_table.RiskMap_prediction
       - assess_extrapolation
-      - plot.RiskMap_extrapolation
 
   - title: Assessment
+    desc: >
+      Assess the predictive performance of models by spatial cross-validation
+      and on simulated data.
     contents:
       - assess_prediction
       - print.RiskMap_cross_validation
       - summary.RiskMap_cross_validation
       - print.summary.RiskMap_cross_validation
-      - plot.RiskMap_cross_validation
       - assess_simulation
       - print.RiskMap_assess_simulation
       - summary.RiskMap_assess_simulation
       - print.summary.RiskMap_assess_simulation
 
   - title: Simulation
+    desc: >
+      Specify a model with known parameters and simulate data and spatial
+      surfaces from it.
     contents:
       - specify_glgpm
-      - print.RiskMap_simulation_model
       - simulate_glgpm
-      - plot.RiskMap_simulation
-      - plot.RiskMap_simulated_surface
       - simulated_data
       - simulated_values
+      - print.RiskMap_simulation_model
 
-  - title: Example datasets
+  - title: Plots
+    desc: >
+      Plot methods for the objects that RiskMap returns.
+    contents:
+      - plot.RiskMap_variogram
+      - plot.RiskMap_check
+      - plot.RiskMap_profile
+      - plot.RiskMap_bootstrap
+      - plot.RiskMap_prediction
+      - plot.RiskMap_extrapolation
+      - plot.RiskMap_cross_validation
+      - plot.RiskMap_simulation
+      - plot.RiskMap_simulated_surface
+
+  - title: Datasets
+    desc: >
+      Data used in the examples and in the book.
     contents:
       - abund_sma
       - anopheles
@@ -140,3 +213,21 @@ reference:
       - malnutrition
       - tz_covariates
       - tz_malaria
+
+  - title: Messages, conditions and progress
+    desc: >
+      Control what RiskMap reports while it works, and catch its errors and
+      warnings by class.
+    contents:
+      - riskmap_conditions
+      - riskmap_progress
+
+  - title: Building blocks
+    desc: >
+      Lower-level functions used by the fitting engine.
+    contents:
+      - matern_correlation
+      - matern_gradient_phi
+      - matern_hessian_phi
+      - maxim_integrand
+      - create_ids

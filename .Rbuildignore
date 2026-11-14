@@ -12,5 +12,8 @@ CLAUDE.md
 ^dev$
 ^CITATION\.cff$
 ^\.codex$
+^vignettes/articles$
+^docs$
+^pkgdown$
 ^tools/golden$
 ^notes$

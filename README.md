@@ -1,76 +1,116 @@
-# RiskMap
+
+<!-- README.md is generated from README.Rmd. Please edit that file. -->
+
+# RiskMap <img src="man/figures/logo.png" align="right" height="139" alt="RiskMap hex sticker" />
 
 <!-- badges: start -->
 
 [![CRAN
-version](https://www.r-pkg.org/badges/version/RiskMap)](https://cran.r-project.org/package=RiskMap)
+status](https://www.r-pkg.org/badges/version/RiskMap)](https://CRAN.R-project.org/package=RiskMap)
 [![R-CMD-check](https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/claudiofronterre/RiskMap/actions/workflows/R-CMD-check.yaml)
-[![CRAN
-downloads](https://cranlogs.r-pkg.org/badges/RiskMap)](https://cran.r-project.org/package=RiskMap)
-[![Total
-downloads](https://cranlogs.r-pkg.org/badges/grand-total/RiskMap)](https://cran.r-project.org/package=RiskMap)
-[![lifecycle](https://img.shields.io/badge/lifecycle-maturing-blue.svg)](https://lifecycle.r-lib.org/articles/stages.html)
 <!-- badges: end -->
 
-## Overview
+Model-based geostatistics in R. Fit spatial models to survey data,
+predict disease risk at locations and over areas, and quantify its
+uncertainty.
 
-`RiskMap` provides tools for model-based geostatistical analysis of
-continuous, binomial and Poisson outcomes.
+RiskMap implements generalised linear geostatistical models for
+Gaussian, binomial, Poisson and negative binomial outcomes, fitted by
+Monte Carlo maximum likelihood, or by exact maximum likelihood for
+Gaussian outcomes. It was developed for public health, for example to
+map the prevalence of a disease from surveys, and applies to any outcome
+measured at geo-referenced locations.
 
-- Fit spatial and spatio-temporal Gaussian process models.
-- Generate predictive surfaces and target summaries.
-- Run simulation-based diagnostics and validation workflows.
+With RiskMap you can
 
-The methodology is described in *Model-based Geostatistics for Global
-Public Health* by Diggle and Giorgi.
-
-## Start Here: MBG-R Book
-
-For a full applied guide to using `RiskMap` in real public health
-workflows, see the online book by **Emanuele Giorgi and Claudio
-Fronterre**:
-
-**Model-based geostatistics for global public health using R**
-<https://www.mbgr.org/>
+- choose a projection that keeps distances accurate, explore spatial
+  correlation, and download population counts from WorldPop,
+- fit models with `glgpm()` and check them with `check_fit()`,
+- predict with `predict()` at new locations or over areas, for targets
+  such as prevalence, the probability of exceeding a threshold or a
+  population-weighted average,
+- assess predictive performance by spatial cross-validation and on
+  simulated data.
 
 ## Installation
 
-Install the stable version from CRAN:
-
-``` r
-install.packages("RiskMap")
-```
-
-Install the development version from GitHub:
+RiskMap 2.0 is not yet on CRAN, so install it from GitHub. It contains
+C++ code, which needs
+[Rtools](https://cran.r-project.org/bin/windows/Rtools/) on Windows and
+the Xcode command line tools on macOS.
 
 ``` r
 # install.packages("remotes")
 remotes::install_github("claudiofronterre/RiskMap")
 ```
 
-## Quickstart
+`install.packages("RiskMap")` installs RiskMap 1.0.0 from CRAN, whose
+interface is different.
 
-A minimal linear Gaussian geostatistical model of the form
-$Y(x) = \beta_0 + S(x)$, where $S(x)$ is a spatial Gaussian process can
-be fitted with:
+## Get started
+
+The `liberia` data give, for 90 villages, the number of people examined
+for the nodules of river blindness and the number found with them. This
+example fits a binomial geostatistical model to the counts and maps the
+predicted prevalence across Liberia.
 
 ``` r
 library(RiskMap)
+library(sf)
+library(geobounds)
 
-data(italy_sim)
+# Load the survey data as points
+data(liberia)
+liberia <- st_as_sf(liberia,
+                    coords = c("long", "lat"),
+                    crs = 4326)
 
-fit <- glgpm(
-  formula = y ~ gp(x1, x2),
-  data = italy_sim,
-  family = "gaussian",
-  messages = FALSE
-)
+# Choose a projection and project the data and the border
+crs <- propose_crs(liberia)
+liberia <- st_transform(liberia, crs)
+border <- st_transform(gb_get_adm0("Liberia"), crs)
 
-summary(fit)
+# Fit a binomial model with a spatial Gaussian process
+fit <- glgpm(npos ~ gp(),
+             data = liberia,
+             family = "binomial",
+             denominator = ntest)
+
+# Predict prevalence on a 2.5 km grid and map it
+grid <- create_grid(border, spacing = 2.5)
+prediction <- predict(fit, newdata = grid)
+plot(prediction)
 ```
 
-## Learn More
+<img src="man/figures/README-example-1.png" alt="Map of the predicted prevalence of river blindness nodules across Liberia, from about 5% on the south coast to over 25% in the north-west."  />
 
-- MBG-R book: <https://www.mbgr.org/>
-- Package website: <https://claudiofronterre.github.io/RiskMap/>
-- Issue tracker: <https://github.com/claudiofronterre/RiskMap/issues>
+The boundary is from [geoBoundaries](https://www.geoboundaries.org/)
+(UNMIL and OCHA ROWCA), under CC BY 3.0 IGO.
+
+## Learning RiskMap
+
+The book [*Model-based geostatistics for global public health using
+R*](https://www.mbgr.org/), by Emanuele Giorgi and Claudio Fronterre,
+teaches model-based geostatistics with RiskMap through analyses of real
+data from public health, and is free to read online.
+
+## RiskMap 2.0
+
+RiskMap 2.0 is a redesign of version 1.0.0. Many functions have been
+renamed, merged or removed, and prediction at locations and over areas
+now goes through a single `predict()` method, so code written for 1.0.0
+needs changing. The
+[NEWS](https://claudiofronterre.github.io/RiskMap/news/) lists the main
+changes, with a table of the functions of 1.0.0 and their replacements.
+
+## Citation
+
+To cite RiskMap, please use
+
+Giorgi, E., Fronterre, C. and Smart, S. (2026). *RiskMap: Geostatistical
+Modeling of Spatially Referenced Data*. R package version 2.0.0.
+<https://claudiofronterre.github.io/RiskMap/>
+
+`citation("RiskMap")` in R gives the same reference with a BibTeX entry.
+Please report bugs and suggest features in the [issue
+tracker](https://github.com/claudiofronterre/RiskMap/issues).
