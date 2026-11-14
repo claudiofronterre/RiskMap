@@ -284,8 +284,9 @@ make_integrated_kernel <- function(sites, classes) {
 ##' A smooth floor at zero for the curvature of the global proposal's factors
 ##'
 ##' epsilon log(1 + exp(C / epsilon)), which equals C to within
-##' epsilon exp(-C / epsilon) for C well above epsilon and is positive
-##' everywhere. A floor with continuous derivatives keeps the fixed refits a
+##' epsilon exp(-C / epsilon) for C well above epsilon and is never negative
+##' (positive in exact arithmetic, zero in double precision for C below about
+##' -745 epsilon). A floor with continuous derivatives keeps the fixed refits a
 ##' smooth function of the parameters wherever a record's log-likelihood is
 ##' not concave, for integrated sites, where that cannot be ruled out
 ##' numerically, and, moved to the Gershgorin bound, for links not known to be

@@ -215,28 +215,35 @@ make_curvature_floor <- function(latent_map, precision, smooth = FALSE,
 ##'
 ##' Returns `refit`, the floor applied to each refit of the factors, and
 ##' `candidate`, the floor that the anchor iteration of `fit_global_proposal()`
-##' applies to the candidates of its acceleration. For integrated records both
-##' are the smooth floor at zero (`smooth_curvature_floor()`). For a link not on
-##' the family's `concave_links` (`make_family()`, property `smooth_floor`),
-##' whose curvature can be negative, `refit` is the smooth floor at the
-##' Gershgorin bound c (`make_curvature_floor()` with `smooth`), and `candidate`
-##' is pmax(C, c). The smooth floor keeps the proposal a smooth function of the
-##' curvatures, where a floor with a kink does not, and leaves a convex record
-##' the room the bound gives it. The bound itself, from the smallest eigenvalue
-##' of the prior precision, has a kink in the parameters where the smallest
-##' eigenvalues of two blocks of the prior cross, as with `re()` terms. A smooth
-##' floor moves a value it has already floored, so applied to the candidates
-##' too it would keep each of them above the fixed point by up to
-##' |c| log(2) / 10 and the iteration would not converge. Under a link of
-##' `concave_links` a curvature is negative only through rounding, and both are
-##' the floor at the Gershgorin bound, as before step 5b of #253.
-##' `smallest_prior` is passed to `make_curvature_bound()`.
+##' applies to the candidates of its acceleration. For integrated records
+##' `refit` is the smooth floor at zero (`smooth_curvature_floor()`) and
+##' `candidate` is pmax(C, 0). For a link not on the family's `concave_links`
+##' (`make_family()`, property `smooth_floor`), whose curvature can be
+##' negative, `refit` is the smooth floor at the Gershgorin bound c
+##' (`make_curvature_floor()` with `smooth`), and `candidate` is pmax(C, c).
+##' The smooth floor keeps the proposal a smooth function of the curvatures,
+##' where a floor with a kink does not, and leaves a convex record the room the
+##' bound gives it. The bound itself, from the smallest eigenvalue of the prior
+##' precision, has a kink in the parameters where the smallest eigenvalues of
+##' two blocks of the prior cross, as with `re()` terms. A smooth floor moves a
+##' value it has already floored, by eps log(1 + exp(-C / eps)) for a width
+##' eps, so applied to the candidates too it would keep each of them above the
+##' fixed point by up to eps log(2), 1e-3 log(2) at zero and |c| log(2) / 10 at
+##' the bound, and the iteration would not converge where a curvature is within
+##' about eps log(eps / 1e-8) of the floor, 0.0115 at zero. Integrated fits met
+##' this often, on every survey of Tanzania with a nugget for instance, and
+##' stopped at the limit of refits, so their candidates are floored with pmax()
+##' too (#253, after step 5b). The fixed point, and with it the proposal, is
+##' still the smooth floor's, whose values are not negative and which pmax()
+##' leaves as they are. Under a link of `concave_links` a curvature is negative only
+##' through rounding, and both are the floor at the Gershgorin bound, as before
+##' step 5b of #253. `smallest_prior` is passed to `make_curvature_bound()`.
 ##' @noRd
 choose_curvature_floor <- function(kernel, latent_map, precision,
                                    smallest_prior = NULL) {
   if (kernel$integrated) {
     return(list(refit = smooth_curvature_floor,
-                candidate = smooth_curvature_floor))
+                candidate = function(curvature) pmax(curvature, 0)))
   }
   bound <- make_curvature_bound(latent_map, precision, smallest_prior)
   pointwise <- make_curvature_floor(latent_map, precision, bound = bound)

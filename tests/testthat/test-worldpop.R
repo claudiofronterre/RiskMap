@@ -113,9 +113,30 @@ test_that("get_worldpop uses the both-sexes layers when available", {
                    c("lbr_t_00_2015_CN_1km.tif", "lbr_t_01_2015_CN_1km.tif"))
 })
 
+# A host can resolve and answer while every request to it fails, as when its
+# SSL certificate has expired, which skip_if_offline() does not see. Skip when
+# a WorldPop server can't be reached or answers with a server error. Any other
+# answer, such as a 404 for a dataset or file that has moved, lets the test
+# run and fail.
+skip_if_worldpop_unreachable <- function() {
+  for (url in c("https://hub.worldpop.org/rest/data",
+                "https://data.worldpop.org/GIS/")) {
+    status <- tryCatch(attr(curlGetHeaders(url, timeout = 30L), "status"),
+                       error = conditionMessage)
+    if (is.character(status)) {
+      reason <- trimws(gsub("\\s+", " ", status))
+      skip(paste0("Can't reach ", url, ". ", reason))
+    }
+    if (status >= 500L) {
+      skip(paste0(url, " answered with HTTP status ", status, "."))
+    }
+  }
+}
+
 test_that("get_worldpop downloads from WorldPop", {
   skip_on_cran()
   skip_if_offline("hub.worldpop.org")
+  skip_if_worldpop_unreachable()
   total <- get_worldpop("LBR", 2011, resolution = "1km",
                         dest_dir = withr::local_tempdir(), messages = FALSE)
   expect_gt(terra::global(total, "sum", na.rm = TRUE)[[1]], 3e6)
