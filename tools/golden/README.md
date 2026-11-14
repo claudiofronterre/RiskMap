@@ -59,7 +59,7 @@ tools/golden/hpc/push.sh <sha> <base-sha>
 timeout 120 ssh fronter2@wayland-2022.hec.lancaster.ac.uk '~/storage/riskmap-golden/src/<sha>/tools/golden/hpc/submit.sh <sha> <arm>'
 ```
 
-`submit.sh <commit> <arm> [<battery> [<tasks>]]` installs the commit unless its library exists and runs the battery after the install. `<battery>` is the commit whose `tools/golden` runs, by default the commit itself. For the base of a PR, give the PR's commit, so that both arms have the PR's tasks. `<tasks>` is `all` (the default, one job of about 20 minutes), `smoke`, a comma-separated list, or `groups` for an array over the lines of `groups.txt`. The install log should report six compiled source files.
+`submit.sh <commit> <arm> [<battery> [<tasks>]]` installs the commit unless its library exists and runs the battery after the install. Installs run one at a time (all are named `golden-install`, with `--dependency=singleton`), so two sessions that submit arms of one commit never write its library at once. `<battery>` is the commit whose `tools/golden` runs, by default the commit itself. For the base of a PR, give the PR's commit, so that both arms have the PR's tasks. `<tasks>` is `all` (the default, one job of about 20 minutes), `smoke`, a comma-separated list, or `groups` for an array over the lines of `groups.txt`, whose elements take only a few minutes each, so keep it for when the wait matters. The install log should report six compiled source files.
 
 Check the jobs with `squeue -u fronter2` and `sacct -j <job>`, and confirm the arm by counting its files rather than by the job's state. An element that timed out or failed can be resubmitted as it is, since tasks with an output are skipped. Bring the arm back with `rsync -a` into a folder outside the checkout and compare it there.
 
@@ -104,13 +104,13 @@ Arm a is the reference. `compare.R` takes about five seconds and needs only sf. 
 
 - **Tolerance**, `--tolerance=<k>`. For a PR that changes the optimiser's path or the random streams, so that every number may move. A task passes when
   - the statuses agree, and the values have the same structure (the same paths, classes and lengths, the same missing values),
-  - every fit the task recorded has the same outcome, certification and number of stages in both arms, and its estimates move by at most k standard errors of arm a, on the scale of `fit$estimate` (log variances and scale),
+  - every fit the task recorded has the same outcome, certification, number of stages and parameters in both arms, its estimates move by at most k standard errors of arm a (or of arm b for a parameter that has none in a), on the scale of `fit$estimate` (log variances and scale), its standard errors change by at most a fraction `--se-tolerance` and its log-likelihood by at most `--loglik-tolerance` (both k by default), and an estimate or standard error that is finite in one arm is finite in the other,
   - strings and the printed text agree once their numbers are masked,
   - and its other numbers differ only if one of its fits moved.
 
-  Parameters without a standard error (at a boundary, for example) and a change in the proposals of the stages are reported as notes. Downstream numbers that follow from a moved fit are counted, with the largest relative difference, but not judged. The fits of D tasks are recorded only by this `run.R`, so take both arms with it. State k in the PR and why it fits the change.
+  A parameter without a standard error in either arm (at a boundary, for example) and a change in the proposals of the stages are reported as notes, but a fit whose estimates move with no standard error at all fails. Declared paths are removed from the recorded fits too (at `/fit` for a fit task and `/base` for a downstream task), so a declared field alone does not make a fit count as moved. Downstream numbers that follow from a moved fit are counted, with the largest relative difference, but not judged. The fits of D tasks are recorded only by this `run.R`, so take both arms with it. State the tolerances in the PR and why they fit the change.
 
-- **`--common`** compares only the tasks both arms have, for an arm with new tasks against an older reference, and lists the others.
+- **`--allow-new`** lets arm b have tasks that arm a lacks, for an arm with new tasks against an older reference. They are listed and not compared. A task missing from arm b always fails, as does a comparison in which no task is in both arms.
 
 Each task gets one line, `identical`, `DIFFERENT value`, `DIFFERENT text`, `MISSING in a`, `STATUS done against failed`, `within tolerance` or `OUTSIDE tolerance`. A difference is followed by up to twelve paths, such as `/fit/estimate/phi` or `/fit@optimizer/mcml_outcome` for an attribute, each with its largest absolute and relative difference, and by the first differing line of each printed text. The environments of the two arms come next (commit, RiskMap, R, BLAS, hosts, and the packages whose versions differ), then the names removed as timings and a last line such as `Tasks: 57 compared, 0 differ, all identical: TRUE`.
 

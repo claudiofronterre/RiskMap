@@ -3,7 +3,7 @@
 # one output file per task in --out, written under a temporary name and renamed. Tasks whose output exists are
 # skipped, so a run can be resumed, and a failed task is saved as a record with its message. Run with one BLAS and
 # OpenMP thread, from an install of RiskMap in a library of its own, for example
-#   OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 Rscript --no-init-file tools/golden/run.R \
+#   OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 Rscript --vanilla tools/golden/run.R \
 #     --lib=<library> --out=<arms>/<arm> [--tasks=all | --tasks=F01_binomial,L01_low_binomial | --smoke] [--list]
 # The battery moved here from the MCML paper's repository (theory/family-object-golden.R), where it checked every PR of
 # RiskMap #253. Its first 57 tasks and their seeds are unchanged.
@@ -20,11 +20,10 @@ if (length(unknown_options)) stop("unknown options: ", paste(unknown_options, co
 script <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE)[1])
 here <- if (is.na(script)) file.path("tools", "golden") else dirname(normalizePath(script))
 
-# Fits reproduce bit for bit only with one BLAS and OpenMP thread, since threaded sums change their order.
+# Fits reproduce bit for bit only with one BLAS and OpenMP thread, since threaded sums change their order. The
+# variables are checked before any task runs. --vanilla matters, since a ~/.Renviron that sets them overrides the
+# shell's values.
 threads <- Sys.getenv(c("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS"))
-if (any(threads != "1") && !flag("any-threads")) {
-  stop("set OPENBLAS_NUM_THREADS=1 and OMP_NUM_THREADS=1 (or pass --any-threads to run anyway)")
-}
 if ("RhpcBLASctl" %in% loadedNamespaces()) {
   RhpcBLASctl::blas_set_num_threads(1)
   RhpcBLASctl::omp_set_num_threads(1)
@@ -83,8 +82,8 @@ fit_binomial <- function(formula, data, ..., seed) {
 quiet <- function(expr) suppressWarnings(suppressMessages(expr))
 texts <- function(...) lapply(list(...), function(x) capture.output(print(x)))
 
-# Every fit a task makes at its top level is kept in its record beside the value (record$fits), for the tolerance
-# mode of compare.R. The value itself is what the identity check compares.
+# The base fit of a downstream task is kept in its record beside the value (record$fits), for the tolerance mode of
+# compare.R, which finds the fit of a fit task in its value. The value itself is what the identity check compares.
 made_fits <- new.env()
 keep_fit <- function(name, fit) assign(name, fit, envir = made_fits)
 
@@ -154,9 +153,9 @@ fits <- list(
 )
 
 # What a fit task keeps: the object itself (compared after timings and closures are removed) and its printed text.
+# The fit is not kept again in record$fits, where compare.R does not look for it.
 run_fit <- function(make) {
   fit <- quiet(make())
-  keep_fit("fit", fit)
   check <- quiet(check_fit(fit, messages = FALSE))
   list(fit = fit, check = check,
        text = c(texts(fit, summary(fit), check), list(capture.output(print(summary(check))))))
@@ -317,6 +316,9 @@ smoke <- c("F01_binomial", "F02_binomial_nugget", "F04_binomial_re", "F05_poisso
            "L01_low_binomial", "L02_low_poisson", "L03_bounded_driver")
 
 if (flag("list")) { cat(names(tasks), sep = "\n"); quit(save = "no") }
+if (any(threads != "1") && !flag("any-threads")) {
+  stop("set OPENBLAS_NUM_THREADS=1 and OMP_NUM_THREADS=1 and use Rscript --vanilla (or pass --any-threads)")
+}
 out_dir <- option("out")
 if (is.null(out_dir)) stop("give the arm's output directory with --out=<dir>")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
