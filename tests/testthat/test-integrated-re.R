@@ -41,8 +41,9 @@ nested_by_quadrature <- function(y, m, x, vo, vi, nodes = 60L) {
 
 test_that("each level and location follows the rules of the plan", {
   # Location 1 has one household. Location 2 has three households alike in
-  # covariates. Location 3 has two households that differ in a covariate.
-  # Household 8 is recorded at locations 4 and 5.
+  # covariates. Location 3 has two households that differ in a covariate, so
+  # it is a location of groups (rule (c)). Household 8 is recorded at
+  # locations 4 and 5.
   location <- c(1L, 2L, 2L, 2L, 3L, 3L, 4L, 4L, 5L, 5L)
   household <- c(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 8L, 9L)
   x <- c(0, 1, 1, 1, 0, 1, 0, 0, 0, 0)
@@ -52,23 +53,26 @@ test_that("each level and location follows the rules of the plan", {
     ID_re = cbind(household = household), n_loc = 5L,
     allowed = c(nugget = TRUE, "re(household)" = TRUE)
   )
-  expect_identical(plan$nugget_integrated, c(TRUE, TRUE, FALSE, FALSE, FALSE))
-  expect_identical(plan$ID_coords, c(1L, 2L, 3L, 3L, 4L, 4L, 5L, 5L))
-  expect_identical(plan$kind, c(1L, 2L, 1L, 1L, 1L, 0L, 0L, 1L))
+  expect_identical(plan$nugget_integrated, c(TRUE, TRUE, TRUE, FALSE, FALSE))
+  expect_identical(plan$ID_coords, c(1L, 2L, 3L, 4L, 4L, 5L, 5L))
+  expect_identical(plan$kind, c(1L, 2L, 4L, 1L, 0L, 0L, 1L))
   expect_identical(plan$classes, matrix(c(TRUE, FALSE, TRUE, TRUE, TRUE, FALSE),
                                         3L, dimnames = list(NULL, c(
                                           "nugget", "re(household)"))))
-  expect_identical(plan$a, c(1L, 3L, 2L, 2L, 2L, 1L, 1L, 2L))
-  expect_identical(plan$b[2L], 2L)
+  expect_identical(plan$a, c(1L, 3L, 3L, 2L, 1L, 1L, 2L))
+  expect_identical(plan$b[2:3], c(2L, 2L))
   # The nested record sums its households and keeps their pairs.
   expect_identical(plan$y[2L], 3)
   expect_identical(plan$patterns[[2L]], list(y = c(0, 2, 1), m = c(5, 5, 5)))
   expect_identical(unname(plan$ID_re[2L, 1L]), NA_integer_)
   # Household 8 alone stays sampled, as the first random-effect column.
   expect_identical(plan$sampled_levels, 1L)
-  expect_identical(plan$latent_columns[, 2L], c(0L, 0L, 0L, 0L, 0L, 6L, 6L, 0L))
-  expect_identical(plan$inner, list(2L))
-  expect_identical(plan$counts$integrated, c(2L, 8L))
+  expect_identical(plan$latent_columns[, 2L], c(0L, 0L, 0L, 0L, 6L, 6L, 0L))
+  expect_identical(plan$inner, list(2:3))
+  expect_identical(plan$counts$integrated, c(3L, 8L))
+  # The location of groups keeps each household's record, relative to its
+  # first.
+  expect_identical(plan$groups[[3L]][[2L]]$D, cbind(0, x = 1))
   expect_identical(plan$counts$levels, c(5L, 9L))
   expect_identical(plan$integrated_terms, c("nugget", "re(household)"))
   # Without the households the nugget is integrated only where a location has
