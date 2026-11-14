@@ -251,8 +251,17 @@ separate streams derived from \code{seed}, so \code{glgpm(..., seed = fit$seed)}
 reproduces a fit exactly.
 
 The \code{start_pars} argument allows starting values to be supplied explicitly.
-Otherwise, binomial and Poisson models compare two automatic candidates
-and use the one with the better Laplace approximation.
+Otherwise a binomial, Poisson or negative binomial model starts from
+RiskMap's defaults, which are the coefficients of the regression without
+latent effects, \code{sigma2 = 1}, \code{phi} at the 10th percentile of the distances
+between locations, and 1 for an estimated nugget variance and for the
+variance of each \code{re()} term. A model with the canonical link and without
+\code{re()} terms compares them with the estimates of a Gaussian model fitted to
+the empirical link of the data (the empirical logit of a binomial model),
+with one observation per location, the totals of the location where it has
+several records, and starts from the one with the higher Laplace
+approximation of the likelihood. \code{\link[=summary.RiskMap]{summary.RiskMap()}} says which starting
+values a fit used and why.
 }
 \examples{
 

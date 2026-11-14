@@ -644,13 +644,19 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
 ##'   last stage), \code{certification_bank} (the effective draws and Pareto
 ##'   shape of the certification draws), \code{checks_to_review}, the number
-##'   of checks of \code{\link{check_fit}} that need a look, and
-##'   \code{starting_values}, where the starting values came from:
+##'   of checks of \code{\link{check_fit}} that need a look,
+##'   \code{starting_values}, where the starting values came from, either
 ##'   \code{"user"} (some or all given in \code{start_pars}, with RiskMap's
-##'   defaults for the others), \code{"current"} (RiskMap's
-##'   defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the
-##'   transformed data, which \code{glgpm()} uses when the Laplace
-##'   approximation of the likelihood prefers it to the defaults). \code{mcml} is
+##'   defaults for the others), \code{"current"} (RiskMap's defaults) or
+##'   \code{"transformed_gaussian"} (a Gaussian fit to the transformed data,
+##'   which \code{glgpm()} uses when the Laplace approximation of the
+##'   likelihood prefers it to the defaults), and \code{starting_reason},
+##'   why the defaults were kept other than by being preferred in that
+##'   comparison, such as \code{"re_terms"} when it is not made for a model
+##'   with \code{re()} terms, \code{"transformed_failed"} when the Gaussian fit
+##'   failed, or \code{"not_recorded"} for a fit saved by an earlier version
+##'   that did not record why (\code{NULL} when the comparison chose the
+##'   start). \code{mcml} is
 ##'   \code{NULL} for Gaussian models. The parameters of the family, such as
 ##'   the measurement error variance of a Gaussian model, are in
 ##'   \code{family_parameters}, a table of those that were estimated, and
@@ -949,7 +955,8 @@ format_fit_summary <- function(x) {
       out_bullets(c(stats::setNames(describe_mcml_certificate(x$mcml),
                                     certificate_symbol(x$mcml)),
                     out_as_bullets(
-                      describe_starting_values(x$mcml$starting_values), "i"
+                      describe_starting_values(x$mcml$starting_values,
+                                               x$mcml$starting_reason), "i"
                     ),
                     describe_checks_to_review(x$mcml$checks_to_review))))
   }
@@ -983,20 +990,51 @@ format_fit_summary <- function(x) {
     monte_carlo)
 }
 
-##' One sentence on where the starting values of a fit came from
+##' One sentence on where the starting values of a fit came from, and why
 ##'
-##' `NULL` for a fit that doesn't record it, such as one saved by an earlier
-##' version.
+##' `selected` and `reason` are those of `select_nongaussian_start()`.
+##' `NULL` for a fit that doesn't record them, such as one saved by an
+##' earlier version, which records no reason either.
 ##' @noRd
-describe_starting_values <- function(selected) {
+describe_starting_values <- function(selected, reason = NULL) {
   if (is.null(selected)) return(NULL)
-  switch(selected,
-         transformed_gaussian = paste("The starting values came from a",
-                                      "Gaussian fit to the transformed data."),
-         current = "The starting values were RiskMap's defaults.",
-         user = paste("The starting values were those given in",
-                      "`start_pars`, with RiskMap's defaults for any others."),
-         NULL)
+  transformed <- "a Gaussian fit to the transformed data"
+  defaults <- "The starting values were RiskMap's defaults"
+  laplace <- "the Laplace approximation of the likelihood"
+  switch(
+    selected,
+    user = paste("The starting values were those given in",
+                 "`start_pars`, with RiskMap's defaults for any others."),
+    transformed_gaussian = paste0("The starting values came from ",
+                                  transformed, ", which ", laplace,
+                                  " preferred to RiskMap's defaults."),
+    current = if (is.null(reason)) {
+      paste0(defaults, ", which ", laplace, " preferred to ", transformed,
+             ".")
+    } else {
+      paste0(defaults, switch(
+        reason,
+        re_terms = paste0(", which a model with `re()` terms takes without",
+                          " comparing them with ", transformed, "."),
+        link = paste0(", which a model with a link other than the",
+                      " canonical one takes without comparing them with ",
+                      transformed, "."),
+        transformed_failed = paste0(", because ", transformed, " failed."),
+        transformed_invalid = paste0(", because ", transformed,
+                                     " gave invalid values."),
+        comparison_failed = paste0(", because ", laplace,
+                                   " failed at one of the two starts."),
+        transformed_not_finite = paste0(", because ", laplace,
+                                        " was not finite at the start from ",
+                                        transformed, "."),
+        neither_finite = paste0(", because ", laplace,
+                                " was not finite at either start."),
+        not_recorded = ".",
+        "."
+      ))
+    },
+    NULL
+  )
 }
 
 ##' One sentence on the link of a summarised fit

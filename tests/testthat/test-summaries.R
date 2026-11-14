@@ -630,7 +630,8 @@ test_that("the summary of a fit says where its starting values came from", {
   expect_false(is.null(selected))
   expect_identical(fitted$mcml$starting_values, selected)
   expect_match(squish(capture.output(print(fitted))),
-               describe_starting_values(selected), fixed = TRUE)
+               describe_starting_values(selected, fitted$mcml$starting_reason),
+               fixed = TRUE)
   expect_null(summary(gaussian_model)$mcml)
   # A start given only in part counts as given, with defaults for the rest.
   given <- suppressWarnings(glgpm(
@@ -641,4 +642,54 @@ test_that("the summary of a fit says where its starting values came from", {
   expect_identical(summary(given)$mcml$starting_values, "user")
   expect_match(squish(capture.output(print(summary(given)))),
                describe_starting_values("user"), fixed = TRUE)
+})
+
+test_that("the summary of a fit says why it kept the default starting values", {
+  expect_match(describe_starting_values("transformed_gaussian"),
+               "came from a Gaussian fit to the transformed data, which the Laplace approximation of the likelihood preferred",
+               fixed = TRUE)
+  expect_match(describe_starting_values("current"),
+               "defaults, which the Laplace approximation of the likelihood preferred",
+               fixed = TRUE)
+  expect_match(describe_starting_values("current", "re_terms"),
+               "a model with `re()` terms takes without comparing them",
+               fixed = TRUE)
+  expect_match(describe_starting_values("current", "link"),
+               "a link other than the canonical one", fixed = TRUE)
+  expect_match(describe_starting_values("current", "transformed_failed"),
+               "because a Gaussian fit to the transformed data failed.",
+               fixed = TRUE)
+  # Every reason that select_nongaussian_start() records has its own words.
+  reasons <- c("re_terms", "link", "transformed_failed",
+               "transformed_invalid", "comparison_failed",
+               "transformed_not_finite", "neither_finite")
+  sentences <- vapply(reasons, describe_starting_values, character(1),
+                      selected = "current")
+  expect_identical(anyDuplicated(sentences), 0L)
+  expect_false(any(sentences == "The starting values were RiskMap's defaults."))
+  # A fit saved by an earlier version doesn't record them.
+  expect_null(describe_starting_values(NULL))
+  expect_identical(describe_starting_values("current", "not_recorded"),
+                   "The starting values were RiskMap's defaults.")
+  # One saved after the comparison was added but before reasons were, with
+  # re() terms, kept the defaults with a fallback reason and no other.
+  old <- binomial_model
+  attr(old, "starting_values") <- list(
+    selected = "current", current_laplace = -100, transformed_laplace = NA,
+    fallback_reason = "transformed Gaussian candidate had a non-finite Laplace value"
+  )
+  expect_identical(summary(old)$mcml$starting_reason, "not_recorded")
+  expect_match(squish(capture.output(print(summary(old)))),
+               "The starting values were RiskMap's defaults.", fixed = TRUE)
+  # One where the comparison chose the defaults records neither.
+  attr(old, "starting_values")$fallback_reason <- NULL
+  expect_null(summary(old)$mcml$starting_reason)
+
+  # The fixture has an re() term.
+  fitted <- summary(binomial_model)
+  expect_identical(fitted$mcml$starting_values, "current")
+  expect_identical(fitted$mcml$starting_reason, "re_terms")
+  expect_match(squish(capture.output(print(fitted))),
+               describe_starting_values("current", "re_terms"), fixed = TRUE)
+  expect_null(summary(gaussian_model)$mcml)
 })

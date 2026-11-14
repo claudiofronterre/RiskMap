@@ -304,7 +304,7 @@ test_that("a fit in longitude and latitude says where it is fitted once", {
                    "transformed_gaussian")
   expect_false(any(grepl("starting values", lonlat$messages, fixed = TRUE)))
   expect_match(squish(capture.output(print(summary(lonlat$value)))),
-               "The starting values came from a Gaussian fit to the transformed data.",
+               describe_starting_values("transformed_gaussian"),
                fixed = TRUE)
   # Projected data get the line on where the model is fitted instead.
   projected <- fit_to(binomial_data)

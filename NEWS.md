@@ -143,10 +143,14 @@ column.
 its starting values came from. Either they were given in `start_pars`, with
 RiskMap's defaults for any not given, or they were all RiskMap's defaults, or
 they came from a Gaussian fit to the transformed data, which `glgpm()` uses
-when the Laplace approximation of the likelihood prefers them. The choice is
-in the new element `starting_values` of `mcml`. `glgpm()` no longer says
-"Using transformed-Gaussian automatic starting values." when it makes that
-choice.
+when the Laplace approximation of the likelihood prefers them. When the
+defaults were kept without that comparison, as for a model with `re()` terms
+or a link other than the canonical one, or after the comparison failed, the
+line says why. Before, a failure was recorded only in
+`attr(fit, "starting_values")$fallback_reason`. The choice is in the new
+element `starting_values` of `mcml`, and the reason in `starting_reason`.
+`glgpm()` no longer says "Using transformed-Gaussian automatic starting
+values." when it makes that choice.
 - In a console with colours, the labels of rows that line up labels and
 values, such as the log-likelihood, the settings of a prediction or the
 evidence of `check_fit()`, are grey, so that the values stand out.
@@ -805,6 +809,30 @@ probit, or a link given in `invlink`, MCML started from them. In simulated
 surveys this made fits with a nugget up to ten times slower, and with
 `laplace_start = FALSE` it led one fit to a lower maximum. Fits of models with
 an intercept are unchanged.
+
+- `glgpm()` no longer compares automatic starting values for a binomial,
+Poisson or negative binomial model with `re()` terms, and starts it from
+RiskMap's defaults, as it always did in effect. The other start came from a
+Gaussian model of the transformed records whose covariance was over all the
+records, or over all the levels of the terms, and both starts were scored with
+a dense matrix over all the latent effects. On simulated surveys of eight
+households at each of 50, 100 and 150 locations, a fit took 77, 403 and 736
+seconds with the comparison and 24, 35 and 12 seconds without it. On larger
+surveys the comparison could ask for gigabytes at once, so whether a fit
+compared the starts or fell back to the defaults depended on the memory
+available. It also could never choose the other start, because the Laplace
+approximation at that start carried the name of the `re()` term and was read
+as missing. Fits of models with `re()` terms are unchanged.
+
+- Without `re()` terms, the Gaussian model that gives the other automatic
+start is fitted to one observation per location, the totals of the location
+where it has several records, with the covariates averaged over its records.
+Its covariance was over all the records, so at 1,000 locations with three
+records each the comparison took 407 seconds against 80 for the fit, and now
+takes 32. A survey with one record per location is fitted exactly as before.
+With several records at a location the other start changes, and the empirical
+logit of a total follows the proportion at the location, where that of a
+binary record is always log(3) or -log(3).
 
 - Certified MCML now builds every global proposal of a stage, other than the one
 at its start, from three plain refits of the factors found at the start, in place

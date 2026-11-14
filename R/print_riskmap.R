@@ -21,7 +21,8 @@
 ##' (`suggest_integration`, `suggests_integration()`), the number of checks
 ##' of `check_fit()` that need a look (`checks_to_review`), and where the
 ##' starting values came from (`starting_values`, `NULL` for a fit saved
-##' before it was recorded).
+##' before it was recorded) and why (`starting_reason`,
+##' `describe_starting_values()`).
 ##' @noRd
 summarise_mcml_fit <- function(object) {
   optimizer <- attr(object, "optimizer")
@@ -45,10 +46,23 @@ summarise_mcml_fit <- function(object) {
     noise_forms = optimizer$mcml_noise_forms,
     refit_change = last$refit_change %||% NA_real_,
     suggest_integration = suggests_integration(object, optimizer),
-    starting_values = attr(object, "starting_values")$selected
+    starting_values = attr(object, "starting_values")$selected,
+    starting_reason = starting_reason(attr(object, "starting_values"))
   )
   mcml$checks_to_review <- sum(list_fit_checks(object, mcml)$status != "OK")
   mcml
+}
+
+##' Why a fit kept the default starting values, from its diagnostics
+##'
+##' The `reason` that `select_nongaussian_start()` records, or
+##' `"not_recorded"` for a fit saved before reasons were recorded that kept
+##' the defaults with a `fallback_reason`, as every fit with `re()` terms did.
+##' NULL when there is no reason, as when the comparison chose the start.
+##' @noRd
+starting_reason <- function(diagnostics) {
+  if (!is.null(diagnostics$reason)) return(diagnostics$reason)
+  if (!is.null(diagnostics$fallback_reason)) "not_recorded"
 }
 
 ##' Whether `check_fit()` suggests integrating the nugget out

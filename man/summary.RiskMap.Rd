@@ -25,13 +25,19 @@ the Newton correction of the last stage did not converge),
 \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
 last stage), \code{certification_bank} (the effective draws and Pareto
 shape of the certification draws), \code{checks_to_review}, the number
-of checks of \code{\link{check_fit}} that need a look, and
-\code{starting_values}, where the starting values came from:
+of checks of \code{\link{check_fit}} that need a look,
+\code{starting_values}, where the starting values came from, either
 \code{"user"} (some or all given in \code{start_pars}, with RiskMap's
-defaults for the others), \code{"current"} (RiskMap's
-defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the
-transformed data, which \code{glgpm()} uses when the Laplace
-approximation of the likelihood prefers it to the defaults). \code{mcml} is
+defaults for the others), \code{"current"} (RiskMap's defaults) or
+\code{"transformed_gaussian"} (a Gaussian fit to the transformed data,
+which \code{glgpm()} uses when the Laplace approximation of the
+likelihood prefers it to the defaults), and \code{starting_reason},
+why the defaults were kept other than by being preferred in that
+comparison, such as \code{"re_terms"} when it is not made for a model
+with \code{re()} terms, \code{"transformed_failed"} when the Gaussian fit
+failed, or \code{"not_recorded"} for a fit saved by an earlier version
+that did not record why (\code{NULL} when the comparison chose the
+start). \code{mcml} is
 \code{NULL} for Gaussian models. The parameters of the family, such as
 the measurement error variance of a Gaussian model, are in
 \code{family_parameters}, a table of those that were estimated, and
