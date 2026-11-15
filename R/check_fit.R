@@ -217,7 +217,9 @@ run_fit_checks <- function(object, mcml, extras = character()) {
   profile <- describe_profile_pointer("profile" %in% extras)
   rows <- if (is.null(mcml)) {
     list(fit_check_row("Monte Carlo accuracy", "OK", if (isTRUE(optimizer$every_parameter_held)) {
-      "Every parameter is held by `fixed_pars`, so nothing is estimated and there is no Monte Carlo error to check."
+      paste0("Every parameter is held by `fixed_pars`, so nothing is estimated. ",
+             "The log-likelihood is a Monte Carlo estimate from one bank of ",
+             optimizer$mcml_validation_budget, " samples, whose error is not assessed.")
     } else {
       "A Gaussian fit has no Monte Carlo error."
     }))

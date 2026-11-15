@@ -1077,7 +1077,8 @@ is_valid_fit <- function(fit) {
 ##' "no positives" or "only positives" when every observation is of that kind
 ##' and NULL otherwise.
 ##' @noRd
-find_separation <- function(D, y, units_m, family, tolerance = 1e-9) {
+find_separation <- function(D, y, units_m, family, held = integer(),
+                            tolerance = 1e-9) {
   D <- as.matrix(D)
   if (!ncol(D)) return(NULL)
   informative <- units_m > 0
@@ -1102,13 +1103,13 @@ find_separation <- function(D, y, units_m, family, tolerance = 1e-9) {
                                                  lengths[keep], tolerance)
     if (is.null(combination)) NULL else drop(basis %*% combination)
   }
-  direction <- search(integer())
+  direction <- search(held)
   if (is.null(direction)) return(NULL)
   constant <- apply(D, 2L, function(column) all(column == column[1L]))
   # Separating directions form a cone, and one that changes fewer
   # covariates names the cause more plainly.
-  fixed <- integer()
-  for (column in setdiff(order(abs(direction)), which(constant))) {
+  fixed <- held
+  for (column in setdiff(order(abs(direction)), c(which(constant), held))) {
     reduced <- search(c(fixed, column))
     if (!is.null(reduced)) {
       direction <- reduced

@@ -1641,14 +1641,20 @@ glgpm_nong_adaptive <- function(
   # needs both free.
   spatial_held <- any(c(engine$layout$index$sigma2,
                         engine$layout$index$phi) %in% held)
+  # Held coefficients, as columns of the design.
+  held_coefficients <- which(engine$layout$index$beta %in% held)
   if (isTRUE(control_mcml$check_maxima %||% TRUE) && !spatial_held) {
     dispersed <- make_dispersed_starts(engine$layout, distances)
     # The screen of short scales and the exact alarms need the likelihood
     # with independent location effects, computed exactly without
     # unstructured random effects. A custom link supplies its own terms.
     # They also take the records at one value of the family's parameters.
+    # The likelihood with independent location effects is maximised over
+    # every coefficient, so it bounds the model without held coefficients.
     if (estimating) {
       dispersed$screen_unavailable <- "an estimated parameter of the family"
+    } else if (length(held_coefficients)) {
+      dispersed$screen_unavailable <- "held coefficients"
     } else if (is.null(ID_re)) {
       dispersed$screen <- make_short_scale_screen(
         engine,
@@ -1684,7 +1690,7 @@ glgpm_nong_adaptive <- function(
     ),
     coefficient_index = setdiff(engine$layout$index$beta, held),
     separation = find_separation(D, y, units_m %||% rep(1, length(y)),
-                                 family),
+                                 family, held = held_coefficients),
     messages = messages, held_index = held
   )
   if (identical(fit$outcome, "no valid fit")) {

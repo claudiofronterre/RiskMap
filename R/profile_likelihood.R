@@ -374,8 +374,11 @@ profile_nugget <- function(fitted, parameters) {
   sigma2 <- match("sigma2", names(estimate))
   if (!is.na(nugget)) {
     estimate[nugget] <- estimate[nugget] + estimate[["sigma2"]]
-    variances[nugget] <- variances[nugget] + variances[["sigma2"]] +
-      2 * fitted$covariance["nu2", "sigma2"]
+    # A held spatial variance is known and adds no variance.
+    if (!(sigma2 %in% held_index(parameters))) {
+      variances[nugget] <- variances[nugget] + variances[["sigma2"]] +
+        2 * fitted$covariance["nu2", "sigma2"]
+    }
     names(estimate)[nugget] <- "tau2"
   }
   list(

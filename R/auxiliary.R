@@ -705,9 +705,12 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
   ## NA row and column, for example a variance estimated at zero) is left
   ## out, with any new parameter that depends on it, so that the missing
   ## values do not spread to the other parameters.
+  ## Held parameters are known, so a new parameter that depends on one, the
+  ## nugget's variance with sigma2 held, takes no variance from it.
   covariance <- object$covariance
-  free <- !is.na(diag(covariance))
-  computable <- rowSums(J[, !free, drop = FALSE] != 0) == 0
+  held <- seq_len(ncol(J)) %in% held_index(parameters)
+  free <- !is.na(diag(covariance)) & !held
+  computable <- rowSums(J[, !free & !held, drop = FALSE] != 0) == 0 & !held
   covariance_new <- matrix(NA_real_, length(nm), length(nm),
                            dimnames = list(nm, nm))
   covariance_new[computable, computable] <-

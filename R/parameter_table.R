@@ -933,7 +933,7 @@ glgpm_parameters <- function(formula, data, family, fixed_pars = NULL,
     colnames(design), fix_tau2 = holds$fix_tau2, exact = model$exact,
     fix_var_me = holds$fix_var_me, estimated_family = holds$estimated_family,
     family_parameters = holds$family_parameters, re_names = re_names,
-    distance_units = distance_units
+    distance_units = distance_units, pinned = holds$pinned
   )
   rows <- parameters$rows
   # A model without a nugget holds it at zero in the table, which is not a

@@ -374,7 +374,63 @@ test_that("check_fit() says that a fit holding every parameter estimates nothing
   expect_identical(row$status, "OK")
   expect_match(row$finding, "Every parameter is held by `fixed_pars`",
                fixed = TRUE)
+  # The log-likelihood is still a Monte Carlo estimate.
+  expect_match(row$finding, "Monte Carlo estimate from one bank of", fixed = TRUE)
   gaussian <- check_fit(gaussian_model, messages = FALSE)$checks
   expect_identical(gaussian$finding[gaussian$check == "Monte Carlo accuracy"],
                    "A Gaussian fit has no Monte Carlo error.")
+})
+
+test_that("held coefficients are fixed directions in the search for separation", {
+  x <- rep(c(0, 1), each = 20)
+  design <- cbind("(Intercept)" = 1, x = x)
+  y <- ifelse(x == 1, 0, rep(c(3, 5, 4, 6), 10))
+  trials <- rep(10, 40)
+  expect_identical(find_separation(design, y, trials, "binomial")$coefficients,
+                   2L)
+  expect_null(find_separation(design, y, trials, "binomial", held = 2L))
+  # With no positives, a held intercept and a covariate of both signs leave
+  # a finite maximum.
+  centred <- cbind("(Intercept)" = 1, z = seq(-1, 1, length.out = 40))
+  expect_identical(find_separation(centred, 0 * y, trials,
+                                   "binomial")$everywhere, "no positives")
+  expect_null(find_separation(centred, 0 * y, trials, "binomial", held = 1L))
+})
+
+test_that("the screen of short scales doesn't run with held coefficients", {
+  fit <- suppressWarnings(glgpm(
+    y ~ cov + gp(), data = binomial_data, family = "binomial",
+    denominator = denominator, control_mcmc = control_mcmc,
+    seed = fixture_seed, control_mcml = fixture_control_mcml,
+    return_samples = FALSE, messages = FALSE,
+    fixed_pars = list(beta = c(cov = 0))
+  ))
+  record <- attr(fit, "optimizer")$mcml_maxima_screen
+  expect_identical(record$gate, "unavailable")
+  expect_identical(record$reason, "held coefficients")
+  expect_null(record$alarm)
+  expect_true(is.finite(summary(fit)$mcml$certificate))
+})
+
+test_that("glgpm_parameters() shows the parameters that fixed_pars holds", {
+  parameters <- glgpm_parameters(y ~ cov + gp(), data = binomial_data,
+                                 family = "binomial",
+                                 fixed_pars = list(phi = 20,
+                                                   beta = c(cov = 0)))
+  expect_identical(parameters$held[parameters$name == "phi"], 20)
+  expect_identical(parameters$held[parameters$element %in% "cov"], 0)
+  expect_output(print(parameters),
+                "list(beta = c(\"(Intercept)\" = ), sigma2 = )", fixed = TRUE)
+})
+
+test_that("a held spatial variance leaves the nugget its standard error", {
+  data <- replicated_gaussian()
+  fit <- glgpm(y ~ cov + gp(nugget = TRUE), data = data, family = "gaussian",
+               fixed_pars = list(sigma2 = 0.5), messages = FALSE)
+  # log tau2 = nu2 + log sigma2, and sigma2 is known.
+  limits <- summary(fit)$sp["Variance of the nugget", ]
+  expect_true(all(is.finite(limits)))
+  profiled <- profile_nugget(fit, fit_parameter_table(fit))
+  expect_equal(profiled$standard_errors[["tau2"]],
+               sqrt(fit$covariance["nu2", "nu2"]), tolerance = 1e-12)
 })

@@ -898,12 +898,20 @@ information, the certificate and the radius check leave out, as they leave out a
 variance held at zero. Their standard errors are NA. A held coefficient enters
 the linear predictor as a known term, and a fit that holds its intercept
 standardises its covariates without centring, so that every held coefficient is
-one coordinate. The check for other maxima is off when the spatial variance or
-scale is held. Profiles hold the held parameters, and `profile()` refuses one.
+one coordinate. The search for separation keeps held coefficients fixed, so a
+held coefficient can resolve a separation. The check for other maxima is off
+when the spatial variance or scale is held, and its screen of short scales and
+exact alarm, whose likelihood with independent location effects is maximised
+over every coefficient, are off when a coefficient is held. Held parameters add
+no variance to the nugget's, whose standard error is that of its ratio to the
+spatial variance when that variance is held. Profiles hold the held parameters,
+and `profile()` refuses one.
 With every parameter held, a Gaussian fit gives its exact log-likelihood at the
 values, and a binomial, Poisson or negative binomial fit its Monte Carlo
 log-likelihood on one sample of `validation_samples` draws from the global
 proposal at the values, with conditional samples there and no certificate.
+`check_fit()` says that nothing is estimated and that this log-likelihood's
+Monte Carlo error is not assessed. `glgpm_parameters()` shows the held values.
 `summary()` and `print()` say which parameters are held, and the AIC of a
 Gaussian fit counts the estimated ones.
 
