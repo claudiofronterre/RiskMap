@@ -95,7 +95,8 @@
 ##' @param messages Logical, whether to report on the profiles, with a
 ##'   progress bar as described in [riskmap_progress].
 ##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
-##' @param ... Not used.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return An object of class `RiskMap_profile`: a list with the marginal
 ##'   profiles (`marginal`), the joint profiles (`joint`), the intervals
 ##'   (`intervals`), the estimate and the maximum of the log-likelihood on the
@@ -131,6 +132,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             messages = getOption("RiskMap.messages", TRUE),
                             ...) {
   check_class(fitted, "RiskMap")
+  check_dots_unused(...)
   traits <- fit_traits(fitted)
   exact <- isTRUE(traits$exact)
   if (!exact && (is.null(traits) || is.null(fitted$mcml_history))) {
@@ -973,6 +975,7 @@ profile_intervals <- function(problem, marginal, level) {
 
 ##' @export
 print.RiskMap_profile <- function(x, ...) {
+  check_dots_unused(...)
   out_print(format_profile(x))
   invisible(x)
 }

@@ -16,7 +16,8 @@ unexplained by the data, on a scale from 0 to 1), \code{"covariate_novelty"}
 or \code{"covariate_leverage"}. Several indicators are arranged in two
 columns.}
 
-\item{...}{Not used.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 A \code{ggplot} object, to which further layers can be added. When

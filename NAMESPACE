@@ -85,7 +85,6 @@ importFrom(Matrix,
 importFrom(Rcpp,evalCpp)
 importFrom(graphics,points)
 importFrom(grid,unit)
-importFrom(gridExtra,grid.arrange)
 importFrom(knitr,kable)
 importFrom(numDeriv,
   grad,

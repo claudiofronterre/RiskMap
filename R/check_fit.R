@@ -941,12 +941,14 @@ summarise_estimate_moves <- function(object, history) {
 ##'   but not computed are listed with the reason. [summary.RiskMap_check()]
 ##'   gives each finding in full with the numbers behind it.
 ##' @param x An object of class `"RiskMap_check"`.
-##' @param ... other parameters.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return Invisibly returns `x`.
 ##' @method print RiskMap_check
 ##' @export
 print.RiskMap_check <- function(x, ...) {
   check_class(x, "RiskMap_check")
+  check_dots_unused(...)
   out_print(format_checks(x))
   invisible(x)
 }
@@ -1039,7 +1041,8 @@ format_checks <- function(x) {
 ##'   with nothing to show gives a message saying why, and which extra check
 ##'   of [check_fit()] would compute it. If no panel has anything to show,
 ##'   `plot()` stops with those messages.
-##' @param ... other parameters.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return A `ggplot` object when one panel is drawn, and otherwise a
 ##'   `patchwork` object that arranges the panels in two columns. Nothing is
 ##'   drawn until the object is printed, so it can be saved or changed first.
@@ -1060,6 +1063,7 @@ format_checks <- function(x) {
 ##' @export
 plot.RiskMap_check <- function(x, which = NULL, ...) {
   check_class(x, "RiskMap_check")
+  check_dots_unused(...)
   panel_names <- c("certificate", "effective_draws", "pareto_k", "moves",
                    "held_variances", "screen", "radius")
   if (!is.null(which)) {

@@ -12,7 +12,8 @@
 \item{level}{Probability covered by the intervals. Defaults to the level
 of the bootstrap.}
 
-\item{...}{Not used.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 An object of class \code{summary.RiskMap_bootstrap}, a list with the

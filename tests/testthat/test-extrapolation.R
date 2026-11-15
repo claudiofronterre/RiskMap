@@ -107,6 +107,9 @@ test_that("extrapolation maps and argument checks", {
   expect_length(c(both$patches$plots, list(both)), 2L)
   expect_identical(both$patches$layout$ncol, 2L)
   expect_input_error(plot(extrapolation, indicator = "distance"), "indicator")
+  # An argument that plot() doesn't use stops instead of being ignored.
+  expect_input_error(plot(extrapolation, indicators = "extrapolation"),
+                     "indicators", "Check the spelling")
   expect_input_error(assess_extrapolation(gaussian_model, grid,
                                           spatial_threshold = 2),
                      "spatial_threshold")
@@ -291,9 +294,14 @@ test_that("the print of indicators states the classes and the thresholds", {
            format_extrapolation_share, character(1)),
     c("50%", "81.8%", "99.98%", "99.99999%", "100%")
   )
-  # A subset without the classes prints as an sf object.
+  # A subset without the classes prints as an sf object, with the arguments
+  # of the sf method.
   expect_output(print(extrapolation[1:2, "covariates_outside"]),
                 "Simple feature collection")
+  expect_output(print(extrapolation[, "covariates_outside"], n = 2),
+                "First 2 features")
+  # Otherwise an argument that print() doesn't use stops.
+  expect_input_error(print(extrapolation, n = 2), "n")
   expect_input_error(assess_extrapolation(binomial_model, binomial_data,
                                           spatial_threshold = 1),
                      "spatial_threshold")

@@ -37,7 +37,8 @@ every sampled location.}
 the locations in each class and states the thresholds of the classes,
 returning \code{x} invisibly.}
 
-\item{...}{Not used.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 An \code{sf} object of class \code{RiskMap_extrapolation} with the rows and

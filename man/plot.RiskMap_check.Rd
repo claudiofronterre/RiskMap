@@ -18,7 +18,8 @@ with nothing to show gives a message saying why, and which extra check
 of \code{\link[=check_fit]{check_fit()}} would compute it. If no panel has anything to show,
 \code{plot()} stops with those messages.}
 
-\item{...}{other parameters.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 A \code{ggplot} object when one panel is drawn, and otherwise a

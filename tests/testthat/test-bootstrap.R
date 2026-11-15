@@ -140,6 +140,12 @@ test_that("summary computes percentile and bias-corrected intervals", {
   # An object with only these fields, as saved by earlier versions, is drawn.
   expect_s3_class(plot(boot), "patchwork")
   expect_s3_class(plot(boot, parameters = "phi", log_scale = TRUE), "ggplot")
+  # An argument that the methods don't use stops instead of being ignored.
+  expect_input_error(summary(boot, levels = 0.5), "levels", "Check the spelling")
+  expect_input_error(print(boot, digits = 3), "digits")
+  expect_input_error(print(summary(boot), digits = 3), "digits")
+  expect_input_error(plot(boot, colour = "red"), "colour")
+  expect_input_error(plot(boot, "phi", 30, FALSE, "extra"), "...")
 })
 
 test_that("plot draws one histogram per parameter", {

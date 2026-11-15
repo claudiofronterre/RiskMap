@@ -420,6 +420,19 @@ estimate, the profile interval and the Wald interval on separate lines, so
 that it is no longer cut off in panels half or a third of a page wide, and
 the two entries of the ridge legend of a joint profile are stacked.
 
+- `plot()` of a profile returns one ggplot for one panel and one patchwork
+object otherwise, and draws nothing, so the figure can be saved or changed
+before it is printed. It drew the panels with `gridExtra::grid.arrange()`, or
+printed the corner plot, and returned the list of panels invisibly. The panels
+and the corner plot are unchanged, and patchwork arranges any other set of
+panels in up to three columns. Asking for no panel stops.
+
+- `profile()`, the print of a profile and its `plot()`, `summary()`, `print()`
+and `plot()` of a parametric bootstrap and the print of its summary, and
+`print()`, `summary()` and `plot()` of the checks of `check_fit()` and the
+print of their summary stop on an argument they don't use instead of ignoring
+it (`check_dots_unused()`).
+
 - Non-Gaussian models are now fitted by certified Monte Carlo maximum
 likelihood. The estimated likelihood is maximised on a fitting sample of 1,000
 draws, the estimate is corrected by one Newton step with the score from an
@@ -1475,6 +1488,9 @@ methods whose `...` is unused can share). The error names the argument, says
 to use `joint` for `type`, which `predict(type = "response")` would otherwise
 have ignored silently, and `standardise` for `standardize`, and otherwise asks
 to check the spelling.
+- `print()` and `plot()` of the indicators of `assess_extrapolation()` stop on
+an argument they don't use. A subset that lost the classes or the threshold
+still prints as an sf object and passes its arguments, such as `n`, to sf.
 
 ## Cross validation
 
@@ -1665,3 +1681,6 @@ from WorldPop. RiskMap needs rlang 1.0.0 or later, whose
 - dplyr is no longer imported, and spatialEco and spatialsample move to
 Suggests, which leaves 17 packages in Imports, parallel among them. dplyr stays
 in Suggests for the tests of grids with dplyr verbs.
+- gridExtra is no longer imported, since patchwork arranges the panels of
+`plot()` of a profile, which leaves 16 packages in Imports, parallel among
+them.

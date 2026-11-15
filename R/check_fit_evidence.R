@@ -213,7 +213,8 @@ tabulate_maxima_check <- function(check, units) {
 ##'   estimate, and for a fit with the spatial variance at zero and a nugget
 ##'   the exact bound by scale and spatial share.
 ##' @param object An object of class `"RiskMap_check"`.
-##' @param ... other parameters.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return An object of class `"summary.RiskMap_check"`, a list with the
 ##'   `checks` table, the `results` of the default and extra checks in the
 ##'   order of the table, the `stages` table with the column `largest_move`,
@@ -234,6 +235,7 @@ tabulate_maxima_check <- function(check, units) {
 ##' @export
 summary.RiskMap_check <- function(object, ...) {
   check_class(object, "RiskMap_check")
+  check_dots_unused(...)
   results <- c(object$results, object$extras)
   checks <- vapply(results, function(result) result$row$check, character(1L))
   results <- results[match(object$checks$check, checks)]
@@ -266,12 +268,14 @@ add_largest_moves <- function(stages, moves) {
 ##' @description Print method for objects of class `"summary.RiskMap_check"`
 ##'   from [summary.RiskMap_check()].
 ##' @param x An object of class `"summary.RiskMap_check"`.
-##' @param ... other parameters.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return Invisibly returns `x`.
 ##' @method print summary.RiskMap_check
 ##' @export
 print.summary.RiskMap_check <- function(x, ...) {
   check_class(x, "summary.RiskMap_check")
+  check_dots_unused(...)
   out_print(format_check_evidence(x))
   invisible(x)
 }

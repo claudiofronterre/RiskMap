@@ -11,7 +11,6 @@
 ##' @importFrom numDeriv grad hessian
 ##' @importFrom Rcpp evalCpp
 ##' @importFrom rlang sym
-##' @importFrom gridExtra grid.arrange
 ##' @importFrom tibble as_tibble
 ##' @useDynLib RiskMap, .registration = TRUE
 NULL

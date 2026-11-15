@@ -9,7 +9,8 @@
 \arguments{
 \item{x}{An object of class \code{"summary.RiskMap_check"}.}
 
-\item{...}{other parameters.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 Invisibly returns \code{x}.

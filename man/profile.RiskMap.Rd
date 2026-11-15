@@ -59,7 +59,8 @@ rounding.}
 progress bar as described in \link{riskmap_progress}.
 Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 
-\item{...}{Not used.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 An object of class \code{RiskMap_profile}: a list with the marginal
