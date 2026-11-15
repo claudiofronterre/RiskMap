@@ -6,24 +6,24 @@ Evaluates models using joint data and surface simulations.
 
 ``` r
 assess_simulation(
-  obj_sim,
+  simulation,
   models,
+  spatial_scale,
+  target = identity,
+  aggregate = NULL,
+  boundaries = NULL,
+  label = NULL,
+  objective = c("mse", "classify"),
+  breaks = NULL,
   control_mcmc = set_control_mcmc(),
   seed = NULL,
-  spatial_scale,
-  messages = getOption("RiskMap.messages", TRUE),
-  target = identity,
-  area_summary = NULL,
-  boundaries = NULL,
-  col_names = NULL,
-  pred_objective = c("mse", "classify"),
-  categories = NULL
+  messages = getOption("RiskMap.messages", TRUE)
 )
 ```
 
 ## Arguments
 
-- obj_sim:
+- simulation:
 
   Output from
   [`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md)
@@ -41,32 +41,12 @@ assess_simulation(
   every simulated dataset; its estimated parameter values are not
   reused.
 
-- control_mcmc:
-
-  A control object for MCMC sampling, created with
-  [`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md).
-  Default is
-  [`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md).
-
-- seed:
-
-  Optional non-negative integer that makes the assessment reproducible;
-  see Details. The caller's random number state is restored on exit.
-  When `NULL` (the default), the seeds of the simulations are drawn from
-  the session's random number generator.
-
 - spatial_scale:
 
-  The scale(s) at which predictions are assessed: `"grid"`, `"area"`, or
-  `c("grid", "area")` to compute both from a single fit-and-predict pass
-  over the simulations.
-
-- messages:
-
-  Logical, whether to report on the assessment, with a progress bar as
-  described in
-  [riskmap_progress](https://claudiofronterre.github.io/RiskMap/reference/riskmap_progress.md).
-  Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
+  The scale(s) at which predictions are assessed: `"location"`, the
+  locations of the prediction grid, `"area"`, or `c("location", "area")`
+  to compute both from a single fit-and-predict pass over the
+  simulations.
 
 - target:
 
@@ -82,44 +62,70 @@ assess_simulation(
   height-for-age z-scores with residual standard deviation `sd`. See
   Details.
 
-- area_summary:
+- aggregate:
 
-  A function that combines a numeric vector of grid-cell targets within
-  one area and returns one finite numeric value, such as
-  [`base::mean()`](https://rdrr.io/r/base/mean.html) or
-  [`base::sum()`](https://rdrr.io/r/base/sum.html). Required only when
-  `spatial_scale` includes `"area"`.
+  How the targets at the locations within an area are combined into the
+  target of the area, as in
+  [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md):
+  one of `"mean"`, `"median"`, `"sum"`, `"min"` and `"max"`, or a
+  function that receives a location-by-draw matrix and the location
+  weights and returns one number for each draw. Locations have equal
+  weights. Required only when `spatial_scale` includes `"area"`.
 
 - boundaries:
 
   An `sf` object containing only POLYGON or MULTIPOLYGON geometries,
   required if `spatial_scale` includes `"area"`.
 
-- col_names:
+- label:
 
-  Column name in `boundaries` containing unique region names. If `NULL`,
-  defaults to `"region"`.
+  The name of the column of `boundaries` that holds distinct names of
+  the areas. If `NULL`, the areas are named `"reg1"`, `"reg2"` and so
+  on, in a column `"region"`.
 
-- pred_objective:
+- objective:
 
   A character vector specifying objectives, either `"mse"`,
   `"classify"`, or both.
 
-- categories:
+- breaks:
 
-  A numeric vector of thresholds defining categories for classification.
-  Required if `pred_objective = "classify"`.
+  A numeric vector of at least three increasing class boundaries for
+  classification, as in
+  [`plot.RiskMap_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_prediction.md).
+  Required if `objective` includes `"classify"`.
+
+- control_mcmc:
+
+  A control object for MCMC sampling, created with
+  [`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md).
+  Default is
+  [`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md).
+
+- seed:
+
+  Optional non-negative integer that makes the assessment reproducible;
+  see Details. The caller's random number state is restored on exit.
+  When `NULL` (the default), the seeds of the simulations are drawn from
+  the session's random number generator.
+
+- messages:
+
+  Logical, whether to report on the assessment, with a progress bar as
+  described in
+  [riskmap_progress](https://claudiofronterre.github.io/RiskMap/reference/riskmap_progress.md).
+  Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 
 ## Value
 
 A list of class `RiskMap_assess_simulation`:
 
-- pred_objective:
+- objective:
 
-  One element per requested `spatial_scale` (`"grid"` and/or `"area"`),
-  each holding `mse`, a matrix with one row per model and one column per
-  simulation, and/or `classify`, the classification metrics of each
-  model and simulation.
+  One element per requested `spatial_scale` (`"location"` and/or
+  `"area"`), each holding `mse`, a matrix with one row per model and one
+  column per simulation, and/or `classify`, the classification metrics
+  of each model and simulation.
 
 - fits:
 
@@ -161,8 +167,8 @@ predictor of a given link can be written as a function of the mean, as
 [`qlogis()`](https://rdrr.io/r/stats/Logistic.html) gives the logit
 scale.
 
-The target of an area is `area_summary()` applied to the targets at the
-grid locations that fall within it, with equal weight, unlike the exact
+The target of an area is `aggregate` applied to the targets at the grid
+locations that fall within it, with equal weight, unlike the exact
 fractional coverage used by
 [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md)
 with `boundaries`. Areas without grid locations are left out of the
@@ -200,10 +206,10 @@ boundary <- st_sf(
 assessment <- assess_simulation(
   simulations,
   models = list(candidate = model),
-  spatial_scale = c("grid", "area"),
-  area_summary = mean,
+  spatial_scale = c("location", "area"),
+  aggregate = "mean",
   boundaries = boundary,
-  pred_objective = "mse",
+  objective = "mse",
   messages = FALSE
 )
 ```

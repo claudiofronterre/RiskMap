@@ -19,7 +19,8 @@ print(x, ...)
 
 - ...:
 
-  Additional arguments passed to or from other methods.
+  Not used, and an error if given, so that a misspelt argument is not
+  ignored.
 
 ## Value
 
@@ -27,6 +28,5 @@ Invisibly returns `x`.
 
 ## Details
 
-This method is primarily used to format and display the summary score
-matrix, printing it to the console. It provides a clear view of the
-cross-validation performance metrics across different spatial models.
+This method prints the scores of each model averaged over all test
+observations, with what they mean, and the scores of each test set.

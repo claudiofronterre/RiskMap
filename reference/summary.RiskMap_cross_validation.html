@@ -49,7 +49,7 @@ from <code><a href="assess_prediction.html">assess_prediction</a></code>.</p>
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="co"># S3 method for class 'RiskMap_cross_validation'</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">object</span>, view_all <span class="op">=</span> <span class="cn">TRUE</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">object</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -61,13 +61,9 @@ from <code><a href="assess_prediction.html">assess_prediction</a></code>.</p>
 model, as obtained from <code><a href="assess_prediction.html">assess_prediction</a></code>.</p></dd>
 
 
-<dt id="arg-view-all">view_all<a class="anchor" aria-label="anchor" href="#arg-view-all"></a></dt>
-<dd><p>Logical. If <code>TRUE</code>, stores the average scores across test sets for each
-model alongside the overall average across all models. Defaults to <code>TRUE</code>.</p></dd>
-
-
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Additional arguments passed to or from other methods.</p></dd>
+<dd><p>Not used, and an error if given, so that a misspelt argument
+is not ignored.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -77,12 +73,17 @@ model alongside the overall average across all models. Defaults to <code>TRUE</c
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>The function computes and returns a matrix where rows correspond to models and columns
-correspond to performance metrics (e.g., CRPS, SCRPS). Scores are weighted by subset sizes
-to compute averages. Attributes of the returned object include:</p><ul><li><p><code>test_set_means</code>: A list of average scores for each test set and model.</p></li>
-<li><p><code>overall_averages</code>: Overall averages for each metric across all models.</p></li>
-<li><p><code>view_all</code>: Indicates whether averages across test sets are available for visualization.</p></li>
-</ul></div>
+    <p>The function returns a matrix whose rows are the models and whose columns
+are the scores, <code>CRPS</code> and <code>SCRPS</code> averaged over all test observations
+that have a score, and <code>PIT_area</code>
+with <code>PIT_area_expected</code>, its value under perfect calibration, when
+calibration was assessed (see <code><a href="assess_prediction.html">assess_prediction()</a></code>). Lower is better for
+every score. Attributes of the returned object include:</p><ul><li><p><code>test_set_means</code>: A list of average scores for each test set and model.</p></li>
+<li><p><code>keep_par_fixed</code>: Whether the parameters were fixed at the
+estimates from all the data.</p></li>
+<li><p><code>n_failed</code>: The number of failed test-set assessments.</p></li>
+</ul><p>Its print gives the averages and the scores of each test set.</p>
+    </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="assess_prediction.html">assess_prediction</a></code></p></div>

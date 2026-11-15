@@ -448,11 +448,11 @@ uncertain_prediction$predictions
 #> # A tibble: 5 × 17
 #>       y region  province pop_dens ID_loc           geometry fixed offset
 #> * <dbl> <fct>   <fct>       <dbl>  <int>        <POINT [m]> <dbl>  <dbl>
-#> 1  6.74 Toscana Pisa         536.      1 (165557.8 4845668)  9.00      0
-#> 2  8.56 Toscana Pisa         536.      1 (165557.8 4845668)  9.00      0
-#> 3  8.05 Toscana Pisa         536.      1 (165557.8 4845668)  9.00      0
-#> 4  7.53 Toscana Pisa         536.      1 (165557.8 4845668)  9.00      0
-#> 5  7.16 Toscana Pisa         536.      1 (165557.8 4845668)  9.00      0
+#> 1  6.74 Toscana Pisa         536.      1 (165557.8 4845668)  8.91      0
+#> 2  8.56 Toscana Pisa         536.      1 (165557.8 4845668)  8.91      0
+#> 3  8.05 Toscana Pisa         536.      1 (165557.8 4845668)  8.91      0
+#> 4  7.53 Toscana Pisa         536.      1 (165557.8 4845668)  8.91      0
+#> 5  7.16 Toscana Pisa         536.      1 (165557.8 4845668)  8.91      0
 #> # ℹ 9 more variables: spatial_mean <dbl>, spatial_lower <dbl>,
 #> #   spatial_upper <dbl>, link_mean <dbl>, link_lower <dbl>, link_upper <dbl>,
 #> #   response_mean <dbl>, response_lower <dbl>, response_upper <dbl>
@@ -501,24 +501,24 @@ areal_prediction$boundary_summary
 #>    boundary_id aggregate quantity  summary threshold       value
 #> 1            1      mean    fixed estimate        NA 10.30974195
 #> 2            1      mean   offset estimate        NA  0.00000000
-#> 3            1      mean  spatial     mean        NA -0.35294890
-#> 4            1      mean  spatial    lower        NA -0.51861707
-#> 5            1      mean  spatial    upper        NA -0.17903651
-#> 6            1      mean     link     mean        NA  9.95679304
-#> 7            1      mean     link    lower        NA  9.79112488
-#> 8            1      mean     link    upper        NA 10.13070543
-#> 9            1      mean response     mean        NA  9.95679304
-#> 10           1      mean response    lower        NA  9.79112488
-#> 11           1      mean response    upper        NA 10.13070543
+#> 3            1      mean  spatial     mean        NA -0.35462792
+#> 4            1      mean  spatial    lower        NA -0.52209250
+#> 5            1      mean  spatial    upper        NA -0.18721108
+#> 6            1      mean     link     mean        NA  9.95511402
+#> 7            1      mean     link    lower        NA  9.78764944
+#> 8            1      mean     link    upper        NA 10.12253087
+#> 9            1      mean response     mean        NA  9.95511402
+#> 10           1      mean response    lower        NA  9.78764944
+#> 11           1      mean response    upper        NA 10.12253087
 #> 12           2      mean    fixed estimate        NA  9.36720129
 #> 13           2      mean   offset estimate        NA  0.00000000
-#> 14           2      mean  spatial     mean        NA  0.24243285
-#> 15           2      mean  spatial    lower        NA  0.03567343
-#> 16           2      mean  spatial    upper        NA  0.44124090
-#> 17           2      mean     link     mean        NA  9.60963414
-#> 18           2      mean     link    lower        NA  9.40287471
-#> 19           2      mean     link    upper        NA  9.80844219
-#> 20           2      mean response     mean        NA  9.60963414
-#> 21           2      mean response    lower        NA  9.40287471
-#> 22           2      mean response    upper        NA  9.80844219
+#> 14           2      mean  spatial     mean        NA  0.24126223
+#> 15           2      mean  spatial    lower        NA  0.02930872
+#> 16           2      mean  spatial    upper        NA  0.44443061
+#> 17           2      mean     link     mean        NA  9.60846352
+#> 18           2      mean     link    lower        NA  9.39651000
+#> 19           2      mean     link    upper        NA  9.81163189
+#> 20           2      mean response     mean        NA  9.60846352
+#> 21           2      mean response    lower        NA  9.39651000
+#> 22           2      mean response    upper        NA  9.81163189
 ```

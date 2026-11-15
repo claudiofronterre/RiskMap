@@ -21,12 +21,13 @@ summary(object, ...)
 
 - ...:
 
-  Additional arguments (not used).
+  Not used, and an error if given, so that a misspelt argument is not
+  ignored.
 
 ## Value
 
 A list of class `summary.RiskMap_assess_simulation` with one element per
-assessed spatial scale (`grid` and/or `area`), each holding:
+assessed spatial scale (`location` and/or `area`), each holding:
 
 - `mse`: a data frame with, for each model, the number of simulations
   (`n_sim`), the number with a result (`n_valid`), and the mean and

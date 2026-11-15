@@ -58,13 +58,14 @@
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Additional arguments (not used).</p></dd>
+<dd><p>Not used, and an error if given, so that a misspelt argument
+is not ignored.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>A list of class <code>summary.RiskMap_assess_simulation</code> with one
-element per assessed spatial scale (<code>grid</code> and/or <code>area</code>), each holding:</p><ul><li><p><code>mse</code>: a data frame with, for each model, the number of simulations
+element per assessed spatial scale (<code>location</code> and/or <code>area</code>), each holding:</p><ul><li><p><code>mse</code>: a data frame with, for each model, the number of simulations
 (<code>n_sim</code>), the number with a result (<code>n_valid</code>), and the mean and
 standard deviation of the MSE across simulations (<code>MSE_mean</code>, <code>MSE_sd</code>);</p></li>
 <li><p><code>classify</code>: for each model, <code>classify_res</code>, the average sensitivity,

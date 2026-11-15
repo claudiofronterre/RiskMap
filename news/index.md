@@ -151,6 +151,22 @@ the main changes follow.
   takes its CRS in `distance_crs` and
   [`plot_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/plot_mcmc.md)
   its locations in `locations`.
+- [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
+  reports the SCRPS as a loss, so that lower is better for every score,
+  and `PIT_area` once for all test observations, next to its value under
+  perfect calibration
+  ([\#230](https://github.com/claudiofronterre/RiskMap/issues/230)). It
+  takes its fits in `models` and `min_dist` in their distance units, and
+  draws the splits only with `plot_fold = TRUE`.
+  [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of its result
+  returns one plot of one metric
+  ([\#213](https://github.com/claudiofronterre/RiskMap/issues/213)), and
+  [`summary()`](https://rdrr.io/r/base/summary.html) loses `view_all`.
+  [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)
+  takes `simulation`, `aggregate`, `label`, `objective` and `breaks`,
+  and calls the scale of the grid `"location"`. `method = "cluster"` and
+  `"regularized"` need spatialsample and spatialEco, which move to
+  Suggests.
 
 #### Messages
 

@@ -8,7 +8,7 @@ models obtained from
 
 ``` r
 # S3 method for class 'RiskMap_cross_validation'
-summary(object, view_all = TRUE, ...)
+summary(object, ...)
 ```
 
 ## Arguments
@@ -19,15 +19,10 @@ summary(object, view_all = TRUE, ...)
   for each model, as obtained from
   [`assess_prediction`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md).
 
-- view_all:
-
-  Logical. If `TRUE`, stores the average scores across test sets for
-  each model alongside the overall average across all models. Defaults
-  to `TRUE`.
-
 - ...:
 
-  Additional arguments passed to or from other methods.
+  Not used, and an error if given, so that a misspelt argument is not
+  ignored.
 
 ## Value
 
@@ -36,19 +31,23 @@ with class `"summary.RiskMap_cross_validation"`.
 
 ## Details
 
-The function computes and returns a matrix where rows correspond to
-models and columns correspond to performance metrics (e.g., CRPS,
-SCRPS). Scores are weighted by subset sizes to compute averages.
-Attributes of the returned object include:
+The function returns a matrix whose rows are the models and whose
+columns are the scores, `CRPS` and `SCRPS` averaged over all test
+observations that have a score, and `PIT_area` with `PIT_area_expected`,
+its value under perfect calibration, when calibration was assessed (see
+[`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)).
+Lower is better for every score. Attributes of the returned object
+include:
 
 - `test_set_means`: A list of average scores for each test set and
   model.
 
-- `overall_averages`: Overall averages for each metric across all
-  models.
+- `keep_par_fixed`: Whether the parameters were fixed at the estimates
+  from all the data.
 
-- `view_all`: Indicates whether averages across test sets are available
-  for visualization.
+- `n_failed`: The number of failed test-set assessments.
+
+Its print gives the averages and the scores of each test set.
 
 ## See also
 

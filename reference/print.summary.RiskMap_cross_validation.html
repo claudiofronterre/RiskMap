@@ -62,7 +62,8 @@ summary.RiskMap_cross_validation in a readable format."><meta property="og:image
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Additional arguments passed to or from other methods.</p></dd>
+<dd><p>Not used, and an error if given, so that a misspelt argument
+is not ignored.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -71,9 +72,8 @@ summary.RiskMap_cross_validation in a readable format."><meta property="og:image
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>This method is primarily used to format and display the summary score matrix,
-printing it to the console. It provides a clear view of the cross-validation performance
-metrics across different spatial models.</p>
+    <p>This method prints the scores of each model averaged over all test
+observations, with what they mean, and the scores of each test set.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

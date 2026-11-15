@@ -46,18 +46,18 @@
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">assess_simulation</span><span class="op">(</span></span>
-<span>  <span class="va">obj_sim</span>,</span>
+<span>  <span class="va">simulation</span>,</span>
 <span>  <span class="va">models</span>,</span>
+<span>  <span class="va">spatial_scale</span>,</span>
+<span>  target <span class="op">=</span> <span class="va">identity</span>,</span>
+<span>  aggregate <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  boundaries <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  label <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  objective <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mse"</span>, <span class="st">"classify"</span><span class="op">)</span>,</span>
+<span>  breaks <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  control_mcmc <span class="op">=</span> <span class="fu"><a href="set_control_mcmc.html">set_control_mcmc</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  <span class="va">spatial_scale</span>,</span>
-<span>  messages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"RiskMap.messages"</span>, <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>  target <span class="op">=</span> <span class="va">identity</span>,</span>
-<span>  area_summary <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  boundaries <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  col_names <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  pred_objective <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mse"</span>, <span class="st">"classify"</span><span class="op">)</span>,</span>
-<span>  categories <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  messages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"RiskMap.messages"</span>, <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -65,7 +65,7 @@
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
 
 
-<dl><dt id="arg-obj-sim">obj_sim<a class="anchor" aria-label="anchor" href="#arg-obj-sim"></a></dt>
+<dl><dt id="arg-simulation">simulation<a class="anchor" aria-label="anchor" href="#arg-simulation"></a></dt>
 <dd><p>Output from <code><a href="simulate_glgpm.html">simulate_glgpm()</a></code> with both data and surface,
 from a generating model without grouped <code><a href="re.html">re()</a></code> effects. The generating
 model can have any link.</p></dd>
@@ -78,26 +78,11 @@ candidate model specification and is refitted to every simulated dataset;
 its estimated parameter values are not reused.</p></dd>
 
 
-<dt id="arg-control-mcmc">control_mcmc<a class="anchor" aria-label="anchor" href="#arg-control-mcmc"></a></dt>
-<dd><p>A control object for MCMC sampling, created with <code><a href="set_control_mcmc.html">set_control_mcmc()</a></code>. Default is <code><a href="set_control_mcmc.html">set_control_mcmc()</a></code>.</p></dd>
-
-
-<dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>Optional non-negative integer that makes the assessment
-reproducible; see Details. The caller's random number state is restored
-on exit. When <code>NULL</code> (the default), the seeds of the simulations are
-drawn from the session's random number generator.</p></dd>
-
-
 <dt id="arg-spatial-scale">spatial_scale<a class="anchor" aria-label="anchor" href="#arg-spatial-scale"></a></dt>
-<dd><p>The scale(s) at which predictions are assessed: <code>"grid"</code>, <code>"area"</code>, or <code>c("grid", "area")</code>
-to compute both from a single fit-and-predict pass over the simulations.</p></dd>
-
-
-<dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
-<dd><p>Logical, whether to report on the assessment, with a
-progress bar as described in <a href="riskmap_progress.html">riskmap_progress</a>.
-Defaults to the option <code>RiskMap.messages</code>, or <code>TRUE</code> if it is not set.</p></dd>
+<dd><p>The scale(s) at which predictions are assessed:
+<code>"location"</code>, the locations of the prediction grid, <code>"area"</code>, or
+<code>c("location", "area")</code> to compute both from a single fit-and-predict
+pass over the simulations.</p></dd>
 
 
 <dt id="arg-target">target<a class="anchor" aria-label="anchor" href="#arg-target"></a></dt>
@@ -113,34 +98,57 @@ height-for-age z-scores with residual standard deviation <code>sd</code>. See
 Details.</p></dd>
 
 
-<dt id="arg-area-summary">area_summary<a class="anchor" aria-label="anchor" href="#arg-area-summary"></a></dt>
-<dd><p>A function that combines a numeric vector of grid-cell
-targets within one area and returns one finite numeric value, such as
-<code><a href="https://rdrr.io/r/base/mean.html" class="external-link">base::mean()</a></code> or <code><a href="https://rdrr.io/r/base/sum.html" class="external-link">base::sum()</a></code>. Required only when <code>spatial_scale</code>
-includes <code>"area"</code>.</p></dd>
+<dt id="arg-aggregate">aggregate<a class="anchor" aria-label="anchor" href="#arg-aggregate"></a></dt>
+<dd><p>How the targets at the locations within an area are
+combined into the target of the area, as in <code><a href="predict.RiskMap.html">predict.RiskMap()</a></code>: one
+of <code>"mean"</code>, <code>"median"</code>, <code>"sum"</code>, <code>"min"</code> and <code>"max"</code>, or a function
+that receives a location-by-draw matrix and the location weights and
+returns one number for each draw. Locations have equal weights.
+Required only when <code>spatial_scale</code> includes <code>"area"</code>.</p></dd>
 
 
 <dt id="arg-boundaries">boundaries<a class="anchor" aria-label="anchor" href="#arg-boundaries"></a></dt>
 <dd><p>An <code>sf</code> object containing only POLYGON or MULTIPOLYGON geometries, required if <code>spatial_scale</code> includes <code>"area"</code>.</p></dd>
 
 
-<dt id="arg-col-names">col_names<a class="anchor" aria-label="anchor" href="#arg-col-names"></a></dt>
-<dd><p>Column name in <code>boundaries</code> containing unique region names. If <code>NULL</code>, defaults to <code>"region"</code>.</p></dd>
+<dt id="arg-label">label<a class="anchor" aria-label="anchor" href="#arg-label"></a></dt>
+<dd><p>The name of the column of <code>boundaries</code> that holds distinct
+names of the areas. If <code>NULL</code>, the areas are named <code>"reg1"</code>, <code>"reg2"</code>
+and so on, in a column <code>"region"</code>.</p></dd>
 
 
-<dt id="arg-pred-objective">pred_objective<a class="anchor" aria-label="anchor" href="#arg-pred-objective"></a></dt>
+<dt id="arg-objective">objective<a class="anchor" aria-label="anchor" href="#arg-objective"></a></dt>
 <dd><p>A character vector specifying objectives, either <code>"mse"</code>, <code>"classify"</code>, or both.</p></dd>
 
 
-<dt id="arg-categories">categories<a class="anchor" aria-label="anchor" href="#arg-categories"></a></dt>
-<dd><p>A numeric vector of thresholds defining categories for classification. Required if <code>pred_objective = "classify"</code>.</p></dd>
+<dt id="arg-breaks">breaks<a class="anchor" aria-label="anchor" href="#arg-breaks"></a></dt>
+<dd><p>A numeric vector of at least three increasing class
+boundaries for classification, as in <code><a href="plot.RiskMap_prediction.html">plot.RiskMap_prediction()</a></code>.
+Required if <code>objective</code> includes <code>"classify"</code>.</p></dd>
+
+
+<dt id="arg-control-mcmc">control_mcmc<a class="anchor" aria-label="anchor" href="#arg-control-mcmc"></a></dt>
+<dd><p>A control object for MCMC sampling, created with <code><a href="set_control_mcmc.html">set_control_mcmc()</a></code>. Default is <code><a href="set_control_mcmc.html">set_control_mcmc()</a></code>.</p></dd>
+
+
+<dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
+<dd><p>Optional non-negative integer that makes the assessment
+reproducible; see Details. The caller's random number state is restored
+on exit. When <code>NULL</code> (the default), the seeds of the simulations are
+drawn from the session's random number generator.</p></dd>
+
+
+<dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
+<dd><p>Logical, whether to report on the assessment, with a
+progress bar as described in <a href="riskmap_progress.html">riskmap_progress</a>.
+Defaults to the option <code>RiskMap.messages</code>, or <code>TRUE</code> if it is not set.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A list of class <code>RiskMap_assess_simulation</code>:</p><dl><dt>pred_objective</dt>
+    <p>A list of class <code>RiskMap_assess_simulation</code>:</p><dl><dt>objective</dt>
 <dd><p>One element per requested <code>spatial_scale</code>
-(<code>"grid"</code> and/or <code>"area"</code>), each holding <code>mse</code>, a matrix with one row per
+(<code>"location"</code> and/or <code>"area"</code>), each holding <code>mse</code>, a matrix with one row per
 model and one column per simulation, and/or <code>classify</code>, the
 classification metrics of each model and simulation.</p></dd>
 
@@ -179,8 +187,8 @@ what the <code>transform</code> argument of <code><a href="predict.RiskMap.html"
 models with different links share no linear-predictor scale. Every link is
 monotone, so a target defined on the linear predictor of a given link can
 be written as a function of the mean, as <code><a href="https://rdrr.io/r/stats/Logistic.html" class="external-link">qlogis()</a></code> gives the logit scale.</p>
-<p>The target of an area is <code>area_summary()</code> applied to the targets at the
-grid locations that fall within it, with equal weight, unlike the exact
+<p>The target of an area is <code>aggregate</code> applied to the targets at the grid
+locations that fall within it, with equal weight, unlike the exact
 fractional coverage used by <code><a href="predict.RiskMap.html">predict.RiskMap()</a></code> with <code>boundaries</code>. Areas
 without grid locations are left out of the area-level assessment, with a
 warning. Predictive draws are joint within each area, which is all that
@@ -215,10 +223,10 @@ assessment: its results are missing, and the failure is recorded in
 <span class="r-in"><span><span class="va">assessment</span> <span class="op">&lt;-</span> <span class="fu">assess_simulation</span><span class="op">(</span></span></span>
 <span class="r-in"><span>  <span class="va">simulations</span>,</span></span>
 <span class="r-in"><span>  models <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>candidate <span class="op">=</span> <span class="va">model</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>  spatial_scale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"grid"</span>, <span class="st">"area"</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>  area_summary <span class="op">=</span> <span class="va">mean</span>,</span></span>
+<span class="r-in"><span>  spatial_scale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"location"</span>, <span class="st">"area"</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  aggregate <span class="op">=</span> <span class="st">"mean"</span>,</span></span>
 <span class="r-in"><span>  boundaries <span class="op">=</span> <span class="va">boundary</span>,</span></span>
-<span class="r-in"><span>  pred_objective <span class="op">=</span> <span class="st">"mse"</span>,</span></span>
+<span class="r-in"><span>  objective <span class="op">=</span> <span class="st">"mse"</span>,</span></span>
 <span class="r-in"><span>  messages <span class="op">=</span> <span class="cn">FALSE</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
