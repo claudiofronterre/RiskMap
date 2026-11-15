@@ -361,7 +361,9 @@ such argument.
 
 - The new `summarise_mcmc()` returns a data frame of the effective sample sizes of
 the mean of the spatial random effects, of each location and of each level of
-an unstructured random effect. They are computed with the initial monotone
+an unstructured random effect. Its column `index` numbers the locations and
+the levels. It was called `component`, which now names only the quantities
+of `simulated_values()`. The sizes are computed with the initial monotone
 sequence estimator of Geyer (1992), so the package no longer depends on sns.
 patchwork has moved from Suggests to Imports.
 
