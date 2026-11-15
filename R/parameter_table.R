@@ -186,7 +186,7 @@ fit_parameter_table <- function(fit) {
   estimate <- fit$estimate
   parameter_table(
     beta_names = colnames(as.matrix(fit$D)),
-    fix_tau2 = if (!is.null(estimate$nu2)) TRUE else fit$fix_tau2,
+    fix_tau2 = if (!is.null(estimate$nu2)) TRUE else fit_fix_tau2(fit),
     estimated_family = estimated_family_parameters(fit),
     held_family = held_family_parameters(fit),
     re_names = names(estimate$sigma2_re),
@@ -248,8 +248,9 @@ nugget_ratio_natural <- function(tau2, sigma2) tau2 / sigma2
 ##' a fit's essentials.
 ##' @noRd
 fit_nugget_variance <- function(fit) {
-  if (is.numeric(fit$fix_tau2)) {
-    fit$fix_tau2
+  held <- fit_fix_tau2(fit)
+  if (is.numeric(held)) {
+    held
   } else if (!is.null(fit$estimate$nu2)) {
     nugget_natural(fit$estimate$nu2, fit$estimate$sigma2)
   }
@@ -361,15 +362,25 @@ natural_values <- function(table, estimate, held = FALSE) {
 
 ##' The order of `coef()`
 ##'
-##' The coefficients, the spatial variance and scale, the family's
-##' parameters, then the nugget and the random-effect variances. It differs
-##' from the working vector's, where the nugget comes before the family's
-##' parameters, and changing it would change what `coef()` returns.
+##' That of the working vector, the coefficients, the spatial variance and
+##' scale, the nugget, the family's parameters and the random-effect
+##' variances, with the held parameters in their places. A model without a
+##' nugget, which the table holds at zero, has none.
 ##' @noRd
 coef_order <- function(table) {
-  c("beta", "sigma2", "phi", table$layout$family,
-    if (nugget_estimated(table)) "tau2",
+  rows <- table$rows
+  nugget <- any(rows$name == "tau2" & !(rows$held %in% 0))
+  family <- unique(rows$name[rows$block == "family"])
+  c("beta", "sigma2", "phi", if (nugget) "tau2", family,
     if (!is.null(table$layout$index$sigma2_re)) "sigma2_re")
+}
+
+##' The estimated parameters of a fit on their natural scale, as a named
+##' vector in the order of `coef()`, without the ones it holds
+##' @noRd
+estimated_coef <- function(fit) {
+  rows <- estimated_rows(fit_parameter_table(fit))
+  unlist(coef(fit))[rows$reported]
 }
 
 ##' The Jacobian of the reported parameters in the stored working ones
@@ -501,7 +512,8 @@ default_start <- function(table, name, coords = NULL) {
 ##'   named vectors of the elements given, the others as single values.
 ##' @noRd
 read_start_pars <- function(table, start_pars, coords = NULL,
-                            distance_units = NULL,
+                            distance_units = NULL, arg = "start_pars",
+                            zero = character(),
                             call = rlang::caller_env()) {
   if (is.null(start_pars)) return(list())
   # A named vector of flat names, as unlist(coef(fit)) gives.
@@ -512,7 +524,7 @@ read_start_pars <- function(table, start_pars, coords = NULL,
   if (!is.list(start_pars) || (length(start_pars) &&
                                (is.null(keys) || any(!nzchar(keys))))) {
     supplied <- describe_value(start_pars)
-    abort_input("{.arg start_pars} must be a named list of starting values, not {supplied}.", arg = "start_pars", call = call)
+    abort_input("{.arg {arg}} must be a named list of values, not {supplied}.", arg = arg, call = call)
   }
   rows <- estimated_rows(table)
   held <- table$rows[is.na(table$rows$index), , drop = FALSE]
@@ -523,29 +535,35 @@ read_start_pars <- function(table, start_pars, coords = NULL,
     old <- given[[name]]
     if (name %in% names(vectors)) {
       if (any(element %in% names(old))) {
-        abort_input("{.arg start_pars} gives the start of {.val {paste0(name, '.', intersect(element, names(old)))}} twice.", arg = "start_pars", call = call)
+        abort_input("{.arg {arg}} gives {.val {paste0(name, '.', intersect(element, names(old)))}} twice.", arg = arg, call = call)
       }
       given[[name]] <<- c(old, stats::setNames(value, element))
     } else {
       if (!is.null(old)) {
-        abort_input("{.arg start_pars} gives the start of {.code {name}} twice.", arg = "start_pars", call = call)
+        abort_input("{.arg {arg}} gives {.code {name}} twice.", arg = arg, call = call)
       }
       given[[name]] <<- value
     }
   }
   check_values <- function(value, key, positive) {
+    zero_ok <- key %in% zero
     bad <- !is.numeric(value) || !length(value) || any(!is.finite(value)) ||
-      (positive && any(value <= 0))
+      (positive && !zero_ok && any(value <= 0)) ||
+      (positive && zero_ok && any(value < 0))
     if (bad) {
       supplied <- describe_value(value)
-      what <- if (positive) "positive finite numbers" else "finite numbers"
-      abort_input("The starting values in {.code start_pars${key}} must be {what}, not {supplied}.", arg = "start_pars", call = call)
+      what <- if (!positive) "finite numbers" else if (zero_ok) {
+        "finite numbers, zero or positive"
+      } else {
+        "positive finite numbers"
+      }
+      abort_input("The values in {.code {arg}${key}} must be {what}, not {supplied}.", arg = arg, call = call)
     }
   }
   given_keys <- keys[!vapply(start_pars, is.null, logical(1))]
   unknown <- setdiff(given_keys, c(model_names, rows$reported, held$name))
   if (length(unknown)) {
-    abort_input(c("{.arg start_pars} must name parameters of the model.", "x" = "{.val {unknown}} {?is/are} not among them.", "i" = "The model's parameters are {.val {model_names}}.", "i" = "{.fn glgpm_parameters} lists them with their elements."), arg = "start_pars", call = call)
+    abort_input(c("{.arg {arg}} must name parameters of the model.", "x" = "{.val {unknown}} {?is/are} not among them.", "i" = "The model's parameters are {.val {model_names}}.", "i" = "{.fn glgpm_parameters} lists them with their elements."), arg = arg, call = call)
   }
   for (key in keys) {
     value <- start_pars[[key]]
@@ -558,33 +576,38 @@ read_start_pars <- function(table, start_pars, coords = NULL,
         if (length(value) != length(elements)) {
           what <- if (key == "beta") "column of the design matrix" else
             "`re()` term"
-          abort_input(c("An unnamed {.code start_pars${key}} must have a value for each {what}, {length(elements)}, not {length(value)}.", "i" = "Name its values to give some of them, among {.val {elements}}."), arg = "start_pars", call = call)
+          abort_input(c("An unnamed {.code {arg}${key}} must have a value for each {what}, {length(elements)}, not {length(value)}.", "i" = "Name its values to give some of them, among {.val {elements}}."), arg = arg, call = call)
         }
         supplied <- elements
       } else if (any(!nzchar(supplied)) || any(!supplied %in% elements)) {
         unknown <- setdiff(supplied, elements)
-        abort_input(c("{.code start_pars${key}} must be named by {if (key == 'beta') 'the columns of the design matrix' else 'the `re()` terms'}.", "x" = "{.val {unknown}} {?is/are} not among them.", "i" = "They are {.val {elements}}."), arg = "start_pars", call = call)
+        abort_input(c("{.code {arg}${key}} must be named by {if (key == 'beta') 'the columns of the design matrix' else 'the `re()` terms'}.", "x" = "{.val {unknown}} {?is/are} not among them.", "i" = "They are {.val {elements}}."), arg = arg, call = call)
       }
       add(key, supplied, unname(value), key)
     } else if (key %in% model_names) {
       check_values(value, key, positive = TRUE)
       if (length(value) != 1L) {
-        abort_input("{.code start_pars${key}} must be a single number, not {length(value)} numbers.", arg = "start_pars", call = call)
+        abort_input("{.code {arg}${key}} must be a single number, not {length(value)} numbers.", arg = arg, call = call)
       }
       add(key, NULL, unname(value), key)
     } else if (key %in% rows$reported) {
       row <- rows[rows$reported == key, , drop = FALSE]
       check_values(value, key, positive = row$block != "coefficients")
       if (length(value) != 1L) {
-        abort_input("{.code start_pars${key}} must be a single number, not {length(value)} numbers.", arg = "start_pars", call = call)
+        abort_input("{.code {arg}${key}} must be a single number, not {length(value)} numbers.", arg = arg, call = call)
       }
       add(row$name, if (row$name %in% names(vectors)) row$element, unname(value), key)
     } else {
-      value <- held$held[held$name == key]
-      if (key == "tau2" && identical(value, 0)) {
-        abort_input("A starting value for {.code tau2} can't be given when {.fn gp} has {.code nugget = FALSE}.", arg = "start_pars", call = call)
+      held_at <- held$held[held$name == key]
+      if (key == "tau2" && identical(held_at, 0)) {
+        abort_input("A value for {.code tau2} can't be given when {.fn gp} has {.code nugget = FALSE}.", arg = arg, call = call)
       }
-      abort_input(c("{.code start_pars} can't give a start for {.code {key}}, which the model holds at {value}.", "i" = "Drop it from {.arg start_pars}."), arg = "start_pars", call = call)
+      # The value a held parameter has, as in start_pars = coef(fit) of a fit
+      # with the same holds, is no start and is left out.
+      if (!(is.numeric(value) && length(value) == 1L &&
+            isTRUE(all.equal(unname(value), held_at)))) {
+        abort_input(c("{.code {arg}} can't give a value for {.code {key}}, which the model holds at {held_at}.", "i" = "Drop it from {.arg {arg}}, or from {.arg fixed_pars}."), arg = arg, call = call)
+      }
     }
   }
   # Values of beta and sigma2_re in the order of the design and the terms.
@@ -686,6 +709,16 @@ given_start_names <- function(given) {
 ##' binomial regression without them, `one` the value 1 and
 ##' `distance_quantile` the 10th percentile of the distances between the
 ##' locations. A name the model lacks stops with the names it has.
+##'
+##' @section Held values:
+##' `fixed_pars` of [glgpm()] takes the same names and structure, and holds
+##' the parameters it gives at their values instead of estimating them. It
+##' holds the variance of a nugget (`tau2`, for a model with
+##' `gp(nugget = TRUE)`), the measurement error variance of a Gaussian model
+##' (`sigma2_me`, which may be zero) and the size of a negative binomial model
+##' (`theta`). [coef.RiskMap()] gives the held parameters with the estimated
+##' ones, so `start_pars = coef(fit)` works for a refit with the same holds,
+##' and [summary.RiskMap()] shows them as fixed.
 ##' @seealso [glgpm()], [glgpm_parameters()], [coef.RiskMap()]
 NULL
 
@@ -695,7 +728,7 @@ NULL
 ##' that `start_pars` and [coef.RiskMap()] use ([riskmap_parameters]). Only the
 ##' formula, the data and the family are read, so this is quick.
 ##'
-##' @param formula,data,family,fix_var_me As in [glgpm()].
+##' @param formula,data,family,fixed_pars As in [glgpm()].
 ##' @param distance_units The units of distance, `"km"` (the default) or `"m"`,
 ##'   for the label of the scale.
 ##' @return A data frame of class `riskmap_parameters`, with a row per element
@@ -713,7 +746,7 @@ NULL
 ##' glgpm_parameters(npos ~ log(elevation) + gp(nugget = TRUE), data = liberia,
 ##'                  family = "binomial")
 ##' @export
-glgpm_parameters <- function(formula, data, family, fix_var_me = NULL,
+glgpm_parameters <- function(formula, data, family, fixed_pars = NULL,
                              distance_units = c("km", "m")) {
   check_supplied(formula)
   check_supplied(data)
@@ -723,19 +756,16 @@ glgpm_parameters <- function(formula, data, family, fix_var_me = NULL,
   family_link <- read_family(family, NULL)
   model <- family_traits(family_link$family)
   distance_units <- match_choice(distance_units)
-  if (!model$exact && !is.null(fix_var_me)) {
-    abort_input("{.arg fix_var_me} can be given only for a Gaussian model, not a {family_link$family} one.", arg = "fix_var_me")
-  }
-  if (!is.null(fix_var_me)) check_range(fix_var_me, min = 0)
   inter_f <- interpret_formula(formula)
   frame <- model.frame(inter_f$pf, data = data, na.action = na.pass)
   design <- model.matrix(attr(frame, "terms"), data = data)
+  re_names <- if (length(inter_f$re_spec)) inter_f$re_spec$term
+  holds <- read_model_holds(colnames(design), inter_f$gp_spec$nugget, model,
+                            family_link, re_names, distance_units, fixed_pars)
   parameters <- model_parameter_table(
-    colnames(design), fix_tau2 = inter_f$gp_spec$nugget, exact = model$exact,
-    fix_var_me = fix_var_me,
-    estimated_family = family_link$estimated %||% character(),
-    family_parameters = family_link$parameters,
-    re_names = if (length(inter_f$re_spec)) inter_f$re_spec$term,
+    colnames(design), fix_tau2 = holds$fix_tau2, exact = model$exact,
+    fix_var_me = holds$fix_var_me, estimated_family = holds$estimated_family,
+    family_parameters = holds$family_parameters, re_names = re_names,
     distance_units = distance_units
   )
   rows <- parameters$rows
@@ -775,4 +805,116 @@ print.riskmap_parameters <- function(x, ...) {
     paste0("list(", paste(template, collapse = ", "), ")")
   ))
   invisible(x)
+}
+
+##' Read the values at which `fixed_pars` holds parameters
+##'
+##' With the names and structure of `start_pars` (`read_start_pars()`), on the
+##' table of the parameters the model could estimate, so that a held
+##' parameter is found whether or not something else holds it. The nugget
+##' variance and the size must be positive, and the measurement error
+##' variance zero or positive. A nugget variance of zero stops, since that is
+##' the model without a nugget.
+##' @return A named list of the values held, in the order of the table.
+##' @noRd
+read_fixed_pars <- function(table, fixed_pars, call = rlang::caller_env()) {
+  if (is.null(fixed_pars)) return(list())
+  if (is.list(fixed_pars) && identical(fixed_pars$tau2, 0)) {
+    abort_input(c("{.code fixed_pars$tau2} can't be 0.", "i" = "A model without a nugget has {.code gp(nugget = FALSE)}."), arg = "fixed_pars", call = call)
+  }
+  held <- read_start_pars(table, fixed_pars, arg = "fixed_pars",
+                          zero = "sigma2_me", call = call)
+  holdable <- c("tau2", "sigma2_me", "theta")
+  others <- setdiff(names(held), holdable)
+  if (length(others)) {
+    abort_input(c("{.arg fixed_pars} can hold {.code tau2}, {.code sigma2_me} and {.code theta}.", "x" = "{.val {others}} can't be held."), arg = "fixed_pars", call = call)
+  }
+  held[intersect(unique(table$rows$name), names(held))]
+}
+
+##' Read the holds of a model, from `gp()`, the family and `fixed_pars`
+##'
+##' `fixed_pars` is read against every parameter the model could estimate
+##' (`read_fixed_pars()`), and a size held by the family, as
+##' `MASS::negative.binomial(2)` holds it, must agree with one it gives. The
+##' holds are returned as the engines take them, `fix_tau2` (TRUE for an
+##' estimated nugget, its held variance, 0 without a nugget), `fix_var_me`
+##' (the held measurement error variance, or NULL), the family's held
+##' `family_parameters` and its `estimated_family`, with `held`, the values
+##' `fixed_pars` gives.
+##' @noRd
+read_model_holds <- function(beta_names, nugget, model, family_link, re_names,
+                             distance_units, fixed_pars,
+                             call = rlang::caller_env()) {
+  has_nugget <- isTRUE(nugget)
+  held <- read_fixed_pars(
+    model_parameter_table(
+      beta_names, fix_tau2 = if (has_nugget) TRUE else 0,
+      exact = model$exact, fix_var_me = NULL,
+      estimated_family = names(model$parameters), family_parameters = NULL,
+      re_names = re_names, distance_units = distance_units
+    ),
+    fixed_pars, call = call
+  )
+  family_parameters <- family_link$parameters
+  estimated_family <- family_link$estimated %||% character()
+  if (!is.null(held$theta)) {
+    given_size <- family_parameters$theta
+    if (!is.null(given_size) && !isTRUE(all.equal(given_size, held$theta))) {
+      abort_input(c("{.arg family} holds the size at {given_size}, and {.arg fixed_pars} at {held$theta}.", "i" = "Give the size in one of them."), arg = "fixed_pars", call = call)
+    }
+    family_parameters$theta <- held$theta
+    estimated_family <- setdiff(estimated_family, "theta")
+  }
+  list(held = held, fix_tau2 = if (!has_nugget) 0 else held$tau2 %||% TRUE,
+       fix_var_me = if (model$exact) held$sigma2_me,
+       family_parameters = family_parameters,
+       estimated_family = estimated_family)
+}
+
+##' The nugget of a fit as the engines take it
+##'
+##' `TRUE` when it is estimated, its variance when it is held, 0 without a
+##' nugget, from the fit's `nugget` and `fixed_pars`, or from `fix_tau2` for
+##' a fit saved before they existed.
+##' @noRd
+fit_fix_tau2 <- function(fit) {
+  if (is.null(fit$nugget)) return(fit$fix_tau2)
+  switch(fit$nugget, none = 0, estimated = TRUE,
+         fixed = fit$fixed_pars$tau2)
+}
+
+##' The measurement error variance a fit holds, NULL when it is estimated or
+##' absent, as the engines take it (their `fix_var_me`)
+##' @noRd
+fit_fix_var_me <- function(fit) {
+  if (is.null(fit$nugget)) return(fit$fix_var_me)
+  fit$fixed_pars$sigma2_me
+}
+
+##' The family's parameters a fit holds, other than the measurement error
+##' variance, as the engines take them (their `family_parameters`), NULL when
+##' there are none
+##' @noRd
+fit_family_held <- function(fit) {
+  if (is.null(fit$nugget)) return(fit$family_parameters)
+  names <- setdiff(intersect(names(fit$fixed_pars), family_parameter_names()),
+                   "sigma2_me")
+  if (length(names)) fit$fixed_pars[names]
+}
+
+##' Every parameter a fit holds, as `fixed_pars` of a refit gives them
+##'
+##' NULL when it holds none. A fit saved before `fixed_pars` existed held them
+##' through `gp(nugget = )`, `fix_var_me` and `negative_binomial(theta = )`.
+##' @noRd
+fit_fixed_pars <- function(fit) {
+  if (!is.null(fit$nugget)) return(fit$fixed_pars)
+  held <- list()
+  if (is.numeric(fit$fix_tau2) && !isTRUE(fit$fix_tau2) && fit$fix_tau2 > 0) {
+    held$tau2 <- fit$fix_tau2
+  }
+  if (is.numeric(fit$fix_var_me)) held$sigma2_me <- fit$fix_var_me
+  held <- c(held, fit$family_parameters)
+  if (length(held)) held
 }

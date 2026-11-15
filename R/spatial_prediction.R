@@ -1533,8 +1533,9 @@ prediction_nugget_samples <- function(object, prediction_setup, n_locations,
 #' @noRd
 fitted_nugget_variance <- function(object, par_hat = coef(object)) {
   if (!is.null(par_hat$tau2)) return(as.numeric(par_hat$tau2))
-  if (is.numeric(object$fix_tau2) && !isTRUE(object$fix_tau2)) {
-    return(as.numeric(object$fix_tau2))
+  held <- fit_fix_tau2(object)
+  if (is.numeric(held) && !isTRUE(held)) {
+    return(as.numeric(held))
   }
   0
 }
@@ -2050,7 +2051,7 @@ gaussian_conditioning_distribution <- function(object, spatial_covariance,
 
   incidence <- do.call(cbind, designs)
   latent_covariance <- as.matrix(Matrix::bdiag(covariances))
-  measurement_variance <- par_hat$sigma2_me %||% object$fix_var_me %||% 0
+  measurement_variance <- par_hat$sigma2_me %||% fit_fix_var_me(object) %||% 0
   ids <- as.matrix(cbind(object$ID_coords, object$ID_re))
   prediction_weights <- gaussian_prediction_weights(
     Matrix::Matrix(incidence, sparse = TRUE), latent_covariance, ids,
@@ -2500,7 +2501,8 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         n_samples = n_samples
       )
       shared_gaussian_re_samples <- latent_samples$random_effects
-    } else if (!is.null(object$fix_var_me) && object$fix_var_me > 0 || is.null(object$fix_var_me)) {
+    } else if (!is.null(fit_fix_var_me(object)) && fit_fix_var_me(object) > 0 ||
+               is.null(fit_fix_var_me(object))) {
       m        <- length(object$y)
       s_unique <- unique(object$ID_coords)
       ID_g     <- as.matrix(cbind(object$ID_coords, object$ID_re))
@@ -2529,7 +2531,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         }
       }
       # coef() omits sigma2_me when the measurement error variance is fixed
-      measurement_variance <- par_hat$sigma2_me %||% object$fix_var_me
+      measurement_variance <- par_hat$sigma2_me %||% fit_fix_var_me(object)
       prediction_weights <- gaussian_prediction_weights(C_g, Sigma_g, ID_g,
                                                          measurement_variance)
       if (!batch_marginal && !grouped_joint) {
@@ -3176,7 +3178,7 @@ assess_prediction <- function(object,
     riskmap_warn("The predictive distributions of the test observations don't include the random effects, so the scores of {.val {with_re}} aren't reliable.")
   }
 
-  n_par <- vapply(object, function(fit) length(unlist(coef(fit))), integer(1))
+  n_par <- vapply(object, function(fit) length(unlist(fit$estimate)), integer(1))
   if (messages) {
     if (keep_par_fixed) {
       riskmap_inform(c("Parameters are fixed at the estimates from all the data.", "i" = "Set {.code keep_par_fixed = FALSE} to re-estimate them in each training set."))
@@ -3256,7 +3258,7 @@ assess_prediction <- function(object,
           control_mcml   = attr(fit0, "control_mcml") %||%
             set_control_mcml(),
           seed           = fold_seeds[i],
-          fix_var_me     = fit0$fix_var_me,
+          fixed_pars     = fit_fixed_pars(fit0),
           return_samples = FALSE,
           messages       = FALSE
         )
@@ -3293,7 +3295,7 @@ assess_prediction <- function(object,
 
       ## ----- prediction over test set -----
       included_components <- if (
-        is.null(refit_i$fix_tau2) || refit_i$fix_tau2 != 0
+        is.null(fit_fix_tau2(refit_i)) || fit_fix_tau2(refit_i) != 0
       ) "nugget" else character()
       prediction_i <- predict(
         refit_i,
@@ -3311,7 +3313,11 @@ assess_prediction <- function(object,
       # again from its training set.
       family_values <- fit_family_values(refit_i)
       if (traits$measurement_error) {
-        sigma2_me <- if (is.null(refit_i$fix_var_me)) coef(refit_i)$sigma2_me else refit_i$fix_var_me
+        sigma2_me <- if (is.null(fit_fix_var_me(refit_i))) {
+          coef(refit_i)$sigma2_me
+        } else {
+          fit_fix_var_me(refit_i)
+        }
         restore_noise_seed <- preserve_random_seed()
         set.seed(noise_seeds[i])
         noise <- rnorm(length(eta_samp))
@@ -4091,7 +4097,7 @@ assess_simulation <- function(obj_sim,
       target_ij <- apply_target(components$response, context)
 
       scores <- list(status = "ok", message = NA_character_,
-                     estimate = unlist(coef(fit_ij)))
+                     estimate = estimated_coef(fit_ij))
       if (want_grid) {
         scores$grid <- score_targets(true_target_grid_sim[, j], target_ij)
       }
@@ -4208,7 +4214,13 @@ assessment_refit_args <- function(template, formula, data, control_mcmc) {
     } else {
       set_control_mcml()
     },
-    fix_var_me = if (fitted_template) template$fix_var_me else NULL,
+    # A template from specify_glgpm() holds the family's parameters it
+    # gives, as a size of the negative binomial family.
+    fixed_pars = if (fitted_template) {
+      fit_fixed_pars(template)
+    } else {
+      template$family_parameters
+    },
     messages = FALSE
   )
   if (!family_traits(template$family)$exact) {

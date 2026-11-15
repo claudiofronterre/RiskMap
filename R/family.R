@@ -801,7 +801,8 @@ fit_traits <- function(fit) {
 ##' its own is given by its function, `negative_binomial()`, whose
 ##' specification is accepted by every caller and adds the family's
 ##' `parameters` and the names of the `estimated` ones, and
-##' `MASS::negative.binomial(theta)` is read as `negative_binomial(theta)`.
+##' `MASS::negative.binomial(theta)` is read with its size held
+##' (`held_negative_binomial()`).
 ##' @param family What the user gave as `family`.
 ##' @param invlink What the user gave as `invlink`.
 ##' @param families The family strings the calling function accepts.
@@ -860,9 +861,10 @@ read_family <- function(family, invlink = NULL,
 ##'   random effects has mean \eqn{\mu = m \exp(\eta)}, with the log link,
 ##'   and variance \eqn{\mu + \mu^2 / \theta}, as in
 ##'   `MASS::negative.binomial(theta)`. The size \eqn{\theta} is estimated
-##'   unless a value is given, at which it is held.
-##' @param theta The size, a positive number at which it is held, or `NULL`
-##'   (the default) to estimate it.
+##'   unless `fixed_pars = list(theta = )` of [glgpm()] holds it, and
+##'   [specify_glgpm()] takes it as `theta` in its `parameters`.
+##' @param ... Not used. A size given here stops, since it is held with
+##'   `fixed_pars` instead.
 ##' @details
 ##' The exposure is given in the `denominator` of [glgpm()], and is 1 for
 ##' every count when it is not given. As \eqn{\theta} grows the model tends
@@ -877,7 +879,7 @@ read_family <- function(family, invlink = NULL,
 ##' estimated size uses the sampled form of Monte Carlo maximum likelihood
 ##' (see `integrate_noise` in [set_control_mcml()]), and its check for other
 ##' maxima has no screen of short scales. `MASS::negative.binomial(theta)`
-##' is read as `negative_binomial(theta)`.
+##' is read as the negative binomial family with its size held at `theta`.
 ##'
 ##' Given the size, the log-likelihood of a count is that of a binomial
 ##' count of \eqn{y} successes in \eqn{y + \theta} trials with the logit
@@ -889,9 +891,21 @@ read_family <- function(family, invlink = NULL,
 ##' @seealso [glgpm()], [stats::poisson()]
 ##' @examples
 ##' negative_binomial()
-##' negative_binomial(theta = 2)
 ##' @export
-negative_binomial <- function(theta = NULL) {
+negative_binomial <- function(...) {
+  if (...length()) {
+    abort_input(c("{.fn negative_binomial} takes no size.", "i" = "Hold the size with {.code fixed_pars = list(theta = 2)} in {.fn glgpm}, or give it as {.code theta} in the {.arg parameters} of {.fn specify_glgpm}."), arg = "theta")
+  }
+  held_negative_binomial(NULL)
+}
+
+##' The specification of the negative binomial family, with its size held
+##'
+##' At `theta`, or estimated when `theta` is NULL. `negative_binomial()` gives
+##' the second, and the first is how `MASS::negative.binomial(theta)`, a size
+##' given in `fixed_pars` or the `parameters` of `specify_glgpm()` are read.
+##' @noRd
+held_negative_binomial <- function(theta) {
   if (!is.null(theta)) check_positive_number(theta, type = "")
   structure(list(family = "negative_binomial", link = "log",
                  parameters = if (!is.null(theta)) list(theta = theta) else
@@ -951,15 +965,16 @@ estimated_family_parameters <- function(fit) {
 
 ##' The family's own parameters that a fit holds at given values
 ##'
-##' A named list, empty when the fit holds none. They are the `family_parameters`
-##' a fit stores for a family given with its parameters (`negative_binomial()`),
-##' and the measurement error variance `sigma2_me` of a Gaussian fit when
-##' `glgpm()` was given `fix_var_me`. Those the fit estimates are in its
-##' `estimate`, in the family block of the layout (`cov_par_layout()`).
+##' A named list, empty when the fit holds none. They are the size of a
+##' negative binomial family and the measurement error variance `sigma2_me` of a
+##' Gaussian fit that `fixed_pars` holds (`fit_family_held()`,
+##' `fit_fix_var_me()`). Those the fit estimates are in its `estimate`, in the
+##' family block of the layout (`cov_par_layout()`).
 ##' @noRd
 held_family_parameters <- function(fit) {
-  held <- fit$family_parameters %||% list()
-  if (is.numeric(fit$fix_var_me)) held$sigma2_me <- fit$fix_var_me
+  held <- fit_family_held(fit) %||% list()
+  measurement_variance <- fit_fix_var_me(fit)
+  if (is.numeric(measurement_variance)) held$sigma2_me <- measurement_variance
   held
 }
 
@@ -981,29 +996,30 @@ fit_family_values <- function(fit) {
 ##'
 ##' For the functions that need the family's parameters at a value, such as
 ##' `specify_glgpm()` and `maxim_integrand()`, where nothing is estimated.
-##' `family_link` is what `read_family()` returns.
+##' `family_link` is what `read_family()` returns, and `hint` says where the
+##' values can be given.
 ##' @noRd
-check_family_held <- function(family_link, call = rlang::caller_env()) {
+check_family_held <- function(family_link, hint = "Give it as in {.code MASS::negative.binomial(2)}.",
+                              call = rlang::caller_env()) {
   estimated <- family_link$estimated %||% character()
   if (!length(estimated)) return(invisible(TRUE))
   words <- family_parameter_words(estimated[1L])
-  abort_input(c("{.arg family} must give the {words}, since nothing is estimated here.", "i" = "Give it as in {.code negative_binomial(theta = 2)}."), arg = "family", call = call)
+  abort_input(c("{.arg family} must give the {words}, since nothing is estimated here.", "i" = hint), arg = "family", call = call)
 }
 
 ##' The `family` argument that refits a fitted model
 ##'
 ##' The family string the fit stores, or for a family with parameters of its
 ##' own its specification (`negative_binomial()`), for the exported functions
-##' that call `glgpm()` or `specify_glgpm()` again. A refit estimates again
-##' what the fit estimated, and with `hold = TRUE`, as for a model that
-##' simulates from the fit, every parameter is held at the fit's value.
+##' that call `glgpm()` or `specify_glgpm()` again. The family's parameters
+##' are not in it. A refit holds what the fit held through `fixed_pars`
+##' (`fit_fixed_pars()`), and a model that simulates from the fit, as with
+##' `hold = TRUE`, takes them all in its `parameters`.
 ##' @noRd
 fit_family_argument <- function(fit, hold = FALSE) {
   traits <- fit_traits(fit)
   if (is.null(traits) || !traits$specified) return(fit$family)
-  estimated <- "theta" %in% estimated_family_parameters(fit)
-  if (estimated && !hold) return(negative_binomial())
-  negative_binomial(theta = family_size(fit_family_values(fit)))
+  negative_binomial()
 }
 
 ##' The families among `families` that are given by their name
@@ -1039,9 +1055,9 @@ read_mass_negative_binomial <- function(family) {
     ))
   }
   if (length(theta) != 1L || !is.finite(theta) || theta <= 0) {
-    abort_input(c("{.arg family} must be a negative binomial family with one positive finite size.", "i" = "Give it as in {.code negative_binomial(theta = 2)}, or {.code negative_binomial()} to estimate the size, or {.code \"poisson\"} for the Poisson limit."), arg = "family")
+    abort_input(c("{.arg family} must be a negative binomial family with one positive finite size.", "i" = "Give it as {.code negative_binomial()}, with the size held in {.code fixed_pars = list(theta = 2)} or estimated, or {.code \"poisson\"} for the Poisson limit."), arg = "family")
   }
-  negative_binomial(theta = theta)
+  held_negative_binomial(theta)
 }
 
 ##' Family string and link of a family object

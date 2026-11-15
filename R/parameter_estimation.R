@@ -12,9 +12,8 @@
 ##' `"poisson"`, which take the identity, logit and log links, a family
 ##' object as in [stats::glm()], such as `binomial("probit")`, or
 ##' [negative_binomial()] for overdispersed counts with the log link, whose
-##' size is estimated unless a value is given (`negative_binomial(theta = 2)`
-##' or `MASS::negative.binomial(2)`). Where nothing is estimated, as in
-##' [specify_glgpm()], the size must be given. Binomial
+##' size is estimated unless `fixed_pars` holds it, as does the family object
+##' `MASS::negative.binomial(2)`. Binomial
 ##' responses take the logit, probit, complementary log-log (`"cloglog"`) and
 ##' Cauchy (`"cauchit"`) links, Poisson responses the log link and Gaussian
 ##' responses the identity link. `binomial("log")` and `poisson("identity")`
@@ -70,9 +69,6 @@
 ##'   line for each stage of Monte Carlo maximum likelihood as described in
 ##'   [riskmap_progress]. Defaults to the option `RiskMap.messages`, or
 ##'   `TRUE` if it is not set.
-##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
-##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
-##' the `nugget` term in [gp()] is also set to `TRUE`.
 ##' @param start_pars `NULL` (the default), or a named list of starting
 ##' values for any of the model's estimated parameters, one, several or all of
 ##' them, named as in [riskmap_parameters]. `beta` is matched to the columns of
@@ -83,6 +79,17 @@
 ##' from the estimates of another. Every
 ##' other parameter takes its automatic start. [glgpm_parameters()] lists the
 ##' parameters of a model before it is fitted.
+##' @param fixed_pars `NULL` (the default), or a named list of values at which
+##' to hold some of the model's parameters instead of estimating them, with the
+##' names and structure of `start_pars`. It holds the variance of a nugget
+##' (`tau2`, with `gp(nugget = TRUE)`, positive), the measurement error variance
+##' of a Gaussian model (`sigma2_me`, zero or positive) and the size of a
+##' negative binomial model (`theta`, positive). A parameter can't be both
+##' started and held, except that a start equal to its held value, as in
+##' `start_pars = coef(fit)` of a fit with the same holds, is left out. With one
+##' observation per location, a Gaussian model can estimate the nugget or the
+##' measurement error variance, not both, and a negative binomial model the
+##' nugget or the size, not both.
 ##' @details
 ##' Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
 ##' spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs
@@ -169,10 +176,10 @@
 ##' \item{ID_coords}{Index of coordinates}
 ##' \item{re}{Random effects if `re()` is included in `formula`}
 ##' \item{ID_re}{Index of random effects if `re()` is included in `formula`}
-##' \item{fix_tau2}{Fixed nugget effect variance}
-##' \item{fix_var_me}{Fixed measurement error variance}
-##' \item{family_parameters}{For a negative binomial model whose size is held,
-##' the size as \code{list(theta = )}. Absent otherwise.}
+##' \item{nugget}{\code{"none"} without a nugget, \code{"estimated"} or
+##' \code{"fixed"} when \code{fixed_pars} holds its variance.}
+##' \item{fixed_pars}{The values of the parameters the model holds, as a named
+##' list, \code{NULL} when it holds none.}
 ##' \item{formula}{Model formula}
 ##' \item{family}{Response family}
 ##' \item{link_function}{For binomial and Poisson models, the inverse link
@@ -305,8 +312,8 @@ glgpm <- function(formula,
                  seed = NULL,
                  return_samples = TRUE,
                  messages = getOption("RiskMap.messages", TRUE),
-                 fix_var_me = NULL,
-                 start_pars = NULL) {
+                 start_pars = NULL,
+                 fixed_pars = NULL) {
   check_supplied(formula)
   check_supplied(data)
   check_supplied(family)
@@ -339,9 +346,6 @@ glgpm <- function(formula,
     if (given) {
       abort_input("{.arg denominator} can't be given for a Gaussian model.", arg = "denominator")
     }
-    if (!is.null(fix_var_me)) check_range(fix_var_me, min = 0)
-  } else if (!is.null(fix_var_me)) {
-    abort_input("{.arg fix_var_me} can be given only for a Gaussian model, not a {family} one.", arg = "fix_var_me")
   }
 
   inter_f <- interpret_formula(formula)
@@ -424,13 +428,24 @@ glgpm <- function(formula,
   m <- nrow(coords_o)
   s_unique <- unique(ID_coords)
 
-  fix_tau2 <- inter_f$gp_spec$nugget
+  # The values `fixed_pars` holds, read against every parameter the model
+  # could estimate, and the holds as the engines take them: the nugget as
+  # TRUE, its held variance or 0 without one, the measurement error variance
+  # held or NULL, and the family's held parameters with those it estimates.
+  has_nugget <- isTRUE(inter_f$gp_spec$nugget)
+  holds <- read_model_holds(colnames(D), has_nugget, model, family_link,
+                            names_re, distance_units, fixed_pars)
+  held <- holds$held
+  fix_tau2 <- holds$fix_tau2
+  fix_var_me <- holds$fix_var_me
+  family_parameters <- holds$family_parameters
+  estimated_family <- holds$estimated_family
 
   if(all(table(ID_coords) == 1) &&
      model$measurement_error &&
      isTRUE(fix_tau2) &&
      is.null(fix_var_me)){
-    abort_input(c("The nugget and the measurement error variance can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} or a fixed nugget in {.fn gp}, or give {.arg fix_var_me}."), arg = "formula")
+    abort_input(c("The nugget and the measurement error variance can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} in {.fn gp}, or hold {.code tau2} or {.code sigma2_me} in {.arg fixed_pars}."), arg = "formula")
   }
 
   # For the Gaussian family, an observation-level random effect is perfectly
@@ -453,7 +468,7 @@ glgpm <- function(formula,
       }
       saturated <- names_re[is_saturated_re]
       n_saturated <- length(saturated)
-      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "In a Gaussian model {cli::qty(n_saturated)}{?such an effect/these effects} can't be told apart from {confounded_component}.", "i" = "Drop {cli::qty(n_saturated)}{?it/them} from {.arg formula}, or fix the variance of {confounded_component}."), arg = "formula")
+      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "In a Gaussian model {cli::qty(n_saturated)}{?such an effect/these effects} can't be told apart from {confounded_component}.", "i" = "Drop {cli::qty(n_saturated)}{?it/them} from {.arg formula}, or hold the variance of {confounded_component} in {.arg fixed_pars}."), arg = "formula")
     }
   }
 
@@ -464,7 +479,7 @@ glgpm <- function(formula,
   if (length(estimated_family) && all(table(ID_coords) == 1) &&
       isTRUE(fix_tau2)) {
     family_words <- family_parameter_words(estimated_family[1L])
-    abort_input(c("The nugget and the {family_words} can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} or a fixed nugget in {.fn gp}, or give the {family_words} in {.arg family}."), arg = "formula")
+    abort_input(c("The nugget and the {family_words} can't both be estimated with one observation per location.", "i" = "Set {.code nugget = FALSE} in {.fn gp}, or hold {.code tau2} or the {family_words} in {.arg fixed_pars}."), arg = "formula")
   }
   # So does a random effect with one level per observation, as it does with
   # the measurement error of a Gaussian model.
@@ -473,7 +488,7 @@ glgpm <- function(formula,
     if (length(saturated)) {
       family_words <- family_parameter_words(estimated_family[1L])
       n_saturated <- length(saturated)
-      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "{cli::qty(n_saturated)}{?It/They} can't be told apart from the {family_words}.", "i" = "Drop {cli::qty(n_saturated)}{?it/them} from {.arg formula}, or give the {family_words} in {.arg family}."), arg = "formula")
+      abort_input(c("The random effect{?s} {.val {saturated}} {?has/have} one level per observation.", "x" = "{cli::qty(n_saturated)}{?It/They} can't be told apart from the {family_words}.", "i" = "Drop {cli::qty(n_saturated)}{?it/them} from {.arg formula}, or hold the {family_words} in {.arg fixed_pars}."), arg = "formula")
     }
   }
 
@@ -601,12 +616,19 @@ glgpm <- function(formula,
     res["re"] <- list(NULL)
     res["ID_re"] <- list(NULL)
   }
-  res$fix_tau2 <- fix_tau2
-  res["fix_var_me"] <- list(fix_var_me)
+  # Whether the model has a nugget, and whether it is estimated or held, and
+  # every value held (fixed_pars, or the size of MASS::negative.binomial()),
+  # in the order of the table (fit_fix_tau2(), fit_fixed_pars()).
+  res$nugget <- if (!has_nugget) "none" else if (is.null(held$tau2)) {
+    "estimated"
+  } else {
+    "fixed"
+  }
+  all_held <- c(held[names(held) != "theta"], family_parameters)
+  all_held <- all_held[intersect(unique(parameters$rows$name), names(all_held))]
+  res["fixed_pars"] <- list(if (length(all_held)) all_held)
   res$formula <- formula
   res$family <- family
-  # The family's own parameters, held at the values given with it.
-  if (length(family_parameters)) res$family_parameters <- family_parameters
   res$distance_units <- distance_units
   # Retain fitting controls as metadata so a fitted object can serve as a
   # complete specification when refitted to simulated or held-out data.
@@ -787,7 +809,7 @@ gaussian_conditional_fitted <- function(object) {
     kappa = object$kappa, return_sym_matrix = TRUE
   )
   tau2 <- pars$tau2 %||%
-    if (is.numeric(object$fix_tau2)) object$fix_tau2 else 0
+    if (is.numeric(fit_fix_tau2(object))) fit_fix_tau2(object) else 0
   spatial_covariance <- pars$sigma2 * correlation
   diag(spatial_covariance) <- diag(spatial_covariance) + tau2
 
@@ -807,7 +829,7 @@ gaussian_conditional_fitted <- function(object) {
 
   Z <- do.call(cbind, latent_designs)
   G <- as.matrix(Matrix::bdiag(latent_covariances))
-  measurement_variance <- pars$sigma2_me %||% object$fix_var_me %||% 0
+  measurement_variance <- pars$sigma2_me %||% fit_fix_var_me(object) %||% 0
   observed_covariance <- Z %*% G %*% t(Z)
   diag(observed_covariance) <- diag(observed_covariance) +
     measurement_variance
@@ -2564,9 +2586,9 @@ refit_invlink <- function(object) {
 ##' @param ID_re Indices mapping response to unstructured random effects.
 ##' @param family The distribution of the response, `"binomial"` or
 ##'   `"poisson"`, a binomial or Poisson family object with one of the
-##'   links that [glgpm()] accepts, such as `binomial("probit")`, or
-##'   [negative_binomial()] with its size, such as
-##'   `negative_binomial(theta = 2)`, with `denominator` the exposure.
+##'   links that [glgpm()] accepts, such as `binomial("probit")`, or a negative
+##'   binomial family with its size, such as `MASS::negative.binomial(2)`,
+##'   with `denominator` the exposure.
 ##' @param sigma2_re Variance of the unstructured random effects.
 ##' @param hessian Logical; if TRUE, compute the Hessian matrix.
 ##' @param gradient Logical; if TRUE, compute the gradient vector.

@@ -71,10 +71,9 @@
 ##'   for a binomial, Poisson or negative binomial model fitted with certified Monte Carlo
 ##'   maximum likelihood.
 ##' @param parameters Names of the parameters to profile one at a time, as in
-##'   `names(unlist(fitted$estimate))` (the prefix `beta.` can be left out).
-##'   For a Gaussian model the nugget is `tau2`, its variance, in place of
-##'   `nu2`, its ratio to the spatial variance. The default is every
-##'   parameter.
+##'   `names(unlist(coef(fitted)))` (the prefix `beta.` can be left out), the
+##'   nugget as `tau2`, its variance (see [riskmap_parameters]). The default is
+##'   every estimated parameter.
 ##' @param pairs A list of pairs of parameter names for joint profiles, for
 ##'   example `list(c("sigma2", "phi"))`. The default is none.
 ##' @param n_points Number of points of each marginal grid before any
@@ -273,11 +272,11 @@ make_profile_problem <- function(fitted, n_draws, seed) {
   engine <- make_adaptive_mcml_engine(
     D = design_scaling$design, y = fitted$y, units_m = fitted$units_m,
     distances = distances, family = fitted$family,
-    family_parameters = fitted$family_parameters,
+    family_parameters = fit_family_held(fitted),
     estimated_family = estimated_family_parameters(fitted),
     kappa = fitted$kappa,
     cov_offset = fitted$cov_offset, ID_coords = fitted$ID_coords,
-    fix_tau2 = fitted$fix_tau2,
+    fix_tau2 = fit_fix_tau2(fitted),
     ID_re = if (is.null(fitted$ID_re)) NULL else as.matrix(fitted$ID_re),
     # A canonical link gives NULL, and so the canonical path of the fit.
     invlink = refit_invlink(fitted),
@@ -296,24 +295,27 @@ make_profile_problem <- function(fitted, n_draws, seed) {
   maps <- profile_scale_maps(transform, log_scale, p)
   to_internal <- maps$to
   from_internal <- maps$from
-  estimate <- unlist(fitted$estimate)
-  internal <- to_internal(estimate)
-  engine$set_anchor(internal)
+  # The nugget is profiled as the logarithm of its variance, tau2, which the
+  # engine reads as its ratio to the spatial variance (profile_nugget()).
+  parameters <- fit_parameter_table(fitted)
+  profiled <- profile_nugget(fitted, parameters)
+  estimate <- profiled$estimate
+  engine_scale <- profiled$to_engine
+  engine$set_anchor(engine_scale(to_internal(estimate)))
   set.seed(seed)
   bank <- matrix(stats::rnorm(n_draws * engine$latent_dimension), nrow = n_draws)
   value_internal <- function(internal) {
-    result <- tryCatch(objective(internal, bank),
+    result <- tryCatch(objective(engine_scale(internal), bank),
                        error = function(error) NA_real_)
     if (is.finite(result) && result > -1e99) result else NA_real_
   }
   value <- function(working) value_internal(to_internal(working))
-  parameters <- fit_parameter_table(fitted)
-  bounds <- parameter_bounds(parameters, log_scale)
-  internal_bounds <- parameter_bounds(parameters)
+  bounds <- profiled$bounds(parameter_bounds(parameters, log_scale))
+  internal_bounds <- profiled$bounds(parameter_bounds(parameters))
   problem <- list(
     value = value, estimate = estimate, names = names(estimate),
     labels = profile_labels(parameters, names(estimate)),
-    standard_errors = sqrt(pmax(diag(fitted$covariance), 0)),
+    standard_errors = profiled$standard_errors,
     lower = bounds$lower, upper = bounds$upper,
     # The optimiser works on the engine's scale (standardised covariates,
     # rescaled distances), as the fit does, with the bounds of the fit.
@@ -352,12 +354,49 @@ profile_scale_maps <- function(transform, log_scale, p) {
   )
 }
 
+##' The nugget of a fit as profiles take it, the logarithm of its variance
+##'
+##' A fit keeps the nugget as the logarithm of its ratio to the spatial
+##' variance, `nu2`. Profiles hold and report its variance, `tau2`, as
+##' `coef()` and `summary()` do, so its slot holds log tau2 = nu2 + log sigma2,
+##' with its standard error by the delta method. `to_engine()` gives the
+##' engine's vector from one with log tau2 in that slot, and `bounds()` widens
+##' the slot's bounds to the sums of those of the ratio and of the spatial
+##' variance. Without an estimated nugget the estimate is the fit's.
+##' @noRd
+profile_nugget <- function(fitted, parameters) {
+  estimate <- unlist(fitted$estimate)
+  variances <- diag(fitted$covariance)
+  nugget <- match("nu2", names(estimate))
+  sigma2 <- match("sigma2", names(estimate))
+  if (!is.na(nugget)) {
+    estimate[nugget] <- estimate[nugget] + estimate[["sigma2"]]
+    variances[nugget] <- variances[nugget] + variances[["sigma2"]] +
+      2 * fitted$covariance["nu2", "sigma2"]
+    names(estimate)[nugget] <- "tau2"
+  }
+  list(
+    estimate = estimate,
+    standard_errors = stats::setNames(sqrt(pmax(variances, 0)),
+                                      names(estimate)),
+    to_engine = function(internal) {
+      if (!is.na(nugget)) internal[nugget] <- internal[nugget] - internal[sigma2]
+      internal
+    },
+    bounds = function(bounds) {
+      if (!is.na(nugget)) {
+        bounds$lower[nugget] <- bounds$lower[nugget] + bounds$lower[sigma2]
+        bounds$upper[nugget] <- bounds$upper[nugget] + bounds$upper[sigma2]
+      }
+      bounds
+    }
+  )
+}
+
 ##' Readable labels for the parameters of a fitted model
 ##'
 ##' The labels of `summary()`, for every family, from the fit's parameter
-##' table. The nugget of a binomial or Poisson fit is profiled as `nu2`, its
-##' ratio to the spatial variance, which `summary()` does not report, and
-##' that of a Gaussian fit as `tau2`, its variance.
+##' table. The nugget is profiled as its variance, `tau2`.
 ##' @noRd
 profile_labels <- function(parameters, names) {
   as.list(table_labels(parameters, names))

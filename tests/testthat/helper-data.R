@@ -39,7 +39,7 @@ gaussian_model <- glgpm(y ~ cov + gp() + re(i),
 gaussian_offset_model <- glgpm(y ~ cov + gp(nugget = TRUE) + offset(offset),
                                data = gaussian_data,
                                family = "gaussian",
-                               fix_var_me = 0,
+                               fixed_pars = list(sigma2_me = 0),
                                messages = FALSE)
 
 gaussian_intercept_model <- glgpm(y ~ gp(),

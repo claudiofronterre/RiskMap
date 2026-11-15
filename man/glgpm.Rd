@@ -17,8 +17,8 @@ glgpm(
   seed = NULL,
   return_samples = TRUE,
   messages = getOption("RiskMap.messages", TRUE),
-  fix_var_me = NULL,
-  start_pars = NULL
+  start_pars = NULL,
+  fixed_pars = NULL
 )
 }
 \arguments{
@@ -34,9 +34,8 @@ with its link. Either one of the strings \code{"gaussian"}, \code{"binomial"} an
 \code{"poisson"}, which take the identity, logit and log links, a family
 object as in \code{\link[stats:glm]{stats::glm()}}, such as \code{binomial("probit")}, or
 \code{\link[=negative_binomial]{negative_binomial()}} for overdispersed counts with the log link, whose
-size is estimated unless a value is given (\code{negative_binomial(theta = 2)}
-or \code{MASS::negative.binomial(2)}). Where nothing is estimated, as in
-\code{\link[=specify_glgpm]{specify_glgpm()}}, the size must be given. Binomial
+size is estimated unless \code{fixed_pars} holds it, as does the family object
+\code{MASS::negative.binomial(2)}. Binomial
 responses take the logit, probit, complementary log-log (\code{"cloglog"}) and
 Cauchy (\code{"cauchit"}) links, Poisson responses the log link and Gaussian
 responses the identity link. \code{binomial("log")} and \code{poisson("identity")}
@@ -102,10 +101,6 @@ line for each stage of Monte Carlo maximum likelihood as described in
 \link{riskmap_progress}. Defaults to the option \code{RiskMap.messages}, or
 \code{TRUE} if it is not set.}
 
-\item{fix_var_me}{Optional fixed value for the measurement error variance when fitting a Gaussian model.
-When not provided, the value will be estimated, but cannot be if each location only has one sample and
-the \code{nugget} term in \code{\link[=gp]{gp()}} is also set to \code{TRUE}.}
-
 \item{start_pars}{\code{NULL} (the default), or a named list of starting
 values for any of the model's estimated parameters, one, several or all of
 them, named as in \link{riskmap_parameters}. \code{beta} is matched to the columns of
@@ -116,6 +111,18 @@ list or as that named vector, so \code{start_pars = coef(fit)} starts a fit
 from the estimates of another. Every
 other parameter takes its automatic start. \code{\link[=glgpm_parameters]{glgpm_parameters()}} lists the
 parameters of a model before it is fitted.}
+
+\item{fixed_pars}{\code{NULL} (the default), or a named list of values at which
+to hold some of the model's parameters instead of estimating them, with the
+names and structure of \code{start_pars}. It holds the variance of a nugget
+(\code{tau2}, with \code{gp(nugget = TRUE)}, positive), the measurement error variance
+of a Gaussian model (\code{sigma2_me}, zero or positive) and the size of a
+negative binomial model (\code{theta}, positive). A parameter can't be both
+started and held, except that a start equal to its held value, as in
+\code{start_pars = coef(fit)} of a fit with the same holds, is left out. With one
+observation per location, a Gaussian model can estimate the nugget or the
+measurement error variance, not both, and a negative binomial model the
+nugget or the size, not both.}
 }
 \value{
 An object of class \code{RiskMap} containing the fitted model and relevant information:
@@ -143,10 +150,10 @@ its rows/columns are named to match \code{unlist(estimate)}.}
 \item{ID_coords}{Index of coordinates}
 \item{re}{Random effects if \code{re()} is included in \code{formula}}
 \item{ID_re}{Index of random effects if \code{re()} is included in \code{formula}}
-\item{fix_tau2}{Fixed nugget effect variance}
-\item{fix_var_me}{Fixed measurement error variance}
-\item{family_parameters}{For a negative binomial model whose size is held,
-the size as \code{list(theta = )}. Absent otherwise.}
+\item{nugget}{\code{"none"} without a nugget, \code{"estimated"} or
+\code{"fixed"} when \code{fixed_pars} holds its variance.}
+\item{fixed_pars}{The values of the parameters the model holds, as a named
+list, \code{NULL} when it holds none.}
 \item{formula}{Model formula}
 \item{family}{Response family}
 \item{link_function}{For binomial and Poisson models, the inverse link
