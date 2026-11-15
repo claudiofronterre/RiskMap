@@ -344,3 +344,19 @@ test_that("a model with every parameter held is evaluated at the values", {
                         messages = FALSE)
   expect_true(all(is.finite(prediction$predictions$response_mean)))
 })
+
+test_that("predictions with parameter uncertainty keep held parameters", {
+  data <- replicated_gaussian()
+  held <- glgpm(y ~ cov + gp(), data = data, family = "gaussian",
+                fixed_pars = list(phi = 2), messages = FALSE)
+  set.seed(5)
+  draws <- draw_parameter_values(held, 50L)
+  expect_true(all(draws[, "phi"] == held$estimate$phi))
+  expect_gt(stats::sd(draws[, "sigma2"]), 0)
+  all_held <- glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+                    fixed_pars = list(beta = c(1, 0.3), sigma2 = 0.5,
+                                      phi = 1.2, sigma2_me = 0.1),
+                    messages = FALSE)
+  expect_input_error(draw_parameter_values(all_held, 5L),
+                     "parameter_uncertainty")
+})

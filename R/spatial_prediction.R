@@ -1321,6 +1321,9 @@ draw_parameter_values <- function(object, n_draws) {
   failure <- function() {
     riskmap_abort(c("The covariance matrix of the estimates isn't available or isn't positive definite, so parameter uncertainty can't be propagated.", "i" = "For a binomial, Poisson or negative binomial model, refitting with {.code control_mcml = set_control_mcml(pc_prior = TRUE)} usually solves this."), class = "riskmap_error_fit")
   }
+  if (!nrow(estimated_rows(fit_parameter_table(object)))) {
+    abort_input(c("{.arg parameter_uncertainty} can't be {.code TRUE} for a fit that holds every parameter.", "i" = "The parameters given in {.arg fixed_pars} have no uncertainty to propagate."), arg = "parameter_uncertainty")
+  }
   if (is.null(covariance)) failure()
   covariance <- as.matrix(covariance)
   if (!identical(dim(covariance), rep(length(estimate), 2L))) failure()
