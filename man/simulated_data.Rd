@@ -22,7 +22,7 @@ column replaced by the selected simulation, ready for refitting.
 \code{simulated_surface()} returns the grid \code{sf} data with columns for the
 spatial effect, nugget, group effect, linear predictor and mean, with
 class \code{RiskMap_simulated_surface} so that it can be mapped with
-\link[=plot.RiskMap_simulated_surface]{plot()}.
+\code{\link[=plot_simulated_surface]{plot_simulated_surface()}} or \code{plot()}.
 }
 \description{
 Extract a simulated dataset or surface
@@ -50,4 +50,8 @@ sim <- simulate_glgpm(model,
                       seed = 1)
 
 simulated_data(sim, simulation = 1)
+}
+\seealso{
+\code{\link[=plot_simulated_surface]{plot_simulated_surface()}}, which \code{plot()} of a surface also
+calls.
 }

@@ -1493,7 +1493,7 @@ format_cv_test_sets <- function(x) {
 ##'   It gives the models, the test sets, how the parameters were set and the
 ##'   scores of each model over all test observations.
 ##'   \code{\link{summary.RiskMap_cross_validation}} gives the scores of each
-##'   test set, and \code{\link{plot.RiskMap_cross_validation}} maps the scores
+##'   test set, and [plot_cross_validation()] maps the scores
 ##'   at the test locations or draws the calibration curve.
 ##' @param x An object of class \code{"RiskMap_cross_validation"}.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
@@ -1673,17 +1673,17 @@ format_cross_validation <- function(x) {
   curve
 }
 
-##' @title Plot Method for RiskMap_cross_validation Objects
+##' @title Plot a cross-validation
 ##'
 ##' @description
-##' Draws one metric of a \code{RiskMap_cross_validation} object returned by
-##' \code{\link{assess_prediction}}: a map of the CRPS or SCRPS at the test
+##' Draws one metric of a cross-validation by [assess_prediction()], as
+##' `plot()` of the result does: a map of the CRPS or SCRPS at the test
 ##' locations, or the calibration curve (\code{"PIT"}), the average
 ##' nonrandomized PIT (AnPIT) curve for discrete families or the empirical
 ##' distribution function of the PIT values for Gaussian models. Several
 ##' models are panels of one plot that share one colour scale.
 ##'
-##' @param x A \code{RiskMap_cross_validation} object.
+##' @param x The result of [assess_prediction()].
 ##' @param metric The metric to draw, one of \code{"PIT"} (the calibration
 ##'   curve), \code{"CRPS"} and \code{"SCRPS"} (maps of the score of each test
 ##'   observation), among those computed. When \code{NULL} (the default), the
@@ -1699,8 +1699,10 @@ format_cross_validation <- function(x) {
 ##' @param combine_pit Logical; when \code{pit_mode = "average"}, draw the
 ##'   calibration curves for every model in a single panel (\code{TRUE})
 ##'   rather than one panel per model (\code{FALSE}, default).
-##' @param ... Not used, and an error if given, so that a misspelt argument
-##'   is not ignored. Add \pkg{ggplot2} components to the plot with \code{+}.
+##' @param ... For `plot()`, the arguments of `plot_cross_validation()`. For
+##'   `plot_cross_validation()`, not used, and an error if given, so that a
+##'   misspelt argument is not ignored. Add \pkg{ggplot2} components to the plot
+##'   with \code{+}.
 ##'
 ##' @details
 ##' Lower is better for both scores, and a location in several test sets
@@ -1713,13 +1715,25 @@ format_cross_validation <- function(x) {
 ##'   \pkg{ggplot2} components such as
 ##'   \code{ggplot2::scale_colour_viridis_c()} can be added.
 ##'
-##' @seealso \code{\link{assess_prediction}}
-##' @method plot RiskMap_cross_validation
+##' @seealso [assess_prediction()]
+##' @examples
+##' data(italy_sim)
+##' fit <- glgpm(y ~ gp(), data = italy_sim[1:100, ], family = "gaussian",
+##'              messages = FALSE)
+##' cross_validation <- assess_prediction(list(fit), method = "user",
+##'                                       user_split = list(1:50, 51:100),
+##'                                       seed = 1, messages = FALSE)
+##' plot_cross_validation(cross_validation)
+##' plot_cross_validation(cross_validation, metric = "CRPS")
+##' # The same calibration curve
+##' plot(cross_validation)
 ##' @export
-plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL,
-                                          pit_mode = "average",
-                                          pit_test_set = NULL,
-                                          combine_pit = FALSE, ...) {
+plot_cross_validation <- function(x, metric = NULL, model = NULL,
+                                  pit_mode = "average", pit_test_set = NULL,
+                                  combine_pit = FALSE, ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_cross_validation", "plot_cross_validation",
+                    "assess_prediction")
   check_dots_unused(..., .hints = c(
     test_set = "It is now {.arg pit_test_set}.",
     combine_panels = "It is now {.arg combine_pit}."
@@ -1769,6 +1783,11 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL,
     .plot_metric_map(x, metric = metric, models = model)
   }
 }
+
+##' @rdname plot_cross_validation
+##' @method plot RiskMap_cross_validation
+##' @export
+plot.RiskMap_cross_validation <- function(x, ...) plot_cross_validation(x, ...)
 
 ##' @title Check for valid binomial values
 ##'

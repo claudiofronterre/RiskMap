@@ -289,7 +289,9 @@
 ##' )
 ##' areal_prediction$boundary_summary
 ##'
-##' @seealso [glgpm()], [fitted()], [set_control_mcmc()]
+##' @seealso [plot_prediction()], which `plot()` of the result also calls,
+##'   [to_table.RiskMap_prediction()], [glgpm()], [fitted()] and
+##'   [set_control_mcmc()].
 ##' @method predict RiskMap
 ##' @export
 predict.RiskMap <- function(
@@ -2815,8 +2817,9 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' Cross-validation can be performed using either spatial clustering, regularized
 ##' subsampling with a minimum inter-point distance or a user-defined test set.
 ##' For each fold or subset, models can be refitted or evaluated with fixed
-##' parameters, offering flexibility in model validation. [plot()][plot.RiskMap_cross_validation()] of the
-##' result maps the scores and draws the calibration curves.
+##' parameters, offering flexibility in model validation.
+##' [plot_cross_validation()], or `plot()` of the result, maps the scores and
+##' draws the calibration curves.
 ##'
 ##' @param models A list of `RiskMap` objects, each a model fitted with
 ##'   [glgpm()] to the same data. Names of the list name the models in the
@@ -2935,8 +2938,8 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' yet include random effects, so the scores of models with `re()` terms are
 ##' not reliable, and a warning says so.
 ##'
-##' @seealso [plot.RiskMap_cross_validation()],
-##'   [summary.RiskMap_cross_validation()]
+##' @seealso [plot_cross_validation()], which `plot()` of the result also
+##'   calls, and [summary.RiskMap_cross_validation()].
 ##'
 ##' @references
 ##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
@@ -3638,29 +3641,45 @@ assess_prediction <- function(models,
   stamp_version(out)
 }
 
-##' @title Plot Method for RiskMap_simulation Objects
+##' @title Map a simulation
 ##' @description
 ##' Maps one component of one simulation from [simulate_glgpm()] over its
 ##' prediction grid, by default the mean, with the sampling locations overlaid
-##' when data were also simulated.
+##' when data were also simulated. `plot()` of the simulation does the same.
 ##'
-##' @param x Output from [simulate_glgpm()] including a surface.
+##' @param x The result of [simulate_glgpm()], including a surface.
 ##' @param simulation A single simulation number to plot, defaulting to one.
-##' @inheritParams plot.RiskMap_simulated_surface
+##' @param ... For `plot()`, the arguments of `plot_simulation()`. For
+##'   `plot_simulation()`, arguments passed to the ggplot2 fill scale, as in
+##'   [plot_simulated_surface()].
+##' @inheritParams plot_simulated_surface
 ##'
 ##' @return A \code{ggplot} object.
 ##' @details
-##' The colours and the legend follow [plot.RiskMap_prediction()]. The returned
+##' The colours and the legend follow [plot_prediction()]. The returned
 ##' object can be modified further with standard \pkg{ggplot2} functions.
 ##'
-##' @seealso [simulated_surface()], [plot.RiskMap_simulated_surface()]
-##' @method plot RiskMap_simulation
+##' @seealso [simulated_surface()], [plot_simulated_surface()]
+##' @examples
+##' data(italy_sim)
+##' example_data <- italy_sim[1:50, ]
+##' fit <- glgpm(y ~ gp(), data = example_data, family = "gaussian",
+##'              messages = FALSE)
+##' grid <- create_grid(create_convex_hull(example_data), spacing = 20)
+##' simulation <- simulate_glgpm(fit, nsim = 2, what = c("data", "surface"),
+##'                              prediction_grid = grid, seed = 1)
+##' plot_simulation(simulation, simulation = 2)
+##' # The same map
+##' plot(simulation, simulation = 2)
 ##' @export
-plot.RiskMap_simulation <- function(x, simulation = 1, quantity = "mean",
-                                    palette = NULL, limits = NULL, ...) {
+plot_simulation <- function(x, simulation = 1, quantity = "mean",
+                            palette = NULL, limits = NULL, ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_simulation", "plot_simulation",
+                    "simulate_glgpm")
   surface <- simulated_surface(x, simulation)
-  out <- plot(surface, quantity = quantity, palette = palette,
-              limits = limits, ...) +
+  out <- plot_simulated_surface(surface, quantity = quantity,
+                                palette = palette, limits = limits, ...) +
     ggtitle(paste("Simulation", simulation))
 
   if (!is.null(x$locations$data)) {
@@ -3675,10 +3694,15 @@ plot.RiskMap_simulation <- function(x, simulation = 1, quantity = "mean",
   out
 }
 
+##' @rdname plot_simulation
+##' @method plot RiskMap_simulation
+##' @export
+plot.RiskMap_simulation <- function(x, ...) plot_simulation(x, ...)
+
 ##' Map values over a regular grid of points
 ##'
 ##' Draws each grid point as a tile, with the fill scale and legend of the
-##' prediction maps of [plot.RiskMap_prediction()].
+##' prediction maps of [plot_prediction()].
 ##'
 ##' @param grid An `sf` or `sfc` object of points on a regular grid.
 ##' @param values Numeric vector of values to map, one per point in `grid`.
@@ -3733,12 +3757,13 @@ grid_spacing <- function(coordinates) {
   resolution(coordinates, zero = FALSE)
 }
 
-##' @title Plot Method for RiskMap_simulated_surface Objects
+##' @title Map a simulated surface
 ##' @description
 ##' Maps one component of a surface extracted with [simulated_surface()] over
-##' its prediction grid, by default the mean.
+##' its prediction grid, by default the mean. `plot()` of the surface does the
+##' same.
 ##'
-##' @param x Output from [simulated_surface()].
+##' @param x The result of [simulated_surface()].
 ##' @param quantity The simulated component to map, one of `"mean"` (the
 ##'   default), `"linear_predictor"`, `"spatial_effect"`, `"nugget"` and
 ##'   `"group_effect"`, as in [simulated_values()]. The mean is the prevalence
@@ -3747,7 +3772,7 @@ grid_spacing <- function(coordinates) {
 ##'   model. The nugget and the group effect are zero when the model has
 ##'   none.
 ##' @param palette Colour palette. `NULL` selects the defaults of
-##'   [plot.RiskMap_prediction()], a calm-to-alarm sequential palette for the
+##'   [plot_prediction()], a calm-to-alarm sequential palette for the
 ##'   mean and a palette centred at zero for the linear predictor and the
 ##'   effects. A character vector of colours or the name of an HCL palette
 ##'   accepted by [grDevices::hcl.colors()] can be supplied. Prefix a named
@@ -3755,23 +3780,37 @@ grid_spacing <- function(coordinates) {
 ##' @param limits `NULL` (the default) or a numeric vector of two increasing
 ##'   numbers giving the range of the colour scale, for example to map several
 ##'   simulations on a common scale.
-##' @param ... Additional arguments passed to the ggplot2 fill scale, for
-##'   example `transform = "sqrt"` for skewed values. The map sets
+##' @param ... For `plot()`, the arguments of `plot_simulated_surface()`. For
+##'   `plot_simulated_surface()`, arguments passed to the ggplot2 fill scale,
+##'   for example `transform = "sqrt"` for skewed values. The map sets
 ##'   `colours`, `limits`, `breaks`, `labels`, `oob`, `na.value` and `guide`
 ##'   itself. To change them, add another fill scale to the map with `+`.
 ##'
 ##' @return A \code{ggplot} object.
 ##' @details
-##' The colours and the legend follow [plot.RiskMap_prediction()], and the
+##' The colours and the legend follow [plot_prediction()], and the
 ##' legend title names the mapped component. The returned object can be
 ##' modified further with standard \pkg{ggplot2} functions.
 ##'
-##' @seealso [simulated_surface()], [plot.RiskMap_simulation()]
-##' @method plot RiskMap_simulated_surface
+##' @seealso [simulated_surface()], [plot_simulation()]
+##' @examples
+##' data(italy_sim)
+##' example_data <- italy_sim[1:50, ]
+##' fit <- glgpm(y ~ gp(), data = example_data, family = "gaussian",
+##'              messages = FALSE)
+##' grid <- create_grid(create_convex_hull(example_data), spacing = 20)
+##' simulation <- simulate_glgpm(fit, nsim = 2, what = c("data", "surface"),
+##'                              prediction_grid = grid, seed = 1)
+##' surface <- simulated_surface(simulation, simulation = 2)
+##' plot_simulated_surface(surface, quantity = "spatial_effect")
+##' # The same map
+##' plot(surface, quantity = "spatial_effect")
 ##' @export
-plot.RiskMap_simulated_surface <- function(x, quantity = "mean", palette = NULL,
-                                           limits = NULL, ...) {
-  check_class(x, "RiskMap_simulated_surface")
+plot_simulated_surface <- function(x, quantity = "mean", palette = NULL,
+                                   limits = NULL, ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_simulated_surface", "plot_simulated_surface",
+                    "simulated_surface")
   # The fill scale would reject these less clearly.
   dot_names <- names(match.call(expand.dots = FALSE)$...)
   if ("reverse_palette" %in% dot_names) {
@@ -3822,6 +3861,13 @@ plot.RiskMap_simulated_surface <- function(x, quantity = "mean", palette = NULL,
             ...)
 }
 
+##' @rdname plot_simulated_surface
+##' @method plot RiskMap_simulated_surface
+##' @export
+plot.RiskMap_simulated_surface <- function(x, ...) {
+  plot_simulated_surface(x, ...)
+}
+
 ##' @title Assess Simulations
 ##'
 ##' @description Evaluates models using joint data and surface simulations.
@@ -3859,7 +3905,7 @@ plot.RiskMap_simulated_surface <- function(x, quantity = "mean", palette = NULL,
 ##'   and so on, in a column `"region"`.
 ##' @param objective A character vector specifying objectives, either `"mse"`, `"classify"`, or both.
 ##' @param breaks A numeric vector of at least three increasing class
-##'   boundaries for classification, as in [plot.RiskMap_prediction()].
+##'   boundaries for classification, as in [plot_prediction()].
 ##'   Required if `objective` includes `"classify"`.
 ##' @param control_mcmc A control object for MCMC sampling, created with `set_control_mcmc()`. Default is `set_control_mcmc()`.
 ##' @param seed Optional non-negative integer that makes the assessment

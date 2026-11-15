@@ -338,5 +338,7 @@ areal_prediction$boundary_summary
 
 }
 \seealso{
-\code{\link[=glgpm]{glgpm()}}, \code{\link[=fitted]{fitted()}}, \code{\link[=set_control_mcmc]{set_control_mcmc()}}
+\code{\link[=plot_prediction]{plot_prediction()}}, which \code{plot()} of the result also calls,
+\code{\link[=to_table.RiskMap_prediction]{to_table.RiskMap_prediction()}}, \code{\link[=glgpm]{glgpm()}}, \code{\link[=fitted]{fitted()}} and
+\code{\link[=set_control_mcmc]{set_control_mcmc()}}.
 }

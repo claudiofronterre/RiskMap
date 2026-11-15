@@ -126,8 +126,8 @@
 ##' that was asked for but not computed, the reason.}
 ##' \item{fit_seconds}{The time the fit took in seconds, `NULL` where the fit
 ##' did not record it.}
-##' @seealso [summary.RiskMap_check()], [plot.RiskMap_check()],
-##'   [summary.RiskMap()], [profile.RiskMap()]
+##' @seealso [summary.RiskMap_check()], [plot_check()], which `plot()` of the
+##'   result also calls, [summary.RiskMap()] and [profile.RiskMap()].
 ##' @examples
 ##' data(italy_sim)
 ##'
@@ -996,8 +996,8 @@ format_checks <- function(x) {
 }
 
 ##' @title Plot the Checks on a Fitted Model
-##' @description Plot method for objects of class `"RiskMap_check"` from
-##'   [check_fit()]. It makes the figures of the checks that were computed,
+##' @description Plots the checks of a fit from [check_fit()], as `plot()` of
+##'   the result does. It makes the figures of the checks that were computed,
 ##'   and never computes anything itself, so an extra check runs once in
 ##'   [check_fit()]. By stage of certified Monte Carlo maximum likelihood, the
 ##'   panels show the bound on the Monte Carlo error against the tolerance
@@ -1032,7 +1032,7 @@ format_checks <- function(x) {
 ##'   the extra check `"profile"`, each profiled parameter has a panel of its
 ##'   profile likelihood, named `"profile_"` followed by the parameter, such
 ##'   as `"profile_phi"`.
-##' @param x An object of class `"RiskMap_check"`.
+##' @param x The result of [check_fit()].
 ##' @param which Names of the panels to draw, among `"certificate"`,
 ##'   `"effective_draws"`, `"pareto_k"`, `"moves"`, `"held_variances"`,
 ##'   `"screen"`, `"radius"`, the panels of the profiles, such as
@@ -1040,9 +1040,10 @@ format_checks <- function(x) {
 ##'   The default is every panel that has something to show. A chosen panel
 ##'   with nothing to show gives a message saying why, and which extra check
 ##'   of [check_fit()] would compute it. If no panel has anything to show,
-##'   `plot()` stops with those messages.
-##' @param ... Not used, and an error if given, so that a misspelt argument
-##'   is not ignored.
+##'   `plot_check()` stops with those messages.
+##' @param ... For `plot()`, the arguments of `plot_check()`. For
+##'   `plot_check()`, not used, and an error if given, so that a misspelt
+##'   argument is not ignored.
 ##' @return A `ggplot` object when one panel is drawn, and otherwise a
 ##'   `patchwork` object that arranges the panels in two columns. Nothing is
 ##'   drawn until the object is printed, so it can be saved or changed first.
@@ -1056,13 +1057,16 @@ format_checks <- function(x) {
 ##'   data = liberia, distance_crs = 32629, family = "binomial", messages = FALSE
 ##' )
 ##' checked <- check_fit(fit, extra = "all")
+##' plot_check(checked)
+##' plot_check(checked,
+##'            which = c("certificate", "screen", "radius", "profile_phi"))
+##' # The same panels
 ##' plot(checked)
-##' plot(checked, which = c("certificate", "screen", "radius", "profile_phi"))
 ##' }
-##' @method plot RiskMap_check
 ##' @export
-plot.RiskMap_check <- function(x, which = NULL, ...) {
-  check_class(x, "RiskMap_check")
+plot_check <- function(x, which = NULL, ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_check", "plot_check", "check_fit")
   check_dots_unused(...)
   panel_names <- c("certificate", "effective_draws", "pareto_k", "moves",
                    "held_variances", "screen", "radius")
@@ -1094,6 +1098,11 @@ plot.RiskMap_check <- function(x, which = NULL, ...) {
   if (length(panels) == 1L) return(panels[[1L]])
   patchwork::wrap_plots(panels, ncol = 2L)
 }
+
+##' @rdname plot_check
+##' @method plot RiskMap_check
+##' @export
+plot.RiskMap_check <- function(x, ...) plot_check(x, ...)
 
 ##' Every panel of the checks, NULL where there is nothing to show
 ##' @noRd

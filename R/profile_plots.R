@@ -1,6 +1,7 @@
 ##' Plot profile likelihoods of a fitted geostatistical model
 ##'
-##' Draws the profiles computed by [profile.RiskMap()]. Each marginal profile
+##' Draws the profiles computed by [profile.RiskMap()], as `plot()` of the
+##' result does. Each marginal profile
 ##' shows the relative profile log-likelihood, the profile log-likelihood
 ##' minus its maximum, against the parameter. It is 0 at the maximum, which
 ##' is the estimate unless a point on a profile is higher, and negative
@@ -23,7 +24,7 @@
 ##' and on the relative log-likelihood it is \eqn{-\chi^2_{1, 1 - \alpha}/2}
 ##' (about -1.92 at the 95% level).
 ##'
-##' @param x A `RiskMap_profile` object from [profile.RiskMap()].
+##' @param x The result of [profile.RiskMap()].
 ##' @param parameters Names of the marginal profiles to draw. The default is
 ##'   all of them.
 ##' @param pairs Names of the joint profiles to draw, as `"first:second"`. The
@@ -31,18 +32,33 @@
 ##' @param scale The vertical scale of the profiles: `"loglik"` (the default)
 ##'   for the relative log-likelihood, or `"deviance"` for the profile
 ##'   deviance.
-##' @param ... Not used, and an error if given, so that a misspelt argument
-##'   is not ignored.
+##' @param ... For `plot()`, the arguments of `plot_profile()`. For
+##'   `plot_profile()`, not used, and an error if given, so that a misspelt
+##'   argument is not ignored.
 ##' @return A `ggplot` object for one panel, and otherwise a `patchwork`
 ##'   object that arranges the panels. Nothing is drawn until the object is
 ##'   printed, so it can be saved or changed first. One marginal panel is
-##'   `plot(x, parameters = "phi", pairs = character())`, since `pairs`
-##'   defaults to every joint profile.
+##'   `plot_profile(x, parameters = "phi", pairs = character())`, since
+##'   `pairs` defaults to every joint profile.
 ##' @seealso [profile.RiskMap()]
+##' @examples
+##' \donttest{
+##' data(galicia)
+##' fit <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
+##'              family = "gaussian", distance_units = "km", messages = FALSE)
+##' profiles <- profile(fit, pairs = list(c("sigma2", "phi")),
+##'                     messages = FALSE)
+##' plot_profile(profiles)
+##' plot_profile(profiles, parameters = "phi", pairs = character(),
+##'              scale = "deviance")
+##' # The same panels
+##' plot(profiles)
+##' }
 ##' @export
-plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
-                                 scale = c("loglik", "deviance"), ...) {
-  check_class(x, "RiskMap_profile")
+plot_profile <- function(x, parameters = NULL, pairs = NULL,
+                         scale = c("loglik", "deviance"), ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_profile", "plot_profile", "profile")
   check_dots_unused(...)
   scale <- match_choice(scale)
   # The argument blamed if nothing is left to draw, the one given empty.
@@ -72,6 +88,11 @@ plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
   names(joint) <- pairs
   arrange_profile_panels(x, marginal, joint, axis)
 }
+
+##' @rdname plot_profile
+##' @method plot RiskMap_profile
+##' @export
+plot.RiskMap_profile <- function(x, ...) plot_profile(x, ...)
 
 ##' The vertical scale of the profiles
 ##'

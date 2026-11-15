@@ -82,6 +82,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   and draws nothing, as every `plot()` method now does. `profile()`, `print()`
   and `plot()` of profiles and extrapolations, and `print()`, `summary()` and
   `plot()` of bootstraps and checks stop on an argument they don't use.
+- Every `plot()` method has a function of its own, `plot_variogram()`,
+  `plot_prediction()`, `plot_extrapolation()`, `plot_check()`,
+  `plot_profile()`, `plot_bootstrap()`, `plot_cross_validation()`,
+  `plot_simulation()` and `plot_simulated_surface()`, so users can call either.
 
 ### Prediction
 

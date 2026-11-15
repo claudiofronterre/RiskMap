@@ -262,6 +262,26 @@ check_class <- function(x, class, arg = rlang::caller_arg(x),
   invisible(x)
 }
 
+#' Check that a plot function was given the result it draws
+#'
+#' For the `plot_*()` functions. `plot()` reaches them through its methods
+#' with an object of the right class, so only a direct call can fail here.
+#' @param x The object to plot.
+#' @param class The class of the result the function draws.
+#' @param fun The name of the plot function, such as `"plot_variogram"`.
+#' @param made_by The name of the function whose result it draws, such as
+#'   `"variogram"`.
+#' @inheritParams check_range
+#' @noRd
+check_plot_object <- function(x, class, fun, made_by,
+                              call = rlang::caller_env()) {
+  if (inherits(x, class)) return(invisible(x))
+  abort_input(
+    "{.fn {fun}} needs the result of {.fn {made_by}}, not {.obj_type_friendly {x}}.",
+    arg = "x", call = call
+  )
+}
+
 #' Check that a control argument was made by its function
 #'
 #' For `control_mcmc` and `control_mcml`, made by [set_control_mcmc()] and

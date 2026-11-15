@@ -29,10 +29,10 @@
 ##' a polygon and exceedance probabilities, are shown as percentages. Sums are
 ##' shown to three significant digits with thousands separators. The default
 ##' headers name the quantity as in the maps drawn by
-##' [plot.RiskMap_prediction()].
+##' [plot_prediction()].
 ##'
 ##' @return An object of class `knitr_kable`.
-##' @seealso [predict.RiskMap()], [plot.RiskMap_prediction()]
+##' @seealso [predict.RiskMap()], [plot_prediction()]
 ##' @examples
 ##' data(italy_sim)
 ##' example_data <- italy_sim[1:50, ]

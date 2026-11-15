@@ -191,6 +191,8 @@ specify_glgpm <- function(formula, data, family, parameters, invlink = NULL,
 #' simulated_data(sim, simulation = 1)
 #'
 #' simulated_values(sim, component = "spatial_effect")
+#' @seealso [simulated_data()], [simulated_values()], and [plot_simulation()],
+#'   which `plot()` of the result also calls.
 #' @export
 simulate_glgpm <- function(object, nsim = 1, what = "data",
                           sample_locations = NULL, prediction_grid = NULL,
@@ -435,7 +437,7 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
 #'   `simulated_surface()` returns the grid `sf` data with columns for the
 #'   spatial effect, nugget, group effect, linear predictor and mean, with
 #'   class `RiskMap_simulated_surface` so that it can be mapped with
-#'   [plot()][plot.RiskMap_simulated_surface()].
+#'   [plot_simulated_surface()] or `plot()`.
 #' @examples
 #' library(sf)
 #' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
@@ -459,6 +461,8 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
 #'                       seed = 1)
 #'
 #' simulated_data(sim, simulation = 1)
+#' @seealso [plot_simulated_surface()], which `plot()` of a surface also
+#'   calls.
 #' @export
 simulated_data <- function(object, simulation = 1) {
   check_supplied(object)

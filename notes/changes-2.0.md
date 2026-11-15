@@ -183,6 +183,25 @@ measurement error variance of a Gaussian model, in the element
 fixed value in every column, and the row of the intercept of a fit with no
 covariates is named "(Intercept)", where it was blank.
 
+## Plots
+
+- Each `plot()` method of RiskMap has an exported function of its own, which
+holds its arguments, checks and documentation. They are `plot_variogram()`,
+`plot_prediction()`, `plot_extrapolation()`, `plot_check()`, `plot_profile()`,
+`plot_bootstrap()`, `plot_cross_validation()`, `plot_simulation()` and
+`plot_simulated_surface()`. The method is a one-line call of the function and
+is documented on its page, so `plot(x, ...)` and the function give the same
+object. A function given the result of another function stops with an input
+error that names the function whose result it draws, as in "`plot_variogram()`
+needs the result of `variogram()`". Their unused arguments stop as before, and
+the maps of predictions and simulations still pass theirs to the fill scale.
+The help pages `plot.RiskMap_*` become aliases of the new pages, and the
+reference index lists the functions in their task groups instead of a group of
+plots. `plot_mcmc()` is unchanged.
+- `plot()` of a variogram, which already stopped on `plot_envelope` and
+`color`, now says that they are `envelope` and `colour`, and its error is a
+RiskMap input error like those of the other methods.
+
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.
 - `anopheles` is now in WGS 84 / UTM zone 32N (EPSG:32632), where it was in

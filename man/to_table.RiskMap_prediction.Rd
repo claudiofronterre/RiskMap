@@ -58,7 +58,7 @@ Probabilities, including prevalence averaged over
 a polygon and exceedance probabilities, are shown as percentages. Sums are
 shown to three significant digits with thousands separators. The default
 headers name the quantity as in the maps drawn by
-\code{\link[=plot.RiskMap_prediction]{plot.RiskMap_prediction()}}.
+\code{\link[=plot_prediction]{plot_prediction()}}.
 }
 \examples{
 data(italy_sim)
@@ -74,5 +74,5 @@ prediction <- predict(fit, newdata = example_data, boundaries = areas,
 to_table(prediction)
 }
 \seealso{
-\code{\link[=predict.RiskMap]{predict.RiskMap()}}, \code{\link[=plot.RiskMap_prediction]{plot.RiskMap_prediction()}}
+\code{\link[=predict.RiskMap]{predict.RiskMap()}}, \code{\link[=plot_prediction]{plot_prediction()}}
 }

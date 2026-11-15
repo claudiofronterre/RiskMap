@@ -667,7 +667,7 @@ test_that("simulated_surface() output has a plot method matching plot.RiskMap_si
   expect_input_error(plot(surface, labels = NULL), "labels")
   expect_no_error(ggplot2::ggplot_build(plot(surface, transform = "reverse")))
   expect_input_error(plot(surface, palette = "not a palette"), "palette")
-  expect_error(plot.RiskMap_simulated_surface(sim), "<RiskMap_simulated_surface>")
+  expect_input_error(plot_simulated_surface(sim), "x")
 })
 
 

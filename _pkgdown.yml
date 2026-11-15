@@ -88,6 +88,7 @@ reference:
       - elogit
       - variogram
       - print.RiskMap_variogram
+      - plot_variogram
 
   - title: Specifying and fitting
     desc: >
@@ -145,12 +146,15 @@ reference:
       - print.RiskMap_check
       - summary.RiskMap_check
       - print.summary.RiskMap_check
+      - plot_check
       - plot_mcmc
       - summarise_mcmc
       - profile.RiskMap
+      - plot_profile
       - parametric_bootstrap
       - print.RiskMap_bootstrap
       - summary.RiskMap_bootstrap
+      - plot_bootstrap
 
   - title: Prediction
     desc: >
@@ -159,8 +163,10 @@ reference:
     contents:
       - predict.RiskMap
       - print.RiskMap_prediction
+      - plot_prediction
       - to_table.RiskMap_prediction
       - assess_extrapolation
+      - plot_extrapolation
 
   - title: Assessment
     desc: >
@@ -171,6 +177,7 @@ reference:
       - print.RiskMap_cross_validation
       - summary.RiskMap_cross_validation
       - print.summary.RiskMap_cross_validation
+      - plot_cross_validation
       - assess_simulation
       - print.RiskMap_assess_simulation
       - summary.RiskMap_assess_simulation
@@ -186,20 +193,8 @@ reference:
       - simulated_data
       - simulated_values
       - print.RiskMap_simulation_model
-
-  - title: Plots
-    desc: >
-      Plot methods for the objects that RiskMap returns.
-    contents:
-      - plot.RiskMap_variogram
-      - plot.RiskMap_check
-      - plot.RiskMap_profile
-      - plot.RiskMap_bootstrap
-      - plot.RiskMap_prediction
-      - plot.RiskMap_extrapolation
-      - plot.RiskMap_cross_validation
-      - plot.RiskMap_simulation
-      - plot.RiskMap_simulated_surface
+      - plot_simulation
+      - plot_simulated_surface
 
   - title: Datasets
     desc: >

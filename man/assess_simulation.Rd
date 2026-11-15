@@ -61,7 +61,7 @@ and so on, in a column \code{"region"}.}
 \item{objective}{A character vector specifying objectives, either \code{"mse"}, \code{"classify"}, or both.}
 
 \item{breaks}{A numeric vector of at least three increasing class
-boundaries for classification, as in \code{\link[=plot.RiskMap_prediction]{plot.RiskMap_prediction()}}.
+boundaries for classification, as in \code{\link[=plot_prediction]{plot_prediction()}}.
 Required if \code{objective} includes \code{"classify"}.}
 
 \item{control_mcmc}{A control object for MCMC sampling, created with \code{set_control_mcmc()}. Default is \code{set_control_mcmc()}.}
