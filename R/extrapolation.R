@@ -10,9 +10,10 @@
 ##'   by the model, typically a grid from [create_grid()].
 ##' @param spatial_threshold Threshold of the share of the spatial variance
 ##'   left unexplained above which a location is classed as spatial
-##'   extrapolation. `NULL` (the default) uses the largest share left at a
-##'   sampled location when its own data are left out (see Details). A number
-##'   strictly between 0 and 1 gives a fixed threshold.
+##'   extrapolation. `NULL` (the default) uses the 95th percentile of the
+##'   shares left at the sampled locations when their own data are left out
+##'   (see Details). A number strictly between 0 and 1 gives a fixed
+##'   threshold.
 ##' @param sampling_noise Whether the share of the spatial variance left
 ##'   unexplained includes the sampling noise of the outcomes (the default).
 ##'   With `FALSE`, it depends only on where the data were collected and on
@@ -62,18 +63,22 @@
 ##' A location is classed as covariate extrapolation when any covariate lies
 ##' outside its observed range or its relative leverage exceeds 1, and as
 ##' spatial extrapolation when \eqn{v(x)} exceeds the threshold. By default
-##' the threshold is the largest over the sampled locations \eqn{s_j} of
+##' the threshold is the 95th percentile over the sampled locations
+##' \eqn{s_j} of
 ##' \deqn{v_{-j} = \mathrm{Var}[S(s_j) \mid y_{-j}] / \sigma^2
 ##'   = 1 / [(R + \sigma^{-2} W)^{-1}]_{jj} - w_j / \sigma^2,}
 ##' the share left at \eqn{s_j} by the data of the other locations.
 ##' Leave-one-out cross-validation predicts at each sampled location from the
-##' others, so a location above this threshold has less spatial information
-##' than any prediction that held-out data could check. A sampled location too
-##' far from the others to share any correlation with them makes the threshold
-##' 1, and then no location is classed as spatial extrapolation, so a fixed
-##' `spatial_threshold` is then more informative. This is the rule of
-##' the covariate indicators, which compare each covariate with its observed
-##' range and the leverage with its largest value in the data. The two
+##' others, so the \eqn{v_{-j}} are the amounts of spatial information under
+##' which predictions can be checked against held-out data, and a location
+##' above their 95th percentile has less than nearly all of them. A percentile
+##' rather than the largest value keeps a single remote sampled location from
+##' setting the threshold. When the data of the other locations say nothing
+##' about the spatial effect at 5% or more of the sampled locations, as when
+##' the locations share almost no spatial correlation, the percentile is 1 and
+##' no location can be classed as spatial extrapolation.
+##' `assess_extrapolation()` then warns, and a fixed `spatial_threshold` is
+##' more informative. The two
 ##' classes are kept separate because they call for different responses: more
 ##' sampling where data are sparse, and caution about the form of the
 ##' covariate effects outside the observed conditions.
@@ -101,10 +106,10 @@
 ##' @seealso [plot.RiskMap_extrapolation()], [predict.RiskMap()]
 ##' @examples
 ##' data(italy_sim)
-##' example_data <- italy_sim[1:50, ]
+##' example_data <- italy_sim[1:150, ]
 ##' fit <- glgpm(y ~ log(pop_dens) + gp(), data = example_data,
 ##'              family = "gaussian", messages = FALSE)
-##' extrapolation <- assess_extrapolation(fit, italy_sim[51:100, ])
+##' extrapolation <- assess_extrapolation(fit, italy_sim[151:200, ])
 ##' extrapolation
 ##' table(extrapolation$extrapolation)
 ##' @export
@@ -131,7 +136,16 @@ assess_extrapolation <- function(object, newdata, spatial_threshold = NULL,
                                                sampling_noise)
   spatial_unexplained <- spatial$unexplained
   threshold_given <- !is.null(spatial_threshold)
-  if (!threshold_given) spatial_threshold <- max(spatial$left_out)
+  if (!threshold_given) {
+    spatial_threshold <- stats::quantile(spatial$left_out, 0.95,
+                                         names = FALSE)
+    if (spatial_threshold >= 1 - 1e-8) {
+      riskmap_warn(c(
+        "The data leave all of the spatial variance unexplained at 5% or more of the sampled locations when their own data are left out, so the threshold is 1 and no location can be classed as spatial extrapolation.",
+        "i" = "Give a number in {.arg spatial_threshold} for a fixed threshold."
+      ))
+    }
+  }
   # Both comparisons allow for rounding, so that a location with no spatial
   # information is not flagged against a threshold of 1 on one platform and
   # supported on another.
@@ -328,20 +342,23 @@ format_extrapolation <- function(x, threshold) {
                    big.mark = ",")
   labels <- c(names(counts), if (missing) "Missing covariates")
   share <- paste0(format(100 * threshold, digits = 3), "%")
-  spatial <- if (identical(attr(x, "spatial_rule"), "given")) {
+  given <- identical(attr(x, "spatial_rule"), "given")
+  isolated <- !given && threshold >= 1 - 1e-8
+  spatial <- if (given) {
     paste0("Spatial: more than ", share, " of the spatial variance left ",
            "unexplained, the `spatial_threshold` given.")
+  } else if (isolated) {
+    NULL
   } else {
-    paste0("Spatial: more of the spatial variance left unexplained than at ",
-           "any sampled location when its own data are left out (",
-           share, ").")
+    paste0("Spatial: more than ", share, " of the spatial variance left ",
+           "unexplained, the 95th percentile of the shares at the sampled ",
+           "locations when their own data are left out.")
   }
-  isolated <- if (!identical(attr(x, "spatial_rule"), "given") &&
-                  threshold >= 1 - 1e-8) {
-    c("!" = paste0("A sampled location shares no spatial correlation with ",
-                   "the others, so no location is classed as spatial ",
-                   "extrapolation. A number in `spatial_threshold` gives a ",
-                   "fixed threshold."))
+  isolated_note <- if (isolated) {
+    c("!" = paste0("Spatial: none, since the data leave all of the spatial ",
+                   "variance unexplained at 5% or more of the sampled ",
+                   "locations when their own data are left out. A number in ",
+                   "`spatial_threshold` gives a fixed threshold."))
   }
   noise <- if (isFALSE(attr(x, "sampling_noise"))) {
     c(i = "The share leaves out the sampling noise of the outcomes.")
@@ -353,8 +370,8 @@ format_extrapolation <- function(x, threshold) {
     out_pairs(labels, values),
     "",
     out_bullets(c(
-      i = spatial,
-      isolated,
+      if (!is.null(spatial)) c(i = spatial),
+      isolated_note,
       i = paste0("Covariate: a covariate outside its range in the data, or ",
                  "a leverage above its largest value there."),
       noise,

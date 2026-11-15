@@ -22,9 +22,10 @@ by the model, typically a grid from \code{\link[=create_grid]{create_grid()}}.}
 
 \item{spatial_threshold}{Threshold of the share of the spatial variance
 left unexplained above which a location is classed as spatial
-extrapolation. \code{NULL} (the default) uses the largest share left at a
-sampled location when its own data are left out (see Details). A number
-strictly between 0 and 1 gives a fixed threshold.}
+extrapolation. \code{NULL} (the default) uses the 95th percentile of the
+shares left at the sampled locations when their own data are left out
+(see Details). A number strictly between 0 and 1 gives a fixed
+threshold.}
 
 \item{sampling_noise}{Whether the share of the spatial variance left
 unexplained includes the sampling noise of the outcomes (the default).
@@ -109,28 +110,32 @@ leave.
 A location is classed as covariate extrapolation when any covariate lies
 outside its observed range or its relative leverage exceeds 1, and as
 spatial extrapolation when \eqn{v(x)} exceeds the threshold. By default
-the threshold is the largest over the sampled locations \eqn{s_j} of
+the threshold is the 95th percentile over the sampled locations
+\eqn{s_j} of
 \deqn{v_{-j} = \mathrm{Var}[S(s_j) \mid y_{-j}] / \sigma^2
   = 1 / [(R + \sigma^{-2} W)^{-1}]_{jj} - w_j / \sigma^2,}
 the share left at \eqn{s_j} by the data of the other locations.
 Leave-one-out cross-validation predicts at each sampled location from the
-others, so a location above this threshold has less spatial information
-than any prediction that held-out data could check. A sampled location too
-far from the others to share any correlation with them makes the threshold
-1, and then no location is classed as spatial extrapolation, so a fixed
-\code{spatial_threshold} is then more informative. This is the rule of
-the covariate indicators, which compare each covariate with its observed
-range and the leverage with its largest value in the data. The two
+others, so the \eqn{v_{-j}} are the amounts of spatial information under
+which predictions can be checked against held-out data, and a location
+above their 95th percentile has less than nearly all of them. A percentile
+rather than the largest value keeps a single remote sampled location from
+setting the threshold. When the data of the other locations say nothing
+about the spatial effect at 5\% or more of the sampled locations, as when
+the locations share almost no spatial correlation, the percentile is 1 and
+no location can be classed as spatial extrapolation.
+\code{assess_extrapolation()} then warns, and a fixed \code{spatial_threshold} is
+more informative. The two
 classes are kept separate because they call for different responses: more
 sampling where data are sparse, and caution about the form of the
 covariate effects outside the observed conditions.
 }
 \examples{
 data(italy_sim)
-example_data <- italy_sim[1:50, ]
+example_data <- italy_sim[1:150, ]
 fit <- glgpm(y ~ log(pop_dens) + gp(), data = example_data,
              family = "gaussian", messages = FALSE)
-extrapolation <- assess_extrapolation(fit, italy_sim[51:100, ])
+extrapolation <- assess_extrapolation(fit, italy_sim[151:200, ])
 extrapolation
 table(extrapolation$extrapolation)
 }
