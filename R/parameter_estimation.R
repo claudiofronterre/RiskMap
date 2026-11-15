@@ -240,7 +240,7 @@
 ##'
 ##' # reduce iterations to speed up the fit, and set a
 ##' # seed for reproducibility
-##' control_mcmc <- set_control_mcmc(n_sim = 100,
+##' control_mcmc <- set_control_mcmc(n_draws = 8,
 ##'                                  burnin = 20)
 ##'
 ##' fit <- glgpm(NO_INF ~ gp(),
@@ -2808,11 +2808,11 @@ maxim_integrand <- function(
 ##' @param family Character string: \code{"binomial"} or \code{"poisson"}.
 ##' @param control_mcmc List of control parameters:
 ##'   \describe{
-##'     \item{n_sim}{Total number of MCMC iterations (including burn-in).}
+##'     \item{n_draws}{Number of draws kept, after burn-in and thinning.}
 ##'     \item{burnin}{Number of initial iterations to discard.}
 ##'     \item{thin}{Thinning interval for saving samples.}
 ##'     \item{h}{Initial step size for the Gaussian proposal. Defaults to \eqn{1.65 / n_\mathrm{tot}^{1/6}} if not supplied.}
-##'     \item{c1.h, c2.h}{Positive tuning constants for adaptive step-size updates.}
+##'     \item{c1_h, c2_h}{Positive tuning constants for adaptive step-size updates.}
 ##'   }
 ##' @param seed Optional integer seed for the chain. When supplied, the
 ##'   caller's random number state is restored on exit.
@@ -3001,11 +3001,11 @@ laplace_sampling_mcmc <- function(y,
     columns_r = structure$columns, n_u = structure$n_u, n_d = structure$n_d,
     prior_u_r = structure$prior_u, prior_d_r = structure$prior_d,
     weights_r = found$weights, mode_r = found$mode, family = family,
-    link_terms = link_terms, n_sim = control_mcmc$n_sim,
+    link_terms = link_terms, n_sim = mcmc_iterations(control_mcmc),
     burnin = control_mcmc$burnin, thin = control_mcmc$thin,
     step_size = control_mcmc$h %||% (1.65 / structure$dimension^(1 / 6)),
-    adaptation_scale = if (adapt_step) control_mcmc$c1.h else 0,
-    adaptation_exponent = control_mcmc$c2.h,
+    adaptation_scale = if (adapt_step) control_mcmc$c1_h else 0,
+    adaptation_exponent = control_mcmc$c2_h,
     average_step = average_step, start_from_draw = start_from_draw
   ), error = function(error) {
     if (inherits(error, "riskmap_error")) riskmap_rethrow(error)
@@ -3030,7 +3030,7 @@ laplace_sampling_mcmc <- function(y,
       mean(out_sim$acceptance[seq_len(control_mcmc$burnin)])
     } else NA_real_,
     sampling = mean(out_sim$acceptance[seq.int(
-      control_mcmc$burnin + 1L, control_mcmc$n_sim
+      control_mcmc$burnin + 1L, mcmc_iterations(control_mcmc)
     )])
   )
   out_sim$mode <- found$mode[structure$position]
@@ -3250,14 +3250,14 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' `tolerance`, the samples are enlarged to the size predicted to meet it and
 ##' the fit is repeated.
 ##'
-##' @param initial_samples Positive integer giving the number of draws in the
+##' @param initial_draws Positive integer giving the number of draws in the
 ##' fitting sample at the first stage. Defaults to 1,000.
-##' @param validation_samples Positive integer giving the number of draws in
+##' @param validation_draws Positive integer giving the number of draws in
 ##' each validation sample, and in the replicate of the second, at the first
 ##' stage. Later stages enlarge the
 ##' validation samples in the same proportion as the fitting sample. Defaults
 ##' to 5,000.
-##' @param max_samples Positive integer giving the largest permitted fitting
+##' @param max_draws Positive integer giving the largest permitted fitting
 ##' sample. Defaults to 16,000.
 ##' @param max_stages Positive integer giving the maximum number of stages.
 ##' Defaults to 4.
@@ -3395,12 +3395,12 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' 0.05.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
-##' control_mcml <- set_control_mcml(max_samples = 8000)
+##' control_mcml <- set_control_mcml(max_draws = 8000)
 ##' @seealso [glgpm()], [set_control_mcmc()]
 ##' @export
-set_control_mcml <- function(initial_samples = 1000L,
-                             validation_samples = 5000L,
-                             max_samples = 16000L,
+set_control_mcml <- function(initial_draws = 1000L,
+                             validation_draws = 5000L,
+                             max_draws = 16000L,
                              max_stages = 4L,
                              tolerance = 0.1,
                              proposal = c("global", "laplace"),
@@ -3414,9 +3414,9 @@ set_control_mcml <- function(initial_samples = 1000L,
                              pc_sigma_probability = 0.05,
                              pc_scale_threshold = NULL,
                              pc_scale_probability = 0.05) {
-  check_positive_integer(initial_samples, "initial_samples")
-  check_positive_integer(validation_samples, "validation_samples")
-  check_positive_integer(max_samples, "max_samples")
+  check_positive_integer(initial_draws, "initial_draws")
+  check_positive_integer(validation_draws, "validation_draws")
+  check_positive_integer(max_draws, "max_draws")
   check_positive_integer(max_stages, "max_stages")
   check_positive_number(tolerance, "")
   proposal <- match_choice(proposal)
@@ -3443,15 +3443,15 @@ set_control_mcml <- function(initial_samples = 1000L,
   }
   check_range(pc_scale_probability, 0, 1, allow_equal = FALSE,
               arg = "pc_scale_probability")
-  if (max_samples < initial_samples) {
-    abort_input("{.arg max_samples} must be at least {.arg initial_samples} ({initial_samples}), not {max_samples}.", arg = "max_samples")
+  if (max_draws < initial_draws) {
+    abort_input("{.arg max_draws} must be at least {.arg initial_draws} ({initial_draws}), not {max_draws}.", arg = "max_draws")
   }
 
   structure(
     list(
-      initial_samples = as.integer(initial_samples),
-      validation_samples = as.integer(validation_samples),
-      max_samples = as.integer(max_samples),
+      initial_draws = as.integer(initial_draws),
+      validation_draws = as.integer(validation_draws),
+      max_draws = as.integer(max_draws),
       max_stages = as.integer(max_stages),
       tolerance = tolerance,
       proposal = proposal,
@@ -3552,112 +3552,87 @@ sample_at_nongaussian_fit <- function(estimate, parameters, y, units_m, D,
         "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
         "invlink_used"
       )],
-      unclass(control_mcmc)[c("n_sim", "burnin", "thin")]
+      unclass(control_mcmc)[c("n_draws", "burnin", "thin")]
     )
   )
 }
 
 ##' Set Control Parameters for Simulation
 ##'
-##' This function sets control parameters for running simulations, supporting MCMC methods
-##' for glgpm models.
+##' The settings of the Langevin sampler that draws the latent effects of a
+##' binomial, Poisson or negative binomial model given the data, in [glgpm()]
+##' and [predict()][predict.RiskMap()].
 ##'
-##' @param n_sim Integer. The total number of simulations to run. Default is
-##'   22000, which with the default burn-in and thinning keeps 2,000 draws. With
-##'   `linear_model = TRUE` it is the number of independent draws, 2,000 by
-##'   default.
-##' @param burnin Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.
-##' @param thin Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.
+##' @param n_draws Positive integer. The number of draws kept, after burn-in
+##'   and thinning, on which fitted values and predictions are based. Default
+##'   is 2,000. The chain runs `burnin + n_draws * thin` iterations.
+##' @param burnin Non-negative integer. The number of iterations discarded at
+##'   the start of the chain, during which the step size is adapted. Default
+##'   is 2,000.
+##' @param thin Positive integer. One iteration in `thin` is kept after
+##'   burn-in. Default is 10.
 ##' @param h Numeric. An optional positive step size for Langevin MCMC.
-##' @param c1.h Numeric. Positive scale for the burn-in Robbins-Monro step-size
-##'   adaptation. Default is 1.
-##' @param c2.h Numeric. Exponent controlling the diminishing adaptation gain.
+##' @param c1_h Numeric. Positive scale for the burn-in Robbins-Monro
+##'   step-size adaptation. Default is 1.
+##' @param c2_h Numeric. Exponent controlling the diminishing adaptation gain.
 ##'   Must be larger than 0.5 and no larger than 1. Default is 0.6.
-##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
 ##'
 ##' @details
-##' If \code{linear_model = TRUE}, only \code{n_sim} is required.
-##'
 ##' During burn-in the step size of the Langevin chain is adapted towards an
 ##' acceptance rate of 0.574, starting from \code{h} (by default
 ##' \eqn{1.65 / d^{1/6}} for \eqn{d} latent effects). The step kept after
 ##' burn-in is the geometric mean of the adapted step over the second half of
 ##' burn-in.
 ##'
+##' The latent effects of a Gaussian model are drawn independently, so its
+##' predictions take `n_draws` draws without burn-in or thinning.
+##'
 ##' Seeds are not part of the control settings. Pass `seed` to [glgpm()],
 ##' [predict.RiskMap()], [assess_prediction()] or [assess_simulation()].
 ##'
-##' @return A list of control parameters with class "RiskMap_control_mcmc". Contents depend on \code{sampler}:
-##' \itemize{
-##'   \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
-##' }
+##' @return A list of class `"RiskMap_control_mcmc"` with `n_draws`, `burnin`,
+##'   `thin`, `h`, `c1_h` and `c2_h`.
 ##'
 ##' @examples
 ##' # Default parameters (MCMC)
 ##' control_mcmc <- set_control_mcmc()
 ##'
-##' # Custom MCMC parameters
-##' control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
+##' # Custom MCMC parameters: 600 draws from 3,000 + 600 * 20 iterations
+##' control_mcmc <- set_control_mcmc(n_draws = 600, burnin = 3000, thin = 20)
 ##'
 ##' @seealso \code{\link{glgpm}}
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
-set_control_mcmc <- function(n_sim = 22000,
-                            burnin = 2000,
-                            thin = 10,
-                            h = NULL,
-                            c1.h = 1,
-                            c2.h = 0.6,
-                            linear_model = FALSE){
-
-  # =============================================================================
-  # LINEAR MODEL (simple case for both samplers)
-  # =============================================================================
-
-  if (linear_model) {
-    # Draws of a linear model are independent, so none is discarded.
-    if (missing(n_sim)) n_sim <- 2000
-    check_positive_integer(n_sim, "n_sim")
-    res <- list(
-      n_sim = n_sim,
-      linear_model = linear_model
-    )
-    class(res) <- "RiskMap_control_mcmc"
-    return(res)
-  }
-
-  # =============================================================================
-  # MCMC SAMPLER (Langevin for glgpm)
-  # =============================================================================
-
-  # Validate MCMC parameters
-  check_positive_integer(n_sim, "n_sim")
+set_control_mcmc <- function(n_draws = 2000,
+                             burnin = 2000,
+                             thin = 10,
+                             h = NULL,
+                             c1_h = 1,
+                             c2_h = 0.6) {
+  check_positive_integer(n_draws, "n_draws")
   check_positive_integer(burnin, "burnin", allow_zero = TRUE)
   check_positive_integer(thin, "thin")
-
-  if (n_sim <= burnin) {
-    abort_input("{.arg n_sim} must be larger than {.arg burnin} ({burnin}), not {n_sim}.", arg = "n_sim")
-  }
-  if ((n_sim - burnin) %% thin != 0) {
-    abort_input("{.arg thin} must divide {.code n_sim - burnin} ({n_sim - burnin}) exactly, not {thin}.", arg = "thin")
+  iterations <- burnin + n_draws * thin
+  if (iterations > .Machine$integer.max) {
+    abort_input("{.code burnin + n_draws * thin} must be at most {format(.Machine$integer.max, big.mark = ',')} iterations, not {format(iterations, big.mark = ',', scientific = FALSE)}.", arg = "n_draws")
   }
   if (!is.null(h)) check_positive_number(h, "")
-  check_positive_number(c1.h, "")
-  check_zero_one(c2.h, "c2.h")
-  if (c2.h <= 0.5) {
-    abort_input("{.arg c2.h} must be larger than 0.5 and at most 1, not {c2.h}.", arg = "c2.h")
+  check_positive_number(c1_h, "")
+  check_zero_one(c2_h, "c2_h")
+  if (c2_h <= 0.5) {
+    abort_input("{.arg c2_h} must be larger than 0.5 and at most 1, not {c2_h}.", arg = "c2_h")
   }
 
-  res <- list(
-    n_sim = n_sim,
-    burnin = burnin,
-    thin = thin,
-    h = h,
-    c1.h = c1.h,
-    c2.h = c2.h,
-    linear_model = FALSE
+  structure(
+    list(n_draws = n_draws, burnin = burnin, thin = thin, h = h,
+         c1_h = c1_h, c2_h = c2_h),
+    class = "RiskMap_control_mcmc"
   )
+}
 
-  class(res) <- "RiskMap_control_mcmc"
-  return(res)
+##' The number of iterations of the chain that `control_mcmc` sets,
+##' `burnin + n_draws * thin`
+##' @noRd
+mcmc_iterations <- function(control_mcmc) {
+  control_mcmc$burnin + control_mcmc$n_draws * control_mcmc$thin
 }

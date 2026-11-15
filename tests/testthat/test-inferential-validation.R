@@ -33,7 +33,7 @@ test_that("independent MCMC seeds agree within estimated Monte Carlo error", {
         y = case$y, units_m = case$units_m, mu = 0,
         Sigma = matrix(case$sigma2), ID_coords = 1L, family = family,
         control_mcmc = set_control_mcmc(
-          n_sim = 3500, burnin = 500, thin = 1, h = case$h
+          n_draws = 3000, burnin = 500, thin = 1, h = case$h
         ),
         seed = seed
       )

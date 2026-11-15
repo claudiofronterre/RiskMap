@@ -70,7 +70,7 @@ test_that("the rebuilt problem reproduces the fit's certification bank", {
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, messages = FALSE,
     control_mcml = set_control_mcml(
-      initial_samples = 500, validation_samples = 500, max_samples = 500,
+      initial_draws = 500, validation_draws = 500, max_draws = 500,
       max_stages = 1, proposal = "laplace"
     )
   ))
@@ -112,7 +112,7 @@ test_that("the row of the radius says whether the radius holds", {
   expect_identical(wide$status, "SUSPICIOUS")
   expect_match(wide$finding, "margin of 15%", fixed = TRUE)
   expect_match(wide$finding, "factor of 1.3", fixed = TRUE)
-  expect_match(wide$fix, "max_samples", fixed = TRUE)
+  expect_match(wide$fix, "max_draws", fixed = TRUE)
   expect_true(is_binomial_logit(binomial_model))
   expect_false(is_binomial_logit(poisson_model))
 })
@@ -217,7 +217,7 @@ laplace_nugget_fit <- function(integrate_noise) {
     denominator = denominator, control_mcmc = control_mcmc,
     seed = fixture_seed, messages = FALSE,
     control_mcml = set_control_mcml(
-      initial_samples = 500, validation_samples = 500, max_samples = 500,
+      initial_draws = 500, validation_draws = 500, max_draws = 500,
       max_stages = 1, proposal = "laplace", integrate_noise = integrate_noise
     )
   ))

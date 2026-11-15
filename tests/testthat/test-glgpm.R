@@ -142,12 +142,12 @@ test_that("glgpm produces errors", {
     "set_control_mcml", class = "riskmap_error_input"
   )
 
-  expect_error(set_control_mcml(initial_samples = 0), "positive integer")
+  expect_error(set_control_mcml(initial_draws = 0), "positive integer")
   expect_error(set_control_mcml(max_stages = 0), "positive integer")
   expect_error(set_control_mcml(tolerance = -1), "positive number")
   expect_error(
-    set_control_mcml(initial_samples = 1000, max_samples = 500),
-    "at least `initial_samples`", class = "riskmap_error_input"
+    set_control_mcml(initial_draws = 1000, max_draws = 500),
+    "at least `initial_draws`", class = "riskmap_error_input"
   )
 
   expect_error(

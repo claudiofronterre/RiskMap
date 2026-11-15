@@ -1,6 +1,6 @@
 test_that("predict.RiskMap keeps prediction data and summaries aligned", {
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   result <- predict(
@@ -65,7 +65,7 @@ test_that("prediction objects use one stable output schema", {
 test_that("predict.RiskMap derives predictors and offsets from one sf object", {
 
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   result <- predict(
@@ -129,7 +129,7 @@ test_that("optional random-effect and nugget components are explicit", {
                     "random_effects_upper"))
 
   observation_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
   observation <- predict(
     gaussian_offset_model,
@@ -328,7 +328,7 @@ test_that("coefficient of variation is reported only where interpretable", {
   )
 
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   result <- predict(
@@ -347,7 +347,7 @@ test_that("coefficient of variation is reported only where interpretable", {
 test_that("prediction transforms coordinates internally and preserves output geometry", {
   geographic_data <- st_transform(prediction_data, 4326)
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   projected <- predict(
@@ -366,7 +366,7 @@ test_that("prediction transforms coordinates internally and preserves output geo
 test_that("missing predictors preserve rows and return missing predictions", {
   prediction_data$cov[2] <- NA_real_
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   expect_warning(
@@ -408,7 +408,7 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
   boundaries <- areal
   boundaries$district <- paste0("district_", seq_len(nrow(boundaries)))
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   result <- predict(
@@ -463,7 +463,7 @@ test_that("one prediction sample bank serves locations and boundaries", {
     boundaries = areal,
     aggregate = "mean",
     control_mcmc = set_control_mcmc(
-      n_sim = 40, burnin = 20, thin = 2
+      n_draws = 10, burnin = 20, thin = 2
     ),
     seed = 48,
     keep_samples = TRUE,
@@ -817,7 +817,7 @@ test_that("row summaries match the summary of each row", {
 
 test_that("built-in and custom aggregation and summary functions can be mixed", {
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   result <- predict(
@@ -890,7 +890,7 @@ test_that("areal aggregation must be chosen explicitly", {
 
 test_that("prediction seed makes generated samples reproducible", {
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   first <- predict(
@@ -907,7 +907,7 @@ test_that("prediction seed makes generated samples reproducible", {
 
 test_that("a prediction seed also seeds a fresh conditional MCMC run", {
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
   predict_binomial <- function(seed) {
     suppressWarnings(predict(
@@ -930,7 +930,7 @@ test_that("joint location prediction covers Gaussian and non-Gaussian engines", 
   prediction_data$i <- rep(gaussian_model$re[[1]],
                            length.out = nrow(prediction_data))
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   gaussian <- predict(
@@ -958,7 +958,7 @@ test_that("marginal prediction uses the bounded-memory backend when requested", 
   prediction_data <- grid[seq_len(min(3L, nrow(grid))), ]
   prediction_data$cov <- seq_len(nrow(prediction_data)) / 10
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
   local_mocked_bindings(
     marginal_prediction_batch_size = function(...) 1L,
@@ -994,7 +994,7 @@ test_that("polygon blocks share one non-Gaussian conditioning run", {
     .package = "RiskMap"
   )
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   predict(
@@ -1030,7 +1030,7 @@ test_that("non-Gaussian boundary predictions reuse shared random effects", {
 
 test_that("Gaussian boundary predictions retain one shared random-effect draw", {
   prediction_control <- set_control_mcmc(
-    n_sim = 40, burnin = 20, thin = 2
+    n_draws = 10, burnin = 20, thin = 2
   )
 
   result <- predict(
@@ -1358,7 +1358,7 @@ test_that("predict shows a step while it runs its own Langevin sampler", {
   withr::local_options(RiskMap.progress = TRUE, cli.dynamic = FALSE)
   lines <- trimws(capture_messages(
     predict(binomial_model, newdata = binomial_data[1:4, ],
-            control_mcmc = set_control_mcmc(n_sim = 1200, burnin = 200,
+            control_mcmc = set_control_mcmc(n_draws = 100, burnin = 200,
                                             thin = 10),
             seed = 1)
   ))

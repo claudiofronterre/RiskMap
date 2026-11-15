@@ -271,7 +271,7 @@ test_that("glgpm fits with the PC prior and reports the unpenalised likelihood",
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc, seed = fixture_seed,
     control_mcml = set_control_mcml(
-      initial_samples = 500, validation_samples = 500, max_samples = 500,
+      initial_draws = 500, validation_draws = 500, max_draws = 500,
       max_stages = 1, pc_prior = TRUE
     ),
     messages = FALSE
@@ -833,16 +833,36 @@ test_that("a failed global proposal is counted and the engine can switch", {
 
 test_that("set_control_mcml validates the certification settings", {
   control <- set_control_mcml()
-  expect_identical(control$initial_samples, 1000L)
-  expect_identical(control$validation_samples, 5000L)
-  expect_identical(control$max_samples, 16000L)
+  expect_identical(control$initial_draws, 1000L)
+  expect_identical(control$validation_draws, 5000L)
+  expect_identical(control$max_draws, 16000L)
   expect_identical(control$max_stages, 4L)
   expect_identical(control$tolerance, 0.1)
   expect_identical(control$proposal, "global")
   expect_identical(set_control_mcml(proposal = "laplace")$proposal, "laplace")
   expect_input_error(set_control_mcml(proposal = "mean"), "proposal")
   expect_error(set_control_mcml(tolerance = 0), "positive number")
-  expect_error(set_control_mcml(validation_samples = 0), "positive integer")
+  expect_error(set_control_mcml(validation_draws = 0), "positive integer")
+  expect_error(set_control_mcml(initial_samples = 500), "unused argument")
+})
+
+test_that("a control saved with the sizes as *_samples fits as before", {
+  # The control that a fit made before the draws were named so stores, and
+  # that its refits pass on.
+  old <- unclass(fixture_control_mcml)
+  names(old)[match(c("initial_draws", "validation_draws", "max_draws"),
+                   names(old))] <- c("initial_samples", "validation_samples",
+                                     "max_samples")
+  old <- structure(old, class = "RiskMap_control_mcml")
+  fit_with <- function(control) {
+    suppressWarnings(glgpm(
+      y ~ cov + gp(), data = binomial_data, family = "binomial",
+      denominator = denominator, control_mcmc = control_mcmc,
+      control_mcml = control, seed = fixture_seed, return_samples = FALSE,
+      messages = FALSE
+    ))
+  }
+  expect_identical(coef(fit_with(old)), coef(fit_with(fixture_control_mcml)))
 })
 
 test_that("the accelerated global iteration reaches the plain fixed point", {

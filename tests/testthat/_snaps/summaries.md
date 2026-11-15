@@ -170,8 +170,7 @@
       Monte Carlo maximum likelihood
       x Not certified. The Newton correction of the estimate did not converge on the
         validation draws, so the approximate 95% bound of 0.041 statistical standard
-        errors may not hold. Refit with a larger `max_samples` in
-        `set_control_mcml()`.
+        errors may not hold. Refit with a larger `max_draws` in `set_control_mcml()`.
       ! 2 checks need a look. See `check_fit()`.
 
 # print.summary.RiskMap_cross_validation formats scores by model

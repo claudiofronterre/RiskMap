@@ -34,7 +34,12 @@ suppressMessages({
 })
 ns <- asNamespace("RiskMap")
 `%||%` <- function(a, b) if (is.null(a)) b else a
-ctrl <- set_control_mcmc(n_sim = 1200, burnin = 200, thin = 2)
+# 500 draws from 1,200 iterations, given as n_draws once set_control_mcmc() has it and as n_sim before.
+ctrl <- if ("n_draws" %in% names(formals(set_control_mcmc))) {
+  set_control_mcmc(n_draws = 500, burnin = 200, thin = 2)
+} else {
+  set_control_mcmc(n_sim = 1200, burnin = 200, thin = 2)
+}
 
 # Data. Simulated surveys, the survey n05-2 of the MCML paper's nugget study and the household survey r01-1 of its
 # study of re() terms (saved exactly in data/surveys.rds, see the README), and the package's surveys.
