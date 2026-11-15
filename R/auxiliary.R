@@ -605,6 +605,9 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##'   the measurement error variance of a Gaussian model, are in
 ##'   \code{family_parameters}, a table of those that were estimated, and
 ##'   \code{held_family_parameters}, a list of those held at a given value.
+##'   The other parameters that \code{fixed_pars} holds keep their rows, with
+##'   no interval, and \code{held_parameters} says at what values they are
+##'   held (absent when none is).
 ##' @method summary RiskMap
 ##' @examples
 ##' data(italy_sim)
@@ -749,6 +752,9 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
     ))
   }
   res$held_family_parameters <- held_family_parameters(object)
+  # The other parameters fixed_pars holds, shown as fixed.
+  pinned <- describe_pinned_parameters(parameters)
+  if (length(pinned)) res$held_parameters <- pinned
 
   sp_names <- c("sigma2", "phi", if (has_tau2) "nu2")
   est_sp <- estimate[sp_names]
@@ -871,6 +877,15 @@ describe_held_family_parameters <- function(held, traits) {
   }, character(1), USE.NAMES = FALSE)
 }
 
+##' One sentence for each parameter `fixed_pars` holds in the working vector,
+##' as in "Spatial process var. fixed at 0.5"
+##' @noRd
+describe_pinned_parameters <- function(parameters) {
+  pinned <- pinned_rows(parameters)
+  if (!nrow(pinned)) return(character())
+  paste0(pinned$label, " fixed at ", pinned$held)
+}
+
 ##' @title Print Summary of RiskMap Model
 ##' @description Print method for objects of class \code{"summary.RiskMap"}.
 ##' @param x An object of class \code{"summary.RiskMap"}.
@@ -925,6 +940,7 @@ format_fit_summary <- function(x) {
     if (!nugget_estimated && is.numeric(x$tau2)) {
       out_text(paste0("Variance of the nugget effect fixed at ", x$tau2))
     },
+    if (length(x$held_parameters)) c("", out_text(x$held_parameters)),
     if (!is.null(x$ranef)) {
       c("", out_heading("Unstructured random effects"),
         coefficients(x$ranef, FALSE))

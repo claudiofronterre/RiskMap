@@ -1589,6 +1589,10 @@ glgpm_nong_adaptive <- function(
   bounds <- parameter_bounds(parameters)
   lower <- bounds$lower
   upper <- bounds$upper
+  # The parameters fixed_pars holds in the working vector stay at their
+  # starts, which are their values, by equal bounds.
+  held <- held_index(parameters)
+  lower[held] <- upper[held] <- unname(start[held])
   pc_prior <- isTRUE(control_mcml$pc_prior)
   penalised <- make_mcml_objective(engine, control_mcml, distances,
                                    distance_scale)
@@ -1625,7 +1629,11 @@ glgpm_nong_adaptive <- function(
     }
   }
   dispersed <- NULL
-  if (isTRUE(control_mcml$check_maxima %||% TRUE)) {
+  # The check for other maxima moves the spatial variance and scale, so it
+  # needs both free.
+  spatial_held <- any(c(engine$layout$index$sigma2,
+                        engine$layout$index$phi) %in% held)
+  if (isTRUE(control_mcml$check_maxima %||% TRUE) && !spatial_held) {
     dispersed <- make_dispersed_starts(engine$layout, distances)
     # The screen of short scales and the exact alarms need the likelihood
     # with independent location effects, computed exactly without
@@ -1666,10 +1674,10 @@ glgpm_nong_adaptive <- function(
     linked_index = stats::setNames(
       list(engine$layout$index$phi), engine$layout$index$sigma2
     ),
-    coefficient_index = engine$layout$index$beta,
+    coefficient_index = setdiff(engine$layout$index$beta, held),
     separation = find_separation(D, y, units_m %||% rep(1, length(y)),
                                  family),
-    messages = messages
+    messages = messages, held_index = held
   )
   if (identical(fit$outcome, "no valid fit")) {
     riskmap_abort("Monte Carlo maximum likelihood could not obtain a valid fit ({fit$reason}).", class = "riskmap_error_fit")

@@ -526,7 +526,10 @@ compute_observed_information <- function(objective, estimate, fit_bank,
       error = function(error) NULL
     )
   }
-  free <- setdiff(seq_along(estimate), boundary)
+  # Parameters that fixed_pars holds are never free, as variances the engine
+  # holds at a boundary are not, but they are not boundary values.
+  held <- limits$held_index %||% integer()
+  free <- setdiff(seq_along(estimate), c(boundary, held))
   root <- factor_free(free)
   variance_index <- limits$variance_index
   limit_index <- limits$limit_index %||% integer()
@@ -541,7 +544,7 @@ compute_observed_information <- function(objective, estimate, fit_bank,
       boundary, near_zero,
       unlist(limits$linked_index[as.character(near_zero)], use.names = FALSE)
     )))
-    free <- setdiff(seq_along(estimate), boundary)
+    free <- setdiff(seq_along(estimate), c(boundary, held))
     root <- factor_free(free)
   }
   list(information = information, root = root, free = free,
@@ -1454,7 +1457,8 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               near_zero_log_variance = -4,
                               limit_index = integer(), limit_shift = 0,
                               coefficient_index = integer(),
-                              separation = NULL, messages = FALSE) {
+                              separation = NULL, messages = FALSE,
+                              held_index = integer()) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   validation_budget <- as.integer(validation_budget)
@@ -1468,7 +1472,7 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     boundary_log_variance = boundary_log_variance,
     near_zero_log_variance = near_zero_log_variance, tolerance = tolerance,
     dispersed = dispersed, coefficient_index = coefficient_index,
-    separation = separation
+    separation = separation, held_index = held_index
   )
   stream <- function(offset) {
     as.integer(((seed - 1 + offset) %% .Machine$integer.max) + 1)

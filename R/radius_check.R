@@ -247,7 +247,7 @@ make_radius_check_streams <- function(seed, fit_seed, forms = 1L) {
 ##' (`make_radius_derivatives()`).
 ##' @noRd
 rebuild_certification_problem <- function(object, last, form = "sampled") {
-  design_scaling <- standardize_design_matrix(object$D)
+  design_scaling <- model_design_scaling(object$D, fit_parameter_table(object))
   spatial_scaling <- scale_spatial_coordinates(object$coords)
   distances <- as.matrix(pairwise_distances(spatial_scaling$coordinates))
   control_mcml <- attr(object, "control_mcml") %||% set_control_mcml()

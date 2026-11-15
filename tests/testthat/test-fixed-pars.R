@@ -33,9 +33,9 @@ test_that("fixed_pars holds the nugget and the measurement error variance", {
 
 test_that("holds that don't fit the model stop", {
   holds <- list(
-    list(tau2 = 0), list(tau2 = -1), list(sigma2_me = -0.1), list(phi = 1),
-    list(beta = c(cov = 1)), list(theta = 2), list(tau2 = c(1, 2)),
-    list(sigma2_me = NA)
+    list(tau2 = 0), list(tau2 = -1), list(sigma2_me = -0.1), list(phi = -1),
+    list(beta = c(age = 1)), list(theta = 2), list(tau2 = c(1, 2)),
+    list(sigma2_me = NA), list(sigma2 = 0), list(beta = c(cov = Inf))
   )
   for (fixed_pars in holds) {
     expect_input_error(

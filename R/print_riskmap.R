@@ -313,14 +313,15 @@ format_fit <- function(x, digits) {
   # Every estimated parameter but the coefficients, on its natural scale,
   # under its label, in the order of the working vector.
   parameters <- fit_parameter_table(x)
-  rows <- estimated_rows(parameters)
+  rows <- vector_rows(parameters)
   rows <- rows[rows$block != "coefficients", , drop = FALSE]
   estimates <- natural_values(parameters, x$estimate)
   covariance <- stats::setNames(
     unlist(estimates[setdiff(names(estimates), "beta")], use.names = FALSE),
     rows$label
-  )
+  )[is.na(rows$held)]
   fixed <- c(
+    describe_pinned_parameters(parameters),
     if (is.numeric(fit_fix_tau2(x))) {
       paste0("Variance of the nugget effect fixed at ", fit_fix_tau2(x))
     },

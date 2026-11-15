@@ -158,7 +158,9 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
     problem <- make_profile_problem(fitted, n_draws, seed)
     progress_step_done(messages)
   }
-  parameters <- match_profile_parameters(problem, parameters %||% problem$names)
+  parameters <- match_profile_parameters(
+    problem, parameters %||% setdiff(problem$names, problem$names[problem$held])
+  )
   pairs <- lapply(pairs %||% list(), function(pair) {
     match_profile_parameters(problem, pair, arg = "pairs")
   })
@@ -265,7 +267,7 @@ check_profile_settings <- function(n_points, n_grid, span, n_draws, level) {
 ##' evaluation.
 ##' @noRd
 make_profile_problem <- function(fitted, n_draws, seed) {
-  design_scaling <- standardize_design_matrix(fitted$D)
+  design_scaling <- model_design_scaling(fitted$D, fit_parameter_table(fitted))
   spatial_scaling <- scale_spatial_coordinates(fitted$coords)
   distances <- as.matrix(pairwise_distances(spatial_scaling$coordinates))
   control_mcml <- attr(fitted, "control_mcml")
@@ -317,6 +319,7 @@ make_profile_problem <- function(fitted, n_draws, seed) {
     labels = profile_labels(parameters, names(estimate)),
     standard_errors = profiled$standard_errors,
     lower = bounds$lower, upper = bounds$upper,
+    held = held_index(parameters),
     # The optimiser works on the engine's scale (standardised covariates,
     # rescaled distances), as the fit does, with the bounds of the fit.
     internal = list(value = value_internal, to = to_internal,
@@ -405,11 +408,15 @@ profile_labels <- function(parameters, names) {
 ##' Match user-supplied parameter names to those of the fit
 ##' @noRd
 match_profile_parameters <- function(problem, parameters, arg = "parameters") {
+  held <- problem$names[problem$held %||% integer()]
   matched <- vapply(parameters, function(name) {
     hit <- c(name, paste0("beta.", name))
     hit <- hit[hit %in% problem$names]
     if (!length(hit)) {
       abort_input(c("{.arg {arg}} must name parameters of the fit.", "x" = "{.val {name}} is not one of them.", "i" = "The parameters are {.val {problem$names}}."), arg = arg)
+    }
+    if (hit[1] %in% held) {
+      abort_input(c("{.arg {arg}} can't name {.val {name}}, which {.arg fixed_pars} holds in the fit.", "i" = "A held parameter has no profile."), arg = arg)
     }
     hit[1]
   }, "")
@@ -452,6 +459,12 @@ maximise_profile <- function(problem, fixed, fixed_values, start,
     value = problem$value, to = identity, from = identity, transform = NULL,
     p = 0L, lower = problem$lower, upper = problem$upper
   )
+  # The parameters fixed_pars holds stay at their values at every point.
+  held <- setdiff(problem$held %||% integer(), fixed)
+  if (length(held)) {
+    fixed <- c(fixed, held)
+    fixed_values <- c(fixed_values, problem$estimate[held])
+  }
   p <- scale$p
   concentrate <- scale$concentrate
   target <- start

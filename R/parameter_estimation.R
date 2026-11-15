@@ -504,7 +504,7 @@ glgpm <- function(formula,
     colnames(D), fix_tau2 = fix_tau2, exact = model$exact,
     fix_var_me = fix_var_me, estimated_family = estimated_family,
     family_parameters = family_parameters, re_names = names_re,
-    distance_units = distance_units
+    distance_units = distance_units, pinned = holds$pinned
   )
 
   # The starts given in `start_pars`, checked against the model's
@@ -541,7 +541,9 @@ glgpm <- function(formula,
   if (n_re > 0) {
     start_pars[["sigma2_re"]] <- default_start(parameters, "sigma2_re")
   }
-  start_pars <- apply_given_start(parameters, start_pars, given)
+  # The held parameters start, and stay, at their values.
+  start_pars <- apply_given_start(parameters, start_pars,
+                                  combine_given(given, holds$pinned))
 
   # The comparison of starts runs unless it is switched off or every
   # estimated parameter is given, and each candidate takes the given values.
@@ -580,7 +582,7 @@ glgpm <- function(formula,
       s_unique = s_unique,
       family_parameters = start_family,
       parameters = parameters,
-      given = given
+      given = combine_given(given, holds$pinned)
     )
     # The transformed start has none of the family's parameters.
     start_pars <- utils::modifyList(selection$start,
@@ -679,7 +681,7 @@ fit_glgpm_design <- function(y, D, coords, ID_coords, ID_re, s_unique,
   fitting_coords <- spatial_scaling$coordinates
   fitting_start_phi <- spatial_scaling$phi
 
-  design_scaling <- standardize_design_matrix(D)
+  design_scaling <- model_design_scaling(D, parameters)
   D <- design_scaling$design
   start_pars[["beta"]] <- as.numeric(
     solve(design_scaling$coefficient_transform, start_pars[["beta"]])
@@ -950,11 +952,14 @@ linear_start_values <- function(design, response) {
 ##'
 ##' With an intercept, non-intercept columns are centred and scaled. Without
 ##' an intercept they are only scaled, because centring would implicitly add
-##' an intercept to the fitted model. `coefficient_transform` maps coefficients
-##' on the standardised scale back to the scale supplied by the user.
+##' an intercept to the fitted model. With `centre = FALSE` they are only
+##' scaled too, for a model that holds its intercept, which centring would mix
+##' with the other coefficients (`model_design_scaling()`).
+##' `coefficient_transform` maps coefficients on the standardised scale back to
+##' the scale supplied by the user.
 ##'
 ##' @noRd
-standardize_design_matrix <- function(design) {
+standardize_design_matrix <- function(design, centre = TRUE) {
   design <- as.matrix(design)
   p <- ncol(design)
   coefficient_names <- colnames(design)
@@ -969,7 +974,7 @@ standardize_design_matrix <- function(design) {
   scale <- setNames(rep(1, p), coefficient_names)
 
   if (length(columns_to_scale) > 0L) {
-    if (length(intercept) == 1L) {
+    if (length(intercept) == 1L && centre) {
       center[columns_to_scale] <-
         colMeans(design[, columns_to_scale, drop = FALSE])
     }
@@ -997,7 +1002,7 @@ standardize_design_matrix <- function(design) {
   if (length(columns_to_scale) > 0L) {
     coefficient_transform[cbind(columns_to_scale, columns_to_scale)] <-
       1 / scale[columns_to_scale]
-    if (length(intercept) == 1L) {
+    if (length(intercept) == 1L && centre) {
       coefficient_transform[intercept, columns_to_scale] <-
         -center[columns_to_scale] / scale[columns_to_scale]
     }
@@ -1036,6 +1041,13 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
   names(result$estimate$beta) <- beta_names
 
   covariance <- result$covariance
+  # A coefficient that fixed_pars holds has no variance, which the transform
+  # mixes into the others as zero, and its rows are NA again after it.
+  held_beta <- which(is.na(diag(covariance))[beta_index])
+  if (length(held_beta)) {
+    covariance[held_beta, ] <- 0
+    covariance[, held_beta] <- 0
+  }
   covariance[beta_index, beta_index] <- coefficient_transform %*%
     covariance[beta_index, beta_index, drop = FALSE] %*%
     t(coefficient_transform)
@@ -1043,6 +1055,10 @@ restore_fixed_effect_scale <- function(result, coefficient_transform) {
     covariance[beta_index, other_index, drop = FALSE]
   covariance[beta_index, other_index] <- cross
   covariance[other_index, beta_index] <- t(cross)
+  if (length(held_beta)) {
+    covariance[held_beta, ] <- NA_real_
+    covariance[, held_beta] <- NA_real_
+  }
   result$covariance <- covariance
   dimnames(result$covariance) <- list(parameter_names, parameter_names)
 
@@ -2311,21 +2327,15 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
 
   out <- list()
   objective <- safe_optimizer_objective(function(x) -log.lik(x))
-  estim <- nlminb(start_par,
-                  objective,
-                  function(x) -grad.log.lik(x),
-                  function(x) -hessian.log.lik(x),
-                  control = list(trace = 1 * messages))
-
+  optimised <- optimise_gaussian(start_par, objective, grad.log.lik,
+                                 hessian.log.lik, held_index(parameters),
+                                 messages)
+  estim <- optimised$fit
   out$estimate <- working_estimate(parameters, estim$par)
   out$grad_MLE <- grad.log.lik(estim$par)
-  hess.MLE <- hessian.log.lik(estim$par)
-  information <- -hess.MLE
-  information_root <- factor_covariance(
-    information,
-    "observed information matrix"
-  )
-  out$covariance <- chol2inv(information_root)
+  information <- optimised$information
+  information_root <- optimised$root
+  out$covariance <- optimised$covariance
   flat_names <- names(unlist(out$estimate))
   dimnames(out$covariance) <- list(flat_names, flat_names)
   out$log_lik <- -estim$objective

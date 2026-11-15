@@ -223,22 +223,17 @@ glgpm_lm_direct <- function(y, D, coords, kappa, ID_coords, ID_re,
   }
 
   objective <- safe_optimizer_objective(function(par) -log_likelihood(par))
-  estimate <- nlminb(
-    start, objective,
-    function(par) -gradient(par),
-    function(par) -hessian(par),
-    control = list(trace = 1 * messages)
-  )
+  optimised <- optimise_gaussian(start, objective, gradient, hessian,
+                                 held_index(parameters), messages)
+  estimate <- optimised$fit
   score <- gradient(estimate$par)
-  information <- -hessian(estimate$par)
-  information_root <- factor_covariance(
-    information, "observed information matrix"
-  )
+  information <- optimised$information
+  information_root <- optimised$root
 
   out <- list(
     estimate = working_estimate(parameters, estimate$par),
     grad_MLE = score,
-    covariance = chol2inv(information_root),
+    covariance = optimised$covariance,
     log_lik = -estimate$objective,
     link_function = NULL,
     units_m = NULL,

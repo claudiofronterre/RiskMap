@@ -144,8 +144,11 @@ make_extra_check_seed <- function(fit_seed, offset) {
 list_covariance_parameters <- function(object) {
   names <- names(unlist(object$estimate))
   names <- names[parameter_block(names) != "coefficients"]
-  # The nugget under the name coef() reports, from the parameter table.
-  rows <- estimated_rows(fit_parameter_table(object))
+  # The nugget under the name coef() reports, from the parameter table, and
+  # without the parameters fixed_pars holds, which have no profile.
+  parameters <- fit_parameter_table(object)
+  names <- setdiff(names, pinned_rows(parameters)$stored)
+  rows <- estimated_rows(parameters)
   nugget <- rows$scale == "nugget"
   names[names %in% rows$stored[nugget]] <- rows$reported[nugget]
   names
