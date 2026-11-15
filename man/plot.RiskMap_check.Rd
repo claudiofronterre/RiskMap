@@ -21,12 +21,13 @@ of \code{\link[=check_fit]{check_fit()}} would compute it. If no panel has anyth
 \item{...}{other parameters.}
 }
 \value{
-Invisibly returns the list of panels drawn, each a \code{ggplot}
-object.
+A \code{ggplot} object when one panel is drawn, and otherwise a
+\code{patchwork} object that arranges the panels in two columns. Nothing is
+drawn until the object is printed, so it can be saved or changed first.
 }
 \description{
 Plot method for objects of class \code{"RiskMap_check"} from
-\code{\link[=check_fit]{check_fit()}}. It draws the figures of the checks that were computed,
+\code{\link[=check_fit]{check_fit()}}. It makes the figures of the checks that were computed,
 and never computes anything itself, so an extra check runs once in
 \code{\link[=check_fit]{check_fit()}}. By stage of certified Monte Carlo maximum likelihood, the
 panels show the bound on the Monte Carlo error against the tolerance

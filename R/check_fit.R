@@ -990,7 +990,7 @@ format_checks <- function(x) {
 
 ##' @title Plot the Checks on a Fitted Model
 ##' @description Plot method for objects of class `"RiskMap_check"` from
-##'   [check_fit()]. It draws the figures of the checks that were computed,
+##'   [check_fit()]. It makes the figures of the checks that were computed,
 ##'   and never computes anything itself, so an extra check runs once in
 ##'   [check_fit()]. By stage of certified Monte Carlo maximum likelihood, the
 ##'   panels show the bound on the Monte Carlo error against the tolerance
@@ -1035,8 +1035,9 @@ format_checks <- function(x) {
 ##'   of [check_fit()] would compute it. If no panel has anything to show,
 ##'   `plot()` stops with those messages.
 ##' @param ... other parameters.
-##' @return Invisibly returns the list of panels drawn, each a `ggplot`
-##'   object.
+##' @return A `ggplot` object when one panel is drawn, and otherwise a
+##'   `patchwork` object that arranges the panels in two columns. Nothing is
+##'   drawn until the object is printed, so it can be saved or changed first.
 ##' @seealso [check_fit()], [summary.RiskMap_check()]
 ##' @examples
 ##' \donttest{
@@ -1081,8 +1082,8 @@ plot.RiskMap_check <- function(x, which = NULL, ...) {
   }
   # Without a choice of panels, those with nothing to show are left out quietly.
   if (!is.null(which)) for (reason in reasons) riskmap_inform("{reason}")
-  print(patchwork::wrap_plots(panels, ncol = min(2L, length(panels))))
-  invisible(panels)
+  if (length(panels) == 1L) return(panels[[1L]])
+  patchwork::wrap_plots(panels, ncol = 2L)
 }
 
 ##' Every panel of the checks, NULL where there is nothing to show

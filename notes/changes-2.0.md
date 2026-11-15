@@ -1148,6 +1148,12 @@ variance at zero and a nugget, over the scales and spatial shares, where it
 kept only the largest, and `summary()` of the checks gives them. Estimates and
 the decisions of a fit are unchanged.
 
+- `plot()` of the checks from `check_fit()` returns one object and draws
+nothing until it is printed (#213), as the other `plot()` methods do. One
+panel is a ggplot and several are a patchwork in two columns. It used to print
+the panels itself and return the list of them invisibly, so a figure could not
+be saved or changed before it was drawn.
+
 - Certified MCML no longer stops with "the optimiser returned non-finite
 parameter values" when the search for the conditional mode of the latent
 effects goes wrong. Each search starts from the mode found at the parameter
@@ -1301,6 +1307,41 @@ Gaussian models also take 2,000 independent draws by default, including with
   Locations with missing covariates are drawn in grey without a legend key.
   The legend shows the colour of every class, including classes absent from
   the map, whose keys ggplot2 otherwise leaves blank.
+- `assess_extrapolation()` includes the sampling noise of the outcomes in
+  `spatial_unexplained` (#236). The share is
+  v(x) = 1 - rho(x)' (R + W / sigma2)^-1 rho(x), with W diagonal and
+  w_j = tau2 + c_j. For binomial, Poisson and negative binomial models c_j is
+  the inverse of the summed curvature -d^2 log f(y | eta) / d eta^2 of the
+  records at location j, at the conditional mode of the latent effects given
+  the data at the estimates, the Laplace approximation that Emanuele Giorgi
+  proposed. For Gaussian models it is the measurement-error variance divided
+  by the number of records at the location. The share used to treat the
+  spatial effect of binomial, Poisson and negative binomial models as observed
+  without noise at every sampled location, and to take the measurement-error
+  variance of a Gaussian model whatever the number of records, so Gaussian
+  values change only at locations with several records. In the MBG book's
+  Liberia example the mean share on the grid of Chapter 4 rises from 0.38 to
+  0.63, close to the share computed from the draws of `predict()`.
+  `sampling_noise = FALSE` gives the share without the noise, c_j = 0 for
+  every family. The variances of `re()` terms are not included yet.
+- The default `spatial_threshold` of `assess_extrapolation()` is `NULL`
+  instead of 0.8. A location is then classed as spatial extrapolation when
+  its share is above the largest share left at a sampled location by the data
+  of the others, v_-j = 1 / [(R + W / sigma2)^-1]_jj - w_j / sigma2, which
+  comes from the same factor. A number strictly between 0 and 1 gives a fixed
+  threshold, where 0 and 1 were accepted before. When a sampled location
+  shares no correlation with the others the threshold is 1, nothing is
+  flagged, and `print()` says so. The result keeps the threshold in the attribute
+  `spatial_threshold`, with `spatial_rule` and `sampling_noise`, and has a
+  `print()` method that counts the locations in each class and states the
+  thresholds. In Liberia the threshold is 0.844 and 1.1% of the grid is
+  flagged, where 0.8 without the noise flagged 0.2%.
+- `plot()` of predictions takes `summaries` and `thresholds` instead of
+  `summary` and `threshold`, the names that `predict()` and `to_table()` use.
+  Several thresholds give one exceedance map each, arranged as several
+  summaries are, and `print()` of a prediction names the new argument. A call
+  that names `summary` stops with an error naming `summaries`, while
+  `threshold` still reaches `thresholds` by partial matching.
 - `create_grid()` gains `raster`. The grid then consists of the cells of a
   projected `SpatRaster` with square cells: their centres are the grid points
   and the raster's layers become columns, so values such as population counts

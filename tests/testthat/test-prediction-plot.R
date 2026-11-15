@@ -13,7 +13,7 @@ test_that("location predictions produce an adaptable prediction map", {
                           class = "RiskMap_prediction")
 
   map <- plot(prediction)
-  exceedance_map <- plot(prediction, summary = "exceedance", threshold = 0.2)
+  exceedance_map <- plot(prediction, summaries = "exceedance", thresholds = 0.2)
 
   expect_s3_class(map, "ggplot")
   expect_no_error(ggplot_build(map))
@@ -81,11 +81,11 @@ test_that("plot arguments reject unavailable or ambiguous requests", {
   expect_error(plot(prediction, quantity = "spatial"), "has no prediction column")
   expect_error(plot(prediction, aggregate = "mean"),
                "has no summaries over `boundaries`")
-  expect_error(plot(prediction, summary = "exceedance"),
-               "threshold.*must be given")
+  expect_error(plot(prediction, summaries = "exceedance"),
+               "thresholds.*must be given")
   expect_error(plot(prediction, limits = c(1, 0)), "increasing")
   expect_warning(
-    map <- plot(prediction, summary = "exceedance", threshold = 0.2,
+    map <- plot(prediction, summaries = "exceedance", thresholds = 0.2,
                 limits = c(0.1, 0.9)),
     "always use limits"
   )
@@ -110,15 +110,15 @@ test_that("map defaults depend on what the map shows", {
   )
 
   mean_scale <- plot(prediction)$scales$scales[[1L]]
-  cv_scale <- plot(prediction, summary = "cv")$scales$scales[[1L]]
+  cv_scale <- plot(prediction, summaries = "cv")$scales$scales[[1L]]
   exceedance_scale <- plot(prediction,
-                           summary = "exceedance")$scales$scales[[1L]]
+                           summaries = "exceedance")$scales$scales[[1L]]
   spatial_scale <- plot(prediction, quantity = "spatial")$scales$scales[[1L]]
 
   expect_identical(legend_title(plot(prediction)), "Mean prevalence")
-  expect_identical(legend_title(plot(prediction, summary = "cv")),
+  expect_identical(legend_title(plot(prediction, summaries = "cv")),
                    "CV of prevalence")
-  expect_identical(legend_title(plot(prediction, summary = "exceedance")),
+  expect_identical(legend_title(plot(prediction, summaries = "exceedance")),
                    "Probability prevalence > 20%")
   expect_identical(legend_title(plot(prediction, quantity = "spatial")),
                    "Mean spatial effect")
@@ -226,7 +226,7 @@ test_that("breaks give a binned map and several summaries give one row each", {
   expect_error(plot(prediction, breaks = c(0, 0.3, 0.2)), "increasing")
 
   skip_if_not_installed("patchwork")
-  both <- plot(prediction, summary = c("mean", "cv"))
+  both <- plot(prediction, summaries = c("mean", "cv"))
   expect_s3_class(both, "patchwork")
   expect_length(both$patches$plots, 1L)
 })
@@ -240,7 +240,7 @@ test_that("predictions from a fitted model print and plot at both scales", {
                         seed = 1, messages = FALSE)
 
   expect_identical(prediction$response_name, "y")
-  expect_output(print(prediction), "`plot(x, summary = \"mean\")` maps it",
+  expect_output(print(prediction), "`plot(x, summaries = \"mean\")` maps it",
                 fixed = TRUE)
   expect_identical(legend_title(plot(prediction)), "Mean y")
   expect_no_error(ggplot_build(plot(prediction, spatial_scale = "both")))
@@ -307,7 +307,7 @@ test_that("several summaries at one scale are arranged in a grid", {
          family = "binomial", summaries = c("mean", "cv")),
     class = "RiskMap_prediction"
   )
-  maps <- plot(prediction, summary = c("mean", "cv", "interval_width"))
+  maps <- plot(prediction, summaries = c("mean", "cv", "interval_width"))
   expect_identical(maps$patches$layout$ncol, 2L)
   side_margins <- vapply(c(maps$patches$plots, list(maps)), function(map) {
     as.numeric(map$theme$plot.margin[2L])
@@ -341,7 +341,7 @@ test_that("several quantities are drawn in one call", {
     expect_identical(panel$scales$scales[[1L]]$limits, c(-1, 1))
   }
   expect_error(plot(prediction, quantity = c("fixed", "spatial"),
-                    summary = c("mean", "sd")),
+                    summaries = c("mean", "sd")),
                "several quantities or several summaries")
   expect_error(plot(prediction, quantity = c("spatial", "spatial")),
                "distinct names of predicted quantities")
@@ -379,4 +379,53 @@ test_that("predict() records a link other than the canonical one", {
   data <- gaussian_data
   expect_null(predict(gaussian_model, newdata = data[1:2, ],
                       messages = FALSE)$link)
+})
+
+test_that("plot() takes summaries and thresholds as predict() names them", {
+  points <- st_sf(
+    response_mean = c(0.1, 0.4, 0.8),
+    response_exceedance_0.2 = c(0.1, 0.55, 0.95),
+    response_exceedance_0.5 = c(0.01, 0.3, 0.9),
+    geometry = st_sfc(
+      st_point(c(0, 0)), st_point(c(1, 0)), st_point(c(2, 0)), crs = 32631
+    )
+  )
+  prediction <- structure(
+    list(predictions = points, boundaries = NULL, boundary_summary = NULL,
+         family = "binomial", summaries = c("mean", "exceedance"),
+         thresholds = c(0.2, 0.5), level = 0.95),
+    class = "RiskMap_prediction"
+  )
+  # Several thresholds give one exceedance map each.
+  maps <- plot(prediction, summaries = c("mean", "exceedance"),
+               thresholds = c(0.2, 0.5))
+  panels <- c(maps$patches$plots, list(maps))
+  expect_identical(
+    vapply(panels, legend_title, character(1)),
+    c("Mean prevalence", "Probability prevalence > 20%",
+      "Probability prevalence > 50%")
+  )
+  expect_identical(maps$patches$layout$ncol, 2L)
+  one <- plot(prediction, summaries = "exceedance", thresholds = 0.5)
+  expect_false(inherits(one, "patchwork"))
+  expect_identical(legend_title(one), "Probability prevalence > 50%")
+
+  expect_input_error(plot(prediction, summaries = "exceedance"), "thresholds")
+  expect_input_error(plot(prediction, summaries = "exceedance",
+                          thresholds = 0.3), "thresholds")
+  expect_input_error(plot(prediction, summaries = "mean", thresholds = 0.2),
+                     "thresholds")
+  expect_input_error(plot(prediction, summaries = "exceedance",
+                          thresholds = c(0.2, 0.2)), "thresholds")
+  expect_input_error(plot(prediction, summaries = "exceedance",
+                          thresholds = "0.2"), "thresholds")
+  expect_input_error(plot(prediction, summaries = c("mean", "mean")),
+                     "summaries")
+  # The old name stops with the new one, and `threshold` partially matches.
+  expect_input_error(plot(prediction, summary = "mean"), "summary",
+                     "`summaries`")
+  expect_identical(
+    legend_title(plot(prediction, summaries = "exceedance", threshold = 0.5)),
+    "Probability prevalence > 50%"
+  )
 })

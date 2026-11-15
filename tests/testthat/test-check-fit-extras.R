@@ -176,8 +176,8 @@ test_that("a profile computed by the user is used as it is", {
   expect_named(other$extras$profile$data$marginal, c("beta.cov", "sigma2"))
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
-  expect_named(plot(other, which = "profile"),
-               c("profile_beta.cov", "profile_sigma2"))
+  expect_identical(drawn_titles(plot(other, which = "profile")),
+                   panel_titles(other, c("profile_beta.cov", "profile_sigma2")))
   expect_input_error(check_fit(poisson_model, profile = scale_profile),
                "profile")
   expect_input_error(check_fit(binomial_model, cores = 0),
@@ -298,19 +298,20 @@ test_that("the radius check runs on request, from streams of the fit's seed", {
   expect_match(radius$row$finding,
                paste0("^The radius of the bound is predicted to be exceeded in ",
                       level, " of samples"))
-  panels <- plot(checked)
-  expect_identical(names(panels),
-                   c("certificate", "effective_draws", "pareto_k", "radius"))
-  expect_s3_class(panels$radius, "ggplot")
-  expect_identical(names(plot(checked, which = "radius")), "radius")
+  expect_identical(drawn_titles(plot(checked)),
+                   panel_titles(checked, c("certificate", "effective_draws",
+                                           "pareto_k", "radius")))
+  panel <- plot(checked, which = "radius")
+  expect_identical(drawn_titles(panel), panel_titles(checked, "radius"))
   # The subtitle starts with the predicted rate of the row, and gives the
   # share above the line as the summary does.
-  subtitle <- gsub("\n", " ", panels$radius$labels$subtitle, fixed = TRUE)
+  subtitle <- gsub("\n", " ", ggplot2::get_labs(panel)$subtitle, fixed = TRUE)
   expect_match(subtitle, paste0("^Predicted to be exceeded in ", level,
                                 " of samples \\("))
   expect_match(subtitle, paste0("alone exceeds it in ", own,
                                 ", above the dashed line.$"))
-  expect_lte(max(nchar(strsplit(panels$radius$labels$subtitle, "\n")[[1L]])),
+  expect_lte(max(nchar(strsplit(ggplot2::get_labs(panel)$subtitle,
+                                "\n")[[1L]])),
              62L)
   expect_null(plot_radius_panel(NULL))
   expect_null(plot_radius_panel(list(samples = data.frame(error = 0,
@@ -362,10 +363,13 @@ test_that("a Gaussian profile needs no seed and can be plotted alone", {
   expect_null(make_extra_check_seed(gaussian_model$seed, 9600L))
   expect_identical(checked$checks$check,
                    c("Profile likelihood", "Monte Carlo accuracy"))
-  expect_identical(names(plot(checked)),
-                   paste0("profile_", c("sigma2", "phi", "sigma2_me", "sigma2_re.i")))
-  expect_identical(names(plot(checked, which = "profile_sigma2_me")),
-                   "profile_sigma2_me")
+  expect_identical(
+    drawn_titles(plot(checked)),
+    panel_titles(checked, paste0("profile_", c("sigma2", "phi", "sigma2_me",
+                                               "sigma2_re.i")))
+  )
+  expect_identical(drawn_titles(plot(checked, which = "profile_sigma2_me")),
+                   panel_titles(checked, "profile_sigma2_me"))
   expect_error(plot(checked, which = "moves"), "no stages to plot")
 })
 

@@ -61,6 +61,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   the uncertainty of the estimated parameters.
 - `plot()` maps predictions, `to_table()` tabulates predictions over areas,
   and `assess_extrapolation()` shows where predictions go beyond the data.
+- `assess_extrapolation()` counts the sampling noise of the data and flags a
+  location when the data say less about it than about any surveyed location
+  left out (#236). `plot()` of predictions takes `summaries` and
+  `thresholds`, the names `predict()` uses.
 
 ### Data and projections
 
