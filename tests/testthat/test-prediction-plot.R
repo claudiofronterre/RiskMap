@@ -351,14 +351,14 @@ test_that("the print of a prediction names the model, the places and the draws",
   prediction <- function(...) {
     structure(modifyList(list(predictions = data.frame(id = 1:2),
                               family = "gaussian", response_name = "y",
-                              type = "marginal", summaries = "mean"),
+                              joint = FALSE, summaries = "mean"),
                          list(...)),
               class = "RiskMap_prediction")
   }
   expect_match(squish(capture.output(print(prediction()))),
                "Linear geostatistical model of y, at 2 locations, with marginal draws.",
                fixed = TRUE)
-  one <- prediction(type = "joint", boundaries = data.frame(area = 1:3))
+  one <- prediction(joint = TRUE, boundaries = data.frame(area = 1:3))
   one$predictions <- data.frame(id = 1)
   expect_match(squish(capture.output(print(one))),
                "at 1 location and 3 areas, with joint draws.", fixed = TRUE)

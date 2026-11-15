@@ -359,7 +359,7 @@ to the locations only. An argument in `...` that doesn't match one of
 matches them, is an error, since `acf()` would ignore it. `component` is one
 such argument.
 
-- The new `summarise_mcmc()` returns a data frame of the effective sample sizes of
+- The new `summarise_mcmc()` returns a tibble of the effective sample sizes of
 the mean of the spatial random effects, of each location and of each level of
 an unstructured random effect. Its column `index` numbers the locations and
 the levels. It was called `component`, which now names only the quantities
@@ -1433,6 +1433,23 @@ by their coverage, which changed areal estimates. `cbind()`, `merge()` and
 column. `rbind()` keeps the cells of its first grid. `predict()` now says
 when it assigns points to polygons one by one although they lie on a square
 lattice, as the centres of a grid's cells do.
+- `predict()` takes `joint = NULL` in place of `type = c("auto", "marginal",
+"joint")`, since `type` names the scale of the prediction in `stats::predict()`
+methods and in `fitted()`. `TRUE` draws the locations jointly, `FALSE` draws
+each location on its own, and `NULL`, the default, draws jointly with
+`boundaries` and marginally without them, as `"auto"` did. `joint = FALSE` with
+`boundaries` stops, as `type = "marginal"` did, and so does `include =
+"random_effects"` without `joint = TRUE`. The result records the choice in
+`joint`, `TRUE` or `FALSE`, instead of `type`, and its print reads it there.
+`standardize` is spelt `standardise`, as RiskMap's own names are British
+(`summarise_distance()`, `summarise_mcmc()`), and the result's `standardized`
+is `standardised`. Predictions are unchanged.
+- `predict()` and the print of a prediction stop on an argument they don't
+use instead of ignoring it (`check_dots_unused()` in `checks.R`, which other
+methods whose `...` is unused can share). The error names the argument, says
+to use `joint` for `type`, which `predict(type = "response")` would otherwise
+have ignored silently, and `standardise` for `standardize`, and otherwise asks
+to check the spelling.
 
 ## Cross validation
 
@@ -1477,9 +1494,8 @@ parameters have been renamed to `metric`/`model`.
   of `model_crs`. Its arguments are now `formula`, `data`, `family`,
   `parameters`, `invlink`, `denominator`, `distance_crs` and
   `distance_units`, with `invlink` moved from last, so calls that give the
-  later arguments by position must name them. `simulated_values()` returns a
-  data frame instead of a tibble, as every other table RiskMap returns.
-  Simulations with a given seed are unchanged.
+  later arguments by position must name them. Simulations with a given seed
+  are unchanged.
 
 - `assess_simulation()` scores every model on the scale of the mean, each
   through its own inverse link. The truth is the simulated mean, which the
@@ -1494,6 +1510,21 @@ parameters have been renamed to `metric`/`model`.
   binomial model, the mean per unit exposure for a Poisson model and the
   value for a Gaussian model), so prevalence needs no argument, and other
   targets such as `qlogis` for the logit scale remain available.
+
+- `plot()` of a simulation and of a `simulated_surface()` maps the simulated
+  mean by default, the prevalence for a binomial model, instead of the linear
+  predictor, and `quantity` maps any other component of `simulated_values()`
+  that the surface has (`"linear_predictor"`, `"spatial_effect"`, `"nugget"`,
+  `"group_effect"`). Both take the colours, legend and `limits` of `plot()` of
+  predictions. `palette = NULL` gives the sequential palette of predicted
+  levels for the mean and the palette centred at zero, with symmetric limits,
+  for the linear predictor and the effects. A `"-"` before a palette's name
+  reverses it, and `reverse_palette` is gone. The legend names the component,
+  for example "Prevalence" with percentages, "Rate", "Mean" or "Spatial
+  effect", and the maps lose their axes, as prediction maps have none.
+  `simulated_surface()` keeps the family of the model as an attribute for the
+  legend. The internal map helpers that only these methods used, with their
+  unreachable north arrow and scale bar, are gone.
 
 ## Other
 
@@ -1529,8 +1560,7 @@ checked.
   a standalone function; call it as `plot(variogram_result)`.
 - `plot_sim_surf()` is now `plot.RiskMap_simulation()`; call it as
   `plot(sim_result, simulation = ...)`. It now draws a `ggplot` map matching
-  the prediction maps, with `palette` and `reverse_palette`
-  arguments. `simulated_surface()` returns an object of class
+  the prediction maps, with a `palette` argument. `simulated_surface()` returns an object of class
   `RiskMap_simulated_surface` with a matching `plot()` method.
 - In `assess_prediction()`, the `"AnPIT"` metric is now `"PIT"` and the
   `AnPIT_area` score is now `PIT_area`, for every family.

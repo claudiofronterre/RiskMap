@@ -28,8 +28,8 @@ test_that("predict.RiskMap keeps prediction data and summaries aligned", {
 test_that("prediction objects use one stable output schema", {
   expected_output <- c(
     "predictions", "boundaries", "boundary_summary", "samples", "include",
-    "transform", "standardized", "aggregate", "summaries", "thresholds",
-    "level", "type", "family", "link", "response_name", "observed_locations",
+    "transform", "standardised", "aggregate", "summaries", "thresholds",
+    "level", "joint", "family", "link", "response_name", "observed_locations",
     "parameter_draws", "coverage", "weights"
   )
 
@@ -115,7 +115,7 @@ test_that("newdata NULL returns aligned predictions at observed rows", {
 test_that("optional random-effect and nugget components are explicit", {
   conditional <- predict(
     binomial_model,
-    type = "joint",
+    joint = TRUE,
     include = "random_effects",
     keep_samples = TRUE,
     messages = FALSE
@@ -199,7 +199,7 @@ test_that("predict.RiskMap validates its concise public interface", {
   prediction_data$i <- -1L
   expect_error(
     predict(
-      gaussian_model, prediction_data, type = "joint",
+      gaussian_model, prediction_data, joint = TRUE,
       include = "random_effects", messages = FALSE
     ),
     "levels of the random effect"
@@ -208,9 +208,35 @@ test_that("predict.RiskMap validates its concise public interface", {
   expect_input_error(
     predict(
       gaussian_model, prediction_data, boundaries = areal,
-      aggregate = "mean", type = "marginal", messages = FALSE
+      aggregate = "mean", joint = FALSE, messages = FALSE
     ),
+    "joint"
+  )
+  expect_input_error(
+    predict(gaussian_model, prediction_data, joint = "marginal",
+            messages = FALSE),
+    "joint"
+  )
+  # A former or misspelt argument stops instead of being ignored.
+  expect_input_error(
+    predict(gaussian_model, prediction_data, type = "marginal",
+            messages = FALSE),
     "type"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, type = "response",
+            messages = FALSE),
+    "Use `joint` to choose between joint and marginal draws"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data,
+            standardize = data.frame(cov = 1), messages = FALSE),
+    "It is spelt `standardise`"
+  )
+  expect_error(
+    predict(gaussian_model, prediction_data, summaris = "mean",
+            messages = FALSE),
+    "Check the spelling"
   )
   expect_error(
     predict(gaussian_model, prediction_data, aggregate = "mean",
@@ -265,16 +291,16 @@ test_that("prediction validates required offset and optional components", {
   )
   expect_error(
     predict(
-      gaussian_model, prediction_data, type = "marginal",
+      gaussian_model, prediction_data, joint = FALSE,
       include = "random_effects", messages = FALSE
     ),
-    "must be \"joint\" to predict the random effects"
+    "`joint` must be `TRUE` to predict the random effects"
   )
   complete_offset_data <- prediction_data
   complete_offset_data$offset <- 0
   expect_error(
     predict(
-      gaussian_offset_model, complete_offset_data, type = "joint",
+      gaussian_offset_model, complete_offset_data, joint = TRUE,
       include = "random_effects", messages = FALSE
     ),
     "the model has no `re\\(\\)` terms"
@@ -400,7 +426,13 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
   expect_s3_class(result, "RiskMap_prediction")
   expect_identical(result$aggregate,
                    c("mean", "median", "sum", "min", "max"))
-  expect_identical(result$type, "joint")
+  expect_identical(result$joint, TRUE)
+  # At the observed locations of a binomial fit the draws are the joint
+  # conditional samples, and at those of a Gaussian fit they follow `joint`.
+  expect_true(predict(binomial_model, summaries = "mean",
+                      messages = FALSE)$joint)
+  expect_false(predict(gaussian_model, summaries = "mean",
+                       messages = FALSE)$joint)
   expect_identical(result$coverage, "exact")
   expect_identical(result$weights, "population")
   expect_identical(st_geometry(result$predictions), st_geometry(prediction_data))
@@ -902,7 +934,7 @@ test_that("joint location prediction covers Gaussian and non-Gaussian engines", 
   )
 
   gaussian <- predict(
-    gaussian_model, prediction_data, type = "joint",
+    gaussian_model, prediction_data, joint = TRUE,
     include = "random_effects", control_mcmc = prediction_control,
     keep_samples = TRUE, seed = 481, messages = FALSE
   )
@@ -912,7 +944,7 @@ test_that("joint location prediction covers Gaussian and non-Gaussian engines", 
 
   expect_message(
     binomial <- predict(
-      binomial_model, prediction_data, type = "joint",
+      binomial_model, prediction_data, joint = TRUE,
       keep_samples = TRUE, seed = 482, messages = TRUE
     ),
     "Reusing the conditional samples stored"
@@ -1081,13 +1113,13 @@ test_that("derived targets validate names and returned dimensions", {
   )
 })
 
-test_that("prediction standardizes over an equally weighted reference population", {
+test_that("prediction standardises over an equally weighted reference population", {
   reference <- data.frame(cov = c(-1, 0.5, 2))
 
   result <- predict(
     binomial_model,
     newdata = prediction_data,
-    standardize = reference,
+    standardise = reference,
     keep_samples = TRUE,
     messages = FALSE
   )
@@ -1098,20 +1130,20 @@ test_that("prediction standardizes over an equally weighted reference population
     plogis(spatial + beta[[1L]] + beta[[2L]] * value)
   })) / nrow(reference)
 
-  expect_true(result$standardized)
+  expect_true(result$standardised)
   expect_equal(result$predictions$response_mean, rowMeans(expected))
   expect_equal(result$predictions$fixed,
                rep(beta[[1L]] + beta[[2L]] * mean(reference$cov),
                    nrow(prediction_data)))
 })
 
-test_that("standardization supports population weights and derived targets", {
+test_that("standardisation supports population weights and derived targets", {
   reference <- data.frame(cov = c(-1, 2), .weight = c(1, 3))
 
   result <- predict(
     binomial_model,
     newdata = prediction_data,
-    standardize = reference,
+    standardise = reference,
     transform = list(risk = plogis),
     keep_samples = TRUE,
     messages = FALSE
@@ -1127,7 +1159,7 @@ test_that("standardization supports population weights and derived targets", {
   expect_equal(result$predictions$risk_mean, rowMeans(expected))
 })
 
-test_that("standardization is available before polygon aggregation", {
+test_that("standardisation is available before polygon aggregation", {
   reference <- data.frame(cov = c(-1, 1))
 
   result <- predict(
@@ -1135,29 +1167,29 @@ test_that("standardization is available before polygon aggregation", {
     newdata = prediction_data,
     boundaries = areal,
     aggregate = "mean",
-    standardize = reference,
+    standardise = reference,
     summaries = "mean",
     messages = FALSE
   )
 
-  expect_true(result$standardized)
+  expect_true(result$standardised)
   expect_contains(result$boundary_summary$quantity, "response")
 })
 
-test_that("standardization validates reference predictors and weights", {
+test_that("standardisation validates reference predictors and weights", {
   expect_error(
-    predict(gaussian_model, grid, standardize = data.frame(),
+    predict(gaussian_model, grid, standardise = data.frame(),
             messages = FALSE),
     "non-empty data frame"
   )
   expect_error(
     predict(gaussian_model, grid,
-            standardize = data.frame(unknown = 1), messages = FALSE),
+            standardise = data.frame(unknown = 1), messages = FALSE),
     "is not a covariate"
   )
   expect_error(
     predict(gaussian_model, grid,
-            standardize = data.frame(cov = 1, .weight = -1),
+            standardise = data.frame(cov = 1, .weight = -1),
             messages = FALSE),
     "finite, non-negative"
   )

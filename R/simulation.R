@@ -368,7 +368,7 @@ draw_simulation <- function(prepared, nsim, seed = NULL,
 #'   data simulations, `"response"`. Defaults to all available components.
 #' @param simulation Simulation numbers to extract. Defaults to all simulations.
 #' @param location_set `"data"`, `"surface"`, or both. Defaults to available sets.
-#' @return A data frame with `simulation`, `location_set`, `location_id`,
+#' @return A tibble with `simulation`, `location_set`, `location_id`,
 #'   `component` and `value`. Location identifiers refer to rows in
 #'   `object$locations`.
 #' @examples
@@ -421,7 +421,7 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
     index$value <- as.numeric(x[, simulation, selected, drop = FALSE])
     index[, c("simulation", "location_set", "location_id", "component", "value")]
   })
-  do.call(rbind, tables)
+  as_tibble(do.call(rbind, tables))
 }
 
 #' Extract a simulated dataset or surface
@@ -494,6 +494,8 @@ simulated_surface <- function(object, simulation = 1) {
     out[[name]] <- as.numeric(object$samples$surface[, simulation, name])
   }
   class(out) <- c("RiskMap_simulated_surface", class(out))
+  # The family names the mean in the legend of plot().
+  attr(out, "family") <- object$model$family
   out
 }
 

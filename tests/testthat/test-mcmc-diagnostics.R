@@ -99,8 +99,7 @@ test_that("summarise_mcmc returns the ESS of the mean, every location and every 
   summary <- summarise_mcmc(poisson_model)
   samples <- poisson_model$S_samples
 
-  expect_identical(class(summary), "data.frame")
-  expect_identical(.row_names_info(summary), -16L)
+  expect_s3_class(summary, "tbl_df")
   expect_named(summary, c("effect", "index", "ess"))
   expect_identical(summary$effect,
                    c("mean of S", rep("S", 10), rep("i", 5)))
