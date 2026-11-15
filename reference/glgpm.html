@@ -193,12 +193,17 @@ parameters of a model before it is fitted.</p></dd>
 
 <dt id="arg-fixed-pars">fixed_pars<a class="anchor" aria-label="anchor" href="#arg-fixed-pars"></a></dt>
 <dd><p><code>NULL</code> (the default), or a named list of values at which
-to hold some of the model's parameters instead of estimating them, with the
-names and structure of <code>start_pars</code>. It holds the variance of a nugget
-(<code>tau2</code>, with <code>gp(nugget = TRUE)</code>, positive), the measurement error variance
-of a Gaussian model (<code>sigma2_me</code>, zero or positive) and the size of a
-negative binomial model (<code>theta</code>, positive). A parameter can't be both
-started and held, except that a start equal to its held value, as in
+to hold any of the model's parameters instead of estimating them, one,
+several or all of them, with the names and structure of <code>start_pars</code>.
+Every value must be finite, and every one but the coefficients positive,
+except the measurement error variance of a Gaussian model, which may be
+zero. A held coefficient enters the linear predictor as a known term, as an
+offset does. The other parameters are estimated with the held ones at their
+values, and with every parameter held the fit evaluates the likelihood at
+the values (exactly for a Gaussian model, by Monte Carlo on one sample for
+the others) and draws the conditional samples there, so that <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>
+works with given parameters. A parameter can't be both started and held,
+except that a start equal to its held value, as in
 <code>start_pars = coef(fit)</code> of a fit with the same holds, is left out. With one
 observation per location, a Gaussian model can estimate the nugget or the
 measurement error variance, not both, and a negative binomial model the
@@ -592,7 +597,7 @@ values a fit used and why.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Spatial Gaussian process, Matern correlation with kappa = 0.5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                          Estimate Lower limit Upper limit</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Spatial process var.       2.1220      0.9347      4.8173</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 102.1364     34.7203    300.4537</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 102.1364     34.7203    300.4540</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Variance of the nugget effect fixed at 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Log-likelihood</span>  -2018.33</span>

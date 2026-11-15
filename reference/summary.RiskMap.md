@@ -60,7 +60,10 @@ record why (`NULL` when the comparison chose the start). `mcml` is
 `NULL` for Gaussian models. The parameters of the family, such as the
 measurement error variance of a Gaussian model, are in
 `family_parameters`, a table of those that were estimated, and
-`held_family_parameters`, a list of those held at a given value.
+`held_family_parameters`, a list of those held at a given value. The
+other parameters that `fixed_pars` holds keep their rows, with no
+interval, and `held_parameters` says at what values they are held
+(absent when none is).
 
 ## Examples
 

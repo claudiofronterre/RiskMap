@@ -50,16 +50,23 @@ lacks stops with the names it has.
 
 `fixed_pars` of
 [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
-takes the same names and structure, and holds the parameters it gives at
-their values instead of estimating them. It holds the variance of a
-nugget (`tau2`, for a model with `gp(nugget = TRUE)`), the measurement
-error variance of a Gaussian model (`sigma2_me`, which may be zero) and
-the size of a negative binomial model (`theta`).
+takes the same names and structure, and holds any of the parameters it
+gives at their values instead of estimating them, such as
+`list(phi = 20)`, `list(beta = c(x = 0.5))` or
+`list(sigma2_re = c(household = 0.2))`. The nugget variance is held only
+in a model with `gp(nugget = TRUE)`, and a nugget or random-effect
+variance of zero is the model without that term.
 [`coef.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md)
 gives the held parameters with the estimated ones, so
 `start_pars = coef(fit)` works for a refit with the same holds, and
 [`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
-shows them as fixed.
+and [`print()`](https://rdrr.io/r/base/print.html) show them as fixed,
+without standard errors.
+[`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md)
+has no profile of a held parameter and holds them in the profiles of the
+others, and
+[`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md)
+refits with the same holds.
 
 ## See also
 

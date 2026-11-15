@@ -61,9 +61,11 @@ the main changes follow.
   describes them.
 - `fixed_pars` in
   [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
-  holds the nugget variance, the measurement error variance or the size
-  of a negative binomial model at a given value, in place of
-  `gp(nugget = <value>)`, `fix_var_me` and `negative_binomial(theta)`.
+  holds any parameters at given values, such as a coefficient, the scale
+  or the nugget variance, or all of them, in which case
+  [`predict()`](https://rdrr.io/r/stats/predict.html) works with the
+  given parameters. It replaces `gp(nugget = <value>)`, `fix_var_me` and
+  `negative_binomial(theta)`.
   [`coef()`](https://rdrr.io/r/stats/coef.html) gives held parameters
   with the estimated ones, in the order of
   [`?riskmap_parameters`](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md),

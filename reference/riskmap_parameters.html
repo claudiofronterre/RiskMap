@@ -115,13 +115,16 @@ locations. A name the model lacks stops with the names it has.</p>
 
 
 <p><code>fixed_pars</code> of <code><a href="glgpm.html">glgpm()</a></code> takes the same names and structure, and holds
-the parameters it gives at their values instead of estimating them. It
-holds the variance of a nugget (<code>tau2</code>, for a model with
-<code>gp(nugget = TRUE)</code>), the measurement error variance of a Gaussian model
-(<code>sigma2_me</code>, which may be zero) and the size of a negative binomial model
-(<code>theta</code>). <code><a href="coef.RiskMap.html">coef.RiskMap()</a></code> gives the held parameters with the estimated
-ones, so <code>start_pars = coef(fit)</code> works for a refit with the same holds,
-and <code><a href="summary.RiskMap.html">summary.RiskMap()</a></code> shows them as fixed.</p>
+any of the parameters it gives at their values instead of estimating them,
+such as <code>list(phi = 20)</code>, <code>list(beta = c(x = 0.5))</code> or
+<code>list(sigma2_re = c(household = 0.2))</code>. The nugget variance is held only in
+a model with <code>gp(nugget = TRUE)</code>, and a nugget or random-effect variance of
+zero is the model without that term. <code><a href="coef.RiskMap.html">coef.RiskMap()</a></code> gives the held
+parameters with the estimated ones, so <code>start_pars = coef(fit)</code> works for a
+refit with the same holds, and <code><a href="summary.RiskMap.html">summary.RiskMap()</a></code> and <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> show them
+as fixed, without standard errors. <code><a href="profile.RiskMap.html">profile.RiskMap()</a></code> has no profile of a
+held parameter and holds them in the profiles of the others, and
+<code><a href="parametric_bootstrap.html">parametric_bootstrap()</a></code> refits with the same holds.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
