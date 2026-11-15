@@ -17,10 +17,10 @@ wide_points <- lonlat_points(lon = c(12, 31, 12, 31, 21.5),
 test_that("propose_crs checks its arguments", {
   expect_input_error(propose_crs("a"), "data")
   expect_input_error(propose_crs(st_set_crs(gaussian_data, NA)), "data")
-  expect_input_error(propose_crs(gaussian_data, epsg_tolerance = -0.1),
-                     "epsg_tolerance")
-  expect_input_error(propose_crs(gaussian_data, epsg_tolerance = 1),
-                     "epsg_tolerance")
+  expect_input_error(propose_crs(gaussian_data, utm_tolerance = -0.1),
+                     "utm_tolerance")
+  expect_input_error(propose_crs(gaussian_data, utm_tolerance = 1),
+                     "utm_tolerance")
   expect_input_error(propose_crs(gaussian_data, messages = NA), "messages")
   expect_input_error(
     propose_crs(st_sf(geometry = st_sfc(st_point(), crs = 4326))),
@@ -98,7 +98,7 @@ test_that("propose_crs gives a centred projection for a wide region", {
   # a larger tolerance accepts the best UTM zone, with a warning that a
   # centred projection is better
   expect_warning(
-    epsg <- propose_crs(wide_points, epsg_tolerance = 0.5, messages = FALSE),
+    epsg <- propose_crs(wide_points, utm_tolerance = 0.5, messages = FALSE),
     "smaller", class = "riskmap_warning_crs"
   )
   expect_true(is.integer(epsg))
@@ -270,7 +270,8 @@ test_that("longitude and latitude are projected with the CRS reported", {
   expect_match(result$messages,
                "projected to EPSG:32629 (WGS 84 / UTM zone 29N) to create the grid, with distances in km.",
                fixed = TRUE)
-  expect_match(result$messages, "Project `boundaries` yourself", fixed = TRUE)
+  expect_match(result$messages, "Set `distance_crs` to choose the projection.",
+               fixed = TRUE)
   expect_identical(st_crs(result$value), st_crs(32629))
 })
 

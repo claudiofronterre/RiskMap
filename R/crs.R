@@ -7,7 +7,7 @@
 ##' conformal projection centred on the data otherwise.
 ##'
 ##' @param data An `sf` or `sfc` object of points or polygons, in any CRS.
-##' @param epsg_tolerance The largest distortion of distances, as a fraction,
+##' @param utm_tolerance The largest distortion of distances, as a fraction,
 ##'   for which a UTM zone is proposed. The default of 0.005 accepts a UTM
 ##'   zone that distorts distances by at most 0.5% over the data.
 ##' @param messages Whether to report the CRS proposed and its distortion.
@@ -39,7 +39,7 @@
 ##' slightly over the map.
 ##'
 ##' The best UTM zone is proposed when its distortion is at most
-##' `epsg_tolerance`, and the best centred projection otherwise. A region about
+##' `utm_tolerance`, and the best centred projection otherwise. A region about
 ##' 1,000 km across or less usually gets a UTM zone. The best centred
 ##' projection keeps distances within 0.5% over every African country. No
 ##' planar CRS keeps them within 1% over a region that holds a disc about
@@ -80,14 +80,14 @@
 ##' crs$Name
 ##' crs_distortion(wide, crs)
 ##' @export
-propose_crs <- function(data, epsg_tolerance = 0.005,
+propose_crs <- function(data, utm_tolerance = 0.005,
                         messages = getOption("RiskMap.messages", TRUE)) {
   check_supplied(data)
   check_data(data, geometry = "any", type = "sfc")
-  check_range(epsg_tolerance, min = 0, max = 1, allow_equal = FALSE)
+  check_range(utm_tolerance, min = 0, max = 1, allow_equal = FALSE)
   check_logical(messages)
 
-  choice <- choose_crs(data, epsg_tolerance)
+  choice <- choose_crs(data, utm_tolerance)
   if (messages) {
     pct <- format_distortion(choice$error)
     label <- choice$label
@@ -97,7 +97,7 @@ propose_crs <- function(data, epsg_tolerance = 0.005,
       utm_label <- choice$utm_label
       utm_note <- if (is.finite(choice$utm_error)) {
         utm_pct <- format_distortion(choice$utm_error)
-        "The best UTM zone, {utm_label}, distorts them by up to {utm_pct}, more than {.arg epsg_tolerance} allows."
+        "The best UTM zone, {utm_label}, distorts them by up to {utm_pct}, more than {.arg utm_tolerance} allows."
       } else {
         "No UTM zone can be used, because the projection fails at some locations of {.arg data}."
       }
@@ -119,7 +119,7 @@ propose_crs <- function(data, epsg_tolerance = 0.005,
       best_pct <- format_distortion(best$error)
       riskmap_warn(c(
         "{label} distorts distances by up to {pct} over {.arg data}.",
-        "i" = "A smaller {.arg epsg_tolerance} gives a projection centred on the data, which distorts them by at most {best_pct}."
+        "i" = "A smaller {.arg utm_tolerance} gives a projection centred on the data, which distorts them by at most {best_pct}."
       ), class = "riskmap_warning_crs")
     }
   }
@@ -247,8 +247,7 @@ without_crs_check <- function(code) {
 #' `crs_distortion()` gives it.
 #' @param data An `sf` object.
 #' @param crs `NULL` or the CRS given by the user.
-#' @param crs_arg The name of the argument that gives `crs`, or `NULL` if the
-#'   function has none, as `create_grid()`.
+#' @param crs_arg The name of the argument that gives `crs`.
 #' @param purpose What the CRS is used for, such as `"for fitting"`.
 #' @param data_arg The name of the argument that gives `data`.
 #' @param units The units of distance, `"km"` or `"m"`, named in the message,
@@ -288,15 +287,11 @@ project_for_distances <- function(data, crs, crs_arg, purpose,
     tolerance <- format_distortion(choice$tolerance)
     paste0(" No UTM zone keeps distances within ", tolerance, " over them.")
   }
-  hint <- if (is.null(crs_arg)) {
-    "Project {.arg {data_arg}} yourself to choose the projection."
-  } else {
-    "Set {.arg {crs_arg}} to choose the projection."
-  }
   # One message, so that a fit starts with as little as it needs to say.
   riskmap_inform(paste0(
     "{.arg {data_arg}} are in longitude and latitude, so they are projected ",
-    "to {target} {purpose}{in_units}.{reason} ", hint
+    "to {target} {purpose}{in_units}.{reason} ",
+    "Set {.arg {crs_arg}} to choose the projection."
   ))
   if (choice$error > crs_distortion_limit) {
     warn_region_too_wide(choice, data_arg)
@@ -377,7 +372,7 @@ format_diameter <- function(x) {
 #' Choose the projected CRS for the data
 #'
 #' @param data An `sf` or `sfc` object in any CRS.
-#' @param epsg_tolerance The largest distortion for which a UTM zone is
+#' @param utm_tolerance The largest distortion for which a UTM zone is
 #'   chosen.
 #' @return A list with the CRS (`crs`, an integer EPSG code or a `crs`
 #'   object), whether it is a UTM zone (`utm`), its label for messages
@@ -386,15 +381,15 @@ format_diameter <- function(x) {
 #'   (`tolerance`) and the diameter of the region in kilometres
 #'   (`diameter_km`).
 #' @noRd
-choose_crs <- function(data, epsg_tolerance = 0.005) {
+choose_crs <- function(data, utm_tolerance = 0.005) {
   region <- crs_region(data)
   utm <- best_utm_zone(region)
   choice <- list(
     crs = utm$epsg, utm = TRUE, label = utm$label, family = "UTM",
     error = utm$error, utm_label = utm$label, utm_error = utm$error,
-    tolerance = epsg_tolerance, diameter_km = region$diameter_km
+    tolerance = utm_tolerance, diameter_km = region$diameter_km
   )
-  if (is.finite(utm$error) && utm$error <= epsg_tolerance) return(choice)
+  if (is.finite(utm$error) && utm$error <= utm_tolerance) return(choice)
 
   centred <- centred_crs_candidates(region)
   errors <- vapply(centred, function(candidate) candidate$error, numeric(1))
