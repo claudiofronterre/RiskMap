@@ -18,8 +18,7 @@ glgpm(
   return_samples = TRUE,
   messages = getOption("RiskMap.messages", TRUE),
   fix_var_me = NULL,
-  start_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, sigma2_me =
-    NULL, sigma2_re = NULL)
+  start_pars = NULL
 )
 }
 \arguments{
@@ -107,17 +106,15 @@ line for each stage of Monte Carlo maximum likelihood as described in
 When not provided, the value will be estimated, but cannot be if each location only has one sample and
 the \code{nugget} term in \code{\link[=gp]{gp()}} is also set to \code{TRUE}.}
 
-\item{start_pars}{Optional list of starting values for model parameters:
-\describe{
-\item{beta}{regression coefficients}
-\item{sigma2}{spatial process variance}
-\item{tau2}{nugget effect variance}
-\item{phi}{spatial correlation scale}
-\item{sigma2_me}{measurement error variance - only for Gaussian models}
-\item{sigma2_re}{random effects variances - only when random effects are included}
-\item{theta}{size of the negative binomial family - only when it is
-estimated (see \code{\link[=negative_binomial]{negative_binomial()}})}
-}}
+\item{start_pars}{\code{NULL} (the default), or a named list of starting
+values for any of the model's estimated parameters, one, several or all of
+them, named as in \link{riskmap_parameters}. \code{beta} is matched to the columns of
+the design matrix by name, or by position if it is unnamed and has a value
+for each, and \code{sigma2_re} to the \code{re()} terms in the same way. The flat
+names of \code{unlist(coef(fit))}, such as \code{"beta.x"}, are accepted too, so
+\code{start_pars = coef(fit)} starts a fit from the estimates of another. Every
+other parameter takes its automatic start. \code{\link[=glgpm_parameters]{glgpm_parameters()}} lists the
+parameters of a model before it is fitted.}
 }
 \value{
 An object of class \code{RiskMap} containing the fitted model and relevant information:
@@ -250,17 +247,22 @@ The estimation samples and the final conditional samples are drawn from
 separate streams derived from \code{seed}, so \code{glgpm(..., seed = fit$seed)}
 reproduces a fit exactly.
 
-The \code{start_pars} argument allows starting values to be supplied explicitly.
-Otherwise a binomial, Poisson or negative binomial model starts from
-RiskMap's defaults, which are the coefficients of the regression without
-latent effects, \code{sigma2 = 1}, \code{phi} at the 10th percentile of the distances
-between locations, and 1 for an estimated nugget variance and for the
-variance of each \code{re()} term. A model with the canonical link and without
-\code{re()} terms compares them with the estimates of a Gaussian model fitted to
-the empirical link of the data (the empirical logit of a binomial model),
-with one observation per location, the totals of the location where it has
-several records, and starts from the one with the higher Laplace
-approximation of the likelihood. \code{\link[=summary.RiskMap]{summary.RiskMap()}} says which starting
+Parameters not given in \code{start_pars} take RiskMap's defaults, which are
+the coefficients of the regression without latent effects, \code{sigma2 = 1},
+\code{phi} at the 10th percentile of the distances between locations, 1 for an
+estimated nugget variance, a measurement error variance and the variance of
+each \code{re()} term, and for the size of a negative binomial model that of the
+regression without latent effects. A binomial, Poisson or negative binomial
+model with the canonical link and without \code{re()} terms compares them with
+the estimates of a Gaussian model fitted to the empirical link of the data
+(the empirical logit of a binomial model), with one observation per
+location, the totals of the location where it has several records, and
+starts from the one with the higher Laplace approximation of the
+likelihood. The values given in \code{start_pars} replace their own in both,
+and \code{set_control_mcml(start_comparison = FALSE)} skips the comparison. A
+start of \code{phi} far from the distances between the locations, below a
+hundredth of the smallest or above ten times the largest, gives a warning,
+since it may be in other units. \code{\link[=summary.RiskMap]{summary.RiskMap()}} says which starting
 values a fit used and why.
 }
 \examples{

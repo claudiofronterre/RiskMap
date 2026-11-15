@@ -633,15 +633,23 @@ test_that("the summary of a fit says where its starting values came from", {
                describe_starting_values(selected, fitted$mcml$starting_reason),
                fixed = TRUE)
   expect_null(summary(gaussian_model)$mcml)
-  # A start given only in part counts as given, with defaults for the rest.
+  # A start given in part keeps the comparison for the rest, and the summary
+  # names the values given.
   given <- suppressWarnings(glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, start_pars = list(beta = c(0, 0.3)),
     control_mcml = fixture_control_mcml, seed = fixture_seed, messages = FALSE
   ))
-  expect_identical(summary(given)$mcml$starting_values, "user")
+  expect_identical(summary(given)$mcml$starting_given,
+                   c("beta.(Intercept)", "beta.cov"))
+  expect_true(summary(given)$mcml$starting_values %in%
+                c("current", "transformed_gaussian"))
   expect_match(squish(capture.output(print(summary(given)))),
-               describe_starting_values("user"), fixed = TRUE)
+               "The starting values of `beta.(Intercept)` and `beta.cov` were given in `start_pars`.",
+               fixed = TRUE)
+  # A fit saved before starts could be given in part says so.
+  expect_match(describe_starting_values("user"),
+               "with RiskMap's defaults for any others", fixed = TRUE)
 })
 
 test_that("the summary of a fit says why it kept the default starting values", {

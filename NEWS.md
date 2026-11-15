@@ -45,6 +45,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   small and reports a bound on that error.
 - In binomial and Poisson fits, household effects whose children differ in
   covariates are now integrated out, so such fits are much faster.
+- `start_pars` gives starting values for any of a model's parameters by
+  name, one, several or all of them, and `start_pars = coef(fit)` starts from
+  another fit. `glgpm_parameters()` lists a model's parameters before it is
+  fitted, and `?riskmap_parameters` describes them.
 - Gaussian fits with more than three records per latent effect start the
   measurement error and random-effect variances at the values given in
   `start_pars`. Such fits given a spatial variance other than 1, and parametric
