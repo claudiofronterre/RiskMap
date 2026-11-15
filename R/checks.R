@@ -38,6 +38,46 @@ check_supplied <- function(x, arg = rlang::caller_arg(x),
               call = call)
 }
 
+#' Check that no argument reached `...` unused
+#'
+#' For a method whose `...` is there only because its generic has it, so that
+#' a misspelt or renamed argument stops instead of being ignored. The values
+#' in `...` are not evaluated.
+#' @param ... The `...` of the method, passed on as they are.
+#' @param .hints A named character vector, in cli markup, of what to use
+#'   instead of former arguments that users may still give, such as
+#'   `c(type = "Use {.arg joint}.")`.
+#' @param .call Where the error was raised. The two arguments have dotted
+#'   names, which can be matched only exactly after the dots, so that an
+#'   argument such as `call` or `hints` passed by the user reaches the dots.
+#' @noRd
+check_dots_unused <- function(..., .hints = character(),
+                              .call = rlang::caller_env()) {
+  n_dots <- ...length()
+  if (n_dots == 0L) return(invisible(NULL))
+  dot_names <- names(as.list(substitute(list(...)))[-1L])
+  if (is.null(dot_names)) dot_names <- rep("", n_dots)
+  named <- dot_names[nzchar(dot_names)]
+  n_unnamed <- n_dots - length(named)
+  problems <- c(
+    if (length(named)) {
+      "{.arg {named}} {cli::qty(length(named))}{?is not an argument/are not arguments} of this function."
+    },
+    if (n_unnamed) {
+      "{n_unnamed} argument{?s} without a name {?is/are} not used."
+    }
+  )
+  shown <- intersect(named, names(.hints))
+  advice <- if (length(shown)) {
+    stats::setNames(unname(.hints[shown]), rep("i", length(shown)))
+  } else if (length(named)) {
+    c("i" = "Check the spelling of the argument names.")
+  }
+  abort_input(c(problems[[1L]], if (length(problems) > 1L) c("x" = problems[[2L]]),
+                advice),
+              arg = if (length(named)) named[[1L]] else "...", call = .call)
+}
+
 #' Describe a supplied value for an error message
 #'
 #' A single atomic value is shown as itself, for example `0.5`, `NA` or

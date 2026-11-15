@@ -9,10 +9,10 @@
   newdata = NULL,
   boundaries = NULL,
   aggregate = NULL,
-  type = c("auto", "marginal", "joint"),
+  joint = NULL,
   include = NULL,
   transform = NULL,
-  standardize = NULL,
+  standardise = NULL,
   summaries = c("mean", "lower", "upper"),
   thresholds = NULL,
   level = 0.95,
@@ -48,9 +48,15 @@ list, optionally mixed with built-ins, for example
 function receives a location-by-draw matrix and the location weights and
 must return one numeric value per draw.}
 
-\item{type}{Character string specifying \code{"auto"}, \code{"marginal"}, or
-\code{"joint"} prediction. \code{"auto"} uses marginal prediction for locations and
-joint prediction when \code{boundaries} are supplied.}
+\item{joint}{\code{NULL}, \code{TRUE} or \code{FALSE}. With \code{TRUE} the predictive draws
+at the locations are joint, so they keep the dependence between
+locations, and with \code{FALSE} each location is drawn on its own (marginal
+prediction), which is faster for many locations. \code{NULL}, the default,
+draws jointly when \code{boundaries} are given and marginally otherwise.
+Summaries over \code{boundaries} need joint draws, so \code{FALSE} can't be used
+with them. At the observed locations of a binomial, Poisson or negative
+binomial fit the draws are the joint conditional samples whatever
+\code{joint} is.}
 
 \item{include}{\code{NULL}, or a character vector specifying optional components
 to add to the complete linear predictor and response. Supported values are
@@ -66,12 +72,12 @@ dimensions. The ordinary response-scale prediction is always calculated,
 so this argument is needed only for additional scientific targets, for
 example \code{list(stunting = function(link) pnorm((-2 - link) / sd_child))}.}
 
-\item{standardize}{Optional data frame describing a common reference
+\item{standardise}{Optional data frame describing a common reference
 population over which response-scale predictions are averaged. Its columns
 must be fixed-effect predictors from the fitted model and override the
 corresponding columns in \code{newdata}. Rows receive equal weight unless an
 optional numeric \code{.weight} column is supplied. Predictor values kept
-together on each row are standardized jointly, preserving their empirical
+together on each row are standardised jointly, preserving their empirical
 association. This answers what would be predicted if every location had
 the same reference-population distribution. \code{.weight} weights reference
 people or profiles and is distinct from the polygon \code{weights} argument.}
@@ -129,7 +135,8 @@ default to limit memory use.}
 predicting at many locations, as described in \link{riskmap_progress}.
 Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 
-\item{...}{Additional arguments reserved for future prediction methods.}
+\item{...}{Not used, and an error if given, so that a misspelt or former
+argument such as \code{type} is not ignored.}
 }
 \value{
 A \code{RiskMap_prediction} object containing:
@@ -149,15 +156,16 @@ For polygon aggregation it is nested first by aggregation and then by
 component, with one matrix row per polygon.}
 \item{include}{Optional components included in the link and response.}
 \item{transform}{Names of additional derived predictive targets.}
-\item{standardized}{Whether response predictions were averaged over a
-reference population supplied through \code{standardize}.}
+\item{standardised}{Whether response predictions were averaged over a
+reference population supplied through \code{standardise}.}
 \item{aggregate}{Names of the within-polygon aggregations.}
 \item{summaries}{Names of the calculated summaries.}
 \item{thresholds}{Thresholds used for exceedance probabilities.}
 \item{level}{Probability covered by the interval limits.}
 \item{weights}{Name of the weights column used for the polygon
 summaries, or \code{NULL}.}
-\item{type}{Whether prediction was marginal or joint.}
+\item{joint}{\code{TRUE} when the draws were joint and \code{FALSE} when they were
+marginal.}
 \item{parameter_draws}{The number of parameter draws when parameter
 uncertainty was propagated, otherwise \code{NULL}.}
 \item{family}{The fitted response family.}
@@ -270,14 +278,14 @@ location-level exceedance columns are named, for example,
 \code{response_exceedance_0.2} and \code{response_exceedance_0.5}; polygon output
 stores thresholds in the tidy \code{threshold} column.
 
-When \code{standardize} is supplied, every conditional spatial draw is reused
+When \code{standardise} is supplied, every conditional spatial draw is reused
 across all rows of the reference population. The response and any derived
 targets are evaluated for each reference profile and then averaged using
-\code{.weight}. This is direct standardization (empirical or counterfactual
+\code{.weight}. This is direct standardisation (empirical or counterfactual
 averaging), not simulation of uncertain predictors. The reported \code{fixed}
 and \verb{link_*} quantities use the weighted mean fixed-effect contribution;
 with a nonlinear link, transforming that mean is not the same as the
-standardized \verb{response_*} quantity.
+standardised \verb{response_*} quantity.
 }
 \examples{
 data(italy_sim)
@@ -306,13 +314,13 @@ uncertain_prediction$predictions
 
 # Use the same reference distribution of population density at each location
 reference_population <- data.frame(pop_dens = example_data$pop_dens)
-standardized_prediction <- predict(
+standardised_prediction <- predict(
   fit,
   newdata = example_data[1:5, ],
-  standardize = reference_population,
+  standardise = reference_population,
   messages = FALSE
 )
-standardized_prediction$predictions
+standardised_prediction$predictions
 
 # Aggregate joint predictions within two example areas
 areas <- sf::st_sf(

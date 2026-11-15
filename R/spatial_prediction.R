@@ -22,9 +22,15 @@
 ##'   `list(mean = "mean", q90 = function(values, weights) ...)`. A custom
 ##'   function receives a location-by-draw matrix and the location weights and
 ##'   must return one numeric value per draw.
-##' @param type Character string specifying `"auto"`, `"marginal"`, or
-##'   `"joint"` prediction. `"auto"` uses marginal prediction for locations and
-##'   joint prediction when `boundaries` are supplied.
+##' @param joint `NULL`, `TRUE` or `FALSE`. With `TRUE` the predictive draws
+##'   at the locations are joint, so they keep the dependence between
+##'   locations, and with `FALSE` each location is drawn on its own (marginal
+##'   prediction), which is faster for many locations. `NULL`, the default,
+##'   draws jointly when `boundaries` are given and marginally otherwise.
+##'   Summaries over `boundaries` need joint draws, so `FALSE` can't be used
+##'   with them. At the observed locations of a binomial, Poisson or negative
+##'   binomial fit the draws are the joint conditional samples whatever
+##'   `joint` is.
 ##' @param include `NULL`, or a character vector specifying optional components
 ##'   to add to the complete linear predictor and response. Supported values are
 ##'   `"random_effects"`, for conditional predictions at known groups, and
@@ -37,12 +43,12 @@
 ##'   dimensions. The ordinary response-scale prediction is always calculated,
 ##'   so this argument is needed only for additional scientific targets, for
 ##'   example `list(stunting = function(link) pnorm((-2 - link) / sd_child))`.
-##' @param standardize Optional data frame describing a common reference
+##' @param standardise Optional data frame describing a common reference
 ##'   population over which response-scale predictions are averaged. Its columns
 ##'   must be fixed-effect predictors from the fitted model and override the
 ##'   corresponding columns in `newdata`. Rows receive equal weight unless an
 ##'   optional numeric `.weight` column is supplied. Predictor values kept
-##'   together on each row are standardized jointly, preserving their empirical
+##'   together on each row are standardised jointly, preserving their empirical
 ##'   association. This answers what would be predicted if every location had
 ##'   the same reference-population distribution. `.weight` weights reference
 ##'   people or profiles and is distinct from the polygon `weights` argument.
@@ -89,7 +95,8 @@
 ##' @param messages Logical. Display messages, and a progress bar while
 ##'   predicting at many locations, as described in [riskmap_progress].
 ##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
-##' @param ... Additional arguments reserved for future prediction methods.
+##' @param ... Not used, and an error if given, so that a misspelt or former
+##'   argument such as `type` is not ignored.
 ##'
 ##' @details
 ##' At new locations, the default prediction represents the underlying spatial
@@ -183,14 +190,14 @@
 ##' `response_exceedance_0.2` and `response_exceedance_0.5`; polygon output
 ##' stores thresholds in the tidy `threshold` column.
 ##'
-##' When `standardize` is supplied, every conditional spatial draw is reused
+##' When `standardise` is supplied, every conditional spatial draw is reused
 ##' across all rows of the reference population. The response and any derived
 ##' targets are evaluated for each reference profile and then averaged using
-##' `.weight`. This is direct standardization (empirical or counterfactual
+##' `.weight`. This is direct standardisation (empirical or counterfactual
 ##' averaging), not simulation of uncertain predictors. The reported `fixed`
 ##' and `link_*` quantities use the weighted mean fixed-effect contribution;
 ##' with a nonlinear link, transforming that mean is not the same as the
-##' standardized `response_*` quantity.
+##' standardised `response_*` quantity.
 ##'
 ##' @return A `RiskMap_prediction` object containing:
 ##' \describe{
@@ -209,15 +216,16 @@
 ##'     component, with one matrix row per polygon.}
 ##'   \item{include}{Optional components included in the link and response.}
 ##'   \item{transform}{Names of additional derived predictive targets.}
-##'   \item{standardized}{Whether response predictions were averaged over a
-##'     reference population supplied through `standardize`.}
+##'   \item{standardised}{Whether response predictions were averaged over a
+##'     reference population supplied through `standardise`.}
 ##'   \item{aggregate}{Names of the within-polygon aggregations.}
 ##'   \item{summaries}{Names of the calculated summaries.}
 ##'   \item{thresholds}{Thresholds used for exceedance probabilities.}
 ##'   \item{level}{Probability covered by the interval limits.}
 ##'   \item{weights}{Name of the weights column used for the polygon
 ##'     summaries, or `NULL`.}
-##'   \item{type}{Whether prediction was marginal or joint.}
+##'   \item{joint}{`TRUE` when the draws were joint and `FALSE` when they were
+##'     marginal.}
 ##'   \item{parameter_draws}{The number of parameter draws when parameter
 ##'     uncertainty was propagated, otherwise `NULL`.}
 ##'   \item{family}{The fitted response family.}
@@ -259,13 +267,13 @@
 ##'
 ##' # Use the same reference distribution of population density at each location
 ##' reference_population <- data.frame(pop_dens = example_data$pop_dens)
-##' standardized_prediction <- predict(
+##' standardised_prediction <- predict(
 ##'   fit,
 ##'   newdata = example_data[1:5, ],
-##'   standardize = reference_population,
+##'   standardise = reference_population,
 ##'   messages = FALSE
 ##' )
-##' standardized_prediction$predictions
+##' standardised_prediction$predictions
 ##'
 ##' # Aggregate joint predictions within two example areas
 ##' areas <- sf::st_sf(
@@ -289,10 +297,10 @@ predict.RiskMap <- function(
     newdata = NULL,
     boundaries = NULL,
     aggregate = NULL,
-    type = c("auto", "marginal", "joint"),
+    joint = NULL,
     include = NULL,
     transform = NULL,
-    standardize = NULL,
+    standardise = NULL,
     summaries = c("mean", "lower", "upper"),
     thresholds = NULL,
     level = 0.95,
@@ -304,6 +312,10 @@ predict.RiskMap <- function(
     keep_samples = FALSE,
     messages = getOption("RiskMap.messages", TRUE),
     ...) {
+  check_dots_unused(..., .hints = c(
+    type = "Use {.arg joint} to choose between joint and marginal draws. The response, link and spatial effect are always predicted.",
+    standardize = "It is spelt {.arg standardise}."
+  ))
 
   if (is.null(include)) include <- character()
   check_logical(parameter_uncertainty)
@@ -325,11 +337,11 @@ predict.RiskMap <- function(
     argument_name = "summaries"
   )
   transform <- normalise_prediction_transforms(transform)
-  standardize <- validate_prediction_standardize(object, standardize)
+  standardise <- validate_prediction_standardise(object, standardise)
 
   type <- validate_prediction_options(
     object = object,
-    type = type,
+    joint = joint,
     include = include,
     boundaries = boundaries,
     aggregate = aggregate,
@@ -352,7 +364,7 @@ predict.RiskMap <- function(
     abort_input(c("{.arg include} can't contain {.val nugget} at the observed locations.", "i" = "There the effect of each location is drawn given the data, and it already includes the nugget."), arg = "include")
   }
   prediction_input <- validate_prediction_data(
-    object, newdata, include, standardize
+    object, newdata, include, standardise
   )
   if (!is.null(boundaries)) {
     if (observed_locations) {
@@ -365,7 +377,7 @@ predict.RiskMap <- function(
       aggregate = aggregate,
       include = include,
       transform = transform,
-      standardize = standardize,
+      standardise = standardise,
       summaries = summaries,
       thresholds = thresholds,
       level = level,
@@ -389,12 +401,12 @@ predict.RiskMap <- function(
       samples = NULL,
       include = include,
       transform = names(transform),
-      standardized = !is.null(standardize),
+      standardised = !is.null(standardise),
       aggregate = NULL,
       summaries = names(summaries),
       thresholds = thresholds,
       level = level,
-      type = type,
+      joint = type == "joint",
       family = object$family,
       link = fit_link(object),
       response_name = prediction_response_name(object),
@@ -406,10 +418,14 @@ predict.RiskMap <- function(
     class(out) <- "RiskMap_prediction"
     return(out)
   }
+  # At the observed locations of a non-Gaussian fit the draws are the joint
+  # conditional samples.
+  joint_draws <- type == "joint" ||
+    (observed_locations && !fit_is_exact(object))
   sample_components <- prediction_sample_components(
     object, prediction_data, type, include, control_mcmc, messages,
     observed_locations = observed_locations, transform = transform,
-    standardize = standardize, parameter_draws = parameter_draws,
+    standardise = standardise, parameter_draws = parameter_draws,
     mcmc_seed = seed
   )
   output_data <- format_location_predictions(
@@ -433,12 +449,12 @@ predict.RiskMap <- function(
     samples = samples,
     include = include,
     transform = names(transform),
-    standardized = !is.null(standardize),
+    standardised = !is.null(standardise),
     aggregate = NULL,
     summaries = names(summaries),
     thresholds = thresholds,
     level = level,
-    type = type,
+    joint = joint_draws,
     family = object$family,
     link = fit_link(object),
     response_name = prediction_response_name(object),
@@ -455,17 +471,19 @@ predict.RiskMap <- function(
 #' @param call The call named in input errors, so that they name
 #'   `predict.RiskMap()`.
 #' @noRd
-validate_prediction_options <- function(object, type, include,
+validate_prediction_options <- function(object, joint, include,
                                         boundaries, aggregate, summaries,
                                         thresholds, level, weights,
                                         control_mcmc, seed, keep_samples,
                                         messages, call = rlang::caller_env()) {
-  type <- match_choice(type, c("auto", "marginal", "joint"), arg = "type",
-                       call = call)
+  if (!is.null(joint) && !isTRUE(joint) && !isFALSE(joint)) {
+    supplied <- describe_value(joint)
+    abort_input("{.arg joint} must be {.code NULL}, {.code TRUE} or {.code FALSE}, not {supplied}.", arg = "joint", call = call)
+  }
   if (!is.null(boundaries)) {
     check_data(boundaries, geometry = "polygon", type = "sf")
-    if (type == "marginal") {
-      abort_input("{.arg type} must be {.val joint} when {.arg boundaries} are given.", arg = "type", call = call)
+    if (isFALSE(joint)) {
+      abort_input("{.arg joint} can't be {.code FALSE} when {.arg boundaries} are given, because summaries over areas need joint draws.", arg = "joint", call = call)
     }
     type <- "joint"
     if (is.null(aggregate)) {
@@ -476,7 +494,7 @@ validate_prediction_options <- function(object, type, include,
     if (!is.null(aggregate)) {
       abort_input("{.arg aggregate} is used only with {.arg boundaries}.", arg = "aggregate", call = call)
     }
-    if (type == "auto") type <- "marginal"
+    type <- if (isTRUE(joint)) "joint" else "marginal"
   }
   allowed_include <- c("random_effects", "nugget")
   if (!is.character(include) || anyNA(include) ||
@@ -565,19 +583,19 @@ normalise_prediction_transforms <- function(transform) {
   transform
 }
 
-#' Validate a reference population for direct standardization
+#' Validate a reference population for direct standardisation
 #' @noRd
-validate_prediction_standardize <- function(object, standardize) {
-  if (is.null(standardize)) return(NULL)
-  if (!is.data.frame(standardize) || inherits(standardize, "sf") ||
-      !nrow(standardize)) {
-    abort_input("{.arg standardize} must be a non-empty data frame without geometry, not {.obj_type_friendly {standardize}}.", arg = "standardize")
+validate_prediction_standardise <- function(object, standardise) {
+  if (is.null(standardise)) return(NULL)
+  if (!is.data.frame(standardise) || inherits(standardise, "sf") ||
+      !nrow(standardise)) {
+    abort_input("{.arg standardise} must be a non-empty data frame without geometry, not {.obj_type_friendly {standardise}}.", arg = "standardise")
   }
-  if (anyDuplicated(names(standardize)) || anyNA(names(standardize)) ||
-      any(!nzchar(names(standardize)))) {
-    abort_input("{.arg standardize} must have distinct, non-empty column names.", arg = "standardize")
+  if (anyDuplicated(names(standardise)) || anyNA(names(standardise)) ||
+      any(!nzchar(names(standardise)))) {
+    abort_input("{.arg standardise} must have distinct, non-empty column names.", arg = "standardise")
   }
-  reference_names <- setdiff(names(standardize), ".weight")
+  reference_names <- setdiff(names(standardise), ".weight")
   response <- as.character(object$formula[[2L]])
   inter_f <- interpret_formula(object$formula)
   offset_names <- inter_f$offset %||% character()
@@ -587,26 +605,26 @@ validate_prediction_standardize <- function(object, standardize) {
   )
   if (!length(reference_names) || any(!reference_names %in% fixed_names)) {
     invalid <- setdiff(reference_names, fixed_names)
-    problem <- "{.arg standardize} must have one or more columns, each a covariate of the model."
+    problem <- "{.arg standardise} must have one or more columns, each a covariate of the model."
     if (length(invalid)) {
       problem <- c(problem, "x" = "{.val {invalid}} {cli::qty(length(invalid))}{?is not a covariate/are not covariates}.")
     }
-    abort_input(problem, arg = "standardize")
+    abort_input(problem, arg = "standardise")
   }
-  if (!all(complete.cases(standardize[reference_names]))) {
-    abort_input("{.arg standardize} has missing values.", arg = "standardize")
+  if (!all(complete.cases(standardise[reference_names]))) {
+    abort_input("{.arg standardise} has missing values.", arg = "standardise")
   }
-  weights <- if (".weight" %in% names(standardize)) {
-    standardize$.weight
+  weights <- if (".weight" %in% names(standardise)) {
+    standardise$.weight
   } else {
-    rep(1, nrow(standardize))
+    rep(1, nrow(standardise))
   }
   if (!is.numeric(weights) || anyNA(weights) || any(!is.finite(weights)) ||
       any(weights < 0) || sum(weights) <= 0) {
-    abort_input("The column {.code .weight} of {.arg standardize} must hold finite, non-negative values with a positive total.", arg = "standardize")
+    abort_input("The column {.code .weight} of {.arg standardise} must hold finite, non-negative values with a positive total.", arg = "standardise")
   }
   list(
-    data = standardize,
+    data = standardise,
     weights = weights / sum(weights),
     predictors = reference_names
   )
@@ -632,7 +650,7 @@ prediction_operation_requested <- function(operations, built_in) {
 #' Validate and align prediction locations
 #' @noRd
 validate_prediction_data <- function(object, newdata, include,
-                                     standardize = NULL) {
+                                     standardise = NULL) {
   prediction_data <- if (is.null(newdata)) object$data else newdata
   data_arg <- if (is.null(newdata)) "object" else "newdata"
   check_data(prediction_data, geometry = "point", type = "sf", arg = data_arg)
@@ -655,15 +673,15 @@ validate_prediction_data <- function(object, newdata, include,
   if (!"random_effects" %in% include) {
     required <- setdiff(required, names(object$re))
   }
-  standardized_names <- if (is.null(standardize)) character() else
-    setdiff(names(standardize$data), ".weight")
-  required <- setdiff(required, standardized_names)
+  standardised_names <- if (is.null(standardise)) character() else
+    setdiff(names(standardise$data), ".weight")
+  required <- setdiff(required, standardised_names)
   missing_columns <- setdiff(required, names(prediction_data))
   if (length(missing_columns) > 0L) {
     abort_input("{.arg newdata} must have the column{?s} {.val {missing_columns}}, which the model uses.", arg = "newdata")
   }
-  for (name in standardized_names) {
-    prediction_data[[name]] <- standardize$data[[name]][1L]
+  for (name in standardised_names) {
+    prediction_data[[name]] <- standardise$data[[name]][1L]
   }
   if ("random_effects" %in% include) {
     for (name in names(object$re)) {
@@ -841,7 +859,7 @@ prediction_boundary_groups <- function(assignment, n_locations) {
 #' Predict and aggregate jointly within polygon boundaries
 #' @noRd
 predict_over_boundaries <- function(object, prediction_input, boundaries,
-                                    aggregate, include, transform, standardize,
+                                    aggregate, include, transform, standardise,
                                     summaries,
                                     thresholds,
                                     level, weights,
@@ -911,9 +929,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
         summaries, thresholds
       ),
       samples = NULL, include = include, transform = names(transform),
-      standardized = !is.null(standardize), aggregate = names(aggregate),
+      standardised = !is.null(standardise), aggregate = names(aggregate),
       summaries = names(summaries), thresholds = thresholds, level = level,
-      type = "joint", family = object$family, link = fit_link(object),
+      joint = TRUE, family = object$family, link = fit_link(object),
       response_name = prediction_response_name(object),
       observed_locations = FALSE,
       parameter_draws = parameter_draws,
@@ -930,7 +948,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
   sample_components <- prediction_sample_components(
     object, model_data, "joint", include, control_mcmc, messages,
     groups = prediction_groups, transform = transform,
-    standardize = standardize, parameter_draws = parameter_draws,
+    standardise = standardise, parameter_draws = parameter_draws,
     mcmc_seed = seed
   )
   predictions <- format_location_predictions(
@@ -1061,12 +1079,12 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     samples = retained,
     include = include,
     transform = names(transform),
-    standardized = !is.null(standardize),
+    standardised = !is.null(standardise),
     aggregate = names(aggregate),
     summaries = names(summaries),
     thresholds = thresholds,
     level = level,
-    type = "joint",
+    joint = TRUE,
     family = object$family,
     link = fit_link(object),
     response_name = prediction_response_name(object),
@@ -1101,7 +1119,7 @@ prepare_prediction <- function(object, prediction_data, prediction, include,
 #' Construct link and response samples from prediction components
 #' @noRd
 build_prediction_components <- function(object, prediction_setup, include,
-                                        transform = list(), standardize = NULL,
+                                        transform = list(), standardise = NULL,
                                         prediction_data = NULL) {
   spatial <- prediction_setup$S_samples
   if (!is.matrix(spatial)) {
@@ -1136,11 +1154,11 @@ build_prediction_components <- function(object, prediction_setup, include,
     values
   })
   names(transformed) <- names(transform)
-  if (!is.null(standardize)) {
-    standardized <- standardize_prediction_targets(
+  if (!is.null(standardise)) {
+    standardised <- standardise_prediction_targets(
       object = object,
       prediction_data = prediction_data,
-      standardize = standardize,
+      standardise = standardise,
       spatial = spatial,
       offset = offset,
       random_effects = random_effects,
@@ -1148,10 +1166,10 @@ build_prediction_components <- function(object, prediction_setup, include,
       transform = transform,
       beta = prediction_setup$par_hat$beta
     )
-    fixed <- standardized$fixed
-    link <- standardized$link
-    response <- standardized$response
-    transformed <- standardized$transformed
+    fixed <- standardised$fixed
+    link <- standardised$link
+    response <- standardised$response
+    transformed <- standardised$transformed
   }
   list(fixed = fixed, offset = offset, spatial = spatial,
        random_effects = random_effects, nugget = nugget,
@@ -1173,7 +1191,7 @@ prediction_sample_components <- function(object, prediction_data, prediction,
                                          include, control_mcmc, messages,
                                          observed_locations = FALSE,
                                          groups = NULL, transform = list(),
-                                         standardize = NULL,
+                                         standardise = NULL,
                                          parameter_draws = NULL,
                                          mcmc_seed = NULL) {
   components_at <- function(fit, control) {
@@ -1182,7 +1200,7 @@ prediction_sample_components <- function(object, prediction_data, prediction,
       observed_locations = observed_locations, groups = groups
     )
     build_prediction_components(
-      fit, setup, include, transform, standardize = standardize,
+      fit, setup, include, transform, standardise = standardise,
       prediction_data = prediction_data
     )
   }
@@ -1193,7 +1211,7 @@ prediction_sample_components <- function(object, prediction_data, prediction,
       mcmc_seed = mcmc_seed
     )
     return(build_prediction_components(
-      object, setup, include, transform, standardize = standardize,
+      object, setup, include, transform, standardise = standardise,
       prediction_data = prediction_data
     ))
   }
@@ -1394,8 +1412,8 @@ conditioning_covariance <- function(object, parameters, distances,
 
 #' Average predictive targets over a common reference population
 #' @noRd
-standardize_prediction_targets <- function(object, prediction_data,
-                                           standardize, spatial, offset,
+standardise_prediction_targets <- function(object, prediction_data,
+                                           standardise, spatial, offset,
                                            random_effects, nugget, transform,
                                            beta) {
   if (is.null(prediction_data)) {
@@ -1418,14 +1436,14 @@ standardize_prediction_targets <- function(object, prediction_data,
   # the potentially enormous location-by-reference-population cross-product.
   profiles_per_batch <- max(1L, floor(250000 / n_locations))
   batches <- split(
-    seq_len(nrow(standardize$data)),
-    ceiling(seq_len(nrow(standardize$data)) / profiles_per_batch)
+    seq_len(nrow(standardise$data)),
+    ceiling(seq_len(nrow(standardise$data)) / profiles_per_batch)
   )
   for (batch in batches) {
     profile_data <- plain_data[rep(seq_len(n_locations), times = length(batch)),
                                , drop = FALSE]
-    for (name in standardize$predictors) {
-      profile_data[[name]] <- rep(standardize$data[[name]][batch],
+    for (name in standardise$predictors) {
+      profile_data[[name]] <- rep(standardise$data[[name]][batch],
                                   each = n_locations)
     }
     batch_fixed <- matrix(
@@ -1436,7 +1454,7 @@ standardize_prediction_targets <- function(object, prediction_data,
       profile <- batch[[column]]
       profile_fixed <- batch_fixed[, column]
       profile_link <- sweep(base_link, 1L, profile_fixed, "+")
-      weight <- standardize$weights[[profile]]
+      weight <- standardise$weights[[profile]]
       fixed <- fixed + weight * profile_fixed
       profile_response <- if (fit_is_exact(object)) {
         profile_link
@@ -1456,7 +1474,7 @@ standardize_prediction_targets <- function(object, prediction_data,
     }
   }
   # This is the expected linear predictor over the reference population. For
-  # nonlinear links, its inverse is intentionally not used as the standardized
+  # nonlinear links, its inverse is intentionally not used as the standardised
   # response; response averaging occurs above on the scientifically relevant
   # response scale.
   link <- sweep(base_link, 1L, fixed, "+")
@@ -2132,7 +2150,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
       abort_input("{.arg include} can't contain {.val random_effects}, because the model has no {.fn re} terms.", arg = "include")
     }
     if (prediction != "joint") {
-      abort_input("{.arg type} must be {.val joint} to predict the random effects.", arg = "type")
+      abort_input("{.arg joint} must be {.code TRUE} to predict the random effects.", arg = "joint")
     }
     prepare_random_effects(plain_data, random_names)
     re_predictors <- plain_data[random_names]
@@ -3298,7 +3316,7 @@ assess_prediction <- function(object,
       prediction_i <- predict(
         refit_i,
         newdata = data_test_i,
-        type = "marginal",
+        joint = FALSE,
         include = included_components,
         summaries = "mean",
         control_mcmc = control_mcmc,
@@ -3432,9 +3450,9 @@ assess_prediction <- function(object,
 
 ##' @title Plot Method for RiskMap_simulation Objects
 ##' @description
-##' Maps the linear predictor of one simulation from [simulate_glgpm()] over
-##' its prediction grid, with the sampling locations overlaid when data were
-##' also simulated.
+##' Maps one component of one simulation from [simulate_glgpm()] over its
+##' prediction grid, by default the mean, with the sampling locations overlaid
+##' when data were also simulated.
 ##'
 ##' @param x Output from [simulate_glgpm()] including a surface.
 ##' @param simulation A single simulation number to plot, defaulting to one.
@@ -3442,18 +3460,17 @@ assess_prediction <- function(object,
 ##'
 ##' @return A \code{ggplot} object.
 ##' @details
-##' The returned object can be modified further
-##' with standard \pkg{ggplot2} functions.
+##' The colours and the legend follow [plot.RiskMap_prediction()]. The returned
+##' object can be modified further with standard \pkg{ggplot2} functions.
 ##'
 ##' @seealso [simulated_surface()], [plot.RiskMap_simulated_surface()]
 ##' @method plot RiskMap_simulation
 ##' @export
-plot.RiskMap_simulation <- function(x, simulation = 1, palette = "viridis",
-                                    reverse_palette = FALSE, ...) {
-  out <- plot(simulated_surface(x, simulation),
-              palette = palette,
-              reverse_palette = reverse_palette,
-              ...) +
+plot.RiskMap_simulation <- function(x, simulation = 1, quantity = "mean",
+                                    palette = NULL, limits = NULL, ...) {
+  surface <- simulated_surface(x, simulation)
+  out <- plot(surface, quantity = quantity, palette = palette,
+              limits = limits, ...) +
     ggtitle(paste("Simulation", simulation))
 
   if (!is.null(x$locations$data)) {
@@ -3470,21 +3487,18 @@ plot.RiskMap_simulation <- function(x, simulation = 1, palette = "viridis",
 
 ##' Map values over a regular grid of points
 ##'
-##' Draws each grid point as a tile, styled with `add_map_layers()`. Shared by
-##' the plot methods for grid predictions and simulated surfaces.
+##' Draws each grid point as a tile, with the fill scale and legend of the
+##' prediction maps of [plot.RiskMap_prediction()].
 ##'
 ##' @param grid An `sf` or `sfc` object of points on a regular grid.
 ##' @param values Numeric vector of values to map, one per point in `grid`.
 ##' @param legend_title Character string used as the fill legend title.
-##' @param palette,reverse_palette,limits,north_arrow,scale_bar,... Passed to
-##' `add_map_layers()`.
-##' @param call The call named in input errors, so that they name the plot
-##' method.
+##' @param colours,limits,role,probability,... Passed to
+##'   `prediction_fill_scale()`.
 ##' @return A `ggplot` object.
 ##' @noRd
-plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
-                      limits, north_arrow, scale_bar, ...,
-                      call = rlang::caller_env()) {
+plot_grid <- function(grid, values, legend_title, colours, limits, role,
+                      probability, ...) {
   grid_coordinates <- st_coordinates(grid)
   plot_data <- data.frame(x = grid_coordinates[, 1],
                           y = grid_coordinates[, 2],
@@ -3502,27 +3516,20 @@ plot_grid <- function(grid, values, legend_title, palette, reverse_palette,
     tile_height <- tile_width
   }
 
-  # extent of the tiles, not just their centres
-  extent <- c(xmin = min(plot_data$x) - tile_width / 2,
-              xmax = max(plot_data$x) + tile_width / 2,
-              ymin = min(plot_data$y) - tile_height / 2,
-              ymax = max(plot_data$y) + tile_height / 2)
-
-  out <- ggplot(plot_data) +
+  ggplot(plot_data) +
     geom_tile(aes(x = .data$x, y = .data$y, fill = .data$value),
-              width = tile_width, height = tile_height)
-
-  add_map_layers(out,
-                 extent = extent,
-                 crs = st_crs(grid),
-                 legend_title = legend_title,
-                 palette = palette,
-                 reverse_palette = reverse_palette,
-                 limits = limits,
-                 north_arrow = north_arrow,
-                 scale_bar = scale_bar,
-                 ...,
-                 call = call)
+              width = tile_width, height = tile_height) +
+    prediction_fill_scale(colours = colours, limits = limits, values = values,
+                          breaks = NULL, role = role,
+                          probability = probability, ...) +
+    # the extent of the tiles, not just their centres
+    coord_sf(crs = st_crs(grid),
+             xlim = range(plot_data$x) + c(-1, 1) * tile_width / 2,
+             ylim = range(plot_data$y) + c(-1, 1) * tile_height / 2) +
+    # Set through labs() so that users can replace it with labs(fill = ...).
+    labs(x = NULL, y = NULL, fill = legend_title) +
+    theme_void() +
+    theme(legend.position = "top", legend.justification = "center")
 }
 
 ##' Spacing between the points of a regular grid along one axis
@@ -3536,136 +3543,92 @@ grid_spacing <- function(coordinates) {
   resolution(coordinates, zero = FALSE)
 }
 
-##' Convert a palette specification into a vector of colours
-##'
-##' @param palette Either the name of a palette in [grDevices::hcl.pals()] or a
-##' character vector of two or more valid colours.
-##' @param reverse_palette Logical; reverse the order of the colours.
-##' @param call The call named in input errors.
-##' @return A character vector of colours.
-##' @noRd
-palette_colours <- function(palette, reverse_palette = FALSE,
-                            call = rlang::caller_env()) {
-  if (!is.character(palette)) {
-    abort_input("{.arg palette} must be a character vector, not {.obj_type_friendly {palette}}.", arg = "palette", call = call)
-  }
-  check_logical(reverse_palette, call = call)
-
-  if (length(palette) == 1) {
-    # hcl.colors() ignores case, spaces and punctuation in palette names
-    normalise_name <- function(name) tolower(gsub("[^[:alnum:]]", "", name))
-    if (!normalise_name(palette) %in% normalise_name(grDevices::hcl.pals())) {
-      abort_input("{.arg palette} must be the name of a palette in {.fn grDevices::hcl.pals} or two or more colours, not {.val {palette}}.", arg = "palette", call = call)
-    }
-    colours <- grDevices::hcl.colors(256, palette = palette)
-  } else {
-    valid_colour <- vapply(palette, function(colour) {
-      !inherits(try(grDevices::col2rgb(colour), silent = TRUE), "try-error")
-    }, logical(1))
-    if (!all(valid_colour)) {
-      invalid <- palette[!valid_colour]
-      abort_input("{.arg palette} has {?an /}invalid colour{?s}, {.val {invalid}}.", arg = "palette", call = call)
-    }
-    colours <- palette
-  }
-  if (reverse_palette) colours <- rev(colours)
-  colours
-}
-
-##' Add the fill scale, map extent, north arrow and scale bar shared by the
-##' prediction maps
-##'
-##' @param map A `ggplot` object.
-##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`) giving
-##' the extent of the data in `crs`.
-##' @param crs The coordinate reference system of the data.
-##' @param legend_title Character string used as the fill legend title.
-##' @param palette,reverse_palette Passed to `palette_colours()`.
-##' @param limits `NULL` or a numeric vector of length two for the colour scale.
-##' @param north_arrow,scale_bar Logical; whether to add each annotation.
-##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()].
-##' @param call The call named in input errors.
-##' @return The `ggplot` object with the layers added.
-##' @noRd
-add_map_layers <- function(map, extent, crs, legend_title, palette,
-                           reverse_palette, limits, north_arrow, scale_bar, ...,
-                           call = rlang::caller_env()) {
-  check_logical(north_arrow, call = call)
-  check_logical(scale_bar, call = call)
-  map <- map +
-    scale_fill_gradientn(colours = palette_colours(palette, reverse_palette,
-                                                   call = call),
-                         limits = limits, ...) +
-    coord_sf(crs = crs,
-             xlim = as.numeric(extent[c("xmin", "xmax")]),
-             ylim = pad_map_extent(extent, north_arrow, scale_bar)) +
-    labs(x = NULL, y = NULL, fill = legend_title)
-
-  if (north_arrow) {
-    map <- map +
-      ggspatial::annotation_north_arrow(location = "tr", which_north = "true",
-                                        height = unit(1, "cm"),
-                                        width = unit(1, "cm"))
-  }
-  if (scale_bar) {
-    map <- map + ggspatial::annotation_scale(location = "bl")
-  }
-  map
-}
-
-##' Extend the vertical extent of a map to make room for annotations
-##'
-##' @param extent Named numeric vector (`xmin`, `xmax`, `ymin`, `ymax`).
-##' @param north_arrow Logical; add space above the data for a north arrow.
-##' @param scale_bar Logical; add space below the data for a scale bar.
-##' @return Numeric vector of length two giving the padded y limits.
-##' @noRd
-pad_map_extent <- function(extent, north_arrow, scale_bar) {
-  height <- unname(extent["ymax"] - extent["ymin"])
-  # roughly the height of each annotation on a typical map
-  top_padding <- if (north_arrow) 0.15 * height else 0
-  bottom_padding <- if (scale_bar) 0.08 * height else 0
-  unname(c(extent["ymin"] - bottom_padding, extent["ymax"] + top_padding))
-}
-
 ##' @title Plot Method for RiskMap_simulated_surface Objects
 ##' @description
-##' Maps the linear predictor of a surface extracted with
-##' [simulated_surface()] over its prediction grid.
+##' Maps one component of a surface extracted with [simulated_surface()] over
+##' its prediction grid, by default the mean.
 ##'
 ##' @param x Output from [simulated_surface()].
-##' @param palette Either the name of a palette from [grDevices::hcl.pals()]
-##' (e.g. `"viridis"`, `"Blues"`, `"Spectral"`) or a character vector of two or
-##' more colours to interpolate between. Defaults to `"viridis"`.
-##' @param reverse_palette Logical; if `TRUE`, reverse the order of the palette
-##' colours. Defaults to `FALSE`.
-##' @param limits `NULL` (the default) or a numeric vector of length two giving
-##' the range of the colour scale, for example to map several simulations on
-##' a common scale.
-##' @param ... Additional arguments passed to [ggplot2::scale_fill_gradientn()],
-##' e.g. `name` or `breaks`.
+##' @param quantity The simulated component to map, one of `"mean"` (the
+##'   default), `"linear_predictor"`, `"spatial_effect"`, `"nugget"` and
+##'   `"group_effect"`, as in [simulated_values()]. The mean is the prevalence
+##'   for a binomial model, the mean per unit exposure for a Poisson or
+##'   negative binomial model and the mean of the response for a Gaussian
+##'   model. The nugget and the group effect are zero when the model has
+##'   none.
+##' @param palette Colour palette. `NULL` selects the defaults of
+##'   [plot.RiskMap_prediction()], a calm-to-alarm sequential palette for the
+##'   mean and a palette centred at zero for the linear predictor and the
+##'   effects. A character vector of colours or the name of an HCL palette
+##'   accepted by [grDevices::hcl.colors()] can be supplied. Prefix a named
+##'   palette with `"-"` to reverse it, for example `"-Viridis"`.
+##' @param limits `NULL` (the default) or a numeric vector of two increasing
+##'   numbers giving the range of the colour scale, for example to map several
+##'   simulations on a common scale.
+##' @param ... Additional arguments passed to the ggplot2 fill scale, for
+##'   example `transform = "sqrt"` for skewed values. The map sets
+##'   `colours`, `limits`, `breaks`, `labels`, `oob`, `na.value` and `guide`
+##'   itself. To change them, add another fill scale to the map with `+`.
 ##'
 ##' @return A \code{ggplot} object.
 ##' @details
-##' The returned object can be modified further
-##' with standard \pkg{ggplot2} functions.
+##' The colours and the legend follow [plot.RiskMap_prediction()], and the
+##' legend title names the mapped component. The returned object can be
+##' modified further with standard \pkg{ggplot2} functions.
 ##'
 ##' @seealso [simulated_surface()], [plot.RiskMap_simulation()]
 ##' @method plot RiskMap_simulated_surface
 ##' @export
-plot.RiskMap_simulated_surface <- function(x, palette = "viridis",
-                                           reverse_palette = FALSE,
+plot.RiskMap_simulated_surface <- function(x, quantity = "mean", palette = NULL,
                                            limits = NULL, ...) {
   check_class(x, "RiskMap_simulated_surface")
-
+  # The fill scale would reject these less clearly.
+  dot_names <- names(match.call(expand.dots = FALSE)$...)
+  if ("reverse_palette" %in% dot_names) {
+    abort_input("{.arg reverse_palette} is no longer an argument. Prefix a named palette with {.code -} to reverse it, as in {.code palette = \"-Viridis\"}, or give a reversed vector of colours.", arg = "reverse_palette")
+  }
+  set_by_map <- intersect(dot_names, c("colours", "colors", "limits", "breaks",
+                                       "labels", "oob", "na.value", "guide"))
+  if (length(set_by_map)) {
+    abort_input(c("{.arg {set_by_map}} can't be given, because the map sets {cli::qty(length(set_by_map))}{?it/them} itself.", "i" = "Add another fill scale to the map with {.code +} to change {cli::qty(length(set_by_map))}{?it/them}."), arg = set_by_map[[1L]])
+  }
+  components <- c("mean", "linear_predictor", "spatial_effect", "nugget",
+                  "group_effect")
+  # A surface has every component, the nugget and the group effect being zero
+  # when the model has none.
+  available <- intersect(components, names(x))
+  if (!is.character(quantity) || length(quantity) != 1L || is.na(quantity) ||
+      !quantity %in% available) {
+    supplied <- describe_value(quantity)
+    abort_input("{.arg quantity} must be one of {.or {.val {available}}}, not {supplied}.", arg = "quantity")
+  }
+  values <- x[[quantity]]
+  family <- attr(x, "family", exact = TRUE)
+  traits <- if (!is.null(family)) family_traits(family)
+  role <- if (quantity == "mean") "level" else "signed"
+  limits <- check_plot_limits(limits)
+  # Default limits end on round values so the legend labels both ends.
+  colour_limits <- if (role == "signed") {
+    limits %||% (c(-1, 1) * max(abs(pretty(range(values, na.rm = TRUE), n = 4))))
+  } else {
+    limits %||% range(pretty(range(values, na.rm = TRUE), n = 4))
+  }
+  colours <- if (is.null(palette)) prediction_role_palette(role) else
+    prediction_plot_palette(palette)
+  label <- switch(quantity,
+                  mean = traits$response_quantity %||% "mean",
+                  linear_predictor = "linear predictor",
+                  spatial_effect = "spatial effect",
+                  nugget = "nugget effect",
+                  group_effect = "group effect")
   plot_grid(x,
-            values = x$linear_predictor,
-            legend_title = "linear_predictor",
-            palette = palette,
-            reverse_palette = reverse_palette,
-            limits = limits,
-            north_arrow = FALSE,
-            scale_bar = FALSE,
+            values = values,
+            legend_title = paste0(toupper(substring(label, 1L, 1L)),
+                                  substring(label, 2L)),
+            colours = colours,
+            limits = colour_limits,
+            role = role,
+            probability = quantity == "mean" && isTRUE(traits$probability),
             ...)
 }
 

@@ -551,7 +551,7 @@ test_that("classification summaries handle one simulation and metric-wise missin
   expect_equal(summary_two$cc_summary$n_sim, 2L)
 })
 
-test_that("plot.RiskMap_simulation plots the simulated surface (#87)", {
+test_that("plot.RiskMap_simulation maps the simulated mean by default (#87)", {
   sim <- simulate_glgpm(gaussian_intercept_model, nsim = 2,
                         what = c("data", "surface"),
                         prediction_grid = grid, seed = 1)
@@ -564,17 +564,48 @@ test_that("plot.RiskMap_simulation plots the simulated surface (#87)", {
   expect_s3_class(p, "ggplot")
   expect_no_error(ggplot2::ggplot_build(p))
   expect_equal(p$labels$title, "Simulation 1")
-  expect_equal(p$labels$fill, "linear_predictor")
-  expect_equal(p$data$value,
-               as.numeric(sim$samples$surface[, 1, "linear_predictor"]))
+  expect_equal(p$labels$fill, "Mean")
+  expect_equal(p$data$value, as.numeric(sim$samples$surface[, 1, "mean"]))
   # sample locations are overlaid when data were simulated
   expect_length(p$layers, 2)
   expect_equal(nrow(p$layers[[2]]$data), nrow(sim$locations$data))
 
-  p2 <- plot(sim, simulation = 2)
+  p2 <- plot(sim, simulation = 2, quantity = "spatial_effect")
   expect_equal(p2$labels$title, "Simulation 2")
+  expect_equal(p2$labels$fill, "Spatial effect")
   expect_equal(p2$data$value,
-               as.numeric(sim$samples$surface[, 2, "linear_predictor"]))
+               as.numeric(sim$samples$surface[, 2, "spatial_effect"]))
+  # A signed effect has a scale centred at zero.
+  limits <- ggplot2::ggplot_build(p2)$plot$scales$get_scales("fill")$limits
+  expect_equal(limits[[1L]], -limits[[2L]])
+
+  linear <- plot(sim, quantity = "linear_predictor", limits = c(-5, 5))
+  expect_equal(linear$labels$fill, "Linear predictor")
+  expect_equal(linear$scales$get_scales("fill")$limits, c(-5, 5))
+
+  # The model has no nugget, so the simulated nugget is zero.
+  nugget <- plot(sim, quantity = "nugget")
+  expect_equal(nugget$data$value, rep(0, nrow(grid)))
+  expect_no_error(ggplot2::ggplot_build(nugget))
+  expect_input_error(plot(sim, quantity = "response"), "quantity")
+  expect_input_error(plot(sim, quantity = c("mean", "spatial_effect")),
+                     "quantity")
+  expect_input_error(plot(sim, limits = c(1, 0)), "limits")
+})
+
+test_that("plot.RiskMap_simulation labels the prevalence of a binomial model (#87)", {
+  model <- specify_glgpm(y ~ gp(), binomial_data, "binomial",
+                         list(beta = -1, sigma2 = 1, phi = 1),
+                         denominator = denominator)
+  sim <- simulate_glgpm(model, nsim = 1, what = "surface",
+                        prediction_grid = grid, seed = 1)
+  p <- plot(sim)
+  expect_equal(p$labels$fill, "Prevalence")
+  values <- as.numeric(sim$samples$surface[, 1, "mean"])
+  expect_equal(p$data$value, values)
+  built <- ggplot2::ggplot_build(p)
+  labels <- built$plot$scales$get_scales("fill")$get_labels()
+  expect_true(all(grepl("%$", labels[!is.na(labels)])))
 })
 
 test_that("plot.RiskMap_simulation omits points when only a surface was simulated (#183)", {
@@ -593,14 +624,25 @@ test_that("simulated_surface() output has a plot method matching plot.RiskMap_si
   surface <- simulated_surface(sim, 2)
 
   expect_s3_class(surface, c("RiskMap_simulated_surface", "sf"))
-  p <- plot(surface, palette = "Blues", reverse_palette = TRUE)
+  p <- plot(surface, palette = "-Blues")
   expect_s3_class(p, "ggplot")
   expect_no_error(ggplot2::ggplot_build(p))
-  expect_equal(p$data$value, surface$linear_predictor)
-  expect_equal(p$labels$fill, "linear_predictor")
+  expect_equal(p$data$value, surface$mean)
+  expect_equal(p$labels$fill, "Mean")
   expect_identical(ggplot2::ggplot_build(p)$data[[1]]$fill,
-                   ggplot2::ggplot_build(plot(sim, simulation = 2, palette = "Blues",
-                                              reverse_palette = TRUE))$data[[1]]$fill)
+                   ggplot2::ggplot_build(plot(sim, simulation = 2,
+                                              palette = "-Blues"))$data[[1]]$fill)
+  # A reversed palette is the named palette in reverse.
+  reversed <- ggplot2::ggplot_build(plot(surface, palette = "-Blues"))
+  forward <- ggplot2::ggplot_build(plot(surface, palette = rev(
+    grDevices::hcl.colors(256L, "Blues"))))
+  expect_identical(reversed$data[[1]]$fill, forward$data[[1]]$fill)
+  expect_input_error(plot(surface, reverse_palette = TRUE), "reverse_palette")
+  # The map sets the breaks and labels of its fill scale itself.
+  expect_input_error(plot(sim, breaks = c(0, 0.5, 1)), "breaks")
+  expect_input_error(plot(surface, labels = NULL), "labels")
+  expect_no_error(ggplot2::ggplot_build(plot(surface, transform = "reverse")))
+  expect_input_error(plot(surface, palette = "not a palette"), "palette")
   expect_error(plot.RiskMap_simulated_surface(sim), "<RiskMap_simulated_surface>")
 })
 

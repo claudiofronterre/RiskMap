@@ -4,34 +4,48 @@
 \alias{plot.RiskMap_simulation}
 \title{Plot Method for RiskMap_simulation Objects}
 \usage{
-\method{plot}{RiskMap_simulation}(x, simulation = 1, palette = "viridis", reverse_palette = FALSE, ...)
+\method{plot}{RiskMap_simulation}(x, simulation = 1, quantity = "mean", palette = NULL, limits = NULL, ...)
 }
 \arguments{
 \item{x}{Output from \code{\link[=simulate_glgpm]{simulate_glgpm()}} including a surface.}
 
 \item{simulation}{A single simulation number to plot, defaulting to one.}
 
-\item{palette}{Either the name of a palette from \code{\link[grDevices:hcl.pals]{grDevices::hcl.pals()}}
-(e.g. \code{"viridis"}, \code{"Blues"}, \code{"Spectral"}) or a character vector of two or
-more colours to interpolate between. Defaults to \code{"viridis"}.}
+\item{quantity}{The simulated component to map, one of \code{"mean"} (the
+default), \code{"linear_predictor"}, \code{"spatial_effect"}, \code{"nugget"} and
+\code{"group_effect"}, as in \code{\link[=simulated_values]{simulated_values()}}. The mean is the prevalence
+for a binomial model, the mean per unit exposure for a Poisson or
+negative binomial model and the mean of the response for a Gaussian
+model. The nugget and the group effect are zero when the model has
+none.}
 
-\item{reverse_palette}{Logical; if \code{TRUE}, reverse the order of the palette
-colours. Defaults to \code{FALSE}.}
+\item{palette}{Colour palette. \code{NULL} selects the defaults of
+\code{\link[=plot.RiskMap_prediction]{plot.RiskMap_prediction()}}, a calm-to-alarm sequential palette for the
+mean and a palette centred at zero for the linear predictor and the
+effects. A character vector of colours or the name of an HCL palette
+accepted by \code{\link[grDevices:hcl.colors]{grDevices::hcl.colors()}} can be supplied. Prefix a named
+palette with \code{"-"} to reverse it, for example \code{"-Viridis"}.}
 
-\item{...}{Additional arguments passed to \code{\link[ggplot2:scale_fill_gradientn]{ggplot2::scale_fill_gradientn()}},
-e.g. \code{name} or \code{breaks}.}
+\item{limits}{\code{NULL} (the default) or a numeric vector of two increasing
+numbers giving the range of the colour scale, for example to map several
+simulations on a common scale.}
+
+\item{...}{Additional arguments passed to the ggplot2 fill scale, for
+example \code{transform = "sqrt"} for skewed values. The map sets
+\code{colours}, \code{limits}, \code{breaks}, \code{labels}, \code{oob}, \code{na.value} and \code{guide}
+itself. To change them, add another fill scale to the map with \code{+}.}
 }
 \value{
 A \code{ggplot} object.
 }
 \description{
-Maps the linear predictor of one simulation from \code{\link[=simulate_glgpm]{simulate_glgpm()}} over
-its prediction grid, with the sampling locations overlaid when data were
-also simulated.
+Maps one component of one simulation from \code{\link[=simulate_glgpm]{simulate_glgpm()}} over its
+prediction grid, by default the mean, with the sampling locations overlaid
+when data were also simulated.
 }
 \details{
-The returned object can be modified further
-with standard \pkg{ggplot2} functions.
+The colours and the legend follow \code{\link[=plot.RiskMap_prediction]{plot.RiskMap_prediction()}}. The returned
+object can be modified further with standard \pkg{ggplot2} functions.
 }
 \seealso{
 \code{\link[=simulated_surface]{simulated_surface()}}, \code{\link[=plot.RiskMap_simulated_surface]{plot.RiskMap_simulated_surface()}}
