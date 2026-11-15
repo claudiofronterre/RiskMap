@@ -359,7 +359,7 @@ to the locations only. An argument in `...` that doesn't match one of
 matches them, is an error, since `acf()` would ignore it. `component` is one
 such argument.
 
-- The new `summarise_mcmc()` returns a data frame of the effective sample sizes of
+- The new `summarise_mcmc()` returns a tibble of the effective sample sizes of
 the mean of the spatial random effects, of each location and of each level of
 an unstructured random effect. Its column `index` numbers the locations and
 the levels. It was called `component`, which now names only the quantities
@@ -1453,9 +1453,8 @@ parameters have been renamed to `metric`/`model`.
   of `model_crs`. Its arguments are now `formula`, `data`, `family`,
   `parameters`, `invlink`, `denominator`, `distance_crs` and
   `distance_units`, with `invlink` moved from last, so calls that give the
-  later arguments by position must name them. `simulated_values()` returns a
-  data frame instead of a tibble, as every other table RiskMap returns.
-  Simulations with a given seed are unchanged.
+  later arguments by position must name them. Simulations with a given seed
+  are unchanged.
 
 - `assess_simulation()` scores every model on the scale of the mean, each
   through its own inverse link. The truth is the simulated mean, which the
