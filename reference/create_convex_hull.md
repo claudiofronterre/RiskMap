@@ -6,12 +6,12 @@ the smallest polygon that can enclose all geometries in the input.
 ## Usage
 
 ``` r
-create_convex_hull(sf_object)
+create_convex_hull(data)
 ```
 
 ## Arguments
 
-- sf_object:
+- data:
 
   An `sf` data frame object containing geometries.
 

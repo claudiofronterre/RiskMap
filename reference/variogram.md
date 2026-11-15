@@ -15,9 +15,9 @@ variogram(
   max_dist = NULL,
   n_permutations = 999L,
   level = 0.95,
-  seed = NULL,
   distance_crs = NULL,
-  distance_units = c("km", "m")
+  distance_units = c("km", "m"),
+  seed = NULL
 )
 ```
 
@@ -64,11 +64,6 @@ variogram(
   the simultaneous coverage probability of the global envelope. By
   default `level = 0.95`.
 
-- seed:
-
-  an optional non-negative integer seed for the permutations. The
-  caller's random-number state is restored before the function returns.
-
 - distance_crs:
 
   `NULL` to retain an existing projected CRS, or automatically reproject
@@ -85,6 +80,11 @@ variogram(
   distances used in the variogram are expressed in kilometers or meters.
   By default `distance_units = "km"`, as in
   [`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md).
+
+- seed:
+
+  an optional non-negative integer seed for the permutations. The
+  caller's random-number state is restored before the function returns.
 
 ## Value
 

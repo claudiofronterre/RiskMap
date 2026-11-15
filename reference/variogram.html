@@ -59,9 +59,9 @@ spatial independence.</p>
 <span>  max_dist <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  n_permutations <span class="op">=</span> <span class="fl">999L</span>,</span>
 <span>  level <span class="op">=</span> <span class="fl">0.95</span>,</span>
-<span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  distance_crs <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  distance_units <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"km"</span>, <span class="st">"m"</span><span class="op">)</span></span>
+<span>  distance_units <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"km"</span>, <span class="st">"m"</span><span class="op">)</span>,</span>
+<span>  seed <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -108,11 +108,6 @@ By default <code>n_permutations = 999</code>; set it to zero to omit the envelop
 By default <code>level = 0.95</code>.</p></dd>
 
 
-<dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>an optional non-negative integer seed for the permutations. The
-caller's random-number state is restored before the function returns.</p></dd>
-
-
 <dt id="arg-distance-crs">distance_crs<a class="anchor" aria-label="anchor" href="#arg-distance-crs"></a></dt>
 <dd><p><code>NULL</code> to retain an existing projected CRS, or
 automatically reproject longitude/latitude data to the CRS from
@@ -126,6 +121,11 @@ CRS used distorts distances by more than 1% over the data.</p></dd>
 <dd><p>Character string, either <code>"km"</code> or <code>"m"</code>, indicating whether
 the distances used in the variogram are expressed in kilometers or meters.
 By default <code>distance_units = "km"</code>, as in <code><a href="glgpm.html">glgpm</a></code>.</p></dd>
+
+
+<dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
+<dd><p>an optional non-negative integer seed for the permutations. The
+caller's random-number state is restored before the function returns.</p></dd>
 
 </dl></div>
     <div class="section level2">

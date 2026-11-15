@@ -10,6 +10,7 @@ needed to reconstruct their square grid cells.
 create_grid(
   boundaries = NULL,
   spacing = NULL,
+  distance_crs = NULL,
   distance_units = c("km", "m"),
   keep = c("centre", "overlap"),
   raster = NULL
@@ -28,6 +29,19 @@ create_grid(
 
   A single positive number specifying the distance between grid-point
   centres. Taken from the resolution of `raster` when that is supplied.
+
+- distance_crs:
+
+  `NULL` to keep the CRS of projected `boundaries`, or to project
+  `boundaries` in longitude and latitude to the CRS from
+  [`propose_crs()`](https://claudiofronterre.github.io/RiskMap/reference/propose_crs.md)
+  (with a message naming the CRS and the units of distance).
+  Alternatively, a projected CRS to project `boundaries` to, as in
+  [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md)
+  and
+  [`summarise_distance()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_distance.md).
+  A grid built from `raster` takes the CRS of the raster, so
+  `distance_crs` must then be `NULL` or that CRS.
 
 - distance_units:
 
@@ -85,15 +99,31 @@ and `method = "sum"` if needed, and use the result as `raster`. With
 with at least one non-missing value are kept. Cells kept inside
 `boundaries` may have missing values, for example over water.
 
-The CRS is inherited from `boundaries`, or from `raster` when it is
-supplied. If `boundaries` is in longitude/latitude and no raster is
-given, it is automatically reprojected to the CRS from
+The CRS of the grid is `distance_crs` when it is given, and otherwise
+that of `boundaries`, or of `raster` when it is supplied. If
+`boundaries` is in longitude and latitude and neither `distance_crs` nor
+a raster is given, it is projected to the CRS from
 [`propose_crs()`](https://claudiofronterre.github.io/RiskMap/reference/propose_crs.md)
-and a message names the CRS and the units of distance; transform
-`boundaries` to a projected CRS yourself first to use a different one. A
-warning of class `riskmap_warning_crs` is raised when the CRS used
-distorts distances by more than 1% over `boundaries`, or over the grid
-built from `raster`.
+and a message names the CRS and the units of distance. A warning of
+class `riskmap_warning_crs` is raised when the CRS used distorts
+distances by more than 1% over `boundaries`, or over the grid built from
+`raster`.
+
+The grid keeps its cells when rows or columns are selected with `[` or
+with dplyr verbs such as `select()` and
+[`filter()`](https://rdrr.io/r/stats/filter.html), unless only the
+geometry column is kept. Functions that build a new `sf` object, such as
+[`cbind()`](https://rdrr.io/r/base/cbind.html),
+[`merge()`](https://rdrr.io/r/base/merge.html) and
+[`sf::st_as_sf()`](https://r-spatial.github.io/sf/reference/st_as_sf.html),
+drop the class `RiskMap_grid`, and
+[`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md)
+then assigns each point to the polygon that contains it. Add columns
+with `$<-`,
+[`dplyr::mutate()`](https://dplyr.tidyverse.org/reference/mutate.html)
+or a dplyr join instead. [`rbind()`](https://rdrr.io/r/base/cbind.html)
+keeps the cells of its first grid, so use it only to join parts of one
+grid.
 
 ## See also
 

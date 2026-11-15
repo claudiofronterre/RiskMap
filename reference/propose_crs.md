@@ -11,7 +11,7 @@ conformal projection centred on the data otherwise.
 ``` r
 propose_crs(
   data,
-  epsg_tolerance = 0.005,
+  utm_tolerance = 0.005,
   messages = getOption("RiskMap.messages", TRUE)
 )
 ```
@@ -22,7 +22,7 @@ propose_crs(
 
   An `sf` or `sfc` object of points or polygons, in any CRS.
 
-- epsg_tolerance:
+- utm_tolerance:
 
   The largest distortion of distances, as a fraction, for which a UTM
   zone is proposed. The default of 0.005 accepts a UTM zone that
@@ -76,7 +76,7 @@ the Earth stays isotropic locally in the plane, and only its scale
 changes slightly over the map.
 
 The best UTM zone is proposed when its distortion is at most
-`epsg_tolerance`, and the best centred projection otherwise. A region
+`utm_tolerance`, and the best centred projection otherwise. A region
 about 1,000 km across or less usually gets a UTM zone. The best centred
 projection keeps distances within 0.5% over every African country. No
 planar CRS keeps them within 1% over a region that holds a disc about
@@ -124,7 +124,7 @@ crs <- propose_crs(wide)
 #>   conformal conic 21.5E 4S k0 0.9937", which distorts distances by at most
 #>   0.63% over `data`.
 #> ℹ The best UTM zone, EPSG:32734 (WGS 84 / UTM zone 34S), distorts them by up to
-#>   1.5%, more than `epsg_tolerance` allows.
+#>   1.5%, more than `utm_tolerance` allows.
 crs$Name
 #> [1] "RiskMap Lambert conformal conic 21.5E 4S k0 0.9937"
 crs_distortion(wide, crs)

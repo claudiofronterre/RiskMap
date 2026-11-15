@@ -44,7 +44,8 @@ print(x, digits = 3, ...)
 
 - ...:
 
-  further arguments, currently ignored.
+  not used, and an error if given, so that a misspelt argument is not
+  ignored.
 
 ## Value
 

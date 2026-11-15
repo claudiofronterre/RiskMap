@@ -127,6 +127,8 @@
 <ul><li>Data are <code>sf</code> objects with a coordinate reference system. <code><a href="../reference/propose_crs.html">propose_crs()</a></code> proposes a projection that keeps distances accurate, and <code><a href="../reference/glgpm.html">glgpm()</a></code> uses it for data in longitude and latitude.</li>
 <li>
 <code><a href="../reference/create_grid.html">create_grid()</a></code> builds prediction grids, also from the cells of a raster, <code><a href="../reference/get_worldpop.html">get_worldpop()</a></code> downloads WorldPop population counts, and <code><a href="../reference/variogram.html">variogram()</a></code> gives the empirical variogram with a permutation envelope.</li>
+<li>
+<code><a href="../reference/create_grid.html">create_grid()</a></code> takes <code>distance_crs</code>, as <code><a href="../reference/variogram.html">variogram()</a></code> and <code><a href="../reference/summarise_distance.html">summarise_distance()</a></code> do. A grid keeps its cells when its columns are selected, and <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> says when it counts points on a grid whole in the polygon that contains them (<a href="https://github.com/claudiofronterre/RiskMap/issues/214" class="external-link">#214</a>).</li>
 </ul></div>
 <div class="section level4">
 <h4 id="assessment-and-simulation-2-0-0">Assessment and simulation<a class="anchor" aria-label="anchor" href="#assessment-and-simulation-2-0-0"></a></h4>

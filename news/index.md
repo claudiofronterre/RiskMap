@@ -83,6 +83,15 @@ the main changes follow.
   downloads WorldPop population counts, and
   [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md)
   gives the empirical variogram with a permutation envelope.
+- [`create_grid()`](https://claudiofronterre.github.io/RiskMap/reference/create_grid.md)
+  takes `distance_crs`, as
+  [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md)
+  and
+  [`summarise_distance()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_distance.md)
+  do. A grid keeps its cells when its columns are selected, and
+  [`predict()`](https://rdrr.io/r/stats/predict.html) says when it
+  counts points on a grid whole in the polygon that contains them
+  ([\#214](https://github.com/claudiofronterre/RiskMap/issues/214)).
 
 #### Assessment and simulation
 
