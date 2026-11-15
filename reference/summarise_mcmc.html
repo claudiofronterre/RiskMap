@@ -77,10 +77,10 @@ binomial, Poisson or negative binomial model with <code>return_samples = TRUE</c
 over the locations, <code>"S"</code> for the spatial random effect at a location,
 or the name of the variable of an unstructured random effect.</p></dd>
 
-<dt>component</dt>
-<dd><p>The location, numbered as the rows of <code>object$coords</code>,
-or the level of the random effect, numbered as in <code>object$re</code>. It is
-<code>NA</code> for the mean.</p></dd>
+<dt>index</dt>
+<dd><p>The number of the location, as the rows of <code>object$coords</code>
+are numbered, or of the level of the random effect, as in <code>object$re</code>.
+It is <code>NA</code> for the mean.</p></dd>
 
 <dt>ess</dt>
 <dd><p>The effective sample size.</p></dd>
@@ -126,15 +126,15 @@ sample size of zero.</p>
 <span class="r-in"><span><span class="va">ess</span> <span class="op">&lt;-</span> <span class="fu">summarise_mcmc</span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="co"># The mean and the five locations with the smallest effective sample size</span></span></span>
 <span class="r-in"><span><span class="va">ess</span><span class="op">[</span><span class="fl">1</span>, <span class="op">]</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>      effect component      ess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1 mean of S        NA 1294.297</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>      effect index      ess</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1 mean of S    NA 1294.297</span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">ess</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="va">ess</span><span class="op">$</span><span class="va">ess</span><span class="op">)</span>, <span class="op">]</span>, <span class="fl">5</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>       effect component      ess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1  mean of S        NA 1294.297</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 45         S        44 1325.209</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 29         S        28 1337.476</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 57         S        56 1337.583</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 54         S        53 1352.397</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>       effect index      ess</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1  mean of S    NA 1294.297</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 45         S    44 1325.209</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 29         S    28 1337.476</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 57         S    56 1337.583</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 54         S    53 1352.397</span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
     </div>

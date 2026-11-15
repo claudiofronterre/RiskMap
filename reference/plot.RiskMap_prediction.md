@@ -104,11 +104,13 @@ plot(
 
 - north_arrow:
 
-  Logical. Add a north arrow. Defaults to `FALSE`.
+  Logical. Add a north arrow, which needs the ggspatial package.
+  Defaults to `FALSE`.
 
 - scale_bar:
 
-  Logical. Add a scale bar. Defaults to `FALSE`.
+  Logical. Add a scale bar, which needs the ggspatial package. Defaults
+  to `FALSE`.
 
 - ...:
 

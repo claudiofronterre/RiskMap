@@ -139,7 +139,8 @@ settlements. This function uses the WorldPop release covering 2015 to
 </ul><p>WorldPop also produces bottom-up estimates from microcensus surveys for a
 few countries, which this function does not cover.</p>
 <p>The function queries the WorldPop catalogue at
-<a href="https://hub.worldpop.org/rest/data" class="external-link">https://hub.worldpop.org/rest/data</a>. The 1 km age and sex layers of the
+<a href="https://hub.worldpop.org/rest/data" class="external-link">https://hub.worldpop.org/rest/data</a>, which needs the jsonlite package,
+and downloads the files it lists. The 1 km age and sex layers of the
 2000 to 2020 release are not listed in the catalogue, and their addresses
 are built from WorldPop's naming pattern. When <code>ages</code> covers several age
 groups or both sexes, their counts are added together.</p>
@@ -160,16 +161,12 @@ products used, as listed on the WorldPop website.</p>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># \donttest{</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># interactive()</span></span></span>
 <span class="r-in"><span><span class="co"># Adults aged 20 and over in Liberia in 2011, at 1 km</span></span></span>
 <span class="r-in"><span><span class="va">adults</span> <span class="op">&lt;-</span> <span class="fu">get_worldpop</span><span class="op">(</span><span class="st">"LBR"</span>, year <span class="op">=</span> <span class="fl">2011</span>, ages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">20</span>, <span class="cn">Inf</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>                       resolution <span class="op">=</span> <span class="st">"1km"</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> WorldPop unconstrained 2000-2020 estimates at 1km, LBR 2011, aged 20 and</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>   over, in 26 files.</span>
 <span class="r-in"><span><span class="fu">terra</span><span class="fu">::</span><span class="fu"><a href="https://rspatial.github.io/terra/reference/global.html" class="external-link">global</a></span><span class="op">(</span><span class="va">adults</span>, <span class="st">"sum"</span>, na.rm <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                sum</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> population 1739127</span>
-<span class="r-in"><span><span class="co"># }</span></span></span>
+<span class="r-in"><span><span class="op">}</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

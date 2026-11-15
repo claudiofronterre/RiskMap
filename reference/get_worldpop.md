@@ -97,7 +97,8 @@ WorldPop also produces bottom-up estimates from microcensus surveys for
 a few countries, which this function does not cover.
 
 The function queries the WorldPop catalogue at
-<https://hub.worldpop.org/rest/data>. The 1 km age and sex layers of the
+<https://hub.worldpop.org/rest/data>, which needs the jsonlite package,
+and downloads the files it lists. The 1 km age and sex layers of the
 2000 to 2020 release are not listed in the catalogue, and their
 addresses are built from WorldPop's naming pattern. When `ages` covers
 several age groups or both sexes, their counts are added together.
@@ -123,14 +124,10 @@ listed on the WorldPop website.
 ## Examples
 
 ``` r
-# \donttest{
+if (FALSE) { # interactive()
 # Adults aged 20 and over in Liberia in 2011, at 1 km
 adults <- get_worldpop("LBR", year = 2011, ages = c(20, Inf),
                        resolution = "1km")
-#> ℹ WorldPop unconstrained 2000-2020 estimates at 1km, LBR 2011, aged 20 and
-#>   over, in 26 files.
 terra::global(adults, "sum", na.rm = TRUE)
-#>                sum
-#> population 1739127
-# }
+}
 ```

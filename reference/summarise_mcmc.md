@@ -31,11 +31,11 @@ A data frame with one row per chain and columns
   locations, `"S"` for the spatial random effect at a location, or the
   name of the variable of an unstructured random effect.
 
-- component:
+- index:
 
-  The location, numbered as the rows of `object$coords`, or the level of
-  the random effect, numbered as in `object$re`. It is `NA` for the
-  mean.
+  The number of the location, as the rows of `object$coords` are
+  numbered, or of the level of the random effect, as in `object$re`. It
+  is `NA` for the mean.
 
 - ess:
 
@@ -85,14 +85,14 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 ess <- summarise_mcmc(fit)
 # The mean and the five locations with the smallest effective sample size
 ess[1, ]
-#>      effect component      ess
-#> 1 mean of S        NA 1294.297
+#>      effect index      ess
+#> 1 mean of S    NA 1294.297
 head(ess[order(ess$ess), ], 5)
-#>       effect component      ess
-#> 1  mean of S        NA 1294.297
-#> 45         S        44 1325.209
-#> 29         S        28 1337.476
-#> 57         S        56 1337.583
-#> 54         S        53 1352.397
+#>       effect index      ess
+#> 1  mean of S    NA 1294.297
+#> 45         S    44 1325.209
+#> 29         S    28 1337.476
+#> 57         S    56 1337.583
+#> 54         S    53 1352.397
 # }
 ```
