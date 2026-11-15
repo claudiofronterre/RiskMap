@@ -85,6 +85,9 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   `summarise_distance()` do. A grid keeps its cells when its columns are
   selected, and `predict()` says when it counts points on a grid whole in the
   polygon that contains them (#214).
+- ggspatial and jsonlite are suggested rather than imported. `get_worldpop()`
+  asks for jsonlite, and maps ask for ggspatial only to draw a north arrow or
+  a scale bar.
 
 ### Assessment and simulation
 

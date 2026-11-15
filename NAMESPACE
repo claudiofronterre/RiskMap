@@ -90,10 +90,6 @@ importFrom(dplyr,
   mutate,
   summarize
 )
-importFrom(ggspatial,
-  annotation_north_arrow,
-  annotation_scale
-)
 importFrom(graphics,points)
 importFrom(grid,unit)
 importFrom(gridExtra,grid.arrange)

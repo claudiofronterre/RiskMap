@@ -44,8 +44,10 @@
 ##' @param breaks Optional increasing numeric vector of class boundaries. When
 ##'   supplied, values are shown in classes, for example programme thresholds
 ##'   such as `c(0, 0.05, 0.1, 0.2, 1)`.
-##' @param north_arrow Logical. Add a north arrow. Defaults to `FALSE`.
-##' @param scale_bar Logical. Add a scale bar. Defaults to `FALSE`.
+##' @param north_arrow Logical. Add a north arrow, which needs the
+##'   ggspatial package. Defaults to `FALSE`.
+##' @param scale_bar Logical. Add a scale bar, which needs the ggspatial
+##'   package. Defaults to `FALSE`.
 ##' @param ... Additional arguments passed to the ggplot2 fill scale, for
 ##'   example `transform = "sqrt"` for skewed values.
 ##'
@@ -84,7 +86,6 @@
 ##' plot(prediction, spatial_scale = "both")
 ##' @method plot RiskMap_prediction
 ##' @export
-##' @importFrom ggspatial annotation_north_arrow annotation_scale
 ##' @importFrom grid unit
 plot.RiskMap_prediction <- function(
     x,
@@ -111,6 +112,10 @@ plot.RiskMap_prediction <- function(
   spatial_scale_given <- !identical(spatial_scale, "auto")
   check_plot_flag(north_arrow, "north_arrow")
   check_plot_flag(scale_bar, "scale_bar")
+  if (north_arrow || scale_bar) {
+    rlang::check_installed("ggspatial",
+                           reason = "to draw a north arrow or a scale bar.")
+  }
   if (!is.character(quantity) || !length(quantity) || anyNA(quantity) ||
       anyDuplicated(quantity)) {
     abort_input("{.arg quantity} must be distinct names of predicted quantities.", arg = "quantity")
@@ -270,8 +275,10 @@ plot.RiskMap_prediction <- function(
       legend.justification = "center",
       strip.text = element_blank()
     )
-  if (north_arrow) map <- map + annotation_north_arrow(location = "tr")
-  if (scale_bar) map <- map + annotation_scale(location = "bl")
+  if (north_arrow) {
+    map <- map + ggspatial::annotation_north_arrow(location = "tr")
+  }
+  if (scale_bar) map <- map + ggspatial::annotation_scale(location = "bl")
   map
 }
 

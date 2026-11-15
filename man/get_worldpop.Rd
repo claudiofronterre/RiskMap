@@ -78,7 +78,8 @@ WorldPop also produces bottom-up estimates from microcensus surveys for a
 few countries, which this function does not cover.
 
 The function queries the WorldPop catalogue at
-\url{https://hub.worldpop.org/rest/data}. The 1 km age and sex layers of the
+\url{https://hub.worldpop.org/rest/data}, which needs the jsonlite package,
+and downloads the files it lists. The 1 km age and sex layers of the
 2000 to 2020 release are not listed in the catalogue, and their addresses
 are built from WorldPop's naming pattern. When \code{ages} covers several age
 groups or both sexes, their counts are added together.
@@ -89,12 +90,12 @@ cells of a prediction grid, project them with \code{\link[terra:project]{terra::
 and pass the result to \code{\link[=create_grid]{create_grid()}} as \code{raster}.
 }
 \examples{
-\donttest{
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 # Adults aged 20 and over in Liberia in 2011, at 1 km
 adults <- get_worldpop("LBR", year = 2011, ages = c(20, Inf),
                        resolution = "1km")
 terra::global(adults, "sum", na.rm = TRUE)
-}
+\dontshow{\}) # examplesIf}
 }
 \references{
 WorldPop (www.worldpop.org). Please cite the WorldPop
