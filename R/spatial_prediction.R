@@ -3590,7 +3590,7 @@ plot.RiskMap_simulated_surface <- function(x, quantity = "mean", palette = NULL,
   set_by_map <- intersect(dot_names, c("colours", "colors", "limits", "breaks",
                                        "labels", "oob", "na.value", "guide"))
   if (length(set_by_map)) {
-    abort_input(c("{.arg {set_by_map}} can't be given, because the map sets {cli::qty(length(set_by_map))}{?it/them} itself.", "i" = "Add another fill scale to the map with {.code +} to change {?it/them}."), arg = set_by_map[[1L]])
+    abort_input(c("{.arg {set_by_map}} can't be given, because the map sets {cli::qty(length(set_by_map))}{?it/them} itself.", "i" = "Add another fill scale to the map with {.code +} to change {cli::qty(length(set_by_map))}{?it/them}."), arg = set_by_map[[1L]])
   }
   components <- c("mean", "linear_predictor", "spatial_effect", "nugget",
                   "group_effect")

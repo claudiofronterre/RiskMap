@@ -214,7 +214,7 @@ test_that("class and choice errors read well", {
 
 test_that("check_dots_unused stops on any argument in the dots", {
   method_example <- function(x, ...) {
-    check_dots_unused(..., hints = c(old = "It is now {.arg new}."))
+    check_dots_unused(..., .hints = c(old = "It is now {.arg new}."))
     invisible(TRUE)
   }
   expect_true(method_example(1))
