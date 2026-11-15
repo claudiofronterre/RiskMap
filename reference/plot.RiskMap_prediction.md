@@ -11,10 +11,10 @@ output returned by
 plot(
   x,
   quantity = "response",
-  summary = NULL,
+  summaries = NULL,
   spatial_scale = c("auto", "location", "area", "both"),
   aggregate = NULL,
-  threshold = NULL,
+  thresholds = NULL,
   palette = NULL,
   limits = NULL,
   breaks = NULL,
@@ -38,17 +38,20 @@ plot(
   [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md).
   Several quantities can be supplied, for example
   `c("fixed", "spatial")`, and are arranged like several summaries.
-  Supply several quantities or several summaries, not both.
+  Supply several quantities, or several summaries or thresholds, not
+  both.
 
-- summary:
+- summaries:
 
-  Summary to display, such as `"mean"`, `"median"`, `"lower"`,
-  `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or `"exceedance"`. When
-  `NULL` (the default), the first summary requested in
+  Summaries to display, such as `"mean"`, `"median"`, `"lower"`,
+  `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or `"exceedance"`, as
+  in
+  [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md).
+  When `NULL` (the default), the first summary requested in
   [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md)
-  is shown. Several summaries can be supplied; they are then arranged in
-  two columns, or one per row when `spatial_scale = "both"`. Ignored for
-  `"fixed"` and `"offset"`, which have a single value.
+  is shown. Several summaries are arranged in two columns, or one per
+  row when `spatial_scale = "both"`. Ignored for `"fixed"` and
+  `"offset"`, which have a single value.
 
 - spatial_scale:
 
@@ -65,10 +68,13 @@ plot(
   `"mean"` or `"sum"`. When `NULL`, the first aggregation calculated is
   used.
 
-- threshold:
+- thresholds:
 
-  For an exceedance map, the response-scale threshold to display. It may
-  be omitted when only one threshold was calculated.
+  For exceedance maps, the response-scale thresholds to display, among
+  those given to
+  [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md).
+  They may be omitted when only one threshold was calculated. Several
+  thresholds give one map each, arranged like several summaries.
 
 - palette:
 
@@ -111,8 +117,8 @@ plot(
 
 ## Value
 
-A `ggplot` object. When several quantities or summaries are requested, a
-`patchwork` object combining one `ggplot` per map.
+A `ggplot` object. When several quantities, summaries or thresholds are
+requested, a `patchwork` object combining one `ggplot` per map.
 
 ## Details
 

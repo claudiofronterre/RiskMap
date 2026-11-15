@@ -288,6 +288,7 @@ scale of the response, at new locations or aggregated over areas.
 - [`to_table(`*`<RiskMap_prediction>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/to_table.RiskMap_prediction.md)
   : Table of polygon predictions
 - [`assess_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.md)
+  [`print(`*`<RiskMap_extrapolation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.md)
   : Assess where predictions extrapolate beyond the data
 
 ## Assessment

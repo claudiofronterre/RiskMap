@@ -2,7 +2,7 @@
 
 Plot method for objects of class `"RiskMap_check"` from
 [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
-It draws the figures of the checks that were computed, and never
+It makes the figures of the checks that were computed, and never
 computes anything itself, so an extra check runs once in
 [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
 By stage of certified Monte Carlo maximum likelihood, the panels show
@@ -71,7 +71,9 @@ plot(x, which = NULL, ...)
 
 ## Value
 
-Invisibly returns the list of panels drawn, each a `ggplot` object.
+A `ggplot` object when one panel is drawn, and otherwise a `patchwork`
+object that arranges the panels in two columns. Nothing is drawn until
+the object is printed, so it can be saved or changed first.
 
 ## See also
 

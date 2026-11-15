@@ -20,10 +20,13 @@ plot(x, indicator = "extrapolation", ...)
 
 - indicator:
 
-  Indicator to map: `"extrapolation"` (the default, the four classes),
-  `"spatial_unexplained"`, `"covariate_novelty"` or
-  `"covariate_leverage"`. Several indicators are arranged in two
-  columns.
+  Indicator to map: `"extrapolation"` (the default, the four classes,
+  with the thresholds that
+  [`assess_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.md)
+  used), `"spatial_unexplained"` (the share of the spatial variance left
+  unexplained by the data, on a scale from 0 to 1),
+  `"covariate_novelty"` or `"covariate_leverage"`. Several indicators
+  are arranged in two columns.
 
 - ...:
 

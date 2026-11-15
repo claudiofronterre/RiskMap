@@ -73,6 +73,13 @@ the main changes follow.
   tabulates predictions over areas, and
   [`assess_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.md)
   shows where predictions go beyond the data.
+- [`assess_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.md)
+  counts the sampling noise of the data and flags a location when the
+  data say less about it than about any surveyed location left out
+  ([\#236](https://github.com/claudiofronterre/RiskMap/issues/236)).
+  [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of
+  predictions takes `summaries` and `thresholds`, the names
+  [`predict()`](https://rdrr.io/r/stats/predict.html) uses.
 
 #### Data and projections
 
