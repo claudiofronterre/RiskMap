@@ -82,12 +82,17 @@
 ##' other parameter takes its automatic start. [glgpm_parameters()] lists the
 ##' parameters of a model before it is fitted.
 ##' @param fixed_pars `NULL` (the default), or a named list of values at which
-##' to hold some of the model's parameters instead of estimating them, with the
-##' names and structure of `start_pars`. It holds the variance of a nugget
-##' (`tau2`, with `gp(nugget = TRUE)`, positive), the measurement error variance
-##' of a Gaussian model (`sigma2_me`, zero or positive) and the size of a
-##' negative binomial model (`theta`, positive). A parameter can't be both
-##' started and held, except that a start equal to its held value, as in
+##' to hold any of the model's parameters instead of estimating them, one,
+##' several or all of them, with the names and structure of `start_pars`.
+##' Every value must be finite, and every one but the coefficients positive,
+##' except the measurement error variance of a Gaussian model, which may be
+##' zero. A held coefficient enters the linear predictor as a known term, as an
+##' offset does. The other parameters are estimated with the held ones at their
+##' values, and with every parameter held the fit evaluates the likelihood at
+##' the values (exactly for a Gaussian model, by Monte Carlo on one sample for
+##' the others) and draws the conditional samples there, so that [predict()]
+##' works with given parameters. A parameter can't be both started and held,
+##' except that a start equal to its held value, as in
 ##' `start_pars = coef(fit)` of a fit with the same holds, is left out. With one
 ##' observation per location, a Gaussian model can estimate the nugget or the
 ##' measurement error variance, not both, and a negative binomial model the

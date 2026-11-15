@@ -52,9 +52,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   `set_control_mcml(start_comparison = FALSE)` switches off.
   `glgpm_parameters()` lists a model's parameters before it is fitted, and
   `?riskmap_parameters` describes them.
-- `fixed_pars` in `glgpm()` holds the nugget variance, the measurement error
-  variance or the size of a negative binomial model at a given value, in place
-  of `gp(nugget = <value>)`, `fix_var_me` and `negative_binomial(theta)`.
+- `fixed_pars` in `glgpm()` holds any parameters at given values, such as a
+  coefficient, the scale or the nugget variance, or all of them, in which case
+  `predict()` works with the given parameters. It replaces
+  `gp(nugget = <value>)`, `fix_var_me` and `negative_binomial(theta)`.
   `coef()` gives held parameters with the estimated ones, in the order of
   `?riskmap_parameters`, and `profile()` names the nugget `tau2` for every
   family.

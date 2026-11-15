@@ -749,7 +749,8 @@ optimise_gaussian <- function(start, objective, gradient, hessian, held,
                               messages) {
   if (length(held) && length(held) == length(start)) {
     # Every parameter held, so the fit is the likelihood at the values.
-    fit <- list(par = start, objective = objective(start), convergence = 0L,
+    fit <- list(par = start, objective = as.numeric(objective(start)),
+                convergence = 0L,
                 iterations = 0L, message = "every parameter is held",
                 evaluations = c("function" = 1L, gradient = 0L))
     return(list(fit = fit, information = matrix(numeric(), 0L, 0L),
@@ -875,13 +876,16 @@ given_start_names <- function(given) {
 ##'
 ##' @section Held values:
 ##' `fixed_pars` of [glgpm()] takes the same names and structure, and holds
-##' the parameters it gives at their values instead of estimating them. It
-##' holds the variance of a nugget (`tau2`, for a model with
-##' `gp(nugget = TRUE)`), the measurement error variance of a Gaussian model
-##' (`sigma2_me`, which may be zero) and the size of a negative binomial model
-##' (`theta`). [coef.RiskMap()] gives the held parameters with the estimated
-##' ones, so `start_pars = coef(fit)` works for a refit with the same holds,
-##' and [summary.RiskMap()] shows them as fixed.
+##' any of the parameters it gives at their values instead of estimating them,
+##' such as `list(phi = 20)`, `list(beta = c(x = 0.5))` or
+##' `list(sigma2_re = c(household = 0.2))`. The nugget variance is held only in
+##' a model with `gp(nugget = TRUE)`, and a nugget or random-effect variance of
+##' zero is the model without that term. [coef.RiskMap()] gives the held
+##' parameters with the estimated ones, so `start_pars = coef(fit)` works for a
+##' refit with the same holds, and [summary.RiskMap()] and [print()] show them
+##' as fixed, without standard errors. [profile.RiskMap()] has no profile of a
+##' held parameter and holds them in the profiles of the others, and
+##' [parametric_bootstrap()] refits with the same holds.
 ##' @seealso [glgpm()], [glgpm_parameters()], [coef.RiskMap()]
 NULL
 

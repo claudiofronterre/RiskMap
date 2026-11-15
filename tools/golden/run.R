@@ -304,6 +304,26 @@ fits <- list(
                                             family = "binomial", distance_units = "km", messages = FALSE,
                                             seed = 46L, return_samples = FALSE)
 )
+# Holds of coefficients, of the spatial variance and scale, of random-effect variances and of every parameter, from
+# step 2d of the parameter table. Commits that can't hold these parameters don't have the tasks.
+holds_any <- has_fixed_pars && exists("pinned_rows", envir = ns, inherits = FALSE)
+if (holds_any) fits <- c(fits, list(
+  F47_held_slope = function() fit_binomial(y ~ x + gp(), "d1", seed = 47L, fixed_pars = list(beta = c(x = 0.3))),
+  F48_held_scale_woodbury = function() glgpm(z ~ x + gp() + re(cluster), data = dataset("replicated_gaussian"),
+                                             family = "gaussian", distance_units = "km", messages = FALSE,
+                                             fixed_pars = list(phi = 30)),
+  F49_held_variances_re = function() fit_binomial(y ~ x + gp() + re(g), "d1", seed = 49L,
+                                                  fixed_pars = list(sigma2 = 1, sigma2_re = c(g = 0.2))),
+  F50_held_intercept = function() glgpm(z ~ x + gp(), data = dataset("gaussian"), family = "gaussian",
+                                        distance_units = "km", messages = FALSE,
+                                        fixed_pars = list(beta = c("(Intercept)" = 1))),
+  F51_all_held_gaussian = function() glgpm(z ~ x + gp(), data = dataset("gaussian"), family = "gaussian",
+                                           distance_units = "km", messages = FALSE,
+                                           fixed_pars = list(beta = c(1, 0.5), sigma2 = 1, phi = 15,
+                                                             sigma2_me = 0.1)),
+  F52_all_held_binomial = function() fit_binomial(y ~ x + gp(), "d1", seed = 52L,
+                                                  fixed_pars = list(beta = c(-0.9, 0.3), sigma2 = 2, phi = 15))
+))
 
 # What a fit task keeps: the object itself (compared after timings and closures are removed) and its printed text.
 # The fit is not kept again in record$fits, where compare.R does not look for it.

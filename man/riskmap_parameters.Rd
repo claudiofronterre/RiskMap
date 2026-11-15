@@ -44,13 +44,16 @@ locations. A name the model lacks stops with the names it has.
 \section{Held values}{
 
 \code{fixed_pars} of \code{\link[=glgpm]{glgpm()}} takes the same names and structure, and holds
-the parameters it gives at their values instead of estimating them. It
-holds the variance of a nugget (\code{tau2}, for a model with
-\code{gp(nugget = TRUE)}), the measurement error variance of a Gaussian model
-(\code{sigma2_me}, which may be zero) and the size of a negative binomial model
-(\code{theta}). \code{\link[=coef.RiskMap]{coef.RiskMap()}} gives the held parameters with the estimated
-ones, so \code{start_pars = coef(fit)} works for a refit with the same holds,
-and \code{\link[=summary.RiskMap]{summary.RiskMap()}} shows them as fixed.
+any of the parameters it gives at their values instead of estimating them,
+such as \code{list(phi = 20)}, \code{list(beta = c(x = 0.5))} or
+\code{list(sigma2_re = c(household = 0.2))}. The nugget variance is held only in
+a model with \code{gp(nugget = TRUE)}, and a nugget or random-effect variance of
+zero is the model without that term. \code{\link[=coef.RiskMap]{coef.RiskMap()}} gives the held
+parameters with the estimated ones, so \code{start_pars = coef(fit)} works for a
+refit with the same holds, and \code{\link[=summary.RiskMap]{summary.RiskMap()}} and \code{\link[=print]{print()}} show them
+as fixed, without standard errors. \code{\link[=profile.RiskMap]{profile.RiskMap()}} has no profile of a
+held parameter and holds them in the profiles of the others, and
+\code{\link[=parametric_bootstrap]{parametric_bootstrap()}} refits with the same holds.
 }
 
 \seealso{

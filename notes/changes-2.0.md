@@ -890,6 +890,23 @@ With several records at a location the other start changes, and the empirical
 logit of a total follows the proportion at the location, where that of a
 binary record is always log(3) or -log(3).
 
+- `fixed_pars` holds any parameter, a coefficient, the spatial variance or
+scale, a random-effect variance, or every parameter. These stay in the working
+vector at their values, which the optimisers keep by equal bounds and the
+Gaussian paths by maximising over the others, and which the observed
+information, the certificate and the radius check leave out, as they leave out a
+variance held at zero. Their standard errors are NA. A held coefficient enters
+the linear predictor as a known term, and a fit that holds its intercept
+standardises its covariates without centring, so that every held coefficient is
+one coordinate. The check for other maxima is off when the spatial variance or
+scale is held. Profiles hold the held parameters, and `profile()` refuses one.
+With every parameter held, a Gaussian fit gives its exact log-likelihood at the
+values, and a binomial, Poisson or negative binomial fit its Monte Carlo
+log-likelihood on one sample of `validation_samples` draws from the global
+proposal at the values, with conditional samples there and no certificate.
+`summary()` and `print()` say which parameters are held, and the AIC of a
+Gaussian fit counts the estimated ones.
+
 - `glgpm(fixed_pars = )` holds parameters at given values, with the names and
 structure of `start_pars`. It holds the nugget variance (`tau2`, with
 `gp(nugget = TRUE)`, positive), the measurement error variance of a Gaussian
