@@ -259,7 +259,7 @@ test_that("the print of indicators states the classes and the thresholds", {
   far <- st_as_sf(data.frame(x = 1e7, z = 1e7, cov = 0), coords = c("x", "z"),
                   crs = 32637)
   isolated <- assess_extrapolation(gaussian_model, far)
-  expect_identical(attr(isolated, "spatial_threshold"), 1)
+  expect_equal(attr(isolated, "spatial_threshold"), 1, tolerance = 1e-12)
   expect_identical(as.character(isolated$extrapolation), "Supported")
   expect_match(squish(capture.output(print(isolated))),
                "shares no spatial correlation with the others", fixed = TRUE)

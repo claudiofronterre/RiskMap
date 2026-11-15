@@ -132,8 +132,11 @@ assess_extrapolation <- function(object, newdata, spatial_threshold = NULL,
   spatial_unexplained <- spatial$unexplained
   threshold_given <- !is.null(spatial_threshold)
   if (!threshold_given) spatial_threshold <- max(spatial$left_out)
+  # Both comparisons allow for rounding, so that a location with no spatial
+  # information is not flagged against a threshold of 1 on one platform and
+  # supported on another.
   covariate_flag <- covariates$outside > 0 | covariates$leverage > 1 + 1e-8
-  spatial_flag <- spatial_unexplained > spatial_threshold
+  spatial_flag <- spatial_unexplained > spatial_threshold + 1e-8
   classes <- c("Supported", "Spatial", "Covariate", "Spatial and covariate")
   extrapolation <- factor(
     classes[1L + spatial_flag + 2L * covariate_flag], levels = classes
