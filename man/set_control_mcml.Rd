@@ -15,6 +15,7 @@ set_control_mcml(
   laplace_start = NULL,
   integrate_noise = "auto",
   check_maxima = TRUE,
+  start_comparison = TRUE,
   pc_prior = FALSE,
   pc_sigma_threshold = 1,
   pc_sigma_probability = 0.05,
@@ -148,6 +149,16 @@ independent, with the scale unresolved and without standard errors or
 certificate. The screen of short scales and the exact bounds are
 available for the canonical links and models without unstructured random
 effects.}
+
+\item{start_comparison}{Logical. If \code{TRUE} (the default), a binomial,
+Poisson or negative binomial model with the canonical link and without
+\code{re()} terms compares two automatic starts by the Laplace approximation
+of the likelihood, RiskMap's defaults and the estimates of a Gaussian model
+fitted to the empirical link of the data, and starts from the better one.
+The values given in the \code{start_pars} of \code{\link[=glgpm]{glgpm()}} replace their own in both.
+With \code{FALSE} the fit starts from the defaults and the values given, without
+the comparison. There is no comparison when \code{start_pars} gives every
+parameter, nor for a Gaussian model.}
 
 \item{pc_prior}{Logical. If \code{TRUE}, the spatial variance and scale are
 penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
