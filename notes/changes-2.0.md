@@ -1491,4 +1491,5 @@ it reads the WorldPop catalogue, which the 1 km age and sex layers of
 2000-2020 do not need. In an interactive session both offer to install the
 package. The example of `get_worldpop()` runs only in interactive sessions,
 since `R CMD check --as-cran` runs `\donttest{}` examples and it downloads
-from WorldPop.
+from WorldPop. RiskMap needs rlang 1.0.0 or later, whose
+`check_installed()` and `caller_arg()` it uses.

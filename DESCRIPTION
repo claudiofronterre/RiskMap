@@ -37,7 +37,7 @@ Imports:
     parallel,
     patchwork,
     Rcpp,
-    rlang,
+    rlang (>= 1.0.0),
     scales,
     sf,
     spatialEco,
