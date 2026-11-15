@@ -747,6 +747,15 @@ apply_given_start <- function(table, start, given) {
 ##' @noRd
 optimise_gaussian <- function(start, objective, gradient, hessian, held,
                               messages) {
+  if (length(held) && length(held) == length(start)) {
+    # Every parameter held, so the fit is the likelihood at the values.
+    fit <- list(par = start, objective = objective(start), convergence = 0L,
+                iterations = 0L, message = "every parameter is held",
+                evaluations = c("function" = 1L, gradient = 0L))
+    return(list(fit = fit, information = matrix(numeric(), 0L, 0L),
+                root = NULL,
+                covariance = matrix(NA_real_, length(start), length(start))))
+  }
   if (!length(held)) {
     fit <- nlminb(start, objective, function(x) -gradient(x),
                   function(x) -hessian(x), control = list(trace = 1 * messages))

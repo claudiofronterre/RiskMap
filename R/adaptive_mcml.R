@@ -1599,6 +1599,14 @@ glgpm_nong_adaptive <- function(
   objective <- penalised$objective
   penalty <- penalised$penalty
 
+  # With every parameter held there is nothing to maximise. The fit is the
+  # Monte Carlo log-likelihood at the values, on one bank of the validation
+  # size from the global proposal there, without a certificate.
+  if (length(held) == length(start)) {
+    return(held_mcml_result(engine, unname(start), parameters, D, family,
+                            invlink, y, units_m, control_mcml, fit_seed,
+                            family_parameters, estimating, messages))
+  }
   laplace <- NULL
   start <- unname(start)
   restart_start <- NULL
@@ -1718,6 +1726,49 @@ glgpm_nong_adaptive <- function(
       log_likelihood_constant(family, y, units_m, family_parameters)
   }
   result
+}
+
+##' The result of `glgpm_nong_adaptive()` when every parameter is held
+##'
+##' The estimate is the held values, the covariance is NA, and the
+##' log-likelihood is the Monte Carlo estimate at the values on one bank of
+##' `control_mcml$validation_samples` draws from the global proposal anchored
+##' there, from the fit's seed, with the terms the records leave out. The
+##' optimiser record has no MCML outcome, so the fit reports no certificate.
+##' @noRd
+held_mcml_result <- function(engine, start, parameters, D, family, invlink, y,
+                             units_m, control_mcml, fit_seed,
+                             family_parameters, estimating, messages) {
+  progress_step("Evaluating the likelihood at the held values", messages)
+  engine$set_anchor(start)
+  set.seed(fit_seed)
+  draws <- as.integer(control_mcml$validation_samples %||% 5000L)
+  bank <- matrix(stats::rnorm(draws * engine$latent_dimension), nrow = draws)
+  log_lik <- engine$evaluate(start, bank)
+  progress_step_done(messages)
+  estimate <- working_estimate(parameters, start)
+  names_flat <- names(unlist(estimate))
+  covariance <- matrix(NA_real_, length(start), length(start),
+                       dimnames = list(names_flat, names_flat))
+  out <- list(
+    estimate = estimate,
+    grad_MLE = stats::setNames(rep(NA_real_, length(start)), names_flat),
+    covariance = covariance,
+    log_lik = log_lik,
+    S_samples = NULL,
+    link_function = make_inverse_link_functions(family, invlink, length(y))
+  )
+  attr(out, "optimizer") <- list(
+    convergence = 0L, message = "every parameter is held",
+    every_parameter_held = TRUE, mcml_history = list(),
+    mcml_validation_budget = draws
+  )
+  class(out) <- "RiskMap"
+  if (!estimating) {
+    out$log_lik <- out$log_lik +
+      log_likelihood_constant(family, y, units_m, family_parameters)
+  }
+  out
 }
 
 ##' The objective of certified MCML, with the PC penalty if requested

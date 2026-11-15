@@ -790,7 +790,8 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
                              all(object$cov_offset == 0))
   # Only an exact likelihood, without Monte Carlo error, has an AIC.
   if (isTRUE(traits$exact)) {
-    res$aic <- 2 * length(unlist(object$estimate)) - 2 * res$log_lik
+    # The parameters fixed_pars holds are not counted.
+    res$aic <- 2 * nrow(estimated_rows(parameters)) - 2 * res$log_lik
   }
 
   res$call               <- object$call %||% NULL

@@ -345,7 +345,9 @@ format_fit <- function(x, digits) {
     "",
     out_heading(paste0("Covariance parameters (Matern, kappa = ", x$kappa,
                        ")")),
-    format_estimates(covariance, digits),
+    # With every covariance parameter held there is no table, only the lines
+    # that say at what values.
+    if (length(covariance)) format_estimates(covariance, digits),
     out_text(fixed),
     "",
     out_pairs("Log-likelihood", format(x$log_lik, digits = digits + 3L)),
