@@ -41,8 +41,39 @@ test_that("profiling restores the random number state", {
   expected <- stats::runif(1)
   set.seed(42)
   invisible(profile(binomial_model, parameters = "cov", pairs = list(),
-                    n_points = 5, n_draws = 200, messages = FALSE))
+                    n_points = 5, n_draws = 200, seed = 1, messages = FALSE))
   expect_equal(stats::runif(1), expected)
+})
+
+test_that("without a seed, profile() draws one from the session and returns it (N7)", {
+  set.seed(42)
+  drawn <- sample.int(.Machine$integer.max, 1L)
+  expected <- stats::runif(1)
+  set.seed(42)
+  profiles <- profile(binomial_model, parameters = "cov", pairs = list(),
+                      n_points = 5, n_draws = 200, messages = FALSE)
+  # The draw of the seed is the only change to the session's stream.
+  expect_identical(stats::runif(1), expected)
+  expect_identical(profiles$settings$seed, drawn)
+  again <- profile(binomial_model, parameters = "cov", pairs = list(),
+                   n_points = 5, n_draws = 200, seed = drawn, messages = FALSE)
+  expect_identical(again$marginal, profiles$marginal)
+  set.seed(42)
+  expect_identical(profile(binomial_model, parameters = "cov", pairs = list(),
+                           n_points = 5, n_draws = 200,
+                           messages = FALSE)$marginal, profiles$marginal)
+  expect_input_error(profile(binomial_model, seed = -1, messages = FALSE),
+                     "seed")
+  expect_input_error(profile(binomial_model, seed = 1.5, messages = FALSE),
+                     "seed")
+  # A Gaussian profile has no bank, so it draws no seed.
+  set.seed(42)
+  expected <- stats::runif(1)
+  set.seed(42)
+  gaussian <- profile(gaussian_intercept_model, parameters = "phi",
+                      n_points = 5, messages = FALSE)
+  expect_identical(stats::runif(1), expected)
+  expect_null(gaussian$settings$seed)
 })
 
 test_that("profile rejects fits and settings it cannot handle", {
@@ -125,7 +156,7 @@ profile_without_link <- function(fitted, settings) {
 
 test_that("a profile of a canonical fit is that of an engine given no link", {
   settings <- list(parameters = c("cov", "sigma2"), n_points = 5,
-                   n_draws = 200, messages = FALSE)
+                   n_draws = 200, seed = 1, messages = FALSE)
   for (fitted in list(binomial_model, poisson_model)) {
     expect_identical(do.call(profile, c(list(fitted), settings)),
                      profile_without_link(fitted, settings))
@@ -336,10 +367,10 @@ test_that("profiles on two cores equal those on one", {
   }, add = TRUE)
   serial <- profile(binomial_model, parameters = c("cov", "sigma2"),
                     pairs = list(c("sigma2", "phi")), n_points = 5,
-                    n_grid = 3, n_draws = 200, messages = FALSE)
+                    n_grid = 3, n_draws = 200, seed = 1, messages = FALSE)
   parallel <- profile(binomial_model, parameters = c("cov", "sigma2"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
-                      n_grid = 3, n_draws = 200, cores = 2,
+                      n_grid = 3, n_draws = 200, seed = 1, cores = 2,
                       messages = FALSE)
   expect_identical(parallel$marginal, serial$marginal)
   expect_identical(parallel$joint, serial$joint)

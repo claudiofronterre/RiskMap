@@ -28,6 +28,16 @@ test_that("glgpm() takes distance_crs, with seed and messages last", {
                    c("object", "level", "..."))
 })
 
+test_that("seed, cores and messages come last, in that order, and cores is an integer (N6, N7)", {
+  expect_identical(names(formals(check_fit)),
+                   c("object", "extra", "profile", "cores", "messages"))
+  expect_identical(utils::tail(names(formals(parametric_bootstrap)), 3L),
+                   c("level", "cores", "messages"))
+  expect_identical(formals(parametric_bootstrap)$cores, 1L)
+  expect_identical(formals(check_fit)$cores, 1L)
+  expect_null(formals(profile.RiskMap)$seed)
+})
+
 test_that("logLik(), nobs(), AIC() and BIC() read a fit", {
   log_likelihood <- logLik(gaussian_model)
   expect_s3_class(log_likelihood, "logLik")

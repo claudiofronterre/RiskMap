@@ -13,7 +13,7 @@
   n_grid = 11L,
   span = 3,
   n_draws = 5000L,
-  seed = 1L,
+  seed = NULL,
   level = 0.95,
   cores = 1L,
   messages = getOption("RiskMap.messages", TRUE),
@@ -45,8 +45,11 @@ extension, and the most points on each side of the estimate.}
 \item{n_draws}{Number of Monte Carlo draws in the bank. Not used for a
 Gaussian model.}
 
-\item{seed}{Seed of the bank. The random number state of the session is
-restored afterwards. Not used for a Gaussian model.}
+\item{seed}{Optional non-negative integer, the seed of the bank. Without
+one, a seed is drawn from the session's random number generator, so
+\code{\link[=set.seed]{set.seed()}} before the call also reproduces the profile. The seed used
+is returned in \code{settings}. The caller's random number state is otherwise
+left as it was. Not used for a Gaussian model.}
 
 \item{level}{Confidence level of the reported profile intervals.}
 

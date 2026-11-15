@@ -1746,6 +1746,25 @@ in Suggests for the tests of grids with dplyr verbs.
 - gridExtra is no longer imported, since patchwork arranges the panels of
 `plot()` of a profile, which leaves 16 packages in Imports, parallel among
 them.
+- `profile()` takes `seed = NULL` by default instead of 1, as every other
+function with a seed does. Without a seed, a profile of a binomial, Poisson
+or negative binomial fit draws one integer from the session's random number
+generator, so `set.seed()` before the call reproduces it, and returns it as
+`settings$seed`. The draw is the only change to the session's stream. A
+Gaussian profile, which has no bank, draws none. `seed` must be a
+non-negative integer. The profiles of `check_fit(extra = "profile")` keep
+their own seed, derived from the fit's.
+- `check_fit()` takes `cores` before `messages`, and `parametric_bootstrap()`
+defaults to `cores = 1L`, so that `seed`, `cores` and `messages` come last in
+that order everywhere.
+- `print()` of a simulation model, of simulations and of `glgpm_parameters()`
+stops on an argument it doesn't use, and `print()` of a distance summary
+raises a RiskMap input error for one, as the other print methods do.
+- The `importFrom()` of `grid::unit()` and `stats::profile()` are removed,
+since ggplot2 and stats are imported whole. The rules that `Deriv` uses for
+the distribution functions of links are built with `quote()` instead of
+`alist()`, which gives the same lists without the NOTE of `R CMD check` about
+an undefined global variable `x`.
 - The documentation is written in roxygen's markdown throughout (#54). Rd
 macros such as `\code{}`, `\link{}`, `\emph{}` and `\itemize{}` became
 markdown, links to functions read as `glgpm()`, and links to generics name
@@ -1759,3 +1778,4 @@ object. Custom links, the negative binomial family, the penalties of
 `set_control_mcml(pc_prior = TRUE)`, `crs_distortion()` and the spatial
 indicator of `assess_extrapolation()` are marked experimental in their help
 pages, as parts that may change in a minor release.
+

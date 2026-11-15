@@ -989,3 +989,11 @@ test_that("simulations and assessments print counts in the singular and plural",
   expect_lte(max(nchar(printed)), 40L)
   expect_match(squish(printed), "covariate_12 = 1.2", fixed = TRUE)
 })
+
+test_that("print() of a simulation model or of simulations stops on an argument it doesn't use (N9)", {
+  model <- specify_glgpm(y ~ gp(), gaussian_data, "gaussian",
+                         list(beta = 0, sigma2 = 1, phi = 2, sigma2_me = 0.1))
+  expect_input_error(print(model, digits = 3), "digits")
+  expect_input_error(print(simulation, digits = 3), "digits")
+  expect_no_error(capture.output(print(model), print(simulation)))
+})

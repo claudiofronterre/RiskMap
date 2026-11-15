@@ -82,8 +82,11 @@
 ##' @param span Half-width of the grids, in standard errors.
 ##' @param n_draws Number of Monte Carlo draws in the bank. Not used for a
 ##'   Gaussian model.
-##' @param seed Seed of the bank. The random number state of the session is
-##'   restored afterwards. Not used for a Gaussian model.
+##' @param seed Optional non-negative integer, the seed of the bank. Without
+##'   one, a seed is drawn from the session's random number generator, so
+##'   [set.seed()] before the call also reproduces the profile. The seed used
+##'   is returned in `settings`. The caller's random number state is otherwise
+##'   left as it was. Not used for a Gaussian model.
 ##' @param level Confidence level of the reported profile intervals.
 ##' @param cores Number of processes. With more than one, the two sides of
 ##'   each marginal profile, the ends of the intervals and the joint profiles
@@ -128,11 +131,10 @@
 ##'   [plot_profile()], which `plot()` of the profile also calls.
 ##'   [check_fit()] checks the profiles, and [parametric_bootstrap()] gives
 ##'   bootstrap intervals.
-##' @importFrom stats profile
 ##' @export
 profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
                             n_points = 11L, n_grid = 11L, span = 3,
-                            n_draws = 5000L, seed = 1L, level = 0.95,
+                            n_draws = 5000L, seed = NULL, level = 0.95,
                             cores = 1L,
                             messages = getOption("RiskMap.messages", TRUE),
                             ...) {
@@ -145,6 +147,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
   }
   check_profile_settings(n_points, n_grid, span, if (!exact) n_draws,
                          level)
+  check_positive_integer(seed, allow_null = TRUE, allow_zero = TRUE)
   check_positive_integer(cores)
   check_logical(messages)
   cores <- as.integer(cores)
@@ -153,6 +156,13 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
       riskmap_inform("Parallel profiles need forking, which Windows doesn't support, so they run on one core.")
     }
     cores <- 1L
+  }
+  # Without a seed, the bank draws one from the session's stream, which
+  # advances it like any random call. Nothing else changes the caller's state,
+  # and a Gaussian profile, which has no bank, draws none.
+  if (!exact) {
+    if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
+    seed <- as.integer(seed)
   }
   restore_seed <- preserve_random_seed()
   on.exit(restore_seed(), add = TRUE)
