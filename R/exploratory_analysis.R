@@ -380,7 +380,7 @@ variogram <- function(data,
   )
 
   class(result) <- "RiskMap_variogram"
-  return(result)
+  stamp_version(result)
 }
 
 ##' @title Print Method for RiskMap_variogram Objects

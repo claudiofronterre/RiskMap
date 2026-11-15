@@ -173,7 +173,7 @@ check_fit <- function(object, extra = character(), profile = NULL,
       not_computed = extras$not_computed,
       fit_seconds = attr(object, "optimizer")$elapsed_seconds
     ),
-    class = "RiskMap_check"
+    class = "RiskMap_check", riskmap_version = riskmap_version_stamp()
   )
 }
 
@@ -1050,7 +1050,7 @@ format_checks <- function(x) {
 ##' liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 ##' fit <- glgpm(
 ##'   npos ~ log_elevation + gp(kappa = 0.5), denominator = ntest,
-##'   data = liberia, model_crs = 32629, family = "binomial", messages = FALSE
+##'   data = liberia, distance_crs = 32629, family = "binomial", messages = FALSE
 ##' )
 ##' checked <- check_fit(fit, extra = "all")
 ##' plot(checked)

@@ -280,7 +280,8 @@ describe_checks_to_review <- function(count) {
 ##'   checks on the computation by \code{\link{check_fit}}.
 ##' @param x An object of class \code{"RiskMap"}.
 ##' @param digits The number of significant digits of the estimates.
-##' @param ... other parameters.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return Invisibly returns \code{x}.
 ##' @method print RiskMap
 ##' @examples
@@ -297,6 +298,7 @@ describe_checks_to_review <- function(count) {
 ##' @export
 print.RiskMap <- function(x, digits = max(3L, getOption("digits") - 3L),
                           ...) {
+  check_dots_unused(...)
   check_class(x, "RiskMap")
   check_positive_integer(digits, "digits")
   out_print(format_fit(x, digits))

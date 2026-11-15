@@ -416,7 +416,7 @@ predict.RiskMap <- function(
       weights = NULL
     )
     class(out) <- "RiskMap_prediction"
-    return(out)
+    return(stamp_version(out))
   }
   # At the observed locations of a non-Gaussian fit the draws are the joint
   # conditional samples.
@@ -464,7 +464,7 @@ predict.RiskMap <- function(
     weights = NULL
   )
   class(out) <- "RiskMap_prediction"
-  out
+  stamp_version(out)
 }
 
 #' Validate the unified prediction options
@@ -939,7 +939,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       weights = weights
     )
     class(out) <- "RiskMap_prediction"
-    return(out)
+    return(stamp_version(out))
   }
 
   prediction_groups <- prediction_boundary_groups(
@@ -1094,7 +1094,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     weights = weights
   )
   class(out) <- "RiskMap_prediction"
-  out
+  stamp_version(out)
 }
 
 #' Run the conditional-prediction engine from aligned sf data
@@ -3418,7 +3418,7 @@ assess_prediction <- function(models,
           formula        = fit_formula(fit0),
           data           = fit_data_sf[in_id, ],
           family         = fit_family_argument(fit0),
-          model_crs      = st_crs(fit0$data),
+          distance_crs   = st_crs(fit0$data),
           distance_units = fit0$distance_units,
           control_mcmc   = control_mcmc,
           control_mcml   = attr(fit0, "control_mcml") %||%
@@ -3456,7 +3456,9 @@ assess_prediction <- function(models,
           refit_i$re <- random_effects_i$re_unique_f
         }
         ## recompute ID_coords mapping
-        refit_i$ID_coords <- create_ids(refit_i$data)$ID_coords
+        refit_i$ID_coords <- index_coordinate_rows(
+          st_coordinates(refit_i$data)
+        )$index
       }
 
       ## ----- prediction over test set -----
@@ -3639,7 +3641,7 @@ assess_prediction <- function(models,
   }
 
   class(out) <- "RiskMap_cross_validation"
-  return(out)
+  stamp_version(out)
 }
 
 ##' @title Plot Method for RiskMap_simulation Objects
@@ -4353,7 +4355,7 @@ assess_simulation <- function(simulation,
   out$n_sim <- n_sim
   out$spatial_scale <- spatial_scale
   class(out) <- "RiskMap_assess_simulation"
-  return(out)
+  stamp_version(out)
 }
 
 ##' Build a refit call from a fitted assessment-model template

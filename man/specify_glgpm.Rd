@@ -74,8 +74,8 @@ with a message naming it. A warning of class \code{riskmap_warning_crs} is
 raised when the CRS used distorts distances by more than 1\% over the data.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
-for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates in
-the returned \code{data} retain the linear units declared by its CRS.
+for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates of
+the data keep the linear units of their CRS.
 Defaults to \code{"km"}.}
 }
 \value{

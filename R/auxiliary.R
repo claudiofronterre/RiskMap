@@ -102,13 +102,7 @@ matern_correlation <- function(u, phi, kappa, return_sym_matrix = FALSE) {
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the first derivative of the Matern function with respect to \eqn{\phi} for the given distances.
-##' @examples
-##' x <- matrix(rnorm(20), nrow = 5)
-##' u <- dist(x)
-##' matern_gradient_phi(u, phi = 1, kappa = 0.8)
-##'
-##' @export
-##'
+##' @noRd
 matern_gradient_phi <- function(u, phi, kappa) {
   check_supplied(u)
   check_supplied(phi)
@@ -151,12 +145,7 @@ matern_gradient_phi <- function(u, phi, kappa) {
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
 ##' @return A matrix with the values of the second derivative of the
 ##' Matern function with respect to \eqn{\phi} for the given distances.
-##' @examples
-##' x <- matrix(rnorm(20), nrow = 5)
-##' u <- dist(x)
-##' matern_hessian_phi(u, phi = 1, kappa = 0.8)
-##'
-##' @export
+##' @noRd
 matern_hessian_phi <- function(u, phi, kappa) {
   check_supplied(u)
   check_supplied(phi)
@@ -564,13 +553,122 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
   if (type == "response") object$fitted_values else object$linear_predictors
 }
 
+##' @title Log-Likelihood, Covariance and Number of Observations of a Fit
+##' @description The `logLik()`, `vcov()` and `nobs()` methods for fits from
+##'   [glgpm()], with which [stats::AIC()] and [stats::BIC()] work too.
+##' @param object A fit from [glgpm()].
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
+##' @details
+##' `logLik()` gives the log-likelihood at the estimates. It is exact for a
+##' Gaussian model. For a binomial, Poisson or negative binomial model it is a
+##' Monte Carlo estimate, so that differences between such models that are
+##' not well above its Monte Carlo error mean nothing, which is why
+##' [summary()][summary.RiskMap()] gives no AIC for them. That of a negative
+##' binomial model leaves out the terms that do not depend on the parameters,
+##' as that of a Poisson model does (see [negative_binomial()]). Its degrees of
+##' freedom, `df`, are the number of estimated parameters, without those that
+##' `fixed_pars` holds.
+##'
+##' `vcov()` gives the covariance matrix of the estimates on the scale of
+##' [coef()][coef.RiskMap()], by the delta method from their covariance on the
+##' scale on which the model is fitted, where the variances and the scale are
+##' on the log scale. Its rows and columns are named as
+##' `unlist(coef(object))` names them, for the estimated parameters only. A
+##' parameter without a standard error, such as a variance estimated at zero,
+##' has a row and a column of `NA`, and a fit that holds every parameter has an
+##' empty matrix.
+##'
+##' `nobs()` gives the number of observations, the rows of the data, whatever
+##' their denominators.
+##' @return `logLik()` gives an object of class `logLik`, `vcov()` a matrix
+##'   and `nobs()` an integer.
+##' @seealso [summary.RiskMap()] for standard errors and confidence intervals.
+##' @examples
+##' data(italy_sim)
+##'
+##' fit <- glgpm(
+##'   formula = y ~ gp(),
+##'   data = italy_sim[1:100,],
+##'   family = "gaussian",
+##'   messages = FALSE
+##' )
+##'
+##' logLik(fit)
+##' AIC(fit)
+##' vcov(fit)
+##' nobs(fit)
+##' @method logLik RiskMap
+##' @export
+logLik.RiskMap <- function(object, ...) {
+  check_dots_unused(...)
+  structure(as.numeric(object$log_lik),
+            df = nrow(estimated_rows(fit_parameter_table(object))),
+            nobs = nobs(object), class = "logLik")
+}
+
+##' @rdname logLik.RiskMap
+##' @method vcov RiskMap
+##' @export
+vcov.RiskMap <- function(object, ...) {
+  check_dots_unused(...)
+  parameters <- fit_parameter_table(object)
+  rows <- estimated_rows(parameters)
+  names_out <- rows$reported
+  natural <- unlist(coef(object))[names_out]
+  working <- unlist(object$estimate)[rows$index]
+  # The derivative of each parameter on the scale of coef() in its working
+  # value, and of the nugget's variance in that of the spatial variance too,
+  # since its working value is the logarithm of their ratio. `depends` marks
+  # the working values each parameter depends on, whatever its derivative.
+  n <- nrow(rows)
+  jacobian <- matrix(0, n, n, dimnames = list(names_out, names_out))
+  depends <- diag(n) == 1
+  for (k in seq_len(n)) {
+    jacobian[k, k] <- switch(
+      rows$scale[k],
+      identity = 1,
+      log = ,
+      nugget = natural[[k]],
+      family = family_parameter(rows$name[k])$natural_derivative(working[[k]])
+    )
+  }
+  nugget <- which(rows$scale == "nugget")
+  sigma2 <- which(rows$name == "sigma2")
+  if (length(nugget) && length(sigma2)) {
+    jacobian[nugget, sigma2] <- natural[[nugget]]
+    depends[nugget, sigma2] <- TRUE
+  }
+  # A parameter without a standard error has an NA row and column, as does
+  # any parameter that depends on it.
+  covariance <- as.matrix(object$covariance)[rows$index, rows$index,
+                                             drop = FALSE]
+  free <- !is.na(diag(covariance))
+  computable <- rowSums(depends[, !free, drop = FALSE]) == 0
+  out <- matrix(NA_real_, n, n, dimnames = list(names_out, names_out))
+  out[computable, computable] <-
+    jacobian[computable, free, drop = FALSE] %*%
+    covariance[free, free, drop = FALSE] %*%
+    t(jacobian[computable, free, drop = FALSE])
+  out
+}
+
+##' @rdname logLik.RiskMap
+##' @method nobs RiskMap
+##' @export
+nobs.RiskMap <- function(object, ...) {
+  check_dots_unused(...)
+  length(object$y)
+}
+
 ##' @title Summarize Model Fits
 ##' @description Provides a \code{summary} method for the "RiskMap" class that
 ##'   computes standard errors and confidence intervals for likelihood-based
 ##'   model fits
 ##' @param object An object of class "RiskMap" from \code{\link{glgpm}}
-##' @param ... other parameters.
 ##' @param level Confidence level for intervals (default 0.95).
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return A list of class \code{"summary.RiskMap"} with parameter estimates,
 ##'   standard errors, and confidence intervals. For binomial, Poisson and negative binomial
 ##'   models, its component \code{mcml} reports certified Monte Carlo maximum
@@ -622,7 +720,10 @@ fitted.RiskMap <- function(object, type = c("response", "link"), ...) {
 ##' summary(fit)
 ##' summary(fit, level = 0.98)
 ##' @export
-summary.RiskMap <- function(object, ..., level = 0.95) {
+summary.RiskMap <- function(object, level = 0.95, ...) {
+  check_dots_unused(..., .hints = c(
+    conf_level = "The confidence level is given in {.arg level}."
+  ))
 
   alpha  <- 1 - level
   z_crit <- qnorm(1 - alpha / 2)
@@ -893,11 +994,13 @@ describe_pinned_parameters <- function(parameters) {
 ##' @title Print Summary of RiskMap Model
 ##' @description Print method for objects of class \code{"summary.RiskMap"}.
 ##' @param x An object of class \code{"summary.RiskMap"}.
-##' @param ... other parameters.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return Invisibly returns \code{x}.
 ##' @method print summary.RiskMap
 ##' @export
 print.summary.RiskMap <- function(x, ...) {
+  check_dots_unused(...)
   out_print(format_fit_summary(x))
   invisible(x)
 }
@@ -1052,10 +1155,11 @@ describe_summary_link <- function(link_name, invlink_expression) {
 ##' @description Converts a fitted "RiskMap" model, cross-validation
 ##' results or polygon predictions into a table that renders directly in
 ##' Quarto, R Markdown, HTML, LaTeX and the R console.
-##' @param object An object of class "RiskMap" resulting from a call to
-##' \code{\link{glgpm}}, a "summary.RiskMap" object, a
-##' "summary.RiskMap_cross_validation" object, or a "RiskMap_prediction"
-##' object (see \code{\link{to_table.RiskMap_prediction}}).
+##' @param object A fit from [glgpm()] or its [summary()][summary.RiskMap()],
+##' a cross-validation from [assess_prediction()] or its
+##' [summary()][summary.RiskMap_cross_validation()], or a prediction over
+##' `boundaries` from [predict()][predict.RiskMap()] (see
+##' [to_table.RiskMap_prediction()]).
 ##' @param digits A non-negative integer giving the number of decimal places
 ##' used to display numeric results.
 ##' @param col_names Optional column names, replacing the default headers.
@@ -1069,16 +1173,16 @@ describe_summary_link <- function(link_name, invlink_expression) {
 ##' compared share one notation: the estimate and confidence limits of a
 ##' parameter, and one metric across models.
 ##'
-##' When the input is a "RiskMap" model object, the table includes:
+##' When the input is a fit or its summary, the table includes:
 ##' \itemize{
-##'   \item Regression coefficients with their estimates, confidence intervals, and p-values.
+##'   \item Regression coefficients with their estimates and confidence intervals.
 ##'   \item Parameters for the spatial process.
 ##'   \item Random effect variances.
 ##'   \item The parameters of the family that were estimated, such as the
 ##'     measurement error variance of a Gaussian model.
 ##' }
 ##'
-##' When the input is a cross-validation summary object ("summary.RiskMap_cross_validation"), the table includes:
+##' When the input is a cross-validation or its summary, the table includes:
 ##' \itemize{
 ##'   \item A row for each model being compared.
 ##'   \item Performance metrics such as CRPS and SCRPS for each model.
@@ -1106,45 +1210,65 @@ to_table <- function(object, ...) {
 
 ##' @rdname to_table
 ##' @export
-to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
+to_table.RiskMap <- function(object, digits = 3, col_names = NULL, ...) {
+  to_table(summary(object), digits = digits, col_names = col_names, ...)
+}
+
+##' @rdname to_table
+##' @export
+to_table.summary.RiskMap <- function(object, digits = 3, col_names = NULL,
+                                     ...) {
   check_positive_integer(digits, "digits", allow_zero = TRUE)
+  table <- rbind(object$reg_coef[, 1:3, drop = FALSE], object$sp,
+                 object$ranef, object$family_parameters)
+  format_results_table(table, row_names = TRUE, digits = digits,
+                       col_names = col_names, ...)
+}
 
-  if (inherits(object, "summary.RiskMap") ||
-      inherits(object, "summary.RiskMap_cross_validation")) {
-    summary_out <- object
-  } else {
-    summary_out <- summary(object)
-  }
-  if (inherits(summary_out,
-               what = "summary.RiskMap", which = FALSE)) {
-    tab <- rbind(summary_out$reg_coef[, 1:3, drop = FALSE], summary_out$sp,
-                 summary_out$ranef,
-                 summary_out$family_parameters)
-    include_row_names <- TRUE
-  } else if (inherits(summary_out,
-                      what = "summary.RiskMap_cross_validation", which = FALSE)) {
-    n_models <- nrow(summary_out)
-    n_metrics <- ncol(summary_out)
-    model_names <- rownames(summary_out)
-    metric_names <- toupper(colnames(summary_out))
-    tab <- data.frame(Model = model_names)
-    for (i in seq_len(n_metrics)) {
-      tab[[paste(metric_names[i])]] <- summary_out[,i]
-    }
-    include_row_names <- FALSE
-  } else {
-    abort_input("{.arg object} must be a {.cls RiskMap} fit or a {.cls RiskMap_cross_validation} result, not {.obj_type_friendly {object}}.", arg = "object")
-  }
+##' @rdname to_table
+##' @export
+to_table.RiskMap_cross_validation <- function(object, digits = 3,
+                                              col_names = NULL, ...) {
+  to_table(summary(object), digits = digits, col_names = col_names, ...)
+}
 
-  tab <- as.data.frame(tab, check.names = FALSE)
+##' @rdname to_table
+##' @export
+to_table.summary.RiskMap_cross_validation <- function(object, digits = 3,
+                                                      col_names = NULL,
+                                                      ...) {
+  check_positive_integer(digits, "digits", allow_zero = TRUE)
+  table <- data.frame(Model = rownames(object))
+  metric_names <- toupper(colnames(object))
+  for (i in seq_len(ncol(object))) {
+    table[[metric_names[i]]] <- object[, i]
+  }
+  format_results_table(table, row_names = FALSE, digits = digits,
+                       col_names = col_names, ...)
+}
+
+##' @rdname to_table
+##' @export
+to_table.default <- function(object, ...) {
+  abort_input("{.arg object} must be a {.cls RiskMap} fit or its summary, a {.cls RiskMap_cross_validation} result or its summary, or a {.cls RiskMap_prediction} over {.arg boundaries}, not {.obj_type_friendly {object}}.", arg = "object")
+}
+
+##' The table of a fit or of a cross-validation, formatted for `kable()`
+##'
+##' Numbers are in fixed notation with `digits` decimal places, or in
+##' scientific notation for a value of a million or more and for one that
+##' fixed notation would show as zero. Values that are compared share one
+##' notation, the estimate and limits of a parameter (a row of a model table,
+##' `row_names = TRUE`) or one metric across models (a column of a
+##' cross-validation table). `...` goes to [knitr::kable()].
+##' @noRd
+format_results_table <- function(table, row_names, digits, col_names, ...) {
+  tab <- as.data.frame(table, check.names = FALSE)
   numeric_columns <- which(vapply(tab, is.numeric, logical(1)))
   values <- as.matrix(tab[numeric_columns])
   needs_scientific <- is.finite(values) & values != 0 &
     (abs(values) >= 1e6 | abs(values) < 10^(-digits))
-  # Values that are compared share one notation: the estimate and limits of a
-  # parameter (a row of a model table), or one metric across models (a
-  # column of a cross-validation table).
-  scientific <- if (include_row_names) {
+  scientific <- if (row_names) {
     matrix(rowSums(needs_scientific) > 0, nrow(values), ncol(values))
   } else {
     matrix(colSums(needs_scientific) > 0, nrow(values), ncol(values),
@@ -1170,57 +1294,13 @@ to_table.default <- function(object, digits = 3, col_names = NULL, ...) {
     dots$col.names <- col_names
   }
   if (is.null(dots$row.names))
-    dots$row.names <- include_row_names
+    dots$row.names <- row_names
   if (is.null(dots$align))
-    dots$align <- if (include_row_names) rep("r", ncol(tab)) else
+    dots$align <- if (row_names) rep("r", ncol(tab)) else
       c("l", rep("r", ncol(tab) - 1L))
 
   do.call(kable, c(list(x = tab), dots))
 }
-
-##' @title Compute Unique Coordinate Identifiers
-##'
-##' @description
-##' This function identifies unique coordinates from a `sf` (simple feature) object
-##' and assigns an identifier to each coordinate occurrence. It returns a list
-##' containing the identifiers for each row and a vector of unique identifiers.
-##'
-##' @param data An `sf` object containing geometrical data from which coordinates are extracted.
-##'
-##' @return A list with the following elements:
-##' \describe{
-##'   \item{ID_coords}{An integer vector where each element corresponds to a row in the input,
-##'   indicating the index of the unique coordinate in the full set of unique coordinates.}
-##'   \item{s_unique}{An integer vector containing the unique identifiers of all distinct coordinates.}
-##' }
-##'
-##' @details
-##' The function extracts the coordinate pairs from the `sf` object and determines the unique
-##' coordinates. It then assigns each row in the input data an identifier corresponding
-##' to the unique coordinate it matches.
-##'
-##' @examples
-##' data(italy_sim)
-##'
-##' create_ids(italy_sim)
-##'
-##' @export
-create_ids <- function(data) {
-  check_supplied(data)
-  check_data(data)
-  coords_o <- st_coordinates(data)
-  coords <- unique(coords_o)
-
-  m <- nrow(coords_o)
-  ID_coords <- sapply(1:m, function(i)
-    which(coords_o[i,1] == coords[,1] &
-            coords_o[i,2] == coords[,2]))
-  out <- list()
-  out$ID_coords <- ID_coords
-  out$s_unique <- unique(ID_coords)
-  return(out)
-}
-
 
 ##' @title Summarize Cross-Validation Scores for Spatial RiskMap Models
 ##'
@@ -1780,7 +1860,7 @@ check_data <- function(data, geometry = "point", type = "sf",
 #' @param data An `sf` or `sfc` object with a projected CRS.
 #' @param distance_units The requested coordinate units, either `"m"` or `"km"`.
 #' @param arg The argument that gave the coordinate reference system, such as
-#'   `model_crs`, or the data whose system it is.
+#'   `distance_crs`, or the data whose system it is.
 #' @return The numeric factor converting one CRS unit to `distance_units`.
 #' @importFrom units set_units
 #' @noRd
