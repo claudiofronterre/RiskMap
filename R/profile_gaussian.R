@@ -16,7 +16,7 @@
 ##' over the covariance parameters.
 ##' @noRd
 make_gaussian_profile_problem <- function(fitted) {
-  design_scaling <- standardize_design_matrix(fitted$D)
+  design_scaling <- model_design_scaling(fitted$D, fit_parameter_table(fitted))
   spatial_scaling <- scale_spatial_coordinates(fitted$coords)
   p <- ncol(fitted$D)
   likelihood <- make_gaussian_likelihood(
@@ -49,6 +49,7 @@ make_gaussian_profile_problem <- function(fitted) {
     value = value, estimate = estimate, names = names(estimate),
     labels = profile_labels(parameters, names(estimate)),
     standard_errors = profiled$standard_errors,
+    held = held_index(parameters),
     lower = bounds$lower, upper = bounds$upper,
     internal = list(value = value_internal, to = maps$to, from = maps$from,
                     transform = design_scaling$coefficient_transform, p = p,

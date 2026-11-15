@@ -1589,12 +1589,24 @@ glgpm_nong_adaptive <- function(
   bounds <- parameter_bounds(parameters)
   lower <- bounds$lower
   upper <- bounds$upper
+  # The parameters fixed_pars holds in the working vector stay at their
+  # starts, which are their values, by equal bounds.
+  held <- held_index(parameters)
+  lower[held] <- upper[held] <- unname(start[held])
   pc_prior <- isTRUE(control_mcml$pc_prior)
   penalised <- make_mcml_objective(engine, control_mcml, distances,
                                    distance_scale)
   objective <- penalised$objective
   penalty <- penalised$penalty
 
+  # With every parameter held there is nothing to maximise. The fit is the
+  # Monte Carlo log-likelihood at the values, on one bank of the validation
+  # size from the global proposal there, without a certificate.
+  if (length(held) == length(start)) {
+    return(held_mcml_result(engine, unname(start), parameters, D, family,
+                            invlink, y, units_m, control_mcml, fit_seed,
+                            family_parameters, estimating, messages))
+  }
   laplace <- NULL
   start <- unname(start)
   restart_start <- NULL
@@ -1625,14 +1637,24 @@ glgpm_nong_adaptive <- function(
     }
   }
   dispersed <- NULL
-  if (isTRUE(control_mcml$check_maxima %||% TRUE)) {
+  # The check for other maxima moves the spatial variance and scale, so it
+  # needs both free.
+  spatial_held <- any(c(engine$layout$index$sigma2,
+                        engine$layout$index$phi) %in% held)
+  # Held coefficients, as columns of the design.
+  held_coefficients <- which(engine$layout$index$beta %in% held)
+  if (isTRUE(control_mcml$check_maxima %||% TRUE) && !spatial_held) {
     dispersed <- make_dispersed_starts(engine$layout, distances)
     # The screen of short scales and the exact alarms need the likelihood
     # with independent location effects, computed exactly without
     # unstructured random effects. A custom link supplies its own terms.
     # They also take the records at one value of the family's parameters.
+    # The likelihood with independent location effects is maximised over
+    # every coefficient, so it bounds the model without held coefficients.
     if (estimating) {
       dispersed$screen_unavailable <- "an estimated parameter of the family"
+    } else if (length(held_coefficients)) {
+      dispersed$screen_unavailable <- "held coefficients"
     } else if (is.null(ID_re)) {
       dispersed$screen <- make_short_scale_screen(
         engine,
@@ -1666,10 +1688,10 @@ glgpm_nong_adaptive <- function(
     linked_index = stats::setNames(
       list(engine$layout$index$phi), engine$layout$index$sigma2
     ),
-    coefficient_index = engine$layout$index$beta,
+    coefficient_index = setdiff(engine$layout$index$beta, held),
     separation = find_separation(D, y, units_m %||% rep(1, length(y)),
-                                 family),
-    messages = messages
+                                 family, held = held_coefficients),
+    messages = messages, held_index = held
   )
   if (identical(fit$outcome, "no valid fit")) {
     riskmap_abort("Monte Carlo maximum likelihood could not obtain a valid fit ({fit$reason}).", class = "riskmap_error_fit")
@@ -1710,6 +1732,49 @@ glgpm_nong_adaptive <- function(
       log_likelihood_constant(family, y, units_m, family_parameters)
   }
   result
+}
+
+##' The result of `glgpm_nong_adaptive()` when every parameter is held
+##'
+##' The estimate is the held values, the covariance is NA, and the
+##' log-likelihood is the Monte Carlo estimate at the values on one bank of
+##' `control_mcml$validation_samples` draws from the global proposal anchored
+##' there, from the fit's seed, with the terms the records leave out. The
+##' optimiser record has no MCML outcome, so the fit reports no certificate.
+##' @noRd
+held_mcml_result <- function(engine, start, parameters, D, family, invlink, y,
+                             units_m, control_mcml, fit_seed,
+                             family_parameters, estimating, messages) {
+  progress_step("Evaluating the likelihood at the held values", messages)
+  engine$set_anchor(start)
+  set.seed(fit_seed)
+  draws <- as.integer(control_mcml$validation_samples %||% 5000L)
+  bank <- matrix(stats::rnorm(draws * engine$latent_dimension), nrow = draws)
+  log_lik <- engine$evaluate(start, bank)
+  progress_step_done(messages)
+  estimate <- working_estimate(parameters, start)
+  names_flat <- names(unlist(estimate))
+  covariance <- matrix(NA_real_, length(start), length(start),
+                       dimnames = list(names_flat, names_flat))
+  out <- list(
+    estimate = estimate,
+    grad_MLE = stats::setNames(rep(NA_real_, length(start)), names_flat),
+    covariance = covariance,
+    log_lik = log_lik,
+    S_samples = NULL,
+    link_function = make_inverse_link_functions(family, invlink, length(y))
+  )
+  attr(out, "optimizer") <- list(
+    convergence = 0L, message = "every parameter is held",
+    every_parameter_held = TRUE, mcml_history = list(),
+    mcml_validation_budget = draws
+  )
+  class(out) <- "RiskMap"
+  if (!estimating) {
+    out$log_lik <- out$log_lik +
+      log_likelihood_constant(family, y, units_m, family_parameters)
+  }
+  out
 }
 
 ##' The objective of certified MCML, with the PC penalty if requested

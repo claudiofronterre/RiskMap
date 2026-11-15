@@ -48,6 +48,9 @@ start). \code{mcml} is
 the measurement error variance of a Gaussian model, are in
 \code{family_parameters}, a table of those that were estimated, and
 \code{held_family_parameters}, a list of those held at a given value.
+The other parameters that \code{fixed_pars} holds keep their rows, with
+no interval, and \code{held_parameters} says at what values they are
+held (absent when none is).
 }
 \description{
 Provides a \code{summary} method for the "RiskMap" class that

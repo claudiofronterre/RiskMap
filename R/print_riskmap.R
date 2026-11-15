@@ -313,14 +313,15 @@ format_fit <- function(x, digits) {
   # Every estimated parameter but the coefficients, on its natural scale,
   # under its label, in the order of the working vector.
   parameters <- fit_parameter_table(x)
-  rows <- estimated_rows(parameters)
+  rows <- vector_rows(parameters)
   rows <- rows[rows$block != "coefficients", , drop = FALSE]
   estimates <- natural_values(parameters, x$estimate)
   covariance <- stats::setNames(
     unlist(estimates[setdiff(names(estimates), "beta")], use.names = FALSE),
     rows$label
-  )
+  )[is.na(rows$held)]
   fixed <- c(
+    describe_pinned_parameters(parameters),
     if (is.numeric(fit_fix_tau2(x))) {
       paste0("Variance of the nugget effect fixed at ", fit_fix_tau2(x))
     },
@@ -344,7 +345,9 @@ format_fit <- function(x, digits) {
     "",
     out_heading(paste0("Covariance parameters (Matern, kappa = ", x$kappa,
                        ")")),
-    format_estimates(covariance, digits),
+    # With every covariance parameter held there is no table, only the lines
+    # that say at what values.
+    if (length(covariance)) format_estimates(covariance, digits),
     out_text(fixed),
     "",
     out_pairs("Log-likelihood", format(x$log_lik, digits = digits + 3L)),

@@ -63,7 +63,7 @@ parameter_table <- function(beta_names, fix_tau2,
                             estimated_family = character(),
                             held_family = list(), re_names = NULL,
                             p = length(beta_names), n_re = length(re_names),
-                            distance_units = NULL) {
+                            distance_units = NULL, pinned = list()) {
   # NULL, as estimated_family_parameters() gives for a family without
   # parameters, is no parameter, as character() is.
   estimated_family <- as.character(estimated_family)
@@ -119,6 +119,17 @@ parameter_table <- function(beta_names, fix_tau2,
     if (n_re > 0) "sigma2_re"
   )]))
   estimated$held <- NA_real_
+  # Coefficients, the spatial variance and scale and the random-effect
+  # variances that fixed_pars holds keep their place in the working vector,
+  # with their value (pinned_rows()).
+  for (name in names(pinned)) {
+    value <- pinned[[name]]
+    rows_of <- which(estimated$name == name)
+    if (name %in% c("beta", "sigma2_re")) {
+      rows_of <- rows_of[match(names(value), estimated$element[rows_of])]
+    }
+    estimated$held[rows_of] <- unname(value)
+  }
 
   held_nugget <- is.numeric(fix_tau2) && !nugget
   held <- rbind(
@@ -151,7 +162,8 @@ parameter_table <- function(beta_names, fix_tau2,
                  "working_label", "start", "held")]
   rownames(rows) <- NULL
   structure(list(rows = rows, layout = layout, fix_tau2 = fix_tau2,
-                 beta_names = beta_names, re_names = re_names),
+                 beta_names = beta_names, re_names = re_names,
+                 pinned = if (length(pinned)) pinned else list()),
             class = "riskmap_parameter_table")
 }
 
@@ -164,14 +176,15 @@ parameter_table <- function(beta_names, fix_tau2,
 ##' @noRd
 model_parameter_table <- function(beta_names, fix_tau2, exact, fix_var_me,
                                   estimated_family, family_parameters,
-                                  re_names, distance_units) {
+                                  re_names, distance_units, pinned = list()) {
   held <- family_parameters %||% list()
   if (is.numeric(fix_var_me)) held$sigma2_me <- fix_var_me
   parameter_table(
     beta_names, fix_tau2 = fix_tau2,
     estimated_family = if (exact) gaussian_family_block(fix_var_me) else
       estimated_family,
-    held_family = held, re_names = re_names, distance_units = distance_units
+    held_family = held, re_names = re_names, distance_units = distance_units,
+    pinned = pinned
   )
 }
 
@@ -191,23 +204,58 @@ fit_parameter_table <- function(fit) {
     held_family = held_family_parameters(fit),
     re_names = names(estimate$sigma2_re),
     n_re = length(estimate$sigma2_re),
-    distance_units = fit$distance_units
+    distance_units = fit$distance_units,
+    pinned = fit_pinned(fit)
   )
 }
 
-##' The rows of the parameters in the working vector
+##' The parameters a fit holds in its working vector, from its `fixed_pars`
 ##' @noRd
-estimated_rows <- function(table) {
+fit_pinned <- function(fit) {
+  held <- fit$fixed_pars
+  held[setdiff(names(held), outside_holds)]
+}
+
+##' The rows of the parameters in the working vector
+##'
+##' Those estimated and those `fixed_pars` holds there (`pinned_rows()`), in
+##' its order.
+##' @noRd
+vector_rows <- function(table) {
   table$rows[!is.na(table$rows$index), , drop = FALSE]
 }
 
-##' The names of a block's estimated parameters, as the estimate names them
+##' The rows of the estimated parameters, the free part of the working vector
+##' @noRd
+estimated_rows <- function(table) {
+  rows <- vector_rows(table)
+  rows[is.na(rows$held), , drop = FALSE]
+}
+
+##' The rows of the parameters held in the working vector at their values
+##'
+##' Coefficients, the spatial variance and scale and the random-effect
+##' variances that `fixed_pars` holds. The nugget, the measurement error
+##' variance and the family's parameters that are held are outside it, with an
+##' NA `index`.
+##' @noRd
+pinned_rows <- function(table) {
+  rows <- vector_rows(table)
+  rows[!is.na(rows$held), , drop = FALSE]
+}
+
+##' The positions of the parameters held in the working vector
+##' @noRd
+held_index <- function(table) pinned_rows(table)$index
+
+##' The names of the parameters in the working vector, as the estimate names
+##' them
 ##'
 ##' One name for each parameter, `beta` and `sigma2_re` once each, in the
-##' order of the working vector.
+##' order of the working vector, held ones included.
 ##' @noRd
 estimate_names <- function(table) {
-  rows <- estimated_rows(table)
+  rows <- vector_rows(table)
   unique(ifelse(rows$scale == "nugget", "nu2", rows$name))
 }
 
@@ -289,7 +337,7 @@ working_start <- function(table, start) {
 start_value <- function(table, start, name) {
   user <- if (name == "nu2") "tau2" else name
   value <- start[[user]]
-  wanted <- sum(estimated_rows(table)$name == user)
+  wanted <- sum(vector_rows(table)$name == user)
   if (length(value) != wanted) {
     riskmap_bug("The start of {.code {user}} has {length(value)} values, not {wanted}.")
   }
@@ -353,6 +401,22 @@ natural_values <- function(table, estimate, held = FALSE) {
       out[[name]] <- family_parameter(name)$natural(estimate[[name]])
     }
   }
+  # The parameters held in the working vector are given at their values,
+  # which the working scale can change in the last bits.
+  pinned <- pinned_rows(table)
+  for (k in seq_len(nrow(pinned))) {
+    name <- pinned$name[k]
+    if (name %in% c("beta", "sigma2_re")) {
+      at <- if (name == "beta") {
+        match(pinned$element[k], table$beta_names)
+      } else {
+        match(pinned$element[k], table$re_names)
+      }
+      out[[name]][at] <- pinned$held[k]
+    } else {
+      out[[name]] <- pinned$held[k]
+    }
+  }
   if (held) {
     fixed <- rows[is.na(rows$index), , drop = FALSE]
     for (k in seq_len(nrow(fixed))) out[[fixed$name[k]]] <- fixed$held[k]
@@ -392,10 +456,10 @@ estimated_coef <- function(fit) {
 ##' default, and the nugget's entry is placed by name, so that it lands on
 ##' the right row whatever the order of the estimate.
 ##' @noRd
-parameter_jacobian <- function(table, names = estimated_rows(table)$stored) {
+parameter_jacobian <- function(table, names = vector_rows(table)$stored) {
   J <- diag(length(names))
   dimnames(J) <- list(names, names)
-  rows <- estimated_rows(table)
+  rows <- vector_rows(table)
   nugget <- intersect(rows$stored[rows$scale == "nugget"], names)
   if (length(nugget)) J[nugget, "sigma2"] <- 1
   J
@@ -411,7 +475,7 @@ parameter_jacobian <- function(table, names = estimated_rows(table)$stored) {
 ##' @return A list with `lower` and `upper`.
 ##' @noRd
 parameter_bounds <- function(table, log_scale = NULL, coefficients = NULL) {
-  rows <- estimated_rows(table)
+  rows <- vector_rows(table)
   lower <- rows$lower
   upper <- rows$upper
   if (!is.null(coefficients)) {
@@ -451,7 +515,7 @@ limit_index <- function(table) {
 ##' to the spatial variance as `nu2`.
 ##' @noRd
 table_labels <- function(table, names) {
-  rows <- estimated_rows(table)
+  rows <- vector_rows(table)
   labels <- c(stats::setNames(rows$label, rows$reported),
               stats::setNames(rows$working_label, rows$stored))
   stats::setNames(unname(labels[names]), names)
@@ -527,9 +591,18 @@ read_start_pars <- function(table, start_pars, coords = NULL,
     abort_input("{.arg {arg}} must be a named list of values, not {supplied}.", arg = arg, call = call)
   }
   rows <- estimated_rows(table)
-  held <- table$rows[is.na(table$rows$index), , drop = FALSE]
+  # Every held parameter, in the working vector or outside it.
+  held <- table$rows[!is.na(table$rows$held), , drop = FALSE]
+  all_rows <- vector_rows(table)
   model_names <- unique(rows$name)
   vectors <- c(beta = "coefficients", sigma2_re = "random_effects")
+  same_as_held <- function(value, held_at) {
+    is.numeric(value) && length(value) == length(held_at) &&
+      isTRUE(all.equal(unname(value), held_at))
+  }
+  held_error <- function(key, held_at) {
+    abort_input(c("{.code {arg}} can't give a value for {.code {key}}, which the model holds at {held_at}.", "i" = "Drop it from {.arg {arg}}, or from {.arg fixed_pars}."), arg = arg, call = call)
+  }
   given <- list()
   add <- function(name, element, value, key) {
     old <- given[[name]]
@@ -561,15 +634,16 @@ read_start_pars <- function(table, start_pars, coords = NULL,
     }
   }
   given_keys <- keys[!vapply(start_pars, is.null, logical(1))]
-  unknown <- setdiff(given_keys, c(model_names, rows$reported, held$name))
+  unknown <- setdiff(given_keys, c(model_names, rows$reported, held$name,
+                                   held$reported, all_rows$name))
   if (length(unknown)) {
     abort_input(c("{.arg {arg}} must name parameters of the model.", "x" = "{.val {unknown}} {?is/are} not among them.", "i" = "The model's parameters are {.val {model_names}}.", "i" = "{.fn glgpm_parameters} lists them with their elements."), arg = arg, call = call)
   }
   for (key in keys) {
     value <- start_pars[[key]]
     if (is.null(value)) next
-    if (key %in% model_names && key %in% names(vectors)) {
-      elements <- rows$element[rows$name == key]
+    if (key %in% all_rows$name && key %in% names(vectors)) {
+      elements <- all_rows$element[all_rows$name == key]
       check_values(value, key, positive = key != "beta")
       supplied <- names(value)
       if (is.null(supplied)) {
@@ -583,7 +657,18 @@ read_start_pars <- function(table, start_pars, coords = NULL,
         unknown <- setdiff(supplied, elements)
         abort_input(c("{.code {arg}${key}} must be named by {if (key == 'beta') 'the columns of the design matrix' else 'the `re()` terms'}.", "x" = "{.val {unknown}} {?is/are} not among them.", "i" = "They are {.val {elements}}."), arg = arg, call = call)
       }
-      add(key, supplied, unname(value), key)
+      # Elements the model holds are left out when they have their held
+      # values, as in start_pars = coef(fit) of a fit with the same holds.
+      value <- unname(value)
+      pinned_here <- held[held$name == key, , drop = FALSE]
+      at <- match(supplied, pinned_here$element)
+      for (k in which(!is.na(at))) {
+        if (!same_as_held(value[k], pinned_here$held[at[k]])) {
+          held_error(paste0(key, ".", supplied[k]), pinned_here$held[at[k]])
+        }
+      }
+      keep <- is.na(at)
+      if (any(keep)) add(key, supplied[keep], value[keep], key)
     } else if (key %in% model_names) {
       check_values(value, key, positive = TRUE)
       if (length(value) != 1L) {
@@ -598,7 +683,7 @@ read_start_pars <- function(table, start_pars, coords = NULL,
       }
       add(row$name, if (row$name %in% names(vectors)) row$element, unname(value), key)
     } else {
-      held_at <- held$held[held$name == key]
+      held_at <- held$held[held$name == key | held$reported %in% key]
       if (key == "tau2" && identical(held_at, 0)) {
         abort_input("A value for {.code tau2} can't be given when {.fn gp} has {.code nugget = FALSE}.", arg = arg, call = call)
       }
@@ -646,6 +731,85 @@ apply_given_start <- function(table, start, given) {
     }
   }
   start
+}
+
+##' Maximise a Gaussian likelihood over the parameters it does not hold
+##'
+##' `objective` is the negative log-likelihood of the working vector, and
+##' `gradient` and `hessian` those of the log-likelihood. Without `held`
+##' positions this is `nlminb()` on the whole vector, as the Gaussian paths
+##' have always called it. With them, `nlminb()` works on the free subvector,
+##' the held values fill the rest, and the information and covariance are
+##' those of the free parameters, the covariance with NA rows and columns for
+##' the held ones.
+##' @return A list with the `fit` of `nlminb()` (its `par` the whole working
+##'   vector), the `information` and its root, and the `covariance`.
+##' @noRd
+optimise_gaussian <- function(start, objective, gradient, hessian, held,
+                              messages) {
+  if (length(held) && length(held) == length(start)) {
+    # Every parameter held, so the fit is the likelihood at the values.
+    fit <- list(par = start, objective = as.numeric(objective(start)),
+                convergence = 0L,
+                iterations = 0L, message = "every parameter is held",
+                evaluations = c("function" = 1L, gradient = 0L))
+    return(list(fit = fit, information = matrix(numeric(), 0L, 0L),
+                root = NULL,
+                covariance = matrix(NA_real_, length(start), length(start))))
+  }
+  if (!length(held)) {
+    fit <- nlminb(start, objective, function(x) -gradient(x),
+                  function(x) -hessian(x), control = list(trace = 1 * messages))
+    information <- -hessian(fit$par)
+    root <- factor_covariance(information, "observed information matrix")
+    return(list(fit = fit, information = information, root = root,
+                covariance = chol2inv(root)))
+  }
+  free <- setdiff(seq_along(start), held)
+  fill <- function(values) {
+    full <- start
+    full[free] <- values
+    full
+  }
+  fit <- nlminb(start[free], function(z) objective(fill(z)),
+                function(z) -gradient(fill(z))[free],
+                function(z) -hessian(fill(z))[free, free, drop = FALSE],
+                control = list(trace = 1 * messages))
+  fit$par <- fill(fit$par)
+  information <- -hessian(fit$par)[free, free, drop = FALSE]
+  root <- factor_covariance(information, "observed information matrix")
+  covariance <- matrix(NA_real_, length(start), length(start))
+  covariance[free, free] <- chol2inv(root)
+  list(fit = fit, information = information, root = root,
+       covariance = covariance)
+}
+
+##' The standardisation of a model's design
+##'
+##' `standardize_design_matrix()`, without centring when the model holds its
+##' intercept, so that every held coefficient is held at one coordinate on the
+##' standardised scale. The fit, its profiles, its radius check and its refits
+##' all standardise through here.
+##' @noRd
+model_design_scaling <- function(design, parameters) {
+  pinned <- pinned_rows(parameters)
+  intercept_held <- any(pinned$name == "beta" &
+                          pinned$element %in% "(Intercept)")
+  standardize_design_matrix(design, centre = !intercept_held)
+}
+
+##' Values given for parameters, from two lists, as the starts and the held
+##' values, with the elements of `beta` and `sigma2_re` of both
+##' @noRd
+combine_given <- function(first, second) {
+  for (name in names(second)) {
+    first[[name]] <- if (name %in% c("beta", "sigma2_re")) {
+      c(first[[name]], second[[name]])
+    } else {
+      second[[name]]
+    }
+  }
+  first
 }
 
 ##' Whether `start_pars` gives every estimated parameter
@@ -712,13 +876,16 @@ given_start_names <- function(given) {
 ##'
 ##' @section Held values:
 ##' `fixed_pars` of [glgpm()] takes the same names and structure, and holds
-##' the parameters it gives at their values instead of estimating them. It
-##' holds the variance of a nugget (`tau2`, for a model with
-##' `gp(nugget = TRUE)`), the measurement error variance of a Gaussian model
-##' (`sigma2_me`, which may be zero) and the size of a negative binomial model
-##' (`theta`). [coef.RiskMap()] gives the held parameters with the estimated
-##' ones, so `start_pars = coef(fit)` works for a refit with the same holds,
-##' and [summary.RiskMap()] shows them as fixed.
+##' any of the parameters it gives at their values instead of estimating them,
+##' such as `list(phi = 20)`, `list(beta = c(x = 0.5))` or
+##' `list(sigma2_re = c(household = 0.2))`. The nugget variance is held only in
+##' a model with `gp(nugget = TRUE)`, and a nugget or random-effect variance of
+##' zero is the model without that term. [coef.RiskMap()] gives the held
+##' parameters with the estimated ones, so `start_pars = coef(fit)` works for a
+##' refit with the same holds, and [summary.RiskMap()] and [print()] show them
+##' as fixed, without standard errors. [profile.RiskMap()] has no profile of a
+##' held parameter and holds them in the profiles of the others, and
+##' [parametric_bootstrap()] refits with the same holds.
 ##' @seealso [glgpm()], [glgpm_parameters()], [coef.RiskMap()]
 NULL
 
@@ -766,7 +933,7 @@ glgpm_parameters <- function(formula, data, family, fixed_pars = NULL,
     colnames(design), fix_tau2 = holds$fix_tau2, exact = model$exact,
     fix_var_me = holds$fix_var_me, estimated_family = holds$estimated_family,
     family_parameters = holds$family_parameters, re_names = re_names,
-    distance_units = distance_units
+    distance_units = distance_units, pinned = holds$pinned
   )
   rows <- parameters$rows
   # A model without a nugget holds it at zero in the table, which is not a
@@ -811,26 +978,40 @@ print.riskmap_parameters <- function(x, ...) {
 ##'
 ##' With the names and structure of `start_pars` (`read_start_pars()`), on the
 ##' table of the parameters the model could estimate, so that a held
-##' parameter is found whether or not something else holds it. The nugget
-##' variance and the size must be positive, and the measurement error
-##' variance zero or positive. A nugget variance of zero stops, since that is
-##' the model without a nugget.
-##' @return A named list of the values held, in the order of the table.
+##' parameter is found whether or not something else holds it. Every value
+##' must be finite, and every one but the coefficients positive, except the
+##' measurement error variance, which may be zero. A zero for the nugget
+##' variance or for the variance of an `re()` term stops with a pointer to the
+##' model without that term.
+##' @return A named list of the values held, in the order of the table, with
+##'   `beta` and `sigma2_re` as named vectors of the elements held.
 ##' @noRd
 read_fixed_pars <- function(table, fixed_pars, call = rlang::caller_env()) {
   if (is.null(fixed_pars)) return(list())
   if (is.list(fixed_pars) && identical(fixed_pars$tau2, 0)) {
     abort_input(c("{.code fixed_pars$tau2} can't be 0.", "i" = "A model without a nugget has {.code gp(nugget = FALSE)}."), arg = "fixed_pars", call = call)
   }
+  zero_re <- if (is.list(fixed_pars)) {
+    values <- fixed_pars[grepl("^sigma2_re($|\\.)", names(fixed_pars))]
+    any(vapply(values, function(value) {
+      is.numeric(value) && any(value %in% 0)
+    }, logical(1)))
+  }
+  if (isTRUE(zero_re)) {
+    abort_input(c("A random-effect variance in {.arg fixed_pars} can't be 0.", "i" = "A model without that variation drops its term from {.fn re}."), arg = "fixed_pars", call = call)
+  }
   held <- read_start_pars(table, fixed_pars, arg = "fixed_pars",
                           zero = "sigma2_me", call = call)
-  holdable <- c("tau2", "sigma2_me", "theta")
-  others <- setdiff(names(held), holdable)
-  if (length(others)) {
-    abort_input(c("{.arg fixed_pars} can hold {.code tau2}, {.code sigma2_me} and {.code theta}.", "x" = "{.val {others}} can't be held."), arg = "fixed_pars", call = call)
-  }
   held[intersect(unique(table$rows$name), names(held))]
 }
+
+##' The holds that stay outside the working vector
+##'
+##' The nugget variance, the measurement error variance and the family's
+##' parameters, which the engines take as `fix_tau2`, `fix_var_me` and the
+##' family's held parameters. The others are held inside it (`pinned_rows()`).
+##' @noRd
+outside_holds <- c("tau2", "sigma2_me", "theta")
 
 ##' Read the holds of a model, from `gp()`, the family and `fixed_pars`
 ##'
@@ -869,7 +1050,8 @@ read_model_holds <- function(beta_names, nugget, model, family_link, re_names,
   list(held = held, fix_tau2 = if (!has_nugget) 0 else held$tau2 %||% TRUE,
        fix_var_me = if (model$exact) held$sigma2_me,
        family_parameters = family_parameters,
-       estimated_family = estimated_family)
+       estimated_family = estimated_family,
+       pinned = held[setdiff(names(held), outside_holds)])
 }
 
 ##' The nugget of a fit as the engines take it

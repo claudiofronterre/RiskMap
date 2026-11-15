@@ -526,7 +526,10 @@ compute_observed_information <- function(objective, estimate, fit_bank,
       error = function(error) NULL
     )
   }
-  free <- setdiff(seq_along(estimate), boundary)
+  # Parameters that fixed_pars holds are never free, as variances the engine
+  # holds at a boundary are not, but they are not boundary values.
+  held <- limits$held_index %||% integer()
+  free <- setdiff(seq_along(estimate), c(boundary, held))
   root <- factor_free(free)
   variance_index <- limits$variance_index
   limit_index <- limits$limit_index %||% integer()
@@ -541,7 +544,7 @@ compute_observed_information <- function(objective, estimate, fit_bank,
       boundary, near_zero,
       unlist(limits$linked_index[as.character(near_zero)], use.names = FALSE)
     )))
-    free <- setdiff(seq_along(estimate), boundary)
+    free <- setdiff(seq_along(estimate), c(boundary, held))
     root <- factor_free(free)
   }
   list(information = information, root = root, free = free,
@@ -1065,7 +1068,9 @@ is_valid_fit <- function(fit) {
 ##' and are ignored. Separating directions form a cone, and covariates are
 ##' held fixed one at a time, while a direction remains, so that d changes
 ##' few of them. Centring and scaling the covariates changes neither whether
-##' the data are separated nor which covariates d changes.
+##' the data are separated nor which covariates d changes. The columns in
+##' `held`, coefficients that `fixed_pars` holds, are known terms, so d never
+##' changes them.
 ##' @return NULL if no separation is found. Otherwise a list with the
 ##' `direction` d, the separated `observations` (where D d is not zero), how
 ##' many of them have no positives (`no_positives`) and how many have only
@@ -1074,7 +1079,8 @@ is_valid_fit <- function(fit) {
 ##' "no positives" or "only positives" when every observation is of that kind
 ##' and NULL otherwise.
 ##' @noRd
-find_separation <- function(D, y, units_m, family, tolerance = 1e-9) {
+find_separation <- function(D, y, units_m, family, held = integer(),
+                            tolerance = 1e-9) {
   D <- as.matrix(D)
   if (!ncol(D)) return(NULL)
   informative <- units_m > 0
@@ -1099,13 +1105,13 @@ find_separation <- function(D, y, units_m, family, tolerance = 1e-9) {
                                                  lengths[keep], tolerance)
     if (is.null(combination)) NULL else drop(basis %*% combination)
   }
-  direction <- search(integer())
+  direction <- search(held)
   if (is.null(direction)) return(NULL)
   constant <- apply(D, 2L, function(column) all(column == column[1L]))
   # Separating directions form a cone, and one that changes fewer
   # covariates names the cause more plainly.
-  fixed <- integer()
-  for (column in setdiff(order(abs(direction)), which(constant))) {
+  fixed <- held
+  for (column in setdiff(order(abs(direction)), c(which(constant), held))) {
     reduced <- search(c(fixed, column))
     if (!is.null(reduced)) {
       direction <- reduced
@@ -1454,7 +1460,8 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
                               near_zero_log_variance = -4,
                               limit_index = integer(), limit_shift = 0,
                               coefficient_index = integer(),
-                              separation = NULL, messages = FALSE) {
+                              separation = NULL, messages = FALSE,
+                              held_index = integer()) {
   if (is.null(lower)) lower <- rep(-10, length(start))
   if (is.null(upper)) upper <- rep(10, length(start))
   validation_budget <- as.integer(validation_budget)
@@ -1468,7 +1475,7 @@ fit_adaptive_mcml <- function(engine, start, objective = engine$evaluate,
     boundary_log_variance = boundary_log_variance,
     near_zero_log_variance = near_zero_log_variance, tolerance = tolerance,
     dispersed = dispersed, coefficient_index = coefficient_index,
-    separation = separation
+    separation = separation, held_index = held_index
   )
   stream <- function(offset) {
     as.integer(((seed - 1 + offset) %% .Machine$integer.max) + 1)
