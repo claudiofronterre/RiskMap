@@ -135,9 +135,27 @@ skip_if_worldpop_unreachable <- function() {
 
 test_that("get_worldpop downloads from WorldPop", {
   skip_on_cran()
+  skip_if_not_installed("jsonlite")
   skip_if_offline("hub.worldpop.org")
   skip_if_worldpop_unreachable()
   total <- get_worldpop("LBR", 2011, resolution = "1km",
                         dest_dir = withr::local_tempdir(), messages = FALSE)
   expect_gt(terra::global(total, "sum", na.rm = TRUE)[[1]], 3e6)
+})
+
+test_that("the WorldPop catalogue asks for jsonlite before going online", {
+  skip_if_not_installed("jsonlite")
+  local_mocked_bindings(
+    check_installed = function(pkg, ...) {
+      rlang::abort(pkg, class = "test_package_asked")
+    },
+    .package = "rlang"
+  )
+  # Reading the catalogue first would stop with another error.
+  local_mocked_bindings(
+    fromJSON = function(...) rlang::abort("online", class = "test_went_online"),
+    .package = "jsonlite"
+  )
+  expect_error(worldpop_catalogue("pop/wpgp", "LBR"), "jsonlite",
+               class = "test_package_asked")
 })

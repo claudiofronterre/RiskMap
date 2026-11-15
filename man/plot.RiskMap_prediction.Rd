@@ -70,9 +70,11 @@ always use limits from 0 to 1.}
 supplied, values are shown in classes, for example programme thresholds
 such as \code{c(0, 0.05, 0.1, 0.2, 1)}.}
 
-\item{north_arrow}{Logical. Add a north arrow. Defaults to \code{FALSE}.}
+\item{north_arrow}{Logical. Add a north arrow, which needs the
+ggspatial package. Defaults to \code{FALSE}.}
 
-\item{scale_bar}{Logical. Add a scale bar. Defaults to \code{FALSE}.}
+\item{scale_bar}{Logical. Add a scale bar, which needs the ggspatial
+package. Defaults to \code{FALSE}.}
 
 \item{...}{Additional arguments passed to the ggplot2 fill scale, for
 example \code{transform = "sqrt"} for skewed values.}

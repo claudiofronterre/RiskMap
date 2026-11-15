@@ -60,7 +60,8 @@ test_that("unexplained spatial variance matches the kriging formula", {
                                    gaussian_intercept_model$distance_units)
   newdata <- st_as_sf(data.frame(x = point[1] / factor, z = point[2] / factor),
                       coords = c("x", "z"), crs = 32637)
-  extrapolation <- assess_extrapolation(gaussian_intercept_model, newdata)
+  extrapolation <- assess_extrapolation(gaussian_intercept_model, newdata,
+                                        spatial_threshold = 0.8)
   expect_equal(extrapolation$spatial_unexplained, expected, tolerance = 1e-8)
   expect_identical(extrapolation$covariates_outside, 0L)
 })
@@ -71,7 +72,10 @@ test_that("extrapolation maps and argument checks", {
   ))), crs = 32637))
   grid <- create_grid(boundary, spacing = 2, distance_units = "km")
   grid$cov <- seq(-3, 3, length.out = nrow(grid))
-  extrapolation <- assess_extrapolation(gaussian_model, grid)
+  # The fixture's locations share almost no correlation, which leaves the
+  # default threshold at 1, so the maps use a fixed one.
+  extrapolation <- assess_extrapolation(gaussian_model, grid,
+                                        spatial_threshold = 0.8)
   expect_false(is.null(attr(extrapolation, "grid_metadata")))
   for (indicator in c("extrapolation", "spatial_unexplained",
                       "covariate_novelty", "covariate_leverage")) {
@@ -89,8 +93,9 @@ test_that("extrapolation maps and argument checks", {
   ))
   with_missing <- grid
   with_missing$cov[1] <- NA
-  expect_warning(missing_map <- plot(assess_extrapolation(gaussian_model,
-                                                          with_missing)),
+  expect_warning(missing_map <- plot(assess_extrapolation(
+    gaussian_model, with_missing, spatial_threshold = 0.8
+  )),
                  "missing values, so")
   expect_identical(ggplot2::get_guide_data(missing_map, "fill")$.label,
                    c("Supported", "Spatial", "Covariate",
@@ -114,20 +119,16 @@ test_that("unexplained spatial variance uses fixed variance components", {
   estimated_model <- fixed_model
   estimated_model$fixed_pars <- NULL
   estimated_model$estimate$sigma2_me <- log(0.2)
-  expect_equal(
-    assess_extrapolation(fixed_model, gaussian_data)$spatial_unexplained,
-    assess_extrapolation(estimated_model, gaussian_data)$spatial_unexplained,
-    tolerance = 1e-12
-  )
+  share <- function(model) {
+    assess_extrapolation(model, gaussian_data,
+                         spatial_threshold = 0.8)$spatial_unexplained
+  }
+  expect_equal(share(fixed_model), share(estimated_model), tolerance = 1e-12)
 
   nugget_model <- gaussian_intercept_model
   nugget_model$nugget <- "fixed"
   nugget_model$fixed_pars <- list(tau2 = 0.25)
-  expect_true(all(
-    assess_extrapolation(nugget_model, gaussian_data)$spatial_unexplained >
-      assess_extrapolation(gaussian_intercept_model,
-                           gaussian_data)$spatial_unexplained
-  ))
+  expect_true(all(share(nugget_model) > share(gaussian_intercept_model)))
 })
 
 test_that("the unexplained share includes the binomial sampling noise", {
@@ -178,8 +179,10 @@ test_that("the unexplained share includes the binomial sampling noise", {
                       coords = c("x", "z"), crs = 32637)
   extrapolation <- assess_extrapolation(binomial_model, newdata)
   expect_equal(extrapolation$spatial_unexplained, expected, tolerance = 1e-5)
-  expect_lt(max(left_out), 0.95)
-  expect_equal(attr(extrapolation, "spatial_threshold"), max(left_out),
+  threshold <- stats::quantile(left_out, 0.95, names = FALSE)
+  expect_lt(threshold, 0.95)
+  expect_lt(threshold, max(left_out) - 0.01)
+  expect_equal(attr(extrapolation, "spatial_threshold"), threshold,
                tolerance = 1e-6)
   at_sites <- assess_extrapolation(binomial_model, binomial_data)
   expect_identical(as.character(at_sites$extrapolation),
@@ -188,7 +191,7 @@ test_that("the unexplained share includes the binomial sampling noise", {
   expect_true(attr(extrapolation, "sampling_noise"))
   expect_identical(
     as.character(extrapolation$extrapolation),
-    if (expected > max(left_out)) "Spatial" else "Supported"
+    if (expected > threshold) "Spatial" else "Supported"
   )
 
   # Without the noise, the share is that of the locations and the nugget,
@@ -235,14 +238,19 @@ test_that("a Gaussian share is the kriging variance with the records averaged", 
 })
 
 test_that("the print of indicators states the classes and the thresholds", {
+  # A longer scale than the fixture's, so that the threshold is below 1
+  binomial_model$estimate$phi <- log(4)
   extrapolation <- assess_extrapolation(binomial_model, binomial_data)
   printed <- capture.output(print(extrapolation))
   expect_match(printed[1L], "Extrapolation")
   expect_true("Indicators at 10 locations." %in% printed)
+  share <- paste0(format(100 * attr(extrapolation, "spatial_threshold"),
+                         digits = 3), "%")
   expect_match(squish(printed), paste0(
-    "Spatial: more of the spatial variance left unexplained than at any ",
-    "sampled location when its own data are left out \\("
-  ))
+    "Spatial: more than ", share, " of the spatial variance left ",
+    "unexplained, the 95th percentile of the shares at the sampled ",
+    "locations when their own data are left out."
+  ), fixed = TRUE)
   printed_again <- capture.output(shown <- withVisible(print(extrapolation)))
   expect_false(shown$visible)
   expect_identical(shown$value, extrapolation)
@@ -255,17 +263,34 @@ test_that("the print of indicators states the classes and the thresholds", {
   expect_match(printed, "more than 50% of the spatial variance left unexplained",
                fixed = TRUE)
   expect_match(printed, "leaves out the sampling noise", fixed = TRUE)
-  # A location that shares no correlation with the others sets the
-  # threshold at 1, and the print says that nothing can be flagged.
+  # Locations that share almost no correlation set the threshold at 1, so
+  # nothing can be flagged, which assess_extrapolation() warns of and the
+  # print says.
   far <- st_as_sf(data.frame(x = 1e7, z = 1e7, cov = 0), coords = c("x", "z"),
                   crs = 32637)
-  isolated <- assess_extrapolation(gaussian_model, far)
+  expect_warning(isolated <- assess_extrapolation(gaussian_model, far),
+                 "no location can be classed as spatial extrapolation",
+                 class = "riskmap_warning")
   expect_equal(attr(isolated, "spatial_threshold"), 1, tolerance = 1e-12)
   expect_identical(as.character(isolated$extrapolation), "Supported")
-  expect_match(squish(capture.output(print(isolated))),
-               "shares no spatial correlation with the others", fixed = TRUE)
-  expect_no_match(squish(capture.output(print(given))),
-                  "shares no spatial correlation", fixed = TRUE)
+  printed <- squish(capture.output(print(isolated)))
+  expect_match(printed, paste0(
+    "Spatial: none, since the threshold is 100%, the 95th percentile of the ",
+    "shares at the sampled locations when their own data are left out."
+  ), fixed = TRUE)
+  expect_match(printed, "unexplained at more than 5% of them", fixed = TRUE)
+  expect_no_match(squish(capture.output(print(extrapolation))),
+                  "Spatial: none", fixed = TRUE)
+  # A threshold that is given, or a percentile below 1, gives no warning.
+  expect_no_warning(assess_extrapolation(gaussian_model, far,
+                                         spatial_threshold = 0.8))
+  expect_no_warning(assess_extrapolation(binomial_model, binomial_data))
+  # A threshold below 1 never prints as 100%.
+  expect_identical(
+    vapply(c(0.5, 0.8181409, 0.99978, 0.9999999, 1),
+           format_extrapolation_share, character(1)),
+    c("50%", "81.8%", "99.98%", "99.99999%", "100%")
+  )
   # A subset without the classes prints as an sf object.
   expect_output(print(extrapolation[1:2, "covariates_outside"]),
                 "Simple feature collection")
