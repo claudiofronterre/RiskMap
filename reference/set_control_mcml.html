@@ -100,9 +100,9 @@ the fit is repeated.</p>
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">set_control_mcml</span><span class="op">(</span></span>
-<span>  initial_samples <span class="op">=</span> <span class="fl">1000L</span>,</span>
-<span>  validation_samples <span class="op">=</span> <span class="fl">5000L</span>,</span>
-<span>  max_samples <span class="op">=</span> <span class="fl">16000L</span>,</span>
+<span>  initial_draws <span class="op">=</span> <span class="fl">1000L</span>,</span>
+<span>  validation_draws <span class="op">=</span> <span class="fl">5000L</span>,</span>
+<span>  max_draws <span class="op">=</span> <span class="fl">16000L</span>,</span>
 <span>  max_stages <span class="op">=</span> <span class="fl">4L</span>,</span>
 <span>  tolerance <span class="op">=</span> <span class="fl">0.1</span>,</span>
 <span>  proposal <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"global"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
@@ -123,12 +123,12 @@ the fit is repeated.</p>
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
 
 
-<dl><dt id="arg-initial-samples">initial_samples<a class="anchor" aria-label="anchor" href="#arg-initial-samples"></a></dt>
+<dl><dt id="arg-initial-draws">initial_draws<a class="anchor" aria-label="anchor" href="#arg-initial-draws"></a></dt>
 <dd><p>Positive integer giving the number of draws in the
 fitting sample at the first stage. Defaults to 1,000.</p></dd>
 
 
-<dt id="arg-validation-samples">validation_samples<a class="anchor" aria-label="anchor" href="#arg-validation-samples"></a></dt>
+<dt id="arg-validation-draws">validation_draws<a class="anchor" aria-label="anchor" href="#arg-validation-draws"></a></dt>
 <dd><p>Positive integer giving the number of draws in
 each validation sample, and in the replicate of the second, at the first
 stage. Later stages enlarge the
@@ -136,7 +136,7 @@ validation samples in the same proportion as the fitting sample. Defaults
 to 5,000.</p></dd>
 
 
-<dt id="arg-max-samples">max_samples<a class="anchor" aria-label="anchor" href="#arg-max-samples"></a></dt>
+<dt id="arg-max-draws">max_draws<a class="anchor" aria-label="anchor" href="#arg-max-draws"></a></dt>
 <dd><p>Positive integer giving the largest permitted fitting
 sample. Defaults to 16,000.</p></dd>
 
@@ -316,7 +316,7 @@ the median distance between neighbouring locations and the probability is
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">control_mcml</span> <span class="op">&lt;-</span> <span class="fu">set_control_mcml</span><span class="op">(</span>max_samples <span class="op">=</span> <span class="fl">8000</span><span class="op">)</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">control_mcml</span> <span class="op">&lt;-</span> <span class="fu">set_control_mcml</span><span class="op">(</span>max_draws <span class="op">=</span> <span class="fl">8000</span><span class="op">)</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

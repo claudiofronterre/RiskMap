@@ -1,75 +1,70 @@
 # Set Control Parameters for Simulation
 
-This function sets control parameters for running simulations,
-supporting MCMC methods for glgpm models.
+The settings of the Langevin sampler that draws the latent effects of a
+binomial, Poisson or negative binomial model given the data, in
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+and
+[predict()](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md).
 
 ## Usage
 
 ``` r
 set_control_mcmc(
-  n_sim = 22000,
+  n_draws = 2000,
   burnin = 2000,
   thin = 10,
   h = NULL,
-  c1.h = 1,
-  c2.h = 0.6,
-  linear_model = FALSE
+  c1_h = 1,
+  c2_h = 0.6
 )
 ```
 
 ## Arguments
 
-- n_sim:
+- n_draws:
 
-  Integer. The total number of simulations to run. Default is 22000,
-  which with the default burn-in and thinning keeps 2,000 draws. With
-  `linear_model = TRUE` it is the number of independent draws, 2,000 by
-  default.
+  Positive integer. The number of draws kept, after burn-in and
+  thinning, on which fitted values and predictions are based. Default is
+  2,000. The chain runs `burnin + n_draws * thin` iterations.
 
 - burnin:
 
-  Integer. The number of initial simulations to discard (burn-in/warmup
-  period). Default is 2000.
+  Non-negative integer. The number of iterations discarded at the start
+  of the chain, during which the step size is adapted. Default is 2,000.
 
 - thin:
 
-  Integer. The interval at which simulations are recorded (thinning
-  interval, MCMC only). Default is 10.
+  Positive integer. One iteration in `thin` is kept after burn-in.
+  Default is 10.
 
 - h:
 
   Numeric. An optional positive step size for Langevin MCMC.
 
-- c1.h:
+- c1_h:
 
   Numeric. Positive scale for the burn-in Robbins-Monro step-size
   adaptation. Default is 1.
 
-- c2.h:
+- c2_h:
 
   Numeric. Exponent controlling the diminishing adaptation gain. Must be
   larger than 0.5 and no larger than 1. Default is 0.6.
 
-- linear_model:
-
-  Logical. If TRUE, sets up parameters for a linear model. Default is
-  FALSE.
-
 ## Value
 
-A list of control parameters with class "RiskMap_control_mcmc". Contents
-depend on `sampler`:
-
-- For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
+A list of class `"RiskMap_control_mcmc"` with `n_draws`, `burnin`,
+`thin`, `h`, `c1_h` and `c2_h`.
 
 ## Details
-
-If `linear_model = TRUE`, only `n_sim` is required.
 
 During burn-in the step size of the Langevin chain is adapted towards an
 acceptance rate of 0.574, starting from `h` (by default \\1.65 /
 d^{1/6}\\ for \\d\\ latent effects). The step kept after burn-in is the
 geometric mean of the adapted step over the second half of burn-in.
+
+The latent effects of a Gaussian model are drawn independently, so its
+predictions take `n_draws` draws without burn-in or thinning.
 
 Seeds are not part of the control settings. Pass `seed` to
 [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
@@ -88,6 +83,6 @@ or
 # Default parameters (MCMC)
 control_mcmc <- set_control_mcmc()
 
-# Custom MCMC parameters
-control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
+# Custom MCMC parameters: 600 draws from 3,000 + 600 * 20 iterations
+control_mcmc <- set_control_mcmc(n_draws = 600, burnin = 3000, thin = 20)
 ```

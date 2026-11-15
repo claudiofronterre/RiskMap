@@ -24,9 +24,9 @@ size predicted to meet it and the fit is repeated.
 
 ``` r
 set_control_mcml(
-  initial_samples = 1000L,
-  validation_samples = 5000L,
-  max_samples = 16000L,
+  initial_draws = 1000L,
+  validation_draws = 5000L,
+  max_draws = 16000L,
   max_stages = 4L,
   tolerance = 0.1,
   proposal = c("global", "laplace"),
@@ -45,19 +45,19 @@ set_control_mcml(
 
 ## Arguments
 
-- initial_samples:
+- initial_draws:
 
   Positive integer giving the number of draws in the fitting sample at
   the first stage. Defaults to 1,000.
 
-- validation_samples:
+- validation_draws:
 
   Positive integer giving the number of draws in each validation sample,
   and in the replicate of the second, at the first stage. Later stages
   enlarge the validation samples in the same proportion as the fitting
   sample. Defaults to 5,000.
 
-- max_samples:
+- max_draws:
 
   Positive integer giving the largest permitted fitting sample. Defaults
   to 16,000.
@@ -261,5 +261,5 @@ A control object of class `RiskMap_control_mcml`.
 ## Examples
 
 ``` r
-control_mcml <- set_control_mcml(max_samples = 8000)
+control_mcml <- set_control_mcml(max_draws = 8000)
 ```

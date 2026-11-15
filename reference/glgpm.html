@@ -473,7 +473,7 @@ with the data it names in the environment where <code><a href="https://rdrr.io/r
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># reduce iterations to speed up the fit, and set a</span></span></span>
 <span class="r-in"><span><span class="co"># seed for reproducibility</span></span></span>
-<span class="r-in"><span><span class="va">control_mcmc</span> <span class="op">&lt;-</span> <span class="fu"><a href="set_control_mcmc.html">set_control_mcmc</a></span><span class="op">(</span>n_sim <span class="op">=</span> <span class="fl">100</span>,</span></span>
+<span class="r-in"><span><span class="va">control_mcmc</span> <span class="op">&lt;-</span> <span class="fu"><a href="set_control_mcmc.html">set_control_mcmc</a></span><span class="op">(</span>n_draws <span class="op">=</span> <span class="fl">8</span>,</span></span>
 <span class="r-in"><span>                                 burnin <span class="op">=</span> <span class="fl">20</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu">glgpm</span><span class="op">(</span><span class="va">NO_INF</span> <span class="op">~</span> <span class="fu"><a href="gp.html">gp</a></span><span class="op">(</span><span class="op">)</span>,</span></span>
@@ -505,7 +505,7 @@ with the data it names in the environment where <code><a href="https://rdrr.io/r
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Spatial Gaussian process, Matern correlation with kappa = 0.5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                          Estimate Lower limit Upper limit</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Spatial process var.       2.1220      0.9347      4.8173</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 102.1364     34.7203    300.4540</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Spatial corr. scale (km) 102.1364     34.7203    300.4537</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Variance of the nugget effect fixed at 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Log-likelihood</span>  -2018.33</span>

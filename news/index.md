@@ -88,6 +88,14 @@ the main changes follow.
   [`summary()`](https://rdrr.io/r/base/summary.html) of a fit stop on an
   argument they don’t use, and every result records the version of
   RiskMap that made it.
+- [`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md)
+  takes the number of draws it keeps in `n_draws`, 2,000 by default,
+  instead of the number of iterations in `n_sim`, and its step-size
+  settings are `c1_h` and `c2_h`. It no longer has `linear_model`, since
+  the draws of a Gaussian model are always independent.
+  [`set_control_mcml()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcml.md)
+  takes its sample sizes as `initial_draws`, `validation_draws` and
+  `max_draws`.
 - [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
   reports how a fit was computed and flags anything that needs
   attention. [`profile()`](https://rdrr.io/r/stats/profile.html) gives
