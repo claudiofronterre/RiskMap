@@ -1209,7 +1209,7 @@ create_ids <- function(data) {
 ##' @details
 ##' The function returns a matrix whose rows are the models and whose columns
 ##' are the scores, `CRPS` and `SCRPS` averaged over all test observations
-##' (the averages of the test sets weighted by their sizes), and `PIT_area`
+##' that have a score, and `PIT_area`
 ##' with `PIT_area_expected`, its value under perfect calibration, when
 ##' calibration was assessed (see [assess_prediction()]). Lower is better for
 ##' every score. Attributes of the returned object include:
@@ -1248,21 +1248,19 @@ summary.RiskMap_cross_validation <- function(object, ...) {
                 dimnames = list(model_names, metric_names))
 
   test_set_means <- list()
-  # Weight each test set by its number of observations
-  w <- if (length(per_observation) > 0) {
-    lengths(object$model[[1]]$metric[[per_observation[1]]])
-  }
-
   for (i in seq_len(n_models)) {
     model_scores <- list()
     for (metric in per_observation) {
-      score_j <- vapply(object$model[[i]]$metric[[metric]], function(values) {
+      scores <- object$model[[i]]$metric[[metric]]
+      model_scores[[metric]] <- vapply(scores, function(values) {
         mean(values, na.rm = TRUE)
       }, numeric(1))
-      model_scores[[metric]] <- score_j
-      # Test sets whose assessment failed have no scores
-      ok <- is.finite(score_j)
-      res[i, metric] <- if (any(ok)) sum(w[ok] * score_j[ok]) / sum(w[ok]) else NA
+      # The mean over every test observation with a score. Failed test sets
+      # have none, and the SCRPS of a predictive distribution with no spread
+      # is missing.
+      values <- unlist(scores, use.names = FALSE)
+      values <- values[is.finite(values)]
+      res[i, metric] <- if (length(values)) mean(values) else NA_real_
     }
     if (calibration) {
       res[i, "PIT_area"] <- object$model[[i]]$PIT_area %||% NA_real_

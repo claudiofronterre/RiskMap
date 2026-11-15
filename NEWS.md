@@ -107,7 +107,8 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   `plot_fold = TRUE`. `plot()` of its result returns one plot of one metric
   (#213), and `summary()` loses `view_all`. `assess_simulation()` takes
   `simulation`, `aggregate`, `label`, `objective` and `breaks`, and calls the
-  scale of the grid `"location"`.
+  scale of the grid `"location"`. `method = "cluster"` and `"regularized"`
+  need spatialsample and spatialEco, which move to Suggests.
 
 ### Messages
 

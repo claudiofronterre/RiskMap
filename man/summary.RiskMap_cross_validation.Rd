@@ -24,7 +24,7 @@ from \code{\link{assess_prediction}}.
 \details{
 The function returns a matrix whose rows are the models and whose columns
 are the scores, \code{CRPS} and \code{SCRPS} averaged over all test observations
-(the averages of the test sets weighted by their sizes), and \code{PIT_area}
+that have a score, and \code{PIT_area}
 with \code{PIT_area_expected}, its value under perfect calibration, when
 calibration was assessed (see \code{\link[=assess_prediction]{assess_prediction()}}). Lower is better for
 every score. Attributes of the returned object include:

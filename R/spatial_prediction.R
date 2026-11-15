@@ -3081,10 +3081,6 @@ assess_prediction <- function(models,
     }
     check_positive_number(min_dist, "")
     check_positive_integer(size, "size")
-    rlang::check_installed("spatialEco", reason = "to split the data with `method = \"regularized\"`.")
-  }
-  if (method == "cluster") {
-    rlang::check_installed("spatialsample", reason = "to split the data with `method = \"cluster\"`.")
   }
   if (method == "user" && is.null(user_split)) {
     abort_input("{.arg user_split} must be given when {.arg method} is {.val user}.", arg = "user_split")
@@ -3094,8 +3090,18 @@ assess_prediction <- function(models,
 
   check_positive_integer(iter, "iter")
   # The number of test sets of a user split is its own.
+  if (method == "user" && is.data.frame(user_split)) {
+    abort_input("{.arg user_split} must be a matrix or a list, not a data frame.", arg = "user_split")
+  }
+  if (method == "user" && is.list(user_split) &&
+      any(c("in_id", "out_id") %in% names(user_split))) {
+    abort_input(c("{.arg user_split} must be a list of test sets, each a vector of test rows or a list with {.code in_id} and {.code out_id}.", "i" = "Put one test set given by {.code in_id} and {.code out_id} in a list of its own, as {.code list(list(in_id = , out_id = ))}."), arg = "user_split")
+  }
   if (method == "user" && (is.matrix(user_split) || is.list(user_split))) {
     n_user <- if (is.matrix(user_split)) ncol(user_split) else length(user_split)
+    if (n_user == 0L) {
+      abort_input("{.arg user_split} must have at least one test set.", arg = "user_split")
+    }
     if (!missing(iter) && iter != n_user) {
       abort_input("{.arg iter} must be left out with {.arg method} {.val user}, or be the number of test sets in {.arg user_split} ({n_user}), not {iter}.", arg = "iter")
     }
@@ -3130,16 +3136,15 @@ assess_prediction <- function(models,
   data_sf <- first_model$data
   if (method == "regularized") {
     # min_dist is in the distance units of the fits, and subsample.distance()
-    # measures distances in the units of their CRS.
+    # compares distances in metres, whatever the units of the CRS.
     units_used <- unique(vapply(models, function(fit) fit$distance_units,
                                 character(1)))
     if (length(units_used) > 1L) {
       abort_input("The models in {.arg models} must use the same {.arg distance_units} for {.arg min_dist} to have one meaning, not {.val {units_used}}.", arg = "models")
     }
-    crs_unit <- units::deparse_unit(st_crs(data_sf)$ud_unit)
-    min_dist_crs <- as.numeric(units::set_units(
+    min_dist_m <- as.numeric(units::set_units(
       units::set_units(min_dist, units_used, mode = "standard"),
-      crs_unit, mode = "standard"
+      "m", mode = "standard"
     ))
   }
   n_obs   <- nrow(data_sf)
@@ -3256,6 +3261,13 @@ assess_prediction <- function(models,
     set.seed(seed)
   }
 
+  # The packages that split the data, asked for once the arguments are checked
+  if (method == "regularized") {
+    rlang::check_installed("spatialEco", reason = "to split the data with `method = \"regularized\"`.")
+  }
+  if (method == "cluster") {
+    rlang::check_installed("spatialsample", reason = "to split the data with `method = \"cluster\"`.")
+  }
   if (method == "user") {
     data_split <- make_splits_from_user(user_split, iter)
     n_iter <- iter
@@ -3282,7 +3294,7 @@ assess_prediction <- function(models,
       data_split$splits[[i]] <- list()
       data_split$splits[[i]]$data_test <- withCallingHandlers(
         spatialEco::subsample.distance(locations_sf, size = size,
-                                       d = min_dist_crs, ...),
+                                       d = min_dist_m, ...),
         message = function(m) if (!messages) invokeRestart("muffleMessage")
       )
       test_geom <- st_as_text(data_split$splits[[i]]$data_test$geometry)
@@ -3597,6 +3609,8 @@ assess_prediction <- function(models,
   if (get_PIT) {
     reference_seed <- sample.int(.Machine$integer.max, 1L)
     restore_reference_seed <- preserve_random_seed()
+    # Before the caller's state is restored, if seed was given.
+    on.exit(restore_reference_seed(), add = TRUE, after = FALSE)
     for (name in model_names) {
       inputs <- calibration_inputs[[name]]
       set.seed(reference_seed)
@@ -3606,7 +3620,6 @@ assess_prediction <- function(models,
         NA_real_
       }
     }
-    restore_reference_seed()
   }
 
   out$failures <- failures

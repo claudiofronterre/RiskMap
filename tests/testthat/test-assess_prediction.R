@@ -433,6 +433,8 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
 })
 
 test_that("assess_prediction splits test data correctly", {
+  skip_if_not_installed("spatialsample")
+  skip_if_not_installed("spatialEco")
 
   n_folds <- 2
 
@@ -510,6 +512,7 @@ test_that("assess_prediction splits test data correctly", {
 })
 
 test_that("assess_prediction can refit correctly for all model families", {
+  skip_if_not_installed("spatialEco")
 
   # 'regularized' holds out a single random point from the tiny (n = 10)
   # fixtures; refitting on whichever 9 points remain is occasionally
@@ -555,6 +558,7 @@ test_that("assess_prediction can refit correctly for all model families", {
 })
 
 test_that("assess_prediction's seed makes regularized/cluster splits reproducible and restores the RNG state", {
+  skip_if_not_installed("spatialEco")
 
   rng_before <- .Random.seed
 
@@ -752,6 +756,8 @@ test_that("plot_folds() doesn't facet when there is only one iteration", {
 })
 
 test_that("assess_prediction(plot_fold = TRUE) uses plot_folds() for 'user' and 'regularized', autoplot() for 'cluster' (#157)", {
+  skip_if_not_installed("spatialsample")
+  skip_if_not_installed("spatialEco")
   grDevices::pdf(NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
@@ -914,6 +920,7 @@ test_that("assess_prediction reports how the parameters are treated", {
 })
 
 test_that("assess_prediction warns when regularized test sets are smaller than 'size'", {
+  skip_if_not_installed("spatialEco")
   expect_warning(
     assess_prediction(
       list(gaussian_intercept_model),
@@ -951,6 +958,49 @@ test_that("assess_prediction takes min_dist in the distance units of the fits (A
                       method = "regularized", min_dist = 1, size = 3,
                       messages = FALSE),
     "models"
+  )
+})
+
+test_that("min_dist reaches subsample.distance() in metres whatever the CRS (A5)", {
+  skip_if_not_installed("spatialEco")
+  captured <- new.env()
+  local_mocked_bindings(
+    subsample.distance = function(x, size, d, ...) {
+      captured$d <- d
+      stop("captured")
+    },
+    .package = "spatialEco"
+  )
+  # spatialEco compares distances in metres, also on a CRS in kilometres.
+  data <- st_transform(gaussian_data, st_crs("+proj=utm +zone=37 +units=km"))
+  fit <- make_assess_prediction_fit(data, "1")
+  fit$distance_units <- "km"
+  expect_error(assess_prediction(list(fit), method = "regularized",
+                                 min_dist = 2, size = 3, messages = FALSE),
+               "captured")
+  expect_identical(captured$d, 2000)
+  fit$distance_units <- "m"
+  expect_error(assess_prediction(list(fit), method = "regularized",
+                                 min_dist = 2, size = 3, messages = FALSE),
+               "captured")
+  expect_identical(captured$d, 2)
+})
+
+test_that("assess_prediction checks the shape of a user split (A4)", {
+  expect_input_error(
+    assess_prediction(list(gaussian_intercept_model), method = "user",
+                      user_split = list(in_id = 1:8, out_id = 9:10)),
+    "user_split", "in a list of its own"
+  )
+  expect_input_error(
+    assess_prediction(list(gaussian_intercept_model), method = "user",
+                      user_split = matrix(numeric(0), nrow = 10, ncol = 0)),
+    "user_split", "at least one test set"
+  )
+  expect_input_error(
+    assess_prediction(list(gaussian_intercept_model), method = "user",
+                      user_split = data.frame(a = 1:10)),
+    "user_split", "not a data frame"
   )
 })
 

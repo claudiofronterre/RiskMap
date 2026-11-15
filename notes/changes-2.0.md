@@ -1471,9 +1471,11 @@ model, so the CRPS and SCRPS are those of before and identical models get
 identical values. Under perfect calibration the area is about 0.31/√n for n
 test observations, so a per-test-set area mostly measured the size of the test
 sets.
-- `summary()` of a cross-validation gives `CRPS` and `SCRPS` averaged over the
-test sets weighted by their sizes, `PIT_area` and `PIT_area_expected`, and its
-print gives the scores of each test set and a note on what they mean. `view_all`
+- `summary()` of a cross-validation gives `CRPS` and `SCRPS` averaged over every
+test observation with a score, `PIT_area` and `PIT_area_expected`. Before, the
+means of the test sets were weighted by their sizes, which counted the missing
+SCRPS of a predictive distribution without spread. Its print gives the scores
+of each test set and a note on what they mean. `view_all`
 and the attribute `overall_averages`, the average across models, are gone.
 `print()` of the result gives the averages, as before.
 - `plot()` of a cross-validation returns one ggplot and draws nothing (#213).
@@ -1482,17 +1484,19 @@ and the first score otherwise, and stops with the list of metrics when given
 several. Several models are panels of one plot with one colour scale. The
 average calibration curve is the curve of all test observations, from which
 `PIT_area` comes, its axis is labelled "Probability level u", and `PIT_area`
-is no longer mapped. `...` adds ggplot2 components and stops on a named
-argument, and comes last. `combine_pit = TRUE` stops unless `pit_mode` is
+is no longer mapped. `...` comes last and stops on any argument, so ggplot2
+components are added with `+`. `combine_pit = TRUE` stops unless `pit_mode` is
 `"average"`. dplyr and the cross-validation's use of gridExtra are gone.
 - `assess_prediction()` takes its list of fits in `models` instead of `object`,
 and `plot_fold = FALSE` by default, so that the splits are drawn only when
 asked for. With `method = "user"` the number of test sets is that of
 `user_split`, so `iter` need not repeat it, and a different `iter` stops.
-`min_dist` is in the distance units of the fits, converted to the units of
-their CRS, instead of kilometres multiplied by 1000. Fits in kilometres on a
-CRS in metres, as in every book example, give the same splits as before, and
-models with different distance units stop. spatialEco and spatialsample move
+`min_dist` is in the distance units of the fits, converted to metres, in which
+`spatialEco::subsample.distance()` compares distances whatever the CRS,
+instead of always in kilometres. Fits in kilometres, as in every book example,
+give the same splits as before, fits in metres take `min_dist` in metres, and
+models with different distance units stop. `user_split` given as one list with
+`in_id` and `out_id`, as a data frame or with no test sets stops. spatialEco and spatialsample move
 to Suggests, and `method = "regularized"` and `"cluster"` ask for them.
 - `assess_simulation()` takes `simulation` instead of `obj_sim`, `aggregate`
 instead of `area_summary`, `label` instead of `col_names`, `objective`
