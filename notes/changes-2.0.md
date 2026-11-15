@@ -888,6 +888,29 @@ With several records at a location the other start changes, and the empirical
 logit of a total follows the proportion at the location, where that of a
 binary record is always log(3) or -log(3).
 
+- `start_pars` of `glgpm()` defaults to `NULL` and is a partial named list over
+the model's estimated parameters, with the names of `?riskmap_parameters`.
+`beta` is matched to the columns of the design matrix by name, or by position
+when it is unnamed with one value per column, and `sigma2_re` to the `re()`
+terms in the same way. The flat names of `unlist(coef(fit))`, such as
+`"beta.x"`, are accepted too. Every other parameter takes its automatic start.
+Before, any one value given switched off the comparison of automatic starts for
+every parameter and left the others at the plain defaults, `beta` and
+`sigma2_re` were matched by position with only their lengths checked,
+`sigma2_me` was accepted and ignored for every family but the Gaussian, and
+`beta = c(NA, 1)` passed the checks. Now the comparison still runs, each
+candidate taking the given values in place of its own, unless every estimated
+parameter is given or `set_control_mcml(start_comparison = FALSE)` skips it.
+Every value must be finite, and positive but for the coefficients. A name the
+model lacks, or one it holds, stops with the names it has, and a start of
+`phi` below a hundredth of the smallest distance between locations or above
+ten times the largest warns that it may be in other units. `summary()` says
+which values were given (`mcml$starting_given`) and where the others came from.
+`glgpm_parameters(formula, data, family)` lists the parameters of a model,
+with their elements, flat names, labels, start rules and held values, before it
+is fitted, and prints a template of `start_pars`. Fits without `start_pars` are
+unchanged.
+
 - On the Woodbury path of Gaussian fits, which `glgpm()` takes above three
 records per latent effect unless the nugget is held at a positive value or the
 measurement error variance at zero, the starts of the measurement error and random-effect

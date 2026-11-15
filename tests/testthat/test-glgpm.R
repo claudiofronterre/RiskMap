@@ -128,7 +128,8 @@ test_that("glgpm produces errors", {
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = 1), messages = FALSE),
-    "start_pars$beta` must have 2 values", fixed = TRUE
+    "must have a value for each column of the design matrix, 2, not 1",
+    fixed = TRUE
   )
 
   expect_error(
@@ -148,7 +149,7 @@ test_that("glgpm produces errors", {
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = c("a", "b")), messages = FALSE),
-    "must be numeric", class = "riskmap_error_input"
+    "must be finite numbers", class = "riskmap_error_input"
   )
 
   expect_error(
@@ -190,13 +191,13 @@ test_that("glgpm produces errors", {
   expect_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2_re = c(1, 2)), messages = FALSE),
-    "without random effects", class = "riskmap_error_input"
+    "\"sigma2_re\" is not among them", class = "riskmap_error_input"
   )
 
   expect_error(
     glgpm(y ~ cov + gp() + re(i), data = gaussian_data, family = "gaussian",
           start_pars = list(sigma2_re = c(1, 2)), messages = FALSE),
-    "one for each random effect", class = "riskmap_error_input"
+    "a value for each `re()` term", fixed = TRUE, class = "riskmap_error_input"
   )
 
 })

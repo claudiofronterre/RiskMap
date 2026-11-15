@@ -95,6 +95,8 @@ reference:
       choose the family and link, and fit it by maximum likelihood.
     contents:
       - glgpm
+      - glgpm_parameters
+      - riskmap_parameters
 
   - subtitle: Model terms
     desc: >

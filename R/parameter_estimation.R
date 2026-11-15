@@ -73,17 +73,16 @@
 ##' @param fix_var_me Optional fixed value for the measurement error variance when fitting a Gaussian model.
 ##' When not provided, the value will be estimated, but cannot be if each location only has one sample and
 ##' the `nugget` term in [gp()] is also set to `TRUE`.
-##' @param start_pars Optional list of starting values for model parameters:
-##' \describe{
-##'   \item{beta}{regression coefficients}
-##'   \item{sigma2}{spatial process variance}
-##'   \item{tau2}{nugget effect variance}
-##'   \item{phi}{spatial correlation scale}
-##'   \item{sigma2_me}{measurement error variance - only for Gaussian models}
-##'   \item{sigma2_re}{random effects variances - only when random effects are included}
-##'   \item{theta}{size of the negative binomial family - only when it is
-##'     estimated (see [negative_binomial()])}
-##' }
+##' @param start_pars `NULL` (the default), or a named list of starting
+##' values for any of the model's estimated parameters, one, several or all of
+##' them, named as in [riskmap_parameters]. `beta` is matched to the columns of
+##' the design matrix by name, or by position if it is unnamed and has a value
+##' for each, and `sigma2_re` to the `re()` terms in the same way. The flat
+##' names of `unlist(coef(fit))`, such as `"beta.x"`, are accepted too, in a
+##' list or as that named vector, so `start_pars = coef(fit)` starts a fit
+##' from the estimates of another. Every
+##' other parameter takes its automatic start. [glgpm_parameters()] lists the
+##' parameters of a model before it is fitted.
 ##' @details
 ##' Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
 ##' spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs
@@ -127,17 +126,22 @@
 ##' separate streams derived from `seed`, so `glgpm(..., seed = fit$seed)`
 ##' reproduces a fit exactly.
 ##'
-##' The `start_pars` argument allows starting values to be supplied explicitly.
-##' Otherwise a binomial, Poisson or negative binomial model starts from
-##' RiskMap's defaults, which are the coefficients of the regression without
-##' latent effects, `sigma2 = 1`, `phi` at the 10th percentile of the distances
-##' between locations, and 1 for an estimated nugget variance and for the
-##' variance of each `re()` term. A model with the canonical link and without
-##' `re()` terms compares them with the estimates of a Gaussian model fitted to
-##' the empirical link of the data (the empirical logit of a binomial model),
-##' with one observation per location, the totals of the location where it has
-##' several records, and starts from the one with the higher Laplace
-##' approximation of the likelihood. [summary.RiskMap()] says which starting
+##' Parameters not given in `start_pars` take RiskMap's defaults, which are
+##' the coefficients of the regression without latent effects, `sigma2 = 1`,
+##' `phi` at the 10th percentile of the distances between locations, 1 for an
+##' estimated nugget variance, a measurement error variance and the variance of
+##' each `re()` term, and for the size of a negative binomial model that of the
+##' regression without latent effects. A binomial, Poisson or negative binomial
+##' model with the canonical link and without `re()` terms compares them with
+##' the estimates of a Gaussian model fitted to the empirical link of the data
+##' (the empirical logit of a binomial model), with one observation per
+##' location, the totals of the location where it has several records, and
+##' starts from the one with the higher Laplace approximation of the
+##' likelihood. The values given in `start_pars` replace their own in both,
+##' and `set_control_mcml(start_comparison = FALSE)` skips the comparison. A
+##' start of `phi` far from the distances between the locations, below a
+##' hundredth of the smallest or above ten times the largest, gives a warning,
+##' since it may be in other units. [summary.RiskMap()] says which starting
 ##' values a fit used and why.
 ##'
 ##' @return An object of class `RiskMap` containing the fitted model and relevant information:
@@ -302,12 +306,7 @@ glgpm <- function(formula,
                  return_samples = TRUE,
                  messages = getOption("RiskMap.messages", TRUE),
                  fix_var_me = NULL,
-                 start_pars = list(beta = NULL,
-                                   sigma2 = NULL,
-                                   tau2 = NULL,
-                                   phi = NULL,
-                                   sigma2_me = NULL,
-                                   sigma2_re = NULL)) {
+                 start_pars = NULL) {
   check_supplied(formula)
   check_supplied(data)
   check_supplied(family)
@@ -491,33 +490,23 @@ glgpm <- function(formula,
     distance_units = distance_units
   )
 
-  valid_start_pars <- c("beta", "sigma2", "phi", "tau2", "sigma2_re", "sigma2_me",
-                        estimated_family)
-  invalid <- names(start_pars)[!names(start_pars) %in% valid_start_pars]
-  if (length(invalid)) {
-    abort_input(c("{.arg start_pars} must name parameters among {.val {valid_start_pars}}.", "x" = "{.val {invalid}} {?is/are} not among them."), arg = "start_pars")
-  }
-  user_supplied_start <- any(vapply(
-    start_pars,
-    function(value) !is.null(value),
-    logical(1)
-  ))
-
+  # The starts given in `start_pars`, checked against the model's
+  # parameters (read_start_pars()), and every other start from its rule.
+  given <- read_start_pars(parameters, start_pars, coords, distance_units)
+  start_pars <- list()
   # The start of an estimated parameter of the family, from the regression
-  # without the latent effects, or from `start_pars`.
+  # without the latent effects, unless it is given.
   for (name in estimated_family) {
-    if (is.null(start_pars[[name]])) {
-      start_pars[[name]] <- model$start_parameters(y, units_m, D,
-                                                   cov_offset)[[name]]
-    } else {
-      check_positive_number(start_pars[[name]], arg = paste0("start_pars[[\"", name, "\"]]"))
-    }
+    start_pars[[name]] <- given[[name]] %||%
+      model$start_parameters(y, units_m, D, cov_offset)[[name]]
   }
   # The family's parameters at the start, for the records of the start.
   start_family <- c(family_parameters, start_pars[estimated_family])
-  if(is.null(start_pars[["beta"]])) {
+  if (ncol(D) > 0L && length(given$beta) == ncol(D)) {
+    start_pars[["beta"]] <- unname(given$beta)
+  } else {
     # From the records the engine fits, the negative binomial family's as
-    # binomial ones (engine_records()).
+    # binomial ones (engine_records()). Coefficients given replace theirs.
     records <- engine_records(family, y, if (!model$exact) units_m,
                               cov_offset, start_family, invlink)
     start_pars[["beta"]] <- model$start_coefficients(
@@ -525,65 +514,39 @@ glgpm <- function(formula,
       cov_offset = records$offset, link = if (is.list(invlink)) invlink$link,
       formula = inter_f$pf, data = data
     )
-  } else {
-    if (!is.numeric(start_pars[["beta"]])) {
-      abort_input("{.code start_pars$beta} must be numeric, not {.obj_type_friendly {start_pars[['beta']]}}.", arg = "start_pars")
-    }
-    if (length(start_pars[["beta"]]) != ncol(D)) {
-      abort_input("{.code start_pars$beta} must have {ncol(D)} value{?s}, one for each column of the design matrix including the intercept, not {length(start_pars[['beta']])}.", arg = "start_pars")
-    }
   }
-
-  if(is.null(start_pars[["sigma2"]])) {
-    start_pars[["sigma2"]] <- default_start(parameters, "sigma2")
-  } else {
-    check_positive_number(start_pars[["sigma2"]])
+  start_pars[["sigma2"]] <- given$sigma2 %||% default_start(parameters, "sigma2")
+  start_pars[["phi"]] <- given$phi %||%
+    default_start(parameters, "phi", coords)
+  if (isTRUE(fix_tau2)) {
+    start_pars[["tau2"]] <- given$tau2 %||% default_start(parameters, "tau2")
   }
-
-  if(is.null(start_pars[["phi"]])) {
-    start_pars[["phi"]] <- default_start(parameters, "phi", coords)
-  } else {
-    check_positive_number(start_pars[["phi"]])
+  if (n_re > 0) {
+    start_pars[["sigma2_re"]] <- default_start(parameters, "sigma2_re")
   }
+  start_pars <- apply_given_start(parameters, start_pars, given)
 
-  if(isTRUE(fix_tau2)) {
-    if(is.null(start_pars[["tau2"]])) {
-      start_pars[["tau2"]] <- default_start(parameters, "tau2")
-    } else {
-      check_positive_number(start_pars[["tau2"]])
-    }
-  } else {
-    if(!is.null(start_pars[["tau2"]]))
-      abort_input("A starting value for {.code tau2} can't be given when {.fn gp} has {.code nugget = FALSE}.", arg = "start_pars")
-  }
-
-  if(n_re > 0) {
-    if(is.null(start_pars[["sigma2_re"]])) {
-      start_pars[["sigma2_re"]] <- default_start(parameters, "sigma2_re")
-    } else {
-      if (length(start_pars[["sigma2_re"]]) != n_re) {
-        abort_input("{.code start_pars$sigma2_re} must have {n_re} value{?s}, one for each random effect, not {length(start_pars[['sigma2_re']])}.", arg = "start_pars")
-      }
-      if (!is.numeric(start_pars[["sigma2_re"]]) ||
-          !all(is.finite(start_pars[["sigma2_re"]]) &
-               start_pars[["sigma2_re"]] > 0)) {
-        abort_input("The starting values in {.code start_pars$sigma2_re} must be positive finite numbers.", arg = "start_pars")
-      }
-    }
-  } else {
-    if (!is.null(start_pars[["sigma2_re"]])) {
-      abort_input("Starting values for {.code sigma2_re} can't be given for a model without random effects.", arg = "start_pars")
-    }
-  }
-
+  # The comparison of starts runs unless it is switched off or every
+  # estimated parameter is given, and each candidate takes the given values.
+  # The transformed candidate gives the coefficients, the spatial variance,
+  # the scale and the nugget, so when all of those are given the two
+  # candidates are the same and there is nothing to compare.
+  every_given <- all_starts_given(parameters, given)
+  candidates_given <- all_starts_given(parameters, given,
+                                       names = c("beta", "sigma2", "phi",
+                                                 "tau2"))
+  switched_off <- isFALSE(control_mcml$start_comparison)
+  compare <- !model$exact && !candidates_given && !switched_off
   starting_diagnostics <- list(
-    selected = if (user_supplied_start) "user" else "current",
+    selected = if (every_given) "user" else "current",
     current_laplace = NA_real_,
     transformed_laplace = NA_real_,
     fallback_reason = NULL,
-    reason = NULL
+    reason = if (!model$exact && !every_given && !compare) {
+      if (candidates_given) "candidates_given" else "not_compared"
+    }
   )
-  if (!model$exact && !user_supplied_start) {
+  if (compare) {
     selection <- select_nongaussian_start(
       current = start_pars,
       y = y,
@@ -598,13 +561,16 @@ glgpm <- function(formula,
       fix_tau2 = fix_tau2,
       n_re = n_re,
       s_unique = s_unique,
-      family_parameters = start_family
+      family_parameters = start_family,
+      parameters = parameters,
+      given = given
     )
     # The transformed start has none of the family's parameters.
     start_pars <- utils::modifyList(selection$start,
                                     start_pars[estimated_family])
     starting_diagnostics <- selection$diagnostics
   }
+  starting_diagnostics$given <- given_start_names(given)
 
   res <- fit_glgpm_design(
     y = y, D = D, coords = coords, ID_coords = ID_coords, ID_re = ID_re,
@@ -1257,7 +1223,8 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
                                      ID_coords, family, kappa, cov_offset,
                                      invlink, fix_tau2, n_re,
                                      s_unique = NULL,
-                                     family_parameters = NULL) {
+                                     family_parameters = NULL,
+                                     parameters = NULL, given = list()) {
   diagnostics <- list(
     selected = "current",
     current_laplace = NA_real_,
@@ -1368,6 +1335,12 @@ select_nongaussian_start <- function(current, y, units_m, D, coords,
       "transformed_invalid",
       "transformed Gaussian fit returned invalid starting values"
     ))
+  }
+
+  # The transformed candidate takes the values given in `start_pars` in
+  # place of its own, as the existing start does.
+  if (length(given)) {
+    transformed <- apply_given_start(parameters, transformed, given)
   }
 
   # The two values are read by name, so their own names are dropped. With
@@ -3411,6 +3384,15 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' certificate. The screen of short scales and the exact bounds are
 ##' available for the canonical links and models without unstructured random
 ##' effects.
+##' @param start_comparison Logical. If `TRUE` (the default), a binomial,
+##' Poisson or negative binomial model with the canonical link and without
+##' `re()` terms compares two automatic starts by the Laplace approximation
+##' of the likelihood, RiskMap's defaults and the estimates of a Gaussian model
+##' fitted to the empirical link of the data, and starts from the better one.
+##' The values given in the `start_pars` of [glgpm()] replace their own in both.
+##' With `FALSE` the fit starts from the defaults and the values given, without
+##' the comparison. There is no comparison when `start_pars` gives every
+##' parameter, nor for a Gaussian model.
 ##' @param pc_prior Logical. If `TRUE`, the spatial variance and scale are
 ##' penalised by penalised-complexity priors (Fuglstad et al., 2019) and the
 ##' estimate maximises the penalised likelihood on the log scale of the
@@ -3444,6 +3426,7 @@ set_control_mcml <- function(initial_samples = 1000L,
                              laplace_start = NULL,
                              integrate_noise = "auto",
                              check_maxima = TRUE,
+                             start_comparison = TRUE,
                              pc_prior = FALSE,
                              pc_sigma_threshold = 1,
                              pc_sigma_probability = 0.05,
@@ -3468,6 +3451,7 @@ set_control_mcml <- function(initial_samples = 1000L,
     abort_input("{.arg integrate_noise} must be {.code TRUE}, {.code FALSE} or {.val auto}, not {supplied}.", arg = "integrate_noise")
   }
   check_logical(check_maxima)
+  check_logical(start_comparison)
   check_logical(pc_prior)
   check_positive_number(pc_sigma_threshold, "")
   check_range(pc_sigma_probability, 0, 1, allow_equal = FALSE,
@@ -3493,6 +3477,7 @@ set_control_mcml <- function(initial_samples = 1000L,
       laplace_start = laplace_start,
       integrate_noise = integrate_noise,
       check_maxima = check_maxima,
+      start_comparison = start_comparison,
       pc_prior = pc_prior,
       pc_sigma_threshold = pc_sigma_threshold,
       pc_sigma_probability = pc_sigma_probability,
