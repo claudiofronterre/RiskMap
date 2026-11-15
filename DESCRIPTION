@@ -28,9 +28,7 @@ Imports:
     cli (>= 3.6.0),
     Deriv,
     ggplot2,
-    ggspatial,
     gridExtra,
-    jsonlite,
     knitr,
     loo,
     Matrix,
@@ -38,21 +36,23 @@ Imports:
     parallel,
     patchwork,
     Rcpp,
-    rlang,
+    rlang (>= 1.0.0),
     scales,
     sf,
     terra,
+    tibble,
     units
 LinkingTo:
     Rcpp,
     RcppEigen
 Suggests:
     dplyr,
+    ggspatial,
+    jsonlite,
     RhpcBLASctl,
     spatialEco,
     spatialsample,
     testthat (>= 3.0.0),
-    tibble,
     withr
 License: MIT + file LICENSE
 Encoding: UTF-8

@@ -69,8 +69,8 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 - `plot()` maps predictions, `to_table()` tabulates predictions over areas,
   and `assess_extrapolation()` shows where predictions go beyond the data.
 - `assess_extrapolation()` counts the sampling noise of the data and flags a
-  location when the data say less about it than about any surveyed location
-  left out (#236). `plot()` of predictions takes `summaries` and
+  location when the data say less about it than about 95% of the surveyed
+  locations, each left out in turn (#236). `plot()` of predictions takes `summaries` and
   `thresholds`, the names `predict()` uses.
 - `predict()` takes `joint` in place of `type` and `standardise` in place of
   `standardize`, and stops on an argument it doesn't use. `plot()` of
@@ -89,6 +89,9 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   `summarise_distance()` do. A grid keeps its cells when its columns are
   selected, and `predict()` says when it counts points on a grid whole in the
   polygon that contains them (#214).
+- ggspatial and jsonlite are suggested rather than imported. `get_worldpop()`
+  asks for jsonlite, and maps ask for ggspatial only to draw a north arrow or
+  a scale bar.
 
 ### Assessment and simulation
 

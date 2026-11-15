@@ -29,7 +29,9 @@ numbers giving the range of the colour scale, for example to map several
 simulations on a common scale.}
 
 \item{...}{Additional arguments passed to the ggplot2 fill scale, for
-example \code{transform = "sqrt"} for skewed values.}
+example \code{transform = "sqrt"} for skewed values. The map sets
+\code{colours}, \code{limits}, \code{breaks}, \code{labels}, \code{oob}, \code{na.value} and \code{guide}
+itself. To change them, add another fill scale to the map with \code{+}.}
 }
 \value{
 A \code{ggplot} object.

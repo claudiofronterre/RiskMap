@@ -663,6 +663,10 @@ test_that("simulated_surface() output has a plot method matching plot.RiskMap_si
     grDevices::hcl.colors(256L, "Blues"))))
   expect_identical(reversed$data[[1]]$fill, forward$data[[1]]$fill)
   expect_input_error(plot(surface, reverse_palette = TRUE), "reverse_palette")
+  # The map sets the breaks and labels of its fill scale itself.
+  expect_input_error(plot(sim, breaks = c(0, 0.5, 1)), "breaks")
+  expect_input_error(plot(surface, labels = NULL), "labels")
+  expect_no_error(ggplot2::ggplot_build(plot(surface, transform = "reverse")))
   expect_input_error(plot(surface, palette = "not a palette"), "palette")
   expect_error(plot.RiskMap_simulated_surface(sim), "<RiskMap_simulated_surface>")
 })

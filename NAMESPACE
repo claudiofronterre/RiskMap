@@ -83,10 +83,6 @@ importFrom(Matrix,
   sparseMatrix
 )
 importFrom(Rcpp,evalCpp)
-importFrom(ggspatial,
-  annotation_north_arrow,
-  annotation_scale
-)
 importFrom(graphics,points)
 importFrom(grid,unit)
 importFrom(gridExtra,grid.arrange)
@@ -97,6 +93,7 @@ importFrom(numDeriv,
 )
 importFrom(rlang,sym)
 importFrom(stats,profile)
+importFrom(tibble,as_tibble)
 importFrom(units,set_units)
 importFrom(utils,flush.console)
 useDynLib(RiskMap, .registration = TRUE)

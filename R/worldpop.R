@@ -47,7 +47,8 @@
 ##' few countries, which this function does not cover.
 ##'
 ##' The function queries the WorldPop catalogue at
-##' <https://hub.worldpop.org/rest/data>. The 1 km age and sex layers of the
+##' <https://hub.worldpop.org/rest/data>, which needs the jsonlite package,
+##' and downloads the files it lists. The 1 km age and sex layers of the
 ##' 2000 to 2020 release are not listed in the catalogue, and their addresses
 ##' are built from WorldPop's naming pattern. When `ages` covers several age
 ##' groups or both sexes, their counts are added together.
@@ -62,13 +63,11 @@
 ##' @references WorldPop (www.worldpop.org). Please cite the WorldPop
 ##'   products used, as listed on the WorldPop website.
 ##' @seealso [create_grid()]
-##' @examples
-##' \donttest{
+##' @examplesIf interactive()
 ##' # Adults aged 20 and over in Liberia in 2011, at 1 km
 ##' adults <- get_worldpop("LBR", year = 2011, ages = c(20, Inf),
 ##'                        resolution = "1km")
 ##' terra::global(adults, "sum", na.rm = TRUE)
-##' }
 ##' @export
 get_worldpop <- function(country, year, ages = NULL,
                          sex = c("both", "female", "male"),
@@ -262,6 +261,9 @@ worldpop_age_label <- function(ages, sex) {
 #' Query the WorldPop catalogue
 #' @noRd
 worldpop_catalogue <- function(dataset, iso3, call = rlang::caller_env()) {
+  rlang::check_installed("jsonlite",
+                         reason = "to read the WorldPop catalogue.",
+                         call = call)
   url <- paste0("https://hub.worldpop.org/rest/data/", dataset, "?iso3=",
                 iso3)
   result <- tryCatch(jsonlite::fromJSON(url), error = function(error) {

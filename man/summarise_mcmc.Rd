@@ -15,9 +15,9 @@ A data frame with one row per chain and columns
 \item{effect}{\code{"mean of S"} for the mean of the spatial random effects
 over the locations, \code{"S"} for the spatial random effect at a location,
 or the name of the variable of an unstructured random effect.}
-\item{component}{The location, numbered as the rows of \code{object$coords},
-or the level of the random effect, numbered as in \code{object$re}. It is
-\code{NA} for the mean.}
+\item{index}{The number of the location, as the rows of \code{object$coords}
+are numbered, or of the level of the random effect, as in \code{object$re}.
+It is \code{NA} for the mean.}
 \item{ess}{The effective sample size.}
 The number of samples is stored in the attribute \code{"n_samples"}.
 }

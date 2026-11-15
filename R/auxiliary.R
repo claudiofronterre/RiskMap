@@ -1229,7 +1229,7 @@ create_ids <- function(data) {
 ##' @export
 ##' @method summary RiskMap_cross_validation
 summary.RiskMap_cross_validation <- function(object, ...) {
-  check_dots_unused(..., hints = c(
+  check_dots_unused(..., .hints = c(
     view_all = "{.fn summary} always gives the scores of each test set, and {.fn print} of the assessment gives only the averages."
   ))
   model_names <- names(object$model)
@@ -1616,7 +1616,7 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL,
                                           pit_mode = "average",
                                           pit_test_set = NULL,
                                           combine_pit = FALSE, ...) {
-  check_dots_unused(..., hints = c(
+  check_dots_unused(..., .hints = c(
     test_set = "It is now {.arg pit_test_set}.",
     combine_panels = "It is now {.arg combine_pit}."
   ))
