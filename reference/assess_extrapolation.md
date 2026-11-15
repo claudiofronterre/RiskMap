@@ -35,9 +35,9 @@ print(x, ...)
 
   Threshold of the share of the spatial variance left unexplained above
   which a location is classed as spatial extrapolation. `NULL` (the
-  default) uses the largest share left at a sampled location when its
-  own data are left out (see Details). A number strictly between 0 and 1
-  gives a fixed threshold.
+  default) uses the 95th percentile of the shares left at the sampled
+  locations when their own data are left out (see Details). A number
+  strictly between 0 and 1 gives a fixed threshold.
 
 - sampling_noise:
 
@@ -141,21 +141,24 @@ terms \\v(x)\\ is lower than the share they leave.
 A location is classed as covariate extrapolation when any covariate lies
 outside its observed range or its relative leverage exceeds 1, and as
 spatial extrapolation when \\v(x)\\ exceeds the threshold. By default
-the threshold is the largest over the sampled locations \\s_j\\ of
-\$\$v\_{-j} = \mathrm{Var}\[S(s_j) \mid y\_{-j}\] / \sigma^2 = 1 /
+the threshold is the 95th percentile over the sampled locations \\s_j\\
+of \$\$v\_{-j} = \mathrm{Var}\[S(s_j) \mid y\_{-j}\] / \sigma^2 = 1 /
 \[(R + \sigma^{-2} W)^{-1}\]\_{jj} - w_j / \sigma^2,\$\$ the share left
 at \\s_j\\ by the data of the other locations. Leave-one-out
-cross-validation predicts at each sampled location from the others, so a
-location above this threshold has less spatial information than any
-prediction that held-out data could check. A sampled location too far
-from the others to share any correlation with them makes the threshold
-1, and then no location is classed as spatial extrapolation, so a fixed
-`spatial_threshold` is then more informative. This is the rule of the
-covariate indicators, which compare each covariate with its observed
-range and the leverage with its largest value in the data. The two
-classes are kept separate because they call for different responses:
-more sampling where data are sparse, and caution about the form of the
-covariate effects outside the observed conditions.
+cross-validation predicts at each sampled location from the others, so
+the \\v\_{-j}\\ are the amounts of spatial information under which
+predictions can be checked against held-out data, and a location above
+their 95th percentile has less than nearly all of them. A percentile
+rather than the largest value keeps a single remote sampled location
+from setting the threshold. The percentile is 1 only when the data of
+the other locations say nothing about the spatial effect at more than 5%
+of the sampled locations, as when the locations share almost no spatial
+correlation. No location can then be classed as spatial extrapolation,
+so `assess_extrapolation()` warns, and a fixed `spatial_threshold` is
+more informative. The two classes are kept separate because they call
+for different responses: more sampling where data are sparse, and
+caution about the form of the covariate effects outside the observed
+conditions.
 
 ## See also
 
@@ -166,24 +169,22 @@ covariate effects outside the observed conditions.
 
 ``` r
 data(italy_sim)
-example_data <- italy_sim[1:50, ]
+example_data <- italy_sim[1:150, ]
 fit <- glgpm(y ~ log(pop_dens) + gp(), data = example_data,
              family = "gaussian", messages = FALSE)
-extrapolation <- assess_extrapolation(fit, italy_sim[51:100, ])
+extrapolation <- assess_extrapolation(fit, italy_sim[151:200, ])
 extrapolation
 #> ── Extrapolation ───────────────────────────────────────────────────────────────
 #> Indicators at 50 locations.
 #> 
-#> Supported              40
-#> Spatial                 0
-#> Covariate              10
+#> Supported              30
+#> Spatial                20
+#> Covariate               0
 #> Spatial and covariate   0
 #> 
-#> ℹ Spatial: more of the spatial variance left unexplained than at any sampled
-#>   location when its own data are left out (100%).
-#> ! A sampled location shares no spatial correlation with the others, so no
-#>   location is classed as spatial extrapolation. A number in `spatial_threshold`
-#>   gives a fixed threshold.
+#> ℹ Spatial: more than 82.7% of the spatial variance left unexplained, the 95th
+#>   percentile of the shares at the sampled locations when their own data are
+#>   left out.
 #> ℹ Covariate: a covariate outside its range in the data, or a leverage above its
 #>   largest value there.
 #> ℹ `plot(x)` maps the classes, and `indicator = "spatial_unexplained"` the
@@ -191,7 +192,7 @@ extrapolation
 table(extrapolation$extrapolation)
 #> 
 #>             Supported               Spatial             Covariate 
-#>                    40                     0                    10 
+#>                    30                    20                     0 
 #> Spatial and covariate 
 #>                     0 
 ```

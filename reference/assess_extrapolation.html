@@ -81,9 +81,10 @@ by the model, typically a grid from <code><a href="create_grid.html">create_grid
 <dt id="arg-spatial-threshold">spatial_threshold<a class="anchor" aria-label="anchor" href="#arg-spatial-threshold"></a></dt>
 <dd><p>Threshold of the share of the spatial variance
 left unexplained above which a location is classed as spatial
-extrapolation. <code>NULL</code> (the default) uses the largest share left at a
-sampled location when its own data are left out (see Details). A number
-strictly between 0 and 1 gives a fixed threshold.</p></dd>
+extrapolation. <code>NULL</code> (the default) uses the 95th percentile of the
+shares left at the sampled locations when their own data are left out
+(see Details). A number strictly between 0 and 1 gives a fixed
+threshold.</p></dd>
 
 
 <dt id="arg-sampling-noise">sampling_noise<a class="anchor" aria-label="anchor" href="#arg-sampling-noise"></a></dt>
@@ -177,18 +178,22 @@ leave.</p>
 <p>A location is classed as covariate extrapolation when any covariate lies
 outside its observed range or its relative leverage exceeds 1, and as
 spatial extrapolation when \(v(x)\) exceeds the threshold. By default
-the threshold is the largest over the sampled locations \(s_j\) of
+the threshold is the 95th percentile over the sampled locations
+\(s_j\) of
 $$v_{-j} = \mathrm{Var}[S(s_j) \mid y_{-j}] / \sigma^2
   = 1 / [(R + \sigma^{-2} W)^{-1}]_{jj} - w_j / \sigma^2,$$
 the share left at \(s_j\) by the data of the other locations.
 Leave-one-out cross-validation predicts at each sampled location from the
-others, so a location above this threshold has less spatial information
-than any prediction that held-out data could check. A sampled location too
-far from the others to share any correlation with them makes the threshold
-1, and then no location is classed as spatial extrapolation, so a fixed
-<code>spatial_threshold</code> is then more informative. This is the rule of
-the covariate indicators, which compare each covariate with its observed
-range and the leverage with its largest value in the data. The two
+others, so the \(v_{-j}\) are the amounts of spatial information under
+which predictions can be checked against held-out data, and a location
+above their 95th percentile has less than nearly all of them. A percentile
+rather than the largest value keeps a single remote sampled location from
+setting the threshold. The percentile is 1 only when the data of the
+other locations say nothing about the spatial effect at more than 5% of
+the sampled locations, as when the locations share almost no spatial
+correlation. No location can then be classed as spatial extrapolation, so
+<code>assess_extrapolation()</code> warns, and a fixed <code>spatial_threshold</code> is more
+informative. The two
 classes are kept separate because they call for different responses: more
 sampling where data are sparse, and caution about the form of the
 covariate effects outside the observed conditions.</p>
@@ -201,24 +206,22 @@ covariate effects outside the observed conditions.</p>
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">italy_sim</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">example_data</span> <span class="op">&lt;-</span> <span class="va">italy_sim</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">50</span>, <span class="op">]</span></span></span>
+<span class="r-in"><span><span class="va">example_data</span> <span class="op">&lt;-</span> <span class="va">italy_sim</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">150</span>, <span class="op">]</span></span></span>
 <span class="r-in"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="glgpm.html">glgpm</a></span><span class="op">(</span><span class="va">y</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">pop_dens</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="gp.html">gp</a></span><span class="op">(</span><span class="op">)</span>, data <span class="op">=</span> <span class="va">example_data</span>,</span></span>
 <span class="r-in"><span>             family <span class="op">=</span> <span class="st">"gaussian"</span>, messages <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">extrapolation</span> <span class="op">&lt;-</span> <span class="fu">assess_extrapolation</span><span class="op">(</span><span class="va">fit</span>, <span class="va">italy_sim</span><span class="op">[</span><span class="fl">51</span><span class="op">:</span><span class="fl">100</span>, <span class="op">]</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">extrapolation</span> <span class="op">&lt;-</span> <span class="fu">assess_extrapolation</span><span class="op">(</span><span class="va">fit</span>, <span class="va">italy_sim</span><span class="op">[</span><span class="fl">151</span><span class="op">:</span><span class="fl">200</span>, <span class="op">]</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">extrapolation</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ── <span style="font-weight: bold;">Extrapolation</span> ───────────────────────────────────────────────────────────────</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Indicators at 50 locations.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Supported            </span>  40</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Spatial              </span>   0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Covariate            </span>  10</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Supported            </span>  30</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Spatial              </span>  20</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Covariate            </span>   0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">Spatial and covariate</span>   0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Spatial: more of the spatial variance left unexplained than at any sampled</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   location when its own data are left out (100%).</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BBBB00;">!</span> A sampled location shares no spatial correlation with the others, so no</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   location is classed as spatial extrapolation. A number in `spatial_threshold`</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   gives a fixed threshold.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Spatial: more than 82.7% of the spatial variance left unexplained, the 95th</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   percentile of the shares at the sampled locations when their own data are</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   left out.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Covariate: a covariate outside its range in the data, or a leverage above its</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   largest value there.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> `plot(x)` maps the classes, and `indicator = "spatial_unexplained"` the</span>
@@ -226,7 +229,7 @@ covariate effects outside the observed conditions.</p>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/table.html" class="external-link">table</a></span><span class="op">(</span><span class="va">extrapolation</span><span class="op">$</span><span class="va">extrapolation</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             Supported               Spatial             Covariate </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>                    40                     0                    10 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                    30                    20                     0 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Spatial and covariate </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>                     0 </span>
 </code></pre></div>
