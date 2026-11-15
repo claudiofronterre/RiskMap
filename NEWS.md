@@ -99,8 +99,7 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 - `specify_glgpm()` and `simulate_glgpm()` simulate data and surfaces from a
   model, and `assess_simulation()` assesses prediction targets on them.
 - `specify_glgpm()` takes its CRS in `distance_crs` and `plot_mcmc()` its
-  locations in `locations`. `summarise_mcmc()` and `simulated_values()`
-  return data frames.
+  locations in `locations`.
 - `assess_prediction()` reports the SCRPS as a loss, so that lower is better
   for every score, and `PIT_area` once for all test observations, next to its
   value under perfect calibration (#230). It takes its fits in `models` and

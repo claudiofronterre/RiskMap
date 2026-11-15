@@ -20,8 +20,7 @@ test_that("joint simulations share effects at overlapping locations", {
                              sim$samples$surface[, 2, "spatial_effect"]))
   expect_identical(simulated_surface(sim, 1)$mean, as.numeric(sim$samples$surface[, 1, "mean"]))
   expect_identical(nrow(simulated_values(sim, "response")), 6L)
-  expect_identical(class(tidy), "data.frame")
-  expect_identical(.row_names_info(tidy), -6L)
+  expect_s3_class(tidy, "tbl_df")
   expect_named(tidy, c("simulation", "location_set", "location_id",
                        "component", "value"))
 })
