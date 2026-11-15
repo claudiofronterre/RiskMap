@@ -74,12 +74,19 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 - `create_grid()` builds prediction grids, also from the cells of a raster,
   `get_worldpop()` downloads WorldPop population counts, and `variogram()`
   gives the empirical variogram with a permutation envelope.
+- `create_grid()` takes `distance_crs`, as `variogram()` and
+  `summarise_distance()` do. A grid keeps its cells when its columns are
+  selected, and `predict()` says when it counts points on a grid whole in the
+  polygon that contains them (#214).
 
 ### Assessment and simulation
 
 - `assess_prediction()` compares models by spatial cross-validation.
 - `specify_glgpm()` and `simulate_glgpm()` simulate data and surfaces from a
   model, and `assess_simulation()` assesses prediction targets on them.
+- `specify_glgpm()` takes its CRS in `distance_crs` and `plot_mcmc()` its
+  locations in `locations`. `summarise_mcmc()` and `simulated_values()`
+  return data frames.
 
 ### Messages
 

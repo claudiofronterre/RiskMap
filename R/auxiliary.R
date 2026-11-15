@@ -1,48 +1,5 @@
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
-##' @title Convex Hull of an sf Object
-##'
-##' @description Computes the convex hull of an `sf` object, returning the boundaries of the smallest polygon that can enclose all geometries in the input.
-##'
-##' @param sf_object An `sf` data frame object containing geometries.
-##'
-##' @return An `sf` object representing the convex hull of the input geometries.
-##'
-##' @details The convex hull is the smallest convex polygon that encloses all points in the input `sf` object. This function computes the convex hull by first uniting all geometries in the input using `st_union()`, and then applying `st_convex_hull()` to obtain the polygonal boundary. The result is returned as an `sf` object containing the convex hull geometry.
-##'
-##' @seealso \code{\link[sf]{st_convex_hull}}, \code{\link[sf]{st_union}}
-##'
-##' @examples
-##' library(sf)
-##'
-##' # Create example sf object
-##' points <- st_sfc(st_point(c(0,0)), st_point(c(1,1)), st_point(c(2,2)), st_point(c(0,2)))
-##' sf_points <- st_sf(geometry = points)
-##'
-##' # Calculate the convex hull
-##' convex_hull_result <- create_convex_hull(sf_points)
-##'
-##' # Plot the result
-##' plot(sf_points, col = 'blue', pch = 19)
-##' plot(convex_hull_result, add = TRUE, border = 'red')
-##' @export
-create_convex_hull <- function(sf_object) {
-  check_supplied(sf_object)
-  # Check if the input is an sf object
-  if (!inherits(sf_object, "sf")) {
-    abort_input("{.arg sf_object} must be an {.cls sf} object, not {.obj_type_friendly {sf_object}}.", arg = "sf_object")
-  }
-
-  # Get the geometry from the sf object
-  geometry <- st_geometry(sf_object)
-
-  # Compute the convex hull
-  convex_hull <- st_convex_hull(st_union(geometry))
-
-  # Return the convex hull as an sf object
-  return(st_sf(geometry = convex_hull))
-}
-
 ##' @title Empirical Logit Transformation for Binomial Data
 ##' @description Computes the empirical logit transformation for binomial counts.
 ##' @param y A numeric vector of observed positives.

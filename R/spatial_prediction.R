@@ -853,6 +853,9 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     riskmap_inform("{.arg boundaries} are projected to the coordinate reference system of the fit.")
     boundaries <- st_transform(boundaries, st_crs(object$data))
   }
+  # Points on a grid that has lost its cells, in the CRS of newdata, are said
+  # to be counted whole (#214)
+  inform_point_assignment(prediction_input$output_data)
 
   assignment <- assign_prediction_locations(model_data, boundaries)
   assigned_data <- assignment$data

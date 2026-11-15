@@ -11,6 +11,13 @@
 ##' @param spacing A single positive number specifying the distance between
 ##'   grid-point centres. Taken from the resolution of `raster` when that is
 ##'   supplied.
+##' @param distance_crs `NULL` to keep the CRS of projected `boundaries`, or
+##'   to project `boundaries` in longitude and latitude to the CRS from
+##'   [propose_crs()] (with a message naming the CRS and the units of
+##'   distance). Alternatively, a projected CRS to project `boundaries` to,
+##'   as in [variogram()] and [summarise_distance()]. A grid built from
+##'   `raster` takes the CRS of the raster, so `distance_crs` must then be
+##'   `NULL` or that CRS.
 ##' @param distance_units Character string, either `"km"` or `"m"`, giving the units of `spacing`. Defaults to `"km"`.
 ##' @param keep Which cells to keep. `"centre"` (the default) keeps cells
 ##'   whose centre lies within `boundaries`. `"overlap"` keeps every cell that
@@ -44,14 +51,22 @@
 ##' at least one non-missing value are kept. Cells kept inside `boundaries`
 ##' may have missing values, for example over water.
 ##'
-##' The CRS is inherited from `boundaries`, or from `raster` when it is
-##' supplied. If `boundaries` is in longitude/latitude and no raster is given,
-##' it is automatically reprojected to the CRS from [propose_crs()] and a
-##' message names the CRS and the units of distance;
-##' transform `boundaries` to a projected CRS yourself first to use a
-##' different one. A warning of class `riskmap_warning_crs` is raised when the
-##' CRS used distorts distances by more than 1% over `boundaries`, or over the
-##' grid built from `raster`.
+##' The CRS of the grid is `distance_crs` when it is given, and otherwise that
+##' of `boundaries`, or of `raster` when it is supplied. If `boundaries` is in
+##' longitude and latitude and neither `distance_crs` nor a raster is given,
+##' it is projected to the CRS from [propose_crs()] and a message names the
+##' CRS and the units of distance. A warning of class
+##' `riskmap_warning_crs` is raised when the CRS used distorts distances by
+##' more than 1% over `boundaries`, or over the grid built from `raster`.
+##'
+##' The grid keeps its cells when rows or columns are selected with `[` or
+##' with dplyr verbs such as `select()` and `filter()`, unless only the
+##' geometry column is kept. Functions that build a new `sf` object, such as
+##' `cbind()`, `merge()` and [sf::st_as_sf()], drop the class `RiskMap_grid`,
+##' and [predict.RiskMap()] then assigns each point to the polygon that
+##' contains it. Add columns with `$<-`, `dplyr::mutate()` or a dplyr join
+##' instead. `rbind()` keeps the cells of its first grid, so use it only to
+##' join parts of one grid.
 ##'
 ##' @return
 ##' A `RiskMap_grid` and `sf` object containing the generated grid points. The
@@ -93,6 +108,7 @@
 ##'
 create_grid <- function(boundaries = NULL,
                         spacing = NULL,
+                        distance_crs = NULL,
                         distance_units = c("km", "m"),
                         keep = c("centre", "overlap"),
                         raster = NULL) {
@@ -101,7 +117,7 @@ create_grid <- function(boundaries = NULL,
   keep <- match_choice(keep)
   if (!is.null(raster)) {
     return(create_grid_from_raster(raster, boundaries, spacing,
-                                   distance_units, keep))
+                                   distance_crs, distance_units, keep))
   }
   if (is.null(boundaries)) {
     abort_input("{.arg boundaries}, {.arg raster} or both must be given.", arg = "boundaries")
@@ -110,8 +126,8 @@ create_grid <- function(boundaries = NULL,
   check_positive_number(spacing, "")
 
   input_crs <- st_crs(boundaries)
-  boundaries <- project_for_distances(boundaries, NULL, NULL,
-                                      "to create the grid",
+  boundaries <- project_for_distances(boundaries, distance_crs,
+                                      "distance_crs", "to create the grid",
                                       data_arg = "boundaries",
                                       units = distance_units)
 
@@ -159,6 +175,82 @@ as_riskmap_grid <- function(grid) {
   grid
 }
 
+#' Keep the cells of a grid when its rows or columns are selected
+#'
+#' `[.sf` comes first, since "sf" comes before "RiskMap_grid". It removes the
+#' class "sf", selects with `[`, which reaches this method, and then adds the
+#' geometry back with `st_sf()`, which keeps the class and attributes of the
+#' data frame it is given. `[.data.frame` drops the metadata when columns are
+#' selected, so it is restored here (#214). sf's dplyr verbs select with `[`
+#' too, so they need no method of their own. With `drop = TRUE`, `[.sf` adds
+#' no geometry back, so nothing is restored.
+#' @noRd
+#' @export
+`[.RiskMap_grid` <- function(x, ..., drop = FALSE) {
+  metadata <- attr(x, "grid_metadata", exact = TRUE)
+  out <- NextMethod()
+  if (drop || !is.data.frame(out) || is.null(metadata)) return(out)
+  attr(out, "grid_metadata") <- metadata
+  as_riskmap_grid(out)
+}
+
+#' Say that points on a regular grid are assigned to polygons one by one
+#'
+#' Called by `predict()` when it aggregates over polygons. Points that are
+#' not a grid from `create_grid()` with its cells but lie on a square lattice
+#' are probably such a grid that lost its cells, for example through
+#' `cbind()`, or one made with `sf::st_make_grid()`, so the message says how
+#' to have each cell weighted by its coverage instead (#214).
+#' @param points The prediction locations as the user gave them, in their own
+#'   CRS, since a lattice is no longer one once projected to another.
+#' @return Whether the message was given, invisibly.
+#' @noRd
+inform_point_assignment <- function(points) {
+  if (inherits(points, "RiskMap_grid") &&
+      !is.null(attr(points, "grid_metadata", exact = TRUE))) {
+    return(invisible(FALSE))
+  }
+  if (!on_square_lattice(points)) return(invisible(FALSE))
+  riskmap_inform(c(
+    "{.arg newdata} lie on a regular grid that doesn't come from {.fn create_grid}, so each point counts fully in the polygon that contains it.",
+    "i" = "Make the grid with {.fn create_grid} to weight each cell by the fraction of it within each polygon. Add columns to it with {.code $<-} or {.fn dplyr::mutate}, since {.fn cbind} and {.fn merge} drop its cells."
+  ))
+  invisible(TRUE)
+}
+
+#' Whether points lie on a square lattice
+#'
+#' The points are distinct, at least four, in at least two rows and two
+#' columns, and their coordinates are whole multiples of one spacing from the
+#' first row and column, as the centres of the cells of a square grid, of
+#' which some may be missing. At least half of the gaps between neighbouring
+#' rows, and between neighbouring columns, are one spacing, as in a grid.
+#' Scattered locations whose coordinates are whole metres are on a lattice of
+#' 1 m, but their rows and columns are mostly further apart.
+#' @param points An `sf` object.
+#' @noRd
+on_square_lattice <- function(points) {
+  geometry <- st_geometry(points)
+  if (length(geometry) < 4L ||
+      !all(st_geometry_type(geometry) == "POINT")) {
+    return(FALSE)
+  }
+  coordinates <- unique(st_coordinates(geometry)[, 1:2, drop = FALSE])
+  if (nrow(coordinates) < 4L || !all(is.finite(coordinates))) return(FALSE)
+  steps <- apply(coordinates, 2L, function(values) {
+    values <- sort(unique(values))
+    gaps <- diff(values)
+    gaps <- gaps[gaps > 1e-8 * max(abs(values), 1)]
+    if (!length(gaps)) return(NA_real_)
+    step <- min(gaps)
+    positions <- (values - values[1L]) / step
+    on_lattice <- all(abs(positions - round(positions)) <= 1e-6)
+    adjacent <- mean(abs(gaps / step - 1) <= 1e-6) >= 0.5
+    if (on_lattice && adjacent) step else NA_real_
+  })
+  all(is.finite(steps)) && abs(steps[1L] - steps[2L]) <= 1e-6 * max(steps)
+}
+
 #' Keep the grid cells that lie in, or overlap, a study boundary
 #' @noRd
 keep_grid_cells <- function(grid_box, study_boundary, cellsize, keep) {
@@ -173,7 +265,7 @@ keep_grid_cells <- function(grid_box, study_boundary, cellsize, keep) {
 #' Grid points at the centres of the cells of a raster
 #' @noRd
 create_grid_from_raster <- function(raster, boundaries, spacing,
-                                    distance_units, keep) {
+                                    distance_crs, distance_units, keep) {
   if (!inherits(raster, "SpatRaster")) {
     abort_input("{.arg raster} must be a {.cls SpatRaster} from the {.pkg terra} package, not {.obj_type_friendly {raster}}.", arg = "raster")
   }
@@ -186,6 +278,12 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
   }
   cellsize <- resolution[1]
   grid_crs <- st_crs(terra::crs(raster))
+  if (!is.null(distance_crs)) {
+    check_crs(distance_crs, arg = "distance_crs")
+    if (st_crs(distance_crs) != grid_crs) {
+      abort_input(c("{.arg distance_crs} must be the coordinate reference system of {.arg raster}, or {.code NULL}.", "i" = "A grid built from {.arg raster} has the cells of the raster, so it takes its CRS. Project the raster first, for example with {.fn terra::project}, to build the grid in another CRS."), arg = "distance_crs")
+    }
+  }
   centres <- terra::xyFromCell(raster, seq_len(terra::ncell(raster)))
   grid_box <- st_as_sf(
     cbind(as.data.frame(centres), terra::values(raster, dataframe = TRUE)),
@@ -231,4 +329,47 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
     boundary = study_boundary
   )
   as_riskmap_grid(grid_out)
+}
+
+##' @title Convex Hull of an sf Object
+##'
+##' @description Computes the convex hull of an `sf` object, returning the boundaries of the smallest polygon that can enclose all geometries in the input.
+##'
+##' @param data An `sf` data frame object containing geometries.
+##'
+##' @return An `sf` object representing the convex hull of the input geometries.
+##'
+##' @details The convex hull is the smallest convex polygon that encloses all points in the input `sf` object. This function computes the convex hull by first uniting all geometries in the input using `st_union()`, and then applying `st_convex_hull()` to obtain the polygonal boundary. The result is returned as an `sf` object containing the convex hull geometry.
+##'
+##' @seealso \code{\link[sf]{st_convex_hull}}, \code{\link[sf]{st_union}}
+##'
+##' @examples
+##' library(sf)
+##'
+##' # Create example sf object
+##' points <- st_sfc(st_point(c(0,0)), st_point(c(1,1)), st_point(c(2,2)), st_point(c(0,2)))
+##' sf_points <- st_sf(geometry = points)
+##'
+##' # Calculate the convex hull
+##' convex_hull_result <- create_convex_hull(sf_points)
+##'
+##' # Plot the result
+##' plot(sf_points, col = 'blue', pch = 19)
+##' plot(convex_hull_result, add = TRUE, border = 'red')
+##' @export
+create_convex_hull <- function(data) {
+  check_supplied(data)
+  # Check if the input is an sf object
+  if (!inherits(data, "sf")) {
+    abort_input("{.arg data} must be an {.cls sf} object, not {.obj_type_friendly {data}}.", arg = "data")
+  }
+
+  # Get the geometry from the sf object
+  geometry <- st_geometry(data)
+
+  # Compute the convex hull
+  convex_hull <- st_convex_hull(st_union(geometry))
+
+  # Return the convex hull as an sf object
+  return(st_sf(geometry = convex_hull))
 }

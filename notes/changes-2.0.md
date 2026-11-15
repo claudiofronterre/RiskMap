@@ -198,9 +198,9 @@ more north-south than east-west.
 - Datasets must have a coordinate reference system. When coordinates are in
 latitude/longitude and `model_crs` is not supplied, they are now automatically
 reprojected to the CRS from `propose_crs()`. `predict()`, `simulate_glgpm()` and
-`assess_prediction()` have been updated to match; `simulate_glgpm()`'s own 
-`convert_to_crs`/`scale_to_km` arguments have likewise been replaced with
-`model_crs`/`distance_units`.
+`assess_prediction()` have been updated to match; the `convert_to_crs` and
+`scale_to_km` arguments of `glgpm_sim()` have been replaced with the
+`distance_crs` and `distance_units` of `specify_glgpm()`.
 - providing `model_crs` in longitude/latitude now raises an error.
 - The new `propose_crs()` chooses the projected CRS that distorts distances
 least over the data. It compares the WGS 84 UTM zone at the centre of the data
@@ -232,6 +232,14 @@ same UTM zone for data that a zone covers well. `propose_utm()` took the zone
 holding most locations, which could be far from the centre of the data.
 - In `glgpm()`, `convert_to_crs` has been replaced with `model_crs` and
 `scale_to_km` has been replaced with `distance_units` (`"km"` or `"m"`).
+- `create_grid()` gains `distance_crs`, which projects `boundaries` as it
+projects the data in `variogram()` and `summarise_distance()`, so the CRS of
+distances has one name in all three. With `raster` it must be `NULL` or the
+CRS of the raster. It comes before `distance_units`, so a call that gave
+`distance_units` by position must now name it. The message for boundaries in
+longitude and latitude now says to set `distance_crs`.
+- `propose_crs()`'s `epsg_tolerance` is now `utm_tolerance`, since it is the
+largest distortion for which a UTM zone is proposed.
 
 ## Exploratory analysis
 
@@ -279,6 +287,13 @@ native linear units rather than assuming metres.
   `plot_variogram()` (now `plot.RiskMap_variogram()`) shows the envelope by
   default and warns when it was omitted with `n_permutations = 0`.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
+- `plot()` of a variogram takes `envelope` and `colour` instead of
+`plot_envelope` and `color`, in the British spelling of RiskMap's other
+names. It now stops when `...` is given anything, and so does `print()` of
+`summarise_distance()` results, so that an old name or a misspelt one is not
+ignored.
+- `variogram()` takes `seed` last, after `distance_crs` and `distance_units`.
+- `create_convex_hull()` takes `data` instead of `sf_object`.
 
 ## Model fitting
 
@@ -333,14 +348,18 @@ function of the mean of the spatial random effects and of the location with
 the smallest effective sample size, with a histogram of the effective sample
 sizes at all the locations. The trace plots show the iterations at which the
 samples were kept, so fits now record the `n_sim`, `burnin` and `thin` of
-their samples in `attr(fit, "mcmc")`. `component` now defaults to the
+their samples in `attr(fit, "mcmc")`. The chains shown are chosen with
+`locations`, which was `component` in `check_mcmc()`. It defaults to the
 location with the smallest effective sample size, can select several
 locations and can be given together with `check_mean = TRUE`. The mean and
-`component` previously included the levels of unstructured random effects,
-which are stored after the locations in `S_samples`. They now refer to the
-locations only.
+the chosen chains previously included the levels of unstructured random
+effects, which are stored after the locations in `S_samples`. They now refer
+to the locations only. An argument in `...` that doesn't match one of
+`acf()`'s `lag.max`, `type`, `na.action` and `demean`, partially as `acf()`
+matches them, is an error, since `acf()` would ignore it. `component` is one
+such argument.
 
-- The new `summarise_mcmc()` returns a tibble of the effective sample sizes of
+- The new `summarise_mcmc()` returns a data frame of the effective sample sizes of
 the mean of the spatial random effects, of each location and of each level of
 an unstructured random effect. They are computed with the initial monotone
 sequence estimator of Geyer (1992), so the package no longer depends on sns.
@@ -1041,9 +1060,10 @@ own table, a household's integral is kept while only the coefficients of
 covariates its members share change, and households alike in their members'
 outcomes and covariate differences share one. On 200 clusters of a
 Demographic and Health Survey, a fit with 8 child and household covariates,
-a nugget and household effects took 23 minutes and one stage, at a bound of
-0.008 with 4,830 effective draws, instead of 83 minutes and three stages, at
-0.086 with 1,350, with every estimate within 0.03 standard errors. On a
+a nugget and household effects took 23 minutes and one stage instead of 6
+hours and three, on the same node, at a bound of 0.008 with 4,830 effective
+draws against 0.086 with 1,350, with every estimate within 0.03 standard
+errors. On a
 simulated survey of that shape, with 28,471 children in 16,614
 households at 1,375 locations, a fit with a nugget and household effects
 certified at the first stage in 9 minutes on one core. On simulated surveys
@@ -1331,6 +1351,15 @@ Gaussian models also take 2,000 independent draws by default, including with
   in the last binary digit. On the 8,740 cells of `tz_covariates`, a
   `predict()` with the default summaries is about twice as fast, and one with
   every summary about three times as fast.
+- A grid from `create_grid()` keeps its class and the metadata of its cells
+when its columns are selected with `[`, `dplyr::select()`, `mutate()` or a
+dplyr join (#214). Before, `predict()` with `boundaries` then assigned each
+point to the polygon containing it without a word, instead of weighting cells
+by their coverage, which changed areal estimates. `cbind()`, `merge()` and
+`st_as_sf()` still drop the class, and so does keeping only the geometry
+column. `rbind()` keeps the cells of its first grid. `predict()` now says
+when it assigns points to polygons one by one although they lie on a square
+lattice, as the centres of a grid's cells do.
 
 ## Cross validation
 
@@ -1369,6 +1398,15 @@ parameters have been renamed to `metric`/`model`.
   Poisson responses use exposure times the inverse-link mean.
   Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
   extract results.
+
+- `specify_glgpm()` takes the projected CRS in which distances are measured
+  in `distance_crs`, as `summarise_distance()` and `variogram()` do, instead
+  of `model_crs`. Its arguments are now `formula`, `data`, `family`,
+  `parameters`, `invlink`, `denominator`, `distance_crs` and
+  `distance_units`, with `invlink` moved from last, so calls that give the
+  later arguments by position must name them. `simulated_values()` returns a
+  data frame instead of a tibble, as every other table RiskMap returns.
+  Simulations with a given seed are unchanged.
 
 - `assess_simulation()` scores every model on the scale of the mean, each
   through its own inverse link. The truth is the simulated mean, which the

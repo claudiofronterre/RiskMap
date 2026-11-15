@@ -9,15 +9,17 @@
 #'   when present. Supply `tau2` when `gp(nugget = TRUE)`, `sigma2_me` for
 #'   Gaussian measurement error, and `sigma2_re` for each `re()` term.
 #'   Variances may be zero. `phi` is expressed in `distance_units`.
+#' @param distance_crs The projected coordinate reference system in which
+#'   distances, and so `phi`, are measured, for example an EPSG code. `data`
+#'   are transformed to it. The default, `NULL`, keeps projected data as they
+#'   are and projects longitude/latitude data to the CRS from [propose_crs()],
+#'   with a message naming it. A warning of class `riskmap_warning_crs` is
+#'   raised when the CRS used distorts distances by more than 1% over the data.
 #' @return A validated `RiskMap_simulation_model` for [simulate_glgpm()]. It
 #'   contains the formula, transformed model data, family, fixed parameters,
 #'   denominator name, distance units, inverse link, fixed-effect design
 #'   information, random-effect terms, offset, Matern smoothness and response.
-#' @details The response in `formula` need not exist in `data`. CRS handling
-#'   follows [glgpm()]: `model_crs` is used when supplied, otherwise
-#'   longitude/latitude data are transformed to the CRS from [propose_crs()].
-#'   A message reports automatic transformations, and a warning a CRS that
-#'   distorts distances by more than 1% over the data.
+#' @details The response in `formula` need not exist in `data`.
 #' @examples
 #' library(sf)
 #' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
@@ -35,9 +37,9 @@
 #'                                          sigma2_me = 0.1))
 #'
 #' @export
-specify_glgpm <- function(formula, data, family, parameters,
-                         denominator = NULL, model_crs = NULL,
-                         distance_units = c("km", "m"), invlink = NULL) {
+specify_glgpm <- function(formula, data, family, parameters, invlink = NULL,
+                          denominator = NULL, distance_crs = NULL,
+                          distance_units = c("km", "m")) {
   check_supplied(formula)
   check_supplied(data)
   check_supplied(family)
@@ -45,7 +47,7 @@ specify_glgpm <- function(formula, data, family, parameters,
   distance_units <- match_choice(distance_units)
   check_data(data)
   check_formula(formula, data, response_required = FALSE)
-  data <- project_for_distances(data, model_crs, "model_crs",
+  data <- project_for_distances(data, distance_crs, "distance_crs",
                                 "for simulation", units = distance_units)
   family_link <- read_family(family, invlink)
   family <- family_link$family
@@ -354,8 +356,9 @@ draw_simulation <- function(prepared, nsim, seed = NULL,
 #'   data simulations, `"response"`. Defaults to all available components.
 #' @param simulation Simulation numbers to extract. Defaults to all simulations.
 #' @param location_set `"data"`, `"surface"`, or both. Defaults to available sets.
-#' @return A tibble with `simulation`, `location_set`, `location_id`, `component`
-#'   and `value`. Location identifiers refer to rows in `object$locations`.
+#' @return A data frame with `simulation`, `location_set`, `location_id`,
+#'   `component` and `value`. Location identifiers refer to rows in
+#'   `object$locations`.
 #' @examples
 #' library(sf)
 #' locations <- st_as_sf(data.frame(x = c(0, 1000, 2000), y = 0),
@@ -406,7 +409,7 @@ simulated_values <- function(object, component = NULL, simulation = NULL,
     index$value <- as.numeric(x[, simulation, selected, drop = FALSE])
     index[, c("simulation", "location_set", "location_id", "component", "value")]
   })
-  as_tibble(do.call(rbind, tables))
+  do.call(rbind, tables)
 }
 
 #' Extract a simulated dataset or surface

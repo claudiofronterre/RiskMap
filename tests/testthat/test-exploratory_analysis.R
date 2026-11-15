@@ -88,6 +88,8 @@ test_that("summarise_distance prints rounded values and stores them in full", {
   expect_false(visible)
   expect_error(print(result, digits = 0),
                "digits", class = "riskmap_error_input")
+  # A misspelt argument is not ignored
+  expect_error(print(result, signif = 5), "signif")
 })
 
 test_that("summarise_distance follows the glgpm() CRS convention", {
@@ -553,7 +555,7 @@ test_that("plot.RiskMap_variogram warns and skips the envelope when n_permutatio
   )
   expect_false("GeomRibbon" %in% vapply(p$layers, function(l) class(l$geom)[1], character(1)))
 
-  expect_no_warning(plot(result, plot_envelope = FALSE))
+  expect_no_warning(plot(result, envelope = FALSE))
 })
 
 test_that("plot.RiskMap_variogram labels points with their numbers of pairs on request", {
@@ -600,7 +602,30 @@ test_that("plot.RiskMap_variogram omits empty classes and highlights points outs
   expect_lte(ranges$x$range$range[1], 0)
   expect_lte(ranges$y$range$range[1], 0)
 
-  expect_error(plot(result, plot_envelope = "yes"), "plot_envelope", class = "riskmap_error_input")
+  expect_error(plot(result, envelope = "yes"), "envelope", class = "riskmap_error_input")
+})
+
+test_that("plot.RiskMap_variogram takes envelope and colour and rejects other arguments", {
+
+  result <- variogram(gaussian_data, variable = "y", n_bins = 10,
+                      n_permutations = 99, seed = 123)
+  geoms <- function(p) vapply(p$layers, function(l) class(l$geom)[1], character(1))
+
+  p <- plot(result, colour = "darkorange")
+  ribbon <- ggplot2::layer_data(p, which(geoms(p) == "GeomRibbon"))
+  expect_identical(unique(ribbon$fill), "darkorange")
+  expect_false("GeomRibbon" %in% geoms(plot(result, envelope = FALSE)))
+
+  # The names of 1.0.0 would otherwise be taken by `...` and ignored
+  expect_error(plot(result, plot_envelope = FALSE), "plot_envelope")
+  expect_error(plot(result, color = "red"), "color")
+})
+
+test_that("variogram takes its seed last", {
+  expect_identical(names(formals(variogram)),
+                   c("data", "variable", "breaks", "n_bins", "max_dist",
+                     "n_permutations", "level", "distance_crs",
+                     "distance_units", "seed"))
 })
 
 test_that("print.RiskMap_variogram describes the classes and the envelope", {

@@ -150,6 +150,162 @@ test_that("RiskMap grids and their predictions work with dplyr", {
   expect_no_error(dplyr::filter(prediction$predictions, grid_id <= 2))
 })
 
+test_that("selecting columns of a grid keeps its cells (#214)", {
+  square <- st_polygon(list(matrix(square_coords * 1000,
+                                   ncol = 2, byrow = TRUE)))
+  square_m <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
+  square_grid <- create_grid(square_m, spacing = 2.5)
+  square_grid$value <- seq_len(nrow(square_grid))
+  metadata <- attr(square_grid, "grid_metadata")
+  extra <- data.frame(grid_id = square_grid$grid_id, extra = 1)
+
+  selections <- list(
+    "[, j]" = square_grid[, "grid_id"],
+    "[j]" = square_grid["value"],
+    "[i, j]" = square_grid[1:3, "value"],
+    "[i, ]" = square_grid[1:3, ],
+    "select" = dplyr::select(square_grid, value),
+    "mutate" = dplyr::mutate(square_grid, double = 2 * value),
+    "left_join" = dplyr::left_join(square_grid, extra, by = "grid_id"),
+    "rbind of parts" = rbind(square_grid[1:3, ], square_grid[4:6, ])
+  )
+  for (name in names(selections)) {
+    selection <- selections[[name]]
+    expect_identical(class(selection), class(square_grid), label = name)
+    expect_identical(attr(selection, "grid_metadata"), metadata, label = name)
+  }
+
+  # Without geometry the result is not a grid
+  expect_null(attr(square_grid[, c("grid_id", "value"), drop = TRUE],
+                   "grid_metadata"))
+  expect_identical(square_grid[, "value", drop = TRUE], square_grid$value)
+})
+
+test_that("areal predictions on a grid with selected columns use its cells (#214)", {
+  areas <- st_sf(geometry = squares)
+  full <- predict(gaussian_intercept_model, newdata = grid,
+                  boundaries = areas, aggregate = "mean",
+                  messages = FALSE, seed = 1)
+  selected <- predict(gaussian_intercept_model, newdata = grid[, "grid_id"],
+                      boundaries = areas, aggregate = "mean",
+                      messages = FALSE, seed = 1)
+  expect_identical(full$coverage, "exact")
+  expect_identical(selected$coverage, "exact")
+  expect_identical(selected$boundary_summary, full$boundary_summary)
+})
+
+test_that("points on a square lattice are recognised", {
+  expect_true(on_square_lattice(grid))
+  expect_true(on_square_lattice(grid[-2, ]))
+  # A grid made without create_grid()
+  cellsize <- diff(st_bbox(hull)[c(1, 3)]) / 4
+  lattice <- st_sf(geometry = st_make_grid(hull, cellsize = cellsize,
+                                           what = "centers"))
+  expect_true(on_square_lattice(lattice))
+  square_lattice <- st_as_sf(expand.grid(x = c(0, 5, 10), y = c(3, 8)),
+                             coords = c("x", "y"), crs = 32637)
+  expect_true(on_square_lattice(square_lattice))
+
+  # Rectangular cells, a point off the lattice, one row, or too few points
+  oblong <- st_as_sf(expand.grid(x = c(0, 5, 10), y = c(0, 2)),
+                     coords = c("x", "y"), crs = 32637)
+  expect_false(on_square_lattice(oblong))
+  shifted <- square_lattice
+  st_geometry(shifted)[[1]] <- st_point(c(0.5, 3))
+  expect_false(on_square_lattice(shifted))
+  row <- st_as_sf(data.frame(x = 1:5, y = 0), coords = c("x", "y"),
+                  crs = 32637)
+  expect_false(on_square_lattice(row))
+  expect_false(on_square_lattice(square_lattice[1:3, ]))
+  expect_false(on_square_lattice(gaussian_data))
+
+  # Scattered sites in whole metres are on a lattice of 1 m, but not a grid
+  data(galicia, package = "RiskMap", envir = environment())
+  expect_false(on_square_lattice(galicia))
+  rounded <- st_as_sf(data.frame(x = c(0, 1, 7, 40, 41, 95, 130, 200),
+                                 y = c(3, 90, 4, 55, 56, 12, 180, 2)),
+                      coords = c("x", "y"), crs = 32637)
+  expect_false(on_square_lattice(rounded))
+})
+
+test_that("predict() says when points on a grid are assigned whole to polygons (#214)", {
+  areas <- st_sf(geometry = squares)
+  predict_over <- function(newdata) {
+    predict(gaussian_intercept_model, newdata = newdata, boundaries = areas,
+            aggregate = "mean", messages = FALSE, seed = 1)
+  }
+
+  # cbind() builds a new sf object, which loses the cells of the grid. Some
+  # squares then hold a single point, or location, which predict() warns
+  # about.
+  combined <- cbind(grid, value = 1)
+  expect_false(inherits(combined, "RiskMap_grid"))
+  expect_message(prediction <- suppressWarnings(predict_over(combined)),
+                 "regular grid", class = "riskmap_message")
+  expect_identical(prediction$coverage, "point")
+
+  expect_no_message(predict_over(grid))
+  expect_no_message(suppressWarnings(predict_over(gaussian_data)))
+
+  # A grid in another CRS than the fit's is recognised before it is
+  # projected, which predict() also reports
+  messages_of <- function(newdata) {
+    texts <- character()
+    withCallingHandlers(suppressWarnings(predict_over(newdata)),
+                        riskmap_message = function(m) {
+                          texts <<- c(texts, conditionMessage(m))
+                          invokeRestart("muffleMessage")
+                        })
+    texts
+  }
+  other_grid <- suppressWarnings(create_grid(st_transform(hull, 32636), 3))
+  other_combined <- cbind(other_grid, value = 1)
+  expect_false(on_square_lattice(st_transform(other_combined, 32637)))
+  expect_true(any(grepl("regular grid", messages_of(other_combined))))
+  expect_false(any(grepl("regular grid", messages_of(other_grid))))
+})
+
+test_that("create_grid projects boundaries to distance_crs", {
+  lonlat <- st_sf(geometry = st_sfc(st_polygon(list(rbind(
+    c(-10, 6), c(-9.8, 6), c(-9.8, 6.2), c(-10, 6.2), c(-10, 6)
+  ))), crs = 4326))
+
+  expect_no_message(
+    result <- create_grid(lonlat, spacing = 5, distance_crs = 32629)
+  )
+  expect_identical(st_crs(result), st_crs(32629))
+  metadata <- attr(result, "grid_metadata")
+  expect_identical(metadata$grid_crs, st_crs(32629))
+  expect_identical(metadata$input_crs, st_crs(4326))
+  expect_identical(
+    st_coordinates(result),
+    st_coordinates(create_grid(st_transform(lonlat, 32629), spacing = 5))
+  )
+
+  # Projected boundaries are projected again
+  projected <- create_grid(st_transform(lonlat, 32628), spacing = 5,
+                           distance_crs = 32629)
+  expect_identical(st_crs(projected), st_crs(32629))
+
+  expect_input_error(create_grid(lonlat, 5, distance_crs = 4326),
+                     "distance_crs")
+  expect_input_error(create_grid(lonlat, 5, distance_crs = "not a CRS"),
+                     "distance_crs")
+})
+
+test_that("create_grid takes the CRS of a raster", {
+  counts <- terra::rast(nrows = 2, ncols = 2, xmin = 0, xmax = 2000,
+                        ymin = 0, ymax = 2000, crs = "EPSG:32637")
+  terra::values(counts) <- 1:4
+
+  expect_identical(create_grid(raster = counts, distance_crs = 32637),
+                   create_grid(raster = counts))
+  expect_input_error(create_grid(raster = counts, distance_crs = 32636),
+                     "distance_crs")
+  expect_input_error(create_grid(raster = counts, distance_crs = "not a CRS"),
+                     "distance_crs")
+})
+
 test_that("create_grid() can keep cells that overlap the boundary", {
   boundary <- st_sf(geometry = st_sfc(
     st_polygon(list(rbind(c(0, 0), c(10, 0), c(10, 10), c(0, 0)))),
@@ -165,7 +321,8 @@ test_that("create_grid() can keep cells that overlap the boundary", {
   expect_identical(attr(overlap, "grid_metadata")$keep, "overlap")
   expect_identical(attr(centre, "grid_metadata")$keep, "centre")
   expect_s3_class(attr(overlap, "grid_metadata")$boundary, "sfc")
-  expect_error(create_grid(boundary, 2, "m", keep = "all"), "must be one of")
+  expect_error(create_grid(boundary, 2, distance_units = "m", keep = "all"),
+               "must be one of")
 })
 
 test_that("create_grid uses the cells of a raster", {
@@ -216,4 +373,17 @@ test_that("create_grid checks the raster", {
                         ymin = 0, ymax = 3000, crs = "EPSG:32637")
   expect_error(create_grid(raster = oblong), "square cells")
   expect_error(create_grid(raster = counts, spacing = 5), "must match the resolution")
+})
+
+test_that("create_convex_hull generates errors", {
+  expect_input_error(create_convex_hull("a"), "data")
+})
+
+test_that("create_convex_hull functions correctly", {
+  result <- create_convex_hull(gaussian_data)
+  expect_s3_class(result, "sf")
+  expect_identical(nrow(result), 1L)
+
+  intersect <- unlist(st_intersects(gaussian_data, result))
+  expect_identical(intersect, rep(1L, 10))
 })

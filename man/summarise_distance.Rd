@@ -26,7 +26,8 @@ distances used are expressed in kilometers or meters. Defaults to \code{"km"}.}
 
 \item{digits}{the number of significant digits to print. Defaults to 3.}
 
-\item{...}{further arguments, currently ignored.}
+\item{...}{not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 a named numeric vector of class \code{RiskMap_distance_summary}
