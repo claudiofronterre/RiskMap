@@ -319,7 +319,9 @@ extrapolation_sampling_variance <- function(object, parameters) {
 ##' @param x A `RiskMap_extrapolation` object, whose `print()` method counts
 ##'   the locations in each class and states the thresholds of the classes,
 ##'   returning `x` invisibly.
-##' @param ... Not used.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored. A subset that lost the classes or the threshold prints
+##'   as an `sf` object, and the arguments go to its print method.
 ##' @method print RiskMap_extrapolation
 ##' @export
 print.RiskMap_extrapolation <- function(x, ...) {
@@ -328,6 +330,7 @@ print.RiskMap_extrapolation <- function(x, ...) {
   if (!is.factor(x[["extrapolation"]]) || !is.numeric(threshold)) {
     return(NextMethod())
   }
+  check_dots_unused(...)
   out_print(format_extrapolation(x, threshold))
   invisible(x)
 }
@@ -405,13 +408,15 @@ format_extrapolation_share <- function(threshold) {
 ##'   unexplained by the data, on a scale from 0 to 1), `"covariate_novelty"`
 ##'   or `"covariate_leverage"`. Several indicators are arranged in two
 ##'   columns.
-##' @param ... Not used.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return A `ggplot` object, to which further layers can be added. When
 ##'   several indicators are requested, a `patchwork` object combining one
 ##'   `ggplot` per indicator.
 ##' @method plot RiskMap_extrapolation
 ##' @export
 plot.RiskMap_extrapolation <- function(x, indicator = "extrapolation", ...) {
+  check_dots_unused(...)
   choices <- c("extrapolation", "spatial_unexplained", "covariate_novelty",
                "covariate_leverage")
   matched <- if (is.character(indicator) && length(indicator)) {

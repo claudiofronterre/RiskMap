@@ -12,7 +12,8 @@
 \arguments{
 \item{x}{A \code{RiskMap_bootstrap} or \code{summary.RiskMap_bootstrap} object.}
 
-\item{...}{Not used.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 \code{x}, invisibly.

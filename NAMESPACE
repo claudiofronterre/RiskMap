@@ -86,7 +86,6 @@ importFrom(Matrix,
 )
 importFrom(Rcpp,evalCpp)
 importFrom(grid,unit)
-importFrom(gridExtra,grid.arrange)
 importFrom(knitr,kable)
 importFrom(stats,profile)
 importFrom(tibble,as_tibble)

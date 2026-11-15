@@ -132,20 +132,46 @@ test_that("a profile of a canonical fit is that of an engine given no link", {
   }
 })
 
-test_that("the profile plot draws its panels and returns them", {
+test_that("the profile plot returns one object, draws nothing and has its panels", {
   profiles <- profile(binomial_model, parameters = c("sigma2", "phi"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
                       n_grid = 3, n_draws = 200, messages = FALSE)
+  # plot() runs on a device of its own, since another test may have left one
+  # open, and anything drawn would be in that device's display list.
   grDevices::pdf(NULL)
-  on.exit(grDevices::dev.off())
-  panels <- plot(profiles)
-  expect_named(panels, c("sigma2", "phi", "sigma2:phi"))
-  expect_true(all(vapply(panels, ggplot2::is_ggplot, logical(1))))
+  device <- grDevices::dev.cur()
+  withr::defer(if (device %in% grDevices::dev.list()) grDevices::dev.off(device))
+  grDevices::dev.control("enable")
+  corner <- plot(profiles)
+  # One joint profile with both marginals is a corner plot: the first
+  # marginal above the joint profile, the second on its right.
+  expect_s3_class(corner, "patchwork")
+  expect_length(corner, 4L)
+  expect_s3_class(corner[[2]], "spacer")
+  expect_identical(corner[[3]]$labels$title, "Joint profile")
+  expect_identical(corner[[1]]$labels$title, profiles$labels$sigma2)
+  expect_identical(corner[[4]]$labels$title, profiles$labels$phi)
+  # Without the joint profile, the marginal panels side by side.
+  marginals <- plot(profiles, pairs = character())
+  expect_s3_class(marginals, "patchwork")
+  expect_length(marginals, 2L)
   expect_output(print(profiles), "Profile likelihood")
+  # A single panel is a ggplot.
+  panel <- function(scale, parameters = character(), pairs = character()) {
+    plot(profiles, parameters = parameters, pairs = pairs, scale = scale)
+  }
+  panels <- list(sigma2 = panel("loglik", "sigma2"),
+                 phi = panel("loglik", "phi"),
+                 "sigma2:phi" = panel("loglik", pairs = "sigma2:phi"))
+  expect_true(all(vapply(panels, ggplot2::is_ggplot, logical(1))))
+  expect_false(any(vapply(panels, inherits, logical(1), what = "patchwork")))
+  expect_null(grDevices::recordPlot()[[1]])
+  grDevices::dev.off(device)
 
   # The relative log-likelihood by default, minus half the deviance.
-  deviance <- plot(profiles, scale = "deviance")
-  expect_named(deviance, names(panels))
+  deviance <- list(sigma2 = panel("deviance", "sigma2"),
+                   phi = panel("deviance", "phi"),
+                   "sigma2:phi" = panel("deviance", pairs = "sigma2:phi"))
   for (layer in 3:5) {
     expect_equal(ggplot2::layer_data(panels$sigma2, layer)$y,
                  -ggplot2::layer_data(deviance$sigma2, layer)$y / 2)
@@ -170,6 +196,24 @@ test_that("the profile plot draws its panels and returns them", {
   expect_identical(regions(panels[["sigma2:phi"]]),
                    regions(deviance[["sigma2:phi"]]))
   expect_error(plot(profiles, scale = "likelihood"), "must be one of")
+  expect_input_error(plot(profiles, parameters = character(),
+                          pairs = character()), "parameters")
+  # A profile with joint profiles only blames the empty pairs.
+  joint_only <- profiles
+  joint_only$marginal <- list()
+  expect_input_error(plot(joint_only, pairs = character()), "pairs")
+})
+
+test_that("profiles and their print and plot stop on an argument they don't use", {
+  profiles <- profile(binomial_model, parameters = "phi", n_points = 5,
+                      n_draws = 200, messages = FALSE)
+  expect_input_error(profile(binomial_model, parameters = "phi",
+                             n_points = 5, n_draws = 200, messages = FALSE,
+                             levels = 0.9),
+                     "levels", "Check the spelling")
+  expect_input_error(print(profiles, digits = 3), "digits")
+  expect_input_error(plot(profiles, colour = "red"), "colour")
+  expect_input_error(plot(profiles, "phi", NULL, "loglik", 1), "...")
 })
 
 test_that("logarithmic axes are labelled with plain numbers", {
@@ -478,9 +522,18 @@ test_that("Gaussian profiles have every parameter, with the labels of summary()"
   expect_match(printed[2], "The likelihood is exact.", fixed = TRUE)
   expect_false(any(grepl("Monte Carlo", printed)))
   expect_lte(max(nchar(printed)), 80)
-  grDevices::pdf(NULL)
-  on.exit(grDevices::dev.off())
-  expect_named(plot(profiles), c(names(profiles$marginal), "sigma2:phi"))
+  # The other marginal panels in a row above the corner plot of the pair.
+  figure <- plot(profiles)
+  expect_s3_class(figure, "patchwork")
+  expect_length(figure, 2L)
+  others <- setdiff(names(profiles$marginal), c("sigma2", "phi"))
+  expect_length(figure[[1]], length(others))
+  expect_identical(
+    vapply(seq_along(others), function(i) figure[[1]][[i]]$labels$title, ""),
+    unname(unlist(profiles$labels[others]))
+  )
+  expect_length(figure[[2]], 4L)
+  expect_identical(figure[[2]][[3]]$labels$title, "Joint profile")
 })
 
 test_that("a Gaussian profile point maximises the likelihood over the rest", {

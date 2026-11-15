@@ -19,11 +19,13 @@ a logarithmic axis, which spreads out bootstrap estimates near zero.
 Estimates at zero are then left out. The regression coefficients stay
 on their natural axis.}
 
-\item{...}{Not used.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 A \code{ggplot} object for one parameter, or a \code{patchwork} object
-combining one \code{ggplot} per parameter.
+combining one \code{ggplot} per parameter. Nothing is drawn until the object
+is printed.
 }
 \description{
 Draws a histogram of the bootstrap estimates of each parameter, with the

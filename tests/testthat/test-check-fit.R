@@ -41,6 +41,11 @@ test_that("a Gaussian fit has one check and nothing to plot", {
   expect_output(print(checked), "Checks on this fit")
   expect_error(plot(checked), "no stages to plot.*extra = \"profile\"")
   expect_error(plot(checked, which = "certificate"), "no stages to plot")
+  # An argument that the methods don't use stops instead of being ignored.
+  expect_input_error(print(checked, digits = 3), "digits", "Check the spelling")
+  expect_input_error(summary(checked, extra = "all"), "extra")
+  expect_input_error(print(summary(checked), digits = 3), "digits")
+  expect_input_error(plot(checked, panels = "certificate"), "panels")
 })
 
 test_that("those that need a look come first", {

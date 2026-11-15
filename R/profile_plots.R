@@ -31,15 +31,23 @@
 ##' @param scale The vertical scale of the profiles: `"loglik"` (the default)
 ##'   for the relative log-likelihood, or `"deviance"` for the profile
 ##'   deviance.
-##' @param ... Not used.
-##' @return Invisibly, a list of `ggplot` objects, one per panel. The combined
-##'   figure is drawn.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
+##' @return A `ggplot` object for one panel, and otherwise a `patchwork`
+##'   object that arranges the panels. Nothing is drawn until the object is
+##'   printed, so it can be saved or changed first. One marginal panel is
+##'   `plot(x, parameters = "phi", pairs = character())`, since `pairs`
+##'   defaults to every joint profile.
 ##' @seealso [profile.RiskMap()]
 ##' @export
 plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
                                  scale = c("loglik", "deviance"), ...) {
   check_class(x, "RiskMap_profile")
+  check_dots_unused(...)
   scale <- match_choice(scale)
+  # The argument blamed if nothing is left to draw, the one given empty.
+  empty_arg <- if (is.null(parameters) || length(parameters)) "pairs" else
+    "parameters"
   parameters <- parameters %||% names(x$marginal)
   pairs <- pairs %||% names(x$joint)
   unknown <- setdiff(parameters, names(x$marginal))
@@ -52,6 +60,9 @@ plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
     known <- names(x$joint)
     abort_input(c("{.arg pairs} must name joint profiles of {.arg x}.", "x" = "{.val {unknown}} {cli::qty(length(unknown))}{?is/are} not among them.", "i" = "The joint profiles are {.val {known}}."), arg = "pairs")
   }
+  if (!length(parameters) && !length(pairs)) {
+    abort_input("{.arg parameters} and {.arg pairs} name no profile to draw.", arg = empty_arg)
+  }
   axis <- profile_axis(scale, x$level)
   marginal <- lapply(parameters, function(name) {
     plot_marginal_profile(x, name, axis)
@@ -60,7 +71,6 @@ plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
   joint <- lapply(pairs, function(pair) plot_joint_profile(x, pair, axis))
   names(joint) <- pairs
   arrange_profile_panels(x, marginal, joint, axis)
-  invisible(c(marginal, joint))
 }
 
 ##' The vertical scale of the profiles
@@ -266,14 +276,17 @@ profile_ridges <- function(x, pair) {
 }
 
 ##' Arrange the panels: a corner plot for one joint profile with both
-##' marginals, otherwise a grid of panels
+##' marginals, otherwise a grid of panels in up to three columns
+##'
+##' Returns one panel as it is, and several as one `patchwork` object, without
+##' drawing them.
 ##' @noRd
 arrange_profile_panels <- function(x, marginal, joint,
                                    axis = profile_axis("loglik", x$level)) {
   panels <- c(marginal, joint)
   if (length(joint) == 1L) {
     pair <- attr(x$joint[[names(joint)]], "pair")
-    if (all(pair %in% names(marginal)) && requireNamespace("patchwork", quietly = TRUE)) {
+    if (all(pair %in% names(marginal))) {
       others <- marginal[setdiff(names(marginal), pair)]
       # The marginal panels share the joint panel's ranges so the axes line up.
       grid <- x$joint[[names(joint)]]
@@ -286,15 +299,11 @@ arrange_profile_panels <- function(x, marginal, joint,
       corner <- patchwork::wrap_plots(
         first_panel, patchwork::plot_spacer(), joint[[1]], second_panel,
         ncol = 2, widths = c(2, 1), heights = c(1, 2))
-      if (length(others)) {
-        print(patchwork::wrap_plots(others, nrow = 1) / corner + patchwork::plot_layout(heights = c(1, 3)))
-      } else {
-        print(corner)
-      }
-      return(invisible(NULL))
+      if (!length(others)) return(corner)
+      return(patchwork::wrap_plots(others, nrow = 1) / corner +
+               patchwork::plot_layout(heights = c(1, 3)))
     }
   }
-  columns <- min(3L, length(panels))
-  gridExtra::grid.arrange(grobs = panels, ncol = columns)
-  invisible(NULL)
+  if (length(panels) == 1L) return(panels[[1L]])
+  patchwork::wrap_plots(panels, ncol = min(3L, length(panels)))
 }

@@ -346,7 +346,8 @@ bootstrap_positive <- function(names) {
 ##' @param object A `RiskMap_bootstrap` object from [parametric_bootstrap()].
 ##' @param level Probability covered by the intervals. Defaults to the level
 ##'   of the bootstrap.
-##' @param ... Not used.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return An object of class `summary.RiskMap_bootstrap`, a list with the
 ##'   table of results (`table`), the `level`, the numbers of replicates and
 ##'   of failed refits (`n_sim`, `n_failed`) and the `seed`.
@@ -354,6 +355,7 @@ bootstrap_positive <- function(names) {
 ##' @export
 summary.RiskMap_bootstrap <- function(object, level = object$settings$level,
                                       ...) {
+  check_dots_unused(...)
   check_range(level, min = 0, max = 1, allow_equal = FALSE, arg = "level")
   alpha <- 1 - level
   limits <- c(alpha / 2, 1 - alpha / 2)
@@ -393,11 +395,13 @@ summary.RiskMap_bootstrap <- function(object, level = object$settings$level,
 ##' @description Prints the summary of a parametric bootstrap from
 ##'   [parametric_bootstrap()].
 ##' @param x A `RiskMap_bootstrap` or `summary.RiskMap_bootstrap` object.
-##' @param ... Not used.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return `x`, invisibly.
 ##' @method print RiskMap_bootstrap
 ##' @export
 print.RiskMap_bootstrap <- function(x, ...) {
+  check_dots_unused(...)
   print(summary(x))
   invisible(x)
 }
@@ -406,6 +410,7 @@ print.RiskMap_bootstrap <- function(x, ...) {
 ##' @method print summary.RiskMap_bootstrap
 ##' @export
 print.summary.RiskMap_bootstrap <- function(x, ...) {
+  check_dots_unused(...)
   out_print(format_bootstrap_summary(x))
   invisible(x)
 }
@@ -476,15 +481,18 @@ format_bootstrap_summary <- function(x) {
 ##'   a logarithmic axis, which spreads out bootstrap estimates near zero.
 ##'   Estimates at zero are then left out. The regression coefficients stay
 ##'   on their natural axis.
-##' @param ... Not used.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return A `ggplot` object for one parameter, or a `patchwork` object
-##'   combining one `ggplot` per parameter.
+##'   combining one `ggplot` per parameter. Nothing is drawn until the object
+##'   is printed.
 ##' @seealso [parametric_bootstrap()]
 ##' @method plot RiskMap_bootstrap
 ##' @export
 plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30,
                                    log_scale = FALSE, ...) {
   check_class(x, "RiskMap_bootstrap")
+  check_dots_unused(...)
   parameters <- parameters %||% names(x$estimate)
   unknown <- setdiff(parameters, names(x$estimate))
   if (length(unknown)) {

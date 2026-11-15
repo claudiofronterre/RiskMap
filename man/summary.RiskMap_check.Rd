@@ -9,7 +9,8 @@
 \arguments{
 \item{object}{An object of class \code{"RiskMap_check"}.}
 
-\item{...}{other parameters.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 An object of class \code{"summary.RiskMap_check"}, a list with the

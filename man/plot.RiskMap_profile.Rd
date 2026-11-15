@@ -19,11 +19,15 @@ default is all of them.}
 for the relative log-likelihood, or \code{"deviance"} for the profile
 deviance.}
 
-\item{...}{Not used.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
-Invisibly, a list of \code{ggplot} objects, one per panel. The combined
-figure is drawn.
+A \code{ggplot} object for one panel, and otherwise a \code{patchwork}
+object that arranges the panels. Nothing is drawn until the object is
+printed, so it can be saved or changed first. One marginal panel is
+\code{plot(x, parameters = "phi", pairs = character())}, since \code{pairs}
+defaults to every joint profile.
 }
 \description{
 Draws the profiles computed by \code{\link[=profile.RiskMap]{profile.RiskMap()}}. Each marginal profile
