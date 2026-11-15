@@ -60,10 +60,10 @@ keeping their rows aligned.</p>
 <span>  newdata <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  boundaries <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  aggregate <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  type <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"marginal"</span>, <span class="st">"joint"</span><span class="op">)</span>,</span>
+<span>  joint <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  include <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  transform <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  standardize <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  standardise <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  summaries <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mean"</span>, <span class="st">"lower"</span>, <span class="st">"upper"</span><span class="op">)</span>,</span>
 <span>  thresholds <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  level <span class="op">=</span> <span class="fl">0.95</span>,</span>
@@ -111,10 +111,16 @@ function receives a location-by-draw matrix and the location weights and
 must return one numeric value per draw.</p></dd>
 
 
-<dt id="arg-type">type<a class="anchor" aria-label="anchor" href="#arg-type"></a></dt>
-<dd><p>Character string specifying <code>"auto"</code>, <code>"marginal"</code>, or
-<code>"joint"</code> prediction. <code>"auto"</code> uses marginal prediction for locations and
-joint prediction when <code>boundaries</code> are supplied.</p></dd>
+<dt id="arg-joint">joint<a class="anchor" aria-label="anchor" href="#arg-joint"></a></dt>
+<dd><p><code>NULL</code>, <code>TRUE</code> or <code>FALSE</code>. With <code>TRUE</code> the predictive draws
+at the locations are joint, so they keep the dependence between
+locations, and with <code>FALSE</code> each location is drawn on its own (marginal
+prediction), which is faster for many locations. <code>NULL</code>, the default,
+draws jointly when <code>boundaries</code> are given and marginally otherwise.
+Summaries over <code>boundaries</code> need joint draws, so <code>FALSE</code> can't be used
+with them. At the observed locations of a binomial, Poisson or negative
+binomial fit the draws are the joint conditional samples whatever
+<code>joint</code> is.</p></dd>
 
 
 <dt id="arg-include">include<a class="anchor" aria-label="anchor" href="#arg-include"></a></dt>
@@ -135,13 +141,13 @@ so this argument is needed only for additional scientific targets, for
 example <code>list(stunting = function(link) pnorm((-2 - link) / sd_child))</code>.</p></dd>
 
 
-<dt id="arg-standardize">standardize<a class="anchor" aria-label="anchor" href="#arg-standardize"></a></dt>
+<dt id="arg-standardise">standardise<a class="anchor" aria-label="anchor" href="#arg-standardise"></a></dt>
 <dd><p>Optional data frame describing a common reference
 population over which response-scale predictions are averaged. Its columns
 must be fixed-effect predictors from the fitted model and override the
 corresponding columns in <code>newdata</code>. Rows receive equal weight unless an
 optional numeric <code>.weight</code> column is supplied. Predictor values kept
-together on each row are standardized jointly, preserving their empirical
+together on each row are standardised jointly, preserving their empirical
 association. This answers what would be predicted if every location had
 the same reference-population distribution. <code>.weight</code> weights reference
 people or profiles and is distinct from the polygon <code>weights</code> argument.</p></dd>
@@ -221,7 +227,8 @@ Defaults to the option <code>RiskMap.messages</code>, or <code>TRUE</code> if it
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Additional arguments reserved for future prediction methods.</p></dd>
+<dd><p>Not used, and an error if given, so that a misspelt or former
+argument such as <code>type</code> is not ignored.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -253,9 +260,9 @@ component, with one matrix row per polygon.</p></dd>
 <dt>transform</dt>
 <dd><p>Names of additional derived predictive targets.</p></dd>
 
-<dt>standardized</dt>
+<dt>standardised</dt>
 <dd><p>Whether response predictions were averaged over a
-reference population supplied through <code>standardize</code>.</p></dd>
+reference population supplied through <code>standardise</code>.</p></dd>
 
 <dt>aggregate</dt>
 <dd><p>Names of the within-polygon aggregations.</p></dd>
@@ -273,8 +280,9 @@ reference population supplied through <code>standardize</code>.</p></dd>
 <dd><p>Name of the weights column used for the polygon
 summaries, or <code>NULL</code>.</p></dd>
 
-<dt>type</dt>
-<dd><p>Whether prediction was marginal or joint.</p></dd>
+<dt>joint</dt>
+<dd><p><code>TRUE</code> when the draws were joint and <code>FALSE</code> when they were
+marginal.</p></dd>
 
 <dt>parameter_draws</dt>
 <dd><p>The number of parameter draws when parameter
@@ -386,14 +394,14 @@ the target name as the quantity prefix. With multiple thresholds,
 location-level exceedance columns are named, for example,
 <code>response_exceedance_0.2</code> and <code>response_exceedance_0.5</code>; polygon output
 stores thresholds in the tidy <code>threshold</code> column.</p>
-<p>When <code>standardize</code> is supplied, every conditional spatial draw is reused
+<p>When <code>standardise</code> is supplied, every conditional spatial draw is reused
 across all rows of the reference population. The response and any derived
 targets are evaluated for each reference profile and then averaged using
-<code>.weight</code>. This is direct standardization (empirical or counterfactual
+<code>.weight</code>. This is direct standardisation (empirical or counterfactual
 averaging), not simulation of uncertain predictors. The reported <code>fixed</code>
 and <code>link_*</code> quantities use the weighted mean fixed-effect contribution;
 with a nonlinear link, transforming that mean is not the same as the
-standardized <code>response_*</code> quantity.</p>
+standardised <code>response_*</code> quantity.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -461,13 +469,13 @@ standardized <code>response_*</code> quantity.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Use the same reference distribution of population density at each location</span></span></span>
 <span class="r-in"><span><span class="va">reference_population</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>pop_dens <span class="op">=</span> <span class="va">example_data</span><span class="op">$</span><span class="va">pop_dens</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">standardized_prediction</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span><span class="va">standardised_prediction</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict</a></span><span class="op">(</span></span></span>
 <span class="r-in"><span>  <span class="va">fit</span>,</span></span>
 <span class="r-in"><span>  newdata <span class="op">=</span> <span class="va">example_data</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="op">]</span>,</span></span>
-<span class="r-in"><span>  standardize <span class="op">=</span> <span class="va">reference_population</span>,</span></span>
+<span class="r-in"><span>  standardise <span class="op">=</span> <span class="va">reference_population</span>,</span></span>
 <span class="r-in"><span>  messages <span class="op">=</span> <span class="cn">FALSE</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">standardized_prediction</span><span class="op">$</span><span class="va">predictions</span></span></span>
+<span class="r-in"><span><span class="va">standardised_prediction</span><span class="op">$</span><span class="va">predictions</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Simple feature collection with 5 features and 16 fields</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Geometry type: POINT</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Dimension:     XY</span>

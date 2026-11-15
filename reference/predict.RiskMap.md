@@ -14,10 +14,10 @@ predict(
   newdata = NULL,
   boundaries = NULL,
   aggregate = NULL,
-  type = c("auto", "marginal", "joint"),
+  joint = NULL,
   include = NULL,
   transform = NULL,
-  standardize = NULL,
+  standardise = NULL,
   summaries = c("mean", "lower", "upper"),
   thresholds = NULL,
   level = 0.95,
@@ -65,11 +65,17 @@ predict(
   function receives a location-by-draw matrix and the location weights
   and must return one numeric value per draw.
 
-- type:
+- joint:
 
-  Character string specifying `"auto"`, `"marginal"`, or `"joint"`
-  prediction. `"auto"` uses marginal prediction for locations and joint
-  prediction when `boundaries` are supplied.
+  `NULL`, `TRUE` or `FALSE`. With `TRUE` the predictive draws at the
+  locations are joint, so they keep the dependence between locations,
+  and with `FALSE` each location is drawn on its own (marginal
+  prediction), which is faster for many locations. `NULL`, the default,
+  draws jointly when `boundaries` are given and marginally otherwise.
+  Summaries over `boundaries` need joint draws, so `FALSE` can't be used
+  with them. At the observed locations of a binomial, Poisson or
+  negative binomial fit the draws are the joint conditional samples
+  whatever `joint` is.
 
 - include:
 
@@ -90,14 +96,14 @@ predict(
   targets, for example
   `list(stunting = function(link) pnorm((-2 - link) / sd_child))`.
 
-- standardize:
+- standardise:
 
   Optional data frame describing a common reference population over
   which response-scale predictions are averaged. Its columns must be
   fixed-effect predictors from the fitted model and override the
   corresponding columns in `newdata`. Rows receive equal weight unless
   an optional numeric `.weight` column is supplied. Predictor values
-  kept together on each row are standardized jointly, preserving their
+  kept together on each row are standardised jointly, preserving their
   empirical association. This answers what would be predicted if every
   location had the same reference-population distribution. `.weight`
   weights reference people or profiles and is distinct from the polygon
@@ -179,7 +185,8 @@ predict(
 
 - ...:
 
-  Additional arguments reserved for future prediction methods.
+  Not used, and an error if given, so that a misspelt or former argument
+  such as `type` is not ignored.
 
 ## Value
 
@@ -217,10 +224,10 @@ A `RiskMap_prediction` object containing:
 
   Names of additional derived predictive targets.
 
-- standardized:
+- standardised:
 
   Whether response predictions were averaged over a reference population
-  supplied through `standardize`.
+  supplied through `standardise`.
 
 - aggregate:
 
@@ -242,9 +249,9 @@ A `RiskMap_prediction` object containing:
 
   Name of the weights column used for the polygon summaries, or `NULL`.
 
-- type:
+- joint:
 
-  Whether prediction was marginal or joint.
+  `TRUE` when the draws were joint and `FALSE` when they were marginal.
 
 - parameter_draws:
 
@@ -375,14 +382,14 @@ location-level exceedance columns are named, for example,
 `response_exceedance_0.2` and `response_exceedance_0.5`; polygon output
 stores thresholds in the tidy `threshold` column.
 
-When `standardize` is supplied, every conditional spatial draw is reused
+When `standardise` is supplied, every conditional spatial draw is reused
 across all rows of the reference population. The response and any
 derived targets are evaluated for each reference profile and then
-averaged using `.weight`. This is direct standardization (empirical or
+averaged using `.weight`. This is direct standardisation (empirical or
 counterfactual averaging), not simulation of uncertain predictors. The
 reported `fixed` and `link_*` quantities use the weighted mean
 fixed-effect contribution; with a nonlinear link, transforming that mean
-is not the same as the standardized `response_*` quantity.
+is not the same as the standardised `response_*` quantity.
 
 ## See also
 
@@ -452,13 +459,13 @@ uncertain_prediction$predictions
 
 # Use the same reference distribution of population density at each location
 reference_population <- data.frame(pop_dens = example_data$pop_dens)
-standardized_prediction <- predict(
+standardised_prediction <- predict(
   fit,
   newdata = example_data[1:5, ],
-  standardize = reference_population,
+  standardise = reference_population,
   messages = FALSE
 )
-standardized_prediction$predictions
+standardised_prediction$predictions
 #> Simple feature collection with 5 features and 16 fields
 #> Geometry type: POINT
 #> Dimension:     XY

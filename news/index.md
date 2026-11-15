@@ -91,6 +91,14 @@ the main changes follow.
   [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of
   predictions takes `summaries` and `thresholds`, the names
   [`predict()`](https://rdrr.io/r/stats/predict.html) uses.
+- [`predict()`](https://rdrr.io/r/stats/predict.html) takes `joint` in
+  place of `type` and `standardise` in place of `standardize`, and stops
+  on an argument it doesn’t use.
+  [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of
+  simulations maps the mean by default and takes `quantity`, `palette`
+  and `limits` as
+  [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of
+  predictions does.
 
 #### Data and projections
 
