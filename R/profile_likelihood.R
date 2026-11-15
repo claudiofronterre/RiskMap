@@ -33,7 +33,7 @@
 ##' The smoothness \eqn{\kappa} of the Matern correlation stays fixed at the
 ##' value used in the fit. It can be profiled by refitting the model over a
 ##' set of values of \eqn{\kappa} and comparing the maximised
-##' log-likelihoods (`log_lik`) of the fits.
+##' log-likelihoods of the fits, given by [logLik()][logLik.RiskMap()].
 ##'
 ##' Grids are centred at the estimate on the scale on which the model is fitted
 ##' (the logarithm for variances and the scale) and span `span` standard errors

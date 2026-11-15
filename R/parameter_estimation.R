@@ -194,7 +194,9 @@
 ##' prediction or a profile, has the attribute `riskmap_version`, a list with
 ##' the `version` of RiskMap that made it, as a [package_version()], and
 ##' `sha`, the commit it was installed from when it was installed from GitHub
-##' and `NA` otherwise. An object without it was made before RiskMap 2.0.0.
+##' and `NA` otherwise. An object without it was made before RiskMap stamped
+##' its results, by an earlier version or an early development build of
+##' 2.0.0.
 ##'
 ##' @examples
 ##'

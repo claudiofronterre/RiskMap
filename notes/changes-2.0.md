@@ -1721,8 +1721,9 @@ from WorldPop. RiskMap needs rlang 1.0.0 or later, whose
 was installed from GitHub and `NA` otherwise. Fits, predictions, profiles,
 bootstraps, checks, cross-validations, simulation assessments, simulations,
 simulation models, variograms and extrapolations have it. It is not printed,
-and an object without it was made before 2.0.0, so that code which reads saved
-objects can tell when one is too old.
+and an object without it was made before RiskMap stamped its results, by an
+earlier version or an early development build of 2.0.0, so that code which
+reads saved objects can tell when one is too old.
 - `to_table()` has methods for fits, their summaries, cross-validations and
 their summaries, in place of a default method that recognised them by their
 class, and its default method stops, naming the objects it accepts. The tables
