@@ -211,3 +211,18 @@ test_that("class and choice errors read well", {
     summarise_example(fit, units = "miles")
   })
 })
+
+test_that("check_dots_unused stops on any argument in the dots", {
+  method_example <- function(x, ...) {
+    check_dots_unused(..., hints = c(old = "It is now {.arg new}."))
+    invisible(TRUE)
+  }
+  expect_true(method_example(1))
+  expect_input_error(method_example(1, old = 2), "old")
+  expect_error(method_example(1, old = 2), "It is now `new`")
+  expect_error(method_example(1, colour = 2), "Check the spelling")
+  expect_input_error(method_example(1, 2), "...")
+  expect_error(method_example(1, 2, 3), "2 arguments without a name are not used")
+  # The values in the dots are not evaluated.
+  expect_input_error(method_example(1, old = stop("evaluated")), "old")
+})

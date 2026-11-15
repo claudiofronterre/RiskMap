@@ -107,7 +107,6 @@ importFrom(spatialsample,
   spatial_clustering_cv
 )
 importFrom(stats,profile)
-importFrom(tibble,as_tibble)
 importFrom(units,set_units)
 importFrom(utils,flush.console)
 useDynLib(RiskMap, .registration = TRUE)

@@ -281,11 +281,13 @@ plot.RiskMap_prediction <- function(
 ##' object, and how to map them.
 ##'
 ##' @param x A `RiskMap_prediction` object.
-##' @param ... Not used.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return `x`, invisibly.
 ##' @method print RiskMap_prediction
 ##' @export
 print.RiskMap_prediction <- function(x, ...) {
+  check_dots_unused(...)
   out_print(format_prediction(x))
   invisible(x)
 }
@@ -303,7 +305,9 @@ format_prediction <- function(x) {
   } else {
     "At "
   }
-  draws <- if (!is.null(x$type)) paste0(", with ", x$type, " draws")
+  draws <- if (!is.null(x$joint)) {
+    paste0(", with ", if (isTRUE(x$joint)) "joint" else "marginal", " draws")
+  }
   quantities <- unique(c("response", x$transform, "link", "spatial"))
   settings <- c(
     Quantities = paste(quantities, collapse = ", "),

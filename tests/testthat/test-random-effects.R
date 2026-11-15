@@ -1,4 +1,5 @@
 test_that("random effects are encoded consistently across data containers", {
+  skip_if_not_installed("tibble")
   base_data <- data.frame(
     region = factor(
       c("north", "south", "north", "south"),
@@ -145,6 +146,7 @@ test_that("invalid random-effect variables fail informatively", {
 })
 
 test_that("glgpm simulations support random effects in tibble-backed sf data", {
+  skip_if_not_installed("tibble")
   data <- tibble::tibble(
     y = 0,
     group = factor(c("a", "a", "b", "b")),

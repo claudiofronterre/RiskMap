@@ -482,6 +482,8 @@ simulated_surface <- function(object, simulation = 1) {
     out[[name]] <- as.numeric(object$samples$surface[, simulation, name])
   }
   class(out) <- c("RiskMap_simulated_surface", class(out))
+  # The family names the mean in the legend of plot().
+  attr(out, "family") <- object$model$family
   out
 }
 

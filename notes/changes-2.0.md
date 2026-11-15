@@ -1378,6 +1378,23 @@ by their coverage, which changed areal estimates. `cbind()`, `merge()` and
 column. `rbind()` keeps the cells of its first grid. `predict()` now says
 when it assigns points to polygons one by one although they lie on a square
 lattice, as the centres of a grid's cells do.
+- `predict()` takes `joint = NULL` in place of `type = c("auto", "marginal",
+"joint")`, since `type` names the scale of the prediction in `stats::predict()`
+methods and in `fitted()`. `TRUE` draws the locations jointly, `FALSE` draws
+each location on its own, and `NULL`, the default, draws jointly with
+`boundaries` and marginally without them, as `"auto"` did. `joint = FALSE` with
+`boundaries` stops, as `type = "marginal"` did, and so does `include =
+"random_effects"` without `joint = TRUE`. The result records the choice in
+`joint`, `TRUE` or `FALSE`, instead of `type`, and its print reads it there.
+`standardize` is spelt `standardise`, as RiskMap's own names are British
+(`summarise_distance()`, `summarise_mcmc()`), and the result's `standardized`
+is `standardised`. Predictions are unchanged.
+- `predict()` and the print of a prediction stop on an argument they don't
+use instead of ignoring it (`check_dots_unused()` in `checks.R`, which other
+methods whose `...` is unused can share). The error names the argument, says
+to use `joint` for `type`, which `predict(type = "response")` would otherwise
+have ignored silently, and `standardise` for `standardize`, and otherwise asks
+to check the spelling.
 
 ## Cross validation
 
@@ -1440,6 +1457,21 @@ parameters have been renamed to `metric`/`model`.
   value for a Gaussian model), so prevalence needs no argument, and other
   targets such as `qlogis` for the logit scale remain available.
 
+- `plot()` of a simulation and of a `simulated_surface()` maps the simulated
+  mean by default, the prevalence for a binomial model, instead of the linear
+  predictor, and `quantity` maps any other component of `simulated_values()`
+  that the surface has (`"linear_predictor"`, `"spatial_effect"`, `"nugget"`,
+  `"group_effect"`). Both take the colours, legend and `limits` of `plot()` of
+  predictions. `palette = NULL` gives the sequential palette of predicted
+  levels for the mean and the palette centred at zero, with symmetric limits,
+  for the linear predictor and the effects. A `"-"` before a palette's name
+  reverses it, and `reverse_palette` is gone. The legend names the component,
+  for example "Prevalence" with percentages, "Rate", "Mean" or "Spatial
+  effect", and the maps lose their axes, as prediction maps have none.
+  `simulated_surface()` keeps the family of the model as an attribute for the
+  legend. The internal map helpers that only these methods used, with their
+  unreachable north arrow and scale bar, are gone.
+
 ## Other
 
 - Argument checks in the compiled MALA, likelihood and distance kernels have
@@ -1483,3 +1515,6 @@ checked.
   `test_set` and `combine_panels` are now `pit_mode`, `pit_test_set` and
   `combine_pit`.
 - Test coverage has been increased from 0 to 85 %.
+- tibble is no longer imported, since `summarise_mcmc()` and
+`simulated_values()` return data frames. It stays in Suggests for two tests of
+data in tibbles.

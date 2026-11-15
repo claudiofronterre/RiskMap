@@ -65,6 +65,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   location when the data say less about it than about any surveyed location
   left out (#236). `plot()` of predictions takes `summaries` and
   `thresholds`, the names `predict()` uses.
+- `predict()` takes `joint` in place of `type` and `standardise` in place of
+  `standardize`, and stops on an argument it doesn't use. `plot()` of
+  simulations maps the mean by default and takes `quantity`, `palette` and
+  `limits` as `plot()` of predictions does.
 
 ### Data and projections
 
