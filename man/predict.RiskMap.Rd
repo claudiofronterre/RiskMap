@@ -54,7 +54,9 @@ locations, and with \code{FALSE} each location is drawn on its own (marginal
 prediction), which is faster for many locations. \code{NULL}, the default,
 draws jointly when \code{boundaries} are given and marginally otherwise.
 Summaries over \code{boundaries} need joint draws, so \code{FALSE} can't be used
-with them.}
+with them. At the observed locations of a binomial, Poisson or negative
+binomial fit the draws are the joint conditional samples whatever
+\code{joint} is.}
 
 \item{include}{\code{NULL}, or a character vector specifying optional components
 to add to the complete linear predictor and response. Supported values are
