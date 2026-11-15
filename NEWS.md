@@ -69,6 +69,12 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   are part of its interface. `print()` and `summary()` of a fit stop on an
   argument they don't use, and every result records the version of RiskMap
   that made it.
+- `set_control_mcmc()` takes the number of draws it keeps in `n_draws`,
+  2,000 by default, instead of the number of iterations in `n_sim`, and its
+  step-size settings are `c1_h` and `c2_h`. It no longer has `linear_model`,
+  since the draws of a Gaussian model are always independent.
+  `set_control_mcml()` takes its sample sizes as `initial_draws`,
+  `validation_draws` and `max_draws`.
 - `check_fit()` reports how a fit was computed and flags anything that needs
   attention. `profile()` gives profile likelihoods and `parametric_bootstrap()`
   bootstrap intervals for the parameters.

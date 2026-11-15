@@ -5,9 +5,9 @@
 \title{Set control parameters for certified MCML estimation}
 \usage{
 set_control_mcml(
-  initial_samples = 1000L,
-  validation_samples = 5000L,
-  max_samples = 16000L,
+  initial_draws = 1000L,
+  validation_draws = 5000L,
+  max_draws = 16000L,
   max_stages = 4L,
   tolerance = 0.1,
   proposal = c("global", "laplace"),
@@ -24,16 +24,16 @@ set_control_mcml(
 )
 }
 \arguments{
-\item{initial_samples}{Positive integer giving the number of draws in the
+\item{initial_draws}{Positive integer giving the number of draws in the
 fitting sample at the first stage. Defaults to 1,000.}
 
-\item{validation_samples}{Positive integer giving the number of draws in
+\item{validation_draws}{Positive integer giving the number of draws in
 each validation sample, and in the replicate of the second, at the first
 stage. Later stages enlarge the
 validation samples in the same proportion as the fitting sample. Defaults
 to 5,000.}
 
-\item{max_samples}{Positive integer giving the largest permitted fitting
+\item{max_draws}{Positive integer giving the largest permitted fitting
 sample. Defaults to 16,000.}
 
 \item{max_stages}{Positive integer giving the maximum number of stages.
@@ -206,7 +206,7 @@ maximum is the highest (see \code{check_maxima}). If the certificate exceeds
 the fit is repeated.
 }
 \examples{
-control_mcml <- set_control_mcml(max_samples = 8000)
+control_mcml <- set_control_mcml(max_draws = 8000)
 }
 \seealso{
 \code{\link[=glgpm]{glgpm()}}, \code{\link[=set_control_mcmc]{set_control_mcmc()}}

@@ -66,7 +66,7 @@ test_that("the Monte Carlo check follows the outcome of the fit", {
   )))
   expect_identical(above$status, "PROBLEM")
   expect_match(above$finding, "1.7 standard errors, above the limit of 0.1")
-  expect_match(above$fix, "`max_samples` or `max_stages`")
+  expect_match(above$fix, "`max_draws` or `max_stages`")
 
   refused <- fit_check_monte_carlo(modifyList(certified_mcml, list(
     outcome = "not certified", correction_refused = TRUE
@@ -95,7 +95,7 @@ test_that("the weights check flags a heavy tail", {
   heavy <- fit_check_weights(list(effective_draws = 94, pareto_k = 1.005))
   expect_identical(heavy$status, "SUSPICIOUS")
   expect_match(heavy$finding, "tail shape of 1 (limit 0.7), which", fixed = TRUE)
-  expect_match(heavy$fix, "`max_samples`")
+  expect_match(heavy$fix, "`max_draws`")
   expect_identical(fit_check_weights(list(effective_draws = 1, pareto_k = NA))$status,
                    "SUSPICIOUS")
   expect_null(fit_check_weights(NULL))

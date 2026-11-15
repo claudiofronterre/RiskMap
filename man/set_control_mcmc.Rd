@@ -5,53 +5,52 @@
 \title{Set Control Parameters for Simulation}
 \usage{
 set_control_mcmc(
-  n_sim = 22000,
+  n_draws = 2000,
   burnin = 2000,
   thin = 10,
   h = NULL,
-  c1.h = 1,
-  c2.h = 0.6,
-  linear_model = FALSE
+  c1_h = 1,
+  c2_h = 0.6
 )
 }
 \arguments{
-\item{n_sim}{Integer. The total number of simulations to run. Default is
-22000, which with the default burn-in and thinning keeps 2,000 draws. With
-\code{linear_model = TRUE} it is the number of independent draws, 2,000 by
-default.}
+\item{n_draws}{Positive integer. The number of draws kept, after burn-in
+and thinning, on which fitted values and predictions are based. Default
+is 2,000. The chain runs \code{burnin + n_draws * thin} iterations.}
 
-\item{burnin}{Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.}
+\item{burnin}{Non-negative integer. The number of iterations discarded at
+the start of the chain, during which the step size is adapted. Default
+is 2,000.}
 
-\item{thin}{Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.}
+\item{thin}{Positive integer. One iteration in \code{thin} is kept after
+burn-in. Default is 10.}
 
 \item{h}{Numeric. An optional positive step size for Langevin MCMC.}
 
-\item{c1.h}{Numeric. Positive scale for the burn-in Robbins-Monro step-size
-adaptation. Default is 1.}
+\item{c1_h}{Numeric. Positive scale for the burn-in Robbins-Monro
+step-size adaptation. Default is 1.}
 
-\item{c2.h}{Numeric. Exponent controlling the diminishing adaptation gain.
+\item{c2_h}{Numeric. Exponent controlling the diminishing adaptation gain.
 Must be larger than 0.5 and no larger than 1. Default is 0.6.}
-
-\item{linear_model}{Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.}
 }
 \value{
-A list of control parameters with class "RiskMap_control_mcmc". Contents depend on \code{sampler}:
-\itemize{
-\item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
-}
+A list of class \code{"RiskMap_control_mcmc"} with \code{n_draws}, \code{burnin},
+\code{thin}, \code{h}, \code{c1_h} and \code{c2_h}.
 }
 \description{
-This function sets control parameters for running simulations, supporting MCMC methods
-for glgpm models.
+The settings of the Langevin sampler that draws the latent effects of a
+binomial, Poisson or negative binomial model given the data, in \code{\link[=glgpm]{glgpm()}}
+and \link[=predict.RiskMap]{predict()}.
 }
 \details{
-If \code{linear_model = TRUE}, only \code{n_sim} is required.
-
 During burn-in the step size of the Langevin chain is adapted towards an
 acceptance rate of 0.574, starting from \code{h} (by default
 \eqn{1.65 / d^{1/6}} for \eqn{d} latent effects). The step kept after
 burn-in is the geometric mean of the adapted step over the second half of
 burn-in.
+
+The latent effects of a Gaussian model are drawn independently, so its
+predictions take \code{n_draws} draws without burn-in or thinning.
 
 Seeds are not part of the control settings. Pass \code{seed} to \code{\link[=glgpm]{glgpm()}},
 \code{\link[=predict.RiskMap]{predict.RiskMap()}}, \code{\link[=assess_prediction]{assess_prediction()}} or \code{\link[=assess_simulation]{assess_simulation()}}.
@@ -60,8 +59,8 @@ Seeds are not part of the control settings. Pass \code{seed} to \code{\link[=glg
 # Default parameters (MCMC)
 control_mcmc <- set_control_mcmc()
 
-# Custom MCMC parameters
-control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
+# Custom MCMC parameters: 600 draws from 3,000 + 600 * 20 iterations
+control_mcmc <- set_control_mcmc(n_draws = 600, burnin = 3000, thin = 20)
 
 }
 \seealso{

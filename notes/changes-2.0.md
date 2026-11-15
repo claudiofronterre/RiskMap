@@ -1310,6 +1310,26 @@ pages are gone. `create_ids()` is removed. `assess_prediction()` with
 `keep_par_fixed = TRUE` indexes the locations of each training set with
 `index_coordinate_rows()`, as `glgpm()` does, which gives the same indices in
 time linear in the records instead of quadratic.
+- `set_control_mcmc(n_draws = 2000, burnin = 2000, thin = 10, h = NULL,
+c1_h = 1, c2_h = 0.6)`. `n_draws` is the number of draws kept, on which fitted
+values and predictions rest, as in `profile(n_draws = )` and
+`predict(parameter_draws = )`, and the chain runs `burnin + n_draws * thin`
+iterations. It replaces `n_sim`, the number of iterations, which had to exceed
+`burnin` by a multiple of `thin`. The default keeps 2,000 draws from 22,000
+iterations, as before. `c1.h` and `c2.h`, the only dotted argument names of the
+package, are `c1_h` and `c2_h`. `linear_model` is gone. It said that the draws
+of a Gaussian model are independent, which prediction knows from the family,
+and the parameter draws of a Gaussian prediction now take
+`set_control_mcmc(n_draws = , burnin = 0, thin = 1)`. The settings recorded
+with a fit's conditional samples, which `plot_mcmc()` reads, are `n_draws`,
+`burnin` and `thin`, and the message of a prediction still gives the number
+of iterations. A control saved from an earlier build, with `n_sim`, stops with
+a hint to make it again.
+- `set_control_mcml()` takes `initial_draws`, `validation_draws` and
+`max_draws` in place of `initial_samples`, `validation_samples` and
+`max_samples`, the words of `summary(fit)$mcml` and of the messages, and the
+hints of `summary()` and `check_fit()` name them. A control stored with a fit
+made before, with the old names, still serves its refits.
 
 ## Predictions
 

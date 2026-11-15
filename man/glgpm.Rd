@@ -282,7 +282,7 @@ data(loaloa)
 
 # reduce iterations to speed up the fit, and set a
 # seed for reproducibility
-control_mcmc <- set_control_mcmc(n_sim = 100,
+control_mcmc <- set_control_mcmc(n_draws = 8,
                                  burnin = 20)
 
 fit <- glgpm(NO_INF ~ gp(),

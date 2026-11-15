@@ -23,11 +23,11 @@ gaussian_data <- st_as_sf(data, coords = c("x", "z"), crs = 32637)
 latlon_data <- st_transform(gaussian_data, crs = 4326)
 
 # reduce iterations to speed up fits
-control_mcmc <- set_control_mcmc(n_sim = 1000,
+control_mcmc <- set_control_mcmc(n_draws = 80,
                                  burnin = 200)
 fixture_seed <- 12345
 fixture_control_mcml <- set_control_mcml(
-  initial_samples = 500, validation_samples = 500, max_samples = 500,
+  initial_draws = 500, validation_draws = 500, max_draws = 500,
   max_stages = 1
 )
 

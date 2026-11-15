@@ -52,7 +52,7 @@ out_faint <- function(lines) {
 #' Lines of text wrapped to the width
 #'
 #' Each element of `text` starts a new line. With `markup`, `text` takes cli
-#' inline markup, such as `{.arg max_samples}`, interpolated in `.envir`.
+#' inline markup, such as `{.arg max_draws}`, interpolated in `.envir`.
 #' @noRd
 out_text <- function(text, markup = FALSE, indent = 0L,
                      .envir = parent.frame()) {

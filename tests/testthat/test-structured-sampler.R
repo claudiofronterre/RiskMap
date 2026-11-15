@@ -87,7 +87,7 @@ test_that("the sampler finds the mode that maxim_integrand() finds", {
       y = y, units_m = survey$units, mu = survey$mu, Sigma = survey$Sigma,
       ID_coords = survey$location, ID_re = survey$ID_re,
       sigma2_re = survey$sigma2_re, family = family,
-      control_mcmc = set_control_mcmc(n_sim = 30, burnin = 10, thin = 1),
+      control_mcmc = set_control_mcmc(n_draws = 20, burnin = 10, thin = 1),
       seed = 3
     )
     reference <- maxim_integrand(
@@ -113,7 +113,7 @@ test_that("random-effect samples reproduce grid-integrated moments", {
     y = y, units_m = m, mu = c(0, 0), Sigma = matrix(sigma2),
     ID_coords = c(1L, 1L), ID_re = cbind(household = 1:2),
     sigma2_re = c(household = sigma2_household), family = "binomial",
-    control_mcmc = set_control_mcmc(n_sim = 42000, burnin = 2000, thin = 2),
+    control_mcmc = set_control_mcmc(n_draws = 20000, burnin = 2000, thin = 2),
     seed = 2024
   )
   draws <- cbind(fit$samples$S, fit$samples$household)
@@ -147,7 +147,7 @@ test_that("a link that is not log-concave is sampled correctly", {
     y = y, units_m = m, mu = 0, Sigma = matrix(sigma2), ID_coords = 1L,
     family = "binomial",
     invlink = list(inv = inverse, d1 = first, d2 = second),
-    control_mcmc = set_control_mcmc(n_sim = 22000, burnin = 2000, thin = 1),
+    control_mcmc = set_control_mcmc(n_draws = 20000, burnin = 2000, thin = 1),
     seed = 99
   )
   axis <- seq(-15, 15, length.out = 6001)
@@ -168,7 +168,7 @@ test_that("averaging the step changes the chain only from the end of burn-in", {
       y = c(2, 7), units_m = c(8, 9), mu = c(0, 0),
       Sigma = matrix(c(0.9, 0.45, 0.45, 0.8), 2), ID_coords = 1:2,
       family = "binomial",
-      control_mcmc = set_control_mcmc(n_sim = 400, burnin = 200, thin = 1),
+      control_mcmc = set_control_mcmc(n_draws = 200, burnin = 200, thin = 1),
       seed = 5, average_step = average_step
     )
   }
@@ -189,7 +189,7 @@ test_that("a chain can start its mode search from a given point", {
     y = survey$y, units_m = survey$units, mu = survey$mu,
     Sigma = survey$Sigma, ID_coords = survey$location, ID_re = survey$ID_re,
     sigma2_re = survey$sigma2_re, family = "binomial",
-    control_mcmc = set_control_mcmc(n_sim = 30, burnin = 10, thin = 1),
+    control_mcmc = set_control_mcmc(n_draws = 20, burnin = 10, thin = 1),
     seed = 3
   )
   first <- do.call(laplace_sampling_mcmc, arguments)
@@ -209,7 +209,7 @@ test_that("a failed mode search falls back to the search of maxim_integrand()", 
     y = survey$y, units_m = survey$units, mu = survey$mu,
     Sigma = survey$Sigma, ID_coords = survey$location, ID_re = survey$ID_re,
     sigma2_re = survey$sigma2_re, family = "binomial",
-    control_mcmc = set_control_mcmc(n_sim = 30, burnin = 10, thin = 1),
+    control_mcmc = set_control_mcmc(n_draws = 20, burnin = 10, thin = 1),
     seed = 3
   )
   usual <- do.call(laplace_sampling_mcmc, arguments)
@@ -238,7 +238,7 @@ test_that("a chain started from a draw of the Laplace approximation needs no bur
       y = y, units_m = units, mu = rep(qlogis(0.2), records), Sigma = Sigma,
       ID_coords = location, ID_re = cbind(household = seq_len(records)),
       sigma2_re = c(household = 0.5), family = "binomial",
-      control_mcmc = set_control_mcmc(n_sim = 300, burnin = 0, thin = 1),
+      control_mcmc = set_control_mcmc(n_draws = 300, burnin = 0, thin = 1),
       seed = 21, start_from_draw = start_from_draw
     )
   }
@@ -254,7 +254,7 @@ test_that("without adaptation the step stays as given", {
     y = c(2, 7), units_m = c(8, 9), mu = c(0, 0),
     Sigma = matrix(c(0.9, 0.45, 0.45, 0.8), 2), ID_coords = 1:2,
     family = "binomial",
-    control_mcmc = set_control_mcmc(n_sim = 200, burnin = 100, thin = 1,
+    control_mcmc = set_control_mcmc(n_draws = 100, burnin = 100, thin = 1,
                                     h = 0.7),
     seed = 5, adapt_step = FALSE
   )

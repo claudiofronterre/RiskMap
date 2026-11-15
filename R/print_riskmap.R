@@ -157,21 +157,21 @@ describe_mcml_certificate <- function(mcml) {
       paste0(
         "Not certified. The likelihood rises as a variance held at zero ",
         "leaves it, so the estimate is not a maximum. ",
-        refit("{.arg max_samples} or {.arg max_stages}")
+        refit("{.arg max_draws} or {.arg max_stages}")
       )
     } else if (mcml$correction_refused) {
       paste0(
         "Not certified. The Newton correction of the estimate did not ",
         "converge on the validation draws, so the approximate {level} bound ",
         "of {bound} statistical standard errors may not hold. ",
-        refit("{.arg max_samples}")
+        refit("{.arg max_draws}")
       )
     } else {
       paste0(
         "Not certified. The approximate {level} bound on the Monte Carlo ",
         "error of the estimate is {bound} statistical standard errors, above ",
         "the tolerance of {tolerance}. ",
-        refit("{.arg max_samples} or {.arg max_stages}")
+        refit("{.arg max_draws} or {.arg max_stages}")
       )
     }
   )

@@ -116,9 +116,9 @@ test_that("a partial start keeps the comparison of starts", {
   # set_control_mcml(start_comparison = FALSE) skips it.
   skipped <- fit_binomial_with(
     list(phi = 3),
-    control_mcml = set_control_mcml(initial_samples = 500,
-                                    validation_samples = 500,
-                                    max_samples = 500, max_stages = 1,
+    control_mcml = set_control_mcml(initial_draws = 500,
+                                    validation_draws = 500,
+                                    max_draws = 500, max_stages = 1,
                                     start_comparison = FALSE)
   )
   starting <- attr(skipped, "starting_values")

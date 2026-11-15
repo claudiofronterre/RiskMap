@@ -1,6 +1,6 @@
 test_that("MALA adaptation stops after burn-in", {
   control <- set_control_mcmc(
-    n_sim = 80, burnin = 40, thin = 2, h = 0.5
+    n_draws = 20, burnin = 40, thin = 2, h = 0.5
   )
 
   fit <- laplace_sampling_mcmc(
@@ -21,7 +21,7 @@ test_that("MALA warm-up recovers from poor initial step sizes", {
       y = 3, units_m = 8, mu = 0, Sigma = matrix(0.7),
       ID_coords = 1L, family = "binomial",
       control_mcmc = set_control_mcmc(
-        n_sim = 1200, burnin = 1000, thin = 1, h = h
+        n_draws = 200, burnin = 1000, thin = 1, h = h
       ),
       seed = seed
     )
@@ -39,7 +39,7 @@ test_that("MALA warm-up recovers from poor initial step sizes", {
 
 test_that("one-dimensional binomial samples reproduce exact posterior moments", {
   control <- set_control_mcmc(
-    n_sim = 7000, burnin = 1000, thin = 1, h = 0.8
+    n_draws = 6000, burnin = 1000, thin = 1, h = 0.8
   )
   sigma2 <- 0.9
   y <- 4
@@ -72,7 +72,7 @@ test_that("one-dimensional binomial samples reproduce exact posterior moments", 
 
 test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
   control <- set_control_mcmc(
-    n_sim = 7000, burnin = 1000, thin = 1, h = 0.75
+    n_draws = 6000, burnin = 1000, thin = 1, h = 0.75
   )
   sigma2 <- 0.8
   y <- 5
@@ -105,7 +105,7 @@ test_that("one-dimensional Poisson samples reproduce exact posterior moments", {
 
 test_that("correlated binomial samples reproduce grid-integrated moments", {
   control <- set_control_mcmc(
-    n_sim = 12000, burnin = 2000, thin = 1, h = 0.65
+    n_draws = 10000, burnin = 2000, thin = 1, h = 0.65
   )
   Sigma <- matrix(c(0.9, 0.45, 0.45, 0.8), 2, 2)
   y <- c(2, 7)
@@ -138,23 +138,62 @@ test_that("correlated binomial samples reproduce grid-integrated moments", {
   )
 })
 
-test_that("the default controls keep 2,000 draws", {
+test_that("the default controls keep 2,000 draws from 22,000 iterations", {
   control <- set_control_mcmc()
-  expect_identical((control$n_sim - control$burnin) / control$thin, 2000)
-  expect_identical(set_control_mcmc(linear_model = TRUE)$n_sim, 2000)
-  expect_identical(set_control_mcmc(n_sim = 50, linear_model = TRUE)$n_sim, 50)
-  expect_error(set_control_mcmc(n_sim = 0, linear_model = TRUE), "n_sim")
+  expect_identical(control$n_draws, 2000)
+  expect_identical(mcmc_iterations(control), 22000)
+  expect_identical(names(formals(set_control_mcmc)),
+                   c("n_draws", "burnin", "thin", "h", "c1_h", "c2_h"))
+  expect_named(unclass(control),
+               c("n_draws", "burnin", "thin", "h", "c1_h", "c2_h"))
+  expect_identical(mcmc_iterations(set_control_mcmc(50, burnin = 0, thin = 1)),
+                   50)
+  expect_input_error(set_control_mcmc(n_draws = 0), "n_draws")
+  expect_input_error(set_control_mcmc(n_draws = 2.5), "n_draws")
+  expect_error(set_control_mcmc(n_sim = 22000), "unused argument")
+  expect_error(set_control_mcmc(linear_model = TRUE), "unused argument")
+})
+
+test_that("the chain runs burnin + n_draws * thin iterations and keeps n_draws", {
+  control <- set_control_mcmc(n_draws = 7, burnin = 5, thin = 3)
+  simulation <- laplace_sampling_mcmc(
+    y = c(1, 2, 0), units_m = c(4, 4, 4), mu = c(0, 0, 0),
+    Sigma = exp(-as.matrix(dist(1:3))), ID_coords = 1:3,
+    family = "binomial", control_mcmc = control, seed = 1L
+  )
+  expect_identical(nrow(simulation$samples$S), 7L)
+  expect_length(simulation$acceptance, 26L)
 })
 
 test_that("sampler controls and location indices are validated", {
-  expect_error(
-    set_control_mcmc(n_sim = 100, burnin = 100),
-    "larger than `burnin`", class = "riskmap_error_input"
+  expect_input_error(
+    set_control_mcmc(n_draws = 2e9, burnin = 0, thin = 2),
+    "n_draws"
   )
+  # Integer arguments whose product overflows an integer.
+  expect_input_error(
+    set_control_mcmc(n_draws = 300000000L, burnin = 0L, thin = 10L),
+    "n_draws"
+  )
+  # A control saved before n_draws, with the iterations in n_sim.
+  old <- structure(list(n_sim = 22000, burnin = 2000, thin = 10, h = NULL,
+                        c1.h = 1, c2.h = 0.6, linear_model = FALSE),
+                   class = "RiskMap_control_mcmc")
+  expect_input_error(
+    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+          denominator = denominator, control_mcmc = old, messages = FALSE),
+    "control_mcmc"
+  )
+  expect_error(predict(binomial_model, binomial_data[1:2, ],
+                       control_mcmc = old, messages = FALSE),
+               "n_draws", class = "riskmap_error_input")
+  expect_input_error(set_control_mcmc(burnin = -1), "burnin")
+  expect_input_error(set_control_mcmc(thin = 0), "thin")
   expect_input_error(set_control_mcmc(h = 0), "h")
-  expect_input_error(set_control_mcmc(c2.h = 0.5), "c2.h")
+  expect_input_error(set_control_mcmc(c1_h = 0), "c1_h")
+  expect_input_error(set_control_mcmc(c2_h = 0.5), "c2_h")
 
-  control <- set_control_mcmc(n_sim = 20, burnin = 10, thin = 1)
+  control <- set_control_mcmc(n_draws = 10, burnin = 10, thin = 1)
   expect_error(
     laplace_sampling_mcmc(
       y = c(1, 2), units_m = c(4, 4), mu = c(0, 0),
