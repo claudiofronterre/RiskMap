@@ -37,12 +37,14 @@ plot(x, parameters = NULL, bins = 30, log_scale = FALSE, ...)
 
 - ...:
 
-  Not used.
+  Not used, and an error if given, so that a misspelt argument is not
+  ignored.
 
 ## Value
 
 A `ggplot` object for one parameter, or a `patchwork` object combining
-one `ggplot` per parameter.
+one `ggplot` per parameter. Nothing is drawn until the object is
+printed.
 
 ## See also
 

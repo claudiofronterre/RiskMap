@@ -47,12 +47,16 @@ plot(x, parameters = NULL, pairs = NULL, scale = c("loglik", "deviance"), ...)
 
 - ...:
 
-  Not used.
+  Not used, and an error if given, so that a misspelt argument is not
+  ignored.
 
 ## Value
 
-Invisibly, a list of `ggplot` objects, one per panel. The combined
-figure is drawn.
+A `ggplot` object for one panel, and otherwise a `patchwork` object that
+arranges the panels. Nothing is drawn until the object is printed, so it
+can be saved or changed first. One marginal panel is
+`plot(x, parameters = "phi", pairs = character())`, since `pairs`
+defaults to every joint profile.
 
 ## Details
 

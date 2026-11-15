@@ -102,6 +102,17 @@ the main changes follow.
   profile likelihoods and
   [`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md)
   bootstrap intervals for the parameters.
+- [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of a profile
+  returns one plot instead of the list of its panels, and draws nothing,
+  as every [`plot()`](https://rdrr.io/r/graphics/plot.default.html)
+  method now does. [`profile()`](https://rdrr.io/r/stats/profile.html),
+  [`print()`](https://rdrr.io/r/base/print.html) and
+  [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of profiles
+  and extrapolations, and
+  [`print()`](https://rdrr.io/r/base/print.html),
+  [`summary()`](https://rdrr.io/r/base/summary.html) and
+  [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of bootstraps
+  and checks stop on an argument they don’t use.
 
 #### Prediction
 

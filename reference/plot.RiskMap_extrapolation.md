@@ -30,7 +30,8 @@ plot(x, indicator = "extrapolation", ...)
 
 - ...:
 
-  Not used.
+  Not used, and an error if given, so that a misspelt argument is not
+  ignored.
 
 ## Value
 
