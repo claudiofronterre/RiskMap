@@ -320,7 +320,8 @@ extrapolation_sampling_variance <- function(object, parameters) {
 ##'   the locations in each class and states the thresholds of the classes,
 ##'   returning `x` invisibly.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
-##'   is not ignored.
+##'   is not ignored. A subset that lost the classes or the threshold prints
+##'   as an `sf` object, and the arguments go to its print method.
 ##' @method print RiskMap_extrapolation
 ##' @export
 print.RiskMap_extrapolation <- function(x, ...) {

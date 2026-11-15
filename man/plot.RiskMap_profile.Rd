@@ -25,7 +25,9 @@ is not ignored.}
 \value{
 A \code{ggplot} object for one panel, and otherwise a \code{patchwork}
 object that arranges the panels. Nothing is drawn until the object is
-printed, so it can be saved or changed first.
+printed, so it can be saved or changed first. One marginal panel is
+\code{plot(x, parameters = "phi", pairs = character())}, since \code{pairs}
+defaults to every joint profile.
 }
 \description{
 Draws the profiles computed by \code{\link[=profile.RiskMap]{profile.RiskMap()}}. Each marginal profile

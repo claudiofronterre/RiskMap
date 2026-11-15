@@ -425,7 +425,9 @@ object otherwise, and draws nothing, so the figure can be saved or changed
 before it is printed. It drew the panels with `gridExtra::grid.arrange()`, or
 printed the corner plot, and returned the list of panels invisibly. The panels
 and the corner plot are unchanged, and patchwork arranges any other set of
-panels in up to three columns. Asking for no panel stops.
+panels in up to three columns. Asking for no panel stops. One panel is
+`plot(x, parameters = "phi", pairs = character())`, since `pairs` defaults to
+every joint profile.
 
 - `profile()`, the print of a profile and its `plot()`, `summary()`, `print()`
 and `plot()` of a parametric bootstrap and the print of its summary, and

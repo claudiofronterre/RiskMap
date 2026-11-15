@@ -35,7 +35,9 @@
 ##'   is not ignored.
 ##' @return A `ggplot` object for one panel, and otherwise a `patchwork`
 ##'   object that arranges the panels. Nothing is drawn until the object is
-##'   printed, so it can be saved or changed first.
+##'   printed, so it can be saved or changed first. One marginal panel is
+##'   `plot(x, parameters = "phi", pairs = character())`, since `pairs`
+##'   defaults to every joint profile.
 ##' @seealso [profile.RiskMap()]
 ##' @export
 plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
@@ -43,6 +45,9 @@ plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
   check_class(x, "RiskMap_profile")
   check_dots_unused(...)
   scale <- match_choice(scale)
+  # The argument blamed if nothing is left to draw, the one given empty.
+  empty_arg <- if (is.null(parameters) || length(parameters)) "pairs" else
+    "parameters"
   parameters <- parameters %||% names(x$marginal)
   pairs <- pairs %||% names(x$joint)
   unknown <- setdiff(parameters, names(x$marginal))
@@ -56,7 +61,7 @@ plot.RiskMap_profile <- function(x, parameters = NULL, pairs = NULL,
     abort_input(c("{.arg pairs} must name joint profiles of {.arg x}.", "x" = "{.val {unknown}} {cli::qty(length(unknown))}{?is/are} not among them.", "i" = "The joint profiles are {.val {known}}."), arg = "pairs")
   }
   if (!length(parameters) && !length(pairs)) {
-    abort_input("{.arg parameters} and {.arg pairs} name no profile to draw.", arg = "parameters")
+    abort_input("{.arg parameters} and {.arg pairs} name no profile to draw.", arg = empty_arg)
   }
   axis <- profile_axis(scale, x$level)
   marginal <- lapply(parameters, function(name) {

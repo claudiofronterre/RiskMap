@@ -66,10 +66,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 - `check_fit()` reports how a fit was computed and flags anything that needs
   attention. `profile()` gives profile likelihoods and `parametric_bootstrap()`
   bootstrap intervals for the parameters.
-- `plot()` of a profile returns one plot and draws nothing, as every `plot()`
-  method now does. `profile()` and the `print()`, `summary()` and `plot()`
-  methods of profiles, bootstraps, checks and extrapolations stop on an
-  argument they don't use.
+- `plot()` of a profile returns one plot instead of the list of its panels,
+  and draws nothing, as every `plot()` method now does. `profile()`, `print()`
+  and `plot()` of profiles and extrapolations, and `print()`, `summary()` and
+  `plot()` of bootstraps and checks stop on an argument they don't use.
 
 ### Prediction
 
