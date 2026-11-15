@@ -94,30 +94,6 @@ test_that("working_start() repeats the arithmetic of the direct Gaussian start",
   expect_identical(working_start(parameters, start), old)
 })
 
-test_that("woodbury_start() repeats the start of the Woodbury Gaussian path", {
-  parameters <- model_parameter_table(
-    c("(Intercept)", "x"), fix_tau2 = TRUE, exact = TRUE, fix_var_me = NULL,
-    estimated_family = character(), family_parameters = NULL,
-    re_names = c("g", "h"), distance_units = "km"
-  )
-  start <- list(beta = c(1, 0.5), sigma2 = 1.9, phi = 0.21, tau2 = 0.37,
-                sigma2_me = 0.11, sigma2_re = c(0.6, 2.2))
-  # pack_cov_pars() followed by the division of every slot after the scale.
-  start_cov_pars <- c(start$sigma2, start$phi, start$tau2, start$sigma2_me,
-                      start$sigma2_re)
-  start_cov_pars[-(1:2)] <- start_cov_pars[-(1:2)] / start_cov_pars[1]
-  expect_identical(woodbury_start(parameters, start),
-                   c(start$beta, log(start_cov_pars)))
-  # It differs from working_start() only in the measurement error and the
-  # random-effect variances, which step 2b of the table settles.
-  differs <- woodbury_start(parameters, start) !=
-    working_start(parameters, start)
-  expect_identical(which(differs),
-                   unlist(parameters$layout$index[c("sigma2_me",
-                                                    "sigma2_re")],
-                          use.names = FALSE))
-})
-
 test_that("working_estimate() splits the working vector as the engines did", {
   parameters <- table_with_everything()
   par <- c(0.1, -0.2, log(0.8), log(0.3), -1.1, -0.7, log(0.2), log(1.3))
@@ -349,15 +325,14 @@ test_that("a start that is missing or of the wrong length stops", {
   )
   start <- list(beta = c(1, 0.5), sigma2 = 1.9, phi = 0.21, tau2 = 0.37,
                 sigma2_me = 0.11, sigma2_re = c(0.6, 2.2))
-  for (make in list(working_start, woodbury_start)) {
-    expect_error(make(parameters, start[names(start) != "tau2"]),
-                 class = "riskmap_error_internal")
-    expect_error(make(parameters, utils::modifyList(start, list(
-      sigma2_re = 0.6
-    ))), class = "riskmap_error_internal")
-    expect_error(make(parameters, utils::modifyList(start, list(beta = 1))),
-                 class = "riskmap_error_internal")
-  }
+  expect_error(working_start(parameters, start[names(start) != "tau2"]),
+               class = "riskmap_error_internal")
+  expect_error(working_start(parameters, utils::modifyList(start, list(
+    sigma2_re = 0.6
+  ))), class = "riskmap_error_internal")
+  expect_error(working_start(parameters, utils::modifyList(start, list(
+    beta = 1
+  ))), class = "riskmap_error_internal")
 })
 
 test_that("the Jacobian places the nugget by name, whatever the order", {
@@ -367,4 +342,59 @@ test_that("the Jacobian places the nugget by name, whatever the order", {
   expect_identical(dimnames(J), list(shuffled, shuffled))
   expect_identical(J["nu2", "sigma2"], 1)
   expect_identical(sum(J), 9)
+})
+
+test_that("both Gaussian paths start each variance on the scale its likelihood reads", {
+  # Six copies of the fixture give more than three observations per latent
+  # effect, so the fit takes the Woodbury path unless told otherwise. Both
+  # likelihoods read the nugget as its ratio to the spatial variance and the
+  # measurement error and random-effect variances on their own scale, so
+  # those start at the values given, not divided by the spatial variance.
+  set.seed(2)
+  replicated <- do.call(rbind, replicate(6, gaussian_data, simplify = FALSE))
+  replicated$y <- replicated$y + rnorm(nrow(replicated), sd = 0.3)
+  start_of <- function(formula, start_pars, path, fix_var_me = NULL) {
+    captured <- NULL
+    try(with_mocked_bindings(
+      glgpm(formula, data = replicated, family = "gaussian",
+            start_pars = start_pars, fix_var_me = fix_var_me,
+            messages = FALSE),
+      nlminb = function(start, ...) {
+        captured <<- start
+        stop("captured the start")
+      },
+      glgpm_lm_direct = if (path == "woodbury") {
+        function(...) stop("direct path used")
+      } else {
+        glgpm_lm_direct
+      },
+      use_direct_gaussian_covariance = function(...) path == "direct"
+    ), silent = TRUE)
+    captured
+  }
+  cases <- list(
+    # The coefficients, log sigma2, log phi, log sigma2_me, log sigma2_re.
+    list(formula = y ~ cov + gp() + re(i),
+         start = list(sigma2 = 2, sigma2_me = 0.5, sigma2_re = 0.3),
+         positions = c(3L, 5L, 6L), expected = log(c(2, 0.5, 0.3))),
+    # The nugget before the measurement error, as log(tau2 / sigma2).
+    list(formula = y ~ cov + gp(nugget = TRUE) + re(i),
+         start = list(sigma2 = 2, tau2 = 0.4, sigma2_me = 0.5,
+                      sigma2_re = 0.3),
+         positions = c(3L, 5L, 6L, 7L),
+         expected = c(log(2), log(0.4 / 2), log(0.5), log(0.3))),
+    # A held measurement error and two re() terms.
+    list(formula = y ~ cov + gp() + re(i, j),
+         start = list(sigma2 = 2, sigma2_re = c(0.3, 0.6)),
+         fix_var_me = 0.1, positions = c(3L, 5L, 6L),
+         expected = log(c(2, 0.3, 0.6)))
+  )
+  for (case in cases) {
+    woodbury <- start_of(case$formula, case$start, "woodbury",
+                         case$fix_var_me)
+    direct <- start_of(case$formula, case$start, "direct", case$fix_var_me)
+    expect_length(woodbury, max(case$positions))
+    expect_identical(woodbury[case$positions], case$expected)
+    expect_identical(woodbury, direct)
+  }
 })

@@ -1454,7 +1454,10 @@ location_totals <- function(y, units_m, D, offset, ID_coords, s_unique) {
 ##' them, with the scale in the fitting units. Up to three observations per
 ##' latent effect the observed covariance is factorised directly
 ##' (`glgpm_lm_direct()`), and beyond that the Woodbury identity works in the
-##' dimension of the latent effects.
+##' dimension of the latent effects. Both start from `working_start()`, which
+##' gives each parameter on the scale on which their likelihoods read it. The
+##' nugget is read as its ratio to the spatial variance, and the measurement
+##' error and random-effect variances as they are.
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @noRd
 glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
@@ -2307,7 +2310,7 @@ glgpm_lm <- function(y, D, coords, kappa, ID_coords, ID_re, s_unique, re_unique,
     return(H)
   }
 
-  start_par <- woodbury_start(parameters, start)
+  start_par <- working_start(parameters, start)
 
   out <- list()
   objective <- safe_optimizer_objective(function(x) -log.lik(x))
