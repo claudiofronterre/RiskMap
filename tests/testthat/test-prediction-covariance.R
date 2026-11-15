@@ -19,11 +19,11 @@ test_that("Gaussian predictions remain finite with tiny measurement error", {
   model <- gaussian_intercept_model
   for (variance in c(1e-10, 1e-12)) {
     model$estimate$sigma2_me <- log(variance)
-    for (type in c("marginal", "joint")) {
+    for (joint in c(FALSE, TRUE)) {
       expect_warning(prediction <- predict(
         model,
         newdata = gaussian_data,
-        type = type,
+        joint = joint,
         control_mcmc = control_mcmc, seed = fixture_seed,
         keep_samples = TRUE,
         messages = FALSE
@@ -43,13 +43,13 @@ test_that("Gaussian predictions use a fixed measurement error variance", {
   estimated_model <- fixed_model
   estimated_model$fix_var_me <- NULL
   estimated_model$estimate$sigma2_me <- log(0.2)
-  for (type in c("marginal", "joint")) {
-    fixed <- predict(fixed_model, newdata = gaussian_data, type = type,
+  for (joint in c(FALSE, TRUE)) {
+    fixed <- predict(fixed_model, newdata = gaussian_data, joint = joint,
                      control_mcmc = control_mcmc,
                      seed = fixture_seed, keep_samples = TRUE,
                      messages = FALSE)
     estimated <- predict(estimated_model, newdata = gaussian_data,
-                         type = type, control_mcmc = control_mcmc,
+                         joint = joint, control_mcmc = control_mcmc,
                          seed = fixture_seed,
                          keep_samples = TRUE, messages = FALSE)
     expect_equal(fixed$samples$spatial, estimated$samples$spatial,
