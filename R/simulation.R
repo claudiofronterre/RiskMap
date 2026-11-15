@@ -751,7 +751,7 @@ simulation_model <- function(object) {
   }
   # The CRS of the fit was checked when it was fitted.
   model <- without_crs_check(
-    specify_glgpm(object$formula, object$data, family, pars,
+    specify_glgpm(fit_formula(object), object$data, family, pars,
                   distance_units = object$distance_units,
                   invlink = invlink)
   )

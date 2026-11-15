@@ -233,8 +233,12 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
 
   check_range(kappa, min = 0, allow_equal = FALSE)
 
-  if (is.numeric(nugget) && length(nugget) == 1L) {
+  if (is.numeric(nugget) && length(nugget) == 1L && is.finite(nugget) &&
+      nugget > 0) {
     abort_input(c("{.arg nugget} must be {.code TRUE} or {.code FALSE}, not {nugget}.", "i" = "To hold the nugget variance at {nugget}, use {.code gp(nugget = TRUE)} with {.code fixed_pars = list(tau2 = {nugget})} in {.fn glgpm}."), arg = "nugget")
+  }
+  if (identical(nugget, 0) || identical(nugget, 0L)) {
+    abort_input(c("{.arg nugget} must be {.code TRUE} or {.code FALSE}, not 0.", "i" = "A model without a nugget has {.code nugget = FALSE}."), arg = "nugget")
   }
   if (!(isTRUE(nugget) || isFALSE(nugget))) {
     supplied <- describe_value(nugget)

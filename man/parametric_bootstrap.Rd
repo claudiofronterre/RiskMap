@@ -41,7 +41,9 @@ Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.
 An object of class \code{RiskMap_bootstrap}, a list with
 \item{estimates}{A matrix of the bootstrap estimates on their natural
 scale, with one row per replicate (\code{NA} for failed refits) and one
-column per parameter, named as \code{unlist(coef(object))}.}
+column per estimated parameter, named as \code{unlist(coef(object))} names
+them. Parameters held by \code{fixed_pars} are held in the refits and have no
+column.}
 \item{estimate}{The estimate of \code{object}, on the same scale.}
 \item{labels}{Readable names of the parameters.}
 \item{failures}{A data frame with the \code{replicate}, \code{seed} and error

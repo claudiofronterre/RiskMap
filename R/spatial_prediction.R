@@ -579,7 +579,7 @@ validate_prediction_standardize <- function(object, standardize) {
   }
   reference_names <- setdiff(names(standardize), ".weight")
   response <- as.character(object$formula[[2L]])
-  inter_f <- interpret_formula(object$formula)
+  inter_f <- interpret_formula(fit_formula(object))
   offset_names <- inter_f$offset %||% character()
   fixed_names <- setdiff(
     get_formula_terms(object$formula),
@@ -649,7 +649,7 @@ validate_prediction_data <- function(object, newdata, include,
     riskmap_inform("{.arg newdata} is projected to the coordinate reference system of the fit.")
     prediction_data <- st_transform(prediction_data, st_crs(object$data))
   }
-  inter_f <- interpret_formula(object$formula)
+  inter_f <- interpret_formula(fit_formula(object))
   response <- as.character(object$formula[[2]])
   required <- setdiff(get_formula_terms(object$formula), response)
   if (!"random_effects" %in% include) {
@@ -1474,7 +1474,7 @@ prediction_fixed_effect <- function(object, predictors, beta = coef(object)$beta
 #' Build a prediction design matrix using the fitted factor structure
 #' @noRd
 prediction_design_matrix <- function(object, predictors) {
-  inter_f <- interpret_formula(object$formula)
+  inter_f <- interpret_formula(fit_formula(object))
   fixed_formula <- update(inter_f$pf, NULL ~ .)
   fitted_frame <- model.frame(fixed_formula, data = object$data,
                               na.action = na.fail)
@@ -2118,7 +2118,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   plain_data <- as.data.frame(st_drop_geometry(prediction_data))
   grid_pred <- if (observed_locations) NULL else st_geometry(prediction_data)
   predictors <- if (observed_locations) NULL else plain_data
-  inter_f <- interpret_formula(object$formula)
+  inter_f <- interpret_formula(fit_formula(object))
   pred_cov_offset <- NULL
   if (!observed_locations && !is.null(inter_f$offset)) {
     if (!inter_f$offset %in% names(plain_data)) {
@@ -2231,7 +2231,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
   # ---------------------------------------------------------------------------
 
   par_hat <- coef(object)
-  inter_f      <- interpret_formula(object$formula)
+  inter_f      <- interpret_formula(fit_formula(object))
 
   intercept_only <- if (p == 1) prod(object$D[, 1] == 1) == 1 else FALSE
 
@@ -3249,7 +3249,7 @@ assess_prediction <- function(object,
       if (!keep_par_fixed) {
 
         refit_args <- list(
-          formula        = fit0$formula,
+          formula        = fit_formula(fit0),
           data           = fit_data_sf[in_id, ],
           family         = fit_family_argument(fit0),
           model_crs      = st_crs(fit0$data),
@@ -3898,7 +3898,9 @@ assess_simulation <- function(obj_sim,
     as.numeric(result)
   }
   model_names <- names(models)
-  formulas <- lapply(models, function(template) update(template$formula, y ~ .))
+  formulas <- lapply(models, function(template) {
+    update(fit_formula(template), y ~ .)
+  })
   grid <- obj_sim$grid
   include_nugget <- obj_sim$nugget_over_grid
 

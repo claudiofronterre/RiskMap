@@ -71,7 +71,9 @@
 ##' @return An object of class `RiskMap_bootstrap`, a list with
 ##' \item{estimates}{A matrix of the bootstrap estimates on their natural
 ##'   scale, with one row per replicate (`NA` for failed refits) and one
-##'   column per parameter, named as `unlist(coef(object))`.}
+##'   column per estimated parameter, named as `unlist(coef(object))` names
+##'   them. Parameters held by `fixed_pars` are held in the refits and have no
+##'   column.}
 ##' \item{estimate}{The estimate of `object`, on the same scale.}
 ##' \item{labels}{Readable names of the parameters.}
 ##' \item{failures}{A data frame with the `replicate`, `seed` and error

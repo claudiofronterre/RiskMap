@@ -166,3 +166,41 @@ test_that("a profile of an MCML fit holds the nugget variance", {
   expect_equal(point$par[[nugget]], target, tolerance = 1e-12)
   expect_identical(list_covariance_parameters(fit), c("sigma2", "phi", "tau2"))
 })
+
+test_that("a fit saved with gp(nugget = <value>) still predicts and refits", {
+  # A fit of the earlier interface kept its formula as the user gave it and
+  # held the nugget in fix_tau2.
+  current <- glgpm(y ~ cov + gp(nugget = TRUE), data = gaussian_data,
+                   family = "gaussian", fixed_pars = list(tau2 = 0.2),
+                   messages = FALSE)
+  saved <- current
+  saved$formula <- y ~ cov + gp(nugget = 0.2)
+  saved$nugget <- NULL
+  saved$fixed_pars <- NULL
+  saved$fix_tau2 <- 0.2
+  saved["fix_var_me"] <- list(NULL)
+  expect_identical(fit_formula(saved), y ~ cov + gp(nugget = TRUE))
+  expect_identical(fit_formula(current), current$formula)
+  expect_identical(fit_fixed_pars(saved), list(tau2 = 0.2))
+  expect_identical(coef(saved), coef(current))
+  grid <- gaussian_data[1:3, ]
+  expect_identical(
+    predict(saved, grid, seed = 1L, messages = FALSE)$predictions,
+    predict(current, grid, seed = 1L, messages = FALSE)$predictions
+  )
+  expect_identical(simulation_model(saved)$parameters,
+                   simulation_model(current)$parameters)
+})
+
+test_that("gp() points a value of the nugget to fixed_pars or to FALSE", {
+  expect_match(conditionMessage(expect_input_error(gp(nugget = 0.4), "nugget")),
+               "fixed_pars = list(tau2 = 0.4)", fixed = TRUE)
+  zero <- conditionMessage(expect_input_error(gp(nugget = 0), "nugget"))
+  expect_match(zero, "nugget = FALSE", fixed = TRUE)
+  expect_no_match(zero, "fixed_pars")
+  for (value in list(-1, NA_real_, Inf)) {
+    expect_no_match(conditionMessage(expect_input_error(gp(nugget = value),
+                                                        "nugget")),
+                    "fixed_pars")
+  }
+})

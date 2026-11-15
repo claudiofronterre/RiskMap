@@ -918,3 +918,34 @@ fit_fixed_pars <- function(fit) {
   held <- c(held, fit$family_parameters)
   if (length(held)) held
 }
+
+##' The formula of a fit, as `gp()` reads it now
+##'
+##' A fit saved before `fixed_pars` existed may have held its nugget with
+##' `gp(nugget = <value>)`, which `gp()` refuses now. Its formula is given with
+##' `gp(nugget = TRUE)`, and the held value is read from its `fix_tau2`
+##' (`fit_fix_tau2()`, `fit_fixed_pars()`). Any other fit's formula is returned
+##' as it is.
+##' @noRd
+fit_formula <- function(fit) {
+  formula <- fit$formula
+  held <- fit$fix_tau2
+  if (!is.null(fit$nugget) || !is.numeric(held) || isTRUE(held) ||
+      !length(held) || held == 0 || !inherits(formula, "formula")) {
+    return(formula)
+  }
+  rewrite <- function(expr) {
+    if (!is.call(expr)) return(expr)
+    parts <- as.list(expr)
+    if (identical(parts[[1L]], as.name("gp")) && "nugget" %in% names(parts)) {
+      parts$nugget <- TRUE
+    }
+    for (k in seq_along(parts)[-1L]) {
+      if (!identical(parts[[k]], quote(expr = ))) parts[k] <- list(rewrite(parts[[k]]))
+    }
+    as.call(parts)
+  }
+  last <- length(formula)
+  formula[[last]] <- rewrite(formula[[last]])
+  formula
+}

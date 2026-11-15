@@ -12,8 +12,10 @@
 ##' `"poisson"`, which take the identity, logit and log links, a family
 ##' object as in [stats::glm()], such as `binomial("probit")`, or
 ##' [negative_binomial()] for overdispersed counts with the log link, whose
-##' size is estimated unless `fixed_pars` holds it, as does the family object
-##' `MASS::negative.binomial(2)`. Binomial
+##' size is estimated unless it is held, by `fixed_pars` of [glgpm()] or by
+##' the family object `MASS::negative.binomial(2)`. Where nothing is estimated,
+##' as in [specify_glgpm()], the size must be given, as `theta` in its
+##' `parameters`. Binomial
 ##' responses take the logit, probit, complementary log-log (`"cloglog"`) and
 ##' Cauchy (`"cauchit"`) links, Poisson responses the log link and Gaussian
 ##' responses the identity link. `binomial("log")` and `poisson("identity")`

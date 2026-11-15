@@ -34,8 +34,10 @@ with its link. Either one of the strings \code{"gaussian"}, \code{"binomial"} an
 \code{"poisson"}, which take the identity, logit and log links, a family
 object as in \code{\link[stats:glm]{stats::glm()}}, such as \code{binomial("probit")}, or
 \code{\link[=negative_binomial]{negative_binomial()}} for overdispersed counts with the log link, whose
-size is estimated unless \code{fixed_pars} holds it, as does the family object
-\code{MASS::negative.binomial(2)}. Binomial
+size is estimated unless it is held, by \code{fixed_pars} of \code{\link[=glgpm]{glgpm()}} or by
+the family object \code{MASS::negative.binomial(2)}. Where nothing is estimated,
+as in \code{\link[=specify_glgpm]{specify_glgpm()}}, the size must be given, as \code{theta} in its
+\code{parameters}. Binomial
 responses take the logit, probit, complementary log-log (\code{"cloglog"}) and
 Cauchy (\code{"cauchit"}) links, Poisson responses the log link and Gaussian
 responses the identity link. \code{binomial("log")} and \code{poisson("identity")}
