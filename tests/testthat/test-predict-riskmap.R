@@ -426,6 +426,12 @@ test_that("boundaries trigger blockwise joint prediction and retain polygons", {
   expect_identical(result$aggregate,
                    c("mean", "median", "sum", "min", "max"))
   expect_identical(result$joint, TRUE)
+  # At the observed locations of a binomial fit the draws are the joint
+  # conditional samples, and at those of a Gaussian fit they follow `joint`.
+  expect_true(predict(binomial_model, summaries = "mean",
+                      messages = FALSE)$joint)
+  expect_false(predict(gaussian_model, summaries = "mean",
+                       messages = FALSE)$joint)
   expect_identical(result$coverage, "exact")
   expect_identical(result$weights, "population")
   expect_identical(st_geometry(result$predictions), st_geometry(prediction_data))

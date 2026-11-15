@@ -44,12 +44,15 @@ check_supplied <- function(x, arg = rlang::caller_arg(x),
 #' a misspelt or renamed argument stops instead of being ignored. The values
 #' in `...` are not evaluated.
 #' @param ... The `...` of the method, passed on as they are.
-#' @param hints A named character vector, in cli markup, of what to use
+#' @param .hints A named character vector, in cli markup, of what to use
 #'   instead of former arguments that users may still give, such as
 #'   `c(type = "Use {.arg joint}.")`.
+#' @param .call Where the error was raised. The two arguments have dotted
+#'   names, which can be matched only exactly after the dots, so that an
+#'   argument such as `call` or `hints` passed by the user reaches the dots.
 #' @noRd
-check_dots_unused <- function(..., hints = character(),
-                              call = rlang::caller_env()) {
+check_dots_unused <- function(..., .hints = character(),
+                              .call = rlang::caller_env()) {
   n_dots <- ...length()
   if (n_dots == 0L) return(invisible(NULL))
   dot_names <- names(as.list(substitute(list(...)))[-1L])
@@ -64,15 +67,15 @@ check_dots_unused <- function(..., hints = character(),
       "{n_unnamed} argument{?s} without a name {?is/are} not used."
     }
   )
-  shown <- intersect(named, names(hints))
+  shown <- intersect(named, names(.hints))
   advice <- if (length(shown)) {
-    stats::setNames(unname(hints[shown]), rep("i", length(shown)))
+    stats::setNames(unname(.hints[shown]), rep("i", length(shown)))
   } else if (length(named)) {
     c("i" = "Check the spelling of the argument names.")
   }
   abort_input(c(problems[[1L]], if (length(problems) > 1L) c("x" = problems[[2L]]),
                 advice),
-              arg = if (length(named)) named[[1L]] else "...", call = call)
+              arg = if (length(named)) named[[1L]] else "...", call = .call)
 }
 
 #' Describe a supplied value for an error message

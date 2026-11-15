@@ -28,7 +28,9 @@
 ##'   prediction), which is faster for many locations. `NULL`, the default,
 ##'   draws jointly when `boundaries` are given and marginally otherwise.
 ##'   Summaries over `boundaries` need joint draws, so `FALSE` can't be used
-##'   with them.
+##'   with them. At the observed locations of a binomial, Poisson or negative
+##'   binomial fit the draws are the joint conditional samples whatever
+##'   `joint` is.
 ##' @param include `NULL`, or a character vector specifying optional components
 ##'   to add to the complete linear predictor and response. Supported values are
 ##'   `"random_effects"`, for conditional predictions at known groups, and
@@ -310,7 +312,7 @@ predict.RiskMap <- function(
     keep_samples = FALSE,
     messages = getOption("RiskMap.messages", TRUE),
     ...) {
-  check_dots_unused(..., hints = c(
+  check_dots_unused(..., .hints = c(
     type = "Use {.arg joint} to choose between joint and marginal draws. The response, link and spatial effect are always predicted.",
     standardize = "It is spelt {.arg standardise}."
   ))
@@ -416,6 +418,10 @@ predict.RiskMap <- function(
     class(out) <- "RiskMap_prediction"
     return(out)
   }
+  # At the observed locations of a non-Gaussian fit the draws are the joint
+  # conditional samples.
+  joint_draws <- type == "joint" ||
+    (observed_locations && !fit_is_exact(object))
   sample_components <- prediction_sample_components(
     object, prediction_data, type, include, control_mcmc, messages,
     observed_locations = observed_locations, transform = transform,
@@ -448,7 +454,7 @@ predict.RiskMap <- function(
     summaries = names(summaries),
     thresholds = thresholds,
     level = level,
-    joint = type == "joint",
+    joint = joint_draws,
     family = object$family,
     link = fit_link(object),
     response_name = prediction_response_name(object),
@@ -3560,7 +3566,9 @@ grid_spacing <- function(coordinates) {
 ##'   numbers giving the range of the colour scale, for example to map several
 ##'   simulations on a common scale.
 ##' @param ... Additional arguments passed to the ggplot2 fill scale, for
-##'   example `transform = "sqrt"` for skewed values.
+##'   example `transform = "sqrt"` for skewed values. The map sets
+##'   `colours`, `limits`, `breaks`, `labels`, `oob`, `na.value` and `guide`
+##'   itself. To change them, add another fill scale to the map with `+`.
 ##'
 ##' @return A \code{ggplot} object.
 ##' @details
@@ -3574,9 +3582,15 @@ grid_spacing <- function(coordinates) {
 plot.RiskMap_simulated_surface <- function(x, quantity = "mean", palette = NULL,
                                            limits = NULL, ...) {
   check_class(x, "RiskMap_simulated_surface")
-  # The fill scale would reject the former argument less clearly.
-  if ("reverse_palette" %in% names(match.call(expand.dots = FALSE)$...)) {
+  # The fill scale would reject these less clearly.
+  dot_names <- names(match.call(expand.dots = FALSE)$...)
+  if ("reverse_palette" %in% dot_names) {
     abort_input("{.arg reverse_palette} is no longer an argument. Prefix a named palette with {.code -} to reverse it, as in {.code palette = \"-Viridis\"}, or give a reversed vector of colours.", arg = "reverse_palette")
+  }
+  set_by_map <- intersect(dot_names, c("colours", "colors", "limits", "breaks",
+                                       "labels", "oob", "na.value", "guide"))
+  if (length(set_by_map)) {
+    abort_input(c("{.arg {set_by_map}} can't be given, because the map sets {cli::qty(length(set_by_map))}{?it/them} itself.", "i" = "Add another fill scale to the map with {.code +} to change {?it/them}."), arg = set_by_map[[1L]])
   }
   components <- c("mean", "linear_predictor", "spatial_effect", "nugget",
                   "group_effect")

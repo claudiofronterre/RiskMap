@@ -225,4 +225,7 @@ test_that("check_dots_unused stops on any argument in the dots", {
   expect_error(method_example(1, 2, 3), "2 arguments without a name are not used")
   # The values in the dots are not evaluated.
   expect_input_error(method_example(1, old = stop("evaluated")), "old")
+  # Arguments named like the helper's own reach the dots.
+  expect_input_error(method_example(1, call = 2), "call")
+  expect_input_error(method_example(1, hints = 2), "hints")
 })

@@ -1529,8 +1529,7 @@ checked.
   a standalone function; call it as `plot(variogram_result)`.
 - `plot_sim_surf()` is now `plot.RiskMap_simulation()`; call it as
   `plot(sim_result, simulation = ...)`. It now draws a `ggplot` map matching
-  the prediction maps, with `palette` and `reverse_palette`
-  arguments. `simulated_surface()` returns an object of class
+  the prediction maps, with a `palette` argument. `simulated_surface()` returns an object of class
   `RiskMap_simulated_surface` with a matching `plot()` method.
 - In `assess_prediction()`, the `"AnPIT"` metric is now `"PIT"` and the
   `AnPIT_area` score is now `PIT_area`, for every family.
@@ -1538,6 +1537,3 @@ checked.
   `test_set` and `combine_panels` are now `pit_mode`, `pit_test_set` and
   `combine_pit`.
 - Test coverage has been increased from 0 to 85 %.
-- tibble is no longer imported, since `summarise_mcmc()` and
-`simulated_values()` return data frames. It stays in Suggests for two tests of
-data in tibbles.

@@ -45,6 +45,7 @@ Imports:
     spatialEco,
     spatialsample,
     terra,
+    tibble,
     units
 LinkingTo:
     Rcpp,
@@ -52,7 +53,6 @@ LinkingTo:
 Suggests:
     RhpcBLASctl,
     testthat (>= 3.0.0),
-    tibble,
     withr
 License: MIT + file LICENSE
 Encoding: UTF-8
