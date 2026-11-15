@@ -167,7 +167,8 @@ test_that("prediction distinguishes estimated and fixed nugget variances", {
   )
 
   fixed_nugget_model <- gaussian_model
-  fixed_nugget_model$fix_tau2 <- 0.25
+  fixed_nugget_model$nugget <- "fixed"
+  fixed_nugget_model$fixed_pars <- list(tau2 = 0.25)
   fixed_nugget_model$estimate$nu2 <- NULL
   expect_identical(fitted_nugget_variance(fixed_nugget_model), 0.25)
 

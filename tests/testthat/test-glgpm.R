@@ -94,23 +94,27 @@ test_that("glgpm produces errors", {
   )
 
   expect_input_error(
-    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial", fix_var_me = 1),
-    "fix_var_me"
+    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+          denominator = denominator, fixed_pars = list(sigma2_me = 1)),
+    "fixed_pars"
   )
 
   expect_input_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = c(1, 2)),
-    "fix_var_me"
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          fixed_pars = list(sigma2_me = c(1, 2))),
+    "fixed_pars"
   )
 
   expect_input_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = "not number"),
-    "fix_var_me"
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          fixed_pars = list(sigma2_me = "not number")),
+    "fixed_pars"
   )
 
   expect_input_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", fix_var_me = -1),
-    "fix_var_me"
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
+          fixed_pars = list(sigma2_me = -1)),
+    "fixed_pars"
   )
 
   expect_error(
@@ -172,7 +176,7 @@ test_that("glgpm produces errors", {
 
   expect_error(
     glgpm(y ~ cov + gp(nugget = TRUE), data = gaussian_data, family = "gaussian",
-          fix_var_me = 0, start_pars = list(tau2 = -1), messages = FALSE),
+          fixed_pars = list(sigma2_me = 0), start_pars = list(tau2 = -1), messages = FALSE),
     "tau2", class = "riskmap_error_input"
   )
 
@@ -203,8 +207,8 @@ test_that("glgpm produces errors", {
 })
 
 expected_output <- c("estimate", "grad_MLE", "covariance", "log_lik",
-                     "y", "D", "coords", "ID_coords", "re", "ID_re", "fix_tau2",
-                     "fix_var_me", "formula", "family", "distance_units",
+                     "y", "D", "coords", "ID_coords", "re", "ID_re", "nugget",
+                     "fixed_pars", "formula", "family", "distance_units",
                      "data", "input_crs", "kappa", "units_m", "cov_offset", "call",
                      "S_samples", "link_function", "mcml_history",
                      "mcml_certified", "mcml_selected_iteration",
@@ -245,7 +249,7 @@ test_that("glgpm produces expected output for gaussian models", {
   fit_re_fixed_me <- glgpm(y ~ cov + gp() + re(i),
                            data = gaussian_data,
                            family = "gaussian",
-                           fix_var_me = 0.1,
+                           fixed_pars = list(sigma2_me = 0.1),
                            messages = FALSE)
   expect_true(is.finite(coef(fit_re_fixed_me)$sigma2_re[["i"]]))
 
@@ -344,7 +348,7 @@ test_that("glgpm fits gaussian models combining re() with a fixed measurement er
   fit <- glgpm(y ~ cov + gp() + re(i),
               data = gaussian_data,
               family = "gaussian",
-              fix_var_me = 0.1,
+              fixed_pars = list(sigma2_me = 0.1),
               messages = FALSE)
 
   expect_s3_class(fit, "RiskMap")
@@ -354,7 +358,7 @@ test_that("glgpm fits gaussian models combining re() with a fixed measurement er
   fit_nugget <- glgpm(y ~ cov + gp(nugget = TRUE) + re(i),
                       data = gaussian_data,
                       family = "gaussian",
-                      fix_var_me = 0.1,
+                      fixed_pars = list(sigma2_me = 0.1),
                       messages = FALSE)
 
   expect_s3_class(fit_nugget, "RiskMap")
@@ -367,7 +371,7 @@ test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provi
   saturated_data$row_id <- seq_len(nrow(saturated_data))
 
   fit <- glgpm(formula = y ~ cov + gp() + re(row_id), data = saturated_data,
-               family = "gaussian", messages = FALSE, fix_var_me = 0.1)
+               family = "gaussian", messages = FALSE, fixed_pars = list(sigma2_me = 0.1))
 
   expect_s3_class(fit, "RiskMap")
   expect_setequal(names(fit$estimate), c("beta", "sigma2", "phi", "sigma2_re"))
@@ -377,7 +381,7 @@ test_that("glgpm fits gaussian models with saturated RE when fix_var_me is provi
           data = saturated_data,
           family = "gaussian",
           messages = FALSE,
-          fix_var_me = 0.1),
+          fixed_pars = list(sigma2_me = 0.1)),
     "told apart from the nugget", class = "riskmap_error_input"
   )
 })
@@ -623,7 +627,8 @@ test_that("explicit non-Gaussian starts remain authoritative", {
 
 test_that("final fitted samples support a nugget model", {
   fit <- glgpm(
-    y ~ cov + gp(nugget = 0.1),
+    y ~ cov + gp(nugget = TRUE),
+    fixed_pars = list(tau2 = 0.1),
     data = binomial_data,
     family = "binomial",
     denominator = denominator,

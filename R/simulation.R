@@ -7,7 +7,8 @@
 #' @param parameters A named list containing `beta`, `sigma2` and `phi`.
 #'   `beta` has one entry per design-matrix column, including the intercept
 #'   when present. Supply `tau2` when `gp(nugget = TRUE)`, `sigma2_me` for
-#'   Gaussian measurement error, and `sigma2_re` for each `re()` term.
+#'   Gaussian measurement error, `theta` for the size of a negative binomial
+#'   family, and `sigma2_re` for each `re()` term.
 #'   Variances may be zero. `phi` is expressed in `distance_units`.
 #' @param distance_crs The projected coordinate reference system in which
 #'   distances, and so `phi`, are measured, for example an EPSG code. `data`
@@ -50,9 +51,20 @@ specify_glgpm <- function(formula, data, family, parameters, invlink = NULL,
   data <- project_for_distances(data, distance_crs, "distance_crs",
                                 "for simulation", units = distance_units)
   family_link <- read_family(family, invlink)
+  # A size given in `parameters` holds the family's, as `fixed_pars` does in
+  # glgpm(), and must agree with one the family holds.
+  size <- if (is.list(parameters)) parameters$theta
+  if (!is.null(size) && identical(family_link$family, "negative_binomial")) {
+    held <- family_link$parameters$theta
+    if (!is.null(held) && !isTRUE(all.equal(held, size))) {
+      abort_input("{.arg family} holds the size at {held}, and {.code parameters$theta} at {size}.", arg = "parameters")
+    }
+    family_link <- read_family(held_negative_binomial(size), invlink)
+    parameters$theta <- NULL
+  }
   family <- family_link$family
   invlink <- family_link$invlink
-  check_family_held(family_link)
+  check_family_held(family_link, hint = "Give it as {.code theta} in {.arg parameters}.")
   traits <- family_traits(family)
   custom_link <- !is.null(invlink)
   inter <- interpret_formula(formula)
@@ -717,16 +729,13 @@ simulation_model <- function(object) {
   if (!inherits(object, "RiskMap")) {
     abort_input("{.arg object} must be a {.cls RiskMap} fit or a model from {.fn specify_glgpm}, not {.obj_type_friendly {object}}.", arg = "object")
   }
+  # Every parameter of the fit, held ones included, the size of a negative
+  # binomial family among them (fit_family_argument()).
   pars <- coef(object)
-  # A family given by its function carries its own parameters, held at the
-  # fit's values (fit_family_argument()).
-  if (isTRUE(fit_traits(object)$specified)) {
-    pars[names(fit_traits(object)$parameters)] <- NULL
-  }
-  if (is.null(pars$tau2)) pars$tau2 <- object$fix_tau2
+  if (is.null(pars$tau2)) pars$tau2 <- fit_fix_tau2(object)
   if (family_traits(object$family)$measurement_error &&
-      !is.null(object$fix_var_me)) {
-    pars$sigma2_me <- object$fix_var_me
+      !is.null(fit_fix_var_me(object))) {
+    pars$sigma2_me <- fit_fix_var_me(object)
   }
   denominator <- if (!is.null(object$call$denominator)) {
     as.character(object$call$denominator)

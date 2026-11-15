@@ -439,7 +439,7 @@ test_that("the Woodbury identity and direct factorisation give one likelihood", 
         distances = pairwise_distances(scaling$coordinates),
         kappa = fitted$kappa, ID_coords = fitted$ID_coords,
         ID_re = if (is.null(fitted$ID_re)) NULL else as.matrix(fitted$ID_re),
-        fix_tau2 = fitted$fix_tau2, fix_var_me = fitted$fix_var_me,
+        fix_tau2 = fit_fix_tau2(fitted), fix_var_me = fit_fix_var_me(fitted),
         woodbury = woodbury
       )
     }
@@ -517,7 +517,7 @@ test_that("Gaussian profiles of fixed variances match refits", {
   point <- maximise_profile(problem, measurement, value,
                             problem$bank_estimate)
   refit <- glgpm(y ~ cov + gp(nugget = TRUE), data = replicated_data,
-                 family = "gaussian", fix_var_me = exp(value),
+                 family = "gaussian", fixed_pars = list(sigma2_me = exp(value)),
                  messages = FALSE)
   expect_lt(abs(point$value - refit$log_lik), 1e-4)
   # The nugget is profiled as its variance, so a fixed point is a model with
@@ -529,8 +529,9 @@ test_that("Gaussian profiles of fixed variances match refits", {
                tolerance = 1e-12)
   value <- problem$estimate[[nugget]] + 1
   point <- maximise_profile(problem, nugget, value, problem$bank_estimate)
-  refit <- glgpm(y ~ cov + gp(nugget = exp(value)), data = replicated_data,
-                 family = "gaussian", messages = FALSE)
+  refit <- glgpm(y ~ cov + gp(nugget = TRUE), data = replicated_data,
+                 family = "gaussian", fixed_pars = list(tau2 = exp(value)),
+                 messages = FALSE)
   expect_lt(abs(point$value - refit$log_lik), 1e-4)
 })
 
@@ -546,7 +547,7 @@ test_that("the Wald interval of the nugget variance is that of summary()", {
 
 test_that("a joint Gaussian profile can fix every covariance parameter", {
   fitted <- glgpm(y ~ gp(), data = replicated_data, family = "gaussian",
-                  fix_var_me = 0.2, messages = FALSE)
+                  fixed_pars = list(sigma2_me = 0.2), messages = FALSE)
   profiles <- profile(fitted, parameters = "phi",
                       pairs = list(c("sigma2", "phi")), n_points = 5,
                       n_grid = 3, messages = FALSE)

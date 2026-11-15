@@ -114,8 +114,8 @@ test_that("a fit that estimates the size reports, predicts and refits with it", 
   expect_identical(theta, exp(-fit$estimate$theta))
   expect_identical(fit_family_values(fit), list(theta = theta))
   expect_identical(fit_family_argument(fit), negative_binomial())
-  expect_identical(fit_family_argument(fit, hold = TRUE),
-                   negative_binomial(theta = theta))
+  # A model that simulates from the fit takes the size in its parameters.
+  expect_identical(fit_family_argument(fit, hold = TRUE), negative_binomial())
   fit_summary <- summary(fit)
   expect_identical(rownames(fit_summary$family_parameters),
                    "Negative binomial size")
@@ -152,8 +152,8 @@ test_that("an estimated size takes its start from start_pars", {
   )
   expect_input_error(
     glgpm(y ~ x + gp(nugget = FALSE), data = data,
-          family = negative_binomial(theta = 2), denominator = m,
-          start_pars = list(theta = 3), messages = FALSE),
+          family = negative_binomial(), fixed_pars = list(theta = 2),
+          denominator = m, start_pars = list(theta = 3), messages = FALSE),
     "start_pars"
   )
 })
@@ -211,7 +211,7 @@ test_that("an estimated size is refused where nothing is estimated", {
   expect_type(
     maxim_integrand(y = c(1, 4), denominator = c(1, 2), mu = c(0, 0.5),
                     Sigma = diag(2), ID_coords = 1:2,
-                    family = negative_binomial(theta = 2))$mode,
+                    family = held_negative_binomial(2))$mode,
     "double"
   )
 })

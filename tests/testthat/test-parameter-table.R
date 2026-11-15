@@ -124,10 +124,16 @@ test_that("natural_values() gives what coef() gave, in coef()'s order", {
     if (!is.null(estimate$sigma2_re)) res$sigma2_re <- exp(estimate$sigma2_re)
     res
   }
+  # coef() has every estimate as the old arithmetic gave it, in the order of
+  # the table, and the held parameters at their values.
   for (fit in list(gaussian_model, gaussian_offset_model,
                    gaussian_intercept_model, binomial_model, poisson_model)) {
-    expect_identical(coef(fit), old_coef(fit))
+    old <- old_coef(fit)
+    expect_identical(coef(fit)[names(old)], old)
   }
+  expect_named(coef(gaussian_offset_model),
+               c("beta", "sigma2", "phi", "tau2", "sigma2_me"))
+  expect_identical(coef(gaussian_offset_model)$sigma2_me, 0)
   # A fit with a nugget, the family's parameter and two random effects.
   fit <- list(D = cbind("(Intercept)" = 1, x = 1:3), family = "negative_binomial",
               fix_tau2 = TRUE,
@@ -136,9 +142,16 @@ test_that("natural_values() gives what coef() gave, in coef()'s order", {
                               theta = -0.7,
                               sigma2_re = c(g = log(0.2), h = log(1.3))))
   class(fit) <- "RiskMap"
-  expect_identical(coef(fit), old_coef(fit))
-  expect_named(coef(fit), c("beta", "sigma2", "phi", "theta", "tau2",
+  old <- old_coef(fit)
+  expect_identical(coef(fit)[names(old)], old)
+  expect_named(coef(fit), c("beta", "sigma2", "phi", "tau2", "theta",
                             "sigma2_re"))
+  # A held size, as a fit saved before fixed_pars holds it.
+  fit$estimate$theta <- NULL
+  fit$family_parameters <- list(theta = 2)
+  expect_identical(coef(fit)$theta, 2)
+  expect_identical(estimated_coef(fit)[["tau2"]], coef(fit)$tau2)
+  expect_false("theta" %in% names(estimated_coef(fit)))
 })
 
 test_that("natural_values() with held values repeats the MCML reference point", {
@@ -291,16 +304,16 @@ test_that("a fit's table is the one glgpm() built, with the engines' layout", {
                    gaussian_intercept_model, binomial_model, poisson_model)) {
     exact <- isTRUE(fit_traits(fit)$exact)
     built <- model_parameter_table(
-      colnames(fit$D), fix_tau2 = fit$fix_tau2, exact = exact,
-      fix_var_me = fit$fix_var_me, estimated_family = character(),
-      family_parameters = fit$family_parameters, re_names = names(fit$re),
+      colnames(fit$D), fix_tau2 = fit_fix_tau2(fit), exact = exact,
+      fix_var_me = fit_fix_var_me(fit), estimated_family = character(),
+      family_parameters = fit_family_held(fit), re_names = names(fit$re),
       distance_units = fit$distance_units
     )
     rebuilt <- fit_parameter_table(fit)
     expect_identical(rebuilt, built)
     engine <- cov_par_layout(
-      ncol(fit$D), fix_tau2 = fit$fix_tau2,
-      family_parameters = if (exact) gaussian_family_block(fit$fix_var_me) else
+      ncol(fit$D), fix_tau2 = fit_fix_tau2(fit),
+      family_parameters = if (exact) gaussian_family_block(fit_fix_var_me(fit)) else
         estimated_family_parameters(fit),
       n_re = length(fit$re)
     )
@@ -312,7 +325,7 @@ test_that("a fit's table is the one glgpm() built, with the engines' layout", {
                      fit$estimate)
   }
   # A model without a nugget has none in its table, whatever it estimates.
-  expect_identical(gaussian_model$fix_tau2, 0)
+  expect_identical(gaussian_model$nugget, "none")
   expect_false(nugget_estimated(fit_parameter_table(gaussian_model)))
   expect_null(gaussian_model$estimate$nu2)
 })
@@ -357,7 +370,10 @@ test_that("both Gaussian paths start each variance on the scale its likelihood r
     captured <- NULL
     try(with_mocked_bindings(
       glgpm(formula, data = replicated, family = "gaussian",
-            start_pars = start_pars, fix_var_me = fix_var_me,
+            start_pars = start_pars,
+            fixed_pars = if (!is.null(fix_var_me)) {
+              list(sigma2_me = fix_var_me)
+            },
             messages = FALSE),
       nlminb = function(start, ...) {
         captured <<- start

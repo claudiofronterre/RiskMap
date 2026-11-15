@@ -309,7 +309,7 @@ test_that("assessment refits accept specify_glgpm templates #108", {
   expect_identical(args$formula, formula)
   expect_identical(args$family, "gaussian")
   expect_identical(args$data, gaussian_data)
-  expect_null(args$fix_var_me)
+  expect_null(args$fixed_pars)
   expect_false("start_pars" %in% names(args))
 
   sim <- simulate_glgpm(

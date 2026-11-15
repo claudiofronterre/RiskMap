@@ -45,7 +45,8 @@ when that inverse cannot be differentiated symbolically, as for
 \item{parameters}{A named list containing \code{beta}, \code{sigma2} and \code{phi}.
 \code{beta} has one entry per design-matrix column, including the intercept
 when present. Supply \code{tau2} when \code{gp(nugget = TRUE)}, \code{sigma2_me} for
-Gaussian measurement error, and \code{sigma2_re} for each \code{re()} term.
+Gaussian measurement error, \code{theta} for the size of a negative binomial
+family, and \code{sigma2_re} for each \code{re()} term.
 Variances may be zero. \code{phi} is expressed in \code{distance_units}.}
 
 \item{invlink}{A function that maps the linear predictor to the mean of

@@ -89,7 +89,7 @@ the covariance parameters only. The parameters are those of
 \code{summary()}, with its labels: the regression coefficients, the spatial
 variance and scale, the variance of the nugget (\code{tau2}) when it is
 estimated, the measurement error variance (\code{sigma2_me}) unless it is
-fixed by \code{fix_var_me}, and the variances of the random effects. Since
+held by \code{fixed_pars}, and the variances of the random effects. Since
 points of an exact likelihood are cheap, each end of a profile interval
 is refined until the deviance of a solved point is within 0.01 of the
 cut-off. Grid steps of the variances and the scale are at most 1 on the

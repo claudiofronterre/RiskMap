@@ -38,10 +38,10 @@ test_that("Gaussian predictions use a fixed measurement error variance", {
   # taken from the fit. A copy that treats the same value as estimated
   # must give identical predictions.
   fixed_model <- glgpm(y ~ cov + gp(), data = gaussian_data,
-                       family = "gaussian", fix_var_me = 0.2,
+                       family = "gaussian", fixed_pars = list(sigma2_me = 0.2),
                        messages = FALSE)
   estimated_model <- fixed_model
-  estimated_model$fix_var_me <- NULL
+  estimated_model$fixed_pars <- NULL
   estimated_model$estimate$sigma2_me <- log(0.2)
   for (type in c("marginal", "joint")) {
     fixed <- predict(fixed_model, newdata = gaussian_data, type = type,

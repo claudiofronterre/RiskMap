@@ -888,6 +888,30 @@ With several records at a location the other start changes, and the empirical
 logit of a total follows the proportion at the location, where that of a
 binary record is always log(3) or -log(3).
 
+- `glgpm(fixed_pars = )` holds parameters at given values, with the names and
+structure of `start_pars`. It holds the nugget variance (`tau2`, with
+`gp(nugget = TRUE)`, positive), the measurement error variance of a Gaussian
+model (`sigma2_me`, zero or positive) and the size of a negative binomial model
+(`theta`). `fix_var_me` is removed, `gp(nugget = )` takes only `TRUE` or
+`FALSE`, and `negative_binomial()` takes no size and stops with a pointer to
+`fixed_pars` when given one. `MASS::negative.binomial(theta)` is still read as a
+held size, which must agree with one in `fixed_pars`, and `specify_glgpm()`
+takes the size as `theta` in its `parameters`. A start for a held parameter
+stops unless it equals the held value, so `start_pars = coef(fit)` works for a
+refit with the same holds. A fit stores `nugget` (`"none"`, `"estimated"` or
+`"fixed"`) and `fixed_pars`, the held values, in place of `fix_tau2`,
+`fix_var_me` and `family_parameters`, and fits saved before are read through
+those fields. `coef()` gives every parameter, the held ones at their values, in
+the order of the parameter table (`beta`, `sigma2`, `phi`, `tau2`, the family's
+parameters, `sigma2_re`), where the family's parameters came before `tau2` and
+held ones were left out. The columns of `parametric_bootstrap()` and the
+estimates that `assess_simulation()` records are the estimated parameters only.
+`profile()` names the nugget `tau2` and holds its variance for every family. For
+a binomial, Poisson or negative binomial fit it profiled `nu2`, the ratio of the
+nugget to the spatial variance, so the profiles of those fits move, and
+`check_fit(extra = "profile")` names the nugget variance. The fits themselves
+are unchanged.
+
 - `start_pars` of `glgpm()` defaults to `NULL` and is a partial named list over
 the model's estimated parameters, with the names of `?riskmap_parameters`.
 `beta` is matched to the columns of the design matrix by name, or by position

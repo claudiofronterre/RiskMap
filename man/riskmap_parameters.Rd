@@ -41,6 +41,18 @@ binomial regression without them, \code{one} the value 1 and
 locations. A name the model lacks stops with the names it has.
 }
 
+\section{Held values}{
+
+\code{fixed_pars} of \code{\link[=glgpm]{glgpm()}} takes the same names and structure, and holds
+the parameters it gives at their values instead of estimating them. It
+holds the variance of a nugget (\code{tau2}, for a model with
+\code{gp(nugget = TRUE)}), the measurement error variance of a Gaussian model
+(\code{sigma2_me}, which may be zero) and the size of a negative binomial model
+(\code{theta}). \code{\link[=coef.RiskMap]{coef.RiskMap()}} gives the held parameters with the estimated
+ones, so \code{start_pars = coef(fit)} works for a refit with the same holds,
+and \code{\link[=summary.RiskMap]{summary.RiskMap()}} shows them as fixed.
+}
+
 \seealso{
 \code{\link[=glgpm]{glgpm()}}, \code{\link[=glgpm_parameters]{glgpm_parameters()}}, \code{\link[=coef.RiskMap]{coef.RiskMap()}}
 }
