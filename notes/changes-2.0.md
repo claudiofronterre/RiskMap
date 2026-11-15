@@ -198,9 +198,9 @@ more north-south than east-west.
 - Datasets must have a coordinate reference system. When coordinates are in
 latitude/longitude and `model_crs` is not supplied, they are now automatically
 reprojected to the CRS from `propose_crs()`. `predict()`, `simulate_glgpm()` and
-`assess_prediction()` have been updated to match; `simulate_glgpm()`'s own 
-`convert_to_crs`/`scale_to_km` arguments have likewise been replaced with
-`model_crs`/`distance_units`.
+`assess_prediction()` have been updated to match; the `convert_to_crs` and
+`scale_to_km` arguments of `glgpm_sim()` have been replaced with the
+`distance_crs` and `distance_units` of `specify_glgpm()`.
 - providing `model_crs` in longitude/latitude now raises an error.
 - The new `propose_crs()` chooses the projected CRS that distorts distances
 least over the data. It compares the WGS 84 UTM zone at the centre of the data
@@ -333,14 +333,18 @@ function of the mean of the spatial random effects and of the location with
 the smallest effective sample size, with a histogram of the effective sample
 sizes at all the locations. The trace plots show the iterations at which the
 samples were kept, so fits now record the `n_sim`, `burnin` and `thin` of
-their samples in `attr(fit, "mcmc")`. `component` now defaults to the
+their samples in `attr(fit, "mcmc")`. The chains shown are chosen with
+`locations`, which was `component` in `check_mcmc()`. It defaults to the
 location with the smallest effective sample size, can select several
 locations and can be given together with `check_mean = TRUE`. The mean and
-`component` previously included the levels of unstructured random effects,
-which are stored after the locations in `S_samples`. They now refer to the
-locations only.
+the chosen chains previously included the levels of unstructured random
+effects, which are stored after the locations in `S_samples`. They now refer
+to the locations only. An argument in `...` that doesn't match one of
+`acf()`'s `lag.max`, `type`, `na.action` and `demean`, partially as `acf()`
+matches them, is an error, since `acf()` would ignore it. `component` is one
+such argument.
 
-- The new `summarise_mcmc()` returns a tibble of the effective sample sizes of
+- The new `summarise_mcmc()` returns a data frame of the effective sample sizes of
 the mean of the spatial random effects, of each location and of each level of
 an unstructured random effect. They are computed with the initial monotone
 sequence estimator of Geyer (1992), so the package no longer depends on sns.
@@ -1326,6 +1330,15 @@ parameters have been renamed to `metric`/`model`.
   Poisson responses use exposure times the inverse-link mean.
   Use `simulated_data()`, `simulated_surface()` and `simulated_values()` to
   extract results.
+
+- `specify_glgpm()` takes the projected CRS in which distances are measured
+  in `distance_crs`, as `summarise_distance()` and `variogram()` do, instead
+  of `model_crs`. Its arguments are now `formula`, `data`, `family`,
+  `parameters`, `invlink`, `denominator`, `distance_crs` and
+  `distance_units`, with `invlink` moved from last, so calls that give the
+  later arguments by position must name them. `simulated_values()` returns a
+  data frame instead of a tibble, as every other table RiskMap returns.
+  Simulations with a given seed are unchanged.
 
 - `assess_simulation()` scores every model on the scale of the mean, each
   through its own inverse link. The truth is the simulated mean, which the

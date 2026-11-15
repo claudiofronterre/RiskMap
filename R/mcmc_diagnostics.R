@@ -27,7 +27,7 @@
 ##' is at most \eqn{N \log_{10} N}. A chain that never moves has an effective
 ##' sample size of zero.
 ##'
-##' @return A tibble with one row per chain and columns
+##' @return A data frame with one row per chain and columns
 ##' \item{effect}{`"mean of S"` for the mean of the spatial random effects
 ##'   over the locations, `"S"` for the spatial random effect at a location,
 ##'   or the name of the variable of an unstructured random effect.}
@@ -68,7 +68,6 @@ summarise_mcmc <- function(object) {
       ess = mcmc_effective_size(blocks[[name]])
     ))
   }
-  out <- as_tibble(out)
   attr(out, "n_samples") <- nrow(spatial)
   out
 }
@@ -86,10 +85,11 @@ summarise_mcmc <- function(object) {
 ##' @inheritParams summarise_mcmc
 ##' @param check_mean Logical. If `TRUE` (the default), the chain of the mean
 ##'   of the spatial random effects over the locations is shown.
-##' @param component The locations whose chains are shown, numbered as the
+##' @param locations The locations whose chains are shown, numbered as the
 ##'   rows of `object$coords`. The default, `NULL`, shows the location with
 ##'   the smallest effective sample size.
-##' @param ... Further arguments passed to [stats::acf()], such as `lag.max`.
+##' @param ... Further arguments passed to [stats::acf()], namely `lag.max`,
+##'   `type`, `na.action` or `demean`. Other arguments are an error.
 ##'
 ##' @details
 ##' Inspecting the mean \eqn{\bar{S} = \sum_{i=1}^n S(x_i) / n} avoids
@@ -119,35 +119,36 @@ summarise_mcmc <- function(object) {
 ##'              data = liberia, model_crs = 32629, family = "binomial",
 ##'              messages = FALSE)
 ##' plot_mcmc(fit)
-##' plot_mcmc(fit, check_mean = FALSE, component = c(10, 20))
+##' plot_mcmc(fit, check_mean = FALSE, locations = c(10, 20))
 ##' }
 ##' @export
-plot_mcmc <- function(object, check_mean = TRUE, component = NULL, ...) {
+plot_mcmc <- function(object, check_mean = TRUE, locations = NULL, ...) {
   check_supplied(object)
   check_logical(check_mean)
+  check_acf_arguments(...)
   spatial <- mcmc_sample_blocks(object)$S
   spatial_ess <- mcmc_effective_size(spatial)
   mean_chain <- rowMeans(spatial)
   mean_ess <- mcmc_effective_size(mean_chain)
   n_locations <- ncol(spatial)
-  smallest <- is.null(component)
+  smallest <- is.null(locations)
   if (smallest) {
-    component <- which.min(spatial_ess)
-  } else if (!is.numeric(component) || length(component) == 0L ||
-             !all(is.finite(component)) || any(component %% 1 != 0) ||
-             any(component < 1) || any(component > n_locations) ||
-             anyDuplicated(component) > 0L) {
-    abort_input("{.arg component} must be distinct whole numbers between 1 and the number of locations, {n_locations}.", arg = "component")
+    locations <- which.min(spatial_ess)
+  } else if (!is.numeric(locations) || length(locations) == 0L ||
+             !all(is.finite(locations)) || any(locations %% 1 != 0) ||
+             any(locations < 1) || any(locations > n_locations) ||
+             anyDuplicated(locations) > 0L) {
+    abort_input("{.arg locations} must be distinct whole numbers between 1 and the number of locations, {n_locations}.", arg = "locations")
   }
-  component <- as.integer(component)
+  locations <- as.integer(locations)
 
-  chains <- lapply(component, function(location) spatial[, location])
+  chains <- lapply(locations, function(location) spatial[, location])
   labels <- if (smallest) {
-    sprintf("S at location %d, the smallest ESS", component)
+    sprintf("S at location %d, the smallest ESS", locations)
   } else {
-    sprintf("S at location %d", component)
+    sprintf("S at location %d", locations)
   }
-  chain_ess <- spatial_ess[component]
+  chain_ess <- spatial_ess[locations]
   if (check_mean) {
     chains <- c(list(mean_chain), chains)
     labels <- c(sprintf("Mean of S over %d locations", n_locations), labels)
@@ -162,6 +163,29 @@ plot_mcmc <- function(object, check_mean = TRUE, component = NULL, ...) {
                         widths = c(2.3, 1)) /
     histogram +
     patchwork::plot_layout(heights = c(length(chains), 1.3))
+}
+
+##' Check that the arguments `plot_mcmc()` passes on are those `acf()` uses
+##'
+##' `acf()` with `plot = FALSE` ignores any other argument, so a misspelt or
+##' renamed argument of `plot_mcmc()`, such as the `component` of
+##' `check_mcmc()` in RiskMap 1.0.0, would have no effect without this check.
+##' @noRd
+check_acf_arguments <- function(..., call = rlang::caller_env()) {
+  supplied <- names(list(...))
+  supplied <- supplied[nzchar(supplied)]
+  accepted <- setdiff(names(formals(stats::acf)), c("x", "plot", "..."))
+  # acf() matches its arguments partially, as in lag = 20 for lag.max.
+  unknown <- supplied[is.na(pmatch(supplied, accepted, duplicates.ok = TRUE))]
+  if (length(unknown)) {
+    hint <- if (any(startsWith("component", unknown))) {
+      c("i" = "Give the locations whose chains are shown in {.arg locations}.")
+    } else {
+      c("i" = "It passes on {.arg {accepted}}.")
+    }
+    abort_input(c("{.fn plot_mcmc} can't pass {.arg {unknown}} to {.fn stats::acf}.", hint), arg = unknown[1], call = call)
+  }
+  invisible(NULL)
 }
 
 ##' Validate a fit for MCMC diagnostics and split its samples into blocks

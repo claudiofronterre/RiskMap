@@ -23,8 +23,9 @@ data simulations, \code{"response"}. Defaults to all available components.}
 \item{location_set}{\code{"data"}, \code{"surface"}, or both. Defaults to available sets.}
 }
 \value{
-A tibble with \code{simulation}, \code{location_set}, \code{location_id}, \code{component}
-and \code{value}. Location identifiers refer to rows in \code{object$locations}.
+A data frame with \code{simulation}, \code{location_set}, \code{location_id},
+\code{component} and \code{value}. Location identifiers refer to rows in
+\code{object$locations}.
 }
 \description{
 Extract simulated values in tidy form

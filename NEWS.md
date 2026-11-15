@@ -72,6 +72,9 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 - `assess_prediction()` compares models by spatial cross-validation.
 - `specify_glgpm()` and `simulate_glgpm()` simulate data and surfaces from a
   model, and `assess_simulation()` assesses prediction targets on them.
+- `specify_glgpm()` takes its CRS in `distance_crs` and `plot_mcmc()` its
+  locations in `locations`. `summarise_mcmc()` and `simulated_values()`
+  return data frames.
 
 ### Messages
 
