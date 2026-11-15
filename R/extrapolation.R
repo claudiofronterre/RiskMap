@@ -73,12 +73,12 @@
 ##' which predictions can be checked against held-out data, and a location
 ##' above their 95th percentile has less than nearly all of them. A percentile
 ##' rather than the largest value keeps a single remote sampled location from
-##' setting the threshold. When the data of the other locations say nothing
-##' about the spatial effect at 5% or more of the sampled locations, as when
-##' the locations share almost no spatial correlation, the percentile is 1 and
-##' no location can be classed as spatial extrapolation.
-##' `assess_extrapolation()` then warns, and a fixed `spatial_threshold` is
-##' more informative. The two
+##' setting the threshold. The percentile is 1 only when the data of the
+##' other locations say nothing about the spatial effect at more than 5% of
+##' the sampled locations, as when the locations share almost no spatial
+##' correlation. No location can then be classed as spatial extrapolation, so
+##' `assess_extrapolation()` warns, and a fixed `spatial_threshold` is more
+##' informative. The two
 ##' classes are kept separate because they call for different responses: more
 ##' sampling where data are sparse, and caution about the form of the
 ##' covariate effects outside the observed conditions.
@@ -141,7 +141,7 @@ assess_extrapolation <- function(object, newdata, spatial_threshold = NULL,
                                          names = FALSE)
     if (spatial_threshold >= 1 - 1e-8) {
       riskmap_warn(c(
-        "The data leave all of the spatial variance unexplained at 5% or more of the sampled locations when their own data are left out, so the threshold is 1 and no location can be classed as spatial extrapolation.",
+        "The data leave all of the spatial variance unexplained at more than 5% of the sampled locations when their own data are left out, so the threshold is 1 and no location can be classed as spatial extrapolation.",
         "i" = "Give a number in {.arg spatial_threshold} for a fixed threshold."
       ))
     }
@@ -341,7 +341,7 @@ format_extrapolation <- function(x, threshold) {
   values <- format(c(as.integer(counts), if (missing) missing),
                    big.mark = ",")
   labels <- c(names(counts), if (missing) "Missing covariates")
-  share <- paste0(format(100 * threshold, digits = 3), "%")
+  share <- format_extrapolation_share(threshold)
   given <- identical(attr(x, "spatial_rule"), "given")
   isolated <- !given && threshold >= 1 - 1e-8
   spatial <- if (given) {
@@ -355,10 +355,12 @@ format_extrapolation <- function(x, threshold) {
            "locations when their own data are left out.")
   }
   isolated_note <- if (isolated) {
-    c("!" = paste0("Spatial: none, since the data leave all of the spatial ",
-                   "variance unexplained at 5% or more of the sampled ",
-                   "locations when their own data are left out. A number in ",
-                   "`spatial_threshold` gives a fixed threshold."))
+    c("!" = paste0("Spatial: none, since the threshold is ", share, ", the ",
+                   "95th percentile of the shares at the sampled locations ",
+                   "when their own data are left out. The data leave all of ",
+                   "the spatial variance unexplained at more than 5% of ",
+                   "them. A number in `spatial_threshold` gives a fixed ",
+                   "threshold."))
   }
   noise <- if (isFALSE(attr(x, "sampling_noise"))) {
     c(i = "The share leaves out the sampling noise of the outcomes.")
@@ -378,6 +380,17 @@ format_extrapolation <- function(x, threshold) {
       i = paste0("`plot(x)` maps the classes, and ",
                  "`indicator = \"spatial_unexplained\"` the share.")
     )))
+}
+
+#' A threshold as a percentage, with the digits that keep a value below 1
+#' from showing as 100%
+#' @noRd
+format_extrapolation_share <- function(threshold) {
+  for (digits in 3:8) {
+    shown <- signif(100 * threshold, digits)
+    if (shown < 100 || threshold >= 1) break
+  }
+  paste0(format(shown, digits = digits), "%")
 }
 
 ##' Map indicators of extrapolation

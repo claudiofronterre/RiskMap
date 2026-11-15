@@ -120,12 +120,12 @@ others, so the \eqn{v_{-j}} are the amounts of spatial information under
 which predictions can be checked against held-out data, and a location
 above their 95th percentile has less than nearly all of them. A percentile
 rather than the largest value keeps a single remote sampled location from
-setting the threshold. When the data of the other locations say nothing
-about the spatial effect at 5\% or more of the sampled locations, as when
-the locations share almost no spatial correlation, the percentile is 1 and
-no location can be classed as spatial extrapolation.
-\code{assess_extrapolation()} then warns, and a fixed \code{spatial_threshold} is
-more informative. The two
+setting the threshold. The percentile is 1 only when the data of the
+other locations say nothing about the spatial effect at more than 5\% of
+the sampled locations, as when the locations share almost no spatial
+correlation. No location can then be classed as spatial extrapolation, so
+\code{assess_extrapolation()} warns, and a fixed \code{spatial_threshold} is more
+informative. The two
 classes are kept separate because they call for different responses: more
 sampling where data are sparse, and caution about the form of the
 covariate effects outside the observed conditions.

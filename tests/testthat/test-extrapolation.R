@@ -273,14 +273,23 @@ test_that("the print of indicators states the classes and the thresholds", {
   expect_equal(attr(isolated, "spatial_threshold"), 1, tolerance = 1e-12)
   expect_identical(as.character(isolated$extrapolation), "Supported")
   printed <- squish(capture.output(print(isolated)))
-  expect_match(printed, "Spatial: none, since the data leave all", fixed = TRUE)
-  expect_no_match(printed, "95th percentile", fixed = TRUE)
+  expect_match(printed, paste0(
+    "Spatial: none, since the threshold is 100%, the 95th percentile of the ",
+    "shares at the sampled locations when their own data are left out."
+  ), fixed = TRUE)
+  expect_match(printed, "unexplained at more than 5% of them", fixed = TRUE)
   expect_no_match(squish(capture.output(print(extrapolation))),
                   "Spatial: none", fixed = TRUE)
   # A threshold that is given, or a percentile below 1, gives no warning.
   expect_no_warning(assess_extrapolation(gaussian_model, far,
                                          spatial_threshold = 0.8))
   expect_no_warning(assess_extrapolation(binomial_model, binomial_data))
+  # A threshold below 1 never prints as 100%.
+  expect_identical(
+    vapply(c(0.5, 0.8181409, 0.99978, 0.9999999, 1),
+           format_extrapolation_share, character(1)),
+    c("50%", "81.8%", "99.98%", "99.99999%", "100%")
+  )
   # A subset without the classes prints as an sf object.
   expect_output(print(extrapolation[1:2, "covariates_outside"]),
                 "Simple feature collection")

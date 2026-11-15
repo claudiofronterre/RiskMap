@@ -1326,28 +1326,22 @@ Gaussian models also take 2,000 independent draws by default, including with
   every family. The variances of `re()` terms are not included yet.
 - The default `spatial_threshold` of `assess_extrapolation()` is `NULL`
   instead of 0.8. A location is then classed as spatial extrapolation when
-  its share is above the largest share left at a sampled location by the data
-  of the others, v_-j = 1 / [(R + W / sigma2)^-1]_jj - w_j / sigma2, which
-  comes from the same factor. A number strictly between 0 and 1 gives a fixed
-  threshold, where 0 and 1 were accepted before. When a sampled location
-  shares no correlation with the others the threshold is 1, nothing is
-  flagged, and `print()` says so. The result keeps the threshold in the attribute
-  `spatial_threshold`, with `spatial_rule` and `sampling_noise`, and has a
-  `print()` method that counts the locations in each class and states the
-  thresholds. In Liberia the threshold is 0.844 and 1.1% of the grid is
-  flagged, where 0.8 without the noise flagged 0.2%.
-- The default `spatial_threshold` of `assess_extrapolation()` is the 95th
-  percentile of the v_-j instead of their largest value, which a single
-  remote sampled location could set, and which was 1 whenever one sampled
-  location shared no correlation with the others. In Liberia the threshold
-  is 0.818 instead of 0.844 and 3.3% of the grid is flagged instead of 1.1%.
-  When the percentile is 1, which needs 5% or more of the sampled locations
-  to get no spatial information from the others, no location can be flagged,
-  and
-  `assess_extrapolation()` warns with class `riskmap_warning`. `print()`
-  states the threshold and that it is the 95th percentile. The example uses
-  150 locations of `italy_sim` instead of 50, whose locations share almost no
-  correlation.
+  its share is above the 95th percentile of the shares left at the sampled
+  locations by the data of the others,
+  v_-j = 1 / [(R + W / sigma2)^-1]_jj - w_j / sigma2, which come from the
+  same factor. A first version took their largest value, which a single
+  remote sampled location sets, and which is 1 as soon as one location shares
+  no correlation with the others. A number strictly between 0 and 1 gives a
+  fixed threshold, where 0 and 1 were accepted before. The percentile is 1
+  only when more than 5% of the sampled locations get no spatial information
+  from the others, and then no location can be flagged and
+  `assess_extrapolation()` warns with class `riskmap_warning`. The result
+  keeps the threshold in the attribute `spatial_threshold`, with
+  `spatial_rule` and `sampling_noise`, and has a `print()` method that counts
+  the locations in each class and states the thresholds. In Liberia the
+  threshold is 0.818 and 3.3% of the grid is flagged, where 0.8 without the
+  noise flagged 0.2%. The example uses 150 locations of `italy_sim` instead
+  of 50, whose locations share almost no correlation.
 - `plot()` of predictions takes `summaries` and `thresholds` instead of
   `summary` and `threshold`, the names that `predict()` and `to_table()` use.
   Several thresholds give one exceedance map each, arranged as several
