@@ -136,13 +136,12 @@ test_that("the profile plot returns one object, draws nothing and has its panels
   profiles <- profile(binomial_model, parameters = c("sigma2", "phi"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
                       n_grid = 3, n_draws = 200, messages = FALSE)
-  # A png device writes its file only once something is drawn on it, and
-  # another test may have left a device open, so plot() runs on a new one.
-  skip_if_not(capabilities("png"))
-  drawn <- tempfile(fileext = ".png")
-  grDevices::png(drawn)
+  # plot() runs on a device of its own, since another test may have left one
+  # open, and anything drawn would be in that device's display list.
+  grDevices::pdf(NULL)
   device <- grDevices::dev.cur()
   withr::defer(if (device %in% grDevices::dev.list()) grDevices::dev.off(device))
+  grDevices::dev.control("enable")
   corner <- plot(profiles)
   # One joint profile with both marginals is a corner plot: the first
   # marginal above the joint profile, the second on its right.
@@ -166,8 +165,8 @@ test_that("the profile plot returns one object, draws nothing and has its panels
                  "sigma2:phi" = panel("loglik", pairs = "sigma2:phi"))
   expect_true(all(vapply(panels, ggplot2::is_ggplot, logical(1))))
   expect_false(any(vapply(panels, inherits, logical(1), what = "patchwork")))
+  expect_null(grDevices::recordPlot()[[1]])
   grDevices::dev.off(device)
-  expect_false(file.exists(drawn))
 
   # The relative log-likelihood by default, minus half the deviance.
   deviance <- list(sigma2 = panel("deviance", "sigma2"),
