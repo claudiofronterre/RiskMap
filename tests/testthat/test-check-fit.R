@@ -504,19 +504,25 @@ test_that("a fix names the extra check that would settle it", {
 })
 
 test_that("the plot shows the stages, and a profile once it is computed", {
-  grDevices::pdf(NULL)
-  withr::defer(grDevices::dev.off())
   checked <- check_fit(binomial_model)
-  panels <- plot(checked)
-  expect_identical(names(panels), c("certificate", "effective_draws", "pareto_k"))
-  for (panel in panels) expect_s3_class(panel, "ggplot")
+  stage_panels <- c("certificate", "effective_draws", "pareto_k")
+  # One object, drawn only when printed
+  expect_silent(drawn <- withVisible(plot(checked)))
+  expect_true(drawn$visible)
+  panels <- drawn$value
+  expect_s3_class(panels, "patchwork")
+  expect_identical(drawn_titles(panels), panel_titles(checked, stage_panels))
+  expect_identical(panels$patches$layout$ncol, 2L)
+  expect_no_error(ggplot2::ggplot_build(panels$patches$plots[[1L]]))
 
   # A panel that was not computed says which extra to run, and plot() draws
   # the others, or stops when there are none.
   expect_message(chosen <- plot(checked, which = c("certificate", "profile")),
                  "needs the extra check \"profile\", check_fit(fit, extra = \"profile\")",
                  fixed = TRUE)
-  expect_identical(names(chosen), "certificate")
+  expect_false(inherits(chosen, "patchwork"))
+  expect_s3_class(chosen, "ggplot")
+  expect_identical(drawn_titles(chosen), panel_titles(checked, "certificate"))
   expect_error(plot(checked, which = "profile"),
                "needs the extra check \"profile\"")
   expect_message(plot(checked, which = c("certificate", "moves")),
@@ -534,12 +540,14 @@ test_that("the plot shows the stages, and a profile once it is computed", {
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
                            n_draws = 200, messages = FALSE)
   given <- check_fit(binomial_model, profile = scale_profile)
-  with_profile <- plot(given)
-  expect_identical(names(with_profile), c(names(panels), "profile_phi"))
-  expect_s3_class(with_profile$profile_phi, "ggplot")
-  expect_identical(names(plot(given, which = "profile")), "profile_phi")
-  expect_identical(names(plot(given, which = c("profile_phi", "pareto_k"))),
-                   c("profile_phi", "pareto_k"))
+  expect_identical(drawn_titles(plot(given)),
+                   panel_titles(given, c(stage_panels, "profile_phi")))
+  expect_identical(drawn_titles(plot(given, which = "profile")),
+                   panel_titles(given, "profile_phi"))
+  expect_identical(
+    drawn_titles(plot(given, which = c("profile_phi", "pareto_k"))),
+    panel_titles(given, c("profile_phi", "pareto_k"))
+  )
   expect_message(plot(given, which = c("profile_sigma2", "profile_phi")),
                  "\"profile_sigma2\" has no profile, since the profiles are of phi",
                  fixed = TRUE)
@@ -569,7 +577,7 @@ test_that("the panels of a held variance and of the screen say why they are empt
                fixed = TRUE)
   expect_message(chosen <- plot(checked, which = c("certificate", "screen")),
                  "unstructured random effects", fixed = TRUE)
-  expect_identical(names(chosen), "certificate")
+  expect_identical(drawn_titles(chosen), panel_titles(checked, "certificate"))
 
   spatial <- check_fit(with_flags(mcml_boundary = "spatial variance (sigma2)"))
   expect_error(plot(spatial, which = "held_variances"),
@@ -618,13 +626,13 @@ test_that("the panel of the held variances draws the test the fit recorded", {
     checked$results$Variances$data[["Slope of the likelihood at zero"]],
     slopes[c("name", "slope", "se", "rising", "falling")]
   )
-  panels <- plot(checked, which = "held_variances")
-  expect_named(panels, "held_variances")
-  expect_s3_class(panels$held_variances, "ggplot")
+  panel <- plot(checked, which = "held_variances")
+  expect_identical(drawn_titles(panel),
+                   panel_titles(checked, "held_variances"))
   # The interval is that of the test of the fit, 2.58 standard errors each
   # side, so that a slope is rising or falling when its interval excludes zero.
   expect_identical(formals(assess_held_variances)$multiplier, 2.58)
-  ranges <- ggplot2::layer_data(panels$held_variances, 2L)
+  ranges <- ggplot2::layer_data(panel, 2L)
   expect_equal(sort(ranges$xmin), sort(slopes$slope - 2.58 * slopes$se),
                tolerance = 1e-12)
   expect_equal(sort(ranges$xmax), sort(slopes$slope + 2.58 * slopes$se),
@@ -633,10 +641,11 @@ test_that("the panel of the held variances draws the test the fit recorded", {
                    round(slopes$slope - 2.58 * slopes$se, 10))
   expect_identical(ranges$xmin > 0, slopes$rising[matched])
   expect_identical(ranges$xmax < 0, slopes$falling[matched])
-  labels <- ggplot2::layer_data(panels$held_variances, 4L)$label
+  labels <- ggplot2::layer_data(panel, 4L)$label
   expect_setequal(labels, c("undecided", "rises from zero", "falls from zero"))
   # The default plot includes it.
-  expect_contains(names(plot(checked)), "held_variances")
+  expect_contains(drawn_titles(plot(checked)),
+                  panel_titles(checked, "held_variances"))
   expect_null(plot_held_variance_panel(NULL))
   expect_null(plot_held_variance_panel(slopes[0L, ]))
 })
@@ -668,10 +677,9 @@ test_that("the screen of short scales is tabulated and drawn from the fit", {
   )
   expect_identical(data[[paste0("Scale of the estimate (", units, ")")]],
                    coef(screened)$phi)
-  panels <- plot(checked, which = "screen")
-  expect_named(panels, "screen")
-  expect_s3_class(panels$screen, "ggplot")
-  expect_contains(names(plot(checked)), "screen")
+  expect_identical(drawn_titles(plot(checked, which = "screen")),
+                   panel_titles(checked, "screen"))
+  expect_contains(drawn_titles(plot(checked)), panel_titles(checked, "screen"))
   evidence <- capture.output(print(summary(checked)))
   expect_contains(evidence, "  Short scales, log-likelihood above the estimate")
 })
@@ -754,8 +762,8 @@ test_that("a fit made before the bounds were kept draws the screen alone", {
   expect_named(data[["Short scales, log-likelihood above the estimate"]],
                c(name_scale_column(binomial_model$distance_units %||%
                                      "distance units"), "screened"))
-  panel <- plot(checked, which = "screen")$screen
-  expect_match(gsub("\n", " ", panel$labels$subtitle),
+  panel <- plot(checked, which = "screen")
+  expect_match(gsub("\n", " ", ggplot2::get_labs(panel)$subtitle),
                "The fit kept only the largest exact lower bound (-4), so the bound at each scale is not shown.",
                fixed = TRUE)
   # Without the screened values, as for an estimate at a short scale, there
@@ -775,6 +783,6 @@ test_that("a fit made before the bounds were kept draws the screen alone", {
   record$alarm$bounds <- data.frame(log_phi = log(c(1, 2)), bound = c(-104, -110),
                                     error = 0)
   newer <- with_flags(mcml_maxima_screen = record)
-  subtitle <- plot(check_fit(newer), which = "screen")$screen$labels$subtitle
+  subtitle <- ggplot2::get_labs(plot(check_fit(newer), which = "screen"))$subtitle
   expect_no_match(subtitle, "kept only")
 })

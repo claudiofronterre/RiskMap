@@ -2,15 +2,22 @@
 ##'
 ##' Computes, for each prediction location, indicators of whether a prediction
 ##' from a fitted geostatistical model relies on extrapolation, either in space
-##' (far from the data relative to the estimated spatial correlation) or in the
-##' covariates (outside the conditions observed in the data).
+##' (where the data say little about the spatial effect) or in the covariates
+##' (outside the conditions observed in the data).
 ##'
 ##' @param object A fitted `RiskMap` model.
 ##' @param newdata An `sf` object of prediction points with the covariates used
 ##'   by the model, typically a grid from [create_grid()].
-##' @param spatial_threshold Share of the spatial variance left unexplained by
-##'   the data above which a location is classed as spatial extrapolation.
-##'   Defaults to 0.8.
+##' @param spatial_threshold Threshold of the share of the spatial variance
+##'   left unexplained above which a location is classed as spatial
+##'   extrapolation. `NULL` (the default) uses the largest share left at a
+##'   sampled location when its own data are left out (see Details). A number
+##'   strictly between 0 and 1 gives a fixed threshold.
+##' @param sampling_noise Whether the share of the spatial variance left
+##'   unexplained includes the sampling noise of the outcomes (the default).
+##'   With `FALSE`, it depends only on where the data were collected and on
+##'   the nugget, as if the spatial effect had been observed without noise at
+##'   every sampled location.
 ##'
 ##' @details
 ##' Covariates are assessed on the model's scale, that is, as the columns of
@@ -24,26 +31,52 @@
 ##' data. Values above 1 indicate a combination of covariates that is more
 ##' unusual than any in the data, even when each covariate is within its range.
 ##'
-##' The unexplained spatial variance is
-##' \eqn{1 - \rho(x)^\top (R + \nu^2 I)^{-1} \rho(x)}, where \eqn{\rho(x)}
-##' holds the estimated correlations between \eqn{x} and the sampled
-##' locations, \eqn{R} their correlation matrix, and \eqn{\nu^2} the ratio of
-##' the nugget (and, for Gaussian models, the measurement-error variance) to the
-##' spatial variance. It is close to 0 next to well-sampled locations and close
-##' to 1 where the data carry no information about the spatial effect. Unlike
-##' the distance to the nearest sampled location, it accounts for the estimated
-##' scale of spatial correlation and for clustering of the sampled locations. It depends
-##' only on where the data were collected, not on the outcomes or on the number
-##' of individuals at each location. For binomial, Poisson and negative binomial outcomes, which
-##' carry less information than a noise-free observation of the linear
-##' predictor, it is therefore an optimistic (lower) value.
+##' The share of the spatial variance left unexplained is
+##' \deqn{v(x) = 1 - \rho(x)^\top (R + \sigma^{-2} W)^{-1} \rho(x),}
+##' where \eqn{\rho(x)} holds the estimated correlations between \eqn{x} and
+##' the sampled locations, \eqn{R} their correlation matrix, \eqn{\sigma^2}
+##' the spatial variance, and \eqn{W} a diagonal matrix with
+##' \eqn{w_j = \tau^2 + c_j}, the nugget variance plus the sampling variance
+##' of the linear predictor at the sampled location \eqn{j}. For a Gaussian
+##' model, \eqn{c_j} is the measurement-error variance divided by the number
+##' of records at the location, and \eqn{v(x)} is
+##' \eqn{\mathrm{Var}[S(x) \mid y] / \sigma^2} at the estimated parameters. For
+##' binomial, Poisson and negative binomial models, \eqn{c_j} is the inverse of
+##' the information \eqn{-\partial^2 \log f(y \mid \eta) / \partial \eta^2}
+##' of the records at the location, summed over them and evaluated at the
+##' conditional mode of the spatial effect given the data at the estimated
+##' parameters, so that \eqn{v(x)} is the Laplace approximation of
+##' \eqn{\mathrm{Var}[S(x) \mid y] / \sigma^2}. With `sampling_noise = FALSE`,
+##' \eqn{c_j = 0}.
+##'
+##' \eqn{v(x)} is close to 0 where the data determine the spatial effect and
+##' close to 1 where they carry no information about it. Unlike the distance
+##' to the nearest sampled location, it accounts for the estimated scale of
+##' spatial correlation, for clustering of the sampled locations and for how
+##' much the data at each location say about the spatial effect, which is
+##' little where few individuals were sampled or where a prevalence is close
+##' to 0 or 1. The variances of `re()` terms are not included in \eqn{W}, so
+##' for models with `re()` terms \eqn{v(x)} is lower than the share they
+##' leave.
 ##'
 ##' A location is classed as covariate extrapolation when any covariate lies
 ##' outside its observed range or its relative leverage exceeds 1, and as
-##' spatial extrapolation when its unexplained spatial variance exceeds
-##' `spatial_threshold`. The two are kept separate because they call for
-##' different responses: more sampling where data are sparse, and caution about
-##' the form of the covariate effects outside the observed conditions.
+##' spatial extrapolation when \eqn{v(x)} exceeds the threshold. By default
+##' the threshold is the largest over the sampled locations \eqn{s_j} of
+##' \deqn{v_{-j} = \mathrm{Var}[S(s_j) \mid y_{-j}] / \sigma^2
+##'   = 1 / [(R + \sigma^{-2} W)^{-1}]_{jj} - w_j / \sigma^2,}
+##' the share left at \eqn{s_j} by the data of the other locations.
+##' Leave-one-out cross-validation predicts at each sampled location from the
+##' others, so a location above this threshold has less spatial information
+##' than any prediction that held-out data could check. A sampled location too
+##' far from the others to share any correlation with them makes the threshold
+##' 1, and then no location is classed as spatial extrapolation, so a fixed
+##' `spatial_threshold` is then more informative. This is the rule of
+##' the covariate indicators, which compare each covariate with its observed
+##' range and the leverage with its largest value in the data. The two
+##' classes are kept separate because they call for different responses: more
+##' sampling where data are sparse, and caution about the form of the
+##' covariate effects outside the observed conditions.
 ##'
 ##' @return An `sf` object of class `RiskMap_extrapolation` with the rows and
 ##'   geometry of `newdata` and the columns
@@ -56,12 +89,14 @@
 ##'       largest distance outside its range, or `NA`.}
 ##'     \item{covariate_leverage}{Leverage relative to its maximum over the
 ##'       data.}
-##'     \item{spatial_unexplained}{Share of the spatial variance not explained
-##'       by the data.}
+##'     \item{spatial_unexplained}{Share of the spatial variance left
+##'       unexplained by the data, \eqn{v(x)}.}
 ##'     \item{extrapolation}{Factor with levels `"Supported"`, `"Spatial"`,
 ##'       `"Covariate"` and `"Spatial and covariate"`.}
 ##'   }
-##'   Rows with missing covariates have missing indicators. Map the result with
+##'   Rows with missing covariates have missing indicators. The attribute
+##'   `spatial_threshold` holds the threshold used, and `covariate_ranges` the
+##'   range of each covariate in the data. Map the result with
 ##'   [plot.RiskMap_extrapolation()].
 ##' @seealso [plot.RiskMap_extrapolation()], [predict.RiskMap()]
 ##' @examples
@@ -70,16 +105,21 @@
 ##' fit <- glgpm(y ~ log(pop_dens) + gp(), data = example_data,
 ##'              family = "gaussian", messages = FALSE)
 ##' extrapolation <- assess_extrapolation(fit, italy_sim[51:100, ])
+##' extrapolation
 ##' table(extrapolation$extrapolation)
 ##' @export
-assess_extrapolation <- function(object, newdata, spatial_threshold = 0.8) {
+assess_extrapolation <- function(object, newdata, spatial_threshold = NULL,
+                                 sampling_noise = TRUE) {
   check_supplied(object)
   check_supplied(newdata)
   if (!inherits(object, "RiskMap")) {
     abort_input("{.arg object} must be a {.cls RiskMap} fit, not {.obj_type_friendly {object}}.", arg = "object")
   }
-  check_range(spatial_threshold, min = 0, max = 1,
-              arg = "spatial_threshold")
+  if (!is.null(spatial_threshold)) {
+    check_range(spatial_threshold, min = 0, max = 1, allow_equal = FALSE,
+                arg = "spatial_threshold")
+  }
+  check_logical(sampling_noise, arg = "sampling_noise")
   prediction <- validate_prediction_data(object, newdata, include = character())
   model_data <- prediction$model_data
   valid_rows <- prediction$valid_rows
@@ -87,9 +127,16 @@ assess_extrapolation <- function(object, newdata, spatial_threshold = 0.8) {
   covariates <- extrapolation_covariates(
     object, prediction_design_matrix(object, st_drop_geometry(model_data))
   )
-  spatial_unexplained <- extrapolation_spatial_unexplained(object, model_data)
+  spatial <- extrapolation_spatial_unexplained(object, model_data,
+                                               sampling_noise)
+  spatial_unexplained <- spatial$unexplained
+  threshold_given <- !is.null(spatial_threshold)
+  if (!threshold_given) spatial_threshold <- max(spatial$left_out)
+  # Both comparisons allow for rounding, so that a location with no spatial
+  # information is not flagged against a threshold of 1 on one platform and
+  # supported on another.
   covariate_flag <- covariates$outside > 0 | covariates$leverage > 1 + 1e-8
-  spatial_flag <- spatial_unexplained > spatial_threshold
+  spatial_flag <- spatial_unexplained > spatial_threshold + 1e-8
   classes <- c("Supported", "Spatial", "Covariate", "Spatial and covariate")
   extrapolation <- factor(
     classes[1L + spatial_flag + 2L * covariate_flag], levels = classes
@@ -110,6 +157,9 @@ assess_extrapolation <- function(object, newdata, spatial_threshold = 0.8) {
                               levels = classes)
   attr(out, "grid_metadata") <- attr(newdata, "grid_metadata", exact = TRUE)
   attr(out, "spatial_threshold") <- spatial_threshold
+  attr(out, "spatial_rule") <- if (threshold_given) "given" else
+    "leave_one_out"
+  attr(out, "sampling_noise") <- sampling_noise
   attr(out, "covariate_ranges") <- covariates$ranges
   class(out) <- c("RiskMap_extrapolation", class(out))
   out
@@ -149,20 +199,32 @@ extrapolation_covariates <- function(object, design) {
   )
 }
 
-#' Share of the prior spatial variance not explained by the sampled locations
+#' Share of the spatial variance left unexplained by the data
+#'
+#' Returns `unexplained`, v(x) at each prediction location, and `left_out`,
+#' v_{-j} at each sampled location from the data of the others, both from the
+#' factor of R + W / sigma2 (`assess_extrapolation()`). The ratios W / sigma2
+#' are capped at 1e8, so that a location whose data carry almost no
+#' information leaves 1 / (K^{-1})_jj - w_j / sigma2 computable.
 #' @noRd
-extrapolation_spatial_unexplained <- function(object, model_data) {
+extrapolation_spatial_unexplained <- function(object, model_data,
+                                              sampling_noise = TRUE) {
   parameters <- coef(object)
-  # Fixed variances are not reported by coef(), so take them from the fit
-  ratio <- fitted_nugget_variance(object, parameters) +
-    (parameters$sigma2_me %||% object$fix_var_me %||% 0)
-  ratio <- ratio / parameters$sigma2
+  noise <- if (sampling_noise) {
+    extrapolation_sampling_variance(object, parameters)
+  } else {
+    0
+  }
+  ratio <- pmin((fitted_nugget_variance(object, parameters) + noise) /
+                  parameters$sigma2, 1e8)
 
-  observed <- unique(as.matrix(object$coords))
+  observed <- as.matrix(object$coords)
   correlation <- matern_correlation(as.matrix(stats::dist(observed)),
                                     phi = parameters$phi, kappa = object$kappa)
   diag(correlation) <- 1 + ratio
-  factor <- chol(correlation)
+  factor <- factor_covariance(correlation,
+                              "correlation matrix of the sampled locations")
+  left_out <- 1 / diag(chol2inv(factor)) - ratio - attr(factor, "jitter")
 
   locations <- coordinates_in_units(st_geometry(model_data),
                                     object$distance_units)
@@ -181,7 +243,124 @@ extrapolation_spatial_unexplained <- function(object, model_data) {
     weights <- backsolve(factor, t(cross), transpose = TRUE)
     unexplained[rows] <- 1 - colSums(weights^2)
   }
-  pmin(pmax(unexplained, 0), 1)
+  list(unexplained = pmin(pmax(unexplained, 0), 1),
+       left_out = pmin(pmax(left_out, 0), 1))
+}
+
+#' Sampling variance of the linear predictor at each sampled location
+#'
+#' For a Gaussian fit, the measurement-error variance divided by the number of
+#' records at the location. Otherwise the inverse of the summed curvature
+#' -d^2 log f(y | eta) / d eta^2 of the records at the location, at the
+#' conditional mode of the location and `re()` effects given the data at the
+#' estimates. The mode is found as `laplace_sampling_mcmc()` finds the centre
+#' of its sampler, on the covariance that prediction conditions on
+#' (`conditioning_covariance()`), with the family's records
+#' (`engine_records()`).
+#' @noRd
+extrapolation_sampling_variance <- function(object, parameters) {
+  n_locations <- nrow(object$coords)
+  id_coords <- object$ID_coords
+  if (fit_is_exact(object)) {
+    measurement <- parameters$sigma2_me %||% object$fix_var_me %||% 0
+    return(measurement / tabulate(id_coords, n_locations))
+  }
+  distance_scale <- attr(object, "distance_scale") %||% 1
+  covariance <- conditioning_covariance(
+    object, parameters, pairwise_distances(object$coords / distance_scale),
+    distance_scale
+  )
+  invlink <- if (identical(object$link_function$name, "canonical")) {
+    NULL
+  } else {
+    object$link_function[c("inv", "d1", "d2")]
+  }
+  id_re <- if (!is.null(object$ID_re)) as.matrix(object$ID_re)
+  sigma2_re <- if (!is.null(id_re)) parameters$sigma2_re
+  mu <- as.numeric(as.matrix(object$D) %*% parameters$beta + object$cov_offset)
+  records <- engine_records(object$family, object$y, object$units_m, mu,
+                            fit_family_values(object), invlink)
+  linkf <- make_inverse_link_functions(records$family, invlink,
+                                       length(records$y))
+  structure <- sampler_latent_structure(covariance, id_coords, id_re,
+                                        sigma2_re)
+  found <- tryCatch(
+    find_sampler_mode(structure, records$y, records$units_m, records$offset,
+                      records$family, linkf),
+    error = function(error) NULL
+  )
+  if (is.null(found)) {
+    found <- fallback_sampler_mode(structure, records$y, records$units_m,
+                                   records$offset, covariance, id_coords,
+                                   id_re, sigma2_re, records$family, invlink,
+                                   linkf)
+  }
+  information <- numeric(n_locations)
+  sums <- rowsum(found$weights, id_coords)
+  information[as.integer(rownames(sums))] <- sums[, 1L]
+  1 / pmax(information, 0)
+}
+
+##' @rdname assess_extrapolation
+##' @param x A `RiskMap_extrapolation` object, whose `print()` method counts
+##'   the locations in each class and states the thresholds of the classes,
+##'   returning `x` invisibly.
+##' @param ... Not used.
+##' @method print RiskMap_extrapolation
+##' @export
+print.RiskMap_extrapolation <- function(x, ...) {
+  threshold <- attr(x, "spatial_threshold", exact = TRUE)
+  # A subset that lost the classes or their thresholds prints as an sf object.
+  if (!is.factor(x[["extrapolation"]]) || !is.numeric(threshold)) {
+    return(NextMethod())
+  }
+  out_print(format_extrapolation(x, threshold))
+  invisible(x)
+}
+
+#' The lines that print indicators of extrapolation
+#' @noRd
+format_extrapolation <- function(x, threshold) {
+  classes <- x[["extrapolation"]]
+  counts <- table(classes)
+  missing <- sum(is.na(classes))
+  values <- format(c(as.integer(counts), if (missing) missing),
+                   big.mark = ",")
+  labels <- c(names(counts), if (missing) "Missing covariates")
+  share <- paste0(format(100 * threshold, digits = 3), "%")
+  spatial <- if (identical(attr(x, "spatial_rule"), "given")) {
+    paste0("Spatial: more than ", share, " of the spatial variance left ",
+           "unexplained, the `spatial_threshold` given.")
+  } else {
+    paste0("Spatial: more of the spatial variance left unexplained than at ",
+           "any sampled location when its own data are left out (",
+           share, ").")
+  }
+  isolated <- if (!identical(attr(x, "spatial_rule"), "given") &&
+                  threshold >= 1 - 1e-8) {
+    c("!" = paste0("A sampled location shares no spatial correlation with ",
+                   "the others, so no location is classed as spatial ",
+                   "extrapolation. A number in `spatial_threshold` gives a ",
+                   "fixed threshold."))
+  }
+  noise <- if (isFALSE(attr(x, "sampling_noise"))) {
+    c(i = "The share leaves out the sampling noise of the outcomes.")
+  }
+  c(out_rule("Extrapolation"),
+    out_text(paste0("Indicators at ", out_count(length(classes), "location"),
+                    ".")),
+    "",
+    out_pairs(labels, values),
+    "",
+    out_bullets(c(
+      i = spatial,
+      isolated,
+      i = paste0("Covariate: a covariate outside its range in the data, or ",
+                 "a leverage above its largest value there."),
+      noise,
+      i = paste0("`plot(x)` maps the classes, and ",
+                 "`indicator = \"spatial_unexplained\"` the share.")
+    )))
 }
 
 ##' Map indicators of extrapolation
@@ -191,8 +370,11 @@ extrapolation_spatial_unexplained <- function(object, model_data) {
 ##'
 ##' @param x A `RiskMap_extrapolation` object.
 ##' @param indicator Indicator to map: `"extrapolation"` (the default, the
-##'   four classes), `"spatial_unexplained"`, `"covariate_novelty"` or
-##'   `"covariate_leverage"`. Several indicators are arranged in two columns.
+##'   four classes, with the thresholds that [assess_extrapolation()] used),
+##'   `"spatial_unexplained"` (the share of the spatial variance left
+##'   unexplained by the data, on a scale from 0 to 1), `"covariate_novelty"`
+##'   or `"covariate_leverage"`. Several indicators are arranged in two
+##'   columns.
 ##' @param ... Not used.
 ##' @return A `ggplot` object, to which further layers can be added. When
 ##'   several indicators are requested, a `patchwork` object combining one

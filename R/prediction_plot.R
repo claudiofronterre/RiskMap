@@ -9,12 +9,12 @@
 ##'   name of a target supplied through `transform` in [predict.RiskMap()].
 ##'   Several quantities can be supplied, for example
 ##'   `c("fixed", "spatial")`, and are arranged like several summaries. Supply
-##'   several quantities or several summaries, not both.
-##' @param summary Summary to display, such as `"mean"`, `"median"`, `"lower"`,
-##'   `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or `"exceedance"`. When
-##'   `NULL` (the default), the first summary requested in
-##'   [predict.RiskMap()] is shown. Several summaries can be supplied; they are
-##'   then arranged in two columns, or one per row when
+##'   several quantities, or several summaries or thresholds, not both.
+##' @param summaries Summaries to display, such as `"mean"`, `"median"`,
+##'   `"lower"`, `"upper"`, `"sd"`, `"cv"`, `"interval_width"`, or
+##'   `"exceedance"`, as in [predict.RiskMap()]. When `NULL` (the default), the
+##'   first summary requested in [predict.RiskMap()] is shown. Several
+##'   summaries are arranged in two columns, or one per row when
 ##'   `spatial_scale = "both"`.
 ##'   Ignored for `"fixed"` and `"offset"`, which have a single value.
 ##' @param spatial_scale Spatial scale to display. `"auto"` (the default) shows
@@ -25,8 +25,10 @@
 ##' @param aggregate Within-polygon aggregation to display at the area scale,
 ##'   such as `"mean"` or `"sum"`. When `NULL`, the first aggregation
 ##'   calculated is used.
-##' @param threshold For an exceedance map, the response-scale threshold to
-##'   display. It may be omitted when only one threshold was calculated.
+##' @param thresholds For exceedance maps, the response-scale thresholds to
+##'   display, among those given to [predict.RiskMap()]. They may be omitted
+##'   when only one threshold was calculated. Several thresholds give one map
+##'   each, arranged like several summaries.
 ##' @param palette Colour palette. `NULL` selects a default that depends on
 ##'   what the map shows: a calm-to-alarm sequential palette for predicted
 ##'   levels, a single-hue palette for uncertainty (`"sd"`, `"cv"`,
@@ -67,8 +69,9 @@
 ##' Outlines of the `boundaries` supplied to [predict.RiskMap()] are drawn
 ##' automatically on location-level maps.
 ##'
-##' @return A `ggplot` object. When several quantities or summaries are
-##'   requested, a `patchwork` object combining one `ggplot` per map.
+##' @return A `ggplot` object. When several quantities, summaries or
+##'   thresholds are requested, a `patchwork` object combining one `ggplot`
+##'   per map.
 ##' @examples
 ##' data(italy_sim)
 ##' example_data <- italy_sim[1:50, ]
@@ -86,10 +89,10 @@
 plot.RiskMap_prediction <- function(
     x,
     quantity = "response",
-    summary = NULL,
+    summaries = NULL,
     spatial_scale = c("auto", "location", "area", "both"),
     aggregate = NULL,
-    threshold = NULL,
+    thresholds = NULL,
     palette = NULL,
     limits = NULL,
     breaks = NULL,
@@ -99,6 +102,11 @@ plot.RiskMap_prediction <- function(
   if (!inherits(x, "RiskMap_prediction")) {
     abort_input("{.arg x} must be a {.cls RiskMap_prediction} object, not {.obj_type_friendly {x}}.", arg = "x")
   }
+  # `summary` is not a prefix of `summaries`, so the old name would reach the
+  # fill scale through `...`.
+  if ("summary" %in% names(match.call(expand.dots = FALSE)$...)) {
+    abort_input("{.arg summary} is now {.arg summaries}, as in {.fn predict}.", arg = "summary")
+  }
   spatial_scale <- match_choice(spatial_scale)
   spatial_scale_given <- !identical(spatial_scale, "auto")
   check_plot_flag(north_arrow, "north_arrow")
@@ -107,46 +115,62 @@ plot.RiskMap_prediction <- function(
       anyDuplicated(quantity)) {
     abort_input("{.arg quantity} must be distinct names of predicted quantities.", arg = "quantity")
   }
-  if (length(quantity) > 1L && length(summary) > 1L) {
-    abort_input("Give several quantities or several summaries, not both.", arg = "summary")
+  if (!is.null(thresholds) &&
+      (!is.numeric(thresholds) || !length(thresholds) || anyNA(thresholds) ||
+         anyDuplicated(thresholds))) {
+    abort_input("{.arg thresholds} must be distinct numbers.", arg = "thresholds")
+  }
+  if (length(quantity) > 1L &&
+      (length(summaries) > 1L || length(thresholds) > 1L)) {
+    several <- if (length(summaries) > 1L) "summaries" else "thresholds"
+    abort_input("Give several quantities or several {several}, not both.", arg = several)
   }
   if (length(quantity) == 1L) {
     if (quantity %in% c("fixed", "offset")) {
-      summary <- "estimate"
-    } else if (is.null(summary)) {
-      summary <- default_prediction_summary(x)
+      summaries <- "estimate"
+    } else if (is.null(summaries)) {
+      summaries <- default_prediction_summary(x)
     }
-    if (!is.character(summary) || !length(summary) || anyNA(summary) ||
-        anyDuplicated(summary)) {
-      abort_input("{.arg summary} must be distinct names of summaries.", arg = "summary")
+    if (!is.character(summaries) || !length(summaries) || anyNA(summaries) ||
+        anyDuplicated(summaries)) {
+      abort_input("{.arg summaries} must be distinct names of summaries.", arg = "summaries")
+    }
+    if (!is.null(thresholds) && !"exceedance" %in% summaries) {
+      abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds")
     }
   }
 
-  if (length(quantity) > 1L || length(summary) > 1L) {
-    if (!requireNamespace("patchwork", quietly = TRUE)) {
-      riskmap_abort("Plotting several maps needs the {.pkg patchwork} package.")
-    }
-    if (length(quantity) > 1L) {
-      maps <- lapply(quantity, function(one_quantity) {
-        plot.RiskMap_prediction(
-          x, quantity = one_quantity, summary = summary,
-          spatial_scale = spatial_scale, aggregate = aggregate,
-          threshold = threshold, palette = palette, limits = limits,
-          breaks = breaks, north_arrow = north_arrow, scale_bar = scale_bar,
-          ...
-        )
-      })
-    } else {
-      maps <- lapply(summary, function(one_summary) {
-        plot.RiskMap_prediction(
-          x, quantity = quantity, summary = one_summary,
-          spatial_scale = spatial_scale, aggregate = aggregate,
-          threshold = if (identical(one_summary, "exceedance")) threshold,
-          palette = palette, limits = limits, breaks = breaks,
-          north_arrow = north_arrow, scale_bar = scale_bar, ...
-        )
-      })
-    }
+  # One map for each quantity, or for each summary and each threshold of an
+  # exceedance map.
+  maps <- if (length(quantity) > 1L) {
+    lapply(quantity, function(one_quantity) {
+      list(quantity = one_quantity, summaries = summaries,
+           thresholds = thresholds)
+    })
+  } else {
+    unlist(lapply(summaries, function(one_summary) {
+      shown <- if (identical(one_summary, "exceedance")) thresholds
+      if (length(shown) > 1L) {
+        lapply(shown, function(one_threshold) {
+          list(quantity = quantity, summaries = one_summary,
+               thresholds = one_threshold)
+        })
+      } else {
+        list(list(quantity = quantity, summaries = one_summary,
+                  thresholds = shown))
+      }
+    }), recursive = FALSE)
+  }
+  if (length(maps) > 1L) {
+    maps <- lapply(maps, function(map) {
+      plot.RiskMap_prediction(
+        x, quantity = map$quantity, summaries = map$summaries,
+        spatial_scale = spatial_scale, aggregate = aggregate,
+        thresholds = map$thresholds, palette = palette, limits = limits,
+        breaks = breaks, north_arrow = north_arrow, scale_bar = scale_bar,
+        ...
+      )
+    })
     # Maps carry their legend on top, so two columns keep them readable.
     layout_columns <- if (spatial_scale == "both") 1L else
       min(2L, length(maps))
@@ -154,6 +178,8 @@ plot.RiskMap_prediction <- function(
     return(patchwork::wrap_plots(maps, ncol = layout_columns) &
              theme(plot.margin = margin(4, 14, 4, 14)))
   }
+  summary <- summaries
+  threshold <- thresholds
 
   has_areas <- !is.null(x$boundaries) && !is.null(x$boundary_summary)
   if (spatial_scale == "auto") {
@@ -289,7 +315,7 @@ format_prediction <- function(x) {
       paste(x$aggregate, collapse = ", ")
     }
   )
-  map <- paste0("`plot(x, summary = \"", default_prediction_summary(x),
+  map <- paste0("`plot(x, summaries = \"", default_prediction_summary(x),
                 "\")` maps it",
                 if (!is.null(x$boundaries)) {
                   ", and `spatial_scale = \"both\"` adds the areas"
@@ -442,7 +468,7 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
   }
   if (!is.character(summary) || length(summary) != 1L || is.na(summary) ||
       !nzchar(summary)) {
-    abort_input("{.arg summary} must be a single non-empty string.", arg = "summary")
+    abort_input("{.arg summaries} must be a single non-empty string.", arg = "summaries")
   }
 
   if (!is.null(aggregate)) {
@@ -456,12 +482,12 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
     }
     if (identical(summary, "exceedance")) {
       threshold <- select_prediction_plot_value(
-        threshold, unique(candidates$threshold), "threshold"
+        threshold, unique(candidates$threshold), "thresholds"
       )
       candidates <- candidates[candidates$threshold == threshold, ,
                                drop = FALSE]
     } else if (!is.null(threshold)) {
-      abort_input("{.arg threshold} is used only when {.arg summary} is {.val exceedance}.", arg = "threshold")
+      abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds")
     }
     values <- rep(NA_real_, nrow(x$boundaries))
     values[candidates$boundary_id] <- candidates$value
@@ -483,12 +509,12 @@ prediction_plot_data <- function(x, quantity, summary, aggregate,
       paste0("^", quantity, "_exceedance_"), "", available
     ))
     threshold <- select_prediction_plot_value(
-      threshold, available_thresholds, "threshold"
+      threshold, available_thresholds, "thresholds"
     )
     available[[which.min(abs(available_thresholds - threshold))]]
   } else {
     if (!is.null(threshold)) {
-      abort_input("{.arg threshold} is used only when {.arg summary} is {.val exceedance}.", arg = "threshold")
+      abort_input("{.arg thresholds} is used only when {.arg summaries} includes {.val exceedance}.", arg = "thresholds")
     }
     paste(quantity, summary, sep = "_")
   }
