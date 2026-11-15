@@ -3614,7 +3614,8 @@ set_control_mcmc <- function(n_draws = 2000,
   check_positive_integer(n_draws, "n_draws")
   check_positive_integer(burnin, "burnin", allow_zero = TRUE)
   check_positive_integer(thin, "thin")
-  iterations <- burnin + n_draws * thin
+  # As doubles, since integer arguments could overflow.
+  iterations <- as.numeric(burnin) + as.numeric(n_draws) * as.numeric(thin)
   if (iterations > .Machine$integer.max) {
     abort_input("{.code burnin + n_draws * thin} must be at most {format(.Machine$integer.max, big.mark = ',')} iterations, not {format(iterations, big.mark = ',', scientific = FALSE)}.", arg = "n_draws")
   }

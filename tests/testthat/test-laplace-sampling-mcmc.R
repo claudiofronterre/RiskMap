@@ -170,6 +170,23 @@ test_that("sampler controls and location indices are validated", {
     set_control_mcmc(n_draws = 2e9, burnin = 0, thin = 2),
     "n_draws"
   )
+  # Integer arguments whose product overflows an integer.
+  expect_input_error(
+    set_control_mcmc(n_draws = 300000000L, burnin = 0L, thin = 10L),
+    "n_draws"
+  )
+  # A control saved before n_draws, with the iterations in n_sim.
+  old <- structure(list(n_sim = 22000, burnin = 2000, thin = 10, h = NULL,
+                        c1.h = 1, c2.h = 0.6, linear_model = FALSE),
+                   class = "RiskMap_control_mcmc")
+  expect_input_error(
+    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+          denominator = denominator, control_mcmc = old, messages = FALSE),
+    "control_mcmc"
+  )
+  expect_error(predict(binomial_model, binomial_data[1:2, ],
+                       control_mcmc = old, messages = FALSE),
+               "n_draws", class = "riskmap_error_input")
   expect_input_error(set_control_mcmc(burnin = -1), "burnin")
   expect_input_error(set_control_mcmc(thin = 0), "thin")
   expect_input_error(set_control_mcmc(h = 0), "h")

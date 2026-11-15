@@ -863,6 +863,19 @@ test_that("a control saved with the sizes as *_samples fits as before", {
     ))
   }
   expect_identical(coef(fit_with(old)), coef(fit_with(fixture_control_mcml)))
+  # A fit holding every parameter evaluates the likelihood on one bank of the
+  # validation size.
+  held_with <- function(control) {
+    glgpm(y ~ cov + gp(), data = binomial_data, family = "binomial",
+          denominator = denominator, control_mcmc = control_mcmc,
+          control_mcml = control, seed = fixture_seed, return_samples = FALSE,
+          fixed_pars = list(beta = c(0.2, 0.3), sigma2 = 0.5, phi = 2),
+          messages = FALSE)
+  }
+  held_new <- held_with(fixture_control_mcml)
+  expect_identical(held_with(old)$log_lik, held_new$log_lik)
+  expect_false(identical(held_with(set_control_mcml())$log_lik,
+                         held_new$log_lik))
 })
 
 test_that("the accelerated global iteration reaches the plain fixed point", {

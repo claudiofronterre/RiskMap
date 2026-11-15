@@ -1323,7 +1323,8 @@ and the parameter draws of a Gaussian prediction now take
 `set_control_mcmc(n_draws = , burnin = 0, thin = 1)`. The settings recorded
 with a fit's conditional samples, which `plot_mcmc()` reads, are `n_draws`,
 `burnin` and `thin`, and the message of a prediction still gives the number
-of iterations.
+of iterations. A control saved from an earlier build, with `n_sim`, stops with
+a hint to make it again.
 - `set_control_mcml()` takes `initial_draws`, `validation_draws` and
 `max_draws` in place of `initial_samples`, `validation_samples` and
 `max_samples`, the words of `summary(fit)$mcml` and of the messages, and the
