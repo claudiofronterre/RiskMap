@@ -276,7 +276,7 @@ extrapolation_sampling_variance <- function(object, parameters) {
   n_locations <- nrow(object$coords)
   id_coords <- object$ID_coords
   if (fit_is_exact(object)) {
-    measurement <- parameters$sigma2_me %||% object$fix_var_me %||% 0
+    measurement <- parameters$sigma2_me %||% fit_fix_var_me(object) %||% 0
     return(measurement / tabulate(id_coords, n_locations))
   }
   distance_scale <- attr(object, "distance_scale") %||% 1

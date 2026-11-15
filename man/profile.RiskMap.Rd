@@ -25,10 +25,9 @@ for a binomial, Poisson or negative binomial model fitted with certified Monte C
 maximum likelihood.}
 
 \item{parameters}{Names of the parameters to profile one at a time, as in
-\code{names(unlist(fitted$estimate))} (the prefix \code{beta.} can be left out).
-For a Gaussian model the nugget is \code{tau2}, its variance, in place of
-\code{nu2}, its ratio to the spatial variance. The default is every
-parameter.}
+\code{names(unlist(coef(fitted)))} (the prefix \code{beta.} can be left out), the
+nugget as \code{tau2}, its variance (see \link{riskmap_parameters}). The default is
+every estimated parameter.}
 
 \item{pairs}{A list of pairs of parameter names for joint profiles, for
 example \code{list(c("sigma2", "phi"))}. The default is none.}
@@ -90,7 +89,7 @@ the covariance parameters only. The parameters are those of
 \code{summary()}, with its labels: the regression coefficients, the spatial
 variance and scale, the variance of the nugget (\code{tau2}) when it is
 estimated, the measurement error variance (\code{sigma2_me}) unless it is
-fixed by \code{fix_var_me}, and the variances of the random effects. Since
+held by \code{fixed_pars}, and the variances of the random effects. Since
 points of an exact likelihood are cheap, each end of a profile interval
 is refined until the deviance of a solved point is within 0.01 of the
 cut-off. Grid steps of the variances and the scale are at most 1 on the

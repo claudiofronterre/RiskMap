@@ -73,7 +73,7 @@ test_that("the records are the binomial kernel, with the constant they leave out
 
 test_that("the negative binomial family is given by its function only", {
   expect_identical(
-    read_family(negative_binomial(theta = 2)),
+    read_family(held_negative_binomial(2)),
     list(family = "negative_binomial", invlink = NULL,
          parameters = list(theta = 2), estimated = character())
   )
@@ -84,12 +84,15 @@ test_that("the negative binomial family is given by its function only", {
          estimated = "theta")
   )
   expect_identical(
-    read_family(negative_binomial(theta = 2), families = engine_families()),
-    read_family(negative_binomial(theta = 2))
+    read_family(held_negative_binomial(2), families = engine_families()),
+    read_family(held_negative_binomial(2))
   )
-  expect_input_error(negative_binomial(theta = 0), "theta")
-  expect_input_error(negative_binomial(theta = c(1, 2)), "theta")
-  expect_input_error(read_family(negative_binomial(2), invlink = exp),
+  # The size is held through fixed_pars, not given to the function.
+  expect_input_error(negative_binomial(theta = 2), "theta", "fixed_pars")
+  expect_input_error(negative_binomial(2), "theta")
+  expect_input_error(held_negative_binomial(0), "theta")
+  expect_input_error(held_negative_binomial(c(1, 2)), "theta")
+  expect_input_error(read_family(held_negative_binomial(2), invlink = exp),
                      "invlink", "log link only")
   # A string has no size, so it is refused, and the error names the function.
   error <- expect_input_error(read_family("negative_binomial"), "family")
@@ -121,11 +124,11 @@ test_that("the negative binomial family is given by its function only", {
   expect_identical(link[c("name", "link")],
                    list(name = "canonical", link = "log"))
   expect_identical(link$inv(c(-1, 0, 2)), exp(c(-1, 0, 2)))
-  expect_identical(
-    fit_family_argument(list(family = "negative_binomial",
-                             family_parameters = list(theta = 3))),
-    negative_binomial(theta = 3)
-  )
+  # A refit holds the size through fixed_pars (fit_fixed_pars()).
+  saved <- list(family = "negative_binomial",
+                family_parameters = list(theta = 3))
+  expect_identical(fit_family_argument(saved), negative_binomial())
+  expect_identical(fit_fixed_pars(saved), list(theta = 3))
   expect_identical(fit_family_argument(binomial_model), "binomial")
 })
 
@@ -189,7 +192,8 @@ test_that("the traits of the negative binomial family give its closed forms", {
 test_that("a negative binomial fit is the binomial fit of its records", {
   data <- negative_binomial_survey(40, 0.5, 2, seed = 34)
   fit <- glgpm(y ~ x + gp(nugget = FALSE), data = data,
-               family = negative_binomial(theta = 2), denominator = m,
+               family = negative_binomial(), fixed_pars = list(theta = 2),
+               denominator = m,
                distance_units = "m", control_mcmc = control_mcmc,
                messages = FALSE, seed = 4)
   data$trials <- data$y + 2
@@ -209,7 +213,7 @@ test_that("a negative binomial fit is the binomial fit of its records", {
                tolerance = 1e-14)
   # The fit keeps the model's records, link and size.
   expect_identical(fit$family, "negative_binomial")
-  expect_identical(fit$family_parameters, list(theta = 2))
+  expect_identical(fit$fixed_pars, list(theta = 2))
   expect_identical(fit$units_m, data$m)
   expect_identical(fit$link_function[c("name", "link")],
                    list(name = "canonical", link = "log"))
@@ -221,9 +225,10 @@ test_that("a negative binomial fit is the binomial fit of its records", {
                tolerance = 1e-10)
   expect_output(print(fit), "Negative binomial geostatistical model")
   # The size is held, so it is reported as fixed and is not among the
-  # estimates (#253, step 2).
+  # estimates (#253, step 2), and coef() gives it at its value.
   expect_output(print(fit), "Negative binomial size fixed at 2")
-  expect_null(coef(fit)$theta)
+  expect_identical(coef(fit)$theta, 2)
+  expect_false("theta" %in% names(estimated_coef(fit)))
   expect_identical(held_family_parameters(fit), list(theta = 2))
   expect_identical(estimated_family_parameters(fit), character())
   fit_summary <- summary(fit)
@@ -246,7 +251,8 @@ test_that("as the field vanishes the fit is the negative binomial regression", {
   )
   expect_warning(
     fit <- glgpm(y ~ x + gp(nugget = FALSE), data = data,
-                 family = negative_binomial(theta = 1.5), denominator = m,
+                 family = negative_binomial(), fixed_pars = list(theta = 1.5),
+                 denominator = m,
                  distance_units = "m", control_mcmc = control_mcmc,
                  messages = FALSE, seed = 3),
     "effectively zero"
@@ -264,7 +270,8 @@ test_that("as the field vanishes the fit is the negative binomial regression", {
 test_that("a negative binomial fit predicts, simulates and refits with its size", {
   data <- negative_binomial_survey(30, 0.5, 2, seed = 41)
   fit <- glgpm(y ~ x + gp(nugget = FALSE), data = data,
-               family = negative_binomial(theta = 2), denominator = m,
+               family = negative_binomial(), fixed_pars = list(theta = 2),
+               denominator = m,
                distance_units = "m", control_mcmc = control_mcmc,
                messages = FALSE, seed = 5)
   # The predicted rate is the mean of exp() of the linear predictor.
@@ -285,13 +292,14 @@ test_that("a negative binomial fit predicts, simulates and refits with its size"
   expect_equal(mean(squares / (counts + counts^2 / 2)), 1, tolerance = 0.1)
   expect_gt(mean(squares / counts), 1.5)
   specified <- specify_glgpm(
-    y ~ x + gp(nugget = FALSE), data, negative_binomial(theta = 2),
-    list(beta = c(0.5, 0.4), sigma2 = 0.5, phi = 20), denominator = m,
+    y ~ x + gp(nugget = FALSE), data, negative_binomial(),
+    list(beta = c(0.5, 0.4), sigma2 = 0.5, phi = 20, theta = 2), denominator = m,
     distance_units = "m"
   )
   expect_identical(specified$family_parameters, list(theta = 2))
   arguments <- assessment_refit_args(fit, fit$formula, data, control_mcmc)
-  expect_identical(arguments$family, negative_binomial(theta = 2))
+  expect_identical(arguments$family, negative_binomial())
+  expect_identical(arguments$fixed_pars, list(theta = 2))
   expect_null(arguments$invlink)
 })
 
@@ -309,7 +317,8 @@ test_that("the integrated form tabulates records whose trials are not whole", {
                        coords = c("X", "Y"), crs = 32636)
   fit_in <- function(integrate_noise) {
     glgpm(y ~ x + gp(nugget = TRUE), data = data,
-          family = negative_binomial(theta = 3.5), denominator = m,
+          family = negative_binomial(), fixed_pars = list(theta = 3.5),
+          denominator = m,
           distance_units = "m",
           control_mcml = set_control_mcml(integrate_noise = integrate_noise),
           return_samples = FALSE, messages = FALSE, seed = 4)
@@ -328,14 +337,15 @@ test_that("the integrated form tabulates records whose trials are not whole", {
 test_that("the refits of a negative binomial fit carry its size", {
   data <- negative_binomial_survey(30, 0.5, 2, seed = 41)
   fit <- glgpm(y ~ x + gp(nugget = FALSE), data = data,
-               family = negative_binomial(theta = 2), denominator = m,
+               family = negative_binomial(), fixed_pars = list(theta = 2),
+               denominator = m,
                distance_units = "m", control_mcmc = control_mcmc,
                messages = FALSE, seed = 5)
   constant <- sum(lgamma(data$y + 2) - lgamma(2)) - sum(data$y * log(data$m))
   # parametric_bootstrap() refits the fit's own response, from the estimate,
   # back to the estimate.
   refit <- make_bootstrap_refit(fit)
-  expect_equal(refit(fit$y, 5L), unlist(coef(fit)), tolerance = 1e-6)
+  expect_equal(refit(fit$y, 5L), estimated_coef(fit), tolerance = 1e-6)
   # profile() and the radius of check_fit() rebuild the likelihood, which at
   # the estimate is the fit's, less the constant of its records. With the
   # size dropped they would stop, and at another size they are far off.
@@ -343,7 +353,7 @@ test_that("the refits of a negative binomial fit carry its size", {
   expect_lt(abs(problem$value(problem$bank_estimate) + constant -
                   fit$log_lik), 0.01)
   wrong <- fit
-  wrong$family_parameters <- list(theta = 50)
+  wrong$fixed_pars <- list(theta = 50)
   wrong_problem <- make_profile_problem(wrong, 2000L, 1L)
   expect_gt(abs(wrong_problem$value(wrong_problem$bank_estimate) + constant -
                   fit$log_lik), 10)
@@ -372,7 +382,7 @@ test_that("a family object of MASS::negative.binomial() is read as a held size",
               class = "family")
   }
   expect_identical(read_family(mass_family(2)),
-                   read_family(negative_binomial(theta = 2)))
+                   read_family(held_negative_binomial(2)))
   # The size comes from the environment, not from the name, which MASS
   # rounds to four decimals.
   third <- mass_family(1 / 3)
@@ -396,5 +406,5 @@ test_that("a family object of MASS::negative.binomial() is read as a held size",
   expect_identical(read_family(negative_binomial),
                    read_family(negative_binomial()))
   expect_output(print(negative_binomial()), "size estimated")
-  expect_output(print(negative_binomial(theta = 2)), "held at 2")
+  expect_output(print(held_negative_binomial(2)), "held at 2")
 })

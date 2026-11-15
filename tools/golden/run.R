@@ -156,6 +156,10 @@ fit_binomial <- function(formula, data, ..., seed) {
         seed = seed, control_mcmc = ctrl, ...)
 }
 quiet <- function(expr) suppressWarnings(suppressMessages(expr))
+# From step 2d of the parameter table, held parameters are given in fixed_pars, and before it through
+# gp(nugget = <value>), fix_var_me and negative_binomial(theta). F31, F33 and F36 take whichever the commit has, with
+# the same model and the same held values in both branches.
+has_fixed_pars <- "fixed_pars" %in% names(formals(glgpm))
 texts <- function(...) lapply(list(...), function(x) capture.output(print(x)))
 
 # The base fit of a downstream task is kept in its record beside the value (record$fits), for the tolerance mode of
@@ -230,20 +234,38 @@ fits <- list(
                                                      data = dataset("counts_nb"), family = negative_binomial(),
                                                      distance_units = "km", messages = FALSE, seed = 30L,
                                                      control_mcmc = ctrl),
-  F31_negative_binomial_held = function() glgpm(y ~ x + gp(), denominator = exposure, data = dataset("counts_nb"),
-                                                family = negative_binomial(2), distance_units = "km",
-                                                messages = FALSE, seed = 31L, control_mcmc = ctrl),
+  F31_negative_binomial_held = function() {
+    if (has_fixed_pars) {
+      glgpm(y ~ x + gp(), denominator = exposure, data = dataset("counts_nb"), family = negative_binomial(),
+            fixed_pars = list(theta = 2), distance_units = "km", messages = FALSE, seed = 31L, control_mcmc = ctrl)
+    } else {
+      glgpm(y ~ x + gp(), denominator = exposure, data = dataset("counts_nb"), family = negative_binomial(2),
+            distance_units = "km", messages = FALSE, seed = 31L, control_mcmc = ctrl)
+    }
+  },
   F32_poisson_offset = function() glgpm(y ~ x + offset(log_exposure) + gp(), denominator = m,
                                         data = dataset("counts_poisson"), family = "poisson", distance_units = "km",
                                         messages = FALSE, seed = 32L, control_mcmc = ctrl),
-  F33_fixed_nugget = function() fit_binomial(y ~ x + gp(nugget = 0.5), "d2", seed = 33L),
+  F33_fixed_nugget = function() {
+    if (has_fixed_pars) {
+      fit_binomial(y ~ x + gp(nugget = TRUE), "d2", seed = 33L, fixed_pars = list(tau2 = 0.5))
+    } else {
+      fit_binomial(y ~ x + gp(nugget = 0.5), "d2", seed = 33L)
+    }
+  },
   F34_gaussian_nugget = function() glgpm(z ~ x + gp(nugget = TRUE), data = dataset("replicated_gaussian"),
                                          family = "gaussian", distance_units = "km", messages = FALSE),
   F35_gaussian_re = function() glgpm(z ~ x + gp() + re(cluster), data = dataset("replicated_gaussian"),
                                      family = "gaussian", distance_units = "km", messages = FALSE),
-  F36_gaussian_fixed_error = function() glgpm(z ~ x + gp(), data = dataset("replicated_gaussian"),
-                                              family = "gaussian", distance_units = "km", messages = FALSE,
-                                              fix_var_me = 0.25),
+  F36_gaussian_fixed_error = function() {
+    if (has_fixed_pars) {
+      glgpm(z ~ x + gp(), data = dataset("replicated_gaussian"), family = "gaussian", distance_units = "km",
+            messages = FALSE, fixed_pars = list(sigma2_me = 0.25))
+    } else {
+      glgpm(z ~ x + gp(), data = dataset("replicated_gaussian"), family = "gaussian", distance_units = "km",
+            messages = FALSE, fix_var_me = 0.25)
+    }
+  },
   F37_two_re_crossing = function() glgpm(y ~ x + gp(kappa = 0.5) + re(household) + re(district), denominator = m,
                                          data = dataset("district_households"), family = "binomial",
                                          distance_units = "km", messages = FALSE, seed = 37L,

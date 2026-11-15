@@ -230,8 +230,9 @@ test_that("glgpm_parameters() lists the parameters before fitting", {
     names(unlist(coef(binomial_model)))
   )
   # Held parameters have a value.
-  held <- glgpm_parameters(y ~ cov + gp(nugget = 0.2), data = gaussian_data,
-                           family = "gaussian", fix_var_me = 0.1)
+  held <- glgpm_parameters(y ~ cov + gp(nugget = TRUE), data = gaussian_data,
+                           family = "gaussian",
+                           fixed_pars = list(tau2 = 0.2, sigma2_me = 0.1))
   expect_identical(held$held[held$name %in% c("tau2", "sigma2_me")],
                    c(0.2, 0.1))
   counts <- glgpm_parameters(y ~ gp(), data = poisson_data,
@@ -242,8 +243,14 @@ test_that("glgpm_parameters() lists the parameters before fitting", {
                "list(beta = c(\"(Intercept)\" = , \"cov\" = ), sigma2 = , phi = , tau2 = , sigma2_re = c(\"i\" = , \"j\" = ))",
                fixed = TRUE)
   expect_error(glgpm_parameters(y ~ gp(), data = binomial_data,
-                                family = "binomial", fix_var_me = 0.1),
+                                family = "binomial",
+                                fixed_pars = list(sigma2_me = 0.1)),
                class = "riskmap_error_input")
+  # A size held by fixed_pars.
+  held_size <- glgpm_parameters(y ~ gp(), data = poisson_data,
+                                family = negative_binomial(),
+                                fixed_pars = list(theta = 2))
+  expect_identical(held_size$held[held_size$name == "theta"], 2)
 })
 
 test_that("a partial start reaches the engine whichever candidate wins", {
@@ -308,6 +315,7 @@ test_that("the named vector unlist(coef(fit)) is a start", {
     read_start_pars(fit_parameter_table(default), coef(default))
   )
   expect_error(glgpm_parameters(y ~ gp(), data = gaussian_data,
-                                family = "gaussian", fix_var_me = -1),
+                                family = "gaussian",
+                                fixed_pars = list(sigma2_me = -1)),
                class = "riskmap_error_input")
 })

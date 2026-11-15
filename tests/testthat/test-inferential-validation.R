@@ -1,7 +1,7 @@
 test_that("Gaussian fitting reports the exact marginal likelihood", {
   fit <- glgpm(
     y ~ cov + gp(), data = gaussian_data, family = "gaussian",
-    fix_var_me = 0.2, messages = FALSE
+    fixed_pars = list(sigma2_me = 0.2), messages = FALSE
   )
 
   sigma2 <- exp(fit$estimate$sigma2)

@@ -12,23 +12,22 @@
 \item{...}{other parameters.}
 }
 \value{
-A list containing the maximum likelihood estimates. For standard models:
-\item{beta}{A vector of coefficient estimates.}
-\item{sigma2}{The estimate for the variance parameter \eqn{\sigma^2}.}
-\item{phi}{The estimate for the scale parameter \eqn{\phi} of the spatial correlation function.}
-\item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
-\item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
-\item{sigma2_re}{A named vector of variance estimates for the random effects, if applicable.}
-\item{beta}{Coefficient estimates for log mean worm burden.}
-\item{k}{Negative binomial overdispersion parameter.}
-\item{rho}{Egg detection rate (fecundity).}
-\item{sigma2}{Spatial process variance.}
-\item{phi}{Spatial correlation scale.}
+A named list of every parameter of the model on its natural
+scale, the estimates and the values held by \code{fixed_pars}, in the order of
+\link{riskmap_parameters}:
+\item{beta}{The regression coefficients, named by the columns of the design matrix.}
+\item{sigma2}{The variance of the spatial process.}
+\item{phi}{The scale of the spatial correlation, in the model's distance units.}
+\item{tau2}{The variance of the nugget, for a model with one.}
+\item{sigma2_me}{The measurement error variance, for a Gaussian model.}
+\item{theta}{The size, for a negative binomial model.}
+\item{sigma2_re}{The variances of the random effects, named by their terms, for a model with \code{re()} terms.}
+The list can be given as \code{start_pars} of \code{\link[=glgpm]{glgpm()}}.
 }
 \description{
 This \code{coef} method for the "RiskMap" class extracts the
 maximum likelihood estimates from model fits obtained from the \code{\link{glgpm}} functions.
 }
 \seealso{
-\code{\link{glgpm}}
+\code{\link{glgpm}}, \link{riskmap_parameters}
 }

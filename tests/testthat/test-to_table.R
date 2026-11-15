@@ -41,7 +41,7 @@ test_that("to_table formats model summaries directly", {
 })
 
 test_that("to_table names the intercept and adds no row for a held parameter", {
-  # A fit with only an intercept, and one with fix_var_me, whose summary
+  # A fit with only an intercept, and one with a held measurement error, whose summary
   # holds the fixed measurement error apart from the table (#253, step 2).
   rendered <- paste(as.character(to_table(gaussian_intercept_model,
                                           format = "pipe")), collapse = "\n")

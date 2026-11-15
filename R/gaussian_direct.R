@@ -57,7 +57,7 @@ glgpm_lm_direct <- function(y, D, coords, kappa, ID_coords, ID_re,
   if (identical(fix_var_me, 0)) {
     latent_design <- do.call(cbind, c(list(spatial_design), random_designs))
     if (qr(latent_design)$rank < n) {
-      abort_input(c("With {.code fix_var_me = 0} the covariance of the observations is singular, whatever the parameters.", "i" = "Repeated observations need a positive measurement error variance or more independent effects."), arg = "fix_var_me")
+      abort_input(c("With the measurement error variance held at 0 in {.arg fixed_pars}, the covariance of the observations is singular, whatever the parameters.", "i" = "Repeated observations need a positive measurement error variance or more independent effects."), arg = "fixed_pars")
     }
   }
 

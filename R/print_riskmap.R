@@ -321,8 +321,8 @@ format_fit <- function(x, digits) {
     rows$label
   )
   fixed <- c(
-    if (is.numeric(x$fix_tau2)) {
-      paste0("Variance of the nugget effect fixed at ", x$fix_tau2)
+    if (is.numeric(fit_fix_tau2(x))) {
+      paste0("Variance of the nugget effect fixed at ", fit_fix_tau2(x))
     },
     describe_held_family_parameters(held_family_parameters(x), traits)
   )

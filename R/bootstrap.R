@@ -71,7 +71,9 @@
 ##' @return An object of class `RiskMap_bootstrap`, a list with
 ##' \item{estimates}{A matrix of the bootstrap estimates on their natural
 ##'   scale, with one row per replicate (`NA` for failed refits) and one
-##'   column per parameter, named as `unlist(coef(object))`.}
+##'   column per estimated parameter, named as `unlist(coef(object))` names
+##'   them. Parameters held by `fixed_pars` are held in the refits and have no
+##'   column.}
 ##' \item{estimate}{The estimate of `object`, on the same scale.}
 ##' \item{labels}{Readable names of the parameters.}
 ##' \item{failures}{A data frame with the `replicate`, `seed` and error
@@ -243,12 +245,12 @@ make_bootstrap_refit <- function(object) {
       ID_coords = object$ID_coords, ID_re = object$ID_re,
       s_unique = unique(object$ID_coords), re_unique = re_unique,
       units_m = object$units_m, cov_offset = object$cov_offset,
-      kappa = object$kappa, fix_tau2 = object$fix_tau2,
-      fix_var_me = object$fix_var_me, family = family, invlink = invlink,
+      kappa = object$kappa, fix_tau2 = fit_fix_tau2(object),
+      fix_var_me = fit_fix_var_me(object), family = family, invlink = invlink,
       parameters = parameters,
       start_pars = start, control_mcmc = set_control_mcmc(),
       control_mcml = control_mcml, seed = seed, return_samples = FALSE,
-      messages = FALSE, family_parameters = object$family_parameters,
+      messages = FALSE, family_parameters = fit_family_held(object),
       estimated_family = estimated_family_parameters(object)
     )
     fit$D <- design
@@ -292,7 +294,7 @@ format_bootstrap_time <- function(seconds) {
 ##' Collect the replicates into a `RiskMap_bootstrap` object
 ##' @noRd
 assemble_bootstrap <- function(object, results, replicate_seeds) {
-  estimate <- unlist(coef(object))
+  estimate <- estimated_coef(object)
   estimates <- matrix(NA_real_, length(results), length(estimate),
                       dimnames = list(NULL, names(estimate)))
   failed <- integer()

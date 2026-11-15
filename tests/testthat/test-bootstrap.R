@@ -14,11 +14,12 @@ test_that("a refit to the observed response is a glgpm() fit from the estimate",
   gaussian_refit <- make_bootstrap_refit(gaussian_offset_model)
   gaussian_direct <- glgpm(
     y ~ cov + gp(nugget = TRUE) + offset(offset), data = gaussian_data,
-    family = "gaussian", fix_var_me = 0,
+    family = "gaussian", fixed_pars = list(sigma2_me = 0),
     start_pars = coef(gaussian_offset_model), messages = FALSE
   )
+  # The refit gives the estimated parameters, without the held one.
   expect_identical(gaussian_refit(gaussian_offset_model$y, 1L),
-                   unlist(coef(gaussian_direct)))
+                   estimated_coef(gaussian_direct))
 })
 
 test_that("replicates have their own seeds and do not depend on cores", {

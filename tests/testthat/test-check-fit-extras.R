@@ -436,8 +436,6 @@ test_that("a parameter of a profile is named in words", {
   expect_identical(describe_profile_parameter("phi"), "the spatial scale (phi)")
   expect_identical(describe_profile_parameter("sigma2"),
                    "the spatial variance (sigma2)")
-  expect_identical(describe_profile_parameter("nu2"),
-                   "the ratio of the nugget to the spatial variance (nu2)")
   expect_identical(describe_profile_parameter("tau2"), "the nugget variance (tau2)")
   expect_identical(describe_profile_parameter("sigma2_me"),
                    "the measurement error variance (sigma2_me)")
@@ -486,22 +484,22 @@ test_that("the profile row names each parameter that needs a look", {
   flat <- fit_check_profile(make_profiles(
     phi = profile_part(grid, c(0, 0, 0, 0, 0, 0, 0), NA, NA),
     sigma2 = profile_part(grid, c(0, 0, 0, -0.1, -2, -6, -9), NA, 3.4),
-    nu2 = profile_part(grid, c(0, 0, 0, -0.5, -3, -6, -9), NA, 2.1),
+    tau2 = profile_part(grid, c(0, 0, 0, -0.5, -3, -6, -9), NA, 2.1),
     sigma2_re.i = profile_part(grid, peaked, 1, 3)
   ), "km", advice = " Or the penalty.")
   expect_identical(flat$status, "SUSPICIOUS")
   expect_identical(flat$finding, paste0(
     "The 95% profile interval is open at both ends for the spatial scale (phi), ",
-    "and below for the spatial variance (sigma2) and the ratio of the nugget to ",
-    "the spatial variance (nu2), so the profile is flat there and the data do ",
-    "not bound these parameters on that side. Wald intervals may describe the ",
-    "uncertainty poorly."
+    "and below for the spatial variance (sigma2) and the nugget variance ",
+    "(tau2), so the profile is flat there and the data do not bound these ",
+    "parameters on that side. Wald intervals may describe the uncertainty ",
+    "poorly."
   ))
   expect_identical(flat$fix, paste0(
-    "Use the profile intervals of phi, sigma2 and nu2 rather than the Wald ",
+    "Use the profile intervals of phi, sigma2 and tau2 rather than the Wald ",
     "intervals, and see their panels in `plot()`. Consider a scale fixed from ",
     "external knowledge. Or the penalty. A variance whose interval is open ",
-    "below may be zero, so consider refitting without nu2."
+    "below may be zero, so consider refitting without tau2."
   ))
   above <- fit_check_profile(make_profiles(
     sigma2 = profile_part(grid, -(0:6), 0.5, NA)
