@@ -112,7 +112,8 @@ test_that("vcov() of a fit that holds every parameter is empty", {
 test_that("the accessors and the print and summary of a fit stop on unused arguments", {
   expect_input_error(print(gaussian_model, color = TRUE), "color")
   expect_input_error(summary(gaussian_model, conf_level = 0.9), "conf_level")
-  expect_error(summary(gaussian_model, conf_level = 0.9), "level")
+  expect_error(summary(gaussian_model, conf_level = 0.9),
+               "confidence level is given in")
   expect_input_error(print(summary(gaussian_model), digits = 3), "digits")
   expect_input_error(vcov(gaussian_model, complete = TRUE), "complete")
   expect_input_error(logLik(gaussian_model, REML = TRUE), "REML")

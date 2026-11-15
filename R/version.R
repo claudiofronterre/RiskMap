@@ -33,7 +33,8 @@ version_cache <- new.env(parent = emptyenv())
 ##' result that may be saved and read again, a fit, a prediction, a profile, a
 ##' bootstrap, a check, a cross-validation, a simulation assessment, a
 ##' simulation, a simulation model, a variogram or an extrapolation. It is not
-##' printed. An object without it was made before RiskMap 2.0.0.
+##' printed. An object without it was made before RiskMap stamped its
+##' results, by an earlier version or an early development build of 2.0.0.
 ##' @param x The result, with its class set.
 ##' @return `x` with the attribute.
 ##' @noRd

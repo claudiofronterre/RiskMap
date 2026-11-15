@@ -165,7 +165,9 @@ Every result of RiskMap that can be saved and read again, such as a fit, a
 prediction or a profile, has the attribute \code{riskmap_version}, a list with
 the \code{version} of RiskMap that made it, as a \code{\link[=package_version]{package_version()}}, and
 \code{sha}, the commit it was installed from when it was installed from GitHub
-and \code{NA} otherwise. An object without it was made before RiskMap 2.0.0.
+and \code{NA} otherwise. An object without it was made before RiskMap stamped
+its results, by an earlier version or an early development build of
+2.0.0.
 }
 \description{
 Fits generalized linear Gaussian process models to spatial data,
