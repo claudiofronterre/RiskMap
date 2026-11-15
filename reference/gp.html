@@ -62,9 +62,10 @@
 
 
 <dt id="arg-nugget">nugget<a class="anchor" aria-label="anchor" href="#arg-nugget"></a></dt>
-<dd><p>The nugget effect, which represents the variance of the measurement error.
-Default is <code>FALSE</code> in which case it is not estimated. If <code>TRUE</code> the value will be estimated or
-a positive numeric value can be provided instead to fix the effect.</p></dd>
+<dd><p>Whether the model has a nugget, independent variation at
+each location whose variance is <code>tau2</code>. Default is <code>FALSE</code>. With <code>TRUE</code> its
+variance is estimated, unless <code>fixed_pars = list(tau2 = )</code> of <code><a href="glgpm.html">glgpm()</a></code>
+holds it.</p></dd>
 
 </dl></div>
     <div class="section level2">

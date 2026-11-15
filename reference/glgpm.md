@@ -21,8 +21,8 @@ glgpm(
   seed = NULL,
   return_samples = TRUE,
   messages = getOption("RiskMap.messages", TRUE),
-  fix_var_me = NULL,
-  start_pars = NULL
+  start_pars = NULL,
+  fixed_pars = NULL
 )
 ```
 
@@ -52,16 +52,17 @@ glgpm(
   as `binomial("probit")`, or
   [`negative_binomial()`](https://claudiofronterre.github.io/RiskMap/reference/negative_binomial.md)
   for overdispersed counts with the log link, whose size is estimated
-  unless a value is given (`negative_binomial(theta = 2)` or
-  `MASS::negative.binomial(2)`). Where nothing is estimated, as in
+  unless it is held, by `fixed_pars` of `glgpm()` or by the family
+  object `MASS::negative.binomial(2)`. Where nothing is estimated, as in
   [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md),
-  the size must be given. Binomial responses take the logit, probit,
-  complementary log-log (`"cloglog"`) and Cauchy (`"cauchit"`) links,
-  Poisson responses the log link and Gaussian responses the identity
-  link. `binomial("log")` and `poisson("identity")` are not accepted,
-  because they can give means outside the range of the family, nor is
-  `poisson("sqrt")`, whose inverse gives the same mean to a positive and
-  a negative linear predictor. Quasi-likelihood families, such as
+  the size must be given, as `theta` in its `parameters`. Binomial
+  responses take the logit, probit, complementary log-log (`"cloglog"`)
+  and Cauchy (`"cauchit"`) links, Poisson responses the log link and
+  Gaussian responses the identity link. `binomial("log")` and
+  `poisson("identity")` are not accepted, because they can give means
+  outside the range of the family, nor is `poisson("sqrt")`, whose
+  inverse gives the same mean to a positive and a negative linear
+  predictor. Quasi-likelihood families, such as
   [`stats::quasibinomial()`](https://rdrr.io/r/stats/family.html), have
   no likelihood to maximise and are not accepted either. Any other link
   can be given in `invlink`. A named link gives the same estimates as
@@ -145,15 +146,6 @@ glgpm(
   [riskmap_progress](https://claudiofronterre.github.io/RiskMap/reference/riskmap_progress.md).
   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 
-- fix_var_me:
-
-  Optional fixed value for the measurement error variance when fitting a
-  Gaussian model. When not provided, the value will be estimated, but
-  cannot be if each location only has one sample and the `nugget` term
-  in
-  [`gp()`](https://claudiofronterre.github.io/RiskMap/reference/gp.md)
-  is also set to `TRUE`.
-
 - start_pars:
 
   `NULL` (the default), or a named list of starting values for any of
@@ -170,6 +162,20 @@ glgpm(
   Every other parameter takes its automatic start.
   [`glgpm_parameters()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm_parameters.md)
   lists the parameters of a model before it is fitted.
+
+- fixed_pars:
+
+  `NULL` (the default), or a named list of values at which to hold some
+  of the model's parameters instead of estimating them, with the names
+  and structure of `start_pars`. It holds the variance of a nugget
+  (`tau2`, with `gp(nugget = TRUE)`, positive), the measurement error
+  variance of a Gaussian model (`sigma2_me`, zero or positive) and the
+  size of a negative binomial model (`theta`, positive). A parameter
+  can't be both started and held, except that a start equal to its held
+  value, as in `start_pars = coef(fit)` of a fit with the same holds, is
+  left out. With one observation per location, a Gaussian model can
+  estimate the nugget or the measurement error variance, not both, and a
+  negative binomial model the nugget or the size, not both.
 
 ## Value
 
@@ -233,18 +239,15 @@ information:
   [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
   is included in `formula`
 
-- fix_tau2:
+- nugget:
 
-  Fixed nugget effect variance
+  `"none"` without a nugget, `"estimated"` or `"fixed"` when
+  `fixed_pars` holds its variance.
 
-- fix_var_me:
+- fixed_pars:
 
-  Fixed measurement error variance
-
-- family_parameters:
-
-  For a negative binomial model whose size is held, the size as
-  `list(theta = )`. Absent otherwise.
+  The values of the parameters the model holds, as a named list, `NULL`
+  when it holds none.
 
 - formula:
 

@@ -62,9 +62,8 @@ maxim_integrand(
   The distribution of the response, `"binomial"` or `"poisson"`, a
   binomial or Poisson family object with one of the links that
   [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
-  accepts, such as `binomial("probit")`, or
-  [`negative_binomial()`](https://claudiofronterre.github.io/RiskMap/reference/negative_binomial.md)
-  with its size, such as `negative_binomial(theta = 2)`, with
+  accepts, such as `binomial("probit")`, or a negative binomial family
+  with its size, such as `MASS::negative.binomial(2)`, with
   `denominator` the exposure.
 
 - sigma2_re:

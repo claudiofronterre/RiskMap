@@ -109,7 +109,9 @@ Defaults to the option <code>RiskMap.messages</code>, or <code>TRUE</code> if it
 <dl><dt>estimates</dt>
 <dd><p>A matrix of the bootstrap estimates on their natural
 scale, with one row per replicate (<code>NA</code> for failed refits) and one
-column per parameter, named as <code>unlist(coef(object))</code>.</p></dd>
+column per estimated parameter, named as <code>unlist(coef(object))</code> names
+them. Parameters held by <code>fixed_pars</code> are held in the refits and have no
+column.</p></dd>
 
 <dt>estimate</dt>
 <dd><p>The estimate of <code>object</code>, on the same scale.</p></dd>

@@ -9,20 +9,24 @@ for counts that vary more than a Poisson model allows. A count \\y\\
 with exposure \\m\\ given the random effects has mean \\\mu = m
 \exp(\eta)\\, with the log link, and variance \\\mu + \mu^2 / \theta\\,
 as in `MASS::negative.binomial(theta)`. The size \\\theta\\ is estimated
-unless a value is given, at which it is held.
+unless `fixed_pars = list(theta = )` of
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+holds it, and
+[`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)
+takes it as `theta` in its `parameters`.
 
 ## Usage
 
 ``` r
-negative_binomial(theta = NULL)
+negative_binomial(...)
 ```
 
 ## Arguments
 
-- theta:
+- ...:
 
-  The size, a positive number at which it is held, or `NULL` (the
-  default) to estimate it.
+  Not used. A size given here stops, since it is held with `fixed_pars`
+  instead.
 
 ## Value
 
@@ -50,7 +54,8 @@ those are refused. A fit with an estimated size uses the sampled form of
 Monte Carlo maximum likelihood (see `integrate_noise` in
 [`set_control_mcml()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcml.md)),
 and its check for other maxima has no screen of short scales.
-`MASS::negative.binomial(theta)` is read as `negative_binomial(theta)`.
+`MASS::negative.binomial(theta)` is read as the negative binomial family
+with its size held at `theta`.
 
 Given the size, the log-likelihood of a count is that of a binomial
 count of \\y\\ successes in \\y + \theta\\ trials with the logit link
@@ -69,6 +74,4 @@ two can be compared.
 ``` r
 negative_binomial()
 #> The negative binomial family with the log link and its size estimated.
-negative_binomial(theta = 2)
-#> The negative binomial family with the log link and its size held at 2.
 ```

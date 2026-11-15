@@ -5,13 +5,15 @@ a Poisson model allows. A count \(y\) with exposure \(m\) given the
 random effects has mean \(\mu = m \exp(\eta)\), with the log link,
 and variance \(\mu + \mu^2 / \theta\), as in
 MASS::negative.binomial(theta). The size \(\theta\) is estimated
-unless a value is given, at which it is held."><meta property="og:description" content="Specifies a negative binomial response for glgpm(),
+unless fixed_pars = list(theta = ) of glgpm() holds it, and
+specify_glgpm() takes it as theta in its parameters."><meta property="og:description" content="Specifies a negative binomial response for glgpm(),
 specify_glgpm() and maxim_integrand(), for counts that vary more than
 a Poisson model allows. A count \(y\) with exposure \(m\) given the
 random effects has mean \(\mu = m \exp(\eta)\), with the log link,
 and variance \(\mu + \mu^2 / \theta\), as in
 MASS::negative.binomial(theta). The size \(\theta\) is estimated
-unless a value is given, at which it is held."><meta property="og:image" content="https://claudiofronterre.github.io/RiskMap/card.png"><meta property="og:image:alt" content="RiskMap, model-based geostatistics in R"></head><body>
+unless fixed_pars = list(theta = ) of glgpm() holds it, and
+specify_glgpm() takes it as theta in its parameters."><meta property="og:image" content="https://claudiofronterre.github.io/RiskMap/card.png"><meta property="og:image:alt" content="RiskMap, model-based geostatistics in R"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -58,21 +60,22 @@ a Poisson model allows. A count \(y\) with exposure \(m\) given the
 random effects has mean \(\mu = m \exp(\eta)\), with the log link,
 and variance \(\mu + \mu^2 / \theta\), as in
 <code>MASS::negative.binomial(theta)</code>. The size \(\theta\) is estimated
-unless a value is given, at which it is held.</p>
+unless <code>fixed_pars = list(theta = )</code> of <code><a href="glgpm.html">glgpm()</a></code> holds it, and
+<code><a href="specify_glgpm.html">specify_glgpm()</a></code> takes it as <code>theta</code> in its <code>parameters</code>.</p>
     </div>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">negative_binomial</span><span class="op">(</span>theta <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">negative_binomial</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
 
 
-<dl><dt id="arg-theta">theta<a class="anchor" aria-label="anchor" href="#arg-theta"></a></dt>
-<dd><p>The size, a positive number at which it is held, or <code>NULL</code>
-(the default) to estimate it.</p></dd>
+<dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
+<dd><p>Not used. A size given here stops, since it is held with
+<code>fixed_pars</code> instead.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -94,7 +97,7 @@ with one level per observation, so those are refused. A fit with an
 estimated size uses the sampled form of Monte Carlo maximum likelihood
 (see <code>integrate_noise</code> in <code><a href="set_control_mcml.html">set_control_mcml()</a></code>), and its check for other
 maxima has no screen of short scales. <code>MASS::negative.binomial(theta)</code>
-is read as <code>negative_binomial(theta)</code>.</p>
+is read as the negative binomial family with its size held at <code>theta</code>.</p>
 <p>Given the size, the log-likelihood of a count is that of a binomial
 count of \(y\) successes in \(y + \theta\) trials with the logit
 link and the offset \(\log(m / \theta)\), plus terms in \(y\) and
@@ -111,8 +114,6 @@ does, so the two can be compared.</p>
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu">negative_binomial</span><span class="op">(</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> The negative binomial family with the log link and its size estimated.</span>
-<span class="r-in"><span><span class="fu">negative_binomial</span><span class="op">(</span>theta <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> The negative binomial family with the log link and its size held at 2.</span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

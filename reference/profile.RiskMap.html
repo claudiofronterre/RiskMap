@@ -101,10 +101,9 @@ maximum likelihood.</p></dd>
 
 <dt id="arg-parameters">parameters<a class="anchor" aria-label="anchor" href="#arg-parameters"></a></dt>
 <dd><p>Names of the parameters to profile one at a time, as in
-<code>names(unlist(fitted$estimate))</code> (the prefix <code>beta.</code> can be left out).
-For a Gaussian model the nugget is <code>tau2</code>, its variance, in place of
-<code>nu2</code>, its ratio to the spatial variance. The default is every
-parameter.</p></dd>
+<code>names(unlist(coef(fitted)))</code> (the prefix <code>beta.</code> can be left out), the
+nugget as <code>tau2</code>, its variance (see <a href="riskmap_parameters.html">riskmap_parameters</a>). The default is
+every estimated parameter.</p></dd>
 
 
 <dt id="arg-pairs">pairs<a class="anchor" aria-label="anchor" href="#arg-pairs"></a></dt>
@@ -177,7 +176,7 @@ the covariance parameters only. The parameters are those of
 <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code>, with its labels: the regression coefficients, the spatial
 variance and scale, the variance of the nugget (<code>tau2</code>) when it is
 estimated, the measurement error variance (<code>sigma2_me</code>) unless it is
-fixed by <code>fix_var_me</code>, and the variances of the random effects. Since
+held by <code>fixed_pars</code>, and the variances of the random effects. Since
 points of an exact likelihood are cheap, each end of a profile interval
 is refined until the deviance of a solved point is within 0.01 of the
 cut-off. Grid steps of the variances and the scale are at most 1 on the

@@ -22,10 +22,11 @@ gp(..., kappa = 0.5, nugget = FALSE)
 
 - nugget:
 
-  The nugget effect, which represents the variance of the measurement
-  error. Default is `FALSE` in which case it is not estimated. If `TRUE`
-  the value will be estimated or a positive numeric value can be
-  provided instead to fix the effect.
+  Whether the model has a nugget, independent variation at each location
+  whose variance is `tau2`. Default is `FALSE`. With `TRUE` its variance
+  is estimated, unless `fixed_pars = list(tau2 = )` of
+  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+  holds it.
 
 ## Value
 

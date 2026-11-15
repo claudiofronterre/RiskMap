@@ -44,16 +44,17 @@ specify_glgpm(
   as `binomial("probit")`, or
   [`negative_binomial()`](https://claudiofronterre.github.io/RiskMap/reference/negative_binomial.md)
   for overdispersed counts with the log link, whose size is estimated
-  unless a value is given (`negative_binomial(theta = 2)` or
-  `MASS::negative.binomial(2)`). Where nothing is estimated, as in
-  `specify_glgpm()`, the size must be given. Binomial responses take the
-  logit, probit, complementary log-log (`"cloglog"`) and Cauchy
-  (`"cauchit"`) links, Poisson responses the log link and Gaussian
-  responses the identity link. `binomial("log")` and
-  `poisson("identity")` are not accepted, because they can give means
-  outside the range of the family, nor is `poisson("sqrt")`, whose
-  inverse gives the same mean to a positive and a negative linear
-  predictor. Quasi-likelihood families, such as
+  unless it is held, by `fixed_pars` of
+  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+  or by the family object `MASS::negative.binomial(2)`. Where nothing is
+  estimated, as in `specify_glgpm()`, the size must be given, as `theta`
+  in its `parameters`. Binomial responses take the logit, probit,
+  complementary log-log (`"cloglog"`) and Cauchy (`"cauchit"`) links,
+  Poisson responses the log link and Gaussian responses the identity
+  link. `binomial("log")` and `poisson("identity")` are not accepted,
+  because they can give means outside the range of the family, nor is
+  `poisson("sqrt")`, whose inverse gives the same mean to a positive and
+  a negative linear predictor. Quasi-likelihood families, such as
   [`stats::quasibinomial()`](https://rdrr.io/r/stats/family.html), have
   no likelihood to maximise and are not accepted either. Any other link
   can be given in `invlink`. A named link gives the same estimates as
@@ -65,7 +66,8 @@ specify_glgpm(
   A named list containing `beta`, `sigma2` and `phi`. `beta` has one
   entry per design-matrix column, including the intercept when present.
   Supply `tau2` when `gp(nugget = TRUE)`, `sigma2_me` for Gaussian
-  measurement error, and `sigma2_re` for each
+  measurement error, `theta` for the size of a negative binomial family,
+  and `sigma2_re` for each
   [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
   term. Variances may be zero. `phi` is expressed in `distance_units`.
 

@@ -46,6 +46,21 @@ regression without them, `one` the value 1 and `distance_quantile` the
 10th percentile of the distances between the locations. A name the model
 lacks stops with the names it has.
 
+## Held values
+
+`fixed_pars` of
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+takes the same names and structure, and holds the parameters it gives at
+their values instead of estimating them. It holds the variance of a
+nugget (`tau2`, for a model with `gp(nugget = TRUE)`), the measurement
+error variance of a Gaussian model (`sigma2_me`, which may be zero) and
+the size of a negative binomial model (`theta`).
+[`coef.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md)
+gives the held parameters with the estimated ones, so
+`start_pars = coef(fit)` works for a refit with the same holds, and
+[`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
+shows them as fixed.
+
 ## See also
 
 [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),

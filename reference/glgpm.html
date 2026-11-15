@@ -64,8 +64,8 @@ Supports Gaussian, binomial, Poisson and negative binomial response families.</p
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  return_samples <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  messages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"RiskMap.messages"</span>, <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>  fix_var_me <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  start_pars <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  start_pars <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  fixed_pars <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -90,9 +90,10 @@ with its link. Either one of the strings <code>"gaussian"</code>, <code>"binomia
 <code>"poisson"</code>, which take the identity, logit and log links, a family
 object as in <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code>, such as <code>binomial("probit")</code>, or
 <code><a href="negative_binomial.html">negative_binomial()</a></code> for overdispersed counts with the log link, whose
-size is estimated unless a value is given (<code>negative_binomial(theta = 2)</code>
-or <code>MASS::negative.binomial(2)</code>). Where nothing is estimated, as in
-<code><a href="specify_glgpm.html">specify_glgpm()</a></code>, the size must be given. Binomial
+size is estimated unless it is held, by <code>fixed_pars</code> of <code>glgpm()</code> or by
+the family object <code>MASS::negative.binomial(2)</code>. Where nothing is estimated,
+as in <code><a href="specify_glgpm.html">specify_glgpm()</a></code>, the size must be given, as <code>theta</code> in its
+<code>parameters</code>. Binomial
 responses take the logit, probit, complementary log-log (<code>"cloglog"</code>) and
 Cauchy (<code>"cauchit"</code>) links, Poisson responses the log link and Gaussian
 responses the identity link. <code>binomial("log")</code> and <code>poisson("identity")</code>
@@ -177,12 +178,6 @@ line for each stage of Monte Carlo maximum likelihood as described in
 <code>TRUE</code> if it is not set.</p></dd>
 
 
-<dt id="arg-fix-var-me">fix_var_me<a class="anchor" aria-label="anchor" href="#arg-fix-var-me"></a></dt>
-<dd><p>Optional fixed value for the measurement error variance when fitting a Gaussian model.
-When not provided, the value will be estimated, but cannot be if each location only has one sample and
-the <code>nugget</code> term in <code><a href="gp.html">gp()</a></code> is also set to <code>TRUE</code>.</p></dd>
-
-
 <dt id="arg-start-pars">start_pars<a class="anchor" aria-label="anchor" href="#arg-start-pars"></a></dt>
 <dd><p><code>NULL</code> (the default), or a named list of starting
 values for any of the model's estimated parameters, one, several or all of
@@ -194,6 +189,20 @@ list or as that named vector, so <code>start_pars = coef(fit)</code> starts a fi
 from the estimates of another. Every
 other parameter takes its automatic start. <code><a href="glgpm_parameters.html">glgpm_parameters()</a></code> lists the
 parameters of a model before it is fitted.</p></dd>
+
+
+<dt id="arg-fixed-pars">fixed_pars<a class="anchor" aria-label="anchor" href="#arg-fixed-pars"></a></dt>
+<dd><p><code>NULL</code> (the default), or a named list of values at which
+to hold some of the model's parameters instead of estimating them, with the
+names and structure of <code>start_pars</code>. It holds the variance of a nugget
+(<code>tau2</code>, with <code>gp(nugget = TRUE)</code>, positive), the measurement error variance
+of a Gaussian model (<code>sigma2_me</code>, zero or positive) and the size of a
+negative binomial model (<code>theta</code>, positive). A parameter can't be both
+started and held, except that a start equal to its held value, as in
+<code>start_pars = coef(fit)</code> of a fit with the same holds, is left out. With one
+observation per location, a Gaussian model can estimate the nugget or the
+measurement error variance, not both, and a negative binomial model the
+nugget or the size, not both.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -242,15 +251,13 @@ its rows/columns are named to match <code>unlist(estimate)</code>.</p></dd>
 <dt>ID_re</dt>
 <dd><p>Index of random effects if <code><a href="re.html">re()</a></code> is included in <code>formula</code></p></dd>
 
-<dt>fix_tau2</dt>
-<dd><p>Fixed nugget effect variance</p></dd>
+<dt>nugget</dt>
+<dd><p><code>"none"</code> without a nugget, <code>"estimated"</code> or
+<code>"fixed"</code> when <code>fixed_pars</code> holds its variance.</p></dd>
 
-<dt>fix_var_me</dt>
-<dd><p>Fixed measurement error variance</p></dd>
-
-<dt>family_parameters</dt>
-<dd><p>For a negative binomial model whose size is held,
-the size as <code>list(theta = )</code>. Absent otherwise.</p></dd>
+<dt>fixed_pars</dt>
+<dd><p>The values of the parameters the model holds, as a named
+list, <code>NULL</code> when it holds none.</p></dd>
 
 <dt>formula</dt>
 <dd><p>Model formula</p></dd>

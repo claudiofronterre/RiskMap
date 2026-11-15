@@ -25,56 +25,46 @@ coef(object, ...)
 
 ## Value
 
-A list containing the maximum likelihood estimates. For standard models:
+A named list of every parameter of the model on its natural scale, the
+estimates and the values held by `fixed_pars`, in the order of
+[riskmap_parameters](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md):
 
 - beta:
 
-  A vector of coefficient estimates.
+  The regression coefficients, named by the columns of the design
+  matrix.
 
 - sigma2:
 
-  The estimate for the variance parameter \\\sigma^2\\.
+  The variance of the spatial process.
 
 - phi:
 
-  The estimate for the scale parameter \\\phi\\ of the spatial
-  correlation function.
+  The scale of the spatial correlation, in the model's distance units.
 
 - tau2:
 
-  The estimate for the nugget effect parameter \\\tau^2\\, if
-  applicable.
+  The variance of the nugget, for a model with one.
 
 - sigma2_me:
 
-  The estimate for the measurement error variance \\\sigma^2\_{me}\\, if
-  applicable.
+  The measurement error variance, for a Gaussian model.
+
+- theta:
+
+  The size, for a negative binomial model.
 
 - sigma2_re:
 
-  A named vector of variance estimates for the random effects, if
-  applicable.
+  The variances of the random effects, named by their terms, for a model
+  with
+  [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
+  terms.
 
-- beta:
-
-  Coefficient estimates for log mean worm burden.
-
-- k:
-
-  Negative binomial overdispersion parameter.
-
-- rho:
-
-  Egg detection rate (fecundity).
-
-- sigma2:
-
-  Spatial process variance.
-
-- phi:
-
-  Spatial correlation scale.
+The list can be given as `start_pars` of
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md).
 
 ## See also
 
-[`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+[`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
+[riskmap_parameters](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md)

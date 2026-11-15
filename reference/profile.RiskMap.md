@@ -46,10 +46,10 @@ profile(
 - parameters:
 
   Names of the parameters to profile one at a time, as in
-  `names(unlist(fitted$estimate))` (the prefix `beta.` can be left out).
-  For a Gaussian model the nugget is `tau2`, its variance, in place of
-  `nu2`, its ratio to the spatial variance. The default is every
-  parameter.
+  `names(unlist(coef(fitted)))` (the prefix `beta.` can be left out),
+  the nugget as `tau2`, its variance (see
+  [riskmap_parameters](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md)).
+  The default is every estimated parameter.
 
 - pairs:
 
@@ -121,7 +121,7 @@ maximisation over the covariance parameters only. The parameters are
 those of [`summary()`](https://rdrr.io/r/base/summary.html), with its
 labels: the regression coefficients, the spatial variance and scale, the
 variance of the nugget (`tau2`) when it is estimated, the measurement
-error variance (`sigma2_me`) unless it is fixed by `fix_var_me`, and the
+error variance (`sigma2_me`) unless it is held by `fixed_pars`, and the
 variances of the random effects. Since points of an exact likelihood are
 cheap, each end of a profile interval is refined until the deviance of a
 solved point is within 0.01 of the cut-off. Grid steps of the variances

@@ -69,7 +69,9 @@ An object of class `RiskMap_bootstrap`, a list with
 
   A matrix of the bootstrap estimates on their natural scale, with one
   row per replicate (`NA` for failed refits) and one column per
-  parameter, named as `unlist(coef(object))`.
+  estimated parameter, named as `unlist(coef(object))` names them.
+  Parameters held by `fixed_pars` are held in the refits and have no
+  column.
 
 - estimate:
 

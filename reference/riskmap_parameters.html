@@ -111,6 +111,19 @@ binomial regression without them, <code>one</code> the value 1 and
 locations. A name the model lacks stops with the names it has.</p>
     </div>
     <div class="section level2">
+    <h2 id="held-values">Held values<a class="anchor" aria-label="anchor" href="#held-values"></a></h2>
+
+
+<p><code>fixed_pars</code> of <code><a href="glgpm.html">glgpm()</a></code> takes the same names and structure, and holds
+the parameters it gives at their values instead of estimating them. It
+holds the variance of a nugget (<code>tau2</code>, for a model with
+<code>gp(nugget = TRUE)</code>), the measurement error variance of a Gaussian model
+(<code>sigma2_me</code>, which may be zero) and the size of a negative binomial model
+(<code>theta</code>). <code><a href="coef.RiskMap.html">coef.RiskMap()</a></code> gives the held parameters with the estimated
+ones, so <code>start_pars = coef(fit)</code> works for a refit with the same holds,
+and <code><a href="summary.RiskMap.html">summary.RiskMap()</a></code> shows them as fixed.</p>
+    </div>
+    <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p><code><a href="glgpm.html">glgpm()</a></code>, <code><a href="glgpm_parameters.html">glgpm_parameters()</a></code>, <code><a href="coef.RiskMap.html">coef.RiskMap()</a></code></p></div>
     </div>

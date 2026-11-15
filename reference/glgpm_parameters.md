@@ -15,14 +15,14 @@ glgpm_parameters(
   formula,
   data,
   family,
-  fix_var_me = NULL,
+  fixed_pars = NULL,
   distance_units = c("km", "m")
 )
 ```
 
 ## Arguments
 
-- formula, data, family, fix_var_me:
+- formula, data, family, fixed_pars:
 
   As in
   [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md).

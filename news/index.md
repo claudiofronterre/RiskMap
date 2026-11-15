@@ -59,6 +59,16 @@ the main changes follow.
   lists a model’s parameters before it is fitted, and
   [`?riskmap_parameters`](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md)
   describes them.
+- `fixed_pars` in
+  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+  holds the nugget variance, the measurement error variance or the size
+  of a negative binomial model at a given value, in place of
+  `gp(nugget = <value>)`, `fix_var_me` and `negative_binomial(theta)`.
+  [`coef()`](https://rdrr.io/r/stats/coef.html) gives held parameters
+  with the estimated ones, in the order of
+  [`?riskmap_parameters`](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md),
+  and [`profile()`](https://rdrr.io/r/stats/profile.html) names the
+  nugget `tau2` for every family.
 - Gaussian fits with more than three records per latent effect start the
   measurement error and random-effect variances at the values given in
   `start_pars`. Such fits given a spatial variance other than 1, and

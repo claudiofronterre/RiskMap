@@ -81,9 +81,10 @@ with its link. Either one of the strings <code>"gaussian"</code>, <code>"binomia
 <code>"poisson"</code>, which take the identity, logit and log links, a family
 object as in <code><a href="https://rdrr.io/r/stats/glm.html" class="external-link">stats::glm()</a></code>, such as <code>binomial("probit")</code>, or
 <code><a href="negative_binomial.html">negative_binomial()</a></code> for overdispersed counts with the log link, whose
-size is estimated unless a value is given (<code>negative_binomial(theta = 2)</code>
-or <code>MASS::negative.binomial(2)</code>). Where nothing is estimated, as in
-<code>specify_glgpm()</code>, the size must be given. Binomial
+size is estimated unless it is held, by <code>fixed_pars</code> of <code><a href="glgpm.html">glgpm()</a></code> or by
+the family object <code>MASS::negative.binomial(2)</code>. Where nothing is estimated,
+as in <code>specify_glgpm()</code>, the size must be given, as <code>theta</code> in its
+<code>parameters</code>. Binomial
 responses take the logit, probit, complementary log-log (<code>"cloglog"</code>) and
 Cauchy (<code>"cauchit"</code>) links, Poisson responses the log link and Gaussian
 responses the identity link. <code>binomial("log")</code> and <code>poisson("identity")</code>
@@ -101,7 +102,8 @@ when that inverse cannot be differentiated symbolically, as for
 <dd><p>A named list containing <code>beta</code>, <code>sigma2</code> and <code>phi</code>.
 <code>beta</code> has one entry per design-matrix column, including the intercept
 when present. Supply <code>tau2</code> when <code>gp(nugget = TRUE)</code>, <code>sigma2_me</code> for
-Gaussian measurement error, and <code>sigma2_re</code> for each <code><a href="re.html">re()</a></code> term.
+Gaussian measurement error, <code>theta</code> for the size of a negative binomial
+family, and <code>sigma2_re</code> for each <code><a href="re.html">re()</a></code> term.
 Variances may be zero. <code>phi</code> is expressed in <code>distance_units</code>.</p></dd>
 
 

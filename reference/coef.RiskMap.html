@@ -66,44 +66,35 @@ maximum likelihood estimates from model fits obtained from the <code><a href="gl
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A list containing the maximum likelihood estimates. For standard models:</p>
+    <p>A named list of every parameter of the model on its natural
+scale, the estimates and the values held by <code>fixed_pars</code>, in the order of
+<a href="riskmap_parameters.html">riskmap_parameters</a>:</p>
 <dl><dt>beta</dt>
-<dd><p>A vector of coefficient estimates.</p></dd>
+<dd><p>The regression coefficients, named by the columns of the design matrix.</p></dd>
 
 <dt>sigma2</dt>
-<dd><p>The estimate for the variance parameter \(\sigma^2\).</p></dd>
+<dd><p>The variance of the spatial process.</p></dd>
 
 <dt>phi</dt>
-<dd><p>The estimate for the scale parameter \(\phi\) of the spatial correlation function.</p></dd>
+<dd><p>The scale of the spatial correlation, in the model's distance units.</p></dd>
 
 <dt>tau2</dt>
-<dd><p>The estimate for the nugget effect parameter \(\tau^2\), if applicable.</p></dd>
+<dd><p>The variance of the nugget, for a model with one.</p></dd>
 
 <dt>sigma2_me</dt>
-<dd><p>The estimate for the measurement error variance \(\sigma^2_{me}\), if applicable.</p></dd>
+<dd><p>The measurement error variance, for a Gaussian model.</p></dd>
+
+<dt>theta</dt>
+<dd><p>The size, for a negative binomial model.</p></dd>
 
 <dt>sigma2_re</dt>
-<dd><p>A named vector of variance estimates for the random effects, if applicable.</p></dd>
+<dd><p>The variances of the random effects, named by their terms, for a model with <code><a href="re.html">re()</a></code> terms.</p></dd>
 
-<dt>beta</dt>
-<dd><p>Coefficient estimates for log mean worm burden.</p></dd>
-
-<dt>k</dt>
-<dd><p>Negative binomial overdispersion parameter.</p></dd>
-
-<dt>rho</dt>
-<dd><p>Egg detection rate (fecundity).</p></dd>
-
-<dt>sigma2</dt>
-<dd><p>Spatial process variance.</p></dd>
-
-<dt>phi</dt>
-<dd><p>Spatial correlation scale.</p></dd>
-
-</dl></div>
+</dl><p>The list can be given as <code>start_pars</code> of <code><a href="glgpm.html">glgpm()</a></code>.</p>
+    </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p><code><a href="glgpm.html">glgpm</a></code></p></div>
+    <div class="dont-index"><p><code><a href="glgpm.html">glgpm</a></code>, <a href="riskmap_parameters.html">riskmap_parameters</a></p></div>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
