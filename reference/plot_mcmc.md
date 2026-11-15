@@ -11,7 +11,7 @@ whether some locations mix much worse than the rest.
 ## Usage
 
 ``` r
-plot_mcmc(object, check_mean = TRUE, component = NULL, ...)
+plot_mcmc(object, check_mean = TRUE, locations = NULL, ...)
 ```
 
 ## Arguments
@@ -28,7 +28,7 @@ plot_mcmc(object, check_mean = TRUE, component = NULL, ...)
   Logical. If `TRUE` (the default), the chain of the mean of the spatial
   random effects over the locations is shown.
 
-- component:
+- locations:
 
   The locations whose chains are shown, numbered as the rows of
   `object$coords`. The default, `NULL`, shows the location with the
@@ -37,7 +37,8 @@ plot_mcmc(object, check_mean = TRUE, component = NULL, ...)
 - ...:
 
   Further arguments passed to
-  [`stats::acf()`](https://rdrr.io/r/stats/acf.html), such as `lag.max`.
+  [`stats::acf()`](https://rdrr.io/r/stats/acf.html), namely `lag.max`,
+  `type`, `na.action` or `demean`. Other arguments are an error.
 
 ## Value
 
@@ -81,7 +82,7 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
              messages = FALSE)
 plot_mcmc(fit)
 
-plot_mcmc(fit, check_mean = FALSE, component = c(10, 20))
+plot_mcmc(fit, check_mean = FALSE, locations = c(10, 20))
 
 # }
 ```

@@ -11,10 +11,10 @@ specify_glgpm(
   data,
   family,
   parameters,
+  invlink = NULL,
   denominator = NULL,
-  model_crs = NULL,
-  distance_units = c("km", "m"),
-  invlink = NULL
+  distance_crs = NULL,
+  distance_units = c("km", "m")
 )
 ```
 
@@ -69,35 +69,6 @@ specify_glgpm(
   [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
   term. Variances may be zero. `phi` is expressed in `distance_units`.
 
-- denominator:
-
-  Optional denominator for binomial distributions, or exposure for
-  Poisson and negative binomial ones, the mean of a count being the
-  exposure times the inverse link of the linear predictor. Passed as a
-  bare/unquoted column name present in `data`. If not provided, defaults
-  to `1`.
-
-- model_crs:
-
-  Optional CRS (e.g. an EPSG code) used internally for model fitting. If
-  `data` is already in a projected CRS and `model_crs` is not provided,
-  the data are used as-is. If `data` are in longitude/latitude and
-  `model_crs` is not provided, the data are automatically reprojected to
-  the CRS from
-  [`propose_crs()`](https://claudiofronterre.github.io/RiskMap/reference/propose_crs.md),
-  a UTM zone or a projection centred on the data, and a message names
-  the CRS and the units of distance. If provided, `model_crs` must be a
-  projected (not longitude/latitude) CRS. A warning of class
-  `riskmap_warning_crs` is raised when the CRS used distorts distances
-  by more than 1% over the data.
-
-- distance_units:
-
-  Character string, either `"km"` or `"m"`, indicating the units used
-  for internal coordinate distances and spatial parameters such as
-  `phi`. The coordinates in the returned `data` retain the linear units
-  declared by its CRS. Defaults to `"km"`.
-
 - invlink:
 
   A function that maps the linear predictor to the mean of the response
@@ -108,6 +79,32 @@ specify_glgpm(
   the importance sampler, so they affect the speed of a fit and not its
   estimates. Not applicable for Gaussian models, and not to be combined
   with a family object that names a link other than logit or log.
+
+- denominator:
+
+  Optional denominator for binomial distributions, or exposure for
+  Poisson and negative binomial ones, the mean of a count being the
+  exposure times the inverse link of the linear predictor. Passed as a
+  bare/unquoted column name present in `data`. If not provided, defaults
+  to `1`.
+
+- distance_crs:
+
+  The projected coordinate reference system in which distances, and so
+  `phi`, are measured, for example an EPSG code. `data` are transformed
+  to it. The default, `NULL`, keeps projected data as they are and
+  projects longitude/latitude data to the CRS from
+  [`propose_crs()`](https://claudiofronterre.github.io/RiskMap/reference/propose_crs.md),
+  with a message naming it. A warning of class `riskmap_warning_crs` is
+  raised when the CRS used distorts distances by more than 1% over the
+  data.
+
+- distance_units:
+
+  Character string, either `"km"` or `"m"`, indicating the units used
+  for internal coordinate distances and spatial parameters such as
+  `phi`. The coordinates in the returned `data` retain the linear units
+  declared by its CRS. Defaults to `"km"`.
 
 ## Value
 
@@ -120,13 +117,7 @@ response.
 
 ## Details
 
-The response in `formula` need not exist in `data`. CRS handling follows
-[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md):
-`model_crs` is used when supplied, otherwise longitude/latitude data are
-transformed to the CRS from
-[`propose_crs()`](https://claudiofronterre.github.io/RiskMap/reference/propose_crs.md).
-A message reports automatic transformations, and a warning a CRS that
-distorts distances by more than 1% over the data.
+The response in `formula` need not exist in `data`.
 
 ## Examples
 

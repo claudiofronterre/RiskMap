@@ -197,7 +197,7 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 #>   standard errors (an approximate 95% bound, tolerance 0.1).
 bootstrap <- parametric_bootstrap(fit, n_sim = 100, seed = 2026)
 #> ℹ Simulating and refitting 100 replicates.
-#> ✔ Done in 3 minutes. 100 of 100 refits succeeded.
+#> ✔ Done in 4 minutes. 100 of 100 refits succeeded.
 summary(bootstrap)
 #> ── Parametric bootstrap ────────────────────────────────────────────────────────
 #> Binomial geostatistical model, 100 replicates (seed 2026). Variances and the

@@ -23,7 +23,7 @@ summarise_mcmc(object)
 
 ## Value
 
-A tibble with one row per chain and columns
+A data frame with one row per chain and columns
 
 - effect:
 
@@ -85,18 +85,14 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 ess <- summarise_mcmc(fit)
 # The mean and the five locations with the smallest effective sample size
 ess[1, ]
-#> # A tibble: 1 × 3
-#>   effect    component   ess
-#>   <chr>         <int> <dbl>
-#> 1 mean of S        NA 1294.
+#>      effect component      ess
+#> 1 mean of S        NA 1294.297
 head(ess[order(ess$ess), ], 5)
-#> # A tibble: 5 × 3
-#>   effect    component   ess
-#>   <chr>         <int> <dbl>
-#> 1 mean of S        NA 1294.
-#> 2 S                44 1325.
-#> 3 S                28 1337.
-#> 4 S                56 1338.
-#> 5 S                53 1352.
+#>       effect component      ess
+#> 1  mean of S        NA 1294.297
+#> 45         S        44 1325.209
+#> 29         S        28 1337.476
+#> 57         S        56 1337.583
+#> 54         S        53 1352.397
 # }
 ```

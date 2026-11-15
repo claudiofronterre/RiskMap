@@ -94,6 +94,14 @@ the main changes follow.
   simulate data and surfaces from a model, and
   [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)
   assesses prediction targets on them.
+- [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)
+  takes its CRS in `distance_crs` and
+  [`plot_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/plot_mcmc.md)
+  its locations in `locations`.
+  [`summarise_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_mcmc.md)
+  and
+  [`simulated_values()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_values.md)
+  return data frames.
 
 #### Messages
 
