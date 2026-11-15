@@ -103,7 +103,7 @@
 ##' data(liberia)
 ##' liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 ##' fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
-##'              data = liberia, model_crs = 32629, family = "binomial",
+##'              data = liberia, distance_crs = 32629, family = "binomial",
 ##'              seed = 2026)
 ##' bootstrap <- parametric_bootstrap(fit, n_sim = 100, seed = 2026)
 ##' summary(bootstrap)
@@ -328,7 +328,7 @@ assemble_bootstrap <- function(object, results, replicate_seeds) {
     warnings = warnings
   )
   class(out) <- "RiskMap_bootstrap"
-  out
+  stamp_version(out)
 }
 
 ##' Variances, the scale and the family's parameters, which are positive and

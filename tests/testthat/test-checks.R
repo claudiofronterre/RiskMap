@@ -32,9 +32,9 @@ test_that("errors name the user-facing function, bugs the internal one", {
   # An exported function that RiskMap calls internally doesn't hide the one
   # the user called.
   local_mocked_bindings(worldpop_files = function(...) {
-    set_control_mcmc(n_sim = 0)
+    set_control_mcmc(n_draws = 0)
   })
-  error <- expect_input_error(get_worldpop("LBR", 2020), "n_sim")
+  error <- expect_input_error(get_worldpop("LBR", 2020), "n_draws")
   expect_identical(conditionCall(error)[[1]], quote(get_worldpop))
 
   # A function called through do.call() with a function object has no name

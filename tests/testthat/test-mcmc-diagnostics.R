@@ -81,15 +81,15 @@ test_that("plot_mcmc shows the chains of the chosen locations", {
 })
 
 test_that("traces are drawn against the iterations at which samples were kept", {
-  expect_identical(attr(poisson_model, "mcmc")[c("n_sim", "burnin", "thin")],
-                   list(n_sim = 1000, burnin = 200, thin = 10))
+  expect_identical(attr(poisson_model, "mcmc")[c("n_draws", "burnin", "thin")],
+                   list(n_draws = 80, burnin = 200, thin = 10))
   traces <- plot_mcmc(poisson_model)[[1L]][[1L]]
   expect_identical(unique(traces$data$iteration), 200 + 10 * seq_len(80))
   expect_identical(ggplot2::get_labs(traces)$x, "Iteration")
 
   # Fits saved before the settings were recorded number the samples instead.
   older_fit <- poisson_model
-  attr(older_fit, "mcmc")[c("n_sim", "burnin", "thin")] <- NULL
+  attr(older_fit, "mcmc")[c("n_draws", "burnin", "thin")] <- NULL
   traces <- plot_mcmc(older_fit)[[1L]][[1L]]
   expect_identical(unique(traces$data$iteration), seq_len(80))
   expect_identical(ggplot2::get_labs(traces)$x, "Sample")

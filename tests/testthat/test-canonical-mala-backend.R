@@ -30,7 +30,7 @@ test_that("compiled log-likelihood agrees with stable R calculations", {
 
 test_that("compiled MALA supports multiple random-effect blocks", {
   control <- set_control_mcmc(
-    n_sim = 100, burnin = 40, thin = 3, h = 0.5
+    n_draws = 20, burnin = 40, thin = 3, h = 0.5
   )
   fit <- laplace_sampling_mcmc(
     y = c(1, 2, 3, 4), units_m = rep(6, 4),
@@ -55,7 +55,7 @@ test_that("compiled MALA supports multiple random-effect blocks", {
 
 test_that("a canonical link given as a function gives the same chain", {
   control <- set_control_mcmc(
-    n_sim = 100, burnin = 40, thin = 3, h = 0.5
+    n_draws = 20, burnin = 40, thin = 3, h = 0.5
   )
   arguments <- list(
     y = c(1, 3), units_m = c(5, 6), mu = c(-0.5, 0.2),

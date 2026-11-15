@@ -1672,9 +1672,13 @@ glgpm_nong_adaptive <- function(
   fit <- fit_adaptive_mcml(
     engine = engine, start = start, restart_start = restart_start,
     objective = objective, penalty = penalty, dispersed = dispersed,
-    initial_budget = control_mcml$initial_samples,
-    validation_budget = control_mcml$validation_samples,
-    maximum_budget = control_mcml$max_samples,
+    # A control saved with a fit before the draws were named so has the
+    # sizes as *_samples.
+    initial_budget = control_mcml$initial_draws %||%
+      control_mcml$initial_samples,
+    validation_budget = control_mcml$validation_draws %||%
+      control_mcml$validation_samples,
+    maximum_budget = control_mcml$max_draws %||% control_mcml$max_samples,
     maximum_stages = control_mcml$max_stages,
     tolerance = control_mcml$tolerance,
     seed = fit_seed, lower = lower, upper = upper,
@@ -1738,7 +1742,7 @@ glgpm_nong_adaptive <- function(
 ##'
 ##' The estimate is the held values, the covariance is NA, and the
 ##' log-likelihood is the Monte Carlo estimate at the values on one bank of
-##' `control_mcml$validation_samples` draws from the global proposal anchored
+##' `control_mcml$validation_draws` draws from the global proposal anchored
 ##' there, from the fit's seed, with the terms the records leave out. The
 ##' optimiser record has no MCML outcome, so the fit reports no certificate.
 ##' @noRd
@@ -1748,7 +1752,8 @@ held_mcml_result <- function(engine, start, parameters, D, family, invlink, y,
   progress_step("Evaluating the likelihood at the held values", messages)
   engine$set_anchor(start)
   set.seed(fit_seed)
-  draws <- as.integer(control_mcml$validation_samples %||% 5000L)
+  draws <- as.integer(control_mcml$validation_draws %||%
+                        control_mcml$validation_samples %||% 5000L)
   bank <- matrix(stats::rnorm(draws * engine$latent_dimension), nrow = draws)
   log_lik <- engine$evaluate(start, bank)
   progress_step_done(messages)

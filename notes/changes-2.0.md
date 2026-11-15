@@ -15,16 +15,16 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `assess_pp` |  `assess_prediction` |
 | `assess_sim` | `assess_simulation` |
 | `check_mcmc` | `plot_mcmc` |
-| `compute_ID_coords` | `create_ids` |
+| `compute_ID_coords` | Removed; the replacement is internal |
 | `convex_hull_sf` | `create_convex_hull` |
 | `propose_utm` | `propose_crs` (chooses the CRS by its distortion of distances) |
 | `dast()` | Removed; will be replaced in a separate package |
 | `glgpm_sim` | `simulate_glgpm` |
 | `Laplace_sampling_MCMC` | Removed; the replacement is internal |
-| `matern.grad.phi` | `matern_gradient_phi ` |
-| `matern.hessian.phi` | `matern_hessian_phi` |
+| `matern.grad.phi` | Removed; the replacement is internal |
+| `matern.hessian.phi` | Removed; the replacement is internal |
 | `matern_cor` | `matern_correlation` |
-| `maxim.integrand` | `maxim_integrand` |
+| `maxim.integrand` | Removed; the replacement is internal |
 | `plot_score` / `plot_AnPIT` | `plot.RiskMap_cross_validation` (the two are merged; by default it draws every plot the `RiskMap_cross_validation` object has data for) |
 | `plot_s_variogram` | `plot.RiskMap_variogram` |
 | `pred_over_grid` | `predict` |
@@ -1292,6 +1292,60 @@ for example "Spatial process var." instead of "Spatial variance". The printed
 intervals of a profile have 4 significant digits, with the lower and upper ends
 of each interval under a common heading, so that the table fits 80 characters.
 
+- `glgpm()` takes the CRS in which distances are measured in `distance_crs`,
+which was `model_crs`, the name that `variogram()`, `summarise_distance()`,
+`create_grid()` and `specify_glgpm()` use. Its arguments are in the order
+`formula`, `data`, `family`, `invlink`, `denominator`, `distance_crs`,
+`distance_units`, `start_pars`, `fixed_pars`, `control_mcml`, `control_mcmc`,
+`return_samples`, `seed` and `messages`, so that `seed` and `messages` come
+last as in the other functions. This changes calls that give the arguments
+after `denominator` by position, and the order of the arguments in
+`fit$call`. `summary()` of a fit takes `level` before `...`.
+- `?glgpm` documents seven components of a fit as its interface, `data`, in
+the CRS in which the model was fitted, `input_crs`, the CRS the data were
+given in, `formula`, `family`, `call`, `seed` and `distance_units`. The other
+components are internal and may change. The new `logLik()`, `vcov()` and
+`nobs()` methods read the rest. `logLik()` has the number of estimated
+parameters, without those that `fixed_pars` holds, as its `df` and the number
+of records as its `nobs`, so that `AIC()` and `BIC()` work. `vcov()` gives the
+covariance of the estimates on the scale of `coef()`, by the delta method from
+the working scale, named as `unlist(coef(fit))` and for the estimated
+parameters only, with `NA` rows for a parameter without a standard error.
+`?glgpm` says that `update()` refits a model with some of its arguments
+changed, and its example uses it.
+- `print()` and `summary()` of a fit, `print()` of its summary and `print()`
+of `negative_binomial()` stop on an argument they do not use instead of
+ignoring it, and `summary(fit, conf_level = )` says to use `level`.
+- `negative_binomial()` returns an object of class `RiskMap_family`, which
+was `riskmap_family_specification`, the one result class not named in the
+`RiskMap_` style.
+- `maxim_integrand()`, `matern_gradient_phi()` and `matern_hessian_phi()` are
+no longer exported, since only the fitting engine uses them, and their help
+pages are gone. `create_ids()` is removed. `assess_prediction()` with
+`keep_par_fixed = TRUE` indexes the locations of each training set with
+`index_coordinate_rows()`, as `glgpm()` does, which gives the same indices in
+time linear in the records instead of quadratic.
+- `set_control_mcmc(n_draws = 2000, burnin = 2000, thin = 10, h = NULL,
+c1_h = 1, c2_h = 0.6)`. `n_draws` is the number of draws kept, on which fitted
+values and predictions rest, as in `profile(n_draws = )` and
+`predict(parameter_draws = )`, and the chain runs `burnin + n_draws * thin`
+iterations. It replaces `n_sim`, the number of iterations, which had to exceed
+`burnin` by a multiple of `thin`. The default keeps 2,000 draws from 22,000
+iterations, as before. `c1.h` and `c2.h`, the only dotted argument names of the
+package, are `c1_h` and `c2_h`. `linear_model` is gone. It said that the draws
+of a Gaussian model are independent, which prediction knows from the family,
+and the parameter draws of a Gaussian prediction now take
+`set_control_mcmc(n_draws = , burnin = 0, thin = 1)`. The settings recorded
+with a fit's conditional samples, which `plot_mcmc()` reads, are `n_draws`,
+`burnin` and `thin`, and the message of a prediction still gives the number
+of iterations. A control saved from an earlier build, with `n_sim`, stops with
+a hint to make it again.
+- `set_control_mcml()` takes `initial_draws`, `validation_draws` and
+`max_draws` in place of `initial_samples`, `validation_samples` and
+`max_samples`, the words of `summary(fit)$mcml` and of the messages, and the
+hints of `summary()` and `check_fit()` name them. A control stored with a fit
+made before, with the old names, still serves its refits.
+
 ## Predictions
 
 - Grids created by `create_grid()` now have the class `RiskMap_grid` before
@@ -1680,6 +1734,23 @@ package. The example of `get_worldpop()` runs only in interactive sessions,
 since `R CMD check --as-cran` runs `\donttest{}` examples and it downloads
 from WorldPop. RiskMap needs rlang 1.0.0 or later, whose
 `check_installed()` and `caller_arg()` it uses.
+- Every result that may be saved and read again has the attribute
+`riskmap_version`, a list with the `version` of RiskMap that made it, as a
+`package_version`, and `sha`, the `RemoteSha` of its DESCRIPTION when RiskMap
+was installed from GitHub and `NA` otherwise. Fits, predictions, profiles,
+bootstraps, checks, cross-validations, simulation assessments, simulations,
+simulation models, variograms and extrapolations have it. It is not printed,
+and an object without it was made before RiskMap stamped its results, by an
+earlier version or an early development build of 2.0.0, so that code which
+reads saved objects can tell when one is too old.
+- `to_table()` has methods for fits, their summaries, cross-validations and
+their summaries, in place of a default method that recognised them by their
+class, and its default method stops, naming the objects it accepts. The tables
+are unchanged.
+- The unused `importFrom()` of `Deriv::Deriv()`, `graphics::points()`,
+`numDeriv::grad()` and `numDeriv::hessian()`, `rlang::sym()` and
+`utils::flush.console()` are removed. The code calls Deriv and numDeriv with
+`::`.
 - dplyr is no longer imported, and spatialEco and spatialsample move to
 Suggests, which leaves 17 packages in Imports, parallel among them. dplyr stays
 in Suggests for the tests of grids with dplyr verbs.

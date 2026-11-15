@@ -40,37 +40,21 @@
 ##' the exposure times the inverse link of the linear predictor.
 ##' Passed as a bare/unquoted column name present in `data`.
 ##' If not provided, defaults to `1`.
-##' @param model_crs Optional CRS (e.g. an EPSG code) used internally for model fitting.
-##' If `data` is already in a projected CRS and `model_crs` is not provided, the data are used as-is.
-##' If `data` are in longitude/latitude and `model_crs` is not provided, the data are automatically
-##' reprojected to the CRS from [propose_crs()], a UTM zone or a projection centred on the data,
-##' and a message names the CRS and the units of distance.
-##' If provided, `model_crs` must be a projected (not longitude/latitude) CRS.
-##' A warning of class `riskmap_warning_crs` is raised when the CRS used distorts distances
-##' by more than 1% over the data.
+##' @param distance_crs The projected coordinate reference system in which
+##' distances, and so `phi`, are measured, for example an EPSG code. `data`
+##' are transformed to it, and the model is fitted in it. The default, `NULL`,
+##' keeps projected data as they are and projects data in longitude and
+##' latitude to the CRS from [propose_crs()], a UTM zone or a projection
+##' centred on the data, with a message naming the CRS and the units of
+##' distance. A CRS in longitude and latitude is refused. A warning of class
+##' `riskmap_warning_crs` is raised when the CRS used distorts distances by
+##' more than 1% over the data. [variogram()], [summarise_distance()],
+##' [create_grid()] and [specify_glgpm()] take the same argument, so that
+##' their distances can be measured as the fit's are.
 ##' @param distance_units Character string, either `"km"` or `"m"`, indicating the units used
-##' for internal coordinate distances and spatial parameters such as `phi`. The coordinates in
-##' the returned `data` retain the linear units declared by its CRS.
+##' for internal coordinate distances and spatial parameters such as `phi`. The coordinates of
+##' the data keep the linear units of their CRS.
 ##' Defaults to `"km"`.
-##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
-##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
-##' @param control_mcml Control parameters for adaptive Monte Carlo maximum
-##' likelihood estimation. Must be returned by [set_control_mcml()].
-##' @param seed Optional non-negative integer that seeds every random step of
-##' a binomial or Poisson fit: the Monte Carlo samples of the estimation and
-##' the final conditional samples. When `NULL` (the default), one integer is
-##' drawn from the session's random number generator, so [set.seed()] before
-##' the call also reproduces the fit. The seed used is returned as `seed`.
-##' The caller's random number state is otherwise left unchanged. Ignored for
-##' Gaussian models, which have no random step.
-##' @param return_samples Logical indicating whether to draw and retain
-##' conditional samples at the fitted parameters. These samples are used to
-##' compute fitted values. If `FALSE`, final sampling is skipped and fitted
-##' values are not computed. Defaults to `TRUE`. Ignored for Gaussian models.
-##' @param messages Logical indicating whether to print messages, and a
-##'   line for each stage of Monte Carlo maximum likelihood as described in
-##'   [riskmap_progress]. Defaults to the option `RiskMap.messages`, or
-##'   `TRUE` if it is not set.
 ##' @param start_pars `NULL` (the default), or a named list of starting
 ##' values for any of the model's estimated parameters, one, several or all of
 ##' them, named as in [riskmap_parameters]. `beta` is matched to the columns of
@@ -97,6 +81,25 @@
 ##' observation per location, a Gaussian model can estimate the nugget or the
 ##' measurement error variance, not both, and a negative binomial model the
 ##' nugget or the size, not both.
+##' @param control_mcml Control parameters for adaptive Monte Carlo maximum
+##' likelihood estimation. Must be returned by [set_control_mcml()].
+##' @param control_mcmc Control parameters for MCMC sampling for binomial or Poisson models.
+##' Must be an object of class `RiskMap_control_mcmc` as returned by [set_control_mcmc()].
+##' @param return_samples Logical indicating whether to draw and retain
+##' conditional samples at the fitted parameters. These samples are used to
+##' compute fitted values. If `FALSE`, final sampling is skipped and fitted
+##' values are not computed. Defaults to `TRUE`. Ignored for Gaussian models.
+##' @param seed Optional non-negative integer that seeds every random step of
+##' a binomial or Poisson fit: the Monte Carlo samples of the estimation and
+##' the final conditional samples. When `NULL` (the default), one integer is
+##' drawn from the session's random number generator, so [set.seed()] before
+##' the call also reproduces the fit. The seed used is returned as `seed`.
+##' The caller's random number state is otherwise left unchanged. Ignored for
+##' Gaussian models, which have no random step.
+##' @param messages Logical indicating whether to print messages, and a
+##'   line for each stage of Monte Carlo maximum likelihood as described in
+##'   [riskmap_progress]. Defaults to the option `RiskMap.messages`, or
+##'   `TRUE` if it is not set.
 ##' @details
 ##' Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
 ##' spatial Gaussian processes to account for spatial correlation in the data. This function fits GLGPMs
@@ -115,11 +118,9 @@
 ##' at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
 ##' in capturing complex spatial patterns.
 ##'
-##' The `model_crs` argument can be used to reproject the spatial coordinates to a different, projected
-##' CRS for model fitting. If `data` are in longitude/latitude and `model_crs` is not supplied, the
-##' coordinates are automatically reprojected to the CRS from [propose_crs()] and a message details the
-##' conversion; automatic projection is avoided for `model_crs` explicitly supplied in longitude/latitude,
-##' which raises an error.
+##' The model is fitted in the projected CRS of `distance_crs`, or of `data`
+##' when it is `NULL`, and the data in longitude and latitude are projected to
+##' the CRS from [propose_crs()] with a message.
 ##' The `distance_units` argument controls whether distances between locations (and so parameters such
 ##' as `phi`) are expressed in kilometers (`"km"`, the default) or meters (`"m"`).
 ##'
@@ -132,8 +133,8 @@
 ##' standard errors, with an allowance for that sample's own error taken from
 ##' it and from a replicate of it (see [set_control_mcml()]). The samples
 ##' are enlarged only when the certificate exceeds
-##' the tolerance. Every stage is recorded in `mcml_history`, and a warning is
-##' issued if the tolerance is not met within the configured limits. Warnings
+##' the tolerance, and a warning is issued if the tolerance is not met within
+##' the configured limits. [check_fit()] reports every stage. Warnings
 ##' are kept for what changes how a result is read, and [check_fit()] goes through
 ##' all the checks on the computation, with what to do about any that need a look.
 ##' The estimation samples and the final conditional samples are drawn from
@@ -158,87 +159,44 @@
 ##' since it may be in other units. [summary.RiskMap()] says which starting
 ##' values a fit used and why.
 ##'
-##' @return An object of class `RiskMap` containing the fitted model and relevant information:
+##' [stats::update()] refits a model with some of its arguments changed, as
+##' in `update(fit, . ~ . + elevation)` or
+##' `update(fit, fixed_pars = list(phi = 20))`. It evaluates the call again,
+##' with the data it names in the environment where `update()` is called.
 ##'
-##' \item{estimate}{Estimated parameters as a named list: \code{beta} (named
-##' regression coefficients on the scale of the supplied covariates), \code{sigma2},
-##' \code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
-##' estimated, \code{sigma2_me} for Gaussian models with an estimated
-##' measurement error variance, \code{theta} for negative binomial models whose
-##' size is estimated, stored as \eqn{\log(1/\theta)}, the opposite sign to the
-##' logarithm of a variance (\code{coef()} gives \eqn{\theta}), and
-##' \code{sigma2_re} (a named vector, one
-##' entry per random effect) when random effects are included. Keeping these
-##' in separate list elements - rather than one flat named vector - avoids a
-##' covariate whose name collides with a parameter name (e.g. a covariate
-##' literally called \code{"sigma2"}) corrupting name-based lookups.
-##' \code{covariance} is estimated as one joint matrix over every parameter;
-##' its rows/columns are named to match \code{unlist(estimate)}.}
-##' \item{grad_MLE}{Gradient of the maximum likelihood function}
-##' \item{covariance}{Covariance}
-##' \item{log_lik}{Log likelihood}
-##' \item{y}{Response variable}
-##' \item{D}{Covariate matrix}
-##' \item{coords}{Unique spatial coordinates}
-##' \item{ID_coords}{Index of coordinates}
-##' \item{re}{Random effects if `re()` is included in `formula`}
-##' \item{ID_re}{Index of random effects if `re()` is included in `formula`}
-##' \item{nugget}{\code{"none"} without a nugget, \code{"estimated"} or
-##' \code{"fixed"} when \code{fixed_pars} holds its variance.}
-##' \item{fixed_pars}{The values of the parameters the model holds, as a named
-##' list, \code{NULL} when it holds none.}
-##' \item{formula}{Model formula}
-##' \item{family}{Response family}
-##' \item{link_function}{For binomial and Poisson models, the inverse link
-##' (`inv`), its first and second derivatives (`d1` and `d2`) and the name of
-##' the link (`link`), such as `"probit"`, which is `NULL` for an inverse given
-##' in `invlink`. `NULL` for Gaussian models.}
-##' \item{distance_units}{Units (`"km"` or `"m"`) used for internal coordinate distances and spatial parameters}
-##' \item{data}{The `sf` data used for model fitting, in the CRS used internally}
-##' \item{input_crs}{The CRS of the input data}
-##' \item{kappa}{Spatial correlation parameter}
-##' \item{units_m}{The denominators or exposures of a binomial, Poisson or
-##' negative binomial model}
-##' \item{cov_offset}{Covariate offset}
-##' \item{call}{Matched call}
-##' \item{S_samples}{For non-Gaussian models, fresh conditional MCMC samples
-##' evaluated at the fitted parameters when `return_samples` is `TRUE`. These
-##' are not the reference samples used for MCML estimation. The first block is
-##' the location-level Gaussian effect (including the nugget when present),
-##' followed by any unstructured random-effect blocks.}
-##' \item{linear_predictors}{Conditional fitted linear predictors. For
-##' non-Gaussian models these are Monte Carlo means over the final-parameter
-##' latent samples and are `NULL` when `return_samples = FALSE`; for Gaussian
-##' models they use the conditional latent mean.}
-##' \item{fitted_values}{Conditional fitted response means. Binomial models
-##' return probabilities; Poisson and negative binomial models return expected
-##' counts and therefore include any supplied exposure in `denominator`. These
-##' are `NULL` for
-##' non-Gaussian models when `return_samples = FALSE`.}
-##' \item{mcml_history}{For non-Gaussian models, one entry per stage of
-##' certified Monte Carlo maximum likelihood (see [set_control_mcml()]),
-##' containing the sizes of the fitting and validation samples, the
-##' importance distribution used, the optimum of the fitting sample
-##' (`fitted_estimate`) and the corrected estimate (`estimate`), the optimizer
-##' result, the size of the correction, the certificate and its two parts
-##' (`certificate_distance` and `certificate_radius`), effective sample sizes
-##' and Pareto tail diagnostics of each sample, the outcome of the stage and
-##' its timing. A stage where the global importance distribution failed also
-##' holds why, in `proposal_failure` or, at the start of the first stage,
-##' `start_failure`: the `reason`, the number of `refits` and the last `change`
-##' of its factors. Estimates use the same parameterisation as `estimate`, with
-##' regression coefficients and spatial scale restored to the supplied
-##' covariate and distance units. `NULL` for Gaussian models.}
-##' \item{mcml_certified}{Whether the certificate of the returned estimate is
-##' within the tolerance. The certificate is an approximate 95% bound, in
-##' statistical standard errors, on the Monte Carlo error of the estimate, that
-##' is its distance from the maximum of the exact likelihood that the fit has
-##' located. It says nothing about whether that maximum is the highest.
-##' `NULL` for Gaussian models.}
-##' \item{mcml_selected_iteration}{The stage whose estimate is returned.
-##' `NULL` for Gaussian models.}
-##' \item{seed}{The seed used for the random steps of a binomial or Poisson
-##' fit, whether supplied or drawn. `NULL` for Gaussian models.}
+##' @return A fitted model of class `RiskMap`, a list. These components are
+##' part of its interface.
+##' \item{data}{The `sf` data of the fit, in the CRS in which the model was
+##' fitted, so that distances between them are those that `phi` describes.
+##' `sf::st_crs(fit$data)` gives that CRS, and
+##' `sf::st_transform(fit$data, fit$input_crs)` gives the data in the CRS
+##' they were given in.}
+##' \item{input_crs}{The CRS of `data` as it was given.}
+##' \item{formula}{The model formula.}
+##' \item{family}{The name of the family, such as `"binomial"`.}
+##' \item{call}{The matched call.}
+##' \item{seed}{The seed used for the random steps of a binomial, Poisson or
+##' negative binomial fit, whether given or drawn, so that
+##' `glgpm(..., seed = fit$seed)` reproduces the fit. `NULL` for Gaussian
+##' models.}
+##' \item{distance_units}{The units of distance, `"km"` or `"m"`, in which
+##' `phi` is given.}
+##'
+##' The other components are internal and may change in any version of
+##' RiskMap. The estimates, their covariance and the likelihood are read with
+##' [coef()][coef.RiskMap()], [vcov()][vcov.RiskMap()],
+##' [logLik()][logLik.RiskMap()] and [nobs()][nobs.RiskMap()], fitted values
+##' with [fitted()][fitted.RiskMap()], standard errors and intervals with
+##' [summary()][summary.RiskMap()], and how the fit was computed with
+##' [check_fit()].
+##'
+##' Every result of RiskMap that can be saved and read again, such as a fit, a
+##' prediction or a profile, has the attribute `riskmap_version`, a list with
+##' the `version` of RiskMap that made it, as a [package_version()], and
+##' `sha`, the commit it was installed from when it was installed from GitHub
+##' and `NA` otherwise. An object without it was made before RiskMap stamped
+##' its results, by an earlier version or an early development build of
+##' 2.0.0.
 ##'
 ##' @examples
 ##'
@@ -255,12 +213,7 @@
 ##' summary(fit)
 ##'
 ##' # add a covariate
-##' fit <- glgpm(
-##'   formula = y ~ gp() + pop_dens,
-##'   data = italy_sim[1:100,],
-##'   family = "gaussian",
-##'   messages = FALSE
-##' )
+##' fit <- update(fit, . ~ . + pop_dens)
 ##'
 ##' summary(fit)
 ##'
@@ -289,7 +242,7 @@
 ##'
 ##' # reduce iterations to speed up the fit, and set a
 ##' # seed for reproducibility
-##' control_mcmc <- set_control_mcmc(n_sim = 100,
+##' control_mcmc <- set_control_mcmc(n_draws = 8,
 ##'                                  burnin = 20)
 ##'
 ##' fit <- glgpm(NO_INF ~ gp(),
@@ -312,15 +265,15 @@ glgpm <- function(formula,
                  family,
                  invlink = NULL,
                  denominator = NULL,
-                 model_crs = NULL,
+                 distance_crs = NULL,
                  distance_units = c("km", "m"),
-                 control_mcmc = set_control_mcmc(),
-                 control_mcml = set_control_mcml(),
-                 seed = NULL,
-                 return_samples = TRUE,
-                 messages = getOption("RiskMap.messages", TRUE),
                  start_pars = NULL,
-                 fixed_pars = NULL) {
+                 fixed_pars = NULL,
+                 control_mcml = set_control_mcml(),
+                 control_mcmc = set_control_mcmc(),
+                 return_samples = TRUE,
+                 seed = NULL,
+                 messages = getOption("RiskMap.messages", TRUE)) {
   check_supplied(formula)
   check_supplied(data)
   check_supplied(family)
@@ -421,12 +374,12 @@ glgpm <- function(formula,
   # The message on a projection is shown even with `messages = FALSE`,
   # because it changes the model. It names the units of distance, so that
   # the fit has one message on where it is fitted.
-  projected_here <- is.null(model_crs) && isTRUE(st_is_longlat(data))
-  data <- project_for_distances(data, model_crs, "model_crs", "for fitting",
-                                units = distance_units)
+  projected_here <- is.null(distance_crs) && isTRUE(st_is_longlat(data))
+  data <- project_for_distances(data, distance_crs, "distance_crs",
+                                "for fitting", units = distance_units)
 
   coords_o <- coordinates_in_units(
-    data, distance_units, if (is.null(model_crs)) "data" else "model_crs"
+    data, distance_units, if (is.null(distance_crs)) "data" else "distance_crs"
   )
   coordinate_index <- index_coordinate_rows(coords_o)
   coords <- coordinate_index$coordinates
@@ -653,7 +606,7 @@ glgpm <- function(formula,
     res$linear_predictors <- gaussian_fitted
     res$fitted_values <- gaussian_fitted
   }
-  return(res)
+  stamp_version(res)
 }
 
 ##' Fit a geostatistical model to its design
@@ -2628,15 +2581,7 @@ refit_invlink <- function(object) {
 ##'   (`hessian`, if `hessian = TRUE`) or the inverse of its negative
 ##'   (`Sigma.tilde`, otherwise). If `gradient = TRUE`, the gradient at the mode
 ##'   is also returned (`gradient`).
-##' @examples
-##' coords <- cbind(c(0, 1, 2), c(0, 0, 1))
-##' Sigma <- exp(-as.matrix(dist(coords)))
-##' mode <- maxim_integrand(
-##'   y = c(3, 5, 1), denominator = c(10, 10, 10), mu = rep(-0.5, 3),
-##'   Sigma = Sigma, ID_coords = 1:3, family = "binomial"
-##' )
-##' mode$mode
-##' @export
+##' @noRd
 maxim_integrand <- function(
     y, denominator, mu, Sigma, ID_coords, ID_re = NULL, family,
     sigma2_re = NULL, hessian = FALSE, gradient = FALSE, invlink = NULL
@@ -2865,11 +2810,11 @@ maxim_integrand <- function(
 ##' @param family Character string: \code{"binomial"} or \code{"poisson"}.
 ##' @param control_mcmc List of control parameters:
 ##'   \describe{
-##'     \item{n_sim}{Total number of MCMC iterations (including burn-in).}
+##'     \item{n_draws}{Number of draws kept, after burn-in and thinning.}
 ##'     \item{burnin}{Number of initial iterations to discard.}
 ##'     \item{thin}{Thinning interval for saving samples.}
 ##'     \item{h}{Initial step size for the Gaussian proposal. Defaults to \eqn{1.65 / n_\mathrm{tot}^{1/6}} if not supplied.}
-##'     \item{c1.h, c2.h}{Positive tuning constants for adaptive step-size updates.}
+##'     \item{c1_h, c2_h}{Positive tuning constants for adaptive step-size updates.}
 ##'   }
 ##' @param seed Optional integer seed for the chain. When supplied, the
 ##'   caller's random number state is restored on exit.
@@ -2924,7 +2869,7 @@ maxim_integrand <- function(
 ##' The default inverse links are: identity (gaussian), logistic (binomial),
 ##' and exponential (poisson). Supply \code{invlink} to override.
 ##'
-##' @seealso \code{\link{maxim_integrand}}
+##' @seealso `maxim_integrand()`
 ##' @noRd
 laplace_sampling_mcmc <- function(y,
                                   units_m,
@@ -3058,11 +3003,11 @@ laplace_sampling_mcmc <- function(y,
     columns_r = structure$columns, n_u = structure$n_u, n_d = structure$n_d,
     prior_u_r = structure$prior_u, prior_d_r = structure$prior_d,
     weights_r = found$weights, mode_r = found$mode, family = family,
-    link_terms = link_terms, n_sim = control_mcmc$n_sim,
+    link_terms = link_terms, n_sim = mcmc_iterations(control_mcmc),
     burnin = control_mcmc$burnin, thin = control_mcmc$thin,
     step_size = control_mcmc$h %||% (1.65 / structure$dimension^(1 / 6)),
-    adaptation_scale = if (adapt_step) control_mcmc$c1.h else 0,
-    adaptation_exponent = control_mcmc$c2.h,
+    adaptation_scale = if (adapt_step) control_mcmc$c1_h else 0,
+    adaptation_exponent = control_mcmc$c2_h,
     average_step = average_step, start_from_draw = start_from_draw
   ), error = function(error) {
     if (inherits(error, "riskmap_error")) riskmap_rethrow(error)
@@ -3087,7 +3032,7 @@ laplace_sampling_mcmc <- function(y,
       mean(out_sim$acceptance[seq_len(control_mcmc$burnin)])
     } else NA_real_,
     sampling = mean(out_sim$acceptance[seq.int(
-      control_mcmc$burnin + 1L, control_mcmc$n_sim
+      control_mcmc$burnin + 1L, mcmc_iterations(control_mcmc)
     )])
   )
   out_sim$mode <- found$mode[structure$position]
@@ -3307,14 +3252,14 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' `tolerance`, the samples are enlarged to the size predicted to meet it and
 ##' the fit is repeated.
 ##'
-##' @param initial_samples Positive integer giving the number of draws in the
+##' @param initial_draws Positive integer giving the number of draws in the
 ##' fitting sample at the first stage. Defaults to 1,000.
-##' @param validation_samples Positive integer giving the number of draws in
+##' @param validation_draws Positive integer giving the number of draws in
 ##' each validation sample, and in the replicate of the second, at the first
 ##' stage. Later stages enlarge the
 ##' validation samples in the same proportion as the fitting sample. Defaults
 ##' to 5,000.
-##' @param max_samples Positive integer giving the largest permitted fitting
+##' @param max_draws Positive integer giving the largest permitted fitting
 ##' sample. Defaults to 16,000.
 ##' @param max_stages Positive integer giving the maximum number of stages.
 ##' Defaults to 4.
@@ -3452,12 +3397,12 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' 0.05.
 ##' @return A control object of class `RiskMap_control_mcml`.
 ##' @examples
-##' control_mcml <- set_control_mcml(max_samples = 8000)
+##' control_mcml <- set_control_mcml(max_draws = 8000)
 ##' @seealso [glgpm()], [set_control_mcmc()]
 ##' @export
-set_control_mcml <- function(initial_samples = 1000L,
-                             validation_samples = 5000L,
-                             max_samples = 16000L,
+set_control_mcml <- function(initial_draws = 1000L,
+                             validation_draws = 5000L,
+                             max_draws = 16000L,
                              max_stages = 4L,
                              tolerance = 0.1,
                              proposal = c("global", "laplace"),
@@ -3471,9 +3416,9 @@ set_control_mcml <- function(initial_samples = 1000L,
                              pc_sigma_probability = 0.05,
                              pc_scale_threshold = NULL,
                              pc_scale_probability = 0.05) {
-  check_positive_integer(initial_samples, "initial_samples")
-  check_positive_integer(validation_samples, "validation_samples")
-  check_positive_integer(max_samples, "max_samples")
+  check_positive_integer(initial_draws, "initial_draws")
+  check_positive_integer(validation_draws, "validation_draws")
+  check_positive_integer(max_draws, "max_draws")
   check_positive_integer(max_stages, "max_stages")
   check_positive_number(tolerance, "")
   proposal <- match_choice(proposal)
@@ -3500,15 +3445,15 @@ set_control_mcml <- function(initial_samples = 1000L,
   }
   check_range(pc_scale_probability, 0, 1, allow_equal = FALSE,
               arg = "pc_scale_probability")
-  if (max_samples < initial_samples) {
-    abort_input("{.arg max_samples} must be at least {.arg initial_samples} ({initial_samples}), not {max_samples}.", arg = "max_samples")
+  if (max_draws < initial_draws) {
+    abort_input("{.arg max_draws} must be at least {.arg initial_draws} ({initial_draws}), not {max_draws}.", arg = "max_draws")
   }
 
   structure(
     list(
-      initial_samples = as.integer(initial_samples),
-      validation_samples = as.integer(validation_samples),
-      max_samples = as.integer(max_samples),
+      initial_draws = as.integer(initial_draws),
+      validation_draws = as.integer(validation_draws),
+      max_draws = as.integer(max_draws),
       max_stages = as.integer(max_stages),
       tolerance = tolerance,
       proposal = proposal,
@@ -3609,112 +3554,88 @@ sample_at_nongaussian_fit <- function(estimate, parameters, y, units_m, D,
         "tuning_par", "acceptance_prob", "acceptance", "acceptance_rate",
         "invlink_used"
       )],
-      unclass(control_mcmc)[c("n_sim", "burnin", "thin")]
+      unclass(control_mcmc)[c("n_draws", "burnin", "thin")]
     )
   )
 }
 
 ##' Set Control Parameters for Simulation
 ##'
-##' This function sets control parameters for running simulations, supporting MCMC methods
-##' for glgpm models.
+##' The settings of the Langevin sampler that draws the latent effects of a
+##' binomial, Poisson or negative binomial model given the data, in [glgpm()]
+##' and [predict()][predict.RiskMap()].
 ##'
-##' @param n_sim Integer. The total number of simulations to run. Default is
-##'   22000, which with the default burn-in and thinning keeps 2,000 draws. With
-##'   `linear_model = TRUE` it is the number of independent draws, 2,000 by
-##'   default.
-##' @param burnin Integer. The number of initial simulations to discard (burn-in/warmup period). Default is 2000.
-##' @param thin Integer. The interval at which simulations are recorded (thinning interval, MCMC only). Default is 10.
+##' @param n_draws Positive integer. The number of draws kept, after burn-in
+##'   and thinning, on which fitted values and predictions are based. Default
+##'   is 2,000. The chain runs `burnin + n_draws * thin` iterations.
+##' @param burnin Non-negative integer. The number of iterations discarded at
+##'   the start of the chain, during which the step size is adapted. Default
+##'   is 2,000.
+##' @param thin Positive integer. One iteration in `thin` is kept after
+##'   burn-in. Default is 10.
 ##' @param h Numeric. An optional positive step size for Langevin MCMC.
-##' @param c1.h Numeric. Positive scale for the burn-in Robbins-Monro step-size
-##'   adaptation. Default is 1.
-##' @param c2.h Numeric. Exponent controlling the diminishing adaptation gain.
+##' @param c1_h Numeric. Positive scale for the burn-in Robbins-Monro
+##'   step-size adaptation. Default is 1.
+##' @param c2_h Numeric. Exponent controlling the diminishing adaptation gain.
 ##'   Must be larger than 0.5 and no larger than 1. Default is 0.6.
-##' @param linear_model Logical. If TRUE, sets up parameters for a linear model. Default is FALSE.
 ##'
 ##' @details
-##' If \code{linear_model = TRUE}, only \code{n_sim} is required.
-##'
 ##' During burn-in the step size of the Langevin chain is adapted towards an
 ##' acceptance rate of 0.574, starting from \code{h} (by default
 ##' \eqn{1.65 / d^{1/6}} for \eqn{d} latent effects). The step kept after
 ##' burn-in is the geometric mean of the adapted step over the second half of
 ##' burn-in.
 ##'
+##' The latent effects of a Gaussian model are drawn independently, so its
+##' predictions take `n_draws` draws without burn-in or thinning.
+##'
 ##' Seeds are not part of the control settings. Pass `seed` to [glgpm()],
 ##' [predict.RiskMap()], [assess_prediction()] or [assess_simulation()].
 ##'
-##' @return A list of control parameters with class "RiskMap_control_mcmc". Contents depend on \code{sampler}:
-##' \itemize{
-##'   \item For "mcmc": n_sim, burnin, thin, h, c1.h, c2.h, linear_model
-##' }
+##' @return A list of class `"RiskMap_control_mcmc"` with `n_draws`, `burnin`,
+##'   `thin`, `h`, `c1_h` and `c2_h`.
 ##'
 ##' @examples
 ##' # Default parameters (MCMC)
 ##' control_mcmc <- set_control_mcmc()
 ##'
-##' # Custom MCMC parameters
-##' control_mcmc <- set_control_mcmc(n_sim = 15000, burnin = 3000, thin = 20)
+##' # Custom MCMC parameters: 600 draws from 3,000 + 600 * 20 iterations
+##' control_mcmc <- set_control_mcmc(n_draws = 600, burnin = 3000, thin = 20)
 ##'
 ##' @seealso \code{\link{glgpm}}
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
-set_control_mcmc <- function(n_sim = 22000,
-                            burnin = 2000,
-                            thin = 10,
-                            h = NULL,
-                            c1.h = 1,
-                            c2.h = 0.6,
-                            linear_model = FALSE){
-
-  # =============================================================================
-  # LINEAR MODEL (simple case for both samplers)
-  # =============================================================================
-
-  if (linear_model) {
-    # Draws of a linear model are independent, so none is discarded.
-    if (missing(n_sim)) n_sim <- 2000
-    check_positive_integer(n_sim, "n_sim")
-    res <- list(
-      n_sim = n_sim,
-      linear_model = linear_model
-    )
-    class(res) <- "RiskMap_control_mcmc"
-    return(res)
-  }
-
-  # =============================================================================
-  # MCMC SAMPLER (Langevin for glgpm)
-  # =============================================================================
-
-  # Validate MCMC parameters
-  check_positive_integer(n_sim, "n_sim")
+set_control_mcmc <- function(n_draws = 2000,
+                             burnin = 2000,
+                             thin = 10,
+                             h = NULL,
+                             c1_h = 1,
+                             c2_h = 0.6) {
+  check_positive_integer(n_draws, "n_draws")
   check_positive_integer(burnin, "burnin", allow_zero = TRUE)
   check_positive_integer(thin, "thin")
-
-  if (n_sim <= burnin) {
-    abort_input("{.arg n_sim} must be larger than {.arg burnin} ({burnin}), not {n_sim}.", arg = "n_sim")
-  }
-  if ((n_sim - burnin) %% thin != 0) {
-    abort_input("{.arg thin} must divide {.code n_sim - burnin} ({n_sim - burnin}) exactly, not {thin}.", arg = "thin")
+  # As doubles, since integer arguments could overflow.
+  iterations <- as.numeric(burnin) + as.numeric(n_draws) * as.numeric(thin)
+  if (iterations > .Machine$integer.max) {
+    abort_input("{.code burnin + n_draws * thin} must be at most {format(.Machine$integer.max, big.mark = ',')} iterations, not {format(iterations, big.mark = ',', scientific = FALSE)}.", arg = "n_draws")
   }
   if (!is.null(h)) check_positive_number(h, "")
-  check_positive_number(c1.h, "")
-  check_zero_one(c2.h, "c2.h")
-  if (c2.h <= 0.5) {
-    abort_input("{.arg c2.h} must be larger than 0.5 and at most 1, not {c2.h}.", arg = "c2.h")
+  check_positive_number(c1_h, "")
+  check_zero_one(c2_h, "c2_h")
+  if (c2_h <= 0.5) {
+    abort_input("{.arg c2_h} must be larger than 0.5 and at most 1, not {c2_h}.", arg = "c2_h")
   }
 
-  res <- list(
-    n_sim = n_sim,
-    burnin = burnin,
-    thin = thin,
-    h = h,
-    c1.h = c1.h,
-    c2.h = c2.h,
-    linear_model = FALSE
+  structure(
+    list(n_draws = n_draws, burnin = burnin, thin = thin, h = h,
+         c1_h = c1_h, c2_h = c2_h),
+    class = "RiskMap_control_mcmc"
   )
+}
 
-  class(res) <- "RiskMap_control_mcmc"
-  return(res)
+##' The number of iterations of the chain that `control_mcmc` sets,
+##' `burnin + n_draws * thin`
+##' @noRd
+mcmc_iterations <- function(control_mcmc) {
+  control_mcmc$burnin + control_mcmc$n_draws * control_mcmc$thin
 }

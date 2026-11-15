@@ -11,11 +11,11 @@ negative_binomial(...)
 \code{fixed_pars} instead.}
 }
 \value{
-An object of class \code{riskmap_family_specification}.
+An object of class \code{RiskMap_family}.
 }
 \description{
-Specifies a negative binomial response for \code{\link[=glgpm]{glgpm()}},
-\code{\link[=specify_glgpm]{specify_glgpm()}} and \code{\link[=maxim_integrand]{maxim_integrand()}}, for counts that vary more than
+Specifies a negative binomial response for \code{\link[=glgpm]{glgpm()}} and
+\code{\link[=specify_glgpm]{specify_glgpm()}}, for counts that vary more than
 a Poisson model allows. A count \eqn{y} with exposure \eqn{m} given the
 random effects has mean \eqn{\mu = m \exp(\eta)}, with the log link,
 and variance \eqn{\mu + \mu^2 / \theta}, as in

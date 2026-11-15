@@ -11,7 +11,8 @@
 
 \item{digits}{The number of significant digits of the estimates.}
 
-\item{...}{other parameters.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 Invisibly returns \code{x}.

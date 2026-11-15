@@ -10,15 +10,15 @@ glgpm(
   family,
   invlink = NULL,
   denominator = NULL,
-  model_crs = NULL,
+  distance_crs = NULL,
   distance_units = c("km", "m"),
-  control_mcmc = set_control_mcmc(),
-  control_mcml = set_control_mcml(),
-  seed = NULL,
-  return_samples = TRUE,
-  messages = getOption("RiskMap.messages", TRUE),
   start_pars = NULL,
-  fixed_pars = NULL
+  fixed_pars = NULL,
+  control_mcml = set_control_mcml(),
+  control_mcmc = set_control_mcmc(),
+  return_samples = TRUE,
+  seed = NULL,
+  messages = getOption("RiskMap.messages", TRUE)
 )
 }
 \arguments{
@@ -65,43 +65,22 @@ the exposure times the inverse link of the linear predictor.
 Passed as a bare/unquoted column name present in \code{data}.
 If not provided, defaults to \code{1}.}
 
-\item{model_crs}{Optional CRS (e.g. an EPSG code) used internally for model fitting.
-If \code{data} is already in a projected CRS and \code{model_crs} is not provided, the data are used as-is.
-If \code{data} are in longitude/latitude and \code{model_crs} is not provided, the data are automatically
-reprojected to the CRS from \code{\link[=propose_crs]{propose_crs()}}, a UTM zone or a projection centred on the data,
-and a message names the CRS and the units of distance.
-If provided, \code{model_crs} must be a projected (not longitude/latitude) CRS.
-A warning of class \code{riskmap_warning_crs} is raised when the CRS used distorts distances
-by more than 1\% over the data.}
+\item{distance_crs}{The projected coordinate reference system in which
+distances, and so \code{phi}, are measured, for example an EPSG code. \code{data}
+are transformed to it, and the model is fitted in it. The default, \code{NULL},
+keeps projected data as they are and projects data in longitude and
+latitude to the CRS from \code{\link[=propose_crs]{propose_crs()}}, a UTM zone or a projection
+centred on the data, with a message naming the CRS and the units of
+distance. A CRS in longitude and latitude is refused. A warning of class
+\code{riskmap_warning_crs} is raised when the CRS used distorts distances by
+more than 1\% over the data. \code{\link[=variogram]{variogram()}}, \code{\link[=summarise_distance]{summarise_distance()}},
+\code{\link[=create_grid]{create_grid()}} and \code{\link[=specify_glgpm]{specify_glgpm()}} take the same argument, so that
+their distances can be measured as the fit's are.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating the units used
-for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates in
-the returned \code{data} retain the linear units declared by its CRS.
+for internal coordinate distances and spatial parameters such as \code{phi}. The coordinates of
+the data keep the linear units of their CRS.
 Defaults to \code{"km"}.}
-
-\item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
-Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.}
-
-\item{control_mcml}{Control parameters for adaptive Monte Carlo maximum
-likelihood estimation. Must be returned by \code{\link[=set_control_mcml]{set_control_mcml()}}.}
-
-\item{seed}{Optional non-negative integer that seeds every random step of
-a binomial or Poisson fit: the Monte Carlo samples of the estimation and
-the final conditional samples. When \code{NULL} (the default), one integer is
-drawn from the session's random number generator, so \code{\link[=set.seed]{set.seed()}} before
-the call also reproduces the fit. The seed used is returned as \code{seed}.
-The caller's random number state is otherwise left unchanged. Ignored for
-Gaussian models, which have no random step.}
-
-\item{return_samples}{Logical indicating whether to draw and retain
-conditional samples at the fitted parameters. These samples are used to
-compute fitted values. If \code{FALSE}, final sampling is skipped and fitted
-values are not computed. Defaults to \code{TRUE}. Ignored for Gaussian models.}
-
-\item{messages}{Logical indicating whether to print messages, and a
-line for each stage of Monte Carlo maximum likelihood as described in
-\link{riskmap_progress}. Defaults to the option \code{RiskMap.messages}, or
-\code{TRUE} if it is not set.}
 
 \item{start_pars}{\code{NULL} (the default), or a named list of starting
 values for any of the model's estimated parameters, one, several or all of
@@ -130,89 +109,65 @@ except that a start equal to its held value, as in
 observation per location, a Gaussian model can estimate the nugget or the
 measurement error variance, not both, and a negative binomial model the
 nugget or the size, not both.}
+
+\item{control_mcml}{Control parameters for adaptive Monte Carlo maximum
+likelihood estimation. Must be returned by \code{\link[=set_control_mcml]{set_control_mcml()}}.}
+
+\item{control_mcmc}{Control parameters for MCMC sampling for binomial or Poisson models.
+Must be an object of class \code{RiskMap_control_mcmc} as returned by \code{\link[=set_control_mcmc]{set_control_mcmc()}}.}
+
+\item{return_samples}{Logical indicating whether to draw and retain
+conditional samples at the fitted parameters. These samples are used to
+compute fitted values. If \code{FALSE}, final sampling is skipped and fitted
+values are not computed. Defaults to \code{TRUE}. Ignored for Gaussian models.}
+
+\item{seed}{Optional non-negative integer that seeds every random step of
+a binomial or Poisson fit: the Monte Carlo samples of the estimation and
+the final conditional samples. When \code{NULL} (the default), one integer is
+drawn from the session's random number generator, so \code{\link[=set.seed]{set.seed()}} before
+the call also reproduces the fit. The seed used is returned as \code{seed}.
+The caller's random number state is otherwise left unchanged. Ignored for
+Gaussian models, which have no random step.}
+
+\item{messages}{Logical indicating whether to print messages, and a
+line for each stage of Monte Carlo maximum likelihood as described in
+\link{riskmap_progress}. Defaults to the option \code{RiskMap.messages}, or
+\code{TRUE} if it is not set.}
 }
 \value{
-An object of class \code{RiskMap} containing the fitted model and relevant information:
+A fitted model of class \code{RiskMap}, a list. These components are
+part of its interface.
+\item{data}{The \code{sf} data of the fit, in the CRS in which the model was
+fitted, so that distances between them are those that \code{phi} describes.
+\code{sf::st_crs(fit$data)} gives that CRS, and
+\code{sf::st_transform(fit$data, fit$input_crs)} gives the data in the CRS
+they were given in.}
+\item{input_crs}{The CRS of \code{data} as it was given.}
+\item{formula}{The model formula.}
+\item{family}{The name of the family, such as \code{"binomial"}.}
+\item{call}{The matched call.}
+\item{seed}{The seed used for the random steps of a binomial, Poisson or
+negative binomial fit, whether given or drawn, so that
+\code{glgpm(..., seed = fit$seed)} reproduces the fit. \code{NULL} for Gaussian
+models.}
+\item{distance_units}{The units of distance, \code{"km"} or \code{"m"}, in which
+\code{phi} is given.}
 
-\item{estimate}{Estimated parameters as a named list: \code{beta} (named
-regression coefficients on the scale of the supplied covariates), \code{sigma2},
-\code{phi}, \code{nu2} \eqn{= \tau^2/\sigma^2} when the nugget is
-estimated, \code{sigma2_me} for Gaussian models with an estimated
-measurement error variance, \code{theta} for negative binomial models whose
-size is estimated, stored as \eqn{\log(1/\theta)}, the opposite sign to the
-logarithm of a variance (\code{coef()} gives \eqn{\theta}), and
-\code{sigma2_re} (a named vector, one
-entry per random effect) when random effects are included. Keeping these
-in separate list elements - rather than one flat named vector - avoids a
-covariate whose name collides with a parameter name (e.g. a covariate
-literally called \code{"sigma2"}) corrupting name-based lookups.
-\code{covariance} is estimated as one joint matrix over every parameter;
-its rows/columns are named to match \code{unlist(estimate)}.}
-\item{grad_MLE}{Gradient of the maximum likelihood function}
-\item{covariance}{Covariance}
-\item{log_lik}{Log likelihood}
-\item{y}{Response variable}
-\item{D}{Covariate matrix}
-\item{coords}{Unique spatial coordinates}
-\item{ID_coords}{Index of coordinates}
-\item{re}{Random effects if \code{re()} is included in \code{formula}}
-\item{ID_re}{Index of random effects if \code{re()} is included in \code{formula}}
-\item{nugget}{\code{"none"} without a nugget, \code{"estimated"} or
-\code{"fixed"} when \code{fixed_pars} holds its variance.}
-\item{fixed_pars}{The values of the parameters the model holds, as a named
-list, \code{NULL} when it holds none.}
-\item{formula}{Model formula}
-\item{family}{Response family}
-\item{link_function}{For binomial and Poisson models, the inverse link
-(\code{inv}), its first and second derivatives (\code{d1} and \code{d2}) and the name of
-the link (\code{link}), such as \code{"probit"}, which is \code{NULL} for an inverse given
-in \code{invlink}. \code{NULL} for Gaussian models.}
-\item{distance_units}{Units (\code{"km"} or \code{"m"}) used for internal coordinate distances and spatial parameters}
-\item{data}{The \code{sf} data used for model fitting, in the CRS used internally}
-\item{input_crs}{The CRS of the input data}
-\item{kappa}{Spatial correlation parameter}
-\item{units_m}{The denominators or exposures of a binomial, Poisson or
-negative binomial model}
-\item{cov_offset}{Covariate offset}
-\item{call}{Matched call}
-\item{S_samples}{For non-Gaussian models, fresh conditional MCMC samples
-evaluated at the fitted parameters when \code{return_samples} is \code{TRUE}. These
-are not the reference samples used for MCML estimation. The first block is
-the location-level Gaussian effect (including the nugget when present),
-followed by any unstructured random-effect blocks.}
-\item{linear_predictors}{Conditional fitted linear predictors. For
-non-Gaussian models these are Monte Carlo means over the final-parameter
-latent samples and are \code{NULL} when \code{return_samples = FALSE}; for Gaussian
-models they use the conditional latent mean.}
-\item{fitted_values}{Conditional fitted response means. Binomial models
-return probabilities; Poisson and negative binomial models return expected
-counts and therefore include any supplied exposure in \code{denominator}. These
-are \code{NULL} for
-non-Gaussian models when \code{return_samples = FALSE}.}
-\item{mcml_history}{For non-Gaussian models, one entry per stage of
-certified Monte Carlo maximum likelihood (see \code{\link[=set_control_mcml]{set_control_mcml()}}),
-containing the sizes of the fitting and validation samples, the
-importance distribution used, the optimum of the fitting sample
-(\code{fitted_estimate}) and the corrected estimate (\code{estimate}), the optimizer
-result, the size of the correction, the certificate and its two parts
-(\code{certificate_distance} and \code{certificate_radius}), effective sample sizes
-and Pareto tail diagnostics of each sample, the outcome of the stage and
-its timing. A stage where the global importance distribution failed also
-holds why, in \code{proposal_failure} or, at the start of the first stage,
-\code{start_failure}: the \code{reason}, the number of \code{refits} and the last \code{change}
-of its factors. Estimates use the same parameterisation as \code{estimate}, with
-regression coefficients and spatial scale restored to the supplied
-covariate and distance units. \code{NULL} for Gaussian models.}
-\item{mcml_certified}{Whether the certificate of the returned estimate is
-within the tolerance. The certificate is an approximate 95\% bound, in
-statistical standard errors, on the Monte Carlo error of the estimate, that
-is its distance from the maximum of the exact likelihood that the fit has
-located. It says nothing about whether that maximum is the highest.
-\code{NULL} for Gaussian models.}
-\item{mcml_selected_iteration}{The stage whose estimate is returned.
-\code{NULL} for Gaussian models.}
-\item{seed}{The seed used for the random steps of a binomial or Poisson
-fit, whether supplied or drawn. \code{NULL} for Gaussian models.}
+The other components are internal and may change in any version of
+RiskMap. The estimates, their covariance and the likelihood are read with
+\link[=coef.RiskMap]{coef()}, \link[=vcov.RiskMap]{vcov()},
+\link[=logLik.RiskMap]{logLik()} and \link[=nobs.RiskMap]{nobs()}, fitted values
+with \link[=fitted.RiskMap]{fitted()}, standard errors and intervals with
+\link[=summary.RiskMap]{summary()}, and how the fit was computed with
+\code{\link[=check_fit]{check_fit()}}.
+
+Every result of RiskMap that can be saved and read again, such as a fit, a
+prediction or a profile, has the attribute \code{riskmap_version}, a list with
+the \code{version} of RiskMap that made it, as a \code{\link[=package_version]{package_version()}}, and
+\code{sha}, the commit it was installed from when it was installed from GitHub
+and \code{NA} otherwise. An object without it was made before RiskMap stamped
+its results, by an earlier version or an early development build of
+2.0.0.
 }
 \description{
 Fits generalized linear Gaussian process models to spatial data,
@@ -237,11 +192,9 @@ the \code{\link[=re]{re()}} term in the model formula. These random effects can 
 at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
 in capturing complex spatial patterns.
 
-The \code{model_crs} argument can be used to reproject the spatial coordinates to a different, projected
-CRS for model fitting. If \code{data} are in longitude/latitude and \code{model_crs} is not supplied, the
-coordinates are automatically reprojected to the CRS from \code{\link[=propose_crs]{propose_crs()}} and a message details the
-conversion; automatic projection is avoided for \code{model_crs} explicitly supplied in longitude/latitude,
-which raises an error.
+The model is fitted in the projected CRS of \code{distance_crs}, or of \code{data}
+when it is \code{NULL}, and the data in longitude and latitude are projected to
+the CRS from \code{\link[=propose_crs]{propose_crs()}} with a message.
 The \code{distance_units} argument controls whether distances between locations (and so parameters such
 as \code{phi}) are expressed in kilometers (\code{"km"}, the default) or meters (\code{"m"}).
 
@@ -254,8 +207,8 @@ with a second, fresh one, which bounds its Monte Carlo error in statistical
 standard errors, with an allowance for that sample's own error taken from
 it and from a replicate of it (see \code{\link[=set_control_mcml]{set_control_mcml()}}). The samples
 are enlarged only when the certificate exceeds
-the tolerance. Every stage is recorded in \code{mcml_history}, and a warning is
-issued if the tolerance is not met within the configured limits. Warnings
+the tolerance, and a warning is issued if the tolerance is not met within
+the configured limits. \code{\link[=check_fit]{check_fit()}} reports every stage. Warnings
 are kept for what changes how a result is read, and \code{\link[=check_fit]{check_fit()}} goes through
 all the checks on the computation, with what to do about any that need a look.
 The estimation samples and the final conditional samples are drawn from
@@ -279,6 +232,11 @@ start of \code{phi} far from the distances between the locations, below a
 hundredth of the smallest or above ten times the largest, gives a warning,
 since it may be in other units. \code{\link[=summary.RiskMap]{summary.RiskMap()}} says which starting
 values a fit used and why.
+
+\code{\link[stats:update]{stats::update()}} refits a model with some of its arguments changed, as
+in \code{update(fit, . ~ . + elevation)} or
+\code{update(fit, fixed_pars = list(phi = 20))}. It evaluates the call again,
+with the data it names in the environment where \code{update()} is called.
 }
 \examples{
 
@@ -295,12 +253,7 @@ fit <- glgpm(
 summary(fit)
 
 # add a covariate
-fit <- glgpm(
-  formula = y ~ gp() + pop_dens,
-  data = italy_sim[1:100,],
-  family = "gaussian",
-  messages = FALSE
-)
+fit <- update(fit, . ~ . + pop_dens)
 
 summary(fit)
 
@@ -329,7 +282,7 @@ data(loaloa)
 
 # reduce iterations to speed up the fit, and set a
 # seed for reproducibility
-control_mcmc <- set_control_mcmc(n_sim = 100,
+control_mcmc <- set_control_mcmc(n_draws = 8,
                                  burnin = 20)
 
 fit <- glgpm(NO_INF ~ gp(),

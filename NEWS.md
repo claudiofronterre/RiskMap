@@ -11,16 +11,16 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 | `assess_pp()` | `assess_prediction()` |
 | `assess_sim()` | `assess_simulation()` |
 | `check_mcmc()` | `plot_mcmc()` |
-| `compute_ID_coords()` | `create_ids()` |
+| `compute_ID_coords()` | Removed, now internal |
 | `convex_hull_sf()` | `create_convex_hull()` |
 | `dast()` | Removed, to move to a separate package |
 | `dist_summaries()` | `summarise_distance()` |
 | `glgpm_sim()` | `simulate_glgpm()` |
 | `Laplace_sampling_MCMC()` | Removed, now internal |
-| `matern.grad.phi()` | `matern_gradient_phi()` |
-| `matern.hessian.phi()` | `matern_hessian_phi()` |
+| `matern.grad.phi()` | Removed, now internal |
+| `matern.hessian.phi()` | Removed, now internal |
 | `matern_cor()` | `matern_correlation()` |
-| `maxim.integrand()` | `maxim_integrand()` |
+| `maxim.integrand()` | Removed, now internal |
 | `plot_AnPIT()`, `plot_score()` | `plot()` of `assess_prediction()` results |
 | `plot_mda()` | Removed, to move with `dast()` |
 | `plot_s_variogram()` | `plot()` of `variogram()` results |
@@ -63,6 +63,18 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   measurement error and random-effect variances at the values given in
   `start_pars`. Such fits given a spatial variance other than 1, and parametric
   bootstraps of such models, can move very slightly.
+- `glgpm()` takes its CRS in `distance_crs`, with `seed` and `messages` as
+  its last arguments. `logLik()`, `vcov()` and `nobs()` work on fits, so
+  `AIC()` and `BIC()` do too, and `?glgpm` lists the components of a fit that
+  are part of its interface. `print()` and `summary()` of a fit stop on an
+  argument they don't use, and every result records the version of RiskMap
+  that made it.
+- `set_control_mcmc()` takes the number of draws it keeps in `n_draws`,
+  2,000 by default, instead of the number of iterations in `n_sim`, and its
+  step-size settings are `c1_h` and `c2_h`. It no longer has `linear_model`,
+  since the draws of a Gaussian model are always independent.
+  `set_control_mcml()` takes its sample sizes as `initial_draws`,
+  `validation_draws` and `max_draws`.
 - `check_fit()` reports how a fit was computed and flags anything that needs
   attention. `profile()` gives profile likelihoods and `parametric_bootstrap()`
   bootstrap intervals for the parameters.

@@ -117,7 +117,7 @@ specify_glgpm <- function(formula, data, family, parameters, invlink = NULL,
   class(out) <- "RiskMap_simulation_model"
   # Validate data-dependent settings before accepting the specification.
   simulation_inputs(out, data, TRUE, "data")
-  out
+  stamp_version(out)
 }
 
 #' Simulate replicated data and spatial surfaces
@@ -214,7 +214,7 @@ simulate_glgpm <- function(object, nsim = 1, what = "data",
   out <- list(locations = prepared$locations, samples = samples, nsim = nsim,
               model = model, what = names(prepared$locations), seed = seed)
   class(out) <- "RiskMap_simulation"
-  out
+  stamp_version(out)
 }
 
 #' Prepare the locations, inputs and covariance factor of a simulation

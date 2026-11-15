@@ -281,7 +281,8 @@ make_inverse_link_functions <- function(family, invlink, ncheck,
 ##' - `parameters`, the family's own parameters (#253, step 2), each with its
 ##'   `label` in tables of estimates, its `words` in sentences, and `natural`,
 ##'   the function from its working scale, on which it is fitted, to its
-##'   natural scale, with `working` its inverse. `limit_words`, where given,
+##'   natural scale, with `working` its inverse and `natural_derivative` the
+##'   derivative of `natural`, for `vcov()`. `limit_words`, where given,
 ##'   names the parameter whose working value tends to minus infinity at the
 ##'   boundary, when that is not the parameter itself. `start` is the rule of
 ##'   its start in the parameter table (`parameter_table()`), `one`, or
@@ -335,7 +336,7 @@ riskmap_families <- list(
     default_is_canonical = TRUE,
     parameters = list(sigma2_me = list(
       label = "Measurement error var.", words = "measurement error variance",
-      natural = exp, working = log, start = "one"
+      natural = exp, working = log, natural_derivative = exp, start = "one"
     )),
     parameters_heading = "Measurement error",
     specified = FALSE, kernel_family = NULL,
@@ -402,6 +403,7 @@ riskmap_families <- list(
       label = "Negative binomial size", words = "size of the negative binomial",
       natural = function(working) exp(-working),
       working = function(natural) -log(natural),
+      natural_derivative = function(working) -exp(-working),
       limit_words = "inverse of the negative binomial size (1 / theta)",
       start = "family_regression"
     )),
@@ -823,7 +825,7 @@ read_family <- function(family, invlink = NULL,
   if (is.function(family)) {
     family <- tryCatch(family(), error = function(e) NULL)
   }
-  if (inherits(family, "riskmap_family_specification")) {
+  if (inherits(family, "RiskMap_family")) {
     if (!is.null(invlink)) {
       abort_input(family_traits(family$family)$link_hint, arg = "invlink")
     }
@@ -855,8 +857,8 @@ read_family <- function(family, invlink = NULL,
 }
 
 ##' @title The Negative Binomial Family
-##' @description Specifies a negative binomial response for [glgpm()],
-##'   [specify_glgpm()] and [maxim_integrand()], for counts that vary more than
+##' @description Specifies a negative binomial response for [glgpm()] and
+##'   [specify_glgpm()], for counts that vary more than
 ##'   a Poisson model allows. A count \eqn{y} with exposure \eqn{m} given the
 ##'   random effects has mean \eqn{\mu = m \exp(\eta)}, with the log link,
 ##'   and variance \eqn{\mu + \mu^2 / \theta}, as in
@@ -887,7 +889,7 @@ read_family <- function(family, invlink = NULL,
 ##' \eqn{\theta}, which is how RiskMap fits it. The log-likelihood that a
 ##' fit reports leaves out \eqn{y \log m - \log y!}, as that of a Poisson fit
 ##' does, so the two can be compared.
-##' @return An object of class `riskmap_family_specification`.
+##' @return An object of class `RiskMap_family`.
 ##' @seealso [glgpm()], [stats::poisson()]
 ##' @examples
 ##' negative_binomial()
@@ -911,11 +913,12 @@ held_negative_binomial <- function(theta) {
                  parameters = if (!is.null(theta)) list(theta = theta) else
                    list(),
                  estimated = if (is.null(theta)) "theta" else character()),
-            class = "riskmap_family_specification")
+            class = "RiskMap_family")
 }
 
 ##' @export
-print.riskmap_family_specification <- function(x, ...) {
+print.RiskMap_family <- function(x, ...) {
+  check_dots_unused(...)
   held <- x$parameters$theta
   out_print(out_text(if (is.null(held)) {
     "The negative binomial family with the log link and its size estimated."

@@ -325,7 +325,7 @@ test_that("the variances check reads the test of a held variance", {
   rising <- check_with(TRUE, FALSE)
   expect_identical(rising$status, "PROBLEM")
   expect_match(rising$finding, "rises as the nugget variance")
-  expect_match(rising$fix, "max_samples")
+  expect_match(rising$fix, "max_draws")
   falling <- check_with(FALSE, TRUE)
   expect_identical(falling$status, "OK")
   expect_match(falling$finding, "falls as the variance leaves zero")

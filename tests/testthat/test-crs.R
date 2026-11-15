@@ -295,7 +295,7 @@ test_that("a fit in longitude and latitude says where it is fitted once", {
   crs_messages <- grep("EPSG|fitted in", lonlat$messages, value = TRUE)
   expect_length(crs_messages, 1L)
   expect_match(crs_messages, "for fitting, with distances in km.", fixed = TRUE)
-  expect_match(crs_messages, "Set `model_crs` to choose the projection.",
+  expect_match(crs_messages, "Set `distance_crs` to choose the projection.",
                fixed = TRUE)
   # The fit records where its starting values came from, and summary() says
   # it, so the fit doesn't announce it.

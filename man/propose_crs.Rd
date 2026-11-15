@@ -27,7 +27,7 @@ the family, the centre (the standard parallel for the Lambert conformal
 conic projection), the azimuth of the oblique Mercator projection and the
 scale factor \code{k0}, for example "RiskMap oblique stereographic 23E 4.5S k0
 0.9952". Either can be passed to \code{\link[sf:st_transform]{sf::st_transform()}} and to the
-\code{model_crs} argument of \code{\link[=glgpm]{glgpm()}}.
+\code{distance_crs} argument of \code{\link[=glgpm]{glgpm()}}.
 }
 \description{
 Proposes the projected coordinate reference system (CRS) that
@@ -76,7 +76,7 @@ Functions that compute distances, such as \code{\link[=glgpm]{glgpm()}}, \code{\
 \code{\link[=create_grid]{create_grid()}}, call \code{propose_crs()} for data in longitude and latitude.
 When several analyses should share one CRS, for example analyses of
 different surveys in one country, call \code{propose_crs()} once on the
-country's boundary and pass the result as \code{model_crs} or \code{distance_crs}.
+country's boundary and pass the result as \code{distance_crs} to each.
 }
 \examples{
 data("infect_sma")

@@ -50,7 +50,7 @@
 ##' [create_grid()], call `propose_crs()` for data in longitude and latitude.
 ##' When several analyses should share one CRS, for example analyses of
 ##' different surveys in one country, call `propose_crs()` once on the
-##' country's boundary and pass the result as `model_crs` or `distance_crs`.
+##' country's boundary and pass the result as `distance_crs` to each.
 ##'
 ##' @return The EPSG code of the UTM zone as an integer, or an `sf` `crs`
 ##' object for a centred projection. Its name begins with "RiskMap" and gives
@@ -58,7 +58,7 @@
 ##' conic projection), the azimuth of the oblique Mercator projection and the
 ##' scale factor `k0`, for example "RiskMap oblique stereographic 23E 4.5S k0
 ##' 0.9952". Either can be passed to [sf::st_transform()] and to the
-##' `model_crs` argument of [glgpm()].
+##' `distance_crs` argument of [glgpm()].
 ##'
 ##' @references
 ##' Milnor J (1969). A problem in cartography. *American Mathematical Monthly*

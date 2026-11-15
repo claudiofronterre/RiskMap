@@ -75,7 +75,7 @@ test_that("a non-Gaussian estimated nugget uses the global proposal", {
   )
   spatial_data <- sf::st_as_sf(data, coords = c("x", "z"), crs = 32630)
   control <- set_control_mcmc(
-    n_sim = 500,
+    n_draws = 100,
     burnin = 100,
     thin = 4
   )

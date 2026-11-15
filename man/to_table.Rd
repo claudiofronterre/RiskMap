@@ -2,18 +2,31 @@
 % Please edit documentation in R/auxiliary.R
 \name{to_table}
 \alias{to_table}
+\alias{to_table.RiskMap}
+\alias{to_table.summary.RiskMap}
+\alias{to_table.RiskMap_cross_validation}
+\alias{to_table.summary.RiskMap_cross_validation}
 \alias{to_table.default}
 \title{Format RiskMap Results as a Table}
 \usage{
 to_table(object, ...)
 
-\method{to_table}{default}(object, digits = 3, col_names = NULL, ...)
+\method{to_table}{RiskMap}(object, digits = 3, col_names = NULL, ...)
+
+\method{to_table}{summary.RiskMap}(object, digits = 3, col_names = NULL, ...)
+
+\method{to_table}{RiskMap_cross_validation}(object, digits = 3, col_names = NULL, ...)
+
+\method{to_table}{summary.RiskMap_cross_validation}(object, digits = 3, col_names = NULL, ...)
+
+\method{to_table}{default}(object, ...)
 }
 \arguments{
-\item{object}{An object of class "RiskMap" resulting from a call to
-\code{\link{glgpm}}, a "summary.RiskMap" object, a
-"summary.RiskMap_cross_validation" object, or a "RiskMap_prediction"
-object (see \code{\link{to_table.RiskMap_prediction}}).}
+\item{object}{A fit from \code{\link[=glgpm]{glgpm()}} or its \link[=summary.RiskMap]{summary()},
+a cross-validation from \code{\link[=assess_prediction]{assess_prediction()}} or its
+\link[=summary.RiskMap_cross_validation]{summary()}, or a prediction over
+\code{boundaries} from \link[=predict.RiskMap]{predict()} (see
+\code{\link[=to_table.RiskMap_prediction]{to_table.RiskMap_prediction()}}).}
 
 \item{...}{Additional arguments passed to \code{\link[knitr]{kable}}.}
 
@@ -40,16 +53,16 @@ represent very large or very small values clearly. Values that are
 compared share one notation: the estimate and confidence limits of a
 parameter, and one metric across models.
 
-When the input is a "RiskMap" model object, the table includes:
+When the input is a fit or its summary, the table includes:
 \itemize{
-\item Regression coefficients with their estimates, confidence intervals, and p-values.
+\item Regression coefficients with their estimates and confidence intervals.
 \item Parameters for the spatial process.
 \item Random effect variances.
 \item The parameters of the family that were estimated, such as the
 measurement error variance of a Gaussian model.
 }
 
-When the input is a cross-validation summary object ("summary.RiskMap_cross_validation"), the table includes:
+When the input is a cross-validation or its summary, the table includes:
 \itemize{
 \item A row for each model being compared.
 \item Performance metrics such as CRPS and SCRPS for each model.

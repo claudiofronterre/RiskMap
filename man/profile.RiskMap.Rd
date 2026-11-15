@@ -104,7 +104,7 @@ and its interval is open there.
 The smoothness \eqn{\kappa} of the Matern correlation stays fixed at the
 value used in the fit. It can be profiled by refitting the model over a
 set of values of \eqn{\kappa} and comparing the maximised
-log-likelihoods (\code{log_lik}) of the fits.
+log-likelihoods of the fits, given by \link[=logLik.RiskMap]{logLik()}.
 
 Grids are centred at the estimate on the scale on which the model is fitted
 (the logarithm for variances and the scale) and span \code{span} standard errors
@@ -150,7 +150,7 @@ plot(profiles)
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
-             data = liberia, model_crs = 32629, family = "binomial",
+             data = liberia, distance_crs = 32629, family = "binomial",
              seed = 2026)
 profiles <- profile(fit, parameters = c("sigma2", "phi"),
                     pairs = list(c("sigma2", "phi")), n_grid = 9,

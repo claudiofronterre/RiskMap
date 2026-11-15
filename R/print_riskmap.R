@@ -157,21 +157,21 @@ describe_mcml_certificate <- function(mcml) {
       paste0(
         "Not certified. The likelihood rises as a variance held at zero ",
         "leaves it, so the estimate is not a maximum. ",
-        refit("{.arg max_samples} or {.arg max_stages}")
+        refit("{.arg max_draws} or {.arg max_stages}")
       )
     } else if (mcml$correction_refused) {
       paste0(
         "Not certified. The Newton correction of the estimate did not ",
         "converge on the validation draws, so the approximate {level} bound ",
         "of {bound} statistical standard errors may not hold. ",
-        refit("{.arg max_samples}")
+        refit("{.arg max_draws}")
       )
     } else {
       paste0(
         "Not certified. The approximate {level} bound on the Monte Carlo ",
         "error of the estimate is {bound} statistical standard errors, above ",
         "the tolerance of {tolerance}. ",
-        refit("{.arg max_samples} or {.arg max_stages}")
+        refit("{.arg max_draws} or {.arg max_stages}")
       )
     }
   )
@@ -280,7 +280,8 @@ describe_checks_to_review <- function(count) {
 ##'   checks on the computation by \code{\link{check_fit}}.
 ##' @param x An object of class \code{"RiskMap"}.
 ##' @param digits The number of significant digits of the estimates.
-##' @param ... other parameters.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return Invisibly returns \code{x}.
 ##' @method print RiskMap
 ##' @examples
@@ -297,6 +298,7 @@ describe_checks_to_review <- function(count) {
 ##' @export
 print.RiskMap <- function(x, digits = max(3L, getOption("digits") - 3L),
                           ...) {
+  check_dots_unused(...)
   check_class(x, "RiskMap")
   check_positive_integer(digits, "digits")
   out_print(format_fit(x, digits))

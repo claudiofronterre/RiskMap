@@ -265,7 +265,8 @@ check_class <- function(x, class, arg = rlang::caller_arg(x),
 #' Check that a control argument was made by its function
 #'
 #' For `control_mcmc` and `control_mcml`, made by [set_control_mcmc()] and
-#' [set_control_mcml()].
+#' [set_control_mcml()]. A `control_mcmc` saved before `set_control_mcmc()`
+#' took `n_draws`, with the iterations in `n_sim`, is refused with a hint.
 #' @param maker The name of the function that makes it.
 #' @noRd
 check_control <- function(x, maker = c("set_control_mcmc", "set_control_mcml"),
@@ -277,6 +278,13 @@ check_control <- function(x, maker = c("set_control_mcmc", "set_control_mcml"),
   if (!inherits(x, class)) {
     abort_input(
       "{.arg {arg}} must be made by {.fn {maker}}, not {.obj_type_friendly {x}}.",
+      arg = arg, call = call
+    )
+  }
+  if (maker == "set_control_mcmc" && is.null(x$n_draws)) {
+    abort_input(
+      c("{.arg {arg}} was made by an earlier version of {.fn set_control_mcmc}, which counted iterations in {.arg n_sim}.",
+        "i" = "Make it again with {.fn set_control_mcmc}, which takes the number of draws to keep in {.arg n_draws}."),
       arg = arg, call = call
     )
   }

@@ -173,7 +173,7 @@ check_fit <- function(object, extra = character(), profile = NULL,
       not_computed = extras$not_computed,
       fit_seconds = attr(object, "optimizer")$elapsed_seconds
     ),
-    class = "RiskMap_check"
+    class = "RiskMap_check", riskmap_version = riskmap_version_stamp()
   )
 }
 
@@ -341,21 +341,21 @@ fit_check_monte_carlo <- function(mcml) {
                "the Newton correction of the estimate would have taken a ",
                "variance or scale past the upper bound of the search, along a ",
                "direction where the likelihood is nearly flat."),
-        "Refit with a larger `max_samples` in `set_control_mcml()`."
+        "Refit with a larger `max_draws` in `set_control_mcml()`."
       )
     } else if (mcml$correction_refused) {
       fit_check_row(
         name, "PROBLEM",
         paste0("The bound of ", bound, " standard errors may not hold, because ",
                "the Newton correction of the estimate did not converge."),
-        "Refit with a larger `max_samples` in `set_control_mcml()`."
+        "Refit with a larger `max_draws` in `set_control_mcml()`."
       )
     } else {
       fit_check_row(
         name, "PROBLEM",
         paste0("The bound on the error is ", bound, " standard errors, above ",
                "the limit of ", mcml$tolerance, "."),
-        paste0("Refit with a larger `max_samples` or `max_stages` in ",
+        paste0("Refit with a larger `max_draws` or `max_stages` in ",
                "`set_control_mcml()`, or relax `tolerance`.",
                describe_integration_advice(isTRUE(mcml$suggest_integration)))
       )
@@ -388,7 +388,7 @@ fit_check_weights <- function(bank, suggest_integration = FALSE, radius = "") {
   fit_check_row(
     name, "SUSPICIOUS",
     paste0(found, ", which makes the bound on the error less reliable."),
-    paste0("More draws may help, through `max_samples` in ",
+    paste0("More draws may help, through `max_draws` in ",
            "`set_control_mcml()`. If the shape stays above 0.7, read the ",
            "bound with caution.",
            radius, describe_integration_advice(suggest_integration))
@@ -497,7 +497,7 @@ fit_check_variances <- function(optimizer) {
       name, "PROBLEM",
       paste0("The likelihood rises as the ", listed(held$name[held$rising]),
              " leaves zero, so holding it at zero does not give a maximum."),
-      paste0("Refit with a larger `max_samples` or `max_stages` in ",
+      paste0("Refit with a larger `max_draws` or `max_stages` in ",
              "`set_control_mcml()`.")
     ))
   }
@@ -1053,7 +1053,7 @@ format_checks <- function(x) {
 ##' liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 ##' fit <- glgpm(
 ##'   npos ~ log_elevation + gp(kappa = 0.5), denominator = ntest,
-##'   data = liberia, model_crs = 32629, family = "binomial", messages = FALSE
+##'   data = liberia, distance_crs = 32629, family = "binomial", messages = FALSE
 ##' )
 ##' checked <- check_fit(fit, extra = "all")
 ##' plot(checked)

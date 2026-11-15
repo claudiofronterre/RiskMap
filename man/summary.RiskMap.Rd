@@ -4,14 +4,15 @@
 \alias{summary.RiskMap}
 \title{Summarize Model Fits}
 \usage{
-\method{summary}{RiskMap}(object, ..., level = 0.95)
+\method{summary}{RiskMap}(object, level = 0.95, ...)
 }
 \arguments{
 \item{object}{An object of class "RiskMap" from \code{\link{glgpm}}}
 
-\item{...}{other parameters.}
-
 \item{level}{Confidence level for intervals (default 0.95).}
+
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 A list of class \code{"summary.RiskMap"} with parameter estimates,

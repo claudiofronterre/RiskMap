@@ -416,7 +416,7 @@ predict.RiskMap <- function(
       weights = NULL
     )
     class(out) <- "RiskMap_prediction"
-    return(out)
+    return(stamp_version(out))
   }
   # At the observed locations of a non-Gaussian fit the draws are the joint
   # conditional samples.
@@ -464,7 +464,7 @@ predict.RiskMap <- function(
     weights = NULL
   )
   class(out) <- "RiskMap_prediction"
-  out
+  stamp_version(out)
 }
 
 #' Validate the unified prediction options
@@ -939,7 +939,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
       weights = weights
     )
     class(out) <- "RiskMap_prediction"
-    return(out)
+    return(stamp_version(out))
   }
 
   prediction_groups <- prediction_boundary_groups(
@@ -1094,7 +1094,7 @@ predict_over_boundaries <- function(object, prediction_input, boundaries,
     weights = weights
   )
   class(out) <- "RiskMap_prediction"
-  out
+  stamp_version(out)
 }
 
 #' Run the conditional-prediction engine from aligned sf data
@@ -1240,7 +1240,8 @@ prediction_sample_components <- function(object, prediction_data, prediction,
     fit <- object
     fit$estimate <- utils::relist(parameters[k, ], skeleton = object$estimate)
     if (is.null(sampler)) {
-      control <- set_control_mcmc(n_sim = per_draw, linear_model = TRUE)
+      # The latent effects of a Gaussian model are drawn independently.
+      control <- set_control_mcmc(n_draws = per_draw, burnin = 0, thin = 1)
     } else {
       draws <- tryCatch(sampler(fit$estimate, per_draw), error = leave_out)
       if (is.null(draws)) {
@@ -1296,16 +1297,12 @@ pool_prediction_components <- function(pieces) {
 #' Number of predictive draws used by plug-in prediction
 #' @noRd
 prediction_sample_size <- function(object, control_mcmc) {
-  if (!is.null(control_mcmc)) {
-    if (isTRUE(control_mcmc$linear_model)) return(control_mcmc$n_sim)
-    return((control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin)
-  }
+  if (!is.null(control_mcmc)) return(control_mcmc$n_draws)
   if (!fit_is_exact(object) && !is.null(object$S_samples)) {
     return(nrow(object$S_samples))
   }
   # As many draws as plug-in prediction takes by default for every family.
-  control_mcmc <- set_control_mcmc()
-  (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
+  set_control_mcmc()$n_draws
 }
 
 #' Draw parameters from the approximate sampling distribution of the estimate
@@ -1380,8 +1377,7 @@ parameter_conditioning_sampler <- function(object, burnin = 100L, thin = 10L) {
       ID_coords = object$ID_coords, ID_re = object$ID_re,
       sigma2_re = parameters$sigma2_re, family = object$family,
       control_mcmc = set_control_mcmc(
-        n_sim = burnin + n_samples * thin, burnin = burnin, thin = thin,
-        h = step_size
+        n_draws = n_samples, burnin = burnin, thin = thin, h = step_size
       ),
       invlink = invlink, start = last_mode, adapt_step = FALSE,
       # At the drawn estimate, so a size the fit estimates is drawn with it.
@@ -2383,10 +2379,8 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
     !control_mcmc_supplied && !is.null(object$S_samples)
   n_samples <- if (reuse_fitted_samples) {
     nrow(object$S_samples)
-  } else if (control_mcmc$linear_model) {
-    control_mcmc$n_sim
   } else {
-    (control_mcmc$n_sim - control_mcmc$burnin) / control_mcmc$thin
+    control_mcmc$n_draws
   }
 
   # ---------------------------------------------------------------------------
@@ -2425,7 +2419,7 @@ draw_prediction_samples <- function(object, prediction_data, prediction,
         riskmap_inform("Reusing the conditional samples stored in the fit.")
       }
     } else {
-      progress_step(paste0("Running {format(control_mcmc$n_sim, ",
+      progress_step(paste0("Running {format(mcmc_iterations(control_mcmc), ",
                            "big.mark = ',')} iterations of the Langevin ",
                            "sampler"),
                     messages)
@@ -3418,7 +3412,7 @@ assess_prediction <- function(models,
           formula        = fit_formula(fit0),
           data           = fit_data_sf[in_id, ],
           family         = fit_family_argument(fit0),
-          model_crs      = st_crs(fit0$data),
+          distance_crs   = st_crs(fit0$data),
           distance_units = fit0$distance_units,
           control_mcmc   = control_mcmc,
           control_mcml   = attr(fit0, "control_mcml") %||%
@@ -3456,7 +3450,9 @@ assess_prediction <- function(models,
           refit_i$re <- random_effects_i$re_unique_f
         }
         ## recompute ID_coords mapping
-        refit_i$ID_coords <- create_ids(refit_i$data)$ID_coords
+        refit_i$ID_coords <- index_coordinate_rows(
+          st_coordinates(refit_i$data)
+        )$index
       }
 
       ## ----- prediction over test set -----
@@ -3639,7 +3635,7 @@ assess_prediction <- function(models,
   }
 
   class(out) <- "RiskMap_cross_validation"
-  return(out)
+  stamp_version(out)
 }
 
 ##' @title Plot Method for RiskMap_simulation Objects
@@ -4353,7 +4349,7 @@ assess_simulation <- function(simulation,
   out$n_sim <- n_sim
   out$spatial_scale <- spatial_scale
   class(out) <- "RiskMap_assess_simulation"
-  return(out)
+  stamp_version(out)
 }
 
 ##' Build a refit call from a fitted assessment-model template
