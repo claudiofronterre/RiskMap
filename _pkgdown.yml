@@ -124,14 +124,15 @@ reference:
 
   - subtitle: Fitted models
     desc: >
-      Print, summarise and tabulate a fit, and extract its estimates and fitted
-      values.
+      Print, summarise and tabulate a fit, and extract its estimates, their
+      covariance, its log-likelihood and its fitted values.
     contents:
       - print.RiskMap
       - summary.RiskMap
       - print.summary.RiskMap
       - coef.RiskMap
       - fitted.RiskMap
+      - logLik.RiskMap
       - to_table
 
   - title: Checking a fit
@@ -226,10 +227,6 @@ reference:
 
   - title: Building blocks
     desc: >
-      Lower-level functions used by the fitting engine.
+      The Matern correlation function of the spatial Gaussian process.
     contents:
       - matern_correlation
-      - matern_gradient_phi
-      - matern_hessian_phi
-      - maxim_integrand
-      - create_ids

@@ -462,8 +462,8 @@ low_level <- function(family) {
     })
   }
   Sig <- exp(-dd / 0.3)
-  out$maxim <- attempt(maxim_integrand(y = yy, denominator = mm, mu = rep(-0.2, n), Sigma = Sig, ID_coords = 1:n,
-                                       family = family, hessian = TRUE, gradient = TRUE))
+  out$maxim <- attempt(ns$maxim_integrand(y = yy, denominator = mm, mu = rep(-0.2, n), Sigma = Sig, ID_coords = 1:n,
+                                          family = family, hessian = TRUE, gradient = TRUE))
   out$independent_sites <- attempt({
     likelihood <- ns$make_independent_site_likelihood(matrix(1, n, 1), yy, mm, seq_len(n), numeric(n),
                                                       if (old_entry_points) family else ns$make_family(family))

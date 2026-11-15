@@ -69,8 +69,8 @@ test_that("glgpm produces errors", {
   )
 
   expect_error(
-    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", model_crs = 12345),
-    "model_crs", class = "riskmap_error_input"
+    glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian", distance_crs = 12345),
+    "distance_crs", class = "riskmap_error_input"
   )
 
   expect_input_error(
@@ -79,8 +79,8 @@ test_that("glgpm produces errors", {
   )
 
   expect_input_error(
-    glgpm(y ~ cov + gp(), data = latlon_data, family = "gaussian", model_crs = 4326, messages = FALSE),
-    "model_crs"
+    glgpm(y ~ cov + gp(), data = latlon_data, family = "gaussian", distance_crs = 4326, messages = FALSE),
+    "distance_crs"
   )
 
   expect_input_error(
@@ -847,14 +847,14 @@ test_that("glgpm correctly reprojects to new CRS", {
   expect_identical(st_crs(fit$data), st_crs(suggested_crs))
 })
 
-test_that("glgpm honours an explicitly supplied projected model_crs", {
+test_that("glgpm honours an explicitly supplied projected distance_crs", {
 
   latlon <- st_transform(gaussian_data, 4326)
 
   fit <- glgpm(y ~ cov + gp(),
                data = latlon,
                family = "gaussian",
-               model_crs = 32637,
+               distance_crs = 32637,
                distance_units = "m",
                messages = FALSE)
 

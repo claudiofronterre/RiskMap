@@ -176,7 +176,7 @@ assess_extrapolation <- function(object, newdata, spatial_threshold = NULL,
   attr(out, "sampling_noise") <- sampling_noise
   attr(out, "covariate_ranges") <- covariates$ranges
   class(out) <- c("RiskMap_extrapolation", class(out))
-  out
+  stamp_version(out)
 }
 
 #' Covariate range checks and leverage on the model's scale

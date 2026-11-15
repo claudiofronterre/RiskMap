@@ -113,7 +113,7 @@
 ##' data(liberia)
 ##' liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 ##' fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
-##'              data = liberia, model_crs = 32629, family = "binomial",
+##'              data = liberia, distance_crs = 32629, family = "binomial",
 ##'              seed = 2026)
 ##' profiles <- profile(fit, parameters = c("sigma2", "phi"),
 ##'                     pairs = list(c("sigma2", "phi")), n_grid = 9,
@@ -233,7 +233,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
     higher_than_estimate = higher, level = level,
     settings = if (exact) list(span = span) else
       list(n_draws = n_draws, seed = seed, span = span)
-  ), class = "RiskMap_profile")
+  ), class = "RiskMap_profile", riskmap_version = riskmap_version_stamp())
 }
 
 ##' A duration in seconds as readable text

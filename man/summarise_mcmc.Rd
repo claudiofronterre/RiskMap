@@ -51,7 +51,7 @@ sample size of zero.
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
-             data = liberia, model_crs = 32629, family = "binomial",
+             data = liberia, distance_crs = 32629, family = "binomial",
              messages = FALSE)
 ess <- summarise_mcmc(fit)
 # The mean and the five locations with the smallest effective sample size
