@@ -78,7 +78,7 @@ thinning, the samples are numbered in order.
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
-             data = liberia, model_crs = 32629, family = "binomial",
+             data = liberia, distance_crs = 32629, family = "binomial",
              messages = FALSE)
 plot_mcmc(fit)
 

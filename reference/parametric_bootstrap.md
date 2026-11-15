@@ -192,14 +192,14 @@ bootstrap
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
-             data = liberia, model_crs = 32629, family = "binomial",
+             data = liberia, distance_crs = 32629, family = "binomial",
              seed = 2026)
 #> ℹ The model is fitted in EPSG:32629, with distances in km.
 #> ✔ Certified. The Monte Carlo error of the estimate is within 0.0091 statistical
 #>   standard errors (an approximate 95% bound, tolerance 0.1).
 bootstrap <- parametric_bootstrap(fit, n_sim = 100, seed = 2026)
 #> ℹ Simulating and refitting 100 replicates.
-#> ✔ Done in 4 minutes. 100 of 100 refits succeeded.
+#> ✔ Done in 3 minutes. 100 of 100 refits succeeded.
 summary(bootstrap)
 #> ── Parametric bootstrap ────────────────────────────────────────────────────────
 #> Binomial geostatistical model, 100 replicates (seed 2026). Variances and the

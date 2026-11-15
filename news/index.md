@@ -14,16 +14,16 @@ the main changes follow.
 | `assess_pp()` | [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md) |
 | `assess_sim()` | [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md) |
 | `check_mcmc()` | [`plot_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/plot_mcmc.md) |
-| `compute_ID_coords()` | [`create_ids()`](https://claudiofronterre.github.io/RiskMap/reference/create_ids.md) |
+| `compute_ID_coords()` | Removed, now internal |
 | `convex_hull_sf()` | [`create_convex_hull()`](https://claudiofronterre.github.io/RiskMap/reference/create_convex_hull.md) |
 | `dast()` | Removed, to move to a separate package |
 | `dist_summaries()` | [`summarise_distance()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_distance.md) |
 | `glgpm_sim()` | [`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md) |
 | `Laplace_sampling_MCMC()` | Removed, now internal |
-| `matern.grad.phi()` | [`matern_gradient_phi()`](https://claudiofronterre.github.io/RiskMap/reference/matern_gradient_phi.md) |
-| `matern.hessian.phi()` | [`matern_hessian_phi()`](https://claudiofronterre.github.io/RiskMap/reference/matern_hessian_phi.md) |
+| `matern.grad.phi()` | Removed, now internal |
+| `matern.hessian.phi()` | Removed, now internal |
 | `matern_cor()` | [`matern_correlation()`](https://claudiofronterre.github.io/RiskMap/reference/matern_correlation.md) |
-| `maxim.integrand()` | [`maxim_integrand()`](https://claudiofronterre.github.io/RiskMap/reference/maxim_integrand.md) |
+| `maxim.integrand()` | Removed, now internal |
 | `plot_AnPIT()`, `plot_score()` | [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md) results |
 | `plot_mda()` | Removed, to move with `dast()` |
 | `plot_s_variogram()` | [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md) results |
@@ -75,6 +75,19 @@ the main changes follow.
   measurement error and random-effect variances at the values given in
   `start_pars`. Such fits given a spatial variance other than 1, and
   parametric bootstraps of such models, can move very slightly.
+- [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+  takes its CRS in `distance_crs`, with `seed` and `messages` as its
+  last arguments. [`logLik()`](https://rdrr.io/r/stats/logLik.html),
+  [`vcov()`](https://rdrr.io/r/stats/vcov.html) and
+  [`nobs()`](https://rdrr.io/r/stats/nobs.html) work on fits, so
+  [`AIC()`](https://rdrr.io/r/stats/AIC.html) and
+  [`BIC()`](https://rdrr.io/r/stats/AIC.html) do too, and
+  [`?glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+  lists the components of a fit that are part of its interface.
+  [`print()`](https://rdrr.io/r/base/print.html) and
+  [`summary()`](https://rdrr.io/r/base/summary.html) of a fit stop on an
+  argument they don’t use, and every result records the version of
+  RiskMap that made it.
 - [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
   reports how a fit was computed and flags anything that needs
   attention. [`profile()`](https://rdrr.io/r/stats/profile.html) gives

@@ -1,10 +1,9 @@
 # The Negative Binomial Family
 
 Specifies a negative binomial response for
-[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
-[`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
 and
-[`maxim_integrand()`](https://claudiofronterre.github.io/RiskMap/reference/maxim_integrand.md),
+[`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md),
 for counts that vary more than a Poisson model allows. A count \\y\\
 with exposure \\m\\ given the random effects has mean \\\mu = m
 \exp(\eta)\\, with the log link, and variance \\\mu + \mu^2 / \theta\\,
@@ -30,7 +29,7 @@ negative_binomial(...)
 
 ## Value
 
-An object of class `riskmap_family_specification`.
+An object of class `RiskMap_family`.
 
 ## Details
 

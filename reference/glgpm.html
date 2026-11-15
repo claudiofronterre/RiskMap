@@ -57,15 +57,15 @@ Supports Gaussian, binomial, Poisson and negative binomial response families.</p
 <span>  <span class="va">family</span>,</span>
 <span>  invlink <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  denominator <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  model_crs <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  distance_crs <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  distance_units <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"km"</span>, <span class="st">"m"</span><span class="op">)</span>,</span>
-<span>  control_mcmc <span class="op">=</span> <span class="fu"><a href="set_control_mcmc.html">set_control_mcmc</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  control_mcml <span class="op">=</span> <span class="fu"><a href="set_control_mcml.html">set_control_mcml</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  return_samples <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  messages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"RiskMap.messages"</span>, <span class="cn">TRUE</span><span class="op">)</span>,</span>
 <span>  start_pars <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  fixed_pars <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  fixed_pars <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  control_mcml <span class="op">=</span> <span class="fu"><a href="set_control_mcml.html">set_control_mcml</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  control_mcmc <span class="op">=</span> <span class="fu"><a href="set_control_mcmc.html">set_control_mcmc</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  return_samples <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  messages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"RiskMap.messages"</span>, <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -126,56 +126,25 @@ Passed as a bare/unquoted column name present in <code>data</code>.
 If not provided, defaults to <code>1</code>.</p></dd>
 
 
-<dt id="arg-model-crs">model_crs<a class="anchor" aria-label="anchor" href="#arg-model-crs"></a></dt>
-<dd><p>Optional CRS (e.g. an EPSG code) used internally for model fitting.
-If <code>data</code> is already in a projected CRS and <code>model_crs</code> is not provided, the data are used as-is.
-If <code>data</code> are in longitude/latitude and <code>model_crs</code> is not provided, the data are automatically
-reprojected to the CRS from <code><a href="propose_crs.html">propose_crs()</a></code>, a UTM zone or a projection centred on the data,
-and a message names the CRS and the units of distance.
-If provided, <code>model_crs</code> must be a projected (not longitude/latitude) CRS.
-A warning of class <code>riskmap_warning_crs</code> is raised when the CRS used distorts distances
-by more than 1% over the data.</p></dd>
+<dt id="arg-distance-crs">distance_crs<a class="anchor" aria-label="anchor" href="#arg-distance-crs"></a></dt>
+<dd><p>The projected coordinate reference system in which
+distances, and so <code>phi</code>, are measured, for example an EPSG code. <code>data</code>
+are transformed to it, and the model is fitted in it. The default, <code>NULL</code>,
+keeps projected data as they are and projects data in longitude and
+latitude to the CRS from <code><a href="propose_crs.html">propose_crs()</a></code>, a UTM zone or a projection
+centred on the data, with a message naming the CRS and the units of
+distance. A CRS in longitude and latitude is refused. A warning of class
+<code>riskmap_warning_crs</code> is raised when the CRS used distorts distances by
+more than 1% over the data. <code><a href="variogram.html">variogram()</a></code>, <code><a href="summarise_distance.html">summarise_distance()</a></code>,
+<code><a href="create_grid.html">create_grid()</a></code> and <code><a href="specify_glgpm.html">specify_glgpm()</a></code> take the same argument, so that
+their distances can be measured as the fit's are.</p></dd>
 
 
 <dt id="arg-distance-units">distance_units<a class="anchor" aria-label="anchor" href="#arg-distance-units"></a></dt>
 <dd><p>Character string, either <code>"km"</code> or <code>"m"</code>, indicating the units used
-for internal coordinate distances and spatial parameters such as <code>phi</code>. The coordinates in
-the returned <code>data</code> retain the linear units declared by its CRS.
+for internal coordinate distances and spatial parameters such as <code>phi</code>. The coordinates of
+the data keep the linear units of their CRS.
 Defaults to <code>"km"</code>.</p></dd>
-
-
-<dt id="arg-control-mcmc">control_mcmc<a class="anchor" aria-label="anchor" href="#arg-control-mcmc"></a></dt>
-<dd><p>Control parameters for MCMC sampling for binomial or Poisson models.
-Must be an object of class <code>RiskMap_control_mcmc</code> as returned by <code><a href="set_control_mcmc.html">set_control_mcmc()</a></code>.</p></dd>
-
-
-<dt id="arg-control-mcml">control_mcml<a class="anchor" aria-label="anchor" href="#arg-control-mcml"></a></dt>
-<dd><p>Control parameters for adaptive Monte Carlo maximum
-likelihood estimation. Must be returned by <code><a href="set_control_mcml.html">set_control_mcml()</a></code>.</p></dd>
-
-
-<dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
-<dd><p>Optional non-negative integer that seeds every random step of
-a binomial or Poisson fit: the Monte Carlo samples of the estimation and
-the final conditional samples. When <code>NULL</code> (the default), one integer is
-drawn from the session's random number generator, so <code><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed()</a></code> before
-the call also reproduces the fit. The seed used is returned as <code>seed</code>.
-The caller's random number state is otherwise left unchanged. Ignored for
-Gaussian models, which have no random step.</p></dd>
-
-
-<dt id="arg-return-samples">return_samples<a class="anchor" aria-label="anchor" href="#arg-return-samples"></a></dt>
-<dd><p>Logical indicating whether to draw and retain
-conditional samples at the fitted parameters. These samples are used to
-compute fitted values. If <code>FALSE</code>, final sampling is skipped and fitted
-values are not computed. Defaults to <code>TRUE</code>. Ignored for Gaussian models.</p></dd>
-
-
-<dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
-<dd><p>Logical indicating whether to print messages, and a
-line for each stage of Monte Carlo maximum likelihood as described in
-<a href="riskmap_progress.html">riskmap_progress</a>. Defaults to the option <code>RiskMap.messages</code>, or
-<code>TRUE</code> if it is not set.</p></dd>
 
 
 <dt id="arg-start-pars">start_pars<a class="anchor" aria-label="anchor" href="#arg-start-pars"></a></dt>
@@ -209,148 +178,90 @@ observation per location, a Gaussian model can estimate the nugget or the
 measurement error variance, not both, and a negative binomial model the
 nugget or the size, not both.</p></dd>
 
+
+<dt id="arg-control-mcml">control_mcml<a class="anchor" aria-label="anchor" href="#arg-control-mcml"></a></dt>
+<dd><p>Control parameters for adaptive Monte Carlo maximum
+likelihood estimation. Must be returned by <code><a href="set_control_mcml.html">set_control_mcml()</a></code>.</p></dd>
+
+
+<dt id="arg-control-mcmc">control_mcmc<a class="anchor" aria-label="anchor" href="#arg-control-mcmc"></a></dt>
+<dd><p>Control parameters for MCMC sampling for binomial or Poisson models.
+Must be an object of class <code>RiskMap_control_mcmc</code> as returned by <code><a href="set_control_mcmc.html">set_control_mcmc()</a></code>.</p></dd>
+
+
+<dt id="arg-return-samples">return_samples<a class="anchor" aria-label="anchor" href="#arg-return-samples"></a></dt>
+<dd><p>Logical indicating whether to draw and retain
+conditional samples at the fitted parameters. These samples are used to
+compute fitted values. If <code>FALSE</code>, final sampling is skipped and fitted
+values are not computed. Defaults to <code>TRUE</code>. Ignored for Gaussian models.</p></dd>
+
+
+<dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
+<dd><p>Optional non-negative integer that seeds every random step of
+a binomial or Poisson fit: the Monte Carlo samples of the estimation and
+the final conditional samples. When <code>NULL</code> (the default), one integer is
+drawn from the session's random number generator, so <code><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed()</a></code> before
+the call also reproduces the fit. The seed used is returned as <code>seed</code>.
+The caller's random number state is otherwise left unchanged. Ignored for
+Gaussian models, which have no random step.</p></dd>
+
+
+<dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
+<dd><p>Logical indicating whether to print messages, and a
+line for each stage of Monte Carlo maximum likelihood as described in
+<a href="riskmap_progress.html">riskmap_progress</a>. Defaults to the option <code>RiskMap.messages</code>, or
+<code>TRUE</code> if it is not set.</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>An object of class <code>RiskMap</code> containing the fitted model and relevant information:</p>
-<dl><dt>estimate</dt>
-<dd><p>Estimated parameters as a named list: <code>beta</code> (named
-regression coefficients on the scale of the supplied covariates), <code>sigma2</code>,
-<code>phi</code>, <code>nu2</code> \(= \tau^2/\sigma^2\) when the nugget is
-estimated, <code>sigma2_me</code> for Gaussian models with an estimated
-measurement error variance, <code>theta</code> for negative binomial models whose
-size is estimated, stored as \(\log(1/\theta)\), the opposite sign to the
-logarithm of a variance (<code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef()</a></code> gives \(\theta\)), and
-<code>sigma2_re</code> (a named vector, one
-entry per random effect) when random effects are included. Keeping these
-in separate list elements - rather than one flat named vector - avoids a
-covariate whose name collides with a parameter name (e.g. a covariate
-literally called <code>"sigma2"</code>) corrupting name-based lookups.
-<code>covariance</code> is estimated as one joint matrix over every parameter;
-its rows/columns are named to match <code>unlist(estimate)</code>.</p></dd>
-
-<dt>grad_MLE</dt>
-<dd><p>Gradient of the maximum likelihood function</p></dd>
-
-<dt>covariance</dt>
-<dd><p>Covariance</p></dd>
-
-<dt>log_lik</dt>
-<dd><p>Log likelihood</p></dd>
-
-<dt>y</dt>
-<dd><p>Response variable</p></dd>
-
-<dt>D</dt>
-<dd><p>Covariate matrix</p></dd>
-
-<dt>coords</dt>
-<dd><p>Unique spatial coordinates</p></dd>
-
-<dt>ID_coords</dt>
-<dd><p>Index of coordinates</p></dd>
-
-<dt>re</dt>
-<dd><p>Random effects if <code><a href="re.html">re()</a></code> is included in <code>formula</code></p></dd>
-
-<dt>ID_re</dt>
-<dd><p>Index of random effects if <code><a href="re.html">re()</a></code> is included in <code>formula</code></p></dd>
-
-<dt>nugget</dt>
-<dd><p><code>"none"</code> without a nugget, <code>"estimated"</code> or
-<code>"fixed"</code> when <code>fixed_pars</code> holds its variance.</p></dd>
-
-<dt>fixed_pars</dt>
-<dd><p>The values of the parameters the model holds, as a named
-list, <code>NULL</code> when it holds none.</p></dd>
-
-<dt>formula</dt>
-<dd><p>Model formula</p></dd>
-
-<dt>family</dt>
-<dd><p>Response family</p></dd>
-
-<dt>link_function</dt>
-<dd><p>For binomial and Poisson models, the inverse link
-(<code>inv</code>), its first and second derivatives (<code>d1</code> and <code>d2</code>) and the name of
-the link (<code>link</code>), such as <code>"probit"</code>, which is <code>NULL</code> for an inverse given
-in <code>invlink</code>. <code>NULL</code> for Gaussian models.</p></dd>
-
-<dt>distance_units</dt>
-<dd><p>Units (<code>"km"</code> or <code>"m"</code>) used for internal coordinate distances and spatial parameters</p></dd>
-
-<dt>data</dt>
-<dd><p>The <code>sf</code> data used for model fitting, in the CRS used internally</p></dd>
+    <p>A fitted model of class <code>RiskMap</code>, a list. These components are
+part of its interface.</p>
+<dl><dt>data</dt>
+<dd><p>The <code>sf</code> data of the fit, in the CRS in which the model was
+fitted, so that distances between them are those that <code>phi</code> describes.
+<code>sf::st_crs(fit$data)</code> gives that CRS, and
+<code>sf::st_transform(fit$data, fit$input_crs)</code> gives the data in the CRS
+they were given in.</p></dd>
 
 <dt>input_crs</dt>
-<dd><p>The CRS of the input data</p></dd>
+<dd><p>The CRS of <code>data</code> as it was given.</p></dd>
 
-<dt>kappa</dt>
-<dd><p>Spatial correlation parameter</p></dd>
+<dt>formula</dt>
+<dd><p>The model formula.</p></dd>
 
-<dt>units_m</dt>
-<dd><p>The denominators or exposures of a binomial, Poisson or
-negative binomial model</p></dd>
-
-<dt>cov_offset</dt>
-<dd><p>Covariate offset</p></dd>
+<dt>family</dt>
+<dd><p>The name of the family, such as <code>"binomial"</code>.</p></dd>
 
 <dt>call</dt>
-<dd><p>Matched call</p></dd>
-
-<dt>S_samples</dt>
-<dd><p>For non-Gaussian models, fresh conditional MCMC samples
-evaluated at the fitted parameters when <code>return_samples</code> is <code>TRUE</code>. These
-are not the reference samples used for MCML estimation. The first block is
-the location-level Gaussian effect (including the nugget when present),
-followed by any unstructured random-effect blocks.</p></dd>
-
-<dt>linear_predictors</dt>
-<dd><p>Conditional fitted linear predictors. For
-non-Gaussian models these are Monte Carlo means over the final-parameter
-latent samples and are <code>NULL</code> when <code>return_samples = FALSE</code>; for Gaussian
-models they use the conditional latent mean.</p></dd>
-
-<dt>fitted_values</dt>
-<dd><p>Conditional fitted response means. Binomial models
-return probabilities; Poisson and negative binomial models return expected
-counts and therefore include any supplied exposure in <code>denominator</code>. These
-are <code>NULL</code> for
-non-Gaussian models when <code>return_samples = FALSE</code>.</p></dd>
-
-<dt>mcml_history</dt>
-<dd><p>For non-Gaussian models, one entry per stage of
-certified Monte Carlo maximum likelihood (see <code><a href="set_control_mcml.html">set_control_mcml()</a></code>),
-containing the sizes of the fitting and validation samples, the
-importance distribution used, the optimum of the fitting sample
-(<code>fitted_estimate</code>) and the corrected estimate (<code>estimate</code>), the optimizer
-result, the size of the correction, the certificate and its two parts
-(<code>certificate_distance</code> and <code>certificate_radius</code>), effective sample sizes
-and Pareto tail diagnostics of each sample, the outcome of the stage and
-its timing. A stage where the global importance distribution failed also
-holds why, in <code>proposal_failure</code> or, at the start of the first stage,
-<code>start_failure</code>: the <code>reason</code>, the number of <code>refits</code> and the last <code>change</code>
-of its factors. Estimates use the same parameterisation as <code>estimate</code>, with
-regression coefficients and spatial scale restored to the supplied
-covariate and distance units. <code>NULL</code> for Gaussian models.</p></dd>
-
-<dt>mcml_certified</dt>
-<dd><p>Whether the certificate of the returned estimate is
-within the tolerance. The certificate is an approximate 95% bound, in
-statistical standard errors, on the Monte Carlo error of the estimate, that
-is its distance from the maximum of the exact likelihood that the fit has
-located. It says nothing about whether that maximum is the highest.
-<code>NULL</code> for Gaussian models.</p></dd>
-
-<dt>mcml_selected_iteration</dt>
-<dd><p>The stage whose estimate is returned.
-<code>NULL</code> for Gaussian models.</p></dd>
+<dd><p>The matched call.</p></dd>
 
 <dt>seed</dt>
-<dd><p>The seed used for the random steps of a binomial or Poisson
-fit, whether supplied or drawn. <code>NULL</code> for Gaussian models.</p></dd>
+<dd><p>The seed used for the random steps of a binomial, Poisson or
+negative binomial fit, whether given or drawn, so that
+<code>glgpm(..., seed = fit$seed)</code> reproduces the fit. <code>NULL</code> for Gaussian
+models.</p></dd>
 
-</dl></div>
+<dt>distance_units</dt>
+<dd><p>The units of distance, <code>"km"</code> or <code>"m"</code>, in which
+<code>phi</code> is given.</p></dd>
+
+
+</dl><p>The other components are internal and may change in any version of
+RiskMap. The estimates, their covariance and the likelihood are read with
+<a href="coef.RiskMap.html">coef()</a>, <a href="logLik.RiskMap.html">vcov()</a>,
+<a href="logLik.RiskMap.html">logLik()</a> and <a href="logLik.RiskMap.html">nobs()</a>, fitted values
+with <a href="fitted.RiskMap.html">fitted()</a>, standard errors and intervals with
+<a href="summary.RiskMap.html">summary()</a>, and how the fit was computed with
+<code><a href="check_fit.html">check_fit()</a></code>.</p>
+<p>Every result of RiskMap that can be saved and read again, such as a fit, a
+prediction or a profile, has the attribute <code>riskmap_version</code>, a list with
+the <code>version</code> of RiskMap that made it, as a <code><a href="https://rdrr.io/r/base/numeric_version.html" class="external-link">package_version()</a></code>, and
+<code>sha</code>, the commit it was installed from when it was installed from GitHub
+and <code>NA</code> otherwise. An object without it was made before RiskMap stamped
+its results, by an earlier version or an early development build of
+2.0.0.</p>
+    </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>Generalized linear Gaussian process models extend generalized linear models (GLMs) by incorporating
@@ -367,11 +278,9 @@ data across different response distributions.</p>
 the <code><a href="re.html">re()</a></code> term in the model formula. These random effects can capture unexplained variability
 at specific locations beyond the fixed and spatial covariate effects, enhancing the model's flexibility
 in capturing complex spatial patterns.</p>
-<p>The <code>model_crs</code> argument can be used to reproject the spatial coordinates to a different, projected
-CRS for model fitting. If <code>data</code> are in longitude/latitude and <code>model_crs</code> is not supplied, the
-coordinates are automatically reprojected to the CRS from <code><a href="propose_crs.html">propose_crs()</a></code> and a message details the
-conversion; automatic projection is avoided for <code>model_crs</code> explicitly supplied in longitude/latitude,
-which raises an error.
+<p>The model is fitted in the projected CRS of <code>distance_crs</code>, or of <code>data</code>
+when it is <code>NULL</code>, and the data in longitude and latitude are projected to
+the CRS from <code><a href="propose_crs.html">propose_crs()</a></code> with a message.
 The <code>distance_units</code> argument controls whether distances between locations (and so parameters such
 as <code>phi</code>) are expressed in kilometers (<code>"km"</code>, the default) or meters (<code>"m"</code>).</p>
 <p>The <code>control_mcmc</code> argument specifies the control parameters for MCMC sampling.
@@ -383,8 +292,8 @@ with a second, fresh one, which bounds its Monte Carlo error in statistical
 standard errors, with an allowance for that sample's own error taken from
 it and from a replicate of it (see <code><a href="set_control_mcml.html">set_control_mcml()</a></code>). The samples
 are enlarged only when the certificate exceeds
-the tolerance. Every stage is recorded in <code>mcml_history</code>, and a warning is
-issued if the tolerance is not met within the configured limits. Warnings
+the tolerance, and a warning is issued if the tolerance is not met within
+the configured limits. <code><a href="check_fit.html">check_fit()</a></code> reports every stage. Warnings
 are kept for what changes how a result is read, and <code><a href="check_fit.html">check_fit()</a></code> goes through
 all the checks on the computation, with what to do about any that need a look.
 The estimation samples and the final conditional samples are drawn from
@@ -407,6 +316,10 @@ start of <code>phi</code> far from the distances between the locations, below a
 hundredth of the smallest or above ten times the largest, gives a warning,
 since it may be in other units. <code><a href="summary.RiskMap.html">summary.RiskMap()</a></code> says which starting
 values a fit used and why.</p>
+<p><code><a href="https://rdrr.io/r/stats/update.html" class="external-link">stats::update()</a></code> refits a model with some of its arguments changed, as
+in <code>update(fit, . ~ . + elevation)</code> or
+<code>update(fit, fixed_pars = list(phi = 20))</code>. It evaluates the call again,
+with the data it names in the environment where <code><a href="https://rdrr.io/r/stats/update.html" class="external-link">update()</a></code> is called.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -454,12 +367,7 @@ values a fit used and why.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #555555;">AIC           </span>  -9.237272</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># add a covariate</span></span></span>
-<span class="r-in"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu">glgpm</span><span class="op">(</span></span></span>
-<span class="r-in"><span>  formula <span class="op">=</span> <span class="va">y</span> <span class="op">~</span> <span class="fu"><a href="gp.html">gp</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span> <span class="va">pop_dens</span>,</span></span>
-<span class="r-in"><span>  data <span class="op">=</span> <span class="va">italy_sim</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">100</span>,<span class="op">]</span>,</span></span>
-<span class="r-in"><span>  family <span class="op">=</span> <span class="st">"gaussian"</span>,</span></span>
-<span class="r-in"><span>  messages <span class="op">=</span> <span class="cn">FALSE</span></span></span>
-<span class="r-in"><span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/update.html" class="external-link">update</a></span><span class="op">(</span><span class="va">fit</span>, <span class="va">.</span> <span class="op">~</span> <span class="va">.</span> <span class="op">+</span> <span class="va">pop_dens</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ── <span style="font-weight: bold;">Linear geostatistical model</span> ─────────────────────────────────────────────────</span>
@@ -578,7 +486,7 @@ values a fit used and why.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> `data` are in longitude and latitude, so they are projected to a custom</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>   oblique Mercator projection (<span style="color: #0000BB;">"RiskMap oblique Mercator 11.5E 5N azimuth -72.5</span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>   <span style="color: #0000BB;">k0 0.9998"</span>) for fitting, with distances in km. No UTM zone keeps distances</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>   within 0.5% over them. Set `model_crs` to choose the projection.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>   within 0.5% over them. Set `distance_crs` to choose the projection.</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> ── <span style="font-weight: bold;">Binomial geostatistical model</span> ───────────────────────────────────────────────</span>

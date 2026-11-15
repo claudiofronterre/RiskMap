@@ -189,7 +189,7 @@ and its interval is open there.</p>
 <p>The smoothness \(\kappa\) of the Matern correlation stays fixed at the
 value used in the fit. It can be profiled by refitting the model over a
 set of values of \(\kappa\) and comparing the maximised
-log-likelihoods (<code>log_lik</code>) of the fits.</p>
+log-likelihoods of the fits, given by <a href="logLik.RiskMap.html">logLik()</a>.</p>
 <p>Grids are centred at the estimate on the scale on which the model is fitted
 (the logarithm for variances and the scale) and span <code>span</code> standard errors
 either way. If the profile deviance has not passed the 99% point of a
@@ -253,7 +253,7 @@ parallel.</p>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">liberia</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">liberia</span> <span class="op">&lt;-</span> <span class="fu">sf</span><span class="fu">::</span><span class="fu"><a href="https://r-spatial.github.io/sf/reference/st_as_sf.html" class="external-link">st_as_sf</a></span><span class="op">(</span><span class="va">liberia</span>, coords <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"long"</span>, <span class="st">"lat"</span><span class="op">)</span>, crs <span class="op">=</span> <span class="fl">4326</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="glgpm.html">glgpm</a></span><span class="op">(</span><span class="va">npos</span> <span class="op">~</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="va">elevation</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="gp.html">gp</a></span><span class="op">(</span><span class="op">)</span>, denominator <span class="op">=</span> <span class="va">ntest</span>,</span></span>
-<span class="r-in"><span>             data <span class="op">=</span> <span class="va">liberia</span>, model_crs <span class="op">=</span> <span class="fl">32629</span>, family <span class="op">=</span> <span class="st">"binomial"</span>,</span></span>
+<span class="r-in"><span>             data <span class="op">=</span> <span class="va">liberia</span>, distance_crs <span class="op">=</span> <span class="fl">32629</span>, family <span class="op">=</span> <span class="st">"binomial"</span>,</span></span>
 <span class="r-in"><span>             seed <span class="op">=</span> <span class="fl">2026</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> The model is fitted in EPSG:32629, with distances in km.</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> Certified. The Monte Carlo error of the estimate is within 0.0091 statistical</span>

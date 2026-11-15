@@ -30,7 +30,8 @@ print(x, digits = max(3L, getOption("digits") - 3L), ...)
 
 - ...:
 
-  other parameters.
+  Not used, and an error if given, so that a misspelt argument is not
+  ignored.
 
 ## Value
 

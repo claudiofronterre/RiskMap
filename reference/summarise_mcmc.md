@@ -80,7 +80,7 @@ Science*, 7(4), 473-483.
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
-             data = liberia, model_crs = 32629, family = "binomial",
+             data = liberia, distance_crs = 32629, family = "binomial",
              messages = FALSE)
 ess <- summarise_mcmc(fit)
 # The mean and the five locations with the smallest effective sample size
@@ -88,15 +88,15 @@ ess[1, ]
 #> # A tibble: 1 × 3
 #>   effect    index   ess
 #>   <chr>     <int> <dbl>
-#> 1 mean of S    NA 1497.
+#> 1 mean of S    NA 1624.
 head(ess[order(ess$ess), ], 5)
 #> # A tibble: 5 × 3
 #>   effect index   ess
 #>   <chr>  <int> <dbl>
-#> 1 S          5 1024.
-#> 2 S         67 1136.
-#> 3 S          8 1156.
-#> 4 S          6 1236.
-#> 5 S         21 1236.
+#> 1 S         31 1131.
+#> 2 S         11 1275.
+#> 3 S         25 1301.
+#> 4 S         84 1319.
+#> 5 S         57 1326.
 # }
 ```

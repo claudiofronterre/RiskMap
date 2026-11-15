@@ -14,15 +14,15 @@ glgpm(
   family,
   invlink = NULL,
   denominator = NULL,
-  model_crs = NULL,
+  distance_crs = NULL,
   distance_units = c("km", "m"),
-  control_mcmc = set_control_mcmc(),
-  control_mcml = set_control_mcml(),
-  seed = NULL,
-  return_samples = TRUE,
-  messages = getOption("RiskMap.messages", TRUE),
   start_pars = NULL,
-  fixed_pars = NULL
+  fixed_pars = NULL,
+  control_mcml = set_control_mcml(),
+  control_mcmc = set_control_mcmc(),
+  return_samples = TRUE,
+  seed = NULL,
+  messages = getOption("RiskMap.messages", TRUE)
 )
 ```
 
@@ -88,63 +88,32 @@ glgpm(
   bare/unquoted column name present in `data`. If not provided, defaults
   to `1`.
 
-- model_crs:
+- distance_crs:
 
-  Optional CRS (e.g. an EPSG code) used internally for model fitting. If
-  `data` is already in a projected CRS and `model_crs` is not provided,
-  the data are used as-is. If `data` are in longitude/latitude and
-  `model_crs` is not provided, the data are automatically reprojected to
-  the CRS from
+  The projected coordinate reference system in which distances, and so
+  `phi`, are measured, for example an EPSG code. `data` are transformed
+  to it, and the model is fitted in it. The default, `NULL`, keeps
+  projected data as they are and projects data in longitude and latitude
+  to the CRS from
   [`propose_crs()`](https://claudiofronterre.github.io/RiskMap/reference/propose_crs.md),
-  a UTM zone or a projection centred on the data, and a message names
-  the CRS and the units of distance. If provided, `model_crs` must be a
-  projected (not longitude/latitude) CRS. A warning of class
-  `riskmap_warning_crs` is raised when the CRS used distorts distances
-  by more than 1% over the data.
+  a UTM zone or a projection centred on the data, with a message naming
+  the CRS and the units of distance. A CRS in longitude and latitude is
+  refused. A warning of class `riskmap_warning_crs` is raised when the
+  CRS used distorts distances by more than 1% over the data.
+  [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md),
+  [`summarise_distance()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_distance.md),
+  [`create_grid()`](https://claudiofronterre.github.io/RiskMap/reference/create_grid.md)
+  and
+  [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)
+  take the same argument, so that their distances can be measured as the
+  fit's are.
 
 - distance_units:
 
   Character string, either `"km"` or `"m"`, indicating the units used
   for internal coordinate distances and spatial parameters such as
-  `phi`. The coordinates in the returned `data` retain the linear units
-  declared by its CRS. Defaults to `"km"`.
-
-- control_mcmc:
-
-  Control parameters for MCMC sampling for binomial or Poisson models.
-  Must be an object of class `RiskMap_control_mcmc` as returned by
-  [`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md).
-
-- control_mcml:
-
-  Control parameters for adaptive Monte Carlo maximum likelihood
-  estimation. Must be returned by
-  [`set_control_mcml()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcml.md).
-
-- seed:
-
-  Optional non-negative integer that seeds every random step of a
-  binomial or Poisson fit: the Monte Carlo samples of the estimation and
-  the final conditional samples. When `NULL` (the default), one integer
-  is drawn from the session's random number generator, so
-  [`set.seed()`](https://rdrr.io/r/base/Random.html) before the call
-  also reproduces the fit. The seed used is returned as `seed`. The
-  caller's random number state is otherwise left unchanged. Ignored for
-  Gaussian models, which have no random step.
-
-- return_samples:
-
-  Logical indicating whether to draw and retain conditional samples at
-  the fitted parameters. These samples are used to compute fitted
-  values. If `FALSE`, final sampling is skipped and fitted values are
-  not computed. Defaults to `TRUE`. Ignored for Gaussian models.
-
-- messages:
-
-  Logical indicating whether to print messages, and a line for each
-  stage of Monte Carlo maximum likelihood as described in
-  [riskmap_progress](https://claudiofronterre.github.io/RiskMap/reference/riskmap_progress.md).
-  Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
+  `phi`. The coordinates of the data keep the linear units of their CRS.
+  Defaults to `"km"`.
 
 - start_pars:
 
@@ -183,182 +152,106 @@ glgpm(
   error variance, not both, and a negative binomial model the nugget or
   the size, not both.
 
-## Value
+- control_mcml:
 
-An object of class `RiskMap` containing the fitted model and relevant
-information:
+  Control parameters for adaptive Monte Carlo maximum likelihood
+  estimation. Must be returned by
+  [`set_control_mcml()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcml.md).
 
-- estimate:
+- control_mcmc:
 
-  Estimated parameters as a named list: `beta` (named regression
-  coefficients on the scale of the supplied covariates), `sigma2`,
-  `phi`, `nu2` \\= \tau^2/\sigma^2\\ when the nugget is estimated,
-  `sigma2_me` for Gaussian models with an estimated measurement error
-  variance, `theta` for negative binomial models whose size is
-  estimated, stored as \\\log(1/\theta)\\, the opposite sign to the
-  logarithm of a variance ([`coef()`](https://rdrr.io/r/stats/coef.html)
-  gives \\\theta\\), and `sigma2_re` (a named vector, one entry per
-  random effect) when random effects are included. Keeping these in
-  separate list elements - rather than one flat named vector - avoids a
-  covariate whose name collides with a parameter name (e.g. a covariate
-  literally called `"sigma2"`) corrupting name-based lookups.
-  `covariance` is estimated as one joint matrix over every parameter;
-  its rows/columns are named to match `unlist(estimate)`.
+  Control parameters for MCMC sampling for binomial or Poisson models.
+  Must be an object of class `RiskMap_control_mcmc` as returned by
+  [`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md).
 
-- grad_MLE:
+- return_samples:
 
-  Gradient of the maximum likelihood function
-
-- covariance:
-
-  Covariance
-
-- log_lik:
-
-  Log likelihood
-
-- y:
-
-  Response variable
-
-- D:
-
-  Covariate matrix
-
-- coords:
-
-  Unique spatial coordinates
-
-- ID_coords:
-
-  Index of coordinates
-
-- re:
-
-  Random effects if
-  [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
-  is included in `formula`
-
-- ID_re:
-
-  Index of random effects if
-  [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
-  is included in `formula`
-
-- nugget:
-
-  `"none"` without a nugget, `"estimated"` or `"fixed"` when
-  `fixed_pars` holds its variance.
-
-- fixed_pars:
-
-  The values of the parameters the model holds, as a named list, `NULL`
-  when it holds none.
-
-- formula:
-
-  Model formula
-
-- family:
-
-  Response family
-
-- link_function:
-
-  For binomial and Poisson models, the inverse link (`inv`), its first
-  and second derivatives (`d1` and `d2`) and the name of the link
-  (`link`), such as `"probit"`, which is `NULL` for an inverse given in
-  `invlink`. `NULL` for Gaussian models.
-
-- distance_units:
-
-  Units (`"km"` or `"m"`) used for internal coordinate distances and
-  spatial parameters
-
-- data:
-
-  The `sf` data used for model fitting, in the CRS used internally
-
-- input_crs:
-
-  The CRS of the input data
-
-- kappa:
-
-  Spatial correlation parameter
-
-- units_m:
-
-  The denominators or exposures of a binomial, Poisson or negative
-  binomial model
-
-- cov_offset:
-
-  Covariate offset
-
-- call:
-
-  Matched call
-
-- S_samples:
-
-  For non-Gaussian models, fresh conditional MCMC samples evaluated at
-  the fitted parameters when `return_samples` is `TRUE`. These are not
-  the reference samples used for MCML estimation. The first block is the
-  location-level Gaussian effect (including the nugget when present),
-  followed by any unstructured random-effect blocks.
-
-- linear_predictors:
-
-  Conditional fitted linear predictors. For non-Gaussian models these
-  are Monte Carlo means over the final-parameter latent samples and are
-  `NULL` when `return_samples = FALSE`; for Gaussian models they use the
-  conditional latent mean.
-
-- fitted_values:
-
-  Conditional fitted response means. Binomial models return
-  probabilities; Poisson and negative binomial models return expected
-  counts and therefore include any supplied exposure in `denominator`.
-  These are `NULL` for non-Gaussian models when
-  `return_samples = FALSE`.
-
-- mcml_history:
-
-  For non-Gaussian models, one entry per stage of certified Monte Carlo
-  maximum likelihood (see
-  [`set_control_mcml()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcml.md)),
-  containing the sizes of the fitting and validation samples, the
-  importance distribution used, the optimum of the fitting sample
-  (`fitted_estimate`) and the corrected estimate (`estimate`), the
-  optimizer result, the size of the correction, the certificate and its
-  two parts (`certificate_distance` and `certificate_radius`), effective
-  sample sizes and Pareto tail diagnostics of each sample, the outcome
-  of the stage and its timing. A stage where the global importance
-  distribution failed also holds why, in `proposal_failure` or, at the
-  start of the first stage, `start_failure`: the `reason`, the number of
-  `refits` and the last `change` of its factors. Estimates use the same
-  parameterisation as `estimate`, with regression coefficients and
-  spatial scale restored to the supplied covariate and distance units.
-  `NULL` for Gaussian models.
-
-- mcml_certified:
-
-  Whether the certificate of the returned estimate is within the
-  tolerance. The certificate is an approximate 95% bound, in statistical
-  standard errors, on the Monte Carlo error of the estimate, that is its
-  distance from the maximum of the exact likelihood that the fit has
-  located. It says nothing about whether that maximum is the highest.
-  `NULL` for Gaussian models.
-
-- mcml_selected_iteration:
-
-  The stage whose estimate is returned. `NULL` for Gaussian models.
+  Logical indicating whether to draw and retain conditional samples at
+  the fitted parameters. These samples are used to compute fitted
+  values. If `FALSE`, final sampling is skipped and fitted values are
+  not computed. Defaults to `TRUE`. Ignored for Gaussian models.
 
 - seed:
 
-  The seed used for the random steps of a binomial or Poisson fit,
-  whether supplied or drawn. `NULL` for Gaussian models.
+  Optional non-negative integer that seeds every random step of a
+  binomial or Poisson fit: the Monte Carlo samples of the estimation and
+  the final conditional samples. When `NULL` (the default), one integer
+  is drawn from the session's random number generator, so
+  [`set.seed()`](https://rdrr.io/r/base/Random.html) before the call
+  also reproduces the fit. The seed used is returned as `seed`. The
+  caller's random number state is otherwise left unchanged. Ignored for
+  Gaussian models, which have no random step.
+
+- messages:
+
+  Logical indicating whether to print messages, and a line for each
+  stage of Monte Carlo maximum likelihood as described in
+  [riskmap_progress](https://claudiofronterre.github.io/RiskMap/reference/riskmap_progress.md).
+  Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
+
+## Value
+
+A fitted model of class `RiskMap`, a list. These components are part of
+its interface.
+
+- data:
+
+  The `sf` data of the fit, in the CRS in which the model was fitted, so
+  that distances between them are those that `phi` describes.
+  `sf::st_crs(fit$data)` gives that CRS, and
+  `sf::st_transform(fit$data, fit$input_crs)` gives the data in the CRS
+  they were given in.
+
+- input_crs:
+
+  The CRS of `data` as it was given.
+
+- formula:
+
+  The model formula.
+
+- family:
+
+  The name of the family, such as `"binomial"`.
+
+- call:
+
+  The matched call.
+
+- seed:
+
+  The seed used for the random steps of a binomial, Poisson or negative
+  binomial fit, whether given or drawn, so that
+  `glgpm(..., seed = fit$seed)` reproduces the fit. `NULL` for Gaussian
+  models.
+
+- distance_units:
+
+  The units of distance, `"km"` or `"m"`, in which `phi` is given.
+
+The other components are internal and may change in any version of
+RiskMap. The estimates, their covariance and the likelihood are read
+with
+[coef()](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md),
+[vcov()](https://claudiofronterre.github.io/RiskMap/reference/logLik.RiskMap.md),
+[logLik()](https://claudiofronterre.github.io/RiskMap/reference/logLik.RiskMap.md)
+and
+[nobs()](https://claudiofronterre.github.io/RiskMap/reference/logLik.RiskMap.md),
+fitted values with
+[fitted()](https://claudiofronterre.github.io/RiskMap/reference/fitted.RiskMap.md),
+standard errors and intervals with
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
+and how the fit was computed with
+[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
+
+Every result of RiskMap that can be saved and read again, such as a fit,
+a prediction or a profile, has the attribute `riskmap_version`, a list
+with the `version` of RiskMap that made it, as a
+[`package_version()`](https://rdrr.io/r/base/numeric_version.html), and
+`sha`, the commit it was installed from when it was installed from
+GitHub and `NA` otherwise. An object without it was made before RiskMap
+stamped its results, by an earlier version or an early development build
+of 2.0.0.
 
 ## Details
 
@@ -386,14 +279,11 @@ variability at specific locations beyond the fixed and spatial covariate
 effects, enhancing the model's flexibility in capturing complex spatial
 patterns.
 
-The `model_crs` argument can be used to reproject the spatial
-coordinates to a different, projected CRS for model fitting. If `data`
-are in longitude/latitude and `model_crs` is not supplied, the
-coordinates are automatically reprojected to the CRS from
+The model is fitted in the projected CRS of `distance_crs`, or of `data`
+when it is `NULL`, and the data in longitude and latitude are projected
+to the CRS from
 [`propose_crs()`](https://claudiofronterre.github.io/RiskMap/reference/propose_crs.md)
-and a message details the conversion; automatic projection is avoided
-for `model_crs` explicitly supplied in longitude/latitude, which raises
-an error. The `distance_units` argument controls whether distances
+with a message. The `distance_units` argument controls whether distances
 between locations (and so parameters such as `phi`) are expressed in
 kilometers (`"km"`, the default) or meters (`"m"`).
 
@@ -409,9 +299,11 @@ in statistical standard errors, with an allowance for that sample's own
 error taken from it and from a replicate of it (see
 [`set_control_mcml()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcml.md)).
 The samples are enlarged only when the certificate exceeds the
-tolerance. Every stage is recorded in `mcml_history`, and a warning is
-issued if the tolerance is not met within the configured limits.
-Warnings are kept for what changes how a result is read, and
+tolerance, and a warning is issued if the tolerance is not met within
+the configured limits.
+[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+reports every stage. Warnings are kept for what changes how a result is
+read, and
 [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
 goes through all the checks on the computation, with what to do about
 any that need a look. The estimation samples and the final conditional
@@ -440,6 +332,13 @@ hundredth of the smallest or above ten times the largest, gives a
 warning, since it may be in other units.
 [`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
 says which starting values a fit used and why.
+
+[`stats::update()`](https://rdrr.io/r/stats/update.html) refits a model
+with some of its arguments changed, as in
+`update(fit, . ~ . + elevation)` or
+`update(fit, fixed_pars = list(phi = 20))`. It evaluates the call again,
+with the data it names in the environment where
+[`update()`](https://rdrr.io/r/stats/update.html) is called.
 
 ## See also
 
@@ -489,12 +388,7 @@ summary(fit)
 #> AIC             -9.237272
 
 # add a covariate
-fit <- glgpm(
-  formula = y ~ gp() + pop_dens,
-  data = italy_sim[1:100,],
-  family = "gaussian",
-  messages = FALSE
-)
+fit <- update(fit, . ~ . + pop_dens)
 
 summary(fit)
 #> ── Linear geostatistical model ─────────────────────────────────────────────────
@@ -613,7 +507,7 @@ fit <- glgpm(NO_INF ~ gp(),
 #> ℹ `data` are in longitude and latitude, so they are projected to a custom
 #>   oblique Mercator projection ("RiskMap oblique Mercator 11.5E 5N azimuth -72.5
 #>   k0 0.9998") for fitting, with distances in km. No UTM zone keeps distances
-#>   within 0.5% over them. Set `model_crs` to choose the projection.
+#>   within 0.5% over them. Set `distance_crs` to choose the projection.
 
 summary(fit)
 #> ── Binomial geostatistical model ───────────────────────────────────────────────

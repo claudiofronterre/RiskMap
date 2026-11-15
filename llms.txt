@@ -236,8 +236,8 @@ the random effects.
 
 ### Fitted models
 
-Print, summarise and tabulate a fit, and extract its estimates and
-fitted values.
+Print, summarise and tabulate a fit, and extract its estimates, their
+covariance, its log-likelihood and its fitted values.
 
 - [`print(`*`<RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap.md)
   : Print a Fitted RiskMap Model
@@ -249,6 +249,10 @@ fitted values.
   : Extract Parameter Estimates from a "RiskMap" Model Fit
 - [`fitted(`*`<RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/fitted.RiskMap.md)
   : Extract fitted values from a RiskMap model
+- [`logLik(`*`<RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/logLik.RiskMap.md)
+  [`vcov(`*`<RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/logLik.RiskMap.md)
+  [`nobs(`*`<RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/logLik.RiskMap.md)
+  : Log-Likelihood, Covariance and Number of Observations of a Fit
 - [`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
   : Format RiskMap Results as a Table
 
@@ -415,17 +419,8 @@ warnings by class.
 
 ## Building blocks
 
-Lower-level functions used by the fitting engine.
+The Matern correlation function of the spatial Gaussian process.
 
 - [`matern_correlation()`](https://claudiofronterre.github.io/RiskMap/reference/matern_correlation.md)
   : Matern Correlation Function
-- [`matern_gradient_phi()`](https://claudiofronterre.github.io/RiskMap/reference/matern_gradient_phi.md)
-  : First Derivative with Respect to \\\phi\\
-- [`matern_hessian_phi()`](https://claudiofronterre.github.io/RiskMap/reference/matern_hessian_phi.md)
-  : Second Derivative with Respect to \\\phi\\
-- [`maxim_integrand()`](https://claudiofronterre.github.io/RiskMap/reference/maxim_integrand.md)
-  : Maximization of the Integrand for Generalized Linear Gaussian
-  Process Models
-- [`create_ids()`](https://claudiofronterre.github.io/RiskMap/reference/create_ids.md)
-  : Compute Unique Coordinate Identifiers
 

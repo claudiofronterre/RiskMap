@@ -105,8 +105,8 @@ specify_glgpm(
 
   Character string, either `"km"` or `"m"`, indicating the units used
   for internal coordinate distances and spatial parameters such as
-  `phi`. The coordinates in the returned `data` retain the linear units
-  declared by its CRS. Defaults to `"km"`.
+  `phi`. The coordinates of the data keep the linear units of their CRS.
+  Defaults to `"km"`.
 
 ## Value
 

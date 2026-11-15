@@ -213,7 +213,7 @@
       </dl></div><div class="section level2">
 
       <h3 id="fitted-models">Fitted models<a class="anchor" aria-label="anchor" href="#fitted-models"></a></h3>
-      <div class="section-desc"><p>Print, summarise and tabulate a fit, and extract its estimates and fitted values.</p></div>
+      <div class="section-desc"><p>Print, summarise and tabulate a fit, and extract its estimates, their covariance, its log-likelihood and its fitted values.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -254,6 +254,13 @@
 
         </dt>
         <dd>Extract fitted values from a RiskMap model</dd>
+
+        <dt>
+
+          <code><a href="logLik.RiskMap.html">logLik(<i>&lt;RiskMap&gt;</i>)</a></code> <code><a href="logLik.RiskMap.html">vcov(<i>&lt;RiskMap&gt;</i>)</a></code> <code><a href="logLik.RiskMap.html">nobs(<i>&lt;RiskMap&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Log-Likelihood, Covariance and Number of Observations of a Fit</dd>
 
         <dt>
 
@@ -670,7 +677,7 @@
       </dl></div><div class="section level2">
       <h2 id="building-blocks">Building blocks<a class="anchor" aria-label="anchor" href="#building-blocks"></a></h2>
 
-      <div class="section-desc"><p>Lower-level functions used by the fitting engine.</p></div>
+      <div class="section-desc"><p>The Matern correlation function of the spatial Gaussian process.</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -683,34 +690,6 @@
 
         </dt>
         <dd>Matern Correlation Function</dd>
-
-        <dt>
-
-          <code><a href="matern_gradient_phi.html">matern_gradient_phi()</a></code>
-
-        </dt>
-        <dd>First Derivative with Respect to \(\phi\)</dd>
-
-        <dt>
-
-          <code><a href="matern_hessian_phi.html">matern_hessian_phi()</a></code>
-
-        </dt>
-        <dd>Second Derivative with Respect to \(\phi\)</dd>
-
-        <dt>
-
-          <code><a href="maxim_integrand.html">maxim_integrand()</a></code>
-
-        </dt>
-        <dd>Maximization of the Integrand for Generalized Linear Gaussian Process Models</dd>
-
-        <dt>
-
-          <code><a href="create_ids.html">create_ids()</a></code>
-
-        </dt>
-        <dd>Compute Unique Coordinate Identifiers</dd>
       </dl></div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>

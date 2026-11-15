@@ -9,19 +9,38 @@ HTML, LaTeX and the R console.
 ``` r
 to_table(object, ...)
 
-# Default S3 method
+# S3 method for class 'RiskMap'
 to_table(object, digits = 3, col_names = NULL, ...)
+
+# S3 method for class 'summary.RiskMap'
+to_table(object, digits = 3, col_names = NULL, ...)
+
+# S3 method for class 'RiskMap_cross_validation'
+to_table(object, digits = 3, col_names = NULL, ...)
+
+# S3 method for class 'summary.RiskMap_cross_validation'
+to_table(object, digits = 3, col_names = NULL, ...)
+
+# Default S3 method
+to_table(object, ...)
 ```
 
 ## Arguments
 
 - object:
 
-  An object of class "RiskMap" resulting from a call to
-  [`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
-  a "summary.RiskMap" object, a "summary.RiskMap_cross_validation"
-  object, or a "RiskMap_prediction" object (see
-  [`to_table.RiskMap_prediction`](https://claudiofronterre.github.io/RiskMap/reference/to_table.RiskMap_prediction.md)).
+  A fit from
+  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+  or its
+  [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
+  a cross-validation from
+  [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
+  or its
+  [summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md),
+  or a prediction over `boundaries` from
+  [predict()](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md)
+  (see
+  [`to_table.RiskMap_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.RiskMap_prediction.md)).
 
 - ...:
 
@@ -53,10 +72,9 @@ to represent very large or very small values clearly. Values that are
 compared share one notation: the estimate and confidence limits of a
 parameter, and one metric across models.
 
-When the input is a "RiskMap" model object, the table includes:
+When the input is a fit or its summary, the table includes:
 
-- Regression coefficients with their estimates, confidence intervals,
-  and p-values.
+- Regression coefficients with their estimates and confidence intervals.
 
 - Parameters for the spatial process.
 
@@ -65,8 +83,7 @@ When the input is a "RiskMap" model object, the table includes:
 - The parameters of the family that were estimated, such as the
   measurement error variance of a Gaussian model.
 
-When the input is a cross-validation summary object
-("summary.RiskMap_cross_validation"), the table includes:
+When the input is a cross-validation or its summary, the table includes:
 
 - A row for each model being compared.
 

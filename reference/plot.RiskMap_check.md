@@ -88,12 +88,12 @@ data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(
   npos ~ log_elevation + gp(kappa = 0.5), denominator = ntest,
-  data = liberia, model_crs = 32629, family = "binomial", messages = FALSE
+  data = liberia, distance_crs = 32629, family = "binomial", messages = FALSE
 )
 checked <- check_fit(fit, extra = "all")
 #> ℹ Computing the profiles of the 2 covariance parameters and the predictions of
-#>   how often the radius of the bound is too small, which should take about 49
-#>   seconds, from the 2 seconds the fit took.
+#>   how often the radius of the bound is too small, which should take about 31
+#>   seconds, from the 1 second the fit took.
 plot(checked)
 
 plot(checked, which = c("certificate", "screen", "radius", "profile_phi"))

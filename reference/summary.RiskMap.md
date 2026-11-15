@@ -7,7 +7,7 @@ standard errors and confidence intervals for likelihood-based model fits
 
 ``` r
 # S3 method for class 'RiskMap'
-summary(object, ..., level = 0.95)
+summary(object, level = 0.95, ...)
 ```
 
 ## Arguments
@@ -17,13 +17,14 @@ summary(object, ..., level = 0.95)
   An object of class "RiskMap" from
   [`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
 
-- ...:
-
-  other parameters.
-
 - level:
 
   Confidence level for intervals (default 0.95).
+
+- ...:
+
+  Not used, and an error if given, so that a misspelt argument is not
+  ignored.
 
 ## Value
 
