@@ -1068,7 +1068,9 @@ is_valid_fit <- function(fit) {
 ##' and are ignored. Separating directions form a cone, and covariates are
 ##' held fixed one at a time, while a direction remains, so that d changes
 ##' few of them. Centring and scaling the covariates changes neither whether
-##' the data are separated nor which covariates d changes.
+##' the data are separated nor which covariates d changes. The columns in
+##' `held`, coefficients that `fixed_pars` holds, are known terms, so d never
+##' changes them.
 ##' @return NULL if no separation is found. Otherwise a list with the
 ##' `direction` d, the separated `observations` (where D d is not zero), how
 ##' many of them have no positives (`no_positives`) and how many have only
