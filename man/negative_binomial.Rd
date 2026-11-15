@@ -4,11 +4,11 @@
 \alias{negative_binomial}
 \title{The Negative Binomial Family}
 \usage{
-negative_binomial(theta = NULL)
+negative_binomial(...)
 }
 \arguments{
-\item{theta}{The size, a positive number at which it is held, or \code{NULL}
-(the default) to estimate it.}
+\item{...}{Not used. A size given here stops, since it is held with
+\code{fixed_pars} instead.}
 }
 \value{
 An object of class \code{riskmap_family_specification}.
@@ -20,7 +20,8 @@ a Poisson model allows. A count \eqn{y} with exposure \eqn{m} given the
 random effects has mean \eqn{\mu = m \exp(\eta)}, with the log link,
 and variance \eqn{\mu + \mu^2 / \theta}, as in
 \code{MASS::negative.binomial(theta)}. The size \eqn{\theta} is estimated
-unless a value is given, at which it is held.
+unless \code{fixed_pars = list(theta = )} of \code{\link[=glgpm]{glgpm()}} holds it, and
+\code{\link[=specify_glgpm]{specify_glgpm()}} takes it as \code{theta} in its \code{parameters}.
 }
 \details{
 The exposure is given in the \code{denominator} of \code{\link[=glgpm]{glgpm()}}, and is 1 for
@@ -36,7 +37,7 @@ with one level per observation, so those are refused. A fit with an
 estimated size uses the sampled form of Monte Carlo maximum likelihood
 (see \code{integrate_noise} in \code{\link[=set_control_mcml]{set_control_mcml()}}), and its check for other
 maxima has no screen of short scales. \code{MASS::negative.binomial(theta)}
-is read as \code{negative_binomial(theta)}.
+is read as the negative binomial family with its size held at \code{theta}.
 
 Given the size, the log-likelihood of a count is that of a binomial
 count of \eqn{y} successes in \eqn{y + \theta} trials with the logit
@@ -47,7 +48,6 @@ does, so the two can be compared.
 }
 \examples{
 negative_binomial()
-negative_binomial(theta = 2)
 }
 \seealso{
 \code{\link[=glgpm]{glgpm()}}, \code{\link[stats:poisson]{stats::poisson()}}

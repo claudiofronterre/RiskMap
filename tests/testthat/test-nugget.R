@@ -1,4 +1,4 @@
-test_that("nugget and fix_var_me cannot both be estimated when family is gaussian", {
+test_that("the nugget and the measurement error variance cannot both be estimated when family is gaussian", {
   data <- data.frame(
     x = c(1, 2, 3),
     y = c(0, 1, 2),
@@ -9,11 +9,12 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
   gaussian_data <- sf::st_as_sf(data, coords = c("x", "y"), crs = sf::st_crs(4326))
 
   expect_input_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", messages = FALSE), "formula")
-  expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fix_var_me = 1, messages = FALSE))
+  expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fixed_pars = list(sigma2_me = 1), messages = FALSE))
   zero_error_fit <- glgpm(
-    z ~ gp(), gaussian_data, "gaussian", fix_var_me = 0, messages = FALSE
+    z ~ gp(), gaussian_data, "gaussian", fixed_pars = list(sigma2_me = 0), messages = FALSE
   )
-  expect_identical(zero_error_fit$fix_var_me, 0)
+  expect_identical(fit_fix_var_me(zero_error_fit), 0)
+  expect_identical(zero_error_fit$fixed_pars, list(sigma2_me = 0))
   expect_lt(max(abs(zero_error_fit$grad_MLE)), 0.001)
   expect_no_error(suppressWarnings(glgpm(
     z ~ gp(nugget = TRUE), gaussian_data, "binomial",
@@ -32,17 +33,19 @@ test_that("nugget and fix_var_me cannot both be estimated when family is gaussia
   gaussian_data <- sf::st_as_sf(two_location_data, coords = c("x", "y"), crs = sf::st_crs(4326))
 
   expect_error(
-    glgpm(z ~ gp(), gaussian_data, "gaussian", fix_var_me = 0,
+    glgpm(z ~ gp(), gaussian_data, "gaussian", fixed_pars = list(sigma2_me = 0),
           messages = FALSE),
     "is singular, whatever the parameters"
   )
 
   expect_no_error(glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", messages = FALSE))
 
-  result <- glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fix_var_me = 1, messages = FALSE)
+  result <- glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian", fixed_pars = list(sigma2_me = 1), messages = FALSE)
   expect_true("tau2" %in% names(coef(result)))
 
-  result <- glgpm(z ~ gp(nugget = 1), gaussian_data, "gaussian", messages = FALSE)
+  result <- glgpm(z ~ gp(nugget = TRUE), gaussian_data, "gaussian",
+                  fixed_pars = list(tau2 = 1), messages = FALSE)
+  expect_identical(result$nugget, "fixed")
   expect_identical(summary(result)$tau2, 1)
   expect_lt(max(abs(result$grad_MLE)), 0.001)
 

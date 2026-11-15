@@ -199,9 +199,10 @@ matern_hessian_phi <- function(u, phi, kappa) {
 ##' @param ... Variable representing the spatial coordinates for the GP model. If left blank the
 ##' `geometry` column from the data is used automatically.
 ##' @param kappa The smoothness parameter \eqn{\kappa}. Default is `0.5`.
-##' @param nugget The nugget effect, which represents the variance of the measurement error.
-##' Default is `FALSE` in which case it is not estimated. If `TRUE` the value will be estimated or
-##' a positive numeric value can be provided instead to fix the effect.
+##' @param nugget Whether the model has a nugget, independent variation at
+##' each location whose variance is `tau2`. Default is `FALSE`. With `TRUE` its
+##' variance is estimated, unless `fixed_pars = list(tau2 = )` of [glgpm()]
+##' holds it.
 ##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates),
 ##' the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
 ##' A model has one spatial Gaussian process, so a formula can contain only one `gp()` term.
@@ -232,11 +233,16 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
 
   check_range(kappa, min = 0, allow_equal = FALSE)
 
-  if (!(isTRUE(nugget) || isFALSE(nugget) ||
-        (is.numeric(nugget) && length(nugget) == 1L && is.finite(nugget) &&
-         nugget > 0))) {
+  if (is.numeric(nugget) && length(nugget) == 1L && is.finite(nugget) &&
+      nugget > 0) {
+    abort_input(c("{.arg nugget} must be {.code TRUE} or {.code FALSE}, not {nugget}.", "i" = "To hold the nugget variance at {nugget}, use {.code gp(nugget = TRUE)} with {.code fixed_pars = list(tau2 = {nugget})} in {.fn glgpm}."), arg = "nugget")
+  }
+  if (identical(nugget, 0) || identical(nugget, 0L)) {
+    abort_input(c("{.arg nugget} must be {.code TRUE} or {.code FALSE}, not 0.", "i" = "A model without a nugget has {.code nugget = FALSE}."), arg = "nugget")
+  }
+  if (!(isTRUE(nugget) || isFALSE(nugget))) {
     supplied <- describe_value(nugget)
-    abort_input("{.arg nugget} must be {.code TRUE}, {.code FALSE} or a positive number, not {supplied}.", arg = "nugget")
+    abort_input("{.arg nugget} must be {.code TRUE} or {.code FALSE}, not {supplied}.", arg = "nugget")
   }
 
   if (isFALSE(nugget)){
@@ -509,27 +515,26 @@ check_formula <- function(formula, data, response_required = TRUE){
 ##' maximum likelihood estimates from model fits obtained from the \code{\link{glgpm}} functions.
 ##' @param object An object of class "RiskMap" obtained as a result of a call to \code{\link{glgpm}}.
 ##' @param ... other parameters.
-##' @return A list containing the maximum likelihood estimates. For standard models:
-##' \item{beta}{A vector of coefficient estimates.}
-##' \item{sigma2}{The estimate for the variance parameter \eqn{\sigma^2}.}
-##' \item{phi}{The estimate for the scale parameter \eqn{\phi} of the spatial correlation function.}
-##' \item{tau2}{The estimate for the nugget effect parameter \eqn{\tau^2}, if applicable.}
-##' \item{sigma2_me}{The estimate for the measurement error variance \eqn{\sigma^2_{me}}, if applicable.}
-##' \item{sigma2_re}{A named vector of variance estimates for the random effects, if applicable.}
-##' \item{beta}{Coefficient estimates for log mean worm burden.}
-##' \item{k}{Negative binomial overdispersion parameter.}
-##' \item{rho}{Egg detection rate (fecundity).}
-##' \item{sigma2}{Spatial process variance.}
-##' \item{phi}{Spatial correlation scale.}
-##' @seealso \code{\link{glgpm}}
+##' @return A named list of every parameter of the model on its natural
+##' scale, the estimates and the values held by `fixed_pars`, in the order of
+##' [riskmap_parameters]:
+##' \item{beta}{The regression coefficients, named by the columns of the design matrix.}
+##' \item{sigma2}{The variance of the spatial process.}
+##' \item{phi}{The scale of the spatial correlation, in the model's distance units.}
+##' \item{tau2}{The variance of the nugget, for a model with one.}
+##' \item{sigma2_me}{The measurement error variance, for a Gaussian model.}
+##' \item{theta}{The size, for a negative binomial model.}
+##' \item{sigma2_re}{The variances of the random effects, named by their terms, for a model with \code{re()} terms.}
+##' The list can be given as `start_pars` of [glgpm()].
+##' @seealso \code{\link{glgpm}}, [riskmap_parameters]
 ##' @method coef RiskMap
 ##' @export
 ##'
 coef.RiskMap <- function(object, ...) {
   # The natural values of the parameter table, the nugget as its variance,
-  # in the order coef() has always given them.
+  # with the held parameters at their values, in the order of the table.
   parameters <- fit_parameter_table(object)
-  natural_values(parameters, object$estimate)[coef_order(parameters)]
+  natural_values(parameters, object$estimate, held = TRUE)[coef_order(parameters)]
 }
 
 ##' Extract fitted values from a RiskMap model
@@ -757,7 +762,8 @@ summary.RiskMap <- function(object, ..., level = 0.95) {
   rownames(res$sp) <- unname(table_labels(parameters,
                                           c("sigma2", "phi",
                                             if (has_tau2) "tau2")))
-  if (!is.null(object$fix_tau2)) res$tau2 <- object$fix_tau2
+  nugget <- fit_fix_tau2(object)
+  if (!is.null(nugget)) res$tau2 <- nugget
 
   if (n_re > 0) {
     est_re <- estimate[re_par_names]

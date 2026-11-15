@@ -27,8 +27,9 @@ match_extra_checks <- function(extra) {
 ##' Stop unless `profile` is NULL or a profile of this fit
 ##'
 ##' A profile records the estimate it was centred on, which must be that of
-##' the fit for the parameters the two share. The nugget of a Gaussian
-##' profile is its variance, `tau2`, where the fit has its ratio, `nu2`.
+##' the fit for the parameters the two share. The nugget of a profile is its
+##' variance, `tau2`, where the fit has its ratio, `nu2`, so it is not among
+##' them.
 ##' @noRd
 check_given_profile <- function(profile, object) {
   if (is.null(profile)) return(invisible(TRUE))
@@ -143,12 +144,10 @@ make_extra_check_seed <- function(fit_seed, offset) {
 list_covariance_parameters <- function(object) {
   names <- names(unlist(object$estimate))
   names <- names[parameter_block(names) != "coefficients"]
-  if (isTRUE(fit_traits(object)$exact)) {
-    # The nugget under the name coef() reports, from the parameter table.
-    rows <- estimated_rows(fit_parameter_table(object))
-    nugget <- rows$scale == "nugget"
-    names[names %in% rows$stored[nugget]] <- rows$reported[nugget]
-  }
+  # The nugget under the name coef() reports, from the parameter table.
+  rows <- estimated_rows(fit_parameter_table(object))
+  nugget <- rows$scale == "nugget"
+  names[names %in% rows$stored[nugget]] <- rows$reported[nugget]
   names
 }
 
@@ -226,7 +225,6 @@ describe_profile_parameter <- function(name) {
     name,
     sigma2 = "spatial variance",
     phi = "spatial scale",
-    nu2 = "ratio of the nugget to the spatial variance",
     tau2 = "nugget variance",
     if (!is.null(family_parameter_words(name))) {
       family_parameter_words(name)

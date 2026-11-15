@@ -12,9 +12,10 @@ gp(..., kappa = 0.5, nugget = FALSE)
 
 \item{kappa}{The smoothness parameter \eqn{\kappa}. Default is \code{0.5}.}
 
-\item{nugget}{The nugget effect, which represents the variance of the measurement error.
-Default is \code{FALSE} in which case it is not estimated. If \code{TRUE} the value will be estimated or
-a positive numeric value can be provided instead to fix the effect.}
+\item{nugget}{Whether the model has a nugget, independent variation at
+each location whose variance is \code{tau2}. Default is \code{FALSE}. With \code{TRUE} its
+variance is estimated, unless \code{fixed_pars = list(tau2 = )} of \code{\link[=glgpm]{glgpm()}}
+holds it.}
 }
 \value{
 A list of class \code{RiskMap_gp_spec} containing the following elements:

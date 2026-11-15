@@ -81,8 +81,8 @@ test_that("coef.RiskMap() does not mislabel a single covariate as the intercept 
   expect_identical(rownames(summary(fit)$reg_coef), "cov")
 })
 
-test_that("estimate reproduces coef.RiskMap() for a model with an estimated nugget and fix_var_me", {
-  ## gaussian_offset_model: gp(nugget = TRUE), fix_var_me = 0, no random effects
+test_that("estimate reproduces coef.RiskMap() for a model with an estimated nugget and a held measurement error", {
+  ## gaussian_offset_model: gp(nugget = TRUE), sigma2_me held at 0, no random effects
   co <- coef(gaussian_offset_model)
   est <- gaussian_offset_model$estimate
 

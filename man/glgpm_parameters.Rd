@@ -8,12 +8,12 @@ glgpm_parameters(
   formula,
   data,
   family,
-  fix_var_me = NULL,
+  fixed_pars = NULL,
   distance_units = c("km", "m")
 )
 }
 \arguments{
-\item{formula, data, family, fix_var_me}{As in \code{\link[=glgpm]{glgpm()}}.}
+\item{formula, data, family, fixed_pars}{As in \code{\link[=glgpm]{glgpm()}}.}
 
 \item{distance_units}{The units of distance, \code{"km"} (the default) or \code{"m"},
 for the label of the scale.}

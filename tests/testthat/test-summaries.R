@@ -167,7 +167,7 @@ test_that("summary.RiskMap respects level", {
 })
 
 test_that("summary.RiskMap reports fixed and estimated nugget and measurement error", {
-  # gaussian_offset_model: gp(nugget = TRUE), fix_var_me = 0, offset
+  # gaussian_offset_model: gp(nugget = TRUE), sigma2_me held at 0, offset
   offset_summary <- summary(gaussian_offset_model)
   expect_true(offset_summary$tau2)
   expect_true(offset_summary$cov_offset_used)

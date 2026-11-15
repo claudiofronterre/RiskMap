@@ -115,9 +115,9 @@ test_that("extrapolation maps and argument checks", {
 
 test_that("unexplained spatial variance uses fixed variance components", {
   fixed_model <- glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
-                       fix_var_me = 0.2, messages = FALSE)
+                       fixed_pars = list(sigma2_me = 0.2), messages = FALSE)
   estimated_model <- fixed_model
-  estimated_model$fix_var_me <- NULL
+  estimated_model$fixed_pars <- NULL
   estimated_model$estimate$sigma2_me <- log(0.2)
   share <- function(model) {
     assess_extrapolation(model, gaussian_data,
@@ -126,7 +126,8 @@ test_that("unexplained spatial variance uses fixed variance components", {
   expect_equal(share(fixed_model), share(estimated_model), tolerance = 1e-12)
 
   nugget_model <- gaussian_intercept_model
-  nugget_model$fix_tau2 <- 0.25
+  nugget_model$nugget <- "fixed"
+  nugget_model$fixed_pars <- list(tau2 = 0.25)
   expect_true(all(share(nugget_model) > share(gaussian_intercept_model)))
 })
 

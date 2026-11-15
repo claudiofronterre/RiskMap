@@ -24,7 +24,7 @@ make_gaussian_profile_problem <- function(fitted) {
     distances = pairwise_distances(spatial_scaling$coordinates),
     kappa = fitted$kappa, ID_coords = fitted$ID_coords,
     ID_re = if (is.null(fitted$ID_re)) NULL else as.matrix(fitted$ID_re),
-    fix_tau2 = fitted$fix_tau2, fix_var_me = fitted$fix_var_me
+    fix_tau2 = fit_fix_tau2(fitted), fix_var_me = fit_fix_var_me(fitted)
   )
   maps <- profile_scale_maps(design_scaling$coefficient_transform,
                              log(spatial_scaling$distance_scale), p)
@@ -35,18 +35,12 @@ make_gaussian_profile_problem <- function(fitted) {
   }
   value <- function(working) value_internal(maps$to(working))
 
+  # log tau2 = log nu2 + log sigma2, with its variance by the delta method,
+  # as the profiles of every fit take the nugget (profile_nugget()). The
+  # likelihood reads log tau2 itself, so the slot keeps its bounds.
   parameters <- fit_parameter_table(fitted)
-  estimate <- unlist(fitted$estimate)
-  variances <- diag(fitted$covariance)
-  nugget <- match("nu2", names(estimate))
-  if (nugget_estimated(parameters)) {
-    # log tau2 = log nu2 + log sigma2, with its variance by the delta method,
-    # as in summary() (parameter_jacobian()), summed as it always was here.
-    estimate[nugget] <- estimate[nugget] + estimate[["sigma2"]]
-    variances[nugget] <- variances[nugget] + variances[["sigma2"]] +
-      2 * fitted$covariance["nu2", "sigma2"]
-    names(estimate)[nugget] <- "tau2"
-  }
+  profiled <- profile_nugget(fitted, parameters)
+  estimate <- profiled$estimate
   log_scale <- log(spatial_scaling$distance_scale)
   # The coefficients are solved in closed form and need no bounds.
   bounds <- parameter_bounds(parameters, log_scale, coefficients = c(-Inf, Inf))
@@ -54,8 +48,7 @@ make_gaussian_profile_problem <- function(fitted) {
   problem <- list(
     value = value, estimate = estimate, names = names(estimate),
     labels = profile_labels(parameters, names(estimate)),
-    standard_errors = stats::setNames(sqrt(pmax(variances, 0)),
-                                      names(estimate)),
+    standard_errors = profiled$standard_errors,
     lower = bounds$lower, upper = bounds$upper,
     internal = list(value = value_internal, to = maps$to, from = maps$from,
                     transform = design_scaling$coefficient_transform, p = p,

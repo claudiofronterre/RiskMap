@@ -28,9 +28,10 @@ with its link. Either one of the strings \code{"gaussian"}, \code{"binomial"} an
 \code{"poisson"}, which take the identity, logit and log links, a family
 object as in \code{\link[stats:glm]{stats::glm()}}, such as \code{binomial("probit")}, or
 \code{\link[=negative_binomial]{negative_binomial()}} for overdispersed counts with the log link, whose
-size is estimated unless a value is given (\code{negative_binomial(theta = 2)}
-or \code{MASS::negative.binomial(2)}). Where nothing is estimated, as in
-\code{\link[=specify_glgpm]{specify_glgpm()}}, the size must be given. Binomial
+size is estimated unless it is held, by \code{fixed_pars} of \code{\link[=glgpm]{glgpm()}} or by
+the family object \code{MASS::negative.binomial(2)}. Where nothing is estimated,
+as in \code{\link[=specify_glgpm]{specify_glgpm()}}, the size must be given, as \code{theta} in its
+\code{parameters}. Binomial
 responses take the logit, probit, complementary log-log (\code{"cloglog"}) and
 Cauchy (\code{"cauchit"}) links, Poisson responses the log link and Gaussian
 responses the identity link. \code{binomial("log")} and \code{poisson("identity")}
@@ -46,7 +47,8 @@ when that inverse cannot be differentiated symbolically, as for
 \item{parameters}{A named list containing \code{beta}, \code{sigma2} and \code{phi}.
 \code{beta} has one entry per design-matrix column, including the intercept
 when present. Supply \code{tau2} when \code{gp(nugget = TRUE)}, \code{sigma2_me} for
-Gaussian measurement error, and \code{sigma2_re} for each \code{re()} term.
+Gaussian measurement error, \code{theta} for the size of a negative binomial
+family, and \code{sigma2_re} for each \code{re()} term.
 Variances may be zero. \code{phi} is expressed in \code{distance_units}.}
 
 \item{invlink}{A function that maps the linear predictor to the mean of

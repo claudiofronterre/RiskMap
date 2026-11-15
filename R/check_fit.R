@@ -585,7 +585,7 @@ fit_check_spatial_scale <- function(object, optimizer,
     ),
     paste0(
       see_profile, " Consider ",
-      if (is.numeric(object$fix_tau2)) "a nugget, `gp(nugget = TRUE)`, or ",
+      if (identical(as.numeric(fit_fix_tau2(object)), 0)) "a nugget, `gp(nugget = TRUE)`, or ",
       "a scale fixed from external knowledge.", advice
     )
   )

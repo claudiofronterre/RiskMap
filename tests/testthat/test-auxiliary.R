@@ -153,10 +153,13 @@ test_that("gp functions correctly", {
   true_result <- gp(nugget = TRUE)
   expect_true(true_result$nugget)
 
-  custom_result <- gp(a, b, kappa = 2, nugget = 3)
+  # A value for the nugget is held through fixed_pars, not given here.
+  error <- expect_input_error(gp(nugget = 3), "nugget")
+  expect_match(conditionMessage(error), "fixed_pars", fixed = TRUE)
+  custom_result <- gp(a, b, kappa = 2, nugget = TRUE)
   expect_identical(custom_result$term, c("a", "b"))
   expect_identical(custom_result$kappa, 2)
-  expect_identical(custom_result$nugget, 3)
+  expect_true(custom_result$nugget)
   expect_identical(custom_result$dim, 2L)
   expect_identical(custom_result$label, "gp(a,b)")
 
