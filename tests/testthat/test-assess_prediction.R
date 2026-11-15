@@ -700,13 +700,28 @@ test_that("the expected PIT_area shrinks with the test observations and allows f
   repeated <- expected_pit_area(gaussian_sets(rep(1:25, 4)), FALSE, u)
   expect_equal(repeated, few, tolerance = 0.05)
 
-  # A discrete family uses the distribution functions of its predictions.
-  binomial_sets <- list(list(rows = 1:60,
-                             values = rep(list(pbinom(0:10, 10, 0.3)), 60)))
+  # A discrete family uses the distribution functions of its predictions. Its
+  # value agrees with drawing each count from its distribution and averaging
+  # the areas of the AnPIT curves, with some counts of zero.
   set.seed(1)
-  discrete <- expected_pit_area(binomial_sets, TRUE, u)
-  expect_gt(discrete, 0)
-  expect_lt(discrete, 0.31 / sqrt(60) * 1.5)
+  lambda <- rexp(100, 1 / 5)
+  cdf <- lapply(lambda, function(l) cummax(ppois(0:60, l)))
+  npit <- function(y, Fk) {
+    below <- if (y == 0) 0 else Fk[y]
+    at <- Fk[y + 1]
+    if (at > below) pmin(pmax((u - below) / (at - below), 0), 1) else
+      as.numeric(u > at)
+  }
+  brute <- replicate(400, {
+    y <- vapply(cdf, function(Fk) findInterval(runif(1), Fk, left.open = TRUE),
+                numeric(1))
+    .anpit_area(rowMeans(vapply(seq_along(cdf), function(e) npit(y[e], cdf[[e]]),
+                                numeric(length(u)))), u)
+  })
+  set.seed(2)
+  discrete <- expected_pit_area(list(list(rows = seq_along(cdf), values = cdf)),
+                                TRUE, u, n_replicates = 400L)
+  expect_equal(discrete, mean(brute), tolerance = 0.08)
 })
 
 test_that("plot_folds() plots every observation, coloured by training/test set (#157)", {

@@ -2727,7 +2727,9 @@ expected_pit_area <- function(predictive, discrete, u, n_replicates = 200L) {
     for (e in seq_len(n_points)) {
       Fk <- cdf[[e]]
       y <- counts[, row_index[e]]
-      below <- ifelse(y == 0, 0, Fk[pmin(y, length(Fk))])
+      # F(y - 1), which is 0 for a count of 0, and F(y), both beyond the
+      # support taken as its last value
+      below <- c(0, Fk)[pmin(y, length(Fk)) + 1L]
       at <- Fk[pmin(y + 1, length(Fk))]
       width <- at - below
       value <- pmin(pmax(outer(-below, u, `+`) / width, 0), 1)
