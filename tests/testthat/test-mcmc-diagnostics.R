@@ -95,16 +95,16 @@ test_that("traces are drawn against the iterations at which samples were kept", 
   expect_identical(ggplot2::get_labs(traces)$x, "Sample")
 })
 
-test_that("summarise_mcmc returns the ESS of the mean and of every component", {
+test_that("summarise_mcmc returns the ESS of the mean, every location and every level", {
   summary <- summarise_mcmc(poisson_model)
   samples <- poisson_model$S_samples
 
   expect_identical(class(summary), "data.frame")
   expect_identical(.row_names_info(summary), -16L)
-  expect_named(summary, c("effect", "component", "ess"))
+  expect_named(summary, c("effect", "index", "ess"))
   expect_identical(summary$effect,
                    c("mean of S", rep("S", 10), rep("i", 5)))
-  expect_identical(summary$component, c(NA, 1:10, 1:5))
+  expect_identical(summary$index, c(NA, 1:10, 1:5))
   expect_identical(attr(summary, "n_samples"), 80L)
   expect_equal(summary$ess, c(
     mcmc_effective_size(rowMeans(samples[, 1:10])),

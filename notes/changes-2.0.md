@@ -361,7 +361,9 @@ such argument.
 
 - The new `summarise_mcmc()` returns a data frame of the effective sample sizes of
 the mean of the spatial random effects, of each location and of each level of
-an unstructured random effect. They are computed with the initial monotone
+an unstructured random effect. Its column `index` numbers the locations and
+the levels. It was called `component`, which now names only the quantities
+of `simulated_values()`. The sizes are computed with the initial monotone
 sequence estimator of Geyer (1992), so the package no longer depends on sns.
 patchwork has moved from Suggests to Imports.
 
@@ -1349,16 +1351,22 @@ Gaussian models also take 2,000 independent draws by default, including with
   every family. The variances of `re()` terms are not included yet.
 - The default `spatial_threshold` of `assess_extrapolation()` is `NULL`
   instead of 0.8. A location is then classed as spatial extrapolation when
-  its share is above the largest share left at a sampled location by the data
-  of the others, v_-j = 1 / [(R + W / sigma2)^-1]_jj - w_j / sigma2, which
-  comes from the same factor. A number strictly between 0 and 1 gives a fixed
-  threshold, where 0 and 1 were accepted before. When a sampled location
-  shares no correlation with the others the threshold is 1, nothing is
-  flagged, and `print()` says so. The result keeps the threshold in the attribute
-  `spatial_threshold`, with `spatial_rule` and `sampling_noise`, and has a
-  `print()` method that counts the locations in each class and states the
-  thresholds. In Liberia the threshold is 0.844 and 1.1% of the grid is
-  flagged, where 0.8 without the noise flagged 0.2%.
+  its share is above the 95th percentile of the shares left at the sampled
+  locations by the data of the others,
+  v_-j = 1 / [(R + W / sigma2)^-1]_jj - w_j / sigma2, which come from the
+  same factor. A first version took their largest value, which a single
+  remote sampled location sets, and which is 1 as soon as one location shares
+  no correlation with the others. A number strictly between 0 and 1 gives a
+  fixed threshold, where 0 and 1 were accepted before. The percentile is 1
+  only when more than 5% of the sampled locations get no spatial information
+  from the others, and then no location can be flagged and
+  `assess_extrapolation()` warns with class `riskmap_warning`. The result
+  keeps the threshold in the attribute `spatial_threshold`, with
+  `spatial_rule` and `sampling_noise`, and has a `print()` method that counts
+  the locations in each class and states the thresholds. In Liberia the
+  threshold is 0.818 and 3.3% of the grid is flagged, where 0.8 without the
+  noise flagged 0.2%. The example uses 150 locations of `italy_sim` instead
+  of 50, whose locations share almost no correlation.
 - `plot()` of predictions takes `summaries` and `thresholds` instead of
   `summary` and `threshold`, the names that `predict()` and `to_table()` use.
   Several thresholds give one exceedance map each, arranged as several
@@ -1537,3 +1545,13 @@ checked.
   `test_set` and `combine_panels` are now `pit_mode`, `pit_test_set` and
   `combine_pit`.
 - Test coverage has been increased from 0 to 85 %.
+- ggspatial and jsonlite move from Imports to Suggests, which leaves 20
+packages in Imports. `plot()` of predictions calls
+`rlang::check_installed("ggspatial")` when `north_arrow` or `scale_bar` is
+`TRUE`, and `get_worldpop()` calls `rlang::check_installed("jsonlite")` before
+it reads the WorldPop catalogue, which the 1 km age and sex layers of
+2000-2020 do not need. In an interactive session both offer to install the
+package. The example of `get_worldpop()` runs only in interactive sessions,
+since `R CMD check --as-cran` runs `\donttest{}` examples and it downloads
+from WorldPop. RiskMap needs rlang 1.0.0 or later, whose
+`check_installed()` and `caller_arg()` it uses.
