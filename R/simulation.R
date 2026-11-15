@@ -870,16 +870,16 @@ simulation_inputs <- function(model, data, response, label, original = FALSE) {
 simulation_assessment_data <- function(object) {
   check_simulation(object, NULL)
   if (!all(c("data", "surface") %in% object$what)) {
-    abort_input("{.arg obj_sim} must be simulated with {.code what = c(\"data\", \"surface\")}.", arg = "obj_sim")
+    abort_input("{.arg simulation} must be simulated with {.code what = c(\"data\", \"surface\")}.", arg = "simulation")
   }
   model <- object$model
   if (length(model$re_terms)) {
-    abort_input(c("{.fn assess_simulation} can't assess simulations from a model with {.fn re} terms.", "i" = "The simulated values are available through {.fn simulated_values}."), arg = "obj_sim")
+    abort_input(c("{.fn assess_simulation} can't assess simulations from a model with {.fn re} terms.", "i" = "The simulated values are available through {.fn simulated_values}."), arg = "simulation")
   }
   response <- model$response
   if (is.null(response) || length(response) != 1L ||
       !identical(make.names(response), response)) {
-    abort_input("The response of the model that simulated {.arg obj_sim} must be a plain column name, such as {.code y}, for the models to be refitted to it.", arg = "obj_sim")
+    abort_input("The response of the model that simulated {.arg simulation} must be a plain column name, such as {.code y}, for the models to be refitted to it.", arg = "simulation")
   }
   den <- simulation_inputs(model, object$locations$data, TRUE, "data",
                             original = identical(object$locations$data, model$data))$denominator

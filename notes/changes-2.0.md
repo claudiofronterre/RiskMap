@@ -1476,6 +1476,65 @@ refits and predictions of each test set.
   together in one run with `spatial_scale = c("grid", "area")`.
 - In `plot_metric()`; its `which_score`/`which_model`
 parameters have been renamed to `metric`/`model`.
+- `assess_prediction()` reports the SCRPS as a loss, ½[1 + CRPS/c + log(2c)]
+with c = E|X − X′|/2, the negative of the scaled CRPS of Bolin and Wallin
+(2023), so that lower is better for the CRPS and the SCRPS alike (#230). Every
+SCRPS changes sign and nothing else moves. The help page states the
+orientation and that the CRPS of binomial, Poisson and negative binomial
+models is in counts, and so do the print of the results, their `summary()` and
+the legends of their maps.
+- `PIT_area` is computed once, from the calibration curve of all test
+observations together, which is the average of the test sets' curves weighted
+by their sizes, instead of once per test set and averaged by `summary()`
+(#230). It is stored in `model$<name>$PIT_area`, no longer in `metric`, with
+`PIT_area_expected`, its mean over 200 sets of test observations simulated
+from their own predictive distributions. An observation in several test sets
+is simulated once, from its first predictive distribution, and scored under
+each. The simulation uses a seed drawn after the scores, the same for every
+model, so the CRPS and SCRPS are those of before and identical models get
+identical values. Under perfect calibration the area is about 0.31/√n for n
+test observations, so a per-test-set area mostly measured the size of the test
+sets.
+- `summary()` of a cross-validation gives `CRPS` and `SCRPS` averaged over every
+test observation with a score, `PIT_area` and `PIT_area_expected`. Before, the
+means of the test sets were weighted by their sizes, which counted the missing
+SCRPS of a predictive distribution without spread. Its print gives the scores
+of each test set and a note on what they mean. `view_all`
+and the attribute `overall_averages`, the average across models, are gone.
+`print()` of the result gives the averages, as before.
+- `plot()` of a cross-validation returns one ggplot and draws nothing (#213).
+It draws one metric, by default the calibration curve when it was computed
+and the first score otherwise, and stops with the list of metrics when given
+several. Several models are panels of one plot with one colour scale. The
+average calibration curve is the curve of all test observations, from which
+`PIT_area` comes, its axis is labelled "Probability level u", and `PIT_area`
+is no longer mapped. `...` comes last and stops on any argument, so ggplot2
+components are added with `+`. `combine_pit = TRUE` stops unless `pit_mode` is
+`"average"`. dplyr and the cross-validation's use of gridExtra are gone.
+- `assess_prediction()` takes its list of fits in `models` instead of `object`,
+and `plot_fold = FALSE` by default, so that the splits are drawn only when
+asked for. With `method = "user"` the number of test sets is that of
+`user_split`, so `iter` need not repeat it, and a different `iter` stops.
+`min_dist` is in the distance units of the fits, converted to metres, in which
+`spatialEco::subsample.distance()` compares distances whatever the CRS,
+instead of always in kilometres. Fits in kilometres, as in every book example,
+give the same splits as before, fits in metres take `min_dist` in metres, and
+models with different distance units stop. `user_split` given as one list with
+`in_id` and `out_id`, as a data frame or with no test sets stops. spatialEco and spatialsample move
+to Suggests, and `method = "regularized"` and `"cluster"` ask for them.
+- `assess_simulation()` takes `simulation` instead of `obj_sim`, `aggregate`
+instead of `area_summary`, `label` instead of `col_names`, `objective`
+instead of `pred_objective` and `breaks` instead of `categories`, and calls the
+scale of the grid `"location"` instead of `"grid"`, as `plot()` of predictions
+does. Its arguments are `simulation`, `models`, `spatial_scale`, `target`,
+`aggregate`, `boundaries`, `label`, `objective`, `breaks`, `control_mcmc`,
+`seed` and `messages`. `aggregate` takes the names of `predict()`
+(`"mean"`, `"median"`, `"sum"`, `"min"`, `"max"`) or a function of a
+location-by-draw matrix and the weights, as `predict()` does, with equal
+weights. The result holds `objective$location` and `objective$area` instead of
+`pred_objective$grid` and `pred_objective$area`, and so does its `summary()`.
+- The print and summary methods of both assessments stop on an argument they
+don't use.
 
 ## Simulations
 
@@ -1578,3 +1637,6 @@ package. The example of `get_worldpop()` runs only in interactive sessions,
 since `R CMD check --as-cran` runs `\donttest{}` examples and it downloads
 from WorldPop. RiskMap needs rlang 1.0.0 or later, whose
 `check_installed()` and `caller_arg()` it uses.
+- dplyr is no longer imported, and spatialEco and spatialsample move to
+Suggests, which leaves 17 packages in Imports, parallel among them. dplyr stays
+in Suggests for the tests of grids with dplyr verbs.

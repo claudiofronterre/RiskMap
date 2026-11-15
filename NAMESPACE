@@ -83,13 +83,6 @@ importFrom(Matrix,
   sparseMatrix
 )
 importFrom(Rcpp,evalCpp)
-importFrom(dplyr,
-  "%>%",
-  first,
-  group_by,
-  mutate,
-  summarize
-)
 importFrom(graphics,points)
 importFrom(grid,unit)
 importFrom(gridExtra,grid.arrange)
@@ -99,11 +92,6 @@ importFrom(numDeriv,
   hessian
 )
 importFrom(rlang,sym)
-importFrom(spatialEco,subsample.distance)
-importFrom(spatialsample,
-  autoplot,
-  spatial_clustering_cv
-)
 importFrom(stats,profile)
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)

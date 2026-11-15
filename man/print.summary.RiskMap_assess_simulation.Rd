@@ -9,7 +9,8 @@
 \arguments{
 \item{x}{An object of class \code{summary.RiskMap_assess_simulation}, as returned by \code{summary.RiskMap_assess_simulation}.}
 
-\item{...}{Additional arguments (not used).}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 Invisibly returns \code{x}.

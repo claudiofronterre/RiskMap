@@ -86,9 +86,8 @@ prediction_data$population <- seq_len(nrow(prediction_data))
 cross_validation <- suppressWarnings(assess_prediction(
   list(model_a = gaussian_model,
        model_b = gaussian_offset_model),
-  method = "cluster",
-  fold = 2,
-  plot_fold = FALSE,
+  method = "user",
+  user_split = list(c(1, 3, 5, 7), c(2, 4, 6, 8, 9, 10)),
   messages = FALSE
 ))
 
