@@ -199,6 +199,10 @@ choose the family and link, and fit it by maximum likelihood.
 
 - [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
   : Estimation of Generalized Linear Gaussian Process Models
+- [`glgpm_parameters()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm_parameters.md)
+  : List the parameters of a model before fitting it
+- [`riskmap_parameters`](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md)
+  : The parameters of a geostatistical model
 
 ### Model terms
 

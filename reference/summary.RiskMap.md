@@ -39,17 +39,22 @@ correction of the last stage did not converge), `stages`,
 `certification_bank` (the effective draws and Pareto shape of the
 certification draws), `checks_to_review`, the number of checks of
 [`check_fit`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
-that need a look, `starting_values`, where the starting values came
-from, either `"user"` (some or all given in `start_pars`, with RiskMap's
-defaults for the others), `"current"` (RiskMap's defaults) or
-`"transformed_gaussian"` (a Gaussian fit to the transformed data, which
+that need a look, `starting_values`, where the starting values of the
+parameters not given in `start_pars` came from, `"current"` (RiskMap's
+defaults) or `"transformed_gaussian"` (a Gaussian fit to the transformed
+data, which
 [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
 uses when the Laplace approximation of the likelihood prefers it to the
-defaults), and `starting_reason`, why the defaults were kept other than
+defaults), or `"user"` when `start_pars` gives every parameter,
+`starting_given`, the names of those given in `start_pars` (absent when
+none was), and `starting_reason`, why the defaults were kept other than
 by being preferred in that comparison, such as `"re_terms"` when it is
 not made for a model with
 [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
-terms, `"transformed_failed"` when the Gaussian fit failed, or
+terms, `"not_compared"` when
+`set_control_mcml(start_comparison = FALSE)` skips it,
+`"candidates_given"` when `start_pars` gives every value the comparison
+could change, `"transformed_failed"` when the Gaussian fit failed, or
 `"not_recorded"` for a fit saved by an earlier version that did not
 record why (`NULL` when the comparison chose the start). `mcml` is
 `NULL` for Gaussian models. The parameters of the family, such as the

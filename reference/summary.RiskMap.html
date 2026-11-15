@@ -85,15 +85,21 @@ the Newton correction of the last stage did not converge),
 last stage), <code>certification_bank</code> (the effective draws and Pareto
 shape of the certification draws), <code>checks_to_review</code>, the number
 of checks of <code><a href="check_fit.html">check_fit</a></code> that need a look,
-<code>starting_values</code>, where the starting values came from, either
-<code>"user"</code> (some or all given in <code>start_pars</code>, with RiskMap's
-defaults for the others), <code>"current"</code> (RiskMap's defaults) or
-<code>"transformed_gaussian"</code> (a Gaussian fit to the transformed data,
-which <code><a href="glgpm.html">glgpm()</a></code> uses when the Laplace approximation of the
-likelihood prefers it to the defaults), and <code>starting_reason</code>,
+<code>starting_values</code>, where the starting values of the parameters not
+given in <code>start_pars</code> came from, <code>"current"</code> (RiskMap's
+defaults) or <code>"transformed_gaussian"</code> (a Gaussian fit to the
+transformed data, which <code><a href="glgpm.html">glgpm()</a></code> uses when the Laplace
+approximation of the likelihood prefers it to the defaults), or
+<code>"user"</code> when <code>start_pars</code> gives every parameter,
+<code>starting_given</code>, the names of those given in
+<code>start_pars</code> (absent when none was), and <code>starting_reason</code>,
 why the defaults were kept other than by being preferred in that
 comparison, such as <code>"re_terms"</code> when it is not made for a model
-with <code><a href="re.html">re()</a></code> terms, <code>"transformed_failed"</code> when the Gaussian fit
+with <code><a href="re.html">re()</a></code> terms, <code>"not_compared"</code> when
+<code>set_control_mcml(start_comparison = FALSE)</code> skips it,
+<code>"candidates_given"</code> when <code>start_pars</code> gives every value the
+comparison could change,
+<code>"transformed_failed"</code> when the Gaussian fit
 failed, or <code>"not_recorded"</code> for a fit saved by an earlier version
 that did not record why (<code>NULL</code> when the comparison chose the
 start). <code>mcml</code> is

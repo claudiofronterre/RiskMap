@@ -65,8 +65,7 @@ Supports Gaussian, binomial, Poisson and negative binomial response families.</p
 <span>  return_samples <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  messages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"RiskMap.messages"</span>, <span class="cn">TRUE</span><span class="op">)</span>,</span>
 <span>  fix_var_me <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  start_pars <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>beta <span class="op">=</span> <span class="cn">NULL</span>, sigma2 <span class="op">=</span> <span class="cn">NULL</span>, tau2 <span class="op">=</span> <span class="cn">NULL</span>, phi <span class="op">=</span> <span class="cn">NULL</span>, sigma2_me <span class="op">=</span></span>
-<span>    <span class="cn">NULL</span>, sigma2_re <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span>
+<span>  start_pars <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -185,30 +184,16 @@ the <code>nugget</code> term in <code><a href="gp.html">gp()</a></code> is also 
 
 
 <dt id="arg-start-pars">start_pars<a class="anchor" aria-label="anchor" href="#arg-start-pars"></a></dt>
-<dd><p>Optional list of starting values for model parameters:</p><dl><dt>beta</dt>
-<dd><p>regression coefficients</p></dd>
-
-<dt>sigma2</dt>
-<dd><p>spatial process variance</p></dd>
-
-<dt>tau2</dt>
-<dd><p>nugget effect variance</p></dd>
-
-<dt>phi</dt>
-<dd><p>spatial correlation scale</p></dd>
-
-<dt>sigma2_me</dt>
-<dd><p>measurement error variance - only for Gaussian models</p></dd>
-
-<dt>sigma2_re</dt>
-<dd><p>random effects variances - only when random effects are included</p></dd>
-
-<dt>theta</dt>
-<dd><p>size of the negative binomial family - only when it is
-estimated (see <code><a href="negative_binomial.html">negative_binomial()</a></code>)</p></dd>
-
-
-</dl></dd>
+<dd><p><code>NULL</code> (the default), or a named list of starting
+values for any of the model's estimated parameters, one, several or all of
+them, named as in <a href="riskmap_parameters.html">riskmap_parameters</a>. <code>beta</code> is matched to the columns of
+the design matrix by name, or by position if it is unnamed and has a value
+for each, and <code>sigma2_re</code> to the <code><a href="re.html">re()</a></code> terms in the same way. The flat
+names of <code>unlist(coef(fit))</code>, such as <code>"beta.x"</code>, are accepted too, in a
+list or as that named vector, so <code>start_pars = coef(fit)</code> starts a fit
+from the estimates of another. Every
+other parameter takes its automatic start. <code><a href="glgpm_parameters.html">glgpm_parameters()</a></code> lists the
+parameters of a model before it is fitted.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -393,17 +378,22 @@ all the checks on the computation, with what to do about any that need a look.
 The estimation samples and the final conditional samples are drawn from
 separate streams derived from <code>seed</code>, so <code>glgpm(..., seed = fit$seed)</code>
 reproduces a fit exactly.</p>
-<p>The <code>start_pars</code> argument allows starting values to be supplied explicitly.
-Otherwise a binomial, Poisson or negative binomial model starts from
-RiskMap's defaults, which are the coefficients of the regression without
-latent effects, <code>sigma2 = 1</code>, <code>phi</code> at the 10th percentile of the distances
-between locations, and 1 for an estimated nugget variance and for the
-variance of each <code><a href="re.html">re()</a></code> term. A model with the canonical link and without
-<code><a href="re.html">re()</a></code> terms compares them with the estimates of a Gaussian model fitted to
-the empirical link of the data (the empirical logit of a binomial model),
-with one observation per location, the totals of the location where it has
-several records, and starts from the one with the higher Laplace
-approximation of the likelihood. <code><a href="summary.RiskMap.html">summary.RiskMap()</a></code> says which starting
+<p>Parameters not given in <code>start_pars</code> take RiskMap's defaults, which are
+the coefficients of the regression without latent effects, <code>sigma2 = 1</code>,
+<code>phi</code> at the 10th percentile of the distances between locations, 1 for an
+estimated nugget variance, a measurement error variance and the variance of
+each <code><a href="re.html">re()</a></code> term, and for the size of a negative binomial model that of the
+regression without latent effects. A binomial, Poisson or negative binomial
+model with the canonical link and without <code><a href="re.html">re()</a></code> terms compares them with
+the estimates of a Gaussian model fitted to the empirical link of the data
+(the empirical logit of a binomial model), with one observation per
+location, the totals of the location where it has several records, and
+starts from the one with the higher Laplace approximation of the
+likelihood. The values given in <code>start_pars</code> replace their own in both,
+and <code>set_control_mcml(start_comparison = FALSE)</code> skips the comparison. A
+start of <code>phi</code> far from the distances between the locations, below a
+hundredth of the smallest or above ten times the largest, gives a warning,
+since it may be in other units. <code><a href="summary.RiskMap.html">summary.RiskMap()</a></code> says which starting
 values a fit used and why.</p>
     </div>
     <div class="section level2">

@@ -22,8 +22,7 @@ glgpm(
   return_samples = TRUE,
   messages = getOption("RiskMap.messages", TRUE),
   fix_var_me = NULL,
-  start_pars = list(beta = NULL, sigma2 = NULL, tau2 = NULL, phi = NULL, sigma2_me =
-    NULL, sigma2_re = NULL)
+  start_pars = NULL
 )
 ```
 
@@ -157,37 +156,20 @@ glgpm(
 
 - start_pars:
 
-  Optional list of starting values for model parameters:
-
-  beta
-
-  :   regression coefficients
-
-  sigma2
-
-  :   spatial process variance
-
-  tau2
-
-  :   nugget effect variance
-
-  phi
-
-  :   spatial correlation scale
-
-  sigma2_me
-
-  :   measurement error variance - only for Gaussian models
-
-  sigma2_re
-
-  :   random effects variances - only when random effects are included
-
-  theta
-
-  :   size of the negative binomial family - only when it is estimated
-      (see
-      [`negative_binomial()`](https://claudiofronterre.github.io/RiskMap/reference/negative_binomial.md))
+  `NULL` (the default), or a named list of starting values for any of
+  the model's estimated parameters, one, several or all of them, named
+  as in
+  [riskmap_parameters](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md).
+  `beta` is matched to the columns of the design matrix by name, or by
+  position if it is unnamed and has a value for each, and `sigma2_re` to
+  the
+  [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
+  terms in the same way. The flat names of `unlist(coef(fit))`, such as
+  `"beta.x"`, are accepted too, in a list or as that named vector, so
+  `start_pars = coef(fit)` starts a fit from the estimates of another.
+  Every other parameter takes its automatic start.
+  [`glgpm_parameters()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm_parameters.md)
+  lists the parameters of a model before it is fitted.
 
 ## Value
 
@@ -427,20 +409,26 @@ any that need a look. The estimation samples and the final conditional
 samples are drawn from separate streams derived from `seed`, so
 `glgpm(..., seed = fit$seed)` reproduces a fit exactly.
 
-The `start_pars` argument allows starting values to be supplied
-explicitly. Otherwise a binomial, Poisson or negative binomial model
-starts from RiskMap's defaults, which are the coefficients of the
-regression without latent effects, `sigma2 = 1`, `phi` at the 10th
-percentile of the distances between locations, and 1 for an estimated
-nugget variance and for the variance of each
+Parameters not given in `start_pars` take RiskMap's defaults, which are
+the coefficients of the regression without latent effects, `sigma2 = 1`,
+`phi` at the 10th percentile of the distances between locations, 1 for
+an estimated nugget variance, a measurement error variance and the
+variance of each
 [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
-term. A model with the canonical link and without
+term, and for the size of a negative binomial model that of the
+regression without latent effects. A binomial, Poisson or negative
+binomial model with the canonical link and without
 [`re()`](https://claudiofronterre.github.io/RiskMap/reference/re.md)
 terms compares them with the estimates of a Gaussian model fitted to the
 empirical link of the data (the empirical logit of a binomial model),
 with one observation per location, the totals of the location where it
 has several records, and starts from the one with the higher Laplace
-approximation of the likelihood.
+approximation of the likelihood. The values given in `start_pars`
+replace their own in both, and
+`set_control_mcml(start_comparison = FALSE)` skips the comparison. A
+start of `phi` far from the distances between the locations, below a
+hundredth of the smallest or above ten times the largest, gives a
+warning, since it may be in other units.
 [`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
 says which starting values a fit used and why.
 
