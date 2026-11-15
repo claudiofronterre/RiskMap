@@ -9,7 +9,8 @@
 \arguments{
 \item{x}{An object of class \code{"RiskMap_cross_validation"}.}
 
-\item{...}{Not used.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 Invisibly returns \code{x}.
@@ -18,8 +19,8 @@ Invisibly returns \code{x}.
 Print method for objects of class
 \code{"RiskMap_cross_validation"} from \code{\link{assess_prediction}}.
 It gives the models, the test sets, how the parameters were set and the
-scores of each model averaged over the test sets.
+scores of each model over all test observations.
 \code{\link{summary.RiskMap_cross_validation}} gives the scores of each
 test set, and \code{\link{plot.RiskMap_cross_validation}} maps the scores
-at the test locations and draws the calibration curve.
+at the test locations or draws the calibration curve.
 }

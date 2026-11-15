@@ -329,8 +329,14 @@ downstream <- list(
                             seed = 51L, plot_fold = FALSE, messages = FALSE)
     simulated <- simulate_glgpm(fit, nsim = 1, what = c("data", "surface"),
                                 prediction_grid = prediction_grid(data), seed = 52L)
-    assessed <- assess_simulation(simulated, models = list(candidate = fit), control_mcmc = ctrl, seed = 53L,
-                                  spatial_scale = "grid", pred_objective = "mse", messages = FALSE)
+    # The interface freeze of 2.0 renamed the scale "grid" to "location" and `pred_objective` to `objective`.
+    scale_and_objective <- if ("objective" %in% names(formals(assess_simulation))) {
+      list(spatial_scale = "location", objective = "mse")
+    } else {
+      list(spatial_scale = "grid", pred_objective = "mse")
+    }
+    assessed <- do.call(assess_simulation, c(list(simulated, models = list(candidate = fit), control_mcmc = ctrl,
+                                                  seed = 53L, messages = FALSE), scale_and_objective))
     list(cv = cv, assessed = assessed)
   }
 )

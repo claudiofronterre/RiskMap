@@ -27,7 +27,6 @@ Depends:
 Imports:
     cli (>= 3.6.0),
     Deriv,
-    dplyr,
     ggplot2,
     ggspatial,
     gridExtra,
@@ -42,15 +41,16 @@ Imports:
     rlang,
     scales,
     sf,
-    spatialEco,
-    spatialsample,
     terra,
     units
 LinkingTo:
     Rcpp,
     RcppEigen
 Suggests:
+    dplyr,
     RhpcBLASctl,
+    spatialEco,
+    spatialsample,
     testthat (>= 3.0.0),
     tibble,
     withr

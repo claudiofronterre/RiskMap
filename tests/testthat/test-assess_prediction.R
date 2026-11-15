@@ -1,14 +1,14 @@
 test_that("assess_prediction produces errors", {
 
-  # A method is given, so that the check of `object` is the one reached.
+  # A method is given, so that the check of `models` is the one reached.
   expect_input_error(
     assess_prediction("not list", method = "cluster"),
-    "object"
+    "models"
   )
 
   expect_input_error(
     assess_prediction(list(a = 1), method = "cluster"),
-    "object"
+    "models"
   )
 
   expect_input_error(
@@ -152,18 +152,21 @@ test_that("assess_prediction produces errors", {
     "user_split", "must have one row per observation"
   )
 
+  # The number of test sets of a user split is its own (A4).
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
-                      user_split = matrix(1:20, ncol = 2)),
-    "user_split", "columns, not 2"
+                      user_split = matrix(c(1, rep(0, n - 1)), ncol = 1),
+                      iter = 2),
+    "iter", "number of test sets in `user_split` (1)"
   )
 
   expect_input_error(
     assess_prediction(list(gaussian_model),
                       method = "user",
-                      user_split = list(1, 2)),
-    "user_split", "elements, not 2"
+                      user_split = list(1, 2),
+                      iter = 1),
+    "iter", "number of test sets in `user_split` (2)"
   )
 
   expect_input_error(
@@ -587,14 +590,15 @@ test_that("PIT area computes trapezoidal absolute distance", {
   expect_equal(.anpit_area(u^2, u), 1 / 6, tolerance = 1e-6)
 })
 
-test_that("assess_prediction reports PIT area as a scalar score", {
+test_that("assess_prediction pools PIT_area over all test observations (#230)", {
   geom <- st_sfc(
     st_point(c(0, 0)),
     st_point(c(1, 1)),
     st_point(c(2, 2)),
+    st_point(c(3, 3)),
     crs = 4326
   )
-  data <- st_sf(y = c(0, 0, 0), x1 = c(10, 20, 30), geometry = geom)
+  data <- st_sf(y = c(0, 0.5, -1, 2), x1 = c(10, 20, 30, 40), geometry = geom)
 
   testthat::local_mocked_bindings(
     predict.RiskMap = function(object, newdata, ...) {
@@ -612,25 +616,97 @@ test_that("assess_prediction reports PIT area as a scalar score", {
   out <- assess_prediction(
     list(model_x1 = make_assess_prediction_fit(data, "x1")),
     method = "user",
-    user_split = matrix(c(0, 1, 1), ncol = 1),
-    plot_fold = FALSE,
-    messages = FALSE,
-    metrics = "PIT"
+    user_split = list(1, 2:4),
+    seed = 3,
+    messages = FALSE
   )
 
-  expect_named(out$model$model_x1$metric, "PIT_area")
-  expect_length(out$model$model_x1$metric$PIT_area, 1)
-  expect_type(out$model$model_x1$metric$PIT_area[[1]], "double")
-  expect_true(is.finite(out$model$model_x1$metric$PIT_area[[1]]))
-  expect_gte(out$model$model_x1$metric$PIT_area[[1]], 0)
-  expect_lte(out$model$model_x1$metric$PIT_area[[1]], 0.5)
-  expect_length(out$model$model_x1$PIT[[1]], 2)
+  model <- out$model$model_x1
+  # PIT_area is one number for all test observations, not one per test set.
+  expect_named(model$metric, c("CRPS", "SCRPS"))
+  expect_length(model$PIT, 2)
+  u <- seq(0, 1, length.out = 1000)
+  expect_identical(model$PIT_area,
+                   .anpit_area(ecdf(unlist(model$PIT))(u), u))
+  expect_gte(model$PIT_area_expected, 0)
+  expect_lte(model$PIT_area_expected, 0.5)
+
+  # Every predictive distribution has mean 0 and standard deviation 1, so the
+  # SCRPS is the negative of Bolin and Wallin's, a loss (#230).
+  crps <- function(y) 2 * dnorm(y) + y * (2 * pnorm(y) - 1) - 1 / sqrt(pi)
+  y <- data$y
+  expect_equal(unlist(model$metric$CRPS), crps(y))
+  expected_scrps <- 0.5 * (1 + crps(y) * sqrt(pi) + log(2 / sqrt(pi)))
+  expect_equal(unlist(model$metric$SCRPS), expected_scrps)
 
   summary_out <- summary(out)
-  expect_true("PIT_area" %in% colnames(summary_out))
-  expect_identical(summary_out["model_x1", "PIT_area"],
-               out$model$model_x1$metric$PIT_area[[1]])
+  expect_identical(colnames(summary_out),
+                   c("CRPS", "SCRPS", "PIT_area", "PIT_area_expected"))
+  expect_identical(summary_out["model_x1", "PIT_area"], model$PIT_area)
+  expect_identical(summary_out["model_x1", "PIT_area_expected"],
+                   model$PIT_area_expected)
 
+  # The expected value is simulated from a stream of its own, and the
+  # caller's random numbers are unchanged.
+  again <- assess_prediction(
+    list(model_x1 = make_assess_prediction_fit(data, "x1")),
+    method = "user", user_split = list(1, 2:4), seed = 3, messages = FALSE
+  )
+  expect_identical(again$model$model_x1$PIT_area_expected,
+                   model$PIT_area_expected)
+})
+
+test_that("a sharper calibrated prediction has the lower SCRPS (#230)", {
+  geom <- st_sfc(st_point(c(0, 0)), st_point(c(1, 1)), crs = 4326)
+  data <- st_sf(y = c(0, 0), x1 = c(10, 20), geometry = geom)
+  scrps_with_spread <- function(spread) {
+    local_mocked_bindings(
+      predict.RiskMap = function(object, newdata, ...) {
+        n <- nrow(newdata)
+        structure(list(
+          predictions = transform(newdata, fixed = 0, offset = 0),
+          samples = list(spatial = matrix(rep(spread * c(-1, 0, 1), each = n),
+                                          nrow = n))
+        ), class = "RiskMap_prediction")
+      },
+      .package = "RiskMap"
+    )
+    out <- assess_prediction(
+      list(model = make_assess_prediction_fit(data, "x1")),
+      method = "user", user_split = list(2), messages = FALSE,
+      metrics = "SCRPS"
+    )
+    out$model$model$metric$SCRPS[[1]]
+  }
+  expect_lt(scrps_with_spread(0.5), scrps_with_spread(2))
+})
+
+test_that("the expected PIT_area shrinks with the test observations and allows for repeats (#230)", {
+  gaussian_sets <- function(rows) {
+    list(list(rows = rows, values = list(mean = rep(0, length(rows)),
+                                         sd = rep(1, length(rows)))))
+  }
+  u <- seq(0, 1, length.out = 1000)
+  set.seed(1)
+  many <- expected_pit_area(gaussian_sets(1:100), FALSE, u)
+  set.seed(1)
+  few <- expected_pit_area(gaussian_sets(1:25), FALSE, u)
+  # About 0.31 / sqrt(n) for n test observations
+  expect_equal(many, 0.31 / sqrt(100), tolerance = 0.15)
+  expect_equal(few, 0.31 / sqrt(25), tolerance = 0.15)
+  # An observation in two test sets is drawn once, so 25 observations each
+  # scored four times are no better than 25.
+  set.seed(1)
+  repeated <- expected_pit_area(gaussian_sets(rep(1:25, 4)), FALSE, u)
+  expect_equal(repeated, few, tolerance = 0.05)
+
+  # A discrete family uses the distribution functions of its predictions.
+  binomial_sets <- list(list(rows = 1:60,
+                             values = rep(list(pbinom(0:10, 10, 0.3)), 60)))
+  set.seed(1)
+  discrete <- expected_pit_area(binomial_sets, TRUE, u)
+  expect_gt(discrete, 0)
+  expect_lt(discrete, 0.31 / sqrt(60) * 1.5)
 })
 
 test_that("plot_folds() plots every observation, coloured by training/test set (#157)", {
@@ -760,7 +836,8 @@ test_that("assess_prediction refits with the model's link and records failed ref
   expect_identical(out$failures$message, "refit failed")
   expect_identical(out$failures$test_set, 1L)
   expect_true(all(is.na(out$model$probit$metric$CRPS[[1]])))
-  expect_true(is.na(out$model$probit$metric$PIT_area[[1]]))
+  expect_true(is.na(out$model$probit$PIT_area))
+  expect_true(is.na(out$model$probit$PIT_area_expected))
   expect_true(is.na(summary(out)["probit", "CRPS"]))
 })
 
@@ -835,4 +912,40 @@ test_that("assess_prediction warns when regularized test sets are smaller than '
     ),
     "fewer than `size`"
   )
+})
+
+test_that("assess_prediction takes min_dist in the distance units of the fits (A5)", {
+  skip_if_not_installed("spatialEco")
+  in_metres <- glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
+                     distance_units = "m", messages = FALSE)
+  expect_identical(gaussian_intercept_model$distance_units, "km")
+  kilometres <- assess_prediction(
+    list(gaussian_intercept_model), method = "regularized", min_dist = 1,
+    size = 3, control_mcmc = control_mcmc, seed = fixture_seed,
+    messages = FALSE, metrics = "CRPS"
+  )
+  metres <- assess_prediction(
+    list(in_metres), method = "regularized", min_dist = 1000,
+    size = 3, control_mcmc = control_mcmc, seed = fixture_seed,
+    messages = FALSE, metrics = "CRPS"
+  )
+  expect_identical(lapply(metres$test_set, st_geometry),
+                   lapply(kilometres$test_set, st_geometry))
+  expect_input_error(
+    assess_prediction(list(gaussian_intercept_model, in_metres),
+                      method = "regularized", min_dist = 1, size = 3,
+                      messages = FALSE),
+    "models"
+  )
+})
+
+test_that("assess_prediction draws nothing unless asked and counts the test sets of a list split (A4)", {
+  expect_false(formals(assess_prediction)$plot_fold)
+  out <- assess_prediction(
+    list(gaussian_intercept_model), method = "user",
+    user_split = list(1:2, 3:4, 5:6), control_mcmc = control_mcmc,
+    seed = fixture_seed, messages = FALSE, metrics = "CRPS"
+  )
+  expect_length(out$test_set, 3)
+  expect_length(out$model[[1]]$metric$CRPS, 3)
 })

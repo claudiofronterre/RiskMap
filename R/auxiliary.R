@@ -1169,19 +1169,23 @@ create_ids <- function(data) {
 ##'
 ##' @param object A `RiskMap_cross_validation` object containing cross-validation scores for each
 ##'               model, as obtained from \code{\link{assess_prediction}}.
-##' @param view_all Logical. If `TRUE`, stores the average scores across test sets for each
-##'                 model alongside the overall average across all models. Defaults to `TRUE`.
-##' @param ... Additional arguments passed to or from other methods.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##'
 ##' @details
-##' The function computes and returns a matrix where rows correspond to models and columns
-##' correspond to performance metrics (e.g., CRPS, SCRPS). Scores are weighted by subset sizes
-##' to compute averages. Attributes of the returned object include:
+##' The function returns a matrix whose rows are the models and whose columns
+##' are the scores, `CRPS` and `SCRPS` averaged over all test observations
+##' (the averages of the test sets weighted by their sizes), and `PIT_area`
+##' with `PIT_area_expected`, its value under perfect calibration, when
+##' calibration was assessed (see [assess_prediction()]). Lower is better for
+##' every score. Attributes of the returned object include:
 ##' \itemize{
 ##'   \item `test_set_means`: A list of average scores for each test set and model.
-##'   \item `overall_averages`: Overall averages for each metric across all models.
-##'   \item `view_all`: Indicates whether averages across test sets are available for visualization.
+##'   \item `keep_par_fixed`: Whether the parameters were fixed at the
+##'     estimates from all the data.
+##'   \item `n_failed`: The number of failed test-set assessments.
 ##' }
+##' Its print gives the averages and the scores of each test set.
 ##'
 ##' @return A matrix of summary scores with models as rows and metrics as columns, with class
 ##' `"summary.RiskMap_cross_validation"`.
@@ -1190,52 +1194,52 @@ create_ids <- function(data) {
 ##'
 ##' @export
 ##' @method summary RiskMap_cross_validation
-summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
+summary.RiskMap_cross_validation <- function(object, ...) {
+  check_dots_unused(..., hints = c(
+    view_all = "{.fn summary} always gives the scores of each test set, and {.fn print} of the assessment gives only the averages."
+  ))
   model_names <- names(object$model)
   n_models <- length(model_names)
 
-  metric_names <- names(object$model[[1]]$metric)
-  if (is.null(metric_names)) {
+  per_observation <- intersect(c("CRPS", "SCRPS"),
+                               names(object$model[[1]]$metric))
+  calibration <- !is.null(object$model[[1]]$PIT_area)
+  if (!length(per_observation) && !calibration) {
     abort_input("{.arg object} has no metrics of predictive performance.", arg = "object")
   }
-  n_metrics <- length(metric_names)
+  metric_names <- c(per_observation,
+                    if (calibration) c("PIT_area", "PIT_area_expected"))
 
-  res <- matrix(NA, ncol = n_metrics, nrow = n_models)
-  colnames(res) <- metric_names
-  rownames(res) <- model_names
+  res <- matrix(NA_real_, ncol = length(metric_names), nrow = n_models,
+                dimnames = list(model_names, metric_names))
 
   test_set_means <- list()
-
-  n_subs <- length(object$model[[1]]$metric[[1]])
-  # Weight each test set by its number of observations, for every metric
-  per_observation <- intersect(c("CRPS", "SCRPS"), metric_names)
+  # Weight each test set by its number of observations
   w <- if (length(per_observation) > 0) {
     lengths(object$model[[1]]$metric[[per_observation[1]]])
-  } else {
-    vapply(object$test_set, nrow, integer(1))
   }
 
-  for (i in 1:n_models) {
+  for (i in seq_len(n_models)) {
     model_scores <- list()
-    for (j in 1:n_metrics) {
-      score_j <- rep(NA, n_subs)
-      for (h in 1:n_subs) {
-        score_j[h] <- mean(object$model[[i]]$metric[[j]][[h]], na.rm = TRUE)
-      }
-      model_scores[[j]] <- score_j
+    for (metric in per_observation) {
+      score_j <- vapply(object$model[[i]]$metric[[metric]], function(values) {
+        mean(values, na.rm = TRUE)
+      }, numeric(1))
+      model_scores[[metric]] <- score_j
       # Test sets whose assessment failed have no scores
       ok <- is.finite(score_j)
-      res[i, j] <- if (any(ok)) sum(w[ok] * score_j[ok]) / sum(w[ok]) else NA
+      res[i, metric] <- if (any(ok)) sum(w[ok] * score_j[ok]) / sum(w[ok]) else NA
+    }
+    if (calibration) {
+      res[i, "PIT_area"] <- object$model[[i]]$PIT_area %||% NA_real_
+      res[i, "PIT_area_expected"] <- object$model[[i]]$PIT_area_expected %||%
+        NA_real_
     }
     test_set_means[[model_names[i]]] <- model_scores
   }
 
-  overall_averages <- colMeans(res, na.rm = TRUE)
-
   # Attach additional attributes for printing
   attr(res, "test_set_means") <- test_set_means
-  attr(res, "overall_averages") <- overall_averages
-  attr(res, "view_all") <- view_all
   attr(res, "keep_par_fixed") <- object$keep_par_fixed
   attr(res, "n_failed") <- if (is.null(object$failures)) 0L else nrow(object$failures)
   class(res) <- "summary.RiskMap_cross_validation"
@@ -1249,17 +1253,18 @@ summary.RiskMap_cross_validation <- function(object, view_all = TRUE, ...) {
 ##'
 ##' @param x An object of class `"summary.RiskMap_cross_validation"`, typically the output of
 ##'          `summary.RiskMap_cross_validation`.
-##' @param ... Additional arguments passed to or from other methods.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##'
 ##' @details
-##' This method is primarily used to format and display the summary score matrix,
-##' printing it to the console. It provides a clear view of the cross-validation performance
-##' metrics across different spatial models.
+##' This method prints the scores of each model averaged over all test
+##' observations, with what they mean, and the scores of each test set.
 ##'
 ##' @return Invisibly returns \code{x}.
 ##' @export
 ##' @method print summary.RiskMap_cross_validation
 print.summary.RiskMap_cross_validation <- function(x, ...) {
+  check_dots_unused(...)
   out_print(format_cv_summary(x))
   invisible(x)
 }
@@ -1267,11 +1272,12 @@ print.summary.RiskMap_cross_validation <- function(x, ...) {
 ##' The lines that print the summary of a cross-validation
 ##' @noRd
 format_cv_summary <- function(x) {
+  by_test_set <- length(unlist(attr(x, "test_set_means"))) > 0
   c(out_rule("Cross-validation scores"),
     format_cv_settings(attr(x, "keep_par_fixed"), attr(x, "n_failed")),
     "",
     format_cv_averages(x),
-    if (isTRUE(attr(x, "view_all"))) c("", format_cv_test_sets(x)))
+    if (by_test_set) c("", format_cv_test_sets(x)))
 }
 
 ##' How the parameters were set and how many assessments failed
@@ -1294,15 +1300,27 @@ format_cv_settings <- function(keep_par_fixed, n_failed, before = NULL) {
     out_bullets(failed))
 }
 
-##' The scores of each model averaged over the test sets
+##' The scores of each model over all test observations, with what they mean
 ##' @noRd
 format_cv_averages <- function(x) {
   scores <- data.frame(Model = rownames(x), check.names = FALSE)
   for (metric in colnames(x)) {
     scores[[metric]] <- format_cv_score(x[, metric])
   }
-  c(out_heading("Averages over the test sets, weighted by their sizes"),
-    out_capture(print(scores, row.names = FALSE, right = TRUE)))
+  notes <- c(
+    "Lower is better for every score.",
+    if (any(c("CRPS", "SCRPS") %in% colnames(x))) {
+      paste("The CRPS is in the units of the response, counts for binomial,",
+            "Poisson and negative binomial models.")
+    },
+    if ("PIT_area" %in% colnames(x)) {
+      paste("PIT_area_expected is the PIT_area of a perfectly calibrated",
+            "model on these test observations.")
+    }
+  )
+  c(out_heading("Scores over all test observations"),
+    out_capture(print(scores, row.names = FALSE, right = TRUE)),
+    out_bullets(c(i = paste(notes, collapse = " "))))
 }
 
 ##' Scores to four decimals, NA where a failed assessment left none
@@ -1322,8 +1340,8 @@ format_cv_test_sets <- function(x) {
     scores <- means[[model]]
     table <- data.frame(Model = model, "Test set" = seq_along(scores[[1L]]),
                         check.names = FALSE)
-    for (k in seq_along(scores)) {
-      table[[colnames(x)[k]]] <- format_cv_score(scores[[k]])
+    for (metric in names(scores)) {
+      table[[metric]] <- format_cv_score(scores[[metric]])
     }
     table
   })
@@ -1335,16 +1353,18 @@ format_cv_test_sets <- function(x) {
 ##' @description Print method for objects of class
 ##'   \code{"RiskMap_cross_validation"} from \code{\link{assess_prediction}}.
 ##'   It gives the models, the test sets, how the parameters were set and the
-##'   scores of each model averaged over the test sets.
+##'   scores of each model over all test observations.
 ##'   \code{\link{summary.RiskMap_cross_validation}} gives the scores of each
 ##'   test set, and \code{\link{plot.RiskMap_cross_validation}} maps the scores
-##'   at the test locations and draws the calibration curve.
+##'   at the test locations or draws the calibration curve.
 ##' @param x An object of class \code{"RiskMap_cross_validation"}.
-##' @param ... Not used.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @return Invisibly returns \code{x}.
 ##' @method print RiskMap_cross_validation
 ##' @export
 print.RiskMap_cross_validation <- function(x, ...) {
+  check_dots_unused(...)
   check_class(x, "RiskMap_cross_validation")
   out_print(format_cross_validation(x))
   invisible(x)
@@ -1373,7 +1393,7 @@ describe_test_sets <- function(sizes) {
 ##' The lines that print the results of a cross-validation
 ##' @noRd
 format_cross_validation <- function(x) {
-  scores <- summary(x, view_all = FALSE)
+  scores <- summary(x)
   n_models <- length(x$model)
   sizes <- vapply(x$test_set, NROW, integer(1))
   setting <- paste0(n_models, if (n_models == 1L) " model" else " models",
@@ -1381,7 +1401,7 @@ format_cross_validation <- function(x) {
   hint <- paste0(out_fun("summary", "summary.RiskMap_cross_validation"),
                  " gives the scores of each test set, and ",
                  out_fun("plot", "plot.RiskMap_cross_validation"),
-                 " maps the scores at the test locations and draws the ",
+                 " maps the scores at the test locations or draws the ",
                  "calibration curve.")
   c(out_rule("Cross-validation"),
     format_cv_settings(x$keep_par_fixed, NROW(x$failures), before = setting),
@@ -1391,254 +1411,181 @@ format_cross_validation <- function(x) {
     out_bullets(c(i = hint)))
 }
 
-##' Name a predictive-performance metric as it should appear on a plot
-##'
-##' The calibration metrics are stored as `"PIT"` and `"PIT_area"` for every
-##' family, but are labelled AnPIT for discrete families.
-##'
-##' @param object A `RiskMap_cross_validation` object.
-##' @param metric Character string naming the metric.
-##' @param model Character string naming the model.
-##' @return Character string.
+##' The label of the calibration curve of a model, AnPIT for discrete
+##' families and PIT otherwise
 ##' @noRd
-.metric_label <- function(object, metric, model) {
-  pit_label <- if (is.null(object$model[[model]]$AnPIT)) "PIT" else "AnPIT"
-  switch(metric,
-         PIT = pit_label,
-         PIT_area = paste0(pit_label, "_area"),
-         metric)
+.calibration_label <- function(object, model) {
+  if (is.null(object$model[[model]]$AnPIT)) "PIT" else "AnPIT"
 }
 
-##' Build one spatial map of a predictive-performance metric
+##' Map one predictive-performance score at the test locations
 ##'
+##' One ggplot with a panel for each model and one colour scale, so that a
+##' colour means the same score in every panel. A location in several test
+##' sets shows the mean of its scores.
 ##' @noRd
-.plot_metric_map <- function(object, metric, model, ...) {
-
-  if (!model %in% names(object$model)) {
-    abort_input("{.arg model} must name a model of {.arg object}, and {.val {model}} doesn't.", arg = "model")
-  }
-
-  if (!metric %in% names(object$model[[model]]$metric)) {
-    abort_input("{.arg metric} must be a metric computed for model {.val {model}}, and {.val {metric}} isn't.", arg = "metric")
-  }
-
-  # Extract the test sets and number of test sets
-  test_sets <- object$test_set
-  n_test <- length(test_sets)
-
-  # Combine the data and add the metric variable
-  data_full <- st_as_sf(test_sets[[1]])
-  data_full$value <- object$model[[model]]$metric[[metric]][[1]]
-
-  if (n_test > 1) {
-    for (i in 2:n_test) {
-      test_sets[[i]]$value <- object$model[[model]]$metric[[metric]][[i]]
-      data_full <- rbind(data_full, test_sets[[i]])
+.plot_metric_map <- function(object, metric, models) {
+  pieces <- lapply(models, function(model) {
+    if (!metric %in% names(object$model[[model]]$metric)) {
+      abort_input("{.arg metric} must be a metric computed for model {.val {model}}, and {.val {metric}} isn't.", arg = "metric")
     }
-  }
-
-  # Check for duplicate locations and average the metric
-  data_full <- data_full %>%
-    mutate(geom_id = st_as_text(.data$geometry)) %>%
-    group_by(.data$geom_id) %>%
-    summarize(value = mean(.data$value, na.rm = TRUE),
-              geometry = first(.data$geometry), .groups = "drop") %>%
-    st_as_sf()
-
-  # Create the base plot
-  metric_label <- .metric_label(object, metric, model)
-  out <- ggplot(data = data_full) +
-    geom_sf(aes(color = .data$value), size = 2) +
-    labs(title = paste0("Model ", model, ": ", metric_label),
-         colour = metric_label) +
+    values <- unlist(object$model[[model]]$metric[[metric]], use.names = FALSE)
+    geometry <- do.call(c, lapply(object$test_set, st_geometry))
+    location <- st_as_text(geometry)
+    keep <- !duplicated(location)
+    location_means <- tapply(values, factor(location, levels = unique(location)),
+                             function(x) mean(x, na.rm = TRUE))
+    st_sf(model = model, value = as.numeric(location_means),
+          geometry = geometry[keep])
+  })
+  data <- do.call(rbind, pieces)
+  data$model <- factor(data$model, levels = models)
+  map <- ggplot(data) +
+    geom_sf(aes(colour = .data$value), size = 2) +
+    labs(colour = paste0(metric, "\n(lower is better)")) +
     theme_minimal()
-
-  # Layer on any additional ggplot components passed via ...
-  Reduce(`+`, list(...), out)
+  if (length(models) > 1L) map <- map + facet_wrap(vars(.data$model))
+  map
 }
 
-##' Build calibration-curve plots (AnPIT / PIT) for one or more models
+##' Draw the calibration curves (AnPIT or PIT) of one or more models
 ##'
-##' For Binomial or Poisson models this visualises the Aggregated
-##' normalised Probability Integral Transform (AnPIT) curves stored in
-##' `$AnPIT`; for Gaussian models it instead plots the empirical PIT curve
-##' (ECDF of `$PIT` values) on the same grid. A 45-degree dashed red line
-##' indicates perfect calibration.
-##'
-##' @return A named list of ggplot objects, one per `model` - or, when
-##'   `pit_mode == "average"` and `combine_pit` is `TRUE`, a single-element
-##'   list holding one combined plot.
+##' For binomial, Poisson and negative binomial models the curves are the
+##' average nonrandomized PIT (AnPIT) curves stored in `$AnPIT`. For
+##' Gaussian models they are the empirical distribution functions of the PIT
+##' values in `$PIT`. The average curve is that of all test observations
+##' together, the mean of the curves of the test sets weighted by their
+##' sizes, from which `PIT_area` is computed. A dashed diagonal marks perfect
+##' calibration.
+##' @return A ggplot with a panel for each model, or one panel with a curve
+##'   for each model when `combine_pit` is `TRUE`.
 ##' @noRd
-.plot_calibration_curve <- function(object, pit_mode, pit_test_set, model,
+.plot_calibration_curve <- function(object, pit_mode, pit_test_set, models,
                                     combine_pit) {
-
-  make_df <- function(mname) {
-    m <- object$model[[mname]]
+  u_grid <- seq(0, 1, length.out = 1000)
+  sizes <- vapply(object$test_set, NROW, integer(1))
+  curves_of <- function(model) {
+    m <- object$model[[model]]
     if (!is.null(m$AnPIT)) {
-      lapply(seq_along(m$AnPIT), function(j) {
-        curve_vals <- m$AnPIT[[j]]
-        if (length(curve_vals) == 0) return(NULL)
-        data.frame(
-          u_val   = seq(0, 1, length.out = length(curve_vals)),
-          value   = curve_vals,
-          test_set = j,
-          model    = mname,
-          type     = "AnPIT"
-        )
-      })
+      curves <- m$AnPIT
     } else if (!is.null(m$PIT)) {
-      u_grid <- seq(0, 1, length.out = 1000)
-      lapply(seq_along(m$PIT), function(j) {
-        pit_vec <- m$PIT[[j]]
-        if (length(pit_vec) == 0) return(NULL)
-        data.frame(
-          u_val   = u_grid,
-          value   = ecdf(pit_vec)(u_grid),
-          test_set = j,
-          model    = mname,
-          type     = "PIT"
-        )
+      curves <- lapply(m$PIT, function(values) {
+        if (length(values)) stats::ecdf(values)(u_grid) else numeric(0)
       })
     } else {
-      NULL
+      return(NULL)
     }
+    scored <- lengths(curves) > 0
+    if (!any(scored)) return(NULL)
+    if (pit_mode == "average") {
+      average <- if (!is.null(m$PIT)) {
+        stats::ecdf(unlist(m$PIT))(u_grid)
+      } else {
+        Reduce(`+`, Map(`*`, curves[scored], sizes[scored])) / sum(sizes[scored])
+      }
+      return(data.frame(u = seq(0, 1, length.out = length(average)),
+                        value = average, model = model,
+                        test_set = NA_integer_))
+    }
+    shown <- if (pit_mode == "single") pit_test_set else which(scored)
+    if (pit_mode == "single" &&
+        (pit_test_set > length(curves) || !scored[pit_test_set])) {
+      abort_input("{.arg pit_test_set} must be a test set of model {.val {model}}, and {pit_test_set} isn't.", arg = "pit_test_set")
+    }
+    do.call(rbind, lapply(shown, function(j) {
+      data.frame(u = seq(0, 1, length.out = length(curves[[j]])),
+                 value = curves[[j]], model = model, test_set = j)
+    }))
   }
-
-  plot_data <- do.call(rbind, unlist(lapply(model, make_df), recursive = FALSE))
-
-  if (is.null(plot_data) || nrow(plot_data) == 0)
+  plot_data <- do.call(rbind, lapply(models, curves_of))
+  if (is.null(plot_data) || nrow(plot_data) == 0) {
     abort_input("{.arg x} has no PIT or AnPIT values to plot.", arg = "x")
-
-  y_label <- unique(plot_data$type)
-  if (length(y_label) > 1) y_label <- "Calibration curve"
-
-  id_line <- geom_abline(intercept = 0, slope = 1,
-                         linetype = "dashed", colour = "red")
-
-  if (pit_mode == "average" && combine_pit) {
-    avg <- plot_data %>%
-      dplyr::group_by(.data$model, .data$u_val) %>%
-      dplyr::summarize(value = mean(.data$value), .groups = "drop")
-
-    return(list(
-      ggplot(avg, aes(.data$u_val, .data$value, colour = .data$model)) +
-        geom_line() + id_line +
-        labs(title = "Average calibration curves",
-             x = "", y = y_label) +
-        theme_minimal() +
-        guides(colour = guide_legend(title = "Model"))
-    ))
+  }
+  plot_data$model <- factor(plot_data$model, levels = models)
+  labels <- unique(vapply(models, .calibration_label, character(1),
+                          object = object))
+  y_label <- if (length(labels) > 1L) {
+    "Calibration curve"
+  } else if (labels == "AnPIT") {
+    "AnPIT"
+  } else {
+    "Empirical distribution function of the PIT"
   }
 
-  build_plot <- function(df, title_suffix = "") {
-    ggplot(df, aes(.data$u_val, .data$value,
-                   colour = if (pit_mode == "all") as.factor(.data$test_set) else NULL)) +
-      geom_line() + id_line +
-      labs(title = title_suffix, x = "", y = unique(df$type)) +
-      theme_minimal() +
-      guides(colour = guide_legend(title = "Test set"))
+  curve <- if (pit_mode == "all") {
+    plot_data$test_set <- factor(plot_data$test_set)
+    ggplot(plot_data, aes(.data$u, .data$value, colour = .data$test_set)) +
+      labs(colour = "Test set")
+  } else if (pit_mode == "average" && combine_pit) {
+    ggplot(plot_data, aes(.data$u, .data$value, colour = .data$model)) +
+      labs(colour = "Model")
+  } else {
+    ggplot(plot_data, aes(.data$u, .data$value))
   }
-
-  plots <- list()
-  for (mname in model) {
-    df_model <- dplyr::filter(plot_data, .data$model == mname)
-
-    title <- paste0("Model ", mname, ": ", unique(df_model$type))
-    p <- switch(pit_mode,
-                average = {
-                  avg <- df_model %>%
-                    dplyr::group_by(.data$u_val) %>%
-                    dplyr::summarize(value = mean(.data$value), .groups = "drop")
-                  avg$type <- unique(df_model$type)
-                  build_plot(avg, paste(title, "(average)"))
-                },
-                single  = {
-                  if (is.null(pit_test_set)) {
-                    abort_input("{.arg pit_test_set} must be given when {.arg pit_mode} is {.val single}.", arg = "pit_test_set")
-                  }
-                  df_ts <- df_model[df_model$test_set == pit_test_set,]
-                  if (nrow(df_ts) == 0) {
-                    abort_input("{.arg pit_test_set} must be a test set of model {.val {mname}}, and {pit_test_set} isn't.", arg = "pit_test_set")
-                  }
-                  build_plot(df_ts,
-                             paste0(title, " (test set ", pit_test_set, ")"))
-                },
-                all     = build_plot(df_model,
-                                     paste(title, "(all test sets)")),
-                abort_input("{.arg pit_mode} must be {.val average}, {.val single} or {.val all}.", arg = "pit_mode")
-    )
-
-    plots[[mname]] <- p
+  curve <- curve +
+    geom_line() +
+    geom_abline(intercept = 0, slope = 1, linetype = "dashed",
+                colour = "red") +
+    labs(x = "Probability level u", y = y_label,
+         subtitle = if (pit_mode == "single") paste("Test set", pit_test_set)) +
+    theme_minimal()
+  if (length(models) > 1L && !(pit_mode == "average" && combine_pit)) {
+    curve <- curve + facet_wrap(vars(.data$model))
   }
-
-  plots
-}
-
-##' Arrange one metric group's plots into a single grid, if there is more
-##' than one
-##' @noRd
-.arrange_metric_group <- function(group_plots) {
-  if (length(group_plots) == 1) {
-    return(group_plots[[1]])
-  }
-
-  ncol <- 2
-  do.call(
-    gridExtra::grid.arrange,
-    c(group_plots, list(ncol = ncol, nrow = ceiling(length(group_plots) / ncol)))
-  )
+  curve
 }
 
 ##' @title Plot Method for RiskMap_cross_validation Objects
 ##'
 ##' @description
-##' Plots whatever predictive-performance output is available in a
-##' \code{RiskMap_cross_validation} object returned by
-##' \code{\link{assess_prediction}}: a spatial map for each per-location
-##' metric (\code{"CRPS"}, \code{"SCRPS"}, \code{"PIT_area"}) that was
-##' requested via \code{metrics} in that call, and/or a calibration curve
-##' (\code{"PIT"}) - the Aggregated normalised Probability Integral
-##' Transform (AnPIT) curve for discrete families, or the empirical PIT curve
-##' for Gaussian models - when that was requested. Plot titles and legends
-##' use AnPIT or PIT according to each model's family. By default every available
-##' plot is produced, one per requested model, so you don't need to know in
-##' advance which metrics were computed. Each metric gets its own plot
-##' (or, with more than one model, its own small grid of one panel per
-##' model) rather than everything being squeezed into one combined grid.
+##' Draws one metric of a \code{RiskMap_cross_validation} object returned by
+##' \code{\link{assess_prediction}}: a map of the CRPS or SCRPS at the test
+##' locations, or the calibration curve (\code{"PIT"}), the average
+##' nonrandomized PIT (AnPIT) curve for discrete families or the empirical
+##' distribution function of the PIT values for Gaussian models. Several
+##' models are panels of one plot that share one colour scale.
 ##'
 ##' @param x A \code{RiskMap_cross_validation} object.
-##' @param metric Character vector restricting which plot(s) to produce;
-##'   one or more of \code{"CRPS"}, \code{"SCRPS"}, \code{"PIT_area"} (a
-##'   spatial map of that score) and \code{"PIT"} (the calibration
-##'   curve). Defaults to every metric available in \code{x}.
+##' @param metric The metric to draw, one of \code{"PIT"} (the calibration
+##'   curve), \code{"CRPS"} and \code{"SCRPS"} (maps of the score of each test
+##'   observation), among those computed. When \code{NULL} (the default), the
+##'   calibration curve if it was computed and the first score otherwise.
+##'   `PIT_area` is one number for each model, which `summary()` gives, so it
+##'   has no map.
 ##' @param model Character vector of model names to include. Defaults to
 ##'   every model in \code{x$model}.
-##' @param ... Additional \pkg{ggplot2} components (e.g.
-##'   \code{scale_color_gradient()}), layered onto every spatial-map plot.
-##'   Must be passed by position only after `model`, since the remaining
-##'   arguments must be named.
 ##' @param pit_mode For the calibration curve only: one of \code{"average"}
-##'   (average curve across test sets, the default), \code{"single"} (one
+##'   (the curve of all test observations together, the default), \code{"single"} (one
 ##'   specific test set) or \code{"all"} (every test set separately).
 ##' @param pit_test_set Integer; required when \code{pit_mode = "single"}.
 ##' @param combine_pit Logical; when \code{pit_mode = "average"}, draw the
 ##'   calibration curves for every model in a single panel (\code{TRUE})
 ##'   rather than one panel per model (\code{FALSE}, default).
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored. Add \pkg{ggplot2} components to the plot with \code{+}.
 ##'
-##' @return When exactly one metric is produced: a single \pkg{ggplot2}
-##'   object (one model) or a \pkg{grid} object from \pkg{gridExtra} (more
-##'   than one model). When more than one metric is produced, each metric's
-##'   plot/grid is drawn in turn as a side effect (so each one renders as
-##'   its own figure), and a named list of them - one per metric - is
-##'   returned invisibly for later reuse.
+##' @details
+##' Lower is better for both scores, and a location in several test sets
+##' shows the mean of its scores. The average calibration curve weights each
+##' test set by its size, so it is the curve of all test observations
+##' together, from which `PIT_area` is computed (see
+##' [assess_prediction()]).
+##'
+##' @return A \pkg{ggplot2} object, drawn when it is printed, to which
+##'   \pkg{ggplot2} components such as
+##'   \code{ggplot2::scale_colour_viridis_c()} can be added.
 ##'
 ##' @seealso \code{\link{assess_prediction}}
 ##' @method plot RiskMap_cross_validation
-##' @importFrom dplyr group_by summarize %>%
 ##' @export
-plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
-                                          pit_mode = "average", pit_test_set = NULL,
-                                          combine_pit = FALSE) {
+plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL,
+                                          pit_mode = "average",
+                                          pit_test_set = NULL,
+                                          combine_pit = FALSE, ...) {
+  check_dots_unused(..., hints = c(
+    test_set = "It is now {.arg pit_test_set}.",
+    combine_panels = "It is now {.arg combine_pit}."
+  ))
 
   all_models <- names(x$model)
   if (is.null(model)) {
@@ -1650,54 +1597,39 @@ plot.RiskMap_cross_validation <- function(x, metric = NULL, model = NULL, ...,
     }
   }
 
-  spatial_metrics <- intersect(
-    c("CRPS", "SCRPS", "PIT_area"),
-    names(x$model[[model[1]]]$metric)
-  )
+  scores <- intersect(c("CRPS", "SCRPS"), names(x$model[[model[1]]]$metric))
   has_calibration <- !is.null(x$model[[model[1]]]$PIT) ||
     !is.null(x$model[[model[1]]]$AnPIT)
-  available_metrics <- c(if (has_calibration) "PIT", spatial_metrics)
+  available_metrics <- c(if (has_calibration) "PIT", scores)
 
   if (is.null(metric)) {
-    metric <- available_metrics
+    metric <- available_metrics[[1L]]
+  } else if (!is.character(metric) || length(metric) != 1L || is.na(metric)) {
+    abort_input(c("{.arg metric} must be one metric, since {.fn plot} draws one at a time.", "i" = "The metrics computed are {.val {available_metrics}}."), arg = "metric")
+  } else if (identical(metric, "PIT_area")) {
+    abort_input(c("{.arg metric} can't be {.val PIT_area}, which is one number for each model, given by {.fn summary}.", "i" = "Use {.code metric = \"PIT\"} for the calibration curve."), arg = "metric")
+  } else if (!metric %in% available_metrics) {
+    abort_input(c("{.arg metric} must name a metric computed for {.arg x}.", "x" = "{.val {metric}} was not computed.", "i" = "The metrics computed are {.val {available_metrics}}."), arg = "metric")
+  }
+
+  pit_mode <- match_choice(pit_mode, c("average", "single", "all"))
+  check_logical(combine_pit)
+  if (combine_pit && pit_mode != "average") {
+    abort_input("{.arg combine_pit} can be {.code TRUE} only when {.arg pit_mode} is {.val average}.", arg = "combine_pit")
+  }
+  if (pit_mode == "single") {
+    if (is.null(pit_test_set)) {
+      abort_input("{.arg pit_test_set} must be given when {.arg pit_mode} is {.val single}.", arg = "pit_test_set")
+    }
+    check_positive_integer(pit_test_set, "pit_test_set")
+  }
+
+  if (identical(metric, "PIT")) {
+    .plot_calibration_curve(x, pit_mode = pit_mode, pit_test_set = pit_test_set,
+                            models = model, combine_pit = combine_pit)
   } else {
-    unavailable <- setdiff(metric, available_metrics)
-    if (length(unavailable) > 0) {
-      abort_input(c("{.arg metric} must name metrics computed for {.arg x}.", "x" = "{.val {unavailable}} {cli::qty(length(unavailable))}{?was/were} not computed.", "i" = "The metrics computed are {.val {available_metrics}}."), arg = "metric")
-    }
+    .plot_metric_map(x, metric = metric, models = model)
   }
-
-  # Calibration curve first, then the spatial-map metrics in a fixed order,
-  # so metrics are plotted in a stable, predictable order regardless of how
-  # `metric`/the object's own field ordering happen to be arranged.
-  ordered_metrics <- intersect(c("PIT", "CRPS", "SCRPS", "PIT_area"), metric)
-
-  groups <- stats::setNames(lapply(ordered_metrics, function(m) {
-    group_plots <- if (identical(m, "PIT")) {
-      .plot_calibration_curve(x, pit_mode = pit_mode, pit_test_set = pit_test_set,
-                              model = model, combine_pit = combine_pit)
-    } else {
-      stats::setNames(
-        lapply(model, function(mod) .plot_metric_map(x, metric = m, model = mod, ...)),
-        model
-      )
-    }
-    .arrange_metric_group(group_plots)
-  }), ordered_metrics)
-
-  if (length(groups) == 1) {
-    if (inherits(groups[[1]], "ggplot")) {
-      return(groups[[1]])
-    }
-    return(invisible(groups[[1]]))
-  }
-
-  # draw each metric as its own figure rather than
-  # squeezing every metric into a single combined grid.
-  for (plot_obj in groups) {
-    if (inherits(plot_obj, "ggplot")) print(plot_obj)
-  }
-  invisible(groups)
 }
 
 ##' @title Check for valid binomial values

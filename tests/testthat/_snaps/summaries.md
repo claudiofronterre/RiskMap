@@ -181,29 +181,20 @@
     Output
       -- Cross-validation scores -----------------------------------------------------
       
-      Averages over the test sets, weighted by their sizes
-         Model   CRPS   SCRPS
-       model_a 0.3000 -0.8000
-       model_b 0.4500 -0.9500
+      Scores over all test observations
+         Model   CRPS  SCRPS PIT_area PIT_area_expected
+       model_a 0.3000 0.8000   0.0400            0.0300
+       model_b 0.4500 0.9500   0.0500            0.0310
+      i Lower is better for every score. The CRPS is in the units of the response,
+        counts for binomial, Poisson and negative binomial models. PIT_area_expected
+        is the PIT_area of a perfectly calibrated model on these test observations.
       
       By test set
-         Model Test set   CRPS   SCRPS
-       model_a        1 0.2500 -0.7500
-       model_a        2 0.3500 -0.8500
-       model_b        1 0.4000 -0.9000
-       model_b        2 0.5000 -1.0000
-
----
-
-    Code
-      print(scores)
-    Output
-      -- Cross-validation scores -----------------------------------------------------
-      
-      Averages over the test sets, weighted by their sizes
-         Model   CRPS   SCRPS
-       model_a 0.3000 -0.8000
-       model_b 0.4500 -0.9500
+         Model Test set   CRPS  SCRPS
+       model_a        1 0.2500 0.7500
+       model_a        2 0.3500 0.8500
+       model_b        1 0.4000 0.9000
+       model_b        2 0.5000 1.0000
 
 # print.summary.RiskMap_assess_simulation formats one spatial scale
 
@@ -236,7 +227,7 @@
     Output
       -- Results of the simulation study ---------------------------------------------
       
-      -- Grid ------------------------------------------------------------------------
+      -- Locations -------------------------------------------------------------------
       
       Mean squared error
         Model n_sim n_valid MSE_mean     MSE_sd

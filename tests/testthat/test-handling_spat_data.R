@@ -129,6 +129,7 @@ test_that("RiskMap grid metadata survives common point operations", {
 })
 
 test_that("RiskMap grids and their predictions work with dplyr", {
+  skip_if_not_installed("dplyr")
   square <- st_polygon(list(matrix(square_coords * 1000,
                                    ncol = 2, byrow = TRUE)))
   square_m <- st_sf(geometry = st_sfc(square), crs = st_crs(32638))
@@ -164,11 +165,15 @@ test_that("selecting columns of a grid keeps its cells (#214)", {
     "[j]" = square_grid["value"],
     "[i, j]" = square_grid[1:3, "value"],
     "[i, ]" = square_grid[1:3, ],
-    "select" = dplyr::select(square_grid, value),
-    "mutate" = dplyr::mutate(square_grid, double = 2 * value),
-    "left_join" = dplyr::left_join(square_grid, extra, by = "grid_id"),
     "rbind of parts" = rbind(square_grid[1:3, ], square_grid[4:6, ])
   )
+  if (requireNamespace("dplyr", quietly = TRUE)) {
+    selections <- c(selections, list(
+      "select" = dplyr::select(square_grid, value),
+      "mutate" = dplyr::mutate(square_grid, double = 2 * value),
+      "left_join" = dplyr::left_join(square_grid, extra, by = "grid_id")
+    ))
+  }
   for (name in names(selections)) {
     selection <- selections[[name]]
     expect_identical(class(selection), class(square_grid), label = name)

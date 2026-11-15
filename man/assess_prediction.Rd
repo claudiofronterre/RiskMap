@@ -5,7 +5,7 @@
 \title{Assess Predictive Performance via Spatial Cross-Validation}
 \usage{
 assess_prediction(
-  object,
+  models,
   method,
   fold = NULL,
   min_dist = NULL,
@@ -15,52 +15,63 @@ assess_prediction(
   metrics = c("PIT", "CRPS", "SCRPS"),
   keep_par_fixed = TRUE,
   control_mcmc = set_control_mcmc(),
+  plot_fold = FALSE,
   seed = NULL,
-  plot_fold = TRUE,
   messages = getOption("RiskMap.messages", TRUE),
   ...
 )
 }
 \arguments{
-\item{object}{A list of \code{RiskMap} objects, each representing a model fitted with \code{glgpm()}.}
+\item{models}{A list of \code{RiskMap} objects, each a model fitted with
+\code{\link[=glgpm]{glgpm()}} to the same data. Names of the list name the models in the
+results.}
 
 \item{method}{Character; either \code{"cluster"}, \code{"regularized"} or \code{"user"} for the
 cross-validation method:
 \describe{
 \itemize{
 \item The \code{"cluster"} method uses spatial clustering as implemented
-by the \code{spatial_clustering_cv} function from the \code{spatialsample} package.
+by the \code{spatial_clustering_cv} function from the \code{spatialsample}
+package, which must be installed.
 \item The \code{"regularized"} method selects a subsample of the dataset by imposing a minimum distance,
 set by the \code{min_dist} argument, for a randomly selected subset of locations using
-the \code{subsample.distance} function from the \code{spatialEco} package.
+the \code{subsample.distance} function from the \code{spatialEco} package, which
+must be installed.
 \item The \code{"user"} method takes a user-defined test set defined by \code{user_split}
 }
 }}
 
 \item{fold}{Integer; required when \code{method = "cluster"} - number of folds for cross-validation.}
 
-\item{min_dist}{Numeric; required when \code{method = "regularized"} - minimum distance in kilometers for regularized subsampling.}
+\item{min_dist}{Numeric; required when \code{method = "regularized"}. The
+minimum distance between the locations of a test set, in the distance
+units of the fits (\code{distance_units} in \code{\link[=glgpm]{glgpm()}}), for example
+kilometres for fits in kilometres.}
 
 \item{size}{Integer; the size of the test set, required when \code{method = "regularized"}.}
 
 \item{user_split}{Required when \code{method = "user"}. A user-defined cross-validation split. Either:
 \itemize{
-\item a matrix with \code{nrow = n} (number of observations) and
-\code{ncol = iter} (number of iterations), where entries of \code{1}
-indicate membership in the test set for that iteration and \code{0}
-indicate training set; or
-\item a list of length \code{iter}, where each element is either a vector of
-indices of the dataset to use as the test set, or a list with components
-\code{in_id} (training indices) and \code{out_id} (test indices).
+\item a matrix with \code{nrow = n} (number of observations) and one column
+for each test set, where entries of \code{1} indicate membership in
+the test set and \code{0} in the training set; or
+\item a list with one element for each test set, each either a vector of
+indices of the dataset to use as the test set, or a list with
+components \code{in_id} (training indices) and \code{out_id} (test
+indices).
 }}
 
-\item{iter}{Integer; number of times to repeat the cross-validation. Defaults to \code{1}.}
+\item{iter}{Integer; number of times to repeat the cross-validation with
+\code{method = "cluster"} or \code{"regularized"}. Defaults to \code{1}. With
+\code{method = "user"} the number of test sets is that of \code{user_split}, so
+\code{iter} need not be given.}
 
 \item{metrics}{Character vector; one or more of \code{"CRPS"}, \code{"SCRPS"} and \code{"PIT"},
 to specify the predictive performance metrics to compute. \code{"PIT"} computes
 the PIT for Gaussian models or the AnPIT curve for discrete models, and
-also the scalar score \code{"PIT_area"}, the integrated absolute deviation
-between the PIT/AnPIT curve and the reference line. Defaults to all metrics.}
+also \code{PIT_area}, the area between the calibration curve of all test
+observations and the diagonal, with its expected value under perfect
+calibration. Defaults to all metrics.}
 
 \item{keep_par_fixed}{Logical. If \code{TRUE} (the default), the parameters are
 fixed at the estimates of the fitted model, which used all the data, and
@@ -75,6 +86,9 @@ and printed by \code{summary()}.}
 
 \item{control_mcmc}{Control settings for simulation, an output from \code{set_control_mcmc()}.}
 
+\item{plot_fold}{Logical; whether to draw the training and test sets of
+each split while the assessment runs. Defaults to \code{FALSE}.}
+
 \item{seed}{Optional non-negative integer that makes the assessment
 reproducible. It sets the random splits for \code{method = "cluster"} and
 \code{method = "regularized"}, and a seed for each test set, which is passed to
@@ -83,8 +97,6 @@ models share the seed of a test set, so that their predictions use common
 random numbers. The caller's random number state is restored on exit.
 When \code{NULL} (the default), the seeds are drawn from the session's random
 number generator.}
-
-\item{plot_fold}{Logical; whether to plot each iteration's test and training sets. Defaults to \code{TRUE}.}
 
 \item{messages}{Logical, whether to report on the assessment, with a
 progress bar as described in \link{riskmap_progress}.
@@ -98,9 +110,14 @@ A list of class \code{RiskMap_cross_validation}, containing:
 \item{test_set}{A list of test sets used for validation, each of class \code{'sf'}.}
 \item{model}{A named list, one per model, each containing:
 \describe{
-\item{metric}{A list with CRPS, SCRPS, and/or PIT_area metrics for each fold if requested.}
+\item{metric}{A list with the CRPS and SCRPS of each test
+observation, one element per test set, if requested.}
 \item{PIT}{(if \code{family = "gaussian"} and \code{metrics} includes \code{"PIT"}) A list of PIT values for test data.}
 \item{AnPIT}{(if \code{family} is discrete and \code{metrics} includes \code{"PIT"}) A list of AnPIT curves for test data.}
+\item{PIT_area, PIT_area_expected}{(if \code{metrics} includes
+\code{"PIT"}) The area between the calibration curve of all test
+observations and the diagonal, and its expected value under
+perfect calibration.}
 }
 }
 \item{keep_par_fixed}{The value of \code{keep_par_fixed}.}
@@ -113,22 +130,46 @@ whose refit or prediction failed, with columns \code{model}, \code{test_set} and
 This function evaluates the predictive performance of spatial models fitted
 to \code{RiskMap} objects using cross-validation. It supports two classes of diagnostic tools:
 \itemize{
-\item \strong{Scoring rules}, including the Continuous Ranked Probability Score (CRPS)
-and its scaled version (SCRPS), which quantify the sharpness and calibration
-of probabilistic forecasts (Bolin & Wallin, 2023);
+\item \strong{Scoring rules}, the Continuous Ranked Probability Score (CRPS) and its
+scaled version (SCRPS) of Bolin and Wallin (2023), which measure both the
+sharpness and the calibration of the predictive distributions. Both are
+losses, so lower values are better.
 \item \strong{Calibration diagnostics}, based on the Probability Integral Transform (PIT)
-for Gaussian outcomes, Average nonrandomized PIT (AnPIT) curves for discrete
+for Gaussian outcomes, the average nonrandomized PIT (AnPIT) curve for discrete
 outcomes (e.g., Poisson or Binomial), and the area between the PIT/AnPIT curve
-and the reference line (Giorgi \emph{et al.} 2026).
+and the diagonal (Giorgi \emph{et al.} 2026).
 }
 
 Cross-validation can be performed using either spatial clustering, regularized
 subsampling with a minimum inter-point distance or a user-defined test set.
-For each fold or subset, models can be refitted or evaluated with fixed parameters,
-offering flexibility in model validation. The function also provides visualizations
-of the spatial distribution of test folds.
+For each fold or subset, models can be refitted or evaluated with fixed
+parameters, offering flexibility in model validation. \link[=plot.RiskMap_cross_validation]{plot()} of the
+result maps the scores and draws the calibration curves.
 }
 \details{
+Every score is a loss, so lower values are better. The CRPS is in the
+units of the response, which for binomial, Poisson and negative binomial
+models are counts (for example numbers of positive individuals), not
+prevalences or rates. The SCRPS is reported as
+\deqn{\frac{1}{2}\left[1 + \frac{\mathrm{CRPS}(F, y)}{c} + \log(2c)\right],
+  \quad c = \frac{1}{2} E|X - X'|,}
+with \eqn{X} and \eqn{X'} independent draws from the predictive
+distribution \eqn{F}. This is the negative of the scaled CRPS of Bolin and
+Wallin (2023), whose scores are higher for better predictions, so that the
+CRPS and the SCRPS share one orientation. The SCRPS can be negative.
+
+\code{PIT_area} is the area between the calibration curve and the diagonal,
+from 0 for a perfectly calibrated curve to at most 0.5. It is computed
+once, from the curve of all test observations together, which is the
+average of the curves of the test sets weighted by their sizes. Even a
+perfectly calibrated model has a positive area, which shrinks as the
+number of test observations grows (about \eqn{0.31/\sqrt{n}} for \eqn{n}
+observations). \code{PIT_area_expected} gives that area for the test
+observations at hand, as the mean over 200 sets of observations simulated
+from their own predictive distributions. An observation in several test
+sets is simulated once and scored under each, as the observed value is. A
+\code{PIT_area} well above \code{PIT_area_expected} points to miscalibration.
+
 A failed refit or prediction does not stop the assessment: the scores of
 that test set are missing and a warning reports the failures. Test
 observations with missing values in a variable used by any of the models
@@ -147,29 +188,8 @@ fit <- glgpm(
   messages = FALSE
 )
 
-# cluster method
-cross_validation <-
-  assess_prediction(
-    list(fit),
-    method = "cluster",
-    fold = 2
-  )
-
-summary(cross_validation)
-
-# regularized method
-cross_validation <-
-  assess_prediction(
-    list(fit),
-    method = "regularized",
-    size = 5,
-    min_dist = 1
-  )
-
-summary(cross_validation)
-
 # user method with a matrix
- cross_validation <-
+cross_validation <-
   assess_prediction(
   list(fit),
   method = "user",
@@ -181,7 +201,7 @@ summary(cross_validation)
 summary(cross_validation)
 
 # user method with a list
- cross_validation <-
+cross_validation <-
   assess_prediction(
   list(fit),
   method = "user",
@@ -190,6 +210,29 @@ summary(cross_validation)
   )
 
 summary(cross_validation)
+
+# cluster method, which needs spatialsample
+if (requireNamespace("spatialsample", quietly = TRUE)) {
+  cross_validation <-
+    assess_prediction(
+      list(fit),
+      method = "cluster",
+      fold = 2
+    )
+  summary(cross_validation)
+}
+
+# regularized method, which needs spatialEco
+if (requireNamespace("spatialEco", quietly = TRUE)) {
+  cross_validation <-
+    assess_prediction(
+      list(fit),
+      method = "regularized",
+      size = 5,
+      min_dist = 1
+    )
+  summary(cross_validation)
+}
 
 }
 \references{
@@ -202,5 +245,6 @@ tropical disease prevalence. \emph{Journal of the Royal Statistical Society Seri
 A: Statistics in Society}.\doi{10.1093/jrsssa/qnag100}.
 }
 \seealso{
-\code{\link{plot.RiskMap_cross_validation}}
+\code{\link[=plot.RiskMap_cross_validation]{plot.RiskMap_cross_validation()}},
+\code{\link[=summary.RiskMap_cross_validation]{summary.RiskMap_cross_validation()}}
 }

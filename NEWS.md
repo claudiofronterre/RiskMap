@@ -91,6 +91,14 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 - `specify_glgpm()` takes its CRS in `distance_crs` and `plot_mcmc()` its
   locations in `locations`. `summarise_mcmc()` and `simulated_values()`
   return data frames.
+- `assess_prediction()` reports the SCRPS as a loss, so that lower is better
+  for every score, and `PIT_area` once for all test observations, next to its
+  value under perfect calibration (#230). It takes its fits in `models` and
+  `min_dist` in their distance units, and draws the splits only with
+  `plot_fold = TRUE`. `plot()` of its result returns one plot of one metric
+  (#213), and `summary()` loses `view_all`. `assess_simulation()` takes
+  `simulation`, `aggregate`, `label`, `objective` and `breaks`, and calls the
+  scale of the grid `"location"`.
 
 ### Messages
 

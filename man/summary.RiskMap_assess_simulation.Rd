@@ -9,11 +9,12 @@
 \arguments{
 \item{object}{An object of class \code{RiskMap_assess_simulation}, as returned by \code{assess_simulation}.}
 
-\item{...}{Additional arguments (not used).}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 A list of class \code{summary.RiskMap_assess_simulation} with one
-element per assessed spatial scale (\code{grid} and/or \code{area}), each holding:
+element per assessed spatial scale (\code{location} and/or \code{area}), each holding:
 \itemize{
 \item \code{mse}: a data frame with, for each model, the number of simulations
 (\code{n_sim}), the number with a result (\code{n_valid}), and the mean and

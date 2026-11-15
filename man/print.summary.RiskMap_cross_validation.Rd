@@ -10,7 +10,8 @@
 \item{x}{An object of class \code{"summary.RiskMap_cross_validation"}, typically the output of
 \code{summary.RiskMap_cross_validation}.}
 
-\item{...}{Additional arguments passed to or from other methods.}
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 Invisibly returns \code{x}.
@@ -20,7 +21,6 @@ This function prints the matrix of cross-validation scores produced by
 \code{summary.RiskMap_cross_validation} in a readable format.
 }
 \details{
-This method is primarily used to format and display the summary score matrix,
-printing it to the console. It provides a clear view of the cross-validation performance
-metrics across different spatial models.
+This method prints the scores of each model averaged over all test
+observations, with what they mean, and the scores of each test set.
 }

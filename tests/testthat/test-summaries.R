@@ -396,15 +396,38 @@ test_that("summary.RiskMap_cross_validation weights test sets by their size", {
 
   test_set_means <- attr(cross_validation_summary, "test_set_means")
   expect_named(test_set_means, c("model_a", "model_b"))
-  # scores per test set are stored by metric position, in column order
-  expect_equal(test_set_means$model_a[[1]], c(0.2, 0.4))
-  expect_equal(attr(cross_validation_summary, "overall_averages"),
-               colMeans(cross_validation_summary))
-  expect_true(attr(cross_validation_summary, "view_all"))
+  expect_equal(test_set_means$model_a$CRPS, c(0.2, 0.4))
+  # The average over the models and view_all are gone (#230).
+  expect_null(attr(cross_validation_summary, "overall_averages"))
+  expect_input_error(summary(structure(build_cross_validation(),
+                                       class = "RiskMap_cross_validation"),
+                             view_all = FALSE),
+                     "view_all")
+})
 
-  expect_false(attr(summary.RiskMap_cross_validation(build_cross_validation(),
-                                                     view_all = FALSE),
-                    "view_all"))
+test_that("summary.RiskMap_cross_validation gives the pooled PIT_area and its expected value (#230)", {
+  object <- build_cross_validation()
+  object$model$model_a$PIT_area <- 0.04
+  object$model$model_a$PIT_area_expected <- 0.03
+  object$model$model_b$PIT_area <- 0.05
+  object$model$model_b$PIT_area_expected <- 0.031
+  scores <- summary.RiskMap_cross_validation(object)
+  expect_identical(colnames(scores),
+                   c("CRPS", "SCRPS", "PIT_area", "PIT_area_expected"))
+  expect_identical(scores[, "PIT_area"], c(model_a = 0.04, model_b = 0.05))
+  expect_identical(scores[, "PIT_area_expected"],
+                   c(model_a = 0.03, model_b = 0.031))
+  # The scores of each test set are those computed for each observation.
+  expect_named(attr(scores, "test_set_means")$model_a, c("CRPS", "SCRPS"))
+
+  only_pit <- list(model = list(model_a = list(metric = list(),
+                                               PIT_area = 0.1,
+                                               PIT_area_expected = 0.09)),
+                   test_set = list(1, 2))
+  only_pit_scores <- summary.RiskMap_cross_validation(only_pit)
+  expect_identical(colnames(only_pit_scores), c("PIT_area", "PIT_area_expected"))
+  printed <- squish(capture.output(print(only_pit_scores)))
+  expect_no_match(printed, "By test set", fixed = TRUE)
 })
 
 test_that("summary.RiskMap_cross_validation errors when no metrics were computed", {
@@ -430,9 +453,10 @@ test_that("print.RiskMap_cross_validation gives the averages, not the raw list",
   expect_true(any(startsWith(trimws(printed), "model_b ")))
   expect_match(squish(printed), paste(
     "`summary()` gives the scores of each test set, and `plot()` maps the",
-    "scores at the test locations and draws the calibration curve."
+    "scores at the test locations or draws the calibration curve."
   ), fixed = TRUE)
-  expect_lt(length(printed), 20L)
+  expect_match(squish(printed), "Lower is better for every score.", fixed = TRUE)
+  expect_lt(length(printed), 22L)
   expect_false(any(grepl("$test_set", printed, fixed = TRUE)))
 })
 
@@ -452,21 +476,19 @@ test_that("the print of a cross-validation describes its test sets", {
 })
 
 test_that("print.summary.RiskMap_cross_validation formats scores by model", {
-  scores <- matrix(c(0.3, 0.45, -0.8, -0.95), nrow = 2,
-                   dimnames = list(c("model_a", "model_b"), c("CRPS", "SCRPS")))
+  scores <- matrix(c(0.3, 0.45, 0.8, 0.95, 0.04, 0.05, 0.03, 0.031), nrow = 2,
+                   dimnames = list(c("model_a", "model_b"),
+                                   c("CRPS", "SCRPS", "PIT_area",
+                                     "PIT_area_expected")))
   attr(scores, "test_set_means") <- list(
-    model_a = list(CRPS = c(0.25, 0.35), SCRPS = c(-0.75, -0.85)),
-    model_b = list(CRPS = c(0.4, 0.5), SCRPS = c(-0.9, -1))
+    model_a = list(CRPS = c(0.25, 0.35), SCRPS = c(0.75, 0.85)),
+    model_b = list(CRPS = c(0.4, 0.5), SCRPS = c(0.9, 1))
   )
-  attr(scores, "overall_averages") <- colMeans(scores)
   class(scores) <- "summary.RiskMap_cross_validation"
 
-  attr(scores, "view_all") <- TRUE
   expect_snapshot(print(scores))
   expect_output(expect_invisible(print(scores)))
-
-  attr(scores, "view_all") <- FALSE
-  expect_snapshot(print(scores))
+  expect_input_error(print(scores, digits = 2), "digits")
 })
 
 # summary.RiskMap_assess_simulation -------------------------------------------
@@ -489,11 +511,11 @@ build_assess_simulation <- function(spatial_scale) {
       Class = factor(c("low", "high"), levels = c("low", "high"))
     )
   )
-  pred_objective <- rep(list(scale_results), length(spatial_scale))
-  names(pred_objective) <- spatial_scale
+  objective <- rep(list(scale_results), length(spatial_scale))
+  names(objective) <- spatial_scale
 
   structure(
-    list(pred_objective = pred_objective, n_sim = 2L,
+    list(objective = objective, n_sim = 2L,
          spatial_scale = spatial_scale),
     class = "RiskMap_assess_simulation"
   )
@@ -510,8 +532,8 @@ test_that("classification summaries handle one simulation and metric-wise missin
   )
   one_simulation <- structure(
     list(
-      pred_objective = list(
-        grid = list(
+      objective = list(
+        location = list(
           classify = list(
             model = list(by_cat = list(one_result), CC = 0.65),
             Class = factor(c("low", "high"), levels = c("low", "high"))
@@ -519,13 +541,13 @@ test_that("classification summaries handle one simulation and metric-wise missin
         )
       ),
       n_sim = 1L,
-      spatial_scale = "grid"
+      spatial_scale = "location"
     ),
     class = "RiskMap_assess_simulation"
   )
 
   expect_warning(summary_one <- summary(one_simulation), "one simulation")
-  model_one <- summary_one$grid$classify$model
+  model_one <- summary_one$location$classify$model
   expect_identical(model_one$classify_res$Sensitivity, c(0.5, NA))
   expect_identical(model_one$n_valid$Sensitivity, c(1L, 0L))
   expect_identical(model_one$cc_summary$mean, 0.65)
@@ -538,11 +560,11 @@ test_that("classification summaries handle one simulation and metric-wise missin
   second_result$Specificity <- c(0.5, NA)
   two_simulations <- one_simulation
   two_simulations$n_sim <- 2L
-  two_simulations$pred_objective$grid$classify$model$by_cat <-
+  two_simulations$objective$location$classify$model$by_cat <-
     list(one_result, second_result)
-  two_simulations$pred_objective$grid$classify$model$CC <- c(0.65, 0.75)
+  two_simulations$objective$location$classify$model$CC <- c(0.65, 0.75)
 
-  summary_two <- summary(two_simulations)$grid$classify$model
+  summary_two <- summary(two_simulations)$location$classify$model
   expect_identical(summary_two$classify_res$Sensitivity, c(0.5, 0.25))
   expect_identical(summary_two$n_valid$Sensitivity, c(1L, 1L))
   expect_identical(summary_two$n_valid$Specificity, c(1L, 1L))
@@ -551,67 +573,69 @@ test_that("classification summaries handle one simulation and metric-wise missin
 })
 
 test_that("summary.RiskMap_assess_simulation summarises MSE and classification", {
-  assessment <- build_assess_simulation(c("grid", "area"))
-  assessment$pred_objective$grid$mse[1, 2] <- NA
+  assessment <- build_assess_simulation(c("location", "area"))
+  assessment$objective$location$mse[1, 2] <- NA
 
   expect_error(summary.RiskMap_assess_simulation(list()), "RiskMap_assess_simulation")
 
   simulation_summary <- summary(assessment)
   expect_s3_class(simulation_summary, "summary.RiskMap_assess_simulation")
-  expect_named(simulation_summary, c("grid", "area"))
+  expect_named(simulation_summary, c("location", "area"))
 
   # non-finite MSE values are dropped from the mean and counted as invalid
-  expect_identical(simulation_summary$grid$mse$n_sim, 2L)
-  expect_identical(simulation_summary$grid$mse$n_valid, 1)
-  expect_identical(simulation_summary$grid$mse$MSE_mean, 0.12)
-  expect_true(is.na(simulation_summary$grid$mse$MSE_sd))
+  expect_identical(simulation_summary$location$mse$n_sim, 2L)
+  expect_identical(simulation_summary$location$mse$n_valid, 1)
+  expect_identical(simulation_summary$location$mse$MSE_mean, 0.12)
+  expect_true(is.na(simulation_summary$location$mse$MSE_sd))
   expect_equal(simulation_summary$area$mse$MSE_mean, 0.15)
   expect_equal(simulation_summary$area$mse$MSE_sd, sd(c(0.12, 0.18)))
 
-  model_summary <- simulation_summary$grid$classify$model
+  model_summary <- simulation_summary$location$classify$model
   expect_identical(model_summary$classify_res$Class, c("low", "high"))
   expect_equal(model_summary$classify_res$Sensitivity, c(0.6, 0.5))
   expect_equal(model_summary$cc_summary$mean, 0.75)
   expect_equal(model_summary$cc_summary$lower,
                unname(quantile(c(0.7, 0.8), 0.025)))
 
-  assessment$pred_objective$grid$mse <- c(0.12, 0.18)
+  assessment$objective$location$mse <- c(0.12, 0.18)
   expect_error(summary(assessment), "must be a matrix")
 })
 
 test_that("print.summary.RiskMap_assess_simulation formats one spatial scale", {
-  summary_object <- summary(build_assess_simulation("grid"))
+  summary_object <- summary(build_assess_simulation("location"))
 
   expect_snapshot(print(summary_object))
   expect_output(expect_invisible(print(summary_object)))
 })
 
 test_that("print.summary.RiskMap_assess_simulation labels each spatial scale", {
-  summary_object <- summary(build_assess_simulation(c("grid", "area")))
+  summary_object <- summary(build_assess_simulation(c("location", "area")))
 
   expect_snapshot(print(summary_object))
 })
 
 test_that("summary.RiskMap_cross_validation weights every metric by test-set size and skips failed test sets", {
-  cross_validation_pit <- list(
+  cross_validation_failed <- list(
     test_set = list(gaussian_data[1, ], gaussian_data[2:4, ],
                     gaussian_data[5:6, ]),
-    model = list(model_a = list(metric = list(
-      PIT_area = list(0.1, 0.3, NA_real_)
-    ))),
+    model = list(model_a = list(
+      metric = list(CRPS = list(0.1, c(0.3, 0.3, 0.3), c(NA_real_, NA_real_))),
+      PIT_area = 0.2, PIT_area_expected = 0.15
+    )),
     keep_par_fixed = FALSE,
     failures = data.frame(model = "model_a", test_set = 3L,
                           message = "failed")
   )
-  pit_summary <- summary.RiskMap_cross_validation(cross_validation_pit)
+  scores <- summary.RiskMap_cross_validation(cross_validation_failed)
 
-  expect_equal(pit_summary["model_a", "PIT_area"], (0.1 + 3 * 0.3) / 4)
-  expect_false(attr(pit_summary, "keep_par_fixed"))
-  expect_identical(attr(pit_summary, "n_failed"), 1L)
-  expect_output(print(pit_summary),
+  expect_equal(scores["model_a", "CRPS"], (0.1 + 3 * 0.3) / 4)
+  expect_identical(scores["model_a", "PIT_area"], 0.2)
+  expect_false(attr(scores, "keep_par_fixed"))
+  expect_identical(attr(scores, "n_failed"), 1L)
+  expect_output(print(scores),
                 "Parameters are re-estimated in each training set.",
                 fixed = TRUE)
-  expect_output(print(pit_summary),
+  expect_output(print(scores),
                 "1 test-set assessment failed, and its scores are missing.",
                 fixed = TRUE)
 })

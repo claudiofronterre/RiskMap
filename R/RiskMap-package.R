@@ -12,7 +12,6 @@
 ##' @importFrom Rcpp evalCpp
 ##' @importFrom rlang sym
 ##' @importFrom gridExtra grid.arrange
-##' @importFrom dplyr mutate first
 ##' @useDynLib RiskMap, .registration = TRUE
 NULL
 
