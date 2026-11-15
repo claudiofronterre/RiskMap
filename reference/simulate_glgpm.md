@@ -126,15 +126,17 @@ simulated_data(sim, simulation = 1)
 #> 3 POINT (2000 0) -0.002729952
 
 simulated_values(sim, component = "spatial_effect")
-#>    simulation location_set location_id      component       value
-#> 1           1         data           1 spatial_effect -0.62645381
-#> 2           1         data           2 spatial_effect -0.23395596
-#> 3           1         data           3 spatial_effect -0.80627643
-#> 4           2         data           1 spatial_effect -0.82046838
-#> 5           2         data           2 spatial_effect -0.11010384
-#> 6           2         data           3 spatial_effect  0.52023116
-#> 7           1      surface           1 spatial_effect  0.58461869
-#> 8           1      surface           2 spatial_effect -0.04752280
-#> 9           2      surface           1 spatial_effect -0.02378332
-#> 10          2      surface           2 spatial_effect  0.04476593
+#> # A tibble: 10 × 5
+#>    simulation location_set location_id component        value
+#>         <int> <chr>              <int> <chr>            <dbl>
+#>  1          1 data                   1 spatial_effect -0.626 
+#>  2          1 data                   2 spatial_effect -0.234 
+#>  3          1 data                   3 spatial_effect -0.806 
+#>  4          2 data                   1 spatial_effect -0.820 
+#>  5          2 data                   2 spatial_effect -0.110 
+#>  6          2 data                   3 spatial_effect  0.520 
+#>  7          1 surface                1 spatial_effect  0.585 
+#>  8          1 surface                2 spatial_effect -0.0475
+#>  9          2 surface                1 spatial_effect -0.0238
+#> 10          2 surface                2 spatial_effect  0.0448
 ```

@@ -77,7 +77,7 @@ data simulations, <code>"response"</code>. Defaults to all available components.
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A data frame with <code>simulation</code>, <code>location_set</code>, <code>location_id</code>,
+    <p>A tibble with <code>simulation</code>, <code>location_set</code>, <code>location_id</code>,
 <code>component</code> and <code>value</code>. Location identifiers refer to rows in
 <code>object$locations</code>.</p>
     </div>
@@ -106,17 +106,19 @@ data simulations, <code>"response"</code>. Defaults to all available components.
 <span class="r-in"><span>                      seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu">simulated_values</span><span class="op">(</span><span class="va">sim</span>, component <span class="op">=</span> <span class="st">"spatial_effect"</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>    simulation location_set location_id      component       value</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1           1         data           1 spatial_effect -0.62645381</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2           1         data           2 spatial_effect -0.23395596</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3           1         data           3 spatial_effect -0.80627643</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 4           2         data           1 spatial_effect -0.82046838</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 5           2         data           2 spatial_effect -0.11010384</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 6           2         data           3 spatial_effect  0.52023116</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 7           1      surface           1 spatial_effect  0.58461869</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 8           1      surface           2 spatial_effect -0.04752280</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 9           2      surface           1 spatial_effect -0.02378332</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 10          2      surface           2 spatial_effect  0.04476593</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 10 × 5</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    simulation location_set location_id component        value</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>              <span style="color: #949494; font-style: italic;">&lt;int&gt;</span> <span style="color: #949494; font-style: italic;">&lt;chr&gt;</span>            <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 1</span>          1 data                   1 spatial_effect -<span style="color: #BB0000;">0.626</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 2</span>          1 data                   2 spatial_effect -<span style="color: #BB0000;">0.234</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 3</span>          1 data                   3 spatial_effect -<span style="color: #BB0000;">0.806</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 4</span>          2 data                   1 spatial_effect -<span style="color: #BB0000;">0.820</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 5</span>          2 data                   2 spatial_effect -<span style="color: #BB0000;">0.110</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 6</span>          2 data                   3 spatial_effect  0.520 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 7</span>          1 surface                1 spatial_effect  0.585 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 8</span>          1 surface                2 spatial_effect -<span style="color: #BB0000;">0.047</span><span style="color: #BB0000; text-decoration: underline;">5</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;"> 9</span>          2 surface                1 spatial_effect -<span style="color: #BB0000;">0.023</span><span style="color: #BB0000; text-decoration: underline;">8</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">10</span>          2 surface                2 spatial_effect  0.044<span style="text-decoration: underline;">8</span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

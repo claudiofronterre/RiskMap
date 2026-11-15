@@ -133,10 +133,6 @@ the main changes follow.
   takes its CRS in `distance_crs` and
   [`plot_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/plot_mcmc.md)
   its locations in `locations`.
-  [`summarise_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_mcmc.md)
-  and
-  [`simulated_values()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_values.md)
-  return data frames.
 
 #### Messages
 
