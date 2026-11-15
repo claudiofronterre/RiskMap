@@ -504,6 +504,10 @@ read_start_pars <- function(table, start_pars, coords = NULL,
                             distance_units = NULL,
                             call = rlang::caller_env()) {
   if (is.null(start_pars)) return(list())
+  # A named vector of flat names, as unlist(coef(fit)) gives.
+  if (is.numeric(start_pars) && !is.null(names(start_pars))) {
+    start_pars <- as.list(start_pars)
+  }
   keys <- names(start_pars)
   if (!is.list(start_pars) || (length(start_pars) &&
                                (is.null(keys) || any(!nzchar(keys))))) {
@@ -622,9 +626,13 @@ apply_given_start <- function(table, start, given) {
 }
 
 ##' Whether `start_pars` gives every estimated parameter
+##'
+##' Or every one of those named in `names`, as the parameters that the
+##' transformed candidate of the comparison of starts sets.
 ##' @noRd
-all_starts_given <- function(table, given) {
+all_starts_given <- function(table, given, names = NULL) {
   rows <- estimated_rows(table)
+  if (!is.null(names)) rows <- rows[rows$name %in% names, , drop = FALSE]
   vectors <- rows$name %in% c("beta", "sigma2_re")
   scalars <- unique(rows$name[!vectors])
   all(scalars %in% names(given)) &&
@@ -646,7 +654,8 @@ given_start_names <- function(given) {
 ##' @description
 ##' Every parameter of a model fitted by [glgpm()] has one name, which
 ##' `start_pars` of [glgpm()], the result of [coef.RiskMap()], `parameters`
-##' of [specify_glgpm()] and the columns of [parametric_bootstrap()] share. The names a model has follow from its
+##' of [specify_glgpm()] (for the parameters a simulation takes) and the
+##' columns of [parametric_bootstrap()] share. The names a model has follow from its
 ##' formula and family, so they can be listed before it is fitted, with
 ##' [glgpm_parameters()].
 ##'
@@ -661,8 +670,9 @@ given_start_names <- function(given) {
 ##' | `sigma2_re` | With `re()` terms | One variance per grouping variable, named by the variable as written in `re()` |
 ##'
 ##' The flat names of `unlist(coef(fit))`, such as `"beta.log(elevation)"` and
-##' `"sigma2_re.household"`, name a single element and are accepted wherever
-##' the names are.
+##' `"sigma2_re.household"`, name a single element. `start_pars` accepts them,
+##' in a list or as the named vector `unlist(coef(fit))`, and they name the
+##' columns of [parametric_bootstrap()].
 ##'
 ##' @section Starting values:
 ##' `start_pars` takes any of a model's estimated parameters, one, several or
@@ -716,6 +726,7 @@ glgpm_parameters <- function(formula, data, family, fix_var_me = NULL,
   if (!model$exact && !is.null(fix_var_me)) {
     abort_input("{.arg fix_var_me} can be given only for a Gaussian model, not a {family_link$family} one.", arg = "fix_var_me")
   }
+  if (!is.null(fix_var_me)) check_range(fix_var_me, min = 0)
   inter_f <- interpret_formula(formula)
   frame <- model.frame(inter_f$pf, data = data, na.action = na.pass)
   design <- model.matrix(attr(frame, "terms"), data = data)

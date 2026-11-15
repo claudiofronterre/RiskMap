@@ -47,8 +47,11 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   covariates are now integrated out, so such fits are much faster.
 - `start_pars` gives starting values for any of a model's parameters by
   name, one, several or all of them, and `start_pars = coef(fit)` starts from
-  another fit. `glgpm_parameters()` lists a model's parameters before it is
-  fitted, and `?riskmap_parameters` describes them.
+  another fit. For binomial, Poisson and negative binomial models the automatic
+  comparison of starts still runs for the parameters not given, which
+  `set_control_mcml(start_comparison = FALSE)` switches off.
+  `glgpm_parameters()` lists a model's parameters before it is fitted, and
+  `?riskmap_parameters` describes them.
 - Gaussian fits with more than three records per latent effect start the
   measurement error and random-effect variances at the values given in
   `start_pars`. Such fits given a spatial variance other than 1, and parametric

@@ -26,17 +26,20 @@ the Newton correction of the last stage did not converge),
 last stage), \code{certification_bank} (the effective draws and Pareto
 shape of the certification draws), \code{checks_to_review}, the number
 of checks of \code{\link{check_fit}} that need a look,
-\code{starting_values}, where the starting values came from, either
-\code{"user"} (all given in \code{start_pars}), \code{"current"}
-(RiskMap's defaults) or \code{"transformed_gaussian"} (a Gaussian fit to
-the transformed data, which \code{glgpm()} uses when the Laplace
-approximation of the likelihood prefers it to the defaults), for the
-parameters not given, \code{starting_given}, the names of those given in
+\code{starting_values}, where the starting values of the parameters not
+given in \code{start_pars} came from, \code{"current"} (RiskMap's
+defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the
+transformed data, which \code{glgpm()} uses when the Laplace
+approximation of the likelihood prefers it to the defaults), or
+\code{"user"} when \code{start_pars} gives every parameter,
+\code{starting_given}, the names of those given in
 \code{start_pars} (absent when none was), and \code{starting_reason},
 why the defaults were kept other than by being preferred in that
 comparison, such as \code{"re_terms"} when it is not made for a model
 with \code{re()} terms, \code{"not_compared"} when
 \code{set_control_mcml(start_comparison = FALSE)} skips it,
+\code{"candidates_given"} when \code{start_pars} gives every value the
+comparison could change,
 \code{"transformed_failed"} when the Gaussian fit
 failed, or \code{"not_recorded"} for a fit saved by an earlier version
 that did not record why (\code{NULL} when the comparison chose the

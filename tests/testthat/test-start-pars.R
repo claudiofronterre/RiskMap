@@ -245,3 +245,69 @@ test_that("glgpm_parameters() lists the parameters before fitting", {
                                 family = "binomial", fix_var_me = 0.1),
                class = "riskmap_error_input")
 })
+
+test_that("a partial start reaches the engine whichever candidate wins", {
+  # The transformed candidate is made to win, so the value given must have
+  # replaced the Gaussian fit's own on the way to the engine.
+  scores <- 0
+  captured <- NULL
+  real <- working_start
+  try(with_mocked_bindings(
+    fit_binomial_with(list(phi = 3)),
+    starting_laplace_log_marginal = function(...) {
+      scores <<- scores + 1
+      -100 + scores
+    },
+    working_start = function(table, start) {
+      # The transformed Gaussian model, which estimates a measurement error
+      # variance, starts as usual.
+      if ("sigma2_me" %in% table$rows$name) return(real(table, start))
+      captured <<- start
+      stop("captured the start")
+    }
+  ), silent = TRUE)
+  expect_identical(scores, 2)
+  expect_identical(captured$phi,
+                   3 / scale_spatial_coordinates(binomial_model$coords)$distance_scale)
+})
+
+test_that("a start that leaves nothing to compare skips the comparison", {
+  poisson_fit <- suppressWarnings(glgpm(
+    y ~ cov + gp(), data = poisson_data, family = "poisson",
+    denominator = denominator, control_mcmc = control_mcmc,
+    seed = fixture_seed, control_mcml = fixture_control_mcml,
+    return_samples = FALSE, messages = FALSE
+  ))
+  fitted <- 0
+  counts <- with_mocked_bindings(
+    suppressWarnings(glgpm(
+      y ~ cov + gp(), data = poisson_data, family = negative_binomial(),
+      denominator = denominator, control_mcmc = control_mcmc,
+      seed = fixture_seed, control_mcml = fixture_control_mcml,
+      return_samples = FALSE, messages = FALSE,
+      start_pars = coef(poisson_fit)
+    )),
+    glgpm_lm = function(...) {
+      fitted <<- fitted + 1
+      stop("the transformed Gaussian model was fitted")
+    }
+  )
+  expect_identical(fitted, 0)
+  starting <- attr(counts, "starting_values")
+  expect_identical(starting[c("selected", "reason")],
+                   list(selected = "current", reason = "candidates_given"))
+  expect_match(describe_starting_values(starting$selected, starting$reason,
+                                        starting$given),
+               "could change.", fixed = TRUE)
+})
+
+test_that("the named vector unlist(coef(fit)) is a start", {
+  default <- fit_binomial_with()
+  expect_identical(
+    read_start_pars(fit_parameter_table(default), unlist(coef(default))),
+    read_start_pars(fit_parameter_table(default), coef(default))
+  )
+  expect_error(glgpm_parameters(y ~ gp(), data = gaussian_data,
+                                family = "gaussian", fix_var_me = -1),
+               class = "riskmap_error_input")
+})

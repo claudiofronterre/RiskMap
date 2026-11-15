@@ -111,8 +111,9 @@ values for any of the model's estimated parameters, one, several or all of
 them, named as in \link{riskmap_parameters}. \code{beta} is matched to the columns of
 the design matrix by name, or by position if it is unnamed and has a value
 for each, and \code{sigma2_re} to the \code{re()} terms in the same way. The flat
-names of \code{unlist(coef(fit))}, such as \code{"beta.x"}, are accepted too, so
-\code{start_pars = coef(fit)} starts a fit from the estimates of another. Every
+names of \code{unlist(coef(fit))}, such as \code{"beta.x"}, are accepted too, in a
+list or as that named vector, so \code{start_pars = coef(fit)} starts a fit
+from the estimates of another. Every
 other parameter takes its automatic start. \code{\link[=glgpm_parameters]{glgpm_parameters()}} lists the
 parameters of a model before it is fitted.}
 }

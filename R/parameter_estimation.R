@@ -78,8 +78,9 @@
 ##' them, named as in [riskmap_parameters]. `beta` is matched to the columns of
 ##' the design matrix by name, or by position if it is unnamed and has a value
 ##' for each, and `sigma2_re` to the `re()` terms in the same way. The flat
-##' names of `unlist(coef(fit))`, such as `"beta.x"`, are accepted too, so
-##' `start_pars = coef(fit)` starts a fit from the estimates of another. Every
+##' names of `unlist(coef(fit))`, such as `"beta.x"`, are accepted too, in a
+##' list or as that named vector, so `start_pars = coef(fit)` starts a fit
+##' from the estimates of another. Every
 ##' other parameter takes its automatic start. [glgpm_parameters()] lists the
 ##' parameters of a model before it is fitted.
 ##' @details
@@ -527,15 +528,23 @@ glgpm <- function(formula,
 
   # The comparison of starts runs unless it is switched off or every
   # estimated parameter is given, and each candidate takes the given values.
+  # The transformed candidate gives the coefficients, the spatial variance,
+  # the scale and the nugget, so when all of those are given the two
+  # candidates are the same and there is nothing to compare.
   every_given <- all_starts_given(parameters, given)
-  compare <- !model$exact && !every_given &&
-    !isFALSE(control_mcml$start_comparison)
+  candidates_given <- all_starts_given(parameters, given,
+                                       names = c("beta", "sigma2", "phi",
+                                                 "tau2"))
+  switched_off <- isFALSE(control_mcml$start_comparison)
+  compare <- !model$exact && !candidates_given && !switched_off
   starting_diagnostics <- list(
     selected = if (every_given) "user" else "current",
     current_laplace = NA_real_,
     transformed_laplace = NA_real_,
     fallback_reason = NULL,
-    reason = if (!model$exact && !every_given && !compare) "not_compared"
+    reason = if (!model$exact && !every_given && !compare) {
+      if (candidates_given) "candidates_given" else "not_compared"
+    }
   )
   if (compare) {
     selection <- select_nongaussian_start(

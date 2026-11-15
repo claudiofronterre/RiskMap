@@ -6,7 +6,8 @@
 \description{
 Every parameter of a model fitted by \code{\link[=glgpm]{glgpm()}} has one name, which
 \code{start_pars} of \code{\link[=glgpm]{glgpm()}}, the result of \code{\link[=coef.RiskMap]{coef.RiskMap()}}, \code{parameters}
-of \code{\link[=specify_glgpm]{specify_glgpm()}} and the columns of \code{\link[=parametric_bootstrap]{parametric_bootstrap()}} share. The names a model has follow from its
+of \code{\link[=specify_glgpm]{specify_glgpm()}} (for the parameters a simulation takes) and the
+columns of \code{\link[=parametric_bootstrap]{parametric_bootstrap()}} share. The names a model has follow from its
 formula and family, so they can be listed before it is fitted, with
 \code{\link[=glgpm_parameters]{glgpm_parameters()}}.\tabular{lll}{
    Name \tab When the model has it \tab Elements and scale \cr
@@ -21,8 +22,9 @@ formula and family, so they can be listed before it is fitted, with
 
 
 The flat names of \code{unlist(coef(fit))}, such as \code{"beta.log(elevation)"} and
-\code{"sigma2_re.household"}, name a single element and are accepted wherever
-the names are.
+\code{"sigma2_re.household"}, name a single element. \code{start_pars} accepts them,
+in a list or as the named vector \code{unlist(coef(fit))}, and they name the
+columns of \code{\link[=parametric_bootstrap]{parametric_bootstrap()}}.
 }
 \section{Starting values}{
 
