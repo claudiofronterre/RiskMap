@@ -2295,7 +2295,15 @@ test_that("a correction that reaches a bound is not certified", {
     D = survey$D, y = survey$y, units_m = survey$trials,
     distances = survey$distances, family = "binomial"
   )
+  # The fitted spatial variance is close to zero, which leaves the observed
+  # information nearly singular, so whether it can be factorised depends on
+  # the platform. A fixed information lets the stage reach the correction
+  # everywhere.
   local_mocked_bindings(
+    compute_observed_information = function(objective, estimate, ...) {
+      list(information = diag(5), root = factor_covariance(diag(5)),
+           free = 1:5, boundary = integer(), gradient = numeric(5))
+    },
     correct_and_certify = function(engine, penalty, estimate, ...) {
       list(estimate = replace(estimate, 1L, -30), certified = TRUE,
            certificate = 1e-5, first_validation = list(seconds = 0),
