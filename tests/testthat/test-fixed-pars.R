@@ -348,6 +348,13 @@ test_that("a model with every parameter held is evaluated at the values", {
   expect_true(all(is.finite(prediction$predictions$response_mean)))
 })
 
+test_that("the empty information of a fit that holds every parameter has rcond Inf", {
+  # rcond() of an empty matrix is Inf from R 4.4.0 and an error before.
+  expect_identical(information_rcond(matrix(numeric(), 0L, 0L)), Inf)
+  information <- matrix(c(2, 1, 1, 3), 2L)
+  expect_identical(information_rcond(information), rcond(information))
+})
+
 test_that("predictions with parameter uncertainty keep held parameters", {
   data <- replicated_gaussian()
   held <- glgpm(y ~ cov + gp(), data = data, family = "gaussian",

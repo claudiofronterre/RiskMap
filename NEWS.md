@@ -105,7 +105,9 @@ in the source repository.
   for some splits of `assess_prediction()`, ggspatial for north arrows and
   scale bars, and jsonlite for `get_worldpop()`, are suggested rather than
   imported, and those functions ask for them.
-- RiskMap needs R 4.1.0 or later.
+- RiskMap needs R 4.1.0 or later. The current version of Deriv needs R 4.5.0,
+  so on older R install an earlier Deriv from the CRAN archive first, for
+  example with `remotes::install_version("Deriv", "4.1.6")`.
 - Custom links, the negative binomial family, the penalised complexity priors
   of `set_control_mcml()`, `crs_distortion()` and the spatial indicator of
   `assess_extrapolation()` are experimental and may change in a minor release,
