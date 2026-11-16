@@ -428,6 +428,18 @@ panels in up to three columns. Asking for no panel stops. One panel is
 `plot(x, parameters = "phi", pairs = character())`, since `pairs` defaults to
 every joint profile.
 
+- `profile()` and `plot_profile()` take a pair as two names, as in
+`list(c("sigma2", "phi"))`, or as one, as in `"sigma2:phi"`, the name of its
+joint profile. `profile()` took only the first and `plot_profile()` only the
+second. `plot_profile()` also takes the names of coefficients without the
+prefix `beta.`, as `profile()` does. A name with more than one colon, from a
+coefficient of an interaction, is split where both sides are parameters of the
+fit. A pair of one parameter twice is an input error, and two names in a
+character vector stop with a hint to give them in a list or as
+`"first:second"`. A pair or parameter named twice, in any form, is profiled
+and drawn once. `plot_profile()` names a pair in the order given to
+`profile()`.
+
 - `profile()`, the print of a profile and its `plot()`, `summary()`, `print()`
 and `plot()` of a parametric bootstrap and the print of its summary, and
 `print()`, `summary()` and `plot()` of the checks of `check_fit()` and the

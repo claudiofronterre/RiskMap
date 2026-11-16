@@ -32,8 +32,11 @@ maximum likelihood.}
 nugget as \code{tau2}, its variance (see \link{riskmap_parameters}). The default is
 every estimated parameter.}
 
-\item{pairs}{A list of pairs of parameter names for joint profiles, for
-example \code{list(c("sigma2", "phi"))}. The default is none.}
+\item{pairs}{The pairs of parameters for joint profiles, named as in
+\code{parameters}. Each pair is two names, as in \code{list(c("sigma2", "phi"))},
+or one name \code{"first:second"}, as in \code{"sigma2:phi"}, and the joint
+profiles of the result are named in that way. \code{\link[=plot_profile]{plot_profile()}} takes
+pairs in either form too. The default is none.}
 
 \item{n_points}{Number of points of each marginal grid before any
 extension, and the most points on each side of the estimate.}

@@ -259,6 +259,76 @@ test_that("profiles and their print and plot stop on an argument they don't use"
   expect_input_error(plot(profiles, "phi", NULL, "loglik", 1), "...")
 })
 
+test_that("profile() and plot_profile() take a pair as two names or as one", {
+  profile_pairs <- function(pairs) {
+    profile(gaussian_model, parameters = c("cov", "phi"), pairs = pairs,
+            n_points = 5, n_grid = 3, messages = FALSE)
+  }
+  profiles <- profile_pairs(list(c("cov", "phi")))
+  expect_named(profiles$joint, "beta.cov:phi")
+  for (pairs in list("cov:phi", list("beta.cov:phi"), c(pairs = "cov:phi"),
+                     list(c("cov", "phi"), "cov:phi", "beta.cov:phi"))) {
+    expect_identical(profile_pairs(pairs)$joint, profiles$joint)
+  }
+  # Two names in a vector are taken for two pairs, and the error says how to
+  # give one.
+  expect_input_error(profile_pairs(c("cov", "phi")), "pairs",
+                     "list(c(\"cov\", \"phi\"))")
+  # plot_profile() takes the pairs and parameters that profile() takes.
+  panel_data <- function(...) {
+    ggplot2::layer_data(plot_profile(profiles, ...), 1L)
+  }
+  joint <- panel_data(parameters = character(), pairs = "beta.cov:phi")
+  for (pairs in list(list(c("cov", "phi")), list(c("beta.cov", "phi")),
+                     "cov:phi", list("cov:phi"))) {
+    expect_identical(panel_data(parameters = character(), pairs = pairs),
+                     joint)
+  }
+  expect_identical(panel_data(parameters = "cov", pairs = character()),
+                   panel_data(parameters = "beta.cov", pairs = character()))
+  # A profile named twice is drawn once, as one panel and not two.
+  one_panel <- function(plot) {
+    ggplot2::is_ggplot(plot) && !inherits(plot, "patchwork")
+  }
+  expect_true(one_panel(plot_profile(profiles, parameters = c("cov", "beta.cov"),
+                                     pairs = character())))
+  expect_true(one_panel(plot_profile(profiles, parameters = character(),
+                                     pairs = list("cov:phi",
+                                                  c("beta.cov", "phi")))))
+  expect_input_error(plot_profile(profiles, pairs = "phi:cov"), "pairs",
+                     "beta.cov:phi")
+  expect_input_error(plot_profile(profiles, pairs = list("phi")), "pairs")
+  expect_input_error(plot_profile(profiles, parameters = "sigma2"),
+                     "parameters")
+  # Pairs that are not two names of different parameters.
+  for (pairs in list(c("cov", "phi"), list(c("cov", "phi", "sigma2")),
+                     list(c("phi", NA)), list(c("phi", "phi")),
+                     list(c("cov", "beta.cov")), list("phi:phi"), 1,
+                     list(1:2), "sigma2:range")) {
+    expect_input_error(profile_pairs(pairs), "pairs")
+  }
+})
+
+test_that("a pair named first:second is split where both are parameters", {
+  names <- c("beta.(Intercept)", "beta.x", "beta.z", "beta.x:z", "sigma2",
+             "phi")
+  expect_identical(read_profile_pairs("x:z:phi", names), list(c("x:z", "phi")))
+  expect_identical(read_profile_pairs(list("beta.x:z:phi", c("x:z", "phi")),
+                                      names),
+                   list(c("beta.x:z", "phi"), c("x:z", "phi")))
+  expect_identical(read_profile_pairs(c("x:phi", "sigma2:phi"), names),
+                   list(c("x", "phi"), c("sigma2", "phi")))
+  expect_identical(read_profile_pairs(NULL, names), list())
+  expect_identical(read_profile_pairs(character(), names), list())
+  expect_input_error(read_profile_pairs("x:y:phi", names), "pairs",
+                     "can't be split")
+  expect_input_error(read_profile_pairs("x:z:w",
+                                        c(names, "beta.w", "beta.z:w")),
+                     "pairs", "more than one way")
+  expect_input_error(read_profile_pairs("phi", names), "pairs",
+                     "first:second")
+})
+
 test_that("logarithmic axes are labelled with plain numbers", {
   expect_identical(plain_number_labels()(c(1e-5, 0.001, 0.03, 0.1, 1, 10, 1000)),
                    c("0.00001", "0.001", "0.03", "0.1", "1", "10", "1,000"))

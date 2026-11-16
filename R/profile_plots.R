@@ -25,10 +25,13 @@
 ##' (about -1.92 at the 95% level).
 ##'
 ##' @param x The result of [profile.RiskMap()].
-##' @param parameters Names of the marginal profiles to draw. The default is
-##'   all of them.
-##' @param pairs Names of the joint profiles to draw, as `"first:second"`. The
+##' @param parameters Names of the marginal profiles to draw, as in
+##'   [profile.RiskMap()], where the prefix `beta.` can be left out. The
 ##'   default is all of them.
+##' @param pairs The joint profiles to draw, given as in [profile.RiskMap()],
+##'   each by two names, as in `list(c("sigma2", "phi"))`, or by one name
+##'   `"first:second"`, as in `"sigma2:phi"`, with the parameters in the order
+##'   given to [profile.RiskMap()]. The default is all of them.
 ##' @param scale The vertical scale of the profiles: `"loglik"` (the default)
 ##'   for the relative log-likelihood, or `"deviance"` for the profile
 ##'   deviance.
@@ -64,8 +67,22 @@ plot_profile <- function(x, parameters = NULL, pairs = NULL,
   # The argument blamed if nothing is left to draw, the one given empty.
   empty_arg <- if (is.null(parameters) || length(parameters)) "pairs" else
     "parameters"
-  parameters <- parameters %||% names(x$marginal)
-  pairs <- pairs %||% names(x$joint)
+  # Names as profile() takes them, matched to those of the profiles.
+  known <- names(x$estimate)
+  if (is.null(parameters)) {
+    parameters <- names(x$marginal)
+  } else if (is.character(parameters)) {
+    parameters <- unique(vapply(parameters, full_parameter_name, "",
+                                names = known, USE.NAMES = FALSE))
+  }
+  pairs <- if (is.null(pairs)) {
+    names(x$joint)
+  } else {
+    unique(vapply(read_profile_pairs(pairs, known), function(pair) {
+      paste(vapply(pair, full_parameter_name, "", names = known,
+                   USE.NAMES = FALSE), collapse = ":")
+    }, ""))
+  }
   unknown <- setdiff(parameters, names(x$marginal))
   if (length(unknown)) {
     known <- names(x$marginal)
