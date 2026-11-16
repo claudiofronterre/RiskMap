@@ -34,7 +34,9 @@
 ##' symbolically where possible and numerically otherwise. They only steer the
 ##' importance sampler, so they affect the speed of a fit and not its
 ##' estimates. Not applicable for Gaussian models, and not to be combined with
-##' a family object that names a link other than logit or log.
+##' a family object that names a link other than logit or log. Custom links
+##' are experimental, and how they are given and checked may change in a
+##' minor release.
 ##' @param denominator Optional denominator for binomial distributions, or
 ##' exposure for Poisson and negative binomial ones, the mean of a count being
 ##' the exposure times the inverse link of the linear predictor.
@@ -74,8 +76,8 @@
 ##' offset does. The other parameters are estimated with the held ones at their
 ##' values, and with every parameter held the fit evaluates the likelihood at
 ##' the values (exactly for a Gaussian model, by Monte Carlo on one sample for
-##' the others) and draws the conditional samples there, so that [predict()]
-##' works with given parameters. A parameter can't be both started and held,
+##' the others) and draws the conditional samples there, so that
+##' [predict()][predict.RiskMap()] works with given parameters. A parameter can't be both started and held,
 ##' except that a start equal to its held value, as in
 ##' `start_pars = coef(fit)` of a fit with the same holds, is left out. With one
 ##' observation per location, a Gaussian model can estimate the nugget or the
@@ -257,8 +259,16 @@
 ##'
 ##' # family = binomial("probit") fits the same model with a probit link
 ##'
-##' @seealso [set_control_mcmc()], [set_control_mcml()],
-##'   \code{\link{summary.RiskMap}}, \code{\link{to_table}}
+##' @seealso The methods for a fit are [print()][print.RiskMap()],
+##'   [summary()][summary.RiskMap()], [coef()][coef.RiskMap()],
+##'   [fitted()][fitted.RiskMap()], [logLik()][logLik.RiskMap()] with
+##'   [vcov()][vcov.RiskMap()] and [nobs()][nobs.RiskMap()],
+##'   [predict()][predict.RiskMap()], [profile()][profile.RiskMap()] and
+##'   [to_table()]. [check_fit()], [plot_mcmc()], [summarise_mcmc()],
+##'   [parametric_bootstrap()], [assess_prediction()] and
+##'   [assess_extrapolation()] take a fit too. [glgpm_parameters()] lists the
+##'   parameters of a model before it is fitted, and [set_control_mcml()] and
+##'   [set_control_mcmc()] set how it is fitted.
 ##' @export
 glgpm <- function(formula,
                  data,
@@ -2790,24 +2800,24 @@ maxim_integrand <- function(
 ##' tuned during burn-in.
 ##'
 ##' @param y Numeric vector of responses of length \eqn{n}: the number of
-##'   positives for \code{family = "binomial"}, or counts for
-##'   \code{family = "poisson"}.
+##'   positives for `family = "binomial"`, or counts for
+##'   `family = "poisson"`.
 ##' @param units_m Numeric vector of positive values, one per response: the
-##'   number of trials for \code{family = "binomial"}, or the exposure for
-##'   \code{family = "poisson"} (the \code{denominator} of [glgpm()]).
+##'   number of trials for `family = "binomial"`, or the exposure for
+##'   `family = "poisson"` (the `denominator` of [glgpm()]).
 ##' @param mu Numeric vector of length \eqn{n} providing the fixed part of the
 ##'   linear predictor for each observation.
 ##' @param Sigma Numeric positive-definite covariance matrix for the latent spatial
-##'   process \eqn{S} at the unique locations referenced by \code{ID_coords}.
+##'   process \eqn{S} at the unique locations referenced by `ID_coords`.
 ##' @param ID_coords Integer vector of length \eqn{n} mapping each response in
-##'   \code{y} to a row/column of \code{Sigma} (i.e., the index of the corresponding location).
+##'   `y` to a row/column of `Sigma` (i.e., the index of the corresponding location).
 ##' @param ID_re Optional matrix or data.frame with one column per unstructured
 ##'   random effect (RE). Each column is an integer vector of length \eqn{n}
-##'   mapping observations in \code{y} to RE levels (e.g., cluster, survey, etc.).
-##'   Use \code{NULL} to exclude REs.
+##'   mapping observations in `y` to RE levels (e.g., cluster, survey, etc.).
+##'   Use `NULL` to exclude REs.
 ##' @param sigma2_re Optional named numeric vector of RE variances. Names must
-##'   match the column names of \code{ID_re}. Ignored if \code{ID_re = NULL}.
-##' @param family Character string: \code{"binomial"} or \code{"poisson"}.
+##'   match the column names of `ID_re`. Ignored if `ID_re = NULL`.
+##' @param family Character string: `"binomial"` or `"poisson"`.
 ##' @param control_mcmc List of control parameters:
 ##'   \describe{
 ##'     \item{n_draws}{Number of draws kept, after burn-in and thinning.}
@@ -2818,8 +2828,8 @@ maxim_integrand <- function(
 ##'   }
 ##' @param seed Optional integer seed for the chain. When supplied, the
 ##'   caller's random number state is restored on exit.
-##' @param invlink Optional inverse-link function. If \code{NULL}, defaults are used:
-##'   \code{identity} (gaussian), \code{plogis} (binomial), and \code{exp} (poisson).
+##' @param invlink Optional inverse-link function. If `NULL`, defaults are used:
+##'   `identity` (gaussian), `plogis` (binomial), and `exp` (poisson).
 ##' @param start Optional starting value for the search for the mode, in the
 ##'   order of the latent effects, such as the mode at nearby parameter values.
 ##' @param average_step Logical. If `TRUE`, the step kept after burn-in is the
@@ -2847,17 +2857,17 @@ maxim_integrand <- function(
 ##' its R functions per iteration.
 ##'
 ##' Dimensions must be consistent:
-##' \code{length(y) = n}, \code{nrow(Sigma) = ncol(Sigma) = n_loc},
-##' and \code{length(ID_coords) = n} with entries in \eqn{1,\dots,n_\mathrm{loc}}.
-##' If \code{ID_re} is provided, each column must have length \eqn{n}; when
-##' \code{sigma2_re} is supplied, it must be named and match \code{colnames(ID_re)}.
+##' `length(y) = n`, `nrow(Sigma) = ncol(Sigma) = n_loc`,
+##' and `length(ID_coords) = n` with entries in \eqn{1,\dots,n_\mathrm{loc}}.
+##' If `ID_re` is provided, each column must have length \eqn{n}; when
+##' `sigma2_re` is supplied, it must be named and match `colnames(ID_re)`.
 ##'
-##' @return An object of class \code{"RiskMap_mcmc"} with components:
+##' @return An object of class `"RiskMap_mcmc"` with components:
 ##' \describe{
 ##'   \item{samples}{A list containing posterior draws. Always includes
-##'                 \code{$S} (latent spatial field). If \code{ID_re} is supplied,
-##'                 each unstructured RE is returned under \code{$<re_name>}.}
-##'   \item{tuning_par}{Numeric vector of step sizes (\code{h}) used over iterations.}
+##'                 `$S` (latent spatial field). If `ID_re` is supplied,
+##'                 each unstructured RE is returned under `$<re_name>`.}
+##'   \item{tuning_par}{Numeric vector of step sizes (`h`) used over iterations.}
 ##'   \item{acceptance_prob}{Numeric vector of cumulative Metropolis–Hastings acceptance rates.}
 ##'   \item{acceptance}{Logical vector recording whether each proposal was accepted.}
 ##'   \item{acceptance_rate}{Named vector giving acceptance rates during burn-in
@@ -2867,7 +2877,7 @@ maxim_integrand <- function(
 ##'
 ##' @section Default links:
 ##' The default inverse links are: identity (gaussian), logistic (binomial),
-##' and exponential (poisson). Supply \code{invlink} to override.
+##' and exponential (poisson). Supply `invlink` to override.
 ##'
 ##' @seealso `maxim_integrand()`
 ##' @noRd
@@ -3301,17 +3311,16 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' nugget, whose levels are the locations, and each `re()` term. Records at a
 ##' location with the same covariates, offset and random-effect levels are
 ##' first combined into one unit. Then four rules apply.
-##' \itemize{
-##'   \item A level of an `re()` term that holds a single unit, such as a
+##' - A level of an `re()` term that holds a single unit, such as a
 ##'   household with one record or with records that do not differ, is
 ##'   integrated out of that unit's likelihood, and so is the nugget of a
 ##'   location with a single unit.
-##'   \item At a location with several units the nugget is integrated out as
+##' - At a location with several units the nugget is integrated out as
 ##'   well, through an integral over the nugget of the units' own integrals,
 ##'   when the units share their covariates and offset and differ only in the
 ##'   levels of `re()` terms that each hold a single unit, as households of a
 ##'   village with covariates measured at the village do.
-##'   \item At a location with several units whose covariates or offsets
+##' - At a location with several units whose covariates or offsets
 ##'   differ, the units are integrated out in groups when every term but one
 ##'   has a single level shared by all of them and the levels of that one lie
 ##'   within the location. Its levels are the groups, such as the households
@@ -3319,8 +3328,8 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##'   integrated over its own effect with its units' own covariates, and the
 ##'   nugget is integrated over the groups' integrals. Where every term is
 ##'   shared, the location is one group under its nugget.
-##'   \item At any other location the nugget stays sampled.
-##' }
+##' - At any other location the nugget stays sampled.
+##'
 ##' Every other level stays sampled. That includes the levels of an `re()`
 ##' term that span several locations, such as villages or districts with
 ##' several sampled points, and the levels at a location where two `re()`
@@ -3385,7 +3394,8 @@ fallback_sampler_mode <- function(structure, y, units_m, mu, Sigma, ID_coords,
 ##' low-prevalence surveys, especially before prediction with
 ##' `parameter_uncertainty = TRUE` in [predict.RiskMap()].
 ##' When the spatial variance is large and well identified, the penalty shrinks
-##' it somewhat towards zero, so the default is `FALSE`.
+##' it somewhat towards zero, so the default is `FALSE`. The penalties and
+##' their four settings are experimental and may change in a minor release.
 ##' @param pc_sigma_threshold,pc_sigma_probability The penalty sets
 ##' P(sigma > `pc_sigma_threshold`) = `pc_sigma_probability`, where sigma is the
 ##' spatial standard deviation on the scale of the linear predictor. Default
@@ -3581,7 +3591,7 @@ sample_at_nongaussian_fit <- function(estimate, parameters, y, units_m, D,
 ##'
 ##' @details
 ##' During burn-in the step size of the Langevin chain is adapted towards an
-##' acceptance rate of 0.574, starting from \code{h} (by default
+##' acceptance rate of 0.574, starting from `h` (by default
 ##' \eqn{1.65 / d^{1/6}} for \eqn{d} latent effects). The step kept after
 ##' burn-in is the geometric mean of the adapted step over the second half of
 ##' burn-in.
@@ -3602,7 +3612,7 @@ sample_at_nongaussian_fit <- function(estimate, parameters, y, units_m, D,
 ##' # Custom MCMC parameters: 600 draws from 3,000 + 600 * 20 iterations
 ##' control_mcmc <- set_control_mcmc(n_draws = 600, burnin = 3000, thin = 20)
 ##'
-##' @seealso \code{\link{glgpm}}
+##' @seealso [glgpm()]
 ##' @importFrom Matrix Matrix forceSymmetric
 ##' @export
 set_control_mcmc <- function(n_draws = 2000,

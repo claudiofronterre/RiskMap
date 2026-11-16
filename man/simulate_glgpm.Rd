@@ -94,6 +94,9 @@ simulated_data(sim, simulation = 1)
 simulated_values(sim, component = "spatial_effect")
 }
 \seealso{
-\code{\link[=simulated_data]{simulated_data()}}, \code{\link[=simulated_values]{simulated_values()}}, and \code{\link[=plot_simulation]{plot_simulation()}},
-which \code{plot()} of the result also calls.
+The methods for simulations are
+\link[=print.RiskMap_simulation]{print()} and \code{\link[=plot_simulation]{plot_simulation()}}, which
+\code{plot()} of the simulations also calls. \code{\link[=simulated_data]{simulated_data()}},
+\code{\link[=simulated_surface]{simulated_surface()}} and \code{\link[=simulated_values]{simulated_values()}} extract them, and
+\code{\link[=assess_simulation]{assess_simulation()}} assesses predictions on them.
 }

@@ -338,7 +338,10 @@ areal_prediction$boundary_summary
 
 }
 \seealso{
-\code{\link[=plot_prediction]{plot_prediction()}}, which \code{plot()} of the result also calls,
-\code{\link[=to_table.RiskMap_prediction]{to_table.RiskMap_prediction()}}, \code{\link[=glgpm]{glgpm()}}, \code{\link[=fitted]{fitted()}} and
-\code{\link[=set_control_mcmc]{set_control_mcmc()}}.
+The methods for a prediction are
+\link[=print.RiskMap_prediction]{print()},
+\link[=to_table.RiskMap_prediction]{to_table()} and \code{\link[=plot_prediction]{plot_prediction()}},
+which \code{plot()} of the prediction also calls. \code{\link[=assess_extrapolation]{assess_extrapolation()}}
+shows where predictions go beyond the data, and
+\link[=fitted.RiskMap]{fitted()} gives the fitted values at the data.
 }

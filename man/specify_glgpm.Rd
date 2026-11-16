@@ -58,7 +58,9 @@ imperfect diagnostic test. Its first and second derivatives are found
 symbolically where possible and numerically otherwise. They only steer the
 importance sampler, so they affect the speed of a fit and not its
 estimates. Not applicable for Gaussian models, and not to be combined with
-a family object that names a link other than logit or log.}
+a family object that names a link other than logit or log. Custom links
+are experimental, and how they are given and checked may change in a
+minor release.}
 
 \item{denominator}{Optional denominator for binomial distributions, or
 exposure for Poisson and negative binomial ones, the mean of a count being
@@ -107,4 +109,8 @@ model <- specify_glgpm(response ~ gp(),
                                          phi = 2,
                                          sigma2_me = 0.1))
 
+}
+\seealso{
+\link[=print.RiskMap_simulation_model]{print()} describes the model,
+and \code{\link[=simulate_glgpm]{simulate_glgpm()}} simulates from it.
 }

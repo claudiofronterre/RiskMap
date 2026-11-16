@@ -223,7 +223,7 @@ open_spinning_step <- function(text, .envir) {
 #'
 #' cli cuts a line wider than the console at its end, which would take the
 #' time with it, so the text is shortened instead, against the width of the
-#' time shown, which grows from "[5ms]" to "[1h 21m 58.7s]". `time` is `NULL`
+#' time shown, which grows from `[5ms]` to `[1h 21m 58.7s]`. `time` is `NULL`
 #' for a line without one.
 #' @noRd
 step_line <- function(sign, text, time = NULL, width = cli::console_width()) {

@@ -19,12 +19,12 @@ Invisibly returns \code{x}.
 }
 \description{
 Print method for objects of class \code{"RiskMap"} from
-\code{\link{glgpm}}: the call, the estimates of the regression
+\code{\link[=glgpm]{glgpm()}}: the call, the estimates of the regression
 coefficients and of the covariance parameters on their natural scale,
 the log-likelihood and, for binomial, Poisson and negative binomial models, whether the
 Monte Carlo error of the estimate is certified. Standard errors and
-confidence intervals are given by \code{\link{summary.RiskMap}}, and the
-checks on the computation by \code{\link{check_fit}}.
+confidence intervals are given by \code{\link[=summary.RiskMap]{summary.RiskMap()}}, and the
+checks on the computation by \code{\link[=check_fit]{check_fit()}}.
 }
 \examples{
 data(italy_sim)

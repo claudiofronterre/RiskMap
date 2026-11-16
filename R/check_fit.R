@@ -41,9 +41,8 @@
 ##'   took. The extra checks are
 ##'   * `"profile"`, the marginal profile likelihood of each covariance
 ##'     parameter of the fit from [profile.RiskMap()], with its default
-##'     settings. These are the spatial variance and scale, the nugget (its
-##'     ratio to the spatial variance, `nu2`, or for a Gaussian fit its
-##'     variance, `tau2`), an estimated measurement error variance and the
+##'     settings. These are the spatial variance and scale, the variance of
+##'     the nugget, `tau2`, an estimated measurement error variance and the
 ##'     variances of the random effects, but not the regression coefficients.
 ##'     Its row names each parameter whose profile is flat, so that its 95%
 ##'     interval is open at an end, or has a second maximum, where it falls by
@@ -126,8 +125,10 @@
 ##' that was asked for but not computed, the reason.}
 ##' \item{fit_seconds}{The time the fit took in seconds, `NULL` where the fit
 ##' did not record it.}
-##' @seealso [summary.RiskMap_check()], [plot_check()], which `plot()` of the
-##'   result also calls, [summary.RiskMap()] and [profile.RiskMap()].
+##' @seealso The methods for the result are [print()][print.RiskMap_check()],
+##'   [summary()][summary.RiskMap_check()] and [plot_check()], which `plot()`
+##'   of the result also calls. [summary.RiskMap()] gives the estimates, and
+##'   [profile.RiskMap()] and [parametric_bootstrap()] their uncertainty.
 ##' @examples
 ##' data(italy_sim)
 ##'

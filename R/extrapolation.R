@@ -3,7 +3,9 @@
 ##' Computes, for each prediction location, indicators of whether a prediction
 ##' from a fitted geostatistical model relies on extrapolation, either in space
 ##' (where the data say little about the spatial effect) or in the covariates
-##' (outside the conditions observed in the data).
+##' (outside the conditions observed in the data). The spatial indicator, with
+##' its sampling noise and its default threshold, is experimental and may
+##' change in a minor release.
 ##'
 ##' @param object A fitted `RiskMap` model.
 ##' @param newdata An `sf` object of prediction points with the covariates used

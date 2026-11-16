@@ -2,6 +2,7 @@
 % Please edit documentation in R/parameter_table.R
 \name{glgpm_parameters}
 \alias{glgpm_parameters}
+\alias{print.riskmap_parameters}
 \title{List the parameters of a model before fitting it}
 \usage{
 glgpm_parameters(
@@ -11,12 +12,19 @@ glgpm_parameters(
   fixed_pars = NULL,
   distance_units = c("km", "m")
 )
+
+\method{print}{riskmap_parameters}(x, ...)
 }
 \arguments{
 \item{formula, data, family, fixed_pars}{As in \code{\link[=glgpm]{glgpm()}}.}
 
 \item{distance_units}{The units of distance, \code{"km"} (the default) or \code{"m"},
 for the label of the scale.}
+
+\item{x}{The result of \code{glgpm_parameters()}.}
+
+\item{...}{Not used, and an error if given, so that a misspelt argument
+is not ignored.}
 }
 \value{
 A data frame of class \code{riskmap_parameters}, with a row per element
@@ -25,8 +33,8 @@ design matrix of a coefficient, the term of a random-effect variance),
 \code{flat} (the name in \code{unlist(coef(fit))}), \code{label} (as in
 \code{\link[=summary.RiskMap]{summary.RiskMap()}}), \code{start} (the rule of its automatic start, see
 \link{riskmap_parameters}) and \code{held} (the value at which the model holds the
-parameter, \code{NA} when it is estimated). Its print shows the template of a
-\code{start_pars} list.
+parameter, \code{NA} when it is estimated). Its \code{print()} method shows the
+template of a \code{start_pars} list and returns \code{x} invisibly.
 }
 \description{
 The parameters \code{\link[=glgpm]{glgpm()}} estimates or holds for a model, with the names

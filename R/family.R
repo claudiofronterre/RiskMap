@@ -864,16 +864,21 @@ read_family <- function(family, invlink = NULL,
 ##'   and variance \eqn{\mu + \mu^2 / \theta}, as in
 ##'   `MASS::negative.binomial(theta)`. The size \eqn{\theta} is estimated
 ##'   unless `fixed_pars = list(theta = )` of [glgpm()] holds it, and
-##'   [specify_glgpm()] takes it as `theta` in its `parameters`.
-##' @param ... Not used. A size given here stops, since it is held with
-##'   `fixed_pars` instead.
+##'   [specify_glgpm()] takes it as `theta` in its `parameters`. The negative
+##'   binomial family is experimental and may change in a minor release.
+##' @param ... For `negative_binomial()`, not used, and a size given here
+##'   stops, since it is held with `fixed_pars` instead. For `print()`, not
+##'   used, and an error if given.
+##' @param x A family from `negative_binomial()`, whose `print()` method
+##'   describes it and returns `x` invisibly.
 ##' @details
 ##' The exposure is given in the `denominator` of [glgpm()], and is 1 for
 ##' every count when it is not given. As \eqn{\theta} grows the model tends
 ##' to the Poisson model with the same mean, and a fit whose size goes to that
 ##' limit holds it there, as a variance estimated as zero is held, and says so
-##' in [check_fit()]. A fit that estimates the size reports it in [coef()],
-##' [print()] and [summary()] as `theta`. Its start is the size of the
+##' in [check_fit()]. A fit that estimates the size reports it in
+##' [coef()][coef.RiskMap()], [print()][print.RiskMap()] and
+##' [summary()][summary.RiskMap()] as `theta`. Its start is the size of the
 ##' negative binomial regression without the random effects, or
 ##' `start_pars$theta` in [glgpm()]. With one observation per location, an
 ##' estimated size can't be told apart from a nugget or from a random effect
@@ -916,6 +921,7 @@ held_negative_binomial <- function(theta) {
             class = "RiskMap_family")
 }
 
+##' @rdname negative_binomial
 ##' @export
 print.RiskMap_family <- function(x, ...) {
   check_dots_unused(...)
@@ -1598,7 +1604,7 @@ compute_custom_kernel_arrays <- function(linkf, family, low = -100,
 ##' y log(y / m) + (m - y) log(1 - y / m) for a binomial record and
 ##' y log(y) - y for a Poisson one, with 0 log 0 = 0, which bound the terms of
 ##' the MCML engine for any link. The bounds of `bound_log_probability()` only
-##' move a probability within [0, 1], or a mean above zero, so they hold there
+##' move a probability between 0 and 1, or a mean above zero, so they hold there
 ##' too.
 ##' @noRd
 compute_largest_record_terms <- function(y, units_m, family) {

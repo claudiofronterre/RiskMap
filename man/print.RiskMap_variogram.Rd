@@ -12,16 +12,16 @@
 \item{digits}{the number of significant digits to print. By default
 \code{digits = 3}.}
 
-\item{...}{further arguments passed to \code{\link{print.data.frame}}.}
+\item{...}{further arguments passed to \code{\link[base:print.data.frame]{base::print.data.frame()}}.}
 }
 \value{
 \code{x}, invisibly.
 }
 \description{
 Prints the distance classes and the envelope settings of an
-empirical variogram computed by \code{\link{variogram}}, followed by its
+empirical variogram computed by \code{\link[=variogram]{variogram()}}, followed by its
 table.
 }
 \seealso{
-\code{\link{variogram}}
+\code{\link[=variogram]{variogram()}}
 }

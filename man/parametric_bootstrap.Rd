@@ -129,6 +129,9 @@ Efron, B. and Tibshirani, R. J. (1993). \emph{An Introduction to the
 Bootstrap}. Chapman & Hall, New York.
 }
 \seealso{
-\code{\link[=simulate_glgpm]{simulate_glgpm()}}, \code{\link[=profile.RiskMap]{profile.RiskMap()}}, and
-\code{\link[=plot_bootstrap]{plot_bootstrap()}}, which \code{plot()} of the result also calls.
+The methods for a bootstrap are
+\link[=print.RiskMap_bootstrap]{print()},
+\link[=summary.RiskMap_bootstrap]{summary()} and \code{\link[=plot_bootstrap]{plot_bootstrap()}}, which
+\code{plot()} of the result also calls. \code{\link[=profile.RiskMap]{profile.RiskMap()}} gives profile
+intervals, and \code{\link[=simulate_glgpm]{simulate_glgpm()}} simulates from a fit.
 }

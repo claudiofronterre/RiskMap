@@ -271,18 +271,18 @@ describe_checks_to_review <- function(count) {
 }
 
 ##' @title Print a Fitted RiskMap Model
-##' @description Print method for objects of class \code{"RiskMap"} from
-##'   \code{\link{glgpm}}: the call, the estimates of the regression
+##' @description Print method for objects of class `"RiskMap"` from
+##'   [glgpm()]: the call, the estimates of the regression
 ##'   coefficients and of the covariance parameters on their natural scale,
 ##'   the log-likelihood and, for binomial, Poisson and negative binomial models, whether the
 ##'   Monte Carlo error of the estimate is certified. Standard errors and
-##'   confidence intervals are given by \code{\link{summary.RiskMap}}, and the
-##'   checks on the computation by \code{\link{check_fit}}.
-##' @param x An object of class \code{"RiskMap"}.
+##'   confidence intervals are given by [summary.RiskMap()], and the
+##'   checks on the computation by [check_fit()].
+##' @param x An object of class `"RiskMap"`.
 ##' @param digits The number of significant digits of the estimates.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
 ##'   is not ignored.
-##' @return Invisibly returns \code{x}.
+##' @return Invisibly returns `x`.
 ##' @method print RiskMap
 ##' @examples
 ##' data(italy_sim)

@@ -28,7 +28,7 @@ a cross-validation from \code{\link[=assess_prediction]{assess_prediction()}} or
 \code{boundaries} from \link[=predict.RiskMap]{predict()} (see
 \code{\link[=to_table.RiskMap_prediction]{to_table.RiskMap_prediction()}}).}
 
-\item{...}{Additional arguments passed to \code{\link[knitr]{kable}}.}
+\item{...}{Additional arguments passed to \code{\link[knitr:kable]{knitr::kable()}}.}
 
 \item{digits}{A non-negative integer giving the number of decimal places
 used to display numeric results.}
@@ -46,27 +46,25 @@ Quarto, R Markdown, HTML, LaTeX and the R console.
 \details{
 This function creates a presentation-ready summary table from a
 fitted "RiskMap" model or cross-validation results for multiple models.
-Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
-required for further analysis. Numeric values use fixed notation with
+Use \link[=coef.RiskMap]{coef()} or \link[=summary.RiskMap]{summary()} when numeric
+results are required for further analysis. Numeric values use fixed notation with
 \code{digits} decimal places, except when scientific notation is needed to
 represent very large or very small values clearly. Values that are
 compared share one notation: the estimate and confidence limits of a
 parameter, and one metric across models.
 
-When the input is a fit or its summary, the table includes:
+The table of a fit or its summary has
 \itemize{
-\item Regression coefficients with their estimates and confidence intervals.
-\item Parameters for the spatial process.
-\item Random effect variances.
-\item The parameters of the family that were estimated, such as the
+\item the regression coefficients with their estimates and confidence
+intervals,
+\item the parameters of the spatial process,
+\item the variances of the random effects,
+\item the parameters of the family that were estimated, such as the
 measurement error variance of a Gaussian model.
 }
 
-When the input is a cross-validation or its summary, the table includes:
-\itemize{
-\item A row for each model being compared.
-\item Performance metrics such as CRPS and SCRPS for each model.
-}
+The table of a cross-validation or its summary has a row for each model
+compared, with its scores, such as the CRPS and SCRPS.
 }
 \examples{
 data(italy_sim)
@@ -81,5 +79,5 @@ to_table(fit)
 to_table(fit, digits = 1)
 }
 \seealso{
-\code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
+\code{\link[=glgpm]{glgpm()}}, \code{\link[=summary.RiskMap_cross_validation]{summary.RiskMap_cross_validation()}}
 }

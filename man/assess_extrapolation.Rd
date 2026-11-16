@@ -67,7 +67,9 @@ range of each covariate in the data. Map the result with
 Computes, for each prediction location, indicators of whether a prediction
 from a fitted geostatistical model relies on extrapolation, either in space
 (where the data say little about the spatial effect) or in the covariates
-(outside the conditions observed in the data).
+(outside the conditions observed in the data). The spatial indicator, with
+its sampling noise and its default threshold, is experimental and may
+change in a minor release.
 }
 \details{
 Covariates are assessed on the model's scale, that is, as the columns of

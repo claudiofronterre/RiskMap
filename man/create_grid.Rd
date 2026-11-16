@@ -121,5 +121,5 @@ grid_raster <- create_grid(nc, raster = counts)
 
 }
 \seealso{
-\code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersection}}
+\code{\link[sf:st_make_grid]{sf::st_make_grid()}}, \code{\link[sf:st_intersection]{sf::st_intersection()}}
 }
