@@ -26,7 +26,7 @@ profile(
   n_grid = 11L,
   span = 3,
   n_draws = 5000L,
-  seed = 1L,
+  seed = NULL,
   level = 0.95,
   cores = 1L,
   messages = getOption("RiskMap.messages", TRUE),
@@ -79,8 +79,12 @@ print(x, ...)
 
 - seed:
 
-  Seed of the bank. The random number state of the session is restored
-  afterwards. Not used for a Gaussian model.
+  Optional non-negative integer, the seed of the bank. Without one, a
+  seed is drawn from the session's random number generator, so
+  [`set.seed()`](https://rdrr.io/r/base/Random.html) before the call
+  also reproduces the profile. The seed used is returned in `settings`.
+  The caller's random number state is otherwise left as it was. Not used
+  for a Gaussian model.
 
 - level:
 
@@ -230,7 +234,7 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 #>   standard errors (an approximate 95% bound, tolerance 0.1).
 profiles <- profile(fit, parameters = c("sigma2", "phi"),
                     pairs = list(c("sigma2", "phi")), n_grid = 9,
-                    n_draws = 2000)
+                    n_draws = 2000, seed = 1)
 #> ℹ Re-maximising the likelihood on a bank of 2000 draws.
 #> ℹ Profiling 2 parameters and 1 pair.
 profiles

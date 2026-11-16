@@ -18,8 +18,8 @@ check_fit(
   object,
   extra = character(),
   profile = NULL,
-  messages = getOption("RiskMap.messages", TRUE),
-  cores = 1L
+  cores = 1L,
+  messages = getOption("RiskMap.messages", TRUE)
 )
 ```
 
@@ -43,18 +43,18 @@ check_fit(
   it is, whatever parameters it covers, instead of computing one,
   whether or not `extra` names it.
 
-- messages:
-
-  Logical, whether to say how long the extra checks should take before
-  they start. Defaults to the option `RiskMap.messages`, or `TRUE` if it
-  is not set.
-
 - cores:
 
   Number of processes for the extra checks that can use several, passed
   to
   [`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md),
   whose results are the same on any number of cores.
+
+- messages:
+
+  Logical, whether to say how long the extra checks should take before
+  they start. Defaults to the option `RiskMap.messages`, or `TRUE` if it
+  is not set.
 
 ## Value
 

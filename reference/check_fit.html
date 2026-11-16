@@ -64,8 +64,8 @@ only the number of checks that need a look.</p>
 <span>  <span class="va">object</span>,</span>
 <span>  extra <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">character</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  profile <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  messages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"RiskMap.messages"</span>, <span class="cn">TRUE</span><span class="op">)</span>,</span>
-<span>  cores <span class="op">=</span> <span class="fl">1L</span></span>
+<span>  cores <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>  messages <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"RiskMap.messages"</span>, <span class="cn">TRUE</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -89,16 +89,16 @@ check then uses it as it is, whatever parameters it covers, instead of
 computing one, whether or not <code>extra</code> names it.</p></dd>
 
 
-<dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
-<dd><p>Logical, whether to say how long the extra checks should
-take before they start.
-Defaults to the option <code>RiskMap.messages</code>, or <code>TRUE</code> if it is not set.</p></dd>
-
-
 <dt id="arg-cores">cores<a class="anchor" aria-label="anchor" href="#arg-cores"></a></dt>
 <dd><p>Number of processes for the extra checks that can use
 several, passed to <code><a href="profile.RiskMap.html">profile.RiskMap()</a></code>, whose results are the same on
 any number of cores.</p></dd>
+
+
+<dt id="arg-messages">messages<a class="anchor" aria-label="anchor" href="#arg-messages"></a></dt>
+<dd><p>Logical, whether to say how long the extra checks should
+take before they start.
+Defaults to the option <code>RiskMap.messages</code>, or <code>TRUE</code> if it is not set.</p></dd>
 
 </dl></div>
     <div class="section level2">
