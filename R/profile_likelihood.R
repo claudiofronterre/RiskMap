@@ -74,8 +74,11 @@
 ##'   `names(unlist(coef(fitted)))` (the prefix `beta.` can be left out), the
 ##'   nugget as `tau2`, its variance (see [riskmap_parameters]). The default is
 ##'   every estimated parameter.
-##' @param pairs A list of pairs of parameter names for joint profiles, for
-##'   example `list(c("sigma2", "phi"))`. The default is none.
+##' @param pairs The pairs of parameters for joint profiles, named as in
+##'   `parameters`. Each pair is two names, as in `list(c("sigma2", "phi"))`,
+##'   or one name `"first:second"`, as in `"sigma2:phi"`, and the joint
+##'   profiles of the result are named in that way. [plot_profile()] takes
+##'   pairs in either form too. The default is none.
 ##' @param n_points Number of points of each marginal grid before any
 ##'   extension, and the most points on each side of the estimate.
 ##' @param n_grid Number of points along each side of a joint grid.
@@ -181,8 +184,12 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
   parameters <- match_profile_parameters(
     problem, parameters %||% setdiff(problem$names, problem$names[problem$held])
   )
-  pairs <- lapply(pairs %||% list(), function(pair) {
-    match_profile_parameters(problem, pair, arg = "pairs")
+  pairs <- lapply(read_profile_pairs(pairs, problem$names), function(pair) {
+    pair <- match_profile_parameters(problem, pair, arg = "pairs")
+    if (identical(pair[1], pair[2])) {
+      abort_input("Each pair of {.arg pairs} must name two different parameters, not {.val {pair[1]}} twice.", arg = "pairs")
+    }
+    pair
   })
 
   if (messages) {
@@ -446,6 +453,58 @@ match_profile_parameters <- function(problem, parameters, arg = "parameters") {
     hit[1]
   }, "")
   unname(matched)
+}
+
+##' The name of a parameter among `names`, given with or without the prefix
+##' `beta.` of a coefficient, or the name as it is when neither is there
+##' @noRd
+full_parameter_name <- function(name, names) {
+  hit <- c(name, paste0("beta.", name))
+  hit <- hit[hit %in% names]
+  if (length(hit)) hit[1] else name
+}
+
+##' Read the pairs of parameters of joint profiles
+##'
+##' `pairs` is a list whose elements are each two parameter names, as in
+##' `list(c("sigma2", "phi"))`, or one name `"first:second"`, as the joint
+##' profiles are named, or a character vector of such names. Returns a list of
+##' pairs of names as given, so that the caller matches them to the fit.
+##' The coefficient of an interaction has a colon in its name, as in
+##' `beta.x:z`, so a name with more than one colon is split where both sides
+##' are among `names`, with or without the prefix `beta.`.
+##' @noRd
+read_profile_pairs <- function(pairs, names, arg = "pairs") {
+  if (is.null(pairs)) return(list())
+  forms <- "Give a pair as two names, as in {.code list(c(\"sigma2\", \"phi\"))}, or as one, as in {.code \"sigma2:phi\"}."
+  if (!is.list(pairs) && !is.character(pairs)) {
+    supplied <- describe_value(pairs)
+    abort_input(c("{.arg {arg}} must be a list of pairs of parameter names or a character vector, not {supplied}.", "i" = forms), arg = arg)
+  }
+  lapply(unname(as.list(pairs)), function(pair) {
+    if (!is.character(pair) || !length(pair) %in% 1:2 || anyNA(pair)) {
+      supplied <- describe_value(pair)
+      abort_input(c("Each pair of {.arg {arg}} must be two parameter names or one name {.code first:second}, not {supplied}.", "i" = forms), arg = arg)
+    }
+    if (length(pair) == 2L) return(pair)
+    colons <- gregexpr(":", pair, fixed = TRUE)[[1]]
+    splits <- lapply(colons[colons > 0], function(at) {
+      c(substr(pair, 1L, at - 1L), substr(pair, at + 1L, nchar(pair)))
+    })
+    if (length(splits) > 1L) {
+      known <- function(name) full_parameter_name(name, names) %in% names
+      splits <- Filter(function(split) all(vapply(split, known, TRUE)), splits)
+    }
+    if (length(splits) == 1L) return(splits[[1]])
+    problem <- if (!any(colons > 0)) {
+      "{.val {pair}} in {.arg {arg}} must name two parameters, as {.code first:second}."
+    } else if (!length(splits)) {
+      "{.val {pair}} in {.arg {arg}} can't be split into two parameters of the fit."
+    } else {
+      "{.val {pair}} in {.arg {arg}} can be split into two parameters of the fit in more than one way."
+    }
+    abort_input(c(problem, "i" = forms), arg = arg)
+  })
 }
 
 ##' Maximise the log-likelihood on the profile bank with some parameters fixed
