@@ -41,6 +41,7 @@ choose the family and link, and fit it by maximum likelihood.
 - [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
   : Estimation of Generalized Linear Gaussian Process Models
 - [`glgpm_parameters()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm_parameters.md)
+  [`print(`*`<riskmap_parameters>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/glgpm_parameters.md)
   : List the parameters of a model before fitting it
 - [`riskmap_parameters`](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md)
   : The parameters of a geostatistical model
@@ -63,6 +64,7 @@ package, such as `binomial("probit")`, and other links can be given to
 as an inverse link function.
 
 - [`negative_binomial()`](https://claudiofronterre.github.io/RiskMap/reference/negative_binomial.md)
+  [`print(`*`<RiskMap_family>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/negative_binomial.md)
   : The Negative Binomial Family
 
 ### Controls
@@ -119,6 +121,7 @@ bootstrap.
 - [`summarise_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_mcmc.md)
   : Effective sample sizes of the MCMC samples of the random effects
 - [`profile(`*`<RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md)
+  [`print(`*`<RiskMap_profile>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md)
   : Profile likelihood of a fitted geostatistical model
 - [`plot_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md)
   [`plot(`*`<RiskMap_profile>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md)

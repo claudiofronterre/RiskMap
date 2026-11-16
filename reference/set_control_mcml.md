@@ -234,7 +234,9 @@ set_control_mcml(
   `parameter_uncertainty = TRUE` in
   [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md).
   When the spatial variance is large and well identified, the penalty
-  shrinks it somewhat towards zero, so the default is `FALSE`.
+  shrinks it somewhat towards zero, so the default is `FALSE`. The
+  penalties and their four settings are experimental and may change in a
+  minor release.
 
 - pc_sigma_threshold, pc_sigma_probability:
 

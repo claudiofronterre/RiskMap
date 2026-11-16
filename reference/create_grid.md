@@ -127,8 +127,8 @@ grid.
 
 ## See also
 
-[`st_make_grid`](https://r-spatial.github.io/sf/reference/st_make_grid.html),
-[`st_intersection`](https://r-spatial.github.io/sf/reference/geos_binary_ops.html)
+[`sf::st_make_grid()`](https://r-spatial.github.io/sf/reference/st_make_grid.html),
+[`sf::st_intersection()`](https://r-spatial.github.io/sf/reference/geos_binary_ops.html)
 
 ## Examples
 

@@ -115,7 +115,9 @@ imperfect diagnostic test. Its first and second derivatives are found
 symbolically where possible and numerically otherwise. They only steer the
 importance sampler, so they affect the speed of a fit and not its
 estimates. Not applicable for Gaussian models, and not to be combined with
-a family object that names a link other than logit or log.</p></dd>
+a family object that names a link other than logit or log. Custom links
+are experimental, and how they are given and checked may change in a
+minor release.</p></dd>
 
 
 <dt id="arg-denominator">denominator<a class="anchor" aria-label="anchor" href="#arg-denominator"></a></dt>
@@ -170,8 +172,8 @@ zero. A held coefficient enters the linear predictor as a known term, as an
 offset does. The other parameters are estimated with the held ones at their
 values, and with every parameter held the fit evaluates the likelihood at
 the values (exactly for a Gaussian model, by Monte Carlo on one sample for
-the others) and draws the conditional samples there, so that <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>
-works with given parameters. A parameter can't be both started and held,
+the others) and draws the conditional samples there, so that
+<a href="predict.RiskMap.html">predict()</a> works with given parameters. A parameter can't be both started and held,
 except that a start equal to its held value, as in
 <code>start_pars = coef(fit)</code> of a fit with the same holds, is left out. With one
 observation per location, a Gaussian model can estimate the nugget or the
@@ -323,8 +325,16 @@ with the data it names in the environment where <code><a href="https://rdrr.io/r
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p><code><a href="set_control_mcmc.html">set_control_mcmc()</a></code>, <code><a href="set_control_mcml.html">set_control_mcml()</a></code>,
-<code><a href="summary.RiskMap.html">summary.RiskMap</a></code>, <code><a href="to_table.html">to_table</a></code></p></div>
+    <div class="dont-index"><p>The methods for a fit are <a href="print.RiskMap.html">print()</a>,
+<a href="summary.RiskMap.html">summary()</a>, <a href="coef.RiskMap.html">coef()</a>,
+<a href="fitted.RiskMap.html">fitted()</a>, <a href="logLik.RiskMap.html">logLik()</a> with
+<a href="logLik.RiskMap.html">vcov()</a> and <a href="logLik.RiskMap.html">nobs()</a>,
+<a href="predict.RiskMap.html">predict()</a>, <a href="profile.RiskMap.html">profile()</a> and
+<code><a href="to_table.html">to_table()</a></code>. <code><a href="check_fit.html">check_fit()</a></code>, <code><a href="plot_mcmc.html">plot_mcmc()</a></code>, <code><a href="summarise_mcmc.html">summarise_mcmc()</a></code>,
+<code><a href="parametric_bootstrap.html">parametric_bootstrap()</a></code>, <code><a href="assess_prediction.html">assess_prediction()</a></code> and
+<code><a href="assess_extrapolation.html">assess_extrapolation()</a></code> take a fit too. <code><a href="glgpm_parameters.html">glgpm_parameters()</a></code> lists the
+parameters of a model before it is fitted, and <code><a href="set_control_mcml.html">set_control_mcml()</a></code> and
+<code><a href="set_control_mcmc.html">set_control_mcmc()</a></code> set how it is fitted.</p></div>
     </div>
 
     <div class="section level2">

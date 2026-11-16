@@ -2,7 +2,7 @@
 
 Prints the distance classes and the envelope settings of an empirical
 variogram computed by
-[`variogram`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md),
+[`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md),
 followed by its table.
 
 ## Usage
@@ -25,7 +25,7 @@ print(x, digits = 3, ...)
 - ...:
 
   further arguments passed to
-  [`print.data.frame`](https://rdrr.io/r/base/print.dataframe.html).
+  [`base::print.data.frame()`](https://rdrr.io/r/base/print.dataframe.html).
 
 ## Value
 
@@ -33,4 +33,4 @@ print(x, digits = 3, ...)
 
 ## See also
 
-[`variogram`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md)
+[`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md)

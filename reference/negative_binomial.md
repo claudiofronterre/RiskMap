@@ -12,20 +12,32 @@ unless `fixed_pars = list(theta = )` of
 [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
 holds it, and
 [`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)
-takes it as `theta` in its `parameters`.
+takes it as `theta` in its `parameters`. The negative binomial family is
+experimental and may change in a minor release.
 
 ## Usage
 
 ``` r
 negative_binomial(...)
+
+# S3 method for class 'RiskMap_family'
+print(x, ...)
 ```
 
 ## Arguments
 
 - ...:
 
-  Not used. A size given here stops, since it is held with `fixed_pars`
-  instead.
+  For `negative_binomial()`, not used, and a size given here stops,
+  since it is held with `fixed_pars` instead. For
+  [`print()`](https://rdrr.io/r/base/print.html), not used, and an error
+  if given.
+
+- x:
+
+  A family from `negative_binomial()`, whose
+  [`print()`](https://rdrr.io/r/base/print.html) method describes it and
+  returns `x` invisibly.
 
 ## Value
 
@@ -41,11 +53,12 @@ size goes to that limit holds it there, as a variance estimated as zero
 is held, and says so in
 [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
 A fit that estimates the size reports it in
-[`coef()`](https://rdrr.io/r/stats/coef.html),
-[`print()`](https://rdrr.io/r/base/print.html) and
-[`summary()`](https://rdrr.io/r/base/summary.html) as `theta`. Its start
-is the size of the negative binomial regression without the random
-effects, or `start_pars$theta` in
+[coef()](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md),
+[print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap.md)
+and
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
+as `theta`. Its start is the size of the negative binomial regression
+without the random effects, or `start_pars$theta` in
 [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md).
 With one observation per location, an estimated size can't be told apart
 from a nugget or from a random effect with one level per observation, so

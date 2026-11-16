@@ -82,7 +82,7 @@ a cross-validation from <code><a href="assess_prediction.html">assess_prediction
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Additional arguments passed to <code><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">kable</a></code>.</p></dd>
+<dd><p>Additional arguments passed to <code><a href="https://rdrr.io/pkg/knitr/man/kable.html" class="external-link">knitr::kable()</a></code>.</p></dd>
 
 
 <dt id="arg-digits">digits<a class="anchor" aria-label="anchor" href="#arg-digits"></a></dt>
@@ -102,23 +102,24 @@ used to display numeric results.</p></dd>
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>This function creates a presentation-ready summary table from a
 fitted "RiskMap" model or cross-validation results for multiple models.
-Use <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef</a></code> or <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></code> when numeric results are
-required for further analysis. Numeric values use fixed notation with
+Use <a href="coef.RiskMap.html">coef()</a> or <a href="summary.RiskMap.html">summary()</a> when numeric
+results are required for further analysis. Numeric values use fixed notation with
 <code>digits</code> decimal places, except when scientific notation is needed to
 represent very large or very small values clearly. Values that are
 compared share one notation: the estimate and confidence limits of a
 parameter, and one metric across models.</p>
-<p>When the input is a fit or its summary, the table includes:</p><ul><li><p>Regression coefficients with their estimates and confidence intervals.</p></li>
-<li><p>Parameters for the spatial process.</p></li>
-<li><p>Random effect variances.</p></li>
-<li><p>The parameters of the family that were estimated, such as the
+<p>The table of a fit or its summary has</p><ul><li><p>the regression coefficients with their estimates and confidence
+intervals,</p></li>
+<li><p>the parameters of the spatial process,</p></li>
+<li><p>the variances of the random effects,</p></li>
+<li><p>the parameters of the family that were estimated, such as the
 measurement error variance of a Gaussian model.</p></li>
-</ul><p>When the input is a cross-validation or its summary, the table includes:</p><ul><li><p>A row for each model being compared.</p></li>
-<li><p>Performance metrics such as CRPS and SCRPS for each model.</p></li>
-</ul></div>
+</ul><p>The table of a cross-validation or its summary has a row for each model
+compared, with its scores, such as the CRPS and SCRPS.</p>
+    </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p><code><a href="glgpm.html">glgpm</a></code>, <code><a href="summary.RiskMap_cross_validation.html">summary.RiskMap_cross_validation</a></code></p></div>
+    <div class="dont-index"><p><code><a href="glgpm.html">glgpm()</a></code>, <code><a href="summary.RiskMap_cross_validation.html">summary.RiskMap_cross_validation()</a></code></p></div>
     </div>
 
     <div class="section level2">

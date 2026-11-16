@@ -115,7 +115,9 @@ imperfect diagnostic test. Its first and second derivatives are found
 symbolically where possible and numerically otherwise. They only steer the
 importance sampler, so they affect the speed of a fit and not its
 estimates. Not applicable for Gaussian models, and not to be combined with
-a family object that names a link other than logit or log.</p></dd>
+a family object that names a link other than logit or log. Custom links
+are experimental, and how they are given and checked may change in a
+minor release.</p></dd>
 
 
 <dt id="arg-denominator">denominator<a class="anchor" aria-label="anchor" href="#arg-denominator"></a></dt>
@@ -152,6 +154,11 @@ information, random-effect terms, offset, Matern smoothness and response.</p>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>The response in <code>formula</code> need not exist in <code>data</code>.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
+    <div class="dont-index"><p><a href="print.RiskMap_simulation_model.html">print()</a> describes the model,
+and <code><a href="simulate_glgpm.html">simulate_glgpm()</a></code> simulates from it.</p></div>
     </div>
 
     <div class="section level2">

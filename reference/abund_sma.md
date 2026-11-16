@@ -45,16 +45,16 @@ Constructed from `sample_collections` in the `vectorsurvR` R package.
 
 ## Details
 
-Derived from the vectorsurvR sample datasets by:
+Derived from the vectorsurvR sample datasets in two steps.
 
 1.  Filtering to female *Culex pipiens* collection records within the
-    Sacramento Metropolitan Area (SMA) using point-in-polygon against
-    the union of Sacramento, Placer, and El Dorado county boundaries.
+    Sacramento Metropolitan Area (SMA), using point-in-polygon against
+    the union of the Sacramento, Placer and El Dorado county boundaries.
 
 2.  Summing counts and trap-nights per unique *location*–*date*–*trap
     type*.
 
-3.  The coordinate reference system is 4326.
+The coordinate reference system is 4326.
 
 This sample dataset is intended for examples, mapping, and vector-index
 workflows. It is not official surveillance output. Dates span the same

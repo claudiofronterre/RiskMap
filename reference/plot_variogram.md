@@ -49,7 +49,7 @@ plot(x, ...)
   number of pairs of locations in its distance class. A semivariance
   estimated from few pairs is unstable, so the labels help to judge how
   much each point can be trusted, and to choose the distance classes in
-  [`variogram`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md).
+  [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md).
   By default `show_pairs = FALSE`.
 
 - ...:
@@ -75,7 +75,7 @@ spatial independence, and points that fall outside it are drawn in red.
 
 ## See also
 
-[`variogram`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md)
+[`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md)
 
 ## Examples
 

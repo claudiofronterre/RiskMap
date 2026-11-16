@@ -45,7 +45,7 @@ to_table(object, ...)
 - ...:
 
   Additional arguments passed to
-  [`kable`](https://rdrr.io/pkg/knitr/man/kable.html).
+  [`knitr::kable()`](https://rdrr.io/pkg/knitr/man/kable.html).
 
 - digits:
 
@@ -64,35 +64,34 @@ An object of class "knitr_kable" that can be rendered directly.
 
 This function creates a presentation-ready summary table from a fitted
 "RiskMap" model or cross-validation results for multiple models. Use
-[`coef`](https://rdrr.io/r/stats/coef.html) or
-[`summary`](https://rdrr.io/r/base/summary.html) when numeric results
-are required for further analysis. Numeric values use fixed notation
-with `digits` decimal places, except when scientific notation is needed
-to represent very large or very small values clearly. Values that are
-compared share one notation: the estimate and confidence limits of a
-parameter, and one metric across models.
+[coef()](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md)
+or
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
+when numeric results are required for further analysis. Numeric values
+use fixed notation with `digits` decimal places, except when scientific
+notation is needed to represent very large or very small values clearly.
+Values that are compared share one notation: the estimate and confidence
+limits of a parameter, and one metric across models.
 
-When the input is a fit or its summary, the table includes:
+The table of a fit or its summary has
 
-- Regression coefficients with their estimates and confidence intervals.
+- the regression coefficients with their estimates and confidence
+  intervals,
 
-- Parameters for the spatial process.
+- the parameters of the spatial process,
 
-- Random effect variances.
+- the variances of the random effects,
 
-- The parameters of the family that were estimated, such as the
+- the parameters of the family that were estimated, such as the
   measurement error variance of a Gaussian model.
 
-When the input is a cross-validation or its summary, the table includes:
-
-- A row for each model being compared.
-
-- Performance metrics such as CRPS and SCRPS for each model.
+The table of a cross-validation or its summary has a row for each model
+compared, with its scores, such as the CRPS and SCRPS.
 
 ## See also
 
-[`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
-[`summary.RiskMap_cross_validation`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md)
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
+[`summary.RiskMap_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md)
 
 ## Examples
 

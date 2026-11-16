@@ -80,7 +80,9 @@ specify_glgpm(
   symbolically where possible and numerically otherwise. They only steer
   the importance sampler, so they affect the speed of a fit and not its
   estimates. Not applicable for Gaussian models, and not to be combined
-  with a family object that names a link other than logit or log.
+  with a family object that names a link other than logit or log. Custom
+  links are experimental, and how they are given and checked may change
+  in a minor release.
 
 - denominator:
 
@@ -120,6 +122,13 @@ response.
 ## Details
 
 The response in `formula` need not exist in `data`.
+
+## See also
+
+[print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_simulation_model.md)
+describes the model, and
+[`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md)
+simulates from it.
 
 ## Examples
 

@@ -15,7 +15,7 @@ summary(object, level = 0.95, ...)
 - object:
 
   An object of class "RiskMap" from
-  [`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
 
 - level:
 
@@ -39,7 +39,7 @@ correction of the last stage did not converge), `stages`,
 `fitting_draws` and `validation_draws` (at the last stage),
 `certification_bank` (the effective draws and Pareto shape of the
 certification draws), `checks_to_review`, the number of checks of
-[`check_fit`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
 that need a look, `starting_values`, where the starting values of the
 parameters not given in `start_pars` came from, `"current"` (RiskMap's
 defaults) or `"transformed_gaussian"` (a Gaussian fit to the transformed

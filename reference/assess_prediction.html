@@ -122,20 +122,16 @@ results.</p></dd>
 
 
 <dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
-<dd><p>Character; either <code>"cluster"</code>, <code>"regularized"</code> or <code>"user"</code> for the
-cross-validation method:</p><dl>
-
- The <code>"cluster"</code> method uses spatial clustering as implemented
-by the <code>spatial_clustering_cv</code> function from the <code>spatialsample</code>
-package, which must be installed.
- The <code>"regularized"</code> method selects a subsample of the dataset by imposing a minimum distance,
-set by the <code>min_dist</code> argument, for a randomly selected subset of locations using
-the <code>subsample.distance</code> function from the <code>spatialEco</code> package, which
-must be installed.
- The <code>"user"</code> method takes a user-defined test set defined by <code>user_split</code>
-
-
-</dl></dd>
+<dd><p>The cross-validation method, <code>"cluster"</code>, <code>"regularized"</code> or
+<code>"user"</code>.</p><ul><li><p><code>"cluster"</code> makes the test sets by spatial clustering, with
+<code>spatial_clustering_cv()</code> of the spatialsample package, which must be
+installed.</p></li>
+<li><p><code>"regularized"</code> selects a subsample of the locations by imposing the
+minimum distance <code>min_dist</code> between randomly selected locations, with
+<code>subsample.distance()</code> of the spatialEco package, which must be
+installed.</p></li>
+<li><p><code>"user"</code> takes the test sets given in <code>user_split</code>.</p></li>
+</ul></dd>
 
 
 <dt id="arg-fold">fold<a class="anchor" aria-label="anchor" href="#arg-fold"></a></dt>
@@ -301,8 +297,10 @@ A: Statistics in Society</em>.<a href="https://doi.org/10.1093/jrsssa/qnag100" c
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p><code><a href="plot_cross_validation.html">plot_cross_validation()</a></code>, which <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of the result also
-calls, and <code><a href="summary.RiskMap_cross_validation.html">summary.RiskMap_cross_validation()</a></code>.</p></div>
+    <div class="dont-index"><p>The methods for a cross-validation are
+<a href="print.RiskMap_cross_validation.html">print()</a>,
+<a href="summary.RiskMap_cross_validation.html">summary()</a>, <code><a href="to_table.html">to_table()</a></code> and
+<code><a href="plot_cross_validation.html">plot_cross_validation()</a></code>, which <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of the result also calls.</p></div>
     </div>
 
     <div class="section level2">

@@ -2,6 +2,7 @@
 
 Measures how much a projected coordinate reference system (CRS)
 stretches or shrinks distances over the region the data cover.
+`crs_distortion()` is experimental and may change in a minor release.
 
 ## Usage
 

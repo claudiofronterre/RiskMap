@@ -18,6 +18,9 @@ glgpm_parameters(
   fixed_pars = NULL,
   distance_units = c("km", "m")
 )
+
+# S3 method for class 'riskmap_parameters'
+print(x, ...)
 ```
 
 ## Arguments
@@ -32,6 +35,15 @@ glgpm_parameters(
   The units of distance, `"km"` (the default) or `"m"`, for the label of
   the scale.
 
+- x:
+
+  The result of `glgpm_parameters()`.
+
+- ...:
+
+  Not used, and an error if given, so that a misspelt argument is not
+  ignored.
+
 ## Value
 
 A data frame of class `riskmap_parameters`, with a row per element of
@@ -42,7 +54,9 @@ design matrix of a coefficient, the term of a random-effect variance),
 `start` (the rule of its automatic start, see
 [riskmap_parameters](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md))
 and `held` (the value at which the model holds the parameter, `NA` when
-it is estimated). Its print shows the template of a `start_pars` list.
+it is estimated). Its [`print()`](https://rdrr.io/r/base/print.html)
+method shows the template of a `start_pars` list and returns `x`
+invisibly.
 
 ## See also
 

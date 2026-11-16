@@ -79,17 +79,20 @@ location and date, with an estimated pool size.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>Derived from the <span class="pkg">vectorsurvR</span> sample datasets by:</p><ul><li><p>Filtering to female <em>Culex pipiens</em> pools with WNV testing within the SMA
-using point-in-polygon against the union of Sacramento, Placer, and El Dorado counties.</p></li>
-<li><p>Estimating pool size <code>est_pool_n</code> for each pool by:</p><ul><li><p>Summing total female counts from nearby collection points within the <em>same week</em>
-and within a spatial radius (e.g., 2 km) to obtain \(T_{\mathrm{near}}\).</p></li>
-<li><p>Counting nearby pools within the same week/radius to obtain \(m_{\mathrm{near}}\).</p></li>
-<li><p>Setting <code>est_pool_n = round(max(1, T_near / m_near))</code>; if no nearby collections are found,
-a conservative fallback (default 25) is used.</p></li>
+    <p>Derived from the <span class="pkg">vectorsurvR</span> sample datasets in two steps.</p><ul><li><p>Filtering to female <em>Culex pipiens</em> pools with WNV testing within the
+SMA, using point-in-polygon against the union of the Sacramento, Placer
+and El Dorado counties.</p></li>
+<li><p>Estimating the size <code>est_pool_n</code> of each pool.</p><ul><li><p>The total female counts from nearby collection points within the
+<em>same week</em> and within a spatial radius (for example 2 km) are summed
+to obtain \(T_{\mathrm{near}}\).</p></li>
+<li><p>The nearby pools within the same week and radius are counted to
+obtain \(m_{\mathrm{near}}\).</p></li>
+<li><p><code>est_pool_n</code> is <code>round(max(1, T_near / m_near))</code>, or a conservative
+fallback of 25 if no nearby collections are found.</p></li>
 </ul></li>
-<li><p>The coordinate reference system is 4326.</p></li>
-</ul><p><strong>Important:</strong> <code>est_pool_n</code> is an estimate for demonstration and pooled-modelling
-examples; it is not the recorded laboratory pool size.</p>
+</ul><p>The coordinate reference system is 4326. <code>est_pool_n</code> is an estimate for
+demonstration and pooled-modelling examples, not the recorded laboratory
+pool size.</p>
     </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

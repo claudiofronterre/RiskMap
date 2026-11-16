@@ -193,9 +193,8 @@ says only that its concavity is not known. The extra checks compute something ne
 start, a message says how long they should take, from the time the fit
 took. The extra checks are</p><ul><li><p><code>"profile"</code>, the marginal profile likelihood of each covariance
 parameter of the fit from <code><a href="profile.RiskMap.html">profile.RiskMap()</a></code>, with its default
-settings. These are the spatial variance and scale, the nugget (its
-ratio to the spatial variance, <code>nu2</code>, or for a Gaussian fit its
-variance, <code>tau2</code>), an estimated measurement error variance and the
+settings. These are the spatial variance and scale, the variance of
+the nugget, <code>tau2</code>, an estimated measurement error variance and the
 variances of the random effects, but not the regression coefficients.
 Its row names each parameter whose profile is flat, so that its 95%
 interval is open at an end, or has a second maximum, where it falls by
@@ -228,8 +227,10 @@ fails, is not computed, and the printed checks say why.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
-    <div class="dont-index"><p><code><a href="summary.RiskMap_check.html">summary.RiskMap_check()</a></code>, <code><a href="plot_check.html">plot_check()</a></code>, which <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of the
-result also calls, <code><a href="summary.RiskMap.html">summary.RiskMap()</a></code> and <code><a href="profile.RiskMap.html">profile.RiskMap()</a></code>.</p></div>
+    <div class="dont-index"><p>The methods for the result are <a href="print.RiskMap_check.html">print()</a>,
+<a href="summary.RiskMap_check.html">summary()</a> and <code><a href="plot_check.html">plot_check()</a></code>, which <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code>
+of the result also calls. <code><a href="summary.RiskMap.html">summary.RiskMap()</a></code> gives the estimates, and
+<code><a href="profile.RiskMap.html">profile.RiskMap()</a></code> and <code><a href="parametric_bootstrap.html">parametric_bootstrap()</a></code> their uncertainty.</p></div>
     </div>
 
     <div class="section level2">

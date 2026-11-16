@@ -32,6 +32,9 @@ profile(
   messages = getOption("RiskMap.messages", TRUE),
   ...
 )
+
+# S3 method for class 'RiskMap_profile'
+print(x, ...)
 ```
 
 ## Arguments
@@ -105,6 +108,12 @@ profile(
   Not used, and an error if given, so that a misspelt argument is not
   ignored.
 
+- x:
+
+  The result of [`profile()`](https://rdrr.io/r/stats/profile.html),
+  whose [`print()`](https://rdrr.io/r/base/print.html) method gives the
+  intervals and returns `x` invisibly.
+
 ## Value
 
 An object of class `RiskMap_profile`: a list with the marginal profiles
@@ -175,9 +184,15 @@ With `messages = TRUE` a progress bar shows the time left (see
 
 ## See also
 
+The methods for a profile are
+[`print()`](https://rdrr.io/r/base/print.html), on this page, and
 [`plot_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md),
 which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
-result also calls.
+profile also calls.
+[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
+checks the profiles, and
+[`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md)
+gives bootstrap intervals.
 
 ## Examples
 

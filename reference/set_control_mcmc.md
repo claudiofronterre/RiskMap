@@ -75,7 +75,7 @@ or
 
 ## See also
 
-[`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
 
 ## Examples
 

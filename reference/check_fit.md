@@ -168,8 +168,7 @@ should take, from the time the fit took. The extra checks are
   parameter of the fit from
   [`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md),
   with its default settings. These are the spatial variance and scale,
-  the nugget (its ratio to the spatial variance, `nu2`, or for a
-  Gaussian fit its variance, `tau2`), an estimated measurement error
+  the variance of the nugget, `tau2`, an estimated measurement error
   variance and the variances of the random effects, but not the
   regression coefficients. Its row names each parameter whose profile is
   flat, so that its 95% interval is open at an end, or has a second
@@ -206,13 +205,19 @@ not computed, and the printed checks say why.
 
 ## See also
 
-[`summary.RiskMap_check()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_check.md),
+The methods for the result are
+[print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_check.md),
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_check.md)
+and
 [`plot_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md),
 which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
-result also calls,
+result also calls.
 [`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
+gives the estimates, and
+[`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md)
 and
-[`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md).
+[`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md)
+their uncertainty.
 
 ## Examples
 

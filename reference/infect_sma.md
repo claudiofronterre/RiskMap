@@ -41,25 +41,24 @@ Constructed from `sample_collections` in the `vectorsurvR` R package.
 
 ## Details
 
-Derived from the vectorsurvR sample datasets by:
+Derived from the vectorsurvR sample datasets in two steps.
 
 - Filtering to female *Culex pipiens* pools with WNV testing within the
-  SMA using point-in-polygon against the union of Sacramento, Placer,
-  and El Dorado counties.
+  SMA, using point-in-polygon against the union of the Sacramento,
+  Placer and El Dorado counties.
 
-- Estimating pool size `est_pool_n` for each pool by:
+- Estimating the size `est_pool_n` of each pool.
 
-  - Summing total female counts from nearby collection points within the
-    *same week* and within a spatial radius (e.g., 2 km) to obtain
-    \\T\_{\mathrm{near}}\\.
+  - The total female counts from nearby collection points within the
+    *same week* and within a spatial radius (for example 2 km) are
+    summed to obtain \\T\_{\mathrm{near}}\\.
 
-  - Counting nearby pools within the same week/radius to obtain
-    \\m\_{\mathrm{near}}\\.
+  - The nearby pools within the same week and radius are counted to
+    obtain \\m\_{\mathrm{near}}\\.
 
-  - Setting `est_pool_n = round(max(1, T_near / m_near))`; if no nearby
-    collections are found, a conservative fallback (default 25) is used.
+  - `est_pool_n` is `round(max(1, T_near / m_near))`, or a conservative
+    fallback of 25 if no nearby collections are found.
 
-- The coordinate reference system is 4326.
-
-**Important:** `est_pool_n` is an estimate for demonstration and
-pooled-modelling examples; it is not the recorded laboratory pool size.
+The coordinate reference system is 4326. `est_pool_n` is an estimate for
+demonstration and pooled-modelling examples, not the recorded laboratory
+pool size.

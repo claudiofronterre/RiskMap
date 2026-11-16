@@ -32,8 +32,8 @@ object containing the convex hull geometry.
 
 ## See also
 
-[`st_convex_hull`](https://r-spatial.github.io/sf/reference/geos_unary.html),
-[`st_union`](https://r-spatial.github.io/sf/reference/geos_combine.html)
+[`sf::st_convex_hull()`](https://r-spatial.github.io/sf/reference/geos_unary.html),
+[`sf::st_union()`](https://r-spatial.github.io/sf/reference/geos_combine.html)
 
 ## Examples
 

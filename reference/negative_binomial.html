@@ -6,14 +6,16 @@ random effects has mean \(\mu = m \exp(\eta)\), with the log link,
 and variance \(\mu + \mu^2 / \theta\), as in
 MASS::negative.binomial(theta). The size \(\theta\) is estimated
 unless fixed_pars = list(theta = ) of glgpm() holds it, and
-specify_glgpm() takes it as theta in its parameters."><meta property="og:description" content="Specifies a negative binomial response for glgpm() and
+specify_glgpm() takes it as theta in its parameters. The negative
+binomial family is experimental and may change in a minor release."><meta property="og:description" content="Specifies a negative binomial response for glgpm() and
 specify_glgpm(), for counts that vary more than
 a Poisson model allows. A count \(y\) with exposure \(m\) given the
 random effects has mean \(\mu = m \exp(\eta)\), with the log link,
 and variance \(\mu + \mu^2 / \theta\), as in
 MASS::negative.binomial(theta). The size \(\theta\) is estimated
 unless fixed_pars = list(theta = ) of glgpm() holds it, and
-specify_glgpm() takes it as theta in its parameters."><meta property="og:image" content="https://claudiofronterre.github.io/RiskMap/card.png"><meta property="og:image:alt" content="RiskMap, model-based geostatistics in R"></head><body>
+specify_glgpm() takes it as theta in its parameters. The negative
+binomial family is experimental and may change in a minor release."><meta property="og:image" content="https://claudiofronterre.github.io/RiskMap/card.png"><meta property="og:image:alt" content="RiskMap, model-based geostatistics in R"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -61,12 +63,16 @@ random effects has mean \(\mu = m \exp(\eta)\), with the log link,
 and variance \(\mu + \mu^2 / \theta\), as in
 <code>MASS::negative.binomial(theta)</code>. The size \(\theta\) is estimated
 unless <code>fixed_pars = list(theta = )</code> of <code><a href="glgpm.html">glgpm()</a></code> holds it, and
-<code><a href="specify_glgpm.html">specify_glgpm()</a></code> takes it as <code>theta</code> in its <code>parameters</code>.</p>
+<code><a href="specify_glgpm.html">specify_glgpm()</a></code> takes it as <code>theta</code> in its <code>parameters</code>. The negative
+binomial family is experimental and may change in a minor release.</p>
     </div>
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">negative_binomial</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">negative_binomial</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'RiskMap_family'</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">x</span>, <span class="va">...</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -74,8 +80,14 @@ unless <code>fixed_pars = list(theta = )</code> of <code><a href="glgpm.html">gl
 
 
 <dl><dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
-<dd><p>Not used. A size given here stops, since it is held with
-<code>fixed_pars</code> instead.</p></dd>
+<dd><p>For <code>negative_binomial()</code>, not used, and a size given here
+stops, since it is held with <code>fixed_pars</code> instead. For <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code>, not
+used, and an error if given.</p></dd>
+
+
+<dt id="arg-x">x<a class="anchor" aria-label="anchor" href="#arg-x"></a></dt>
+<dd><p>A family from <code>negative_binomial()</code>, whose <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> method
+describes it and returns <code>x</code> invisibly.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -88,8 +100,9 @@ unless <code>fixed_pars = list(theta = )</code> of <code><a href="glgpm.html">gl
 every count when it is not given. As \(\theta\) grows the model tends
 to the Poisson model with the same mean, and a fit whose size goes to that
 limit holds it there, as a variance estimated as zero is held, and says so
-in <code><a href="check_fit.html">check_fit()</a></code>. A fit that estimates the size reports it in <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef()</a></code>,
-<code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> and <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> as <code>theta</code>. Its start is the size of the
+in <code><a href="check_fit.html">check_fit()</a></code>. A fit that estimates the size reports it in
+<a href="coef.RiskMap.html">coef()</a>, <a href="print.RiskMap.html">print()</a> and
+<a href="summary.RiskMap.html">summary()</a> as <code>theta</code>. Its start is the size of the
 negative binomial regression without the random effects, or
 <code>start_pars$theta</code> in <code><a href="glgpm.html">glgpm()</a></code>. With one observation per location, an
 estimated size can't be told apart from a nugget or from a random effect

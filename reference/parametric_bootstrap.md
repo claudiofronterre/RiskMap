@@ -155,12 +155,17 @@ Bootstrap*. Chapman & Hall, New York.
 
 ## See also
 
-[`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md),
-[`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md),
+The methods for a bootstrap are
+[print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_bootstrap.md),
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_bootstrap.md)
 and
 [`plot_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/plot_bootstrap.md),
 which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
 result also calls.
+[`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md)
+gives profile intervals, and
+[`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md)
+simulates from a fit.
 
 ## Examples
 

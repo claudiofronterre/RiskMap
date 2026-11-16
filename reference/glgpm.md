@@ -78,7 +78,9 @@ glgpm(
   symbolically where possible and numerically otherwise. They only steer
   the importance sampler, so they affect the speed of a fit and not its
   estimates. Not applicable for Gaussian models, and not to be combined
-  with a family object that names a link other than logit or log.
+  with a family object that names a link other than logit or log. Custom
+  links are experimental, and how they are given and checked may change
+  in a minor release.
 
 - denominator:
 
@@ -144,13 +146,14 @@ glgpm(
   their values, and with every parameter held the fit evaluates the
   likelihood at the values (exactly for a Gaussian model, by Monte Carlo
   on one sample for the others) and draws the conditional samples there,
-  so that [`predict()`](https://rdrr.io/r/stats/predict.html) works with
-  given parameters. A parameter can't be both started and held, except
-  that a start equal to its held value, as in `start_pars = coef(fit)`
-  of a fit with the same holds, is left out. With one observation per
-  location, a Gaussian model can estimate the nugget or the measurement
-  error variance, not both, and a negative binomial model the nugget or
-  the size, not both.
+  so that
+  [predict()](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md)
+  works with given parameters. A parameter can't be both started and
+  held, except that a start equal to its held value, as in
+  `start_pars = coef(fit)` of a fit with the same holds, is left out.
+  With one observation per location, a Gaussian model can estimate the
+  nugget or the measurement error variance, not both, and a negative
+  binomial model the nugget or the size, not both.
 
 - control_mcml:
 
@@ -342,10 +345,34 @@ with the data it names in the environment where
 
 ## See also
 
-[`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md),
-[`set_control_mcml()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcml.md),
-[`summary.RiskMap`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
-[`to_table`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
+The methods for a fit are
+[print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap.md),
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
+[coef()](https://claudiofronterre.github.io/RiskMap/reference/coef.RiskMap.md),
+[fitted()](https://claudiofronterre.github.io/RiskMap/reference/fitted.RiskMap.md),
+[logLik()](https://claudiofronterre.github.io/RiskMap/reference/logLik.RiskMap.md)
+with
+[vcov()](https://claudiofronterre.github.io/RiskMap/reference/logLik.RiskMap.md)
+and
+[nobs()](https://claudiofronterre.github.io/RiskMap/reference/logLik.RiskMap.md),
+[predict()](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md),
+[profile()](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md)
+and
+[`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md).
+[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md),
+[`plot_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/plot_mcmc.md),
+[`summarise_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_mcmc.md),
+[`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md),
+[`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
+and
+[`assess_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.md)
+take a fit too.
+[`glgpm_parameters()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm_parameters.md)
+lists the parameters of a model before it is fitted, and
+[`set_control_mcml()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcml.md)
+and
+[`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md)
+set how it is fitted.
 
 ## Examples
 

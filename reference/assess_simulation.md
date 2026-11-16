@@ -182,6 +182,17 @@ prediction that fails does not stop the assessment: its results are
 missing, and the failure is recorded in `fits` and reported in a
 warning, as are warnings from the fits.
 
+## See also
+
+The methods for the result are
+[print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_assess_simulation.md)
+and
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_assess_simulation.md).
+[`specify_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/specify_glgpm.md)
+and
+[`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md)
+make the simulations.
+
 ## Examples
 
 ``` r

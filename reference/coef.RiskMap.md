@@ -2,7 +2,7 @@
 
 This `coef` method for the "RiskMap" class extracts the maximum
 likelihood estimates from model fits obtained from the
-[`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
 functions.
 
 ## Usage
@@ -17,7 +17,7 @@ coef(object, ...)
 - object:
 
   An object of class "RiskMap" obtained as a result of a call to
-  [`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md).
+  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md).
 
 - ...:
 
@@ -66,5 +66,5 @@ The list can be given as `start_pars` of
 
 ## See also
 
-[`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
 [riskmap_parameters](https://claudiofronterre.github.io/RiskMap/reference/riskmap_parameters.md)

@@ -79,7 +79,7 @@ variogram(
   Character string, either `"km"` or `"m"`, indicating whether the
   distances used in the variogram are expressed in kilometers or meters.
   By default `distance_units = "km"`, as in
-  [`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md).
+  [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md).
 
 - seed:
 

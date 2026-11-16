@@ -55,17 +55,18 @@ assess_prediction(
 
 - method:
 
-  Character; either `"cluster"`, `"regularized"` or `"user"` for the
-  cross-validation method:
+  The cross-validation method, `"cluster"`, `"regularized"` or `"user"`.
 
-  The `"cluster"` method uses spatial clustering as implemented by the
-  `spatial_clustering_cv` function from the `spatialsample` package,
-  which must be installed. The `"regularized"` method selects a
-  subsample of the dataset by imposing a minimum distance, set by the
-  `min_dist` argument, for a randomly selected subset of locations using
-  the `subsample.distance` function from the `spatialEco` package, which
-  must be installed. The `"user"` method takes a user-defined test set
-  defined by `user_split`
+  - `"cluster"` makes the test sets by spatial clustering, with
+    `spatial_clustering_cv()` of the spatialsample package, which must
+    be installed.
+
+  - `"regularized"` selects a subsample of the locations by imposing the
+    minimum distance `min_dist` between randomly selected locations,
+    with `subsample.distance()` of the spatialEco package, which must be
+    installed.
+
+  - `"user"` takes the test sets given in `user_split`.
 
 - fold:
 
@@ -255,10 +256,14 @@ Society*.[doi:10.1093/jrsssa/qnag100](https://doi.org/10.1093/jrsssa/qnag100)
 
 ## See also
 
+The methods for a cross-validation are
+[print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_cross_validation.md),
+[summary()](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md),
+[`to_table()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.md)
+and
 [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md),
 which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
-result also calls, and
-[`summary.RiskMap_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md).
+result also calls.
 
 ## Examples
 

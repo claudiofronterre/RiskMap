@@ -92,12 +92,19 @@ unique locations.
 
 ## See also
 
-[`simulated_data()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_data.md),
-[`simulated_values()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_values.md),
+The methods for simulations are
+[print()](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_simulation_model.md)
 and
 [`plot_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulation.md),
 which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
-result also calls.
+simulations also calls.
+[`simulated_data()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_data.md),
+[`simulated_surface()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_data.md)
+and
+[`simulated_values()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_values.md)
+extract them, and
+[`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)
+assesses predictions on them.
 
 ## Examples
 

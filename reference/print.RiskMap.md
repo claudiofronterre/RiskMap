@@ -1,15 +1,15 @@
 # Print a Fitted RiskMap Model
 
 Print method for objects of class `"RiskMap"` from
-[`glgpm`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md):
+[`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md):
 the call, the estimates of the regression coefficients and of the
 covariance parameters on their natural scale, the log-likelihood and,
 for binomial, Poisson and negative binomial models, whether the Monte
 Carlo error of the estimate is certified. Standard errors and confidence
 intervals are given by
-[`summary.RiskMap`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
+[`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
 and the checks on the computation by
-[`check_fit`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
+[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
 
 ## Usage
 
