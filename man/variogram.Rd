@@ -105,3 +105,7 @@ italy_variogram <- variogram(
 plot(italy_variogram)
 
 }
+\seealso{
+\code{\link[=plot_variogram]{plot_variogram()}}, which \code{plot()} of the result also calls, and
+\code{\link[=print.RiskMap_variogram]{print.RiskMap_variogram()}}.
+}

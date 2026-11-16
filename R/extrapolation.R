@@ -102,8 +102,8 @@
 ##'   Rows with missing covariates have missing indicators. The attribute
 ##'   `spatial_threshold` holds the threshold used, and `covariate_ranges` the
 ##'   range of each covariate in the data. Map the result with
-##'   [plot.RiskMap_extrapolation()].
-##' @seealso [plot.RiskMap_extrapolation()], [predict.RiskMap()]
+##'   [plot_extrapolation()], or `plot()`, which does the same.
+##' @seealso [plot_extrapolation()], [predict.RiskMap()]
 ##' @examples
 ##' data(italy_sim)
 ##' example_data <- italy_sim[1:150, ]
@@ -399,23 +399,35 @@ format_extrapolation_share <- function(threshold) {
 ##' Map indicators of extrapolation
 ##'
 ##' Maps indicators returned by [assess_extrapolation()], in the style of
-##' [plot.RiskMap_prediction()].
+##' [plot_prediction()]. `plot()` of the result does the same.
 ##'
-##' @param x A `RiskMap_extrapolation` object.
+##' @param x The result of [assess_extrapolation()].
 ##' @param indicator Indicator to map: `"extrapolation"` (the default, the
 ##'   four classes, with the thresholds that [assess_extrapolation()] used),
 ##'   `"spatial_unexplained"` (the share of the spatial variance left
 ##'   unexplained by the data, on a scale from 0 to 1), `"covariate_novelty"`
 ##'   or `"covariate_leverage"`. Several indicators are arranged in two
 ##'   columns.
-##' @param ... Not used, and an error if given, so that a misspelt argument
-##'   is not ignored.
+##' @param ... For `plot()`, the arguments of `plot_extrapolation()`. For
+##'   `plot_extrapolation()`, not used, and an error if given, so that a
+##'   misspelt argument is not ignored.
 ##' @return A `ggplot` object, to which further layers can be added. When
 ##'   several indicators are requested, a `patchwork` object combining one
 ##'   `ggplot` per indicator.
-##' @method plot RiskMap_extrapolation
+##' @examples
+##' data(italy_sim)
+##' example_data <- italy_sim[1:150, ]
+##' fit <- glgpm(y ~ log(pop_dens) + gp(), data = example_data,
+##'              family = "gaussian", messages = FALSE)
+##' extrapolation <- assess_extrapolation(fit, italy_sim[151:200, ])
+##' plot_extrapolation(extrapolation)
+##' # The same map
+##' plot(extrapolation)
 ##' @export
-plot.RiskMap_extrapolation <- function(x, indicator = "extrapolation", ...) {
+plot_extrapolation <- function(x, indicator = "extrapolation", ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_extrapolation", "plot_extrapolation",
+                    "assess_extrapolation")
   check_dots_unused(...)
   choices <- c("extrapolation", "spatial_unexplained", "covariate_novelty",
                "covariate_leverage")
@@ -432,7 +444,9 @@ plot.RiskMap_extrapolation <- function(x, indicator = "extrapolation", ...) {
     if (!requireNamespace("patchwork", quietly = TRUE)) {
       riskmap_abort("Plotting several maps needs the {.pkg patchwork} package.")
     }
-    maps <- lapply(indicator, function(one) plot(x, indicator = one))
+    maps <- lapply(indicator, function(one) {
+      plot_extrapolation(x, indicator = one)
+    })
     return(patchwork::wrap_plots(maps, ncol = min(2L, length(maps))) &
              theme(plot.margin = margin(4, 14, 4, 14)))
   }
@@ -484,3 +498,8 @@ plot.RiskMap_extrapolation <- function(x, indicator = "extrapolation", ...) {
           legend.text = element_text(size = 7.5),
           strip.text = element_blank())
 }
+
+##' @rdname plot_extrapolation
+##' @method plot RiskMap_extrapolation
+##' @export
+plot.RiskMap_extrapolation <- function(x, ...) plot_extrapolation(x, ...)

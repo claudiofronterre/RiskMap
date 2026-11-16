@@ -21,10 +21,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 | `matern.hessian.phi()` | Removed, now internal |
 | `matern_cor()` | `matern_correlation()` |
 | `maxim.integrand()` | Removed, now internal |
-| `plot_AnPIT()`, `plot_score()` | `plot()` of `assess_prediction()` results |
+| `plot_AnPIT()`, `plot_score()` | `plot_cross_validation()`, or `plot()` of `assess_prediction()` results |
 | `plot_mda()` | Removed, to move with `dast()` |
-| `plot_s_variogram()` | `plot()` of `variogram()` results |
-| `plot_sim_surf()` | `plot()` of `simulate_glgpm()` results |
+| `plot_s_variogram()` | `plot_variogram()`, or `plot()` of `variogram()` results |
+| `plot_sim_surf()` | `plot_simulation()`, or `plot()` of `simulate_glgpm()` results |
 | `pred_over_grid()`, `pred_target_grid()` | `predict()` |
 | `pred_target_shp()` | `predict()` with `boundaries` |
 | `propose_utm()` | `propose_crs()` |
@@ -82,6 +82,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
   and draws nothing, as every `plot()` method now does. `profile()`, `print()`
   and `plot()` of profiles and extrapolations, and `print()`, `summary()` and
   `plot()` of bootstraps and checks stop on an argument they don't use.
+- Every `plot()` method has a function of its own, `plot_variogram()`,
+  `plot_prediction()`, `plot_extrapolation()`, `plot_check()`,
+  `plot_profile()`, `plot_bootstrap()`, `plot_cross_validation()`,
+  `plot_simulation()` and `plot_simulated_surface()`, so users can call either.
 
 ### Prediction
 

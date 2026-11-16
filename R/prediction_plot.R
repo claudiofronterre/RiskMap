@@ -1,9 +1,10 @@
-##' Plot a RiskMap prediction
+##' Map a RiskMap prediction
 ##'
 ##' Draws a publication-ready map from the location-level or polygon-level
-##' output returned by [predict.RiskMap()].
+##' output returned by [predict.RiskMap()]. `plot()` of a prediction does the
+##' same.
 ##'
-##' @param x A `RiskMap_prediction` object.
+##' @param x The result of [predict.RiskMap()].
 ##' @param quantity Predictive quantity to display, such as `"response"`,
 ##'   `"spatial"`, `"link"`, `"fixed"` (the fixed-effect contribution), or the
 ##'   name of a target supplied through `transform` in [predict.RiskMap()].
@@ -48,7 +49,8 @@
 ##'   ggspatial package. Defaults to `FALSE`.
 ##' @param scale_bar Logical. Add a scale bar, which needs the ggspatial
 ##'   package. Defaults to `FALSE`.
-##' @param ... Additional arguments passed to the ggplot2 fill scale, for
+##' @param ... For `plot()`, the arguments of `plot_prediction()`. For
+##'   `plot_prediction()`, arguments passed to the ggplot2 fill scale, for
 ##'   example `transform = "sqrt"` for skewed values.
 ##'
 ##' @details
@@ -82,12 +84,13 @@
 ##' areas <- sf::st_sf(geometry = sf::st_make_grid(example_data, n = c(2, 1)))
 ##' prediction <- predict(fit, newdata = example_data, boundaries = areas,
 ##'                       aggregate = "mean", messages = FALSE)
+##' plot_prediction(prediction)
+##' plot_prediction(prediction, spatial_scale = "both")
+##' # The same map
 ##' plot(prediction)
-##' plot(prediction, spatial_scale = "both")
-##' @method plot RiskMap_prediction
 ##' @export
 ##' @importFrom grid unit
-plot.RiskMap_prediction <- function(
+plot_prediction <- function(
     x,
     quantity = "response",
     summaries = NULL,
@@ -100,9 +103,8 @@ plot.RiskMap_prediction <- function(
     north_arrow = FALSE,
     scale_bar = FALSE,
     ...) {
-  if (!inherits(x, "RiskMap_prediction")) {
-    abort_input("{.arg x} must be a {.cls RiskMap_prediction} object, not {.obj_type_friendly {x}}.", arg = "x")
-  }
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_prediction", "plot_prediction", "predict")
   # `summary` is not a prefix of `summaries`, so the old name would reach the
   # fill scale through `...`.
   if ("summary" %in% names(match.call(expand.dots = FALSE)$...)) {
@@ -168,7 +170,7 @@ plot.RiskMap_prediction <- function(
   }
   if (length(maps) > 1L) {
     maps <- lapply(maps, function(map) {
-      plot.RiskMap_prediction(
+      plot_prediction(
         x, quantity = map$quantity, summaries = map$summaries,
         spatial_scale = spatial_scale, aggregate = aggregate,
         thresholds = map$thresholds, palette = palette, limits = limits,
@@ -281,6 +283,11 @@ plot.RiskMap_prediction <- function(
   if (scale_bar) map <- map + ggspatial::annotation_scale(location = "bl")
   map
 }
+
+##' @rdname plot_prediction
+##' @method plot RiskMap_prediction
+##' @export
+plot.RiskMap_prediction <- function(x, ...) plot_prediction(x, ...)
 
 ##' Print a RiskMap prediction
 ##'

@@ -170,6 +170,6 @@ plot(checked, which = "profile")
 }
 }
 \seealso{
-\code{\link[=summary.RiskMap_check]{summary.RiskMap_check()}}, \code{\link[=plot.RiskMap_check]{plot.RiskMap_check()}},
-\code{\link[=summary.RiskMap]{summary.RiskMap()}}, \code{\link[=profile.RiskMap]{profile.RiskMap()}}
+\code{\link[=summary.RiskMap_check]{summary.RiskMap_check()}}, \code{\link[=plot_check]{plot_check()}}, which \code{plot()} of the
+result also calls, \code{\link[=summary.RiskMap]{summary.RiskMap()}} and \code{\link[=profile.RiskMap]{profile.RiskMap()}}.
 }

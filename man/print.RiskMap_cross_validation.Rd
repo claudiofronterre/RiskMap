@@ -21,6 +21,6 @@ Print method for objects of class
 It gives the models, the test sets, how the parameters were set and the
 scores of each model over all test observations.
 \code{\link{summary.RiskMap_cross_validation}} gives the scores of each
-test set, and \code{\link{plot.RiskMap_cross_validation}} maps the scores
+test set, and \code{\link[=plot_cross_validation]{plot_cross_validation()}} maps the scores
 at the test locations or draws the calibration curve.
 }

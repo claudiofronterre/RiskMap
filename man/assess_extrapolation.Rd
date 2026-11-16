@@ -61,7 +61,7 @@ unexplained by the data, \eqn{v(x)}.}
 Rows with missing covariates have missing indicators. The attribute
 \code{spatial_threshold} holds the threshold used, and \code{covariate_ranges} the
 range of each covariate in the data. Map the result with
-\code{\link[=plot.RiskMap_extrapolation]{plot.RiskMap_extrapolation()}}.
+\code{\link[=plot_extrapolation]{plot_extrapolation()}}, or \code{plot()}, which does the same.
 }
 \description{
 Computes, for each prediction location, indicators of whether a prediction
@@ -142,5 +142,5 @@ extrapolation
 table(extrapolation$extrapolation)
 }
 \seealso{
-\code{\link[=plot.RiskMap_extrapolation]{plot.RiskMap_extrapolation()}}, \code{\link[=predict.RiskMap]{predict.RiskMap()}}
+\code{\link[=plot_extrapolation]{plot_extrapolation()}}, \code{\link[=predict.RiskMap]{predict.RiskMap()}}
 }

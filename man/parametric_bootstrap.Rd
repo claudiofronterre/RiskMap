@@ -129,6 +129,6 @@ Efron, B. and Tibshirani, R. J. (1993). \emph{An Introduction to the
 Bootstrap}. Chapman & Hall, New York.
 }
 \seealso{
-\code{\link[=simulate_glgpm]{simulate_glgpm()}}, \code{\link[=profile.RiskMap]{profile.RiskMap()}},
-\code{\link[=plot.RiskMap_bootstrap]{plot.RiskMap_bootstrap()}}
+\code{\link[=simulate_glgpm]{simulate_glgpm()}}, \code{\link[=profile.RiskMap]{profile.RiskMap()}}, and
+\code{\link[=plot_bootstrap]{plot_bootstrap()}}, which \code{plot()} of the result also calls.
 }

@@ -219,7 +219,7 @@ tabulate_maxima_check <- function(check, units) {
 ##'   `checks` table, the `results` of the default and extra checks in the
 ##'   order of the table, the `stages` table with the column `largest_move`,
 ##'   and the `draws`, `fit_seconds` and `not_computed` of `object`.
-##' @seealso [check_fit()], [plot.RiskMap_check()]
+##' @seealso [check_fit()], [plot_check()]
 ##' @examples
 ##' data(italy_sim)
 ##'

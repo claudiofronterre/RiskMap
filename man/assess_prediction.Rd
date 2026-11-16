@@ -143,8 +143,9 @@ and the diagonal (Giorgi \emph{et al.} 2026).
 Cross-validation can be performed using either spatial clustering, regularized
 subsampling with a minimum inter-point distance or a user-defined test set.
 For each fold or subset, models can be refitted or evaluated with fixed
-parameters, offering flexibility in model validation. \link[=plot.RiskMap_cross_validation]{plot()} of the
-result maps the scores and draws the calibration curves.
+parameters, offering flexibility in model validation.
+\code{\link[=plot_cross_validation]{plot_cross_validation()}}, or \code{plot()} of the result, maps the scores and
+draws the calibration curves.
 }
 \details{
 Every score is a loss, so lower values are better. The CRPS is in the
@@ -245,6 +246,6 @@ tropical disease prevalence. \emph{Journal of the Royal Statistical Society Seri
 A: Statistics in Society}.\doi{10.1093/jrsssa/qnag100}.
 }
 \seealso{
-\code{\link[=plot.RiskMap_cross_validation]{plot.RiskMap_cross_validation()}},
-\code{\link[=summary.RiskMap_cross_validation]{summary.RiskMap_cross_validation()}}
+\code{\link[=plot_cross_validation]{plot_cross_validation()}}, which \code{plot()} of the result also
+calls, and \code{\link[=summary.RiskMap_cross_validation]{summary.RiskMap_cross_validation()}}.
 }

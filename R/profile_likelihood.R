@@ -9,7 +9,7 @@
 ##' the Monte Carlo likelihood is evaluated on one fixed bank of `n_draws`
 ##' standard normal draws with the importance distribution anchored at the
 ##' estimate, so the profiles are smooth functions of the parameters. Use
-##' [plot.RiskMap_profile()] to draw them.
+##' [plot_profile()] to draw them.
 ##'
 ##' The likelihood of a Gaussian model is exact, so there is no bank of draws
 ##' and `n_draws` and `seed` are not used. For each value of the covariance
@@ -122,7 +122,7 @@
 ##' profiles
 ##' plot(profiles)
 ##' }
-##' @seealso [plot.RiskMap_profile()]
+##' @seealso [plot_profile()], which `plot()` of the result also calls.
 ##' @importFrom stats profile
 ##' @export
 profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),

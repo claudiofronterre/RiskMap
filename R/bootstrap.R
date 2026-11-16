@@ -88,8 +88,8 @@
 ##' Efron, B. and Tibshirani, R. J. (1993). *An Introduction to the
 ##' Bootstrap*. Chapman & Hall, New York.
 ##'
-##' @seealso [simulate_glgpm()], [profile.RiskMap()],
-##'   [plot.RiskMap_bootstrap()]
+##' @seealso [simulate_glgpm()], [profile.RiskMap()], and
+##'   [plot_bootstrap()], which `plot()` of the result also calls.
 ##'
 ##' @examples
 ##' data(italy_sim)
@@ -471,9 +471,9 @@ format_bootstrap_summary <- function(x) {
 ##' Draws a histogram of the bootstrap estimates of each parameter, with the
 ##' estimate, the percentile interval and the bias-corrected interval (see
 ##' [parametric_bootstrap()]). Every parameter is shown on its natural axis,
-##' unless `log_scale = TRUE`.
+##' unless `log_scale = TRUE`. `plot()` of the result does the same.
 ##'
-##' @param x A `RiskMap_bootstrap` object from [parametric_bootstrap()].
+##' @param x The result of [parametric_bootstrap()].
 ##' @param parameters Names of the parameters to draw, as in the columns of
 ##'   `x$estimates`. The default is all of them.
 ##' @param bins Number of bins of each histogram.
@@ -481,17 +481,29 @@ format_bootstrap_summary <- function(x) {
 ##'   a logarithmic axis, which spreads out bootstrap estimates near zero.
 ##'   Estimates at zero are then left out. The regression coefficients stay
 ##'   on their natural axis.
-##' @param ... Not used, and an error if given, so that a misspelt argument
-##'   is not ignored.
+##' @param ... For `plot()`, the arguments of `plot_bootstrap()`. For
+##'   `plot_bootstrap()`, not used, and an error if given, so that a misspelt
+##'   argument is not ignored.
 ##' @return A `ggplot` object for one parameter, or a `patchwork` object
 ##'   combining one `ggplot` per parameter. Nothing is drawn until the object
 ##'   is printed.
 ##' @seealso [parametric_bootstrap()]
-##' @method plot RiskMap_bootstrap
+##' @examples
+##' data(italy_sim)
+##' fit <- glgpm(y ~ gp(), data = italy_sim[1:50, ], family = "gaussian",
+##'              messages = FALSE)
+##' bootstrap <- parametric_bootstrap(fit, n_sim = 10, seed = 1,
+##'                                   messages = FALSE)
+##' plot_bootstrap(bootstrap, parameters = c("sigma2", "phi"),
+##'                log_scale = TRUE)
+##' # The same histograms
+##' plot(bootstrap, parameters = c("sigma2", "phi"), log_scale = TRUE)
 ##' @export
-plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30,
-                                   log_scale = FALSE, ...) {
-  check_class(x, "RiskMap_bootstrap")
+plot_bootstrap <- function(x, parameters = NULL, bins = 30, log_scale = FALSE,
+                           ...) {
+  check_supplied(x)
+  check_plot_object(x, "RiskMap_bootstrap", "plot_bootstrap",
+                    "parametric_bootstrap")
   check_dots_unused(...)
   parameters <- parameters %||% names(x$estimate)
   unknown <- setdiff(parameters, names(x$estimate))
@@ -513,6 +525,11 @@ plot.RiskMap_bootstrap <- function(x, parameters = NULL, bins = 30,
     patchwork::plot_layout(guides = "collect") &
     ggplot2::theme(legend.position = "bottom")
 }
+
+##' @rdname plot_bootstrap
+##' @method plot RiskMap_bootstrap
+##' @export
+plot.RiskMap_bootstrap <- function(x, ...) plot_bootstrap(x, ...)
 
 ##' Histogram of the bootstrap estimates of one parameter
 ##' @noRd

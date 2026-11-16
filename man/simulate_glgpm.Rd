@@ -93,3 +93,7 @@ simulated_data(sim, simulation = 1)
 
 simulated_values(sim, component = "spatial_effect")
 }
+\seealso{
+\code{\link[=simulated_data]{simulated_data()}}, \code{\link[=simulated_values]{simulated_values()}}, and \code{\link[=plot_simulation]{plot_simulation()}},
+which \code{plot()} of the result also calls.
+}

@@ -79,7 +79,7 @@ certified Monte Carlo maximum likelihood. For a binomial, Poisson or negative bi
 the Monte Carlo likelihood is evaluated on one fixed bank of \code{n_draws}
 standard normal draws with the importance distribution anchored at the
 estimate, so the profiles are smooth functions of the parameters. Use
-\code{\link[=plot.RiskMap_profile]{plot.RiskMap_profile()}} to draw them.
+\code{\link[=plot_profile]{plot_profile()}} to draw them.
 }
 \details{
 The likelihood of a Gaussian model is exact, so there is no bank of draws
@@ -160,5 +160,5 @@ plot(profiles)
 }
 }
 \seealso{
-\code{\link[=plot.RiskMap_profile]{plot.RiskMap_profile()}}
+\code{\link[=plot_profile]{plot_profile()}}, which \code{plot()} of the result also calls.
 }

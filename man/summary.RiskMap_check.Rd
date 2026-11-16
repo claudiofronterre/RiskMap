@@ -43,5 +43,5 @@ fit <- glgpm(
 summary(check_fit(fit))
 }
 \seealso{
-\code{\link[=check_fit]{check_fit()}}, \code{\link[=plot.RiskMap_check]{plot.RiskMap_check()}}
+\code{\link[=check_fit]{check_fit()}}, \code{\link[=plot_check]{plot_check()}}
 }
