@@ -1789,6 +1789,8 @@ instead of six minutes. They all still run when `NOT_CRAN=true`, as on CI. The
 examples of `check_fit()`, `summarise_mcmc()` and `plot_mcmc()` leave
 `\donttest{}`, since they run in under two seconds. The examples that stay in
 `\donttest{}`, which `--as-cran` runs too, use 10 simulations in the binomial
-`parametric_bootstrap()` instead of 100, and `plot_check()` checks the radius
-with a short profile of the scale instead of every extra check. Each example
-outside `\donttest{}` runs in under about two seconds.
+`parametric_bootstrap()` instead of 100, `plot_check()` checks the radius
+with a short profile of the scale instead of every extra check, the binomial
+example of `profile()` profiles the scale alone, and the joint profiles of
+`profile()` and `plot_profile()` use a grid of 7 by 7. Each example outside
+`\donttest{}` runs in under about two seconds.

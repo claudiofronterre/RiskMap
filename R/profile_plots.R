@@ -46,7 +46,7 @@
 ##' data(galicia)
 ##' fit <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
 ##'              family = "gaussian", distance_units = "km", messages = FALSE)
-##' profiles <- profile(fit, pairs = list(c("sigma2", "phi")),
+##' profiles <- profile(fit, pairs = list(c("sigma2", "phi")), n_grid = 7,
 ##'                     messages = FALSE)
 ##' plot_profile(profiles)
 ##' plot_profile(profiles, parameters = "phi", pairs = character(),
