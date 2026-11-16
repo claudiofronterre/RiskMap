@@ -55,28 +55,35 @@ variables:
 
 - EVI:
 
-  Enhanced Vegetation Index, indicating vegetation density.
+  Enhanced vegetation index from MODIS (about 500 m), the mean over
+  2015, without units, which indicates the density of vegetation.
 
 - Temperature:
 
-  Average temperature in degrees Celsius.
+  Daytime land surface temperature from MODIS (band `LST_Day_1km`, about
+  1 km), the mean over 2015, in degrees Celsius.
 
 - Precipitation:
 
-  Total precipitation in millimeters.
+  Total precipitation over 2015 from CHIRPS (about 5 km), in
+  millimetres. Missing for 2 clusters.
 
 - Population:
 
-  Population density in the area (in thousands).
+  Population density from WorldPop at a resolution of 3 arc-seconds
+  (about 100 m), in people per grid cell of about a hectare, which is
+  about one hundredth of the density in people per square kilometre.
 
 - ITN:
 
   Percentage of households with at least one insecticide-treated net
-  (ITN).
+  (ITN), from a modelled surface whose source is not recorded.
 
 - NTL:
 
-  Nighttime light intensity, indicating urbanization and infrastructure.
+  Night-time light from the VIIRS Day/Night Band monthly composites
+  (about 500 m), the mean radiance over 2015, in nanowatts per square
+  centimetre per steradian.
 
 - Urban.Rural:
 
@@ -100,6 +107,10 @@ Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ.
 disease prevalence mapping in low-resource settings: to explain and to
 predict. J. R. Soc. Interface 18: 20210104.
 [doi:10.1098/rsif.2021.0104](https://doi.org/10.1098/rsif.2021.0104)
+
+The covariates come from MODIS (EVI and land surface temperature), the
+VIIRS Day/Night Band (night-time light), CHIRPS (precipitation) and
+WorldPop (population density), at the coordinates of the clusters.
 
 ## Details
 

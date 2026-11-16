@@ -1,6 +1,6 @@
 # River-blindness in Liberia
 
-Counts of reported onchocerciasis (or riverblindess) cases from 90
+Counts of reported onchocerciasis (or river blindness) cases from 90
 villages sampled across Liberia.
 
 ## Usage

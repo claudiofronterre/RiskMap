@@ -81,22 +81,22 @@ The data includes geographical, demographic, environmental, and health-related v
 <dd><p>Method used for malaria diagnosis (e.g., Rapid Diagnostic Test (RDT)).</p></dd>
 
 <dt>EVI</dt>
-<dd><p>Enhanced Vegetation Index, indicating vegetation density.</p></dd>
+<dd><p>Enhanced vegetation index from MODIS (about 500 m), the mean over 2015, without units, which indicates the density of vegetation.</p></dd>
 
 <dt>Temperature</dt>
-<dd><p>Average temperature in degrees Celsius.</p></dd>
+<dd><p>Daytime land surface temperature from MODIS (band <code>LST_Day_1km</code>, about 1 km), the mean over 2015, in degrees Celsius.</p></dd>
 
 <dt>Precipitation</dt>
-<dd><p>Total precipitation in millimeters.</p></dd>
+<dd><p>Total precipitation over 2015 from CHIRPS (about 5 km), in millimetres. Missing for 2 clusters.</p></dd>
 
 <dt>Population</dt>
-<dd><p>Population density in the area (in thousands).</p></dd>
+<dd><p>Population density from WorldPop at a resolution of 3 arc-seconds (about 100 m), in people per grid cell of about a hectare, which is about one hundredth of the density in people per square kilometre.</p></dd>
 
 <dt>ITN</dt>
-<dd><p>Percentage of households with at least one insecticide-treated net (ITN).</p></dd>
+<dd><p>Percentage of households with at least one insecticide-treated net (ITN), from a modelled surface whose source is not recorded.</p></dd>
 
 <dt>NTL</dt>
-<dd><p>Nighttime light intensity, indicating urbanization and infrastructure.</p></dd>
+<dd><p>Night-time light from the VIIRS Day/Night Band monthly composites (about 500 m), the mean radiance over 2015, in nanowatts per square centimetre per steradian.</p></dd>
 
 <dt>Urban.Rural</dt>
 <dd><p>Indicator of whether the area is urban ('U') or rural ('R').</p></dd>
@@ -116,6 +116,9 @@ Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ. (2021)
 Model building and assessment of the impact of covariates for disease prevalence
 mapping in low-resource settings: to explain and to predict.
 J. R. Soc. Interface 18: 20210104. <a href="https://doi.org/10.1098/rsif.2021.0104" class="external-link">doi:10.1098/rsif.2021.0104</a></p>
+<p>The covariates come from MODIS (EVI and land surface temperature), the
+VIIRS Day/Night Band (night-time light), CHIRPS (precipitation) and
+WorldPop (population density), at the coordinates of the clusters.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
