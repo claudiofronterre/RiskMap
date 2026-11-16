@@ -2295,20 +2295,28 @@ test_that("a correction that reaches a bound is not certified", {
     D = survey$D, y = survey$y, units_m = survey$trials,
     distances = survey$distances, family = "binomial"
   )
+  corrected <- FALSE
   local_mocked_bindings(
     correct_and_certify = function(engine, penalty, estimate, ...) {
+      corrected <<- TRUE
       list(estimate = replace(estimate, 1L, -30), certified = TRUE,
            certificate = 1e-5, first_validation = list(seconds = 0),
            second_validation = list(seconds = 0, score = numeric(5),
                                     log_likelihood = 0))
     }
   )
+  # The spatial variance fitted to these data is close to zero. Its index, as
+  # glgpm() passes it, holds the variance and the scale at the boundary, so the
+  # observed information of the other parameters can be factorised on every
+  # platform and the stage reaches the correction.
   fit <- fit_adaptive_mcml(
     engine, start = c(-1, 0.5, 0, log(0.5), log(0.2)), initial_budget = 500,
     validation_budget = 500, seed = 5, lower = c(-30, -30, -30, -20, -20),
-    upper = c(30, 30, 30, 20, 10), coefficient_index = 1:3
+    upper = c(30, 30, 30, 20, 10), variance_index = 4L,
+    linked_index = list(`4` = 5L), coefficient_index = 1:3
   )
 
+  expect_true(corrected)
   expect_identical(fit$outcome, "no maximum")
   expect_false(fit$certified)
   expect_identical(fit$certificate, NA_real_)
