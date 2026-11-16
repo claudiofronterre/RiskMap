@@ -76,7 +76,6 @@ Science*, 7(4), 473-483.
 ## Examples
 
 ``` r
-# \donttest{
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
@@ -98,5 +97,4 @@ head(ess[order(ess$ess), ], 5)
 #> 3 S         25 1301.
 #> 4 S         84 1319.
 #> 5 S         57 1326.
-# }
 ```

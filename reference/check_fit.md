@@ -238,7 +238,6 @@ check_fit(fit)
 #> 
 #> ℹ `summary()` of these checks gives the evidence behind each finding.
 #> ℹ These checks concern the computation, not whether the model suits the data.
-# \donttest{
 checked <- check_fit(fit, extra = "profile")
 #> ℹ Computing the profiles of the 3 covariance parameters.
 checked
@@ -334,6 +333,4 @@ summary(checked)
 #> 
 #> ℹ These checks concern the computation, not whether the model suits the data.
 plot(checked, which = "profile")
-
-# }
 ```

@@ -74,7 +74,6 @@ thinning, the samples are numbered in order.
 ## Examples
 
 ``` r
-# \donttest{
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
@@ -83,6 +82,4 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 plot_mcmc(fit)
 
 plot_mcmc(fit, check_mean = FALSE, locations = c(10, 20))
-
-# }
 ```

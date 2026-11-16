@@ -173,28 +173,30 @@ simulates from a fit.
 data(italy_sim)
 fit <- glgpm(y ~ gp(), data = italy_sim[1:50, ], family = "gaussian",
              messages = FALSE)
-bootstrap <- parametric_bootstrap(fit, n_sim = 20, seed = 1,
+bootstrap <- parametric_bootstrap(fit, n_sim = 10, seed = 1,
                                   messages = FALSE)
 bootstrap
 #> ── Parametric bootstrap ────────────────────────────────────────────────────────
-#> Linear geostatistical model, 20 replicates (seed 1). Variances and the scale
+#> Linear geostatistical model, 10 replicates (seed 1). Variances and the scale
 #> are on their natural scale.
 #> 
 #> Bootstrap distribution
-#>                 Parameter Estimate Median    Bias Std. error Below
-#>               (Intercept)    9.986  9.994 0.02918      0.658  0.45
-#>      Spatial process var.    2.554  1.741 -0.7039       1.32  0.75
-#>  Spatial corr. scale (km)    44.47  8.181   4.548      84.27  0.70
-#>    Measurement error var.   0.2188  0.234 0.01184    0.05112  0.35
+#>                 Parameter Estimate Median     Bias Std. error Below
+#>               (Intercept)    9.986  10.04  0.06578     0.6331  0.50
+#>      Spatial process var.    2.554  1.443   -1.216     0.6673  1.00
+#>  Spatial corr. scale (km)    44.47  8.181    8.355      105.9  0.80
+#>    Measurement error var.   0.2188 0.2093 -0.01434     0.0374  0.50
 #> ℹ Bias is the mean of the bootstrap estimates minus the estimate, and Below the
 #>   proportion of them below the estimate.
 #> 
 #> 95% intervals, percentile and bias-corrected (BC)
 #>                 Parameter Percentile lower Percentile upper BC lower BC upper
-#>               (Intercept)            8.986            11.31    8.903    11.06
-#>      Spatial process var.           0.2634             4.69   0.9904    5.058
-#>  Spatial corr. scale (km)            2.712            272.2    2.998    341.4
-#>    Measurement error var.           0.1599           0.3199    0.159   0.2935
+#>               (Intercept)            8.982             10.9    8.982     10.9
+#>      Spatial process var.           0.3294             2.23       NA       NA
+#>  Spatial corr. scale (km)            2.809            286.1    3.457    344.9
+#>    Measurement error var.           0.1593           0.2499   0.1593   0.2499
+#> ℹ NA means that every bootstrap estimate is on one side of the estimate, so the
+#>   BC interval is not available.
 
 # \donttest{
 data(liberia)
@@ -205,29 +207,30 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 #> ℹ The model is fitted in EPSG:32629, with distances in km.
 #> ✔ Certified. The Monte Carlo error of the estimate is within 0.0091 statistical
 #>   standard errors (an approximate 95% bound, tolerance 0.1).
-bootstrap <- parametric_bootstrap(fit, n_sim = 100, seed = 2026)
-#> ℹ Simulating and refitting 100 replicates.
-#> ✔ Done in 2 minutes. 100 of 100 refits succeeded.
+# Ten simulations keep the example short. An analysis needs many more.
+bootstrap <- parametric_bootstrap(fit, n_sim = 10, seed = 2026)
+#> ℹ Simulating and refitting 10 replicates.
+#> ✔ Done in 14 seconds. 10 of 10 refits succeeded.
 summary(bootstrap)
 #> ── Parametric bootstrap ────────────────────────────────────────────────────────
-#> Binomial geostatistical model, 100 replicates (seed 2026). Variances and the
+#> Binomial geostatistical model, 10 replicates (seed 2026). Variances and the
 #> scale are on their natural scale.
 #> 
 #> Bootstrap distribution
-#>                 Parameter Estimate  Median      Bias Std. error Below
-#>               (Intercept)   -3.196  -3.164  -0.01584      0.379  0.47
-#>            log(elevation)   0.3375  0.3317  0.003452    0.07406  0.54
-#>      Spatial process var.  0.08825 0.07013 -0.007931    0.03844  0.65
-#>  Spatial corr. scale (km)    45.67   34.06    -8.778      25.36  0.78
+#>                 Parameter Estimate  Median     Bias Std. error Below
+#>               (Intercept)   -3.196  -3.052  0.08698     0.2914  0.30
+#>            log(elevation)   0.3375  0.3135 -0.01789    0.05728  0.80
+#>      Spatial process var.  0.08825 0.09345 0.006961     0.0455  0.40
+#>  Spatial corr. scale (km)    45.67   42.09    3.081      24.98  0.60
 #> ℹ Bias is the mean of the bootstrap estimates minus the estimate, and Below the
 #>   proportion of them below the estimate.
 #> 
 #> 95% intervals, percentile and bias-corrected (BC)
 #>                 Parameter Percentile lower Percentile upper BC lower BC upper
-#>               (Intercept)           -3.864           -2.386   -3.975   -2.531
-#>            log(elevation)           0.1929           0.4728   0.2024   0.5116
-#>      Spatial process var.          0.02343           0.1654  0.04143   0.1972
-#>  Spatial corr. scale (km)           0.2235            95.72    26.44    134.9
+#>               (Intercept)            -3.57            -2.69   -3.578   -2.901
+#>            log(elevation)           0.2481           0.4226   0.3021    0.429
+#>      Spatial process var.          0.03496           0.1661  0.03205   0.1632
+#>  Spatial corr. scale (km)            20.32            93.91    22.38    95.55
 plot(bootstrap)
 
 # }

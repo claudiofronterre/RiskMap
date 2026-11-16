@@ -95,10 +95,12 @@ fit <- glgpm(
   npos ~ log_elevation + gp(kappa = 0.5), denominator = ntest,
   data = liberia, distance_crs = 32629, family = "binomial", messages = FALSE
 )
-checked <- check_fit(fit, extra = "all")
-#> ℹ Computing the profiles of the 2 covariance parameters and the predictions of
-#>   how often the radius of the bound is too small, which should take about 26
-#>   seconds, from the 1 second the fit took.
+# A short profile of the scale keeps the example quick
+profiles <- profile(fit, parameters = "phi", n_points = 7, n_draws = 1000,
+                    seed = 1, messages = FALSE)
+checked <- check_fit(fit, extra = "radius", profile = profiles)
+#> ℹ Computing the predictions of how often the radius of the bound is too small,
+#>   which should take about 3 seconds, from the 1 second the fit took.
 plot_check(checked)
 
 plot_check(checked,

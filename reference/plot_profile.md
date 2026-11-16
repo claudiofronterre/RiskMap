@@ -89,7 +89,7 @@ and on the relative log-likelihood it is \\-\chi^2\_{1, 1 - \alpha}/2\\
 data(galicia)
 fit <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
              family = "gaussian", distance_units = "km", messages = FALSE)
-profiles <- profile(fit, pairs = list(c("sigma2", "phi")),
+profiles <- profile(fit, pairs = list(c("sigma2", "phi")), n_grid = 7,
                     messages = FALSE)
 plot_profile(profiles)
 

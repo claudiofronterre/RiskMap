@@ -205,7 +205,7 @@ gives bootstrap intervals.
 data(galicia)
 fit <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
              family = "gaussian", distance_units = "km", messages = FALSE)
-profiles <- profile(fit, pairs = list(c("sigma2", "phi")))
+profiles <- profile(fit, pairs = list(c("sigma2", "phi")), n_grid = 7)
 #> ℹ Profiling 4 parameters and 1 pair.
 profiles
 #> ── Profile likelihood ──────────────────────────────────────────────────────────
@@ -232,20 +232,19 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 #> ℹ The model is fitted in EPSG:32629, with distances in km.
 #> ✔ Certified. The Monte Carlo error of the estimate is within 0.0091 statistical
 #>   standard errors (an approximate 95% bound, tolerance 0.1).
-profiles <- profile(fit, parameters = c("sigma2", "phi"),
-                    pairs = list(c("sigma2", "phi")), n_grid = 9,
-                    n_draws = 2000, seed = 1)
-#> ℹ Re-maximising the likelihood on a bank of 2000 draws.
-#> ℹ Profiling 2 parameters and 1 pair.
+# A short profile of the scale keeps the example quick
+profiles <- profile(fit, parameters = "phi", n_points = 7, n_draws = 1000,
+                    seed = 1)
+#> ℹ Re-maximising the likelihood on a bank of 1000 draws.
+#> ℹ Profiling 1 parameter.
 profiles
 #> ── Profile likelihood ──────────────────────────────────────────────────────────
-#> The likelihood is approximated with 2,000 Monte Carlo draws. The intervals are
+#> The likelihood is approximated with 1,000 Monte Carlo draws. The intervals are
 #> 95% intervals, with the variances and the scale on their natural scale.
 #> 
 #>                                   Profile interval    Wald interval
 #>                Parameter Estimate    Lower    Upper    Lower    Upper
-#>     Spatial process var.  0.08825  0.03027   0.3271  0.03512   0.2218
-#> Spatial corr. scale (km)    45.67    16.53    285.7    14.96    139.4
+#> Spatial corr. scale (km)    45.67    16.37    285.7    14.96    139.4
 plot(profiles)
 
 # }
