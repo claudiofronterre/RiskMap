@@ -20,7 +20,8 @@ will confirm the change by email.
   `Shield.h`). On clang-asan and clang-ubsan the dependency terra could not be
   installed in R-hub's containers, so RiskMap was not checked there.
 - R 4.1.3 on Ubuntu 20.04 (rocker/geospatial), for the version of R in
-  `Depends`. OLDR.
+  `Depends`, with the full test suite. Deriv's current version needs R 4.5.0,
+  so Deriv 4.1.6 from the CRAN archive was used there.
 
 ## R CMD check results
 
