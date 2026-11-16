@@ -1280,9 +1280,11 @@ test_that("Gaussian block conditioning matches direct multivariate conditioning"
     solve(observation_covariance)
   expect_equal(block_mean,
                as.numeric(direct_target_gain %*% residual), tolerance = 1e-9)
+  # Older versions of Matrix add dimnames, so only the values are compared.
   expect_equal(
     block_covariance,
-    target_covariance - direct_target_gain %*% t(target_to_observation),
+    unname(target_covariance -
+             direct_target_gain %*% t(target_to_observation)),
     tolerance = 1e-9
   )
 })
