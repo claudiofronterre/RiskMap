@@ -938,6 +938,24 @@ test_that("simulation objects print briefly", {
   expect_output(print(model), "phi +2 km")
 })
 
+test_that("a negative binomial model for simulation prints its size", {
+  model <- specify_glgpm(
+    y ~ cov + gp(nugget = TRUE), poisson_data, family = negative_binomial(),
+    denominator = denominator,
+    parameters = list(beta = c(0.1, 0.2), sigma2 = 1, phi = 2, tau2 = 0.2,
+                      theta = 3)
+  )
+  expect_snapshot(print(model))
+  expect_output(print(simulate_glgpm(model, nsim = 1, seed = 1)), "theta +3")
+  # Simulations from a fit have the size of the fit.
+  fit <- glgpm(y ~ cov + gp(), data = poisson_data,
+               family = negative_binomial(), denominator = denominator,
+               fixed_pars = list(beta = c(0.1, 0.2), sigma2 = 1, phi = 2,
+                                 theta = 2),
+               messages = FALSE)
+  expect_output(print(simulate_glgpm(fit, nsim = 1, seed = 1)), "theta +2")
+})
+
 test_that("simulated surfaces can be plotted with fixed colour limits", {
   sim <- simulate_glgpm(gaussian_intercept_model, nsim = 1, what = "surface",
                         prediction_grid = grid, seed = 1)
