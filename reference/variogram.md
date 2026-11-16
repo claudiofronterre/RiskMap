@@ -149,6 +149,13 @@ probability that the variogram leaves the envelope anywhere across the
 lag distances. The envelope is intended as an exploratory diagnostic
 rather than a formal hypothesis test.
 
+## See also
+
+[`plot_variogram()`](https://claudiofronterre.github.io/RiskMap/reference/plot_variogram.md),
+which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
+result also calls, and
+[`print.RiskMap_variogram()`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_variogram.md).
+
 ## Examples
 
 ``` r

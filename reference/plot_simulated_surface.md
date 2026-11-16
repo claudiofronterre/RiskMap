@@ -1,21 +1,31 @@
-# Plot Method for RiskMap_simulated_surface Objects
+# Map a simulated surface
 
 Maps one component of a surface extracted with
 [`simulated_surface()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_data.md)
 over its prediction grid, by default the mean.
+[`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the surface
+does the same.
 
 ## Usage
 
 ``` r
+plot_simulated_surface(
+  x,
+  quantity = "mean",
+  palette = NULL,
+  limits = NULL,
+  ...
+)
+
 # S3 method for class 'RiskMap_simulated_surface'
-plot(x, quantity = "mean", palette = NULL, limits = NULL, ...)
+plot(x, ...)
 ```
 
 ## Arguments
 
 - x:
 
-  Output from
+  The result of
   [`simulated_surface()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_data.md).
 
 - quantity:
@@ -32,7 +42,7 @@ plot(x, quantity = "mean", palette = NULL, limits = NULL, ...)
 - palette:
 
   Colour palette. `NULL` selects the defaults of
-  [`plot.RiskMap_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_prediction.md),
+  [`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md),
   a calm-to-alarm sequential palette for the mean and a palette centred
   at zero for the linear predictor and the effects. A character vector
   of colours or the name of an HCL palette accepted by
@@ -48,10 +58,13 @@ plot(x, quantity = "mean", palette = NULL, limits = NULL, ...)
 
 - ...:
 
-  Additional arguments passed to the ggplot2 fill scale, for example
-  `transform = "sqrt"` for skewed values. The map sets `colours`,
-  `limits`, `breaks`, `labels`, `oob`, `na.value` and `guide` itself. To
-  change them, add another fill scale to the map with `+`.
+  For [`plot()`](https://rdrr.io/r/graphics/plot.default.html), the
+  arguments of `plot_simulated_surface()`. For
+  `plot_simulated_surface()`, arguments passed to the ggplot2 fill
+  scale, for example `transform = "sqrt"` for skewed values. The map
+  sets `colours`, `limits`, `breaks`, `labels`, `oob`, `na.value` and
+  `guide` itself. To change them, add another fill scale to the map with
+  `+`.
 
 ## Value
 
@@ -60,11 +73,28 @@ A `ggplot` object.
 ## Details
 
 The colours and the legend follow
-[`plot.RiskMap_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_prediction.md),
+[`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md),
 and the legend title names the mapped component. The returned object can
 be modified further with standard ggplot2 functions.
 
 ## See also
 
 [`simulated_surface()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_data.md),
-[`plot.RiskMap_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_simulation.md)
+[`plot_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulation.md)
+
+## Examples
+
+``` r
+data(italy_sim)
+example_data <- italy_sim[1:50, ]
+fit <- glgpm(y ~ gp(), data = example_data, family = "gaussian",
+             messages = FALSE)
+grid <- create_grid(create_convex_hull(example_data), spacing = 20)
+simulation <- simulate_glgpm(fit, nsim = 2, what = c("data", "surface"),
+                             prediction_grid = grid, seed = 1)
+surface <- simulated_surface(simulation, simulation = 2)
+plot_simulated_surface(surface, quantity = "spatial_effect")
+
+# The same map
+plot(surface, quantity = "spatial_effect")
+```

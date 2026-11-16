@@ -191,6 +191,9 @@ Look at the data and their spatial correlation before fitting a model.
   : Empirical variogram with a global permutation envelope
 - [`print(`*`<RiskMap_variogram>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_variogram.md)
   : Print Method for RiskMap_variogram Objects
+- [`plot_variogram()`](https://claudiofronterre.github.io/RiskMap/reference/plot_variogram.md)
+  [`plot(`*`<RiskMap_variogram>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_variogram.md)
+  : Plot an empirical variogram
 
 ## Specifying and fitting
 
@@ -270,12 +273,18 @@ bootstrap.
   : Summarise the Checks on a Fitted Model
 - [`print(`*`<summary.RiskMap_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap_check.md)
   : Print the Summary of the Checks on a Fitted Model
+- [`plot_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md)
+  [`plot(`*`<RiskMap_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md)
+  : Plot the Checks on a Fitted Model
 - [`plot_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/plot_mcmc.md)
   : Check the mixing of the MCMC samples of the random effects
 - [`summarise_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/summarise_mcmc.md)
   : Effective sample sizes of the MCMC samples of the random effects
 - [`profile(`*`<RiskMap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md)
   : Profile likelihood of a fitted geostatistical model
+- [`plot_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md)
+  [`plot(`*`<RiskMap_profile>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md)
+  : Plot profile likelihoods of a fitted geostatistical model
 - [`parametric_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/parametric_bootstrap.md)
   : Parametric bootstrap of a fitted geostatistical model
 - [`print(`*`<RiskMap_bootstrap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_bootstrap.md)
@@ -283,6 +292,9 @@ bootstrap.
   : Print a parametric bootstrap
 - [`summary(`*`<RiskMap_bootstrap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_bootstrap.md)
   : Summarise a parametric bootstrap
+- [`plot_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/plot_bootstrap.md)
+  [`plot(`*`<RiskMap_bootstrap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_bootstrap.md)
+  : Plot a parametric bootstrap
 
 ## Prediction
 
@@ -293,11 +305,17 @@ scale of the response, at new locations or aggregated over areas.
   : Spatial prediction from a fitted RiskMap model
 - [`print(`*`<RiskMap_prediction>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_prediction.md)
   : Print a RiskMap prediction
+- [`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md)
+  [`plot(`*`<RiskMap_prediction>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md)
+  : Map a RiskMap prediction
 - [`to_table(`*`<RiskMap_prediction>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/to_table.RiskMap_prediction.md)
   : Table of polygon predictions
 - [`assess_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.md)
   [`print(`*`<RiskMap_extrapolation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/assess_extrapolation.md)
   : Assess where predictions extrapolate beyond the data
+- [`plot_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_extrapolation.md)
+  [`plot(`*`<RiskMap_extrapolation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_extrapolation.md)
+  : Map indicators of extrapolation
 
 ## Assessment
 
@@ -312,6 +330,9 @@ and on simulated data.
   : Summarize Cross-Validation Scores for Spatial RiskMap Models
 - [`print(`*`<summary.RiskMap_cross_validation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.summary.RiskMap_cross_validation.md)
   : Print Summary of RiskMap Spatial Cross-Validation Scores
+- [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
+  [`plot(`*`<RiskMap_cross_validation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md)
+  : Plot a cross-validation
 - [`assess_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/assess_simulation.md)
   : Assess Simulations
 - [`print(`*`<RiskMap_assess_simulation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_assess_simulation.md)
@@ -338,29 +359,12 @@ surfaces from it.
 - [`print(`*`<RiskMap_simulation_model>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_simulation_model.md)
   [`print(`*`<RiskMap_simulation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/print.RiskMap_simulation_model.md)
   : Print a simulation model or simulations
-
-## Plots
-
-Plot methods for the objects that RiskMap returns.
-
-- [`plot(`*`<RiskMap_variogram>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_variogram.md)
-  : Plot Method for RiskMap_variogram Objects
-- [`plot(`*`<RiskMap_check>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_check.md)
-  : Plot the Checks on a Fitted Model
-- [`plot(`*`<RiskMap_profile>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_profile.md)
-  : Plot profile likelihoods of a fitted geostatistical model
-- [`plot(`*`<RiskMap_bootstrap>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_bootstrap.md)
-  : Plot a parametric bootstrap
-- [`plot(`*`<RiskMap_prediction>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_prediction.md)
-  : Plot a RiskMap prediction
-- [`plot(`*`<RiskMap_extrapolation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_extrapolation.md)
-  : Map indicators of extrapolation
-- [`plot(`*`<RiskMap_cross_validation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_cross_validation.md)
-  : Plot Method for RiskMap_cross_validation Objects
-- [`plot(`*`<RiskMap_simulation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_simulation.md)
-  : Plot Method for RiskMap_simulation Objects
-- [`plot(`*`<RiskMap_simulated_surface>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_simulated_surface.md)
-  : Plot Method for RiskMap_simulated_surface Objects
+- [`plot_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulation.md)
+  [`plot(`*`<RiskMap_simulation>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulation.md)
+  : Map a simulation
+- [`plot_simulated_surface()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulated_surface.md)
+  [`plot(`*`<RiskMap_simulated_surface>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulated_surface.md)
+  : Map a simulated surface
 
 ## Datasets
 

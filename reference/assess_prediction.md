@@ -20,8 +20,9 @@ regularized subsampling with a minimum inter-point distance or a
 user-defined test set. For each fold or subset, models can be refitted
 or evaluated with fixed parameters, offering flexibility in model
 validation.
-[plot()](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_cross_validation.md)
-of the result maps the scores and draws the calibration curves.
+[`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md),
+or [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
+result, maps the scores and draws the calibration curves.
 
 ## Usage
 
@@ -254,8 +255,10 @@ Society*.[doi:10.1093/jrsssa/qnag100](https://doi.org/10.1093/jrsssa/qnag100)
 
 ## See also
 
-[`plot.RiskMap_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_cross_validation.md),
-[`summary.RiskMap_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md)
+[`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md),
+which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
+result also calls, and
+[`summary.RiskMap_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_cross_validation.md).
 
 ## Examples
 

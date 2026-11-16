@@ -11,7 +11,7 @@ Poisson or negative binomial model the Monte Carlo likelihood is
 evaluated on one fixed bank of `n_draws` standard normal draws with the
 importance distribution anchored at the estimate, so the profiles are
 smooth functions of the parameters. Use
-[`plot.RiskMap_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_profile.md)
+[`plot_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md)
 to draw them.
 
 ## Usage
@@ -175,7 +175,9 @@ With `messages = TRUE` a progress bar shows the time left (see
 
 ## See also
 
-[`plot.RiskMap_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_profile.md)
+[`plot_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md),
+which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
+result also calls.
 
 ## Examples
 

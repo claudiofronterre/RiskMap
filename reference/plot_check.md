@@ -1,9 +1,10 @@
 # Plot the Checks on a Fitted Model
 
-Plot method for objects of class `"RiskMap_check"` from
-[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
-It makes the figures of the checks that were computed, and never
-computes anything itself, so an extra check runs once in
+Plots the checks of a fit from
+[`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md),
+as [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
+result does. It makes the figures of the checks that were computed, and
+never computes anything itself, so an extra check runs once in
 [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
 By stage of certified Monte Carlo maximum likelihood, the panels show
 the bound on the Monte Carlo error against the tolerance
@@ -42,15 +43,18 @@ likelihood, named `"profile_"` followed by the parameter, such as
 ## Usage
 
 ``` r
+plot_check(x, which = NULL, ...)
+
 # S3 method for class 'RiskMap_check'
-plot(x, which = NULL, ...)
+plot(x, ...)
 ```
 
 ## Arguments
 
 - x:
 
-  An object of class `"RiskMap_check"`.
+  The result of
+  [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md).
 
 - which:
 
@@ -61,14 +65,14 @@ plot(x, which = NULL, ...)
   every panel that has something to show. A chosen panel with nothing to
   show gives a message saying why, and which extra check of
   [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md)
-  would compute it. If no panel has anything to show,
-  [`plot()`](https://rdrr.io/r/graphics/plot.default.html) stops with
-  those messages.
+  would compute it. If no panel has anything to show, `plot_check()`
+  stops with those messages.
 
 - ...:
 
-  Not used, and an error if given, so that a misspelt argument is not
-  ignored.
+  For [`plot()`](https://rdrr.io/r/graphics/plot.default.html), the
+  arguments of `plot_check()`. For `plot_check()`, not used, and an
+  error if given, so that a misspelt argument is not ignored.
 
 ## Value
 
@@ -93,11 +97,15 @@ fit <- glgpm(
 )
 checked <- check_fit(fit, extra = "all")
 #> ℹ Computing the profiles of the 2 covariance parameters and the predictions of
-#>   how often the radius of the bound is too small, which should take about 32
+#>   how often the radius of the bound is too small, which should take about 30
 #>   seconds, from the 1 second the fit took.
-plot(checked)
+plot_check(checked)
 
-plot(checked, which = c("certificate", "screen", "radius", "profile_phi"))
+plot_check(checked,
+           which = c("certificate", "screen", "radius", "profile_phi"))
+
+# The same panels
+plot(checked)
 
 # }
 ```

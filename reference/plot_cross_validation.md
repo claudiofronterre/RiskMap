@@ -1,18 +1,18 @@
-# Plot Method for RiskMap_cross_validation Objects
+# Plot a cross-validation
 
-Draws one metric of a `RiskMap_cross_validation` object returned by
-[`assess_prediction`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md):
-a map of the CRPS or SCRPS at the test locations, or the calibration
-curve (`"PIT"`), the average nonrandomized PIT (AnPIT) curve for
-discrete families or the empirical distribution function of the PIT
+Draws one metric of a cross-validation by
+[`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md),
+as [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
+result does: a map of the CRPS or SCRPS at the test locations, or the
+calibration curve (`"PIT"`), the average nonrandomized PIT (AnPIT) curve
+for discrete families or the empirical distribution function of the PIT
 values for Gaussian models. Several models are panels of one plot that
 share one colour scale.
 
 ## Usage
 
 ``` r
-# S3 method for class 'RiskMap_cross_validation'
-plot(
+plot_cross_validation(
   x,
   metric = NULL,
   model = NULL,
@@ -21,13 +21,17 @@ plot(
   combine_pit = FALSE,
   ...
 )
+
+# S3 method for class 'RiskMap_cross_validation'
+plot(x, ...)
 ```
 
 ## Arguments
 
 - x:
 
-  A `RiskMap_cross_validation` object.
+  The result of
+  [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md).
 
 - metric:
 
@@ -62,7 +66,9 @@ plot(
 
 - ...:
 
-  Not used, and an error if given, so that a misspelt argument is not
+  For [`plot()`](https://rdrr.io/r/graphics/plot.default.html), the
+  arguments of `plot_cross_validation()`. For `plot_cross_validation()`,
+  not used, and an error if given, so that a misspelt argument is not
   ignored. Add ggplot2 components to the plot with `+`.
 
 ## Value
@@ -82,4 +88,21 @@ together, from which `PIT_area` is computed (see
 
 ## See also
 
-[`assess_prediction`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
+[`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md)
+
+## Examples
+
+``` r
+data(italy_sim)
+fit <- glgpm(y ~ gp(), data = italy_sim[1:100, ], family = "gaussian",
+             messages = FALSE)
+cross_validation <- assess_prediction(list(fit), method = "user",
+                                      user_split = list(1:50, 51:100),
+                                      seed = 1, messages = FALSE)
+plot_cross_validation(cross_validation)
+
+plot_cross_validation(cross_validation, metric = "CRPS")
+
+# The same calibration curve
+plot(cross_validation)
+```

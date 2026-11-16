@@ -75,16 +75,16 @@
 <code>plot_AnPIT()</code>, <code>plot_score()</code>
 </td>
 <td>
-<code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code><a href="../reference/assess_prediction.html">assess_prediction()</a></code> results</td>
+<code><a href="../reference/plot_cross_validation.html">plot_cross_validation()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code><a href="../reference/assess_prediction.html">assess_prediction()</a></code> results</td>
 </tr><tr><td><code>plot_mda()</code></td>
 <td>Removed, to move with <code>dast()</code>
 </td>
 </tr><tr><td><code>plot_s_variogram()</code></td>
 <td>
-<code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code><a href="../reference/variogram.html">variogram()</a></code> results</td>
+<code><a href="../reference/plot_variogram.html">plot_variogram()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code><a href="../reference/variogram.html">variogram()</a></code> results</td>
 </tr><tr><td><code>plot_sim_surf()</code></td>
 <td>
-<code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code> results</td>
+<code><a href="../reference/plot_simulation.html">plot_simulation()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code> results</td>
 </tr><tr><td>
 <code>pred_over_grid()</code>, <code>pred_target_grid()</code>
 </td>
@@ -126,6 +126,7 @@
 <code><a href="../reference/check_fit.html">check_fit()</a></code> reports how a fit was computed and flags anything that needs attention. <code><a href="https://rdrr.io/r/stats/profile.html" class="external-link">profile()</a></code> gives profile likelihoods and <code><a href="../reference/parametric_bootstrap.html">parametric_bootstrap()</a></code> bootstrap intervals for the parameters.</li>
 <li>
 <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of a profile returns one plot instead of the list of its panels, and draws nothing, as every <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> method now does. <code><a href="https://rdrr.io/r/stats/profile.html" class="external-link">profile()</a></code>, <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> and <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of profiles and extrapolations, and <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code>, <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> and <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of bootstraps and checks stop on an argument they don’t use.</li>
+<li>Every <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> method has a function of its own, <code><a href="../reference/plot_variogram.html">plot_variogram()</a></code>, <code><a href="../reference/plot_prediction.html">plot_prediction()</a></code>, <code><a href="../reference/plot_extrapolation.html">plot_extrapolation()</a></code>, <code><a href="../reference/plot_check.html">plot_check()</a></code>, <code><a href="../reference/plot_profile.html">plot_profile()</a></code>, <code><a href="../reference/plot_bootstrap.html">plot_bootstrap()</a></code>, <code><a href="../reference/plot_cross_validation.html">plot_cross_validation()</a></code>, <code><a href="../reference/plot_simulation.html">plot_simulation()</a></code> and <code><a href="../reference/plot_simulated_surface.html">plot_simulated_surface()</a></code>, so users can call either.</li>
 </ul></div>
 <div class="section level4">
 <h4 id="prediction-2-0-0">Prediction<a class="anchor" aria-label="anchor" href="#prediction-2-0-0"></a></h4>

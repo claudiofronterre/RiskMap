@@ -82,12 +82,12 @@ itself. Probabilities, including prevalence averaged over a polygon and
 exceedance probabilities, are shown as percentages. Sums are shown to
 three significant digits with thousands separators. The default headers
 name the quantity as in the maps drawn by
-[`plot.RiskMap_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_prediction.md).
+[`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md).
 
 ## See also
 
 [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md),
-[`plot.RiskMap_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_prediction.md)
+[`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md)
 
 ## Examples
 

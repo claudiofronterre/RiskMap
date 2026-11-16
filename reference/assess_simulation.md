@@ -92,7 +92,7 @@ assess_simulation(
 
   A numeric vector of at least three increasing class boundaries for
   classification, as in
-  [`plot.RiskMap_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_prediction.md).
+  [`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md).
   Required if `objective` includes `"classify"`.
 
 - control_mcmc:

@@ -95,7 +95,9 @@ geometry of `newdata` and the columns
 Rows with missing covariates have missing indicators. The attribute
 `spatial_threshold` holds the threshold used, and `covariate_ranges` the
 range of each covariate in the data. Map the result with
-[`plot.RiskMap_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_extrapolation.md).
+[`plot_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_extrapolation.md),
+or [`plot()`](https://rdrr.io/r/graphics/plot.default.html), which does
+the same.
 
 ## Details
 
@@ -164,7 +166,7 @@ conditions.
 
 ## See also
 
-[`plot.RiskMap_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_extrapolation.md),
+[`plot_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_extrapolation.md),
 [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md)
 
 ## Examples

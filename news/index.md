@@ -24,10 +24,10 @@ the main changes follow.
 | `matern.hessian.phi()` | Removed, now internal |
 | `matern_cor()` | [`matern_correlation()`](https://claudiofronterre.github.io/RiskMap/reference/matern_correlation.md) |
 | `maxim.integrand()` | Removed, now internal |
-| `plot_AnPIT()`, `plot_score()` | [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md) results |
+| `plot_AnPIT()`, `plot_score()` | [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md), or [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of [`assess_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/assess_prediction.md) results |
 | `plot_mda()` | Removed, to move with `dast()` |
-| `plot_s_variogram()` | [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md) results |
-| `plot_sim_surf()` | [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of [`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md) results |
+| `plot_s_variogram()` | [`plot_variogram()`](https://claudiofronterre.github.io/RiskMap/reference/plot_variogram.md), or [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of [`variogram()`](https://claudiofronterre.github.io/RiskMap/reference/variogram.md) results |
+| `plot_sim_surf()` | [`plot_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulation.md), or [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of [`simulate_glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/simulate_glgpm.md) results |
 | `pred_over_grid()`, `pred_target_grid()` | [`predict()`](https://rdrr.io/r/stats/predict.html) |
 | `pred_target_shp()` | [`predict()`](https://rdrr.io/r/stats/predict.html) with `boundaries` |
 | `propose_utm()` | [`propose_crs()`](https://claudiofronterre.github.io/RiskMap/reference/propose_crs.md) |
@@ -113,6 +113,19 @@ the main changes follow.
   [`summary()`](https://rdrr.io/r/base/summary.html) and
   [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of bootstraps
   and checks stop on an argument they don’t use.
+- Every [`plot()`](https://rdrr.io/r/graphics/plot.default.html) method
+  has a function of its own,
+  [`plot_variogram()`](https://claudiofronterre.github.io/RiskMap/reference/plot_variogram.md),
+  [`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md),
+  [`plot_extrapolation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_extrapolation.md),
+  [`plot_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md),
+  [`plot_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md),
+  [`plot_bootstrap()`](https://claudiofronterre.github.io/RiskMap/reference/plot_bootstrap.md),
+  [`plot_cross_validation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_cross_validation.md),
+  [`plot_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulation.md)
+  and
+  [`plot_simulated_surface()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulated_surface.md),
+  so users can call either.
 
 #### Prediction
 

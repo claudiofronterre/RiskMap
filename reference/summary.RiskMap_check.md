@@ -41,7 +41,7 @@ table, the `stages` table with the column `largest_move`, and the
 ## See also
 
 [`check_fit()`](https://claudiofronterre.github.io/RiskMap/reference/check_fit.md),
-[`plot.RiskMap_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_check.md)
+[`plot_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md)
 
 ## Examples
 

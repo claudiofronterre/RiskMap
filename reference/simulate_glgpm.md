@@ -90,6 +90,15 @@ message reporting the conversion. Exact joint simulation uses a dense
 covariance matrix, so memory grows quadratically with the number of
 unique locations.
 
+## See also
+
+[`simulated_data()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_data.md),
+[`simulated_values()`](https://claudiofronterre.github.io/RiskMap/reference/simulated_values.md),
+and
+[`plot_simulation()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulation.md),
+which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
+result also calls.
+
 ## Examples
 
 ``` r

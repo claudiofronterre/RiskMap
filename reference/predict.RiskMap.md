@@ -393,9 +393,13 @@ is not the same as the standardised `response_*` quantity.
 
 ## See also
 
+[`plot_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/plot_prediction.md),
+which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
+result also calls,
+[`to_table.RiskMap_prediction()`](https://claudiofronterre.github.io/RiskMap/reference/to_table.RiskMap_prediction.md),
 [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md),
-[`fitted()`](https://rdrr.io/r/stats/fitted.values.html),
-[`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md)
+[`fitted()`](https://rdrr.io/r/stats/fitted.values.html) and
+[`set_control_mcmc()`](https://claudiofronterre.github.io/RiskMap/reference/set_control_mcmc.md).
 
 ## Examples
 

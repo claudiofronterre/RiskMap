@@ -1,14 +1,15 @@
-# Plot a RiskMap prediction
+# Map a RiskMap prediction
 
 Draws a publication-ready map from the location-level or polygon-level
 output returned by
 [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md).
+[`plot()`](https://rdrr.io/r/graphics/plot.default.html) of a prediction
+does the same.
 
 ## Usage
 
 ``` r
-# S3 method for class 'RiskMap_prediction'
-plot(
+plot_prediction(
   x,
   quantity = "response",
   summaries = NULL,
@@ -22,13 +23,17 @@ plot(
   scale_bar = FALSE,
   ...
 )
+
+# S3 method for class 'RiskMap_prediction'
+plot(x, ...)
 ```
 
 ## Arguments
 
 - x:
 
-  A `RiskMap_prediction` object.
+  The result of
+  [`predict.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/predict.RiskMap.md).
 
 - quantity:
 
@@ -114,8 +119,10 @@ plot(
 
 - ...:
 
-  Additional arguments passed to the ggplot2 fill scale, for example
-  `transform = "sqrt"` for skewed values.
+  For [`plot()`](https://rdrr.io/r/graphics/plot.default.html), the
+  arguments of `plot_prediction()`. For `plot_prediction()`, arguments
+  passed to the ggplot2 fill scale, for example `transform = "sqrt"` for
+  skewed values.
 
 ## Value
 
@@ -159,9 +166,12 @@ prediction <- predict(fit, newdata = example_data, boundaries = areas,
                       aggregate = "mean", messages = FALSE)
 #> Warning: The conditional prediction covariance of 2 of 2 blocks needed a diagonal
 #> jitter, of up to 1e-12, to be factorised.
-plot(prediction)
+plot_prediction(prediction)
 
-plot(prediction, spatial_scale = "both")
+plot_prediction(prediction, spatial_scale = "both")
 #> Warning: Removed 50 rows containing missing values or values outside the scale range
 #> (`geom_sf()`).
+
+# The same map
+plot(prediction)
 ```

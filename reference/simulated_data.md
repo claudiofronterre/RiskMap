@@ -31,7 +31,14 @@ replaced by the selected simulation, ready for refitting.
 `simulated_surface()` returns the grid `sf` data with columns for the
 spatial effect, nugget, group effect, linear predictor and mean, with
 class `RiskMap_simulated_surface` so that it can be mapped with
-[plot()](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_simulated_surface.md).
+[`plot_simulated_surface()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulated_surface.md)
+or [`plot()`](https://rdrr.io/r/graphics/plot.default.html).
+
+## See also
+
+[`plot_simulated_surface()`](https://claudiofronterre.github.io/RiskMap/reference/plot_simulated_surface.md),
+which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of a
+surface also calls.
 
 ## Examples
 

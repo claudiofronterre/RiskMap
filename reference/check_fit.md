@@ -207,9 +207,12 @@ not computed, and the printed checks say why.
 ## See also
 
 [`summary.RiskMap_check()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap_check.md),
-[`plot.RiskMap_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot.RiskMap_check.md),
-[`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md),
-[`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md)
+[`plot_check()`](https://claudiofronterre.github.io/RiskMap/reference/plot_check.md),
+which [`plot()`](https://rdrr.io/r/graphics/plot.default.html) of the
+result also calls,
+[`summary.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/summary.RiskMap.md)
+and
+[`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md).
 
 ## Examples
 
