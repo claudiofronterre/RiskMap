@@ -4,35 +4,9 @@ The record of every change made while RiskMap 2.0.0 was developed, for the
 people working on the package. `NEWS.md` has the summary for users. A change
 that users will notice gets one line in `NEWS.md` and its details here.
 
-- This version introduces many breaking changes from v1. The package should not
-be considered stable, but further breaking changes will be handled gracefully.
-- Test coverage has been increased from 0 to 92 %.
-- All functions have examples
-- Many functions have been renamed or removed:
-
-| v1 | v2 | 
-|----------|----------|
-| `assess_pp` |  `assess_prediction` |
-| `assess_sim` | `assess_simulation` |
-| `check_mcmc` | `plot_mcmc` |
-| `compute_ID_coords` | Removed; the replacement is internal |
-| `convex_hull_sf` | `create_convex_hull` |
-| `propose_utm` | `propose_crs` (chooses the CRS by its distortion of distances) |
-| `dast()` | Removed; will be replaced in a separate package |
-| `glgpm_sim` | `simulate_glgpm` |
-| `Laplace_sampling_MCMC` | Removed; the replacement is internal |
-| `matern.grad.phi` | Removed; the replacement is internal |
-| `matern.hessian.phi` | Removed; the replacement is internal |
-| `matern_cor` | `matern_correlation` |
-| `maxim.integrand` | Removed; the replacement is internal |
-| `plot_score` / `plot_AnPIT` | `plot_cross_validation`, which `plot()` of a cross-validation also calls |
-| `plot_s_variogram` | `plot_variogram`, which `plot()` of a variogram also calls |
-| `pred_over_grid` | `predict` |
-| `pred_target_grid` | `predict` |
-| `pred_target_shp` | `predict` with `boundaries` |
-| `set_control_sim` | `set_control_mcmc` |
-| `surf_sim` | `simulate_glgpm` |
-| `s_variogram` | `variogram` |
+- This version introduces many breaking changes from 1.0.0, and keeps no
+function of 1.0.0 as a stub. The table of the functions of 1.0.0 and their
+replacements is in `NEWS.md`. Every exported function has an example.
 
 ## Errors, warnings and messages
 
@@ -1739,7 +1713,6 @@ checked.
 - In `plot.RiskMap_cross_validation()`, the calibration-curve arguments `mode`,
   `test_set` and `combine_panels` are now `pit_mode`, `pit_test_set` and
   `combine_pit`.
-- Test coverage has been increased from 0 to 85 %.
 - ggspatial and jsonlite move from Imports to Suggests, which leaves 20
 packages in Imports. `plot()` of predictions calls
 `rlang::check_installed("ggspatial")` when `north_arrow` or `scale_bar` is
