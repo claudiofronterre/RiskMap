@@ -111,13 +111,16 @@ scale are shown on a logarithmic axis.</p>
 
 
 <dt id="arg-parameters">parameters<a class="anchor" aria-label="anchor" href="#arg-parameters"></a></dt>
-<dd><p>Names of the marginal profiles to draw. The default is
-all of them.</p></dd>
+<dd><p>Names of the marginal profiles to draw, as in
+<code><a href="profile.RiskMap.html">profile.RiskMap()</a></code>, where the prefix <code>beta.</code> can be left out. The
+default is all of them.</p></dd>
 
 
 <dt id="arg-pairs">pairs<a class="anchor" aria-label="anchor" href="#arg-pairs"></a></dt>
-<dd><p>Names of the joint profiles to draw, as <code>"first:second"</code>. The
-default is all of them.</p></dd>
+<dd><p>The joint profiles to draw, given as in <code><a href="profile.RiskMap.html">profile.RiskMap()</a></code>,
+each by two names, as in <code>list(c("sigma2", "phi"))</code>, or by one name
+<code>"first:second"</code>, as in <code>"sigma2:phi"</code>, with the parameters in the order
+given to <code><a href="profile.RiskMap.html">profile.RiskMap()</a></code>. The default is all of them.</p></dd>
 
 
 <dt id="arg-scale">scale<a class="anchor" aria-label="anchor" href="#arg-scale"></a></dt>

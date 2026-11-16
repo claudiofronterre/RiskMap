@@ -43,12 +43,19 @@ plot(x, ...)
 
 - parameters:
 
-  Names of the marginal profiles to draw. The default is all of them.
+  Names of the marginal profiles to draw, as in
+  [`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md),
+  where the prefix `beta.` can be left out. The default is all of them.
 
 - pairs:
 
-  Names of the joint profiles to draw, as `"first:second"`. The default
-  is all of them.
+  The joint profiles to draw, given as in
+  [`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md),
+  each by two names, as in `list(c("sigma2", "phi"))`, or by one name
+  `"first:second"`, as in `"sigma2:phi"`, with the parameters in the
+  order given to
+  [`profile.RiskMap()`](https://claudiofronterre.github.io/RiskMap/reference/profile.RiskMap.md).
+  The default is all of them.
 
 - scale:
 

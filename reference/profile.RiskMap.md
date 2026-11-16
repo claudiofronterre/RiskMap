@@ -56,8 +56,12 @@ print(x, ...)
 
 - pairs:
 
-  A list of pairs of parameter names for joint profiles, for example
-  `list(c("sigma2", "phi"))`. The default is none.
+  The pairs of parameters for joint profiles, named as in `parameters`.
+  Each pair is two names, as in `list(c("sigma2", "phi"))`, or one name
+  `"first:second"`, as in `"sigma2:phi"`, and the joint profiles of the
+  result are named in that way.
+  [`plot_profile()`](https://claudiofronterre.github.io/RiskMap/reference/plot_profile.md)
+  takes pairs in either form too. The default is none.
 
 - n_points:
 

@@ -110,8 +110,11 @@ every estimated parameter.</p></dd>
 
 
 <dt id="arg-pairs">pairs<a class="anchor" aria-label="anchor" href="#arg-pairs"></a></dt>
-<dd><p>A list of pairs of parameter names for joint profiles, for
-example <code>list(c("sigma2", "phi"))</code>. The default is none.</p></dd>
+<dd><p>The pairs of parameters for joint profiles, named as in
+<code>parameters</code>. Each pair is two names, as in <code>list(c("sigma2", "phi"))</code>,
+or one name <code>"first:second"</code>, as in <code>"sigma2:phi"</code>, and the joint
+profiles of the result are named in that way. <code><a href="plot_profile.html">plot_profile()</a></code> takes
+pairs in either form too. The default is none.</p></dd>
 
 
 <dt id="arg-n-points">n_points<a class="anchor" aria-label="anchor" href="#arg-n-points"></a></dt>
