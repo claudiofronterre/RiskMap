@@ -1677,6 +1677,10 @@ don't use.
   legend. The internal map helpers that only these methods used, with their
   unreachable north arrow and scale bar, are gone.
 
+- The print of a negative binomial model from `specify_glgpm()`, and of
+  simulations from it or from a fit, gives the size `theta` with the other
+  parameters. It was left out.
+
 ## Other
 
 - Argument checks in the compiled MALA, likelihood and distance kernels have
