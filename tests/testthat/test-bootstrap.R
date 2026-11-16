@@ -1,4 +1,5 @@
 test_that("a refit to the observed response is a glgpm() fit from the estimate", {
+  skip_on_cran()
   refit <- make_bootstrap_refit(binomial_model)
   refitted <- suppressWarnings(refit(binomial_model$y, 77L))
   direct <- suppressWarnings(glgpm(
@@ -23,6 +24,7 @@ test_that("a refit to the observed response is a glgpm() fit from the estimate",
 })
 
 test_that("replicates have their own seeds and do not depend on cores", {
+  skip_on_cran()
   set.seed(4)
   caller_state <- .Random.seed
   first <- parametric_bootstrap(gaussian_model, n_sim = 4, seed = 11,
@@ -69,6 +71,7 @@ test_that("without a seed, one is drawn from the session's stream", {
 })
 
 test_that("binomial bootstraps with random effects use separate streams", {
+  skip_on_cran()
   boot <- suppressWarnings(parametric_bootstrap(binomial_model, n_sim = 2,
                                                 seed = 3, messages = FALSE))
   expect_identical(colnames(boot$estimates),

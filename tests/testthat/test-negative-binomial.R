@@ -190,6 +190,7 @@ test_that("the traits of the negative binomial family give its closed forms", {
 })
 
 test_that("a negative binomial fit is the binomial fit of its records", {
+  skip_on_cran()
   data <- negative_binomial_survey(40, 0.5, 2, seed = 34)
   fit <- glgpm(y ~ x + gp(nugget = FALSE), data = data,
                family = negative_binomial(), fixed_pars = list(theta = 2),
@@ -304,6 +305,7 @@ test_that("a negative binomial fit predicts, simulates and refits with its size"
 })
 
 test_that("the integrated form tabulates records whose trials are not whole", {
+  skip_on_cran()
   set.seed(61)
   n <- 80
   coords <- cbind(runif(n, 0, 100), runif(n, 0, 100))
@@ -335,6 +337,7 @@ test_that("the integrated form tabulates records whose trials are not whole", {
 })
 
 test_that("the refits of a negative binomial fit carry its size", {
+  skip_on_cran()
   data <- negative_binomial_survey(30, 0.5, 2, seed = 41)
   fit <- glgpm(y ~ x + gp(nugget = FALSE), data = data,
                family = negative_binomial(), fixed_pars = list(theta = 2),

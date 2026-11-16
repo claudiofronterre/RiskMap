@@ -400,6 +400,7 @@ test_that("predict() records a link other than the canonical one", {
 })
 
 test_that("plot() takes summaries and thresholds as predict() names them", {
+  skip_on_cran()
   points <- st_sf(
     response_mean = c(0.1, 0.4, 0.8),
     response_exceedance_0.2 = c(0.1, 0.55, 0.95),

@@ -1,4 +1,5 @@
 test_that("profiles of a binomial fit have their grids, deviances and intervals", {
+  skip_on_cran()
   profiles <- profile(binomial_model, parameters = c("cov", "sigma2"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
                       n_grid = 3, n_draws = 200, seed = 1, messages = FALSE)
@@ -46,6 +47,7 @@ test_that("profiling restores the random number state", {
 })
 
 test_that("without a seed, profile() draws one from the session and returns it (N7)", {
+  skip_on_cran()
   set.seed(42)
   drawn <- sample.int(.Machine$integer.max, 1L)
   expected <- stats::runif(1)
@@ -162,6 +164,7 @@ profile_without_link <- function(fitted, settings) {
 }
 
 test_that("a profile of a canonical fit is that of an engine given no link", {
+  skip_on_cran()
   settings <- list(parameters = c("cov", "sigma2"), n_points = 5,
                    n_draws = 200, seed = 1, messages = FALSE)
   for (fitted in list(binomial_model, poisson_model)) {
@@ -171,6 +174,7 @@ test_that("a profile of a canonical fit is that of an engine given no link", {
 })
 
 test_that("the profile plot returns one object, draws nothing and has its panels", {
+  skip_on_cran()
   profiles <- profile(binomial_model, parameters = c("sigma2", "phi"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
                       n_grid = 3, n_draws = 200, seed = 1, messages = FALSE)
@@ -360,6 +364,7 @@ test_that("a crossing between distant points is refined", {
 })
 
 test_that("profiles on two cores equal those on one", {
+  skip_on_cran()
   skip_on_os("windows")
   skip_if_not_installed("RhpcBLASctl")
   # The workers use one BLAS thread. The serial profile does too here, since
@@ -576,6 +581,7 @@ test_that("Gaussian profiles have every parameter, with the labels of summary()"
 })
 
 test_that("a Gaussian profile point maximises the likelihood over the rest", {
+  skip_on_cran()
   problem <- make_gaussian_profile_problem(replicated_fit)
   # The likelihood maximised over all the free parameters, the coefficients
   # included, without generalised least squares.

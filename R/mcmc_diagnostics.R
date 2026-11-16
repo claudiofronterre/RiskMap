@@ -40,7 +40,6 @@
 ##'   *Statistical Science*, 7(4), 473-483.
 ##' @seealso [plot_mcmc()]
 ##' @examples
-##' \donttest{
 ##' data(liberia)
 ##' liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 ##' fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
@@ -50,7 +49,6 @@
 ##' # The mean and the five locations with the smallest effective sample size
 ##' ess[1, ]
 ##' head(ess[order(ess$ess), ], 5)
-##' }
 ##' @export
 summarise_mcmc <- function(object) {
   check_supplied(object)
@@ -113,7 +111,6 @@ summarise_mcmc <- function(object) {
 ##'   modified like a `ggplot` object.
 ##' @seealso [summarise_mcmc()], [glgpm()], [set_control_mcmc()]
 ##' @examples
-##' \donttest{
 ##' data(liberia)
 ##' liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 ##' fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
@@ -121,7 +118,6 @@ summarise_mcmc <- function(object) {
 ##'              messages = FALSE)
 ##' plot_mcmc(fit)
 ##' plot_mcmc(fit, check_mean = FALSE, locations = c(10, 20))
-##' }
 ##' @export
 plot_mcmc <- function(object, check_mean = TRUE, locations = NULL, ...) {
   check_supplied(object)

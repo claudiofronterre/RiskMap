@@ -265,6 +265,7 @@ test_that("a location of groups has the slope of its inner variance", {
 })
 
 test_that("groups under a custom link match numerical integration", {
+  skip_on_cran()
   survey <- group_survey()
   links <- list(probit = stats::pnorm,
                 imperfect = function(eta) 0.01 + 0.89 * stats::plogis(eta))

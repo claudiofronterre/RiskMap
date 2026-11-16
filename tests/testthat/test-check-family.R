@@ -41,6 +41,7 @@ test_that("every family and link of the table passes its checks", {
 })
 
 test_that("the checks find a wrong score, curvature, density or simulator", {
+  skip_on_cran()
   terms <- canonical_binomial_terms
   traits <- family_traits
   local_mocked_bindings(canonical_binomial_terms = function(...) {

@@ -47,7 +47,6 @@ is at most \eqn{N \log_{10} N}. A chain that never moves has an effective
 sample size of zero.
 }
 \examples{
-\donttest{
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
@@ -57,7 +56,6 @@ ess <- summarise_mcmc(fit)
 # The mean and the five locations with the smallest effective sample size
 ess[1, ]
 head(ess[order(ess$ess), ], 5)
-}
 }
 \references{
 Geyer, C. J. (1992). Practical Markov chain Monte Carlo.

@@ -73,6 +73,7 @@ test_that("propose_crs handles data across the antimeridian", {
 })
 
 test_that("propose_crs gives a centred projection for a wide region", {
+  skip_on_cran()
   expect_message(crs <- propose_crs(wide_points), "custom",
                  class = "riskmap_message")
   expect_s3_class(crs, "crs")
@@ -276,6 +277,7 @@ test_that("longitude and latitude are projected with the CRS reported", {
 })
 
 test_that("a fit in longitude and latitude says where it is fitted once", {
+  skip_on_cran()
   messages_of <- function(code) {
     texts <- character()
     value <- withCallingHandlers(code, riskmap_message = function(m) {

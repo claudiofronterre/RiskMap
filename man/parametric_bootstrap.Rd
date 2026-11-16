@@ -109,7 +109,7 @@ computed for \eqn{\phi} or \eqn{\log \phi}.
 data(italy_sim)
 fit <- glgpm(y ~ gp(), data = italy_sim[1:50, ], family = "gaussian",
              messages = FALSE)
-bootstrap <- parametric_bootstrap(fit, n_sim = 20, seed = 1,
+bootstrap <- parametric_bootstrap(fit, n_sim = 10, seed = 1,
                                   messages = FALSE)
 bootstrap
 
@@ -119,7 +119,8 @@ liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
              data = liberia, distance_crs = 32629, family = "binomial",
              seed = 2026)
-bootstrap <- parametric_bootstrap(fit, n_sim = 100, seed = 2026)
+# Ten simulations keep the example short. An analysis needs many more.
+bootstrap <- parametric_bootstrap(fit, n_sim = 10, seed = 2026)
 summary(bootstrap)
 plot(bootstrap)
 }

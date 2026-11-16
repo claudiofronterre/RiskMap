@@ -74,6 +74,7 @@ test_that("the slope at the Poisson limit is the derivative in 1 / theta", {
 })
 
 test_that("as the field vanishes the estimated size is the regression's", {
+  skip_on_cran()
   data <- size_survey(80, 0, 1.5, seed = 21)
   regression <- stats::optim(
     c(0, 0, 0),
@@ -103,6 +104,7 @@ test_that("as the field vanishes the estimated size is the regression's", {
 })
 
 test_that("a fit that estimates the size reports, predicts and refits with it", {
+  skip_on_cran()
   data <- size_survey(100, 0.6, 2, seed = 31)
   fit <- glgpm(y ~ x + gp(nugget = FALSE), data = data,
                family = negative_binomial(), denominator = m,
@@ -159,6 +161,7 @@ test_that("an estimated size takes its start from start_pars", {
 })
 
 test_that("the size and a nugget need more than one record per location", {
+  skip_on_cran()
   data <- size_survey(30, 0.5, 2, seed = 8)
   expect_input_error(
     glgpm(y ~ x + gp(nugget = TRUE), data = data,

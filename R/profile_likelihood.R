@@ -112,7 +112,7 @@
 ##' data(galicia)
 ##' fit <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
 ##'              family = "gaussian", distance_units = "km", messages = FALSE)
-##' profiles <- profile(fit, pairs = list(c("sigma2", "phi")))
+##' profiles <- profile(fit, pairs = list(c("sigma2", "phi")), n_grid = 7)
 ##' profiles
 ##' plot(profiles)
 ##'
@@ -121,9 +121,9 @@
 ##' fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
 ##'              data = liberia, distance_crs = 32629, family = "binomial",
 ##'              seed = 2026)
-##' profiles <- profile(fit, parameters = c("sigma2", "phi"),
-##'                     pairs = list(c("sigma2", "phi")), n_grid = 9,
-##'                     n_draws = 2000, seed = 1)
+##' # A short profile of the scale keeps the example quick
+##' profiles <- profile(fit, parameters = "phi", n_points = 7, n_draws = 1000,
+##'                     seed = 1)
 ##' profiles
 ##' plot(profiles)
 ##' }

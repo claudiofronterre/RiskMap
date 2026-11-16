@@ -62,6 +62,7 @@ test_that("nugget_ratio distinguishes estimated and fixed nuggets", {
 })
 
 test_that("a non-Gaussian estimated nugget uses the global proposal", {
+  skip_on_cran()
   set.seed(2029)
   n <- 80L
   denominator <- sample(10:50, n, replace = TRUE)

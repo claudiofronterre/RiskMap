@@ -140,12 +140,10 @@
 ##' )
 ##'
 ##' check_fit(fit)
-##' \donttest{
 ##' checked <- check_fit(fit, extra = "profile")
 ##' checked
 ##' summary(checked)
 ##' plot(checked, which = "profile")
-##' }
 ##' @export
 check_fit <- function(object, extra = character(), profile = NULL,
                       cores = 1L,
@@ -1057,7 +1055,10 @@ format_checks <- function(x) {
 ##'   npos ~ log_elevation + gp(kappa = 0.5), denominator = ntest,
 ##'   data = liberia, distance_crs = 32629, family = "binomial", messages = FALSE
 ##' )
-##' checked <- check_fit(fit, extra = "all")
+##' # A short profile of the scale keeps the example quick
+##' profiles <- profile(fit, parameters = "phi", n_points = 7, n_draws = 1000,
+##'                     seed = 1, messages = FALSE)
+##' checked <- check_fit(fit, extra = "radius", profile = profiles)
 ##' plot_check(checked)
 ##' plot_check(checked,
 ##'            which = c("certificate", "screen", "radius", "profile_phi"))
