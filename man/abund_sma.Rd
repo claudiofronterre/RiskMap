@@ -28,14 +28,15 @@ counties, California, USA). Each row represents a single collection event at a
 specific location and date.
 }
 \details{
-Derived from the \pkg{vectorsurvR} sample datasets by:
+Derived from the \pkg{vectorsurvR} sample datasets in two steps.
 \enumerate{
-\item Filtering to female \emph{Culex pipiens} collection records within the Sacramento
-Metropolitan Area (SMA) using point-in-polygon against the union of Sacramento, Placer,
-and El Dorado county boundaries.
+\item Filtering to female \emph{Culex pipiens} collection records within the
+Sacramento Metropolitan Area (SMA), using point-in-polygon against the
+union of the Sacramento, Placer and El Dorado county boundaries.
 \item Summing counts and trap-nights per unique \emph{location}–\emph{date}–\emph{trap type}.
-\item The coordinate reference system is 4326.
 }
+
+The coordinate reference system is 4326.
 
 This sample dataset is intended for examples, mapping, and vector-index workflows. It is
 not official surveillance output. Dates span the same period as the \pkg{vectorsurvR}

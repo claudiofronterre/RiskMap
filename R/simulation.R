@@ -37,6 +37,8 @@
 #'                                          phi = 2,
 #'                                          sigma2_me = 0.1))
 #'
+#' @seealso [print()][print.RiskMap_simulation_model()] describes the model,
+#'   and [simulate_glgpm()] simulates from it.
 #' @export
 specify_glgpm <- function(formula, data, family, parameters, invlink = NULL,
                           denominator = NULL, distance_crs = NULL,
@@ -191,8 +193,11 @@ specify_glgpm <- function(formula, data, family, parameters, invlink = NULL,
 #' simulated_data(sim, simulation = 1)
 #'
 #' simulated_values(sim, component = "spatial_effect")
-#' @seealso [simulated_data()], [simulated_values()], and [plot_simulation()],
-#'   which `plot()` of the result also calls.
+#' @seealso The methods for simulations are
+#'   [print()][print.RiskMap_simulation()] and [plot_simulation()], which
+#'   `plot()` of the simulations also calls. [simulated_data()],
+#'   [simulated_surface()] and [simulated_values()] extract them, and
+#'   [assess_simulation()] assesses predictions on them.
 #' @export
 simulate_glgpm <- function(object, nsim = 1, what = "data",
                           sample_locations = NULL, prediction_grid = NULL,

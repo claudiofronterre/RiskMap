@@ -904,8 +904,11 @@ NULL
 ##'   `flat` (the name in `unlist(coef(fit))`), `label` (as in
 ##'   [summary.RiskMap()]), `start` (the rule of its automatic start, see
 ##'   [riskmap_parameters]) and `held` (the value at which the model holds the
-##'   parameter, `NA` when it is estimated). Its print shows the template of a
-##'   `start_pars` list.
+##'   parameter, `NA` when it is estimated). Its `print()` method shows the
+##'   template of a `start_pars` list and returns `x` invisibly.
+##' @param x The result of `glgpm_parameters()`.
+##' @param ... Not used, and an error if given, so that a misspelt argument
+##'   is not ignored.
 ##' @seealso [riskmap_parameters], [glgpm()]
 ##' @examples
 ##' data(liberia)
@@ -949,6 +952,7 @@ glgpm_parameters <- function(formula, data, family, fixed_pars = NULL,
   out
 }
 
+##' @rdname glgpm_parameters
 ##' @export
 print.riskmap_parameters <- function(x, ...) {
   rows <- as.data.frame(unclass(x), stringsAsFactors = FALSE)

@@ -30,7 +30,7 @@ so a warning is raised and the variogram is drawn without it.}
 labelled with the number of pairs of locations in its distance class. A
 semivariance estimated from few pairs is unstable, so the labels help to
 judge how much each point can be trusted, and to choose the distance
-classes in \code{\link{variogram}}. By default \code{show_pairs = FALSE}.}
+classes in \code{\link[=variogram]{variogram()}}. By default \code{show_pairs = FALSE}.}
 
 \item{...}{For \code{plot()}, the arguments of \code{plot_variogram()}. For
 \code{plot_variogram()}, not used, and an error if given, so that a misspelt
@@ -55,5 +55,5 @@ plot_variogram(galicia_variogram, show_pairs = TRUE)
 plot(galicia_variogram, show_pairs = TRUE)
 }
 \seealso{
-\code{\link{variogram}}
+\code{\link[=variogram]{variogram()}}
 }

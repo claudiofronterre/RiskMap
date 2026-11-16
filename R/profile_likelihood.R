@@ -95,6 +95,8 @@
 ##' @param messages Logical, whether to report on the profiles, with a
 ##'   progress bar as described in [riskmap_progress].
 ##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
+##' @param x The result of `profile()`, whose `print()` method gives the
+##'   intervals and returns `x` invisibly.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
 ##'   is not ignored.
 ##' @return An object of class `RiskMap_profile`: a list with the marginal
@@ -122,7 +124,10 @@
 ##' profiles
 ##' plot(profiles)
 ##' }
-##' @seealso [plot_profile()], which `plot()` of the result also calls.
+##' @seealso The methods for a profile are `print()`, on this page, and
+##'   [plot_profile()], which `plot()` of the profile also calls.
+##'   [check_fit()] checks the profiles, and [parametric_bootstrap()] gives
+##'   bootstrap intervals.
 ##' @importFrom stats profile
 ##' @export
 profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
@@ -973,6 +978,7 @@ profile_intervals <- function(problem, marginal, level) {
   intervals
 }
 
+##' @rdname profile.RiskMap
 ##' @export
 print.RiskMap_profile <- function(x, ...) {
   check_dots_unused(...)

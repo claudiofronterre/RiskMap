@@ -7,7 +7,7 @@
 \method{coef}{RiskMap}(object, ...)
 }
 \arguments{
-\item{object}{An object of class "RiskMap" obtained as a result of a call to \code{\link{glgpm}}.}
+\item{object}{An object of class "RiskMap" obtained as a result of a call to \code{\link[=glgpm]{glgpm()}}.}
 
 \item{...}{other parameters.}
 }
@@ -26,8 +26,8 @@ The list can be given as \code{start_pars} of \code{\link[=glgpm]{glgpm()}}.
 }
 \description{
 This \code{coef} method for the "RiskMap" class extracts the
-maximum likelihood estimates from model fits obtained from the \code{\link{glgpm}} functions.
+maximum likelihood estimates from model fits obtained from the \code{\link[=glgpm]{glgpm()}} functions.
 }
 \seealso{
-\code{\link{glgpm}}, \link{riskmap_parameters}
+\code{\link[=glgpm]{glgpm()}}, \link{riskmap_parameters}
 }

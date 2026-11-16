@@ -103,7 +103,7 @@
 ##' grid_raster <- create_grid(nc, raster = counts)
 ##'
 ##' @seealso
-##' \code{\link[sf]{st_make_grid}}, \code{\link[sf]{st_intersection}}
+##' [sf::st_make_grid()], [sf::st_intersection()]
 ##'
 ##'
 create_grid <- function(boundaries = NULL,
@@ -341,7 +341,7 @@ create_grid_from_raster <- function(raster, boundaries, spacing,
 ##'
 ##' @details The convex hull is the smallest convex polygon that encloses all points in the input `sf` object. This function computes the convex hull by first uniting all geometries in the input using `st_union()`, and then applying `st_convex_hull()` to obtain the polygonal boundary. The result is returned as an `sf` object containing the convex hull geometry.
 ##'
-##' @seealso \code{\link[sf]{st_convex_hull}}, \code{\link[sf]{st_union}}
+##' @seealso [sf::st_convex_hull()], [sf::st_union()]
 ##'
 ##' @examples
 ##' library(sf)

@@ -289,9 +289,12 @@
 ##' )
 ##' areal_prediction$boundary_summary
 ##'
-##' @seealso [plot_prediction()], which `plot()` of the result also calls,
-##'   [to_table.RiskMap_prediction()], [glgpm()], [fitted()] and
-##'   [set_control_mcmc()].
+##' @seealso The methods for a prediction are
+##'   [print()][print.RiskMap_prediction()],
+##'   [to_table()][to_table.RiskMap_prediction()] and [plot_prediction()],
+##'   which `plot()` of the prediction also calls. [assess_extrapolation()]
+##'   shows where predictions go beyond the data, and
+##'   [fitted()][fitted.RiskMap()] gives the fitted values at the data.
 ##' @method predict RiskMap
 ##' @export
 predict.RiskMap <- function(
@@ -2759,22 +2762,22 @@ expected_pit_area <- function(predictive, discrete, u, n_replicates = 200L) {
 ##' @title Plot Training/Test Splits
 ##'
 ##' @description
-##' Plots every observation used by \code{\link{assess_prediction}}, coloured
+##' Plots every observation used by [assess_prediction()], coloured
 ##' by whether it fell in the training or test set for a given iteration,
 ##' faceted by iteration when there is more than one. Mimics the visual style
-##' of \code{spatialsample::autoplot()} (used directly for
-##' \code{method = "cluster"}), for the \code{"user"} and \code{"regularized"}
+##' of `spatialsample::autoplot()` (used directly for
+##' `method = "cluster"`), for the `"user"` and `"regularized"`
 ##' methods, whose splits aren't necessarily a complete partition of the data
 ##' and so aren't well suited to colouring by fold membership alone.
 ##'
-##' @param data_split A list with a \code{splits} element, each entry itself a
-##' list with an \code{sf} \code{data} (the training set) and an \code{sf}
-##' \code{data_test} (the test set) - the structure built internally by
-##' \code{assess_prediction()} for \code{method = "user"} and
-##' \code{method = "regularized"}.
-##' @param alpha Point transparency, passed to \code{ggplot2::geom_sf()}.
-##' Defaults to \code{0.6}, matching \code{spatialsample::autoplot()}.
-##' @return A \code{ggplot} object.
+##' @param data_split A list with a `splits` element, each entry itself a
+##' list with an `sf` `data` (the training set) and an `sf`
+##' `data_test` (the test set) - the structure built internally by
+##' `assess_prediction()` for `method = "user"` and
+##' `method = "regularized"`.
+##' @param alpha Point transparency, passed to `ggplot2::geom_sf()`.
+##' Defaults to `0.6`, matching `spatialsample::autoplot()`.
+##' @return A `ggplot` object.
 ##' @noRd
 plot_folds <- function(data_split, alpha = 0.6) {
   n_iter <- length(data_split$splits)
@@ -2824,18 +2827,16 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' @param models A list of `RiskMap` objects, each a model fitted with
 ##'   [glgpm()] to the same data. Names of the list name the models in the
 ##'   results.
-##' @param method Character; either `"cluster"`, `"regularized"` or `"user"` for the
-##' cross-validation method:
-##' \describe{
-##'  - The `"cluster"` method uses spatial clustering as implemented
-##' by the \code{spatial_clustering_cv} function from the `spatialsample`
-##' package, which must be installed.
-##'  - The `"regularized"` method selects a subsample of the dataset by imposing a minimum distance,
-##'  set by the `min_dist` argument, for a randomly selected subset of locations using
-##'  the `subsample.distance` function from the `spatialEco` package, which
-##'  must be installed.
-##'  - The `"user"` method takes a user-defined test set defined by `user_split`
-##'  }
+##' @param method The cross-validation method, `"cluster"`, `"regularized"` or
+##'   `"user"`.
+##'   - `"cluster"` makes the test sets by spatial clustering, with
+##'     `spatial_clustering_cv()` of the spatialsample package, which must be
+##'     installed.
+##'   - `"regularized"` selects a subsample of the locations by imposing the
+##'     minimum distance `min_dist` between randomly selected locations, with
+##'     `subsample.distance()` of the spatialEco package, which must be
+##'     installed.
+##'   - `"user"` takes the test sets given in `user_split`.
 ##' @param fold Integer; required when `method = "cluster"` - number of folds for cross-validation.
 ##' @param min_dist Numeric; required when `method = "regularized"`. The
 ##'   minimum distance between the locations of a test set, in the distance
@@ -2843,12 +2844,12 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##'   kilometres for fits in kilometres.
 ##' @param size Integer; the size of the test set, required when `method = "regularized"`.
 ##' @param user_split Required when `method = "user"`. A user-defined cross-validation split. Either:
-##'   * a matrix with \code{nrow = n} (number of observations) and one column
-##'     for each test set, where entries of \code{1} indicate membership in
-##'     the test set and \code{0} in the training set; or
+##'   * a matrix with `nrow = n` (number of observations) and one column
+##'     for each test set, where entries of `1` indicate membership in
+##'     the test set and `0` in the training set; or
 ##'   * a list with one element for each test set, each either a vector of
 ##'     indices of the dataset to use as the test set, or a list with
-##'     components \code{in_id} (training indices) and \code{out_id} (test
+##'     components `in_id` (training indices) and `out_id` (test
 ##'     indices).
 ##' @param iter Integer; number of times to repeat the cross-validation with
 ##'   `method = "cluster"` or `"regularized"`. Defaults to `1`. With
@@ -2938,8 +2939,10 @@ plot_folds <- function(data_split, alpha = 0.6) {
 ##' yet include random effects, so the scores of models with `re()` terms are
 ##' not reliable, and a warning says so.
 ##'
-##' @seealso [plot_cross_validation()], which `plot()` of the result also
-##'   calls, and [summary.RiskMap_cross_validation()].
+##' @seealso The methods for a cross-validation are
+##'   [print()][print.RiskMap_cross_validation()],
+##'   [summary()][summary.RiskMap_cross_validation()], [to_table()] and
+##'   [plot_cross_validation()], which `plot()` of the result also calls.
 ##'
 ##' @references
 ##' Bolin, D., & Wallin, J. (2023). Local scale invariance and robustness of
@@ -3654,7 +3657,7 @@ assess_prediction <- function(models,
 ##'   [plot_simulated_surface()].
 ##' @inheritParams plot_simulated_surface
 ##'
-##' @return A \code{ggplot} object.
+##' @return A `ggplot` object.
 ##' @details
 ##' The colours and the legend follow [plot_prediction()]. The returned
 ##' object can be modified further with standard \pkg{ggplot2} functions.
@@ -3786,7 +3789,7 @@ grid_spacing <- function(coordinates) {
 ##'   `colours`, `limits`, `breaks`, `labels`, `oob`, `na.value` and `guide`
 ##'   itself. To change them, add another fill scale to the map with `+`.
 ##'
-##' @return A \code{ggplot} object.
+##' @return A `ggplot` object.
 ##' @details
 ##' The colours and the legend follow [plot_prediction()], and the
 ##' legend title names the mapped component. The returned object can be
@@ -3993,6 +3996,10 @@ plot.RiskMap_simulated_surface <- function(x, ...) {
 ##'   messages = FALSE
 ##' )
 ##'
+##' @seealso The methods for the result are
+##'   [print()][print.RiskMap_assess_simulation()] and
+##'   [summary()][summary.RiskMap_assess_simulation()]. [specify_glgpm()] and
+##'   [simulate_glgpm()] make the simulations.
 ##' @export
 assess_simulation <- function(simulation,
                               models,

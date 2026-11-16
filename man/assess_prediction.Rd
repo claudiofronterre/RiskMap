@@ -26,19 +26,17 @@ assess_prediction(
 \code{\link[=glgpm]{glgpm()}} to the same data. Names of the list name the models in the
 results.}
 
-\item{method}{Character; either \code{"cluster"}, \code{"regularized"} or \code{"user"} for the
-cross-validation method:
-\describe{
+\item{method}{The cross-validation method, \code{"cluster"}, \code{"regularized"} or
+\code{"user"}.
 \itemize{
-\item The \code{"cluster"} method uses spatial clustering as implemented
-by the \code{spatial_clustering_cv} function from the \code{spatialsample}
-package, which must be installed.
-\item The \code{"regularized"} method selects a subsample of the dataset by imposing a minimum distance,
-set by the \code{min_dist} argument, for a randomly selected subset of locations using
-the \code{subsample.distance} function from the \code{spatialEco} package, which
-must be installed.
-\item The \code{"user"} method takes a user-defined test set defined by \code{user_split}
-}
+\item \code{"cluster"} makes the test sets by spatial clustering, with
+\code{spatial_clustering_cv()} of the spatialsample package, which must be
+installed.
+\item \code{"regularized"} selects a subsample of the locations by imposing the
+minimum distance \code{min_dist} between randomly selected locations, with
+\code{subsample.distance()} of the spatialEco package, which must be
+installed.
+\item \code{"user"} takes the test sets given in \code{user_split}.
 }}
 
 \item{fold}{Integer; required when \code{method = "cluster"} - number of folds for cross-validation.}
@@ -246,6 +244,8 @@ tropical disease prevalence. \emph{Journal of the Royal Statistical Society Seri
 A: Statistics in Society}.\doi{10.1093/jrsssa/qnag100}.
 }
 \seealso{
-\code{\link[=plot_cross_validation]{plot_cross_validation()}}, which \code{plot()} of the result also
-calls, and \code{\link[=summary.RiskMap_cross_validation]{summary.RiskMap_cross_validation()}}.
+The methods for a cross-validation are
+\link[=print.RiskMap_cross_validation]{print()},
+\link[=summary.RiskMap_cross_validation]{summary()}, \code{\link[=to_table]{to_table()}} and
+\code{\link[=plot_cross_validation]{plot_cross_validation()}}, which \code{plot()} of the result also calls.
 }

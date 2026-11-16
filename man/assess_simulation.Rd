@@ -157,3 +157,9 @@ assessment <- assess_simulation(
 )
 
 }
+\seealso{
+The methods for the result are
+\link[=print.RiskMap_assess_simulation]{print()} and
+\link[=summary.RiskMap_assess_simulation]{summary()}. \code{\link[=specify_glgpm]{specify_glgpm()}} and
+\code{\link[=simulate_glgpm]{simulate_glgpm()}} make the simulations.
+}

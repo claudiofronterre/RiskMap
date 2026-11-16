@@ -52,7 +52,7 @@ CRS used distorts distances by more than 1\% over the data.}
 
 \item{distance_units}{Character string, either \code{"km"} or \code{"m"}, indicating whether
 the distances used in the variogram are expressed in kilometers or meters.
-By default \code{distance_units = "km"}, as in \code{\link{glgpm}}.}
+By default \code{distance_units = "km"}, as in \code{\link[=glgpm]{glgpm()}}.}
 
 \item{seed}{an optional non-negative integer seed for the permutations. The
 caller's random-number state is restored before the function returns.}

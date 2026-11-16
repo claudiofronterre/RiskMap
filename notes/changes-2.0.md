@@ -1773,3 +1773,16 @@ in Suggests for the tests of grids with dplyr verbs.
 - gridExtra is no longer imported, since patchwork arranges the panels of
 `plot()` of a profile, which leaves 16 packages in Imports, parallel among
 them.
+- The documentation is written in roxygen's markdown throughout (#54). Rd
+macros such as `\code{}`, `\link{}`, `\emph{}` and `\itemize{}` became
+markdown, links to functions read as `glgpm()`, and links to generics name
+the RiskMap method or the package. The argument `method` of
+`assess_prediction()` no longer wraps its list in `\describe{}`, which broke
+the PDF manual of `R CMD check`.
+- The help page of each function whose result has methods lists them under
+See also (#178), and `print()` of profiles, of `glgpm_parameters()` and of
+`negative_binomial()` is documented on the page of the function that makes the
+object. Custom links, the negative binomial family, the penalties of
+`set_control_mcml(pc_prior = TRUE)`, `crs_distortion()` and the spatial
+indicator of `assess_extrapolation()` are marked experimental in their help
+pages, as parts that may change in a minor release.

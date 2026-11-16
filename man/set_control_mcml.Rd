@@ -101,6 +101,7 @@ nugget is integrated over the groups' integrals. Where every term is
 shared, the location is one group under its nugget.
 \item At any other location the nugget stays sampled.
 }
+
 Every other level stays sampled. That includes the levels of an \code{re()}
 term that span several locations, such as villages or districts with
 several sampled points, and the levels at a location where two \code{re()}
@@ -168,7 +169,8 @@ solutions in small or sparse datasets. It is recommended for small or
 low-prevalence surveys, especially before prediction with
 \code{parameter_uncertainty = TRUE} in \code{\link[=predict.RiskMap]{predict.RiskMap()}}.
 When the spatial variance is large and well identified, the penalty shrinks
-it somewhat towards zero, so the default is \code{FALSE}.}
+it somewhat towards zero, so the default is \code{FALSE}. The penalties and
+their four settings are experimental and may change in a minor release.}
 
 \item{pc_sigma_threshold, pc_sigma_probability}{The penalty sets
 P(sigma > \code{pc_sigma_threshold}) = \code{pc_sigma_probability}, where sigma is the

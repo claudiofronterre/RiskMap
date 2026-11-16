@@ -130,6 +130,7 @@ propose_crs <- function(data, utm_tolerance = 0.005,
 ##'
 ##' @description Measures how much a projected coordinate reference system
 ##' (CRS) stretches or shrinks distances over the region the data cover.
+##' `crs_distortion()` is experimental and may change in a minor release.
 ##'
 ##' @param data An `sf` or `sfc` object of points or polygons, in any CRS.
 ##' @param crs The projected CRS to assess, as an EPSG code, a string or an

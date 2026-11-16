@@ -64,5 +64,5 @@ control_mcmc <- set_control_mcmc(n_draws = 600, burnin = 3000, thin = 20)
 
 }
 \seealso{
-\code{\link{glgpm}}
+\code{\link[=glgpm]{glgpm()}}
 }

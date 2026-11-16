@@ -2,13 +2,20 @@
 % Please edit documentation in R/family.R
 \name{negative_binomial}
 \alias{negative_binomial}
+\alias{print.RiskMap_family}
 \title{The Negative Binomial Family}
 \usage{
 negative_binomial(...)
+
+\method{print}{RiskMap_family}(x, ...)
 }
 \arguments{
-\item{...}{Not used. A size given here stops, since it is held with
-\code{fixed_pars} instead.}
+\item{...}{For \code{negative_binomial()}, not used, and a size given here
+stops, since it is held with \code{fixed_pars} instead. For \code{print()}, not
+used, and an error if given.}
+
+\item{x}{A family from \code{negative_binomial()}, whose \code{print()} method
+describes it and returns \code{x} invisibly.}
 }
 \value{
 An object of class \code{RiskMap_family}.
@@ -21,15 +28,17 @@ random effects has mean \eqn{\mu = m \exp(\eta)}, with the log link,
 and variance \eqn{\mu + \mu^2 / \theta}, as in
 \code{MASS::negative.binomial(theta)}. The size \eqn{\theta} is estimated
 unless \code{fixed_pars = list(theta = )} of \code{\link[=glgpm]{glgpm()}} holds it, and
-\code{\link[=specify_glgpm]{specify_glgpm()}} takes it as \code{theta} in its \code{parameters}.
+\code{\link[=specify_glgpm]{specify_glgpm()}} takes it as \code{theta} in its \code{parameters}. The negative
+binomial family is experimental and may change in a minor release.
 }
 \details{
 The exposure is given in the \code{denominator} of \code{\link[=glgpm]{glgpm()}}, and is 1 for
 every count when it is not given. As \eqn{\theta} grows the model tends
 to the Poisson model with the same mean, and a fit whose size goes to that
 limit holds it there, as a variance estimated as zero is held, and says so
-in \code{\link[=check_fit]{check_fit()}}. A fit that estimates the size reports it in \code{\link[=coef]{coef()}},
-\code{\link[=print]{print()}} and \code{\link[=summary]{summary()}} as \code{theta}. Its start is the size of the
+in \code{\link[=check_fit]{check_fit()}}. A fit that estimates the size reports it in
+\link[=coef.RiskMap]{coef()}, \link[=print.RiskMap]{print()} and
+\link[=summary.RiskMap]{summary()} as \code{theta}. Its start is the size of the
 negative binomial regression without the random effects, or
 \code{start_pars$theta} in \code{\link[=glgpm]{glgpm()}}. With one observation per location, an
 estimated size can't be told apart from a nugget or from a random effect

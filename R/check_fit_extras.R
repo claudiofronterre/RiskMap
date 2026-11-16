@@ -137,9 +137,8 @@ make_extra_check_seed <- function(fit_seed, offset) {
 ##' The covariance parameters of a fit, as `profile.RiskMap()` names them
 ##'
 ##' Every estimated parameter except the regression coefficients, so a fit
-##' without a nugget or random effects has none to profile. The nugget of a
-##' fit whose likelihood is exact is profiled as its variance, `tau2`
-##' (`profile_gaussian.R`).
+##' without a nugget or random effects has none to profile. The nugget is
+##' profiled as its variance, `tau2`, for every family.
 ##' @noRd
 list_covariance_parameters <- function(object) {
   names <- names(unlist(object$estimate))

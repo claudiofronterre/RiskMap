@@ -154,33 +154,33 @@ global_rank_envelope <- function(curves, level) {
 ##' @description Computes the empirical semivariogram using lag-distance
 ##' breakpoints and, optionally, an extreme-rank-length global envelope for
 ##' spatial independence.
-##' @param data an object of class \code{sf} containing the variable for which the variogram
+##' @param data an object of class `sf` containing the variable for which the variogram
 ##' is to be computed and the coordinates
 ##' @param variable a character indicating the name of variable for which the variogram is to be computed.
 ##' @param breaks an optional numeric vector of lag-distance breakpoints.
 ##' If supplied, these breakpoints are used directly to define the distance classes.
 ##' A warning is raised when some classes lie entirely beyond the largest
 ##' distance between locations, since they contain no pairs.
-##' @param n_bins the number of lag-distance classes to generate when \code{breaks = NULL}.
-##' By default \code{n_bins = 14}.
-##' @param max_dist an optional maximum lag distance. When \code{breaks = NULL},
-##' the breakpoints are generated as \code{seq(0, max_dist, length.out = n_bins + 1)}.
-##' By default \code{max_dist = NULL} and the upper lag distance is set to \code{d_max/3},
-##' where \code{d_max} is the maximum observed distance in the data.
+##' @param n_bins the number of lag-distance classes to generate when `breaks = NULL`.
+##' By default `n_bins = 14`.
+##' @param max_dist an optional maximum lag distance. When `breaks = NULL`,
+##' the breakpoints are generated as `seq(0, max_dist, length.out = n_bins + 1)`.
+##' By default `max_dist = NULL` and the upper lag distance is set to `d_max/3`,
+##' where `d_max` is the maximum observed distance in the data.
 ##' @param n_permutations a non-negative integer indicating the number of random
 ##' permutations used with the observed curve to construct the global envelope.
-##' By default \code{n_permutations = 999}; set it to zero to omit the envelope.
+##' By default `n_permutations = 999`; set it to zero to omit the envelope.
 ##' @param level the simultaneous coverage probability of the global envelope.
-##' By default \code{level = 0.95}.
+##' By default `level = 0.95`.
 ##' @param distance_crs `NULL` to retain an existing projected CRS, or
 ##' automatically reproject longitude/latitude data to the CRS from
 ##' [propose_crs()] (with a message naming the CRS and the units of
 ##' distance). Alternatively, a CRS to reproject `data` to, which must itself
 ##' be projected. A warning of class `riskmap_warning_crs` is raised when the
 ##' CRS used distorts distances by more than 1% over the data.
-##' @param distance_units Character string, either \code{"km"} or \code{"m"}, indicating whether
+##' @param distance_units Character string, either `"km"` or `"m"`, indicating whether
 ##' the distances used in the variogram are expressed in kilometers or meters.
-##' By default \code{distance_units = "km"}, as in \code{\link{glgpm}}.
+##' By default `distance_units = "km"`, as in [glgpm()].
 ##' @param seed an optional non-negative integer seed for the permutations. The
 ##' caller's random-number state is restored before the function returns.
 ##' @details The observed variogram is included among the permuted curves so
@@ -198,17 +198,17 @@ global_rank_envelope <- function(curves, level) {
 ##'     \item{distance}{the mean pair distance within each lag class}
 ##'     \item{semivariance}{the observed empirical semivariance}
 ##'     \item{n_pairs}{the number of pairs in the lag class}}
-##'   If \code{n_permutations > 0}, the data-frame also contains the following columns:
+##'   If `n_permutations > 0`, the data-frame also contains the following columns:
 ##'   \describe{
 ##'     \item{lower_envelope}{the lower bound of the simultaneous envelope}
 ##'     \item{upper_envelope}{the upper bound of the simultaneous envelope}
 ##'   }}
-##'   \item{distance_units}{the value passed to \code{distance_units}}
+##'   \item{distance_units}{the value passed to `distance_units`}
 ##'   \item{n_permutations}{the number of permutations}
 ##'   \item{breaks}{the calculated breaks}
 ##'   \item{level}{the simultaneous coverage probability}
-##'   \item{envelope_method}{\code{"global_extreme_rank_length"}, or
-##'   \code{NULL} if no permutations were requested}
+##'   \item{envelope_method}{`"global_extreme_rank_length"`, or
+##'   `NULL` if no permutations were requested}
 ##'   }
 ##'
 ##' @seealso [plot_variogram()], which `plot()` of the result also calls, and
@@ -387,14 +387,14 @@ variogram <- function(data,
 
 ##' @title Print Method for RiskMap_variogram Objects
 ##' @description Prints the distance classes and the envelope settings of an
-##' empirical variogram computed by \code{\link{variogram}}, followed by its
+##' empirical variogram computed by [variogram()], followed by its
 ##' table.
-##' @param x an object of class \code{RiskMap_variogram}.
+##' @param x an object of class `RiskMap_variogram`.
 ##' @param digits the number of significant digits to print. By default
-##' \code{digits = 3}.
-##' @param ... further arguments passed to \code{\link{print.data.frame}}.
-##' @return \code{x}, invisibly.
-##' @seealso \code{\link{variogram}}
+##' `digits = 3`.
+##' @param ... further arguments passed to [base::print.data.frame()].
+##' @return `x`, invisibly.
+##' @seealso [variogram()]
 ##' @method print RiskMap_variogram
 ##' @export
 print.RiskMap_variogram <- function(x, digits = 3, ...) {
@@ -459,13 +459,13 @@ format_variogram <- function(x, digits, ...) {
 ##' labelled with the number of pairs of locations in its distance class. A
 ##' semivariance estimated from few pairs is unstable, so the labels help to
 ##' judge how much each point can be trusted, and to choose the distance
-##' classes in \code{\link{variogram}}. By default \code{show_pairs = FALSE}.
+##' classes in [variogram()]. By default `show_pairs = FALSE`.
 ##' @param ... For `plot()`, the arguments of `plot_variogram()`. For
 ##'   `plot_variogram()`, not used, and an error if given, so that a misspelt
 ##'   argument is not ignored.
-##' @return A \code{ggplot} object representing the empirical variogram plot, optionally including the envelope of spatial independence.
+##' @return A `ggplot` object representing the empirical variogram plot, optionally including the envelope of spatial independence.
 ##' @details This function plots the empirical variogram, which shows the spatial dependence structure of the data. Each point is the semivariance of one distance class, and classes without pairs are omitted. Points are not joined by lines, because the empirical variogram is only defined for the distance classes. Both axes start at zero. With `envelope = TRUE`, the plot also includes a simultaneous extreme-rank-length envelope for spatial independence, and points that fall outside it are drawn in red.
-##' @seealso \code{\link{variogram}}
+##' @seealso [variogram()]
 ##' @examples
 ##' data(galicia)
 ##' galicia_variogram <- variogram(galicia, variable = "lead",

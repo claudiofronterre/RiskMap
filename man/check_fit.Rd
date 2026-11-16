@@ -116,9 +116,8 @@ took. The extra checks are
 \itemize{
 \item \code{"profile"}, the marginal profile likelihood of each covariance
 parameter of the fit from \code{\link[=profile.RiskMap]{profile.RiskMap()}}, with its default
-settings. These are the spatial variance and scale, the nugget (its
-ratio to the spatial variance, \code{nu2}, or for a Gaussian fit its
-variance, \code{tau2}), an estimated measurement error variance and the
+settings. These are the spatial variance and scale, the variance of
+the nugget, \code{tau2}, an estimated measurement error variance and the
 variances of the random effects, but not the regression coefficients.
 Its row names each parameter whose profile is flat, so that its 95\%
 interval is open at an end, or has a second maximum, where it falls by
@@ -170,6 +169,8 @@ plot(checked, which = "profile")
 }
 }
 \seealso{
-\code{\link[=summary.RiskMap_check]{summary.RiskMap_check()}}, \code{\link[=plot_check]{plot_check()}}, which \code{plot()} of the
-result also calls, \code{\link[=summary.RiskMap]{summary.RiskMap()}} and \code{\link[=profile.RiskMap]{profile.RiskMap()}}.
+The methods for the result are \link[=print.RiskMap_check]{print()},
+\link[=summary.RiskMap_check]{summary()} and \code{\link[=plot_check]{plot_check()}}, which \code{plot()}
+of the result also calls. \code{\link[=summary.RiskMap]{summary.RiskMap()}} gives the estimates, and
+\code{\link[=profile.RiskMap]{profile.RiskMap()}} and \code{\link[=parametric_bootstrap]{parametric_bootstrap()}} their uncertainty.
 }

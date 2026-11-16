@@ -45,11 +45,11 @@ elogit <- function(y, m) {
 ##' @param u A vector or matrix of distances between pairs of data locations.
 ##' @param phi The scale parameter \eqn{\phi}.
 ##' @param kappa The smoothness parameter \eqn{\kappa}.
-##' @param return_sym_matrix A logical value indicating whether to return a symmetric correlation matrix. Defaults to \code{FALSE}.
+##' @param return_sym_matrix A logical value indicating whether to return a symmetric correlation matrix. Defaults to `FALSE`.
 ##' @details The Matern correlation function is defined as
 ##' \deqn{\rho(u; \phi; \kappa) = (2^{\kappa-1})^{-1}(u/\phi)^\kappa K_{\kappa}(u/\phi)}
 ##' where \eqn{\phi} and \eqn{\kappa} are the scale and smoothness parameters, and \eqn{K_{\kappa}(\cdot)} denotes the modified Bessel function of the third kind of order \eqn{\kappa}. The parameters \eqn{\phi} and \eqn{\kappa} must be positive.
-##' @return A vector or matrix of the same shape as \code{u} with the values of the Matern correlation function for the given distances, if \code{return_sym_matrix=FALSE}. If \code{return_sym_matrix=TRUE}, a symmetric correlation matrix is returned.
+##' @return A vector or matrix of the same shape as `u` with the values of the Matern correlation function for the given distances, if `return_sym_matrix=FALSE`. If `return_sym_matrix=TRUE`, a symmetric correlation matrix is returned.
 ##' @examples
 ##' u <- c(10, 20, 30)
 ##' matern_correlation(u, phi = 1, kappa = 0.8)
@@ -195,7 +195,7 @@ matern_hessian_phi <- function(u, phi, kappa) {
 ##' @details The function constructs a list that includes the specified terms (spatial coordinates or covariates),
 ##' the smoothness parameter \eqn{\kappa}, and the nugget effect. This list can be used as a specification for a Gaussian Process model.
 ##' A model has one spatial Gaussian process, so a formula can contain only one `gp()` term.
-##' @return A list of class \code{RiskMap_gp_spec} containing the following elements:
+##' @return A list of class `RiskMap_gp_spec` containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{kappa}{The smoothness parameter \eqn{\kappa}.}
 ##' \item{nugget}{The nugget effect.}
@@ -264,7 +264,7 @@ gp <- function (..., kappa = 0.5, nugget = FALSE) {
 ##' @param ... Variables representing the random effects in the model. Each variable adds its own independent random effect.
 ##' @details The function constructs a list that includes the specified terms for the random effects. This list can be used as a specification for a random effect model.
 ##' Several `re()` calls in a formula are combined, so `re(region) + re(province)` is the same model as `re(region, province)`.
-##' @return A list of class \code{RiskMap_re_spec} containing the following elements:
+##' @return A list of class `RiskMap_re_spec` containing the following elements:
 ##' \item{term}{A character vector of the specified terms.}
 ##' \item{dim}{The number of specified terms.}
 ##' \item{label}{A character string representing the full call for the random effect model.}
@@ -500,9 +500,9 @@ check_formula <- function(formula, data, response_required = TRUE){
 }
 
 ##' @title Extract Parameter Estimates from a "RiskMap" Model Fit
-##' @description This \code{coef} method for the "RiskMap" class extracts the
-##' maximum likelihood estimates from model fits obtained from the \code{\link{glgpm}} functions.
-##' @param object An object of class "RiskMap" obtained as a result of a call to \code{\link{glgpm}}.
+##' @description This `coef` method for the "RiskMap" class extracts the
+##' maximum likelihood estimates from model fits obtained from the [glgpm()] functions.
+##' @param object An object of class "RiskMap" obtained as a result of a call to [glgpm()].
 ##' @param ... other parameters.
 ##' @return A named list of every parameter of the model on its natural
 ##' scale, the estimates and the values held by `fixed_pars`, in the order of
@@ -513,9 +513,9 @@ check_formula <- function(formula, data, response_required = TRUE){
 ##' \item{tau2}{The variance of the nugget, for a model with one.}
 ##' \item{sigma2_me}{The measurement error variance, for a Gaussian model.}
 ##' \item{theta}{The size, for a negative binomial model.}
-##' \item{sigma2_re}{The variances of the random effects, named by their terms, for a model with \code{re()} terms.}
+##' \item{sigma2_re}{The variances of the random effects, named by their terms, for a model with `re()` terms.}
 ##' The list can be given as `start_pars` of [glgpm()].
-##' @seealso \code{\link{glgpm}}, [riskmap_parameters]
+##' @seealso [glgpm()], [riskmap_parameters]
 ##' @method coef RiskMap
 ##' @export
 ##'
@@ -662,49 +662,49 @@ nobs.RiskMap <- function(object, ...) {
 }
 
 ##' @title Summarize Model Fits
-##' @description Provides a \code{summary} method for the "RiskMap" class that
+##' @description Provides a `summary` method for the "RiskMap" class that
 ##'   computes standard errors and confidence intervals for likelihood-based
 ##'   model fits
-##' @param object An object of class "RiskMap" from \code{\link{glgpm}}
+##' @param object An object of class "RiskMap" from [glgpm()]
 ##' @param level Confidence level for intervals (default 0.95).
 ##' @param ... Not used, and an error if given, so that a misspelt argument
 ##'   is not ignored.
-##' @return A list of class \code{"summary.RiskMap"} with parameter estimates,
+##' @return A list of class `"summary.RiskMap"` with parameter estimates,
 ##'   standard errors, and confidence intervals. For binomial, Poisson and negative binomial
-##'   models, its component \code{mcml} reports certified Monte Carlo maximum
-##'   likelihood: \code{certificate} (an approximate bound, with probability
-##'   \code{level}, on the Monte Carlo error of the estimate in statistical
-##'   standard errors, \code{NA} when there is none), \code{tolerance},
-##'   \code{certified}, \code{outcome}, \code{correction_refused} (whether
+##'   models, its component `mcml` reports certified Monte Carlo maximum
+##'   likelihood: `certificate` (an approximate bound, with probability
+##'   `level`, on the Monte Carlo error of the estimate in statistical
+##'   standard errors, `NA` when there is none), `tolerance`,
+##'   `certified`, `outcome`, `correction_refused` (whether
 ##'   the Newton correction of the last stage did not converge),
-##'   \code{stages}, \code{fitting_draws} and \code{validation_draws} (at the
-##'   last stage), \code{certification_bank} (the effective draws and Pareto
-##'   shape of the certification draws), \code{checks_to_review}, the number
-##'   of checks of \code{\link{check_fit}} that need a look,
-##'   \code{starting_values}, where the starting values of the parameters not
-##'   given in \code{start_pars} came from, \code{"current"} (RiskMap's
-##'   defaults) or \code{"transformed_gaussian"} (a Gaussian fit to the
-##'   transformed data, which \code{glgpm()} uses when the Laplace
+##'   `stages`, `fitting_draws` and `validation_draws` (at the
+##'   last stage), `certification_bank` (the effective draws and Pareto
+##'   shape of the certification draws), `checks_to_review`, the number
+##'   of checks of [check_fit()] that need a look,
+##'   `starting_values`, where the starting values of the parameters not
+##'   given in `start_pars` came from, `"current"` (RiskMap's
+##'   defaults) or `"transformed_gaussian"` (a Gaussian fit to the
+##'   transformed data, which `glgpm()` uses when the Laplace
 ##'   approximation of the likelihood prefers it to the defaults), or
-##'   \code{"user"} when \code{start_pars} gives every parameter,
-##'   \code{starting_given}, the names of those given in
-##'   \code{start_pars} (absent when none was), and \code{starting_reason},
+##'   `"user"` when `start_pars` gives every parameter,
+##'   `starting_given`, the names of those given in
+##'   `start_pars` (absent when none was), and `starting_reason`,
 ##'   why the defaults were kept other than by being preferred in that
-##'   comparison, such as \code{"re_terms"} when it is not made for a model
-##'   with \code{re()} terms, \code{"not_compared"} when
-##'   \code{set_control_mcml(start_comparison = FALSE)} skips it,
-##'   \code{"candidates_given"} when \code{start_pars} gives every value the
+##'   comparison, such as `"re_terms"` when it is not made for a model
+##'   with `re()` terms, `"not_compared"` when
+##'   `set_control_mcml(start_comparison = FALSE)` skips it,
+##'   `"candidates_given"` when `start_pars` gives every value the
 ##'   comparison could change,
-##'   \code{"transformed_failed"} when the Gaussian fit
-##'   failed, or \code{"not_recorded"} for a fit saved by an earlier version
-##'   that did not record why (\code{NULL} when the comparison chose the
-##'   start). \code{mcml} is
-##'   \code{NULL} for Gaussian models. The parameters of the family, such as
+##'   `"transformed_failed"` when the Gaussian fit
+##'   failed, or `"not_recorded"` for a fit saved by an earlier version
+##'   that did not record why (`NULL` when the comparison chose the
+##'   start). `mcml` is
+##'   `NULL` for Gaussian models. The parameters of the family, such as
 ##'   the measurement error variance of a Gaussian model, are in
-##'   \code{family_parameters}, a table of those that were estimated, and
-##'   \code{held_family_parameters}, a list of those held at a given value.
-##'   The other parameters that \code{fixed_pars} holds keep their rows, with
-##'   no interval, and \code{held_parameters} says at what values they are
+##'   `family_parameters`, a table of those that were estimated, and
+##'   `held_family_parameters`, a list of those held at a given value.
+##'   The other parameters that `fixed_pars` holds keep their rows, with
+##'   no interval, and `held_parameters` says at what values they are
 ##'   held (absent when none is).
 ##' @method summary RiskMap
 ##' @examples
@@ -992,11 +992,11 @@ describe_pinned_parameters <- function(parameters) {
 }
 
 ##' @title Print Summary of RiskMap Model
-##' @description Print method for objects of class \code{"summary.RiskMap"}.
-##' @param x An object of class \code{"summary.RiskMap"}.
+##' @description Print method for objects of class `"summary.RiskMap"`.
+##' @param x An object of class `"summary.RiskMap"`.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
 ##'   is not ignored.
-##' @return Invisibly returns \code{x}.
+##' @return Invisibly returns `x`.
 ##' @method print summary.RiskMap
 ##' @export
 print.summary.RiskMap <- function(x, ...) {
@@ -1163,35 +1163,31 @@ describe_summary_link <- function(link_name, invlink_expression) {
 ##' @param digits A non-negative integer giving the number of decimal places
 ##' used to display numeric results.
 ##' @param col_names Optional column names, replacing the default headers.
-##' @param ... Additional arguments passed to \code{\link[knitr]{kable}}.
+##' @param ... Additional arguments passed to [knitr::kable()].
 ##' @details This function creates a presentation-ready summary table from a
 ##' fitted "RiskMap" model or cross-validation results for multiple models.
-##' Use \code{\link{coef}} or \code{\link{summary}} when numeric results are
-##' required for further analysis. Numeric values use fixed notation with
-##' \code{digits} decimal places, except when scientific notation is needed to
+##' Use [coef()][coef.RiskMap()] or [summary()][summary.RiskMap()] when numeric
+##' results are required for further analysis. Numeric values use fixed notation with
+##' `digits` decimal places, except when scientific notation is needed to
 ##' represent very large or very small values clearly. Values that are
 ##' compared share one notation: the estimate and confidence limits of a
 ##' parameter, and one metric across models.
 ##'
-##' When the input is a fit or its summary, the table includes:
-##' \itemize{
-##'   \item Regression coefficients with their estimates and confidence intervals.
-##'   \item Parameters for the spatial process.
-##'   \item Random effect variances.
-##'   \item The parameters of the family that were estimated, such as the
-##'     measurement error variance of a Gaussian model.
-##' }
+##' The table of a fit or its summary has
+##' - the regression coefficients with their estimates and confidence
+##'   intervals,
+##' - the parameters of the spatial process,
+##' - the variances of the random effects,
+##' - the parameters of the family that were estimated, such as the
+##'   measurement error variance of a Gaussian model.
 ##'
-##' When the input is a cross-validation or its summary, the table includes:
-##' \itemize{
-##'   \item A row for each model being compared.
-##'   \item Performance metrics such as CRPS and SCRPS for each model.
-##' }
+##' The table of a cross-validation or its summary has a row for each model
+##' compared, with its scores, such as the CRPS and SCRPS.
 ##'
 ##' @return An object of class "knitr_kable" that can be rendered directly.
 ##' @importFrom knitr kable
 ##' @export
-##' @seealso \code{\link{glgpm}}, \code{\link{summary.RiskMap_cross_validation}}
+##' @seealso [glgpm()], [summary.RiskMap_cross_validation()]
 ##' @examples
 ##' data(italy_sim)
 ##'
@@ -1305,10 +1301,10 @@ format_results_table <- function(table, row_names, digits, col_names, ...) {
 ##' @title Summarize Cross-Validation Scores for Spatial RiskMap Models
 ##'
 ##' @description This function summarizes cross-validation scores for different spatial models obtained
-##' from \code{\link{assess_prediction}}.
+##' from [assess_prediction()].
 ##'
 ##' @param object A `RiskMap_cross_validation` object containing cross-validation scores for each
-##'               model, as obtained from \code{\link{assess_prediction}}.
+##'               model, as obtained from [assess_prediction()].
 ##' @param ... Not used, and an error if given, so that a misspelt argument
 ##'   is not ignored.
 ##'
@@ -1318,19 +1314,19 @@ format_results_table <- function(table, row_names, digits, col_names, ...) {
 ##' that have a score, and `PIT_area`
 ##' with `PIT_area_expected`, its value under perfect calibration, when
 ##' calibration was assessed (see [assess_prediction()]). Lower is better for
-##' every score. Attributes of the returned object include:
-##' \itemize{
-##'   \item `test_set_means`: A list of average scores for each test set and model.
-##'   \item `keep_par_fixed`: Whether the parameters were fixed at the
-##'     estimates from all the data.
-##'   \item `n_failed`: The number of failed test-set assessments.
-##' }
+##' every score. The attributes of the result include
+##' - `test_set_means`, a list of the average scores of each test set and
+##'   model,
+##' - `keep_par_fixed`, whether the parameters were fixed at the estimates
+##'   from all the data,
+##' - `n_failed`, the number of failed test-set assessments.
+##'
 ##' Its print gives the averages and the scores of each test set.
 ##'
 ##' @return A matrix of summary scores with models as rows and metrics as columns, with class
 ##' `"summary.RiskMap_cross_validation"`.
 ##'
-##' @seealso \code{\link{assess_prediction}}
+##' @seealso [assess_prediction()]
 ##'
 ##' @export
 ##' @method summary RiskMap_cross_validation
@@ -1398,7 +1394,7 @@ summary.RiskMap_cross_validation <- function(object, ...) {
 ##' This method prints the scores of each model averaged over all test
 ##' observations, with what they mean, and the scores of each test set.
 ##'
-##' @return Invisibly returns \code{x}.
+##' @return Invisibly returns `x`.
 ##' @export
 ##' @method print summary.RiskMap_cross_validation
 print.summary.RiskMap_cross_validation <- function(x, ...) {
@@ -1489,16 +1485,16 @@ format_cv_test_sets <- function(x) {
 
 ##' @title Print the Results of a Spatial Cross-Validation
 ##' @description Print method for objects of class
-##'   \code{"RiskMap_cross_validation"} from \code{\link{assess_prediction}}.
+##'   `"RiskMap_cross_validation"` from [assess_prediction()].
 ##'   It gives the models, the test sets, how the parameters were set and the
 ##'   scores of each model over all test observations.
-##'   \code{\link{summary.RiskMap_cross_validation}} gives the scores of each
+##'   [summary.RiskMap_cross_validation()] gives the scores of each
 ##'   test set, and [plot_cross_validation()] maps the scores
 ##'   at the test locations or draws the calibration curve.
-##' @param x An object of class \code{"RiskMap_cross_validation"}.
+##' @param x An object of class `"RiskMap_cross_validation"`.
 ##' @param ... Not used, and an error if given, so that a misspelt argument
 ##'   is not ignored.
-##' @return Invisibly returns \code{x}.
+##' @return Invisibly returns `x`.
 ##' @method print RiskMap_cross_validation
 ##' @export
 print.RiskMap_cross_validation <- function(x, ...) {
@@ -1678,31 +1674,31 @@ format_cross_validation <- function(x) {
 ##' @description
 ##' Draws one metric of a cross-validation by [assess_prediction()], as
 ##' `plot()` of the result does: a map of the CRPS or SCRPS at the test
-##' locations, or the calibration curve (\code{"PIT"}), the average
+##' locations, or the calibration curve (`"PIT"`), the average
 ##' nonrandomized PIT (AnPIT) curve for discrete families or the empirical
 ##' distribution function of the PIT values for Gaussian models. Several
 ##' models are panels of one plot that share one colour scale.
 ##'
 ##' @param x The result of [assess_prediction()].
-##' @param metric The metric to draw, one of \code{"PIT"} (the calibration
-##'   curve), \code{"CRPS"} and \code{"SCRPS"} (maps of the score of each test
-##'   observation), among those computed. When \code{NULL} (the default), the
+##' @param metric The metric to draw, one of `"PIT"` (the calibration
+##'   curve), `"CRPS"` and `"SCRPS"` (maps of the score of each test
+##'   observation), among those computed. When `NULL` (the default), the
 ##'   calibration curve if it was computed and the first score otherwise.
 ##'   `PIT_area` is one number for each model, which `summary()` gives, so it
 ##'   has no map.
 ##' @param model Character vector of model names to include. Defaults to
-##'   every model in \code{x$model}.
-##' @param pit_mode For the calibration curve only: one of \code{"average"}
-##'   (the curve of all test observations together, the default), \code{"single"} (one
-##'   specific test set) or \code{"all"} (every test set separately).
-##' @param pit_test_set Integer; required when \code{pit_mode = "single"}.
-##' @param combine_pit Logical; when \code{pit_mode = "average"}, draw the
-##'   calibration curves for every model in a single panel (\code{TRUE})
-##'   rather than one panel per model (\code{FALSE}, default).
+##'   every model in `x$model`.
+##' @param pit_mode For the calibration curve only: one of `"average"`
+##'   (the curve of all test observations together, the default), `"single"` (one
+##'   specific test set) or `"all"` (every test set separately).
+##' @param pit_test_set Integer; required when `pit_mode = "single"`.
+##' @param combine_pit Logical; when `pit_mode = "average"`, draw the
+##'   calibration curves for every model in a single panel (`TRUE`)
+##'   rather than one panel per model (`FALSE`, default).
 ##' @param ... For `plot()`, the arguments of `plot_cross_validation()`. For
 ##'   `plot_cross_validation()`, not used, and an error if given, so that a
 ##'   misspelt argument is not ignored. Add \pkg{ggplot2} components to the plot
-##'   with \code{+}.
+##'   with `+`.
 ##'
 ##' @details
 ##' Lower is better for both scores, and a location in several test sets
@@ -1713,7 +1709,7 @@ format_cross_validation <- function(x) {
 ##'
 ##' @return A \pkg{ggplot2} object, drawn when it is printed, to which
 ##'   \pkg{ggplot2} components such as
-##'   \code{ggplot2::scale_colour_viridis_c()} can be added.
+##'   `ggplot2::scale_colour_viridis_c()` can be added.
 ##'
 ##' @seealso [assess_prediction()]
 ##' @examples

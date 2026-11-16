@@ -57,7 +57,9 @@ imperfect diagnostic test. Its first and second derivatives are found
 symbolically where possible and numerically otherwise. They only steer the
 importance sampler, so they affect the speed of a fit and not its
 estimates. Not applicable for Gaussian models, and not to be combined with
-a family object that names a link other than logit or log.}
+a family object that names a link other than logit or log. Custom links
+are experimental, and how they are given and checked may change in a
+minor release.}
 
 \item{denominator}{Optional denominator for binomial distributions, or
 exposure for Poisson and negative binomial ones, the mean of a count being
@@ -102,8 +104,8 @@ zero. A held coefficient enters the linear predictor as a known term, as an
 offset does. The other parameters are estimated with the held ones at their
 values, and with every parameter held the fit evaluates the likelihood at
 the values (exactly for a Gaussian model, by Monte Carlo on one sample for
-the others) and draws the conditional samples there, so that \code{\link[=predict]{predict()}}
-works with given parameters. A parameter can't be both started and held,
+the others) and draws the conditional samples there, so that
+\link[=predict.RiskMap]{predict()} works with given parameters. A parameter can't be both started and held,
 except that a start equal to its held value, as in
 \code{start_pars = coef(fit)} of a fit with the same holds, is left out. With one
 observation per location, a Gaussian model can estimate the nugget or the
@@ -299,6 +301,14 @@ summary(fit)
 
 }
 \seealso{
-\code{\link[=set_control_mcmc]{set_control_mcmc()}}, \code{\link[=set_control_mcml]{set_control_mcml()}},
-\code{\link{summary.RiskMap}}, \code{\link{to_table}}
+The methods for a fit are \link[=print.RiskMap]{print()},
+\link[=summary.RiskMap]{summary()}, \link[=coef.RiskMap]{coef()},
+\link[=fitted.RiskMap]{fitted()}, \link[=logLik.RiskMap]{logLik()} with
+\link[=vcov.RiskMap]{vcov()} and \link[=nobs.RiskMap]{nobs()},
+\link[=predict.RiskMap]{predict()}, \link[=profile.RiskMap]{profile()} and
+\code{\link[=to_table]{to_table()}}. \code{\link[=check_fit]{check_fit()}}, \code{\link[=plot_mcmc]{plot_mcmc()}}, \code{\link[=summarise_mcmc]{summarise_mcmc()}},
+\code{\link[=parametric_bootstrap]{parametric_bootstrap()}}, \code{\link[=assess_prediction]{assess_prediction()}} and
+\code{\link[=assess_extrapolation]{assess_extrapolation()}} take a fit too. \code{\link[=glgpm_parameters]{glgpm_parameters()}} lists the
+parameters of a model before it is fitted, and \code{\link[=set_control_mcml]{set_control_mcml()}} and
+\code{\link[=set_control_mcmc]{set_control_mcmc()}} set how it is fitted.
 }

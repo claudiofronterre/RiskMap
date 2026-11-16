@@ -2,6 +2,7 @@
 % Please edit documentation in R/profile_likelihood.R
 \name{profile.RiskMap}
 \alias{profile.RiskMap}
+\alias{print.RiskMap_profile}
 \title{Profile likelihood of a fitted geostatistical model}
 \usage{
 \method{profile}{RiskMap}(
@@ -18,6 +19,8 @@
   messages = getOption("RiskMap.messages", TRUE),
   ...
 )
+
+\method{print}{RiskMap_profile}(x, ...)
 }
 \arguments{
 \item{fitted}{A \code{RiskMap} object from \code{\link[=glgpm]{glgpm()}} for a Gaussian model, or
@@ -61,6 +64,9 @@ Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.
 
 \item{...}{Not used, and an error if given, so that a misspelt argument
 is not ignored.}
+
+\item{x}{The result of \code{profile()}, whose \code{print()} method gives the
+intervals and returns \code{x} invisibly.}
 }
 \value{
 An object of class \code{RiskMap_profile}: a list with the marginal
@@ -160,5 +166,8 @@ plot(profiles)
 }
 }
 \seealso{
-\code{\link[=plot_profile]{plot_profile()}}, which \code{plot()} of the result also calls.
+The methods for a profile are \code{print()}, on this page, and
+\code{\link[=plot_profile]{plot_profile()}}, which \code{plot()} of the profile also calls.
+\code{\link[=check_fit]{check_fit()}} checks the profiles, and \code{\link[=parametric_bootstrap]{parametric_bootstrap()}} gives
+bootstrap intervals.
 }

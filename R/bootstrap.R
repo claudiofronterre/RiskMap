@@ -88,8 +88,11 @@
 ##' Efron, B. and Tibshirani, R. J. (1993). *An Introduction to the
 ##' Bootstrap*. Chapman & Hall, New York.
 ##'
-##' @seealso [simulate_glgpm()], [profile.RiskMap()], and
-##'   [plot_bootstrap()], which `plot()` of the result also calls.
+##' @seealso The methods for a bootstrap are
+##'   [print()][print.RiskMap_bootstrap()],
+##'   [summary()][summary.RiskMap_bootstrap()] and [plot_bootstrap()], which
+##'   `plot()` of the result also calls. [profile.RiskMap()] gives profile
+##'   intervals, and [simulate_glgpm()] simulates from a fit.
 ##'
 ##' @examples
 ##' data(italy_sim)

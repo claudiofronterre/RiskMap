@@ -33,5 +33,5 @@ plot(sf_points, col = 'blue', pch = 19)
 plot(convex_hull_result, add = TRUE, border = 'red')
 }
 \seealso{
-\code{\link[sf]{st_convex_hull}}, \code{\link[sf]{st_union}}
+\code{\link[sf:st_convex_hull]{sf::st_convex_hull()}}, \code{\link[sf:st_union]{sf::st_union()}}
 }
