@@ -1752,11 +1752,13 @@ or negative binomial fit draws one integer from the session's random number
 generator, so `set.seed()` before the call reproduces it, and returns it as
 `settings$seed`. The draw is the only change to the session's stream. A
 Gaussian profile, which has no bank, draws none. `seed` must be a
-non-negative integer. The profiles of `check_fit(extra = "profile")` keep
-their own seed, derived from the fit's.
-- `check_fit()` takes `cores` before `messages`, and `parametric_bootstrap()`
-defaults to `cores = 1L`, so that `seed`, `cores` and `messages` come last in
-that order everywhere.
+non-negative integer. A profile that fails leaves the session's stream as it
+was. The profiles of `check_fit(extra = "profile")` keep their own seed,
+derived from the fit's.
+- `check_fit()` takes `cores` before `messages`, as `profile()` and
+`parametric_bootstrap()` do, so that `cores` and `messages` come last in that
+order everywhere, after `seed` and `level` where a function has them.
+`parametric_bootstrap()` defaults to `cores = 1L`.
 - `print()` of a simulation model, of simulations and of `glgpm_parameters()`
 stops on an argument it doesn't use, and `print()` of a distance summary
 raises a RiskMap input error for one, as the other print methods do.
@@ -1778,4 +1780,3 @@ object. Custom links, the negative binomial family, the penalties of
 `set_control_mcml(pc_prior = TRUE)`, `crs_distortion()` and the spatial
 indicator of `assess_extrapolation()` are marked experimental in their help
 pages, as parts that may change in a minor release.
-

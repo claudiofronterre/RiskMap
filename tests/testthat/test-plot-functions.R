@@ -11,7 +11,7 @@ plot_cases <- function() {
                                         spatial_threshold = 0.8)
   checked <- check_fit(binomial_model, messages = FALSE)
   profiles <- profile(gaussian_intercept_model, parameters = "phi",
-                      n_points = 5L, messages = FALSE)
+                      n_points = 5L, seed = 1, messages = FALSE)
   bootstrap <- parametric_bootstrap(gaussian_intercept_model, n_sim = 3,
                                     seed = 1, messages = FALSE)
   list(

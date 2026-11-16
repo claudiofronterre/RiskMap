@@ -123,7 +123,7 @@
 ##'              seed = 2026)
 ##' profiles <- profile(fit, parameters = c("sigma2", "phi"),
 ##'                     pairs = list(c("sigma2", "phi")), n_grid = 9,
-##'                     n_draws = 2000)
+##'                     n_draws = 2000, seed = 1)
 ##' profiles
 ##' plot(profiles)
 ##' }
@@ -159,13 +159,16 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
   }
   # Without a seed, the bank draws one from the session's stream, which
   # advances it like any random call. Nothing else changes the caller's state,
-  # and a Gaussian profile, which has no bank, draws none.
+  # a profile that fails leaves it as it was, and a Gaussian profile, which has
+  # no bank, draws none.
+  restore_unprofiled <- preserve_random_seed()
   if (!exact) {
     if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
     seed <- as.integer(seed)
   }
   restore_seed <- preserve_random_seed()
-  on.exit(restore_seed(), add = TRUE)
+  completed <- FALSE
+  on.exit(if (completed) restore_seed() else restore_unprofiled(), add = TRUE)
   if (exact) {
     problem <- make_gaussian_profile_problem(fitted)
   } else {
@@ -242,7 +245,7 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
   marginal <- lapply(marginal, add_profile_deviance, max_loglik)
   joint <- lapply(joint, add_profile_deviance, max_loglik)
 
-  structure(list(
+  result <- structure(list(
     marginal = marginal, joint = joint,
     intervals = profile_intervals(problem, marginal, level),
     estimate = problem$estimate, standard_errors = problem$standard_errors,
@@ -251,6 +254,8 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
     settings = if (exact) list(span = span) else
       list(n_draws = n_draws, seed = seed, span = span)
   ), class = "RiskMap_profile", riskmap_version = riskmap_version_stamp())
+  completed <- TRUE
+  result
 }
 
 ##' A duration in seconds as readable text

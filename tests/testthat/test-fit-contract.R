@@ -28,11 +28,13 @@ test_that("glgpm() takes distance_crs, with seed and messages last", {
                    c("object", "level", "..."))
 })
 
-test_that("seed, cores and messages come last, in that order, and cores is an integer (N6, N7)", {
+test_that("cores and messages come last, in that order, cores is an integer and profile() has no default seed (N6, N7)", {
   expect_identical(names(formals(check_fit)),
                    c("object", "extra", "profile", "cores", "messages"))
-  expect_identical(utils::tail(names(formals(parametric_bootstrap)), 3L),
-                   c("level", "cores", "messages"))
+  expect_identical(utils::tail(names(formals(parametric_bootstrap)), 4L),
+                   c("seed", "level", "cores", "messages"))
+  expect_identical(utils::tail(names(formals(profile.RiskMap)), 5L),
+                   c("seed", "level", "cores", "messages", "..."))
   expect_identical(formals(parametric_bootstrap)$cores, 1L)
   expect_identical(formals(check_fit)$cores, 1L)
   expect_null(formals(profile.RiskMap)$seed)
@@ -155,7 +157,7 @@ test_that("every result records the version of RiskMap that made it", {
                     distance_units = "m"))
   stamped(check_fit(gaussian_intercept_model, messages = FALSE))
   stamped(profile(gaussian_intercept_model, parameters = "phi", n_points = 5,
-                  messages = FALSE))
+                  seed = 1, messages = FALSE))
   stamped(parametric_bootstrap(gaussian_intercept_model, n_sim = 2, seed = 1,
                                messages = FALSE))
   stamped(suppressWarnings(assess_extrapolation(gaussian_intercept_model, grid,

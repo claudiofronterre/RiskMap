@@ -163,7 +163,7 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
              seed = 2026)
 profiles <- profile(fit, parameters = c("sigma2", "phi"),
                     pairs = list(c("sigma2", "phi")), n_grid = 9,
-                    n_draws = 2000)
+                    n_draws = 2000, seed = 1)
 profiles
 plot(profiles)
 }

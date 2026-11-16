@@ -481,7 +481,7 @@ test_that("a fix names the extra check that would settle it", {
   expect_match(plain[["Other maxima"]], "check_fit(fit, extra = \"profile\")",
                fixed = TRUE)
   scale_profile <- profile(weak, parameters = "phi", n_points = 5,
-                           n_draws = 200, messages = FALSE)
+                           n_draws = 200, seed = 1, messages = FALSE)
   profiled <- fixes(check_fit(weak, profile = scale_profile))
   for (check in c("Spatial scale", "Other maxima")) {
     expect_no_match(profiled[[check]], "extra = ", fixed = TRUE)
@@ -543,7 +543,7 @@ test_that("the plot shows the stages, and a profile once it is computed", {
   expect_input_error(plot(checked, which = 1), "which")
 
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
-                           n_draws = 200, messages = FALSE)
+                           n_draws = 200, seed = 1, messages = FALSE)
   given <- check_fit(binomial_model, profile = scale_profile)
   expect_identical(drawn_titles(plot(given)),
                    panel_titles(given, c(stage_panels, "profile_phi")))

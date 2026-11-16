@@ -160,7 +160,7 @@ test_that("the profile check runs on request, from a stream of the fit's seed", 
 
 test_that("a profile computed by the user is used as it is", {
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
-                           n_draws = 200, messages = FALSE)
+                           n_draws = 200, seed = 1, messages = FALSE)
   expect_silent(checked <- check_fit(binomial_model, profile = scale_profile))
   expect_identical(checked$extras$profile$data, scale_profile)
   expect_identical(
@@ -170,7 +170,8 @@ test_that("a profile computed by the user is used as it is", {
   expect_input_error(check_fit(binomial_model, profile = 1), "profile")
   # Whatever parameters it covers, coefficients included.
   other_profile <- profile(binomial_model, parameters = c("cov", "sigma2"),
-                           n_points = 5, n_draws = 200, messages = FALSE)
+                           n_points = 5, n_draws = 200, seed = 1,
+                           messages = FALSE)
   other <- check_fit(binomial_model, profile = other_profile)
   expect_identical(other$extras$profile$data, other_profile)
   expect_named(other$extras$profile$data$marginal, c("beta.cov", "sigma2"))
@@ -607,7 +608,7 @@ test_that("the summary gives the numbers behind each finding", {
 
 test_that("the summary gives the full results of the extra checks", {
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
-                           n_draws = 200, messages = FALSE)
+                           n_draws = 200, seed = 1, messages = FALSE)
   printed <- capture.output(print(summary(check_fit(binomial_model,
                                                     profile = scale_profile))))
   expect_true(any(grepl(paste0("^", out_status_symbol("SUSPICIOUS"),
