@@ -169,8 +169,6 @@ prediction <- predict(fit, newdata = example_data, boundaries = areas,
 plot_prediction(prediction)
 
 plot_prediction(prediction, spatial_scale = "both")
-#> Warning: Removed 50 rows containing missing values or values outside the scale range
-#> (`geom_sf()`).
 
 # The same map
 plot(prediction)

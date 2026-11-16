@@ -55,11 +55,7 @@ fit <- glgpm(y ~ log(pop_dens) + gp(), data = example_data,
              family = "gaussian", messages = FALSE)
 extrapolation <- assess_extrapolation(fit, italy_sim[151:200, ])
 plot_extrapolation(extrapolation)
-#> Warning: Removed 50 rows containing missing values or values outside the scale range
-#> (`geom_sf()`).
 
 # The same map
 plot(extrapolation)
-#> Warning: Removed 50 rows containing missing values or values outside the scale range
-#> (`geom_sf()`).
 ```
