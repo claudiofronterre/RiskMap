@@ -515,11 +515,13 @@ simulated_surface <- function(object, simulation = 1) {
 #' every stored value.
 #'
 #' @param x Output from [specify_glgpm()] or [simulate_glgpm()].
-#' @param ... Not used.
+#' @param ... Not used, and an error if given, so that a misspelt argument is
+#'   not ignored.
 #' @return Invisibly returns `x`.
 #' @method print RiskMap_simulation_model
 #' @export
 print.RiskMap_simulation_model <- function(x, ...) {
+  check_dots_unused(...)
   out_print(c(
     out_rule("Geostatistical model for simulation"),
     out_text(paste0(simulation_model_title(x), ", ", deparse_formula(x$formula),
@@ -534,6 +536,7 @@ print.RiskMap_simulation_model <- function(x, ...) {
 #' @method print RiskMap_simulation
 #' @export
 print.RiskMap_simulation <- function(x, ...) {
+  check_dots_unused(...)
   simulated <- vapply(x$what, function(name) {
     paste0("of the ", if (name == "data") "data" else "surface", " at ",
            out_count(nrow(x$locations[[name]]), "location"))

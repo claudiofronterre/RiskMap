@@ -94,9 +94,7 @@ importFrom(Matrix,
   sparseMatrix
 )
 importFrom(Rcpp,evalCpp)
-importFrom(grid,unit)
 importFrom(knitr,kable)
-importFrom(stats,profile)
 importFrom(tibble,as_tibble)
 importFrom(units,set_units)
 useDynLib(RiskMap, .registration = TRUE)

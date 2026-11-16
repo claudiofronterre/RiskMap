@@ -266,7 +266,7 @@ test_that("a held scale is the profile of the scale at that value", {
                      "parameters")
   expect_false("phi" %in% list_covariance_parameters(held))
   profiles <- profile(held, parameters = "sigma2", n_points = 5,
-                      messages = FALSE)
+                      seed = 1, messages = FALSE)
   expect_true(all(profiles$marginal$sigma2$phi == held$estimate$phi))
   expect_equal(held$estimate$phi, log(2), tolerance = 1e-12)
 })

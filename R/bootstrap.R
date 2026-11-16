@@ -114,7 +114,7 @@
 ##' }
 ##' @export
 parametric_bootstrap <- function(object, n_sim = 1000, seed = NULL,
-                                 level = 0.95, cores = 1,
+                                 level = 0.95, cores = 1L,
                                  messages = getOption("RiskMap.messages", TRUE)) {
   check_supplied(object)
   if (!inherits(object, "RiskMap")) {

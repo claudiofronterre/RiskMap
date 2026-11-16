@@ -92,7 +92,7 @@ summarise_distance <- function(data,
 ##'   is not ignored.
 ##' @export
 print.RiskMap_distance_summary <- function(x, digits = 3, ...) {
-  rlang::check_dots_empty()
+  check_dots_unused(...)
   check_positive_integer(digits, "digits")
   values <- formatC(as.numeric(x), digits = digits, format = "fg",
                     big.mark = ",")

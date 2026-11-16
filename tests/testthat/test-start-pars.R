@@ -319,3 +319,10 @@ test_that("the named vector unlist(coef(fit)) is a start", {
                                 fixed_pars = list(sigma2_me = -1)),
                class = "riskmap_error_input")
 })
+
+test_that("print() of glgpm_parameters() stops on an argument it doesn't use (N9)", {
+  listed <- glgpm_parameters(y ~ gp(), data = gaussian_data,
+                             family = "gaussian")
+  expect_input_error(print(listed, digits = 3), "digits")
+  expect_no_error(capture.output(print(listed)))
+})

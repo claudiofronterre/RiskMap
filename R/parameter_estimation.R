@@ -2440,13 +2440,15 @@ link_functions_by_name <- function() {
 link_derivative_rules <- function() {
   rules <- list2env(as.list(Deriv::drule, all.names = TRUE),
                     envir = new.env(parent = emptyenv()))
+  # quote() rather than alist(), which builds the same lists, so that the
+  # check of the code doesn't take x for a global variable.
   added <- list(
-    plogis = alist(q = dlogis(q)),
-    dlogis = alist(x = (1 - 2 * plogis(x)) * dlogis(x)),
-    pt = alist(q = dt(q, df)),
-    dt = alist(x = -(df + 1) * x / (df + x^2) * dt(x, df)),
-    pcauchy = alist(q = dcauchy(q)),
-    dcauchy = alist(x = -2 * x / (1 + x^2) * dcauchy(x))
+    plogis = list(q = quote(dlogis(q))),
+    dlogis = list(x = quote((1 - 2 * plogis(x)) * dlogis(x))),
+    pt = list(q = quote(dt(q, df))),
+    dt = list(x = quote(-(df + 1) * x / (df + x^2) * dt(x, df))),
+    pcauchy = list(q = quote(dcauchy(q))),
+    dcauchy = list(x = quote(-2 * x / (1 + x^2) * dcauchy(x)))
   )
   for (name in names(added)) {
     if (is.null(rules[[name]])) rules[[name]] <- added[[name]]

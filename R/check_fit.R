@@ -81,12 +81,12 @@
 ##'   [profile.RiskMap()] with marginal profiles for this fit. The profile
 ##'   check then uses it as it is, whatever parameters it covers, instead of
 ##'   computing one, whether or not `extra` names it.
-##' @param messages Logical, whether to say how long the extra checks should
-##'   take before they start.
-##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @param cores Number of processes for the extra checks that can use
 ##'   several, passed to [profile.RiskMap()], whose results are the same on
 ##'   any number of cores.
+##' @param messages Logical, whether to say how long the extra checks should
+##'   take before they start.
+##'   Defaults to the option `RiskMap.messages`, or `TRUE` if it is not set.
 ##' @return An object of class `"RiskMap_check"`, a list with:
 ##' \item{checks}{A data frame with one row per check, those that need a look
 ##' first, and the columns `check`, `status` (`"PROBLEM"`, `"SUSPICIOUS"` or
@@ -148,8 +148,8 @@
 ##' }
 ##' @export
 check_fit <- function(object, extra = character(), profile = NULL,
-                      messages = getOption("RiskMap.messages", TRUE),
-                      cores = 1L) {
+                      cores = 1L,
+                      messages = getOption("RiskMap.messages", TRUE)) {
   check_supplied(object)
   check_class(object, "RiskMap")
   extra <- match_extra_checks(extra)

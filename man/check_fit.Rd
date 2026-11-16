@@ -8,8 +8,8 @@ check_fit(
   object,
   extra = character(),
   profile = NULL,
-  messages = getOption("RiskMap.messages", TRUE),
-  cores = 1L
+  cores = 1L,
+  messages = getOption("RiskMap.messages", TRUE)
 )
 }
 \arguments{
@@ -23,13 +23,13 @@ Details. The default is none.}
 check then uses it as it is, whatever parameters it covers, instead of
 computing one, whether or not \code{extra} names it.}
 
-\item{messages}{Logical, whether to say how long the extra checks should
-take before they start.
-Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
-
 \item{cores}{Number of processes for the extra checks that can use
 several, passed to \code{\link[=profile.RiskMap]{profile.RiskMap()}}, whose results are the same on
 any number of cores.}
+
+\item{messages}{Logical, whether to say how long the extra checks should
+take before they start.
+Defaults to the option \code{RiskMap.messages}, or \code{TRUE} if it is not set.}
 }
 \value{
 An object of class \code{"RiskMap_check"}, a list with:

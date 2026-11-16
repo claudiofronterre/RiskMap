@@ -1,7 +1,7 @@
 test_that("profiles of a binomial fit have their grids, deviances and intervals", {
   profiles <- profile(binomial_model, parameters = c("cov", "sigma2"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
-                      n_grid = 3, n_draws = 200, messages = FALSE)
+                      n_grid = 3, n_draws = 200, seed = 1, messages = FALSE)
   expect_s3_class(profiles, "RiskMap_profile")
   expect_named(profiles$marginal, c("beta.cov", "sigma2"))
   expect_named(profiles$joint, "sigma2:phi")
@@ -21,7 +21,7 @@ test_that("profiles of a binomial fit have their grids, deviances and intervals"
 
 test_that("profiles of a binomial fit have the labels of summary()", {
   profiles <- profile(binomial_model, parameters = "sigma2", n_points = 5,
-                      n_draws = 200, messages = FALSE)
+                      n_draws = 200, seed = 1, messages = FALSE)
   summaries <- summary(binomial_model)
   expect_identical(unname(unlist(profiles$labels)),
                    c(rownames(summaries$reg_coef), rownames(summaries$sp),
@@ -41,8 +41,46 @@ test_that("profiling restores the random number state", {
   expected <- stats::runif(1)
   set.seed(42)
   invisible(profile(binomial_model, parameters = "cov", pairs = list(),
-                    n_points = 5, n_draws = 200, messages = FALSE))
+                    n_points = 5, n_draws = 200, seed = 1, messages = FALSE))
   expect_equal(stats::runif(1), expected)
+})
+
+test_that("without a seed, profile() draws one from the session and returns it (N7)", {
+  set.seed(42)
+  drawn <- sample.int(.Machine$integer.max, 1L)
+  expected <- stats::runif(1)
+  set.seed(42)
+  profiles <- profile(binomial_model, parameters = "cov", pairs = list(),
+                      n_points = 5, n_draws = 200, messages = FALSE)
+  # The draw of the seed is the only change to the session's stream.
+  expect_identical(stats::runif(1), expected)
+  expect_identical(profiles$settings$seed, drawn)
+  again <- profile(binomial_model, parameters = "cov", pairs = list(),
+                   n_points = 5, n_draws = 200, seed = drawn, messages = FALSE)
+  expect_identical(again$marginal, profiles$marginal)
+  set.seed(42)
+  expect_identical(profile(binomial_model, parameters = "cov", pairs = list(),
+                           n_points = 5, n_draws = 200,
+                           messages = FALSE)$marginal, profiles$marginal)
+  expect_input_error(profile(binomial_model, seed = -1, messages = FALSE),
+                     "seed")
+  expect_input_error(profile(binomial_model, seed = 1.5, messages = FALSE),
+                     "seed")
+  # A profile that fails leaves the stream as it was.
+  set.seed(42)
+  expected <- stats::runif(1)
+  set.seed(42)
+  expect_input_error(profile(binomial_model, parameters = "kappa",
+                             messages = FALSE), "parameters")
+  expect_identical(stats::runif(1), expected)
+  # A Gaussian profile has no bank, so it draws no seed.
+  set.seed(42)
+  expected <- stats::runif(1)
+  set.seed(42)
+  gaussian <- profile(gaussian_intercept_model, parameters = "phi",
+                      n_points = 5, messages = FALSE)
+  expect_identical(stats::runif(1), expected)
+  expect_null(gaussian$settings$seed)
 })
 
 test_that("profile rejects fits and settings it cannot handle", {
@@ -76,7 +114,7 @@ capture_profile_invlink <- function(fitted) {
     }
   )
   expect_error(profile(fitted, parameters = "sigma2", n_draws = 200,
-                       messages = FALSE), "engine captured")
+                       seed = 1, messages = FALSE), "engine captured")
   captured
 }
 
@@ -125,7 +163,7 @@ profile_without_link <- function(fitted, settings) {
 
 test_that("a profile of a canonical fit is that of an engine given no link", {
   settings <- list(parameters = c("cov", "sigma2"), n_points = 5,
-                   n_draws = 200, messages = FALSE)
+                   n_draws = 200, seed = 1, messages = FALSE)
   for (fitted in list(binomial_model, poisson_model)) {
     expect_identical(do.call(profile, c(list(fitted), settings)),
                      profile_without_link(fitted, settings))
@@ -135,7 +173,7 @@ test_that("a profile of a canonical fit is that of an engine given no link", {
 test_that("the profile plot returns one object, draws nothing and has its panels", {
   profiles <- profile(binomial_model, parameters = c("sigma2", "phi"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
-                      n_grid = 3, n_draws = 200, messages = FALSE)
+                      n_grid = 3, n_draws = 200, seed = 1, messages = FALSE)
   # plot() runs on a device of its own, since another test may have left one
   # open, and anything drawn would be in that device's display list.
   grDevices::pdf(NULL)
@@ -206,9 +244,10 @@ test_that("the profile plot returns one object, draws nothing and has its panels
 
 test_that("profiles and their print and plot stop on an argument they don't use", {
   profiles <- profile(binomial_model, parameters = "phi", n_points = 5,
-                      n_draws = 200, messages = FALSE)
+                      n_draws = 200, seed = 1, messages = FALSE)
   expect_input_error(profile(binomial_model, parameters = "phi",
-                             n_points = 5, n_draws = 200, messages = FALSE,
+                             n_points = 5, n_draws = 200, seed = 1,
+                             messages = FALSE,
                              levels = 0.9),
                      "levels", "Check the spelling")
   expect_input_error(print(profiles, digits = 3), "digits")
@@ -336,10 +375,10 @@ test_that("profiles on two cores equal those on one", {
   }, add = TRUE)
   serial <- profile(binomial_model, parameters = c("cov", "sigma2"),
                     pairs = list(c("sigma2", "phi")), n_points = 5,
-                    n_grid = 3, n_draws = 200, messages = FALSE)
+                    n_grid = 3, n_draws = 200, seed = 1, messages = FALSE)
   parallel <- profile(binomial_model, parameters = c("cov", "sigma2"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
-                      n_grid = 3, n_draws = 200, cores = 2,
+                      n_grid = 3, n_draws = 200, seed = 1, cores = 2,
                       messages = FALSE)
   expect_identical(parallel$marginal, serial$marginal)
   expect_identical(parallel$joint, serial$joint)
@@ -505,7 +544,7 @@ test_that("the Woodbury identity and direct factorisation give one likelihood", 
 test_that("Gaussian profiles have every parameter, with the labels of summary()", {
   profiles <- profile(gaussian_model, pairs = list(c("sigma2", "phi")),
                       n_points = 5, n_grid = 3, n_draws = 1,
-                      messages = FALSE)
+                      seed = 1, messages = FALSE)
   expect_named(profiles$marginal, names(unlist(gaussian_model$estimate)))
   expect_identical(nrow(profiles$joint[[1]]), 9L)
   summaries <- summary(gaussian_model)
@@ -590,7 +629,7 @@ test_that("Gaussian profiles of fixed variances match refits", {
 
 test_that("the Wald interval of the nugget variance is that of summary()", {
   profiles <- profile(replicated_fit, parameters = "tau2", n_points = 5,
-                      messages = FALSE)
+                      seed = 1, messages = FALSE)
   expect_identical(profiles$labels$tau2, "Variance of the nugget")
   nugget <- summary(replicated_fit)$sp["Variance of the nugget", ]
   expect_equal(unlist(profiles$intervals[c("estimate", "wald_lower",
@@ -603,7 +642,7 @@ test_that("a joint Gaussian profile can fix every covariance parameter", {
                   fixed_pars = list(sigma2_me = 0.2), messages = FALSE)
   profiles <- profile(fitted, parameters = "phi",
                       pairs = list(c("sigma2", "phi")), n_points = 5,
-                      n_grid = 3, messages = FALSE)
+                      n_grid = 3, seed = 1, messages = FALSE)
   joint <- profiles$joint[[1]]
   expect_true(all(is.finite(joint$loglik)))
   expect_true(all(joint$deviance >= -1e-8))
@@ -613,10 +652,10 @@ test_that("Gaussian profiles on two cores equal those on one", {
   skip_on_os("windows")
   serial <- profile(replicated_fit, parameters = c("cov", "sigma2"),
                     pairs = list(c("sigma2", "phi")), n_points = 5,
-                    n_grid = 3, messages = FALSE)
+                    n_grid = 3, seed = 1, messages = FALSE)
   parallel <- profile(replicated_fit, parameters = c("cov", "sigma2"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
-                      n_grid = 3, cores = 2, messages = FALSE)
+                      n_grid = 3, cores = 2, seed = 1, messages = FALSE)
   expect_identical(parallel$marginal, serial$marginal)
   expect_identical(parallel$joint, serial$joint)
   expect_identical(parallel$intervals, serial$intervals)
@@ -631,7 +670,8 @@ test_that("a poorly identified variance has an open profile interval", {
   fitted <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
                   family = "gaussian", distance_units = "km",
                   messages = FALSE)
-  profiles <- profile(fitted, parameters = "sigma2_me", messages = FALSE)
+  profiles <- profile(fitted, parameters = "sigma2_me", seed = 1,
+                      messages = FALSE)
   interval <- profiles$intervals
   expect_true(is.na(interval$profile_lower))
   expect_equal(interval$profile_upper, 0.0763, tolerance = 2e-3)

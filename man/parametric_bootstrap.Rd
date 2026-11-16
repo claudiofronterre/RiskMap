@@ -9,7 +9,7 @@ parametric_bootstrap(
   n_sim = 1000,
   seed = NULL,
   level = 0.95,
-  cores = 1,
+  cores = 1L,
   messages = getOption("RiskMap.messages", TRUE)
 )
 }

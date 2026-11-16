@@ -955,6 +955,7 @@ glgpm_parameters <- function(formula, data, family, fixed_pars = NULL,
 ##' @rdname glgpm_parameters
 ##' @export
 print.riskmap_parameters <- function(x, ...) {
+  check_dots_unused(...)
   rows <- as.data.frame(unclass(x), stringsAsFactors = FALSE)
   estimated <- rows[is.na(rows$held), , drop = FALSE]
   template <- vapply(unique(estimated$name), function(name) {

@@ -88,8 +88,8 @@ test_that("summarise_distance prints rounded values and stores them in full", {
   expect_false(visible)
   expect_error(print(result, digits = 0),
                "digits", class = "riskmap_error_input")
-  # A misspelt argument is not ignored
-  expect_error(print(result, signif = 5), "signif")
+  # A misspelt argument is not ignored, and is a RiskMap input error
+  expect_input_error(print(result, signif = 5), "signif")
 })
 
 test_that("summarise_distance follows the glgpm() CRS convention", {

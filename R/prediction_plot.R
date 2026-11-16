@@ -89,7 +89,6 @@
 ##' # The same map
 ##' plot(prediction)
 ##' @export
-##' @importFrom grid unit
 plot_prediction <- function(
     x,
     quantity = "response",

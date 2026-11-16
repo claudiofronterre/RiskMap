@@ -12,7 +12,8 @@
 \arguments{
 \item{x}{Output from \code{\link[=specify_glgpm]{specify_glgpm()}} or \code{\link[=simulate_glgpm]{simulate_glgpm()}}.}
 
-\item{...}{Not used.}
+\item{...}{Not used, and an error if given, so that a misspelt argument is
+not ignored.}
 }
 \value{
 Invisibly returns \code{x}.
