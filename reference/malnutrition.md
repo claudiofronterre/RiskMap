@@ -14,7 +14,7 @@ An sf object with 2671 rows and 9 variables:
 
 - age:
 
-  age in months of the child.
+  age of the child in years.
 
 - sex:
 
