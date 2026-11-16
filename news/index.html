@@ -40,127 +40,128 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="2.0.0" id="riskmap-200">RiskMap 2.0.0<a class="anchor" aria-label="anchor" href="#riskmap-200"></a></h2>
-<p>RiskMap 2.0.0 is a redesign of the package. Many functions of 1.0.0 have been renamed, merged or removed, so code written for 1.0.0 needs changing. The table gives the replacement of each function of 1.0.0, and the main changes follow.</p>
+<p>RiskMap 2.0.0 is a redesign of the package. Almost every function of 1.0.0 was renamed, merged or removed, and no name of 1.0.0 remains as a stub, so code written for 1.0.0 needs changing. The table gives the replacement of each function of 1.0.0, and the main changes follow. The full record of changes is in <a href="https://github.com/claudiofronterre/RiskMap/blob/main/notes/changes-2.0.md" class="external-link"><code>notes/changes-2.0.md</code></a> in the source repository.</p>
 <div class="section level3">
 <h3 id="functions-of-and-their-replacements-2-0-0">Functions of 1.0.0 and their replacements<a class="anchor" aria-label="anchor" href="#functions-of-and-their-replacements-2-0-0"></a></h3>
 <table class="table"><colgroup><col width="50%"><col width="50%"></colgroup><thead><tr><th>1.0.0</th>
 <th>2.0.0</th>
-</tr></thead><tbody><tr><td><code>assess_pp()</code></td>
-<td><code><a href="../reference/assess_prediction.html">assess_prediction()</a></code></td>
-</tr><tr><td><code>assess_sim()</code></td>
-<td><code><a href="../reference/assess_simulation.html">assess_simulation()</a></code></td>
-</tr><tr><td><code>check_mcmc()</code></td>
-<td><code><a href="../reference/plot_mcmc.html">plot_mcmc()</a></code></td>
-</tr><tr><td><code>compute_ID_coords()</code></td>
-<td>Removed, now internal</td>
-</tr><tr><td><code>convex_hull_sf()</code></td>
-<td><code><a href="../reference/create_convex_hull.html">create_convex_hull()</a></code></td>
-</tr><tr><td><code>dast()</code></td>
-<td>Removed, to move to a separate package</td>
-</tr><tr><td><code>dist_summaries()</code></td>
-<td><code><a href="../reference/summarise_distance.html">summarise_distance()</a></code></td>
-</tr><tr><td><code>glgpm_sim()</code></td>
-<td><code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code></td>
-</tr><tr><td><code>Laplace_sampling_MCMC()</code></td>
-<td>Removed, now internal</td>
-</tr><tr><td><code>matern.grad.phi()</code></td>
-<td>Removed, now internal</td>
-</tr><tr><td><code>matern.hessian.phi()</code></td>
-<td>Removed, now internal</td>
-</tr><tr><td><code>matern_cor()</code></td>
-<td><code><a href="../reference/matern_correlation.html">matern_correlation()</a></code></td>
-</tr><tr><td><code>maxim.integrand()</code></td>
-<td>Removed, now internal</td>
+</tr></thead><tbody><tr><td><code>glgpm(den, crs, convert_to_crs, scale_to_km, par0, S_samples, fix_var_me)</code></td>
+<td>
+<code>glgpm(denominator, distance_crs, distance_units)</code>. <code>fixed_pars</code> replaces <code>par0</code> and <code>fix_var_me</code>, <code>start_pars</code> takes any parameters by name, and <code>S_samples</code> is gone</td>
+</tr><tr><td><code>gp(nugget = 0)</code></td>
+<td>
+<code>gp(nugget = FALSE)</code>, or <code>TRUE</code> for a nugget, which <code>fixed_pars = list(tau2 = )</code> can hold</td>
+</tr><tr><td><code>set_control_sim()</code></td>
+<td>
+<code>set_control_mcmc(n_draws, burnin, thin, h, c1_h, c2_h)</code> for sampling and <code><a href="../reference/set_control_mcml.html">set_control_mcml()</a></code> for fitting</td>
+</tr><tr><td><code>summary(fit, conf_level)</code></td>
+<td><code>summary(fit, level)</code></td>
+</tr><tr><td><code><a href="../reference/to_table.html">to_table()</a></code></td>
+<td>
+<code><a href="../reference/to_table.html">to_table()</a></code>, which returns a <code>knitr_kable</code> table instead of an <code>xtable</code>
+</td>
 </tr><tr><td>
-<code>plot_AnPIT()</code>, <code>plot_score()</code>
+<code>pred_over_grid()</code>, <code>pred_target_grid()</code>, <code>update_predictors()</code>
 </td>
 <td>
-<code><a href="../reference/plot_cross_validation.html">plot_cross_validation()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code><a href="../reference/assess_prediction.html">assess_prediction()</a></code> results</td>
-</tr><tr><td><code>plot_mda()</code></td>
-<td>Removed, to move with <code>dast()</code>
+<code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>, with every predictor in <code>newdata</code>
 </td>
-</tr><tr><td><code>plot_s_variogram()</code></td>
+</tr><tr><td><code>pred_target_shp()</code></td>
+<td><code>predict(boundaries, aggregate)</code></td>
+</tr><tr><td>
+<code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code>pred_target_grid()</code> and <code>pred_target_shp()</code> results</td>
 <td>
-<code><a href="../reference/plot_variogram.html">plot_variogram()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code><a href="../reference/variogram.html">variogram()</a></code> results</td>
+<code><a href="../reference/plot_prediction.html">plot_prediction()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of a <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> result</td>
+</tr><tr><td><code>assess_pp()</code></td>
+<td>
+<code><a href="../reference/assess_prediction.html">assess_prediction()</a></code>, which takes <code>models</code>, <code>size</code>, <code>metrics</code> and <code>control_mcmc</code> for <code>object</code>, <code>n_size</code>, <code>which_metric</code> and <code>control_sim</code>, and <code>"PIT"</code> for <code>"AnPIT"</code>
+</td>
+</tr><tr><td>
+<code>plot_score()</code>, <code>plot_AnPIT()</code>
+</td>
+<td>
+<code><a href="../reference/plot_cross_validation.html">plot_cross_validation()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of an <code><a href="../reference/assess_prediction.html">assess_prediction()</a></code> result</td>
+</tr><tr><td><code>assess_sim()</code></td>
+<td>
+<code><a href="../reference/assess_simulation.html">assess_simulation()</a></code>, which takes <code>simulation</code>, <code>target</code>, <code>aggregate</code>, <code>boundaries</code>, <code>label</code>, <code>objective</code> and <code>breaks</code> for <code>obj_sim</code>, <code>f_grid_target</code>, <code>f_area_target</code>, <code>shp</code>, <code>col_names</code>, <code>pred_objective</code> and <code>categories</code>, and <code>spatial_scale = "location"</code> for <code>"grid"</code>
+</td>
+</tr><tr><td>
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> of <code>assess_pp()</code> and <code>assess_sim()</code> results</td>
+<td>
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> of <code><a href="../reference/assess_prediction.html">assess_prediction()</a></code> and <code><a href="../reference/assess_simulation.html">assess_simulation()</a></code> results</td>
+</tr><tr><td>
+<code>glgpm_sim()</code>, <code>surf_sim()</code>
+</td>
+<td>
+<code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code>, with <code><a href="../reference/specify_glgpm.html">specify_glgpm()</a></code> for a model given by its parameters and <code>what = "surface"</code> for surfaces</td>
 </tr><tr><td><code>plot_sim_surf()</code></td>
 <td>
-<code><a href="../reference/plot_simulation.html">plot_simulation()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of <code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code> results</td>
+<code><a href="../reference/plot_simulation.html">plot_simulation()</a></code>, or <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of a <code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code> result</td>
 </tr><tr><td>
-<code>pred_over_grid()</code>, <code>pred_target_grid()</code>
+<code>s_variogram()</code>, <code>plot_s_variogram()</code>
 </td>
-<td><code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code></td>
-</tr><tr><td><code>pred_target_shp()</code></td>
 <td>
-<code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> with <code>boundaries</code>
+<code><a href="../reference/variogram.html">variogram()</a></code> and <code><a href="../reference/plot_variogram.html">plot_variogram()</a></code>, with <code>breaks</code> for <code>bins</code>, <code>n_permutations</code> for <code>n_permutation</code>, and <code>distance_crs</code> and <code>distance_units</code> for <code>convert_to_utm</code> and <code>scale_to_km</code>
+</td>
+</tr><tr><td><code>dist_summaries()</code></td>
+<td>
+<code><a href="../reference/summarise_distance.html">summarise_distance()</a></code>, with <code>distance_crs</code> and <code>distance_units</code>
 </td>
 </tr><tr><td><code>propose_utm()</code></td>
-<td><code><a href="../reference/propose_crs.html">propose_crs()</a></code></td>
-</tr><tr><td><code>s_variogram()</code></td>
-<td><code><a href="../reference/variogram.html">variogram()</a></code></td>
-</tr><tr><td><code>set_control_sim()</code></td>
-<td><code><a href="../reference/set_control_mcmc.html">set_control_mcmc()</a></code></td>
-</tr><tr><td><code>surf_sim()</code></td>
-<td><code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code></td>
-</tr><tr><td><code>update_predictors()</code></td>
-<td>Removed, give the predictors in the <code>newdata</code> of <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>
+<td>
+<code><a href="../reference/propose_crs.html">propose_crs()</a></code>, which chooses the CRS by its distortion of distances</td>
+</tr><tr><td><code>convex_hull_sf()</code></td>
+<td><code><a href="../reference/create_convex_hull.html">create_convex_hull()</a></code></td>
+</tr><tr><td><code>create_grid(shp, spat_res, grid_crs)</code></td>
+<td><code>create_grid(boundaries, spacing, distance_crs)</code></td>
+</tr><tr><td><code>check_mcmc()</code></td>
+<td>
+<code><a href="../reference/plot_mcmc.html">plot_mcmc()</a></code>, with <code>locations</code> for <code>component</code>, and <code><a href="../reference/summarise_mcmc.html">summarise_mcmc()</a></code>
 </td>
+</tr><tr><td><code>matern_cor()</code></td>
+<td><code><a href="../reference/matern_correlation.html">matern_correlation()</a></code></td>
+</tr><tr><td>
+<code>dast()</code>, <code>plot_mda()</code>
+</td>
+<td>Removed. Models of mass drug administration move to a separate package</td>
+</tr><tr><td>
+<code>Laplace_sampling_MCMC()</code>, <code>maxim.integrand()</code>, <code>matern.grad.phi()</code>, <code>matern.hessian.phi()</code>, <code>compute_ID_coords()</code>
+</td>
+<td>Removed. Their work is internal</td>
 </tr></tbody></table></div>
 <div class="section level3">
 <h3 id="main-changes-2-0-0">Main changes<a class="anchor" aria-label="anchor" href="#main-changes-2-0-0"></a></h3>
 <div class="section level4">
-<h4 id="model-fitting-2-0-0">Model fitting<a class="anchor" aria-label="anchor" href="#model-fitting-2-0-0"></a></h4>
+<h4 id="fitting-2-0-0">Fitting<a class="anchor" aria-label="anchor" href="#fitting-2-0-0"></a></h4>
 <ul><li>
-<code><a href="../reference/glgpm.html">glgpm()</a></code> fits Gaussian, binomial, Poisson and negative binomial models. A link can be named in a family object, such as <code>binomial("probit")</code>, and any other link given as an inverse link function.</li>
-<li>Non-Gaussian models are fitted by certified Monte Carlo maximum likelihood, which enlarges its samples until the Monte Carlo error of the estimates is small and reports a bound on that error.</li>
-<li>In binomial and Poisson fits, household effects whose children differ in covariates are now integrated out, so such fits are much faster.</li>
+<code><a href="../reference/glgpm.html">glgpm()</a></code> fits Gaussian, binomial, Poisson and negative binomial models with a spatial Gaussian process, <code><a href="../reference/gp.html">gp()</a></code>, and random effects, <code><a href="../reference/re.html">re()</a></code>, and takes any link. Binomial, Poisson and negative binomial models are fitted by certified Monte Carlo maximum likelihood, which enlarges its samples until the Monte Carlo error of the estimates is small and reports a bound on that error. In binomial and Poisson fits, household effects whose children differ in covariates are integrated out, which makes such fits much faster.</li>
+<li>Every parameter has one name, the same in <code>start_pars</code>, <code>fixed_pars</code>, <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef()</a></code>, <code><a href="https://rdrr.io/r/stats/profile.html" class="external-link">profile()</a></code> and <code><a href="../reference/parametric_bootstrap.html">parametric_bootstrap()</a></code>, with <code>tau2</code> for the variance of the nugget. <code><a href="../reference/glgpm_parameters.html">glgpm_parameters()</a></code> lists the parameters of a model and <code><a href="../reference/riskmap_parameters.html">?riskmap_parameters</a></code> describes them. <code>start_pars</code> starts any of them, so <code>start_pars = coef(fit)</code> starts from another fit, and <code>fixed_pars</code> holds any of them, or all, in which case <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> works with the given values.</li>
+<li>Data are <code>sf</code> objects. <code>distance_crs</code> and <code>distance_units</code> set the projection and the units of distances in every function that measures them, and <code><a href="../reference/propose_crs.html">propose_crs()</a></code> proposes a projection that keeps distances accurate.</li>
 <li>
-<code>start_pars</code> gives starting values for any of a model’s parameters by name, one, several or all of them, and <code>start_pars = coef(fit)</code> starts from another fit. For binomial, Poisson and negative binomial models the automatic comparison of starts still runs for the parameters not given, which <code>set_control_mcml(start_comparison = FALSE)</code> switches off. <code><a href="../reference/glgpm_parameters.html">glgpm_parameters()</a></code> lists a model’s parameters before it is fitted, and <code><a href="../reference/riskmap_parameters.html">?riskmap_parameters</a></code> describes them.</li>
+<code><a href="../reference/glgpm.html">?glgpm</a></code> lists the components of a fit that code may rely on. <code><a href="https://rdrr.io/r/stats/logLik.html" class="external-link">logLik()</a></code>, <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">vcov()</a></code> and <code><a href="https://rdrr.io/r/stats/nobs.html" class="external-link">nobs()</a></code> work on fits, and with them <code><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">AIC()</a></code>, <code><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">BIC()</a></code> and <code><a href="https://rdrr.io/r/stats/update.html" class="external-link">update()</a></code>. Every result records the version of RiskMap that made it.</li>
 <li>
-<code>fixed_pars</code> in <code><a href="../reference/glgpm.html">glgpm()</a></code> holds any parameters at given values, such as a coefficient, the scale or the nugget variance, or all of them, in which case <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> works with the given parameters. It replaces <code>gp(nugget = &lt;value&gt;)</code>, <code>fix_var_me</code> and <code>negative_binomial(theta)</code>. <code><a href="https://rdrr.io/r/stats/coef.html" class="external-link">coef()</a></code> gives held parameters with the estimated ones, in the order of <code><a href="../reference/riskmap_parameters.html">?riskmap_parameters</a></code>, and <code><a href="https://rdrr.io/r/stats/profile.html" class="external-link">profile()</a></code> names the nugget <code>tau2</code> for every family.</li>
-<li>Gaussian fits with more than three records per latent effect start the measurement error and random-effect variances at the values given in <code>start_pars</code>. Such fits given a spatial variance other than 1, and parametric bootstraps of such models, can move very slightly.</li>
-<li>
-<code><a href="../reference/glgpm.html">glgpm()</a></code> takes its CRS in <code>distance_crs</code>, with <code>seed</code> and <code>messages</code> as its last arguments. <code><a href="https://rdrr.io/r/stats/logLik.html" class="external-link">logLik()</a></code>, <code><a href="https://rdrr.io/r/stats/vcov.html" class="external-link">vcov()</a></code> and <code><a href="https://rdrr.io/r/stats/nobs.html" class="external-link">nobs()</a></code> work on fits, so <code><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">AIC()</a></code> and <code><a href="https://rdrr.io/r/stats/AIC.html" class="external-link">BIC()</a></code> do too, and <code><a href="../reference/glgpm.html">?glgpm</a></code> lists the components of a fit that are part of its interface. <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> and <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> of a fit stop on an argument they don’t use, and every result records the version of RiskMap that made it.</li>
-<li>
-<code><a href="../reference/set_control_mcmc.html">set_control_mcmc()</a></code> takes the number of draws it keeps in <code>n_draws</code>, 2,000 by default, instead of the number of iterations in <code>n_sim</code>, and its step-size settings are <code>c1_h</code> and <code>c2_h</code>. It no longer has <code>linear_model</code>, since the draws of a Gaussian model are always independent. <code><a href="../reference/set_control_mcml.html">set_control_mcml()</a></code> takes its sample sizes as <code>initial_draws</code>, <code>validation_draws</code> and <code>max_draws</code>.</li>
-<li>
-<code><a href="../reference/check_fit.html">check_fit()</a></code> reports how a fit was computed and flags anything that needs attention. <code><a href="https://rdrr.io/r/stats/profile.html" class="external-link">profile()</a></code> gives profile likelihoods and <code><a href="../reference/parametric_bootstrap.html">parametric_bootstrap()</a></code> bootstrap intervals for the parameters.</li>
-<li>
-<code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of a profile returns one plot instead of the list of its panels, and draws nothing, as every <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> method now does. <code><a href="https://rdrr.io/r/stats/profile.html" class="external-link">profile()</a></code>, <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> and <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of profiles and extrapolations, and <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code>, <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> and <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of bootstraps and checks stop on an argument they don’t use.</li>
-<li>Every <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> method has a function of its own, <code><a href="../reference/plot_variogram.html">plot_variogram()</a></code>, <code><a href="../reference/plot_prediction.html">plot_prediction()</a></code>, <code><a href="../reference/plot_extrapolation.html">plot_extrapolation()</a></code>, <code><a href="../reference/plot_check.html">plot_check()</a></code>, <code><a href="../reference/plot_profile.html">plot_profile()</a></code>, <code><a href="../reference/plot_bootstrap.html">plot_bootstrap()</a></code>, <code><a href="../reference/plot_cross_validation.html">plot_cross_validation()</a></code>, <code><a href="../reference/plot_simulation.html">plot_simulation()</a></code> and <code><a href="../reference/plot_simulated_surface.html">plot_simulated_surface()</a></code>, so users can call either.</li>
+<code><a href="../reference/set_control_mcmc.html">set_control_mcmc()</a></code> sets the number of draws it keeps in <code>n_draws</code>, and <code><a href="../reference/set_control_mcml.html">set_control_mcml()</a></code> takes its sample sizes as <code>initial_draws</code>, <code>validation_draws</code> and <code>max_draws</code>.</li>
+</ul></div>
+<div class="section level4">
+<h4 id="checking-a-fit-2-0-0">Checking a fit<a class="anchor" aria-label="anchor" href="#checking-a-fit-2-0-0"></a></h4>
+<ul><li>
+<code><a href="../reference/check_fit.html">check_fit()</a></code> reports how a fit was computed and flags anything that needs attention, <code><a href="https://rdrr.io/r/stats/profile.html" class="external-link">profile()</a></code> gives profile likelihoods and <code><a href="../reference/parametric_bootstrap.html">parametric_bootstrap()</a></code> bootstrap intervals for the parameters.</li>
 </ul></div>
 <div class="section level4">
 <h4 id="prediction-2-0-0">Prediction<a class="anchor" aria-label="anchor" href="#prediction-2-0-0"></a></h4>
-<ul><li>A single <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> method replaces the three-stage interface of 1.0.0. It predicts at new locations or over the areas given in <code>boundaries</code>, with exceedance probabilities, population weights, standardisation and, if asked, the uncertainty of the estimated parameters.</li>
-<li>
-<code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> maps predictions, <code><a href="../reference/to_table.html">to_table()</a></code> tabulates predictions over areas, and <code><a href="../reference/assess_extrapolation.html">assess_extrapolation()</a></code> shows where predictions go beyond the data.</li>
-<li>
-<code><a href="../reference/assess_extrapolation.html">assess_extrapolation()</a></code> counts the sampling noise of the data and flags a location when the data say less about it than about 95% of the surveyed locations, each left out in turn (<a href="https://github.com/claudiofronterre/RiskMap/issues/236" class="external-link">#236</a>). <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of predictions takes <code>summaries</code> and <code>thresholds</code>, the names <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> uses.</li>
-<li>
-<code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> takes <code>joint</code> in place of <code>type</code> and <code>standardise</code> in place of <code>standardize</code>, and stops on an argument it doesn’t use. <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of simulations maps the mean by default and takes <code>quantity</code>, <code>palette</code> and <code>limits</code> as <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of predictions does.</li>
-</ul></div>
-<div class="section level4">
-<h4 id="data-and-projections-2-0-0">Data and projections<a class="anchor" aria-label="anchor" href="#data-and-projections-2-0-0"></a></h4>
-<ul><li>Data are <code>sf</code> objects with a coordinate reference system. <code><a href="../reference/propose_crs.html">propose_crs()</a></code> proposes a projection that keeps distances accurate, and <code><a href="../reference/glgpm.html">glgpm()</a></code> uses it for data in longitude and latitude.</li>
-<li>
-<code><a href="../reference/create_grid.html">create_grid()</a></code> builds prediction grids, also from the cells of a raster, <code><a href="../reference/get_worldpop.html">get_worldpop()</a></code> downloads WorldPop population counts, and <code><a href="../reference/variogram.html">variogram()</a></code> gives the empirical variogram with a permutation envelope.</li>
-<li>
-<code><a href="../reference/create_grid.html">create_grid()</a></code> takes <code>distance_crs</code>, as <code><a href="../reference/variogram.html">variogram()</a></code> and <code><a href="../reference/summarise_distance.html">summarise_distance()</a></code> do. A grid keeps its cells when its columns are selected, and <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> says when it counts points on a grid whole in the polygon that contains them (<a href="https://github.com/claudiofronterre/RiskMap/issues/214" class="external-link">#214</a>).</li>
-<li>ggspatial and jsonlite are suggested rather than imported. <code><a href="../reference/get_worldpop.html">get_worldpop()</a></code> asks for jsonlite, and maps ask for ggspatial only to draw a north arrow or a scale bar.</li>
+<ul><li>A single <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code> method predicts at new locations or over the areas given in <code>boundaries</code>, with exceedance probabilities, population weights, standardisation and, if asked, the uncertainty of the estimated parameters. <code><a href="../reference/plot_prediction.html">plot_prediction()</a></code> maps the predictions, <code><a href="../reference/to_table.html">to_table()</a></code> tabulates them, and <code><a href="../reference/assess_extrapolation.html">assess_extrapolation()</a></code> shows where they go beyond the data.</li>
 </ul></div>
 <div class="section level4">
 <h4 id="assessment-and-simulation-2-0-0">Assessment and simulation<a class="anchor" aria-label="anchor" href="#assessment-and-simulation-2-0-0"></a></h4>
 <ul><li>
-<code><a href="../reference/assess_prediction.html">assess_prediction()</a></code> compares models by spatial cross-validation.</li>
-<li>
-<code><a href="../reference/specify_glgpm.html">specify_glgpm()</a></code> and <code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code> simulate data and surfaces from a model, and <code><a href="../reference/assess_simulation.html">assess_simulation()</a></code> assesses prediction targets on them.</li>
-<li>
-<code><a href="../reference/specify_glgpm.html">specify_glgpm()</a></code> takes its CRS in <code>distance_crs</code> and <code><a href="../reference/plot_mcmc.html">plot_mcmc()</a></code> its locations in <code>locations</code>.</li>
-<li>
-<code><a href="../reference/assess_prediction.html">assess_prediction()</a></code> reports the SCRPS as a loss, so that lower is better for every score, and <code>PIT_area</code> once for all test observations, next to its value under perfect calibration (<a href="https://github.com/claudiofronterre/RiskMap/issues/230" class="external-link">#230</a>). It takes its fits in <code>models</code> and <code>min_dist</code> in their distance units, and draws the splits only with <code>plot_fold = TRUE</code>. <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of its result returns one plot of one metric (<a href="https://github.com/claudiofronterre/RiskMap/issues/213" class="external-link">#213</a>), and <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> loses <code>view_all</code>. <code><a href="../reference/assess_simulation.html">assess_simulation()</a></code> takes <code>simulation</code>, <code>aggregate</code>, <code>label</code>, <code>objective</code> and <code>breaks</code>, and calls the scale of the grid <code>"location"</code>. <code>method = "cluster"</code> and <code>"regularized"</code> need spatialsample and spatialEco, which move to Suggests.</li>
+<code><a href="../reference/assess_prediction.html">assess_prediction()</a></code> compares models by spatial cross-validation. Every score is a loss, so lower is better, and <code>PIT_area</code> is given once for all test observations, next to its value under perfect calibration. <code><a href="../reference/specify_glgpm.html">specify_glgpm()</a></code> and <code><a href="../reference/simulate_glgpm.html">simulate_glgpm()</a></code> simulate data and surfaces from a model, and <code><a href="../reference/assess_simulation.html">assess_simulation()</a></code> assesses predictions on them.</li>
 </ul></div>
 <div class="section level4">
-<h4 id="messages-2-0-0">Messages<a class="anchor" aria-label="anchor" href="#messages-2-0-0"></a></h4>
-<ul><li>Errors, warnings and messages are written with cli and have classes, listed in <code><a href="../reference/riskmap_conditions.html">?riskmap_conditions</a></code>, and long computations show their progress (<code><a href="../reference/riskmap_progress.html">?riskmap_progress</a></code>). <code>options(RiskMap.messages = FALSE)</code> silences the messages.</li>
+<h4 id="plots-printing-and-messages-2-0-0">Plots, printing and messages<a class="anchor" aria-label="anchor" href="#plots-printing-and-messages-2-0-0"></a></h4>
+<ul><li>Every plot has a function of its own, such as <code><a href="../reference/plot_variogram.html">plot_variogram()</a></code>, <code><a href="../reference/plot_prediction.html">plot_prediction()</a></code> and <code><a href="../reference/plot_cross_validation.html">plot_cross_validation()</a></code>, which <code><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot()</a></code> of the result also calls, so users can call either. Each returns one ggplot or patchwork object, which is drawn when printed. Methods and plot functions stop on an argument they don’t use.</li>
+<li>Errors, warnings and messages are written with cli and have classes (<code><a href="../reference/riskmap_conditions.html">?riskmap_conditions</a></code>), long computations show their progress (<code><a href="../reference/riskmap_progress.html">?riskmap_progress</a></code>), and <code>options(RiskMap.messages = FALSE)</code> silences the messages.</li>
+<li>Packages that only some functions need, such as spatialsample and spatialEco for some splits of <code><a href="../reference/assess_prediction.html">assess_prediction()</a></code>, ggspatial for north arrows and scale bars, and jsonlite for <code><a href="../reference/get_worldpop.html">get_worldpop()</a></code>, are suggested rather than imported, and those functions ask for them.</li>
+<li>Custom links, the negative binomial family, the penalised complexity priors of <code><a href="../reference/set_control_mcml.html">set_control_mcml()</a></code>, <code><a href="../reference/crs_distortion.html">crs_distortion()</a></code> and the spatial indicator of <code><a href="../reference/assess_extrapolation.html">assess_extrapolation()</a></code> are experimental and may change in a minor release, as their help pages say.</li>
 </ul></div>
 </div>
 </div>

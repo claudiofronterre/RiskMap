@@ -61,7 +61,8 @@ of the model formula.
 Gaussian, binomial and Poisson responses use the families of the stats
 package, such as `binomial("probit")`, and other links can be given to
 [`glgpm()`](https://claudiofronterre.github.io/RiskMap/reference/glgpm.md)
-as an inverse link function.
+as an inverse link function. Custom links and the negative binomial
+family are experimental and may change in a minor release.
 
 - [`negative_binomial()`](https://claudiofronterre.github.io/RiskMap/reference/negative_binomial.md)
   [`print(`*`<RiskMap_family>`*`)`](https://claudiofronterre.github.io/RiskMap/reference/negative_binomial.md)
