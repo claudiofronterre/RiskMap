@@ -1126,9 +1126,20 @@ collect_optimizer_diagnostics <- function(estimate, objective, gradient,
     attr(objective, "diagnostics")$invalid_evaluations
   diagnostics$max_abs_gradient <- max(abs(gradient))
   diagnostics$stationary <- diagnostics$max_abs_gradient <= 1e-3
-  diagnostics$information_rcond <- rcond(information)
+  diagnostics$information_rcond <- information_rcond(information)
   diagnostics$information_jitter <- attr(information_root, "jitter")
   diagnostics
+}
+
+##' Reciprocal condition number of an observed information
+##'
+##' The information is empty when every parameter is held. rcond() returns Inf
+##' for an empty matrix from R 4.4.0, and raises a LAPACK error before.
+##'
+##' @noRd
+information_rcond <- function(information) {
+  if (is.matrix(information) && !length(information)) Inf else
+    rcond(information)
 }
 
 ##' Report an optimiser result that should not be treated as converged

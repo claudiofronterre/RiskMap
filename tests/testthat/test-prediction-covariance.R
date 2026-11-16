@@ -9,7 +9,8 @@ test_that("Gaussian weights agree with a direct covariance solve", {
       diag(length(location)) * 0.2
     weights <- gaussian_prediction_weights(Matrix::Matrix(incidence, sparse = TRUE),
                                             covariance, cbind(location, group), 0.2)
-    expect_equal(weights(cross_covariance),
+    # Older versions of Matrix add dimnames, so only the values are compared.
+    expect_equal(unname(weights(cross_covariance)),
                  cross_covariance %*% solve(observation_covariance),
                  tolerance = 1e-12)
   }
