@@ -509,6 +509,7 @@ test_that("a fix names the extra check that would settle it", {
 })
 
 test_that("the plot shows the stages, and a profile once it is computed", {
+  skip_on_cran()
   checked <- check_fit(binomial_model)
   stage_panels <- c("certificate", "effective_draws", "pareto_k")
   # One object, drawn only when printed
@@ -568,6 +569,7 @@ test_that("the plot shows the stages, and a profile once it is computed", {
 })
 
 test_that("the panels of a held variance and of the screen say why they are empty", {
+  skip_on_cran()
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   # The binomial fixture holds no variance, and its random effects keep the
@@ -617,6 +619,7 @@ test_that("the panels of a held variance and of the screen say why they are empt
 })
 
 test_that("the panel of the held variances draws the test the fit recorded", {
+  skip_on_cran()
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   slopes <- data.frame(
@@ -656,6 +659,7 @@ test_that("the panel of the held variances draws the test the fit recorded", {
 })
 
 test_that("the screen of short scales is tabulated and drawn from the fit", {
+  skip_on_cran()
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   screened <- suppressWarnings(glgpm(
@@ -750,6 +754,7 @@ test_that("the screen tables keep what the fit recorded", {
 })
 
 test_that("a fit made before the bounds were kept draws the screen alone", {
+  skip_on_cran()
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   # Such a fit kept only the largest exact bound, here 4 below the estimate.

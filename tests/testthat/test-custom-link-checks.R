@@ -125,6 +125,7 @@ test_that("the independent-site likelihood of a probit link matches integration"
 })
 
 test_that("a fit with a custom link runs the screen and the exact alarms", {
+  skip_on_cran()
   fit <- suppressWarnings(glgpm(
     y ~ cov + gp(), data = binomial_data, family = "binomial",
     denominator = denominator, invlink = function(eta) stats::pnorm(eta),

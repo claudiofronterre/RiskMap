@@ -43,6 +43,7 @@ test_that("differentiates whichever d1 was actually produced, for d2", {
 })
 
 test_that("a custom invlink that Deriv cannot differentiate still fits via the numeric fallback", {
+  skip_on_cran()
   ## approxfun()'s returned closure has no Deriv derivative rule, so this
   ## exercises the same fallback as the unit tests above, end-to-end through
   ## glgpm(). Bounded to [0, 1], so paired with "binomial", not "poisson".

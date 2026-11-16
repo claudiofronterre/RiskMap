@@ -1,4 +1,5 @@
 test_that("assess_prediction produces errors", {
+  skip_on_cran()
 
   # A method is given, so that the check of `models` is the one reached.
   expect_input_error(
@@ -433,6 +434,7 @@ test_that("assess_prediction re-encodes random effects after subsetting", {
 })
 
 test_that("assess_prediction splits test data correctly", {
+  skip_on_cran()
   skip_if_not_installed("spatialsample")
   skip_if_not_installed("spatialEco")
 
@@ -512,6 +514,7 @@ test_that("assess_prediction splits test data correctly", {
 })
 
 test_that("assess_prediction can refit correctly for all model families", {
+  skip_on_cran()
   skip_if_not_installed("spatialEco")
 
   # 'regularized' holds out a single random point from the tiny (n = 10)
@@ -686,6 +689,7 @@ test_that("a sharper calibrated prediction has the lower SCRPS (#230)", {
 })
 
 test_that("the expected PIT_area shrinks with the test observations and allows for repeats (#230)", {
+  skip_on_cran()
   gaussian_sets <- function(rows) {
     list(list(rows = rows, values = list(mean = rep(0, length(rows)),
                                          sd = rep(1, length(rows)))))
@@ -756,6 +760,7 @@ test_that("plot_folds() doesn't facet when there is only one iteration", {
 })
 
 test_that("assess_prediction(plot_fold = TRUE) uses plot_folds() for 'user' and 'regularized', autoplot() for 'cluster' (#157)", {
+  skip_on_cran()
   skip_if_not_installed("spatialsample")
   skip_if_not_installed("spatialEco")
   grDevices::pdf(NULL)

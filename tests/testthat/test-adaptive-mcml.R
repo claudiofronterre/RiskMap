@@ -25,6 +25,7 @@ test_that("adaptive importance likelihood agrees with one-dimensional quadrature
 })
 
 test_that("a certified stage corrects the fit and certifies the correction", {
+  skip_on_cran()
   coordinate <- seq(0, 1, length.out = 30)
   covariate <- seq(-1, 1, length.out = 30)
   trials <- rep(20, 30)
@@ -109,6 +110,7 @@ test_that("the Laplace start returns the Laplace value at its estimate", {
 })
 
 test_that("a zero spatial variance is held at the boundary without escalation", {
+  skip_on_cran()
   set.seed(31)
   coordinate <- seq(0, 1, length.out = 60)
   covariate <- rnorm(60)
@@ -847,6 +849,7 @@ test_that("set_control_mcml validates the certification settings", {
 })
 
 test_that("a control saved with the sizes as *_samples fits as before", {
+  skip_on_cran()
   # The control that a fit made before the draws were named so stores, and
   # that its refits pass on.
   old <- unclass(fixture_control_mcml)
@@ -1830,6 +1833,7 @@ test_that("the stage after a fallback tries the global proposal again", {
 })
 
 test_that("a restarted fit equals one started from the same values", {
+  skip_on_cran()
   coordinate <- seq(0, 1, length.out = 30)
   covariate <- seq(-1, 1, length.out = 30)
   trials <- rep(20, 30)
@@ -2243,6 +2247,7 @@ test_that("coefficients at the bound of the search are found", {
 })
 
 test_that("a fit to separated data ends without information or certificate", {
+  skip_on_cran()
   survey <- make_separation_survey()
   y <- 0 * survey$y
   engine <- make_adaptive_mcml_engine(
@@ -2312,6 +2317,7 @@ test_that("a correction that reaches a bound is not certified", {
 })
 
 test_that("glgpm warns when the likelihood has no maximum", {
+  skip_on_cran()
   fit_to <- function(data) {
     capture_warnings(glgpm(
       y ~ cov + gp(), data = data, family = "binomial",

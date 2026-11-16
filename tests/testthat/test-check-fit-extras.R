@@ -124,6 +124,7 @@ test_that("the covariance parameters are those the fit estimated", {
 })
 
 test_that("the profile check runs on request, from a stream of the fit's seed", {
+  skip_on_cran()
   withr::local_preserve_seed()
   set.seed(11)
   before <- .Random.seed
@@ -159,6 +160,7 @@ test_that("the profile check runs on request, from a stream of the fit's seed", 
 })
 
 test_that("a profile computed by the user is used as it is", {
+  skip_on_cran()
   scale_profile <- profile(binomial_model, parameters = "phi", n_points = 5,
                            n_draws = 200, seed = 1, messages = FALSE)
   expect_silent(checked <- check_fit(binomial_model, profile = scale_profile))
@@ -221,6 +223,7 @@ test_that("an extra check that does not apply or fails says why", {
 })
 
 test_that("the profiles of a fit with a named link use that link", {
+  skip_on_cran()
   probit <- glgpm(y ~ cov + gp(), data = binomial_data,
                   family = binomial("probit"), denominator = denominator,
                   control_mcmc = control_mcmc, seed = fixture_seed,
@@ -240,6 +243,7 @@ test_that("the profiles of a fit with a named link use that link", {
 })
 
 test_that("the radius check runs on request, from streams of the fit's seed", {
+  skip_on_cran()
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   withr::local_preserve_seed()
@@ -356,6 +360,7 @@ test_that("a radius check that does not apply or fails says why", {
 })
 
 test_that("a Gaussian profile needs no seed and can be plotted alone", {
+  skip_on_cran()
   grDevices::pdf(NULL)
   withr::defer(grDevices::dev.off())
   expect_message(checked <- check_fit(gaussian_model, extra = "profile"),

@@ -101,6 +101,7 @@ fit_binomial_with <- function(start_pars = NULL,
 }
 
 test_that("a partial start keeps the comparison of starts", {
+  skip_on_cran()
   default <- fit_binomial_with()
   partial <- fit_binomial_with(list(phi = 3))
   starting <- attr(partial, "starting_values")
@@ -138,6 +139,7 @@ test_that("a partial start keeps the comparison of starts", {
 })
 
 test_that("start_pars = coef(fit) starts the engine at the fit's estimate", {
+  skip_on_cran()
   # The engine's start, captured, against the fit's estimate on the scale of
   # the engine, with standardised covariates and distances rescaled by the
   # largest distance.

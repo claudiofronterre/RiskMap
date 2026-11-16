@@ -834,6 +834,7 @@ test_that("a canonical logit assessment scores plogis of the linear predictors",
 })
 
 test_that("assess_simulation scores every model through its own inverse link", {
+  skip_on_cran()
   generating <- specify_glgpm(
     y ~ gp(), data = binomial_data, family = binomial("probit"),
     denominator = denominator,
