@@ -187,6 +187,20 @@ slightly. Pseudo-Mercator is also not conformal, so it stretched distances
 more north-south than east-west.
 - `?malnutrition` gives `age` in years, where it said months. The ages run
 from 0 to 4.96 in steps of one day.
+- `tz_covariates` has its covariates on the scales of `tz_malaria`, so that a
+model fitted to `tz_malaria` predicts over the grid. Temperature (4.7 degrees
+lower than at the nearest cluster at the median) and NTL (mostly 0) came from
+other products than those of `tz_malaria`. They are now the values at the grid
+points of the 2015 rasters of MODIS daytime land surface temperature and VIIRS
+night-time light that give `tz_malaria` its values, and are missing at 2 points
+for Temperature. ITN was a proportion with -9999 for 8 missing values and is
+now a percentage with `NA`. EVI, Precipitation and Population were already on
+the scales of `tz_malaria` and are unchanged. `?tz_malaria` and
+`?tz_covariates` give the source and units of every covariate. Population was
+said to be in thousands, but it is about one hundredth of the density in people
+per square kilometre, as people per WorldPop cell of 3 arc-seconds. The script
+`data-raw/tz_covariates.R` records the change.
+- `?liberia` spells river blindness correctly.
 
 ## Coordinate reference systems
 

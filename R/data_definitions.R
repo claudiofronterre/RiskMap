@@ -141,7 +141,7 @@ NULL
 NULL
 
 ##' @title River-blindness in Liberia
-##' @description Counts of reported onchocerciasis (or riverblindess)
+##' @description Counts of reported onchocerciasis (or river blindness)
 ##' cases from 90 villages sampled across Liberia.
 ##' @docType data
 ##' @keywords datasets
@@ -259,9 +259,7 @@ NULL
 
 ##' @title Covariates Dataset for Malaria Prediction in Tanzania
 ##'
-##' @description This dataset provides covariates over a 10 by 10 km regular grid covering Tanzania. It is intended to be used together with the `tz_malaria` dataset for spatial prediction of malaria prevalence.
-##'
-
+##' @description Covariates at the centres of the cells of a regular 10 by 10 km grid covering Tanzania, for spatial prediction of malaria prevalence from the `tz_malaria` dataset. Each covariate has the source and units it has in `tz_malaria`.
 ##'
 ##' @name tz_covariates
 ##' @docType data
@@ -269,18 +267,28 @@ NULL
 ##' @keywords datasets
 ##' @format An sf object with 8740 observations of 7 variables:
 ##' \describe{
-##'   \item{Population}{Population density in the area (in thousands).}
-##'   \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN).}
-##'   \item{EVI}{Enhanced Vegetation Index, indicating vegetation density.}
-##'   \item{Temperature}{Average temperature in degrees Celsius.}
-##'   \item{NTL}{Nighttime light intensity, indicating urbanization and infrastructure.}
-##'   \item{Precipitation}{Total precipitation in millimeters.}
-##'   \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
+##'   \item{Population}{Population density from WorldPop at a resolution of 3 arc-seconds (about 100 m), in people per grid cell of about a hectare, which is about one hundredth of the density in people per square kilometre.}
+##'   \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN), from a modelled surface whose source is not recorded. Missing at 8 points.}
+##'   \item{EVI}{Enhanced vegetation index from MODIS imagery of 2015, without units, which indicates the density of vegetation.}
+##'   \item{Temperature}{Daytime land surface temperature from MODIS (band `LST_Day_1km`, about 1 km), the mean over 2015, in degrees Celsius. Missing at 2 points, where the raster has no value.}
+##'   \item{NTL}{Night-time light from the VIIRS Day/Night Band monthly composites (about 500 m), the mean radiance over 2015, in nanowatts per square centimetre per steradian. Small negative values at 41 points are noise of the sensor.}
+##'   \item{Precipitation}{Total precipitation over 2015 from CHIRPS (about 5 km), in millimetres.}
+##'   \item{geometry}{Simple feature geometry (POINT) giving the coordinates of the centres of the cells in metres}
 ##' }
-##' @details The coordinate reference system is 32736.
+##' @details The coordinate reference system is 32736. Temperature and NTL are
+##'   the values at the grid points of the rasters that give these covariates in
+##'   `tz_malaria`, and ITN is a percentage, as in `tz_malaria`. Before
+##'   RiskMap 2.0.0 they came from other products, ITN was a proportion and
+##'   -9999 marked a missing value, so that predictions from models with these
+##'   covariates were wrong. The script `data-raw/tz_covariates.R` in the
+##'   source repository of RiskMap made the change.
 ##' @source Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ. (2021)
 ##'  Model building and assessment of the impact of covariates for disease prevalence
 ##'  mapping in low-resource settings: to explain and to predict. *J. R. Soc. Interface* 18: 20210104. \doi{10.1098/rsif.2021.0104}
+##'
+##'  The covariates come from MODIS (EVI and land surface temperature), the
+##'  VIIRS Day/Night Band (night-time light), CHIRPS (precipitation) and
+##'  WorldPop (population density).
 NULL
 
 ##' @title Malaria Dataset from Tanzania Demographic Health Surveys 2015
@@ -298,12 +306,12 @@ NULL
 ##'   \item{Pf}{Number of individuals tested positive for Plasmodium falciparum (malaria parasite).}
 ##'   \item{PfPR2.10}{Plasmodium falciparum parasite rate in the population (aged 2-10 years).}
 ##'   \item{Method}{Method used for malaria diagnosis (e.g., Rapid Diagnostic Test (RDT)).}
-##'   \item{EVI}{Enhanced Vegetation Index, indicating vegetation density.}
-##'   \item{Temperature}{Average temperature in degrees Celsius.}
-##'   \item{Precipitation}{Total precipitation in millimeters.}
-##'   \item{Population}{Population density in the area (in thousands).}
-##'   \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN).}
-##'   \item{NTL}{Nighttime light intensity, indicating urbanization and infrastructure.}
+##'   \item{EVI}{Enhanced vegetation index from MODIS imagery of 2015, without units, which indicates the density of vegetation.}
+##'   \item{Temperature}{Daytime land surface temperature from MODIS (band `LST_Day_1km`, about 1 km), the mean over 2015, in degrees Celsius.}
+##'   \item{Precipitation}{Total precipitation over 2015 from CHIRPS (about 5 km), in millimetres. Missing for 2 clusters.}
+##'   \item{Population}{Population density from WorldPop at a resolution of 3 arc-seconds (about 100 m), in people per grid cell of about a hectare, which is about one hundredth of the density in people per square kilometre.}
+##'   \item{ITN}{Percentage of households with at least one insecticide-treated net (ITN), from a modelled surface whose source is not recorded.}
+##'   \item{NTL}{Night-time light from the VIIRS Day/Night Band monthly composites (about 500 m), the mean radiance over 2015, in nanowatts per square centimetre per steradian.}
 ##'   \item{Urban.Rural}{Indicator of whether the area is urban ('U') or rural ('R').}
 ##'   \item{elogit}{Empirical logit transformation of the positive cases - `elogit(Pf, Ex)`}
 ##'   \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
@@ -319,6 +327,10 @@ NULL
 ##' Model building and assessment of the impact of covariates for disease prevalence
 ##' mapping in low-resource settings: to explain and to predict.
 ##' J. R. Soc. Interface 18: 20210104. \doi{10.1098/rsif.2021.0104}
+##'
+##' The covariates come from MODIS (EVI and land surface temperature), the
+##' VIIRS Day/Night Band (night-time light), CHIRPS (precipitation) and
+##' WorldPop (population density), at the coordinates of the clusters.
 NULL
 
 

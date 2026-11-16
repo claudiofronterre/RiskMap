@@ -16,12 +16,12 @@ An sf object with 387 rows and 18 columns, containing the following variables:
 \item{Pf}{Number of individuals tested positive for Plasmodium falciparum (malaria parasite).}
 \item{PfPR2.10}{Plasmodium falciparum parasite rate in the population (aged 2-10 years).}
 \item{Method}{Method used for malaria diagnosis (e.g., Rapid Diagnostic Test (RDT)).}
-\item{EVI}{Enhanced Vegetation Index, indicating vegetation density.}
-\item{Temperature}{Average temperature in degrees Celsius.}
-\item{Precipitation}{Total precipitation in millimeters.}
-\item{Population}{Population density in the area (in thousands).}
-\item{ITN}{Percentage of households with at least one insecticide-treated net (ITN).}
-\item{NTL}{Nighttime light intensity, indicating urbanization and infrastructure.}
+\item{EVI}{Enhanced vegetation index from MODIS imagery of 2015, without units, which indicates the density of vegetation.}
+\item{Temperature}{Daytime land surface temperature from MODIS (band \code{LST_Day_1km}, about 1 km), the mean over 2015, in degrees Celsius.}
+\item{Precipitation}{Total precipitation over 2015 from CHIRPS (about 5 km), in millimetres. Missing for 2 clusters.}
+\item{Population}{Population density from WorldPop at a resolution of 3 arc-seconds (about 100 m), in people per grid cell of about a hectare, which is about one hundredth of the density in people per square kilometre.}
+\item{ITN}{Percentage of households with at least one insecticide-treated net (ITN), from a modelled surface whose source is not recorded.}
+\item{NTL}{Night-time light from the VIIRS Day/Night Band monthly composites (about 500 m), the mean radiance over 2015, in nanowatts per square centimetre per steradian.}
 \item{Urban.Rural}{Indicator of whether the area is urban ('U') or rural ('R').}
 \item{elogit}{Empirical logit transformation of the positive cases - \code{elogit(Pf, Ex)}}
 \item{geometry}{Simple feature geometry (POINT) giving the sampling coordinates in metres}
@@ -33,6 +33,10 @@ Giorgi E, Fronterrè C, Macharia PM, Alegana VA, Snow RW, Diggle PJ. (2021)
 Model building and assessment of the impact of covariates for disease prevalence
 mapping in low-resource settings: to explain and to predict.
 J. R. Soc. Interface 18: 20210104. \doi{10.1098/rsif.2021.0104}
+
+The covariates come from MODIS (EVI and land surface temperature), the
+VIIRS Day/Night Band (night-time light), CHIRPS (precipitation) and
+WorldPop (population density), at the coordinates of the clusters.
 }
 \usage{
 data(tz_malaria)

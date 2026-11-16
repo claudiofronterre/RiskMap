@@ -75,6 +75,10 @@ in the source repository.
   standardisation and, if asked, the uncertainty of the estimated parameters.
   `plot_prediction()` maps the predictions, `to_table()` tabulates them, and
   `assess_extrapolation()` shows where they go beyond the data.
+- The covariates of the prediction grid `tz_covariates` now match those of
+  `tz_malaria`. Temperature and night-time light come from the same rasters,
+  and ITN is a percentage with `NA` for missing values, where it was a
+  proportion with -9999.
 
 ### Assessment and simulation
 
