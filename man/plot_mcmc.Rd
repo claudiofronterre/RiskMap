@@ -51,7 +51,6 @@ fitted with versions of RiskMap that did not record the burn-in and
 thinning, the samples are numbered in order.
 }
 \examples{
-\donttest{
 data(liberia)
 liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
@@ -59,7 +58,6 @@ fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
              messages = FALSE)
 plot_mcmc(fit)
 plot_mcmc(fit, check_mean = FALSE, locations = c(10, 20))
-}
 }
 \seealso{
 \code{\link[=summarise_mcmc]{summarise_mcmc()}}, \code{\link[=glgpm]{glgpm()}}, \code{\link[=set_control_mcmc]{set_control_mcmc()}}

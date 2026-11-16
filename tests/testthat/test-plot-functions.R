@@ -45,6 +45,7 @@ plot_cases <- function() {
 cases <- plot_cases()
 
 test_that("plot() and the plot_*() function of a class give the same plot", {
+  skip_on_cran()
   for (case in cases) {
     expect_equal(case$fun(case$x), plot(case$x))
     expect_equal(do.call(case$fun, c(list(case$x), case$args)),

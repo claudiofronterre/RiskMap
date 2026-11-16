@@ -68,6 +68,7 @@ test_that("named links carry their name and exact derivatives", {
 })
 
 test_that("canonical family objects fit exactly as the strings do", {
+  skip_on_cran()
   binomial_object <- suppressWarnings(glgpm(
     y ~ cov + gp() + re(i), data = binomial_data, family = binomial(),
     denominator = denominator, control_mcmc = control_mcmc,
@@ -91,6 +92,7 @@ test_that("canonical family objects fit exactly as the strings do", {
 })
 
 test_that("a named link gives the estimates of its inverse given in invlink", {
+  skip_on_cran()
   for (link in names(link_functions)) {
     named <- named_fits[[link]]
     supplied <- fit_binomial("binomial", link_functions[[link]])
@@ -115,6 +117,7 @@ test_that("a named link gives the estimates of its inverse given in invlink", {
 })
 
 test_that("a named link is never differentiated", {
+  skip_on_cran()
   local_mocked_bindings(differentiate = function(...) {
     stop("differentiate() was called")
   }, .package = "RiskMap")
@@ -181,6 +184,7 @@ test_that("a link is given either in family or in invlink", {
 })
 
 test_that("print() and summary() name the link", {
+  skip_on_cran()
   fit <- named_fits$cloglog
   expect_output(print(fit), "Binomial geostatistical model with cloglog link")
   expect_output(print(fit), "10 observations at 10 locations")
@@ -202,6 +206,7 @@ test_that("print() and summary() name the link", {
 })
 
 test_that("check_fit() notes a link not known to be log-concave", {
+  skip_on_cran()
   link_rows <- function(fit) {
     checks <- check_fit(fit)$checks
     checks[checks$check == "Link", ]
@@ -252,6 +257,7 @@ test_that("check_fit() notes a link not known to be log-concave", {
 })
 
 test_that("check_fit() says where a link given as a function is convex", {
+  skip_on_cran()
   fit <- fit_binomial("binomial", function(eta) 0.01 + 0.89 * plogis(eta))
   checked <- check_fit(fit)
   row <- checked$checks[checked$checks$check == "Link", ]

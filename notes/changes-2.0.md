@@ -175,6 +175,10 @@ plots. `plot_mcmc()` is unchanged.
 - `plot()` of a variogram, which already stopped on `plot_envelope` and
 `color`, now says that they are `envelope` and `colour`, and its error is a
 RiskMap input error like those of the other methods.
+- `plot()` of predictions, and of the indicators of `assess_extrapolation()`,
+at points that did not come from `create_grid()` drew an empty map, because
+ggplot2 dropped every point for its border of colour `NA`. The border is now
+transparent.
 
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.
@@ -187,6 +191,23 @@ slightly. Pseudo-Mercator is also not conformal, so it stretched distances
 more north-south than east-west.
 - `?malnutrition` gives `age` in years, where it said months. The ages run
 from 0 to 4.96 in steps of one day.
+- `tz_covariates` has its covariates on the scales of `tz_malaria`, so that a
+model fitted to `tz_malaria` predicts over the grid. Temperature (4.7 degrees
+lower than at the nearest cluster at the median) and NTL (mostly 0) came from
+other products than those of `tz_malaria`, and EVI and Precipitation from other
+processing of the same products, with differences of up to 0.3 and 761 mm.
+All four are now the values at the grid points of the 2015 rasters of MODIS
+EVI and daytime land surface temperature, VIIRS night-time light and CHIRPS
+precipitation that give `tz_malaria` its values. Temperature is missing at 2
+points and Precipitation at 1, where the rasters have no value. ITN was a
+proportion with -9999 for 8 missing values and is now a percentage with `NA`.
+Population was already on the scale of `tz_malaria` and is unchanged.
+`?tz_malaria` and `?tz_covariates` give the source and units of every
+covariate. Population was said to be in thousands, but it is about one
+hundredth of the density in people per square kilometre, as people per
+WorldPop cell of 3 arc-seconds. The script `data-raw/tz_covariates.R` records
+the change.
+- `?liberia` spells river blindness correctly.
 
 ## Coordinate reference systems
 
@@ -423,6 +444,18 @@ and the corner plot are unchanged, and patchwork arranges any other set of
 panels in up to three columns. Asking for no panel stops. One panel is
 `plot(x, parameters = "phi", pairs = character())`, since `pairs` defaults to
 every joint profile.
+
+- `profile()` and `plot_profile()` take a pair as two names, as in
+`list(c("sigma2", "phi"))`, or as one, as in `"sigma2:phi"`, the name of its
+joint profile. `profile()` took only the first and `plot_profile()` only the
+second. `plot_profile()` also takes the names of coefficients without the
+prefix `beta.`, as `profile()` does. A name with more than one colon, from a
+coefficient of an interaction, is split where both sides are parameters of the
+fit. A pair of one parameter twice is an input error, and two names in a
+character vector stop with a hint to give them in a list or as
+`"first:second"`. A pair or parameter named twice, in any form, is profiled
+and drawn once. `plot_profile()` names a pair in the order given to
+`profile()`.
 
 - `profile()`, the print of a profile and its `plot()`, `summary()`, `print()`
 and `plot()` of a parametric bootstrap and the print of its summary, and
@@ -1677,6 +1710,10 @@ don't use.
   legend. The internal map helpers that only these methods used, with their
   unreachable north arrow and scale bar, are gone.
 
+- The print of a negative binomial model from `specify_glgpm()`, and of
+  simulations from it or from a fit, gives the size `theta` with the other
+  parameters. It was left out.
+
 ## Other
 
 - Argument checks in the compiled MALA, likelihood and distance kernels have
@@ -1782,3 +1819,17 @@ object. Custom links, the negative binomial family, the penalties of
 `set_control_mcml(pc_prior = TRUE)`, `crs_distortion()` and the spatial
 indicator of `assess_extrapolation()` are marked experimental in their help
 pages, as parts that may change in a minor release.
+- The check that CRAN runs (`R CMD check --as-cran` without `NOT_CRAN`) is
+kept short. The 70 tests that took more than a second, apart from the outputs
+of binomial and Poisson fits, skip on CRAN, so its tests take about 80 seconds
+instead of six to eight minutes. They all still run when `NOT_CRAN=true`, as on
+CI, but not in R-hub's checks, which run as CRAN does. The examples of
+`check_fit()`, `summarise_mcmc()` and `plot_mcmc()` leave `\donttest{}`, since
+they run in under three seconds. The Gaussian example of
+`parametric_bootstrap()` uses 10 simulations instead of 20. The examples that
+stay in `\donttest{}`, which `--as-cran` runs too, use 10 simulations in the
+binomial `parametric_bootstrap()` instead of 100, `plot_check()` checks the
+radius with a short profile of the scale instead of every extra check, the
+binomial example of `profile()` profiles the scale alone, and the joint
+profiles of `profile()` and `plot_profile()` use a grid of 7 by 7. Each example
+outside `\donttest{}` runs in under three seconds.

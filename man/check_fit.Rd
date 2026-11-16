@@ -161,12 +161,10 @@ fit <- glgpm(
 )
 
 check_fit(fit)
-\donttest{
 checked <- check_fit(fit, extra = "profile")
 checked
 summary(checked)
 plot(checked, which = "profile")
-}
 }
 \seealso{
 The methods for the result are \link[=print.RiskMap_check]{print()},

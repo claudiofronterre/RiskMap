@@ -118,6 +118,7 @@ test_that("the row of the radius says whether the radius holds", {
 })
 
 test_that("the radius of a fit is checked reproducibly", {
+  skip_on_cran()
   set.seed(7)
   caller_seed <- .Random.seed
   checked <- fit_check_radius(binomial_model, chains = 4, rounds = 40,

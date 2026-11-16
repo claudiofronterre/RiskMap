@@ -1,4 +1,5 @@
 test_that("profiles of a binomial fit have their grids, deviances and intervals", {
+  skip_on_cran()
   profiles <- profile(binomial_model, parameters = c("cov", "sigma2"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
                       n_grid = 3, n_draws = 200, seed = 1, messages = FALSE)
@@ -46,6 +47,7 @@ test_that("profiling restores the random number state", {
 })
 
 test_that("without a seed, profile() draws one from the session and returns it (N7)", {
+  skip_on_cran()
   set.seed(42)
   drawn <- sample.int(.Machine$integer.max, 1L)
   expected <- stats::runif(1)
@@ -162,6 +164,7 @@ profile_without_link <- function(fitted, settings) {
 }
 
 test_that("a profile of a canonical fit is that of an engine given no link", {
+  skip_on_cran()
   settings <- list(parameters = c("cov", "sigma2"), n_points = 5,
                    n_draws = 200, seed = 1, messages = FALSE)
   for (fitted in list(binomial_model, poisson_model)) {
@@ -171,6 +174,7 @@ test_that("a profile of a canonical fit is that of an engine given no link", {
 })
 
 test_that("the profile plot returns one object, draws nothing and has its panels", {
+  skip_on_cran()
   profiles <- profile(binomial_model, parameters = c("sigma2", "phi"),
                       pairs = list(c("sigma2", "phi")), n_points = 5,
                       n_grid = 3, n_draws = 200, seed = 1, messages = FALSE)
@@ -253,6 +257,76 @@ test_that("profiles and their print and plot stop on an argument they don't use"
   expect_input_error(print(profiles, digits = 3), "digits")
   expect_input_error(plot(profiles, colour = "red"), "colour")
   expect_input_error(plot(profiles, "phi", NULL, "loglik", 1), "...")
+})
+
+test_that("profile() and plot_profile() take a pair as two names or as one", {
+  profile_pairs <- function(pairs) {
+    profile(gaussian_model, parameters = c("cov", "phi"), pairs = pairs,
+            n_points = 5, n_grid = 3, messages = FALSE)
+  }
+  profiles <- profile_pairs(list(c("cov", "phi")))
+  expect_named(profiles$joint, "beta.cov:phi")
+  for (pairs in list("cov:phi", list("beta.cov:phi"), c(pairs = "cov:phi"),
+                     list(c("cov", "phi"), "cov:phi", "beta.cov:phi"))) {
+    expect_identical(profile_pairs(pairs)$joint, profiles$joint)
+  }
+  # Two names in a vector are taken for two pairs, and the error says how to
+  # give one.
+  expect_input_error(profile_pairs(c("cov", "phi")), "pairs",
+                     "list(c(\"cov\", \"phi\"))")
+  # plot_profile() takes the pairs and parameters that profile() takes.
+  panel_data <- function(...) {
+    ggplot2::layer_data(plot_profile(profiles, ...), 1L)
+  }
+  joint <- panel_data(parameters = character(), pairs = "beta.cov:phi")
+  for (pairs in list(list(c("cov", "phi")), list(c("beta.cov", "phi")),
+                     "cov:phi", list("cov:phi"))) {
+    expect_identical(panel_data(parameters = character(), pairs = pairs),
+                     joint)
+  }
+  expect_identical(panel_data(parameters = "cov", pairs = character()),
+                   panel_data(parameters = "beta.cov", pairs = character()))
+  # A profile named twice is drawn once, as one panel and not two.
+  one_panel <- function(plot) {
+    ggplot2::is_ggplot(plot) && !inherits(plot, "patchwork")
+  }
+  expect_true(one_panel(plot_profile(profiles, parameters = c("cov", "beta.cov"),
+                                     pairs = character())))
+  expect_true(one_panel(plot_profile(profiles, parameters = character(),
+                                     pairs = list("cov:phi",
+                                                  c("beta.cov", "phi")))))
+  expect_input_error(plot_profile(profiles, pairs = "phi:cov"), "pairs",
+                     "beta.cov:phi")
+  expect_input_error(plot_profile(profiles, pairs = list("phi")), "pairs")
+  expect_input_error(plot_profile(profiles, parameters = "sigma2"),
+                     "parameters")
+  # Pairs that are not two names of different parameters.
+  for (pairs in list(c("cov", "phi"), list(c("cov", "phi", "sigma2")),
+                     list(c("phi", NA)), list(c("phi", "phi")),
+                     list(c("cov", "beta.cov")), list("phi:phi"), 1,
+                     list(1:2), "sigma2:range")) {
+    expect_input_error(profile_pairs(pairs), "pairs")
+  }
+})
+
+test_that("a pair named first:second is split where both are parameters", {
+  names <- c("beta.(Intercept)", "beta.x", "beta.z", "beta.x:z", "sigma2",
+             "phi")
+  expect_identical(read_profile_pairs("x:z:phi", names), list(c("x:z", "phi")))
+  expect_identical(read_profile_pairs(list("beta.x:z:phi", c("x:z", "phi")),
+                                      names),
+                   list(c("beta.x:z", "phi"), c("x:z", "phi")))
+  expect_identical(read_profile_pairs(c("x:phi", "sigma2:phi"), names),
+                   list(c("x", "phi"), c("sigma2", "phi")))
+  expect_identical(read_profile_pairs(NULL, names), list())
+  expect_identical(read_profile_pairs(character(), names), list())
+  expect_input_error(read_profile_pairs("x:y:phi", names), "pairs",
+                     "can't be split")
+  expect_input_error(read_profile_pairs("x:z:w",
+                                        c(names, "beta.w", "beta.z:w")),
+                     "pairs", "more than one way")
+  expect_input_error(read_profile_pairs("phi", names), "pairs",
+                     "first:second")
 })
 
 test_that("logarithmic axes are labelled with plain numbers", {
@@ -360,6 +434,7 @@ test_that("a crossing between distant points is refined", {
 })
 
 test_that("profiles on two cores equal those on one", {
+  skip_on_cran()
   skip_on_os("windows")
   skip_if_not_installed("RhpcBLASctl")
   # The workers use one BLAS thread. The serial profile does too here, since
@@ -576,6 +651,7 @@ test_that("Gaussian profiles have every parameter, with the labels of summary()"
 })
 
 test_that("a Gaussian profile point maximises the likelihood over the rest", {
+  skip_on_cran()
   problem <- make_gaussian_profile_problem(replicated_fit)
   # The likelihood maximised over all the free parameters, the coefficients
   # included, without generalised least squares.

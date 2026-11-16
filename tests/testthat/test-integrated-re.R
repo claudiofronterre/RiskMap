@@ -315,6 +315,7 @@ test_that("the sampled and integrated forms estimate the same likelihood", {
 })
 
 test_that("the integrated form matches an exact likelihood of three locations", {
+  skip_on_cran()
   # Three locations with three households each, the nugget and the households
   # integrated out, against a tensor Gauss-Hermite rule over the field and a
   # quadrature of each location's nested integral.
@@ -373,6 +374,7 @@ test_that("a household variance held at zero gives the model without it", {
 })
 
 test_that("both forms estimate the slope of a household variance at zero", {
+  skip_on_cran()
   survey <- household_survey()
   held <- replace(survey$parameters, 6L, -20)
   slope <- function(engine, seed) {

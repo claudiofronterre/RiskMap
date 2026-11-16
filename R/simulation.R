@@ -527,7 +527,8 @@ print.RiskMap_simulation_model <- function(x, ...) {
     out_text(paste0(simulation_model_title(x), ", ", deparse_formula(x$formula),
                     ", at ", out_count(nrow(x$data), "location"), ".")),
     "",
-    format_simulation_parameters(x$parameters, x$distance_units)
+    format_simulation_parameters(x$parameters, x$distance_units,
+                                 x$family_parameters)
   ))
   invisible(x)
 }
@@ -555,7 +556,8 @@ print.RiskMap_simulation <- function(x, ...) {
     )),
     "",
     format_simulation_parameters(x$model$parameters,
-                                 x$model$distance_units),
+                                 x$model$distance_units,
+                                 x$model$family_parameters),
     "",
     out_bullets(c(i = extract))
   ))
@@ -578,8 +580,13 @@ deparse_formula <- function(formula) {
 }
 
 #' The lines of the parameters of a simulation model, one per parameter
+#'
+#' `family_parameters` are those the family holds, such as the size `theta`
+#' of a negative binomial family, which `specify_glgpm()` takes in its
+#' `parameters`.
 #' @noRd
-format_simulation_parameters <- function(parameters, distance_units) {
+format_simulation_parameters <- function(parameters, distance_units,
+                                         family_parameters = NULL) {
   values <- function(v) {
     labels <- names(v) %||% paste0("[", seq_along(v), "]")
     paste(sprintf("%s = %s", labels, signif(v, 4)), collapse = ", ")
@@ -592,6 +599,8 @@ format_simulation_parameters <- function(parameters, distance_units) {
     sigma2 = format(signif(parameters$sigma2, 4)),
     phi = paste(signif(parameters$phi, 4), distance_units),
     vapply(others, function(value) format(signif(value, 4)), character(1)),
+    vapply(family_parameters, function(value) format(signif(value, 4)),
+           character(1)),
     sigma2_re = if (length(parameters$sigma2_re)) {
       values(parameters$sigma2_re)
     }

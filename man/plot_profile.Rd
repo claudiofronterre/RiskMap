@@ -18,11 +18,14 @@ plot_profile(
 \arguments{
 \item{x}{The result of \code{\link[=profile.RiskMap]{profile.RiskMap()}}.}
 
-\item{parameters}{Names of the marginal profiles to draw. The default is
-all of them.}
-
-\item{pairs}{Names of the joint profiles to draw, as \code{"first:second"}. The
+\item{parameters}{Names of the marginal profiles to draw, as in
+\code{\link[=profile.RiskMap]{profile.RiskMap()}}, where the prefix \code{beta.} can be left out. The
 default is all of them.}
+
+\item{pairs}{The joint profiles to draw, given as in \code{\link[=profile.RiskMap]{profile.RiskMap()}},
+each by two names, as in \code{list(c("sigma2", "phi"))}, or by one name
+\code{"first:second"}, as in \code{"sigma2:phi"}, with the parameters in the order
+given to \code{\link[=profile.RiskMap]{profile.RiskMap()}}. The default is all of them.}
 
 \item{scale}{The vertical scale of the profiles: \code{"loglik"} (the default)
 for the relative log-likelihood, or \code{"deviance"} for the profile
@@ -70,7 +73,7 @@ and on the relative log-likelihood it is \eqn{-\chi^2_{1, 1 - \alpha}/2}
 data(galicia)
 fit <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
              family = "gaussian", distance_units = "km", messages = FALSE)
-profiles <- profile(fit, pairs = list(c("sigma2", "phi")),
+profiles <- profile(fit, pairs = list(c("sigma2", "phi")), n_grid = 7,
                     messages = FALSE)
 plot_profile(profiles)
 plot_profile(profiles, parameters = "phi", pairs = character(),

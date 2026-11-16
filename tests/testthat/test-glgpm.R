@@ -1,4 +1,5 @@
 test_that("glgpm produces errors", {
+  skip_on_cran()
   expect_input_error(
     glgpm(y ~ cov + gp(), data = gaussian_data, family = "gaussian",
           start_pars = list(beta = c(0, 1), unknown = 1)),
@@ -283,6 +284,7 @@ test_that("glgpm produces expected output for gaussian models", {
 })
 
 test_that("glgpm fits replicated gaussian models with the Woodbury path #165", {
+  skip_on_cran()
   # replicating locations gives more than three observations per latent
   # effect, so glgpm_lm should not fall back to glgpm_lm_direct; six copies
   # are needed for re(i, j), which has 10 + 5 + 2 = 17 latent effects
@@ -477,6 +479,7 @@ test_that("glgpm produces expected output for binomial models", {
 })
 
 test_that("a model with re() terms keeps the default start without fitting a Gaussian model", {
+  skip_on_cran()
   # The transformed-Gaussian candidate of such a model was fitted with dense
   # matrices over all the records or all the levels of the terms, and the
   # comparison could never choose it. The calls are counted, since an error
@@ -576,6 +579,7 @@ test_that("the comparison of starts reads named Laplace values", {
 })
 
 test_that("transformed starts preserve an estimated nugget", {
+  skip_on_cran()
   fit <- glgpm(
     y ~ cov + gp(nugget = TRUE), data = binomial_data,
     family = "binomial", denominator = denominator,
@@ -592,6 +596,7 @@ test_that("transformed starts preserve an estimated nugget", {
 })
 
 test_that("explicit non-Gaussian starts remain authoritative", {
+  skip_on_cran()
   data_frame <- sf::st_drop_geometry(binomial_data)
   glm_start <- glm(
     cbind(y, denominator - y) ~ cov,
@@ -643,6 +648,7 @@ test_that("final fitted samples support a nugget model", {
 })
 
 test_that("custom inverse links retain the current automatic start", {
+  skip_on_cran()
   custom_link <- list(
     inv = plogis,
     d1 = function(x) plogis(x) * (1 - plogis(x)),
@@ -775,6 +781,7 @@ test_that("certified MCML records its certificate and bank diagnostics", {
 })
 
 test_that("a fit is reproduced from the seed it stores", {
+  skip_on_cran()
   fit_binomial <- function(seed = NULL) {
     suppressWarnings(glgpm(
       y ~ cov + gp(), data = binomial_data, family = "binomial",
@@ -874,6 +881,7 @@ test_that("coordinates_in_units converts projected CRS units", {
 })
 
 test_that("glgpm fits several re() calls as one call with all their variables", {
+  skip_on_cran()
   gaussian_start <- list(sigma2_re = c(5, 10), sigma2_me = 0.01)
   gaussian_one_call <- glgpm(y ~ cov + gp() + re(i, j), data = gaussian_data,
                              family = "gaussian", start_pars = gaussian_start,

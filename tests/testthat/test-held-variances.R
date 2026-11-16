@@ -42,6 +42,7 @@ expect_slope_matches_exact_model <- function(family, group, effect, y, units_m) 
 }
 
 test_that("the slope terms give the derivative in a variance at zero", {
+  skip_on_cran()
   y <- c(3, 0, 5)
   units_m <- c(10, 10, 12)
   # One effect for each observation, a nugget, and one shared by two of them.
@@ -63,6 +64,7 @@ make_nugget_engine <- function(y, units_m, ID_re = NULL) {
 }
 
 test_that("a held nugget is tested against the exact slope", {
+  skip_on_cran()
   y <- c(9, 0, 0, 9)
   units_m <- rep(10, 4L)
   engine <- make_nugget_engine(y, units_m)

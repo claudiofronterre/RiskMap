@@ -32,8 +32,11 @@ maximum likelihood.}
 nugget as \code{tau2}, its variance (see \link{riskmap_parameters}). The default is
 every estimated parameter.}
 
-\item{pairs}{A list of pairs of parameter names for joint profiles, for
-example \code{list(c("sigma2", "phi"))}. The default is none.}
+\item{pairs}{The pairs of parameters for joint profiles, named as in
+\code{parameters}. Each pair is two names, as in \code{list(c("sigma2", "phi"))},
+or one name \code{"first:second"}, as in \code{"sigma2:phi"}, and the joint
+profiles of the result are named in that way. \code{\link[=plot_profile]{plot_profile()}} takes
+pairs in either form too. The default is none.}
 
 \item{n_points}{Number of points of each marginal grid before any
 extension, and the most points on each side of the estimate.}
@@ -152,7 +155,7 @@ parallel.
 data(galicia)
 fit <- glgpm(log(lead) ~ gp(kappa = 1.5), data = galicia,
              family = "gaussian", distance_units = "km", messages = FALSE)
-profiles <- profile(fit, pairs = list(c("sigma2", "phi")))
+profiles <- profile(fit, pairs = list(c("sigma2", "phi")), n_grid = 7)
 profiles
 plot(profiles)
 
@@ -161,9 +164,9 @@ liberia <- sf::st_as_sf(liberia, coords = c("long", "lat"), crs = 4326)
 fit <- glgpm(npos ~ log(elevation) + gp(), denominator = ntest,
              data = liberia, distance_crs = 32629, family = "binomial",
              seed = 2026)
-profiles <- profile(fit, parameters = c("sigma2", "phi"),
-                    pairs = list(c("sigma2", "phi")), n_grid = 9,
-                    n_draws = 2000, seed = 1)
+# A short profile of the scale keeps the example quick
+profiles <- profile(fit, parameters = "phi", n_points = 7, n_draws = 1000,
+                    seed = 1)
 profiles
 plot(profiles)
 }

@@ -32,6 +32,7 @@ test_that("fixed_pars holds the nugget and the measurement error variance", {
 })
 
 test_that("holds that don't fit the model stop", {
+  skip_on_cran()
   holds <- list(
     list(tau2 = 0), list(tau2 = -1), list(sigma2_me = -0.1), list(phi = -1),
     list(beta = c(age = 1)), list(theta = 2), list(tau2 = c(1, 2)),
@@ -73,6 +74,7 @@ test_that("holds that don't fit the model stop", {
 })
 
 test_that("fixed_pars holds the size of a negative binomial family", {
+  skip_on_cran()
   counts <- function(...) {
     suppressWarnings(glgpm(
       y ~ cov + gp(), data = poisson_data, denominator = denominator,
@@ -272,6 +274,7 @@ test_that("a held scale is the profile of the scale at that value", {
 })
 
 test_that("held variances of a binomial fit stay at their values", {
+  skip_on_cran()
   fit <- suppressWarnings(glgpm(
     y ~ cov + gp() + re(i), data = binomial_data, family = "binomial",
     denominator = denominator, control_mcmc = control_mcmc,

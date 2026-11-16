@@ -18,5 +18,6 @@
 ^pkgdown$
 ^tools/golden$
 ^notes$
+^data-raw$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
