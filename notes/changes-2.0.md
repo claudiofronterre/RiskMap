@@ -175,6 +175,10 @@ plots. `plot_mcmc()` is unchanged.
 - `plot()` of a variogram, which already stopped on `plot_envelope` and
 `color`, now says that they are `envelope` and `colour`, and its error is a
 RiskMap input error like those of the other methods.
+- `plot()` of predictions, and of the indicators of `assess_extrapolation()`,
+at points that did not come from `create_grid()` drew an empty map, because
+ggplot2 dropped every point for its border of colour `NA`. The border is now
+transparent.
 
 ## Datasets
 - Apart from `liberia`, all datasets are now in an simple features (sf) format.

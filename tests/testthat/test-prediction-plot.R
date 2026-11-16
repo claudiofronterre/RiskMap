@@ -26,6 +26,24 @@ test_that("location predictions produce an adaptable prediction map", {
   )
 })
 
+test_that("a map of predictions at points not made by create_grid() draws every point", {
+  points <- st_sf(
+    response_mean = c(0.1, 0.4, 0.8),
+    geometry = st_sfc(
+      st_point(c(0, 0)), st_point(c(1, 0)), st_point(c(2, 0)), crs = 32631
+    )
+  )
+  prediction <- structure(list(predictions = points, boundaries = NULL,
+                               boundary_summary = NULL),
+                          class = "RiskMap_prediction")
+  map <- plot(prediction)
+  # ggplot2 drops points with a missing aesthetic when it draws them, after
+  # ggplot_build(), which keeps every row.
+  expect_no_warning(drawn <- ggplot2::layer_grob(map, 1L)[[1L]])
+  expect_length(drawn$x, 3L)
+  expect_identical(drawn$gp$fill, ggplot2::layer_data(map, 1L)$fill)
+})
+
 test_that("polygon prediction maps select tidy summaries without reordering", {
   polygons <- st_sf(
     district = c("a", "b"),

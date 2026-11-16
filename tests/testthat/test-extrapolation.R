@@ -116,6 +116,15 @@ test_that("extrapolation maps and argument checks", {
   expect_input_error(assess_extrapolation(list(), grid), "object")
 })
 
+test_that("an extrapolation map at points not made by create_grid() draws every point", {
+  extrapolation <- assess_extrapolation(gaussian_model, gaussian_data,
+                                        spatial_threshold = 0.8)
+  expect_null(attr(extrapolation, "grid_metadata"))
+  map <- plot(extrapolation, indicator = "spatial_unexplained")
+  expect_no_warning(drawn <- ggplot2::layer_grob(map, 1L)[[1L]])
+  expect_length(drawn$x, nrow(gaussian_data))
+})
+
 test_that("unexplained spatial variance uses fixed variance components", {
   fixed_model <- glgpm(y ~ gp(), data = gaussian_data, family = "gaussian",
                        fixed_pars = list(sigma2_me = 0.2), messages = FALSE)
