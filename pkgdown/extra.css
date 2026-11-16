@@ -235,3 +235,13 @@ img.rm-figure {
     padding: 0.45rem 0.9rem;
   }
 }
+
+/* Articles --------------------------------------------------------------- */
+
+/* Figures keep their white background, which keeps them readable in dark
+   mode, and sit on the page as cards */
+.template-article main img:not(.logo) {
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius-lg);
+  background: #fff;
+}

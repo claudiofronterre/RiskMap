@@ -1,0 +1,196 @@
+---
+title: "Assessing predictions and simulations"
+description: >
+  Comparing models by spatial cross-validation, and assessing prediction
+  targets on data simulated from a known model.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6.5,
+  fig.height = 4.5,
+  out.width = "85%",
+  fig.align = "center",
+  dpi = 150
+)
+options(RiskMap.messages = FALSE)
+# The simulation study refits two models to 50 simulated datasets, which takes
+# a few minutes, so precompute.R runs it once, with the code shown below, and
+# the article loads the result. The boundaries are downloaded there too.
+boundaries <- readRDS("precomputed/liberia-boundaries.rds")
+precomputed <- readRDS("precomputed/assessing-predictions.rds")
+```
+
+Whether a model predicts well can be judged in two ways. Cross-validation
+predicts held-out data from the rest and scores the predictions against what
+was observed. A simulation study generates data from a known model, so the
+predictions can be scored against the true surface, at locations and over
+areas, for the targets that matter. This article does both.
+
+## Two models
+
+The models are binomial models of river blindness in 90 Liberian villages, one
+with only a spatial Gaussian process and one that adds the logarithm of
+elevation.
+
+```{r fit-models, message = FALSE}
+library(RiskMap)
+library(sf)
+
+data(liberia)
+liberia <- st_as_sf(liberia,
+                    coords = c("long", "lat"),
+                    crs = 4326)
+crs <- propose_crs(liberia, messages = FALSE)
+liberia <- st_transform(liberia, crs)
+
+set.seed(2026)
+fit_spatial <- glgpm(npos ~ gp(),
+                     data = liberia,
+                     family = "binomial",
+                     denominator = ntest)
+fit_elevation <- glgpm(npos ~ log_elevation + gp(),
+                       data = liberia,
+                       family = "binomial",
+                       denominator = ntest)
+```
+
+## Spatial cross-validation
+
+`assess_prediction()` splits the villages into test sets, predicts each test
+set from the other villages and scores the predictions. With
+`method = "cluster"` the test sets are spatial clusters, so that a test village
+is not predicted from close neighbours alone. The two models have different
+numbers of parameters, so `keep_par_fixed = FALSE` refits each to every
+training set. Fixing the parameters at the estimates from all the data is
+faster, but lets the test data inform the parameters.
+
+```{r cross-validation}
+cv <- assess_prediction(list(spatial = fit_spatial,
+                             elevation = fit_elevation),
+                        method = "cluster",
+                        fold = 5,
+                        keep_par_fixed = FALSE,
+                        seed = 1)
+cv
+```
+
+When a refit warns that the check for other maxima of the likelihood found a
+higher maximum than the one reached from the starting values, the check has
+done its job, and the refit takes the higher maximum.
+
+The continuous ranked probability score (CRPS) compares the whole predictive
+distribution with the observed count, and its scaled version (SCRPS) weighs
+villages whose predictions have very different spreads more evenly. Lower is
+better for both. The PIT area
+measures how far the predictions are from calibration, and is compared with
+its value for a perfectly calibrated model on the same test data. `summary()`
+gives the scores of each test set, and `to_table()` formats them for a report.
+
+```{r cross-validation-table}
+to_table(cv)
+```
+
+`plot()` maps the scores at the test villages and draws the calibration curve,
+and `plot_cross_validation()` chooses one of them.
+
+```{r cross-validation-pit}
+plot_cross_validation(cv, metric = "PIT")
+```
+
+A curve close to the diagonal means calibrated predictions, with observed
+counts as likely to fall in each part of the predictive distribution as the
+predictions say.
+
+## A simulation study
+
+Cross-validation scores predictions of the data. Decisions often rest on
+other targets, such as the prevalence of an area or whether it exceeds a
+threshold, which are never observed. A simulation study scores those. It
+starts from a model with known parameters, here those estimated from the
+Liberian data, specified with `specify_glgpm()`.
+
+```{r specify-model}
+truth <- specify_glgpm(npos ~ gp(),
+                       data = liberia,
+                       family = "binomial",
+                       denominator = ntest,
+                       parameters = coef(fit_spatial))
+truth
+```
+
+```{r load-boundaries, include = FALSE}
+border <- boundaries$border
+counties <- boundaries$counties
+```
+
+`simulate_glgpm()` simulates the surface on a grid together with data at the
+villages. `plot()` maps a simulated surface.
+
+```{r simulate}
+grid <- create_grid(border, spacing = 5)
+simulations <- simulate_glgpm(truth,
+                              nsim = 50,
+                              what = c("data", "surface"),
+                              prediction_grid = grid,
+                              seed = 1)
+plot(simulations)
+```
+
+`assess_simulation()` refits each candidate model to every simulated dataset,
+predicts the surface, and scores the predictions against the truth. The
+candidates here differ in the smoothness of the spatial process, the
+exponential correlation of the generating model against a smoother Matérn
+correlation with $\kappa = 1.5$. The predictions are scored at the grid points
+and over the counties, by their mean squared error and by how well they
+classify prevalence into the classes below 10%, 10% to 20% and above 20%.
+
+```{r candidates}
+fit_smooth <- glgpm(npos ~ gp(kappa = 1.5),
+                    data = liberia,
+                    family = "binomial",
+                    denominator = ntest)
+```
+
+```{r assess-simulation, eval = FALSE}
+assessment <- assess_simulation(simulations,
+                                models = list(exponential = fit_spatial,
+                                              smooth = fit_smooth),
+                                spatial_scale = c("location", "area"),
+                                aggregate = "mean",
+                                boundaries = counties,
+                                label = "shapeName",
+                                objective = c("mse", "classify"),
+                                breaks = c(0, 0.1, 0.2, 1),
+                                seed = 1)
+```
+
+```{r assess-load, include = FALSE}
+assessment <- precomputed$assessment
+```
+
+```{r assessment-print}
+assessment
+```
+
+`summary()` gives each score with its spread over the simulations, and the
+sensitivity, specificity and predictive values of each class.
+
+```{r assessment-summary}
+summary(assessment)
+```
+
+Here the two correlations predict almost equally well, at the grid points and
+over the counties, so for these targets the choice of smoothness matters
+little.
+
+Fifty simulations give a first answer. A study meant to settle a choice needs
+more, and the spread of the scores over the simulations shows how many.
+
+## Learn more
+
+Chapter [4](https://www.mbgr.org/04_geostatistical-prediction.html) of the book
+*Model-based geostatistics for global public health using R* treats the
+assessment of predictive performance, by cross-validation and by simulation.

@@ -1,0 +1,165 @@
+---
+title: "Projections and distances"
+description: >
+  Choosing a coordinate reference system that keeps distances accurate,
+  summarising the distances between locations, and the empirical variogram.
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6.5,
+  fig.height = 4.5,
+  out.width = "85%",
+  fig.align = "center",
+  dpi = 150
+)
+```
+
+A geostatistical model describes how the correlation between two locations
+falls with the distance between them. Its scale parameter, `phi`, is a
+distance, and so are the predictions' reach and the empirical variogram. The
+distances must therefore be measured in a projected coordinate reference
+system (CRS) that keeps them close to their true values on the Earth. This
+article shows how RiskMap chooses such a CRS, how to check one, and how
+distances enter the variogram and the model.
+
+```{r load-data, message = FALSE}
+library(RiskMap)
+library(sf)
+
+data(liberia)
+liberia <- st_as_sf(liberia,
+                    coords = c("long", "lat"),
+                    crs = 4326)
+```
+
+## Choosing a projection
+
+Longitude and latitude are angles, not distances. A degree of longitude spans
+about 111 km at the equator and nothing at the poles. `propose_crs()` proposes
+the projected CRS that keeps distances between the locations closest to their
+values on the Earth. It proposes a WGS 84 UTM zone when one is nearly as good
+as the best projection, as for Liberia.
+
+```{r propose-crs}
+crs <- propose_crs(liberia)
+crs
+```
+
+`crs_distortion()` measures how much a CRS stretches or shrinks the distances
+over the data. The UTM zone distorts them by a small fraction of a per cent,
+while the Web Mercator projection of online maps (EPSG:3857) stretches them by
+up to 1.8% this close to the equator, and by far more further from it.
+
+```{r distortion}
+crs_distortion(liberia, crs)
+crs_distortion(liberia, 3857)
+```
+
+A region too wide for one UTM zone gets a conformal projection centred on the
+data. These four points span almost 20 degrees of longitude and latitude.
+
+```{r wide-region}
+wide <- st_as_sf(data.frame(lon = c(12, 31, 12, 31),
+                            lat = c(-13, -13, 5, 5)),
+                 coords = c("lon", "lat"),
+                 crs = 4326)
+wide_crs <- propose_crs(wide)
+wide_crs$Name
+crs_distortion(wide, wide_crs)
+```
+
+The data are then projected once, and every later step measures distances in
+that CRS.
+
+```{r project-data}
+liberia <- st_transform(liberia, crs)
+```
+
+## Distances between locations
+
+`summarise_distance()` describes the distances between the locations, and
+between each location and its nearest neighbour. They bound what the data can
+say about the spatial correlation. A scale much shorter than the distance to
+the nearest neighbour, or much longer than the largest distance, can't be
+estimated well.
+
+```{r summarise-distance}
+summarise_distance(liberia)
+```
+
+## The empirical variogram
+
+The empirical variogram shows how the difference between two observations grows
+with the distance between them. For binomial data it is computed on the
+empirical logit of prevalence, which `elogit()` gives.
+
+```{r variogram}
+liberia$elogit <- elogit(liberia$npos, liberia$ntest)
+set.seed(2026)
+liberia_variogram <- variogram(liberia, variable = "elogit")
+liberia_variogram
+plot(liberia_variogram)
+```
+
+The band is a permutation envelope, the range of variograms that the data
+would show if their values were shuffled among the locations, that is with no
+spatial correlation, and points outside it are drawn in red. Points below the
+band at short distances, where nearby villages are more alike than shuffled
+pairs, point to spatial correlation, as the red points do here.
+`plot_variogram()` takes further arguments, for example to show the number of
+pairs of locations in each distance bin.
+
+```{r variogram-pairs}
+plot_variogram(liberia_variogram, show_pairs = TRUE)
+```
+
+## Distances in the model
+
+`glgpm()` measures distances in the CRS of the data. Data in longitude and
+latitude are projected to the CRS from `propose_crs()`, with a message naming
+it. `distance_crs` sets the CRS explicitly, and `distance_units` chooses
+kilometres, the default, or metres for `phi`. The two fits below are the same
+model, with the logarithm of elevation as a covariate, and give the scale in
+kilometres and in metres.
+
+```{r fit-units}
+set.seed(2026)
+fit_km <- glgpm(npos ~ log_elevation + gp(),
+                data = liberia,
+                family = "binomial",
+                denominator = ntest,
+                distance_crs = crs,
+                messages = FALSE)
+set.seed(2026)
+fit_m <- glgpm(npos ~ log_elevation + gp(),
+               data = liberia,
+               family = "binomial",
+               denominator = ntest,
+               distance_crs = crs,
+               distance_units = "m",
+               messages = FALSE)
+c(km = coef(fit_km)$phi, m = coef(fit_m)$phi)
+```
+
+For the exponential correlation, the default `kappa = 0.5` of `gp()`, the
+correlation falls to 0.05 at a distance of $\log(20)\phi \approx 3\phi$, the
+practical range.
+
+```{r practical-range}
+log(20) * coef(fit_km)$phi
+```
+
+`variogram()`, `summarise_distance()`, `create_grid()` and `specify_glgpm()`
+take the same `distance_crs` and `distance_units`, so that every distance in an
+analysis is measured as the fit's are.
+
+## Learn more
+
+Chapter [2](https://www.mbgr.org/02_handling-spatial-data.html) of the book
+*Model-based geostatistics for global public health using R* treats spatial
+data in R, from coordinate reference systems to covariates and prediction
+grids, and Chapter [3](https://www.mbgr.org/03_model-fitting.html) the
+variogram and the spatial correlation.
