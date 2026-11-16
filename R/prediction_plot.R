@@ -386,9 +386,11 @@ add_prediction_layer <- function(map, x, panel, facet_label, facet_levels,
     }
   } else {
     data$.spatial_scale <- facet_label
+    # A border of colour NA would count as a missing value, and ggplot2
+    # would drop every point, so the border is transparent instead.
     map <- map + geom_sf(
       data = data, aes(fill = .data$.prediction_value),
-      shape = 21, colour = NA, size = 1.8, inherit.aes = FALSE,
+      shape = 21, colour = "transparent", size = 1.8, inherit.aes = FALSE,
       show.legend = show_legend
     )
   }
