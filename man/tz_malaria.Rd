@@ -16,7 +16,7 @@ An sf object with 387 rows and 18 columns, containing the following variables:
 \item{Pf}{Number of individuals tested positive for Plasmodium falciparum (malaria parasite).}
 \item{PfPR2.10}{Plasmodium falciparum parasite rate in the population (aged 2-10 years).}
 \item{Method}{Method used for malaria diagnosis (e.g., Rapid Diagnostic Test (RDT)).}
-\item{EVI}{Enhanced vegetation index from MODIS imagery of 2015, without units, which indicates the density of vegetation.}
+\item{EVI}{Enhanced vegetation index from MODIS (about 500 m), the mean over 2015, without units, which indicates the density of vegetation.}
 \item{Temperature}{Daytime land surface temperature from MODIS (band \code{LST_Day_1km}, about 1 km), the mean over 2015, in degrees Celsius.}
 \item{Precipitation}{Total precipitation over 2015 from CHIRPS (about 5 km), in millimetres. Missing for 2 clusters.}
 \item{Population}{Population density from WorldPop at a resolution of 3 arc-seconds (about 100 m), in people per grid cell of about a hectare, which is about one hundredth of the density in people per square kilometre.}

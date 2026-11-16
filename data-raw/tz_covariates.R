@@ -1,18 +1,22 @@
 # Put the covariates of tz_covariates on the scales of tz_malaria.
 #
-# tz_malaria takes Temperature and NTL from two rasters of Tanzania for 2015,
-# which tz_covariates did not use. This script replaces those two columns of
-# tz_covariates with the values of the same rasters at its grid points, gives
-# ITN as a percentage, as in tz_malaria, and marks missing values with NA
-# instead of -9999. The other columns, EVI, Precipitation and Population, were
-# already on the scales of tz_malaria and are left as they are.
+# tz_malaria takes EVI, Temperature, NTL and Precipitation from four rasters
+# of Tanzania for 2015, which tz_covariates did not use. This script replaces
+# those columns of tz_covariates with the values of the same rasters at its
+# grid points, gives ITN as a percentage, as in tz_malaria, and marks missing
+# values with NA instead of -9999. Population was already on the scale of
+# tz_malaria and is left as it is.
 #
 # The rasters are in longitude and latitude (EPSG:4326).
+#   - Tanzania_Annual_EVI_2015.tif: MODIS enhanced vegetation index (band EVI,
+#     about 500 m), the mean over 2015, without units.
 #   - Tanzania_Annual_LST_2015.tif: MODIS daytime land surface temperature
 #     (band LST_Day_1km, about 1 km), the mean over 2015, in degrees Celsius.
 #   - Tanzania_Annual_NightLights_2015.tif: VIIRS Day/Night Band monthly
 #     composites (band avg_rad, about 500 m), the mean over 2015, in
 #     nanowatts per square centimetre per steradian.
+#   - Tanzania_Total_Annual_Precipitation_2015.tif: CHIRPS precipitation
+#     (about 5 km), the total over 2015, in millimetres.
 #
 # Run from the root of the package, with the folder that holds the rasters in
 # the environment variable TZ_RASTERS, as in
@@ -27,8 +31,10 @@ if (!nzchar(raster_dir) || !dir.exists(raster_dir)) {
   stop("Set TZ_RASTERS to the folder that holds the rasters.")
 }
 rasters <- c(
+  EVI = "Tanzania_Annual_EVI_2015.tif",
   Temperature = "Tanzania_Annual_LST_2015.tif",
-  NTL = "Tanzania_Annual_NightLights_2015.tif"
+  NTL = "Tanzania_Annual_NightLights_2015.tif",
+  Precipitation = "Tanzania_Total_Annual_Precipitation_2015.tif"
 )
 
 load("data/tz_covariates.rda")

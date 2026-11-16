@@ -76,9 +76,11 @@ in the source repository.
   `plot_prediction()` maps the predictions, `to_table()` tabulates them, and
   `assess_extrapolation()` shows where they go beyond the data.
 - The covariates of the prediction grid `tz_covariates` now match those of
-  `tz_malaria`. Temperature and night-time light come from the same rasters,
-  and ITN is a percentage with `NA` for missing values, where it was a
-  proportion with -9999.
+  `tz_malaria`. EVI, temperature, night-time light and precipitation come from
+  the same rasters, so temperature is missing at 2 points and precipitation at
+  1, and ITN is a percentage with `NA` for missing values, where it was a
+  proportion with -9999. The help pages give the source and units of each
+  covariate, and population density is not in thousands, as they said.
 
 ### Assessment and simulation
 

@@ -6,8 +6,9 @@ test_that("tz_covariates has the covariates of tz_malaria on the same scales", {
   }
   expect_true(all(tz_covariates$ITN >= 0 & tz_covariates$ITN <= 100,
                   na.rm = TRUE))
-  # Each cluster against the nearest point of the grid, at most a few
-  # kilometres away. Values on one scale differ little at the median.
+  # Each cluster against the nearest point of the grid, which for most
+  # clusters is a few kilometres away. Values on one scale differ little at
+  # the median.
   nearest <- sf::st_nearest_feature(tz_malaria, tz_covariates)
   for (name in c("EVI", "Temperature", "Precipitation", "Population", "ITN",
                  "NTL")) {
