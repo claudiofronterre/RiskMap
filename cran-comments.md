@@ -12,21 +12,35 @@ will confirm the change by email.
 ## Test environments
 
 - Ubuntu 24.04 (local), R 4.6.2.
-- GitHub Actions, R release on macOS, Windows and Ubuntu, and R-devel and
-  R 4.5 (oldrel-1) on Ubuntu.
-- R-hub, the clang-asan, clang-ubsan, gcc-asan, valgrind, rchk and m1-san
-  platforms. TODO results.
-- R 4.1.3 on Ubuntu 20.04 (rocker/geospatial), for the minimum version of R in
-  `Depends`. TODO result.
+- GitHub Actions, with R release on macOS, Windows and Ubuntu, and R-devel and
+  R 4.5 (oldrel-1) on Ubuntu. These run the full test suite.
+- R-hub. On gcc-asan and m1-san the examples and the full test suite ran
+  without reports from the address or undefined behaviour sanitizers.
+  VALGRIND. rchk reports only Rcpp's own protection helpers (`Armor.h` and
+  `Shield.h`). On clang-asan and clang-ubsan the dependency terra could not be
+  installed in R-hub's containers, so RiskMap was not checked there.
+- R 4.1.3 on Ubuntu 20.04 (rocker/geospatial), for the version of R in
+  `Depends`. OLDR.
 
 ## R CMD check results
 
-0 errors | 0 warnings | TODO notes
+0 errors | 0 warnings | 1 note
 
-TODO the NOTEs.
+The note is about the change of maintainer. It also flags two words in
+DESCRIPTION as possibly misspelled. "Fronterre" is my surname and
+"geostatistics" is the field of the package.
 
-`R CMD check --as-cran` takes TODO minutes on my laptop, with TODO seconds of
-tests and TODO seconds of examples, including those in `\donttest{}`.
+On my laptop the check gives two more notes, about the flag
+`-mno-omit-leaf-frame-pointer`, which comes from Ubuntu's build of R, and about
+HTML Tidy, which is not installed there.
+
+The installed size is about 17 MB, of which 15 MB is the compiled code in
+`libs`.
+
+`R CMD check --as-cran` takes about 6 minutes on my laptop, with 2 minutes of
+tests and 2 minutes of examples, including those in `\donttest{}`. Each
+example outside `\donttest{}` runs in under 3 seconds. Tests that take more
+than a second are skipped on CRAN and run on GitHub Actions.
 
 ## Reverse dependencies
 
