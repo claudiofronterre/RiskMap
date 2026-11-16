@@ -1784,13 +1784,15 @@ indicator of `assess_extrapolation()` are marked experimental in their help
 pages, as parts that may change in a minor release.
 - The check that CRAN runs (`R CMD check --as-cran` without `NOT_CRAN`) is
 kept short. The 70 tests that took more than a second, apart from the outputs
-of binomial and Poisson fits, skip on CRAN, so its tests take about 90 seconds
-instead of six minutes. They all still run when `NOT_CRAN=true`, as on CI. The
-examples of `check_fit()`, `summarise_mcmc()` and `plot_mcmc()` leave
-`\donttest{}`, since they run in under two seconds. The examples that stay in
-`\donttest{}`, which `--as-cran` runs too, use 10 simulations in the binomial
-`parametric_bootstrap()` instead of 100, `plot_check()` checks the radius
-with a short profile of the scale instead of every extra check, the binomial
-example of `profile()` profiles the scale alone, and the joint profiles of
-`profile()` and `plot_profile()` use a grid of 7 by 7. Each example outside
-`\donttest{}` runs in under about two seconds.
+of binomial and Poisson fits, skip on CRAN, so its tests take about 80 seconds
+instead of six to eight minutes. They all still run when `NOT_CRAN=true`, as on
+CI, but not in R-hub's checks, which run as CRAN does. The examples of
+`check_fit()`, `summarise_mcmc()` and `plot_mcmc()` leave `\donttest{}`, since
+they run in under three seconds. The Gaussian example of
+`parametric_bootstrap()` uses 10 simulations instead of 20. The examples that
+stay in `\donttest{}`, which `--as-cran` runs too, use 10 simulations in the
+binomial `parametric_bootstrap()` instead of 100, `plot_check()` checks the
+radius with a short profile of the scale instead of every extra check, the
+binomial example of `profile()` profiles the scale alone, and the joint
+profiles of `profile()` and `plot_profile()` use a grid of 7 by 7. Each example
+outside `\donttest{}` runs in under three seconds.
