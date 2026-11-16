@@ -30,7 +30,8 @@
 ##'   default is all of them.
 ##' @param pairs The joint profiles to draw, given as in [profile.RiskMap()],
 ##'   each by two names, as in `list(c("sigma2", "phi"))`, or by one name
-##'   `"first:second"`, as in `"sigma2:phi"`. The default is all of them.
+##'   `"first:second"`, as in `"sigma2:phi"`, with the parameters in the order
+##'   given to [profile.RiskMap()]. The default is all of them.
 ##' @param scale The vertical scale of the profiles: `"loglik"` (the default)
 ##'   for the relative log-likelihood, or `"deviance"` for the profile
 ##'   deviance.
@@ -71,16 +72,16 @@ plot_profile <- function(x, parameters = NULL, pairs = NULL,
   if (is.null(parameters)) {
     parameters <- names(x$marginal)
   } else if (is.character(parameters)) {
-    parameters <- vapply(parameters, full_parameter_name, "", names = known,
-                         USE.NAMES = FALSE)
+    parameters <- unique(vapply(parameters, full_parameter_name, "",
+                                names = known, USE.NAMES = FALSE))
   }
   pairs <- if (is.null(pairs)) {
     names(x$joint)
   } else {
-    vapply(read_profile_pairs(pairs, known), function(pair) {
+    unique(vapply(read_profile_pairs(pairs, known), function(pair) {
       paste(vapply(pair, full_parameter_name, "", names = known,
                    USE.NAMES = FALSE), collapse = ":")
-    }, "")
+    }, ""))
   }
   unknown <- setdiff(parameters, names(x$marginal))
   if (length(unknown)) {

@@ -262,9 +262,14 @@ test_that("profile() and plot_profile() take a pair as two names or as one", {
   }
   profiles <- profile_pairs(list(c("cov", "phi")))
   expect_named(profiles$joint, "beta.cov:phi")
-  for (pairs in list("cov:phi", list("beta.cov:phi"), c(pairs = "cov:phi"))) {
+  for (pairs in list("cov:phi", list("beta.cov:phi"), c(pairs = "cov:phi"),
+                     list(c("cov", "phi"), "cov:phi", "beta.cov:phi"))) {
     expect_identical(profile_pairs(pairs)$joint, profiles$joint)
   }
+  # Two names in a vector are taken for two pairs, and the error says how to
+  # give one.
+  expect_input_error(profile_pairs(c("cov", "phi")), "pairs",
+                     "list(c(\"cov\", \"phi\"))")
   # plot_profile() takes the pairs and parameters that profile() takes.
   panel_data <- function(...) {
     ggplot2::layer_data(plot_profile(profiles, ...), 1L)
@@ -277,6 +282,15 @@ test_that("profile() and plot_profile() take a pair as two names or as one", {
   }
   expect_identical(panel_data(parameters = "cov", pairs = character()),
                    panel_data(parameters = "beta.cov", pairs = character()))
+  # A profile named twice is drawn once, as one panel and not two.
+  one_panel <- function(plot) {
+    ggplot2::is_ggplot(plot) && !inherits(plot, "patchwork")
+  }
+  expect_true(one_panel(plot_profile(profiles, parameters = c("cov", "beta.cov"),
+                                     pairs = character())))
+  expect_true(one_panel(plot_profile(profiles, parameters = character(),
+                                     pairs = list("cov:phi",
+                                                  c("beta.cov", "phi")))))
   expect_input_error(plot_profile(profiles, pairs = "phi:cov"), "pairs",
                      "beta.cov:phi")
   expect_input_error(plot_profile(profiles, pairs = list("phi")), "pairs")

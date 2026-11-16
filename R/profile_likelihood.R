@@ -191,6 +191,8 @@ profile.RiskMap <- function(fitted, parameters = NULL, pairs = list(),
     }
     pair
   })
+  # A pair given in several forms is profiled once.
+  pairs <- unique(pairs)
 
   if (messages) {
     n_pairs <- length(pairs)
@@ -480,6 +482,13 @@ read_profile_pairs <- function(pairs, names, arg = "pairs") {
   if (!is.list(pairs) && !is.character(pairs)) {
     supplied <- describe_value(pairs)
     abort_input(c("{.arg {arg}} must be a list of pairs of parameter names or a character vector, not {supplied}.", "i" = forms), arg = arg)
+  }
+  # Two names without a colon are most likely one pair given as a vector.
+  if (is.character(pairs) && length(pairs) == 2L && !anyNA(pairs) &&
+      !any(grepl(":", pairs, fixed = TRUE))) {
+    first <- pairs[1]
+    second <- pairs[2]
+    abort_input(c("{.arg {arg}} must give each pair in a list or as one name {.code first:second}, not as a vector of two names.", "i" = "For the pair of {.val {first}} and {.val {second}}, give {.code list(c(\"{first}\", \"{second}\"))} or {.code \"{first}:{second}\"}."), arg = arg)
   }
   lapply(unname(as.list(pairs)), function(pair) {
     if (!is.character(pair) || !length(pair) %in% 1:2 || anyNA(pair)) {
