@@ -1757,7 +1757,7 @@ plot_cross_validation <- function(x, metric = NULL, model = NULL,
   if (is.null(metric)) {
     metric <- available_metrics[[1L]]
   } else if (!is.character(metric) || length(metric) != 1L || is.na(metric)) {
-    abort_input(c("{.arg metric} must be one metric, since {.fn plot} draws one at a time.", "i" = "The metrics computed are {.val {available_metrics}}."), arg = "metric")
+    abort_input(c("{.arg metric} must be one metric, since a plot draws one at a time.", "i" = "The metrics computed are {.val {available_metrics}}."), arg = "metric")
   } else if (identical(metric, "PIT_area")) {
     abort_input(c("{.arg metric} can't be {.val PIT_area}, which is one number for each model, given by {.fn summary}.", "i" = "Use {.code metric = \"PIT\"} for the calibration curve."), arg = "metric")
   } else if (!metric %in% available_metrics) {

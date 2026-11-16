@@ -21,10 +21,10 @@ gives the replacement of each function of 1.0.0, and the main changes follow.
 | `matern.hessian.phi()` | Removed, now internal |
 | `matern_cor()` | `matern_correlation()` |
 | `maxim.integrand()` | Removed, now internal |
-| `plot_AnPIT()`, `plot_score()` | `plot()` of `assess_prediction()` results |
+| `plot_AnPIT()`, `plot_score()` | `plot_cross_validation()`, or `plot()` of `assess_prediction()` results |
 | `plot_mda()` | Removed, to move with `dast()` |
-| `plot_s_variogram()` | `plot()` of `variogram()` results |
-| `plot_sim_surf()` | `plot()` of `simulate_glgpm()` results |
+| `plot_s_variogram()` | `plot_variogram()`, or `plot()` of `variogram()` results |
+| `plot_sim_surf()` | `plot_simulation()`, or `plot()` of `simulate_glgpm()` results |
 | `pred_over_grid()`, `pred_target_grid()` | `predict()` |
 | `pred_target_shp()` | `predict()` with `boundaries` |
 | `propose_utm()` | `propose_crs()` |

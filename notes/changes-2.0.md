@@ -25,8 +25,8 @@ be considered stable, but further breaking changes will be handled gracefully.
 | `matern.hessian.phi` | Removed; the replacement is internal |
 | `matern_cor` | `matern_correlation` |
 | `maxim.integrand` | Removed; the replacement is internal |
-| `plot_score` / `plot_AnPIT` | `plot.RiskMap_cross_validation` (the two are merged; by default it draws every plot the `RiskMap_cross_validation` object has data for) |
-| `plot_s_variogram` | `plot.RiskMap_variogram` |
+| `plot_score` / `plot_AnPIT` | `plot_cross_validation`, which `plot()` of a cross-validation also calls |
+| `plot_s_variogram` | `plot_variogram`, which `plot()` of a variogram also calls |
 | `pred_over_grid` | `predict` |
 | `pred_target_grid` | `predict` |
 | `pred_target_shp` | `predict` with `boundaries` |
@@ -303,8 +303,8 @@ native linear units rather than assuming metres.
   permutations plus the observed curve. The returned columns are now `distance`,
   `semivariance`, `n_pairs`, `lower_envelope` and `upper_envelope`. A `seed` can
   be supplied without changing the caller's random-number state.
-  `plot_variogram()` (now `plot.RiskMap_variogram()`) shows the envelope by
-  default and warns when it was omitted with `n_permutations = 0`.
+  `plot_variogram()`, which `plot()` of a variogram also calls, shows the
+  envelope by default and warns when it was omitted with `n_permutations = 0`.
 - The `bins` parameter in `variogram()` has been removed and replaced with `breaks`.
 - `plot()` of a variogram takes `envelope` and `colour` instead of
 `plot_envelope` and `color`, in the British spelling of RiskMap's other
@@ -1722,21 +1722,18 @@ checked.
   the other parameters. Previously all of them were missing.
 - The `data_sf` parameter in `create_ids` is now `data`.
 - The `conf_level` parameter in `summary.RiskMap` is now `level`
-- `plot_metric()` and `plot_AnPIT()` have been merged into a single
-  `plot.RiskMap_cross_validation()` method. `metric` and `model` now default
-  to every metric/model available rather than being required, so
-  `plot(cv_result)` alone produces every plot the object has data for.
-  `metric` accepts `"PIT"` as well as `"CRPS"`/`"SCRPS"`/`"PIT_area"` to
-  select the calibration curve. Each metric gets its own plot (or, with more
-  than one model, its own small grid with one panel per model); with more
-  than one metric, each one is drawn in turn and the full set is returned
-  invisibly as a named list.
-- `plot_variogram()` is now `plot.RiskMap_variogram()`, a method rather than
-  a standalone function; call it as `plot(variogram_result)`.
-- `plot_sim_surf()` is now `plot.RiskMap_simulation()`; call it as
-  `plot(sim_result, simulation = ...)`. It now draws a `ggplot` map matching
-  the prediction maps, with a `palette` argument. `simulated_surface()` returns an object of class
-  `RiskMap_simulated_surface` with a matching `plot()` method.
+- `plot_metric()` and `plot_AnPIT()` have been merged into
+  `plot_cross_validation()`, which `plot()` of a cross-validation also calls.
+  `metric` takes `"PIT"` for the calibration curve as well as `"CRPS"` and
+  `"SCRPS"`, and one plot draws one metric (see Cross validation).
+- `plot_variogram()` is the function that `plot()` of a variogram calls (see
+  Plots).
+- `plot_sim_surf()` is now `plot_simulation()`, which `plot()` of a
+  simulation also calls, as in `plot(sim_result, simulation = ...)`. It draws
+  a `ggplot` map matching the prediction maps, with a `palette` argument.
+  `simulated_surface()` returns an object of class
+  `RiskMap_simulated_surface`, which `plot_simulated_surface()` or `plot()`
+  maps.
 - In `assess_prediction()`, the `"AnPIT"` metric is now `"PIT"` and the
   `AnPIT_area` score is now `PIT_area`, for every family.
 - In `plot.RiskMap_cross_validation()`, the calibration-curve arguments `mode`,

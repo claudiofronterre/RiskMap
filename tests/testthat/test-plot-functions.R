@@ -50,8 +50,12 @@ test_that("plot() and the plot_*() function of a class give the same plot", {
     expect_equal(do.call(case$fun, c(list(case$x), case$args)),
                  do.call(plot, c(list(case$x), case$args)))
     # The arguments change the plot, so the comparison above is not empty.
+    # A plot keeps the frames it was built in, which hold the arguments, so
+    # these are left out of the comparison.
     expect_failure(expect_equal(case$fun(case$x),
-                                do.call(case$fun, c(list(case$x), case$args))))
+                                do.call(case$fun, c(list(case$x), case$args)),
+                                ignore_function_env = TRUE,
+                                ignore_formula_env = TRUE))
   }
 })
 
