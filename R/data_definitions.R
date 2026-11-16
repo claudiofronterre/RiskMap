@@ -242,7 +242,7 @@ NULL
 ##' @usage data(malnutrition)
 ##' @format An sf object with 2671 rows and 9 variables:
 ##' \describe{
-##'  \item{age}{age in months of the child.}
+##'  \item{age}{age of the child in years.}
 ##'  \item{sex}{sex of the child.}
 ##'  \item{HAZ}{height-for-age Z-score.}
 ##'  \item{WAZ}{weight-for-age Z-score.}

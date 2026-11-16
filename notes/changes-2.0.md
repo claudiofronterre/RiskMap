@@ -185,6 +185,8 @@ up to 1.0% and 1.4% over the data, and the new ones by less than 0.1% and 0.5%.
 Distances, and so fits, variograms and grids made from these datasets, change
 slightly. Pseudo-Mercator is also not conformal, so it stretched distances
 more north-south than east-west.
+- `?malnutrition` gives `age` in years, where it said months. The ages run
+from 0 to 4.96 in steps of one day.
 
 ## Coordinate reference systems
 
