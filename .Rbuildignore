@@ -1,14 +1,15 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^\.git$
 ^README\.Rmd$
 ^LICENSE\.md$
 ^src/.*\.o$
 ^src/.*\.so$
 ^src/.*\.dll$
 ^\.github$
-sticker/
-_pkgdown.yml
-CLAUDE.md
+^sticker$
+^_pkgdown\.yml$
+^CLAUDE\.md$
 ^dev$
 ^CITATION\.cff$
 ^\.codex$
@@ -18,3 +19,5 @@ CLAUDE.md
 ^tools/golden$
 ^notes$
 ^data-raw$
+^cran-comments\.md$
+^CRAN-SUBMISSION$
