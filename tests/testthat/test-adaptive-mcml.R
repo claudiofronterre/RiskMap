@@ -1139,7 +1139,9 @@ test_that("a failed evaluation gives every draw zero weight", {
   bank <- matrix(rnorm(12), 4)
   expect_identical(engine$evaluate(c(0, 0, 0), bank, log_weights_only = TRUE),
                    rep(-Inf, 4))
-  expect_identical(engine$evaluate(c(0, 0, 0), bank), -1e100)
+  # Valgrind parses the literal 1e100 one unit in the last place away, so the
+  # penalty value is compared with a tolerance.
+  expect_equal(engine$evaluate(c(0, 0, 0), bank), -1e100)
 })
 
 test_that("an anchored proposal is three plain refits from the anchor", {
@@ -1948,7 +1950,9 @@ test_that("an importance distribution that is not finite gives no weight", {
   )
   draws <- matrix(0, nrow = 1L, ncol = engine$latent_dimension)
   expect_error(engine$proposal_at(c(0, 0, 0)), "is not finite")
-  expect_identical(engine$evaluate(c(0, 0, 0), draws), -1e100)
+  # Valgrind parses the literal 1e100 one unit in the last place away, so the
+  # penalty value is compared with a tolerance.
+  expect_equal(engine$evaluate(c(0, 0, 0), draws), -1e100)
   expect_identical(engine$evaluate(c(0, 0, 0), draws, log_weights_only = TRUE),
                    -Inf)
   expect_identical(engine$proposal_errors(),

@@ -155,7 +155,9 @@ test_that("errors while a proposal is built are counted", {
   )
   expect_identical(engine$proposal_errors()$count, 0L)
   draws <- matrix(rnorm(8), 2L)
-  expect_identical(engine$evaluate(c(200, 0, 0), draws), -1e100)
+  # Valgrind parses the literal 1e100 one unit in the last place away, so the
+  # penalty value is compared with a tolerance.
+  expect_equal(engine$evaluate(c(200, 0, 0), draws), -1e100)
   errors <- engine$proposal_errors()
   expect_identical(errors$count, 1L)
   expect_match(errors$first, "beyond the range of this link")
