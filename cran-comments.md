@@ -17,10 +17,14 @@ will confirm the change by email.
 - R-hub. On gcc-asan and m1-san the examples and the full test suite ran
   without reports from the address or undefined behaviour sanitizers. Under
   valgrind the examples of the first 22 of the 47 help pages with examples ran
-  without errors before R-hub's limit of 6 hours. VALGRIND-TESTS. rchk reports
-  only Rcpp's own protection helpers (`Armor.h` and `Shield.h`). On clang-asan
-  and clang-ubsan the dependency terra could not be installed in R-hub's
-  containers, so RiskMap was not checked there.
+  without errors before R-hub's limit of 6 hours. Valgrind runs of the tests
+  alone, split into six groups of test files, also stopped at that limit. Up to
+  there they reported no invalid reads or writes, no use of uninitialised
+  values and no definite leaks. The only reports were blocks possibly lost when
+  processes forked by parallel exited. rchk reports only Rcpp's own protection
+  helpers (`Armor.h` and `Shield.h`). On clang-asan and clang-ubsan the
+  dependency terra could not be installed in R-hub's containers, so RiskMap was
+  not checked there.
 - R 4.1.3 on Ubuntu 20.04 (rocker/geospatial), for the version of R in
   `Depends`, with the full test suite. Deriv's current version needs R 4.5.0,
   so Deriv 4.1.6 from the CRAN archive was used there.
